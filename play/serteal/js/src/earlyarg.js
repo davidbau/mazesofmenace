@@ -2,24 +2,6 @@
 /* Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "dlb.h"
-
-
-
-
-
- 
- 
- 
-
-
-
-
-
-
-
-
 /*
  * Argument processing helpers - for xxmain() to share
  * and call.
@@ -44,15 +26,9 @@ const earlyopts = static_array("earlyopts", struct_early_opt, null, [
     { e: ARG_DUMPMONGEN, name: _("dumpmongen"), minlength: 10, valallowed: FALSE },
     { e: ARG_DUMPWEIGHTS, name: _("dumpweights"), minlength: 11, valallowed: FALSE },
 
-
-
-
-
-
 ]);
 
 const ArgVal_novalue = init_string(static_array("ArgVal_novalue", char, sizeof_string("[nothing]")), _("[nothing]"), true); /* note: not 'const' */
-
 
     const ArgValRequired = 0;
     const ArgValOptional = 1;
@@ -64,23 +40,21 @@ const ArgVal_novalue = init_string(static_array("ArgVal_novalue", char, sizeof_s
     const ArgErrComplain = 8;
     const ArgErr_mask = 8;
 
-
 /* approximate 'getopt_long()' for one option; all the comments refer to
    "-windowtype" but the code isn't specific to that  */
-function /* char * */
-lopt(arg,
+function lopt(arg,
      lflags,
      optname,
      origarg,
      argc_p,
-     argv_p)      /* argv[] ditto */
-{ let $goto = null;
+     argv_p) { /* char * */ /* argv[] ditto */
+    let $goto = null;
     var argc = argc_p[0];
     var argv = argv_p[0];
     var p, nextarg = (argc > 1 && chars[argv[1] + 0] != ord('-')) ? argv[1] : 0;
     var l, opttype = (lflags & ArgVal_mask);
-    var oneletterok = (+((lflags & ArgNam_mask) == ArgNamOneLetter)),
-            complain = (+((lflags & ArgErr_mask) == ArgErrComplain));
+    var oneletterok = +((lflags & ArgNam_mask) == ArgNamOneLetter),
+            complain = +((lflags & ArgErr_mask) == ArgErrComplain);
 
     /* first letter must match */
     $goto_loptbail: for (;;) { switch ($goto) { default: case "loptbail": case "loptnotallowed": case "loptrequired": if ($goto || (chars[arg + 1] != chars[optname + 1])) {
@@ -117,11 +91,6 @@ lopt(arg,
         /* "-w..." but not "-w[indowtype[=foo]]" */
         if (!p) {
             p = arg + 2; /* past 'w' of "-wfoo" */
-
-
-
-
-
         } else {
             /* "-w...=foo" but not "-w[indowtype]=foo" */
             { $goto = "loptbail"; continue $goto_loptbail; }
@@ -145,9 +114,7 @@ lopt(arg,
 /* move argv[ndx] to end of argv[] array, then reduce argc to hide it;
    prevents process_options() from encountering it after early_options()
    has processed it; elements get reordered but all remain intact */
-function /* void */
-consume_arg(ndx, ac_p, av_p)
-{
+function consume_arg(ndx, ac_p, av_p) { /* void */
     let gone, av = av_p[0];
     let i, ac = ac_p[0];
 
@@ -162,9 +129,7 @@ consume_arg(ndx, ac_p, av_p)
 }
 
 /* consume two tokens for '-argname value' w/o '=' or ':' */
-function /* void */
-consume_two_args(ndx, ac_p, av_p)
-{
+function consume_two_args(ndx, ac_p, av_p) { /* void */
     /* when consuming "-two arg" from "-two arg -three -four",
        the *ac_p manipulation results in "-three -four -two arg"
        rather than the "-three -four arg -two" that would happen
@@ -176,16 +141,13 @@ consume_two_args(ndx, ac_p, av_p)
 }
 
 /* process some command line arguments before loading options */
-export function /* void */
-early_options(argc_p, argv_p, hackdir_p)
-{ const $frame = stack_frame(); try {
+export function early_options(argc_p, argv_p, hackdir_p) { /* void */
+    const $frame = stack_frame(); try {
     let argv = stack_var(ptr_to(ptr_to(char))), arg, origarg;
     let argc = stack_var(int), oldargc, ndx = 0, consumed = 0;
 
-
     if (argcheck(argc_p[0], argv_p[0], ARG_DUMPGLYPHIDS) == 2)
         opt_terminate();
-
 
     config_error_init(FALSE, _("command line"), FALSE);
 
@@ -218,21 +180,13 @@ early_options(argc_p, argv_p, hackdir_p)
         switch (chars[arg + 1]) { /* char after leading dash */
         case ord('b'):
 
-
-
-
-
-
-
             break;
         case ord('d'):
             if (argcheck(argc[0], argv[0], ARG_DEBUG) == 1) {
                 consume_arg(ndx, argc_p, argv_p), consumed = 1;
-
             } else if (argcheck(argc[0], argv[0], ARG_DUMPENUMS) == 2) {
                 opt_terminate();
                 /*NOTREACHED*/
-
             } else if (argcheck(argc[0], argv[0], ARG_DUMPMONGEN) == 2) {
                 opt_terminate();
                 /*NOTREACHED*/
@@ -240,7 +194,6 @@ early_options(argc_p, argv_p, hackdir_p)
                 opt_terminate();
                 /*NOTREACHED*/
             } else {
-
                 oldargc = argc[0];
                 arg = lopt(arg,
                            (ArgValRequired | ArgNamOneLetter | ArgErrSilent),
@@ -254,7 +207,6 @@ early_options(argc_p, argv_p, hackdir_p)
                     else
                         consume_two_args(ndx, argc_p, argv_p), consumed = 2;
                 }
-
             }
             break;
         case ord('h'):
@@ -314,18 +266,7 @@ early_options(argc_p, argv_p, hackdir_p)
 
             if (lopt(arg, ArgValDisallowed, _("-usage"), origarg, argc, argv))
                 opt_usage(hackdir_p[0]);
-
-
-
-
-
-
-
-
-
-
-
-
+            /* #elif defined(WIN32) || defined(MSDOS) || defined(AMIGA) (#if defined(UNIX)): not in this build */
 
             break;
         case ord('v'):
@@ -343,13 +284,6 @@ early_options(argc_p, argv_p, hackdir_p)
                 free(gc.cmdline_windowsys);
             gc.cmdline_windowsys = arg ? dupstr(arg) : 0;
             break;
- 
-
-
-
-
-
-
 
         default:
             break;
@@ -358,13 +292,12 @@ early_options(argc_p, argv_p, hackdir_p)
     /* empty or "N errors on command line" */
     config_error_done();
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 /* for command-line options that perform some immediate action and then
    terminate the program without starting play, like 'nethack --version'
    or 'nethack -s Zelda'; do some cleanup before that termination */
- function /* void */
-opt_terminate()
-{
+ function opt_terminate() { /* void */
     program_state.early_options = 0;
     config_error_done(); /* free memory allocated by config_error_init() */
 
@@ -372,13 +305,8 @@ opt_terminate()
     /*NOTREACHED*/
 }
 
- function /* void */
-opt_usage(hackdir)
-{
-
+ function opt_usage(hackdir) { /* void */
     chdirx(hackdir, TRUE);
-
-
 
     ;
 
@@ -387,13 +315,8 @@ opt_usage(hackdir)
 }
 /* show the sysconf file name, playground directory, run-time configuration
    file name, dumplog file name if applicable, and some other things */
- export function /* void */
-after_opt_showpaths(dir)
-{
-
+ export function after_opt_showpaths(dir) { /* void */
     chdirx(dir, FALSE);
-
-
 
     opt_terminate();
     /*NOTREACHED*/
@@ -402,39 +325,20 @@ after_opt_showpaths(dir)
 /* handle "-s <score options> [character-names]" to show all the entries
    in the high scores file ('record') belonging to particular characters;
    nethack will end after doing so without starting play */
- function /* void */
-scores_only(argc, argv, dir)
-{
+ function scores_only(argc, argv, dir) { /* void */
     /* do this now rather than waiting for final termination, in case there
        is an error summary coming */
     config_error_done();
 
-
     chdirx(dir, FALSE);
-
-
-
 
     iflags.initoptions_noterminate = TRUE;
     initoptions(); /* sysconf options affect whether panictrace is enabled */
     iflags.initoptions_noterminate = FALSE;
 
-
-
-
-
-
-
-
-    void whoami(); /* set up default plname[] */
+    whoami(); /* set up default plname[] */
 
     prscore(argc, argv);
-
-
-
-
-
-
 
     nh_terminate(EXIT_SUCCESS); /* bypass opt_terminate() */
     /*NOTREACHED*/
@@ -446,9 +350,7 @@ scores_only(argc, argv, dir)
  *    1 = found and skip past this argument
  *    2 = found and trigger immediate exit
  */
-export function /* int */
-argcheck(argc, argv, e_arg)
-{
+export function argcheck(argc, argv, e_arg) { /* int */
     let i, idx;
     let match = FALSE;
     let userea = 0;
@@ -539,19 +441,6 @@ argcheck(argc, argv, e_arg)
             dump_weights();
             return 2;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
         default:
             break;
         }
@@ -572,9 +461,7 @@ argcheck(argc, argv, e_arg)
  *                    can be debugged without buffering.
  * fuzzer           - enable fuzzer without debugger intervention.
  */
-function /* void */
-debug_fields(opts)
-{
+function debug_fields(opts) { /* void */
     let op;
     let negated = FALSE;
 
@@ -585,7 +472,6 @@ debug_fields(opts)
     }
     if (strlen(opts) > Math.trunc(BUFSZ / 2))
         return;
-
 
     /* strip leading and trailing white space */
     while (__isspace(uchar((chars[opts]))))
@@ -611,18 +497,12 @@ debug_fields(opts)
     if (match_optname(opts, _("ttystatus"), 9, FALSE))
         iflags.debug.ttystatus = negated ? FALSE : TRUE;
 
-
-
-
-
     if (match_optname(opts, _("fuzzer"), 4, FALSE))
         iflags.fuzzerpending = TRUE;
     return;
 }
 
-
 /* monsdump[] and objdump[] are also used in utf8map.c */
-
 
 export const UNPREFIXED_COUNT = (5);
 export const monsdump = static_array("monsdump", struct_enum_dump, null, [
@@ -638,73 +518,46 @@ export const objdump = static_array("objdump", struct_enum_dump, null, [
     { val: NUM_OBJECTS, nm: _("NUM_OBJECTS") },
 ]);
 
-
 const defsym_cmap_dump = static_array("defsym_cmap_dump", struct_enum_dump, null, [
 ...defsym_cmap_dump_records(),
     { val: MAXPCHARS, nm: _("MAXPCHARS") },
 ]);
-
-
 
 const defsym_mon_syms_dump = static_array("defsym_mon_syms_dump", struct_enum_dump, null, [
 ...defsym_mon_syms_dump_records(),
     { val: MAXMCLASSES, nm: _("MAXMCLASSES") },
 ]);
 
-
-
 const defsym_mon_defchars_dump = static_array("defsym_mon_defchars_dump", struct_enum_dump, null, [
 ...defsym_mon_defchars_dump_records(),
 ]);
 
-
-
 const objclass_defchars_dump = static_array("objclass_defchars_dump", struct_enum_dump, null, [
 ...objclass_defchars_dump_records(),
 ]);
-
-
 
 const objclass_classes_dump = static_array("objclass_classes_dump", struct_enum_dump, null, [
 ...objclass_classes_dump_records(),
     { val: MAXOCLASSES, nm: _("MAXOCLASSES") },
 ]);
 
-
-
 const objclass_syms_dump = static_array("objclass_syms_dump", struct_enum_dump, null, [
 ...objclass_syms_dump_records(),
 ]);
-
-
 
 const arti_enum_dump = static_array("arti_enum_dump", struct_enum_dump, null, [
 ...arti_enum_dump_records(),
     { val: AFTER_LAST_ARTIFACT, nm: _("AFTER_LAST_ARTIFACT") }
 ]);
 
-
 /* the enums are not part of hack.h for this one */
-
-
-
-
-
-
 
 const mcastu_enum_dump = static_array("mcastu_enum_dump", struct_enum_dump, null, [
 ...mcastu_enum_dump_records(),
 ]);
 
-
-
-
-
-
-
-function /* void */
-dump_enums()
-{ const $frame = stack_frame(); try {
+function dump_enums() { /* void */
+    const $frame = stack_frame(); try {
     const monsters_enum = 0;
         const objects_enum = monsters_enum + 1;
         const objects_misc_enum = objects_enum + 1;
@@ -717,9 +570,6 @@ dump_enums()
         const arti_enum = objclass_syms_enum + 1;
         const mcastu_enum = arti_enum + 1;
         const NUM_ENUM_DUMPS = mcastu_enum + 1;
-
-
-
 
     let omdump = static_array("dump_enums.omdump", struct_enum_dump, null, [
         { val: LAST_GENERIC, nm: _("LAST_GENERIC") },
@@ -738,7 +588,6 @@ dump_enums()
         { val: NUM_GLASS_GEMS, nm: _("NUM_GLASS_GEMS") },
         { val: MAX_GLYPH, nm: _("MAX_GLYPH") },
     ]);
-
 
     let ed = static_array("dump_enums.ed", ptr_to(struct_enum_dump), NUM_ENUM_DUMPS, [
         monsdump[0], objdump[0], omdump[0],
@@ -798,1306 +647,252 @@ dump_enums()
         raw_print()(_(""));
     }
     raw_print()(_(""));
-} finally { stack_pop($frame); } }
-
-
-
-export function /* void */
-dump_glyphids()
-{
-    dump_all_glyphids((stdout));
+    } finally { stack_pop($frame); }
 }
 
+export function dump_glyphids() { /* void */
+    dump_all_glyphids(stdout);
+}
 
 /*allmain.c*/
-import { AFTER_LAST_ARTIFACT } from "./artilist.h.js";
-import { ART_CLEAVER } from "./artilist.h.js";
-import { ART_DEMONBANE } from "./artilist.h.js";
-import { ART_DRAGONBANE } from "./artilist.h.js";
-import { ART_EXCALIBUR } from "./artilist.h.js";
-import { ART_EYES_OF_THE_OVERWORLD } from "./artilist.h.js";
-import { ART_EYE_OF_THE_AETHIOPICA } from "./artilist.h.js";
-import { ART_FIRE_BRAND } from "./artilist.h.js";
-import { ART_FROST_BRAND } from "./artilist.h.js";
-import { ART_GIANTSLAYER } from "./artilist.h.js";
-import { ART_GRAYSWANDIR } from "./artilist.h.js";
-import { ART_GRIMTOOTH } from "./artilist.h.js";
-import { ART_HEART_OF_AHRIMAN } from "./artilist.h.js";
-import { ART_LONGBOW_OF_DIANA } from "./artilist.h.js";
-import { ART_MAGICBANE } from "./artilist.h.js";
-import { ART_MAGIC_MIRROR_OF_MERLIN } from "./artilist.h.js";
-import { ART_MASTER_KEY_OF_THIEVERY } from "./artilist.h.js";
-import { ART_MITRE_OF_HOLINESS } from "./artilist.h.js";
-import { ART_MJOLLNIR } from "./artilist.h.js";
-import { ART_NONARTIFACT } from "./artilist.h.js";
-import { ART_OGRESMASHER } from "./artilist.h.js";
-import { ART_ORB_OF_DETECTION } from "./artilist.h.js";
-import { ART_ORB_OF_FATE } from "./artilist.h.js";
-import { ART_ORCRIST } from "./artilist.h.js";
-import { ART_SCEPTRE_OF_MIGHT } from "./artilist.h.js";
-import { ART_SNICKERSNEE } from "./artilist.h.js";
-import { ART_STAFF_OF_AESCULAPIUS } from "./artilist.h.js";
-import { ART_STING } from "./artilist.h.js";
-import { ART_STORMBRINGER } from "./artilist.h.js";
-import { ART_SUNSWORD } from "./artilist.h.js";
-import { ART_TROLLSBANE } from "./artilist.h.js";
-import { ART_TSURUGI_OF_MURAMASA } from "./artilist.h.js";
-import { ART_VORPAL_BLADE } from "./artilist.h.js";
-import { ART_WEREBANE } from "./artilist.h.js";
-import { ART_YENDORIAN_EXPRESS_CARD } from "./artilist.h.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { AMULET_SYM } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { ARMOR_SYM } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { BALL_SYM } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { CHAIN_SYM } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { DEF_ANGEL } from "./defsym.h.js";
-import { DEF_ANT } from "./defsym.h.js";
-import { DEF_BAT } from "./defsym.h.js";
-import { DEF_BLOB } from "./defsym.h.js";
-import { DEF_CENTAUR } from "./defsym.h.js";
-import { DEF_COCKATRICE } from "./defsym.h.js";
-import { DEF_DEMON } from "./defsym.h.js";
-import { DEF_DOG } from "./defsym.h.js";
-import { DEF_DRAGON } from "./defsym.h.js";
-import { DEF_EEL } from "./defsym.h.js";
-import { DEF_ELEMENTAL } from "./defsym.h.js";
-import { DEF_EYE } from "./defsym.h.js";
-import { DEF_FELINE } from "./defsym.h.js";
-import { DEF_FUNGUS } from "./defsym.h.js";
-import { DEF_GHOST } from "./defsym.h.js";
-import { DEF_GIANT } from "./defsym.h.js";
-import { DEF_GNOME } from "./defsym.h.js";
-import { DEF_GOLEM } from "./defsym.h.js";
-import { DEF_GREMLIN } from "./defsym.h.js";
-import { DEF_HUMAN } from "./defsym.h.js";
-import { DEF_HUMANOID } from "./defsym.h.js";
-import { DEF_IMP } from "./defsym.h.js";
-import { DEF_INVISIBLE } from "./defsym.h.js";
-import { DEF_JABBERWOCK } from "./defsym.h.js";
-import { DEF_JELLY } from "./defsym.h.js";
-import { DEF_KOBOLD } from "./defsym.h.js";
-import { DEF_KOP } from "./defsym.h.js";
-import { DEF_LEPRECHAUN } from "./defsym.h.js";
-import { DEF_LICH } from "./defsym.h.js";
-import { DEF_LIGHT } from "./defsym.h.js";
-import { DEF_LIZARD } from "./defsym.h.js";
-import { DEF_MIMIC } from "./defsym.h.js";
-import { DEF_MIMIC_DEF } from "./defsym.h.js";
-import { DEF_MUMMY } from "./defsym.h.js";
-import { DEF_NAGA } from "./defsym.h.js";
-import { DEF_NYMPH } from "./defsym.h.js";
-import { DEF_OGRE } from "./defsym.h.js";
-import { DEF_ORC } from "./defsym.h.js";
-import { DEF_PIERCER } from "./defsym.h.js";
-import { DEF_PUDDING } from "./defsym.h.js";
-import { DEF_QUADRUPED } from "./defsym.h.js";
-import { DEF_QUANTMECH } from "./defsym.h.js";
-import { DEF_RODENT } from "./defsym.h.js";
-import { DEF_RUSTMONST } from "./defsym.h.js";
-import { DEF_SNAKE } from "./defsym.h.js";
-import { DEF_SPIDER } from "./defsym.h.js";
-import { DEF_TRAPPER } from "./defsym.h.js";
-import { DEF_TROLL } from "./defsym.h.js";
-import { DEF_UMBER } from "./defsym.h.js";
-import { DEF_UNICORN } from "./defsym.h.js";
-import { DEF_VAMPIRE } from "./defsym.h.js";
-import { DEF_VORTEX } from "./defsym.h.js";
-import { DEF_WORM } from "./defsym.h.js";
-import { DEF_WORM_TAIL } from "./defsym.h.js";
-import { DEF_WRAITH } from "./defsym.h.js";
-import { DEF_XAN } from "./defsym.h.js";
-import { DEF_XORN } from "./defsym.h.js";
-import { DEF_YETI } from "./defsym.h.js";
-import { DEF_ZOMBIE } from "./defsym.h.js";
-import { DEF_ZRUTY } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { FOOD_SYM } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { GEM_SYM } from "./defsym.h.js";
-import { GOLD_SYM } from "./defsym.h.js";
-import { ILLOBJ_CLASS } from "./defsym.h.js";
-import { ILLOBJ_SYM } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { POTION_SYM } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { RING_SYM } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { ROCK_SYM } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SCROLL_SYM } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { SPBOOK_SYM } from "./defsym.h.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_ANT } from "./defsym.h.js";
-import { S_BAT } from "./defsym.h.js";
-import { S_BLOB } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_COCKATRICE } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_EYE } from "./defsym.h.js";
-import { S_FELINE } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_GHOST } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_GNOME } from "./defsym.h.js";
-import { S_GOLEM } from "./defsym.h.js";
-import { S_GREMLIN } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_HUMANOID } from "./defsym.h.js";
-import { S_IMP } from "./defsym.h.js";
-import { S_JABBERWOCK } from "./defsym.h.js";
-import { S_JELLY } from "./defsym.h.js";
-import { S_KOBOLD } from "./defsym.h.js";
-import { S_KOP } from "./defsym.h.js";
-import { S_LEPRECHAUN } from "./defsym.h.js";
-import { S_LICH } from "./defsym.h.js";
-import { S_LIGHT } from "./defsym.h.js";
-import { S_LIZARD } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_MIMIC_DEF } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_NAGA } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_ORC } from "./defsym.h.js";
-import { S_PIERCER } from "./defsym.h.js";
-import { S_PUDDING } from "./defsym.h.js";
-import { S_QUADRUPED } from "./defsym.h.js";
-import { S_QUANTMECH } from "./defsym.h.js";
-import { S_RODENT } from "./defsym.h.js";
-import { S_RUSTMONST } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
-import { S_SPIDER } from "./defsym.h.js";
-import { S_TRAPPER } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { S_UMBER } from "./defsym.h.js";
-import { S_UNICORN } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_VORTEX } from "./defsym.h.js";
-import { S_WORM } from "./defsym.h.js";
-import { S_WORM_TAIL } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
-import { S_XAN } from "./defsym.h.js";
-import { S_XORN } from "./defsym.h.js";
-import { S_YETI } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_ZRUTY } from "./defsym.h.js";
-import { S_air } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_amulet } from "./defsym.h.js";
-import { S_anti_magic_trap } from "./defsym.h.js";
-import { S_armor } from "./defsym.h.js";
-import { S_arrow_trap } from "./defsym.h.js";
-import { S_ball } from "./defsym.h.js";
-import { S_bars } from "./defsym.h.js";
-import { S_bear_trap } from "./defsym.h.js";
-import { S_blcorn } from "./defsym.h.js";
-import { S_book } from "./defsym.h.js";
-import { S_boomleft } from "./defsym.h.js";
-import { S_boomright } from "./defsym.h.js";
-import { S_brcorn } from "./defsym.h.js";
-import { S_brdnladder } from "./defsym.h.js";
-import { S_brdnstair } from "./defsym.h.js";
-import { S_brupladder } from "./defsym.h.js";
-import { S_brupstair } from "./defsym.h.js";
-import { S_chain } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_coin } from "./defsym.h.js";
-import { S_corr } from "./defsym.h.js";
-import { S_crwall } from "./defsym.h.js";
-import { S_darkroom } from "./defsym.h.js";
-import { S_dart_trap } from "./defsym.h.js";
-import { S_digbeam } from "./defsym.h.js";
-import { S_dnladder } from "./defsym.h.js";
-import { S_dnstair } from "./defsym.h.js";
-import { S_engrcorr } from "./defsym.h.js";
-import { S_engroom } from "./defsym.h.js";
-import { S_expl_bc } from "./defsym.h.js";
-import { S_expl_bl } from "./defsym.h.js";
-import { S_expl_br } from "./defsym.h.js";
-import { S_expl_mc } from "./defsym.h.js";
-import { S_expl_ml } from "./defsym.h.js";
-import { S_expl_mr } from "./defsym.h.js";
-import { S_expl_tc } from "./defsym.h.js";
-import { S_expl_tl } from "./defsym.h.js";
-import { S_expl_tr } from "./defsym.h.js";
-import { S_falling_rock_trap } from "./defsym.h.js";
-import { S_fire_trap } from "./defsym.h.js";
-import { S_flashbeam } from "./defsym.h.js";
-import { S_food } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_gem } from "./defsym.h.js";
-import { S_goodpos } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_hbeam } from "./defsym.h.js";
-import { S_hcdbridge } from "./defsym.h.js";
-import { S_hcdoor } from "./defsym.h.js";
-import { S_hodbridge } from "./defsym.h.js";
-import { S_hodoor } from "./defsym.h.js";
-import { S_hole } from "./defsym.h.js";
-import { S_hwall } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_invisible } from "./defsym.h.js";
-import { S_land_mine } from "./defsym.h.js";
-import { S_lava } from "./defsym.h.js";
-import { S_lavawall } from "./defsym.h.js";
-import { S_level_teleporter } from "./defsym.h.js";
-import { S_litcorr } from "./defsym.h.js";
-import { S_lslant } from "./defsym.h.js";
-import { S_magic_portal } from "./defsym.h.js";
-import { S_magic_trap } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_pit } from "./defsym.h.js";
-import { S_poisoncloud } from "./defsym.h.js";
-import { S_polymorph_trap } from "./defsym.h.js";
-import { S_pool } from "./defsym.h.js";
-import { S_potion } from "./defsym.h.js";
-import { S_ring } from "./defsym.h.js";
-import { S_rock } from "./defsym.h.js";
-import { S_rolling_boulder_trap } from "./defsym.h.js";
-import { S_room } from "./defsym.h.js";
-import { S_rslant } from "./defsym.h.js";
-import { S_rust_trap } from "./defsym.h.js";
-import { S_scroll } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_sleeping_gas_trap } from "./defsym.h.js";
-import { S_spiked_pit } from "./defsym.h.js";
-import { S_squeaky_board } from "./defsym.h.js";
-import { S_ss1 } from "./defsym.h.js";
-import { S_ss2 } from "./defsym.h.js";
-import { S_ss3 } from "./defsym.h.js";
-import { S_ss4 } from "./defsym.h.js";
-import { S_statue_trap } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_strange_obj } from "./defsym.h.js";
-import { S_sw_bc } from "./defsym.h.js";
-import { S_sw_bl } from "./defsym.h.js";
-import { S_sw_br } from "./defsym.h.js";
-import { S_sw_ml } from "./defsym.h.js";
-import { S_sw_mr } from "./defsym.h.js";
-import { S_sw_tc } from "./defsym.h.js";
-import { S_sw_tl } from "./defsym.h.js";
-import { S_sw_tr } from "./defsym.h.js";
-import { S_tdwall } from "./defsym.h.js";
-import { S_teleportation_trap } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
-import { S_tlcorn } from "./defsym.h.js";
-import { S_tlwall } from "./defsym.h.js";
-import { S_tool } from "./defsym.h.js";
-import { S_trap_door } from "./defsym.h.js";
-import { S_trapped_chest } from "./defsym.h.js";
-import { S_trapped_door } from "./defsym.h.js";
-import { S_trcorn } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
-import { S_trwall } from "./defsym.h.js";
-import { S_tuwall } from "./defsym.h.js";
-import { S_upladder } from "./defsym.h.js";
-import { S_upstair } from "./defsym.h.js";
-import { S_vbeam } from "./defsym.h.js";
-import { S_vcdbridge } from "./defsym.h.js";
-import { S_vcdoor } from "./defsym.h.js";
-import { S_venom } from "./defsym.h.js";
-import { S_vibrating_square } from "./defsym.h.js";
-import { S_vodbridge } from "./defsym.h.js";
-import { S_vodoor } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { S_wand } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
-import { S_weapon } from "./defsym.h.js";
-import { S_web } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { TOOL_SYM } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { VENOM_SYM } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WAND_SYM } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { WEAPON_SYM } from "./defsym.h.js";
+
+import {
+    AFTER_LAST_ARTIFACT, ART_CLEAVER, ART_DEMONBANE, ART_DRAGONBANE, ART_EXCALIBUR,
+    ART_EYES_OF_THE_OVERWORLD, ART_EYE_OF_THE_AETHIOPICA, ART_FIRE_BRAND, ART_FROST_BRAND,
+    ART_GIANTSLAYER, ART_GRAYSWANDIR, ART_GRIMTOOTH, ART_HEART_OF_AHRIMAN, ART_LONGBOW_OF_DIANA,
+    ART_MAGICBANE, ART_MAGIC_MIRROR_OF_MERLIN, ART_MASTER_KEY_OF_THIEVERY, ART_MITRE_OF_HOLINESS,
+    ART_MJOLLNIR, ART_NONARTIFACT, ART_OGRESMASHER, ART_ORB_OF_DETECTION, ART_ORB_OF_FATE,
+    ART_ORCRIST, ART_SCEPTRE_OF_MIGHT, ART_SNICKERSNEE, ART_STAFF_OF_AESCULAPIUS, ART_STING,
+    ART_STORMBRINGER, ART_SUNSWORD, ART_TROLLSBANE, ART_TSURUGI_OF_MURAMASA, ART_VORPAL_BLADE,
+    ART_WEREBANE, ART_YENDORIAN_EXPRESS_CARD,
+} from "./artilist.h.js";
+import {
+    AMULET_CLASS, AMULET_SYM, ARMOR_CLASS, ARMOR_SYM, BALL_CLASS, BALL_SYM, CHAIN_CLASS, CHAIN_SYM,
+    COIN_CLASS, DEF_ANGEL, DEF_ANT, DEF_BAT, DEF_BLOB, DEF_CENTAUR, DEF_COCKATRICE, DEF_DEMON,
+    DEF_DOG, DEF_DRAGON, DEF_EEL, DEF_ELEMENTAL, DEF_EYE, DEF_FELINE, DEF_FUNGUS, DEF_GHOST,
+    DEF_GIANT, DEF_GNOME, DEF_GOLEM, DEF_GREMLIN, DEF_HUMAN, DEF_HUMANOID, DEF_IMP, DEF_INVISIBLE,
+    DEF_JABBERWOCK, DEF_JELLY, DEF_KOBOLD, DEF_KOP, DEF_LEPRECHAUN, DEF_LICH, DEF_LIGHT, DEF_LIZARD,
+    DEF_MIMIC, DEF_MIMIC_DEF, DEF_MUMMY, DEF_NAGA, DEF_NYMPH, DEF_OGRE, DEF_ORC, DEF_PIERCER,
+    DEF_PUDDING, DEF_QUADRUPED, DEF_QUANTMECH, DEF_RODENT, DEF_RUSTMONST, DEF_SNAKE, DEF_SPIDER,
+    DEF_TRAPPER, DEF_TROLL, DEF_UMBER, DEF_UNICORN, DEF_VAMPIRE, DEF_VORTEX, DEF_WORM,
+    DEF_WORM_TAIL, DEF_WRAITH, DEF_XAN, DEF_XORN, DEF_YETI, DEF_ZOMBIE, DEF_ZRUTY, FOOD_CLASS,
+    FOOD_SYM, GEM_CLASS, GEM_SYM, GOLD_SYM, ILLOBJ_CLASS, ILLOBJ_SYM, MAXMCLASSES, MAXOCLASSES,
+    MAXPCHARS, POTION_CLASS, POTION_SYM, RING_CLASS, RING_SYM, ROCK_CLASS, ROCK_SYM, SCROLL_CLASS,
+    SCROLL_SYM, SPBOOK_CLASS, SPBOOK_SYM, S_ANGEL, S_ANT, S_BAT, S_BLOB, S_CENTAUR, S_COCKATRICE,
+    S_DEMON, S_DOG, S_DRAGON, S_EEL, S_ELEMENTAL, S_EYE, S_FELINE, S_FUNGUS, S_GHOST, S_GIANT,
+    S_GNOME, S_GOLEM, S_GREMLIN, S_HUMAN, S_HUMANOID, S_IMP, S_JABBERWOCK, S_JELLY, S_KOBOLD, S_KOP,
+    S_LEPRECHAUN, S_LICH, S_LIGHT, S_LIZARD, S_MIMIC, S_MIMIC_DEF, S_MUMMY, S_NAGA, S_NYMPH, S_OGRE,
+    S_ORC, S_PIERCER, S_PUDDING, S_QUADRUPED, S_QUANTMECH, S_RODENT, S_RUSTMONST, S_SNAKE, S_SPIDER,
+    S_TRAPPER, S_TROLL, S_UMBER, S_UNICORN, S_VAMPIRE, S_VORTEX, S_WORM, S_WORM_TAIL, S_WRAITH,
+    S_XAN, S_XORN, S_YETI, S_ZOMBIE, S_ZRUTY, S_air, S_altar, S_amulet, S_anti_magic_trap, S_armor,
+    S_arrow_trap, S_ball, S_bars, S_bear_trap, S_blcorn, S_book, S_boomleft, S_boomright, S_brcorn,
+    S_brdnladder, S_brdnstair, S_brupladder, S_brupstair, S_chain, S_cloud, S_coin, S_corr,
+    S_crwall, S_darkroom, S_dart_trap, S_digbeam, S_dnladder, S_dnstair, S_engrcorr, S_engroom,
+    S_expl_bc, S_expl_bl, S_expl_br, S_expl_mc, S_expl_ml, S_expl_mr, S_expl_tc, S_expl_tl,
+    S_expl_tr, S_falling_rock_trap, S_fire_trap, S_flashbeam, S_food, S_fountain, S_gem, S_goodpos,
+    S_grave, S_hbeam, S_hcdbridge, S_hcdoor, S_hodbridge, S_hodoor, S_hole, S_hwall, S_ice,
+    S_invisible, S_land_mine, S_lava, S_lavawall, S_level_teleporter, S_litcorr, S_lslant,
+    S_magic_portal, S_magic_trap, S_ndoor, S_pit, S_poisoncloud, S_polymorph_trap, S_pool, S_potion,
+    S_ring, S_rock, S_rolling_boulder_trap, S_room, S_rslant, S_rust_trap, S_scroll, S_sink,
+    S_sleeping_gas_trap, S_spiked_pit, S_squeaky_board, S_ss1, S_ss2, S_ss3, S_ss4, S_statue_trap,
+    S_stone, S_strange_obj, S_sw_bc, S_sw_bl, S_sw_br, S_sw_ml, S_sw_mr, S_sw_tc, S_sw_tl, S_sw_tr,
+    S_tdwall, S_teleportation_trap, S_throne, S_tlcorn, S_tlwall, S_tool, S_trap_door,
+    S_trapped_chest, S_trapped_door, S_trcorn, S_tree, S_trwall, S_tuwall, S_upladder, S_upstair,
+    S_vbeam, S_vcdbridge, S_vcdoor, S_venom, S_vibrating_square, S_vodbridge, S_vodoor, S_vwall,
+    S_wand, S_water, S_weapon, S_web, TOOL_CLASS, TOOL_SYM, VENOM_CLASS, VENOM_SYM, WAND_CLASS,
+    WAND_SYM, WEAPON_CLASS, WEAPON_SYM,
+} from "./defsym.h.js";
 import { MAX_GLYPH } from "./display.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { USAGEHELP } from "./global.h.js";
-import { ARG_DEBUG } from "./hack.h.js";
-import { ARG_DUMPENUMS } from "./hack.h.js";
-import { ARG_DUMPGLYPHIDS } from "./hack.h.js";
-import { ARG_DUMPMONGEN } from "./hack.h.js";
-import { ARG_DUMPWEIGHTS } from "./hack.h.js";
-import { ARG_SHOWPATHS } from "./hack.h.js";
-import { ARG_VERSION } from "./hack.h.js";
-import { struct_early_opt } from "./hack.h.js";
-import { struct_enum_dump } from "./hack.h.js";
+import { BUFSZ, FALSE, TRUE, USAGEHELP } from "./global.h.js";
+import {
+    ARG_DEBUG, ARG_DUMPENUMS, ARG_DUMPGLYPHIDS, ARG_DUMPMONGEN, ARG_DUMPWEIGHTS, ARG_SHOWPATHS,
+    ARG_VERSION, struct_early_opt, struct_enum_dump,
+} from "./hack.h.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { nhStr } from "./lint.h.macros.js";
-import { MCAST_DUMPENUM_AGGRAVATION } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_BLIND_YOU } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_CLONE_WIZ } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_CONFUSE_YOU } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_CURE_SELF } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_CURSE_ITEMS } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_DEATH_TOUCH } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_DESTRY_ARMR } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_DISAPPEAR } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_FIRE_PILLAR } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_GEYSER } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_HASTE_SELF } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_INSECTS } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_LIGHTNING } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_OPEN_WOUNDS } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_PARALYZE } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_PSI_BOLT } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_STUN_YOU } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_SUMMON_MONS } from "./mcastu.h.js";
-import { MCAST_DUMPENUM_WEAKEN_YOU } from "./mcastu.h.js";
-import { HIGH_PM } from "./monsters.h.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_ABBOT } from "./monsters.h.js";
-import { PM_ACID_BLOB } from "./monsters.h.js";
-import { PM_ACOLYTE } from "./monsters.h.js";
-import { PM_AIR_ELEMENTAL } from "./monsters.h.js";
-import { PM_ALEAX } from "./monsters.h.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_ANGEL } from "./monsters.h.js";
-import { PM_APE } from "./monsters.h.js";
-import { PM_APPRENTICE } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_ARCHON } from "./monsters.h.js";
-import { PM_ARCH_LICH } from "./monsters.h.js";
-import { PM_ARCH_PRIEST } from "./monsters.h.js";
-import { PM_ASHIKAGA_TAKAUJI } from "./monsters.h.js";
-import { PM_ASMODEUS } from "./monsters.h.js";
-import { PM_ATTENDANT } from "./monsters.h.js";
-import { PM_BAALZEBUB } from "./monsters.h.js";
-import { PM_BABY_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BABY_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_CROCODILE } from "./monsters.h.js";
-import { PM_BABY_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_BABY_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_BABY_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_BABY_LONG_WORM } from "./monsters.h.js";
-import { PM_BABY_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_PURPLE_WORM } from "./monsters.h.js";
-import { PM_BABY_RED_DRAGON } from "./monsters.h.js";
-import { PM_BABY_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_BABY_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_BALROG } from "./monsters.h.js";
-import { PM_BALUCHITHERIUM } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_BARBED_DEVIL } from "./monsters.h.js";
-import { PM_BARROW_WIGHT } from "./monsters.h.js";
-import { PM_BAT } from "./monsters.h.js";
-import { PM_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BLACK_LIGHT } from "./monsters.h.js";
-import { PM_BLACK_NAGA } from "./monsters.h.js";
-import { PM_BLACK_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_BLACK_PUDDING } from "./monsters.h.js";
-import { PM_BLACK_UNICORN } from "./monsters.h.js";
-import { PM_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_BLUE_JELLY } from "./monsters.h.js";
-import { PM_BONE_DEVIL } from "./monsters.h.js";
-import { PM_BROWN_MOLD } from "./monsters.h.js";
-import { PM_BROWN_PUDDING } from "./monsters.h.js";
-import { PM_BUGBEAR } from "./monsters.h.js";
-import { PM_CAPTAIN } from "./monsters.h.js";
-import { PM_CARNIVOROUS_APE } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CAVE_SPIDER } from "./monsters.h.js";
-import { PM_CENTIPEDE } from "./monsters.h.js";
-import { PM_CHAMELEON } from "./monsters.h.js";
-import { PM_CHICKATRICE } from "./monsters.h.js";
-import { PM_CHIEFTAIN } from "./monsters.h.js";
-import { PM_CHROMATIC_DRAGON } from "./monsters.h.js";
-import { PM_CLAY_GOLEM } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_COBRA } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_COUATL } from "./monsters.h.js";
-import { PM_COYOTE } from "./monsters.h.js";
-import { PM_CROCODILE } from "./monsters.h.js";
-import { PM_CROESUS } from "./monsters.h.js";
-import { PM_CYCLOPS } from "./monsters.h.js";
-import { PM_DARK_ONE } from "./monsters.h.js";
-import { PM_DEATH } from "./monsters.h.js";
-import { PM_DEMILICH } from "./monsters.h.js";
-import { PM_DEMOGORGON } from "./monsters.h.js";
-import { PM_DINGO } from "./monsters.h.js";
-import { PM_DISENCHANTER } from "./monsters.h.js";
-import { PM_DISPATER } from "./monsters.h.js";
-import { PM_DISPLACER_BEAST } from "./monsters.h.js";
-import { PM_DJINNI } from "./monsters.h.js";
-import { PM_DOG } from "./monsters.h.js";
-import { PM_DOPPELGANGER } from "./monsters.h.js";
-import { PM_DUST_VORTEX } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_DWARF_LEADER } from "./monsters.h.js";
-import { PM_DWARF_MUMMY } from "./monsters.h.js";
-import { PM_DWARF_RULER } from "./monsters.h.js";
-import { PM_DWARF_ZOMBIE } from "./monsters.h.js";
-import { PM_EARTH_ELEMENTAL } from "./monsters.h.js";
-import { PM_ELECTRIC_EEL } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_ELF_MUMMY } from "./monsters.h.js";
-import { PM_ELF_NOBLE } from "./monsters.h.js";
-import { PM_ELF_ZOMBIE } from "./monsters.h.js";
-import { PM_ELVEN_MONARCH } from "./monsters.h.js";
-import { PM_ENERGY_VORTEX } from "./monsters.h.js";
-import { PM_ERINYS } from "./monsters.h.js";
-import { PM_ETTIN } from "./monsters.h.js";
-import { PM_ETTIN_MUMMY } from "./monsters.h.js";
-import { PM_ETTIN_ZOMBIE } from "./monsters.h.js";
-import { PM_FAMINE } from "./monsters.h.js";
-import { PM_FIRE_ANT } from "./monsters.h.js";
-import { PM_FIRE_ELEMENTAL } from "./monsters.h.js";
-import { PM_FIRE_GIANT } from "./monsters.h.js";
-import { PM_FIRE_VORTEX } from "./monsters.h.js";
-import { PM_FLAMING_SPHERE } from "./monsters.h.js";
-import { PM_FLESH_GOLEM } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_FOREST_CENTAUR } from "./monsters.h.js";
-import { PM_FOX } from "./monsters.h.js";
-import { PM_FREEZING_SPHERE } from "./monsters.h.js";
-import { PM_FROST_GIANT } from "./monsters.h.js";
-import { PM_GARGOYLE } from "./monsters.h.js";
-import { PM_GARTER_SNAKE } from "./monsters.h.js";
-import { PM_GAS_SPORE } from "./monsters.h.js";
-import { PM_GECKO } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GENETIC_ENGINEER } from "./monsters.h.js";
-import { PM_GERYON } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_GHOUL } from "./monsters.h.js";
-import { PM_GIANT } from "./monsters.h.js";
-import { PM_GIANT_ANT } from "./monsters.h.js";
-import { PM_GIANT_BAT } from "./monsters.h.js";
-import { PM_GIANT_BEETLE } from "./monsters.h.js";
-import { PM_GIANT_EEL } from "./monsters.h.js";
-import { PM_GIANT_MIMIC } from "./monsters.h.js";
-import { PM_GIANT_MUMMY } from "./monsters.h.js";
-import { PM_GIANT_RAT } from "./monsters.h.js";
-import { PM_GIANT_SPIDER } from "./monsters.h.js";
-import { PM_GIANT_ZOMBIE } from "./monsters.h.js";
-import { PM_GLASS_GOLEM } from "./monsters.h.js";
-import { PM_GLASS_PIERCER } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_GNOME_LEADER } from "./monsters.h.js";
-import { PM_GNOME_MUMMY } from "./monsters.h.js";
-import { PM_GNOME_RULER } from "./monsters.h.js";
-import { PM_GNOME_ZOMBIE } from "./monsters.h.js";
-import { PM_GNOMISH_WIZARD } from "./monsters.h.js";
-import { PM_GOBLIN } from "./monsters.h.js";
-import { PM_GOLDEN_NAGA } from "./monsters.h.js";
-import { PM_GOLDEN_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_GOLD_GOLEM } from "./monsters.h.js";
-import { PM_GRAND_MASTER } from "./monsters.h.js";
-import { PM_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_GRAY_OOZE } from "./monsters.h.js";
-import { PM_GRAY_UNICORN } from "./monsters.h.js";
-import { PM_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_GREEN_ELF } from "./monsters.h.js";
-import { PM_GREEN_MOLD } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_GREY_ELF } from "./monsters.h.js";
-import { PM_GRID_BUG } from "./monsters.h.js";
-import { PM_GUARD } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_GUIDE } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HELL_HOUND } from "./monsters.h.js";
-import { PM_HELL_HOUND_PUP } from "./monsters.h.js";
-import { PM_HEZROU } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
-import { PM_HILL_GIANT } from "./monsters.h.js";
-import { PM_HILL_ORC } from "./monsters.h.js";
-import { PM_HIPPOCRATES } from "./monsters.h.js";
-import { PM_HOBBIT } from "./monsters.h.js";
-import { PM_HOBGOBLIN } from "./monsters.h.js";
-import { PM_HOMUNCULUS } from "./monsters.h.js";
-import { PM_HORNED_DEVIL } from "./monsters.h.js";
-import { PM_HORSE } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_HUMAN_MUMMY } from "./monsters.h.js";
-import { PM_HUMAN_WEREJACKAL } from "./monsters.h.js";
-import { PM_HUMAN_WERERAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREWOLF } from "./monsters.h.js";
-import { PM_HUMAN_ZOMBIE } from "./monsters.h.js";
-import { PM_HUNTER } from "./monsters.h.js";
-import { PM_ICE_DEVIL } from "./monsters.h.js";
-import { PM_ICE_TROLL } from "./monsters.h.js";
-import { PM_ICE_VORTEX } from "./monsters.h.js";
-import { PM_IGUANA } from "./monsters.h.js";
-import { PM_IMP } from "./monsters.h.js";
-import { PM_IRON_GOLEM } from "./monsters.h.js";
-import { PM_IRON_PIERCER } from "./monsters.h.js";
-import { PM_IXOTH } from "./monsters.h.js";
-import { PM_JABBERWOCK } from "./monsters.h.js";
-import { PM_JACKAL } from "./monsters.h.js";
-import { PM_JAGUAR } from "./monsters.h.js";
-import { PM_JELLYFISH } from "./monsters.h.js";
-import { PM_JUIBLEX } from "./monsters.h.js";
-import { PM_KEYSTONE_KOP } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_KING_ARTHUR } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_KI_RIN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_KOBOLD } from "./monsters.h.js";
-import { PM_KOBOLD_LEADER } from "./monsters.h.js";
-import { PM_KOBOLD_MUMMY } from "./monsters.h.js";
-import { PM_KOBOLD_SHAMAN } from "./monsters.h.js";
-import { PM_KOBOLD_ZOMBIE } from "./monsters.h.js";
-import { PM_KOP_KAPTAIN } from "./monsters.h.js";
-import { PM_KOP_LIEUTENANT } from "./monsters.h.js";
-import { PM_KOP_SERGEANT } from "./monsters.h.js";
-import { PM_KRAKEN } from "./monsters.h.js";
-import { PM_LARGE_CAT } from "./monsters.h.js";
-import { PM_LARGE_DOG } from "./monsters.h.js";
-import { PM_LARGE_KOBOLD } from "./monsters.h.js";
-import { PM_LARGE_MIMIC } from "./monsters.h.js";
-import { PM_LEATHER_GOLEM } from "./monsters.h.js";
-import { PM_LEMURE } from "./monsters.h.js";
-import { PM_LEOCROTTA } from "./monsters.h.js";
-import { PM_LEPRECHAUN } from "./monsters.h.js";
-import { PM_LICH } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_LIEUTENANT } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LIZARD } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { PM_LORD_CARNARVON } from "./monsters.h.js";
-import { PM_LORD_SATO } from "./monsters.h.js";
-import { PM_LORD_SURTUR } from "./monsters.h.js";
-import { PM_LURKER_ABOVE } from "./monsters.h.js";
-import { PM_LYNX } from "./monsters.h.js";
-import { PM_MAIL_DAEMON } from "./monsters.h.js";
-import { PM_MANES } from "./monsters.h.js";
-import { PM_MARILITH } from "./monsters.h.js";
-import { PM_MASTER_ASSASSIN } from "./monsters.h.js";
-import { PM_MASTER_KAEN } from "./monsters.h.js";
-import { PM_MASTER_LICH } from "./monsters.h.js";
-import { PM_MASTER_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MASTER_OF_THIEVES } from "./monsters.h.js";
-import { PM_MASTODON } from "./monsters.h.js";
-import { PM_MEDUSA } from "./monsters.h.js";
-import { PM_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MINION_OF_HUHETOTL } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_MONKEY } from "./monsters.h.js";
-import { PM_MORDOR_ORC } from "./monsters.h.js";
-import { PM_MOUNTAIN_CENTAUR } from "./monsters.h.js";
-import { PM_MOUNTAIN_NYMPH } from "./monsters.h.js";
-import { PM_MUMAK } from "./monsters.h.js";
-import { PM_NALFESHNEE } from "./monsters.h.js";
-import { PM_NALZOK } from "./monsters.h.js";
-import { PM_NAZGUL } from "./monsters.h.js";
-import { PM_NEANDERTHAL } from "./monsters.h.js";
-import { PM_NEFERET_THE_GREEN } from "./monsters.h.js";
-import { PM_NEWT } from "./monsters.h.js";
-import { PM_NINJA } from "./monsters.h.js";
-import { PM_NORN } from "./monsters.h.js";
-import { PM_NURSE } from "./monsters.h.js";
-import { PM_OCHRE_JELLY } from "./monsters.h.js";
-import { PM_OGRE } from "./monsters.h.js";
-import { PM_OGRE_LEADER } from "./monsters.h.js";
-import { PM_OGRE_TYRANT } from "./monsters.h.js";
-import { PM_OLOG_HAI } from "./monsters.h.js";
-import { PM_ORACLE } from "./monsters.h.js";
-import { PM_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_ORCUS } from "./monsters.h.js";
-import { PM_ORC_CAPTAIN } from "./monsters.h.js";
-import { PM_ORC_MUMMY } from "./monsters.h.js";
-import { PM_ORC_SHAMAN } from "./monsters.h.js";
-import { PM_ORC_ZOMBIE } from "./monsters.h.js";
-import { PM_ORION } from "./monsters.h.js";
-import { PM_OWLBEAR } from "./monsters.h.js";
-import { PM_PAGE } from "./monsters.h.js";
-import { PM_PANTHER } from "./monsters.h.js";
-import { PM_PAPER_GOLEM } from "./monsters.h.js";
-import { PM_PELIAS } from "./monsters.h.js";
-import { PM_PESTILENCE } from "./monsters.h.js";
-import { PM_PIRANHA } from "./monsters.h.js";
-import { PM_PIT_FIEND } from "./monsters.h.js";
-import { PM_PIT_VIPER } from "./monsters.h.js";
-import { PM_PLAINS_CENTAUR } from "./monsters.h.js";
-import { PM_PONY } from "./monsters.h.js";
-import { PM_PRISONER } from "./monsters.h.js";
-import { PM_PURPLE_WORM } from "./monsters.h.js";
-import { PM_PYROLISK } from "./monsters.h.js";
-import { PM_PYTHON } from "./monsters.h.js";
-import { PM_QUANTUM_MECHANIC } from "./monsters.h.js";
-import { PM_QUASIT } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_QUIVERING_BLOB } from "./monsters.h.js";
-import { PM_RABID_RAT } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_RAVEN } from "./monsters.h.js";
-import { PM_RED_DRAGON } from "./monsters.h.js";
-import { PM_RED_MOLD } from "./monsters.h.js";
-import { PM_RED_NAGA } from "./monsters.h.js";
-import { PM_RED_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_ROCK_MOLE } from "./monsters.h.js";
-import { PM_ROCK_PIERCER } from "./monsters.h.js";
-import { PM_ROCK_TROLL } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_ROPE_GOLEM } from "./monsters.h.js";
-import { PM_ROSHI } from "./monsters.h.js";
-import { PM_ROTHE } from "./monsters.h.js";
-import { PM_RUST_MONSTER } from "./monsters.h.js";
-import { PM_SALAMANDER } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_SANDESTIN } from "./monsters.h.js";
-import { PM_SASQUATCH } from "./monsters.h.js";
-import { PM_SCORPION } from "./monsters.h.js";
-import { PM_SCORPIUS } from "./monsters.h.js";
-import { PM_SERGEANT } from "./monsters.h.js";
-import { PM_SEWER_RAT } from "./monsters.h.js";
-import { PM_SHADE } from "./monsters.h.js";
-import { PM_SHAMAN_KARNOV } from "./monsters.h.js";
-import { PM_SHARK } from "./monsters.h.js";
-import { PM_SHOCKING_SPHERE } from "./monsters.h.js";
-import { PM_SHOPKEEPER } from "./monsters.h.js";
-import { PM_SHRIEKER } from "./monsters.h.js";
-import { PM_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_SKELETON } from "./monsters.h.js";
-import { PM_SMALL_MIMIC } from "./monsters.h.js";
-import { PM_SNAKE } from "./monsters.h.js";
-import { PM_SOLDIER } from "./monsters.h.js";
-import { PM_SOLDIER_ANT } from "./monsters.h.js";
-import { PM_SPOTTED_JELLY } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STEAM_VORTEX } from "./monsters.h.js";
-import { PM_STONE_GIANT } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { PM_STORM_GIANT } from "./monsters.h.js";
-import { PM_STRAW_GOLEM } from "./monsters.h.js";
-import { PM_STUDENT } from "./monsters.h.js";
-import { PM_TENGU } from "./monsters.h.js";
-import { PM_THOTH_AMON } from "./monsters.h.js";
-import { PM_THUG } from "./monsters.h.js";
-import { PM_TIGER } from "./monsters.h.js";
-import { PM_TITAN } from "./monsters.h.js";
-import { PM_TITANOTHERE } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_TRAPPER } from "./monsters.h.js";
-import { PM_TROLL } from "./monsters.h.js";
-import { PM_TWOFLOWER } from "./monsters.h.js";
-import { PM_UMBER_HULK } from "./monsters.h.js";
-import { PM_URUK_HAI } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_VAMPIRE_BAT } from "./monsters.h.js";
-import { PM_VAMPIRE_LEADER } from "./monsters.h.js";
-import { PM_VIOLET_FUNGUS } from "./monsters.h.js";
-import { PM_VLAD_THE_IMPALER } from "./monsters.h.js";
-import { PM_VROCK } from "./monsters.h.js";
-import { PM_WARG } from "./monsters.h.js";
-import { PM_WARHORSE } from "./monsters.h.js";
-import { PM_WARRIOR } from "./monsters.h.js";
-import { PM_WATCHMAN } from "./monsters.h.js";
-import { PM_WATCH_CAPTAIN } from "./monsters.h.js";
-import { PM_WATER_DEMON } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WATER_MOCCASIN } from "./monsters.h.js";
-import { PM_WATER_NYMPH } from "./monsters.h.js";
-import { PM_WATER_TROLL } from "./monsters.h.js";
-import { PM_WEREJACKAL } from "./monsters.h.js";
-import { PM_WERERAT } from "./monsters.h.js";
-import { PM_WEREWOLF } from "./monsters.h.js";
-import { PM_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_WHITE_UNICORN } from "./monsters.h.js";
-import { PM_WINGED_GARGOYLE } from "./monsters.h.js";
-import { PM_WINTER_WOLF } from "./monsters.h.js";
-import { PM_WINTER_WOLF_CUB } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WIZARD_OF_YENDOR } from "./monsters.h.js";
-import { PM_WOLF } from "./monsters.h.js";
-import { PM_WOODCHUCK } from "./monsters.h.js";
-import { PM_WOODLAND_ELF } from "./monsters.h.js";
-import { PM_WOOD_GOLEM } from "./monsters.h.js";
-import { PM_WOOD_NYMPH } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { PM_WUMPUS } from "./monsters.h.js";
-import { PM_XAN } from "./monsters.h.js";
-import { PM_XORN } from "./monsters.h.js";
-import { PM_YEENOGHU } from "./monsters.h.js";
-import { PM_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_YELLOW_LIGHT } from "./monsters.h.js";
-import { PM_YELLOW_MOLD } from "./monsters.h.js";
-import { PM_YETI } from "./monsters.h.js";
-import { PM_ZRUTY } from "./monsters.h.js";
-import { SPECIAL_PM } from "./monsters.h.js";
-import { MAXSPELL } from "./objclass.h.js";
-import { NUM_GLASS_GEMS } from "./objclass.h.js";
-import { NUM_REAL_GEMS } from "./objclass.h.js";
-import { ACID_VENOM } from "./objects.h.js";
-import { AGATE } from "./objects.h.js";
-import { AKLYS } from "./objects.h.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMBER } from "./objects.h.js";
-import { AMETHYST } from "./objects.h.js";
-import { AMULET_OF_CHANGE } from "./objects.h.js";
-import { AMULET_OF_ESP } from "./objects.h.js";
-import { AMULET_OF_FLYING } from "./objects.h.js";
-import { AMULET_OF_GUARDING } from "./objects.h.js";
-import { AMULET_OF_LIFE_SAVING } from "./objects.h.js";
-import { AMULET_OF_MAGICAL_BREATHING } from "./objects.h.js";
-import { AMULET_OF_REFLECTION } from "./objects.h.js";
-import { AMULET_OF_RESTFUL_SLEEP } from "./objects.h.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { AMULET_OF_UNCHANGING } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { AMULET_VERSUS_POISON } from "./objects.h.js";
-import { APPLE } from "./objects.h.js";
-import { AQUAMARINE } from "./objects.h.js";
-import { ARROW } from "./objects.h.js";
-import { ATHAME } from "./objects.h.js";
-import { AXE } from "./objects.h.js";
-import { BAG_OF_HOLDING } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BANANA } from "./objects.h.js";
-import { BANDED_MAIL } from "./objects.h.js";
-import { BARDICHE } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { BEARTRAP } from "./objects.h.js";
-import { BEC_DE_CORBIN } from "./objects.h.js";
-import { BELL } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BILL_GUISARME } from "./objects.h.js";
-import { BLACK_DRAGON_SCALES } from "./objects.h.js";
-import { BLACK_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { BLACK_OPAL } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { BLINDING_VENOM } from "./objects.h.js";
-import { BLUE_DRAGON_SCALES } from "./objects.h.js";
-import { BLUE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { BOOMERANG } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { BOW } from "./objects.h.js";
-import { BRASS_LANTERN } from "./objects.h.js";
-import { BROADSWORD } from "./objects.h.js";
-import { BRONZE_PLATE_MAIL } from "./objects.h.js";
-import { BUGLE } from "./objects.h.js";
-import { BULLWHIP } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CANDY_BAR } from "./objects.h.js";
-import { CAN_OF_GREASE } from "./objects.h.js";
-import { CARROT } from "./objects.h.js";
-import { CHAIN_MAIL } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CHRYSOBERYL } from "./objects.h.js";
-import { CITRINE } from "./objects.h.js";
-import { CLOAK_OF_DISPLACEMENT } from "./objects.h.js";
-import { CLOAK_OF_INVISIBILITY } from "./objects.h.js";
-import { CLOAK_OF_MAGIC_RESISTANCE } from "./objects.h.js";
-import { CLOAK_OF_PROTECTION } from "./objects.h.js";
-import { CLOVE_OF_GARLIC } from "./objects.h.js";
-import { CLUB } from "./objects.h.js";
-import { CORNUTHAUM } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRAM_RATION } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { CROSSBOW } from "./objects.h.js";
-import { CROSSBOW_BOLT } from "./objects.h.js";
-import { CRYSKNIFE } from "./objects.h.js";
-import { CRYSTAL_BALL } from "./objects.h.js";
-import { CRYSTAL_PLATE_MAIL } from "./objects.h.js";
-import { C_RATION } from "./objects.h.js";
-import { DAGGER } from "./objects.h.js";
-import { DART } from "./objects.h.js";
-import { DENTED_POT } from "./objects.h.js";
-import { DIAMOND } from "./objects.h.js";
-import { DILITHIUM_CRYSTAL } from "./objects.h.js";
-import { DRUM_OF_EARTHQUAKE } from "./objects.h.js";
-import { DUNCE_CAP } from "./objects.h.js";
-import { DWARVISH_CLOAK } from "./objects.h.js";
-import { DWARVISH_IRON_HELM } from "./objects.h.js";
-import { DWARVISH_MATTOCK } from "./objects.h.js";
-import { DWARVISH_MITHRIL_COAT } from "./objects.h.js";
-import { DWARVISH_ROUNDSHIELD } from "./objects.h.js";
-import { DWARVISH_SHORT_SWORD } from "./objects.h.js";
-import { DWARVISH_SPEAR } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ELVEN_ARROW } from "./objects.h.js";
-import { ELVEN_BOOTS } from "./objects.h.js";
-import { ELVEN_BOW } from "./objects.h.js";
-import { ELVEN_BROADSWORD } from "./objects.h.js";
-import { ELVEN_CLOAK } from "./objects.h.js";
-import { ELVEN_DAGGER } from "./objects.h.js";
-import { ELVEN_LEATHER_HELM } from "./objects.h.js";
-import { ELVEN_MITHRIL_COAT } from "./objects.h.js";
-import { ELVEN_SHIELD } from "./objects.h.js";
-import { ELVEN_SHORT_SWORD } from "./objects.h.js";
-import { ELVEN_SPEAR } from "./objects.h.js";
-import { EMERALD } from "./objects.h.js";
-import { ENORMOUS_MEATBALL } from "./objects.h.js";
-import { EUCALYPTUS_LEAF } from "./objects.h.js";
-import { EXPENSIVE_CAMERA } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FAUCHARD } from "./objects.h.js";
-import { FEDORA } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { FIRE_HORN } from "./objects.h.js";
-import { FIRST_AMULET } from "./objects.h.js";
-import { FIRST_GLASS_GEM } from "./objects.h.js";
-import { FIRST_OBJECT } from "./objects.h.js";
-import { FIRST_REAL_GEM } from "./objects.h.js";
-import { FIRST_SPELL } from "./objects.h.js";
-import { FLAIL } from "./objects.h.js";
-import { FLINT } from "./objects.h.js";
-import { FLUORITE } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { FORTUNE_COOKIE } from "./objects.h.js";
-import { FROST_HORN } from "./objects.h.js";
-import { FUMBLE_BOOTS } from "./objects.h.js";
-import { GARNET } from "./objects.h.js";
-import { GAUNTLETS_OF_DEXTERITY } from "./objects.h.js";
-import { GAUNTLETS_OF_FUMBLING } from "./objects.h.js";
-import { GAUNTLETS_OF_POWER } from "./objects.h.js";
-import { GENERIC_AMULET } from "./objects.h.js";
-import { GENERIC_ARMOR } from "./objects.h.js";
-import { GENERIC_BALL } from "./objects.h.js";
-import { GENERIC_CHAIN } from "./objects.h.js";
-import { GENERIC_COIN } from "./objects.h.js";
-import { GENERIC_FOOD } from "./objects.h.js";
-import { GENERIC_GEM } from "./objects.h.js";
-import { GENERIC_ILLOBJ } from "./objects.h.js";
-import { GENERIC_POTION } from "./objects.h.js";
-import { GENERIC_RING } from "./objects.h.js";
-import { GENERIC_ROCK } from "./objects.h.js";
-import { GENERIC_SCROLL } from "./objects.h.js";
-import { GENERIC_SPBOOK } from "./objects.h.js";
-import { GENERIC_TOOL } from "./objects.h.js";
-import { GENERIC_VENOM } from "./objects.h.js";
-import { GENERIC_WAND } from "./objects.h.js";
-import { GENERIC_WEAPON } from "./objects.h.js";
-import { GLAIVE } from "./objects.h.js";
-import { GLOB_OF_BLACK_PUDDING } from "./objects.h.js";
-import { GLOB_OF_BROWN_PUDDING } from "./objects.h.js";
-import { GLOB_OF_GRAY_OOZE } from "./objects.h.js";
-import { GLOB_OF_GREEN_SLIME } from "./objects.h.js";
-import { GOLD_DRAGON_SCALES } from "./objects.h.js";
-import { GOLD_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { GRAPPLING_HOOK } from "./objects.h.js";
-import { GRAY_DRAGON_SCALES } from "./objects.h.js";
-import { GRAY_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GREEN_DRAGON_SCALES } from "./objects.h.js";
-import { GREEN_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GUISARME } from "./objects.h.js";
-import { HALBERD } from "./objects.h.js";
-import { HAWAIIAN_SHIRT } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { HELMET } from "./objects.h.js";
-import { HELM_OF_BRILLIANCE } from "./objects.h.js";
-import { HELM_OF_CAUTION } from "./objects.h.js";
-import { HELM_OF_OPPOSITE_ALIGNMENT } from "./objects.h.js";
-import { HELM_OF_TELEPATHY } from "./objects.h.js";
-import { HIGH_BOOTS } from "./objects.h.js";
-import { HORN_OF_PLENTY } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { IRON_CHAIN } from "./objects.h.js";
-import { IRON_SHOES } from "./objects.h.js";
-import { JACINTH } from "./objects.h.js";
-import { JADE } from "./objects.h.js";
-import { JASPER } from "./objects.h.js";
-import { JAVELIN } from "./objects.h.js";
-import { JET } from "./objects.h.js";
-import { JUMPING_BOOTS } from "./objects.h.js";
-import { KATANA } from "./objects.h.js";
-import { KELP_FROND } from "./objects.h.js";
-import { KICKING_BOOTS } from "./objects.h.js";
-import { KNIFE } from "./objects.h.js";
-import { K_RATION } from "./objects.h.js";
-import { LANCE } from "./objects.h.js";
-import { LAND_MINE } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LARGE_SHIELD } from "./objects.h.js";
-import { LAST_AMULET } from "./objects.h.js";
-import { LAST_GENERIC } from "./objects.h.js";
-import { LAST_GLASS_GEM } from "./objects.h.js";
-import { LAST_REAL_GEM } from "./objects.h.js";
-import { LAST_SPELL } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LEATHER_ARMOR } from "./objects.h.js";
-import { LEATHER_CLOAK } from "./objects.h.js";
-import { LEATHER_DRUM } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LEATHER_JACKET } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { LEVITATION_BOOTS } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { LOW_BOOTS } from "./objects.h.js";
-import { LUCERN_HAMMER } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { MAGIC_FLUTE } from "./objects.h.js";
-import { MAGIC_HARP } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { MAGIC_WHISTLE } from "./objects.h.js";
-import { MEATBALL } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { MEAT_STICK } from "./objects.h.js";
-import { MELON } from "./objects.h.js";
-import { MIRROR } from "./objects.h.js";
-import { MORNING_STAR } from "./objects.h.js";
-import { MUMMY_WRAPPING } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { OBJCLASS_HACK } from "./objects.h.js";
-import { OBSIDIAN } from "./objects.h.js";
-import { OILSKIN_CLOAK } from "./objects.h.js";
-import { OILSKIN_SACK } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { OPAL } from "./objects.h.js";
-import { ORANGE } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALES } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { ORCISH_ARROW } from "./objects.h.js";
-import { ORCISH_BOW } from "./objects.h.js";
-import { ORCISH_CHAIN_MAIL } from "./objects.h.js";
-import { ORCISH_CLOAK } from "./objects.h.js";
-import { ORCISH_DAGGER } from "./objects.h.js";
-import { ORCISH_HELM } from "./objects.h.js";
-import { ORCISH_RING_MAIL } from "./objects.h.js";
-import { ORCISH_SHIELD } from "./objects.h.js";
-import { ORCISH_SHORT_SWORD } from "./objects.h.js";
-import { ORCISH_SPEAR } from "./objects.h.js";
-import { PANCAKE } from "./objects.h.js";
-import { PARTISAN } from "./objects.h.js";
-import { PEAR } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { PLATE_MAIL } from "./objects.h.js";
-import { POT_ACID } from "./objects.h.js";
-import { POT_BLINDNESS } from "./objects.h.js";
-import { POT_BOOZE } from "./objects.h.js";
-import { POT_CONFUSION } from "./objects.h.js";
-import { POT_ENLIGHTENMENT } from "./objects.h.js";
-import { POT_EXTRA_HEALING } from "./objects.h.js";
-import { POT_FRUIT_JUICE } from "./objects.h.js";
-import { POT_FULL_HEALING } from "./objects.h.js";
-import { POT_GAIN_ABILITY } from "./objects.h.js";
-import { POT_GAIN_ENERGY } from "./objects.h.js";
-import { POT_GAIN_LEVEL } from "./objects.h.js";
-import { POT_HALLUCINATION } from "./objects.h.js";
-import { POT_HEALING } from "./objects.h.js";
-import { POT_INVISIBILITY } from "./objects.h.js";
-import { POT_LEVITATION } from "./objects.h.js";
-import { POT_MONSTER_DETECTION } from "./objects.h.js";
-import { POT_OBJECT_DETECTION } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_PARALYSIS } from "./objects.h.js";
-import { POT_POLYMORPH } from "./objects.h.js";
-import { POT_RESTORE_ABILITY } from "./objects.h.js";
-import { POT_SEE_INVISIBLE } from "./objects.h.js";
-import { POT_SICKNESS } from "./objects.h.js";
-import { POT_SLEEPING } from "./objects.h.js";
-import { POT_SPEED } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { QUARTERSTAFF } from "./objects.h.js";
-import { RANSEUR } from "./objects.h.js";
-import { RED_DRAGON_SCALES } from "./objects.h.js";
-import { RED_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { RING_MAIL } from "./objects.h.js";
-import { RIN_ADORNMENT } from "./objects.h.js";
-import { RIN_AGGRAVATE_MONSTER } from "./objects.h.js";
-import { RIN_COLD_RESISTANCE } from "./objects.h.js";
-import { RIN_CONFLICT } from "./objects.h.js";
-import { RIN_FIRE_RESISTANCE } from "./objects.h.js";
-import { RIN_FREE_ACTION } from "./objects.h.js";
-import { RIN_GAIN_CONSTITUTION } from "./objects.h.js";
-import { RIN_GAIN_STRENGTH } from "./objects.h.js";
-import { RIN_HUNGER } from "./objects.h.js";
-import { RIN_INCREASE_ACCURACY } from "./objects.h.js";
-import { RIN_INCREASE_DAMAGE } from "./objects.h.js";
-import { RIN_INVISIBILITY } from "./objects.h.js";
-import { RIN_LEVITATION } from "./objects.h.js";
-import { RIN_POISON_RESISTANCE } from "./objects.h.js";
-import { RIN_POLYMORPH } from "./objects.h.js";
-import { RIN_POLYMORPH_CONTROL } from "./objects.h.js";
-import { RIN_PROTECTION } from "./objects.h.js";
-import { RIN_PROTECTION_FROM_SHAPE_CHAN } from "./objects.h.js";
-import { RIN_REGENERATION } from "./objects.h.js";
-import { RIN_SEARCHING } from "./objects.h.js";
-import { RIN_SEE_INVISIBLE } from "./objects.h.js";
-import { RIN_SHOCK_RESISTANCE } from "./objects.h.js";
-import { RIN_SLOW_DIGESTION } from "./objects.h.js";
-import { RIN_STEALTH } from "./objects.h.js";
-import { RIN_SUSTAIN_ABILITY } from "./objects.h.js";
-import { RIN_TELEPORTATION } from "./objects.h.js";
-import { RIN_TELEPORT_CONTROL } from "./objects.h.js";
-import { RIN_WARNING } from "./objects.h.js";
-import { ROBE } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { RUBBER_HOSE } from "./objects.h.js";
-import { RUBY } from "./objects.h.js";
-import { RUNESWORD } from "./objects.h.js";
-import { SACK } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SAPPHIRE } from "./objects.h.js";
-import { SC01 } from "./objects.h.js";
-import { SC02 } from "./objects.h.js";
-import { SC03 } from "./objects.h.js";
-import { SC04 } from "./objects.h.js";
-import { SC05 } from "./objects.h.js";
-import { SC06 } from "./objects.h.js";
-import { SC07 } from "./objects.h.js";
-import { SC08 } from "./objects.h.js";
-import { SC09 } from "./objects.h.js";
-import { SC10 } from "./objects.h.js";
-import { SC11 } from "./objects.h.js";
-import { SC12 } from "./objects.h.js";
-import { SC13 } from "./objects.h.js";
-import { SC14 } from "./objects.h.js";
-import { SC15 } from "./objects.h.js";
-import { SC16 } from "./objects.h.js";
-import { SC17 } from "./objects.h.js";
-import { SC18 } from "./objects.h.js";
-import { SC19 } from "./objects.h.js";
-import { SC20 } from "./objects.h.js";
-import { SCALE_MAIL } from "./objects.h.js";
-import { SCALPEL } from "./objects.h.js";
-import { SCIMITAR } from "./objects.h.js";
-import { SCR_AMNESIA } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_CHARGING } from "./objects.h.js";
-import { SCR_CONFUSE_MONSTER } from "./objects.h.js";
-import { SCR_CREATE_MONSTER } from "./objects.h.js";
-import { SCR_DESTROY_ARMOR } from "./objects.h.js";
-import { SCR_EARTH } from "./objects.h.js";
-import { SCR_ENCHANT_ARMOR } from "./objects.h.js";
-import { SCR_ENCHANT_WEAPON } from "./objects.h.js";
-import { SCR_FIRE } from "./objects.h.js";
-import { SCR_FOOD_DETECTION } from "./objects.h.js";
-import { SCR_GENOCIDE } from "./objects.h.js";
-import { SCR_GOLD_DETECTION } from "./objects.h.js";
-import { SCR_IDENTIFY } from "./objects.h.js";
-import { SCR_LIGHT } from "./objects.h.js";
-import { SCR_MAGIC_MAPPING } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SCR_PUNISHMENT } from "./objects.h.js";
-import { SCR_REMOVE_CURSE } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SCR_STINKING_CLOUD } from "./objects.h.js";
-import { SCR_TAMING } from "./objects.h.js";
-import { SCR_TELEPORTATION } from "./objects.h.js";
-import { SHIELD_OF_DRAIN_RESISTANCE } from "./objects.h.js";
-import { SHIELD_OF_REFLECTION } from "./objects.h.js";
-import { SHIELD_OF_SHOCK_RESISTANCE } from "./objects.h.js";
-import { SHORT_SWORD } from "./objects.h.js";
-import { SHURIKEN } from "./objects.h.js";
-import { SILVER_ARROW } from "./objects.h.js";
-import { SILVER_DAGGER } from "./objects.h.js";
-import { SILVER_DRAGON_SCALES } from "./objects.h.js";
-import { SILVER_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { SILVER_MACE } from "./objects.h.js";
-import { SILVER_SABER } from "./objects.h.js";
-import { SILVER_SPEAR } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SLING } from "./objects.h.js";
-import { SMALL_SHIELD } from "./objects.h.js";
-import { SPEAR } from "./objects.h.js";
-import { SPEED_BOOTS } from "./objects.h.js";
-import { SPETUM } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_CANCELLATION } from "./objects.h.js";
-import { SPE_CAUSE_FEAR } from "./objects.h.js";
-import { SPE_CHAIN_LIGHTNING } from "./objects.h.js";
-import { SPE_CHARM_MONSTER } from "./objects.h.js";
-import { SPE_CLAIRVOYANCE } from "./objects.h.js";
-import { SPE_CONE_OF_COLD } from "./objects.h.js";
-import { SPE_CONFUSE_MONSTER } from "./objects.h.js";
-import { SPE_CREATE_FAMILIAR } from "./objects.h.js";
-import { SPE_CREATE_MONSTER } from "./objects.h.js";
-import { SPE_CURE_BLINDNESS } from "./objects.h.js";
-import { SPE_CURE_SICKNESS } from "./objects.h.js";
-import { SPE_DETECT_FOOD } from "./objects.h.js";
-import { SPE_DETECT_MONSTERS } from "./objects.h.js";
-import { SPE_DETECT_TREASURE } from "./objects.h.js";
-import { SPE_DETECT_UNSEEN } from "./objects.h.js";
-import { SPE_DIG } from "./objects.h.js";
-import { SPE_DRAIN_LIFE } from "./objects.h.js";
-import { SPE_EXTRA_HEALING } from "./objects.h.js";
-import { SPE_FINGER_OF_DEATH } from "./objects.h.js";
-import { SPE_FIREBALL } from "./objects.h.js";
-import { SPE_FORCE_BOLT } from "./objects.h.js";
-import { SPE_HASTE_SELF } from "./objects.h.js";
-import { SPE_HEALING } from "./objects.h.js";
-import { SPE_IDENTIFY } from "./objects.h.js";
-import { SPE_INVISIBILITY } from "./objects.h.js";
-import { SPE_JUMPING } from "./objects.h.js";
-import { SPE_KNOCK } from "./objects.h.js";
-import { SPE_LEVITATION } from "./objects.h.js";
-import { SPE_LIGHT } from "./objects.h.js";
-import { SPE_MAGIC_MAPPING } from "./objects.h.js";
-import { SPE_MAGIC_MISSILE } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { SPE_POLYMORPH } from "./objects.h.js";
-import { SPE_PROTECTION } from "./objects.h.js";
-import { SPE_REMOVE_CURSE } from "./objects.h.js";
-import { SPE_RESTORE_ABILITY } from "./objects.h.js";
-import { SPE_SLEEP } from "./objects.h.js";
-import { SPE_SLOW_MONSTER } from "./objects.h.js";
-import { SPE_STONE_TO_FLESH } from "./objects.h.js";
-import { SPE_TELEPORT_AWAY } from "./objects.h.js";
-import { SPE_TURN_UNDEAD } from "./objects.h.js";
-import { SPE_WIZARD_LOCK } from "./objects.h.js";
-import { SPLINT_MAIL } from "./objects.h.js";
-import { SPRIG_OF_WOLFSBANE } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STETHOSCOPE } from "./objects.h.js";
-import { STILETTO } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { STUDDED_LEATHER_ARMOR } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TINNING_KIT } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TIN_WHISTLE } from "./objects.h.js";
-import { TOOLED_HORN } from "./objects.h.js";
-import { TOPAZ } from "./objects.h.js";
-import { TOUCHSTONE } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { TRIDENT } from "./objects.h.js";
-import { TRIPE_RATION } from "./objects.h.js";
-import { TSURUGI } from "./objects.h.js";
-import { TURQUOISE } from "./objects.h.js";
-import { TWO_HANDED_SWORD } from "./objects.h.js";
-import { T_SHIRT } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
-import { URUK_HAI_SHIELD } from "./objects.h.js";
-import { VOULGE } from "./objects.h.js";
-import { WAN1 } from "./objects.h.js";
-import { WAN2 } from "./objects.h.js";
-import { WAN3 } from "./objects.h.js";
-import { WAN_CANCELLATION } from "./objects.h.js";
-import { WAN_COLD } from "./objects.h.js";
-import { WAN_CREATE_MONSTER } from "./objects.h.js";
-import { WAN_DEATH } from "./objects.h.js";
-import { WAN_DIGGING } from "./objects.h.js";
-import { WAN_ENLIGHTENMENT } from "./objects.h.js";
-import { WAN_FIRE } from "./objects.h.js";
-import { WAN_LIGHT } from "./objects.h.js";
-import { WAN_LIGHTNING } from "./objects.h.js";
-import { WAN_LOCKING } from "./objects.h.js";
-import { WAN_MAGIC_MISSILE } from "./objects.h.js";
-import { WAN_MAKE_INVISIBLE } from "./objects.h.js";
-import { WAN_NOTHING } from "./objects.h.js";
-import { WAN_OPENING } from "./objects.h.js";
-import { WAN_POLYMORPH } from "./objects.h.js";
-import { WAN_PROBING } from "./objects.h.js";
-import { WAN_SECRET_DOOR_DETECTION } from "./objects.h.js";
-import { WAN_SLEEP } from "./objects.h.js";
-import { WAN_SLOW_MONSTER } from "./objects.h.js";
-import { WAN_SPEED_MONSTER } from "./objects.h.js";
-import { WAN_STASIS } from "./objects.h.js";
-import { WAN_STRIKING } from "./objects.h.js";
-import { WAN_TELEPORTATION } from "./objects.h.js";
-import { WAN_UNDEAD_TURNING } from "./objects.h.js";
-import { WAN_WISHING } from "./objects.h.js";
-import { WAR_HAMMER } from "./objects.h.js";
-import { WATER_WALKING_BOOTS } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { WHITE_DRAGON_SCALES } from "./objects.h.js";
-import { WHITE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { WOODEN_FLUTE } from "./objects.h.js";
-import { WOODEN_HARP } from "./objects.h.js";
-import { WORM_TOOTH } from "./objects.h.js";
-import { WORTHLESS_BLACK_GLASS } from "./objects.h.js";
-import { WORTHLESS_BLUE_GLASS } from "./objects.h.js";
-import { WORTHLESS_GREEN_GLASS } from "./objects.h.js";
-import { WORTHLESS_ORANGE_GLASS } from "./objects.h.js";
-import { WORTHLESS_RED_GLASS } from "./objects.h.js";
-import { WORTHLESS_VIOLET_GLASS } from "./objects.h.js";
-import { WORTHLESS_WHITE_GLASS } from "./objects.h.js";
-import { WORTHLESS_YELLOWBROWN_GLASS } from "./objects.h.js";
-import { WORTHLESS_YELLOW_GLASS } from "./objects.h.js";
-import { YA } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALES } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { YUMI } from "./objects.h.js";
+import {
+    MCAST_DUMPENUM_AGGRAVATION, MCAST_DUMPENUM_BLIND_YOU, MCAST_DUMPENUM_CLONE_WIZ,
+    MCAST_DUMPENUM_CONFUSE_YOU, MCAST_DUMPENUM_CURE_SELF, MCAST_DUMPENUM_CURSE_ITEMS,
+    MCAST_DUMPENUM_DEATH_TOUCH, MCAST_DUMPENUM_DESTRY_ARMR, MCAST_DUMPENUM_DISAPPEAR,
+    MCAST_DUMPENUM_FIRE_PILLAR, MCAST_DUMPENUM_GEYSER, MCAST_DUMPENUM_HASTE_SELF,
+    MCAST_DUMPENUM_INSECTS, MCAST_DUMPENUM_LIGHTNING, MCAST_DUMPENUM_OPEN_WOUNDS,
+    MCAST_DUMPENUM_PARALYZE, MCAST_DUMPENUM_PSI_BOLT, MCAST_DUMPENUM_STUN_YOU,
+    MCAST_DUMPENUM_SUMMON_MONS, MCAST_DUMPENUM_WEAKEN_YOU,
+} from "./mcastu.h.js";
+import {
+    HIGH_PM, LOW_PM, NON_PM, NUMMONS, PM_ABBOT, PM_ACID_BLOB, PM_ACOLYTE, PM_AIR_ELEMENTAL,
+    PM_ALEAX, PM_ALIGNED_CLERIC, PM_AMOROUS_DEMON, PM_ANGEL, PM_APE, PM_APPRENTICE, PM_ARCHEOLOGIST,
+    PM_ARCHON, PM_ARCH_LICH, PM_ARCH_PRIEST, PM_ASHIKAGA_TAKAUJI, PM_ASMODEUS, PM_ATTENDANT,
+    PM_BAALZEBUB, PM_BABY_BLACK_DRAGON, PM_BABY_BLUE_DRAGON, PM_BABY_CROCODILE, PM_BABY_GOLD_DRAGON,
+    PM_BABY_GRAY_DRAGON, PM_BABY_GREEN_DRAGON, PM_BABY_LONG_WORM, PM_BABY_ORANGE_DRAGON,
+    PM_BABY_PURPLE_WORM, PM_BABY_RED_DRAGON, PM_BABY_SILVER_DRAGON, PM_BABY_WHITE_DRAGON,
+    PM_BABY_YELLOW_DRAGON, PM_BALROG, PM_BALUCHITHERIUM, PM_BARBARIAN, PM_BARBED_DEVIL,
+    PM_BARROW_WIGHT, PM_BAT, PM_BLACK_DRAGON, PM_BLACK_LIGHT, PM_BLACK_NAGA,
+    PM_BLACK_NAGA_HATCHLING, PM_BLACK_PUDDING, PM_BLACK_UNICORN, PM_BLUE_DRAGON, PM_BLUE_JELLY,
+    PM_BONE_DEVIL, PM_BROWN_MOLD, PM_BROWN_PUDDING, PM_BUGBEAR, PM_CAPTAIN, PM_CARNIVOROUS_APE,
+    PM_CAVE_DWELLER, PM_CAVE_SPIDER, PM_CENTIPEDE, PM_CHAMELEON, PM_CHICKATRICE, PM_CHIEFTAIN,
+    PM_CHROMATIC_DRAGON, PM_CLAY_GOLEM, PM_CLERIC, PM_COBRA, PM_COCKATRICE, PM_COUATL, PM_COYOTE,
+    PM_CROCODILE, PM_CROESUS, PM_CYCLOPS, PM_DARK_ONE, PM_DEATH, PM_DEMILICH, PM_DEMOGORGON,
+    PM_DINGO, PM_DISENCHANTER, PM_DISPATER, PM_DISPLACER_BEAST, PM_DJINNI, PM_DOG, PM_DOPPELGANGER,
+    PM_DUST_VORTEX, PM_DWARF, PM_DWARF_LEADER, PM_DWARF_MUMMY, PM_DWARF_RULER, PM_DWARF_ZOMBIE,
+    PM_EARTH_ELEMENTAL, PM_ELECTRIC_EEL, PM_ELF, PM_ELF_MUMMY, PM_ELF_NOBLE, PM_ELF_ZOMBIE,
+    PM_ELVEN_MONARCH, PM_ENERGY_VORTEX, PM_ERINYS, PM_ETTIN, PM_ETTIN_MUMMY, PM_ETTIN_ZOMBIE,
+    PM_FAMINE, PM_FIRE_ANT, PM_FIRE_ELEMENTAL, PM_FIRE_GIANT, PM_FIRE_VORTEX, PM_FLAMING_SPHERE,
+    PM_FLESH_GOLEM, PM_FLOATING_EYE, PM_FOG_CLOUD, PM_FOREST_CENTAUR, PM_FOX, PM_FREEZING_SPHERE,
+    PM_FROST_GIANT, PM_GARGOYLE, PM_GARTER_SNAKE, PM_GAS_SPORE, PM_GECKO, PM_GELATINOUS_CUBE,
+    PM_GENETIC_ENGINEER, PM_GERYON, PM_GHOST, PM_GHOUL, PM_GIANT, PM_GIANT_ANT, PM_GIANT_BAT,
+    PM_GIANT_BEETLE, PM_GIANT_EEL, PM_GIANT_MIMIC, PM_GIANT_MUMMY, PM_GIANT_RAT, PM_GIANT_SPIDER,
+    PM_GIANT_ZOMBIE, PM_GLASS_GOLEM, PM_GLASS_PIERCER, PM_GNOME, PM_GNOME_LEADER, PM_GNOME_MUMMY,
+    PM_GNOME_RULER, PM_GNOME_ZOMBIE, PM_GNOMISH_WIZARD, PM_GOBLIN, PM_GOLDEN_NAGA,
+    PM_GOLDEN_NAGA_HATCHLING, PM_GOLD_DRAGON, PM_GOLD_GOLEM, PM_GRAND_MASTER, PM_GRAY_DRAGON,
+    PM_GRAY_OOZE, PM_GRAY_UNICORN, PM_GREEN_DRAGON, PM_GREEN_ELF, PM_GREEN_MOLD, PM_GREEN_SLIME,
+    PM_GREMLIN, PM_GREY_ELF, PM_GRID_BUG, PM_GUARD, PM_GUARDIAN_NAGA, PM_GUARDIAN_NAGA_HATCHLING,
+    PM_GUIDE, PM_HEALER, PM_HELL_HOUND, PM_HELL_HOUND_PUP, PM_HEZROU, PM_HIGH_CLERIC, PM_HILL_GIANT,
+    PM_HILL_ORC, PM_HIPPOCRATES, PM_HOBBIT, PM_HOBGOBLIN, PM_HOMUNCULUS, PM_HORNED_DEVIL, PM_HORSE,
+    PM_HOUSECAT, PM_HUMAN, PM_HUMAN_MUMMY, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF,
+    PM_HUMAN_ZOMBIE, PM_HUNTER, PM_ICE_DEVIL, PM_ICE_TROLL, PM_ICE_VORTEX, PM_IGUANA, PM_IMP,
+    PM_IRON_GOLEM, PM_IRON_PIERCER, PM_IXOTH, PM_JABBERWOCK, PM_JACKAL, PM_JAGUAR, PM_JELLYFISH,
+    PM_JUIBLEX, PM_KEYSTONE_KOP, PM_KILLER_BEE, PM_KING_ARTHUR, PM_KITTEN, PM_KI_RIN, PM_KNIGHT,
+    PM_KOBOLD, PM_KOBOLD_LEADER, PM_KOBOLD_MUMMY, PM_KOBOLD_SHAMAN, PM_KOBOLD_ZOMBIE,
+    PM_KOP_KAPTAIN, PM_KOP_LIEUTENANT, PM_KOP_SERGEANT, PM_KRAKEN, PM_LARGE_CAT, PM_LARGE_DOG,
+    PM_LARGE_KOBOLD, PM_LARGE_MIMIC, PM_LEATHER_GOLEM, PM_LEMURE, PM_LEOCROTTA, PM_LEPRECHAUN,
+    PM_LICH, PM_LICHEN, PM_LIEUTENANT, PM_LITTLE_DOG, PM_LIZARD, PM_LONG_WORM, PM_LONG_WORM_TAIL,
+    PM_LORD_CARNARVON, PM_LORD_SATO, PM_LORD_SURTUR, PM_LURKER_ABOVE, PM_LYNX, PM_MAIL_DAEMON,
+    PM_MANES, PM_MARILITH, PM_MASTER_ASSASSIN, PM_MASTER_KAEN, PM_MASTER_LICH,
+    PM_MASTER_MIND_FLAYER, PM_MASTER_OF_THIEVES, PM_MASTODON, PM_MEDUSA, PM_MIND_FLAYER,
+    PM_MINION_OF_HUHETOTL, PM_MINOTAUR, PM_MONK, PM_MONKEY, PM_MORDOR_ORC, PM_MOUNTAIN_CENTAUR,
+    PM_MOUNTAIN_NYMPH, PM_MUMAK, PM_NALFESHNEE, PM_NALZOK, PM_NAZGUL, PM_NEANDERTHAL,
+    PM_NEFERET_THE_GREEN, PM_NEWT, PM_NINJA, PM_NORN, PM_NURSE, PM_OCHRE_JELLY, PM_OGRE,
+    PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_OLOG_HAI, PM_ORACLE, PM_ORANGE_DRAGON, PM_ORC, PM_ORCUS,
+    PM_ORC_CAPTAIN, PM_ORC_MUMMY, PM_ORC_SHAMAN, PM_ORC_ZOMBIE, PM_ORION, PM_OWLBEAR, PM_PAGE,
+    PM_PANTHER, PM_PAPER_GOLEM, PM_PELIAS, PM_PESTILENCE, PM_PIRANHA, PM_PIT_FIEND, PM_PIT_VIPER,
+    PM_PLAINS_CENTAUR, PM_PONY, PM_PRISONER, PM_PURPLE_WORM, PM_PYROLISK, PM_PYTHON,
+    PM_QUANTUM_MECHANIC, PM_QUASIT, PM_QUEEN_BEE, PM_QUIVERING_BLOB, PM_RABID_RAT, PM_RANGER,
+    PM_RAVEN, PM_RED_DRAGON, PM_RED_MOLD, PM_RED_NAGA, PM_RED_NAGA_HATCHLING, PM_ROCK_MOLE,
+    PM_ROCK_PIERCER, PM_ROCK_TROLL, PM_ROGUE, PM_ROPE_GOLEM, PM_ROSHI, PM_ROTHE, PM_RUST_MONSTER,
+    PM_SALAMANDER, PM_SAMURAI, PM_SANDESTIN, PM_SASQUATCH, PM_SCORPION, PM_SCORPIUS, PM_SERGEANT,
+    PM_SEWER_RAT, PM_SHADE, PM_SHAMAN_KARNOV, PM_SHARK, PM_SHOCKING_SPHERE, PM_SHOPKEEPER,
+    PM_SHRIEKER, PM_SILVER_DRAGON, PM_SKELETON, PM_SMALL_MIMIC, PM_SNAKE, PM_SOLDIER,
+    PM_SOLDIER_ANT, PM_SPOTTED_JELLY, PM_STALKER, PM_STEAM_VORTEX, PM_STONE_GIANT, PM_STONE_GOLEM,
+    PM_STORM_GIANT, PM_STRAW_GOLEM, PM_STUDENT, PM_TENGU, PM_THOTH_AMON, PM_THUG, PM_TIGER,
+    PM_TITAN, PM_TITANOTHERE, PM_TOURIST, PM_TRAPPER, PM_TROLL, PM_TWOFLOWER, PM_UMBER_HULK,
+    PM_URUK_HAI, PM_VALKYRIE, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VAMPIRE_LEADER, PM_VIOLET_FUNGUS,
+    PM_VLAD_THE_IMPALER, PM_VROCK, PM_WARG, PM_WARHORSE, PM_WARRIOR, PM_WATCHMAN, PM_WATCH_CAPTAIN,
+    PM_WATER_DEMON, PM_WATER_ELEMENTAL, PM_WATER_MOCCASIN, PM_WATER_NYMPH, PM_WATER_TROLL,
+    PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_DRAGON, PM_WHITE_UNICORN, PM_WINGED_GARGOYLE,
+    PM_WINTER_WOLF, PM_WINTER_WOLF_CUB, PM_WIZARD, PM_WIZARD_OF_YENDOR, PM_WOLF, PM_WOODCHUCK,
+    PM_WOODLAND_ELF, PM_WOOD_GOLEM, PM_WOOD_NYMPH, PM_WRAITH, PM_WUMPUS, PM_XAN, PM_XORN,
+    PM_YEENOGHU, PM_YELLOW_DRAGON, PM_YELLOW_LIGHT, PM_YELLOW_MOLD, PM_YETI, PM_ZRUTY, SPECIAL_PM,
+} from "./monsters.h.js";
+import { MAXSPELL, NUM_GLASS_GEMS, NUM_REAL_GEMS } from "./objclass.h.js";
+import {
+    ACID_VENOM, AGATE, AKLYS, ALCHEMY_SMOCK, AMBER, AMETHYST, AMULET_OF_CHANGE, AMULET_OF_ESP,
+    AMULET_OF_FLYING, AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_MAGICAL_BREATHING,
+    AMULET_OF_REFLECTION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING,
+    AMULET_OF_YENDOR, AMULET_VERSUS_POISON, APPLE, AQUAMARINE, ARROW, ATHAME, AXE, BAG_OF_HOLDING,
+    BAG_OF_TRICKS, BANANA, BANDED_MAIL, BARDICHE, BATTLE_AXE, BEARTRAP, BEC_DE_CORBIN, BELL,
+    BELL_OF_OPENING, BILL_GUISARME, BLACK_DRAGON_SCALES, BLACK_DRAGON_SCALE_MAIL, BLACK_OPAL,
+    BLINDFOLD, BLINDING_VENOM, BLUE_DRAGON_SCALES, BLUE_DRAGON_SCALE_MAIL, BOOMERANG, BOULDER, BOW,
+    BRASS_LANTERN, BROADSWORD, BRONZE_PLATE_MAIL, BUGLE, BULLWHIP, CANDELABRUM_OF_INVOCATION,
+    CANDY_BAR, CAN_OF_GREASE, CARROT, CHAIN_MAIL, CHEST, CHRYSOBERYL, CITRINE,
+    CLOAK_OF_DISPLACEMENT, CLOAK_OF_INVISIBILITY, CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_PROTECTION,
+    CLOVE_OF_GARLIC, CLUB, CORNUTHAUM, CORPSE, CRAM_RATION, CREAM_PIE, CREDIT_CARD, CROSSBOW,
+    CROSSBOW_BOLT, CRYSKNIFE, CRYSTAL_BALL, CRYSTAL_PLATE_MAIL, C_RATION, DAGGER, DART, DENTED_POT,
+    DIAMOND, DILITHIUM_CRYSTAL, DRUM_OF_EARTHQUAKE, DUNCE_CAP, DWARVISH_CLOAK, DWARVISH_IRON_HELM,
+    DWARVISH_MATTOCK, DWARVISH_MITHRIL_COAT, DWARVISH_ROUNDSHIELD, DWARVISH_SHORT_SWORD,
+    DWARVISH_SPEAR, EGG, ELVEN_ARROW, ELVEN_BOOTS, ELVEN_BOW, ELVEN_BROADSWORD, ELVEN_CLOAK,
+    ELVEN_DAGGER, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_SHIELD, ELVEN_SHORT_SWORD,
+    ELVEN_SPEAR, EMERALD, ENORMOUS_MEATBALL, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA,
+    FAKE_AMULET_OF_YENDOR, FAUCHARD, FEDORA, FIGURINE, FIRE_HORN, FIRST_AMULET, FIRST_GLASS_GEM,
+    FIRST_OBJECT, FIRST_REAL_GEM, FIRST_SPELL, FLAIL, FLINT, FLUORITE, FOOD_RATION, FORTUNE_COOKIE,
+    FROST_HORN, FUMBLE_BOOTS, GARNET, GAUNTLETS_OF_DEXTERITY, GAUNTLETS_OF_FUMBLING,
+    GAUNTLETS_OF_POWER, GENERIC_AMULET, GENERIC_ARMOR, GENERIC_BALL, GENERIC_CHAIN, GENERIC_COIN,
+    GENERIC_FOOD, GENERIC_GEM, GENERIC_ILLOBJ, GENERIC_POTION, GENERIC_RING, GENERIC_ROCK,
+    GENERIC_SCROLL, GENERIC_SPBOOK, GENERIC_TOOL, GENERIC_VENOM, GENERIC_WAND, GENERIC_WEAPON,
+    GLAIVE, GLOB_OF_BLACK_PUDDING, GLOB_OF_BROWN_PUDDING, GLOB_OF_GRAY_OOZE, GLOB_OF_GREEN_SLIME,
+    GOLD_DRAGON_SCALES, GOLD_DRAGON_SCALE_MAIL, GOLD_PIECE, GRAPPLING_HOOK, GRAY_DRAGON_SCALES,
+    GRAY_DRAGON_SCALE_MAIL, GREEN_DRAGON_SCALES, GREEN_DRAGON_SCALE_MAIL, GUISARME, HALBERD,
+    HAWAIIAN_SHIRT, HEAVY_IRON_BALL, HELMET, HELM_OF_BRILLIANCE, HELM_OF_CAUTION,
+    HELM_OF_OPPOSITE_ALIGNMENT, HELM_OF_TELEPATHY, HIGH_BOOTS, HORN_OF_PLENTY, ICE_BOX, IRON_CHAIN,
+    IRON_SHOES, JACINTH, JADE, JASPER, JAVELIN, JET, JUMPING_BOOTS, KATANA, KELP_FROND,
+    KICKING_BOOTS, KNIFE, K_RATION, LANCE, LAND_MINE, LARGE_BOX, LARGE_SHIELD, LAST_AMULET,
+    LAST_GENERIC, LAST_GLASS_GEM, LAST_REAL_GEM, LAST_SPELL, LEASH, LEATHER_ARMOR, LEATHER_CLOAK,
+    LEATHER_DRUM, LEATHER_GLOVES, LEATHER_JACKET, LEMBAS_WAFER, LENSES, LEVITATION_BOOTS, LOADSTONE,
+    LOCK_PICK, LONG_SWORD, LOW_BOOTS, LUCERN_HAMMER, LUCKSTONE, LUMP_OF_ROYAL_JELLY, MACE,
+    MAGIC_FLUTE, MAGIC_HARP, MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MEATBALL, MEAT_RING,
+    MEAT_STICK, MELON, MIRROR, MORNING_STAR, MUMMY_WRAPPING, NUM_OBJECTS, OBJCLASS_HACK, OBSIDIAN,
+    OILSKIN_CLOAK, OILSKIN_SACK, OIL_LAMP, OPAL, ORANGE, ORANGE_DRAGON_SCALES,
+    ORANGE_DRAGON_SCALE_MAIL, ORCISH_ARROW, ORCISH_BOW, ORCISH_CHAIN_MAIL, ORCISH_CLOAK,
+    ORCISH_DAGGER, ORCISH_HELM, ORCISH_RING_MAIL, ORCISH_SHIELD, ORCISH_SHORT_SWORD, ORCISH_SPEAR,
+    PANCAKE, PARTISAN, PEAR, PICK_AXE, PLATE_MAIL, POT_ACID, POT_BLINDNESS, POT_BOOZE,
+    POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE, POT_FULL_HEALING,
+    POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION, POT_HEALING,
+    POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL,
+    POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS,
+    POT_SLEEPING, POT_SPEED, POT_WATER, QUARTERSTAFF, RANSEUR, RED_DRAGON_SCALES,
+    RED_DRAGON_SCALE_MAIL, RING_MAIL, RIN_ADORNMENT, RIN_AGGRAVATE_MONSTER, RIN_COLD_RESISTANCE,
+    RIN_CONFLICT, RIN_FIRE_RESISTANCE, RIN_FREE_ACTION, RIN_GAIN_CONSTITUTION, RIN_GAIN_STRENGTH,
+    RIN_HUNGER, RIN_INCREASE_ACCURACY, RIN_INCREASE_DAMAGE, RIN_INVISIBILITY, RIN_LEVITATION,
+    RIN_POISON_RESISTANCE, RIN_POLYMORPH, RIN_POLYMORPH_CONTROL, RIN_PROTECTION,
+    RIN_PROTECTION_FROM_SHAPE_CHAN, RIN_REGENERATION, RIN_SEARCHING, RIN_SEE_INVISIBLE,
+    RIN_SHOCK_RESISTANCE, RIN_SLOW_DIGESTION, RIN_STEALTH, RIN_SUSTAIN_ABILITY, RIN_TELEPORTATION,
+    RIN_TELEPORT_CONTROL, RIN_WARNING, ROBE, ROCK, RUBBER_HOSE, RUBY, RUNESWORD, SACK, SADDLE,
+    SAPPHIRE, SC01, SC02, SC03, SC04, SC05, SC06, SC07, SC08, SC09, SC10, SC11, SC12, SC13, SC14,
+    SC15, SC16, SC17, SC18, SC19, SC20, SCALE_MAIL, SCALPEL, SCIMITAR, SCR_AMNESIA, SCR_BLANK_PAPER,
+    SCR_CHARGING, SCR_CONFUSE_MONSTER, SCR_CREATE_MONSTER, SCR_DESTROY_ARMOR, SCR_EARTH,
+    SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SCR_FIRE, SCR_FOOD_DETECTION, SCR_GENOCIDE,
+    SCR_GOLD_DETECTION, SCR_IDENTIFY, SCR_LIGHT, SCR_MAGIC_MAPPING, SCR_MAIL, SCR_PUNISHMENT,
+    SCR_REMOVE_CURSE, SCR_SCARE_MONSTER, SCR_STINKING_CLOUD, SCR_TAMING, SCR_TELEPORTATION,
+    SHIELD_OF_DRAIN_RESISTANCE, SHIELD_OF_REFLECTION, SHIELD_OF_SHOCK_RESISTANCE, SHORT_SWORD,
+    SHURIKEN, SILVER_ARROW, SILVER_DAGGER, SILVER_DRAGON_SCALES, SILVER_DRAGON_SCALE_MAIL,
+    SILVER_MACE, SILVER_SABER, SILVER_SPEAR, SKELETON_KEY, SLIME_MOLD, SLING, SMALL_SHIELD, SPEAR,
+    SPEED_BOOTS, SPETUM, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR,
+    SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER,
+    SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD,
+    SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE,
+    SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF,
+    SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT,
+    SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION,
+    SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH,
+    SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK, SPLINT_MAIL, SPRIG_OF_WOLFSBANE, STATUE,
+    STETHOSCOPE, STILETTO, STRANGE_OBJECT, STUDDED_LEATHER_ARMOR, TALLOW_CANDLE, TIN, TINNING_KIT,
+    TIN_OPENER, TIN_WHISTLE, TOOLED_HORN, TOPAZ, TOUCHSTONE, TOWEL, TRIDENT, TRIPE_RATION, TSURUGI,
+    TURQUOISE, TWO_HANDED_SWORD, T_SHIRT, UNICORN_HORN, URUK_HAI_SHIELD, VOULGE, WAN1, WAN2, WAN3,
+    WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH, WAN_DIGGING, WAN_ENLIGHTENMENT,
+    WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING, WAN_MAGIC_MISSILE, WAN_MAKE_INVISIBLE,
+    WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING, WAN_SECRET_DOOR_DETECTION, WAN_SLEEP,
+    WAN_SLOW_MONSTER, WAN_SPEED_MONSTER, WAN_STASIS, WAN_STRIKING, WAN_TELEPORTATION,
+    WAN_UNDEAD_TURNING, WAN_WISHING, WAR_HAMMER, WATER_WALKING_BOOTS, WAX_CANDLE,
+    WHITE_DRAGON_SCALES, WHITE_DRAGON_SCALE_MAIL, WOODEN_FLUTE, WOODEN_HARP, WORM_TOOTH,
+    WORTHLESS_BLACK_GLASS, WORTHLESS_BLUE_GLASS, WORTHLESS_GREEN_GLASS, WORTHLESS_ORANGE_GLASS,
+    WORTHLESS_RED_GLASS, WORTHLESS_VIOLET_GLASS, WORTHLESS_WHITE_GLASS, WORTHLESS_YELLOWBROWN_GLASS,
+    WORTHLESS_YELLOW_GLASS, YA, YELLOW_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL, YUMI,
+} from "./objects.h.js";
 import { raw_print } from "./winprocs.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { EXIT_SUCCESS } from "../rt/libc.js";
-import { __isspace } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { stdout } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    EXIT_SUCCESS, __isspace, free, stdout, strchr, strcmp, strlen, strncmp,
+} from "../rt/libc.js";
+import { init_string, stack_array, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_add } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { array_of, ptr_add, ptr_to, ref_add, struct } from "../rt/struct.js";
 import { dupstr } from "./alloc.js";
-import { config_error_add } from "./cfgfiles.js";
-import { config_error_done } from "./cfgfiles.js";
-import { config_error_init } from "./cfgfiles.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
+import { config_error_add, config_error_done, config_error_init } from "./cfgfiles.js";
+import { gc, gd, iflags, program_state } from "./decl.js";
 import { nh_terminate } from "./end.js";
 import { dump_all_glyphids } from "./glyphs.js";
 import { dump_weights } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
+import { eos, strncmpi } from "./hacklib.js";
 import { dump_mongen } from "./makemon.js";
-import { initoptions } from "./options.js";
-import { match_optname } from "./options.js";
+import { initoptions, match_optname } from "./options.js";
 import { raw_printf } from "./pline.js";
 import { prscore } from "./topten.js";
-import { dump_version_info } from "./version.js";
-import { early_version_info } from "./version.js";
+import { dump_version_info, early_version_info } from "./version.js";
 import { genl_display_file } from "./windows.js";
 import { error } from "../sys/c2js/nhjs_host.js";
-import { chdirx } from "../sys/unix/unixmain.js";
-import { whoami } from "../sys/unix/unixmain.js";
+import { chdirx, whoami } from "../sys/unix/unixmain.js";
 
 // the records of monsdump[] from monsters.h, laid out like it
 function monsdump_records() {
@@ -2142,16 +937,6 @@ function monsdump_records() {
     { val: PM_HELL_HOUND_PUP, nm: _("HELL_HOUND_PUP") },
     { val: PM_HELL_HOUND, nm: _("HELL_HOUND") },
 
-
-
-
-
-
-
-
-
-
-
     /*
      * eyes
      */
@@ -2160,16 +945,6 @@ function monsdump_records() {
     { val: PM_FREEZING_SPHERE, nm: _("FREEZING_SPHERE") },
     { val: PM_FLAMING_SPHERE, nm: _("FLAMING_SPHERE") },
     { val: PM_SHOCKING_SPHERE, nm: _("SHOCKING_SPHERE") },
-
-
-
-
-
-
-
-
-
-
 
     /*
      * felines
@@ -2387,16 +1162,6 @@ function monsdump_records() {
     { val: PM_BABY_GOLD_DRAGON, nm: _("BABY_GOLD_DRAGON") },
     { val: PM_BABY_SILVER_DRAGON, nm: _("BABY_SILVER_DRAGON") },
 
-
-
-
-
-
-
-
-
-
-
     { val: PM_BABY_RED_DRAGON, nm: _("BABY_RED_DRAGON") },
     { val: PM_BABY_WHITE_DRAGON, nm: _("BABY_WHITE_DRAGON") },
     { val: PM_BABY_ORANGE_DRAGON, nm: _("BABY_ORANGE_DRAGON") },
@@ -2408,22 +1173,6 @@ function monsdump_records() {
     /* gold dragon can be seen via infravision but doesn't have infravision */
     { val: PM_GOLD_DRAGON, nm: _("GOLD_DRAGON") },
     { val: PM_SILVER_DRAGON, nm: _("SILVER_DRAGON") },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /* red dragon has infravision and can be seen via infravision */
     { val: PM_RED_DRAGON, nm: _("RED_DRAGON") },
@@ -2487,16 +1236,6 @@ function monsdump_records() {
     /* the illustration from _Through_the_Looking_Glass_
        depicts hands as well as wings */
     { val: PM_JABBERWOCK, nm: _("JABBERWOCK") },
-
-
-
-
-
-
-
-
-
-
 
     /*
      * Kops
@@ -2593,17 +1332,6 @@ function monsdump_records() {
      */
     { val: PM_VAMPIRE, nm: _("VAMPIRE") },
     { val: PM_VAMPIRE_LEADER, nm: _("VAMPIRE_LEADER") },
-
-
-
-
-
-
-
-
-
-
-
 
     { val: PM_VLAD_THE_IMPALER, nm: _("VLAD_THE_IMPALER") },
     /*
@@ -2708,18 +1436,6 @@ function monsdump_records() {
     { val: PM_WIZARD_OF_YENDOR, nm: _("WIZARD_OF_YENDOR") },
     { val: PM_CROESUS, nm: _("CROESUS") },
 
-
-
-
-
-
-
-
-
-
-
-
-
     /*
      * ghosts
      *  ghosts and shades don't leave corpses; assigning human weight
@@ -2733,11 +1449,6 @@ function monsdump_records() {
     { val: PM_WATER_DEMON, nm: _("WATER_DEMON") },
     /* standard demons & devils
      */
-
-
-
-
-
 
     /* incubus and succubus; prior to 5.0 succubus and incubus were
        distinct monsters; "amorous demon" is considered to be a temporary
@@ -2854,29 +1565,6 @@ function monsdump_records() {
     { val: PM_PELIAS, nm: _("PELIAS") },
     { val: PM_SHAMAN_KARNOV, nm: _("SHAMAN_KARNOV") },
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     { val: PM_HIPPOCRATES, nm: _("HIPPOCRATES") },
     { val: PM_KING_ARTHUR, nm: _("KING_ARTHUR") },
     { val: PM_GRAND_MASTER, nm: _("GRAND_MASTER") },
@@ -2902,17 +1590,6 @@ function monsdump_records() {
      */
     { val: PM_CHROMATIC_DRAGON, nm: _("CHROMATIC_DRAGON") },
 
-
-
-
-
-
-
-
-
-
-
-
     { val: PM_CYCLOPS, nm: _("CYCLOPS") },
     { val: PM_IXOTH, nm: _("IXOTH") },
     { val: PM_MASTER_KAEN, nm: _("MASTER_KAEN") },
@@ -2934,16 +1611,6 @@ function monsdump_records() {
     { val: PM_STUDENT, nm: _("STUDENT") },
     { val: PM_CHIEFTAIN, nm: _("CHIEFTAIN") },
     { val: PM_NEANDERTHAL, nm: _("NEANDERTHAL") },
-
-
-
-
-
-
-
-
-
-
 
     /* attendants used to be lawful but have been changed to neutral because
        grow_up() promotes them to healer and the latter is always neutral */
@@ -2994,38 +1661,16 @@ function objdump_records() {
 /* FIRST_OBJECT: it would be simpler just to use MARKER(FIRST_OBJECTARROW)
    below but that is vulnerable to neglecting to update the marker enum
    after inserting something in front of arrow */
- 
-   
+
 /* this definition of FIRST_OBJECT advances the default value for next enum;
    backtrack to fix that otherwise ARROW and the rest would be off by 1 */
-   
 
 /* weapons ... */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* Note: for weapons that don't do an even die of damage (ex. 2-7 or 3-18)
    the extra damage is added on in weapon.c not here! */
 
 /* weapon strike mode overloads the oc_dir field */
-
-
-
 
 /* missiles; materiel reflects the arrowhead not the shaft */
 { val: ARROW, nm: _("ARROW") },
@@ -3158,41 +1803,12 @@ function objdump_records() {
 { val: SLING, nm: _("SLING") },
 { val: CROSSBOW, nm: _("CROSSBOW") },
 
-
-
-
-
-
-
-
-
 /* armor ... */
         /* IRON denotes ferrous metals including steel.
          * Only IRON weapons and armor can rust.
          * Only COPPER (including brass) corrodes.
          * Some creatures are vulnerable to SILVER.
          */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* helmets */
 { val: ELVEN_LEATHER_HELM, nm: _("ELVEN_LEATHER_HELM") },
@@ -3218,17 +1834,12 @@ function objdump_records() {
  *          is the same as order of dragons defined in monst.c.
  */
 
-
-
 /* 3.4.1: dragon scale mail reclassified as "magic" since magic is
    needed to create them */
 { val: GRAY_DRAGON_SCALE_MAIL, nm: _("GRAY_DRAGON_SCALE_MAIL") },
     /* gold DSM is a light source; there's no property for that */
 { val: GOLD_DRAGON_SCALE_MAIL, nm: _("GOLD_DRAGON_SCALE_MAIL") },
 { val: SILVER_DRAGON_SCALE_MAIL, nm: _("SILVER_DRAGON_SCALE_MAIL") },
-
-
-
 
 { val: RED_DRAGON_SCALE_MAIL, nm: _("RED_DRAGON_SCALE_MAIL") },
 { val: WHITE_DRAGON_SCALE_MAIL, nm: _("WHITE_DRAGON_SCALE_MAIL") },
@@ -3243,9 +1854,6 @@ function objdump_records() {
 { val: GRAY_DRAGON_SCALES, nm: _("GRAY_DRAGON_SCALES") },
 { val: GOLD_DRAGON_SCALES, nm: _("GOLD_DRAGON_SCALES") },
 { val: SILVER_DRAGON_SCALES, nm: _("SILVER_DRAGON_SCALES") },
-
-
-
 
 { val: RED_DRAGON_SCALES, nm: _("RED_DRAGON_SCALES") },
 { val: WHITE_DRAGON_SCALES, nm: _("WHITE_DRAGON_SCALES") },
@@ -3331,17 +1939,7 @@ function objdump_records() {
 { val: FUMBLE_BOOTS, nm: _("FUMBLE_BOOTS") },
 { val: LEVITATION_BOOTS, nm: _("LEVITATION_BOOTS") },
 
-
-
-
-
-
-
 /* rings ... */
-
-
-
-
 
 { val: RIN_ADORNMENT, nm: _("RIN_ADORNMENT") },
 { val: RIN_GAIN_STRENGTH, nm: _("RIN_GAIN_STRENGTH") },
@@ -3376,14 +1974,10 @@ function objdump_records() {
 { val: RIN_SEE_INVISIBLE, nm: _("RIN_SEE_INVISIBLE") },
 { val: RIN_PROTECTION_FROM_SHAPE_CHAN, nm: _("RIN_PROTECTION_FROM_SHAPE_CHAN") },
 
-
 /* amulets ... - THE Amulet comes last because it is special */
 
-
-
-
 { val: AMULET_OF_ESP, nm: _("AMULET_OF_ESP") },
- 
+
 { val: AMULET_OF_LIFE_SAVING, nm: _("AMULET_OF_LIFE_SAVING") },
 { val: AMULET_OF_STRANGULATION, nm: _("AMULET_OF_STRANGULATION") },
 { val: AMULET_OF_RESTFUL_SLEEP, nm: _("AMULET_OF_RESTFUL_SLEEP") },
@@ -3403,28 +1997,9 @@ function objdump_records() {
  */
 { val: FAKE_AMULET_OF_YENDOR, nm: _("FAKE_AMULET_OF_YENDOR") },
 { val: AMULET_OF_YENDOR, nm: _("AMULET_OF_YENDOR") },
- 
-
 
 /* tools ... */
 /* tools with weapon characteristics come last */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* containers */
 { val: LARGE_BOX, nm: _("LARGE_BOX") },
@@ -3434,7 +2009,6 @@ function objdump_records() {
 { val: OILSKIN_SACK, nm: _("OILSKIN_SACK") },
 { val: BAG_OF_HOLDING, nm: _("BAG_OF_HOLDING") },
 { val: BAG_OF_TRICKS, nm: _("BAG_OF_TRICKS") },
-
 
 /* lock opening tools */
 { val: SKELETON_KEY, nm: _("SKELETON_KEY") },
@@ -3457,7 +2031,6 @@ function objdump_records() {
 { val: LENSES, nm: _("LENSES") },
 { val: BLINDFOLD, nm: _("BLINDFOLD") },
 { val: TOWEL, nm: _("TOWEL") },
-
 
 /* still other tools */
 { val: SADDLE, nm: _("SADDLE") },
@@ -3500,13 +2073,7 @@ function objdump_records() {
 { val: CANDELABRUM_OF_INVOCATION, nm: _("CANDELABRUM_OF_INVOCATION") },
 { val: BELL_OF_OPENING, nm: _("BELL_OF_OPENING") },
 
-
-
 /* Comestibles ... */
-
-
-
-
 
 /* All types of food (except tins & corpses) must have a delay of at least 1.
  * Delay on corpses is computed and is weight dependent.
@@ -3565,11 +2132,7 @@ function objdump_records() {
    and by obj->corpsenm (type of monster flesh) */
 { val: TIN, nm: _("TIN") },
 
-
 /* potions ... */
-
-
-
 
 { val: POT_GAIN_ABILITY, nm: _("POT_GAIN_ABILITY") },
 { val: POT_RESTORE_ABILITY, nm: _("POT_RESTORE_ABILITY") },
@@ -3600,12 +2163,7 @@ function objdump_records() {
  */
 { val: POT_WATER, nm: _("POT_WATER") },
 
-
 /* scrolls ... */
-
-
-
-
 
 { val: SCR_ENCHANT_ARMOR, nm: _("SCR_ENCHANT_ARMOR") },
 { val: SCR_DESTROY_ARMOR, nm: _("SCR_DESTROY_ARMOR") },
@@ -3666,7 +2224,6 @@ function objdump_records() {
 
 { val: SCR_BLANK_PAPER, nm: _("SCR_BLANK_PAPER") },
 
-
 /* spellbooks ... */
     /* Expanding beyond 52 spells would require changes in spellcasting
      * or imposition of a limit on number of spells hero can know because
@@ -3676,10 +2233,6 @@ function objdump_records() {
      * out in the process allowing more than 52 spells be known but keeping
      * only 52 be castable at any given time.]
      */
-
-
-
-
 
 /* Spellbook description normally refers to book covers (primarily color).
    Parchment and vellum would never be used for such but rather than
@@ -3693,7 +2246,7 @@ function objdump_records() {
    parchment or vellum spellbook break vegetarian conduct as it should.) */
 
 { val: SPE_DIG, nm: _("SPE_DIG") },
- 
+
 /* magic missile ... finger of death must be in this order; see buzz() */
 { val: SPE_MAGIC_MISSILE, nm: _("SPE_MAGIC_MISSILE") },
 
@@ -3737,16 +2290,6 @@ function objdump_records() {
 { val: SPE_STONE_TO_FLESH, nm: _("SPE_STONE_TO_FLESH") },
 { val: SPE_CHAIN_LIGHTNING, nm: _("SPE_CHAIN_LIGHTNING") },
 
-
-
-
-
-
-
-
-
-
-
 /* books with fixed descriptions
  */
 { val: SPE_BLANK_PAPER, nm: _("SPE_BLANK_PAPER") },
@@ -3754,17 +2297,13 @@ function objdump_records() {
    by including blank paper which has no actual spell we ensure that
    even if hero learns every spell spl_book[] will have at least one
    unused slot at end; an unused slot is needed for use as terminator */
- 
+
 /* tribute book added in 3.6 */
 { val: SPE_NOVEL, nm: _("SPE_NOVEL") },
 /* a special one of a kind spellbook */
 { val: SPE_BOOK_OF_THE_DEAD, nm: _("SPE_BOOK_OF_THE_DEAD") },
 
-
 /* wands ... */
-
-
-
 
 { val: WAN_LIGHT, nm: _("WAN_LIGHT") },
 { val: WAN_SECRET_DOOR_DETECTION, nm: _("WAN_SECRET_DOOR_DETECTION") },
@@ -3797,28 +2336,14 @@ function objdump_records() {
 { val: WAN2, nm: _("WAN2") },
 { val: WAN3, nm: _("WAN3") },
 
-
 /* coins ... - so far gold is all there is */
-
-
-
 
 { val: GOLD_PIECE, nm: _("GOLD_PIECE") },
 
-
 /* gems ... - includes stones and rocks but not boulders */
 
-
-
-
-
-
-
-
-
-
 { val: DILITHIUM_CRYSTAL, nm: _("DILITHIUM_CRYSTAL") },
- 
+
 { val: DIAMOND, nm: _("DIAMOND") },
 { val: RUBY, nm: _("RUBY") },
 { val: JACINTH, nm: _("JACINTH") },
@@ -3840,9 +2365,9 @@ function objdump_records() {
 { val: OBSIDIAN, nm: _("OBSIDIAN") },
 { val: AGATE, nm: _("AGATE") },
 { val: JADE, nm: _("JADE") },
- 
+
 { val: WORTHLESS_WHITE_GLASS, nm: _("WORTHLESS_WHITE_GLASS") },
- 
+
 { val: WORTHLESS_BLUE_GLASS, nm: _("WORTHLESS_BLUE_GLASS") },
 { val: WORTHLESS_RED_GLASS, nm: _("WORTHLESS_RED_GLASS") },
 { val: WORTHLESS_YELLOWBROWN_GLASS, nm: _("WORTHLESS_YELLOWBROWN_GLASS") },
@@ -3851,7 +2376,6 @@ function objdump_records() {
 { val: WORTHLESS_BLACK_GLASS, nm: _("WORTHLESS_BLACK_GLASS") },
 { val: WORTHLESS_GREEN_GLASS, nm: _("WORTHLESS_GREEN_GLASS") },
 { val: WORTHLESS_VIOLET_GLASS, nm: _("WORTHLESS_VIOLET_GLASS") },
- 
 
 /* Placement note: there is a wishable subrange for
  * "gray stones" in the o_ranges[] array in objnam.c
@@ -3863,8 +2387,6 @@ function objdump_records() {
 { val: TOUCHSTONE, nm: _("TOUCHSTONE") },
 { val: FLINT, nm: _("FLINT") },
 { val: ROCK, nm: _("ROCK") },
-
-
 
 /* miscellaneous ... */
 /* Note: boulders and rocks are not normally created at random; the
@@ -3944,11 +2466,7 @@ function defsym_cmap_dump_records() {
     { val: S_air, nm: _("S_air") },
     { val: S_cloud, nm: _("S_cloud") },
 
-
     { val: S_water, nm: _("S_water") },
-
-
-
 
     { val: S_arrow_trap, nm: _("S_arrow_trap") },
     { val: S_dart_trap, nm: _("S_dart_trap") },
@@ -3976,12 +2494,6 @@ function defsym_cmap_dump_records() {
     { val: S_trapped_door, nm: _("S_trapped_door") },
     { val: S_trapped_chest, nm: _("S_trapped_chest") },
 
-
-
-
-
-
-
     { val: S_vbeam, nm: _("S_vbeam") },
     { val: S_hbeam, nm: _("S_hbeam") },
     { val: S_lslant, nm: _("S_lslant") },
@@ -3998,20 +2510,7 @@ function defsym_cmap_dump_records() {
     { val: S_ss4, nm: _("S_ss4") },
     { val: S_poisoncloud, nm: _("S_poisoncloud") },
 
-
     { val: S_goodpos, nm: _("S_goodpos") },
-
-
-
-
-
-
-
-
-
-
-
-
 
     { val: S_sw_tl, nm: _("S_sw_tl") },
     { val: S_sw_tc, nm: _("S_sw_tc") },
@@ -4021,15 +2520,6 @@ function defsym_cmap_dump_records() {
     { val: S_sw_bl, nm: _("S_sw_bl") },
     { val: S_sw_bc, nm: _("S_sw_bc") },
     { val: S_sw_br, nm: _("S_sw_br") },
-
-
-
-
-
-
-
-
-
 
     { val: S_expl_tl, nm: _("S_expl_tl") },
     { val: S_expl_tc, nm: _("S_expl_tc") },
@@ -4257,17 +2747,6 @@ function arti_enum_dump_records() {
     { val: ART_HEART_OF_AHRIMAN, nm: _("ART_HEART_OF_AHRIMAN") },
 
     { val: ART_SCEPTRE_OF_MIGHT, nm: _("ART_SCEPTRE_OF_MIGHT") },
-
-
-
-
-
-
-
-
-
-
-
 
     { val: ART_STAFF_OF_AESCULAPIUS, nm: _("ART_STAFF_OF_AESCULAPIUS") },
 

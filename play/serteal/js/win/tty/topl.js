@@ -3,22 +3,7 @@
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-// #include "tcap.h"
-// #include "wintty.h"
-
-
-
-
-
-
-
-export function /* int */
-tty_doprev_message()
-{
+export function tty_doprev_message() { /* int */
     let cw = wins[WIN_MESSAGE];
     let prevmsg_win;
     let i;
@@ -73,7 +58,6 @@ tty_doprev_message()
                     display_nhwindow()(prevmsg_win, TRUE);
                     destroy_nhwindow()(prevmsg_win);
                 }
-
             } while (morc == C(ord('p')));
             ttyDisplay.dismiss_more = 0;
         } else { /* reversed */
@@ -118,9 +102,7 @@ tty_doprev_message()
     return 0;
 }
 
-function /* void */
-redotoplin(str)
-{
+function redotoplin(str) { /* void */
     let otoplin = ttyDisplay.toplin;
 
     home();
@@ -141,9 +123,7 @@ redotoplin(str)
 }
 
 /* for use by tty_putstr() */
-export function /* void */
-show_topl(str)
-{
+export function show_topl(str) { /* void */
     let cw = wins[WIN_MESSAGE];
 
     /* show if either STOP isn't set or current message specifies NOSTOP */
@@ -166,12 +146,10 @@ show_topl(str)
 }
 
 /* used by update_topl(); also by tty_putstr() */
-export function /* void */
-remember_topl()
-{
+export function remember_topl() { /* void */
     let cw = wins[WIN_MESSAGE];
     let idx = cw.maxrow;
-    let len = unsigned(unsigned(strlen(gt.toplines) + 1));
+    let len = unsigned(strlen(gt.toplines) + 1);
 
     if ((cw.flags & WIN_LOCKHISTORY) || !chars[gt.toplines])
         return;
@@ -183,16 +161,14 @@ remember_topl()
         cw.data[idx] = addr_of(alloc(len));
         cw.datlen[idx] = short(len);
     }
-    void strcpy(cw.data[idx], gt.toplines);
+    strcpy(cw.data[idx], gt.toplines);
     if (!program_state.in_checkpoint) {
         chars[gt.toplines] = ord('\0');
         cw.maxcol = cw.maxrow = (idx + 1) % cw.rows;
     }
 }
 
-export function /* void */
-addtopl(s)
-{
+export function addtopl(s) { /* void */
     let cw = wins[WIN_MESSAGE];
 
     tty_curs(BASE_WINDOW, cw.curx + 1, cw.cury);
@@ -201,9 +177,7 @@ addtopl(s)
     ttyDisplay.toplin = TOPLINE_NEED_MORE;
 }
 
-export function /* void */
-more()
-{
+export function more() { /* void */
     let cw = wins[WIN_MESSAGE];
 
     if (iflags.debug_fuzzer)
@@ -247,9 +221,7 @@ more()
     ttyDisplay.inmore = 0;
 }
 
-export function /* void */
-update_topl(bp)
-{
+export function update_topl(bp) { /* void */
     let tl, otl;
     let n0;
     let notdied = 1;
@@ -263,8 +235,8 @@ update_topl(bp)
         && cw.cury == 0
         && n0 + int(strlen(gt.toplines)) + 3 < CO() - 8 /* room for --More-- */
         && (notdied = strncmp(bp, _("You die"), 7)) != 0) {
-        void strcat(gt.toplines, _("  "));
-        void strcat(gt.toplines, bp);
+        strcat(gt.toplines, _("  "));
+        strcat(gt.toplines, bp);
         cw.curx += 2;
         if (!skip)
             addtopl(bp);
@@ -278,7 +250,7 @@ update_topl(bp)
         }
     }
     remember_topl();
-    void strncpy(gt.toplines, bp, TBUFSZ);
+    strncpy(gt.toplines, bp, TBUFSZ);
     chars[gt.toplines + (TBUFSZ - 1)] = 0;
 
     for (tl = gt.toplines; n0 >= CO(); ) {
@@ -301,9 +273,7 @@ update_topl(bp)
         redotoplin(gt.toplines);
 }
 
-function /* void */
-topl_putsym(c)
-{
+function topl_putsym(c) { /* void */
     let cw = wins[WIN_MESSAGE];
 
     if (cw == null)
@@ -314,7 +284,7 @@ topl_putsym(c)
         if (ttyDisplay.curx == 0 && ttyDisplay.cury > 0)
             tty_curs(BASE_WINDOW, CO(), ttyDisplay.cury - 1);
         backsp();
-        void (((!!(ttyDisplay.curx > 0)) || ((nhassert_failed(_("ttyDisplay->curx > 0"), _(__FILE__), 0), 0))));
+        ((!!(ttyDisplay.curx > 0)) || (nhassert_failed(_("ttyDisplay->curx > 0"), _(__FILE__), 0), 0));
         ttyDisplay.curx--;
         cw.curx = ttyDisplay.curx;
         return;
@@ -324,14 +294,10 @@ topl_putsym(c)
         ttyDisplay.cury++;
         cw.cury = ttyDisplay.cury;
 
-
-
         break;
     default:
         if (ttyDisplay.curx == CO() - 1)
             topl_putsym(ord('\n')); /* 1 <= curx < CO; avoid CO */
-
-
 
         ttyDisplay.curx++;
     }
@@ -339,8 +305,7 @@ topl_putsym(c)
     if (cw.curx == 0)
         cl_end();
 
-    void putchar(c);
-
+    putchar(c);
 
     /* On non-WIN32CON, curx is incremented BEFORE putchar (see line 336
        above), so curx is one ahead of where the character was actually
@@ -348,19 +313,14 @@ topl_putsym(c)
        buffer position — same pattern used by process_menu_window,
        process_text_window, and other NOMUX hooks in wintty.c. */
     { let svx = ttyDisplay.curx; ttyDisplay.curx--; nomux_putch(c); ttyDisplay.curx = svx; }
-
 }
 
-export function /* void */
-putsyms(str)
-{
+export function putsyms(str) { /* void */
     while (chars[str])
         topl_putsym(chars[str++]);
 }
 
-function /* void */
-removetopl(n)
-{
+function removetopl(n) { /* void */
     /* assume addtopl() has been done, so ttyDisplay->toplin is already set */
     while (n-- > 0)
         putsyms(_("\b \b"));
@@ -369,12 +329,11 @@ removetopl(n)
  /* from xxxtty.c; don't need kill_char */
 
 /* returns a single keystroke; also sets 'yn_number' */
-export function /* char */
-tty_yn_function(
+export function tty_yn_function(
     query,
     resp,
-    def)
-{ const $frame = stack_frame(); try {
+    def) { /* char */
+    const $frame = stack_frame(); try {
     /*
      * Generic yes/no function.  'def' is the default (returned by space
      * or return; 'esc' returns 'q', or 'n', or the default, depending on
@@ -404,8 +363,8 @@ tty_yn_function(
     clean_up: { if (resp) {
         var rb, respbuf = stack_array(char, QBUFSZ);
 
-        allow_num = (+(strchr(resp, ord('#')) != 0));
-        void strcpy(respbuf, resp);
+        allow_num = +(strchr(resp, ord('#')) != 0);
+        strcpy(respbuf, resp);
         /* normally we force lowercase, but if any uppercase letters
            are present in the allowed response, preserve case;
            check this before stripping the hidden choices */
@@ -417,19 +376,19 @@ tty_yn_function(
         /* any acceptable responses that follow <esc> aren't displayed */
         if ((rb = strchr(respbuf, ord('\x1b'))) != 0)
             chars[rb] = ord('\0');
-        void strncpy(prompt, query, QBUFSZ - 1);
+        strncpy(prompt, query, QBUFSZ - 1);
         chars[prompt + (QBUFSZ - 1)] = ord('\0');
-        void sprintf(eos(prompt), _(" [%s]"), respbuf);
+        sprintf(eos(prompt), _(" [%s]"), respbuf);
         if (def)
-            void sprintf(eos(prompt), _(" (%c)"), def);
+            sprintf(eos(prompt), _(" (%c)"), def);
         /* not pline("%s ", prompt);
            trailing space is wanted here in case of reprompt */
-        void strcat(prompt, _(" "));
+        strcat(prompt, _(" "));
         custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, _("%s"), prompt);
     } else {
         /* no restriction on allowed response, so always preserve case */
         /* preserve_case = TRUE; -- moot since we're jumping to the end */
-        void sprintf(prompt, _("%s "), query);
+        sprintf(prompt, _("%s "), query);
         custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, _("%s"), prompt);
         q = readchar();
         break clean_up;
@@ -443,15 +402,15 @@ tty_yn_function(
             if (iflags.prevmsg_window != ord('s')) {
                 var sav = ttyDisplay.inread;
                 ttyDisplay.inread = 0;
-                void tty_doprev_message();
+                tty_doprev_message();
                 ttyDisplay.inread = sav;
                 tty_clear_nhwindow(WIN_MESSAGE);
                 cw.maxcol = cw.maxrow;
                 addtopl(prompt);
             } else {
                 if (!doprev)
-                    void tty_doprev_message(); /* need two initially */
-                void tty_doprev_message();
+                    tty_doprev_message(); /* need two initially */
+                tty_doprev_message();
                 doprev = 1;
             }
             q = ord('\0'); /* force another loop iteration */
@@ -467,7 +426,7 @@ tty_yn_function(
             q = ord('\0'); /* force another loop iteration */
             continue;
         }
-        digit_ok = ((allow_num && digit(q)) ? 1 : 0);
+        digit_ok = (allow_num && digit(q) ? 1 : 0);
         if (q == ord('\x1b')) {
             if (strchr(resp, ord('q')))
                 q = ord('q');
@@ -537,16 +496,13 @@ tty_yn_function(
             }
         }
     } while (!q);
-
  }
     if (yn_number)
-        void sprintf(rtmp, _("#%lld"), yn_number);
+        sprintf(rtmp, _("#%lld"), yn_number);
     else
-        void key2txt(uchar(q), rtmp);
+        key2txt(uchar(q), rtmp);
     /* addtopl(rtmp); -- rewrite gt.toplines instead */
-    void sprintf(gt.toplines, _("%s%s"), prompt, rtmp);
-
-
+    sprintf(gt.toplines, _("%s%s"), prompt, rtmp);
 
     ttyDisplay.inread--;
     ttyDisplay.toplin = TOPLINE_NON_EMPTY;
@@ -556,17 +512,16 @@ tty_yn_function(
         tty_clear_nhwindow(WIN_MESSAGE);
 
     return q;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* shared by tty_getmsghistory() and tty_putmsghistory() */
 const snapshot_mesgs = static_var("snapshot_mesgs", ptr_to(ptr_to(char)), null);
 
 /* collect currently available message history data into a sequential array;
    optionally, purge that data from the active circular buffer set as we go */
-function /* void */
-msghistory_snapshot(
-    purge) /* clear message history buffer as we copy it */
-{
+function msghistory_snapshot(
+    purge) { /* void */ /* clear message history buffer as we copy it */
     let mesg;
     let i, inidx, outidx;
     let cw;
@@ -609,11 +564,8 @@ msghistory_snapshot(
 }
 
 /* release memory allocated to message history snapshot */
-function /* void */
-free_msghistory_snapshot(
-    purged) /* True: took history's pointers,
-                     * False: just cloned them */
-{
+function free_msghistory_snapshot(
+    purged) { /* void */ /* True: took history's pointers, * False: just cloned them */
     if (snapshot_mesgs[0]) {
         /* snapshot pointers are no longer in use */
         if (purged) {
@@ -641,9 +593,7 @@ free_msghistory_snapshot(
  * Any new messages issued after that point will not be
  * included among the output of the subsequent calls.
  */
-export function /* char * */
-tty_getmsghistory(init)
-{
+export function tty_getmsghistory(init) { /* char * */
     let nxtidx = static_var("tty_getmsghistory.nxtidx", int);
     let nextmesg;
     let result = 0;
@@ -681,9 +631,7 @@ tty_getmsghistory(init)
  * has a one-line summary specified.  We put that line directly
  * into message history for ^P recall without having displayed it.
  */
-export function /* void */
-tty_putmsghistory(msg, restoring_msghist)
-{
+export function tty_putmsghistory(msg, restoring_msghist) { /* void */
     let initd = static_var("tty_putmsghistory.initd", schar, FALSE);
     let idx;
 
@@ -695,10 +643,6 @@ tty_putmsghistory(msg, restoring_msghist)
            restored ones are being put into place */
         msghistory_snapshot(TRUE);
         initd[0] = TRUE;
-
-
-
-
     }
 
     if (msg) {
@@ -711,21 +655,15 @@ tty_putmsghistory(msg, restoring_msghist)
 
         /* move most recent message to history, make this become most recent */
         remember_topl();
-        void strcpy(gt.toplines, msg);
-
-
-
+        strcpy(gt.toplines, msg);
     } else if (snapshot_mesgs[0]) {
-        void (((!!(ttyDisplay == null ||
-                 ttyDisplay.toplin != TOPLINE_NEED_MORE)) || ((nhassert_failed(_("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE"), _(__FILE__), 0), 0))));
+        ((!!(ttyDisplay == null ||
+                 ttyDisplay.toplin != TOPLINE_NEED_MORE)) || (nhassert_failed(_("ttyDisplay == NULL || ttyDisplay->toplin != TOPLINE_NEED_MORE"), _(__FILE__), 0), 0));
 
         /* done putting arbitrary messages in; put the snapshot ones back */
         for (idx = 0; snapshot_mesgs[0][idx]; ++idx) {
             remember_topl();
-            void strcpy(gt.toplines, snapshot_mesgs[0][idx]);
-
-
-
+            strcpy(gt.toplines, snapshot_mesgs[0][idx]);
         }
         /* now release the snapshot */
         free_msghistory_snapshot(TRUE);
@@ -733,86 +671,40 @@ tty_putmsghistory(msg, restoring_msghist)
     }
 }
 
-
-
 /*topl.c*/
+
 import { CO } from "../../src/decl.h.macros.js";
-import { BUFSZ } from "../../src/global.h.js";
-import { FALSE } from "../../src/global.h.js";
-import { QBUFSZ } from "../../src/global.h.js";
-import { TBUFSZ } from "../../src/global.h.js";
-import { TRUE } from "../../src/global.h.js";
+import { BUFSZ, FALSE, QBUFSZ, TBUFSZ, TRUE } from "../../src/global.h.js";
 import { C } from "../../src/global.h.macros.js";
-import { OVERRIDE_MSGTYPE } from "../../src/hack.h.js";
-import { SUPPRESS_HISTORY } from "../../src/hack.h.js";
+import { OVERRIDE_MSGTYPE, SUPPRESS_HISTORY } from "../../src/hack.h.js";
 import { AppendLongDigit } from "../../src/integer.h.macros.js";
-import { create_nhwindow } from "../../src/winprocs.h.macros.js";
-import { destroy_nhwindow } from "../../src/winprocs.h.macros.js";
-import { display_nhwindow } from "../../src/winprocs.h.macros.js";
-import { putstr } from "../../src/winprocs.h.macros.js";
-import { TOPLINE_EMPTY } from "../../src/wintty.h.js";
-import { TOPLINE_NEED_MORE } from "../../src/wintty.h.js";
-import { TOPLINE_NON_EMPTY } from "../../src/wintty.h.js";
-import { TOPLINE_SPECIAL_PROMPT } from "../../src/wintty.h.js";
-import { WIN_LOCKHISTORY } from "../../src/wintty.h.js";
-import { WIN_NOSTOP } from "../../src/wintty.h.js";
-import { WIN_STOP } from "../../src/wintty.h.js";
-import { NHW_MENU } from "../../src/wintype.h.js";
-import { WIN_ERR } from "../../src/wintype.h.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { schar } from "../../rt/ctypes.js";
-import { short } from "../../rt/ctypes.js";
-import { sizeof } from "../../rt/ctypes.js";
-import { uchar } from "../../rt/ctypes.js";
-import { unsigned } from "../../rt/ctypes.js";
-import { chars } from "../../rt/heap.js";
-import { stack_frame } from "../../rt/heap.js";
-import { stack_pop } from "../../rt/heap.js";
-import { free } from "../../rt/libc.js";
-import { putchar } from "../../rt/libc.js";
-import { sprintf } from "../../rt/libc.js";
-import { strcat } from "../../rt/libc.js";
-import { strchr } from "../../rt/libc.js";
-import { strcmp } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { strlen } from "../../rt/libc.js";
-import { strncmp } from "../../rt/libc.js";
-import { strncpy } from "../../rt/libc.js";
-import { stack_array } from "../../rt/locals.js";
-import { static_var } from "../../rt/locals.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, putstr,
+} from "../../src/winprocs.h.macros.js";
+import {
+    TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT, WIN_LOCKHISTORY,
+    WIN_NOSTOP, WIN_STOP,
+} from "../../src/wintty.h.js";
+import { NHW_MENU, WIN_ERR } from "../../src/wintype.h.js";
+import { char, int, ord, schar, short, sizeof, uchar, unsigned } from "../../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../../rt/heap.js";
+import {
+    free, putchar, sprintf, strcat, strchr, strcmp, strcpy, strlen, strncmp, strncpy,
+} from "../../rt/libc.js";
+import { stack_array, static_var } from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
-import { addr_of } from "../../rt/struct.js";
-import { ptr_to } from "../../rt/struct.js";
-import { ref_to } from "../../rt/struct.js";
+import { addr_of, ptr_to, ref_to } from "../../rt/struct.js";
 import { alloc } from "../../src/alloc.js";
-import { key2txt } from "../../src/cmd.js";
-import { readchar } from "../../src/cmd.js";
-import { flags } from "../../src/decl.js";
-import { gt } from "../../src/decl.js";
-import { iflags } from "../../src/decl.js";
-import { program_state } from "../../src/decl.js";
-import { quitchars } from "../../src/decl.js";
+import { key2txt, readchar } from "../../src/cmd.js";
+import { flags, gt, iflags, program_state, quitchars } from "../../src/decl.js";
 import { panic } from "../../src/end.js";
-import { digit } from "../../src/hacklib.js";
-import { eos } from "../../src/hacklib.js";
-import { lowc } from "../../src/hacklib.js";
-import { custompline } from "../../src/pline.js";
-import { nhassert_failed } from "../../src/pline.js";
+import { digit, eos, lowc } from "../../src/hacklib.js";
+import { custompline, nhassert_failed } from "../../src/pline.js";
 import { xwaitforspace } from "./getline.js";
-import { backsp } from "./termcap.js";
-import { cl_end } from "./termcap.js";
-import { home } from "./termcap.js";
-import { nomux_putch } from "./termcap.js";
-import { standoutbeg } from "./termcap.js";
-import { standoutend } from "./termcap.js";
-import { tty_nhbell } from "./termcap.js";
-import { defmorestr } from "./wintty.js";
-import { docorner } from "./wintty.js";
-import { end_glyphout } from "./wintty.js";
-import { g_putch } from "./wintty.js";
-import { tty_clear_nhwindow } from "./wintty.js";
-import { tty_curs } from "./wintty.js";
-import { wins } from "./wintty.js";
+import {
+    backsp, cl_end, home, nomux_putch, standoutbeg, standoutend, tty_nhbell,
+} from "./termcap.js";
+import {
+    defmorestr, docorner, end_glyphout, g_putch, tty_clear_nhwindow, tty_curs, wins,
+} from "./wintty.js";
 const __FILE__ = "../win/tty/topl.c";

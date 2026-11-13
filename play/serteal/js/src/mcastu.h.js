@@ -1,19 +1,6 @@
-
-
-
 export const MCF_INDIRECT = 0x0001;
 export const MCF_SIGHT = 0x0002;
 export const MCF_HOSTILE = 0x0004;
-
-
-
-
-
-
-
-
-
-
 
 export const MCAST_DUMPENUM_PSI_BOLT = 0; export const MCAST_PSI_BOLT = 0;
 export const MCAST_DUMPENUM_OPEN_WOUNDS = MCAST_DUMPENUM_PSI_BOLT + 1; export const MCAST_OPEN_WOUNDS = MCAST_PSI_BOLT + 1;

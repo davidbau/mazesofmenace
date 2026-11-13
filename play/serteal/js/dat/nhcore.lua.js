@@ -1,24 +1,24 @@
-export default "\n" + // -- NetHack core nhcore.lua	$NHDT-Date: 1652196284 2022/05/10 15:24:44 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.0 $
-"\n" + // --	Copyright (c) 2021 by Pasi Kallinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // -- This file contains lua code used by NetHack core.
-"\n" + // -- Is it loaded once, at game start, and kept in memory until game exit.
-`
-` + "\n" + // -- Data in nh_lua_variables table can be set and queried with nh.variable()
-"\n" + // -- This table is saved and restored along with the game.
-`nh_lua_variables = {
+export default String.raw`-- NetHack core nhcore.lua	$NHDT-Date: 1652196284 2022/05/10 15:24:44 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.0 $
+--	Copyright (c) 2021 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
+-- This file contains lua code used by NetHack core.
+-- Is it loaded once, at game start, and kept in memory until game exit.
+
+-- Data in nh_lua_variables table can be set and queried with nh.variable()
+-- This table is saved and restored along with the game.
+nh_lua_variables = {
 };
 
-` + "\n" + // -- wrapper to simplify calling from nethack core
-`function get_variables_string()
+-- wrapper to simplify calling from nethack core
+function get_variables_string()
    return "nh_lua_variables=" .. table_stringify(nh_lua_variables) .. ";";
 end
 
 function nh_callback_set(cb, fn)
    local cbname = "_CB_" .. cb;
 
-` + "\n" + // -- pline("callback_set(%s,%s)", cb, fn);
-`
+   -- pline("callback_set(%s,%s)", cb, fn);
+
    if (type(nh_lua_variables[cbname]) ~= "table") then
       nh_lua_variables[cbname] = {};
    end
@@ -28,8 +28,8 @@ end
 function nh_callback_rm(cb, fn)
    local cbname = "_CB_" .. cb;
 
-` + "\n" + // -- pline("callback_RM(%s,%s)", cb, fn);
-`
+   -- pline("callback_RM(%s,%s)", cb, fn);
+
    if (type(nh_lua_variables[cbname]) ~= "table") then
       nh_lua_variables[cbname] = {};
    end
@@ -39,9 +39,9 @@ end
 function nh_callback_run(cb, ...)
    local cbname = "_CB_" .. cb;
 
-` + "\n" + // -- pline("callback_run(%s)", cb);
-"\n" + // -- pline("TYPE:%s", type(nh_lua_variables[cbname]));
-`
+   -- pline("callback_run(%s)", cb);
+   -- pline("TYPE:%s", type(nh_lua_variables[cbname]));
+
    if (type(nh_lua_variables[cbname]) ~= "table") then
       nh_lua_variables[cbname] = {};
    end
@@ -53,10 +53,10 @@ function nh_callback_run(cb, ...)
    return true;
 end
 
-` + "\n" + // -- This is an example of generating an external file during gameplay,
-"\n" + // -- which is updated periodically.
-"\n" + // -- Intended for public servers using dgamelaunch as their login manager.
-`local prev_dgl_extrainfo = 0;
+-- This is an example of generating an external file during gameplay,
+-- which is updated periodically.
+-- Intended for public servers using dgamelaunch as their login manager.
+local prev_dgl_extrainfo = 0;
 function mk_dgl_extrainfo()
     if ((prev_dgl_extrainfo == 0) or (prev_dgl_extrainfo + 50 < u.moves)) then
         local filename = nh.dump_fmtstr("/tmp/nethack.%n.%d.log");
@@ -97,15 +97,15 @@ function mk_dgl_extrainfo()
             extrai:write(str);
             extrai:close();
         else
-` + "\n" + // -- failed to open the file.
-`            nh.pline("Failed to open dgl extrainfo file: " .. err);
+            -- failed to open the file.
+            nh.pline("Failed to open dgl extrainfo file: " .. err);
         end
         prev_dgl_extrainfo = u.moves;
     end
 end
 
-` + "\n" + // -- Show a helpful tip when player first uses getpos()
-`function show_getpos_tip()
+-- Show a helpful tip when player first uses getpos()
+function show_getpos_tip()
    nh.text([[
 Tip: Farlooking or selecting a map location
 
@@ -118,27 +118,27 @@ and pressing ? will show the key help.
 ]]);
 end
 
-` + "\n" + // -- Callback functions
-`nhcore = {
-` + "\n" + // -- start_new_game called once, when starting a new game
-"\n" + // -- after "Welcome to NetHack" message has been given.
-"\n" + // -- start_new_game = function() nh.pline("NEW GAME!"); end,
-`
-` + "\n" + // -- restore_old_game called once, when restoring a saved game
-"\n" + // -- after "Welcome back to NetHack" message has been given.
-"\n" + // -- restore_old_game = function() nh.pline("RESTORED OLD GAME!"); end,
-`
-` + "\n" + // -- moveloop_turn is called once per turn.
-"\n" + // -- moveloop_turn = mk_dgl_extrainfo,
-`
-` + "\n" + // -- game_exit is called when the game exits (quit, saved, ...)
-"\n" + // -- game_exit = function() end,
-`
-` + "\n" + // -- getpos_tip is called the first time the code enters getpos()
-`    getpos_tip = show_getpos_tip,
+-- Callback functions
+nhcore = {
+    -- start_new_game called once, when starting a new game
+    -- after "Welcome to NetHack" message has been given.
+    -- start_new_game = function() nh.pline("NEW GAME!"); end,
 
-` + "\n" + // -- enter_tutorial and leave_tutorial
-`    enter_tutorial = tutorial_enter,
+    -- restore_old_game called once, when restoring a saved game
+    -- after "Welcome back to NetHack" message has been given.
+    -- restore_old_game = function() nh.pline("RESTORED OLD GAME!"); end,
+
+    -- moveloop_turn is called once per turn.
+    -- moveloop_turn = mk_dgl_extrainfo,
+
+    -- game_exit is called when the game exits (quit, saved, ...)
+    -- game_exit = function() end,
+
+    -- getpos_tip is called the first time the code enters getpos()
+    getpos_tip = show_getpos_tip,
+
+    -- enter_tutorial and leave_tutorial
+    enter_tutorial = tutorial_enter,
     leave_tutorial = tutorial_leave,
 };
 

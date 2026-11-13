@@ -3,8 +3,6 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
  /* defined in eat.c */
 
 /* also used in insight.c */
@@ -13,40 +11,31 @@ export const enc_stat = static_array("enc_stat", ptr_to(char), null, [
     _("Strained"), _("Overtaxed"), _("Overloaded")
 ]);
 
-
-
-
-
-export function /* char * */
-get_strength_str()
-{
+export function get_strength_str() { /* char * */
     let buf = static_array("get_strength_str.buf", char, 32);
     let st = ACURR(A_STR);
 
     if (st > 18) {
         if (st > STR18(100))
-            void sprintf(buf, _("%2d"), st - 100);
+            sprintf(buf, _("%2d"), st - 100);
         else if (st < STR18(100))
-            void sprintf(buf, _("18/%02d"), st - 18);
+            sprintf(buf, _("18/%02d"), st - 18);
         else
-            void sprintf(buf, _("18/**"));
+            sprintf(buf, _("18/**"));
     } else
-        void sprintf(buf, _("%-1d"), st);
+        sprintf(buf, _("%-1d"), st);
 
     return buf;
 }
 
-export function /* void */
-check_gold_symbol()
-{
+export function check_gold_symbol() { /* void */
     let goldch = uchars[gs.showsyms + (COIN_CLASS + SYM_OFF_O)];
 
-    iflags.invis_goldsym = (+(goldch <= ord(' ')));
+    iflags.invis_goldsym = +(goldch <= ord(' '));
 }
 
-export function /* char * */
-do_statusline1()
-{ const $frame = stack_frame(); try {
+export function do_statusline1() { /* char * */
+    const $frame = stack_frame(); try {
     let newbot1 = static_array("do_statusline1.newbot1", char, BUFSZ);
     let nb;
     let i, j;
@@ -54,55 +43,48 @@ do_statusline1()
     if (suppress_map_output())
         return strcpy(newbot1, _(""));
 
-    void strcpy(newbot1, svp.plname);
+    strcpy(newbot1, svp.plname);
     if (ord('a') <= chars[newbot1 + 0] && chars[newbot1 + 0] <= ord('z'))
         chars[newbot1 + 0] += ord('A') - ord('a');
     chars[newbot1 + BOTL_NSIZ] = 0;
-    void sprintf(nb = eos(newbot1), _(" the "));
+    sprintf(nb = eos(newbot1), _(" the "));
 
     if (Upolyd()) {
         let mbot = stack_array(char, BUFSZ);
         let k = 0;
 
-        void strcpy(mbot, pmname(mons[u.umonnum], Ugender()));
+        strcpy(mbot, pmname(mons[u.umonnum], Ugender()));
         while (chars[mbot + k] != 0) {
             if ((k == 0 || (k > 0 && chars[mbot + (k - 1)] == ord(' '))) && ord('a') <= chars[mbot + k]
                 && chars[mbot + k] <= ord('z'))
                 chars[mbot + k] += ord('A') - ord('a');
             k++;
         }
-        void strcpy(nb = eos(nb), mbot);
+        strcpy(nb = eos(nb), mbot);
     } else {
-        void strcpy(nb = eos(nb), rank());
+        strcpy(nb = eos(nb), rank());
     }
 
-    void sprintf(nb = eos(nb), _("  "));
+    sprintf(nb = eos(nb), _("  "));
     i = gm.mrank_sz + 15;
     j = ((nb + 2) - newbot1); /* strlen(newbot1) but less computation */
     if ((i - j) > 0)
-        void sprintf(nb = eos(nb), _("%*s"), i - j, _(" ")); /* pad with spaces */
+        sprintf(nb = eos(nb), _("%*s"), i - j, _(" ")); /* pad with spaces */
 
-    void sprintf(nb = eos(nb), _("St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d"), get_strength_str(), ACURR(A_DEX), ACURR(A_CON), ACURR(A_INT), ACURR(A_WIS), ACURR(A_CHA))
-
+    sprintf(nb = eos(nb), _("St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d"), get_strength_str(), ACURR(A_DEX), ACURR(A_CON), ACURR(A_INT), ACURR(A_WIS), ACURR(A_CHA))
 
 ;
-    void sprintf(nb = eos(nb), _("%s"), (u.ualign.type == A_CHAOTIC) ? _("  Chaotic")
+    sprintf(nb = eos(nb), _("%s"), (u.ualign.type == A_CHAOTIC) ? _("  Chaotic")
               : (u.ualign.type == A_NEUTRAL) ? _("  Neutral")
                 : _("  Lawful"))
 ;
 
-
-
-
     return newbot1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* char * */
-do_statusline2()
-{
+export function do_statusline2() { /* char * */
     let newbot2 = static_array("do_statusline2.newbot2", char, BUFSZ),
-
-
 
          dloc = static_array("do_statusline2.dloc", char, QBUFSZ), hlth = static_array("do_statusline2.hlth", char, QBUFSZ), expr = static_array("do_statusline2.expr", char, QBUFSZ),
          tmmv = static_array("do_statusline2.tmmv", char, QBUFSZ), cond = static_array("do_statusline2.cond", char, QBUFSZ), vers = static_array("do_statusline2.vers", char, QBUFSZ);
@@ -124,10 +106,10 @@ do_statusline2()
      */
 
     /* dungeon location plus gold */
-    void describe_level(dloc, 1); /* includes at least one trailing space */
+    describe_level(dloc, 1); /* includes at least one trailing space */
     if ((money = money_cnt(gi.invent)) < 0)
         money = 0; /* ought to issue impossible() and then discard gold */
-    void sprintf(eos(dloc), _("%s:%-2lld"), (iflags.in_dumplog || iflags.invis_goldsym) ? _("$")
+    sprintf(eos(dloc), _("%s:%-2lld"), (iflags.in_dumplog || iflags.invis_goldsym) ? _("$")
               : encglyph(objnum_to_glyph(GOLD_PIECE)), min(money, 999999))
 
 ;
@@ -140,23 +122,23 @@ do_statusline2()
     hpmax = Upolyd() ? u.mhmax : u.uhpmax;
     if (hp < 0)
         hp = 0;
-    void sprintf(hlth, _("HP:%d(%d) Pw:%d(%d) AC:%-2d"), min(hp, 9999), min(hpmax, 9999), min(u.uen, 9999), min(u.uenmax, 9999), u.uac)
+    sprintf(hlth, _("HP:%d(%d) Pw:%d(%d) AC:%-2d"), min(hp, 9999), min(hpmax, 9999), min(u.uen, 9999), min(u.uenmax, 9999), u.uac)
 
 ;
     hln = strlen(hlth);
 
     /* experience */
     if (Upolyd())
-        void sprintf(expr, _("HD:%d"), mons[u.umonnum].mlevel);
+        sprintf(expr, _("HD:%d"), mons[u.umonnum].mlevel);
     else if (flags.showexp)
-        void sprintf(expr, _("Xp:%d/%-1lld"), u.ulevel, u.uexp);
+        sprintf(expr, _("Xp:%d/%-1lld"), u.ulevel, u.uexp);
     else
-        void sprintf(expr, _("Xp:%d"), u.ulevel);
+        sprintf(expr, _("Xp:%d"), u.ulevel);
     xln = strlen(expr);
 
     /* time/move counter */
     if (flags.time)
-        void sprintf(tmmv, _("T:%lld"), svm.moves);
+        sprintf(tmmv, _("T:%lld"), svm.moves);
     else
         chars[tmmv + 0] = ord('\0');
     tln = strlen(tmmv);
@@ -171,43 +153,43 @@ do_statusline2()
      * unusual for more than one of them to apply at a time.]
      */
     if (Stoned())
-        void strcpy(nb = eos(nb), _(" Stone"));
+        strcpy(nb = eos(nb), _(" Stone"));
     if (Slimed())
-        void strcpy(nb = eos(nb), _(" Slime"));
+        strcpy(nb = eos(nb), _(" Slime"));
     if (Strangled())
-        void strcpy(nb = eos(nb), _(" Strngl"));
+        strcpy(nb = eos(nb), _(" Strngl"));
     if (Sick()) {
         if (u.usick_type & SICK_VOMITABLE)
-            void strcpy(nb = eos(nb), _(" FoodPois"));
+            strcpy(nb = eos(nb), _(" FoodPois"));
         if (u.usick_type & SICK_NONVOMITABLE)
-            void strcpy(nb = eos(nb), _(" TermIll"));
+            strcpy(nb = eos(nb), _(" TermIll"));
     }
     if (u.uhs != NOT_HUNGRY)
-        void sprintf(nb = eos(nb), _(" %s"), hu_stat[u.uhs]);
+        sprintf(nb = eos(nb), _(" %s"), hu_stat[u.uhs]);
     if ((cap = near_capacity()) > UNENCUMBERED)
-        void sprintf(nb = eos(nb), _(" %s"), enc_stat[cap]);
+        sprintf(nb = eos(nb), _(" %s"), enc_stat[cap]);
     if (Blind())
-        void strcpy(nb = eos(nb), _(" Blind"));
+        strcpy(nb = eos(nb), _(" Blind"));
     if (Deaf())
-        void strcpy(nb = eos(nb), _(" Deaf"));
+        strcpy(nb = eos(nb), _(" Deaf"));
     if (Stunned())
-        void strcpy(nb = eos(nb), _(" Stun"));
+        strcpy(nb = eos(nb), _(" Stun"));
     if (Confusion())
-        void strcpy(nb = eos(nb), _(" Conf"));
+        strcpy(nb = eos(nb), _(" Conf"));
     if (Hallucination())
-        void strcpy(nb = eos(nb), _(" Hallu"));
+        strcpy(nb = eos(nb), _(" Hallu"));
     /* levitation and flying are mutually exclusive; riding is not */
     if (Levitation())
-        void strcpy(nb = eos(nb), _(" Lev"));
+        strcpy(nb = eos(nb), _(" Lev"));
     if (Flying())
-        void strcpy(nb = eos(nb), _(" Fly"));
+        strcpy(nb = eos(nb), _(" Fly"));
     if (u.usteed)
-        void strcpy(nb = eos(nb), _(" Ride"));
+        strcpy(nb = eos(nb), _(" Ride"));
     cln = strlen(cond);
 
     /* version on status line, with leading space */
     if (flags.showvers)
-        void status_version(vers, sizeof(array_of(char, QBUFSZ)), TRUE);
+        status_version(vers, sizeof(array_of(char, QBUFSZ)), TRUE);
     else
         chars[vers + 0] = ord('\0');
     vrn = strlen(vers);
@@ -224,19 +206,19 @@ do_statusline2()
      * wider displays can still show wider status than the map if the
      * interface supports that.
      */
-    if (unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned((unsigned(dln - dx)) + 1) + hln) + 1) + xln) + 1) + tln) + 1) + cln) + vrn) <= COLNO) {
+    if (unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(dln - dx) + 1) + hln) + 1) + xln) + 1) + tln) + 1) + cln) + vrn) <= COLNO) {
         Snprintf(newbot2, sizeof(array_of(char, BUFSZ)), _("%s %s %s %s %s%s"), dloc, hlth, expr, tmmv, cond, vers)
 ;
     } else {
         if (unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(dln + 1) + hln) + 1) + xln) + 1) + tln) + 1) + cln) + vrn) > MAXCO) {
             panic(_("bot2: second status line exceeds MAXCO (%u > %d)"),
-                  unsigned((unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(dln + 1) + hln) + 1) + xln) + 1) + tln) + 1) + cln)
-                              + vrn))),
+                  unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(dln + 1) + hln) + 1) + xln) + 1) + tln) + 1) + cln)
+                              + vrn),
                   MAXCO);
-        } else if (unsigned(unsigned(unsigned(unsigned(unsigned(unsigned((unsigned(dln - dx)) + 1) + hln) + 1) + xln) + 1) + cln) <= COLNO) {
+        } else if (unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(unsigned(dln - dx) + 1) + hln) + 1) + xln) + 1) + cln) <= COLNO) {
             Snprintf(newbot2, sizeof(array_of(char, BUFSZ)), _("%s %s %s %s %s%s"), dloc, hlth, expr, cond, tmmv, vers)
 ;
-        } else if (unsigned(unsigned(unsigned(unsigned((unsigned(dln - dx)) + 1) + hln) + 1) + cln) <= COLNO) {
+        } else if (unsigned(unsigned(unsigned(unsigned(unsigned(dln - dx) + 1) + hln) + 1) + cln) <= COLNO) {
             Snprintf(newbot2, sizeof(array_of(char, BUFSZ)), _("%s %s %s %s %s%s"), dloc, hlth, cond, expr, tmmv, vers)
 ;
         } else {
@@ -249,9 +231,7 @@ do_statusline2()
     return newbot2;
 }
 
-export function /* void */
-bot()
-{
+export function bot() { /* void */
     if (gb.bot_disabled)
         return;
     /* dosave() flags completion by setting u.uhp to -1; suppress_map_output()
@@ -271,9 +251,7 @@ bot()
 }
 
 /* special purpose status update: move counter ('time' status) only */
-export function /* void */
-timebot()
-{
+export function timebot() { /* void */
     if (gb.bot_disabled)
         return;
     /* we're called when disp.time_botl is set and general disp.botl
@@ -294,9 +272,7 @@ timebot()
 }
 
 /* convert experience level (1..30) to rank index (0..8) */
-export function /* int */
-xlev_to_rank(xlev)
-{
+export function xlev_to_rank(xlev) { /* int */
     /*
      *   1..2  => 0
      *   3..5  => 1
@@ -307,13 +283,11 @@ xlev_to_rank(xlev)
      *    30   => 8
      * Conversion is precise but only partially reversible.
      */
-    return (xlev <= 2) ? 0 : (xlev <= 30) ? (Math.trunc((xlev + 2) / 4)) : 8;
+    return (xlev <= 2) ? 0 : (xlev <= 30) ? Math.trunc((xlev + 2) / 4) : 8;
 }
 
 /* convert rank index (0..8) to experience level (1..30) */
-export function /* int */
-rank_to_xlev(rank)
-{
+export function rank_to_xlev(rank) { /* int */
     /*
      *  0 =>  1..2
      *  1 =>  3..5
@@ -328,9 +302,7 @@ rank_to_xlev(rank)
            : (rank < 8) ? ((rank * 4) - 2) : 30;
 }
 
-export function /* const char * */
-rank_of(lev, monnum, female)
-{
+export function rank_of(lev, monnum, female) { /* const char * */
     let role;
     let i;
 
@@ -357,18 +329,14 @@ rank_of(lev, monnum, female)
     return _("Player");
 }
 
-function /* const char * */
-rank()
-{
+function rank() { /* const char * */
     return rank_of(u.ulevel, Role_switch(), flags.female);
 }
 
-export function /* int */
-title_to_mon(
+export function title_to_mon(
     str,
     rank_indx,
-    title_length)
-{
+    title_length) { /* int */
     let i, j;
 
     /* Loop through each of the roles */
@@ -398,9 +366,7 @@ title_to_mon(
     return NON_PM;
 }
 
-export function /* void */
-max_rank_sz()
-{
+export function max_rank_sz() { /* void */
     let i;
     let r, maxr = 0;
 
@@ -414,72 +380,48 @@ max_rank_sz()
     return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef SCORE_ON_BOTL: not in this build */
 
 /* provide the name of the current level for display by various ports */
-export function /* int */
-describe_level(
+export function describe_level(
     buf,
-    dflgs) /* 1: append trailing space; 2: include dungeon branch name */
-{
+    dflgs) { /* int */ /* 1: append trailing space; 2: include dungeon branch name */
     let addspace = +((dflgs & 1) != 0),
             addbranch = +((dflgs & 2) != 0); /* False: status, True: livelog */
     let ret = 1;
 
     if (Is_knox(u.uz)) {
-        void sprintf(buf, _("%s"), svd.dungeons[u.uz.dnum].dname);
+        sprintf(buf, _("%s"), svd.dungeons[u.uz.dnum].dname);
         addbranch = FALSE;
     } else if (In_quest(u.uz)) {
-        void sprintf(buf, _("Home %d"), dunlev(u.uz));
+        sprintf(buf, _("Home %d"), dunlev(u.uz));
     } else if (In_endgame(u.uz)) {
         /* [3.6.2: this used to be "Astral Plane" or generic "End Game"] */
-        void endgamelevelname(buf, depth(u.uz));
+        endgamelevelname(buf, depth(u.uz));
         if (!addbranch)
-            void strsubst(buf, _("Plane of "), _("")); /* just keep <element> */
+            strsubst(buf, _("Plane of "), _("")); /* just keep <element> */
         addbranch = FALSE;
     } else {
         /* ports with more room may expand this one */
         if (!addbranch)
-            void sprintf(buf, _("%s:%-2d"), In_tutorial(u.uz) ? _("Tutorial") : _("Dlvl"), depth(u.uz));
+            sprintf(buf, _("%s:%-2d"), In_tutorial(u.uz) ? _("Tutorial") : _("Dlvl"), depth(u.uz));
         else
-            void sprintf(buf, _("level %d"), depth(u.uz))
+            sprintf(buf, _("level %d"), depth(u.uz))
 ;
         ret = 0;
     }
     if (addbranch) {
-        void sprintf(eos(buf), _(", %s"), svd.dungeons[u.uz.dnum].dname);
-        void strsubst(buf, _("The "), _("the "));
+        sprintf(eos(buf), _(", %s"), svd.dungeons[u.uz.dnum].dname);
+        strsubst(buf, _("The "), _("the "));
     }
     if (addspace)
-        void strcat(buf, _(" "));
+        strcat(buf, _(" "));
     return ret;
 }
 
 /* weapon description for status lines; started as a terser version of
    what ^X shows but has diverged to some extent */
-export function /* char * */
-weapon_status(outbuf)
-{
+export function weapon_status(outbuf) { /* char * */
     let res = 0;
 
     chars[outbuf] = ord('\0'); /* lint suppression */
@@ -535,7 +477,7 @@ weapon_status(outbuf)
             default:
                 res = weapon_descr(uwep);
                 /* [should this be moved into weapon_descr()?] */
-                if (!strcmpi(res, _("food")) && uwep.otyp == CREAM_PIE)
+                if (!strncmpi((res), _(("food")), -1) && uwep.otyp == CREAM_PIE)
                     res = _("pie");
                 break;
             }
@@ -543,21 +485,19 @@ weapon_status(outbuf)
 
         if ((uwep.oclass == WEAPON_CLASS || is_weptool(uwep))
             && bimanual(uwep) && chars[res] != ord('2') && strncmpi(res, _("two"), 3))
-            void strcat(outbuf, _("2H-"));
-        void strcpy(p = eos(outbuf), res), res = outbuf;
+            strcat(outbuf, _("2H-"));
+        strcpy(p = eos(outbuf), res), res = outbuf;
         chars[p] = highc(chars[p]);
         /* avoid embedded spaces since its designed to appear as part
            of a space-separated status line */
-        void strNsubst(outbuf, _(" "), _("-"), 0);
+        strNsubst(outbuf, _(" "), _("-"), 0);
     }
 
     return (outbuf == res) ? outbuf : strcpy(outbuf, res);
 }
 
 /* armor description for status lines */
-export function /* char * */
-armor_status(armbuf)
-{
+export function armor_status(armbuf) { /* char * */
     let n = +!!uarmg + +!!uarmc + +!!uarm + +!!uarmu + +!!uarmh + +!!uarmf + +!!uarms;
 
     /*
@@ -565,9 +505,9 @@ armor_status(armbuf)
      * At present it just reports the "no armor" case.
      */
     if (n == 0) { /* no armor */
-        void strcpy(armbuf, _("naked"));
+        strcpy(armbuf, _("naked"));
     } else if (n == 1) { /* just one piece; spell it out */
-        void strcpy(armbuf, uarmg ? _("gloves")
+        strcpy(armbuf, uarmg ? _("gloves")
                        : uarmc ? _("cloak")
                          : uarm  ? _("suit")
                            : uarmu ? _("shirt")
@@ -609,7 +549,7 @@ armor_status(armbuf)
         || (uarmc && uarmc.otyp == CLOAK_OF_PROTECTION)
         || (uarmh && uarmh.oartifact == ART_MITRE_OF_HOLINESS)
         || (uwep && uwep.oartifact == ART_TSURUGI_OF_MURAMASA))
-        void strkitten(armbuf, ord('+'));
+        strkitten(armbuf, ord('+'));
 
     return upstart(armbuf);
 }
@@ -620,74 +560,11 @@ armor_status(armbuf)
 
 /* structure that tracks the status details in the core */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function has_hilite(i) { return (gb.blstats[0][(i)].thresholds); }
+export function has_hilite(i) { return (gb.blstats[0][i].thresholds); }
 /* TH_UPDOWN encompasses specific 'up' and 'down' also general 'changed' */
-export function Is_Temp_Hilite(rule) { return ((((rule) && (rule).behavior == BL_TH_UPDOWN) ? 1 : 0)); }
+export function Is_Temp_Hilite(rule) { return (rule && rule.behavior == BL_TH_UPDOWN ? 1 : 0); }
 
 /* pointers to current hilite rule and list of this field's defined rules */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * If entries are added to this, botl.h will require updating too.
@@ -740,12 +617,6 @@ const initblstats = static_array("initblstats", struct_istat_s, MAXBLSTATS, [
     { fldname: _("terrain"), fldfmt: _(" %s"), chg: FALSE, percent_matters: FALSE, anytype: ANY_STR, valwidth: 20, idxmax: -1, fld: BL_TERRAIN },
 ]);
 
-
-
-
-
-
-
 const condition_aliases = static_array("condition_aliases", struct_condmap, null, [
     { id: _("strangled"),      bitmask: BL_MASK_STRNGL },
     { id: _("all"),            bitmask: BL_MASK_BAREH | BL_MASK_BLIND | BL_MASK_BUSY
@@ -774,8 +645,6 @@ const condition_aliases = static_array("condition_aliases", struct_condmap, null
                         | BL_MASK_UNCONSC | BL_MASK_WOUNDEDL
                         | BL_MASK_HOLDING },
 ]);
-
-
 
 /* condition names and their abbreviations are used by windowport code */
 export const conditions = static_array("conditions", struct_conditions_t, null, [
@@ -920,34 +789,34 @@ const cache_avail = static_array("cache_avail", schar, 3, [ FALSE, FALSE, FALSE 
 const cache_reslt = static_array("cache_reslt", schar, 3, [ FALSE, FALSE, FALSE ]);
 const cache_nomovemsg = static_var("cache_nomovemsg", ptr_to(char), 0); const cache_multi_reason = static_var("cache_multi_reason", ptr_to(char), 0);
 
-export function cond_cache_prepA() { 
-do {                                                        
-    let clear_cache = FALSE, refresh_cache = FALSE;     
-                                                            
-    if (gm.multi < 0) {                                     
-        if (gn.nomovemsg || gm.multi_reason) {              
-            if (cache_nomovemsg[0] != gn.nomovemsg)            
-                refresh_cache = TRUE;                       
-            if (cache_multi_reason[0] != gm.multi_reason)      
-                refresh_cache = TRUE;                       
-        } else {                                            
-            clear_cache = TRUE;                             
-        }                                                   
-    } else {                                                
-        clear_cache = TRUE;                                 
-    }                                                       
-    if (clear_cache) {                                      
-        cache_nomovemsg[0] = 0;                 
-        cache_multi_reason[0] = 0;              
-    }                                                       
-    if (refresh_cache) {                                    
-        cache_nomovemsg[0] = gn.nomovemsg;                     
-        cache_multi_reason[0] = gm.multi_reason;               
-    }                                                       
-    if (clear_cache || refresh_cache) {                     
-        chars[cache_reslt + 0] = chars[cache_avail + 0] = FALSE;            
-        chars[cache_reslt + 1] = chars[cache_avail + 1] = FALSE;            
-    }                                                       
+export function cond_cache_prepA() {
+do {
+    let clear_cache = FALSE, refresh_cache = FALSE;
+
+    if (gm.multi < 0) {
+        if (gn.nomovemsg || gm.multi_reason) {
+            if (cache_nomovemsg[0] != gn.nomovemsg)
+                refresh_cache = TRUE;
+            if (cache_multi_reason[0] != gm.multi_reason)
+                refresh_cache = TRUE;
+        } else {
+            clear_cache = TRUE;
+        }
+    } else {
+        clear_cache = TRUE;
+    }
+    if (clear_cache) {
+        cache_nomovemsg[0] = 0;
+        cache_multi_reason[0] = 0;
+    }
+    if (refresh_cache) {
+        cache_nomovemsg[0] = gn.nomovemsg;
+        cache_multi_reason[0] = gm.multi_reason;
+    }
+    if (clear_cache || refresh_cache) {
+        chars[cache_reslt + 0] = chars[cache_avail + 0] = FALSE;
+        chars[cache_reslt + 1] = chars[cache_avail + 1] = FALSE;
+    }
 } while (0) }
 
 /* we don't put this next declaration in #ifdef STATUS_HILITES.
@@ -958,9 +827,8 @@ do {
  * without STATUS_HILITES.
  */
 
-function /* void */
-bot_via_windowport()
-{ const $frame = stack_frame(); try {
+function bot_via_windowport() { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let titl;
     let nb;
@@ -975,7 +843,7 @@ bot_via_windowport()
     gn.now_or_before_idx = idx;
 
     /* clear the "value set" indicators */
-    void memset(gv.valset, 0, MAXBLSTATS * sizeof(schar));
+    memset(gv.valset, 0, MAXBLSTATS * sizeof(schar));
 
     /*
      * Note: min(x,9999) - we enforce the same maximum on hp, maxhp,
@@ -986,30 +854,30 @@ bot_via_windowport()
     /*
      *  Player name and title.
      */
-    void strcpy(nb = buf, svp.plname);
+    strcpy(nb = buf, svp.plname);
     chars[nb + 0] = highc(chars[nb + 0]);
     titl = !Upolyd() ? rank() : pmname(mons[u.umonnum], Ugender());
-    i = int((unsigned(unsigned(unsigned(strlen(buf) + sizeof_string(" the ")) + strlen(titl)) - sizeof_string(""))));
+    i = int(unsigned(unsigned(unsigned(strlen(buf) + sizeof_string(" the ")) + strlen(titl)) - sizeof_string("")));
     /* if "Name the Rank/monster" is too long, we truncate the name but
        always keep at least BOTL_NSIZ characters of it; when hitpointbar is
        enabled, anything beyond 30 (long monster name) will be truncated */
     if (i > 30) {
-        i = 30 - int((unsigned(unsigned(sizeof_string(" the ") + strlen(titl)) - sizeof_string(""))));
+        i = 30 - int(unsigned(unsigned(sizeof_string(" the ") + strlen(titl)) - sizeof_string("")));
         chars[nb + max(i, BOTL_NSIZ)] = ord('\0');
     }
-    void strcpy(nb = eos(nb), _(" the "));
-    void strcpy(nb = eos(nb), titl);
+    strcpy(nb = eos(nb), _(" the "));
+    strcpy(nb = eos(nb), titl);
     if (Upolyd()) { /* when poly'd, capitalize monster name */
         for (i = 0; chars[nb + i]; i++)
             if (i == 0 || chars[nb + (i - 1)] == ord(' '))
                 chars[nb + i] = highc(chars[nb + i]);
     }
-    void sprintf(gb.blstats[idx][BL_TITLE].val, _("%-30s"), buf);
+    sprintf(gb.blstats[idx][BL_TITLE].val, _("%-30s"), buf);
     chars[gv.valset + BL_TITLE] = TRUE; /* indicate val already set */
 
     /* Strength */
     gb.blstats[idx][BL_STR].a.a_int = ACURR(A_STR);
-    void strcpy(gb.blstats[idx][BL_STR].val, get_strength_str());
+    strcpy(gb.blstats[idx][BL_STR].val, get_strength_str());
     chars[gv.valset + BL_STR] = TRUE; /* indicate val already set */
 
     /*  Dexterity, constitution, intelligence, wisdom, charisma. */
@@ -1020,7 +888,7 @@ bot_via_windowport()
     gb.blstats[idx][BL_CH].a.a_int = ACURR(A_CHA);
 
     /* Alignment */
-    void strcpy(gb.blstats[idx][BL_ALIGN].val, (u.ualign.type == A_CHAOTIC)
+    strcpy(gb.blstats[idx][BL_ALIGN].val, (u.ualign.type == A_CHAOTIC)
                                           ? _("Chaotic")
                                           : (u.ualign.type == A_NEUTRAL)
                                                ? _("Neutral")
@@ -1028,8 +896,6 @@ bot_via_windowport()
 
     /* Score */
     gb.blstats[idx][BL_SCORE].a.a_long =
-
-
 
         0;
 
@@ -1044,7 +910,7 @@ bot_via_windowport()
     gb.blstats[idx][BL_HPMAX].a.a_int = min(i, 9999);
 
     /*  Dungeon level. */
-    void describe_level(gb.blstats[idx][BL_LEVELDESC].val, 1);
+    describe_level(gb.blstats[idx][BL_LEVELDESC].val, 1);
     chars[gv.valset + BL_LEVELDESC] = TRUE; /* indicate val already set */
 
     /* Gold */
@@ -1067,7 +933,7 @@ bot_via_windowport()
      * The currency prefix is encoded as ten character \GXXXXNNNN
      * sequence.
      */
-    void sprintf(gb.blstats[idx][BL_GOLD].val, _("%s:%lld"), (iflags.in_dumplog || iflags.invis_goldsym) ? _("$")
+    sprintf(gb.blstats[idx][BL_GOLD].val, _("%s:%lld"), (iflags.in_dumplog || iflags.invis_goldsym) ? _("$")
               : encglyph(objnum_to_glyph(GOLD_PIECE)), gb.blstats[idx][BL_GOLD].a.a_long)
 
 ;
@@ -1098,14 +964,14 @@ bot_via_windowport()
        numeric field so it's far simpler to treat it as plain int and
        not need ANY_UINT handling at all */
     gb.blstats[idx][BL_HUNGER].a.a_int = int(u.uhs);
-    void strcpy(gb.blstats[idx][BL_HUNGER].val, (u.uhs != NOT_HUNGRY) ? hu_stat[u.uhs] : _(""))
+    strcpy(gb.blstats[idx][BL_HUNGER].val, (u.uhs != NOT_HUNGRY) ? hu_stat[u.uhs] : _(""))
 ;
     chars[gv.valset + BL_HUNGER] = TRUE;
 
     /* Carrying capacity */
     cap = near_capacity();
     gb.blstats[idx][BL_CAP].a.a_int = cap;
-    void strcpy(gb.blstats[idx][BL_CAP].val, (cap > UNENCUMBERED) ? enc_stat[cap] : _(""))
+    strcpy(gb.blstats[idx][BL_CAP].val, (cap > UNENCUMBERED) ? enc_stat[cap] : _(""))
 ;
     chars[gv.valset + BL_CAP] = TRUE;
 
@@ -1116,7 +982,7 @@ bot_via_windowport()
         chars[gv.valset + BL_VERS] = FALSE;
     }
     if (!chars[gv.valset + BL_VERS]) {
-        void status_version(gb.blstats[idx][BL_VERS].val,
+        status_version(gb.blstats[idx][BL_VERS].val,
                               unsigned(gb.blstats[idx][BL_VERS].valwidth), FALSE);
         chars[gv.valset + BL_VERS] = TRUE;
     }
@@ -1144,8 +1010,6 @@ bot_via_windowport()
      * configurations) should ameliorate that.]
      */
 
-
-
     condtests[bl_foodpois].test = condtests[bl_termill].test = FALSE;
     if (Sick()) {
         if (condtests[(bl_foodpois)].enabled) condtests[(bl_foodpois)].test = +((u.usick_type & SICK_VOMITABLE) != 0);;
@@ -1154,16 +1018,14 @@ bot_via_windowport()
     condtests[bl_inlava].test = condtests[bl_tethered].test
         = condtests[bl_trapped].test = FALSE;
     if (u.utrap) {
-        if (condtests[(bl_inlava)].enabled) condtests[(bl_inlava)].test = (+(u.utraptype == TT_LAVA));;
-        if (condtests[(bl_tethered)].enabled) condtests[(bl_tethered)].test = (+(u.utraptype == TT_BURIEDBALL));;
+        if (condtests[(bl_inlava)].enabled) condtests[(bl_inlava)].test = +(u.utraptype == TT_LAVA);;
+        if (condtests[(bl_tethered)].enabled) condtests[(bl_tethered)].test = +(u.utraptype == TT_BURIEDBALL);;
         /* if in-lava or tethered is disabled and the condition applies,
            lump it in with trapped */
-        if (condtests[(bl_trapped)].enabled) condtests[(bl_trapped)].test = (+(!condtests[bl_inlava].test
-                                       && !condtests[bl_tethered].test));;
+        if (condtests[(bl_trapped)].enabled) condtests[(bl_trapped)].test = +(!condtests[bl_inlava].test
+                                       && !condtests[bl_tethered].test);;
     }
     condtests[bl_grab].test = condtests[bl_held].test
-
-
 
         = condtests[bl_holding].test = FALSE;
     if (u.ustuck) {
@@ -1175,49 +1037,46 @@ bot_via_windowport()
             /* engulfed/swallowed isn't currently a tracked status condition;
                "held" might look odd for it but seems better than blank */
 
-
-
             if (condtests[(bl_held)].enabled) condtests[(bl_held)].test = TRUE;;
-
         } else if (Upolyd() && sticks(gy.youmonst.data)) {
             if (condtests[(bl_holding)].enabled) condtests[(bl_holding)].test = TRUE;;
         } else {
             /* grab == hero is held by sea monster and about to be drowned;
                held == hero is held by something else and can't move away */
-            if (condtests[(bl_grab)].enabled) condtests[(bl_grab)].test = (+(u.ustuck.data.mlet == S_EEL));;
+            if (condtests[(bl_grab)].enabled) condtests[(bl_grab)].test = +(u.ustuck.data.mlet == S_EEL);;
             if (condtests[(bl_held)].enabled) condtests[(bl_held)].test = +!condtests[bl_grab].test;;
         }
     }
-    condtests[bl_blind].test     = (Blind()) ? TRUE : FALSE;
-    condtests[bl_conf].test      = (Confusion()) ? TRUE : FALSE;
-    condtests[bl_deaf].test      = (Deaf()) ? TRUE : FALSE;
-    condtests[bl_fly].test       = (Flying()) ? TRUE : FALSE;
-    condtests[bl_glowhands].test = (u.umconf) ? TRUE : FALSE;
-    condtests[bl_hallu].test     = (Hallucination()) ? TRUE : FALSE;
-    condtests[bl_lev].test       = (Levitation()) ? TRUE : FALSE;
-    condtests[bl_ride].test      = (u.usteed) ? TRUE : FALSE;
-    condtests[bl_slime].test     = (Slimed()) ? TRUE : FALSE;
-    condtests[bl_stone].test     = (Stoned()) ? TRUE : FALSE;
-    condtests[bl_strngl].test    = (Strangled()) ? TRUE : FALSE;
-    condtests[bl_stun].test      = (Stunned()) ? TRUE : FALSE;
-    condtests[bl_submerged].test = (Underwater()) ? TRUE : FALSE;
-    if (condtests[(bl_elf_iron)].enabled) condtests[(bl_elf_iron)].test = (FALSE);;
-    if (condtests[(bl_bareh)].enabled) condtests[(bl_bareh)].test = (+(!uarmg && !uwep));;
-    if (condtests[(bl_icy)].enabled) condtests[(bl_icy)].test = (+(levl()[u.ux][u.uy].typ == ICE));;
-    if (condtests[(bl_slippery)].enabled) condtests[(bl_slippery)].test = (Glib()) ? TRUE : FALSE;;
-    if (condtests[(bl_woundedl)].enabled) condtests[(bl_woundedl)].test = (Wounded_legs()) ? TRUE : FALSE;;
+    condtests[bl_blind].test     = Blind() ? TRUE : FALSE;
+    condtests[bl_conf].test      = Confusion() ? TRUE : FALSE;
+    condtests[bl_deaf].test      = Deaf() ? TRUE : FALSE;
+    condtests[bl_fly].test       = Flying() ? TRUE : FALSE;
+    condtests[bl_glowhands].test = u.umconf ? TRUE : FALSE;
+    condtests[bl_hallu].test     = Hallucination() ? TRUE : FALSE;
+    condtests[bl_lev].test       = Levitation() ? TRUE : FALSE;
+    condtests[bl_ride].test      = u.usteed ? TRUE : FALSE;
+    condtests[bl_slime].test     = Slimed() ? TRUE : FALSE;
+    condtests[bl_stone].test     = Stoned() ? TRUE : FALSE;
+    condtests[bl_strngl].test    = Strangled() ? TRUE : FALSE;
+    condtests[bl_stun].test      = Stunned() ? TRUE : FALSE;
+    condtests[bl_submerged].test = Underwater() ? TRUE : FALSE;
+    if (condtests[(bl_elf_iron)].enabled) condtests[(bl_elf_iron)].test = FALSE;;
+    if (condtests[(bl_bareh)].enabled) condtests[(bl_bareh)].test = +(!uarmg && !uwep);;
+    if (condtests[(bl_icy)].enabled) condtests[(bl_icy)].test = +(levl()[u.ux][u.uy].typ == ICE);;
+    if (condtests[(bl_slippery)].enabled) condtests[(bl_slippery)].test = Glib() ? TRUE : FALSE;;
+    if (condtests[(bl_woundedl)].enabled) condtests[(bl_woundedl)].test = Wounded_legs() ? TRUE : FALSE;;
 
     if (gm.multi < 0) {
         cond_cache_prepA();
         if (condtests[bl_unconsc].enabled
             && cache_nomovemsg[0] && !chars[cache_avail + 0]) {
-                chars[cache_reslt + 0] = (((!u.usleep && unconscious()) ? 1 : 0));
+                chars[cache_reslt + 0] = (!u.usleep && unconscious() ? 1 : 0);
                 chars[cache_avail + 0] = TRUE;
         }
         if (condtests[bl_parlyz].enabled
             && cache_multi_reason[0] && !chars[cache_avail + 1]) {
-                chars[cache_reslt + 1] = (+(!strncmp(cache_multi_reason[0], _("paralyzed"), 9)
-                                 || !strncmp(cache_multi_reason[0], _("frozen"), 6)));
+                chars[cache_reslt + 1] = +(!strncmp(cache_multi_reason[0], _("paralyzed"), 9)
+                                 || !strncmp(cache_multi_reason[0], _("frozen"), 6));
                 chars[cache_avail + 1] = TRUE;
         }
         if (chars[cache_avail + 0] && chars[cache_reslt + 0]) {
@@ -1234,9 +1093,6 @@ bot_via_windowport()
             condtests[bl_sleeping].test = condtests[bl_busy].test = FALSE;
     }
 
-
-
-
     for (i = 0; i < CONDITION_COUNT; ++i) {
         if (condtests[i].enabled
              /* && i != bl_holding  */ /* uncomment to suppress UHold */
@@ -1244,17 +1100,16 @@ bot_via_windowport()
             gb.blstats[idx][BL_CONDITION].a.a_ulong = or64u(gb.blstats[idx][BL_CONDITION].a.a_ulong, conditions[(i)].mask);
     }
 
-
     /*
      * Optionally displayed weapon(s), armor, and terrain.
      */
     if (flags.weaponstatus)
-        void weapon_status(gb.blstats[idx][BL_WEAPON].val);
+        weapon_status(gb.blstats[idx][BL_WEAPON].val);
     else
         chars[gb.blstats[idx][BL_WEAPON].val] = ord('\0');
 
     if (flags.armorstatus)
-        void armor_status(gb.blstats[idx][BL_ARMOR].val);
+        armor_status(gb.blstats[idx][BL_ARMOR].val);
     else
         chars[gb.blstats[idx][BL_ARMOR].val] = ord('\0');
 
@@ -1263,7 +1118,7 @@ bot_via_windowport()
             classify_terrain();
         i = iflags.terrain_typ;
         if (gb.blstats[idx][BL_TERRAIN].a.a_int != i) {
-            void strcpy(gb.blstats[idx][BL_TERRAIN].val, terrain_descr[i]);
+            strcpy(gb.blstats[idx][BL_TERRAIN].val, terrain_descr[i]);
             gb.blstats[idx][BL_TERRAIN].a.a_int = i;
         }
     } else {
@@ -1275,15 +1130,11 @@ bot_via_windowport()
 
     /* now request rendering */
     evaluate_and_notify_windowport(gv.valset, idx);
-
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* update just the status lines' 'time' field */
-function /* void */
-stat_update_time()
-{
+function stat_update_time() { /* void */
     let idx = gn.now_or_before_idx; /* no 0/1 toggle */
     let fld = BL_TIME;
 
@@ -1299,9 +1150,7 @@ stat_update_time()
 }
 
 /* deal with player's choice to change processing of a condition */
-export function /* void */
-condopt(idx, addr, negated)
-{
+export function condopt(idx, addr, negated) { /* void */
     let i;
 
     /* sanity check */
@@ -1329,9 +1178,7 @@ condopt(idx, addr, negated)
 }
 
 /* qsort callback routine for sorting the condition index */
-function /* int QSORTCALLBACK */
-cond_cmp(vptr1, vptr2)
-{
+function cond_cmp(vptr1, vptr2) { /* int QSORTCALLBACK */
     let indx1 = ref_to(int, vptr1)[0], indx2 = ref_to(int, vptr2)[0],
         c1 = conditions[indx1].ranking, c2 = conditions[indx2].ranking;
 
@@ -1342,17 +1189,14 @@ cond_cmp(vptr1, vptr2)
 }
 
 /* qsort callback routine for alphabetical sorting of index */
-function /* int QSORTCALLBACK */
-menualpha_cmp(vptr1, vptr2)
-{
+function menualpha_cmp(vptr1, vptr2) { /* int QSORTCALLBACK */
     let indx1 = ref_to(int, vptr1)[0], indx2 = ref_to(int, vptr2)[0];
 
     return strcmpi(condtests[indx1].useroption, condtests[indx2].useroption);
 }
 
-export function /* int */
-parse_cond_option(negated, opts)
-{ const $frame = stack_frame(); try {
+export function parse_cond_option(negated, opts) { /* int */
+    const $frame = stack_frame(); try {
     let i, sl;
     let compareto, uniqpart, prefix = init_string(stack_array(char, sizeof_string("cond_")), _("cond_"));
 
@@ -1368,13 +1212,13 @@ parse_cond_option(negated, opts)
         }
     }
     return 1;  /* !0 indicates error */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* display a menu of all available status condition options and let player
    toggled them on or off; returns True iff any changes are made */
-export function /* boolean */
-cond_menu()
-{ const $frame = stack_frame(); try {
+export function cond_menu() { /* boolean */
+    const $frame = stack_frame(); try {
     let menutitle = static_array("cond_menu.menutitle", ptr_to(char), 2, [
         _("alphabetically"), _("by ranking")
     ]);
@@ -1394,24 +1238,24 @@ cond_menu()
         }
         qsort(addr_of(sequence), CONDITION_COUNT,
               sizeof(int),
-              (gc.condmenu_sortorder) ? cond_cmp : menualpha_cmp);
+              gc.condmenu_sortorder ? cond_cmp : menualpha_cmp);
 
         tmpwin = create_nhwindow()(NHW_MENU);
         start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
 
         struct_assign(any, cg.zeroany);
         any.a_int = 1;
-        void sprintf(mbuf, _("change sort order from \"%s\" to \"%s\""), menutitle[gc.condmenu_sortorder], menutitle[1 - gc.condmenu_sortorder])
+        sprintf(mbuf, _("change sort order from \"%s\" to \"%s\""), menutitle[gc.condmenu_sortorder], menutitle[1 - gc.condmenu_sortorder])
 
 ;
         add_menu(tmpwin, nul_glyphinfo, any, ord('S'), 0, ATR_NONE,
                  clr, mbuf, MENU_ITEMFLAGS_SKIPINVERT);
         struct_assign(any, cg.zeroany);
-        void sprintf(mbuf, _("sorted %s"), menutitle[gc.condmenu_sortorder]);
+        sprintf(mbuf, _("sorted %s"), menutitle[gc.condmenu_sortorder]);
         add_menu_heading(tmpwin, mbuf);
         for (i = 0; i < SIZE(condtests); i++) {
             idx = sequence[i];
-            void sprintf(mbuf, _("cond_%-14s"), condtests[idx].useroption);
+            sprintf(mbuf, _("cond_%-14s"), condtests[idx].useroption);
             struct_assign(any, cg.zeroany);
             any.a_int = idx + 2; /* avoid zero and the sort change pick */
             condtests[idx].choice = FALSE;
@@ -1451,14 +1295,13 @@ cond_menu()
             }
     }
     return changed;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called by all_options_conds() to get value for next cond_xyz option
    so that #saveoptions can collect it and write the set into new RC file.
    returns zero-length string if the option is the default value. */
-export function /* boolean */
-opt_next_cond(indx, outbuf)
-{
+export function opt_next_cond(indx, outbuf) { /* boolean */
     chars[outbuf] = ord('\0');
     if (indx >= CONDITION_COUNT)
         return FALSE;
@@ -1483,18 +1326,17 @@ opt_next_cond(indx, outbuf)
 
     if ((condtests[indx].opt == opt_in && condtests[indx].enabled)
         || (condtests[indx].opt == opt_out && !condtests[indx].enabled)) {
-        void sprintf(outbuf, _("%scond_%s"), condtests[indx].enabled ? _("") : _("!"), condtests[indx].useroption)
+        sprintf(outbuf, _("%scond_%s"), condtests[indx].enabled ? _("") : _("!"), condtests[indx].useroption)
 ;
     }
     return TRUE;
 }
 
-function /* boolean */
-eval_notify_windowport_field(
+function eval_notify_windowport_field(
     fld,
     valsetlist,
-    idx)
-{ const $frame = stack_frame(); try {
+    idx) { /* boolean */
+    const $frame = stack_frame(); try {
     let oldrndencode = static_var("eval_notify_windowport_field.oldrndencode", int, 0);
     let oldgoldsym = static_var("eval_notify_windowport_field.oldgoldsym", uchar, 0);
     let pc, chg, color = stack_var(int, NO_COLOR);
@@ -1580,13 +1422,11 @@ eval_notify_windowport_field(
             curr.time = prev.time = 0;
     }
 
-
    if (gu.update_all || chg || reset) {
         if (!chars[valsetlist + fld])
-            void anything_to_s(curr.val, curr.a, int(anytype));
+            anything_to_s(curr.val, curr.a, int(anytype));
 
         if (anytype != ANY_MASK32) {
-
             if (chg || chars[curr.val]) {
                 /* if Xp percentage changed, we set 'chg' to 1 above;
                    reset that if the Xp value hasn't actually changed
@@ -1615,13 +1455,12 @@ eval_notify_windowport_field(
         updated = TRUE;
     }
     return updated;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-evaluate_and_notify_windowport(
+function evaluate_and_notify_windowport(
     valsetlist,
-    idx)
-{
+    idx) { /* void */
     let i, fld, updated = 0;
 
     /*
@@ -1679,10 +1518,8 @@ evaluate_and_notify_windowport(
     gu.update_all = FALSE;
 }
 
-export function /* void */
-status_initialize(
-    reassessment) /* True: just recheck fields without other init */
-{
+export function status_initialize(
+    reassessment) { /* void */ /* True: just recheck fields without other init */
     let fld;
     let fldenabl;
     let i;
@@ -1692,7 +1529,7 @@ status_initialize(
         if (gb.blinit)
             impossible(_("2nd status_initialize with full init."));
         init_blstats();
-        (windowprocs.win_status_init)();
+        windowprocs.win_status_init();
         gb.blinit = TRUE;
     } else if (!gb.blinit) {
         panic(_("status 'reassess' before init"));
@@ -1701,7 +1538,7 @@ status_initialize(
         fld = initblstats[i].fld;
         fldenabl = (fld == BL_SCORE) ? flags.showscore
                    : (fld == BL_TIME) ? flags.time
-                     : (fld == BL_EXP) ? (((flags.showexp && !Upolyd()) ? 1 : 0))
+                     : (fld == BL_EXP) ? (flags.showexp && !Upolyd() ? 1 : 0)
                        : (fld == BL_XP) ? (+!Upolyd())
                          : (fld == BL_HD) ? Upolyd()
                            : (fld == BL_VERS) ? flags.showvers
@@ -1719,14 +1556,12 @@ status_initialize(
     disp.botlx = TRUE;
 }
 
-export function /* void */
-status_finish()
-{
+export function status_finish() { /* void */
     let i;
 
     /* call the window port cleanup routine first */
     if (windowprocs.win_status_finish)
-        (windowprocs.win_status_finish)();
+        windowprocs.win_status_finish();
 
     /* free memory that we alloc'd now */
     for (i = 0; i < MAXBLSTATS; ++i) {
@@ -1751,13 +1586,10 @@ status_finish()
                 = gb.blstats[1][i].thresholds
                     = null;
         }
-
     }
 }
 
-function /* void */
-init_blstats()
-{
+function init_blstats() { /* void */
     let initalready = static_var("init_blstats.initalready", schar, FALSE);
     let i, j;
 
@@ -1767,9 +1599,7 @@ init_blstats()
     }
     for (i = 0; i <= 1; ++i) {
         for (j = 0; j < MAXBLSTATS; ++j) {
-
             let keep_hilite_chain = gb.blstats[i][j].thresholds;
-
 
             struct_assign(gb.blstats[i][j], initblstats[j]);
             struct_assign(gb.blstats[i][j].a, cg.zeroany);
@@ -1781,7 +1611,6 @@ init_blstats()
                 gb.blstats[i][j].val = 0;
 
             gb.blstats[i][j].thresholds = keep_hilite_chain;
-
         }
     }
     initalready[0] = TRUE;
@@ -1805,9 +1634,7 @@ init_blstats()
  *     - for strings,  0 = stayed the same, 1 = changed
  *
  */
-function /* int */
-compare_blstats(bl1, bl2)
-{
+function compare_blstats(bl1, bl2) { /* int */
     let a1, a2;
     let use_rawval;
     let anytype, fld, result = 0;
@@ -1831,9 +1658,9 @@ compare_blstats(bl1, bl2)
         anytype = ANY_INT;
 
     fld = bl1.fld;
-    use_rawval = (+(fld == BL_HP || fld == BL_HPMAX
+    use_rawval = +(fld == BL_HP || fld == BL_HPMAX
                   || fld == BL_ENE || fld == BL_ENEMAX
-                  || fld == BL_GOLD));
+                  || fld == BL_GOLD);
     a1 = use_rawval ? bl1.rawval : bl1.a;
     a2 = use_rawval ? bl2.rawval : bl2.a;
 
@@ -1874,7 +1701,7 @@ compare_blstats(bl1, bl2)
         result = sgn(strcmp(bl1.val, bl2.val));
         break;
     case ANY_MASK32:
-        result = (+(a1.a_ulong != a2.a_ulong));
+        result = +(a1.a_ulong != a2.a_ulong);
         break;
     default:
         result = 1;
@@ -1882,39 +1709,37 @@ compare_blstats(bl1, bl2)
     return result;
 }
 
-function /* char * */
-anything_to_s(buf, a, anytype)
-{
+function anything_to_s(buf, a, anytype) { /* char * */
     if (!buf)
         return 0;
 
     switch (anytype) {
     case ANY_ULONG:
-        void sprintf(buf, _("%llu"), a.a_ulong);
+        sprintf(buf, _("%llu"), a.a_ulong);
         break;
     case ANY_MASK32:
-        void sprintf(buf, _("%llx"), a.a_ulong);
+        sprintf(buf, _("%llx"), a.a_ulong);
         break;
     case ANY_LONG:
-        void sprintf(buf, _("%lld"), a.a_long);
+        sprintf(buf, _("%lld"), a.a_long);
         break;
     case ANY_INT:
-        void sprintf(buf, _("%d"), a.a_int);
+        sprintf(buf, _("%d"), a.a_int);
         break;
     case ANY_UINT:
-        void sprintf(buf, _("%u"), a.a_uint);
+        sprintf(buf, _("%u"), a.a_uint);
         break;
     case ANY_IPTR:
-        void sprintf(buf, _("%d"), a.a_iptr[0]);
+        sprintf(buf, _("%d"), a.a_iptr[0]);
         break;
     case ANY_LPTR:
-        void sprintf(buf, _("%lld"), a.a_lptr[0]);
+        sprintf(buf, _("%lld"), a.a_lptr[0]);
         break;
     case ANY_ULPTR:
-        void sprintf(buf, _("%llu"), a.a_ulptr[0]);
+        sprintf(buf, _("%llu"), a.a_ulptr[0]);
         break;
     case ANY_UPTR:
-        void sprintf(buf, _("%u"), a.a_uptr[0]);
+        sprintf(buf, _("%u"), a.a_uptr[0]);
         break;
     case ANY_STR: /* do nothing */
         ;
@@ -1925,10 +1750,7 @@ anything_to_s(buf, a, anytype)
     return buf;
 }
 
-
-function /* void */
-s_to_anything(a, buf, anytype)
-{
+function s_to_anything(a, buf, anytype) { /* void */
     if (!buf || !a)
         return;
 
@@ -1971,11 +1793,8 @@ s_to_anything(a, buf, anytype)
     return;
 }
 
-
 /* integer percentage is 100 * bl->a / maxbl->a */
-function /* int */
-percentage(bl, maxbl)
-{
+function percentage(bl, maxbl) { /* int */
     let result = 0;
     let anytype;
     let ival, mval;
@@ -1992,7 +1811,7 @@ percentage(bl, maxbl)
     }
 
     fld = bl.fld;
-    use_rawval = (+(fld == BL_HP || fld == BL_ENE));
+    use_rawval = +(fld == BL_HP || fld == BL_ENE);
     ival = 0, lval = 0, uval = 0, ulval = 0;
     anytype = int(bl.anytype);
     if (maxbl.a.a_void) {
@@ -2003,35 +1822,35 @@ percentage(bl, maxbl)
                potentially truncated (to 9999) display value */
             ival = use_rawval ? bl.rawval.a_int : bl.a.a_int;
             mval = use_rawval ? maxbl.rawval.a_int : maxbl.a.a_int;
-            result = (Math.trunc((100 * ival) / mval));
+            result = Math.trunc((100 * ival) / mval);
             break;
         case ANY_LONG:
             lval  = bl.a.a_long;
-            result = int((Math.trunc((100 * lval) / maxbl.a.a_long)));
+            result = int(Math.trunc((100 * lval) / maxbl.a.a_long));
             break;
         case ANY_UINT:
             uval = bl.a.a_uint;
-            result = int((Math.trunc((unsigned(Math.imul(100, uval))) / maxbl.a.a_uint)));
+            result = int(Math.trunc(unsigned(Math.imul(100, uval)) / maxbl.a.a_uint));
             break;
         case ANY_ULONG:
             ulval = bl.a.a_ulong;
-            result = int((Math.trunc((100 * ulval) / maxbl.a.a_ulong)));
+            result = int(Math.trunc((100 * ulval) / maxbl.a.a_ulong));
             break;
         case ANY_IPTR:
             ival = bl.a.a_iptr[0];
-            result = (Math.trunc((100 * ival) / (maxbl.a.a_iptr[0])));
+            result = Math.trunc((100 * ival) / (maxbl.a.a_iptr[0]));
             break;
         case ANY_LPTR:
             lval = bl.a.a_lptr[0];
-            result = int((Math.trunc((100 * lval) / (maxbl.a.a_lptr[0]))));
+            result = int(Math.trunc((100 * lval) / (maxbl.a.a_lptr[0])));
             break;
         case ANY_UPTR:
             uval = bl.a.a_uptr[0];
-            result = int((Math.trunc((unsigned(Math.imul(100, uval))) / (maxbl.a.a_uptr[0]))));
+            result = int(Math.trunc(unsigned(Math.imul(100, uval)) / (maxbl.a.a_uptr[0])));
             break;
         case ANY_ULPTR:
             ulval = bl.a.a_ulptr[0];
-            result = int((Math.trunc((100 * ulval) / (maxbl.a.a_ulptr[0]))));
+            result = int(Math.trunc((100 * ulval) / (maxbl.a.a_ulptr[0])));
             break;
         }
     }
@@ -2048,9 +1867,8 @@ percentage(bl, maxbl)
 
 /* percentage for both xp (level) and exp (points) is the percentage for
    (curr_exp - this_level_start) in (next_level_start - this_level_start) */
-function /* int */
-exp_percentage()
-{ const $frame = stack_frame(); try {
+function exp_percentage() { /* int */
+    const $frame = stack_frame(); try {
     let res = 0;
 
     if (u.ulevel < 30) {
@@ -2082,13 +1900,13 @@ exp_percentage()
         }
     }
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* experience points have changed but experience level hasn't; decide whether
    botl update is needed for a different percentage highlight rule for Xp */
-export function /* boolean */
-exp_percent_changing()
-{ const $frame = stack_frame(); try {
+export function exp_percent_changing() { /* boolean */
+    const $frame = stack_frame(); try {
     let pc;
     let a = stack_struct(struct_any);
 
@@ -2118,47 +1936,35 @@ exp_percent_changing()
                               addr_of(a), 0, pc, color_dummy);
             if (rule != curr.hilite_rule)
                 return TRUE; /* caller should set 'disp.botl' to True */
-
         }
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* callback so that interface can get capacity index rather than trying
    to reconstruct that from the encumbrance string or asking the general
    core what the value is */
-export function /* int */
-stat_cap_indx()
-{
+export function stat_cap_indx() { /* int */
     let cap;
 
-
     cap = gb.blstats[gn.now_or_before_idx][BL_CAP].a.a_int;
-
-
 
     return cap;
 }
 
 /* callback so that interface can get hunger index rather than trying to
    reconstruct that from the hunger string or dipping into core internals */
-export function /* int */
-stat_hunger_indx()
-{
+export function stat_hunger_indx() { /* int */
     let uhs;
 
-
     uhs = gb.blstats[gn.now_or_before_idx][BL_HUNGER].a.a_int;
-
-
 
     return uhs;
 }
 
 /* used by X11 for "tty status" even when STATUS_HILITES is disabled */
-export function /* const char * */
-bl_idx_to_fldname(idx)
-{
+export function bl_idx_to_fldname(idx) { /* const char * */
     if (idx >= 0 && idx < MAXBLSTATS)
         return initblstats[idx].fldname;
     return 0;
@@ -2166,9 +1972,7 @@ bl_idx_to_fldname(idx)
 
 /* used when rendering hitpointbar; inoutbuf[] has been padded with
    trailing spaces; replace pairs of spaces with pairs of space+dash */
-export function /* void */
-repad_with_dashes(inoutbuf)
-{
+export function repad_with_dashes(inoutbuf) { /* void */
     let p = eos(inoutbuf);
 
     while (p >= inoutbuf + 2 && chars[p + (-1)] == ord(' ') && chars[p + (-2)] == ord(' ')) {
@@ -2176,8 +1980,6 @@ repad_with_dashes(inoutbuf)
         p -= 2;
     }
 }
-
-
 
 /****************************************************************************/
 /* Core status hiliting support */
@@ -2215,11 +2017,8 @@ repad_with_dashes(inoutbuf)
 const threshold_value = init_string(static_array("threshold_value", char, sizeof_string("hilite_status threshold ")), _("hilite_status threshold "), true);
 const is_out_of_range = init_string(static_array("is_out_of_range", char, sizeof_string(" is out of range")), _(" is out of range"), true);
 
-
 /* field name to bottom line index */
-function /* enum statusfields */
-fldname_to_bl_indx(name)
-{
+function fldname_to_bl_indx(name) { /* enum statusfields */
     let i, nmatches = 0, fld = 0;
 
     if (name && chars[name]) {
@@ -2248,17 +2047,13 @@ fldname_to_bl_indx(name)
                     nmatches++;
                 }
         }
-
     }
     return (nmatches == 1) ? fld : BL_FLUSH;
 }
 
-function /* boolean */
-hilite_reset_needed(
+function hilite_reset_needed(
     bl_p,
-    augmented_time) /* no longer augmented; it once encoded fractional
-                          * amounts for multiple moves within same turn */
-{
+    augmented_time) { /* boolean */ /* no longer augmented; it once encoded fractional * amounts for multiple moves within same turn */
     /*
      * This 'multi' handling may need some tuning...
      */
@@ -2275,9 +2070,7 @@ hilite_reset_needed(
 }
 
 /* called from moveloop(); sets context.botl if temp hilites have timed out */
-export function /* void */
-status_eval_next_unhilite()
-{
+export function status_eval_next_unhilite() { /* void */
     let i;
     let curr;
     let next_unhilite, this_unhilite;
@@ -2317,9 +2110,7 @@ status_eval_next_unhilite()
 }
 
 /* called by options handling when 'statushilites' value is changed */
-export function /* void */
-reset_status_hilites()
-{
+export function reset_status_hilites() { /* void */
     if (iflags.hilite_delta) {
         let i;
 
@@ -2332,9 +2123,7 @@ reset_status_hilites()
 
 /* test whether the text from a title rule matches the string for
    title-while-polymorphed in the 'textmatch' menu */
-function /* boolean */
-noneoftheabove(hl_text)
-{
+function noneoftheabove(hl_text) { /* boolean */
     if (fuzzymatch(hl_text, _("none of the above"), _("\" -_"), TRUE)
         || fuzzymatch(hl_text, _("(polymorphed)"), _("\"()"), TRUE)
         || fuzzymatch(hl_text, _("none of the above (polymorphed)"),
@@ -2360,13 +2149,11 @@ noneoftheabove(hl_text)
  * Get back:
  *     pointer to rule that applies; Null if no rule does.
  */
-function /* struct hilite_s * */
-get_hilite(
+function get_hilite(
     idx, fldidx,
     vp,
     chg, pc,
-    colorptr)
-{
+    colorptr) { /* struct hilite_s * */
     let hl, rule = null;
     let value = view_of(struct_any, vp);
     let txtstr;
@@ -2569,12 +2356,7 @@ get_hilite(
     return rule;
 }
 
-
-
-
-function /* void */
-split_clridx(idx, coloridx, attrib)
-{
+function split_clridx(idx, coloridx, attrib) { /* void */
     if (coloridx)
         coloridx[0] = idx & 0x00FF;
     if (attrib)
@@ -2589,10 +2371,8 @@ split_clridx(idx, coloridx, attrib)
  * then calls parse_status_hl2() to parse further
  * and configure the hilite.
  */
-export function /* boolean */
-parse_status_hl1(op, from_configfile)
-{ const $frame = stack_frame(); try {
-
+export function parse_status_hl1(op, from_configfile) { /* boolean */
+    const $frame = stack_frame(); try {
     let hsbuf = stack_array(array_of(char, QBUFSZ), MAX_THRESH);
     let rslt, badopt = FALSE;
     let i, fldnum, ccount = 0;
@@ -2606,7 +2386,7 @@ parse_status_hl1(op, from_configfile)
         c = lowc(chars[op]);
         if (c == ord(' ')) {
             if (fldnum >= 1) {
-                if (fldnum == 1 && strcmpi(hsbuf[0], _("title")) == 0) {
+                if (fldnum == 1 && strncmpi((hsbuf[0]), _(("title")), -1) == 0) {
                     /* spaces are allowed in title */
                     chars[hsbuf[fldnum] + (ccount++)] = c;
                     chars[hsbuf[fldnum] + ccount] = ord('\0');
@@ -2644,13 +2424,12 @@ parse_status_hl1(op, from_configfile)
     if (!iflags.hilite_delta)
         iflags.hilite_delta = 3;
     return TRUE;
-
-} finally { stack_pop($frame); } } export const MAX_THRESH = 21;
+    } finally { stack_pop($frame); }
+}
+export const MAX_THRESH = 21;
 
 /* is str in the format of "[<>]?=?[-+]?[0-9]+%?" regex */
-function /* boolean */
-is_ltgt_percentnumber(str)
-{
+function is_ltgt_percentnumber(str) { /* boolean */
     let s = str;
 
     if (chars[s] == ord('<') || chars[s] == ord('>'))
@@ -2665,13 +2444,11 @@ is_ltgt_percentnumber(str)
         s++;
     if (chars[s] == ord('%'))
         s++;
-    return (+(chars[s] == ord('\0')));
+    return +(chars[s] == ord('\0'));
 }
 
 /* does str only contain "<>=-+0-9%" chars */
-function /* boolean */
-has_ltgt_percentnumber(str)
-{
+function has_ltgt_percentnumber(str) { /* boolean */
     let s = str;
 
     while (chars[s]) {
@@ -2684,10 +2461,7 @@ has_ltgt_percentnumber(str)
 
 /* splitsubfields(): splits str in place into '+' or '&' separated strings.
    returns number of strings, or -1 if more than maxsf or MAX_SUBFIELDS */
-function /* int */
-splitsubfields(str, sfarr, maxsf)
-{
-
+function splitsubfields(str, sfarr, maxsf) { /* int */
     let subfields = static_array("splitsubfields.subfields", ptr_to(char), MAX_SUBFIELDS);
     let st = 0;
     let sf = 0;
@@ -2723,16 +2497,14 @@ splitsubfields(str, sfarr, maxsf)
     }
     sfarr[0] = subfields;
     return sf;
+}
+export const MAX_SUBFIELDS = 16;
 
-} export const MAX_SUBFIELDS = 16;
-
-function /* boolean */
-is_fld_arrayvalues(
+function is_fld_arrayvalues(
     str,
     arr,
     arrmin, arrmax,
-    retidx)
-{
+    retidx) { /* boolean */
     let i;
 
     for (i = arrmin; i < arrmax; i++)
@@ -2743,12 +2515,11 @@ is_fld_arrayvalues(
     return FALSE;
 }
 
-function /* int */
-query_arrayvalue(
+function query_arrayvalue(
     querystr,
     arr,
-    arrmin, arrmax)
-{ const $frame = stack_frame(); try {
+    arrmin, arrmax) { /* int */
+    const $frame = stack_frame(); try {
     let i, res, ret = arrmin - 1;
     let tmpwin;
     let any = stack_struct(struct_any);
@@ -2778,11 +2549,10 @@ query_arrayvalue(
     }
 
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-status_hilite_add_threshold(fld, hilite)
-{
+function status_hilite_add_threshold(fld, hilite) { /* void */
     let new_hilite, old_hilite;
 
     if (!hilite)
@@ -2810,9 +2580,8 @@ status_hilite_add_threshold(fld, hilite)
     gb.blstats[1][fld].thresholds = gb.blstats[0][fld].thresholds;
 }
 
-function /* boolean */
-parse_status_hl2(s, from_configfile)
-{ const $frame = stack_frame(); try {
+function parse_status_hl2(s, from_configfile) { /* boolean */
+    const $frame = stack_frame(); try {
     let aligntxt = static_array("parse_status_hl2.aligntxt", ptr_to(char), null, [ _("chaotic"), _("neutral"), _("lawful") ]);
     /* hu_stat[] from eat.c has trailing spaces which foul up comparisons;
        for the "not hungry" case, there's no text hence no way to highlight */
@@ -2848,7 +2617,7 @@ parse_status_hl2(s, from_configfile)
 
         /* recursively set each of strength, dexterity, constitution, &c */
         for (fld = BL_STR; fld <= BL_CH; fld++) {
-            void strcpy(s[sidx], initblstats[fld].fldname);
+            strcpy(s[sidx], initblstats[fld].fldname);
             res = parse_status_hl2(s, from_configfile);
             if (!res)
                 return FALSE;
@@ -2874,27 +2643,23 @@ parse_status_hl2(s, from_configfile)
         criticalhp = FALSE;
         grt = gte = eq = le = lt = txtval = FALSE;
 
-
-
-
-
         memset(addr_of(hilite), 0, sizeof(struct_hilite_s));
         hilite.set = FALSE; /* mark it "unset" */
         hilite.fld = fld;
 
-        if (chars[s[sidx + 1]] == ord('\0') || !strcmpi(s[sidx], _("always"))) {
+        if (chars[s[sidx + 1]] == ord('\0') || !strncmpi((s[sidx]), _(("always")), -1)) {
             /* "field/always/color" OR "field/color" */
             always = TRUE;
             if (chars[s[sidx + 1]] == ord('\0'))
                 sidx--;
-        } else if (!strcmpi(s[sidx], _("up")) || !strcmpi(s[sidx], _("down"))) {
+        } else if (!strncmpi((s[sidx]), _(("up")), -1) || !strncmpi((s[sidx]), _(("down")), -1)) {
             if (initblstats[fld].anytype == ANY_STR)
                 /* ordered string comparison is supported but LT/GT for
                    the string fields (title, dungeon-level, alignment)
                    is pointless; treat 'up' or 'down' for string fields
                    as 'changed' rather than rejecting them outright */
                 ;
-            else if (!strcmpi(s[sidx], _("down")))
+            else if (!strncmpi((s[sidx]), _(("down")), -1))
                 down = TRUE;
             else
                 up = TRUE;
@@ -2914,9 +2679,9 @@ parse_status_hl2(s, from_configfile)
                                          SATIATED, STARVED + 1, kidx)) {
             txt = hu_stat[kidx[0]];   /* store hu_stat[] val, not hutxt[] */
             txtval = TRUE;
-        } else if (!strcmpi(s[sidx], _("changed"))) {
+        } else if (!strncmpi((s[sidx]), _(("changed")), -1)) {
             changed = TRUE;
-        } else if (fld == BL_HP && !strcmpi(s[sidx], _("criticalhp"))) {
+        } else if (fld == BL_HP && !strncmpi((s[sidx]), _(("criticalhp")), -1)) {
             criticalhp = TRUE;
         } else if (is_ltgt_percentnumber(s[sidx])) {
             let op;
@@ -2941,7 +2706,7 @@ parse_status_hl2(s, from_configfile)
             tmp = stripchars(tmpbuf, _("%<>=+"), tmp);
             numeric = TRUE;
             dt = int(percent ? ANY_INT : initblstats[fld].anytype);
-            void s_to_anything(hilite.value, tmp, dt);
+            s_to_anything(hilite.value, tmp, dt);
 
             op = grt ? _(">") : gte ? _(">=") : lt ? _("<") : le ? _("<=") : _("=");
             if (dt == ANY_INT
@@ -3030,7 +2795,7 @@ parse_status_hl2(s, from_configfile)
                 return FALSE;
         }
         coloridx = -1;
-        void strcpy(buf, how);
+        strcpy(buf, how);
         sf = splitsubfields(buf, subfields, 0);
 
         if (sf < 1)
@@ -3091,9 +2856,9 @@ parse_status_hl2(s, from_configfile)
         hilite.anytype = unsigned(dt);
 
         if (hilite.behavior == BL_TH_TEXTMATCH && txt) {
-            void strncpy(hilite.textmatch, txt, sizeof_member(hilite, "textmatch"));
+            strncpy(hilite.textmatch, txt, sizeof_member(hilite, "textmatch"));
             chars[hilite.textmatch + (sizeof_member(hilite, "textmatch") - 1)] = ord('\0');
-            void trimspaces(hilite.textmatch);
+            trimspaces(hilite.textmatch);
         }
 
         status_hilite_add_threshold(fld, hilite);
@@ -3102,12 +2867,12 @@ parse_status_hl2(s, from_configfile)
         sidx++;
     }
 
-    return (+(successes > 0));
-} finally { stack_pop($frame); } }
+    return +(successes > 0);
+    } finally { stack_pop($frame); }
+}
 
-function /* unsigned long long */
-query_conditions()
-{ const $frame = stack_frame(); try {
+function query_conditions() { /* unsigned long long */
+    const $frame = stack_frame(); try {
     let i, res;
     let ret = 0;
     let tmpwin;
@@ -3135,16 +2900,14 @@ query_conditions()
         free(addr_of(picks[0]));
     }
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* char * */
-conditionbitmask2str(ul)
-{
+function conditionbitmask2str(ul) { /* char * */
     let buf = static_array("conditionbitmask2str.buf", char, BUFSZ);
     let i;
     let first = TRUE;
     let alias = 0;
-
 
     chars[buf + 0] = ord('\0');
     if (!ul)
@@ -3156,20 +2919,18 @@ conditionbitmask2str(ul)
 
     for (i = 0; i < SIZE(conditions); i++)
         if ((conditions[i].mask & ul) != 0) {
-            void sprintf(eos(buf), _("%s%s"), (first) ? _("") : _("+"), conditions[i].text[0])
+            sprintf(eos(buf), _("%s%s"), first ? _("") : _("+"), conditions[i].text[0])
 ;
             first = FALSE;
         }
 
     if (!first && alias)
-        void sprintf(buf, _("%s"), alias);
+        sprintf(buf, _("%s"), alias);
 
     return buf;
 }
 
-function /* unsigned long long */
-match_str2conditionbitmask(str)
-{
+function match_str2conditionbitmask(str) { /* unsigned long long */
     let i, nmatches = 0;
     let mask = 0;
 
@@ -3205,9 +2966,8 @@ match_str2conditionbitmask(str)
     return mask;
 }
 
-function /* unsigned long long */
-str2conditionbitmask(str)
-{ const $frame = stack_frame(); try {
+function str2conditionbitmask(str) { /* unsigned long long */
+    const $frame = stack_frame(); try {
     let conditions_bitmask = 0;
     let subfields = stack_var(ptr_to(ptr_to(char)));
     let i, sf;
@@ -3227,11 +2987,11 @@ str2conditionbitmask(str)
         conditions_bitmask = or64u(conditions_bitmask, bm);
     }
     return conditions_bitmask;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-parse_condition(s, sidx)
-{ const $frame = stack_frame(); try {
+function parse_condition(s, sidx) { /* boolean */
+    const $frame = stack_frame(); try {
     let i;
     let coloridx = NO_COLOR;
     let tmp, how;
@@ -3263,7 +3023,7 @@ parse_condition(s, sidx)
         let buf = stack_array(char, BUFSZ), subfields = stack_var(ptr_to(ptr_to(char)));
 
         tmp = s[sidx];
-        void strcpy(buf, tmp);
+        strcpy(buf, tmp);
         conditions_bitmask = str2conditionbitmask(buf);
 
         if (!conditions_bitmask)
@@ -3288,7 +3048,7 @@ parse_condition(s, sidx)
             return FALSE;
         }
 
-        void strcpy(buf, how);
+        strcpy(buf, how);
         sf = splitsubfields(buf, subfields, 0);
 
         /*
@@ -3345,11 +3105,10 @@ parse_condition(s, sidx)
         sidx++;
     }
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-clear_status_hilites()
-{
+export function clear_status_hilites() { /* void */
     let i;
 
     for (i = 0; i < MAXBLSTATS; ++i) {
@@ -3365,9 +3124,8 @@ clear_status_hilites()
     }
 }
 
-function /* char * */
-hlattr2attrname(attrib, buf, bufsz)
-{ const $frame = stack_frame(); try {
+function hlattr2attrname(attrib, buf, bufsz) { /* char * */
+    const $frame = stack_frame(); try {
     if (attrib && buf) {
         let attbuf = stack_array(char, BUFSZ);
         let first = 0;
@@ -3375,30 +3133,31 @@ hlattr2attrname(attrib, buf, bufsz)
 
         chars[attbuf + 0] = ord('\0');
         if (attrib == HL_NONE) {
-            void strcpy(buf, _("normal"));
+            strcpy(buf, _("normal"));
             return buf;
         }
 
         if (attrib & HL_BOLD)
-            void strcat(attbuf, first++ ? _("+bold") : _("bold"));
+            strcat(attbuf, first++ ? _("+bold") : _("bold"));
         if (attrib & HL_DIM)
-            void strcat(attbuf, first++ ? _("+dim") : _("dim"));
+            strcat(attbuf, first++ ? _("+dim") : _("dim"));
         if (attrib & HL_ITALIC)
-            void strcat(attbuf, first++ ? _("+italic") : _("italic"));
+            strcat(attbuf, first++ ? _("+italic") : _("italic"));
         if (attrib & HL_ULINE)
-            void strcat(attbuf, first++ ? _("+underline") : _("underline"));
+            strcat(attbuf, first++ ? _("+underline") : _("underline"));
         if (attrib & HL_BLINK)
-            void strcat(attbuf, first++ ? _("+blink") : _("blink"));
+            strcat(attbuf, first++ ? _("+blink") : _("blink"));
         if (attrib & HL_INVERSE)
-            void strcat(attbuf, first++ ? _("+inverse") : _("inverse"));
+            strcat(attbuf, first++ ? _("+inverse") : _("inverse"));
 
         k = strlen(attbuf);
-        if (k < (unsigned(bufsz - 1)))
-            void strcpy(buf, attbuf);
+        if (k < unsigned(bufsz - 1))
+            strcpy(buf, attbuf);
         return buf;
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const struct__status_hilite_line_str = struct("struct__status_hilite_line_str", {
     id: int,
@@ -3413,17 +3172,15 @@ const struct__status_hilite_line_str = struct("struct__status_hilite_line_str", 
 const status_hilite_str = static_var("status_hilite_str", ptr_to(struct__status_hilite_line_str), null);
 const status_hilite_str_id = static_var("status_hilite_str_id", int, 0);
 
-function /* void */
-status_hilite_linestr_add(
+function status_hilite_linestr_add(
     fld,
     hl,
     mask,
-    str)
-{
+    str) { /* void */
     let tmp, nxt;
 
     tmp = view_of(struct__status_hilite_line_str, addr_of(alloc(sizeof(struct__status_hilite_line_str))));
-    void memset(addr_of(tmp), 0, sizeof(struct__status_hilite_line_str));
+    memset(addr_of(tmp), 0, sizeof(struct__status_hilite_line_str));
     tmp.next = null;
 
     tmp.id = ++status_hilite_str_id[0];
@@ -3431,9 +3188,9 @@ status_hilite_linestr_add(
     tmp.hl = hl;
     tmp.mask = mask;
     if (fld == BL_TITLE)
-        void strcpy(tmp.str, str);
+        strcpy(tmp.str, str);
     else
-        void stripchars(tmp.str, _(" "), str);
+        stripchars(tmp.str, _(" "), str);
 
     if ((nxt = status_hilite_str[0]) != null) {
         while (nxt.next)
@@ -3444,9 +3201,7 @@ status_hilite_linestr_add(
     }
 }
 
-function /* void */
-status_hilite_linestr_done()
-{
+function status_hilite_linestr_done() { /* void */
     let nxt, tmp = status_hilite_str[0];
 
     while (tmp) {
@@ -3458,11 +3213,9 @@ status_hilite_linestr_done()
     status_hilite_str_id[0] = 0;
 }
 
-function /* int */
-status_hilite_linestr_countfield(fld)
-{
+function status_hilite_linestr_countfield(fld) { /* int */
     let tmp;
-    let countall = (+(fld == BL_FLUSH));
+    let countall = +(fld == BL_FLUSH);
     let count = 0;
 
     for (tmp = status_hilite_str[0]; tmp; tmp = tmp.next) {
@@ -3473,9 +3226,7 @@ status_hilite_linestr_countfield(fld)
 }
 
 /* used by options handling, doset(options.c) */
-export function /* int */
-count_status_hilites()
-{
+export function count_status_hilites() { /* int */
     let count;
 
     status_hilite_linestr_gather();
@@ -3484,16 +3235,15 @@ count_status_hilites()
     return count;
 }
 
-function /* void */
-status_hilite_linestr_gather_conditions()
-{ const $frame = stack_frame(); try {
+function status_hilite_linestr_gather_conditions() { /* void */
+    const $frame = stack_frame(); try {
     let i;
     const struct__cond_map = struct("status_hilite_linestr_gather_conditions.struct__cond_map", {
         bm: ulong,
         clratr: unsigned,
     }); let cond_maps = stack_array(struct__cond_map, SIZE(conditions));
 
-    void memset(addr_of(cond_maps[0]), 0,
+    memset(addr_of(cond_maps[0]), 0,
                   SIZE(conditions) * sizeof(struct__cond_map));
 
     for (i = 0; i < SIZE(conditions); i++) {
@@ -3553,22 +3303,21 @@ status_hilite_linestr_gather_conditions()
                 let condbuf = stack_array(char, BUFSZ);
                 let tmpattr;
 
-                void strNsubst(strcpy(clrbuf, clr2colorname(clr[0])),
+                strNsubst(strcpy(clrbuf, clr2colorname(clr[0])),
                                  _(" "), _("-"), 0);
                 tmpattr = hlattr2attrname(atr[0], attrbuf, BUFSZ);
                 if (tmpattr)
-                    void sprintf(eos(clrbuf), _("&%s"), tmpattr);
+                    sprintf(eos(clrbuf), _("&%s"), tmpattr);
                 Snprintf(condbuf, sizeof(array_of(char, BUFSZ)), _("condition/%s/%s"), conditionbitmask2str(cond_maps[i].bm), clrbuf)
 ;
                 status_hilite_linestr_add(BL_CONDITION, null,
                                           cond_maps[i].bm, condbuf);
             }
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-status_hilite_linestr_gather()
-{
+function status_hilite_linestr_gather() { /* void */
     let i;
     let hl;
 
@@ -3585,10 +3334,8 @@ status_hilite_linestr_gather()
     status_hilite_linestr_gather_conditions();
 }
 
-
-function /* char * */
-status_hilite2str(hl)
-{ const $frame = stack_frame(); try {
+function status_hilite2str(hl) { /* char * */
+    const $frame = stack_frame(); try {
     let buf = static_array("status_hilite2str.buf", char, BUFSZ);
     let clr = stack_var(int, NO_COLOR), attr = stack_var(int, ATR_NONE);
     let behavebuf = stack_array(char, BUFSZ);
@@ -3612,43 +3359,43 @@ status_hilite2str(hl)
     switch (hl.behavior) {
     case BL_TH_VAL_PERCENTAGE:
         if (op)
-            void sprintf(behavebuf, _("%s%d%%"), op, hl.value.a_int);
+            sprintf(behavebuf, _("%s%d%%"), op, hl.value.a_int);
         else
             impossible(_("hl->behavior=percentage, rel error"));
         break;
     case BL_TH_UPDOWN:
         if (hl.rel == LT_VALUE)
-            void sprintf(behavebuf, _("down"));
+            sprintf(behavebuf, _("down"));
         else if (hl.rel == GT_VALUE)
-            void sprintf(behavebuf, _("up"));
+            sprintf(behavebuf, _("up"));
         else if (hl.rel == EQ_VALUE)
-            void sprintf(behavebuf, _("changed"));
+            sprintf(behavebuf, _("changed"));
         else
             impossible(_("hl->behavior=updown, rel error"));
         break;
     case BL_TH_VAL_ABSOLUTE:
         if (op)
-            void sprintf(behavebuf, _("%s%d"), op, hl.value.a_int);
+            sprintf(behavebuf, _("%s%d"), op, hl.value.a_int);
         else
             impossible(_("hl->behavior=absolute, rel error"));
         break;
     case BL_TH_TEXTMATCH:
         if (hl.rel == TXT_VALUE && chars[hl.textmatch + 0])
-            void sprintf(behavebuf, _("%s"), hl.textmatch);
+            sprintf(behavebuf, _("%s"), hl.textmatch);
         else
             impossible(_("hl->behavior=textmatch, rel or textmatch error"));
         break;
     case BL_TH_CONDITION:
         if (hl.rel == EQ_VALUE)
-            void sprintf(behavebuf, _("%s"), conditionbitmask2str(hl.value.a_ulong));
+            sprintf(behavebuf, _("%s"), conditionbitmask2str(hl.value.a_ulong));
         else
             impossible(_("hl->behavior=condition, rel error"));
         break;
     case BL_TH_ALWAYS_HILITE:
-        void sprintf(behavebuf, _("always"));
+        sprintf(behavebuf, _("always"));
         break;
     case BL_TH_CRITICALHP:
-        void sprintf(behavebuf, _("criticalhp"));
+        sprintf(behavebuf, _("criticalhp"));
         break;
     case BL_TH_NONE:
         break;
@@ -3657,20 +3404,20 @@ status_hilite2str(hl)
     }
 
     split_clridx(hl.coloridx, clr, attr);
-    void strNsubst(strcpy(clrbuf, clr2colorname(clr[0])), _(" "), _("-"), 0);
+    strNsubst(strcpy(clrbuf, clr2colorname(clr[0])), _(" "), _("-"), 0);
     if (attr[0] != HL_UNDEF) {
         if ((tmpattr = hlattr2attrname(attr[0], attrbuf, BUFSZ)) != 0)
-            void sprintf(eos(clrbuf), _("&%s"), tmpattr);
+            sprintf(eos(clrbuf), _("&%s"), tmpattr);
     }
     Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%s/%s/%s"), initblstats[hl.fld].fldname, behavebuf, clrbuf)
 ;
 
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-status_hilite_menu_choose_field()
-{ const $frame = stack_frame(); try {
+function status_hilite_menu_choose_field() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let i, res, fld = BL_FLUSH;
     let any = stack_struct(struct_any);
@@ -3681,7 +3428,6 @@ status_hilite_menu_choose_field()
     start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
 
     for (i = 0; i < MAXBLSTATS; i++) {
-
         if (initblstats[i].fld == BL_SCORE
             && !gb.blstats[0][BL_SCORE].thresholds)
             continue;
@@ -3701,11 +3447,11 @@ status_hilite_menu_choose_field()
         free(addr_of(picks[0]));
     }
     return fld;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-status_hilite_menu_choose_behavior(fld)
-{ const $frame = stack_frame(); try {
+function status_hilite_menu_choose_behavior(fld) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let res = 0, beh = BL_TH_NONE-1;
     let any = stack_struct(struct_any);
@@ -3726,7 +3472,7 @@ status_hilite_menu_choose_behavior(fld)
     if (fld != BL_CONDITION) {
         struct_assign(any, cg.zeroany);
         any.a_int = onlybeh = BL_TH_ALWAYS_HILITE;
-        void sprintf(buf, _("Always highlight %s"), initblstats[fld].fldname);
+        sprintf(buf, _("Always highlight %s"), initblstats[fld].fldname);
         add_menu(tmpwin, nul_glyphinfo, any, ord('a'), 0, ATR_NONE,
                  clr, buf, MENU_ITEMFLAGS_NONE);
         nopts++;
@@ -3743,7 +3489,7 @@ status_hilite_menu_choose_behavior(fld)
     if (fld != BL_CONDITION && fld != BL_VERS) {
         struct_assign(any, cg.zeroany);
         any.a_int = onlybeh = BL_TH_UPDOWN;
-        void sprintf(buf, _("%s value changes"), initblstats[fld].fldname);
+        sprintf(buf, _("%s value changes"), initblstats[fld].fldname);
         add_menu(tmpwin, nul_glyphinfo, any, ord('c'), 0, ATR_NONE,
                  clr, buf, MENU_ITEMFLAGS_NONE);
         nopts++;
@@ -3769,7 +3515,7 @@ status_hilite_menu_choose_behavior(fld)
     if (fld == BL_HP) {
         struct_assign(any, cg.zeroany);
         any.a_int = onlybeh = BL_TH_CRITICALHP;
-        void sprintf(buf, _("Highlight critically low %s"), initblstats[fld].fldname)
+        sprintf(buf, _("Highlight critically low %s"), initblstats[fld].fldname)
 ;
         add_menu(tmpwin, nul_glyphinfo, any, ord('C'), 0, ATR_NONE,
                  clr, buf, MENU_ITEMFLAGS_NONE);
@@ -3780,13 +3526,13 @@ status_hilite_menu_choose_behavior(fld)
         || fld == BL_CAP || fld == BL_HUNGER) {
         struct_assign(any, cg.zeroany);
         any.a_int = onlybeh = BL_TH_TEXTMATCH;
-        void sprintf(buf, _("%s text match"), initblstats[fld].fldname);
+        sprintf(buf, _("%s text match"), initblstats[fld].fldname);
         add_menu(tmpwin, nul_glyphinfo, any, ord('t'), 0, ATR_NONE,
                  clr, buf, MENU_ITEMFLAGS_NONE);
         nopts++;
     }
 
-    void sprintf(buf, _("Select %s field hilite behavior:"), initblstats[fld].fldname)
+    sprintf(buf, _("Select %s field hilite behavior:"), initblstats[fld].fldname)
 ;
     end_menu()(tmpwin, buf);
 
@@ -3805,14 +3551,14 @@ status_hilite_menu_choose_behavior(fld)
         free(addr_of(picks[0]));
     }
     return beh;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-status_hilite_menu_choose_updownboth(
+function status_hilite_menu_choose_updownboth(
     fld,
     str,
-    ltok, gtok)
-{ const $frame = stack_frame(); try {
+    ltok, gtok) { /* int */
+    const $frame = stack_frame(); try {
     let res, ret = NO_LTEQGT;
     let tmpwin;
     let buf = stack_array(char, BUFSZ);
@@ -3825,9 +3571,9 @@ status_hilite_menu_choose_updownboth(
 
     if (ltok) {
         if (str)
-            void sprintf(buf, _("%s than %s"), (fld == BL_AC) ? _("Better (lower)") : _("Less"), str);
+            sprintf(buf, _("%s than %s"), (fld == BL_AC) ? _("Better (lower)") : _("Less"), str);
         else
-            void sprintf(buf, _("Value goes down"))
+            sprintf(buf, _("Value goes down"))
 ;
         struct_assign(any, cg.zeroany);
         any.a_int = 10 + LT_VALUE;
@@ -3835,7 +3581,7 @@ status_hilite_menu_choose_updownboth(
                  clr, buf, MENU_ITEMFLAGS_NONE);
 
         if (str) {
-            void sprintf(buf, _("%s or %s"), str, (fld == BL_AC) ? _("better (lower)") : _("less"))
+            sprintf(buf, _("%s or %s"), str, (fld == BL_AC) ? _("better (lower)") : _("less"))
 ;
             struct_assign(any, cg.zeroany);
             any.a_int = 10 + LE_VALUE;
@@ -3845,9 +3591,9 @@ status_hilite_menu_choose_updownboth(
     }
 
     if (str)
-        void sprintf(buf, _("Exactly %s"), str);
+        sprintf(buf, _("Exactly %s"), str);
     else
-        void sprintf(buf, _("Value changes"));
+        sprintf(buf, _("Value changes"));
     struct_assign(any, cg.zeroany);
     any.a_int = 10 + EQ_VALUE;
     add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE,
@@ -3855,7 +3601,7 @@ status_hilite_menu_choose_updownboth(
 
     if (gtok) {
         if (str) {
-            void sprintf(buf, _("%s or %s"), str, (fld == BL_AC) ? _("worse (higher)") : _("more"))
+            sprintf(buf, _("%s or %s"), str, (fld == BL_AC) ? _("worse (higher)") : _("more"))
 ;
             struct_assign(any, cg.zeroany);
             any.a_int = 10 + GE_VALUE;
@@ -3864,16 +3610,16 @@ status_hilite_menu_choose_updownboth(
         }
 
         if (str)
-            void sprintf(buf, _("%s than %s"), (fld == BL_AC) ? _("Worse (higher)") : _("More"), str);
+            sprintf(buf, _("%s than %s"), (fld == BL_AC) ? _("Worse (higher)") : _("More"), str);
         else
-            void sprintf(buf, _("Value goes up"))
+            sprintf(buf, _("Value goes up"))
 ;
         struct_assign(any, cg.zeroany);
         any.a_int = 10 + GT_VALUE;
         add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr,
                  buf, MENU_ITEMFLAGS_NONE);
     }
-    void sprintf(buf, _("Select field %s value:"), initblstats[fld].fldname);
+    sprintf(buf, _("Select field %s value:"), initblstats[fld].fldname);
     end_menu()(tmpwin, buf);
 
     res = select_menu(tmpwin, PICK_ONE, picks);
@@ -3884,11 +3630,11 @@ status_hilite_menu_choose_updownboth(
     }
 
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-status_hilite_menu_add(origfld)
-{ const $frame = stack_frame(); try {
+function status_hilite_menu_add(origfld) { /* boolean */
+    const $frame = stack_frame(); try {
     var fld;
     var behavior;
     var lt_gt_eq;
@@ -3942,13 +3688,13 @@ status_hilite_menu_add(origfld)
         var inbuf = stack_array(char, BUFSZ), buf = stack_array(char, BUFSZ);
         var aval = stack_struct(struct_any);
         var val, dt;
-        var gotnum = FALSE, percent = (+(behavior == BL_TH_VAL_PERCENTAGE));
+        var gotnum = FALSE, percent = +(behavior == BL_TH_VAL_PERCENTAGE);
         var inp, numstart;
         var op;
 
         lt_gt_eq = NO_LTEQGT; /* not set up yet */
         chars[inbuf + 0] = ord('\0');
-        void sprintf(buf, _("Enter %svalue for %s threshold:"), percent ? _("percentage ") : _(""), initblstats[fld].fldname)
+        sprintf(buf, _("Enter %svalue for %s threshold:"), percent ? _("percentage ") : _(""), initblstats[fld].fldname)
 
 ;
         getlin(buf, inbuf);
@@ -4006,7 +3752,7 @@ status_hilite_menu_add(origfld)
 
         struct_assign(aval, cg.zeroany);
         dt = int(percent ? ANY_INT : initblstats[fld].anytype);
-        void s_to_anything(aval, numstart, dt);
+        s_to_anything(aval, numstart, dt);
 
         if (percent) {
             val = aval.a_int;
@@ -4030,7 +3776,7 @@ status_hilite_menu_add(origfld)
             }
             /* restore suffix for use in color and attribute prompts */
             if (!strchr(numstart, ord('%')))
-                void strcat(numstart, _("%"));
+                strcat(numstart, _("%"));
 
         /* reject negative values except for AC and >-1; reject 0 for < */
         } else if (dt == ANY_INT
@@ -4050,9 +3796,9 @@ status_hilite_menu_add(origfld)
 
         if (lt_gt_eq == NO_LTEQGT) {
             var ltok = ((dt == ANY_INT)
-                            ? (+(aval.a_int > 0 || fld == BL_AC))
-                            : (+(aval.a_long > 0))),
-                    gtok = (+(!percent || aval.a_long < 100));
+                            ? +(aval.a_int > 0 || fld == BL_AC)
+                            : +(aval.a_long > 0)),
+                    gtok = +(!percent || aval.a_long < 100);
 
             lt_gt_eq = status_hilite_menu_choose_updownboth(fld, inbuf,
                                                             ltok, gtok);
@@ -4060,22 +3806,18 @@ status_hilite_menu_add(origfld)
                 continue choose_value;;
         }
 
-        void sprintf(colorqry, _("Choose a color for when %s is %s%s%s:"), initblstats[fld].fldname, (lt_gt_eq == LT_VALUE) ? _("less than ")
+        sprintf(colorqry, _("Choose a color for when %s is %s%s%s:"), initblstats[fld].fldname, (lt_gt_eq == LT_VALUE) ? _("less than ")
                   : (lt_gt_eq == GT_VALUE) ? _("more than ")
                     : _(""), numstart, (lt_gt_eq == LE_VALUE) ? _(" or less")
                   : (lt_gt_eq == GE_VALUE) ? _(" or more")
                     : _(""))
-
-
 
 ;
-        void sprintf(attrqry, _("Choose attribute for when %s is %s%s%s:"), initblstats[fld].fldname, (lt_gt_eq == LT_VALUE) ? _("less than ")
+        sprintf(attrqry, _("Choose attribute for when %s is %s%s%s:"), initblstats[fld].fldname, (lt_gt_eq == LT_VALUE) ? _("less than ")
                   : (lt_gt_eq == GT_VALUE) ? _("more than ")
                     : _(""), numstart, (lt_gt_eq == LE_VALUE) ? _(" or less")
                   : (lt_gt_eq == GE_VALUE) ? _(" or more")
                     : _(""))
-
-
 
 ;
 
@@ -4083,7 +3825,7 @@ status_hilite_menu_add(origfld)
         struct_assign(hilite.value, aval);
     } else if (behavior == BL_TH_UPDOWN) {
         if (initblstats[fld].anytype != ANY_STR) {
-            var ltok = (+(fld != BL_TIME)), gtok = TRUE;
+            var ltok = +(fld != BL_TIME), gtok = TRUE;
 
             lt_gt_eq = status_hilite_menu_choose_updownboth(fld, 0,
                                                             ltok, gtok);
@@ -4098,12 +3840,12 @@ status_hilite_menu_add(origfld)
                single choice, skip it altogether and just use 'changed' */
             lt_gt_eq = EQ_VALUE;
         }
-        void sprintf(colorqry, _("Choose a color for when %s %s:"), initblstats[fld].fldname, (lt_gt_eq == EQ_VALUE) ? _("changes")
+        sprintf(colorqry, _("Choose a color for when %s %s:"), initblstats[fld].fldname, (lt_gt_eq == EQ_VALUE) ? _("changes")
                   : (lt_gt_eq == LT_VALUE) ? _("decreases")
                     : _("increases"))
 
 ;
-        void sprintf(attrqry, _("Choose attribute for when %s %s:"), initblstats[fld].fldname, (lt_gt_eq == EQ_VALUE) ? _("changes")
+        sprintf(attrqry, _("Choose attribute for when %s %s:"), initblstats[fld].fldname, (lt_gt_eq == EQ_VALUE) ? _("changes")
                   : (lt_gt_eq == LT_VALUE) ? _("decreases")
                     : _("increases"))
 
@@ -4125,7 +3867,7 @@ status_hilite_menu_add(origfld)
     } else if (behavior == BL_TH_TEXTMATCH) {
         var qry_buf = stack_array(char, BUFSZ);
 
-        void sprintf(qry_buf, _("%s %s text value to match:"), (fld == BL_CAP
+        sprintf(qry_buf, _("%s %s text value to match:"), (fld == BL_CAP
                  || fld == BL_ALIGN
                  || fld == BL_HUNGER
                  || fld == BL_TITLE) ? _("Choose") : _("Enter"), initblstats[fld].fldname)
@@ -4140,7 +3882,7 @@ status_hilite_menu_add(origfld)
                 continue choose_behavior;;
 
             hilite.rel = TXT_VALUE;
-            void strcpy(hilite.textmatch, enc_stat[rv]);
+            strcpy(hilite.textmatch, enc_stat[rv]);
         } else if (fld == BL_ALIGN) {
             var aligntxt = static_array("status_hilite_menu_add.aligntxt", ptr_to(char), null, [
                 _("chaotic"), _("neutral"), _("lawful")
@@ -4152,7 +3894,7 @@ status_hilite_menu_add(origfld)
                 continue choose_behavior;;
 
             hilite.rel = TXT_VALUE;
-            void strcpy(hilite.textmatch, aligntxt[rv]);
+            strcpy(hilite.textmatch, aligntxt[rv]);
         } else if (fld == BL_HUNGER) {
             var hutxt = static_array("status_hilite_menu_add.hutxt", ptr_to(char), null, [
                 _("Satiated"), 0, _("Hungry"), _("Weak"),
@@ -4164,16 +3906,16 @@ status_hilite_menu_add(origfld)
                 continue choose_behavior;;
 
             hilite.rel = TXT_VALUE;
-            void strcpy(hilite.textmatch, hutxt[rv]);
+            strcpy(hilite.textmatch, hutxt[rv]);
         } else if (fld == BL_TITLE) {
             var rolelist = stack_array(ptr_to(char), 3 * 9 + 1);
             var mbuf = stack_array(char, MAXVALWIDTH), fbuf = stack_array(char, MAXVALWIDTH), obuf = stack_array(char, MAXVALWIDTH);
             var i, j, rv;
 
             for (i = j = 0; i < 9; i++) {
-                void sprintf(mbuf, _("\"%s\""), gu.urole.rank[i].m);
+                sprintf(mbuf, _("\"%s\""), gu.urole.rank[i].m);
                 if (gu.urole.rank[i].f) {
-                    void sprintf(fbuf, _("\"%s\""), gu.urole.rank[i].f);
+                    sprintf(fbuf, _("\"%s\""), gu.urole.rank[i].f);
                     Snprintf(obuf, sizeof(array_of(char, MAXVALWIDTH)), _("%s or %s"), flags.female ? fbuf : mbuf, flags.female ? mbuf : fbuf)
 
 ;
@@ -4199,7 +3941,7 @@ status_hilite_menu_add(origfld)
             rv = query_arrayvalue(qry_buf, rolelist, 0, j);
             if (rv >= 0) {
                 hilite.rel = TXT_VALUE;
-                void strcpy(hilite.textmatch, rolelist[rv]);
+                strcpy(hilite.textmatch, rolelist[rv]);
             }
             for (i = 0; i < j; i++)
                 free((rolelist[i])), rolelist[i] = 0;
@@ -4215,18 +3957,18 @@ status_hilite_menu_add(origfld)
 
             hilite.rel = TXT_VALUE;
             if (strlen(inbuf) < sizeof_member(hilite, "textmatch"))
-                void strcpy(hilite.textmatch, inbuf);
+                strcpy(hilite.textmatch, inbuf);
             else
                 return FALSE;
         }
-        void sprintf(colorqry, _("Choose a color for when %s is '%s':"), initblstats[fld].fldname, hilite.textmatch)
+        sprintf(colorqry, _("Choose a color for when %s is '%s':"), initblstats[fld].fldname, hilite.textmatch)
 ;
-        void sprintf(attrqry, _("Choose attribute for when %s is '%s':"), initblstats[fld].fldname, hilite.textmatch)
+        sprintf(attrqry, _("Choose attribute for when %s is '%s':"), initblstats[fld].fldname, hilite.textmatch)
 ;
     } else if (behavior == BL_TH_ALWAYS_HILITE) {
-        void sprintf(colorqry, _("Choose a color to always hilite %s:"), initblstats[fld].fldname)
+        sprintf(colorqry, _("Choose a color to always hilite %s:"), initblstats[fld].fldname)
 ;
-        void sprintf(attrqry, _("Choose attribute to always hilite %s:"), initblstats[fld].fldname)
+        sprintf(attrqry, _("Choose attribute to always hilite %s:"), initblstats[fld].fldname)
 ;
     }
 
@@ -4268,10 +4010,10 @@ status_hilite_menu_add(origfld)
             gc.cond_hilites[HL_ATTCLR_INVERSE] = and64u(gc.cond_hilites[HL_ATTCLR_INVERSE], not64u(cond));
         }
         gc.cond_hilites[clr] = or64u(gc.cond_hilites[clr], cond);
-        void strNsubst(strcpy(clrbuf, clr2colorname(clr)), _(" "), _("-"), 0);
+        strNsubst(strcpy(clrbuf, clr2colorname(clr)), _(" "), _("-"), 0);
         tmpattr = hlattr2attrname(atr, attrbuf, BUFSZ);
         if (tmpattr)
-            void sprintf(eos(clrbuf), _("&%s"), tmpattr);
+            sprintf(eos(clrbuf), _("&%s"), tmpattr);
         pline(_("Added hilite condition/%s/%s"),
               conditionbitmask2str(cond), clrbuf);
     } else {
@@ -4299,11 +4041,10 @@ status_hilite_menu_add(origfld)
     }
     reset_status_hilites();
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-status_hilite_remove(id)
-{
+function status_hilite_remove(id) { /* boolean */
     let hlstr = status_hilite_str[0];
 
     while (hlstr && hlstr.id != id) {
@@ -4353,9 +4094,8 @@ status_hilite_remove(id)
     return FALSE;
 }
 
-function /* boolean */
-status_hilite_menu_fld(fld)
-{ const $frame = stack_frame(); try {
+function status_hilite_menu_fld(fld) { /* boolean */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let i, res;
     let picks = stack_var(ptr_to(struct_mi), null);
@@ -4390,7 +4130,7 @@ status_hilite_menu_fld(fld)
             hlstr = hlstr.next;
         }
     } else {
-        void sprintf(buf, _("No current hilites for %s"), initblstats[fld].fldname);
+        sprintf(buf, _("No current hilites for %s"), initblstats[fld].fldname);
         add_menu_str(tmpwin, buf);
     }
 
@@ -4403,7 +4143,6 @@ status_hilite_menu_fld(fld)
         add_menu(tmpwin, nul_glyphinfo, any, ord('X'), 0, ATR_NONE, clr,
                  _("Remove selected hilites"), MENU_ITEMFLAGS_NONE);
     }
-
 
     if (fld == BL_SCORE) {
         /* suppress 'Z - Add a new hilite' for 'score' when SCORE_ON_BOTL
@@ -4420,7 +4159,7 @@ status_hilite_menu_fld(fld)
                  clr, _("Add new hilites"), MENU_ITEMFLAGS_NONE);
     }
 
-    void sprintf(buf, _("Current %s hilites:"), initblstats[fld].fldname);
+    sprintf(buf, _("Current %s hilites:"), initblstats[fld].fldname);
     end_menu()(tmpwin, buf);
 
     acted = FALSE;
@@ -4450,11 +4189,11 @@ status_hilite_menu_fld(fld)
     }
     destroy_nhwindow()(tmpwin);
     return acted;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-status_hilites_viewall()
-{ const $frame = stack_frame(); try {
+function status_hilites_viewall() { /* void */
+    const $frame = stack_frame(); try {
     let datawin;
     let hlstr = status_hilite_str[0];
     let buf = stack_array(char, BUFSZ);
@@ -4462,7 +4201,7 @@ status_hilites_viewall()
     datawin = create_nhwindow()(NHW_TEXT);
 
     while (hlstr) {
-        void sprintf(buf, _("OPTIONS=hilite_status: %.*s"), (BUFSZ - sizeof_string("OPTIONS=hilite_status: ") - 1), hlstr.str)
+        sprintf(buf, _("OPTIONS=hilite_status: %.*s"), (BUFSZ - sizeof_string("OPTIONS=hilite_status: ") - 1), hlstr.str)
 
 ;
         putstr()(datawin, 0, buf);
@@ -4471,11 +4210,11 @@ status_hilites_viewall()
 
     display_nhwindow()(datawin, FALSE);
     destroy_nhwindow()(datawin);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-all_options_statushilites(sbuf)
-{ const $frame = stack_frame(); try {
+export function all_options_statushilites(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let hlstr;
     let buf = stack_array(char, BUFSZ);
 
@@ -4485,18 +4224,18 @@ all_options_statushilites(sbuf)
     hlstr = status_hilite_str[0];
 
     while (hlstr) {
-        void sprintf(buf, _("OPTIONS=hilite_status: %.*s\n"), (BUFSZ - sizeof_string("OPTIONS=hilite_status:  ") - 1), hlstr.str)
+        sprintf(buf, _("OPTIONS=hilite_status: %.*s\n"), (BUFSZ - sizeof_string("OPTIONS=hilite_status:  ") - 1), hlstr.str)
 
 ;
         strbuf_append(sbuf, buf);
         hlstr = hlstr.next;
     }
     status_hilite_linestr_done();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-status_hilite_menu()
-{ const $frame = stack_frame(); try {
+export function status_hilite_menu() { /* boolean */
+    const $frame = stack_frame(); try {
     var tmpwin;
     var i, fld, res;
     var picks = stack_var(ptr_to(struct_mi), null);
@@ -4539,9 +4278,9 @@ status_hilite_menu()
 
         struct_assign(any, cg.zeroany);
         any.a_int = fld + 1;
-        void sprintf(buf, _("%-18s"), initblstats[i].fldname);
+        sprintf(buf, _("%-18s"), initblstats[i].fldname);
         if (count)
-            void sprintf(eos(buf), _(" (%d defined)"), count);
+            sprintf(eos(buf), _(" (%d defined)"), count);
         add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE,
                  clr, buf, MENU_ITEMFLAGS_NONE);
     }
@@ -4575,383 +4314,121 @@ status_hilite_menu()
         iflags.hilite_delta = 3;
 
     return TRUE;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*botl.c*/
-import { A_CHAOTIC } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { ART_MITRE_OF_HOLINESS } from "./artilist.h.js";
-import { ART_TSURUGI_OF_MURAMASA } from "./artilist.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { STR18 } from "./attrib.h.macros.js";
-import { BL_AC } from "./botl.h.js";
-import { BL_ALIGN } from "./botl.h.js";
-import { BL_ARMOR } from "./botl.h.js";
-import { BL_CAP } from "./botl.h.js";
-import { BL_CH } from "./botl.h.js";
-import { BL_CHARACTERISTICS } from "./botl.h.js";
-import { BL_CO } from "./botl.h.js";
-import { BL_CONDITION } from "./botl.h.js";
-import { BL_DX } from "./botl.h.js";
-import { BL_ENE } from "./botl.h.js";
-import { BL_ENEMAX } from "./botl.h.js";
-import { BL_EXP } from "./botl.h.js";
-import { BL_FLUSH } from "./botl.h.js";
-import { BL_GOLD } from "./botl.h.js";
-import { BL_HD } from "./botl.h.js";
-import { BL_HP } from "./botl.h.js";
-import { BL_HPMAX } from "./botl.h.js";
-import { BL_HUNGER } from "./botl.h.js";
-import { BL_IN } from "./botl.h.js";
-import { BL_LEVELDESC } from "./botl.h.js";
-import { BL_MASK_BAREH } from "./botl.h.js";
-import { BL_MASK_BLIND } from "./botl.h.js";
-import { BL_MASK_BUSY } from "./botl.h.js";
-import { BL_MASK_CONF } from "./botl.h.js";
-import { BL_MASK_DEAF } from "./botl.h.js";
-import { BL_MASK_ELF_IRON } from "./botl.h.js";
-import { BL_MASK_FLY } from "./botl.h.js";
-import { BL_MASK_FOODPOIS } from "./botl.h.js";
-import { BL_MASK_GLOWHANDS } from "./botl.h.js";
-import { BL_MASK_GRAB } from "./botl.h.js";
-import { BL_MASK_HALLU } from "./botl.h.js";
-import { BL_MASK_HELD } from "./botl.h.js";
-import { BL_MASK_HOLDING } from "./botl.h.js";
-import { BL_MASK_ICY } from "./botl.h.js";
-import { BL_MASK_INLAVA } from "./botl.h.js";
-import { BL_MASK_LEV } from "./botl.h.js";
-import { BL_MASK_PARLYZ } from "./botl.h.js";
-import { BL_MASK_RIDE } from "./botl.h.js";
-import { BL_MASK_SLEEPING } from "./botl.h.js";
-import { BL_MASK_SLIME } from "./botl.h.js";
-import { BL_MASK_SLIPPERY } from "./botl.h.js";
-import { BL_MASK_STONE } from "./botl.h.js";
-import { BL_MASK_STRNGL } from "./botl.h.js";
-import { BL_MASK_STUN } from "./botl.h.js";
-import { BL_MASK_SUBMERGED } from "./botl.h.js";
-import { BL_MASK_TERMILL } from "./botl.h.js";
-import { BL_MASK_TETHERED } from "./botl.h.js";
-import { BL_MASK_TRAPPED } from "./botl.h.js";
-import { BL_MASK_UNCONSC } from "./botl.h.js";
-import { BL_MASK_WOUNDEDL } from "./botl.h.js";
-import { BL_RESET } from "./botl.h.js";
-import { BL_SCORE } from "./botl.h.js";
-import { BL_STR } from "./botl.h.js";
-import { BL_TERRAIN } from "./botl.h.js";
-import { BL_TH_ALWAYS_HILITE } from "./botl.h.js";
-import { BL_TH_CONDITION } from "./botl.h.js";
-import { BL_TH_CRITICALHP } from "./botl.h.js";
-import { BL_TH_NONE } from "./botl.h.js";
-import { BL_TH_TEXTMATCH } from "./botl.h.js";
-import { BL_TH_UPDOWN } from "./botl.h.js";
-import { BL_TH_VAL_ABSOLUTE } from "./botl.h.js";
-import { BL_TH_VAL_PERCENTAGE } from "./botl.h.js";
-import { BL_TIME } from "./botl.h.js";
-import { BL_TITLE } from "./botl.h.js";
-import { BL_VERS } from "./botl.h.js";
-import { BL_WEAPON } from "./botl.h.js";
-import { BL_WI } from "./botl.h.js";
-import { BL_XP } from "./botl.h.js";
-import { BOTL_NSIZ } from "./botl.h.js";
-import { CONDITION_COUNT } from "./botl.h.js";
-import { EQ_VALUE } from "./botl.h.js";
-import { GE_VALUE } from "./botl.h.js";
-import { GT_VALUE } from "./botl.h.js";
-import { HL_ATTCLR_BLINK } from "./botl.h.js";
-import { HL_ATTCLR_BOLD } from "./botl.h.js";
-import { HL_ATTCLR_DIM } from "./botl.h.js";
-import { HL_ATTCLR_INVERSE } from "./botl.h.js";
-import { HL_ATTCLR_ITALIC } from "./botl.h.js";
-import { HL_ATTCLR_ULINE } from "./botl.h.js";
-import { HL_BLINK } from "./botl.h.js";
-import { HL_BOLD } from "./botl.h.js";
-import { HL_DIM } from "./botl.h.js";
-import { HL_INVERSE } from "./botl.h.js";
-import { HL_ITALIC } from "./botl.h.js";
-import { HL_NONE } from "./botl.h.js";
-import { HL_ULINE } from "./botl.h.js";
-import { HL_UNDEF } from "./botl.h.js";
-import { LE_VALUE } from "./botl.h.js";
-import { LT_VALUE } from "./botl.h.js";
-import { MAXBLSTATS } from "./botl.h.js";
-import { MAXCO } from "./botl.h.js";
-import { MAXVALWIDTH } from "./botl.h.js";
-import { NO_LTEQGT } from "./botl.h.js";
-import { TXT_VALUE } from "./botl.h.js";
-import { bl_bareh } from "./botl.h.js";
-import { bl_blind } from "./botl.h.js";
-import { bl_busy } from "./botl.h.js";
-import { bl_conf } from "./botl.h.js";
-import { bl_deaf } from "./botl.h.js";
-import { bl_elf_iron } from "./botl.h.js";
-import { bl_fly } from "./botl.h.js";
-import { bl_foodpois } from "./botl.h.js";
-import { bl_glowhands } from "./botl.h.js";
-import { bl_grab } from "./botl.h.js";
-import { bl_hallu } from "./botl.h.js";
-import { bl_held } from "./botl.h.js";
-import { bl_holding } from "./botl.h.js";
-import { bl_icy } from "./botl.h.js";
-import { bl_inlava } from "./botl.h.js";
-import { bl_lev } from "./botl.h.js";
-import { bl_parlyz } from "./botl.h.js";
-import { bl_ride } from "./botl.h.js";
-import { bl_sleeping } from "./botl.h.js";
-import { bl_slime } from "./botl.h.js";
-import { bl_slippery } from "./botl.h.js";
-import { bl_stone } from "./botl.h.js";
-import { bl_strngl } from "./botl.h.js";
-import { bl_stun } from "./botl.h.js";
-import { bl_submerged } from "./botl.h.js";
-import { bl_termill } from "./botl.h.js";
-import { bl_tethered } from "./botl.h.js";
-import { bl_trapped } from "./botl.h.js";
-import { bl_unconsc } from "./botl.h.js";
-import { bl_woundedl } from "./botl.h.js";
-import { struct_conditions_t } from "./botl.h.js";
-import { struct_condmap } from "./botl.h.js";
-import { struct_condtests_t } from "./botl.h.js";
-import { struct_hilite_s } from "./botl.h.js";
-import { struct_istat_s } from "./botl.h.js";
+
+import { A_CHAOTIC, A_NEUTRAL } from "./align.h.js";
+import { ART_MITRE_OF_HOLINESS, ART_TSURUGI_OF_MURAMASA } from "./artilist.h.js";
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS } from "./attrib.h.js";
+import { ACURR, STR18 } from "./attrib.h.macros.js";
+import {
+    BL_AC, BL_ALIGN, BL_ARMOR, BL_CAP, BL_CH, BL_CHARACTERISTICS, BL_CO, BL_CONDITION, BL_DX,
+    BL_ENE, BL_ENEMAX, BL_EXP, BL_FLUSH, BL_GOLD, BL_HD, BL_HP, BL_HPMAX, BL_HUNGER, BL_IN,
+    BL_LEVELDESC, BL_MASK_BAREH, BL_MASK_BLIND, BL_MASK_BUSY, BL_MASK_CONF, BL_MASK_DEAF,
+    BL_MASK_ELF_IRON, BL_MASK_FLY, BL_MASK_FOODPOIS, BL_MASK_GLOWHANDS, BL_MASK_GRAB, BL_MASK_HALLU,
+    BL_MASK_HELD, BL_MASK_HOLDING, BL_MASK_ICY, BL_MASK_INLAVA, BL_MASK_LEV, BL_MASK_PARLYZ,
+    BL_MASK_RIDE, BL_MASK_SLEEPING, BL_MASK_SLIME, BL_MASK_SLIPPERY, BL_MASK_STONE, BL_MASK_STRNGL,
+    BL_MASK_STUN, BL_MASK_SUBMERGED, BL_MASK_TERMILL, BL_MASK_TETHERED, BL_MASK_TRAPPED,
+    BL_MASK_UNCONSC, BL_MASK_WOUNDEDL, BL_RESET, BL_SCORE, BL_STR, BL_TERRAIN, BL_TH_ALWAYS_HILITE,
+    BL_TH_CONDITION, BL_TH_CRITICALHP, BL_TH_NONE, BL_TH_TEXTMATCH, BL_TH_UPDOWN,
+    BL_TH_VAL_ABSOLUTE, BL_TH_VAL_PERCENTAGE, BL_TIME, BL_TITLE, BL_VERS, BL_WEAPON, BL_WI, BL_XP,
+    BOTL_NSIZ, CONDITION_COUNT, EQ_VALUE, GE_VALUE, GT_VALUE, HL_ATTCLR_BLINK, HL_ATTCLR_BOLD,
+    HL_ATTCLR_DIM, HL_ATTCLR_INVERSE, HL_ATTCLR_ITALIC, HL_ATTCLR_ULINE, HL_BLINK, HL_BOLD, HL_DIM,
+    HL_INVERSE, HL_ITALIC, HL_NONE, HL_ULINE, HL_UNDEF, LE_VALUE, LT_VALUE, MAXBLSTATS, MAXCO,
+    MAXVALWIDTH, NO_LTEQGT, TXT_VALUE, bl_bareh, bl_blind, bl_busy, bl_conf, bl_deaf, bl_elf_iron,
+    bl_fly, bl_foodpois, bl_glowhands, bl_grab, bl_hallu, bl_held, bl_holding, bl_icy, bl_inlava,
+    bl_lev, bl_parlyz, bl_ride, bl_sleeping, bl_slime, bl_slippery, bl_stone, bl_strngl, bl_stun,
+    bl_submerged, bl_termill, bl_tethered, bl_trapped, bl_unconsc, bl_woundedl, struct_conditions_t,
+    struct_condmap, struct_condtests_t, struct_hilite_s, struct_istat_s,
+} from "./botl.h.js";
 import { VIA_WINDOWPORT } from "./botl.h.macros.js";
-import { CLR_MAX } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { CLR_MAX, NO_COLOR } from "./color.h.js";
+import { COIN_CLASS, S_EEL, WEAPON_CLASS } from "./defsym.h.js";
 import { objnum_to_glyph } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { In_tutorial } from "./dungeon.h.macros.js";
-import { Is_knox } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { opt_in } from "./global.h.js";
-import { opt_out } from "./global.h.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { NOT_HUNGRY } from "./hack.h.js";
-import { OVERLOADED } from "./hack.h.js";
-import { SATIATED } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { STARVED } from "./hack.h.js";
-import { SYM_OFF_O } from "./hack.h.js";
-import { UNENCUMBERED } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { qsort } from "./hack.h.macros.js";
+import { In_endgame, In_tutorial, Is_knox } from "./dungeon.h.macros.js";
+import { BUFSZ, COLNO, FALSE, LARGEST_INT, QBUFSZ, TRUE, opt_in, opt_out } from "./global.h.js";
+import { Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    NOT_HUNGRY, OVERLOADED, SATIATED, SLT_ENCUMBER, STARVED, SYM_OFF_O, UNENCUMBERED,
+} from "./hack.h.js";
+import { max, min, qsort } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { humanoid } from "./mondata.h.macros.js";
 import { NON_PM } from "./monsters.h.js";
-import { bimanual } from "./obj.h.macros.js";
-import { is_sword } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { AKLYS } from "./objects.h.js";
-import { AMULET_OF_GUARDING } from "./objects.h.js";
-import { CLOAK_OF_PROTECTION } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { RIN_PROTECTION } from "./objects.h.js";
-import { ICE } from "./rm.h.js";
-import { MAX_TYPE } from "./rm.h.js";
+import { bimanual, is_sword, is_weptool } from "./obj.h.macros.js";
+import {
+    AKLYS, AMULET_OF_GUARDING, CLOAK_OF_PROTECTION, CREAM_PIE, GOLD_PIECE, RIN_PROTECTION,
+} from "./objects.h.js";
+import { ICE, MAX_TYPE } from "./rm.h.js";
 import { levl } from "./rm.h.macros.js";
-import { P_LANCE } from "./skills.h.js";
-import { P_MORNING_STAR } from "./skills.h.js";
-import { P_POLEARMS } from "./skills.h.js";
-import { P_QUARTERSTAFF } from "./skills.h.js";
-import { P_UNICORN_HORN } from "./skills.h.js";
-import { WC2_FLUSH_STATUS } from "./winprocs.h.js";
-import { WC2_RESET_STATUS } from "./winprocs.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { curs } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putmixed } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { status_enablefield } from "./winprocs.h.macros.js";
-import { status_update } from "./winprocs.h.macros.js";
-import { ANY_INT } from "./wintype.h.js";
-import { ANY_INVALID } from "./wintype.h.js";
-import { ANY_IPTR } from "./wintype.h.js";
-import { ANY_LONG } from "./wintype.h.js";
-import { ANY_LPTR } from "./wintype.h.js";
-import { ANY_MASK32 } from "./wintype.h.js";
-import { ANY_STR } from "./wintype.h.js";
-import { ANY_UINT } from "./wintype.h.js";
-import { ANY_ULONG } from "./wintype.h.js";
-import { ANY_ULPTR } from "./wintype.h.js";
-import { ANY_UPTR } from "./wintype.h.js";
-import { ATR_BLINK } from "./wintype.h.js";
-import { ATR_BOLD } from "./wintype.h.js";
-import { ATR_DIM } from "./wintype.h.js";
-import { ATR_INVERSE } from "./wintype.h.js";
-import { ATR_ITALIC } from "./wintype.h.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { ATR_ULINE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPINVERT } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { SICK_NONVOMITABLE } from "./you.h.js";
-import { SICK_VOMITABLE } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Ugender } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
+import { P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN } from "./skills.h.js";
+import { WC2_FLUSH_STATUS, WC2_RESET_STATUS } from "./winprocs.h.js";
+import {
+    create_nhwindow, curs, destroy_nhwindow, display_nhwindow, end_menu, putmixed, putstr,
+    start_menu, status_enablefield, status_update,
+} from "./winprocs.h.macros.js";
+import {
+    ANY_INT, ANY_INVALID, ANY_IPTR, ANY_LONG, ANY_LPTR, ANY_MASK32, ANY_STR, ANY_UINT, ANY_ULONG,
+    ANY_ULPTR, ANY_UPTR, ATR_BLINK, ATR_BOLD, ATR_DIM, ATR_INVERSE, ATR_ITALIC, ATR_NONE, ATR_ULINE,
+    MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT,
+    NHW_MENU, NHW_TEXT, PICK_ANY, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { SICK_NONVOMITABLE, SICK_VOMITABLE, TT_BURIEDBALL, TT_LAVA } from "./you.h.js";
+import { Role_switch, Ugender, Upolyd } from "./you.h.macros.js";
+import {
+    Blind, Confusion, Deaf, Flying, Glib, Hallucination, Levitation, Sick, Slimed, Stoned,
+    Strangled, Stunned, Underwater, Wounded_legs,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { LLONG_MAX } from "../rt/libc.js";
-import { atoi } from "../rt/libc.js";
-import { atoll } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    char, int, ord, schar, sizeof, sizeof_string, uchar, ulong, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { and64u, not64u, or64u } from "../rt/int64.js";
+import {
+    LLONG_MAX, atoi, atoll, free, memset, sprintf, strcat, strchr, strcmp, strcpy, strlen, strncmp,
+    strncpy,
+} from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, ref_to, sizeof_member, struct, struct_assign,
+    view_of,
+} from "../rt/struct.js";
+import { alloc, dupstr, fmt_ptr } from "./alloc.js";
 import { config_error_add } from "./cfgfiles.js";
-import { clr2colorname } from "./coloratt.js";
-import { match_str2attr } from "./coloratt.js";
-import { match_str2clr } from "./coloratt.js";
-import { query_attr } from "./coloratt.js";
-import { query_color } from "./coloratt.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { nul_glyphinfo } from "./display.js";
-import { suppress_map_output } from "./display.js";
+import {
+    clr2colorname, match_str2attr, match_str2clr, query_attr, query_color,
+} from "./coloratt.js";
+import {
+    cg, disp, flags, gb, gc, gi, gm, gn, gs, gu, gv, gy, iflags, svc, svd, svm, svp, u,
+} from "./decl.js";
+import { nul_glyphinfo, suppress_map_output } from "./display.js";
 import { pmname } from "./do_name.js";
-import { In_quest } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlev } from "./dungeon.js";
-import { endgamelevelname } from "./dungeon.js";
+import { In_quest, depth, dunlev, endgamelevelname } from "./dungeon.js";
 import { hu_stat } from "./eat.js";
 import { panic } from "./end.js";
 import { newuexp } from "./exper.js";
-import { classify_terrain } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { digit } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { fuzzymatch } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strNsubst } from "./hacklib.js";
-import { str_start_is } from "./hacklib.js";
-import { stripchars } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { trimspaces } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
+import { classify_terrain, money_cnt, near_capacity } from "./hack.js";
+import {
+    digit, eos, fuzzymatch, highc, lowc, mungspaces, sgn, strNsubst, str_start_is, stripchars,
+    strkitten, strncmpi, strstri, strsubst, trimspaces, upstart,
+} from "./hacklib.js";
 import { sticks } from "./mondata.js";
 import { mons } from "./monst.js";
 import { helm_simple_name } from "./objnam.js";
 import { match_optname } from "./options.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
+import { impossible, pline } from "./pline.js";
 import { critically_low_hp } from "./pray.js";
 import { roles } from "./role.js";
 import { strbuf_append } from "./strutil.js";
 import { unconscious } from "./trap.js";
 import { status_version } from "./version.js";
-import { weapon_descr } from "./weapon.js";
-import { weapon_type } from "./weapon.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { encglyph } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { windowprocs } from "./windows.js";
+import { weapon_descr, weapon_type } from "./weapon.js";
+import {
+    add_menu, add_menu_heading, add_menu_str, encglyph, getlin, select_menu, windowprocs,
+} from "./windows.js";

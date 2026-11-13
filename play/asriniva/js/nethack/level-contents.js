@@ -3,6 +3,7 @@ import {callRegion} from './bindings/region.js';
 import {enableDig} from './dig.js';
 import {make_grave,random_engraving,rubouts} from '../ported/engrave.js';
 import {enableRandomText} from './random-text.js';
+import {nativeSpatialFor} from './native/spatial-state.js';
 import {enableVision} from './vision.js';
 import abi from './trap-abi.json' with {type:'json'};
 import * as trap from '../ported/trap.js';
@@ -21,7 +22,7 @@ export function enableLevelContents(environment,layouts,creation){
  engraving.rn2=(n,line,caller)=>{if(environment.services.rng_log_enabled())environment.services.rng_log_set_caller(environment.services.literal('engrave.c'),line,environment.services.literal(caller));return environment.services.rn2(n);};
  environment.extend('world-engravings',{make_grave,random_engraving});
  const vision=enableVision(environment,layouts);
- const regions=environment.start('region-reset').environment;environment.extend('region-reset',Object.fromEntries(['visible_region_at','any_visible_region'].filter(name=>!environment.hasFunction(name)).map(name=>[name,(...args)=>callRegion(regions,layouts.region,name,...args)])));
+ const regions=environment.start('region-reset').environment;environment.extend('region-reset',Object.fromEntries(['visible_region_at','any_visible_region'].filter(name=>!environment.hasFunction(name)).map(name=>[name,nativeSpatialFor(environment,layouts).regions[name]])));
  enableDig(environment,layouts);
  const position=creation.context(layouts.hack);Object.defineProperty(position,'svi',{value:creation.views.record('struct instance_globals_saved_i',environment.requireGlobal('svi'))});position.Invocation_lev=lev=>environment.resolve('Invocation_lev')(environment.address(lev));Object.defineProperty(position,'svr',{value:creation.views.record('struct instance_globals_saved_r',environment.requireGlobal('svr'))});
  position.in_rooms_buf=environment.allocateGlobal('hack.in_rooms.buf',5);position.charPointer=p=>typeof p==='string'?environment.services.literal(p):environment.address(p);
@@ -29,7 +30,7 @@ export function enableLevelContents(environment,layouts,creation){
  const numeric=k=>typeof k==='string'&&/^-?\d+$/.test(k),cell=(x,y)=>new Proxy(creation.environment.levl[x][y],{get:(o,k,r)=>numeric(k)?creation.views.advance(o,Number(k)):Reflect.get(o,k,r)});
  Object.defineProperty(position,'levl',{value:new Proxy({}, {get:(_,x)=>new Proxy({}, {get:(_,y)=>cell(Number(x),Number(y))})})});
  environment.register('level-invocation',{invocation_pos,in_rooms},position);
- const traps=enableSchemaPort(environment,'trap',trap,trap.trapSchema,abi.layout,callTrap,['maketrap','t_at']);
+ const traps=enableSchemaPort(environment,'trap',trap,trap.trapSchema,abi.layout,callTrap,['maketrap']);environment.extend('trap',{t_at:nativeSpatialFor(environment,layouts).t_at});
  const room=creation.context(layouts.mkroom),{views}=creation;
  // Original MKROOM bridge materializes these native struct obj* returns.
  for(const name of ['mkgold','mk_tt_object','mksobj_at','mkobj','add_to_container','mkobj_at','mksobj','sobj_at'])room[name]=(...args)=>views.record('struct obj',environment.resolve(name)(...args.map(v=>v?.address??v)));

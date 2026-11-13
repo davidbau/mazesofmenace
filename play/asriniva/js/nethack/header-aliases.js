@@ -3200,5 +3200,5 @@ const prototypeProfiles={
 const profiles=Object.fromEntries(Object.entries(profileDeclarations).map(([name,groups])=>[name,groups.flatMap(({shape:[kind,writable,returnsAssigned,onlyIfOwnTargetMissingAlias],fields,declaration})=>(fields??Object.entries(declarations[declaration]).map(([key,field])=>[key,[field]])).map(([key,path])=>({kind,key,path,writable,returnsAssigned,onlyIfOwnTargetMissingAlias})))]));
 function clone(value){return Array.isArray(value)?value.map(clone):value&&typeof value==='object'?Object.fromEntries(Object.entries(value).map(([k,v])=>[k,clone(v)])):value;}
 export function createFieldAliases(profile){return clone(declarations[profile]);}
-export function applyRecordAliases(kind,result,profile){return installAliasedFields(result,kind,profiles[profile],false);}
+export function applyRecordAliases(kind,result,profile,onlyMissing=false){return installAliasedFields(result,kind,onlyMissing?profiles[profile].filter(row=>!(row.key in result)):profiles[profile],false);}
 export function applyPrototypeAliases(kind,prototype,profile){return installAliasedFields(prototype,kind,prototypeProfiles[profile],true);}

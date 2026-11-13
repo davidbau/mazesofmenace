@@ -4,14 +4,6 @@
 ** See Copyright Notice in lua.h
 */
 
-
-
-
-
-
-
-
-
 /*
 ** ===================================================================
 ** General Configuration File for Lua
@@ -28,7 +20,6 @@
 ** ===================================================================
 */
 
-
 /*
 ** {====================================================================
 ** System Configuration: macros to adapt (if needed) Lua to some
@@ -43,47 +34,15 @@
 */
 /* #define LUA_USE_C89 */
 
-
 /*
 ** By default, Lua on Windows use (some) specific Windows features
 */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 @@ LUAI_IS32INT is true iff 'int' has (at least) 32 bits.
 */
 
-
 /* }================================================================== */
-
-
 
 /*
 ** {==================================================================
@@ -105,25 +64,13 @@
 
 /* predefined options for LUA_INT_TYPE */
 
-
-
-
 /* predefined options for LUA_FLOAT_TYPE */
 
-
-
-
-
 /* Default configuration ('long long' and 'double', for 64-bit Lua) */
-
-
-
 
 /*
 @@ LUA_32BITS enables Lua with 32-bit integers and 32-bit floats.
 */
-
-
 
 /*
 @@ LUA_C89_NUMBERS ensures that Lua uses the largest types available for
@@ -131,42 +78,17 @@
 ** not need to use this case.
 */
 
-
-
-
-
-
-
-
 /*
 ** 32-bit integers and 'float'
 */
-
-
-
-
-
-
-
 
 /*
 ** largest types available for C89 ('long' and 'double')
 */
 
-
-
-
 /* use defaults */
 
-
-
-
-
-
-
 /* }================================================================== */
-
-
 
 /*
 ** {==================================================================
@@ -182,10 +104,6 @@
 ** directory.
 */
 
-
-
-
-
 /*
 @@ LUA_PATH_DEFAULT is the default path that Lua uses to look for
 ** Lua libraries.
@@ -196,67 +114,16 @@
 ** non-conventional directories.
 */
 
-
-
 /*
 ** In Windows, any exclamation mark ('!') in the path is replaced by the
 ** path of the directory of the executable file of the current process.
 */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 @@ LUA_DIRSEP is the directory separator (for submodules).
 ** CHANGE it if your machine does not use "/" as the directory separator
 ** and is not Windows. (On Windows Lua automatically uses "\".)
 */
-
-
-
-
-
-
-
-
-
-
 
 /*
 ** LUA_IGMARK is a mark to ignore all after it when building the
@@ -265,9 +132,7 @@
 ** as in "mod-v1.2.so".
 */
 
-
 /* }================================================================== */
-
 
 /*
 ** {==================================================================
@@ -285,26 +150,9 @@
 ** LUA_BUILD_AS_DLL to get it).
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
 ** More often than not the libs go together with the core.
 */
-
-
-
 
 /*
 @@ LUAI_FUNC is a mark for all extern functions that are not to be
@@ -321,17 +169,7 @@
 ** default definition.
 */
 
-
-
-
-
-
-
-
-
-
 /* }================================================================== */
-
 
 /*
 ** {==================================================================
@@ -345,14 +183,12 @@
 ** to fit your specific needs.
 */
 
-
 /*
 @@ LUA_COMPAT_MATHLIB controls the presence of several deprecated
 ** functions in the mathematical library.
 ** (These functions were already officially removed in 5.3;
 ** nevertheless they are still available here.)
 */
-
 
 /*
 @@ LUA_COMPAT_APIINTCASTS controls the presence of macros for
@@ -362,14 +198,10 @@
 ** available here.)
 */
 
-
-
 /*
 @@ LUA_COMPAT_LT_LE controls the emulation of the '__le' metamethod
 ** using '__lt'.
 */
-
-
 
 /*
 @@ The following macros supply trivial compatibility for some
@@ -379,17 +211,7 @@
 ** still available here.)
 */
 
-
-
-
-
-
-
-
-
 /* }================================================================== */
-
-
 
 /*
 ** {==================================================================
@@ -412,13 +234,7 @@
 @@ lua_str2number converts a decimal numeral to a number.
 */
 
-
 /* The following definitions are good for most cases here */
-
-
-
-
-
 
 /*
 @@ lua_numbertointeger converts a float number with an integral value
@@ -430,66 +246,7 @@
 ** may have an ill-defined value.)
 */
 
-
-
-
-
-
 /* now the variable definitions */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 @@ LUA_UNSIGNED is the unsigned version of LUA_INTEGER.
@@ -503,85 +260,22 @@
 @@ lua_integer2str converts an integer to a string.
 */
 
-
 /* The following definitions are good for most cases here */
-
-
-
-
-
-
-
 
 /*
 ** use LUAI_UACINT here to avoid problems with promotions (which
 ** can turn a comparison between unsigneds into a signed comparison)
 */
 
-
-
 /* now the variable definitions */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* use presence of macro LLONG_MAX as proxy for C99 compliance */
 
 /* use ISO C99 stuff */
 
-
-
-
-
-
-
-
-
-
 /* in Windows, can use specific Windows types */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* }================================================================== */
-
 
 /*
 ** {==================================================================
@@ -594,12 +288,6 @@
 ** (All uses in Lua have only one format item.)
 */
 
-
-
-
-
-
-
 /*
 @@ lua_strx2number converts a hexadecimal numeral to a number.
 ** In C99, 'strtod' does that conversion. Otherwise, you can
@@ -607,16 +295,10 @@
 ** implementation.
 */
 
-
-
-
-
 /*
 @@ lua_pointer2str converts a pointer to a readable string in a
 ** non-specified way.
 */
-
-
 
 /*
 @@ lua_number2strx converts a float to a hexadecimal numeral.
@@ -625,24 +307,12 @@
 ** provide its own implementation.
 */
 
-
-
-
-
-
 /*
 ** 'strtof' and 'opf' variants for math functions are not valid in
 ** C89. Otherwise, the macro 'HUGE_VALF' is a good proxy for testing the
 ** availability of these variants. ('math.h' is already included in
 ** all files that use these macros.)
 */
-
-
-
-
-
-
-
 
 /*
 @@ LUA_KCONTEXT is the type of the context ('ctx') for continuation
@@ -651,26 +321,11 @@
 ** 'intptr_t' in C89)
 */
 
-
-
-
-
-
-
-
-
-
-
-
 /*
 @@ lua_getlocaledecpoint gets the locale "radix character" (decimal point).
 ** Change that if you do not want to use C locales. (Code using this
 ** macro must include the header 'locale.h'.)
 */
-
-
-
-
 
 /*
 ** macros to improve jump prediction, used mostly for error handling
@@ -679,28 +334,9 @@
 ** code.)
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* shorter names for Lua's own use */
 
-
-
-
-
-
 /* }================================================================== */
-
 
 /*
 ** {==================================================================
@@ -717,18 +353,12 @@
 /* #define LUA_NOCVTN2S */
 /* #define LUA_NOCVTS2N */
 
-
 /*
 @@ LUA_USE_APICHECK turns on several consistency checks on the C API.
 ** Define it as a help when debugging C code.
 */
 
-
-
-
-
 /* }================================================================== */
-
 
 /*
 ** {==================================================================
@@ -748,17 +378,11 @@
 
 export const LUAI_MAXSTACK = 1000000;
 
-
-
-
-
 /*
 @@ LUA_EXTRASPACE defines the size of a raw memory area associated with
 ** a Lua state with very fast access.
 ** CHANGE it if you need a different size.
 */
-
-
 
 /*
 @@ LUA_IDSIZE gives the maximum size for the description of the source
@@ -767,25 +391,18 @@ export const LUAI_MAXSTACK = 1000000;
 */
 export const LUA_IDSIZE = 60;
 
-
 /*
 @@ LUAL_BUFFERSIZE is the initial buffer size used by the lauxlib
 ** buffer system.
 */
-export const LUAL_BUFFERSIZE = ((16 * sizeof(ptr_to(void_t)) * sizeof(double)));
-
+export const LUAL_BUFFERSIZE = (16 * sizeof(ptr_to(void_t)) * sizeof(double));
 
 /*
 @@ LUAI_MAXALIGN defines fields that, when used in a union, ensure
 ** maximum alignment for the other items in that union.
 */
 
-
 /* }================================================================== */
-
-
-
-
 
 /* =================================================================== */
 
@@ -793,7 +410,6 @@ export const LUAL_BUFFERSIZE = ((16 * sizeof(ptr_to(void_t)) * sizeof(double)));
 ** Local configuration. You can use this space to add your redefinitions
 ** without modifying the main part of the file.
 */
-import { double } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { ptr_to } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+
+import { double, sizeof } from "../rt/ctypes.js";
+import { ptr_to, void_t } from "../rt/struct.js";

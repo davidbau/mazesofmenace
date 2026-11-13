@@ -1,4 +1,4 @@
-export default `	Depending upon hardware or operating system or NetHack's interface,
+export default String.raw`	Depending upon hardware or operating system or NetHack's interface,
 	some keystrokes may be off-limits.
 
 	For example, ^S and ^Q are often used for XON/XOFF flow-control,
@@ -44,7 +44,7 @@ export default `	Depending upon hardware or operating system or NetHack's interf
 	need to type it a second time or NetHack will sit there waiting.
 	(It will then be treated as if you typed ESC rather than M-ESC.)
 
-	On some systems, typing ^\\ will send a QUIT signal to the current
+	On some systems, typing ^\ will send a QUIT signal to the current
 	process, probably killing it and possibly causing it to save a
 	core dump.  It is not used for any NetHack command, so don't type
 	that character.

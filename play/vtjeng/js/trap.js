@@ -231,7 +231,7 @@ import {
     movobj,
 } from './hack.js';
 import { goodpos } from './teleport.js';
-import { ordin, push_front, sgn, upstart } from './hacklib.js';
+import { ordin, push_front, sgn, upstart, lcase } from './hacklib.js';
 import { impossible, livelog_printf, youFeel } from './pline.js';
 import { messageAt } from './startup_a11y.js';
 import {
@@ -1200,14 +1200,15 @@ export async function back_on_ground(rescued, state = game, env = {}) {
     let surf = surface(u.ux, u.uy, state);
     if (is_ice(u.ux, u.uy, state)) {
         surf = ice_descr(u.ux, u.uy, state);
-    } else if (/^(?:floor|ground)$/iu.test(surf)) {
+    } else if (['floor', 'ground'].includes(lcase(surf))) {
         surf = 'solid ground';
-    } else if (/^(?:bridge|altar|headstone)$/iu.test(surf)) {
+    } else if (['bridge', 'altar', 'headstone'].includes(lcase(surf))) {
         surf = an(surf);
-    } else if (/^(?:stairs|lava|bottom)$/iu.test(surf)) {
+    } else if (['stairs', 'lava', 'bottom'].includes(lcase(surf))) {
         surf = the(surf, state);
     } else {
-        surf = surf.toLowerCase() === 'air' ? the(surf, state) : an(surf);
+        // trap.c compares "air" with strcmp(), case and all.
+        surf = surf === 'air' ? the(surf, state) : an(surf);
         preposition = 'in';
     }
     const subject = rescued
@@ -2225,7 +2226,7 @@ export function trapname(ttyp, override, state, random = coreRandom,
                 : rank_of(state.u.ulevel, state.urole.mnum, female, state);
             // C's char roletrap[33], minus sizeof " trap" (six bytes),
             // leaves room for 27 name characters before appending the suffix.
-            return `${title.slice(0, 27)} trap`.toLowerCase();
+            return lcase(`${title.slice(0, 27)} trap`);
         }
         if (nameidx >= TRAPNUM) return halu_trapnames[nameidx - TRAPNUM];
         if (nameidx !== NO_TRAP) ttyp = nameidx;
@@ -3485,13 +3486,13 @@ export async function animate_statue(
 
     while (statue.cobj) {
         const item = statue.cobj;
-        obj_extract_self(item, objectEnv);
+        await obj_extract_self(item, objectEnv);
         await mpickobjRuntime(monster, item, objectEnv);
     }
     await m_dowear(monster, true, objectEnv);
     if (statue.owornmask)
         await remove_worn_item(statue, true, state, objectEnv);
-    delobj(statue, objectEnv);
+    await delobj(statue, objectEnv);
 
     if (atHero && Upolyd(state.u)
         && hides_under(state.youmonst?.data)
@@ -3656,7 +3657,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
                         Boolean(keeper.mpeaceful), true, state);
                 if (otmp === obj)
                     chestgone = true;
-                delobj(otmp, objectEnv);
+                await delobj(otmp, objectEnv);
                 otmp = next;
             }
             await wake_nearby({ state });

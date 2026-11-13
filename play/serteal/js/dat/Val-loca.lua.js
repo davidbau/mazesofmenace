@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Valkyrie Val-loca.lua	$NHDT-Date: 1652196017 2022/05/10 15:20:17 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991-2 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Valkyrie Val-loca.lua	$NHDT-Date: 1652196017 2022/05/10 15:20:17 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991-2 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "hardfloor", "icedpools", "noflip")
 
@@ -24,15 +24,14 @@ xPPP  ..........................     PLP
 xPLLP                             xxPLLP
 xPPPPxx                         xxxxPPPP
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,39,12), "lit")
-` + "\n" + // -- Stairs
-`des.stair("up", 48,14)
+-- Dungeon Description
+des.region(selection.area(00,00,39,12), "lit")
+-- Stairs
+des.stair("up", 48,14)
 des.stair("down", 20,06)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,39,12))
-` + "\n" + // -- Objects
-`des.object()
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,39,12))
+-- Objects
 des.object()
 des.object()
 des.object()
@@ -47,15 +46,16 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-`des.trap("fire")
+des.object()
+-- Random traps
+des.trap("fire")
 des.trap("fire")
 des.trap("fire")
 des.trap("fire")
 des.trap()
 des.trap()
-` + "\n" + // -- Random monsters.
-`des.monster("fire ant")
+-- Random monsters.
+des.monster("fire ant")
 des.monster("fire ant")
 des.monster("fire ant")
 des.monster("fire ant")

@@ -14,14 +14,14 @@ export function upgradeArtifact(environment,layouts,legacy){
  const convert={pointer:address,text,int:transport.int,uint:transport.uint,byte:transport.char,ubyte:transport.uchar,short:transport.short,ushort:transport.ushort,long:transport.long,ulong:transport.ulong};
  for(const[name,row]of Object.entries(abi.calls))local[name]=(...args)=>{
   const value=resolve(row.target)(...args.map((v,i)=>convert[row.arguments[i]](v)));
-  const ret=ctypes.canonical(publicFunctions.functions[row.target]?.match(/^(.+?)\s*\(/)?.[1]??'void');
+  const ret=ctypes.abiType(publicFunctions.functions[row.target]?.match(/^(.+?)\s*\(/)?.[1]??'void');
   return ret.includes('*')?text(value):ret==='void'?undefined:ctypes.size(ret)===8?(ret.startsWith('unsigned')?transport.ulong(value):transport.long(value)):typeof value==='boolean'?Number(value):value;
  };
  const resbuf=environment.allocateGlobal('artifact.resbuf',abi.resbufBytes);
  let context;
  const parameters=Object.fromEntries(Object.entries(publicFunctions.functions).map(([name,proto])=>[name,proto.match(/^[^(]+\((.*)\)$/)?.[1].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')]));
  const prepare=(name,args)=>{
-  args=args.map((v,i)=>{const type=parameters[name]?.[i];if(!type)return v;const t=ctypes.canonical(type);if(t.includes('*'))return text(v);if(t==='signed char'||t==='char')return transport.char(v);if(t==='short')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int')return transport.uint(v);if(ctypes.size(t)===8)return t.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);});
+  args=args.map((v,i)=>{const type=parameters[name]?.[i];if(!type)return v;const t=ctypes.abiType(type);if(t.includes('*'))return text(v);if(t==='signed char'||t==='char')return transport.char(v);if(t==='short')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int')return transport.uint(v);if(ctypes.size(t)===8)return t.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);});
   for(const row of abi.argumentViews[name]??[])args[row.index]=context[row.method](row.type,address(args[row.index]));
   return args;
  };

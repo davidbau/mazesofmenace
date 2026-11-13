@@ -2,9 +2,6 @@
 /* Copyright (c) 1996 by Jean-Christophe Collet  */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "nhjs_recorder_sizes.h" /* c2js recorder #stats sizes */
-
 /*
  * This should really go into the level structure, but
  * I'll start here for ease. It *WILL* move into the level
@@ -12,36 +9,6 @@
  */
 
 export const NO_CALLBACK = (-1);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const EXPIRE_GAS_CLOUD = 1; export const INSIDE_GAS_CLOUD = 0; const callbacks = static_array("callbacks", fnptr_t, null, [
 
@@ -51,24 +18,20 @@ export const EXPIRE_GAS_CLOUD = 1; export const INSIDE_GAS_CLOUD = 0; const call
 ]);
 
 /* Should be inlined. */
-export function /* boolean */
-inside_rect(r, x, y)
-{
+export function inside_rect(r, x, y) { /* boolean */
     return (+(x >= r.lx && x <= r.hx && y >= r.ly && y <= r.hy));
 }
 
 /*
  * Check if a point is inside a region.
  */
-export function /* boolean */
-inside_region(reg, x, y)
-{
+export function inside_region(reg, x, y) { /* boolean */
     let i;
 
-    if (reg == null || !inside_rect((reg.bounding_box), x, y))
+    if (reg == null || !inside_rect(reg.bounding_box, x, y))
         return FALSE;
     for (i = 0; i < reg.nrects; i++)
-        if (inside_rect((ptr_add(reg.rects, i)), x, y))
+        if (inside_rect(ptr_add(reg.rects, i), x, y))
             return TRUE;
     return FALSE;
 }
@@ -76,14 +39,12 @@ inside_region(reg, x, y)
 /*
  * Create a region. It does not activate it.
  */
-export function /* NhRegion * */
-create_region(rects, nrect)
-{
+export function create_region(rects, nrect) { /* NhRegion * */
     let i;
     let reg;
 
     reg = view_of(NhRegion, addr_of(alloc(sizeof(NhRegion))));
-    void memset(addr_of(reg), 0, sizeof(NhRegion));
+    memset(addr_of(reg), 0, sizeof(NhRegion));
     /* Determines bounding box */
     if (nrect > 0) {
         struct_assign(reg.bounding_box, ptr_add(rects, 0));
@@ -94,7 +55,7 @@ create_region(rects, nrect)
         reg.bounding_box.hy = 0;
     }
     reg.nrects = nrect;
-    reg.rects = (nrect > 0) ? view_of(struct_nhrect, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(nrect), sizeof(struct_nhrect))))))) : null;
+    reg.rects = (nrect > 0) ? view_of(struct_nhrect, addr_of(alloc(unsigned(Math.imul(unsigned(nrect), sizeof(struct_nhrect)))))) : null;
     for (i = 0; i < nrect; i++) {
         if (ptr_add(rects, i).lx < reg.bounding_box.lx)
             reg.bounding_box.lx = ptr_add(rects, i).lx;
@@ -130,14 +91,12 @@ create_region(rects, nrect)
 /*
  * Add rectangle to region.
  */
-export function /* void */
-add_rect_to_reg(reg, rect)
-{
+export function add_rect_to_reg(reg, rect) { /* void */
     let tmp_rect;
 
-    tmp_rect = view_of(struct_nhrect, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned((reg.nrects + 1)), sizeof(struct_nhrect)))))));
+    tmp_rect = view_of(struct_nhrect, addr_of(alloc(unsigned(Math.imul(unsigned((reg.nrects + 1)), sizeof(struct_nhrect))))));
     if (reg.nrects > 0) {
-        void memcpy(addr_of(tmp_rect), addr_of(reg.rects),
+        memcpy(addr_of(tmp_rect), addr_of(reg.rects),
                       unsigned(Math.imul(unsigned(reg.nrects), sizeof(struct_nhrect))));
         free(addr_of(reg.rects));
     }
@@ -158,9 +117,7 @@ add_rect_to_reg(reg, rect)
 /*
  * Add a monster to the region
  */
-export function /* void */
-add_mon_to_reg(reg, mon)
-{
+export function add_mon_to_reg(reg, mon) { /* void */
     let i;
     let tmp_m;
 
@@ -173,7 +130,7 @@ add_mon_to_reg(reg, mon)
         return;
     }
     if (reg.max_monst <= reg.n_monst) {
-        tmp_m = ref_to(unsigned, addr_of(alloc(unsigned(unsigned(Math.imul(sizeof(unsigned), unsigned((reg.max_monst + MONST_INC))))))))
+        tmp_m = ref_to(unsigned, addr_of(alloc(unsigned(Math.imul(sizeof(unsigned), unsigned((reg.max_monst + MONST_INC)))))))
 ;
         if (reg.max_monst > 0) {
             for (i = 0; i < reg.max_monst; i++)
@@ -189,9 +146,7 @@ add_mon_to_reg(reg, mon)
 /*
  * Remove a monster from the region list (it left or died...)
  */
-export function /* void */
-remove_mon_from_reg(reg, mon)
-{
+export function remove_mon_from_reg(reg, mon) { /* void */
     let i;
 
     for (i = 0; i < reg.n_monst; i++)
@@ -207,9 +162,7 @@ remove_mon_from_reg(reg, mon)
  * It's probably quicker to check with the region internal list
  * than to check for coordinates.
  */
-export function /* boolean */
-mon_in_region(reg, mon)
-{
+export function mon_in_region(reg, mon) { /* boolean */
     let i;
 
     for (i = 0; i < reg.n_monst; i++)
@@ -218,51 +171,12 @@ mon_in_region(reg, mon)
     return FALSE;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /*
  * Free mem from region.
  */
-export function /* void */
-free_region(reg)
-{
+export function free_region(reg) { /* void */
     if (reg) {
         if (reg.rects)
             free(addr_of(reg.rects));
@@ -276,23 +190,20 @@ free_region(reg)
     }
 }
 
-
 /*
  * Add a region to the list.
  * This actually activates the region.
  */
-export function /* void */
-add_region(reg)
-{
+export function add_region(reg) { /* void */
     let tmp_reg;
     let i, j;
 
     if (gm.max_regions <= svn.n_regions) {
         tmp_reg = gr.regions;
         gr.regions =
-            ref_to(ptr_to(NhRegion), addr_of(alloc(unsigned(unsigned(Math.imul(unsigned((gm.max_regions + 10)), sizeof(ptr_to(NhRegion))))))));
+            ref_to(ptr_to(NhRegion), addr_of(alloc(unsigned(Math.imul(unsigned((gm.max_regions + 10)), sizeof(ptr_to(NhRegion)))))));
         if (gm.max_regions > 0) {
-            void memcpy(addr_of(gr.regions), addr_of(tmp_reg),
+            memcpy(addr_of(gr.regions), addr_of(tmp_reg),
                           unsigned(Math.imul(unsigned(gm.max_regions), sizeof(ptr_to(NhRegion)))));
             free(addr_of(tmp_reg));
         }
@@ -313,12 +224,6 @@ add_region(reg)
                 is_inside = TRUE;
                 /* if there's a monster here, add it to the region */
                 if ((mtmp = m_at(i, j)) != null
-
-
-
-
-
-
 
                     ) {
                     add_mon_to_reg(reg, mtmp);
@@ -341,9 +246,7 @@ add_region(reg)
 /*
  * Remove a region from the list & free it.
  */
-export function /* void */
-remove_region(reg)
-{
+export function remove_region(reg) { /* void */
     let i, x, y;
 
     for (i = 0; i < svn.n_regions; i++)
@@ -386,14 +289,11 @@ remove_region(reg)
     free_region(reg);
 }
 
-
 /*
  * Remove all regions and clear all related data.  This must be done
  * when changing level, for instance.
  */
-export function /* void */
-clear_regions()
-{
+export function clear_regions() { /* void */
     let i;
 
     for (i = 0; i < svn.n_regions; i++)
@@ -405,15 +305,12 @@ clear_regions()
     gr.regions = null;
 }
 
-
 /*
  * This function is called every turn.
  * It makes the regions age, if necessary and calls the appropriate
  * callbacks when needed.
  */
-export function /* void */
-run_regions()
-{
+export function run_regions() { /* void */
     let i, j, k;
     let f_indx;
 
@@ -439,12 +336,11 @@ run_regions()
         /* Check if player is inside region */
         f_indx = gr.regions[i].inside_f;
         if (f_indx != NO_CALLBACK && hero_inside(gr.regions[i]))
-            void ((callbacks[f_indx])(addr_of(gr.regions[i]), 0));
+            (callbacks[f_indx])(addr_of(gr.regions[i]), 0);
         /* Check if any monster is inside region */
         if (f_indx != NO_CALLBACK) {
             for (j = 0; j < gr.regions[i].n_monst; j++) {
                 let mtmp = find_mid(gr.regions[i].monsters[j], FM_FMON);
-
 
                 if (!mtmp || DEADMONSTER(mtmp)
                     || (callbacks[f_indx])(addr_of(gr.regions[i]), addr_of(mtmp))) {
@@ -477,9 +373,7 @@ run_regions()
 /*
  * check whether player enters/leaves one or more regions.
  */
-export function /* boolean */
-in_out_region(x, y)
-{
+export function in_out_region(x, y) { /* boolean */
     let i, f_indx = 0;
 
     /* First check if hero can do the move */
@@ -506,7 +400,7 @@ in_out_region(x, y)
             if (gr.regions[i].leave_msg != 0)
                 pline1(gr.regions[i].leave_msg);
             if ((f_indx = gr.regions[i].leave_f) != NO_CALLBACK)
-                void ((callbacks[f_indx])(addr_of(gr.regions[i]), 0));
+                (callbacks[f_indx])(addr_of(gr.regions[i]), 0);
         }
     }
 
@@ -520,7 +414,7 @@ in_out_region(x, y)
             if (gr.regions[i].enter_msg != 0)
                 pline1(gr.regions[i].enter_msg);
             if ((f_indx = gr.regions[i].enter_f) != NO_CALLBACK)
-                void ((callbacks[f_indx])(addr_of(gr.regions[i]), 0));
+                (callbacks[f_indx])(addr_of(gr.regions[i]), 0);
         }
     }
 
@@ -530,9 +424,7 @@ in_out_region(x, y)
 /*
  * check whether a monster enters/leaves one or more regions.
  */
-export function /* boolean */
-m_in_out_region(mon, x, y)
-{
+export function m_in_out_region(mon, x, y) { /* boolean */
     let i, f_indx = 0;
 
     /* First check if mon can do the move */
@@ -557,7 +449,7 @@ m_in_out_region(mon, x, y)
             && !inside_region(gr.regions[i], x, y)) {
             remove_mon_from_reg(gr.regions[i], mon);
             if ((f_indx = gr.regions[i].leave_f) != NO_CALLBACK)
-                void ((callbacks[f_indx])(addr_of(gr.regions[i]), addr_of(mon)));
+                (callbacks[f_indx])(addr_of(gr.regions[i]), addr_of(mon));
         }
     }
 
@@ -569,7 +461,7 @@ m_in_out_region(mon, x, y)
             && inside_region(gr.regions[i], x, y)) {
             add_mon_to_reg(gr.regions[i], mon);
             if ((f_indx = gr.regions[i].enter_f) != NO_CALLBACK)
-                void ((callbacks[f_indx])(addr_of(gr.regions[i]), addr_of(mon)));
+                (callbacks[f_indx])(addr_of(gr.regions[i]), addr_of(mon));
         }
     }
 
@@ -579,9 +471,7 @@ m_in_out_region(mon, x, y)
 /*
  * Checks player's regions after a teleport for instance.
  */
-export function /* void */
-update_player_regions()
-{
+export function update_player_regions() { /* void */
     let i;
 
     for (i = 0; i < svn.n_regions; i++)
@@ -595,9 +485,7 @@ update_player_regions()
 /*
  * Ditto for a specified monster.
  */
-export function /* void */
-update_monster_region(mon)
-{
+export function update_monster_region(mon) { /* void */
     let i;
 
     for (i = 0; i < svn.n_regions; i++) {
@@ -611,55 +499,17 @@ update_monster_region(mon)
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* per-turn damage inflicted by visible region; hides details from caller */
-export function /* int */
-reg_damg(reg)
-{
+export function reg_damg(reg) { /* int */
     let damg = (!reg.visible || reg.ttl == -2) ? 0 : reg.arg.a_int;
 
     return damg;
 }
 
 /* check whether current level has any visible regions */
-export function /* boolean */
-any_visible_region()
-{
+export function any_visible_region() { /* boolean */
     let i;
 
     for (i = 0; i < svn.n_regions; i++) {
@@ -671,9 +521,8 @@ any_visible_region()
 }
 
 /* for the wizard mode #timeout command */
-export function /* void */
-visible_region_summary(win)
-{ const $frame = stack_frame(); try {
+export function visible_region_summary(win) { /* void */
+    const $frame = stack_frame(); try {
     let reg;
     let buf = stack_array(char, BUFSZ), typbuf = stack_array(char, QBUFSZ);
     let i, damg, hdr_done = 0;
@@ -697,27 +546,26 @@ visible_region_summary(win)
            since time-to-live has already been decremented, regions
            which are due to timeout on the next turn have ttl==0;
            adding 1 is intended to make the display be less confusing */
-        void sprintf(buf, _("%5lld"), reg.ttl + 1);
+        sprintf(buf, _("%5lld"), reg.ttl + 1);
         damg = reg.arg.a_int;
         if (damg)
-            void sprintf(typbuf, _("poison gas (%d)"), damg);
+            sprintf(typbuf, _("poison gas (%d)"), damg);
         else
-            void strcpy(typbuf, _("vapor"));
-        void sprintf(eos(buf), _("%s%-16s"), fldsep, typbuf);
-        void sprintf(eos(buf), _("%s@[%d,%d..%d,%d]"), fldsep, reg.bounding_box.lx, reg.bounding_box.ly, reg.bounding_box.hx, reg.bounding_box.hy)
+            strcpy(typbuf, _("vapor"));
+        sprintf(eos(buf), _("%s%-16s"), fldsep, typbuf);
+        sprintf(eos(buf), _("%s@[%d,%d..%d,%d]"), fldsep, reg.bounding_box.lx, reg.bounding_box.ly, reg.bounding_box.hx, reg.bounding_box.hy)
 
 ;
         putstr()(win, 0, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Check if a spot is under a visible region (eg: gas cloud).
  * Returns NULL if not, otherwise returns region.
  */
-export function /* NhRegion * */
-visible_region_at(x, y)
-{
+export function visible_region_at(x, y) { /* NhRegion * */
     let i;
 
     for (i = 0; i < svn.n_regions; i++) {
@@ -729,18 +577,15 @@ visible_region_at(x, y)
     return null;
 }
 
-export function /* void */
-show_region(reg, x, y)
-{
+export function show_region(reg, x, y) { /* void */
     show_glyph(x, y, reg.glyph);
 }
 
 /**
  * save_regions :
  */
-export function /* void */
-save_regions(nhfp)
-{ const $frame = stack_frame(); try {
+export function save_regions(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     var r;
     var i, j;
     var n = stack_var(unsigned);
@@ -789,22 +634,20 @@ save_regions(nhfp)
         Sfo_int(nhfp, ref_of(r, "glyph"), _("region-glyph"));
         Sfo_any(nhfp, r.arg, _("region-arg"));
     }
-
  }
     if (release_data(nhfp))
         clear_regions();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* void */
-rest_regions(nhfp)
-{ const $frame = stack_frame(); try {
+export function rest_regions(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let r;
     let i, j;
     let n = stack_var(unsigned, 0);
     let tmstamp = stack_var(long, 0);
     let msg_buf;
-    let ghostly = (+(nhfp.ftype == NHF_BONESFILE));
+    let ghostly = +(nhfp.ftype == NHF_BONESFILE);
 
     clear_regions(); /* Just for security */
     sfi_long(nhfp, tmstamp, _("region-tmstamp"));
@@ -815,13 +658,13 @@ rest_regions(nhfp)
     sfi_int(nhfp, ref_of(svn, "n_regions"), _("region-region_count"));
     gm.max_regions = svn.n_regions;
     if (svn.n_regions > 0)
-        gr.regions = ref_to(ptr_to(NhRegion), addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(svn.n_regions), sizeof(ptr_to(NhRegion))))))));
+        gr.regions = ref_to(ptr_to(NhRegion), addr_of(alloc(unsigned(Math.imul(unsigned(svn.n_regions), sizeof(ptr_to(NhRegion)))))));
     for (i = 0; i < svn.n_regions; i++) {
         r = gr.regions[i] = view_of(NhRegion, addr_of(alloc(sizeof(NhRegion))));
         Sfi_nhrect(nhfp, r.bounding_box, _("region-bounding box"));
         Sfi_short(nhfp, ref_of(r, "nrects"), _("region-nrects"));
         if (r.nrects > 0)
-            r.rects = view_of(struct_nhrect, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(r.nrects), sizeof(struct_nhrect)))))));
+            r.rects = view_of(struct_nhrect, addr_of(alloc(unsigned(Math.imul(unsigned(r.nrects), sizeof(struct_nhrect))))));
         else
             r.rects = null;
         for (j = 0; j < r.nrects; j++) {
@@ -868,7 +711,7 @@ rest_regions(nhfp)
         }
         Sfi_short(nhfp, ref_of(r, "n_monst"), _("region-monster_count"));
         if (r.n_monst > 0)
-            r.monsters = ref_to(unsigned, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(r.n_monst), sizeof(unsigned)))))));
+            r.monsters = ref_to(unsigned, addr_of(alloc(unsigned(Math.imul(unsigned(r.n_monst), sizeof(unsigned))))));
         else
             r.monsters = null;
         r.max_monst = r.n_monst;
@@ -889,45 +732,36 @@ rest_regions(nhfp)
         else if (ghostly && r.n_monst > 0)
             reset_region_mids(r);
     }
-
-} finally { stack_pop($frame); } }
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* to support '#stats' wizard-mode command */
-export function /* void */
-region_stats(
+export function region_stats(
     hdrfmt,
     hdrbuf,
     count,
-    size)
-{
+    size) { /* void */
     let rg;
     let i;
 
     /* other stats formats take one parameter; this takes two */
-    void sprintf(hdrbuf, hdrfmt, (NHJS_LP64_SIZEOF_NhRegion), (NHJS_LP64_SIZEOF_NhRect));
+    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_NhRegion, NHJS_LP64_SIZEOF_NhRect);
     count[0] = svn.n_regions; /* might be 0 even tho max_regions isn't */
-    size[0] = gm.max_regions * (NHJS_LP64_SIZEOF_NhRegion);
+    size[0] = gm.max_regions * NHJS_LP64_SIZEOF_NhRegion;
     for (i = 0; i < svn.n_regions; ++i) {
         rg = gr.regions[i];
-        size[0] += rg.nrects * (NHJS_LP64_SIZEOF_NhRect);
+        size[0] += rg.nrects * NHJS_LP64_SIZEOF_NhRect;
         if (rg.enter_msg)
-            size[0] += (unsigned(strlen(rg.enter_msg) + 1));
+            size[0] += unsigned(strlen(rg.enter_msg) + 1);
         if (rg.leave_msg)
-            size[0] += (unsigned(strlen(rg.leave_msg) + 1));
+            size[0] += unsigned(strlen(rg.leave_msg) + 1);
         size[0] += rg.max_monst * sizeof(unsigned);
     }
     /* ? */
 }
 
-
-
 /* update monster IDs for region being loaded from bones; `ghostly' implied */
-function /* void */
-reset_region_mids(reg)
-{
+function reset_region_mids(reg) { /* void */
     let i = 0, n = reg.n_monst;
     let mid_list = reg.monsters;
 
@@ -943,94 +777,7 @@ reset_region_mids(reg)
     return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /*--------------------------------------------------------------*
  *                                                              *
@@ -1043,9 +790,7 @@ reset_region_mids(reg)
  * region life after some mods...
  */
 /*ARGSUSED*/
-export function /* boolean */
-expire_gas_cloud(p1, p2)
-{
+export function expire_gas_cloud(p1, p2) { /* boolean */
     let reg;
     let damage, pass;
     let x, y;
@@ -1088,9 +833,7 @@ expire_gas_cloud(p1, p2)
 }
 
 /* returns True if p2 is killed by region p1, False otherwise */
-export function /* boolean */
-inside_gas_cloud(p1, p2)
-{
+export function inside_gas_cloud(p1, p2) { /* boolean */
     let reg = view_of(NhRegion, p1);
     let mtmp = view_of(struct_monst, p2);
     let umon = mtmp ? mtmp : gy.youmonst;
@@ -1120,7 +863,7 @@ inside_gas_cloud(p1, p2)
                   makeplural(body_part(LUNG)));
             You(_("cough and spit blood!"));
             wake_nearto(u.ux, u.uy, 2);
-            dam = (((Half_physical_damage()) ? (Math.trunc(((((rnd(dam) + 5) + 1)) / 2))) : (rnd(dam) + 5)));
+            dam = ((Half_physical_damage()) ? (Math.trunc((((rnd(dam) + 5) + 1) / 2))) : (rnd(dam) + 5));
             if (Half_gas_damage()) /* worn towel */
                 dam = Math.trunc((dam + 1) / 2);
             losehp(dam, _("gas cloud"), KILLED_BY_AN);
@@ -1165,9 +908,7 @@ inside_gas_cloud(p1, p2)
     return FALSE; /* Monster is still alive */
 }
 
-function /* boolean */
-is_hero_inside_gas_cloud()
-{
+function is_hero_inside_gas_cloud() { /* boolean */
     let i;
 
     for (i = 0; i < svn.n_regions; i++)
@@ -1179,12 +920,10 @@ is_hero_inside_gas_cloud()
 
 /* details of gas cloud creation which are common to create_gas_cloud()
    and create_gas_cloud_selection() */
-function /* void */
-make_gas_cloud(
+function make_gas_cloud(
     cloud,
     damage,
-    inside_cloud)
-{
+    inside_cloud) { /* void */
     if (!gi.in_mklev && !svc.context.mon_moving)
         set_heros_fault(cloud); /* assume player has created it */
     cloud.inside_f = INSIDE_GAS_CLOUD;
@@ -1210,12 +949,11 @@ make_gas_cloud(
  * cloudsize is the number of squares the cloud will attempt to fill.
  * damage is how much it deals to afflicted creatures. */
 export const MAX_CLOUD_SIZE = 150;
-export function /* NhRegion * */
-create_gas_cloud(
+export function create_gas_cloud(
     x, y,
     cloudsize,
-    damage)
-{ const $frame = stack_frame(); try {
+    damage) { /* NhRegion * */
+    const $frame = stack_frame(); try {
     let cloud;
     let i, j;
     let tmprect = stack_struct(struct_nhrect);
@@ -1307,14 +1045,14 @@ create_gas_cloud(
 
     make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* create a single gas cloud from selection */
-export function /* NhRegion * */
-create_gas_cloud_selection(
+export function create_gas_cloud_selection(
     sel,
-    damage)
-{ const $frame = stack_frame(); try {
+    damage) { /* NhRegion * */
+    const $frame = stack_frame(); try {
     let cloud;
     let tmprect = stack_struct(struct_nhrect);
     let x, y;
@@ -1334,13 +1072,11 @@ create_gas_cloud_selection(
 
     make_gas_cloud(cloud, damage, inside_cloud);
     return cloud;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* for checking troubles during prayer; is hero at risk? */
-export function /* boolean */
-region_danger()
-{
+export function region_danger() { /* boolean */
     let i, f_indx, n = 0;
 
     for (i = 0; i < svn.n_regions; i++) {
@@ -1365,9 +1101,7 @@ region_danger()
 
 /* for fixing trouble at end of prayer;
    danger detected at start of prayer might have expired by now */
-export function /* void */
-region_safety()
-{
+export function region_safety() { /* void */
     let r = null;
     let i, f_indx, n = 0;
 
@@ -1385,7 +1119,7 @@ region_safety()
 
     if (n > 1 || (n == 1 && !r)) {
         /* multiple overlapping cloud regions or non-expiring one */
-        void safe_teleds(TELEDS_NO_FLAGS);
+        safe_teleds(TELEDS_NO_FLAGS);
         /* maybe there's no safe place available; must get hero out of danger
            or prayer's "fix all troubles" result will get stuck in a loop */
         if (region_danger()) {
@@ -1405,159 +1139,69 @@ region_safety()
         make_blinded(0, TRUE);
 }
 
-
 /*region.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
 import { Something } from "./decl.h.macros.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_poisoncloud } from "./defsym.h.js";
+import { S_cloud, S_poisoncloud } from "./defsym.h.js";
 import { cmap_to_glyph } from "./display.h.macros.js";
 import { PLNMSG_ENVELOPED_IN_GAS } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { EYE } from "./hack.h.js";
-import { FM_FMON } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LUNG } from "./hack.h.js";
-import { M_POISONGAS_OK } from "./hack.h.js";
-import { NHF_BONESFILE } from "./hack.h.js";
-import { TELEDS_NO_FLAGS } from "./hack.h.js";
-import { distu } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
+import { BUFSZ, COLNO, FALSE, QBUFSZ, ROWNO, TRUE } from "./global.h.js";
+import {
+    EYE, FM_FMON, KILLED_BY_AN, LUNG, M_POISONGAS_OK, NHF_BONESFILE, TELEDS_NO_FLAGS,
+} from "./hack.h.js";
+import { distu, pline1, plur, release_data, rn1, update_file } from "./hack.h.macros.js";
 import { AD_DRST } from "./monattk.h.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { is_silent } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { M_SEEN_POISON } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { resists_poison } from "./monst.h.macros.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { NHJS_LP64_SIZEOF_NhRect } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_NhRegion } from "./nhjs_recorder_sizes.h.js";
+import { haseyes, is_silent, nonliving } from "./mondata.h.macros.js";
+import { M_SEEN_POISON, struct_monst } from "./monst.h.js";
+import { DEADMONSTER, resists_poison } from "./monst.h.macros.js";
+import { PM_FOG_CLOUD, PM_LONG_WORM } from "./monsters.h.js";
+import { NHJS_LP64_SIZEOF_NhRect, NHJS_LP64_SIZEOF_NhRegion } from "./nhjs_recorder_sizes.h.js";
 import { MAGICAL_BREATHING } from "./prop.h.js";
 import { struct_nhrect } from "./rect.h.js";
-import { MONST_INC } from "./region.h.js";
-import { NhRegion } from "./region.h.js";
-import { clear_hero_inside } from "./region.h.macros.js";
-import { clear_heros_fault } from "./region.h.macros.js";
-import { hero_inside } from "./region.h.macros.js";
-import { heros_fault } from "./region.h.macros.js";
-import { set_hero_inside } from "./region.h.macros.js";
-import { set_heros_fault } from "./region.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { Sfi_any } from "./savefile.h.macros.js";
-import { Sfi_boolean } from "./savefile.h.macros.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfi_nhrect } from "./savefile.h.macros.js";
-import { Sfi_short } from "./savefile.h.macros.js";
-import { Sfo_any } from "./savefile.h.macros.js";
-import { Sfo_boolean } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
-import { Sfo_nhrect } from "./savefile.h.macros.js";
-import { Sfo_short } from "./savefile.h.macros.js";
-import { Sfo_unsigned } from "./savefile.h.macros.js";
+import { MONST_INC, NhRegion } from "./region.h.js";
+import {
+    clear_hero_inside, clear_heros_fault, hero_inside, heros_fault, set_hero_inside,
+    set_heros_fault,
+} from "./region.h.macros.js";
+import { levl, m_at } from "./rm.h.macros.js";
+import {
+    Sfi_any, Sfi_boolean, Sfi_char, Sfi_nhrect, Sfi_short, Sfo_any, Sfo_boolean, Sfo_char, Sfo_int,
+    Sfo_nhrect, Sfo_short, Sfo_unsigned,
+} from "./savefile.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
 import { putstr } from "./winprocs.h.macros.js";
 import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Half_gas_damage } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    Blind, BlindedTimeout, Breathless, Half_gas_damage, Half_physical_damage, Poison_resistance,
+} from "./youprop.h.macros.js";
+import { char, int, long, ord, short, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { free, memcpy, memset, sprintf, strcpy, strlen } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, fnptr_t, ptr_add, ptr_to, ref_of, ref_to, struct_assign, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { cg } from "./decl.js";
-import { gg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gr } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { u } from "./decl.js";
-import { newsym } from "./display.js";
-import { show_glyph } from "./display.js";
-import { Monnam } from "./do_name.js";
-import { m_monnam } from "./do_name.js";
+import { cg, gg, gi, gm, gr, gy, iflags, svc, svm, svn, u } from "./decl.js";
+import { newsym, show_glyph } from "./display.js";
+import { Monnam, m_monnam } from "./do_name.js";
 import { losehp } from "./hack.js";
 import { eos } from "./hacklib.js";
 import { find_mid } from "./light.js";
-import { killed } from "./mon.js";
-import { m_poisongas_ok } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { setmangry } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { monstseesu } from "./mondata.js";
-import { monstunseesu } from "./mondata.js";
+import { killed, m_poisongas_ok, monkilled, setmangry, wake_nearto } from "./mon.js";
+import { monstseesu, monstunseesu } from "./mondata.js";
 import { mons } from "./monst.js";
 import { makeplural } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { You, You_feel, You_see, Your, impossible, pline, pline_The } from "./pline.js";
 import { body_part } from "./polyself.js";
-import { make_blinded } from "./potion.js";
-import { set_itimeout } from "./potion.js";
+import { make_blinded, set_itimeout } from "./potion.js";
 import { valid_cloud_pos } from "./read.js";
 import { lookup_id_mapping } from "./restore.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { selection_getbounds } from "./selvar.js";
-import { selection_getpoint } from "./selvar.js";
-import { sfi_int } from "./sfbase.js";
-import { sfi_long } from "./sfbase.js";
-import { sfi_unsigned } from "./sfbase.js";
-import { sfo_long } from "./sfbase.js";
+import { d, rn2, rnd } from "./rnd.js";
+import { selection_getbounds, selection_getpoint } from "./selvar.js";
+import { sfi_int, sfi_long, sfi_unsigned, sfo_long } from "./sfbase.js";
 import { safe_teleds } from "./teleport.js";
-import { block_point } from "./vision.js";
-import { does_block } from "./vision.js";
-import { unblock_point } from "./vision.js";
+import { block_point, does_block, unblock_point } from "./vision.js";

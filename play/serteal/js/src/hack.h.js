@@ -3,45 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const TELL = 1;
 export const NOTELL = 0;
 export const ON = 1;
@@ -54,7 +15,6 @@ export const DEF_NOTHING = ord(' ');
 export const BY_ORACLE = 0;
 export const BY_COOKIE = 1;
 export const BY_PAPER = 2;
-
 
 /* bitmask flags for corpse_xname();
    PFX_THE takes precedence over ARTICLE, NO_PFX takes precedence over both */
@@ -95,25 +55,10 @@ export const struct_str_or_len = union("struct_str_or_len", {
     len: int,
 });
 
-
-
-
-
-
-
-
-
     export const NROFARTIFACTS = (AFTER_LAST_ARTIFACT - 1);
-
 
 /* related to breadcrumb struct */
 export const override_restriction = -1;
-
-
-
-
-
-
 
 /* types of calls to bhit() */
 
@@ -123,7 +68,6 @@ export const override_restriction = -1;
     export const KICKED_WEAPON = 3;
     export const FLASHED_LIGHT = 4;
     export const INVIS_BEAM = 5;
-
 
 /* Macros for messages referring to hands, eyes, feet, etc... */
 
@@ -148,7 +92,6 @@ export const override_restriction = -1;
     export const NOSE = 17;
     export const STOMACH = 18;
 
-
 export const MAX_BMASK = 4;
 
 export const struct_bubble = struct("struct_bubble", {
@@ -159,12 +102,10 @@ export const struct_bubble = struct("struct_bubble", {
     cons: ptr_to("struct_container"),
 });
 
-
     export const CONS_OBJ = 0;
     export const CONS_MON = CONS_OBJ + 1;
     export const CONS_HERO = CONS_MON + 1;
     export const CONS_TRAP = CONS_HERO + 1;
-
 
 /*
  * Rudimentary command queue.
@@ -180,7 +121,6 @@ export const struct_bubble = struct("struct_bubble", {
     export const CMDQ_USER_INPUT = CMDQ_DIR + 1; /* placeholder for user input, cmdq_add_userinput() */
     export const CMDQ_INT = CMDQ_USER_INPUT + 1; /* integer value, cmdq_add_int() */
 
-
 export const struct__cmd_queue = struct("struct__cmd_queue", {
     typ: int,
     key: char,
@@ -190,14 +130,11 @@ export const struct__cmd_queue = struct("struct__cmd_queue", {
     next: ptr_to("struct__cmd_queue"),
 });
 
-
     export const CQ_CANNED = 0; /* internal canned sequence */
     export const CQ_REPEAT = CQ_CANNED + 1; /* user-inputted, if gi.in_doagain, replayed */
     export const NUM_CQS = CQ_REPEAT + 1;
 
-
 export const cmdcount_nht = long; /* Command counts */
-
 
 /* special key functions */
 
@@ -235,7 +172,6 @@ export const cmdcount_nht = long; /* Command counts */
     export const NHKF_GETPOS_MOVESKIP = NHKF_GETPOS_LIMITVIEW + 1;
 
     export const NUM_NHKF = NHKF_GETPOS_MOVESKIP + 1;
-
 
 /* commands[] is used to directly access cmdlist[] instead of looping
    through it to find the entry for a given input character;
@@ -302,13 +238,11 @@ export const struct_container = struct("struct_container", {
     export const COST_CORRODE = 18; /* acid damage */
     export const COST_CRACK = 19; /* damage to crystal armor */
 
-
 /* used by unpaid_cost(shk.h) */
 
     export const COST_NOCONTENTS = 0;
     export const COST_CONTENTS = 1;
     export const COST_SINGLEOBJ = 2;
-
 
 /* read.c, create_particular() & create_particular_parse() */
 export const struct__create_particular_data = struct("struct__create_particular_data", {
@@ -323,7 +257,6 @@ export const struct__create_particular_data = struct("struct__create_particular_
 });
 
 /* dig_check() results */
-
 
     export const DIGCHECK_PASSED = 1;
     export const DIGCHECK_PASSED_DESTROY_TRAP = 2;
@@ -341,8 +274,6 @@ export const struct__create_particular_data = struct("struct__create_particular_
     export const DIGCHECK_FAIL_BOULDER = DIGCHECK_FAIL_CANTDIG + 1;
     export const DIGCHECK_FAIL_OBJ_POOL_OR_TRAP = DIGCHECK_FAIL_BOULDER + 1;
 
-
-
 /* Dismount: causes for why you are no longer riding */
 
     export const DISMOUNT_GENERIC = 0;
@@ -353,7 +284,6 @@ export const struct__create_particular_data = struct("struct__create_particular_
     export const DISMOUNT_ENGULFED = 5;
     export const DISMOUNT_BONES = 6;
     export const DISMOUNT_BYCHOICE = 7;
-
 
 export const struct_dgn_topology = struct("struct_dgn_topology", { /* special dungeon levels for speed */
     d_oracle_level: "struct_d_level",
@@ -386,50 +316,11 @@ export const struct_dgn_topology = struct("struct_dgn_topology", { /* special du
     d_sokoend_level: "struct_d_level",
 });
 
-/* macros for accessing the dungeon levels by their old names */
-/* clang-format off */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* clang-format on */
-
-
 export const MAXLINFO = (MAXDUNGEON * MAXLEVEL);
-
 
     export const all_themes = 1; /* for end of game */
     export const most_themes = 2; /* for entering endgame */
     export const tut_themes = 3; /* for leaving tutorial */
-
-
 
     export const ARG_DEBUG = 0; export const ARG_VERSION = ARG_DEBUG + 1; export const ARG_SHOWPATHS = ARG_VERSION + 1;
 
@@ -438,13 +329,6 @@ export const MAXLINFO = (MAXDUNGEON * MAXLEVEL);
     export const ARG_DUMPGLYPHIDS = ARG_DUMPENUMS + 1;
     export const ARG_DUMPMONGEN = ARG_DUMPGLYPHIDS + 1;
     export const ARG_DUMPWEIGHTS = ARG_DUMPMONGEN + 1;
-
-
-
-
-
-
-
 
 export const struct_early_opt = struct("struct_early_opt", {
     e: unsigned,
@@ -461,7 +345,6 @@ export const struct_early_opt = struct("struct_early_opt", {
     export const HVY_ENCUMBER = 3; /* Strained */
     export const EXT_ENCUMBER = 4; /* Overtaxed */
     export const OVERLOADED = 5; /* Overloaded */
-
 
 export const struct_entity = struct("struct_entity", {
     emon: ptr_to("struct_monst"), /* youmonst for the player */
@@ -497,7 +380,6 @@ export const struct_enum_dump = struct("struct_enum_dump", {
     export const ESCAPED = 14;
     export const ASCENDED = 15;
 
-
 /* game events log */
 export const struct_gamelog_line = struct("struct_gamelog_line", {
     turn: long, /* turn when this happened */
@@ -505,7 +387,6 @@ export const struct_gamelog_line = struct("struct_gamelog_line", {
     text: ptr_to(char),
     next: ptr_to("struct_gamelog_line"),
 });
-
 
 /* values returned from getobj() callback functions */
 
@@ -537,14 +418,12 @@ export const struct_gamelog_line = struct("struct_gamelog_line", {
     /* valid - will be shown in summary and ? menu */
     export const GETOBJ_SUGGEST = 2;
 
-
 /* getpos() return values */
 
     export const LOOK_TRADITIONAL = 0; /* '.' -- ask about "more info?" */
     export const LOOK_QUICK = 1; /* ',' -- skip "more info?" */
     export const LOOK_ONCE = 2; /* ';' -- skip and stop looping */
     export const LOOK_VERBOSE = 3; /* ':' -- show more info w/o asking */
-
 
 export const struct_h2o_ctx = struct("struct_h2o_ctx", {
     dkn_boom: int, unk_boom: int, /* track dknown, !dknown separately */
@@ -559,7 +438,6 @@ export const struct_h2o_ctx = struct("struct_h2o_ctx", {
     export const HMON_APPLIED = 3; /* polearm, treated as ranged */
     export const HMON_DRAGGED = 4; /* attached iron ball, pulled into mon */
 
-
 /* hunger states - see hu_stat in eat.c */
 
     export const SATIATED = 0;
@@ -569,7 +447,6 @@ export const struct_h2o_ctx = struct("struct_h2o_ctx", {
     export const FAINTING = 4;
     export const FAINTED = 5;
     export const STARVED = 6;
-
 
 /* fake inventory letters, not 'a'..'z' or 'A'..'Z' */
 export const NOINVSYM = ord('#');
@@ -587,20 +464,10 @@ export const HANDS_SYM = ord('-');
     export const invlet_max = invlet_basic + invlet_gold + invlet_overflow;
     /* 2023/11/30 invlet_max is not yet used anywhere */
 
-
-
-
-
-
-
-
-
 export const KILLED_BY_AN = 0; export const KILLED_BY = 1; export const NO_KILLER_PREFIX = 2; export const struct_kinfo = struct("struct_kinfo", {
     next: ptr_to("struct_kinfo"), /* chain of delayed killers */
     id: int, /* uprop keys to ID a delayed killer */
     format: int, /* one of the killer formats */
-
-
 
     name: array_of(char, BUFSZ), /* actual killer name */
 });
@@ -627,15 +494,12 @@ export const struct_menucoloring = struct("struct_menucoloring", {
     next: ptr_to("struct_menucoloring"),
 });
 
-
     export const MV_ANY = -1;
     export const MV_WALK = MV_ANY + 1;
     export const MV_RUN = MV_WALK + 1;
     export const MV_RUSH = MV_RUN + 1;
 
     export const N_MOVEMODES = MV_RUSH + 1;
-
-
 
     export const DIR_ERR = -1;
     export const DIR_W = DIR_ERR + 1;
@@ -653,13 +517,6 @@ export const struct_menucoloring = struct("struct_menucoloring", {
 
 /* N_DIRS_Z, minus up & down */
 export const N_DIRS = (N_DIRS_Z - 2);
-/* direction adjustments */
-
-
-
-
-
-
 
 export const struct_multishot = struct("struct_multishot", {
     n: int, i: int,
@@ -685,7 +542,6 @@ export const struct_mvitals = struct("struct_mvitals", {
     photographed: Bitfield(1),
 });
 
-
 /* Lua callback functions */
 
     export const NHCORE_START_NEW_GAME = 0;
@@ -698,7 +554,6 @@ export const struct_mvitals = struct("struct_mvitals", {
 
     export const NUM_NHCORE_CALLS = NHCORE_LEAVE_TUTORIAL + 1;
 
-
 /* Lua callbacks. TODO: Merge with NHCORE */
 
     export const NHCB_CMD_BEFORE = 0;
@@ -707,7 +562,6 @@ export const struct_mvitals = struct("struct_mvitals", {
     export const NHCB_END_TURN = NHCB_LVL_LEAVE + 1;
 
     export const NUM_NHCB = NHCB_END_TURN + 1;
-
 
 export const NHUUIDSZ = 37;
 
@@ -733,7 +587,6 @@ export const MSGTYP_MASK_REP_SHOW = ((1 << MSGTYP_NOREP) | (1 << MSGTYP_NOSHOW))
     export const POLY_REVERT = 0x04;
     export const POLY_LOW_CTRL = 0x08;
 
-
 export const struct_repo = struct("struct_repo", { /* repossession context */
     shopkeeper: ptr_to("struct_monst"),
     location: "struct_nhcoord",
@@ -744,11 +597,9 @@ export const struct_restore_info = struct("struct_restore_info", {
     mread_flags: int,
 });
 
-
     export const REST_GSTATE = 1; /* restoring game state + first pass of current level */
     export const REST_LEVELS = 2; /* restoring remainder of dungeon */
     export const REST_CURRENT_LEVEL = 3; /* final pass of restoring current level */
-
 
 export const struct_rogueroom = struct("struct_rogueroom", {
     rlx: coordxy, rly: coordxy,
@@ -818,7 +669,6 @@ export const struct_sinfo = struct("struct_sinfo", {
        we minimize #if conditionals for them to avoid unnecessary clutter */
     resize_pending: int, /* set by signal handler */
     getting_char: int, /* referenced during signal handling */
-
 });
 
 /* value of program_state.input_state, significant during readchar();
@@ -828,7 +678,6 @@ export const struct_sinfo = struct("struct_sinfo", {
     export const commandInp = 1; /* readchar() */
     export const getposInp = 2; /* getpos() */
     export const getdirInp = 3; /* getdir() */
-
 
 /* sortloot() return type; needed before extern.h */
 export const struct_sortloot_item = struct("struct_sortloot_item", {
@@ -846,20 +695,17 @@ export const struct_sortloot_item = struct("struct_sortloot_item", {
                       * 4: worn accessory (amulet, rings, blindfold). */
 });
 
-
 export const struct_strbuf = struct("struct_strbuf", {
     len: int,
     str: ptr_to(char),
     buf: array_of(char, 256),
 });
 
-
     export const st_gloves = 0x1; /* wearing gloves? */
     export const st_corpse = 0x2; /* is it a corpse obj? */
     export const st_petrifies = 0x4; /* does the corpse petrify on touch? */
     export const st_resists = 0x8; /* do you have stoning resistance? */
     export const st_all = (st_gloves | st_corpse | st_petrifies | st_resists);
-
 
 export const struct_throw_and_return_weapon = struct("struct_throw_and_return_weapon", {
     otyp: short,
@@ -919,7 +765,6 @@ export const struct_val_list = struct("struct_val_list", {
     size: int,
 });
 
-
     export const VANQ_MLVL_MNDX = 0; /* t - traditional: by monster level */
     export const VANQ_MSTR_MNDX = VANQ_MLVL_MNDX + 1; /* d - by difficulty rating */
     export const VANQ_ALPHA_SEP = VANQ_MSTR_MNDX + 1; /* a - alphabetical, first uniques, then ordinary */
@@ -930,7 +775,6 @@ export const struct_val_list = struct("struct_val_list", {
     export const VANQ_COUNT_L_H = VANQ_COUNT_H_L + 1; /* z - by count, low to high */
 
     export const NUM_VANQ_ORDER_MODES = VANQ_COUNT_L_H + 1;
-
 
 export const struct_autopickup_exception = struct("struct_autopickup_exception", {
     regex: ptr_to("struct_nhregex"),
@@ -948,8 +792,6 @@ export const struct_xlock_s = struct("struct_xlock_s", {
     magic_key: boolean,
 });
 
-
-
 /* NetHack ftypes */
 export const NHF_LEVELFILE = 1;
 export const NHF_SAVEFILE = 2;
@@ -962,21 +804,10 @@ export const FREEING = 0x04;
 export const CONVERTING = 0x08;
 export const UNCONVERTING = 0x10;
 
-/* operations of the various saveXXXchn & co. routines */
-
-
-
-
-/* operations of the various saveXXXchn & co. routines */
-
-
-
-
     export const invalid = 0;
     export const historical = 1; /* entire struct, binary, as-is */
     export const exportascii = 2; /* each field written out as ascii text */
     export const NUM_SAVEFORMATS = exportascii + 1;
-
 
 /* Content types for fieldlevel files */
 export const struct_fieldlevel_content = struct("struct_fieldlevel_content", {
@@ -1004,8 +835,6 @@ export const struct_nh_file = struct("struct_nh_file", {
     nhfpconvert: ptr_to("struct_nh_file"),
 });
 
-
-
 /* Monster name articles */
 export const ARTICLE_NONE = 0;
 export const ARTICLE_THE = 1;
@@ -1021,15 +850,6 @@ export const SUPPRESS_MAPPEARANCE = 0x10;
 export const EXACT_NAME = 0x1F;
 export const SUPPRESS_NAME = 0x20;
 export const AUGMENT_IT = 0x40;
-
-/* pline (et al) for a single string argument (suppress compiler warning) */
-
-
-
-
-
-
-
 
 /* Some systems want to use full pathnames for some subsets of file names,
  * rather than assuming that they're all in the current directory.  This
@@ -1049,15 +869,9 @@ export const TROUBLEPREFIX = 9;
 export const PREFIX_COUNT = 10;
 /* used in files.c; xxconf.h can override if needed */
 
-
-
-
-
 /* the bare-bones stuff is unconditional above to simplify coding; for
  * ports that actually use prefixes, add some more localized things
  */
-
-
 
 /* from options.c */
 export const MAX_MENU_MAPPED_CMDS = 32;
@@ -1091,56 +905,7 @@ export const SYM_MAX = (SYM_OFF_X + MAXOTHER);
    UNDEFINED_PTR: can be used only on pointer types. */
 export const UNDEFINED_VALUE = 0;
 
-
-
-/* The UNDEFINED_ROLE macro is used to initialize Role variables */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* The UNDEFINED_RACE macro is used to initialize Race variables */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const mmflags_nht = unsigned; /* makemon MM_ flags */
-
 
 /* flags to control makemon(); goodpos() uses some plus has some of its own*/
 export const NO_MM_FLAGS = 0x00000000;
@@ -1168,7 +933,6 @@ export const MM_IGNORELAVA = 0x00080000;
 export const MM_MINVIS = 0x00100000;
 /* if more MM_ flag masks are added, skip or renumber the GP_ one(s) */
 export const GP_ALLOW_XY = 0x00200000;
-
 
 export const GP_ALLOW_U = 0x00400000;
 export const GP_CHECKSCARY = 0x00800000;
@@ -1209,10 +973,7 @@ export const CC_RING_PAIRS = 0x04;
 export const CC_SKIP_MONS = 0x08;
 export const CC_SKIP_INACCS = 0x10;
 
-
 /* flags for decide_to_shift() */
-
-
 
 /* m_poisongas_ok() return values */
 export const M_POISONGAS_BAD = 0;
@@ -1227,14 +988,6 @@ export const DF_ALL = 0x04;
 /* special mhpmax value when loading bones monster to flag as extinct or
  * genocided */
 export const DEFUNCT_MONSTER = (-100);
-
-/* macro form of adjustments of physical damage based on Half_physical_damage.
- * Can be used on-the-fly with the 1st parameter to losehp() if you don't
- * need to retain the dmg value beyond that call scope.
- * Take care to ensure it doesn't get used more than once in other instances.
- */
-
-
 
 /* flags for special ggetobj status returns */
 export const ALL_FINISHED = 0x01;
@@ -1281,9 +1034,7 @@ export const ONAME_VIA_DIP = 0x0010;
 export const ONAME_LEVEL_DEF = 0x0020;
 export const ONAME_BONES = 0x0040;
 
-
 export const ONAME_RANDOM = 0x0080;
-
 
 /* flag controlling potential livelog event of finding an artifact */
 export const ONAME_KNOW_ARTI = 0x0100;
@@ -1324,16 +1075,6 @@ export const MMOVE_MOVED = 1;
 export const MMOVE_DIED = 2;
 export const MMOVE_DONE = 3;
 export const MMOVE_NOMOVES = 4;
-
-/*** some utility macros ***/
-
-
-
-
-
-
-/* YN() is same as y_n() except doesn't save the response in do-again buffer */
-
 
 /* Macros for scatter */
 export const VIS_EFFECTS = 0x01;
@@ -1405,13 +1146,8 @@ export const TAINT_AGE = (50);
 export const TROLL_REVIVE_CHANCE = 37;
 export const ROT_AGE = (250);
 
-/* Some misc definitions */
-
 export const WAND_BACKFIRE_CHANCE = 100;
 export const WAND_WREST_CHANCE = 121;
-
-
-
 
 /* Flags to control menus */
 export const MENUTYPELEN = sizeof_string("traditional ");
@@ -1439,8 +1175,6 @@ export const PET_MISSILE_RANGE2 = 36;
 export const GETOBJ_NOFLAGS = 0x0;
 export const GETOBJ_ALLOWCNT = 0x1;
 export const GETOBJ_PROMPT = 0x2;
-
-
 
 /* flags for hero_breaks() and hits_bars(); BRK_KNOWN* let callers who have
    already called breaktest() prevent it from being called again since it
@@ -1470,154 +1204,19 @@ export const NC_VIA_WAND_OR_SPELL = 0x02;
  * of it. */
 export const PHYS_EXPL_TYPE = -1;
 
-/* macros for dobuzz() type */
-
-
-
-
-
-/* hero shooting a wand */
-
-/* hero casting a spell */
-
-/* hero breathing as a monster */
-
-/* monster casting a spell */
-
-/* monster breathing */
-
-/* monster shooting a wand; note: not -9 to -0 because -0 is ambiguous  */
-
-
-/* pick a random entry from array */
-
-/* array with terminator variation */
-/* #define ROLL_FROMT(array) array[rn2(SIZE(array) - 1)] */
-
-/* validate index of array */
-
-
-/* array with terminator variation */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Cast to int, but limit value to range. */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* negative armor class is randomly weakened to prevent invulnerability */
-
-
-
-
-
-
-
 /* These may have been defined to platform-specific values in *conf.h
  * or on the compiler command line from a hints file or Makefile */
-
-
-
-
-
-
-
-
 
 export const DEVTEAM_EMAIL = "devteam@nethack.org";
 export const DEVTEAM_URL = "https://www.nethack.org/";
 
-
-
-
-
-
-
-
-
-
-
-/*
- * Harness determinism: replace libc qsort() with a stable wrapper so
- * equal-key ordering does not vary by platform libc behavior.
- */
-
-
-
-
-
-/*
- * PRNG call logging macros (004-prng-logging patch).
- *
- * These use a C preprocessor trick: function-like macros only match
- * when followed by '('.  So `init_random(rn2)` passes the bare function
- * pointer (no parens) and the macro doesn't fire.  But `rn2(42)` does
- * match, setting the caller's __func__, __FILE__:__LINE__ before
- * calling the real rn2 function.
- *
- * The self-reference in the expansion (e.g. rn2 calling rn2) is safe:
- * C99 6.10.3.4 says a macro name found during its own expansion is
- * not replaced again, so it resolves to the real function.
- *
- * Suppressed inside rnd.c itself (RNGLOG_IN_RND_C) so that internal
- * calls (rnz->rn2, rne->rn2, etc) inherit the outer caller's context
- * rather than setting their own.
- */
 import { AFTER_LAST_ARTIFACT } from "./artilist.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { MAXDUNGEON } from "./global.h.js";
-import { MAXLEVEL } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
+import { MAXMCLASSES, MAXOCLASSES, MAXPCHARS } from "./defsym.h.js";
+import { BUFSZ, MAXDUNGEON, MAXLEVEL, boolean, coordxy, xint16 } from "./global.h.js";
 import { int8 } from "./integer.h.js";
-import { MAXOTHER } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
+import { MAXOTHER, WARNCOUNT } from "./sym.h.js";
 import { NUM_MOUSE_BUTTONS } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { union } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import {
+    char, int, long, ord, schar, short, sizeof_string, uchar, unsigned,
+} from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct, union, void_t } from "../rt/struct.js";

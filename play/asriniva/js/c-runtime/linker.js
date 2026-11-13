@@ -12,7 +12,8 @@ export function createLinker({memory,transport,functions,services,ctypes,prototy
     }
     function publishFunction(module,name){
         if(name in services)return;
-        const invoke=(...args)=>call(module,name,...args),prototype=prototypes[name];
+        const entry=modules.get(module),invoke=(...args)=>invokeEntry(entry,module,name,args),prototype=prototypes[name];
+        Object.defineProperty(invoke,'nativeEntry',{get(){const fn=entry.namespace[name];return fn?.nativeDirect?fn:undefined;}});
         if(prototype)Object.defineProperty(invoke,'address',{get(){
             const match=prototype.match(/^(.+?)\s*\((.*)\)$/);if(!match)throw new Error('Unknown C function address prototype '+name);
             const args=[];let depth=0,start=0;for(let i=0;i<match[2].length;i++){const ch=match[2][i];if(ch==='('||ch==='[')depth++;else if(ch===')'||ch===']')depth--;else if(ch===','&&!depth){args.push(match[2].slice(start,i).trim());start=i+1;}}args.push(match[2].slice(start).trim());
@@ -28,7 +29,7 @@ export function createLinker({memory,transport,functions,services,ctypes,prototy
             if(candidates?.size>1)throw new Error('Ambiguous standalone public symbol '+name);
             if(candidates?.size===1){const [module,callback]=candidates.entries().next().value;extend(module,{[name]:callback});}
         }
-        const owner=owners.get(name);if(!owner)throw new Error('Unresolved standalone function '+name);return (...args)=>call(owner,name,...args);
+        const owner=owners.get(name);if(!owner)throw new Error('Unresolved standalone function '+name);const entry=modules.get(owner);return (...args)=>invokeEntry(entry,owner,name,args);
     }
     function extend(name,namespace) {
         const entry=modules.get(name);if(!entry)throw new Error('Unknown standalone module '+name);
@@ -51,11 +52,18 @@ export function createLinker({memory,transport,functions,services,ctypes,prototy
         try{for(const dep of entry.dependencies)start(dep);if(entry.initialize)transport.scoped(()=>withEnvironment(entry.environment,entry.initialize));entry.status='ready';return entry;}
         catch(error){entry.status='failed';throw error;}
     }
-    function call(name,fn,...args) {
-        const entry=start(name),callback=entry.namespace[fn];
+    function invokeEntry(entry,name,fn,args) {
+        if(entry.status!=='ready')start(name);
+        const callback=entry.namespace[fn];
         if(typeof callback!=='function')throw new Error('Unknown standalone function '+name+'.'+fn);
+        if(callback.nativeDirect&&(!entry.prepareArgs||callback.nativePrepared)){
+            const result=callback(...args);
+            if(result&&typeof result.then==='function')throw new TypeError('C calls must be synchronous');
+            return result;
+        }
         return transport.scoped(()=>withEnvironment(entry.environment,callback,...(entry.prepareArgs?entry.prepareArgs(fn,args):args)));
     }
+    function call(name,fn,...args) {return invokeEntry(start(name),name,fn,args);}
     function allocateGlobal(name,size,initial) {
         if(globals.has(name))throw new Error('Duplicate standalone global '+name);
         const at=memory.calloc(1,size);if(!at)throw new RangeError('Global allocation failed');

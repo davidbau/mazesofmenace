@@ -2,38 +2,14 @@
 /*      Copyright (c) 2019 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "sp_lev.h"
-
 const struct__lua_obj = struct("struct__lua_obj", {
     state: int,
     obj: ptr_to("struct_obj"),
 });
 
+export function lobj_is_ok(lo) { return (lo && lo.obj && lo.obj.where != OBJ_LUAFREE ? 1 : 0); }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function lobj_is_ok(lo) { return ((((lo) && (lo).obj && (lo).obj.where != OBJ_LUAFREE) ? 1 : 0)); }
-
-function /* struct _lua_obj * */
-l_obj_check(L, indx)
-{
+function l_obj_check(L, indx) { /* struct _lua_obj * */
     let lo;
 
     luaL_checktype(L, indx, LUA_TUSERDATA);
@@ -43,9 +19,7 @@ l_obj_check(L, indx)
     return lo;
 }
 
-function /* int */
-l_obj_gc(L)
-{
+function l_obj_gc(L) { /* int */
     let obj, otmp;
     let lo = l_obj_check(L, 1);
 
@@ -69,9 +43,7 @@ l_obj_gc(L)
     return 0;
 }
 
-function /* struct _lua_obj * */
-l_obj_push(L, otmp)
-{
+function l_obj_push(L, otmp) { /* struct _lua_obj * */
     let lo = view_of(struct__lua_obj, lua_newuserdata(L, sizeof(struct__lua_obj)));
 
     luaL_getmetatable(L, _("obj"));
@@ -85,24 +57,20 @@ l_obj_push(L, otmp)
     return lo;
 }
 
-export function /* void */
-nhl_push_obj(L, otmp)
-{
-    void l_obj_push(L, otmp);
+export function nhl_push_obj(L, otmp) { /* void */
+    l_obj_push(L, otmp);
 }
 
 /* local o = obj.new("large chest");
    local cobj = o:contents(); */
-function /* int */
-l_obj_getcontents(L)
-{
+function l_obj_getcontents(L) { /* int */
     let lo = l_obj_check(L, 1);
     let obj = lo.obj;
 
     if (!obj)
         nhl_error(L, _("l_obj_getcontents: no obj"));
 
-    void l_obj_push(L, obj.cobj);
+    l_obj_push(L, obj.cobj);
     return 1;
 }
 
@@ -110,9 +78,7 @@ l_obj_getcontents(L)
 /* local box = obj.new("large chest");
    box:addcontent(obj.new("rock"));
 */
-function /* int */
-l_obj_add_to_container(L)
-{
+function l_obj_add_to_container(L) { /* int */
     let lobox = l_obj_check(L, 1);
     let lo = l_obj_check(L, 2);
     let otmp;
@@ -138,9 +104,7 @@ l_obj_add_to_container(L)
 
 /* Put object into player's inventory */
 /* u.giveobj(obj.new("rock")); */
-export function /* int */
-nhl_obj_u_giveobj(L)
-{
+export function nhl_obj_u_giveobj(L) { /* int */
     let lo = l_obj_check(L, 1);
     let otmp;
     let refs;
@@ -161,15 +125,11 @@ nhl_obj_u_giveobj(L)
     return 0;
 }
 
-
-
 /* Get a table of object class data. */
 /* local odata = obj.class(otbl.otyp); */
 /* local odata = obj.class(obj.new("rock")); */
 /* local odata = o:class(); */
-function /* int */
-l_obj_objects_to_table(L)
-{
+function l_obj_objects_to_table(L) { /* int */
     let argc = lua_gettop(L);
     let otyp = -1;
     let o;
@@ -237,15 +197,11 @@ l_obj_objects_to_table(L)
     return 1;
 }
 
-
-
 /* Create a lua table representation of the object, unpacking all the
    object fields.
    local o = obj.new("rock");
    local otbl = o:totable(); */
-function /* int */
-l_obj_to_table(L)
-{
+function l_obj_to_table(L) { /* int */
     let lo = l_obj_check(L, 1);
     let obj = lo.obj;
 
@@ -341,25 +297,22 @@ l_obj_to_table(L)
     return 1;
 }
 
-
-
 /* create a new object via wishing routine */
 /* local o = obj.new("rock"); */
 /* local o = obj.new({ id = "food ration", class = "%" }); */
-function /* int */
-l_obj_new_readobjnam(L)
-{ const $frame = stack_frame(); try {
+function l_obj_new_readobjnam(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc == 1 && lua_type(L, 1) == LUA_TSTRING) {
         let buf = stack_array(char, BUFSZ);
         let otmp;
 
-        void sprintf(buf, _("%s"), luaL_checkstring(L, 1));
+        sprintf(buf, _("%s"), luaL_checkstring(L, 1));
         lua_pop(L, 1);
         if ((otmp = readobjnam(buf, null)) == hands_obj)
             otmp = null;
-        void l_obj_push(L, otmp);
+        l_obj_push(L, otmp);
         return 1;
     } else if (argc == 1 && lua_type(L, 1) == LUA_TTABLE) {
         let id = get_table_objtype(L);
@@ -375,19 +328,19 @@ l_obj_new_readobjnam(L)
             otmp = mkobj(class_, FALSE);
         }
         lua_pop(L, 1);
-        void l_obj_push(L, otmp);
+        l_obj_push(L, otmp);
         return 1;
     } else
         nhl_error(L, _("l_obj_new_readobjname: Wrong args"));
     /*NOTREACHED*/
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Get the topmost object on the map at x,y */
 /* local o = obj.at(x, y); */
-function /* int */
-l_obj_at(L)
-{ const $frame = stack_frame(); try {
+function l_obj_at(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc == 2) {
@@ -398,20 +351,20 @@ l_obj_at(L)
         cvt_to_abscoord(x, y);
 
         lua_pop(L, 2);
-        void l_obj_push(L, svl.level.objects[x[0]][y[0]]);
+        l_obj_push(L, svl.level.objects[x[0]][y[0]]);
         return 1;
     } else
         nhl_error(L, _("l_obj_at: Wrong args"));
     /*NOTREACHED*/
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Place an object on the map at (x,y).
    local o = obj.new("rock");
    o:placeobj(u.ux, u.uy); */
-function /* int */
-l_obj_placeobj(L)
-{ const $frame = stack_frame(); try {
+function l_obj_placeobj(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let lo = l_obj_check(L, 1);
     let x = stack_var(coordxy), y = stack_var(coordxy);
@@ -432,22 +385,19 @@ l_obj_placeobj(L)
     }
 
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* Get the next object in the object chain */
 /* local o = obj.at(x, y);
    local o2 = o:next(true);
    local firstobj = obj.next();
 */
-function /* int */
-l_obj_nextobj(L)
-{
+function l_obj_nextobj(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 0) {
-        void l_obj_push(L, fobj());
+        l_obj_push(L, fobj());
     } else {
         let lo = l_obj_check(L, 1);
         let use_nexthere = FALSE;
@@ -456,7 +406,7 @@ l_obj_nextobj(L)
             use_nexthere = lua_toboolean(L, 2);
 
         if (lo && lo.obj)
-            void l_obj_push(L, (use_nexthere && lo.obj.where == OBJ_FLOOR)
+            l_obj_push(L, (use_nexthere && lo.obj.where == OBJ_FLOOR)
                                   ? lo.obj.v.v_nexthere
                                   : lo.obj.nobj);
     }
@@ -465,36 +415,28 @@ l_obj_nextobj(L)
 
 /* Get the container object is in */
 /* local box = o:container(); */
-function /* int */
-l_obj_container(L)
-{
+function l_obj_container(L) { /* int */
     let lo = l_obj_check(L, 1);
 
     if (lo && lo.obj && lo.obj.where == OBJ_CONTAINED)
-        void l_obj_push(L, lo.obj.v.v_ocontainer);
+        l_obj_push(L, lo.obj.v.v_ocontainer);
     else
-        void l_obj_push(L, null);
+        l_obj_push(L, null);
     return 1;
 }
 
 /* Is the object a null? */
 /* local badobj = o:isnull(); */
-function /* int */
-l_obj_isnull(L)
-{
+function l_obj_isnull(L) { /* int */
     let lo = l_obj_check(L, 1);
 
     lua_pushboolean(L, +!lobj_is_ok(lo));
     return 1;
 }
 
-
-
 /* does object have a timer of certain type? */
 /* local hastimer = o:has_timer("rot-organic"); */
-function /* int */
-l_obj_timer_has(L)
-{
+function l_obj_timer_has(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 2) {
@@ -516,9 +458,7 @@ l_obj_timer_has(L)
 /* peek at an object timer. return the turn when timer triggers.
    returns 0 if no such timer attached to the object. */
 /* local timeout = o:peek_timer("hatch-egg"); */
-function /* int */
-l_obj_timer_peek(L)
-{
+function l_obj_timer_peek(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 2) {
@@ -543,9 +483,7 @@ l_obj_timer_peek(L)
    without a timer type parameter, stops all timers for the object. */
 /* local timeout = o:stop_timer("rot-organic"); */
 /* o:stop_timer(); */
-function /* int */
-l_obj_timer_stop(L)
-{
+function l_obj_timer_stop(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -554,7 +492,6 @@ l_obj_timer_stop(L)
         if (lo && lo.obj)
             obj_stop_timers(lo.obj);
         return 0;
-
     } else if (argc == 2) {
         let lo = l_obj_check(L, 1);
         let timertype = nhl_get_timertype(L, 2);
@@ -571,13 +508,9 @@ l_obj_timer_stop(L)
     return 0;
 }
 
-
-
 /* start an object timer. */
 /* o:start_timer("hatch-egg", 10); */
-function /* int */
-l_obj_timer_start(L)
-{
+function l_obj_timer_start(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 3) {
@@ -599,9 +532,8 @@ l_obj_timer_start(L)
    false otherwise. */
 /* local ogone = o:bury(); */
 /* local ogone = o:bury(5,5); */
-function /* int */
-l_obj_bury(L)
-{ const $frame = stack_frame(); try {
+function l_obj_bury(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let dealloced = stack_var(boolean, FALSE);
     let lo = l_obj_check(L, 1);
@@ -620,11 +552,12 @@ l_obj_bury(L)
     if (lobj_is_ok(lo) && isok(x[0], y[0])) {
         lo.obj.ox = x[0];
         lo.obj.oy = y[0];
-        void bury_an_obj(lo.obj, addr_of(dealloced));
+        bury_an_obj(lo.obj, addr_of(dealloced));
     }
     lua_pushboolean(L, dealloced[0]);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const l_obj_methods = static_array("l_obj_methods", struct_luaL_Reg, null, [
     { name: _("new"), func: l_obj_new_readobjnam },
@@ -650,9 +583,7 @@ const l_obj_meta = static_array("l_obj_meta", struct_luaL_Reg, null, [
     { name: 0, func: null }
 ]);
 
-export function /* int */
-l_obj_register(L)
-{
+export function l_obj_register(L) { /* int */
     /* Table of instance methods (e.g. an_object:isnull())
        and static methods (e.g. obj.new("dagger")). */
     luaL_newlib(L, l_obj_methods);
@@ -666,7 +597,7 @@ l_obj_register(L)
 
     /* Don't let lua code mess with the real metatable.
        Instead offer a fake one that only contains __gc. */
-    (((luaL_checkversion(L), lua_createtable(L, 0, (Math.trunc((static_sizeof("l_obj_meta") / sizeof(struct_luaL_Reg))) - 1))), luaL_setfuncs(L, l_obj_meta[0], 0)));
+    ((luaL_checkversion(L), lua_createtable(L, 0, (Math.trunc((static_sizeof("l_obj_meta") / sizeof(struct_luaL_Reg))) - 1))), luaL_setfuncs(L, l_obj_meta[0], 0));
     lua_setfield(L, -2, _("__metatable"));
 
     /* We don't need the metatable anymore. It's safe in the
@@ -681,117 +612,53 @@ l_obj_register(L)
 /* for 'onefile' processing where end of this file isn't necessarily the
    end of the source code seen by the compiler */
 
-
 /*nhlobj.c*/
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { CORPSTAT_FEMALE } from "./hack.h.js";
-import { CORPSTAT_HISTORIC } from "./hack.h.js";
-import { CORPSTAT_MALE } from "./hack.h.js";
+
+import { MAXOCLASSES, POTION_CLASS, RANDOM_CLASS } from "./defsym.h.js";
+import { BUFSZ, FALSE, TRUE, boolean, coordxy } from "./global.h.js";
+import { CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE } from "./hack.h.js";
 import { struct_luaL_Reg } from "./lauxlib.h.js";
-import { luaL_checkstring } from "./lauxlib.h.macros.js";
-import { luaL_checkversion } from "./lauxlib.h.macros.js";
-import { luaL_getmetatable } from "./lauxlib.h.macros.js";
-import { luaL_newlib } from "./lauxlib.h.macros.js";
-import { LUA_TNUMBER } from "./lua.h.js";
-import { LUA_TSTRING } from "./lua.h.js";
-import { LUA_TTABLE } from "./lua.h.js";
-import { LUA_TUSERDATA } from "./lua.h.js";
-import { lua_newtable } from "./lua.h.macros.js";
-import { lua_newuserdata } from "./lua.h.macros.js";
-import { lua_pop } from "./lua.h.macros.js";
-import { lua_tointeger } from "./lua.h.macros.js";
+import {
+    luaL_checkstring, luaL_checkversion, luaL_getmetatable, luaL_newlib,
+} from "./lauxlib.h.macros.js";
+import { LUA_TNUMBER, LUA_TSTRING, LUA_TTABLE, LUA_TUSERDATA } from "./lua.h.js";
+import { lua_newtable, lua_newuserdata, lua_pop, lua_tointeger } from "./lua.h.macros.js";
 import { NEUTRAL } from "./monflag.h.js";
 import { NON_PM } from "./monsters.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { OBJ_LUAFREE } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_poisonable } from "./obj.h.macros.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { CORPSE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { FIRST_OBJECT } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
+import { OBJ_CONTAINED, OBJ_FLOOR, OBJ_FREE, OBJ_INVENT, OBJ_LUAFREE } from "./obj.h.js";
+import { Has_contents, Is_container, ONAME, has_oname, is_poisonable } from "./obj.h.macros.js";
+import { OBJ_DESCR, OBJ_NAME } from "./objclass.h.macros.js";
+import { CORPSE, EGG, FIGURINE, FIRST_OBJECT, STATUE, TIN } from "./objects.h.js";
 import { fobj } from "./rm.h.macros.js";
 import { TIMER_OBJECT } from "./timeout.h.js";
 import { timer_is_obj } from "./timeout.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { char, int, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
 import { sprintf } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_sizeof } from "../rt/locals.js";
-import { luaL_checkinteger } from "../rt/lua.js";
-import { luaL_checktype } from "../rt/lua.js";
-import { luaL_checkudata } from "../rt/lua.js";
-import { luaL_newmetatable } from "../rt/lua.js";
-import { luaL_setfuncs } from "../rt/lua.js";
-import { lua_createtable } from "../rt/lua.js";
-import { lua_gettop } from "../rt/lua.js";
-import { lua_pushboolean } from "../rt/lua.js";
-import { lua_pushinteger } from "../rt/lua.js";
-import { lua_pushvalue } from "../rt/lua.js";
-import { lua_setfield } from "../rt/lua.js";
-import { lua_setglobal } from "../rt/lua.js";
-import { lua_setmetatable } from "../rt/lua.js";
-import { lua_toboolean } from "../rt/lua.js";
-import { lua_type } from "../rt/lua.js";
+import { stack_array, stack_var, static_array, static_sizeof } from "../rt/locals.js";
+import {
+    luaL_checkinteger, luaL_checktype, luaL_checkudata, luaL_newmetatable, luaL_setfuncs,
+    lua_createtable, lua_gettop, lua_pushboolean, lua_pushinteger, lua_pushvalue, lua_setfield,
+    lua_setglobal, lua_setmetatable, lua_toboolean, lua_type,
+} from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, ptr_to, struct, view_of } from "../rt/struct.js";
 import { isok } from "./cmd.js";
-import { hands_obj } from "./decl.js";
-import { materialnm } from "./decl.js";
-import { svl } from "./decl.js";
+import { hands_obj, materialnm, svl } from "./decl.js";
 import { bury_an_obj } from "./dig.js";
 import { newsym } from "./display.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
+import { def_char_to_objclass, def_oc_syms } from "./drawing.js";
 import { obj_to_any } from "./hack.js";
 import { addinv } from "./invent.js";
-import { add_to_container } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import {
+    add_to_container, dealloc_obj, mkobj, mksobj, obj_extract_self, place_object, weight,
+} from "./mkobj.js";
 import { mons } from "./monst.js";
-import { nhl_add_table_entry_char } from "./nhlua.js";
-import { nhl_add_table_entry_int } from "./nhlua.js";
-import { nhl_add_table_entry_str } from "./nhlua.js";
-import { nhl_error } from "./nhlua.js";
-import { nhl_get_timertype } from "./nhlua.js";
+import {
+    nhl_add_table_entry_char, nhl_add_table_entry_int, nhl_add_table_entry_str, nhl_error,
+    nhl_get_timertype,
+} from "./nhlua.js";
 import { objects } from "./objects.js";
 import { readobjnam } from "./objnam.js";
-import { cvt_to_abscoord } from "./sp_lev.js";
-import { get_table_objclass } from "./sp_lev.js";
-import { get_table_objtype } from "./sp_lev.js";
-import { obj_has_timer } from "./timeout.js";
-import { obj_stop_timers } from "./timeout.js";
-import { peek_timer } from "./timeout.js";
-import { start_timer } from "./timeout.js";
-import { stop_timer } from "./timeout.js";
+import { cvt_to_abscoord, get_table_objclass, get_table_objtype } from "./sp_lev.js";
+import { obj_has_timer, obj_stop_timers, peek_timer, start_timer, stop_timer } from "./timeout.js";

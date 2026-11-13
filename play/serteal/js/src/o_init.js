@@ -3,56 +3,9 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
+/* #ifdef TILES_IN_GLYPHMAP: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-setgemprobs(dlev)
-{
+function setgemprobs(dlev) { /* void */
     let j, first, lev, sum = 0;
 
     if (dlev)
@@ -81,11 +34,7 @@ setgemprobs(dlev)
 }
 
 /* some gems can have different colors */
-function /* void */
-randomize_gem_colors()
-{
-
-
+function randomize_gem_colors() { /* void */
     if (rn2(2)) { /* change turquoise from green to blue? */
         COPY_OBJ_DESCR(objects[TURQUOISE], objects[SAPPHIRE]);
     }
@@ -105,13 +54,11 @@ randomize_gem_colors()
         COPY_OBJ_DESCR(objects[FLUORITE], objects[EMERALD]);
         break;
     }
-
-} export function COPY_OBJ_DESCR(o_dst, o_src) { return o_dst.oc_descr_idx = o_src.oc_descr_idx, o_dst.oc_color = o_src.oc_color; }
+}
+export function COPY_OBJ_DESCR(o_dst, o_src) { return o_dst.oc_descr_idx = o_src.oc_descr_idx, o_dst.oc_color = o_src.oc_color; }
 
 /* shuffle descriptions on objects o_low to o_high */
-function /* void */
-shuffle(o_low, o_high, domaterial)
-{
+function shuffle(o_low, o_high, domaterial) { /* void */
     let i, j, num_to_shuffle;
     let sw;
     let color;
@@ -147,9 +94,7 @@ shuffle(o_low, o_high, domaterial)
     }
 }
 
-export function /* void */
-init_objects()
-{
+export function init_objects() { /* void */
     let i, first, last, prevoclass;
     let oclass;
 
@@ -229,16 +174,12 @@ init_objects()
     /* shuffle descriptions */
     shuffle_all();
 
-
-
     objects[WAN_NOTHING].oc_dir = rn2(2) ? NODIR : IMMEDIATE;
 }
 
 /* Compute the total probability of each object class.
  * Assumes svb.bases[] has already been set. */
-export function /* void */
-init_oclass_probs()
-{
+export function init_oclass_probs() { /* void */
     let i;
     let sum;
     let oclass;
@@ -265,11 +206,9 @@ init_oclass_probs()
 }
 
 /* retrieve the range of objects that otyp shares descriptions with */
-export function /* void */
-obj_shuffle_range(
+export function obj_shuffle_range(
     otyp,
-    lo_p, hi_p) /* output: range that item belongs among */
-{
+    lo_p, hi_p) { /* void */ /* output: range that item belongs among */
     let i, ocls = objects[otyp].oc_class;
 
     /* default is just the object itself */
@@ -318,9 +257,8 @@ obj_shuffle_range(
 }
 
 /* randomize object descriptions */
-function /* void */
-shuffle_all()
-{ const $frame = stack_frame(); try {
+function shuffle_all() { /* void */
+    const $frame = stack_frame(); try {
     /* entire classes; obj_shuffle_range() handles their exceptions */
     let shuffle_classes = static_array("shuffle_all.shuffle_classes", char, null, [
         AMULET_CLASS, POTION_CLASS, RING_CLASS,  SCROLL_CLASS,
@@ -344,13 +282,12 @@ shuffle_all()
         shuffle(first[0], last[0], FALSE);
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Return TRUE if the provided string matches the unidentified description of
  * the provided object. */
-export function /* boolean */
-objdescr_is(obj, descr)
-{
+export function objdescr_is(obj, descr) { /* boolean */
     let objdescr;
 
     if (!obj) {
@@ -365,15 +302,12 @@ objdescr_is(obj, descr)
 }
 
 /* level dependent initialization */
-export function /* void */
-oinit()
-{
+export function oinit() { /* void */
     setgemprobs(u.uz);
 }
 
-export function /* void */
-savenames(nhfp)
-{ const $frame = stack_frame(); try {
+export function savenames(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let len = stack_var(unsigned);
 
@@ -404,12 +338,11 @@ savenames(nhfp)
                 objects[i].oc_uname = 0;
             }
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* void */
-restnames(nhfp)
-{ const $frame = stack_frame(); try {
+export function restnames(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let len = stack_var(unsigned, 0);
 
@@ -429,18 +362,11 @@ restnames(nhfp)
             Sfi_char(nhfp, objects[i].oc_uname, _("names-oc_uname"), int((len[0])));
         }
     }
-
-
-
-
-
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* make the object dknown and mark it as encountered */
-export function /* void */
-observe_object(obj)
-{
+export function observe_object(obj) { /* void */
     let oindx = obj.otyp;
 
     /* skip for generic objects and for STRANGE_OBJECT */
@@ -450,13 +376,11 @@ observe_object(obj)
     }
 }
 
-export function /* void */
-discover_object(
+export function discover_object(
     oindx,
     mark_as_known,
     mark_as_encountered,
-    credit_hero)         /* exercise wisdom */
-{
+    credit_hero) { /* void */ /* exercise wisdom */
     if (oindx < FIRST_OBJECT) /* don't discover generic objects */
         return;
 
@@ -494,9 +418,7 @@ discover_object(
 }
 
 /* if a class name has been cleared, we may need to purge it from disco[] */
-export function /* void */
-undiscover_object(oindx)
-{
+export function undiscover_object(oindx) { /* void */
     if (!objects[oindx].oc_name_known && !objects[oindx].oc_encountered) {
         let dindx, acls = objects[oindx].oc_class;
         let found = FALSE;
@@ -522,9 +444,7 @@ undiscover_object(oindx)
     }
 }
 
-export function /* boolean */
-interesting_to_discover(i)
-{
+export function interesting_to_discover(i) { /* boolean */
     /* most players who don't speak Japanese manage to figure out what
        gunyoki, osaku, and so forth mean, but treat them as pre-discovered
        to be disclosed by '\' */
@@ -533,10 +453,10 @@ interesting_to_discover(i)
 
     /* Objects that were discovered without encountering them are now printed
        with a '*' */
-    return (((objects[i].oc_uname != 0
+    return (objects[i].oc_uname != 0
                       || ((objects[i].oc_name_known
                            || objects[i].oc_encountered)
-                          && OBJ_DESCR(objects[i]) != 0)) ? 1 : 0));
+                          && OBJ_DESCR(objects[i]) != 0) ? 1 : 0);
 }
 
 /* items that should stand out once they're known */
@@ -549,9 +469,7 @@ const uniq_objs = static_array("uniq_objs", short, null, [
 ]);
 
 /* discoveries qsort comparison function */
-function /* int QSORTCALLBACK */
-discovered_cmp(v1, v2)
-{
+function discovered_cmp(v1, v2) { /* int QSORTCALLBACK */
     let s1 = ref_to(ptr_to(char), v1)[0];
     let s2 = ref_to(ptr_to(char), v2)[0];
     /* each element starts with "* " or "  " but we don't sort by those */
@@ -563,9 +481,8 @@ discovered_cmp(v1, v2)
     return res;
 }
 
-function /* char * */
-sortloot_descr(otyp, outbuf)
-{ const $frame = stack_frame(); try {
+function sortloot_descr(otyp, outbuf) { /* char * */
+    const $frame = stack_frame(); try {
     let sl_cookie = stack_struct(struct_sortloot_item);
     let o = stack_struct(struct_obj);
 
@@ -580,20 +497,16 @@ sortloot_descr(otyp, outbuf)
     if (otyp == SLIME_MOLD)
         o.spe = svc.context.current_fruit;
 
-    void memset(addr_of(sl_cookie), 0, sizeof(struct_sortloot_item));
+    memset(addr_of(sl_cookie), 0, sizeof(struct_sortloot_item));
     sl_cookie.obj = null;
     sl_cookie.str = 0;
 
     loot_classify(sl_cookie, o);
-    void sprintf(outbuf, _("%02d%02d%1d "), sl_cookie.orderclass, sl_cookie.subclass, sl_cookie.disco)
+    sprintf(outbuf, _("%02d%02d%1d "), sl_cookie.orderclass, sl_cookie.subclass, sl_cookie.disco)
 ;
     return outbuf;
-} finally { stack_pop($frame); } }
-
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* also used in options.c (optfn_sortdiscoveries) */
 const disco_order_let = init_string(static_array("disco_order_let", char, sizeof_string("osca")), _("osca"), true);
@@ -605,12 +518,9 @@ const disco_orders_descr = static_array("disco_orders_descr", ptr_to(char), null
     0
 ]);
 
-
-
-export function /* int */
-choose_disco_sort(
-    mode) /* 0 => 'O' cmd, 1 => full discoveries; 2 => class disco */
-{ const $frame = stack_frame(); try {
+export function choose_disco_sort(
+    mode) { /* int */ /* 0 => 'O' cmd, 1 => full discoveries; 2 => class disco */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let selected = stack_var(ptr_to(struct_mi));
     let any = stack_struct(struct_any);
@@ -654,12 +564,12 @@ choose_disco_sort(
         flags.discosort = choice;
     }
     return n;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* augment obj_typename() with explanation of Japanese item names */
-function /* char * */
-disco_typename(otyp)
-{ const $frame = stack_frame(); try {
+function disco_typename(otyp) { /* char * */
+    const $frame = stack_frame(); try {
     let result = obj_typename(otyp);
 
     if (Role_if(PM_SAMURAI) && Japanese_item_name(otyp, 0)) {
@@ -676,23 +586,23 @@ disco_typename(otyp)
         if (!actualn) { /* won't happen; used to pacify static analyzer */
             ;
         } else if (strstri(result, _(" called"))) {
-            void sprintf(buf, _(" [%s] called"), actualn);
-            void strsubst(result, _(" called"), buf);
+            sprintf(buf, _(" [%s] called"), actualn);
+            strsubst(result, _(" called"), buf);
         } else if (strstri(result, _(" ("))) {
-            void (sprintf(buf, _(" [%s] ("), actualn));
-            void (strsubst(result, _(" ("), buf));
+            sprintf(buf, _(" [%s] ("), actualn);
+            strsubst(result, _(" ("), buf);
         } else {
-            void sprintf(eos(result), _(" [%s]"), actualn);
+            sprintf(eos(result), _(" [%s]"), actualn);
         }
     }
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* append typename(dis) to buf[], possibly truncating in the process;
    also append price quote information if it fits */
-function /* void */
-disco_append_typename(buf, dis)
-{ const $frame = stack_frame(); try {
+function disco_append_typename(buf, dis) { /* void */
+    const $frame = stack_frame(); try {
     let len = strlen(buf);
     let p, typnm = disco_typename(dis);
     let typnm_len = strlen(typnm);
@@ -700,7 +610,7 @@ disco_append_typename(buf, dis)
 
     if (unsigned(len + typnm_len) < BUFSZ) {
         /* ordinary */
-        void strcat(buf, typnm);
+        strcat(buf, typnm);
         eos[0] = buf + len + typnm_len;
     } else if ((p = strrchr(typnm, ord('('))) != 0
                && p > typnm && chars[p + (-1)] == ord(' ') && strchr(p, ord(')')) != 0) {
@@ -708,23 +618,22 @@ disco_append_typename(buf, dis)
            and we want to truncate from "really long user-applied name" while
            keeping " (actual type)" intact */
         --p; /* back up to space in front of open paren */
-        void strncat(buf, typnm, unsigned(BUFSZ - 1 - (unsigned(len + strlen(p)))));
-        void strcat(buf, p);
+        strncat(buf, typnm, unsigned(BUFSZ - 1 - unsigned(len + strlen(p))));
+        strcat(buf, p);
         eos[0] = buf + strlen(buf);
     } else {
         /* unexpected; just truncate from end of typename */
-        void strncat(buf, typnm, unsigned(BUFSZ - 1 - len));
+        strncat(buf, typnm, unsigned(BUFSZ - 1 - len));
         eos[0] = buf + strlen(buf);
     }
 
     append_price_quote(buf, eos, dis);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* minor fixup for Book of the Dead needed in more than one place */
-function /* void */
-disco_fmt_uniq(uidx, outbuf)
-{
-    void sprintf(outbuf, _("  %s"), objects[uidx].oc_name_known
+function disco_fmt_uniq(uidx, outbuf) { /* void */
+    sprintf(outbuf, _("  %s"), objects[uidx].oc_name_known
                               ? OBJ_NAME(objects[uidx])
                               : OBJ_DESCR(objects[uidx]));
     /* in the spellbooks section of main discoveries list, encountered
@@ -733,16 +642,14 @@ disco_fmt_uniq(uidx, outbuf)
        in the unique/relics section we want "papyrus spellbook" instead */
     if (!objects[uidx].oc_name_known
         && objects[uidx].oc_class == SPBOOK_CLASS)
-        void strcat(outbuf, _(" spellbook"));
+        strcat(outbuf, _(" spellbook"));
 }
 
 /* sort and output sorted_lines to window and free the lines */
-function /* void */
-disco_output_sorted(
+function disco_output_sorted(
     tmpwin,
     sorted_lines, sorted_ct,
-    lootsort)
-{
+    lootsort) { /* void */
     let p;
     let j;
 
@@ -760,9 +667,8 @@ disco_output_sorted(
 }
 
 /* the #known command - show discovered object types */
-export function /* int */
-dodiscovered() /* free after Robert Viduya */
-{ const $frame = stack_frame(); try {
+export function dodiscovered() { /* int */ /* free after Robert Viduya */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let s, oclass, prev_class,
          classes = stack_array(char, MAXOCLASSES), buf = stack_array(char, BUFSZ),
@@ -779,13 +685,13 @@ dodiscovered() /* free after Robert Viduya */
         if (choose_disco_sort(1) < 0)
             return ECMD_OK;
     }
-    alphabyclass = (+(flags.discosort == ord('c')));
-    alphabetized = (((flags.discosort == ord('a') || alphabyclass) ? 1 : 0));
-    lootsort = (+(flags.discosort == ord('s')));
+    alphabyclass = +(flags.discosort == ord('c'));
+    alphabetized = (flags.discosort == ord('a') || alphabyclass ? 1 : 0);
+    lootsort = +(flags.discosort == ord('s'));
     sortindx = strchr(disco_order_let, flags.discosort) - disco_order_let;
 
     tmpwin = create_nhwindow()(NHW_TEXT);
-    void sprintf(buf, _("Discoveries, %s"), disco_orders_descr[sortindx]);
+    sprintf(buf, _("Discoveries, %s"), disco_orders_descr[sortindx]);
     putstr()(tmpwin, 0, buf);
     putstr()(tmpwin, 0, _(""));
 
@@ -814,9 +720,9 @@ dodiscovered() /* free after Robert Viduya */
     arti_ct = disp_artifact_discoveries(tmpwin);
 
     /* several classes are omitted from packorder; one is of interest here */
-    void strcpy(classes, flags.inv_order);
+    strcpy(classes, flags.inv_order);
     if (!strchr(classes, VENOM_CLASS))
-        void strkitten(classes, VENOM_CLASS); /* append char to string */
+        strkitten(classes, VENOM_CLASS); /* append char to string */
 
     ct = uniq_ct + arti_ct;
     sorted_ct = 0;
@@ -841,9 +747,9 @@ dodiscovered() /* free after Robert Viduya */
                         prev_class = oclass;
                     }
                 }
-                void strcpy(buf, objects[dis].oc_encountered ? _("  ") : _("* "));
+                strcpy(buf, objects[dis].oc_encountered ? _("  ") : _("* "));
                 if (lootsort)
-                    void sortloot_descr(dis, buf + 2);
+                    sortloot_descr(dis, buf + 2);
                 disco_append_typename(buf, dis);
 
                 if (!alphabetized && !lootsort)
@@ -870,15 +776,14 @@ dodiscovered() /* free after Robert Viduya */
     destroy_nhwindow()(tmpwin);
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* lower case let_to_name() output, which differs from def_oc_syms[].name */
-function /* char * */
-oclass_to_name(oclass, buf)
-{
+function oclass_to_name(oclass, buf) { /* char * */
     let s;
 
-    void strcpy(buf, let_to_name(oclass, FALSE, FALSE));
+    strcpy(buf, let_to_name(oclass, FALSE, FALSE));
     for (s = buf; chars[s]; ++s)
         chars[s] = lowc(chars[s]);
     return buf;
@@ -887,9 +792,8 @@ oclass_to_name(oclass, buf)
 /* the #knownclass command - show discovered object types for one class;
    in addition to actual object classes, supports pseudo-class 'a' for
    discovered artifacts and 'u' (or 'r', for "relics") for unique items */
-export function /* int */
-doclassdisco()
-{ const $frame = stack_frame(); try {
+export function doclassdisco() { /* int */
+    const $frame = stack_frame(); try {
     let prompt = init_string(static_array("doclassdisco.prompt", char, sizeof_string("View discoveries for which sort of objects?")), _("View discoveries for which sort of objects?"), true),
         havent_discovered_any = init_string(static_array("doclassdisco.havent_discovered_any", char, sizeof_string("haven't discovered any %s yet.")), _("haven't discovered any %s yet."), true),
         unique_items = init_string(static_array("doclassdisco.unique_items", char, sizeof_string("unique items or relics")), _("unique items or relics"), true),
@@ -913,12 +817,12 @@ doclassdisco()
         if (choose_disco_sort(2) < 0)
             return ECMD_OK;
     }
-    alphabetized = (+(flags.discosort == ord('a') || flags.discosort == ord('c')));
-    lootsort = (+(flags.discosort == ord('s')));
+    alphabetized = +(flags.discosort == ord('a') || flags.discosort == ord('c'));
+    lootsort = +(flags.discosort == ord('s'));
 
     chars[discosyms + 0] = ord('\0');
-    traditional = (+(flags.menu_style == MENU_TRADITIONAL
-                   || flags.menu_style == MENU_COMBINATION));
+    traditional = +(flags.menu_style == MENU_TRADITIONAL
+                   || flags.menu_style == MENU_COMBINATION);
     if (!traditional) {
         tmpwin = create_nhwindow()(NHW_MENU);
         start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
@@ -940,7 +844,7 @@ doclassdisco()
         uidx = uniq_objs[i];
         if (objects[uidx].oc_name_known
             || (objects[uidx].oc_encountered && uidx != AMULET_OF_YENDOR)) {
-            void strcat(discosyms, _("u"));
+            strcat(discosyms, _("u"));
             if (!traditional) {
                 any.a_int = ord('u');
                 /* FIXME: having 'r' as an accelerator to provide an unseen
@@ -955,7 +859,7 @@ doclassdisco()
 
     /* check whether we've discovered any artifacts */
     if (disp_artifact_discoveries(WIN_ERR) > 0) {
-        void strcat(discosyms, _("a"));
+        strcat(discosyms, _("a"));
         if (!traditional) {
             any.a_int = ord('a');
             add_menu(tmpwin, nul_glyphinfo, any, menulet++, 0,
@@ -965,9 +869,9 @@ doclassdisco()
 
     /* collect classes with discoveries, in packorder ordering; several
        classes are omitted from packorder and one is of interest here */
-    void strcpy(allclasses, flags.inv_order);
+    strcpy(allclasses, flags.inv_order);
     if (!strchr(allclasses, VENOM_CLASS))
-        void strkitten(allclasses, VENOM_CLASS); /* append char to string */
+        strkitten(allclasses, VENOM_CLASS); /* append char to string */
     /* construct discosyms[] */
     for (s = allclasses; chars[s]; ++s) {
         oclass = chars[s];
@@ -976,7 +880,7 @@ doclassdisco()
              i < NUM_OBJECTS && objects[i].oc_class == oclass; ++i)
             if ((dis = svd.disco[i]) != 0 && interesting_to_discover(dis)) {
                 if (!strchr(discosyms, c)) {
-                    void strkitten(discosyms, c);
+                    strkitten(discosyms, c);
                     if (!traditional) {
                         any.a_int = c;
                         add_menu(tmpwin, nul_glyphinfo, any,
@@ -1004,13 +908,13 @@ doclassdisco()
         /* we'll prompt even if there's only one viable class; we add all
            nonviable classes as unseen acceptable choices so player can ask
            for discoveries of any class whether it has discoveries or not */
-        void sprintf(allclasses_plustwo, _("%s%c%c%c"), allclasses, ord('a'), ord('u'), ord('r'));
+        sprintf(allclasses_plustwo, _("%s%c%c%c"), allclasses, ord('a'), ord('u'), ord('r'));
         for (s = allclasses_plustwo, xtras = 0; chars[s]; ++s) {
             c = strchr(_("aur"), chars[s]) ? chars[s] : def_oc_syms[(chars[s])].sym;
             if (!strchr(discosyms, c)) {
                 if (!xtras++)
-                    void strkitten(discosyms, ord('\x1b'));
-                void strkitten(discosyms, c);
+                    strkitten(discosyms, ord('\x1b'));
+                strkitten(discosyms, c);
             }
         }
         /* get the class (via its symbol character) */
@@ -1081,7 +985,7 @@ doclassdisco()
         /* this should never happen but has been observed via the fuzzer */
         if (oclass == MAXOCLASSES)
             impossible(_("doclassdisco: invalid object class '%s'"), visctrl(c));
-        void sprintf(buf, _("Discovered %s in %s"), let_to_name(oclass, FALSE, FALSE), (flags.discosort == ord('o')) ? _("order of discovery")
+        sprintf(buf, _("Discovered %s in %s"), let_to_name(oclass, FALSE, FALSE), (flags.discosort == ord('o')) ? _("order of discovery")
                 : (flags.discosort == ord('s')) ? _("'sortloot' order")
                   : _("alphabetical order"))
 ;
@@ -1091,9 +995,9 @@ doclassdisco()
              ++i) {
             if ((dis = svd.disco[i]) != 0 && interesting_to_discover(dis)) {
                 ++ct;
-                void strcpy(buf, objects[dis].oc_encountered ? _("  ") : _("* "));
+                strcpy(buf, objects[dis].oc_encountered ? _("  ") : _("* "));
                 if (lootsort)
-                    void sortloot_descr(dis, buf + 2);
+                    sortloot_descr(dis, buf + 2);
                 disco_append_typename(buf, dis);
 
                 if (!alphabetized && !lootsort)
@@ -1124,12 +1028,12 @@ doclassdisco()
         display_nhwindow()(tmpwin, TRUE);
     destroy_nhwindow()(tmpwin);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* put up nameable subset of discoveries list as a menu */
-export function /* void */
-rename_disco()
-{ const $frame = stack_frame(); try {
+export function rename_disco() { /* void */
+    const $frame = stack_frame(); try {
     let i, dis;
     let ct = 0, mn = 0, sl;
     let s, oclass, prev_class;
@@ -1203,195 +1107,87 @@ rename_disco()
     }
     destroy_nhwindow()(tmpwin);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* void */
-get_sortdisco(opts, cnf)
-{
+export function get_sortdisco(opts, cnf) { /* void */
     let p = strchr(disco_order_let, flags.discosort);
 
     if (!p)
         flags.discosort = ord('o'), p = disco_order_let;
     if (cnf)
-        void sprintf(opts, _("%c"), flags.discosort);
+        sprintf(opts, _("%c"), flags.discosort);
     else
-        void strcpy(opts, disco_orders_descr[p - disco_order_let]);
+        strcpy(opts, disco_orders_descr[p - disco_order_let]);
 }
 /*o_init.c*/
+
 import { A_WIS } from "./attrib.h.js";
 import { NO_COLOR } from "./color.h.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { ILLOBJ_CLASS } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, GEM_CLASS, ILLOBJ_CLASS, MAXOCLASSES, POTION_CLASS, RING_CLASS,
+    SCROLL_CLASS, SPBOOK_CLASS, VENOM_CLASS, WAND_CLASS,
+} from "./defsym.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ECMD_OK } from "./hack.h.js";
-import { MENU_COMBINATION } from "./hack.h.js";
-import { MENU_PARTIAL } from "./hack.h.js";
-import { MENU_TRADITIONAL } from "./hack.h.js";
-import { NROFARTIFACTS } from "./hack.h.js";
-import { struct_sortloot_item } from "./hack.h.js";
-import { release_data } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
+import { BUFSZ, FALSE, TRUE } from "./global.h.js";
+import { Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    ECMD_OK, MENU_COMBINATION, MENU_PARTIAL, MENU_TRADITIONAL, NROFARTIFACTS, struct_sortloot_item,
+} from "./hack.h.js";
+import { release_data, update_file, y_n } from "./hack.h.macros.js";
+import { NON_PM, PM_SAMURAI } from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
-import { IMMEDIATE } from "./objclass.h.js";
-import { NODIR } from "./objclass.h.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { AQUAMARINE } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CLOAK_OF_DISPLACEMENT } from "./objects.h.js";
-import { CLOAK_OF_PROTECTION } from "./objects.h.js";
-import { DIAMOND } from "./objects.h.js";
-import { EMERALD } from "./objects.h.js";
-import { FIRST_OBJECT } from "./objects.h.js";
-import { FLUORITE } from "./objects.h.js";
-import { GAUNTLETS_OF_DEXTERITY } from "./objects.h.js";
-import { HELMET } from "./objects.h.js";
-import { HELM_OF_TELEPATHY } from "./objects.h.js";
-import { LAST_REAL_GEM } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LEVITATION_BOOTS } from "./objects.h.js";
-import { MAGIC_HARP } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { SAPPHIRE } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPEED_BOOTS } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TURQUOISE } from "./objects.h.js";
-import { WAN_NOTHING } from "./objects.h.js";
-import { WOODEN_HARP } from "./objects.h.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfi_objclass } from "./savefile.h.macros.js";
-import { Sfi_short } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
-import { Sfo_objclass } from "./savefile.h.macros.js";
-import { Sfo_short } from "./savefile.h.macros.js";
-import { Sfo_unsigned } from "./savefile.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import { IMMEDIATE, NODIR } from "./objclass.h.js";
+import { OBJ_DESCR, OBJ_NAME } from "./objclass.h.macros.js";
+import {
+    AMULET_OF_YENDOR, AQUAMARINE, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CLOAK_OF_DISPLACEMENT,
+    CLOAK_OF_PROTECTION, DIAMOND, EMERALD, FIRST_OBJECT, FLUORITE, GAUNTLETS_OF_DEXTERITY, HELMET,
+    HELM_OF_TELEPATHY, LAST_REAL_GEM, LEATHER_GLOVES, LEVITATION_BOOTS, MAGIC_HARP, NUM_OBJECTS,
+    POT_WATER, SAPPHIRE, SLIME_MOLD, SPEED_BOOTS, SPE_BOOK_OF_THE_DEAD, STRANGE_OBJECT, TURQUOISE,
+    WAN_NOTHING, WOODEN_HARP,
+} from "./objects.h.js";
+import {
+    Sfi_char, Sfi_objclass, Sfi_short, Sfo_char, Sfo_int, Sfo_objclass, Sfo_short, Sfo_unsigned,
+} from "./savefile.h.macros.js";
+import {
+    clear_nhwindow, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, putstr,
+    start_menu, wait_synch,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, NHW_MENU,
+    NHW_TEXT, PICK_ONE, WIN_ERR, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { Role_if } from "./you.h.macros.js";
 import { Hallucination } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncat } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_sizeof } from "../rt/locals.js";
+import { char, int, ord, short, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    assert, free, memset, sprintf, strcat, strchr, strcmp, strcpy, strlen, strncat, strrchr,
+} from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_sizeof,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { disp_artifact_discoveries } from "./artifact.js";
-import { dump_artifact_info } from "./artifact.js";
+import { addr_of, array_of, ptr_add, ptr_to, ref_to, struct_assign } from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
+import { disp_artifact_discoveries, dump_artifact_info } from "./artifact.js";
 import { exercise } from "./attrib.js";
 import { yn_function } from "./cmd.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { go } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svb } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { u } from "./decl.js";
+import { cg, flags, go, iflags, program_state, svb, svc, svd, u } from "./decl.js";
 import { nul_glyphinfo } from "./display.js";
-import { docall } from "./do_name.js";
-import { objtyp_is_callable } from "./do_name.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { ledger_no } from "./dungeon.js";
-import { maxledgerno } from "./dungeon.js";
+import { docall, objtyp_is_callable } from "./do_name.js";
+import { def_char_to_objclass, def_oc_syms } from "./drawing.js";
+import { ledger_no, maxledgerno } from "./dungeon.js";
 import { panic } from "./end.js";
-import { eos } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { nh_deterministic_qsort } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { visctrl } from "./hacklib.js";
-import { let_to_name } from "./invent.js";
-import { loot_classify } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import {
+    eos, lowc, nh_deterministic_qsort, strkitten, strstri, strsubst, upstart, visctrl,
+} from "./hacklib.js";
+import { let_to_name, loot_classify, update_inventory } from "./invent.js";
 import { objects } from "./objects.js";
-import { Japanese_item_name } from "./objnam.js";
-import { obj_typename } from "./objnam.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { raw_printf } from "./pline.js";
+import { Japanese_item_name, obj_typename } from "./objnam.js";
+import { You, impossible, pline, raw_printf } from "./pline.js";
 import { rn2 } from "./rnd.js";
-import { sfi_int } from "./sfbase.js";
-import { sfi_unsigned } from "./sfbase.js";
-import { append_price_quote } from "./shk.js";
-import { gem_learned } from "./shk.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { sfi_int, sfi_unsigned } from "./sfbase.js";
+import { append_price_quote, gem_learned } from "./shk.js";
+import { add_menu, add_menu_heading, add_menu_str, select_menu } from "./windows.js";

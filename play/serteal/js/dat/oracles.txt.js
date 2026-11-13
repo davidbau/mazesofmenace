@@ -1,4 +1,4 @@
-export default `-----
+export default String.raw`-----
 If thy wand hath run out of charges, thou mayst zap it again and again; though
 naught will happen at first, verily, thy persistence shall be rewarded, as
 one last charge may yet be wrested from it!

@@ -1709,7 +1709,7 @@ export async function breakobj(
             }
         }
     }
-    if (!fracture) delobj(obj, objectEnv);
+    if (!fracture) await delobj(obj, objectEnv);
     if (explosion) {
         await explode(x, y, -11, (random.d ?? d)(3, 6), 0, EXPL_FIERY, state,
             { ...objectEnv, random, message });
@@ -2511,7 +2511,9 @@ async function gem_accept(mon, obj, state = game, rawEnv = {}) {
 
     if (!Blind(state.u)) await message(text, state, env);
     if (!(await tele_restrict(mon, state, { ...env, message }))) {
-        rloc(mon, RLOC_MSG, {
+        // rloc() returns a Promise when RLOC_MSG prints "vanishes!"; finish
+        // that message before throw_obj()'s encumber_msg() can print.
+        await rloc(mon, RLOC_MSG, {
             ...env,
             state,
             message,
@@ -3140,7 +3142,7 @@ export async function thitmonst(mon, obj, state = game, rawEnv = {}) {
                     // C consumes the cockatrice corpse after the swallowed
                     // target is petrified. delobj() is implemented here and
                     // must own the object lifecycle (including obj_resists).
-                    delobj(obj, { state });
+                    await delobj(obj, { state });
                     return 1;
                 }
             }

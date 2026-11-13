@@ -3,30 +3,12 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-// #include "mfndpos.h"
-
 export const DOG_HUNGRY = 300;
 export const DOG_WEAK = 500;
 export const DOG_STARVE = 750;
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* pick a carried item for pet to drop */
-export function /* struct obj * */
-droppables(mon)
-{
+export function droppables(mon) { /* struct obj * */
     /*
      * 'key|pickaxe|&c = &dummy' is used to make various creatures
      * that can't use a key/pick-axe/&c behave as if they are already
@@ -138,12 +120,7 @@ droppables(mon)
 const nofetch = static_array("nofetch", char, null, [ BALL_CLASS, CHAIN_CLASS, ROCK_CLASS,
                                          0 ]);
 
-
-
-
-export function /* boolean */
-cursed_object_at(x, y)
-{
+export function cursed_object_at(x, y) { /* boolean */
     let otmp;
 
     for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp.v.v_nexthere)
@@ -152,9 +129,7 @@ cursed_object_at(x, y)
     return FALSE;
 }
 
-export function /* int */
-dog_nutrition(mtmp, obj)
-{
+export function dog_nutrition(mtmp, obj) { /* int */
     let nutrit;
 
     /*
@@ -195,10 +170,10 @@ dog_nutrition(mtmp, obj)
             nutrit = eaten_stat(nutrit, obj);
         }
     } else if (obj.oclass == COIN_CLASS) {
-        mtmp.meating = int((Math.trunc(obj.quan / 2000))) + 1;
+        mtmp.meating = int(Math.trunc(obj.quan / 2000)) + 1;
         if (mtmp.meating < 0)
             mtmp.meating = 1;
-        nutrit = int((Math.trunc(obj.quan / 20)));
+        nutrit = int(Math.trunc(obj.quan / 20));
         if (nutrit < 0)
             nutrit = 0;
     } else {
@@ -214,13 +189,12 @@ dog_nutrition(mtmp, obj)
 }
 
 /* returns 2 if pet dies, otherwise 1 */
-export function /* int */
-dog_eat(mtmp,
+export function dog_eat(mtmp,
         obj,
         x,
         y,
-        devour)
-{ const $frame = stack_frame(); try {
+        devour) { /* int */
+    const $frame = stack_frame(); try {
     let edog = EDOG(mtmp);
     let nutrit, res;
     let oprice;
@@ -272,7 +246,7 @@ dog_eat(mtmp,
            they might be the same but will be different when
            the monster is moving+eating on same turn */
         let seeobj = cansee(mtmp.mx, mtmp.my),
-                sawpet = ((cansee(x, y) && mon_visible(mtmp)) ? 1 : 0);
+                sawpet = (cansee(x, y) && mon_visible(mtmp) ? 1 : 0);
 
         /* Observe the action if either the food location or the pet
            itself is in view.  When pet which was in view moves to an
@@ -294,7 +268,7 @@ dog_eat(mtmp,
         }
     }
     if (obj.unpaid) {
-        void strcpy(objnambuf, xname(obj));
+        strcpy(objnambuf, xname(obj));
         iflags.suppress_price--;
     }
     if (mtmp.data == mons[PM_RUST_MONSTER] && obj.oerodeproof) {
@@ -315,8 +289,8 @@ dog_eat(mtmp,
         if (dogfood(mtmp, obj) == DOGFOOD && obj.invlet) {
             let prior_apport = edog.apport;
 
-            edog.apport += int((Math.trunc(200 / (edog.dropdist + svm.moves
-                                           - edog.droptime))));
+            edog.apport += int(Math.trunc(200 / (edog.dropdist + svm.moves
+                                           - edog.droptime)));
             if (edog.apport <= 0) {
                 impossible(_("dog_eat: pet apport <= 0 (%d, %d, %lld, %lld, %d, %u, %u)"),
                             edog.apport, edog.dropdist, edog.droptime,
@@ -341,12 +315,11 @@ dog_eat(mtmp,
         m_consume_obj(mtmp, obj);
     }
 
-    return (DEADMONSTER(mtmp)) ? 2 : 1;
-} finally { stack_pop($frame); } }
+    return DEADMONSTER(mtmp) ? 2 : 1;
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-dog_starve(mtmp)
-{
+function dog_starve(mtmp) { /* void */
     if (mtmp.mleashed && mtmp != u.usteed)
         Your(_("leash goes slack."));
     else if (cansee(mtmp.mx, mtmp.my))
@@ -358,9 +331,7 @@ dog_starve(mtmp)
 }
 
 /* hunger effects -- returns TRUE on starvation */
-function /* boolean */
-dog_hunger(mtmp, edog)
-{
+function dog_hunger(mtmp, edog) { /* boolean */
     if (svm.moves > edog.hungrytime + DOG_WEAK) {
         if (!carnivorous(mtmp.data) && !herbivorous(mtmp.data)) {
             edog.hungrytime = svm.moves + DOG_WEAK;
@@ -396,9 +367,7 @@ dog_hunger(mtmp, edog)
 /* do something with object (drop, pick up, eat) at current position
  * returns 1 if object eaten (since that counts as dog's move), 2 if died
  */
-function /* int */
-dog_invent(mtmp, edog, udist)
-{
+function dog_invent(mtmp, edog, udist) { /* int */
     let omx, omy;
     let carryamt = 0;
     let obj, otmp;
@@ -462,11 +431,11 @@ dog_invent(mtmp, edog, udist)
                         }
                         obj_extract_self(otmp);
                         newsym(omx, omy);
-                        void mpickobj(mtmp, otmp);
+                        mpickobj(mtmp, otmp);
                         if (attacktype(mtmp.data, AT_WEAP)
                             && mtmp.weapon_check == NEED_WEAPON) {
                             mtmp.weapon_check = NEED_HTH_WEAPON;
-                            void mon_wield_item(mtmp);
+                            mon_wield_item(mtmp);
                         }
                         check_gear_next_turn(mtmp);
                     }
@@ -479,12 +448,11 @@ dog_invent(mtmp, edog, udist)
 
 /* set dog's goal -- gtyp, gx, gy;
    returns -1/0/1 (dog's desire to approach player) or -2 (abort move) */
-function /* int */
-dog_goal(
+function dog_goal(
     mtmp,
     edog,
-    after, udist, whappr)
-{ const $frame = stack_frame(); try {
+    after, udist, whappr) { /* int */
+    const $frame = stack_frame(); try {
     let omx, omy;
     let in_masters_sight, dog_has_minvent;
     let obj;
@@ -499,15 +467,13 @@ dog_goal(
     omy = mtmp.my;
 
     in_masters_sight = couldsee(omx, omy);
-    dog_has_minvent = (+(droppables(mtmp) != null));
+    dog_has_minvent = +(droppables(mtmp) != null);
 
     if (!edog || mtmp.mleashed) { /* he's not going anywhere... */
         gg.gtyp = APPORT;
         gg.gx = u.ux;
         gg.gy = u.uy;
     } else {
-
-
         let min_x, max_x, min_y, max_y;
         let nx, ny;
 
@@ -542,7 +508,7 @@ dog_goal(
                     continue;
                 if (otyp < MANFOOD) {
                     if (otyp < gg.gtyp
-                        || (dist2(nx, ny, omx, omy)) < (dist2(gg.gx, gg.gy, omx, omy))) {
+                        || dist2(nx, ny, omx, omy) < dist2(gg.gx, gg.gy, omx, omy)) {
                         gg.gx = nx;
                         gg.gy = ny;
                         gg.gtyp = otyp;
@@ -559,8 +525,6 @@ dog_goal(
                 }
             }
         }
-
-
     }
 
     /* follow player if appropriate */
@@ -570,7 +534,7 @@ dog_goal(
         gg.gy = u.uy;
         if (after && udist <= 4 && u_at(gg.gx, gg.gy))
             return -2;
-        appr = (udist >= 9) ? 1 : (mtmp.mflee) ? -1 : 0;
+        appr = (udist >= 9) ? 1 : mtmp.mflee ? -1 : 0;
         if (udist > 1) {
             if (!IS_ROOM(levl()[u.ux][u.uy].typ) || !rn2(4) || whappr
                 || (dog_has_minvent && rn2(edog.apport)))
@@ -607,7 +571,6 @@ dog_goal(
     if (mtmp.mconf)
         appr = 0;
 
-
     if (u_at(gg.gx, gg.gy) && !in_masters_sight) {
         let cp;
 
@@ -643,15 +606,15 @@ dog_goal(
         edog.ogoal.x = 0;
     }
     return appr;
+    } finally { stack_pop($frame); }
+}
+export const SQSRCHRADIUS = 5;
+export const FARAWAY = (COLNO + 2);
 
-} finally { stack_pop($frame); } } export const SQSRCHRADIUS = 5; export const FARAWAY = (COLNO + 2);
-
-function /* struct monst * */
-find_targ(
+function find_targ(
     mtmp,
     dx, dy,
-    maxdist)
-{
+    maxdist) { /* struct monst * */
     let targ = null;
     let curx = mtmp.mx, cury = mtmp.my;
     let dist = 0;
@@ -690,9 +653,7 @@ find_targ(
     return targ;
 }
 
-function /* int */
-find_friends(mtmp, mtarg, maxdist)
-{
+function find_friends(mtmp, mtarg, maxdist) { /* int */
     let pal;
     let dx = sgn(mtarg.mx - mtmp.mx),
         dy = sgn(mtarg.my - mtmp.my);
@@ -734,9 +695,7 @@ find_friends(mtmp, mtarg, maxdist)
     return 0;
 }
 
-function /* long long */
-score_targ(mtmp, mtarg)
-{
+function score_targ(mtmp, mtarg) { /* long long */
     let score = 0;
 
     /* If the monster is confused, normal scoring is disrupted -
@@ -834,9 +793,7 @@ score_targ(mtmp, mtarg)
     return score;
 }
 
-function /* struct monst * */
-best_target(mtmp, forced)   /* Pet */
-{
+function best_target(mtmp, forced) { /* struct monst * */ /* Pet */
     let dx, dy;
     let bestscore = -40000, currscore;
     let best_targ = null, temp_targ = null;
@@ -885,9 +842,7 @@ best_target(mtmp, forced)   /* Pet */
 }
 
 /* Pet considers and maybe executes a ranged attack */
-export function /* int */
-pet_ranged_attk(mtmp, forced)
-{
+export function pet_ranged_attk(mtmp, forced) { /* int */
     let mtarg;
     let hungry = 0;
 
@@ -895,7 +850,7 @@ pet_ranged_attk(mtmp, forced)
     if (!mtmp.isminion) {
         let dog = EDOG(mtmp);
 
-        hungry = (+(svm.moves > (dog.hungrytime + DOG_HUNGRY)));
+        hungry = +(svm.moves > (dog.hungrytime + DOG_HUNGRY));
     }
 
     /* Identify the best target in a straight line from the pet;
@@ -932,7 +887,6 @@ pet_ranged_attk(mtmp, forced)
              */
             if ((mstatus & M_ATTK_HIT) && !(mstatus & M_ATTK_DEF_DIED)
                 && rn2(4) && mtarg != gy.youmonst) {
-
                 /* Can monster see?  If it can, it can retaliate
                  * even if the pet is invisible, since it'll see
                  * the direction from which the ranged attack came;
@@ -962,7 +916,7 @@ pet_ranged_attk(mtmp, forced)
         if (mstatus != M_ATTK_MISS)
             return MMOVE_DONE;
     } else if (forced)
-        void domonnoise(mtmp);
+        domonnoise(mtmp);
     return MMOVE_NOTHING;
 }
 
@@ -973,11 +927,10 @@ pet_ranged_attk(mtmp, forced)
  * 3: did not move, and can't do anything else either.
  *    (may have attacked something)
  */
-export function /* int */
-dog_move(
+export function dog_move(
     mtmp,
-    after) /* this is extra fast monster movement */
-{ const $frame = stack_frame(); try {
+    after) { /* int */ /* this is extra fast monster movement */
+    const $frame = stack_frame(); try {
     var omx, omy; /* original mtmp position */
     var appr, whappr, udist;
     var i, j, k;
@@ -992,7 +945,6 @@ dog_move(
     var chi = -1, nidist, ndist;
     var allowflags;
     var mfp = stack_struct(struct_mfndposdata);
-
 
     /*
      * Tame Angels have isminion set and an ispriest structure instead of
@@ -1035,7 +987,7 @@ dog_move(
         else if (j == 1)
             break newdogpos;; /* eating something */
 
-        whappr = (+(svm.moves - edog.whistletime < 5));
+        whappr = +(svm.moves - edog.whistletime < 5);
     } else
         whappr = 0;
 
@@ -1052,12 +1004,6 @@ dog_move(
             return MMOVE_DIED; /* current monster is gone */
         }
     }
-
-
-
-
-
-
 
     allowflags = mon_allowflags(mtmp);
     cnt = mfndpos(mtmp, mfp, allowflags);
@@ -1116,7 +1062,7 @@ dog_move(
              * the pet will balk at attacking rather than the highest level
              * they are willing to attack; note the >= used when comparing it.
              */
-            var balk = mtmp.m_lev + (Math.trunc((5 * mtmp.mhp) / mtmp.mhpmax)) - 2;
+            var balk = mtmp.m_lev + Math.trunc((5 * mtmp.mhp) / mtmp.mhpmax) - 2;
 
             if (mtmp2.m_lev >= balk
                 || (mtmp2.mtame && mtmp.mtame && !Conflict())
@@ -1272,7 +1218,6 @@ dog_move(
      */
     if ((i = pet_ranged_attk(mtmp, FALSE)) != MMOVE_NOTHING)
         return i;
-
  }
     if (nix != omx || niy != omy) {
         var wasseen;
@@ -1283,7 +1228,7 @@ dog_move(
                          Monnam(mtmp), mhis(mtmp));
                 m_unleash(mtmp, FALSE);
             }
-            void mattacku(mtmp);
+            mattacku(mtmp);
             return MMOVE_DONE;
         }
         if (!m_in_out_region(mtmp, nix, niy))
@@ -1354,13 +1299,12 @@ dog_move(
         set_apparxy(mtmp);
     }
     return MMOVE_MOVED;
-
-} finally { stack_pop($frame); } } export function GDIST(x, y) { return (dist2(x, y, gg.gx, gg.gy)); }
+    } finally { stack_pop($frame); }
+}
+export function GDIST(x, y) { return dist2(x, y, gg.gx, gg.gy); }
 
 /* check if a monster could pick up objects from a location */
-export function /* boolean */
-could_reach_item(mon, nx, ny)
-{
+export function could_reach_item(mon, nx, ny) { /* boolean */
     if ((!is_pool(nx, ny) || is_swimmer(mon.data))
         && (!is_lava(nx, ny) || likes_lava(mon.data))
         && (!sobj_at(BOULDER, nx, ny) || throws_rocks(mon.data)))
@@ -1375,12 +1319,10 @@ could_reach_item(mon, nx, ny)
  * Since the maximum food distance is 5, this should never be more than 5
  * calls deep.
  */
-function /* boolean */
-can_reach_location(
+function can_reach_location(
     mon,
     mx, my,
-    fx, fy)
-{
+    fx, fy) { /* boolean */
     let i, j;
     let dist;
 
@@ -1414,9 +1356,7 @@ can_reach_location(
 }
 
 /* do_clear_area client */
-function /* void */
-wantdoor(x, y, distance)
-{
+function wantdoor(x, y, distance) { /* void */
     let ndist, dist_ptr = ref_to(int, distance);
 
     if (dist_ptr[0] > (ndist = distu(x, y))) {
@@ -1444,9 +1384,7 @@ wantdoor(x, y, distance)
     { mndx: 0, mlet: 0, mappearance: TRIPE_RATION, m_ap_type: M_AP_OBJECT }, /* leave this at end */
 ]);
 
-export function /* void */
-finish_meating(mtmp)
-{
+export function finish_meating(mtmp) { /* void */
     mtmp.meating = 0;
     if (M_AP_TYPE(mtmp) != M_AP_NOTHING && mtmp.data.mlet != S_MIMIC) {
         /* was eating a mimic and now appearance needs resetting */
@@ -1458,9 +1396,7 @@ finish_meating(mtmp)
 
 /*
  * variation of leashable() that takes a PM_ index */
-function /* boolean */
-mnum_leashable(mnum)
-{
+function mnum_leashable(mnum) { /* boolean */
     return ((mnum >= LOW_PM && mnum <= HIGH_PM)
             && mnum != PM_LONG_WORM && !unsolid(mons[mnum])
             && (!nolimbs(mons[mnum]) || has_head(mons[mnum])))
@@ -1468,9 +1404,8 @@ mnum_leashable(mnum)
                : FALSE;
 }
 
-export function /* void */
-quickmimic(mtmp)
-{ const $frame = stack_frame(); try {
+export function quickmimic(mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let idx = 0, trycnt = 5, spotted, seeloc;
     let was_leashed = mtmp.mleashed;
     let buf = stack_array(char, BUFSZ);
@@ -1499,7 +1434,7 @@ quickmimic(mtmp)
     if (trycnt == 0)
         idx = SIZE(qm) - 1;
 
-    void strcpy(buf, y_monnam(mtmp)); /* "your <pet>" or "the <mon>" or "Fang" */
+    strcpy(buf, y_monnam(mtmp)); /* "your <pet>" or "the <mon>" or "Fang" */
     spotted = canspotmon(mtmp);
     seeloc = cansee(mtmp.mx, mtmp.my);
 
@@ -1538,282 +1473,113 @@ quickmimic(mtmp)
 
         display_nhwindow()(WIN_MAP, TRUE);
     }
-} finally { stack_pop($frame); } }
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*dogmove.c*/
+
 import { A_NONE } from "./align.h.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { something } from "./decl.h.macros.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { vobj_at } from "./display.h.macros.js";
-import { Is_qstart } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { COST_CONTENTS } from "./hack.h.js";
-import { COST_DEGRD } from "./hack.h.js";
-import { DISMOUNT_POLY } from "./hack.h.js";
-import { DISMOUNT_THROWN } from "./hack.h.js";
-import { MMOVE_DIED } from "./hack.h.js";
-import { MMOVE_DONE } from "./hack.h.js";
-import { MMOVE_MOVED } from "./hack.h.js";
-import { MMOVE_NOTHING } from "./hack.h.js";
-import { DIR_LEFT } from "./hack.h.macros.js";
-import { DIR_LEFT2 } from "./hack.h.macros.js";
-import { DIR_RIGHT } from "./hack.h.macros.js";
-import { DIR_RIGHT2 } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { ACCFOOD } from "./mextra.h.js";
-import { APPORT } from "./mextra.h.js";
-import { CADAVER } from "./mextra.h.js";
-import { DOGFOOD } from "./mextra.h.js";
-import { MANFOOD } from "./mextra.h.js";
-import { UNDEF } from "./mextra.h.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { has_edog } from "./mextra.h.macros.js";
-import { ALLOW_M } from "./mfndpos.h.js";
-import { ALLOW_MDISP } from "./mfndpos.h.js";
-import { ALLOW_TRAPS } from "./mfndpos.h.js";
-import { ALLOW_U } from "./mfndpos.h.js";
-import { struct_mfndposdata } from "./mfndpos.h.js";
-import { AT_NONE } from "./monattk.h.js";
-import { AT_WEAP } from "./monattk.h.js";
-import { M_ATTK_AGR_DIED } from "./monattk.h.js";
-import { M_ATTK_DEF_DIED } from "./monattk.h.js";
-import { M_ATTK_HIT } from "./monattk.h.js";
-import { M_ATTK_MISS } from "./monattk.h.js";
-import { carnivorous } from "./mondata.h.macros.js";
-import { has_head } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { herbivorous } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { needspick } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { tunnels } from "./mondata.h.macros.js";
-import { unsolid } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { MS_GUARDIAN } from "./monflag.h.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MZ_GIGANTIC } from "./monflag.h.js";
-import { MZ_HUGE } from "./monflag.h.js";
-import { MZ_LARGE } from "./monflag.h.js";
-import { MZ_MEDIUM } from "./monflag.h.js";
-import { MZ_SMALL } from "./monflag.h.js";
-import { MZ_TINY } from "./monflag.h.js";
-import { MTSZ } from "./monst.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { NEED_HTH_WEAPON } from "./monst.h.js";
-import { NEED_WEAPON } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { mon_offmap } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { HIGH_PM } from "./monsters.h.js";
-import { LOW_PM } from "./monsters.h.js";
-import { PM_DOG } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GIANT_RAT } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_LARGE_CAT } from "./monsters.h.js";
-import { PM_LARGE_DOG } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_RUST_MONSTER } from "./monsters.h.js";
+import {
+    BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, ROCK_CLASS, S_DOG, S_MIMIC, S_VAMPIRE, S_sink,
+} from "./defsym.h.js";
+import { canspotmon, glyph_is_object, vobj_at } from "./display.h.macros.js";
+import { Is_qstart, Is_rogue_level } from "./dungeon.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    COST_CONTENTS, COST_DEGRD, DISMOUNT_POLY, DISMOUNT_THROWN, MMOVE_DIED, MMOVE_DONE, MMOVE_MOVED,
+    MMOVE_NOTHING,
+} from "./hack.h.js";
+import { DIR_LEFT, DIR_LEFT2, DIR_RIGHT, DIR_RIGHT2, distu } from "./hack.h.macros.js";
+import { ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, UNDEF } from "./mextra.h.js";
+import { EDOG, EMIN, EPRI, has_edog } from "./mextra.h.macros.js";
+import { ALLOW_M, ALLOW_MDISP, ALLOW_TRAPS, ALLOW_U, struct_mfndposdata } from "./mfndpos.h.js";
+import {
+    AT_NONE, AT_WEAP, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED, M_ATTK_HIT, M_ATTK_MISS,
+} from "./monattk.h.js";
+import {
+    carnivorous, has_head, haseyes, herbivorous, is_animal, is_floater, is_flyer, is_swimmer,
+    likes_lava, mindless, monsndx, needspick, nohands, nolimbs, passes_walls, perceives,
+    throws_rocks, touch_petrifies, tunnels, unsolid, verysmall,
+} from "./mondata.h.macros.js";
+import {
+    MS_GUARDIAN, MS_LEADER, MZ_GIGANTIC, MZ_HUGE, MZ_LARGE, MZ_MEDIUM, MZ_SMALL, MZ_TINY,
+} from "./monflag.h.js";
+import {
+    MTSZ, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, NEED_HTH_WEAPON, NEED_WEAPON,
+} from "./monst.h.js";
+import {
+    DEADMONSTER, MON_WEP, M_AP_TYPE, helpless, is_vampshifter, mon_offmap, resists_ston,
+} from "./monst.h.macros.js";
+import {
+    HIGH_PM, LOW_PM, PM_DOG, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GIANT_RAT, PM_HOUSECAT,
+    PM_KILLER_BEE, PM_KITTEN, PM_LARGE_CAT, PM_LARGE_DOG, PM_LITTLE_DOG, PM_LONG_WORM,
+    PM_RUST_MONSTER,
+} from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
-import { is_mines_prize } from "./obj.h.macros.js";
-import { is_pick } from "./obj.h.macros.js";
-import { is_soko_prize } from "./obj.h.macros.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { DWARVISH_MATTOCK } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { TRIPE_RATION } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
+import { is_mines_prize, is_pick, is_soko_prize } from "./obj.h.macros.js";
+import { OBJ_DESCR, OBJ_NAME } from "./objclass.h.macros.js";
+import {
+    BOULDER, CORPSE, CREDIT_CARD, DWARVISH_MATTOCK, GOLD_PIECE, LOCK_PICK, LUMP_OF_ROYAL_JELLY,
+    PICK_AXE, SCR_MAIL, SKELETON_KEY, TRIPE_RATION, UNICORN_HORN,
+} from "./objects.h.js";
 import { W_ARMS } from "./prop.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
+import { D_CLOSED, D_LOCKED } from "./rm.h.js";
+import {
+    IS_DOOR, IS_OBSTRUCTED, IS_ROOM, MON_AT, fobj, levl, m_at, remove_monster,
+} from "./rm.h.macros.js";
 import { MAGIC_PORTAL } from "./trap.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { m_cansee } from "./vision.h.macros.js";
+import { cansee, couldsee, m_cansee } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
+import { mhis, u_at } from "./you.h.macros.js";
+import {
+    Conflict, Deaf, Hallucination, Protection_from_shape_changers, Underwater,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { char, int, ord, schar, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { assert, strchr, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, ref_to, struct, struct_assign } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
 import { m_unleash } from "./apply.js";
-import { dirtocoord } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { xytodir } from "./cmd.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gf } from "./decl.js";
-import { gg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gn } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { glyph_at } from "./display.js";
-import { mon_visible } from "./display.js";
-import { newsym } from "./display.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { noit_Monnam } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
+import { dirtocoord, isok, xytodir } from "./cmd.js";
+import { is_lava, is_pool } from "./dbridge.js";
+import { cg, flags, gb, gf, gg, gi, gn, gy, iflags, svl, svm, u } from "./decl.js";
+import { canseemon, glyph_at, mon_visible, newsym } from "./display.js";
+import { Mgender, Monnam, noit_Monnam, pmname, y_monnam } from "./do_name.js";
 import { dogfood } from "./dog.js";
 import { defsyms } from "./drawing.js";
 import { eaten_stat } from "./eat.js";
 import { may_dig } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { currency } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { mattackm } from "./mhitm.js";
-import { mdisplacem } from "./mhitm.js";
+import { dist2, distmin, sgn } from "./hacklib.js";
+import { currency, sobj_at } from "./invent.js";
+import { mattackm, mdisplacem } from "./mhitm.js";
 import { mattacku } from "./mhitu.js";
 import { lose_guardian_angel } from "./minion.js";
-import { costly_alteration } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { can_carry } from "./mon.js";
-import { check_gear_next_turn } from "./mon.js";
-import { m_consume_obj } from "./mon.js";
-import { mfndpos } from "./mon.js";
-import { mon_allowflags } from "./mon.js";
-import { mondied } from "./mon.js";
-import { monnear } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { locomotion } from "./mondata.js";
-import { max_passive_dmg } from "./mondata.js";
-import { resist_conflict } from "./mondata.js";
-import { bee_eat_jelly } from "./monmove.js";
-import { m_avoid_kicked_loc } from "./monmove.js";
-import { m_avoid_soko_push_loc } from "./monmove.js";
-import { m_digweapon_check } from "./monmove.js";
-import { mon_track_add } from "./monmove.js";
-import { onscary } from "./monmove.js";
-import { set_apparxy } from "./monmove.js";
-import { should_displace } from "./monmove.js";
-import { undesirable_disp } from "./monmove.js";
+import { costly_alteration, obj_extract_self, splitobj } from "./mkobj.js";
+import {
+    can_carry, check_gear_next_turn, m_consume_obj, mfndpos, mon_allowflags, mondied, monnear,
+} from "./mon.js";
+import { attacktype, locomotion, max_passive_dmg, resist_conflict } from "./mondata.js";
+import {
+    bee_eat_jelly, m_avoid_kicked_loc, m_avoid_soko_push_loc, m_digweapon_check, mon_track_add,
+    onscary, set_apparxy, should_displace, undesirable_disp,
+} from "./monmove.js";
 import { mons } from "./monst.js";
 import { mon_reflects } from "./muse.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_mon } from "./pline.js";
-import { pline_xy } from "./pline.js";
+import { an, distant_name, doname, vtense, xname } from "./objnam.js";
+import { You, You_feel, Your, impossible, pline, pline_mon, pline_xy } from "./pline.js";
 import { m_in_out_region } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { unpaid_cost } from "./shk.js";
-import { beg } from "./sounds.js";
-import { domonnoise } from "./sounds.js";
-import { whimper } from "./sounds.js";
+import { beg, domonnoise, whimper } from "./sounds.js";
 import { On_stairs } from "./stairs.js";
-import { mpickobj } from "./steal.js";
-import { relobj } from "./steal.js";
-import { dismount_steed } from "./steed.js";
-import { place_monster } from "./steed.js";
+import { mpickobj, relobj } from "./steal.js";
+import { dismount_steed, place_monster } from "./steed.js";
 import { goodpos } from "./teleport.js";
 import { gettrack } from "./track.js";
 import { t_at } from "./trap.js";

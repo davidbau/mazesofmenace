@@ -2,24 +2,7 @@
 /*-Copyright (c) Pasi Kallinen, 2023. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
  /* from pager.c */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* Callback function for getpos() to highlight desired map locations.
  * Parameter TRUE: initialize and highlight, FALSE: done (remove highlights).
@@ -27,21 +10,16 @@
 const getpos_hilitefunc = static_var("getpos_hilitefunc", fnptr_t, null);
 const getpos_getvalid = static_var("getpos_getvalid", fnptr_t, null);
 
-
     const HiliteNormalMap = 0;
     const HiliteGoodposSymbol = 1;
     const HiliteBackground = 2;
 
-
-
 const getpos_hilite_state = static_var("getpos_hilite_state", unsigned, HiliteNormalMap);
 const defaultHiliteState = static_var("defaultHiliteState", unsigned, HiliteNormalMap);
 
-export function /* void */
-getpos_sethilite(
+export function getpos_sethilite(
     gp_hilitef,
-    gp_getvalidf)
-{
+    gp_getvalidf) { /* void */
     let old_getvalid = getpos_getvalid[0];
     let old_map_frame_color = gw.wsettings.map_frame_color;
     let sel = selection_new();
@@ -68,16 +46,14 @@ getpos_sethilite(
    positions and showing them via temporary S_goodpos symbol;
    when 'bgcolors' is On, there are three states and showing them via
    setting background color becomes the default */
-function /* void */
-getpos_toggle_hilite_state()
-{
+function getpos_toggle_hilite_state() { /* void */
     /* getpos_hilitefunc isn't Null */
     if (getpos_hilite_state[0] == HiliteGoodposSymbol) {
         /* currently on, finish */
         (getpos_hilitefunc[0])(FALSE); /* tmp_at(DISP_END) */
     }
 
-    getpos_hilite_state[0] = (unsigned(getpos_hilite_state[0] + 1))
+    getpos_hilite_state[0] = unsigned(getpos_hilite_state[0] + 1)
                           % (iflags.bgcolors ? 3 : 2);
     /* resetting the callback functions to their current values will draw
        valid-spots with background color if that is the new state and turn
@@ -90,19 +66,15 @@ getpos_toggle_hilite_state()
     }
 }
 
-export function /* boolean */
-mapxy_valid(x, y)
-{
+export function mapxy_valid(x, y) { /* boolean */
     if (getpos_getvalid[0])
         return (getpos_getvalid[0])(x, y);
     return FALSE;
 }
 
-function /* void */
-getpos_getvalids_selection(
+function getpos_getvalids_selection(
     sel,
-    validf)
-{
+    validf) { /* void */
     let x, y;
 
     if (!sel || !validf)
@@ -110,7 +82,7 @@ getpos_getvalids_selection(
 
     for (x = 1; x < sel.wid; x++)
         for (y = 0; y < sel.hei; y++)
-            if ((validf)(x, y))
+            if (validf(x, y))
                 selection_setpoint(x, y, sel, 1);
 }
 
@@ -133,12 +105,11 @@ const gloc_filtertxt = static_array("gloc_filtertxt", ptr_to(char), NUM_GFILTER,
     _(" in this area")
 ]);
 
-function /* void */
-getpos_help_keyxhelp(
+function getpos_help_keyxhelp(
     tmpwin,
     k1, k2,
-    gloc)
-{ const $frame = stack_frame(); try {
+    gloc) { /* void */
+    const $frame = stack_frame(); try {
     let sbuf = stack_array(char, BUFSZ), fbuf = stack_array(char, QBUFSZ);
     let move_cursor_to = _("move the cursor to "),
                filtertxt = gloc_filtertxt[iflags.getloc_filter];
@@ -153,46 +124,35 @@ getpos_help_keyxhelp(
             filtertxt = strsubst(strcpy(fbuf, filtertxt),
                                  _("this area"), _("area"));
     }
-    void sprintf(sbuf, _("Use '%s'/'%s' to %s%s%s."), k1, k2, iflags.getloc_usemenu ? _("get a menu of ") : move_cursor_to, gloc_descr[gloc][2 + iflags.getloc_usemenu], filtertxt)
-
+    sprintf(sbuf, _("Use '%s'/'%s' to %s%s%s."), k1, k2, iflags.getloc_usemenu ? _("get a menu of ") : move_cursor_to, gloc_descr[gloc][2 + iflags.getloc_usemenu], filtertxt)
 
 ;
     putstr()(tmpwin, 0, sbuf);
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* the response for '?' help request in getpos() */
-function /* void */
-getpos_help(force, goal)
-{ const $frame = stack_frame(); try { let $goto = null; var fastmovemode = static_array("getpos_help.fastmovemode", ptr_to(char), 2, [ _("8 units at a time"), _("skipping same glyphs") ]), sbuf = stack_array(char, BUFSZ), kbuf = stack_array(char, BUFSZ);
-    
+function getpos_help(force, goal) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var fastmovemode = static_array("getpos_help.fastmovemode", ptr_to(char), 2, [ _("8 units at a time"), _("skipping same glyphs") ]), sbuf = stack_array(char, BUFSZ), kbuf = stack_array(char, BUFSZ);
 
-    
     var doing_what_is;
     var tmpwin = create_nhwindow()(NHW_MENU);
 
-    void sprintf(sbuf, _("Use '%s', '%s', '%s', '%s' to move the cursor to %s."), visctrl(cmd_from_func(do_move_west)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_east)), goal)
-
-
-
+    sprintf(sbuf, _("Use '%s', '%s', '%s', '%s' to move the cursor to %s."), visctrl(cmd_from_func(do_move_west)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_east)), goal)
 
 ;
     putstr()(tmpwin, 0, sbuf);
-    void sprintf(sbuf, _("Use '%s', '%s', '%s', '%s' to fast-move the cursor, %s."), visctrl(cmd_from_func(do_run_west)), visctrl(cmd_from_func(do_run_south)), visctrl(cmd_from_func(do_run_north)), visctrl(cmd_from_func(do_run_east)), fastmovemode[iflags.getloc_moveskip])
-
-
-
-
+    sprintf(sbuf, _("Use '%s', '%s', '%s', '%s' to fast-move the cursor, %s."), visctrl(cmd_from_func(do_run_west)), visctrl(cmd_from_func(do_run_south)), visctrl(cmd_from_func(do_run_north)), visctrl(cmd_from_func(do_run_east)), fastmovemode[iflags.getloc_moveskip])
 
 ;
     putstr()(tmpwin, 0, sbuf);
-    void sprintf(sbuf, _("(or prefix normal move with '%s' or '%s' to fast-move)"), visctrl(cmd_from_func(do_run)), visctrl(cmd_from_func(do_rush)))
+    sprintf(sbuf, _("(or prefix normal move with '%s' or '%s' to fast-move)"), visctrl(cmd_from_func(do_run)), visctrl(cmd_from_func(do_rush)))
 
 ;
     putstr()(tmpwin, 0, sbuf);
     putstr()(tmpwin, 0, _("Or enter a background symbol (ex. '<')."));
-    void sprintf(sbuf, _("Use '%s' to move the cursor on yourself."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_SELF]))
+    sprintf(sbuf, _("Use '%s' to move the cursor on yourself."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_SELF]))
 ;
     putstr()(tmpwin, 0, sbuf);
     if (!iflags.terrainmode || (iflags.terrainmode & TER_MON) != 0) {
@@ -225,38 +185,38 @@ getpos_help(force, goal)
                           visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_INTERESTING_PREV]),
                              GLOC_INTERESTING);
     }
-    void sprintf(sbuf, _("Use '%s' to change fast-move mode to %s."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_MOVESKIP]), fastmovemode[+!iflags.getloc_moveskip])
+    sprintf(sbuf, _("Use '%s' to change fast-move mode to %s."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_MOVESKIP]), fastmovemode[+!iflags.getloc_moveskip])
 
 ;
     putstr()(tmpwin, 0, sbuf);
     if (!iflags.terrainmode || (iflags.terrainmode & TER_DETECT) == 0) {
-        void sprintf(sbuf, _("Use '%s' to toggle menu listing for possible targets."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_MENU]))
+        sprintf(sbuf, _("Use '%s' to toggle menu listing for possible targets."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_MENU]))
 ;
         putstr()(tmpwin, 0, sbuf);
-        void sprintf(sbuf, _("Use '%s' to change the mode of limiting possible targets."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_LIMITVIEW]))
+        sprintf(sbuf, _("Use '%s' to change the mode of limiting possible targets."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_LIMITVIEW]))
 
 ;
         putstr()(tmpwin, 0, sbuf);
     }
     case "skip_non_mons": if ($goto || (!iflags.terrainmode)) {
-        switch ($goto) { default: 
+        switch ($goto) { default:
 
         if (getpos_getvalid[0]) {
-            void sprintf(sbuf, _("Use '%s' or '%s' to move to valid locations."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_VALID_NEXT]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_VALID_PREV]))
+            sprintf(sbuf, _("Use '%s' or '%s' to move to valid locations."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_VALID_NEXT]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_VALID_PREV]))
 
 ;
             putstr()(tmpwin, 0, sbuf);
         }
         if (getpos_hilitefunc[0]) {
-            void sprintf(sbuf, _("Use '%s' to toggle marking of valid locations."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_SHOWVALID]))
+            sprintf(sbuf, _("Use '%s' to toggle marking of valid locations."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_SHOWVALID]))
 ;
             putstr()(tmpwin, 0, sbuf);
         }
-        void sprintf(sbuf, _("Use '%s' to toggle automatic description."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_AUTODESC]))
+        sprintf(sbuf, _("Use '%s' to toggle automatic description."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_AUTODESC]))
 ;
         putstr()(tmpwin, 0, sbuf);
         if (iflags.cmdassist) { /* assisting the '/' command, I suppose... */
-            void sprintf(sbuf, (iflags.getpos_coords == GPCOORDS_NONE)
+            sprintf(sbuf, (iflags.getpos_coords == GPCOORDS_NONE)
         ? _("(Set 'whatis_coord' option to include coordinates with '%s' text.)")
         : _("(Reset 'whatis_coord' option to omit coordinates from '%s' text.)"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_AUTODESC]))
 
@@ -266,34 +226,31 @@ getpos_help(force, goal)
         /* disgusting hack; the alternate selection characters work for any
            getpos call, but only matter for dowhatis (and doquickwhatis,
            also for dotherecmdmenu's simulated mouse) */
-        doing_what_is = (+(goal == what_is_a_location)); }
+        doing_what_is = +(goal == what_is_a_location); }
         if (doing_what_is) {
-            void sprintf(kbuf, _("'%s' or '%s' or '%s' or '%s'"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_Q]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_O]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_V]))
-
-
+            sprintf(kbuf, _("'%s' or '%s' or '%s' or '%s'"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_Q]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_O]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_V]))
 
 ;
         } else {
-            void sprintf(kbuf, _("'%s'"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]));
+            sprintf(kbuf, _("'%s'"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]));
         }
         Snprintf(sbuf, sizeof(array_of(char, BUFSZ)), _("Type a %s when you are at the right place."), kbuf)
 ;
         putstr()(tmpwin, 0, sbuf);
         if (doing_what_is) {
-            void sprintf(sbuf, _("  '%s' describe current spot, show 'more info', move to another spot."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_V]))
+            sprintf(sbuf, _("  '%s' describe current spot, show 'more info', move to another spot."), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_V]))
 
 ;
             putstr()(tmpwin, 0, sbuf);
-            void sprintf(sbuf, _("  '%s' describe current spot,%s move to another spot;"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]), flags.help && !force ? _(" prompt if 'more info',") : _(""))
-
-
-;
-            putstr()(tmpwin, 0, sbuf);
-            void sprintf(sbuf, _("  '%s' describe current spot, move to another spot;"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_Q]))
+            sprintf(sbuf, _("  '%s' describe current spot,%s move to another spot;"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]), flags.help && !force ? _(" prompt if 'more info',") : _(""))
 
 ;
             putstr()(tmpwin, 0, sbuf);
-            void sprintf(sbuf, _("  '%s' describe current spot, stop looking at things;"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_O]))
+            sprintf(sbuf, _("  '%s' describe current spot, move to another spot;"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_Q]))
+
+;
+            putstr()(tmpwin, 0, sbuf);
+            sprintf(sbuf, _("  '%s' describe current spot, stop looking at things;"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_O]))
 
 ;
             putstr()(tmpwin, 0, sbuf);
@@ -304,23 +261,20 @@ getpos_help(force, goal)
     putstr()(tmpwin, 0, _(""));
     display_nhwindow()(tmpwin, TRUE);
     destroy_nhwindow()(tmpwin);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* int QSORTCALLBACK */
-cmp_coord_distu(a, b)
-{
+function cmp_coord_distu(a, b) { /* int QSORTCALLBACK */
     let c1 = view_of(struct_nhcoord, a);
     let c2 = view_of(struct_nhcoord, b);
     let dx, dy, dist_1, dist_2;
 
     dx = u.ux - c1.x;
     dy = u.uy - c1.y;
-    dist_1 = ((((abs(dx)) > (abs(dy))) ? (abs(dx)) : (abs(dy))));
+    dist_1 = (((abs(dx)) > (abs(dy))) ? (abs(dx)) : (abs(dy)));
     dx = u.ux - c2.x;
     dy = u.uy - c2.y;
-    dist_2 = ((((abs(dx)) > (abs(dy))) ? (abs(dx)) : (abs(dy))));
+    dist_2 = (((abs(dx)) > (abs(dy))) ? (abs(dx)) : (abs(dy)));
 
     if (dist_1 == dist_2)
         return (c1.y != c2.y) ? (c1.y - c2.y) : (c1.x - c2.x);
@@ -328,18 +282,14 @@ cmp_coord_distu(a, b)
     return dist_1 - dist_2;
 }
 
-export function IS_UNEXPLORED_LOC(x, y) { return (((isok((x), (y))                                             
-     && glyph_is_unexplored(levl()[(x)][(y)].glyph)               
-     && !levl()[(x)][(y)].seenv) ? 1 : 0)); }
+export function IS_UNEXPLORED_LOC(x, y) { return (isok(x, y)
+     && glyph_is_unexplored(levl()[x][y].glyph)
+     && !levl()[x][y].seenv ? 1 : 0); }
 
+export function GLOC_SAME_AREA(x, y) { return (isok(x, y)
+     && selection_getpoint(x,y, gg.gloc_filter_map) ? 1 : 0); }
 
-export function GLOC_SAME_AREA(x, y) { return (((isok((x), (y))                                             
-     && (selection_getpoint((x),(y), gg.gloc_filter_map))) ? 1 : 0)); }
-
-
-function /* int */
-gloc_filter_classify_glyph(glyph)
-{
+function gloc_filter_classify_glyph(glyph) { /* int */
     let c;
 
     if (!glyph_is_cmap(glyph))
@@ -360,9 +310,7 @@ gloc_filter_classify_glyph(glyph)
     return 0;
 }
 
-function /* int */
-gloc_filter_floodfill_matcharea(x, y)
-{
+function gloc_filter_floodfill_matcharea(x, y) { /* int */
     let glyph = back_to_glyph(x, y);
 
     if (!levl()[x][y].seenv)
@@ -378,18 +326,14 @@ gloc_filter_floodfill_matcharea(x, y)
     return FALSE;
 }
 
-function /* void */
-gloc_filter_floodfill(x, y)
-{
+function gloc_filter_floodfill(x, y) { /* void */
     gg.gloc_filter_floodfill_match_glyph = back_to_glyph(x, y);
 
     set_selection_floodfillchk(gloc_filter_floodfill_matcharea);
     selection_floodfill(gg.gloc_filter_map, x, y, FALSE);
 }
 
-function /* void */
-gloc_filter_init()
-{
+function gloc_filter_init() { /* void */
     if (iflags.getloc_filter == GFILTER_AREA) {
         if (!gg.gloc_filter_map) {
             gg.gloc_filter_map = selection_new();
@@ -408,37 +352,28 @@ gloc_filter_init()
     }
 }
 
-function /* void */
-gloc_filter_done()
-{
+function gloc_filter_done() { /* void */
     if (gg.gloc_filter_map) {
         selection_free(gg.gloc_filter_map, TRUE);
         gg.gloc_filter_map = null;
-
     }
 }
 
-function /* boolean */
-known_vibrating_square_at(x, y)
-{
+function known_vibrating_square_at(x, y) { /* boolean */
     /* note: this only acknowledges the genuine vibrating square, not
        fake ones produced by wizard mode wishing for traps which could
        possibly be transfered to normal play via bones file */
     if (invocation_pos(x, y)) {
         let ttmp = t_at(x, y);
 
-        return ((ttmp && ttmp.ttyp == VIBRATING_SQUARE && ttmp.tseen) ? 1 : 0);
+        return (ttmp && ttmp.ttyp == VIBRATING_SQUARE && ttmp.tseen ? 1 : 0);
     }
     return FALSE;
 }
 
-
-
-export function /* boolean */
-gather_locs_interesting(
+export function gather_locs_interesting(
     x, y,
-    gloc)
-{
+    gloc) { /* boolean */
     let glyph, sym;
 
     if (iflags.getloc_filter == GFILTER_VIEW && !cansee(x, y))
@@ -455,20 +390,20 @@ gather_locs_interesting(
     case GLOC_MONS:
         /* unlike '/M', this skips monsters revealed by
            warning glyphs and remembered unseen ones */
-        return (+(glyph_is_monster(glyph)
+        return +(glyph_is_monster(glyph)
                 && glyph != monnum_to_glyph(PM_LONG_WORM_TAIL, MALE)
-                && glyph != monnum_to_glyph(PM_LONG_WORM_TAIL, FEMALE)));
+                && glyph != monnum_to_glyph(PM_LONG_WORM_TAIL, FEMALE));
     case GLOC_OBJS:
-        return (+(glyph_is_object(glyph)
+        return +(glyph_is_object(glyph)
                 && glyph != objnum_to_glyph(BOULDER)
-                && glyph != objnum_to_glyph(ROCK)));
+                && glyph != objnum_to_glyph(ROCK));
     case GLOC_DOOR:
-        return (+(glyph_is_cmap(glyph)
+        return +(glyph_is_cmap(glyph)
                 && (is_cmap_door(sym)
                     || is_cmap_drawbridge(sym)
-                    || sym == S_ndoor)));
+                    || sym == S_ndoor));
     case GLOC_EXPLORE:
-        return (((glyph_is_cmap(glyph)
+        return (glyph_is_cmap(glyph)
                 && !glyph_is_nothing(glyph_to_cmap(glyph))
                 && (is_cmap_door(sym)
                     || is_cmap_drawbridge(sym)
@@ -478,14 +413,14 @@ gather_locs_interesting(
                 && (IS_UNEXPLORED_LOC(x + 1, y)
                     || IS_UNEXPLORED_LOC(x - 1, y)
                     || IS_UNEXPLORED_LOC(x, y + 1)
-                    || (((isok((x), (y - 1)) && glyph_is_unexplored(elt(levl()[(x)], (y - 1)).glyph)) && !elt(levl()[(x)], (y - 1)).seenv)))) ? 1 : 0));
+                    || ((isok((x), (y - 1)) && glyph_is_unexplored(elt(levl()[(x)], (y - 1)).glyph)) && !elt(levl()[(x)], (y - 1)).seenv)) ? 1 : 0);
     case GLOC_VALID:
         if (getpos_getvalid[0])
             return (getpos_getvalid[0])(x, y);
         /* FALLTHROUGH */;
         /*FALLTHRU*/
     case GLOC_INTERESTING:
-        return (((gather_locs_interesting(x, y, GLOC_DOOR)
+        return (gather_locs_interesting(x, y, GLOC_DOOR)
                 || !((glyph_is_cmap(glyph)
                       && (is_cmap_wall(sym)
                           || sym == S_tree
@@ -500,18 +435,14 @@ gather_locs_interesting(
                           || is_cmap_corr(sym)))
                      || glyph_is_nothing(glyph)
                      || glyph_is_unexplored(glyph))
-                || known_vibrating_square_at(x, y)) ? 1 : 0));
+                || known_vibrating_square_at(x, y) ? 1 : 0);
     }
     /*NOTREACHED*/
     return FALSE;
 }
 
-
-
 /* gather locations for monsters or objects shown on the map */
-function /* void */
-gather_locs(arr_p, cnt_p, gloc)
-{
+function gather_locs(arr_p, cnt_p, gloc) { /* void */
     let pass, idx;
     let x, y;
 
@@ -545,7 +476,7 @@ gather_locs(arr_p, cnt_p, gloc)
             }
 
         if (!pass) /* end of first pass */
-            arr_p[0] = view_of(struct_nhcoord, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(cnt_p[0]), sizeof(struct_nhcoord)))))));
+            arr_p[0] = view_of(struct_nhcoord, addr_of(alloc(unsigned(Math.imul(unsigned(cnt_p[0]), sizeof(struct_nhcoord))))));
         else /* end of second pass */
             nh_deterministic_qsort(addr_of((arr_p[0])), unsigned((cnt_p[0])), (sizeof(struct_nhcoord)), (cmp_coord_distu));
     } /* pass */
@@ -553,17 +484,15 @@ gather_locs(arr_p, cnt_p, gloc)
     gloc_filter_done();
 }
 
-export function /* char * */
-dxdy_to_dist_descr(dx, dy, fulldir)
-{
+export function dxdy_to_dist_descr(dx, dy, fulldir) { /* char * */
     let buf = static_array("dxdy_to_dist_descr.buf", char, 30);
     let dst;
 
     if (!dx && !dy) {
-        void sprintf(buf, _("here"));
+        sprintf(buf, _("here"));
     } else if ((dst = xytodir(dx, dy)) != -1) {
         /* explicit direction; 'one step' is implicit */
-        void sprintf(buf, _("%s"), directionname(dst));
+        sprintf(buf, _("%s"), directionname(dst));
     } else {
         let dirnames = static_array("dxdy_to_dist_descr.dirnames", array_of(ptr_to(char), 2), 4, [
             [ _("n"), _("north") ],
@@ -575,25 +504,21 @@ dxdy_to_dist_descr(dx, dy, fulldir)
         if (dy) {
             if (abs(dy) > 9999)
                 dy = sgn(dy) * 9999;
-            void sprintf(eos(buf), _("%d%s%s"), abs(dy), dirnames[(+(dy > 0))][fulldir], dx ? _(",") : _(""))
+            sprintf(eos(buf), _("%d%s%s"), abs(dy), dirnames[+(dy > 0)][fulldir], dx ? _(",") : _(""))
 ;
         }
         if (dx) {
             if (abs(dx) > 9999)
                 dx = sgn(dx) * 9999;
-            void sprintf(eos(buf), _("%d%s"), abs(dx), dirnames[2 + (+(dx > 0))][fulldir])
+            sprintf(eos(buf), _("%d%s"), abs(dx), dirnames[2 + +(dx > 0)][fulldir])
 ;
         }
     }
     return buf;
 }
 
-
-
 /* coordinate formatting for 'whatis_coord' option */
-export function /* char * */
-coord_desc(x, y, outbuf, cmode)
-{
+export function coord_desc(x, y, outbuf, cmode) { /* char * */
     let screen_fmt = static_array("coord_desc.screen_fmt", char, 16); /* [12] suffices: "[%02d,%02d]" */
     let dx, dy;
 
@@ -606,13 +531,13 @@ coord_desc(x, y, outbuf, cmode)
         /* "east", "3s", "2n,4w" */
         dx = x - u.ux;
         dy = y - u.uy;
-        void sprintf(outbuf, _("(%s)"), dxdy_to_dist_descr(dx, dy, +(cmode == GPCOORDS_COMFULL)))
+        sprintf(outbuf, _("(%s)"), dxdy_to_dist_descr(dx, dy, +(cmode == GPCOORDS_COMFULL)))
 ;
         break;
     case GPCOORDS_MAP: /* x,y */
         /* upper left corner of map is <1,0>;
            with default COLNO,ROWNO lower right corner is <79,20> */
-        void sprintf(outbuf, _("<%d,%d>"), x, y);
+        sprintf(outbuf, _("<%d,%d>"), x, y);
         break;
     case GPCOORDS_SCREEN: /* y+2,x */
         /* for normal map sizes, force a fixed-width formatting so that
@@ -623,22 +548,19 @@ coord_desc(x, y, outbuf, cmode)
            The (100) is placed in brackets below to mark the [: "03"] as
            explicit compile-time dead code for clang */
         if (!chars[screen_fmt])
-            void sprintf(screen_fmt, _("[%%%sd,%%%sd]"), (ROWNO - 1 + 2 < (100)) ? _("02") :  _("03"), (COLNO - 1 < (100)) ? _("02") : _("03"))
+            sprintf(screen_fmt, _("[%%%sd,%%%sd]"), (ROWNO - 1 + 2 < (100)) ? _("02") :  _("03"), (COLNO - 1 < (100)) ? _("02") : _("03"))
 
 ;
         /* map line 0 is screen row 2;
            map column 0 isn't used, map column 1 is screen column 1 */
-        void sprintf(outbuf, screen_fmt, y + 2, x);
+        sprintf(outbuf, screen_fmt, y + 2, x);
         break;
     }
     return outbuf;
 }
 
-
-
-export function /* void */
-auto_describe(cx, cy)
-{ const $frame = stack_frame(); try {
+export function auto_describe(cx, cy) { /* void */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
     let sym = 0;
     let tmpbuf = stack_array(char, BUFSZ);
@@ -648,7 +570,7 @@ auto_describe(cx, cy)
     cc.y = cy;
     if (do_screen_description(struct_copy(cc), TRUE, sym, tmpbuf, firstmatch,
                               null)) {
-        void coord_desc(cx, cy, tmpbuf, iflags.getpos_coords);
+        coord_desc(cx, cy, tmpbuf, iflags.getpos_coords);
         custompline((SUPPRESS_HISTORY | OVERRIDE_MSGTYPE | NO_CURS_ON_U),
                     _("%s%s%s%s%s"), firstmatch[0], chars[tmpbuf] ? _(" ") : _(""), tmpbuf,
                     (iflags.autodescribe
@@ -659,11 +581,11 @@ auto_describe(cx, cy)
         curs()(WIN_MAP, cx, cy);
         flush_screen(0);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-getpos_menu(ccp, gloc)
-{ const $frame = stack_frame(); try {
+export function getpos_menu(ccp, gloc) { /* boolean */
+    const $frame = stack_frame(); try {
     let garr = stack_var(ptr_to(struct_nhcoord), DUMMY());
     let gcount = stack_var(int, 0);
     let tmpwin;
@@ -699,7 +621,7 @@ getpos_menu(ccp, gloc)
         tmpcc.y = ptr_add(garr[0], i).y;
         if (do_screen_description(struct_copy(tmpcc), TRUE, sym, tmpbuf,
                               firstmatch, null)) {
-            void coord_desc(ptr_add(garr[0], i).x, ptr_add(garr[0], i).y, tmpbuf,
+            coord_desc(ptr_add(garr[0], i).x, ptr_add(garr[0], i).y, tmpbuf,
                               iflags.getpos_coords);
             Snprintf(fullbuf, sizeof(array_of(char, BUFSZ)), _("%s%s%s"), firstmatch[0], (chars[tmpbuf] ? _(" ") : _("")), tmpbuf)
 ;
@@ -708,8 +630,7 @@ getpos_menu(ccp, gloc)
         }
     }
 
-    void sprintf(tmpbuf, _("Pick %s%s%s"), an(gloc_descr[gloc][1]), gloc_filtertxt[iflags.getloc_filter], iflags.getloc_travelmode ? _(" for travel destination") : _(""))
-
+    sprintf(tmpbuf, _("Pick %s%s%s"), an(gloc_descr[gloc][1]), gloc_filtertxt[iflags.getloc_filter], iflags.getloc_travelmode ? _(" for travel destination") : _(""))
 
 ;
     end_menu()(tmpwin, tmpbuf);
@@ -721,13 +642,12 @@ getpos_menu(ccp, gloc)
         free(addr_of(picks[0]));
     }
     free(addr_of(garr[0]));
-    return (+(pick_cnt > 0));
-} finally { stack_pop($frame); } }
+    return +(pick_cnt > 0);
+    } finally { stack_pop($frame); }
+}
 
 /* add dx,dy to cx,cy, truncating at map edges */
-function /* void */
-truncate_to_map(cx, cy, dx, dy)
-{
+function truncate_to_map(cx, cy, dx, dy) { /* void */
     /* diagonal moves complicate this... */
     if (cx[0] + dx < 1) {
         dy -= sgn(dy) * (1 - (cx[0] + dx));
@@ -749,9 +669,7 @@ truncate_to_map(cx, cy, dx, dy)
 
 /* called when ^R typed; if '$' is being shown for valid spots, remove that;
    if alternate background color is being shown for that, redraw it */
-function /* void */
-getpos_refresh()
-{
+function getpos_refresh() { /* void */
     if (getpos_hilitefunc[0] && getpos_hilite_state[0] == HiliteGoodposSymbol) {
         (getpos_hilitefunc[0])(FALSE); /* tmp_at(DISP_END) */
         getpos_hilite_state[0] = defaultHiliteState[0];
@@ -767,9 +685,9 @@ getpos_refresh()
 
 /* have the player use movement keystrokes to position the cursor at a
    particular map location, then use one of [.,:;] to pick the spot */
-export function /* int */
-getpos(ccp, force, goal)
-{ const $frame = stack_frame(); try { let $goto = null; var mMoOdDxX_def = static_array("getpos.mMoOdDxX_def", int, null, [ NHKF_GETPOS_MON_NEXT, NHKF_GETPOS_MON_PREV, NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV, NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV, NHKF_GETPOS_UNEX_NEXT, NHKF_GETPOS_UNEX_PREV, NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV, NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV ]), cq = stack_struct(struct__cmd_queue), pick_chars = stack_array(char, 6), mMoOdDxX = stack_array(char, 13), sidx = stack_var(int), cx = stack_var(coordxy), cy = stack_var(coordxy), tx = stack_var(coordxy), ty = stack_var(coordxy), garr = stack_array(ptr_to(struct_nhcoord), NUM_GLOCS), gcount = stack_array(int, NUM_GLOCS), gidx = stack_array(int, NUM_GLOCS), view_filters = static_array("getpos.view_filters", ptr_to(char), NUM_GFILTER, [ _("Not limiting targets"), _("Limiting targets to those in sight"), _("Limiting targets to those in same area") ]), tmpcrd = stack_struct(struct_nhcoord), matching = stack_array(char, MAXPCHARS), note = stack_array(char, QBUFSZ);
+export function getpos(ccp, force, goal) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var mMoOdDxX_def = static_array("getpos.mMoOdDxX_def", int, null, [ NHKF_GETPOS_MON_NEXT, NHKF_GETPOS_MON_PREV, NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV, NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV, NHKF_GETPOS_UNEX_NEXT, NHKF_GETPOS_UNEX_PREV, NHKF_GETPOS_INTERESTING_NEXT, NHKF_GETPOS_INTERESTING_PREV, NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV ]), cq = stack_struct(struct__cmd_queue), pick_chars = stack_array(char, 6), mMoOdDxX = stack_array(char, 13), sidx = stack_var(int), cx = stack_var(coordxy), cy = stack_var(coordxy), tx = stack_var(coordxy), ty = stack_var(coordxy), garr = stack_array(ptr_to(struct_nhcoord), NUM_GLOCS), gcount = stack_array(int, NUM_GLOCS), gidx = stack_array(int, NUM_GLOCS), view_filters = static_array("getpos.view_filters", ptr_to(char), NUM_GFILTER, [ _("Not limiting targets"), _("Limiting targets to those in sight"), _("Limiting targets to those in same area") ]), tmpcrd = stack_struct(struct_nhcoord), matching = stack_array(char, MAXPCHARS), note = stack_array(char, QBUFSZ);
     const struct___anon1 = struct("getpos.struct___anon1", {
         nhkf: int, ret: int,
     }); var pick_chars_def = static_array("getpos.pick_chars_def", struct___anon1, null, [
@@ -778,28 +696,13 @@ getpos(ccp, force, goal)
         { nhkf: NHKF_GETPOS_PICK_O, ret: LOOK_ONCE },
         { nhkf: NHKF_GETPOS_PICK_V, ret: LOOK_VERBOSE }
     ]);
-    
-
-
-
-
-
-
-
-
-
-
-
-
 
     var cmdq;
     var cp;
-    
-    
+
     var result = 0;
     var i, c;
-    
-    
+
     tx[0] = u.ux; ty[0] = u.uy;
     var msg_given = TRUE; /* clear message window by default */
     var show_goal_msg = FALSE;
@@ -852,8 +755,6 @@ getpos(ccp, force, goal)
 
     curs()(WIN_MAP, cx[0], cy[0]);
     flush_screen(0);
-
-
 
     lock_mouse_buttons(TRUE);
     exitgetpos: { $out_do_rushrun: for (;;) {
@@ -932,7 +833,6 @@ getpos(ccp, force, goal)
                        && glyph == glyph_at(cx[0] + dx + u.dx, cy[0] + dy + u.dy)) {
                     dx += u.dx;
                     dy += u.dy;
-
                 }
             } else {
                 dx = 8 * u.dx;
@@ -969,12 +869,6 @@ getpos(ccp, force, goal)
             msg_given = TRUE;
             { $goto = "nxtc"; continue $goto_do_rushrun; }
         } else if (c == chars[gc.Cmd.spkeys + NHKF_GETPOS_LIMITVIEW]) {
-            
-
-
-
-
-
             iflags.getloc_filter = (iflags.getloc_filter + 1) % NUM_GFILTER;
             for (i = 0; i < NUM_GLOCS; i++) {
                 if (garr[i]) {
@@ -1014,8 +908,6 @@ getpos(ccp, force, goal)
                 gloc = gtmp >> 1;             /* 0..3 */
 
             if (iflags.getloc_usemenu) {
-                
-
                 if (getpos_menu(tmpcrd, gloc)) {
                     cx[0] = tmpcrd.x;
                     cy[0] = tmpcrd.y;
@@ -1038,11 +930,10 @@ getpos(ccp, force, goal)
             { $goto = "nxtc"; continue $goto_do_rushrun; }
         } else {
             if (!strchr(quitchars, c)) {
-                
                 var pass, k = 0;
                 var lo_x, lo_y, hi_x, hi_y;
 
-                void memset(matching, 0, sizeof(array_of(char, MAXPCHARS)));
+                memset(matching, 0, sizeof(array_of(char, MAXPCHARS)));
                 for (sidx[0] = 0; sidx[0] < MAXPCHARS; sidx[0]++) {
                     /* don't even try to match some terrain: walls, room... */
                     if (is_cmap_wall(sidx[0]) || is_cmap_room(sidx[0])
@@ -1115,15 +1006,10 @@ getpos(ccp, force, goal)
                     msg_given = TRUE;
                     { $goto = "nxtc"; continue $goto_do_rushrun; }
                 } else {
-                    
-
                     if (!force)
-                        void strcpy(note, _("aborted"));
+                        strcpy(note, _("aborted"));
                     else /* hjkl */
-                        void sprintf(note, _("use '%s', '%s', '%s', '%s' or '%s'"), visctrl(cmd_from_func(do_move_west)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_east)), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]))
-
-
-
+                        sprintf(note, _("use '%s', '%s', '%s', '%s' or '%s'"), visctrl(cmd_from_func(do_move_west)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_east)), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]))
 
 ;
                     pline(_("Unknown direction: '%s' (%s)."), visctrl(char(c)),
@@ -1150,8 +1036,6 @@ getpos(ccp, force, goal)
     }
  }
 
-
-
     lock_mouse_buttons(FALSE);
     if (msg_given)
         clear_nhwindow()(WIN_MESSAGE);
@@ -1164,227 +1048,87 @@ getpos(ccp, force, goal)
     getpos_sethilite(null, null);
     u.dx = udx, u.dy = udy, u.dz = udz;
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*getpos.c*/
-import { HI_ZAP } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
+
+import { HI_ZAP, NO_COLOR } from "./color.h.js";
 import { TIP_GETPOS } from "./context.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { S_air } from "./defsym.h.js";
-import { S_bars } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_engroom } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
+import {
+    MAXPCHARS, S_air, S_bars, S_cloud, S_engroom, S_ice, S_ndoor, S_tree,
+} from "./defsym.h.js";
 import { docrtRefresh } from "./display.h.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_monster } from "./display.h.macros.js";
-import { glyph_is_nothing } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { glyph_is_unexplored } from "./display.h.macros.js";
-import { monnum_to_glyph } from "./display.h.macros.js";
-import { objnum_to_glyph } from "./display.h.macros.js";
-import { GFILTER_AREA } from "./flag.h.js";
-import { GFILTER_VIEW } from "./flag.h.js";
-import { GLOC_DOOR } from "./flag.h.js";
-import { GLOC_EXPLORE } from "./flag.h.js";
-import { GLOC_INTERESTING } from "./flag.h.js";
-import { GLOC_MONS } from "./flag.h.js";
-import { GLOC_OBJS } from "./flag.h.js";
-import { GLOC_VALID } from "./flag.h.js";
-import { GPCOORDS_COMFULL } from "./flag.h.js";
-import { GPCOORDS_COMPASS } from "./flag.h.js";
-import { GPCOORDS_MAP } from "./flag.h.js";
-import { GPCOORDS_NONE } from "./flag.h.js";
-import { GPCOORDS_SCREEN } from "./flag.h.js";
-import { NUM_GFILTER } from "./flag.h.js";
-import { NUM_GLOCS } from "./flag.h.js";
-import { TER_DETECT } from "./flag.h.js";
-import { TER_MAP } from "./flag.h.js";
-import { TER_MON } from "./flag.h.js";
-import { TER_OBJ } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { CMDQ_DIR } from "./hack.h.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CQ_REPEAT } from "./hack.h.js";
-import { LOOK_ONCE } from "./hack.h.js";
-import { LOOK_QUICK } from "./hack.h.js";
-import { LOOK_TRADITIONAL } from "./hack.h.js";
-import { LOOK_VERBOSE } from "./hack.h.js";
-import { MV_RUN } from "./hack.h.js";
-import { MV_RUSH } from "./hack.h.js";
-import { MV_WALK } from "./hack.h.js";
-import { NHKF_ESC } from "./hack.h.js";
-import { NHKF_GETPOS_AUTODESC } from "./hack.h.js";
-import { NHKF_GETPOS_DOOR_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_DOOR_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_HELP } from "./hack.h.js";
-import { NHKF_GETPOS_INTERESTING_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_INTERESTING_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_LIMITVIEW } from "./hack.h.js";
-import { NHKF_GETPOS_MENU } from "./hack.h.js";
-import { NHKF_GETPOS_MON_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_MON_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_MOVESKIP } from "./hack.h.js";
-import { NHKF_GETPOS_OBJ_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_OBJ_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_PICK } from "./hack.h.js";
-import { NHKF_GETPOS_PICK_O } from "./hack.h.js";
-import { NHKF_GETPOS_PICK_Q } from "./hack.h.js";
-import { NHKF_GETPOS_PICK_V } from "./hack.h.js";
-import { NHKF_GETPOS_SELF } from "./hack.h.js";
-import { NHKF_GETPOS_SHOWVALID } from "./hack.h.js";
-import { NHKF_GETPOS_UNEX_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_UNEX_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_VALID_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_VALID_PREV } from "./hack.h.js";
-import { NO_CURS_ON_U } from "./hack.h.js";
-import { OVERRIDE_MSGTYPE } from "./hack.h.js";
-import { SUPPRESS_HISTORY } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
+import {
+    glyph_is_cmap, glyph_is_monster, glyph_is_nothing, glyph_is_object, glyph_is_unexplored,
+    monnum_to_glyph, objnum_to_glyph,
+} from "./display.h.macros.js";
+import {
+    GFILTER_AREA, GFILTER_VIEW, GLOC_DOOR, GLOC_EXPLORE, GLOC_INTERESTING, GLOC_MONS, GLOC_OBJS,
+    GLOC_VALID, GPCOORDS_COMFULL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_NONE, GPCOORDS_SCREEN,
+    NUM_GFILTER, NUM_GLOCS, TER_DETECT, TER_MAP, TER_MON, TER_OBJ,
+} from "./flag.h.js";
+import { BUFSZ, COLNO, FALSE, QBUFSZ, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    CMDQ_DIR, CMDQ_KEY, CQ_CANNED, CQ_REPEAT, LOOK_ONCE, LOOK_QUICK, LOOK_TRADITIONAL, LOOK_VERBOSE,
+    MV_RUN, MV_RUSH, MV_WALK, NHKF_ESC, NHKF_GETPOS_AUTODESC, NHKF_GETPOS_DOOR_NEXT,
+    NHKF_GETPOS_DOOR_PREV, NHKF_GETPOS_HELP, NHKF_GETPOS_INTERESTING_NEXT,
+    NHKF_GETPOS_INTERESTING_PREV, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MENU, NHKF_GETPOS_MON_NEXT,
+    NHKF_GETPOS_MON_PREV, NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
+    NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SELF,
+    NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_UNEX_NEXT, NHKF_GETPOS_UNEX_PREV, NHKF_GETPOS_VALID_NEXT,
+    NHKF_GETPOS_VALID_PREV, NO_CURS_ON_U, OVERRIDE_MSGTYPE, SUPPRESS_HISTORY, struct__cmd_queue,
+} from "./hack.h.js";
 import { DUMMY } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
+import { FEMALE, MALE } from "./monflag.h.js";
 import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { BOULDER } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { is_cmap_corr } from "./sym.h.macros.js";
-import { is_cmap_door } from "./sym.h.macros.js";
-import { is_cmap_drawbridge } from "./sym.h.macros.js";
-import { is_cmap_engraving } from "./sym.h.macros.js";
-import { is_cmap_furniture } from "./sym.h.macros.js";
-import { is_cmap_lava } from "./sym.h.macros.js";
-import { is_cmap_room } from "./sym.h.macros.js";
-import { is_cmap_trap } from "./sym.h.macros.js";
-import { is_cmap_wall } from "./sym.h.macros.js";
-import { is_cmap_water } from "./sym.h.macros.js";
+import { BOULDER, ROCK } from "./objects.h.js";
+import { IS_DOOR, levl } from "./rm.h.macros.js";
+import {
+    is_cmap_corr, is_cmap_door, is_cmap_drawbridge, is_cmap_engraving, is_cmap_furniture,
+    is_cmap_lava, is_cmap_room, is_cmap_trap, is_cmap_wall, is_cmap_water,
+} from "./sym.h.macros.js";
 import { VIBRATING_SQUARE } from "./trap.h.js";
 import { cansee } from "./vision.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { cliparound } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { curs } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import {
+    clear_nhwindow, cliparound, create_nhwindow, curs, destroy_nhwindow, display_nhwindow, end_menu,
+    putstr, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { u_at } from "./you.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { abs, free, memset, sprintf, strchr, strcmp, strcpy } from "../rt/libc.js";
+import {
+    init_list, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { struct_copy } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, fnptr_t, ptr_add, ptr_to, struct, struct_assign, struct_copy, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
-import { cmd_from_func } from "./cmd.js";
-import { cmdq_add_key } from "./cmd.js";
-import { cmdq_clear } from "./cmd.js";
-import { cmdq_pop } from "./cmd.js";
-import { directionname } from "./cmd.js";
-import { do_move_east } from "./cmd.js";
-import { do_move_north } from "./cmd.js";
-import { do_move_south } from "./cmd.js";
-import { do_move_west } from "./cmd.js";
-import { do_run } from "./cmd.js";
-import { do_run_east } from "./cmd.js";
-import { do_run_north } from "./cmd.js";
-import { do_run_south } from "./cmd.js";
-import { do_run_west } from "./cmd.js";
-import { do_rush } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { lock_mouse_buttons } from "./cmd.js";
-import { movecmd } from "./cmd.js";
-import { readchar_poskey } from "./cmd.js";
-import { redraw_cmd } from "./cmd.js";
-import { xytodir } from "./cmd.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gs } from "./decl.js";
-import { gw } from "./decl.js";
-import { iflags } from "./decl.js";
-import { quitchars } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { back_to_glyph } from "./display.js";
-import { docrt_flags } from "./display.js";
-import { flush_screen } from "./display.js";
-import { glyph_at } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
+import {
+    cmd_from_func, cmdq_add_key, cmdq_clear, cmdq_pop, directionname, do_move_east, do_move_north,
+    do_move_south, do_move_west, do_run, do_run_east, do_run_north, do_run_south, do_run_west,
+    do_rush, isok, lock_mouse_buttons, movecmd, readchar_poskey, redraw_cmd, xytodir,
+} from "./cmd.js";
+import { cg, flags, gc, gg, gi, gs, gw, iflags, quitchars, svl, u } from "./decl.js";
+import { back_to_glyph, docrt_flags, flush_screen, glyph_at, nul_glyphinfo } from "./display.js";
 import { defsyms } from "./drawing.js";
 import { glyph_to_cmap } from "./glyphs.js";
-import { handle_tip } from "./hack.js";
-import { invocation_pos } from "./hack.js";
-import { is_valid_travelpt } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { nh_deterministic_qsort } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { visctrl } from "./hacklib.js";
+import { handle_tip, invocation_pos, is_valid_travelpt } from "./hack.js";
+import { eos, nh_deterministic_qsort, sgn, strsubst, visctrl } from "./hacklib.js";
 import { an } from "./objnam.js";
-import { do_screen_description } from "./pager.js";
-import { what_is_a_location } from "./pager.js";
-import { You } from "./pline.js";
-import { custompline } from "./pline.js";
-import { pline } from "./pline.js";
-import { selection_floodfill } from "./selvar.js";
-import { selection_force_newsyms } from "./selvar.js";
-import { selection_free } from "./selvar.js";
-import { selection_getpoint } from "./selvar.js";
-import { selection_new } from "./selvar.js";
-import { selection_setpoint } from "./selvar.js";
-import { set_selection_floodfillchk } from "./selvar.js";
+import { do_screen_description, what_is_a_location } from "./pager.js";
+import { You, custompline, pline } from "./pline.js";
+import {
+    selection_floodfill, selection_force_newsyms, selection_free, selection_getpoint, selection_new,
+    selection_setpoint, set_selection_floodfillchk,
+} from "./selvar.js";
 import { t_at } from "./trap.js";
-import { add_menu } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { add_menu, select_menu } from "./windows.js";

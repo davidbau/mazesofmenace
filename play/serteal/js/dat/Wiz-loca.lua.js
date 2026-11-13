@@ -1,8 +1,8 @@
-export default "\n" + // -- NetHack Wizard Wiz-loca.lua	$NHDT-Date: 1652196019 2022/05/10 15:20:19 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1992 by David Cohrs
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Wizard Wiz-loca.lua	$NHDT-Date: 1652196019 2022/05/10 15:20:19 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1992 by David Cohrs
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "hardfloor")
 
@@ -34,8 +34,8 @@ des.replace_terrain({ region = { 0, 0,30,20}, fromterrain=".", toterrain="C", ch
 des.replace_terrain({ region = {68, 0,75,20}, fromterrain=".", toterrain="}", chance=25 })
 des.replace_terrain({ region = {34, 1,68,19}, fromterrain="}", toterrain=".", chance=2 })
 
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,75,20), "lit")
+-- Dungeon Description
+des.region(selection.area(00,00,75,20), "lit")
 des.region({ region={37,04,65,16}, lit=0, type="ordinary", irregular=1,
              contents = function()
                 des.door({ state="secret", wall="random" })
@@ -72,19 +72,18 @@ des.region({ region={48,10,54,10}, lit=0, type="ordinary", irregular=1,
              end
 })
 
-` + "\n" + // -- Doors
-`des.door("locked",55,08)
+-- Doors
+des.door("locked",55,08)
 des.door("locked",55,12)
 des.door("locked",47,08)
 des.door("locked",47,12)
-` + "\n" + // -- Stairs
-`des.terrain({03,17}, ".")
+-- Stairs
+des.terrain({03,17}, ".")
 des.stair("up", 03,17)
 des.stair("down", 48,10)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,75,20))
-` + "\n" + // -- Objects
-`des.object()
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,75,20))
+-- Objects
 des.object()
 des.object()
 des.object()
@@ -99,8 +98,9 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-`des.trap("spiked pit",24,02)
+des.object()
+-- Random traps
+des.trap("spiked pit",24,02)
 des.trap("spiked pit",07,10)
 des.trap("spiked pit",23,05)
 des.trap("spiked pit",26,19)
@@ -121,8 +121,8 @@ des.trap("sleep gas")
 des.trap("dart")
 des.trap("dart")
 des.trap("dart")
-` + "\n" + // -- Random monsters.
-`des.monster({ class = "B", peaceful = 0 })
+-- Random monsters.
+des.monster({ class = "B", peaceful = 0 })
 des.monster({ class = "B", peaceful = 0 })
 des.monster({ class = "B", peaceful = 0 })
 des.monster({ class = "B", peaceful = 0 })

@@ -1,4 +1,4 @@
-export default `This is a terse description of nethack's command line arguments.
+export default String.raw`This is a terse description of nethack's command line arguments.
 It is oriented toward UNIX (including descendants such as linux and macOS)
 and might not be accurate for other platforms.
 

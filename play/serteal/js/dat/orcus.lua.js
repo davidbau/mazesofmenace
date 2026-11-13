@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack gehennom orcus.lua	$NHDT-Date: 1652196033 2022/05/10 15:20:33 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.3 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1992 by M. Stephenson and Izchak Miller
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style="mazegrid", bg ="-" });
+export default String.raw`-- NetHack gehennom orcus.lua	$NHDT-Date: 1652196033 2022/05/10 15:20:33 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.3 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1992 by M. Stephenson and Izchak Miller
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style="mazegrid", bg ="-" });
 
 des.level_flags("mazelevel", "shortsighted")
 
@@ -11,8 +11,8 @@ local tmpbounds = selection.match("-");
 local bnds = tmpbounds:bounds();
 local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 1);
 
-` + "\n" + // -- A ghost town
-`local orcus1 = des.map({ halign = "right", valign = "center", map = [[
+-- A ghost town
+local orcus1 = des.map({ halign = "right", valign = "center", map = [[
 .|....|....|....|..............|....|........
 .|....|....|....|..............|....|........
 .|....|....|....|--...-+-------|.............
@@ -32,11 +32,11 @@ local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 
 .|....|.......|......|....|....|.............
 ]], contents = function(rm)
    des.mazewalk(00,06,"west")
-` + "\n" + // -- Entire main area
-`   des.region(selection.area(01,00,44,16),"unlit")
+   -- Entire main area
+   des.region(selection.area(01,00,44,16),"unlit")
    des.stair("down", 33,15)
-` + "\n" + // -- Wall "ruins"
-`   des.object("boulder",19,02)
+   -- Wall "ruins"
+   des.object("boulder",19,02)
    des.object("boulder",20,02)
    des.object("boulder",21,02)
    des.object("boulder",36,02)
@@ -60,8 +60,8 @@ local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 
    des.object("boulder",14,13)
    des.object("boulder",15,13)
    des.object("boulder",14,14)
-` + "\n" + // -- Doors
-`   des.door("closed",23,02)
+   -- Doors
+   des.door("closed",23,02)
    des.door("open",31,03)
    des.door("nodoor",03,05)
    des.door("closed",09,05)
@@ -77,13 +77,13 @@ local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 
    des.door("closed",41,13)
    des.door("open",26,14)
    des.door("closed",06,15)
-` + "\n" + // -- Special rooms
-`   des.altar({ x=24,y=07,align="noalign",type="sanctum" })
+   -- Special rooms
+   des.altar({ x=24,y=07,align="noalign",type="sanctum" })
    des.region({ region={22,12,25,16},lit=0,type="morgue",filled=1 })
    des.region({ region={32,09,37,12},lit=1,type="shop",filled=1 })
    des.region({ region={12,00,15,04},lit=1,type="shop",filled=1 })
-` + "\n" + // -- Some traps.
-`   des.trap("spiked pit")
+   -- Some traps.
+   des.trap("spiked pit")
    des.trap("sleep gas")
    des.trap("anti magic")
    des.trap("fire")
@@ -91,8 +91,7 @@ local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 
    des.trap("fire")
    des.trap("magic")
    des.trap("magic")
-` + "\n" + // -- Some random objects
-`   des.object()
+   -- Some random objects
    des.object()
    des.object()
    des.object()
@@ -102,25 +101,26 @@ local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 
    des.object()
    des.object()
    des.object()
-` + "\n" + // -- An object that's worth most of a wish
-"\n" + // -- (this is part of the compensation for the reduced wishes at the Castle)
-`   if math.random(0, 1) == 1 then
+   des.object()
+   -- An object that's worth most of a wish
+   -- (this is part of the compensation for the reduced wishes at the Castle)
+   if math.random(0, 1) == 1 then
       des.object("magic marker")
    else
       des.object("magic lamp")
    end
-` + "\n" + // -- The resident nasty
-`   des.monster("Orcus",33,15)
-` + "\n" + // -- And its preferred companions
-`   des.monster("human zombie",32,15)
+   -- The resident nasty
+   des.monster("Orcus",33,15)
+   -- And its preferred companions
+   des.monster("human zombie",32,15)
    des.monster("shade",32,14)
    des.monster("shade",32,16)
    des.monster("vampire",35,16)
    des.monster("vampire",35,14)
    des.monster("vampire lord",36,14)
    des.monster("vampire lord",36,15)
-` + "\n" + // -- Randomly placed companions
-`   des.monster("skeleton")
+   -- Randomly placed companions
+   des.monster("skeleton")
    des.monster("skeleton")
    des.monster("skeleton")
    des.monster("skeleton")
@@ -143,8 +143,8 @@ local bounds2 = selection.fillrect(bnds.lx, bnds.ly + 1, bnds.hx - 2, bnds.hy - 
    des.monster("vampire")
    des.monster("vampire lord")
    des.monster("vampire lord")
-` + "\n" + // -- A few more for the party
-`   des.monster()
+   -- A few more for the party
+   des.monster()
    des.monster()
    des.monster()
    des.monster()

@@ -1,131 +1,33 @@
-/* NetHack 5.0  decl.h  $NHDT-Date: 1725653004 2024/09/06 20:03:24 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.377 $ */
-/* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
-/*-Copyright (c) Michael Allison, 2007. */
-/* NetHack may be freely redistributed.  See license for details. */
-
-
-
-
-/* The names of the colors used for gems, etc. */
-
-
-/* lua callback queue names */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* common_strings */
-
-
-
-
-
-
-
-
-
-
-
-
-/* fakename[] used occasionally so vtense() won't be fooled by an assigned
-   name ending in 's' */
-
-
 /* default object class symbols */
-
 
 /* default mon class symbols */
 
-
-
-
 /* empty string that is non-const for parameter use */
-
-
-
-
-
-
-
-
-
-
-
 
 /* used by coloratt.c, options.c, utf8map.c, windows.c */
 
-
 /* material strings */
-
 
 /* current mon class symbols */
 
-
 /* current object class symbols */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /* under-wear, so to speak */
 
 /* defined only when punished */
 
-
-
-
-
 /* Window system stuff */
-
-
-
-
 
 export const struct_tc_gbl_data = struct("struct_tc_gbl_data", { /* also declared in tcap.h */
     tc_AS: ptr_to(char), tc_AE: ptr_to(char), /* graphics start and end (tty font swapping) */
     tc_LI: int, tc_CO: int, /* lines and columns */
 });
 
-
-
-
-
-
-
-
-
-
 export const struct_display_hints = struct("struct_display_hints", {
     botl: boolean, /* partially redo status line */
     botlx: boolean, /* print an entirely new bottom line */
     time_botl: boolean, /* context.botl for 'time' (moves) only */
 });
-
 
 /*
  * 'gX' -- instance_globals holds engine state that does not need to be
@@ -158,10 +60,7 @@ export const struct_instance_globals_a = struct("struct_instance_globals_a", {
     animal_list: ptr_to(short), /* list of PM values for animal monsters */
     animal_list_count: int,
 
-
     /* options.c */
-
-
 
     /* pickup.c */
     A_first_hint: int, /* menustyle:Full plus 'A' response + !paranoid:A */
@@ -184,13 +83,11 @@ export const struct_instance_globals_a = struct("struct_instance_globals_a", {
 });
 
 export const struct_instance_globals_b = struct("struct_instance_globals_b", {
-
     /* botl.c */
     blstats: array_of(array_of("struct_istat_s", MAXBLSTATS), 2),
     blinit: boolean,
 
     bl_hilite_moves: long,
-
 
     /* decl.c */
     bhitpos: "struct_nhcoord", /* place where throw or zap hits or stops */
@@ -221,7 +118,6 @@ export const struct_instance_globals_b = struct("struct_instance_globals_b", {
 });
 
 export const struct_instance_globals_c = struct("struct_instance_globals_c", {
-
     command_queue: array_of(ptr_to("struct__cmd_queue"), NUM_CQS),
 
     /* botl.c */
@@ -246,7 +142,6 @@ export const struct_instance_globals_c = struct("struct_instance_globals_c", {
     current_wand: ptr_to("struct_obj"), /* wand currently zapped/applied */
 
     /* external pager; from getenv() or DEF_PAGER */
-
 
     /* dog.c */
     catname: array_of(char, PL_PSIZ),
@@ -304,13 +199,11 @@ export const struct_instance_globals_c = struct("struct_instance_globals_c", {
 });
 
 export const DOMOVE_WALK = 0x00000001; export const DOMOVE_RUSH = 0x00000002; export const struct_instance_globals_d = struct("struct_instance_globals_d", {
-
     /* decl.c */
     doorindex: int,
     done_money: long,
     domove_attempting: long,
     domove_succeeded: long,
-
 
     defer_see_monsters: boolean,
 
@@ -349,7 +242,6 @@ export const DOMOVE_WALK = 0x00000001; export const DOMOVE_RUSH = 0x00000002; ex
 });
 
 export const struct_instance_globals_e = struct("struct_instance_globals_e", {
-
     /* cmd.c */
     en_win: winid,
     en_via_menu: boolean,
@@ -369,7 +261,6 @@ export const struct_instance_globals_e = struct("struct_instance_globals_e", {
 });
 
 export const struct_instance_globals_f = struct("struct_instance_globals_f", {
-
     /* decl.c */
     ftrap: ptr_to("struct_trap"),
     fqn_prefix: array_of(ptr_to(char), PREFIX_COUNT),
@@ -393,7 +284,6 @@ export const struct_instance_globals_f = struct("struct_instance_globals_f", {
 });
 
 export const struct_instance_globals_g = struct("struct_instance_globals_g", {
-
     /* display.c */
     gbuf: array_of(array_of("gbuf_entry", COLNO), ROWNO),
     gbuf_start: array_of(short, ROWNO),
@@ -441,7 +331,6 @@ export const struct_instance_globals_g = struct("struct_instance_globals_g", {
 });
 
 export const struct_instance_globals_h = struct("struct_instance_globals_h", {
-
     /* decl.c */
     hname: ptr_to(char), /* name of the game (argv[0] of main) */
 
@@ -461,7 +350,6 @@ export const struct_instance_globals_h = struct("struct_instance_globals_h", {
 });
 
 export const struct_instance_globals_i = struct("struct_instance_globals_i", {
-
     /* decl.c */
     in_doagain: int,
     in_mklev: boolean,
@@ -495,7 +383,6 @@ export const struct_instance_globals_i = struct("struct_instance_globals_i", {
 });
 
 export const struct_instance_globals_j = struct("struct_instance_globals_j", {
-
     /* apply.c */
     jumping_is_magic: int, /* current jump result of magic */
 
@@ -503,7 +390,6 @@ export const struct_instance_globals_j = struct("struct_instance_globals_j", {
 });
 
 export const struct_instance_globals_k = struct("struct_instance_globals_k", {
-
     kickedloc: "struct_nhcoord", /* location hero just kicked */
 
     /* decl.c */
@@ -516,7 +402,6 @@ export const struct_instance_globals_k = struct("struct_instance_globals_k", {
 });
 
 export const struct_instance_globals_l = struct("struct_instance_globals_l", {
-
     /* cmd.c */
     last_command_count: cmdcount_nht,
 
@@ -524,9 +409,7 @@ export const struct_instance_globals_l = struct("struct_instance_globals_l", {
 
     locknum: int, /* max num of simultaneous users */
 
-
     /* where levels are */
-
 
     /* files.c */
     lockptr: int,
@@ -545,10 +428,6 @@ export const struct_instance_globals_l = struct("struct_instance_globals_l", {
     last_hider: unsigned, /* m_id of hides-under mon seen going into hiding */
 
     /* nhlan.c */
-
-
-
-
 
     /* nhlua.c */
     luacore: ptr_to(void_t), /* lua_State * */
@@ -581,7 +460,6 @@ export const struct_instance_globals_l = struct("struct_instance_globals_l", {
 });
 
 export const struct_instance_globals_m = struct("struct_instance_globals_m", {
-
     /* apply.c */
     mkot_trap_warn_count: int,
 
@@ -650,7 +528,6 @@ export const struct_instance_globals_m = struct("struct_instance_globals_m", {
 });
 
 export const struct_instance_globals_n = struct("struct_instance_globals_n", {
-
     /* botl.c */
     now_or_before_idx: int, /* 0..1 for array[2][] first index */
 
@@ -699,7 +576,6 @@ export const struct_instance_globals_n = struct("struct_instance_globals_n", {
 });
 
 export const struct_instance_globals_o = struct("struct_instance_globals_o", {
-
     objs_deleted: ptr_to("struct_obj"),
 
     /* dbridge.c */
@@ -756,7 +632,6 @@ export const struct_instance_globals_o = struct("struct_instance_globals_o", {
 });
 
 export const struct_instance_globals_p = struct("struct_instance_globals_p", {
-
     /* apply.c */
     polearm_range_min: int,
     polearm_range_max: int,
@@ -806,12 +681,10 @@ export const struct_instance_globals_p = struct("struct_instance_globals_p", {
 });
 
 export const struct_instance_globals_q = struct("struct_instance_globals_q", {
-
     havestate: boolean,
 });
 
 export const struct_instance_globals_r = struct("struct_instance_globals_r", {
-
     /* symbols.c */
     rogue_syms: array_of(uchar, SYM_MAX), /* loaded rogue symbols           */
 
@@ -839,7 +712,6 @@ export const struct_instance_globals_r = struct("struct_instance_globals_r", {
 });
 
 export const struct_instance_globals_s = struct("struct_instance_globals_s", {
-
     /* artifact.c */
     spec_dbon_applies: int, /* coordinate effects from spec_dbon() with
                               messages in artifact_hit() */
@@ -868,7 +740,6 @@ export const struct_instance_globals_s = struct("struct_instance_globals_s", {
 
     /* holds path of directory for save file */
 
-
     /* invent.c */
     sortlootmode: unsigned, /* set by sortloot() for use by sortloot_cmp();
                             * reset by sortloot when done */
@@ -892,8 +763,6 @@ export const struct_instance_globals_s = struct("struct_instance_globals_s", {
     /* pline.c */
 
     /* slot in saved_plines[] to use next */
-
-
 
     /* polyself.c */
     sex_change_ok: int, /* controls whether taking on new form or becoming new
@@ -920,7 +789,6 @@ export const struct_instance_globals_s = struct("struct_instance_globals_s", {
 });
 
 export const struct_instance_globals_t = struct("struct_instance_globals_t", {
-
     /* apply.c */
     trapinfo: "struct_trapinfo",
 
@@ -970,7 +838,6 @@ export const struct_instance_globals_t = struct("struct_instance_globals_t", {
 });
 
 export const struct_instance_globals_u = struct("struct_instance_globals_u", {
-
     /* botl.c */
     update_all: boolean,
 
@@ -989,7 +856,6 @@ export const struct_instance_globals_u = struct("struct_instance_globals_u", {
 });
 
 export const struct_instance_globals_v = struct("struct_instance_globals_v", {
-
     /* botl.c */
     valset: array_of(schar, MAXBLSTATS),
 
@@ -1025,7 +891,6 @@ export const struct_instance_globals_v = struct("struct_instance_globals_v", {
 });
 
 export const struct_instance_globals_w = struct("struct_instance_globals_w", {
-
     /* decl.c */
     warn_obj_cnt: int, /* count of monsters meeting criteria */
     wailmsg: long,
@@ -1053,7 +918,6 @@ export const struct_instance_globals_w = struct("struct_instance_globals_w", {
 });
 
 export const struct_instance_globals_x = struct("struct_instance_globals_x", {
-
     /* decl.c */
     x_maze_max: int,
 
@@ -1073,7 +937,6 @@ export const struct_instance_globals_x = struct("struct_instance_globals_x", {
 });
 
 export const struct_instance_globals_y = struct("struct_instance_globals_y", {
-
     /* decl.c */
     y_maze_max: int,
     youmonst: "struct_monst",
@@ -1090,7 +953,6 @@ export const struct_instance_globals_y = struct("struct_instance_globals_y", {
 });
 
 export const struct_instance_globals_z = struct("struct_instance_globals_z", {
-
     /* mon.c */
     zombify: boolean,
 
@@ -1237,52 +1099,6 @@ export const struct_instance_globals_saved_y = struct("struct_instance_globals_s
     ymin: int, ymax: int, /* level boundaries y */
 });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* flags describing game's current state */
 
 export const struct_const_globals = struct("struct_const_globals", {
@@ -1291,63 +1107,26 @@ export const struct_const_globals = struct("struct_const_globals", {
     zeroany: "struct_any", /* used to zero out union any */
     zeroNhRect: "struct_nhrect", /* used to zero out NhRect */
 });
+
 import { aligntyp } from "./align.h.js";
-import { BL_ATTCLR_MAX } from "./botl.h.js";
-import { MAXBLSTATS } from "./botl.h.js";
+import { BL_ATTCLR_MAX, MAXBLSTATS } from "./botl.h.js";
 import { MAXOCLASSES } from "./defsym.h.js";
-import { BONESSIZE } from "./fnamesiz.h.js";
-import { LOCKNAMESIZE } from "./fnamesiz.h.js";
-import { SAVESIZE } from "./fnamesiz.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { MAXDUNGEON } from "./global.h.js";
-import { MAXNROFROOMS } from "./global.h.js";
-import { PL_CSIZ } from "./global.h.js";
-import { PL_FSIZ } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { PL_PSIZ } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TBUFSZ } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { CVT_BUF_SIZE } from "./hack.h.js";
-import { ENTITIES } from "./hack.h.js";
-import { LUA_COPYRIGHT_BUFSIZ } from "./hack.h.js";
-import { LUA_VER_BUFSIZ } from "./hack.h.js";
-import { MAXLINFO } from "./hack.h.js";
-import { MAX_MENU_MAPPED_CMDS } from "./hack.h.js";
-import { NHUUIDSZ } from "./hack.h.js";
-import { NUM_BP } from "./hack.h.js";
-import { NUM_CQS } from "./hack.h.js";
-import { PREFIX_COUNT } from "./hack.h.js";
-import { SYM_MAX } from "./hack.h.js";
-import { WINTYPELEN } from "./hack.h.js";
-import { WIZKIT_MAX } from "./hack.h.js";
-import { cmdcount_nht } from "./hack.h.js";
+import { BONESSIZE, LOCKNAMESIZE, SAVESIZE } from "./fnamesiz.h.js";
+import {
+    BUFSZ, COLNO, MAXDUNGEON, MAXNROFROOMS, PL_CSIZ, PL_FSIZ, PL_NSIZ, PL_PSIZ, QBUFSZ, ROWNO,
+    TBUFSZ, boolean, coordxy, xint16,
+} from "./global.h.js";
+import {
+    CVT_BUF_SIZE, ENTITIES, LUA_COPYRIGHT_BUFSIZ, LUA_VER_BUFSIZ, MAXLINFO, MAX_MENU_MAPPED_CMDS,
+    NHUUIDSZ, NUM_BP, NUM_CQS, PREFIX_COUNT, SYM_MAX, WINTYPELEN, WIZKIT_MAX, cmdcount_nht,
+} from "./hack.h.js";
 import { uint8 } from "./integer.h.js";
 import { NUMMONS } from "./monsters.h.js";
 import { MAXSPELL } from "./objclass.h.js";
-import { FIRST_AMULET } from "./objects.h.js";
-import { FIRST_REAL_GEM } from "./objects.h.js";
-import { LAST_AMULET } from "./objects.h.js";
-import { LAST_REAL_GEM } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { NUM_GRAPHICS } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
-import { custom_count } from "./sym.h.js";
+import {
+    FIRST_AMULET, FIRST_REAL_GEM, LAST_AMULET, LAST_REAL_GEM, NUM_OBJECTS,
+} from "./objects.h.js";
+import { NUM_GRAPHICS, WARNCOUNT, custom_count } from "./sym.h.js";
 import { winid } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import { char, int, long, schar, short, uchar, ulong, unsigned } from "../rt/ctypes.js";
+import { array_of, fnptr_t, ptr_to, struct, void_t } from "../rt/struct.js";

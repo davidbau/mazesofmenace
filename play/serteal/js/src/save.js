@@ -3,45 +3,8 @@
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-// #include <signal.h>
-
-
-// #include <fcntl.h>
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-
- 
- 
-
-
-
-
-
-
-
-
-
-
-
 /* the #save command */
-export function /* int */
-dosave()
-{
+export function dosave() { /* int */
     clear_nhwindow()(WIN_MESSAGE);
     if (y_n(_("Really save?")) == ord('n')) {
         clear_nhwindow()(WIN_MESSAGE);
@@ -57,7 +20,7 @@ dosave()
             program_state.savefile_completed++;
             u.uhp = -1; /* universal game's over indicator */
             if (soundprocs.sound_exit_nhsound)
-                (soundprocs.sound_exit_nhsound)(_("dosave"));
+                soundprocs.sound_exit_nhsound(_("dosave"));
 
             /* make sure they see the Saving message */
             display_nhwindow()(WIN_MESSAGE, TRUE);
@@ -70,9 +33,8 @@ dosave()
 }
 
 /* returns 1 if save successful */
-export function /* int */
-dosave0()
-{ const $frame = stack_frame(); try {
+export function dosave0() { /* int */
+    const $frame = stack_frame(); try {
     var fq_save;
     var ltmp = stack_var(xint8);
     var whynot = stack_array(char, BUFSZ);
@@ -102,11 +64,9 @@ dosave0()
 
     fq_save = fqname(gs.SAVEF, SAVEPREFIX, 1); /* level files take 0 */
 
-
     sethanguphandler(SIG_IGN);
 
-    void signal(SIGINT, SIG_IGN);
-
+    signal(SIGINT, SIG_IGN);
 
     if (!program_state.done_hup) if (iflags.window_inited) {
         nh_uncompress(fq_save);
@@ -128,7 +88,7 @@ dosave0()
     nhfp = create_savefile();
     if (!nhfp) {
         if (!program_state.done_hup) pline(_("Cannot open save file."));;
-        void delete_savefile(); /* ab@unido */
+        delete_savefile(); /* ab@unido */
         break done;
     }
     if (nhfp && nhfp.fplog) {
@@ -145,13 +105,6 @@ dosave0()
         change_luck(1);
     if (iflags.window_inited)
         if (!program_state.done_hup) clear_nhwindow()(WIN_MESSAGE);;
-
-
-
-
-
-
-
 
     nhfp.mode = WRITING | FREEING;
     store_version(nhfp);
@@ -187,23 +140,14 @@ dosave0()
             continue;
         if (!(svl.level_info[ltmp[0]].flags & LFILE_EXISTS))
             continue;
-
-
-
-
-
-
-
-
-
-
+        /* #ifdef MICRO: not in this build */
 
         onhfp = open_levelfile(ltmp[0], whynot);
         if (!onhfp) {
             if (!program_state.done_hup) pline1(whynot);;
             close_nhfile(nhfp);
-            void delete_savefile();
-            if (!program_state.done_hup) void strcpy(svk.killer.name, whynot);;
+            delete_savefile();
+            if (!program_state.done_hup) strcpy(svk.killer.name, whynot);;
             if (!program_state.done_hup) done(TRICKED);;
             break done;
         }
@@ -226,16 +170,15 @@ dosave0()
     /* this should probably come sooner... */
     program_state.something_worth_saving = 0;
     res = 1;
-
  }
     notice_mon_on();
     program_state.saving--;
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-save_gamelog(nhfp)
-{ const $frame = stack_frame(); try {
+function save_gamelog(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = gg.gamelog, tmp2;
     let slen = stack_var(int);
 
@@ -259,11 +202,11 @@ save_gamelog(nhfp)
     }
     if (nhfp.mode & FREEING)
         gg.gamelog = null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-savegamestate(nhfp)
-{ const $frame = stack_frame(); try {
+function savegamestate(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let uid = stack_var(ulong);
 
@@ -330,28 +273,26 @@ savegamestate(nhfp)
         bflush(nhfp.fd);
     program_state.saving--;
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* potentially called from goto_level(do.c) as well as savestateinlock() */
-export function /* boolean */
-tricked_fileremoved(nhfp, whynot)
-{
+export function tricked_fileremoved(nhfp, whynot) { /* boolean */
     if (!nhfp) {
         pline1(whynot);
         pline(_("Probably someone removed it."));
-        void strcpy(svk.killer.name, whynot);
+        strcpy(svk.killer.name, whynot);
         done(TRICKED);
         return TRUE;
     }
     return FALSE;
 }
 
-
-export function /* void */
-savestateinlock()
-{ const $frame = stack_frame(); try { let $goto = null; var hpid = stack_var(int), whynot = stack_array(char, BUFSZ), currlev = stack_var(int);
+export function savestateinlock() { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var hpid = stack_var(int), whynot = stack_array(char, BUFSZ), currlev = stack_var(int);
     hpid[0] = 0;
-    
+
     var nhfp;
 
     program_state.saving++; /* inhibit status and perm_invent updates */
@@ -381,7 +322,7 @@ savestateinlock()
 
         sfi_int(nhfp, hpid, _("gamestate-hackpid"));
         $goto_giveup: for (;;) { switch ($goto) { default: if (svh.hackpid != hpid[0]) {
-            void sprintf(whynot, _("Level #0 pid (%d) doesn't match ours (%d)!"), hpid[0], svh.hackpid)
+            sprintf(whynot, _("Level #0 pid (%d) doesn't match ours (%d)!"), hpid[0], svh.hackpid)
 ;
             { $goto = "giveup"; continue $goto_giveup; }
         }
@@ -391,7 +332,7 @@ savestateinlock()
         case "giveup": if ($goto || (!nhfp)) {
             switch ($goto) { default: pline1(whynot);
  case "giveup": $goto = null;
-            void strcpy(svk.killer.name, whynot); }
+            strcpy(svk.killer.name, whynot); }
             /* done(TRICKED) will return when running in wizard mode;
                clear the display-update-suppression flag before rather
                than after so that screen updating behaves normally;
@@ -422,13 +363,11 @@ savestateinlock()
     program_state.saving--;
     gh.havestate = flags.ins_chkpt;
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* void */
-savelev(nhfp, lev)
-{
-    let set_uz_save = (+(gu.uz_save.dnum == 0 && gu.uz_save.dlevel == 0));
+export function savelev(nhfp, lev) { /* void */
+    let set_uz_save = +(gu.uz_save.dnum == 0 && gu.uz_save.dlevel == 0);
 
     /* caller might have already set up gu.uz_save and zeroed u.uz;
        if not, we need to set it for save_bubbles(); caveat: if the
@@ -448,11 +387,9 @@ savelev(nhfp, lev)
         gu.uz_save.dnum = gu.uz_save.dlevel = 0; /* unset */
 }
 
-function /* void */
-savelev_core(nhfp, lev$)
-{ const $frame = stack_frame(); try { const lev = stack_var(schar, lev$);
-
-
+function savelev_core(nhfp, lev$) { /* void */
+    const $frame = stack_frame(); try {
+    const lev = stack_var(schar, lev$);
 
     var i, c, r;
     var tmpc;
@@ -561,21 +498,18 @@ savelev_core(nhfp, lev$)
         clear_level_structures();
         gf.ftrap = null;
         gb.billobjs = null;
-        void memset(addr_of(svr.rooms[0]), 0, sizeof_member(svr, "rooms"));
+        memset(addr_of(svr.rooms[0]), 0, sizeof_member(svr, "rooms"));
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-save_adjust_levelflags()
-{
+export function save_adjust_levelflags() { /* void */
     /* adjust any timestamps */
     moves_to_relative_time(ref_of(svl.level.flags, "stasis_until"));
 }
 
-function /* void */
-savelevl(nhfp)
-{
+function savelevl(nhfp) { /* void */
     let x, y;
 
     for (x = 0; x < COLNO; x++) {
@@ -587,9 +521,8 @@ savelevl(nhfp)
 }
 
 /* save Plane of Water's air bubbles and Plane of Air's clouds */
-function /* void */
-save_bubbles(nhfp, lev)
-{ const $frame = stack_frame(); try {
+function save_bubbles(nhfp, lev) { /* void */
+    const $frame = stack_frame(); try {
     let bbubbly = stack_var(xint8);
 
     /* air bubbles and clouds used to be saved as part of game state
@@ -599,23 +532,19 @@ save_bubbles(nhfp, lev)
        so that restore can determine whether they are present even when
        u.uz and ledger_no() aren't available to it yet */
     bbubbly[0] = 0;
-    if (lev == ledger_no((svd.dungeon_topology.d_water_level)) || lev == ledger_no((svd.dungeon_topology.d_air_level)))
+    if (lev == ledger_no(svd.dungeon_topology.d_water_level) || lev == ledger_no(svd.dungeon_topology.d_air_level))
         bbubbly[0] = lev; /* non-zero */
     if (update_file(nhfp)) sfo_xint8(nhfp, addr_of(bbubbly), _("bubbles-bbubbly"))
 ;
 
-
-
-
-
     if (bbubbly[0])
         save_waterlevel(nhfp); /* save air bubbles or clouds */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* used when saving a level and also when saving dungeon overview data */
-export function /* void */
-savecemetery(nhfp, cemeteryaddr)
-{ const $frame = stack_frame(); try {
+export function savecemetery(nhfp, cemeteryaddr) { /* void */
+    const $frame = stack_frame(); try {
     let thisbones, nextbones;
     let flag = stack_var(int);
 
@@ -634,11 +563,11 @@ savecemetery(nhfp, cemeteryaddr)
     }
     if (release_data(nhfp))
         cemeteryaddr[0] = null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-savedamage(nhfp)
-{ const $frame = stack_frame(); try {
+function savedamage(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let damageptr, tmp_dam;
     let xl = stack_var(unsigned, 0);
 
@@ -659,18 +588,18 @@ savedamage(nhfp)
     }
     if (release_data(nhfp))
         svl.level.damagelist = null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-save_stairs(nhfp)
-{ const $frame = stack_frame(); try {
+function save_stairs(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let stway = gs.stairs;
     let buflen = stack_var(int, sizeof(struct_stairway));
 
     while (stway) {
         if (update_file(nhfp)) {
-            let use_relative = (+(program_state.restoring != REST_GSTATE
-                                    && stway.tolev.dnum == u.uz.dnum));
+            let use_relative = +(program_state.restoring != REST_GSTATE
+                                    && stway.tolev.dnum == u.uz.dnum);
             if (use_relative) {
                 /* make dlevel relative to current level */
                 stway.tolev.dlevel -= u.uz.dlevel;
@@ -688,13 +617,13 @@ save_stairs(nhfp)
         buflen[0] = -1;
         Sfo_int(nhfp, buflen, _("stairs-staircount"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* if ball and/or chain are loose, make an object chain for it/them and
    save that separately from other objects */
-function /* void */
-save_bc(nhfp)
-{ const $frame = stack_frame(); try {
+function save_bc(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let bc_objs = stack_var(ptr_to(struct_obj), null);
 
     /* save ball and chain if they are currently dangling free (i.e. not
@@ -718,13 +647,13 @@ save_bc(nhfp)
         }
     }
     saveobjchn(nhfp, bc_objs); /* frees objs in list, sets bc_objs to Null */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* save one object;
    caveat: this is only for update_file(); caller handles release_data() */
-function /* void */
-saveobj(nhfp, otmp)
-{ const $frame = stack_frame(); try {
+function saveobj(nhfp, otmp) { /* void */
+    const $frame = stack_frame(); try {
     let buflen = stack_var(int), zerobuf = stack_var(int, 0);
 
     buflen[0] = sizeof(struct_obj);
@@ -754,16 +683,16 @@ saveobj(nhfp, otmp)
            gets saved/restored whenever any other oextra components do */
         Sfo_unsigned(nhfp, ref_of((otmp).oextra, "omid"), _("obj-omid"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* save an object chain; sets head of list to Null when done;
    handles release_data() for each object in the list */
-function /* void */
-saveobjchn(nhfp, obj_p)
-{ const $frame = stack_frame(); try {
+function saveobjchn(nhfp, obj_p) { /* void */
+    const $frame = stack_frame(); try {
     let otmp = obj_p[0];
     let otmp2;
-    let is_invent = (((otmp && otmp == gi.invent) ? 1 : 0));
+    let is_invent = (otmp && otmp == gi.invent ? 1 : 0);
     let minusone = stack_var(int, -1);
 
     while (otmp) {
@@ -820,11 +749,11 @@ saveobjchn(nhfp, obj_p)
             allunworn(); /* clear uwep, uarm, uball, &c pointers */
         obj_p[0] = null;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-savemon(nhfp, mtmp)
-{ const $frame = stack_frame(); try {
+function savemon(nhfp, mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let buflen = stack_var(int);
 
     mtmp.mtemplit = 0; /* normally clear; if set here then a panic save
@@ -878,11 +807,11 @@ savemon(nhfp, mtmp)
         buflen[0] = MCORPSENM(mtmp);
         Sfo_int(nhfp, buflen, _("monst-mcorpsenm"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-savemonchn(nhfp, mtmp)
-{ const $frame = stack_frame(); try {
+function savemonchn(nhfp, mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let mtmp2;
     let minusone = stack_var(int, -1);
 
@@ -913,18 +842,17 @@ savemonchn(nhfp, mtmp)
     if (update_file(nhfp)) {
         Sfo_int(nhfp, minusone, _("monst-monst_length"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* save traps; gf.ftrap is the only trap chain so 2nd arg is superfluous */
-function /* void */
-savetrapchn(nhfp, trap)
-{
+function savetrapchn(nhfp, trap) { /* void */
     let zerotrap = static_struct("savetrapchn.zerotrap", struct_trap);
     let trap2;
 
     while (trap) {
-        let use_relative = (+(program_state.restoring != REST_GSTATE
-                                && trap.dst.dnum == u.uz.dnum));
+        let use_relative = +(program_state.restoring != REST_GSTATE
+                                && trap.dst.dnum == u.uz.dnum);
         trap2 = trap.ntrap;
         if (use_relative)
             trap.dst.dlevel -= u.uz.dlevel; /* make it relative */
@@ -947,9 +875,7 @@ savetrapchn(nhfp, trap)
  * we only want to save the fruits which exist on the bones level; the bones
  * level routine marks nonexistent fruits by making the fid negative.
  */
-export function /* void */
-savefruitchn(nhfp)
-{
+export function savefruitchn(nhfp) { /* void */
     let zerofruit = static_struct("savefruitchn.zerofruit", struct_fruit);
     let f2, f1;
 
@@ -970,9 +896,8 @@ savefruitchn(nhfp)
         gf.ffruit = null;
 }
 
-function /* void */
-savelevchn(nhfp)
-{ const $frame = stack_frame(); try {
+function savelevchn(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let tmplev, tmplev2;
     let cnt = stack_var(int, 0);
 
@@ -991,21 +916,20 @@ savelevchn(nhfp)
     }
     if (release_data(nhfp))
         svs.sp_levchn = null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* write "name-role-race-gend-algn" into save file for menu-based restore;
    the first dash is actually stored as '\0' instead of '-' */
-export function /* void */
-store_plname_in_file(nhfp)
-{ const $frame = stack_frame(); try {
+export function store_plname_in_file(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let hero = stack_array(char, PL_NSIZ_PLUS); /* [PL_NSIZ + 4*(1+3) + 1] */
     let plsiztmp = stack_var(int, sizeof(array_of(char, PL_NSIZ_PLUS)));
 
-    void memset(hero, ord('\0'), sizeof(array_of(char, PL_NSIZ_PLUS)));
+    memset(hero, ord('\0'), sizeof(array_of(char, PL_NSIZ_PLUS)));
     /* augment svp.plname[]; the gender and alignment values reflect those
        in effect at time of saving rather than at start of game */
     Snprintf(hero, sizeof(array_of(char, PL_NSIZ_PLUS)), _("%s-%.3s-%.3s-%.3s-%.3s"), svp.plname, gu.urole.filecode, gu.urace.filecode, genders[flags.female].filecode, aligns[1 - u.ualign.type].filecode)
-
 
 ;
     /* replace "-role-race..." with "\0role-race..." so that we can include
@@ -1024,11 +948,11 @@ store_plname_in_file(nhfp)
     if (nhfp.structlevel)
         bufon(nhfp.fd);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-save_msghistory(nhfp)
-{ const $frame = stack_frame(); try {
+function save_msghistory(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let msg;
     let msgcount = 0;
     let minusone = stack_var(int, -1), msglen = stack_var(int);
@@ -1053,13 +977,11 @@ save_msghistory(nhfp)
     }
     debugpline1(_("Stored %d messages into savefile."), msgcount, __FILE__);
     /* note: we don't attempt to handle release_data() here */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* also called by prscore(); this probably belongs in dungeon.c... */
-export function /* void */
-free_dungeons()
-{
-
+export function free_dungeons() { /* void */
     let tnhfp = get_freeing_nhfile();
 
     savelevchn(tnhfp);
@@ -1073,11 +995,8 @@ free_dungeons()
  /* options.c */
 
 /* free a lot of allocated memory which is ordinarily freed during save */
-export function /* void */
-freedynamicdata()
-{
+export function freedynamicdata() { /* void */
     let tnhfp = get_freeing_nhfile();
-
 
     free_maildata();
 
@@ -1088,19 +1007,6 @@ freedynamicdata()
     savedsym_free();
     tmp_at(DISP_FREEMEM, 0); /* temporary display effects */
     purge_all_custom_entries();
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /* move-specific data */
     dmonsfree(); /* release dead monsters */
@@ -1115,10 +1021,10 @@ freedynamicdata()
     save_killers(tnhfp);
     save_timers(tnhfp, RANGE_GLOBAL);
     save_light_sources(tnhfp, RANGE_GLOBAL);
-    ((saveobjchn(tnhfp, ref_of(gi, "invent")), gi.invent = null));
-    ((saveobjchn(tnhfp, ref_of(gm, "migrating_objs")), gm.migrating_objs = null));
-    ((savemonchn(tnhfp, gm.migrating_mons), gm.migrating_mons = null));
-    ((savemonchn(tnhfp, gm.mydogs), gm.mydogs = null)); /* ascension or dungeon escape */
+    (saveobjchn(tnhfp, ref_of(gi, "invent")), gi.invent = null);
+    (saveobjchn(tnhfp, ref_of(gm, "migrating_objs")), gm.migrating_objs = null);
+    (savemonchn(tnhfp, gm.migrating_mons), gm.migrating_mons = null);
+    (savemonchn(tnhfp, gm.mydogs), gm.mydogs = null); /* ascension or dungeon escape */
     /* freelevchn();  --  [folded into free_dungeons()] */
     free_animals();
     save_oracles(tnhfp);
@@ -1158,11 +1064,6 @@ freedynamicdata()
     /* free_pickinv_cache();  --  now done from really_done()... */
     free_symsets();
 
-
-
-
-
-
     save_gamelog(tnhfp);
     release_runtime_info(); /* build-time options and version stuff */
     free_convert_filenames();
@@ -1186,269 +1087,119 @@ freedynamicdata()
     /* last, because it frees data that might be used by panic() to provide
        feedback to the user; conceivably other freeing might trigger panic */
     sysopt_release(); /* SYSCF strings */
-} export function free_animals() { return mon_animal_list(FALSE); }
+}
+export function free_animals() { return mon_animal_list(FALSE); }
 
 /*save.c*/
+
 import { VIA_WINDOWPORT } from "./botl.h.macros.js";
 import { DISP_FREEMEM } from "./display.h.js";
-import { LFILE_EXISTS } from "./dungeon.h.js";
-import { VISITED } from "./dungeon.h.js";
+import { LFILE_EXISTS, VISITED } from "./dungeon.h.js";
 import { FULL_MOON } from "./flag.h.js";
-import { discover } from "./flag.h.macros.js";
-import { notice_mon_off } from "./flag.h.macros.js";
-import { notice_mon_on } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ_PLUS } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { xint8 } from "./global.h.js";
+import { discover, notice_mon_off, notice_mon_on, wizard } from "./flag.h.macros.js";
+import { BUFSZ, COLNO, FALSE, PL_NSIZ_PLUS, ROWNO, TRUE, xint8 } from "./global.h.js";
 import { Strlen } from "./global.h.macros.js";
-import { COUNTING } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CQ_REPEAT } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { FREEING } from "./hack.h.js";
-import { REST_GSTATE } from "./hack.h.js";
-import { SAVEPREFIX } from "./hack.h.js";
-import { TRICKED } from "./hack.h.js";
-import { WRITING } from "./hack.h.js";
-import { all_themes } from "./hack.h.js";
-import { BALL_IN_MON } from "./hack.h.macros.js";
-import { CHAIN_IN_MON } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import {
+    COUNTING, CQ_CANNED, CQ_REPEAT, ECMD_OK, FREEING, REST_GSTATE, SAVEPREFIX, TRICKED, WRITING,
+    all_themes,
+} from "./hack.h.js";
+import {
+    BALL_IN_MON, CHAIN_IN_MON, pline1, release_data, update_file, y_n,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { debugpline1 } from "./lint.h.macros.js";
-import { struct_ebones } from "./mextra.h.js";
-import { struct_edog } from "./mextra.h.js";
-import { struct_egd } from "./mextra.h.js";
-import { struct_emin } from "./mextra.h.js";
-import { struct_epri } from "./mextra.h.js";
-import { struct_eshk } from "./mextra.h.js";
-import { EBONES } from "./mextra.h.macros.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { EGD } from "./mextra.h.macros.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { MCORPSENM } from "./mextra.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
+import {
+    struct_ebones, struct_edog, struct_egd, struct_emin, struct_epri, struct_eshk,
+} from "./mextra.h.js";
+import { EBONES, EDOG, EGD, EMIN, EPRI, ESHK, MCORPSENM, MGIVENNAME } from "./mextra.h.macros.js";
 import { monsndx } from "./mondata.h.macros.js";
 import { struct_monst } from "./monst.h.js";
 import { NUMMONS } from "./monsters.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { OMAILCMD } from "./obj.h.macros.js";
-import { OMONST } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { MAXSPELL } from "./objclass.h.js";
-import { struct_fruit } from "./objclass.h.js";
+import { OBJ_FREE, struct_obj } from "./obj.h.js";
+import { Has_contents, OMAILCMD, OMONST, ONAME } from "./obj.h.macros.js";
+import { MAXSPELL, struct_fruit } from "./objclass.h.js";
 import { dealloc_fruit } from "./objclass.h.macros.js";
-import { W_BALL } from "./prop.h.js";
-import { W_CHAIN } from "./prop.h.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfo_cemetery } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
-import { Sfo_context_info } from "./savefile.h.macros.js";
-import { Sfo_damage } from "./savefile.h.macros.js";
-import { Sfo_dest_area } from "./savefile.h.macros.js";
-import { Sfo_ebones } from "./savefile.h.macros.js";
-import { Sfo_edog } from "./savefile.h.macros.js";
-import { Sfo_egd } from "./savefile.h.macros.js";
-import { Sfo_emin } from "./savefile.h.macros.js";
-import { Sfo_epri } from "./savefile.h.macros.js";
-import { Sfo_eshk } from "./savefile.h.macros.js";
-import { Sfo_flag } from "./savefile.h.macros.js";
-import { Sfo_fruit } from "./savefile.h.macros.js";
-import { Sfo_gamelog_line } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
-import { Sfo_int32 } from "./savefile.h.macros.js";
-import { Sfo_levelflags } from "./savefile.h.macros.js";
-import { Sfo_monst } from "./savefile.h.macros.js";
-import { Sfo_mvitals } from "./savefile.h.macros.js";
-import { Sfo_nhcoord } from "./savefile.h.macros.js";
-import { Sfo_obj } from "./savefile.h.macros.js";
-import { Sfo_q_score } from "./savefile.h.macros.js";
-import { Sfo_rm } from "./savefile.h.macros.js";
-import { Sfo_s_level } from "./savefile.h.macros.js";
-import { Sfo_schar } from "./savefile.h.macros.js";
-import { Sfo_spell } from "./savefile.h.macros.js";
-import { Sfo_stairway } from "./savefile.h.macros.js";
-import { Sfo_trap } from "./savefile.h.macros.js";
-import { Sfo_unsigned } from "./savefile.h.macros.js";
-import { Sfo_you } from "./savefile.h.macros.js";
+import { W_BALL, W_CHAIN } from "./prop.h.js";
+import { fmon, levl } from "./rm.h.macros.js";
+import {
+    Sfo_cemetery, Sfo_char, Sfo_context_info, Sfo_damage, Sfo_dest_area, Sfo_ebones, Sfo_edog,
+    Sfo_egd, Sfo_emin, Sfo_epri, Sfo_eshk, Sfo_flag, Sfo_fruit, Sfo_gamelog_line, Sfo_int,
+    Sfo_int32, Sfo_levelflags, Sfo_monst, Sfo_mvitals, Sfo_nhcoord, Sfo_obj, Sfo_q_score, Sfo_rm,
+    Sfo_s_level, Sfo_schar, Sfo_spell, Sfo_stairway, Sfo_trap, Sfo_unsigned, Sfo_you,
+} from "./savefile.h.macros.js";
 import { struct_stairway } from "./stairs.h.js";
-import { RANGE_GLOBAL } from "./timeout.h.js";
-import { RANGE_LEVEL } from "./timeout.h.js";
+import { RANGE_GLOBAL, RANGE_LEVEL } from "./timeout.h.js";
 import { struct_trap } from "./trap.h.js";
 import { dealloc_trap } from "./trap.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { exit_nhwindows } from "./winprocs.h.macros.js";
-import { getmsghistory } from "./winprocs.h.macros.js";
-import { mark_synch } from "./winprocs.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { EXIT_SUCCESS } from "../rt/libc.js";
-import { SIGINT } from "../rt/libc.js";
-import { SIG_IGN } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getuid } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { signal } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import {
+    clear_nhwindow, display_nhwindow, exit_nhwindows, getmsghistory, mark_synch,
+} from "./winprocs.h.macros.js";
+import { char, int, ord, schar, sizeof, ulong, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    EXIT_SUCCESS, SIGINT, SIG_IGN, assert, free, getuid, memset, signal, sprintf, strcpy, strlen,
+} from "../rt/libc.js";
+import { stack_array, stack_var, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, sizeof_member, struct_assign,
+} from "../rt/struct.js";
 import { timet_delta } from "./allmain.js";
 import { save_artifacts } from "./artifact.js";
 import { change_luck } from "./attrib.js";
 import { status_finish } from "./botl.js";
-import { getnow } from "./calendar.js";
-import { yyyymmddhhmmss } from "./calendar.js";
-import { cmdbind_freeall } from "./cmd.js";
-import { cmdq_clear } from "./cmd.js";
+import { getnow, yyyymmddhhmmss } from "./calendar.js";
+import { cmdbind_freeall, cmdq_clear } from "./cmd.js";
 import { free_menu_coloring } from "./coloratt.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gf } from "./decl.js";
-import { gg } from "./decl.js";
-import { gh } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svh } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svp } from "./decl.js";
-import { svq } from "./decl.js";
-import { svr } from "./decl.js";
-import { svs } from "./decl.js";
-import { svu } from "./decl.js";
-import { svw } from "./decl.js";
-import { u } from "./decl.js";
-import { urealtime } from "./decl.js";
-import { docrt } from "./display.js";
-import { tmp_at } from "./display.js";
-import { ledger_no } from "./dungeon.js";
-import { maxledgerno } from "./dungeon.js";
-import { save_dungeon } from "./dungeon.js";
-import { save_exclusions } from "./dungeon.js";
-import { done } from "./end.js";
-import { done_object_cleanup } from "./end.js";
-import { nh_terminate } from "./end.js";
-import { panic } from "./end.js";
-import { save_killers } from "./end.js";
+import {
+    flags, gb, gf, gg, gh, gi, gl, gm, go, gs, gu, iflags, program_state, svc, svd, svh, svk, svl,
+    svm, svn, svp, svq, svr, svs, svu, svw, u, urealtime,
+} from "./decl.js";
+import { docrt, tmp_at } from "./display.js";
+import { ledger_no, maxledgerno, save_dungeon, save_exclusions } from "./dungeon.js";
+import { done, done_object_cleanup, nh_terminate, panic, save_killers } from "./end.js";
 import { save_engravings } from "./engrave.js";
-import { close_nhfile } from "./files.js";
-import { create_levelfile } from "./files.js";
-import { create_savefile } from "./files.js";
-import { delete_levelfile } from "./files.js";
-import { delete_savefile } from "./files.js";
-import { fqname } from "./files.js";
-import { free_convert_filenames } from "./files.js";
-import { get_freeing_nhfile } from "./files.js";
-import { nh_compress } from "./files.js";
-import { nh_sfconvert } from "./files.js";
-import { nh_uncompress } from "./files.js";
-import { open_levelfile } from "./files.js";
-import { open_savefile } from "./files.js";
-import { save_savefile_name } from "./files.js";
-import { free_glyphid_cache } from "./glyphs.js";
-import { glyphid_cache_status } from "./glyphs.js";
-import { purge_all_custom_entries } from "./glyphs.js";
+import {
+    close_nhfile, create_levelfile, create_savefile, delete_levelfile, delete_savefile, fqname,
+    free_convert_filenames, get_freeing_nhfile, nh_compress, nh_sfconvert, nh_uncompress,
+    open_levelfile, open_savefile, save_savefile_name,
+} from "./files.js";
+import { free_glyphid_cache, glyphid_cache_status, purge_all_custom_entries } from "./glyphs.js";
 import { nomul } from "./hack.js";
 import { free_invbuf } from "./invent.js";
 import { save_light_sources } from "./light.js";
 import { free_maildata } from "./mail.js";
 import { release_runtime_info } from "./mdlib.js";
-import { clear_level_structures } from "./mklev.js";
-import { free_luathemes } from "./mklev.js";
+import { clear_level_structures, free_luathemes } from "./mklev.js";
 import { save_waterlevel } from "./mkmaze.js";
-import { dealloc_obj } from "./mkobj.js";
-import { dobjsfree } from "./mkobj.js";
+import { dealloc_obj, dobjsfree } from "./mkobj.js";
 import { save_rooms } from "./mkroom.js";
-import { alloc_itermonarr } from "./mon.js";
-import { dealloc_monst } from "./mon.js";
-import { dmonsfree } from "./mon.js";
-import { mon_animal_list } from "./mon.js";
-import { set_ustuck } from "./mon.js";
-import { free_tutorial } from "./nhlua.js";
-import { save_luadata } from "./nhlua.js";
+import { alloc_itermonarr, dealloc_monst, dmonsfree, mon_animal_list, set_ustuck } from "./mon.js";
+import { free_tutorial, save_luadata } from "./nhlua.js";
 import { savenames } from "./o_init.js";
-import { free_autopickup_exceptions } from "./options.js";
-import { freeroleoptvals } from "./options.js";
-import { msgtype_free } from "./options.js";
-import { options_free_window_colors } from "./options.js";
-import { There } from "./pline.js";
-import { free_youbuf } from "./pline.js";
-import { pline } from "./pline.js";
+import {
+    free_autopickup_exceptions, freeroleoptvals, msgtype_free, options_free_window_colors,
+} from "./options.js";
+import { There, free_youbuf, pline } from "./pline.js";
 import { forget_temple_entry } from "./priest.js";
 import { free_rect } from "./rect.js";
 import { save_regions } from "./region.js";
-import { getlev } from "./restore.js";
-import { moves_to_relative_time } from "./restore.js";
-import { relative_time_to_moves } from "./restore.js";
-import { rest_adjust_levelflags } from "./restore.js";
-import { aligns } from "./role.js";
-import { genders } from "./role.js";
-import { free_CapMons } from "./rumors.js";
-import { save_oracles } from "./rumors.js";
-import { sfi_int } from "./sfbase.js";
-import { sfo_char } from "./sfbase.js";
-import { sfo_long } from "./sfbase.js";
-import { sfo_ulong } from "./sfbase.js";
-import { sfo_xint8 } from "./sfbase.js";
-import { bflush } from "./sfstruct.js";
-import { bufoff } from "./sfstruct.js";
-import { bufon } from "./sfstruct.js";
+import {
+    getlev, moves_to_relative_time, relative_time_to_moves, rest_adjust_levelflags,
+} from "./restore.js";
+import { aligns, genders } from "./role.js";
+import { free_CapMons, save_oracles } from "./rumors.js";
+import { sfi_int, sfo_char, sfo_long, sfo_ulong, sfo_xint8 } from "./sfbase.js";
+import { bflush, bufoff, bufon } from "./sfstruct.js";
 import { soundprocs } from "./sounds.js";
-import { free_symsets } from "./symbols.js";
-import { savedsym_free } from "./symbols.js";
+import { free_symsets, savedsym_free } from "./symbols.js";
 import { sysopt_release } from "./sys.js";
 import { save_timers } from "./timeout.js";
 import { save_track } from "./track.js";
 import { store_version } from "./version.js";
 import { vision_recalc } from "./vision.js";
 import { save_worm } from "./worm.js";
-import { allunworn } from "./worn.js";
-import { setworn } from "./worn.js";
+import { allunworn, setworn } from "./worn.js";
 import { wish_history_flush } from "./zap.js";
-import { free_nhuuid } from "../sys/unix/unixmain.js";
-import { sethanguphandler } from "../sys/unix/unixmain.js";
+import { free_nhuuid, sethanguphandler } from "../sys/unix/unixmain.js";
 const __FILE__ = "save.c";

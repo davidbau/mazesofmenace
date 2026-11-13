@@ -2,31 +2,23 @@
 /* Copyright (c) Robert Patrick Rankin, 1991                      */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h" /* for config.h+extern.h */
-
 /* strbuf_init() initializes strbuf state for use */
-export function /* void */
-strbuf_init(strbuf)
-{
+export function strbuf_init(strbuf) { /* void */
     strbuf.str = 0;
     strbuf.len = 0;
 }
 
 /* strbuf_append() appends given str to strbuf->str */
-export function /* void */
-strbuf_append(strbuf, str)
-{
+export function strbuf_append(strbuf, str) { /* void */
     let len = int(strlen(str)) + 1;
 
     strbuf_reserve(strbuf,
                    len + (strbuf.str ? int(strlen(strbuf.str)) : 0));
-    void strcat(strbuf.str, str);
+    strcat(strbuf.str, str);
 }
 
 /* strbuf_reserve() ensure strbuf->str has storage for len characters */
-export function /* void */
-strbuf_reserve(strbuf, len)
-{
+export function strbuf_reserve(strbuf, len) { /* void */
     if (strbuf.str == (0)) {
         strbuf.str = strbuf.buf;
         chars[strbuf.str + 0] = ord('\0');
@@ -38,25 +30,21 @@ strbuf_reserve(strbuf, len)
 
         strbuf.len = len + sizeof_member(strbuf, "buf");
         strbuf.str = addr_of(alloc(unsigned(strbuf.len)));
-        void strcpy(strbuf.str, oldbuf);
+        strcpy(strbuf.str, oldbuf);
         if (oldbuf != strbuf.buf)
             free(oldbuf);
     }
 }
 
 /* strbuf_empty() frees allocated memory and set strbuf to initial state */
-export function /* void */
-strbuf_empty(strbuf)
-{
+export function strbuf_empty(strbuf) { /* void */
     if (strbuf.str != (0) && strbuf.str != strbuf.buf)
         free(strbuf.str);
     strbuf_init(strbuf);
 }
 
 /* strbuf_nl_to_crlf() converts all occurrences of \n to \r\n */
-export function /* void */
-strbuf_nl_to_crlf(strbuf)
-{
+export function strbuf_nl_to_crlf(strbuf) { /* void */
     if (strbuf.str) {
         let len = int(strlen(strbuf.str));
         let count = 0;
@@ -78,12 +66,10 @@ strbuf_nl_to_crlf(strbuf)
 
 /* strlen() but returns unsigned and panics if string is unreasonably long;
    used by dlb as well as by nethack */
-export function /* unsigned */
-Strlen_(
+export function Strlen_(
     str,
     file,
-    line)
-{
+    line) { /* unsigned */
     let p;
     let len;
 
@@ -97,16 +83,12 @@ Strlen_(
     return len;
 }
 
-
-
 /* guts of pmatch(), pmatchi(), and pmatchz();
    match a string against a pattern */
-function /* boolean */
-pmatch_internal(patrn, strng,
+function pmatch_internal(patrn, strng,
                 ci,
 
-                sk) /* set of characters to skip */
-{
+                sk) { /* boolean */ /* set of characters to skip */
     var s, p;
     /*
      *  Simple pattern matcher:  '*' matches 0 or more characters, '?' matches
@@ -141,36 +123,23 @@ pmatch_internal(patrn, strng,
 }
 
 /* case-sensitive wildcard match */
-export function /* boolean */
-pmatch(patrn, strng)
-{
+export function pmatch(patrn, strng) { /* boolean */
     return pmatch_internal(patrn, strng, FALSE, 0);
 }
 
 /* case-insensitive wildcard match */
-export function /* boolean */
-pmatchi(patrn, strng)
-{
+export function pmatchi(patrn, strng) { /* boolean */
     return pmatch_internal(patrn, strng, TRUE, 0);
 }
 
-
 /*strutil.c*/
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+
+import { FALSE, LARGEST_INT, TRUE } from "./global.h.js";
+import { int, ord, unsigned } from "../rt/ctypes.js";
 import { chars } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
+import { free, strcat, strchr, strcpy, strlen } from "../rt/libc.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
+import { addr_of, sizeof_member } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { panic } from "./end.js";
 import { lowc } from "./hacklib.js";

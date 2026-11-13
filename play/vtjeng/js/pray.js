@@ -176,7 +176,7 @@ import {
     youHear,
 } from './pline.js';
 import { finish_steps } from './source_steps.js';
-import { dist2, upstart, s_suffix } from './hacklib.js';
+import { dist2, upstart, s_suffix, lcase } from './hacklib.js';
 import { change_luck } from './moveloop_preamble.js';
 import {
     attacktype_fordmg,
@@ -831,7 +831,7 @@ async function sacrifice_your_race(otmp, highaltar, altaralign, state) {
             : null;
         if (demon) {
             let demonName = a_monnam(demon, { state });
-            if (demonName.toLowerCase() === 'it') {
+            if (lcase(demonName) === 'it') {
                 demonName = 'something dreadful';
             } else {
                 demon.mstrategy &= ~STRAT_APPEARMSG;
@@ -1152,7 +1152,7 @@ async function at_your_feet(str, state) {
         const captor = state.u.ustuck;
         await ttyPline(
             `${str} ${vtense(str, 'drop')} into `
-                + `${s_suffix(Monnam(captor, state))} `
+                + `${s_suffix(mon_nam(captor, state))} `
                 + `${mbodypart(captor, STOMACH)}.`,
             state,
         );
@@ -2245,7 +2245,10 @@ async function gcrownu(state) {
     }
 
     if (state.objects?.[classGift]?.oc_class === SPBOOK_CLASS) {
+        // C assigns the book to `obj`, so the wielded weapon is enhanced
+        // below only when the hero already knows the spell.
         const book = mksobj(classGift, true, false, { state });
+        obj = book;
         const bookName = actualoname(book, state);
         bless(book, { state });
         book.bknown = 1;
@@ -2580,8 +2583,8 @@ export async function pleased(g_align, state = game) {
                 );
             for (let object = state.invent; object; object = object.nobj) {
                 if (object.cursed
-                    && (object !== u.uarmh
-                        || u.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)) {
+                    && (object !== state.uarmh
+                        || state.uarmh.otyp !== HELM_OF_OPPOSITE_ALIGNMENT)) {
                     if (!Blind(state.u)) {
                         await ttyPline(
                             `${Yobjnam2(object, 'softly glow', state)} ${hcolor('amber', state)}.`,
@@ -2934,7 +2937,7 @@ export async function angrygods(resp_god, state = game) {
                 && !(Antimagic(u))) {
                 const aura = an(hcolor('black', state));
                 await ttyPline(
-                    `${aura[0].toUpperCase()}${aura.slice(1)} glow surrounds you.`,
+                    `${upstart(aura)} glow surrounds you.`,
                     state,
                 );
             }

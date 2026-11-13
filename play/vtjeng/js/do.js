@@ -219,7 +219,7 @@ import {
     impossible, impossible_printer, livelog_printf, youFeel, youSee,
 } from './pline.js';
 import { finish_steps } from './source_steps.js';
-import { dist2, s_suffix, upstart } from './hacklib.js';
+import { dist2, s_suffix, upstart, lcase } from './hacklib.js';
 import { get_obj_location } from './light.js';
 import {
     losehp,
@@ -731,7 +731,7 @@ export async function place_random_arrival(
 export async function maybe_lvltport_feedback(state = game) {
     const postMessage = state.gd?.dfr_post_msg;
     if (postMessage
-        && postMessage.slice(0, 15).toLowerCase() === 'you materialize') {
+        && lcase(postMessage.slice(0, 15)) === 'you materialize') {
         await ttyPline(postMessage, state);
         state.gd.dfr_post_msg = null;
     }
@@ -1387,7 +1387,7 @@ async function dosinkring(obj, state = game, rawEnv = {}) {
                     );
                     ideed = true;
                 }
-                delobj(otmp, { ...rawEnv, state });
+                await delobj(otmp, { ...rawEnv, state });
             }
             otmp = otmp2;
         }
@@ -2189,7 +2189,7 @@ async function engulfer_digests_food(obj, state = game, env = {}) {
         healmon(swallower, swallower.mhpmax, 0);
         await mcureblindness(swallower, false, state);
     }
-    delobj(obj, { ...env, state });
+    await delobj(obj, { ...env, state });
     return true;
 }
 

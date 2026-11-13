@@ -1,4 +1,4 @@
-export default `# NetHack 5.0  luahelper    $NHDT-Date: $  $NHDT-Branch: NetHack-3.7 $
+export default String.raw`# NetHack 5.0  luahelper    $NHDT-Date: $  $NHDT-Branch: NetHack-3.7 $
 #
 #  Makefile to assist developers in adding lines to various build
 #  Makefiles, or project files, as lua files are added or removed.
@@ -25,10 +25,10 @@ MAKEFLAGS += --no-print-directory
 AWK=awk
 
 
-luanames = asmodeus baalz bigrm-* castle fakewiz? juiblex knox medusa-? \\
-	minend-? minefill minetn-? oracle orcus sanctum soko?-? tower? \\
-	valley wizard? nhcore nhlib themerms astral air earth fire water \\
-	hellfill tut-? ???-goal ???-fil? ???-loca ???-strt \\
+luanames = asmodeus baalz bigrm-* castle fakewiz? juiblex knox medusa-? \
+	minend-? minefill minetn-? oracle orcus sanctum soko?-? tower? \
+	valley wizard? nhcore nhlib themerms astral air earth fire water \
+	hellfill tut-? ???-goal ???-fil? ???-loca ???-strt \
 	dungeon quest
 
 alllua = $(wildcard $(addsuffix .lua,$(addprefix dat/, $(luanames))))
@@ -38,12 +38,12 @@ alllua = $(wildcard $(addsuffix .lua,$(addprefix dat/, $(luanames))))
 # sys/windows/Makefile.nmake
 # 
 devhelp-nmake:
-	@echo "$(notdir $(alllua))" | \\
-	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s%s", \\
-	        i == 1? "LUA_FILES = " : "", \\
-	        "$$(DAT)", \\
-		$$i, \\
-	        i % 3? " ": ((i == NF)? "\\n" : " \\\\\\n\\t")} \\
+	@echo "$(notdir $(alllua))" | \
+	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s%s", \
+	        i == 1? "LUA_FILES = " : "", \
+	        "$$(DAT)", \
+		$$i, \
+	        i % 3? " ": ((i == NF)? "\n" : " \\\n\t")} \
 	        i % 3{print ""}'
 	@echo ""
 
@@ -52,45 +52,45 @@ devhelp-nmake:
 # sys/windows/GNUmakefile
 #
 devhelp-msys2:
-	@echo "$(basename $(notdir $(alllua)))" | \\
-	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s", \\
-	        i == 1? "LUALIST = " : "", \\
-		$$i, \\
-	        i % 5? " ": ((i == NF)? "\\n" : " \\\\\\n\\t")} \\
+	@echo "$(basename $(notdir $(alllua)))" | \
+	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s", \
+	        i == 1? "LUALIST = " : "", \
+		$$i, \
+	        i % 5? " ": ((i == NF)? "\n" : " \\\n\t")} \
 	        i % 5{print ""}'
 	@echo ""
 
-xcodeextra = bogusmon cmdhelp data engrave epitaph help hh \\
-	    history keyhelp opthelp optmenu options oracles \\
+xcodeextra = bogusmon cmdhelp data engrave epitaph help hh \
+	    history keyhelp opthelp optmenu options oracles \
 	    rumors tribute wizhelp
 #
 # generates lines to insert into
 # sys/unix/NetHack.xcodeproj/project.pbxproj
 #
 devhelp-xcode:
-	@echo "\\t\\t\\tinputPaths = ("
-	@echo "$(xcodeextra) $(notdir $(alllua))" | \\
-	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s%s%s", \\
-	        i == 1? "\\t" : "", \\
-		"\\t\\t\\t\\042$$(NH_DAT_DIR)/", \\
-		$$i, \\
-		"\\042", \\
-		i % 1? " ": ((i == NF)? "\\n" : ",\\n\\t")} \\
+	@echo "\t\t\tinputPaths = ("
+	@echo "$(xcodeextra) $(notdir $(alllua))" | \
+	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s%s%s", \
+	        i == 1? "\t" : "", \
+		"\t\t\t\042$$(NH_DAT_DIR)/", \
+		$$i, \
+		"\042", \
+		i % 1? " ": ((i == NF)? "\n" : ",\n\t")} \
 		i % 1{print ""}'
-	@echo "\\t\\t\\t);"
+	@echo "\t\t\t);"
 #
 # generates lines to insert into
 # sys/windows/vs/files.props
 #
 devhelp-vstudio:
 	@echo "  <ItemGroup>"
-	@echo "$(notdir $(alllua))" | \\
-	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s%s%s", \\
-	        i == 1? "    " : "", \\
-		"<Luafiles Include = \\042", \\
-		$$i, \\
-		"\\042/>", \\
-		i % 1? " ": ((i == NF)? "\\n" : "\\n    ")} \\
+	@echo "$(notdir $(alllua))" | \
+	    $(AWK) '{for (i=1; i<=NF; ++i)printf "%s%s%s%s%s", \
+	        i == 1? "    " : "", \
+		"<Luafiles Include = \042", \
+		$$i, \
+		"\042/>", \
+		i % 1? " ": ((i == NF)? "\n" : "\n    ")} \
 		i % 1{print ""}'
 	@echo "  </ItemGroup>"
 

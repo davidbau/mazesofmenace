@@ -15,32 +15,11 @@
  *      cmap_to_type() -- convert S_xxx symbol to XXX topology code
  */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function sq(x) { return ((x) * (x)); }
+export function sq(x) { return (x * x); }
 
  /* defined in shknam.c */
 
-function /* boolean */
-isbig(sroom)
-{
+function isbig(sroom) { /* boolean */
     let area = (sroom.hx - sroom.lx + 1)
                         * (sroom.hy - sroom.ly + 1);
 
@@ -48,9 +27,7 @@ isbig(sroom)
 }
 
 /* make and stock a room of a given type */
-export function /* void */
-do_mkroom(roomtype)
-{
+export function do_mkroom(roomtype) { /* void */
     if (roomtype >= SHOPBASE) {
         mkshop(); /* someday, we should be able to specify shop type */
     } else {
@@ -91,9 +68,7 @@ do_mkroom(roomtype)
     }
 }
 
-function /* void */
-mkshop()
-{
+function mkshop() { /* void */
     var sroom;
     var i = -1;
     var ep = 0; /* (init == lint suppression) */
@@ -153,7 +128,6 @@ mkshop()
                 i = -1;
         }
     }
-
  }
     for (sroom = ptr_add(svr.rooms[0], 0);; sroom = ptr_add(sroom, 1)) {
         /* return from this loop: cannot find any eligible room to be a shop
@@ -204,10 +178,7 @@ mkshop()
 
     /* set room bits before stocking the shop */
 
-
-
     topologize(sroom);
-
 
     /* The shop used to be stocked here, but this no longer happens--all we do
        is set its rtype, and it gets stocked at the end of makelevel() along
@@ -216,9 +187,7 @@ mkshop()
 }
 
 /* pick an unused room, preferably with only one door */
-function /* struct mkroom * */
-pick_room(strict)
-{
+function pick_room(strict) { /* struct mkroom * */
     let sroom;
     let i = svn.nroom;
 
@@ -240,9 +209,7 @@ pick_room(strict)
     return null;
 }
 
-function /* void */
-mkzoo(type)
-{
+function mkzoo(type) { /* void */
     let sroom;
 
     if ((sroom = pick_room(FALSE)) != null) {
@@ -253,9 +220,7 @@ mkzoo(type)
     }
 }
 
-function /* void */
-mk_zoo_thronemon(x, y)
-{
+function mk_zoo_thronemon(x, y) { /* void */
     let i = rnd(level_difficulty());
     let pm = (i > 9) ? PM_OGRE_TYRANT
         : (i > 5) ? PM_ELVEN_MONARCH
@@ -268,19 +233,18 @@ mk_zoo_thronemon(x, y)
         mon.mpeaceful = 0;
         set_malign(mon);
         /* Give him a sceptre to pound in judgment */
-        void mongets(mon, MACE);
+        mongets(mon, MACE);
     }
 }
 
-export function /* void */
-fill_zoo(sroom)
-{ const $frame = stack_frame(); try { let $goto = null; var mm = stack_struct(struct_nhcoord);
+export function fill_zoo(sroom) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var mm = stack_struct(struct_nhcoord);
     var mon;
     var sx, sy, i;
     var sh, goldlim = 0, type = sroom.rtype;
     var tx = 0, ty = 0;
-    var rmno = int(((ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET));
-    
+    var rmno = int((ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET));
 
     /* Note: This doesn't check needfill; it assumes the caller has already
        done that. */
@@ -295,7 +259,7 @@ fill_zoo(sroom)
         }
         i = 100;
         do { /* don't place throne on top of stairs */
-            void somexyspace(sroom, mm);
+            somexyspace(sroom, mm);
             tx = mm.x;
             ty = mm.y;
         } while (occupied(tx, ty) && --i > 0);
@@ -308,7 +272,7 @@ fill_zoo(sroom)
         if (sroom.irregular) {
             /* center might not be valid, so put queen elsewhere */
             if ((levl()[tx][ty].roomno) != rmno || levl()[tx][ty].edge) {
-                void somexyspace(sroom, mm);
+                somexyspace(sroom, mm);
                 tx = mm.x;
                 ty = mm.y;
             }
@@ -378,25 +342,25 @@ fill_zoo(sroom)
                 if (i >= goldlim)
                     i = 5 * level_difficulty();
                 goldlim -= i;
-                void mkgold(rn1(i, 10), sx, sy);
+                mkgold(rn1(i, 10), sx, sy);
                 break;
             case MORGUE:
                 if (!rn2(5))
-                    void mk_tt_object(CORPSE, sx, sy);
+                    mk_tt_object(CORPSE, sx, sy);
                 if (!rn2(10)) /* lots of treasure buried with dead */
-                    void mksobj_at((rn2(3)) ? LARGE_BOX : CHEST, sx, sy,
+                    mksobj_at(rn2(3) ? LARGE_BOX : CHEST, sx, sy,
                                      TRUE, FALSE);
                 if (!rn2(5))
                     make_grave(sx, sy, 0);
                 break;
             case BEEHIVE:
                 if (!rn2(3))
-                    void mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, TRUE,
+                    mksobj_at(LUMP_OF_ROYAL_JELLY, sx, sy, TRUE,
                                      FALSE);
                 break;
             case BARRACKS:
                 if (!rn2(20)) /* the payroll and some loot */
-                    void mksobj_at((rn2(3)) ? LARGE_BOX : CHEST, sx, sy,
+                    mksobj_at(rn2(3) ? LARGE_BOX : CHEST, sx, sy,
                                      TRUE, FALSE);
                 break;
             case COCKNEST:
@@ -405,7 +369,7 @@ fill_zoo(sroom)
 
                     if (sobj) {
                         for (i = rn2(5); i; i--)
-                            void add_to_container(
+                            add_to_container(
                                 sobj, mkobj(RANDOM_CLASS, FALSE));
                         sobj.owt = unsigned(weight(sobj));
                     }
@@ -413,7 +377,7 @@ fill_zoo(sroom)
                 break;
             case ANTHOLE:
                 if (!rn2(3))
-                    void mkobj_at(FOOD_CLASS, sx, sy, FALSE);
+                    mkobj_at(FOOD_CLASS, sx, sy, FALSE);
                 break;
             }
         }
@@ -421,9 +385,9 @@ fill_zoo(sroom)
     case COURT: {
         var chest, gold;
         levl()[tx][ty].typ = THRONE;
-        void somexyspace(sroom, mm);
+        somexyspace(sroom, mm);
         gold = mksobj(GOLD_PIECE, TRUE, FALSE);
-        gold.quan = ((rn2(50 * level_difficulty()) + (10)));
+        gold.quan = (rn2(50 * level_difficulty()) + (10));
         gold.owt = unsigned(weight(gold));
         /* the royal coffers */
         chest = mksobj_at(CHEST, mm.x, mm.y, TRUE, FALSE);
@@ -449,15 +413,15 @@ fill_zoo(sroom)
         svl.level.flags.has_beehive = 1;
         break;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* make a swarm of undead around mm */
-export function /* void */
-mkundead(
+export function mkundead(
     mm,
     revive_corpses,
-    mm_flags)
-{ const $frame = stack_frame(); try {
+    mm_flags) { /* void */
+    const $frame = stack_frame(); try {
     let cnt = Math.trunc((level_difficulty() + 1) / 10) + rnd(5);
     let mdat;
     let otmp;
@@ -469,14 +433,13 @@ mkundead(
             && (!revive_corpses
                 || !(otmp = sobj_at(CORPSE, cc.x, cc.y))
                 || !revive(otmp, FALSE)))
-            void makemon(mdat, cc.x, cc.y, unsigned(mm_flags));
+            makemon(mdat, cc.x, cc.y, unsigned(mm_flags));
     }
     svl.level.flags.graveyard = TRUE; /* reduced chance for undead corpse */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct permonst * */
-morguemon()
-{
+function morguemon() { /* struct permonst * */
     let i = rn2(100), hd = rn2(level_difficulty());
 
     if (hd > 10 && i < 10) {
@@ -498,9 +461,7 @@ morguemon()
                                 : mkclass(S_ZOMBIE, 0));
 }
 
-export function /* struct permonst * */
-antholemon()
-{
+export function antholemon() { /* struct permonst * */
     let mtyp, indx, trycnt = 0;
 
     /* casts are for dealing with time_t */
@@ -526,9 +487,7 @@ antholemon()
                                              : mons[mtyp]);
 }
 
-function /* void */
-mkswamp() /* Michiel Huisjes & Fred de Wilde */
-{
+function mkswamp() { /* void */ /* Michiel Huisjes & Fred de Wilde */
     let sroom;
     let i, eelct = 0;
     let sx, sy;
@@ -540,7 +499,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
             || has_dnstairs(sroom))
             continue;
 
-        rmno = (ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET;
+        rmno = ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET;
 
         /* satisfied; make a swamp */
         sroom.rtype = SWAMP;
@@ -556,7 +515,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
                         levl()[sx][sy].typ = POOL;
                         if (!eelct || !rn2(4)) {
                             /* mkclass() won't do, as we might get kraken */
-                            void makemon(rn2(5)
+                            makemon(rn2(5)
                                               ? mons[PM_GIANT_EEL]
                                               : rn2(2)
                                                  ? mons[PM_PIRANHA]
@@ -565,7 +524,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
                             eelct++;
                         }
                     } else if (!rn2(4)) /* swamps tend to be moldy */
-                        void makemon(mkclass(S_FUNGUS, 0), sx, sy,
+                        makemon(mkclass(S_FUNGUS, 0), sx, sy,
                                        NO_MM_FLAGS);
                 }
             }
@@ -573,9 +532,7 @@ mkswamp() /* Michiel Huisjes & Fred de Wilde */
     }
 }
 
-function /* coord * */
-shrine_pos(roomno)
-{
+function shrine_pos(roomno) { /* coord * */
     let buf = static_struct("shrine_pos.buf", struct_nhcoord);
     let delta;
     let troom = elt(svr.rooms, roomno - ROOMOFFSET);
@@ -594,9 +551,7 @@ shrine_pos(roomno)
     return buf;
 }
 
-function /* void */
-mktemple()
-{
+function mktemple() { /* void */
     let sroom;
     let shrine_spot;
     let lev;
@@ -610,7 +565,7 @@ mktemple()
      * In temples, shrines are blessed altars
      * located in the center of the room
      */
-    shrine_spot = shrine_pos(int(((ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET)));
+    shrine_spot = shrine_pos(int((ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET)));
     lev = levl()[shrine_spot.x][shrine_spot.y];
     lev.typ = ALTAR;
     lev.flags = induced_align(80);
@@ -619,9 +574,7 @@ mktemple()
     svl.level.flags.has_temple = 1;
 }
 
-export function /* boolean */
-nexttodoor(sx, sy)
-{
+export function nexttodoor(sx, sy) { /* boolean */
     let dx, dy;
     let lev;
 
@@ -636,9 +589,7 @@ nexttodoor(sx, sy)
     return FALSE;
 }
 
-export function /* boolean */
-has_dnstairs(sroom)
-{
+export function has_dnstairs(sroom) { /* boolean */
     let stway = gs.stairs;
 
     while (stway) {
@@ -649,9 +600,7 @@ has_dnstairs(sroom)
     return FALSE;
 }
 
-export function /* boolean */
-has_upstairs(sroom)
-{
+export function has_upstairs(sroom) { /* boolean */
     let stway = gs.stairs;
 
     while (stway) {
@@ -662,24 +611,18 @@ has_upstairs(sroom)
     return FALSE;
 }
 
-export function /* int */
-somex(croom)
-{
+export function somex(croom) { /* int */
     return rn1(croom.hx - croom.lx + 1, croom.lx);
 }
 
-export function /* int */
-somey(croom)
-{
+export function somey(croom) { /* int */
     return rn1(croom.hy - croom.ly + 1, croom.ly);
 }
 
-export function /* boolean */
-inside_room(croom, x, y)
-{
+export function inside_room(croom, x, y) { /* boolean */
     if (croom.irregular) {
-        let i = int(((ptr_diff(croom, svr.rooms[0])) + ROOMOFFSET));
-        return (+(!levl()[x][y].edge && (levl()[x][y].roomno) == i));
+        let i = int((ptr_diff(croom, svr.rooms[0]) + ROOMOFFSET));
+        return +(!levl()[x][y].edge && (levl()[x][y].roomno) == i);
     }
 
     return (+(x >= croom.lx - 1 && x <= croom.hx + 1
@@ -690,14 +633,12 @@ inside_room(croom, x, y)
    returns TRUE if any such space found.
    can return a non-accessible location, eg. inside a wall
    if a themed room is not irregular, but has some non-room terrain */
-export function /* boolean */
-somexy(croom, c)
-{
+export function somexy(croom, c) { /* boolean */
     var try_cnt = 0;
     var i;
 
     if (croom.irregular) {
-        i = int(((ptr_diff(croom, svr.rooms[0])) + ROOMOFFSET));
+        i = int((ptr_diff(croom, svr.rooms[0]) + ROOMOFFSET));
 
         while (try_cnt++ < 100) {
             c.x = somex(croom);
@@ -740,17 +681,15 @@ somexy(croom, c)
 }
 
 /* like somexy(), but returns an accessible location */
-export function /* boolean */
-somexyspace(croom, c)
-{
+export function somexyspace(croom, c) { /* boolean */
     let trycnt = 0;
     let okay;
 
     do {
-        okay = ((somexy(croom, c) && isok(c.x, c.y) && !occupied(c.x, c.y)
+        okay = (somexy(croom, c) && isok(c.x, c.y) && !occupied(c.x, c.y)
             && (levl()[c.x][c.y].typ == ROOM
                 || levl()[c.x][c.y].typ == CORR
-                || levl()[c.x][c.y].typ == ICE)) ? 1 : 0);
+                || levl()[c.x][c.y].typ == ICE) ? 1 : 0);
     } while (trycnt++ < 100 && !okay);
     return okay;
 }
@@ -761,9 +700,7 @@ somexyspace(croom, c)
  *              - ANY_SHOP
  *              - ANY_TYPE
  */
-export function /* struct mkroom * */
-search_special(type)
-{
+export function search_special(type) { /* struct mkroom * */
     let croom;
 
     for (croom = ptr_add(svr.rooms[0], 0); croom.hx >= 0; croom = ptr_add(croom, 1))
@@ -779,9 +716,7 @@ search_special(type)
     return null;
 }
 
-export function /* struct permonst * */
-courtmon()
-{
+export function courtmon() { /* struct permonst * */
     let i = rn2(60) + rn2(3 * level_difficulty());
 
     if (i > 100)
@@ -813,9 +748,7 @@ courtmon()
                   { pm: PM_CAPTAIN, prob: 1 } ]);
 
 /* return soldier types. */
-function /* struct permonst * */
-squadmon()
-{
+function squadmon() { /* struct permonst * */
     var sel_prob, i, cpro, mndx;
 
     sel_prob = rnd(80 + level_difficulty());
@@ -840,9 +773,7 @@ squadmon()
  * save_room : A recursive function that saves a room and its subrooms
  * (if any).
  */
-function /* void */
-save_room(nhfp, r)
-{
+function save_room(nhfp, r) { /* void */
     let i;
 
     /*
@@ -859,9 +790,7 @@ save_room(nhfp, r)
 /*
  * save_rooms : Save all the rooms on disk!
  */
-export function /* void */
-save_rooms(nhfp)
-{
+export function save_rooms(nhfp) { /* void */
     let i;
 
     /* First, write the number of rooms */
@@ -870,10 +799,7 @@ save_rooms(nhfp)
         save_room(nhfp, svr.rooms[i]);
 }
 
-
-function /* void */
-rest_room(nhfp, r)
-{
+function rest_room(nhfp, r) { /* void */
     let i;
 
     Sfi_mkroom(nhfp, r, _("room-mkroom"));
@@ -889,9 +815,7 @@ rest_room(nhfp, r)
  * rest_rooms : That's for restoring rooms. Read the rooms structure from
  * the disk.
  */
-export function /* void */
-rest_rooms(nhfp)
-{
+export function rest_rooms(nhfp) { /* void */
     let i;
 
     sfi_int(nhfp, ref_of(svn, "nroom"), _("room-nroom"));
@@ -905,12 +829,9 @@ rest_rooms(nhfp)
     ptr_add(gs.subrooms, gn.nsubroom).hx = -1;
 }
 
-
 /* convert a display symbol for terrain into topology type;
    used for remembered terrain when mimics pose as furniture */
-export function /* int */
-cmap_to_type(sym)
-{
+export function cmap_to_type(sym) { /* int */
     let typ = STONE; /* catchall */
 
     switch (sym) {
@@ -1046,9 +967,7 @@ cmap_to_type(sym)
  * Note that the invalidity of the shape derives from the position of its door
  * already being chosen. It's quite possible that if the door were somewhere
  * else on the perimeter of this room, it would work fine as a shop.*/
-function /* boolean */
-invalid_shop_shape(sroom)
-{
+function invalid_shop_shape(sroom) { /* boolean */
     let x, y;
     let doorx = ptr_add(svd.doors, sroom.fdoor).x;
     let doory = ptr_add(svd.doors, sroom.fdoor).y;
@@ -1095,228 +1014,71 @@ invalid_shop_shape(sroom)
     return FALSE;
 }
 
-
 /*mkroom.c*/
-import { AM_SHRINE } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
+
+import { AM_SHRINE, A_NONE } from "./align.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_GNOME } from "./defsym.h.js";
-import { S_KOBOLD } from "./defsym.h.js";
-import { S_ORC } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_air } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_bars } from "./defsym.h.js";
-import { S_blcorn } from "./defsym.h.js";
-import { S_brcorn } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_corr } from "./defsym.h.js";
-import { S_crwall } from "./defsym.h.js";
-import { S_darkroom } from "./defsym.h.js";
-import { S_dnladder } from "./defsym.h.js";
-import { S_dnstair } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_hcdbridge } from "./defsym.h.js";
-import { S_hcdoor } from "./defsym.h.js";
-import { S_hodbridge } from "./defsym.h.js";
-import { S_hodoor } from "./defsym.h.js";
-import { S_hwall } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_lava } from "./defsym.h.js";
-import { S_lavawall } from "./defsym.h.js";
-import { S_litcorr } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_pool } from "./defsym.h.js";
-import { S_room } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_tdwall } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
-import { S_tlcorn } from "./defsym.h.js";
-import { S_tlwall } from "./defsym.h.js";
-import { S_trcorn } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
-import { S_trwall } from "./defsym.h.js";
-import { S_tuwall } from "./defsym.h.js";
-import { S_upladder } from "./defsym.h.js";
-import { S_upstair } from "./defsym.h.js";
-import { S_vcdbridge } from "./defsym.h.js";
-import { S_vcdoor } from "./defsym.h.js";
-import { S_vodbridge } from "./defsym.h.js";
-import { S_vodoor } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
+import {
+    FOOD_CLASS, RANDOM_CLASS, SPBOOK_CLASS, S_CENTAUR, S_DEMON, S_DRAGON, S_FUNGUS, S_GIANT,
+    S_GNOME, S_KOBOLD, S_ORC, S_TROLL, S_VAMPIRE, S_ZOMBIE, S_air, S_altar, S_bars, S_blcorn,
+    S_brcorn, S_cloud, S_corr, S_crwall, S_darkroom, S_dnladder, S_dnstair, S_fountain, S_grave,
+    S_hcdbridge, S_hcdoor, S_hodbridge, S_hodoor, S_hwall, S_ice, S_lava, S_lavawall, S_litcorr,
+    S_ndoor, S_pool, S_room, S_sink, S_stone, S_tdwall, S_throne, S_tlcorn, S_tlwall, S_trcorn,
+    S_tree, S_trwall, S_tuwall, S_upladder, S_upstair, S_vcdbridge, S_vcdoor, S_vodbridge, S_vodoor,
+    S_vwall, S_water, WAND_CLASS,
+} from "./defsym.h.js";
+import { In_endgame, Inhell } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { MM_ASLEEP } from "./hack.h.js";
-import { MM_NOGRP } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { ANTHOLE } from "./mkroom.h.js";
-import { ANY_SHOP } from "./mkroom.h.js";
-import { ANY_TYPE } from "./mkroom.h.js";
-import { BARRACKS } from "./mkroom.h.js";
-import { BEEHIVE } from "./mkroom.h.js";
-import { COCKNEST } from "./mkroom.h.js";
-import { COURT } from "./mkroom.h.js";
-import { FILL_NORMAL } from "./mkroom.h.js";
-import { FODDERSHOP } from "./mkroom.h.js";
-import { LEPREHALL } from "./mkroom.h.js";
-import { MORGUE } from "./mkroom.h.js";
-import { OROOM } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { SHOPBASE } from "./mkroom.h.js";
-import { SWAMP } from "./mkroom.h.js";
-import { TEMPLE } from "./mkroom.h.js";
-import { ZOO } from "./mkroom.h.js";
+import { FALSE, TRUE } from "./global.h.js";
+import { MM_ASLEEP, MM_NOGRP, NO_MM_FLAGS } from "./hack.h.js";
+import { ROLL_FROM, max, min, rn1 } from "./hack.h.macros.js";
+import {
+    ANTHOLE, ANY_SHOP, ANY_TYPE, BARRACKS, BEEHIVE, COCKNEST, COURT, FILL_NORMAL, FODDERSHOP,
+    LEPREHALL, MORGUE, OROOM, ROOMOFFSET, SHOPBASE, SWAMP, TEMPLE, ZOO,
+} from "./mkroom.h.js";
 import { G_GONE } from "./monflag.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_BUGBEAR } from "./monsters.h.js";
-import { PM_CAPTAIN } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_DWARF_RULER } from "./monsters.h.js";
-import { PM_ELECTRIC_EEL } from "./monsters.h.js";
-import { PM_ELVEN_MONARCH } from "./monsters.h.js";
-import { PM_FIRE_ANT } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_GIANT_ANT } from "./monsters.h.js";
-import { PM_GIANT_EEL } from "./monsters.h.js";
-import { PM_GNOME_RULER } from "./monsters.h.js";
-import { PM_HOBGOBLIN } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_LEPRECHAUN } from "./monsters.h.js";
-import { PM_LIEUTENANT } from "./monsters.h.js";
-import { PM_OGRE_TYRANT } from "./monsters.h.js";
-import { PM_PIRANHA } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_SERGEANT } from "./monsters.h.js";
-import { PM_SOLDIER } from "./monsters.h.js";
-import { PM_SOLDIER_ANT } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { AIR } from "./rm.h.js";
-import { ALTAR } from "./rm.h.js";
-import { BLCORNER } from "./rm.h.js";
-import { BRCORNER } from "./rm.h.js";
-import { CLOUD } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { CROSSWALL } from "./rm.h.js";
-import { DBWALL } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { GRAVE } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SINK } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { TDWALL } from "./rm.h.js";
-import { THRONE } from "./rm.h.js";
-import { TLCORNER } from "./rm.h.js";
-import { TLWALL } from "./rm.h.js";
-import { TRCORNER } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { TRWALL } from "./rm.h.js";
-import { TUWALL } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { SPACE_POS } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_mkroom } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
-import { Sfo_mkroom } from "./savefile.h.macros.js";
+import {
+    NON_PM, PM_BUGBEAR, PM_CAPTAIN, PM_COCKATRICE, PM_DWARF_RULER, PM_ELECTRIC_EEL,
+    PM_ELVEN_MONARCH, PM_FIRE_ANT, PM_GHOST, PM_GIANT_ANT, PM_GIANT_EEL, PM_GNOME_RULER,
+    PM_HOBGOBLIN, PM_KILLER_BEE, PM_LEPRECHAUN, PM_LIEUTENANT, PM_OGRE_TYRANT, PM_PIRANHA,
+    PM_QUEEN_BEE, PM_SERGEANT, PM_SOLDIER, PM_SOLDIER_ANT, PM_WRAITH,
+} from "./monsters.h.js";
+import {
+    CHEST, CORPSE, GOLD_PIECE, LARGE_BOX, LUMP_OF_ROYAL_JELLY, MACE, STATUE,
+} from "./objects.h.js";
+import {
+    AIR, ALTAR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, DOOR, DRAWBRIDGE_DOWN, FOUNTAIN,
+    GRAVE, HWALL, ICE, IRONBARS, LADDER, LAVAPOOL, LAVAWALL, POOL, ROOM, SDOOR, SINK, STAIRS, STONE,
+    TDWALL, THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER,
+} from "./rm.h.js";
+import {
+    IS_DOOR, IS_ROOM, IS_THRONE, IS_WALL, MON_AT, OBJ_AT, SPACE_POS, levl,
+} from "./rm.h.macros.js";
+import { Sfi_mkroom, Sfo_int, Sfo_mkroom } from "./savefile.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { int, ord, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { stack_struct, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { elt, ptr_add, ptr_diff, ref_of, struct } from "../rt/struct.js";
 import { isok } from "./cmd.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
+import { gn, gs, svd, svl, svm, svn, svr, u } from "./decl.js";
 import { def_oc_syms } from "./drawing.js";
-import { induced_align } from "./dungeon.js";
-import { level_difficulty } from "./dungeon.js";
-import { del_engr_at } from "./engrave.js";
-import { make_grave } from "./engrave.js";
-import { dist2 } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
+import { induced_align, level_difficulty } from "./dungeon.js";
+import { del_engr_at, make_grave } from "./engrave.js";
+import { dist2, distmin } from "./hacklib.js";
 import { sobj_at } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
-import { mongets } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { makemon, mkclass, mongets, set_malign } from "./makemon.js";
 import { ndemon } from "./minion.js";
-import { occupied } from "./mklev.js";
-import { topologize } from "./mklev.js";
-import { add_to_container } from "./mkobj.js";
-import { mk_tt_object } from "./mkobj.js";
-import { mkgold } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mkobj_at } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import { occupied, topologize } from "./mklev.js";
+import {
+    add_to_container, mk_tt_object, mkgold, mkobj, mkobj_at, mksobj, mksobj_at, weight,
+} from "./mkobj.js";
 import { mons } from "./monst.js";
 import { nh_getenv } from "./options.js";
 import { impossible } from "./pline.js";
 import { priestini } from "./priest.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { sfi_int } from "./sfbase.js";
 import { shtypes } from "./shknam.js";
 import { enexto } from "./teleport.js";

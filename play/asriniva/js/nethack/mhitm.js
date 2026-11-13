@@ -1,16 +1,22 @@
 // Whole original MHITM owner on one live native-view context.
 import abi from './mhitm-abi.json' with{type:'json'};
-import * as source from '../ported/mhitm.js';
-import{createMhitmEnvironment}from'./bindings/mhitm.js';
-import{withCEnvironment}from'../c-runtime/context.js';
+import {createNativeMonsterCombat} from './native/mhitm.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {installNativeDependency,createNativeAbiCaster} from './native/execution.js';
+import{createMhitmEnvironment,prepareMhitmArguments}from'./bindings/mhitm.js';
+const owners=new WeakMap();
 export function enableMhitm(environment,layouts){
+ if(owners.has(environment))return owners.get(environment);
+ const nativeState=nativeStateFor(environment);
  const{services,memory,ctypes,transport}=environment,L=layouts.mhitm,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v);
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review MHITM ABI '+k);
- const resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n),local=Object.create(services);
- const scalar=(t,v)=>{t=ctypes.canonical(t);if(t==='void')return undefined;if(t.includes('*'))return text(v);if(t==='signed char'||t==='char')return transport.char(v);if(t==='unsigned char')return transport.uchar(v);if(t==='short')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int')return transport.uint(v);if(ctypes.size(t)===8)return t.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
+ const resolve=n=>nativeState.functions.get(n)??(environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n)),local=Object.create(services);
+ const cast=createNativeAbiCaster(ctypes,transport,text),scalar=(t,v)=>cast(t)(v);
  for(const[name,{target,prototype}]of Object.entries(abi.calls)){
   const m=prototype.match(/^(.+?)\s*\((.*)\)$/),types=m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void');
-  local[name]=(...args)=>scalar(m[1],resolve(target)(...args.map((v,i)=>scalar(types[i],v))));
+  const arguments_=types.map(cast),result=cast(m[1]),legacy=(...args)=>result(resolve(target)(...args.map((v,i)=>arguments_[i](v))));
+  const strings=types.flatMap((type,i)=>/\bchar\s*\*/.test(type)?[i]:[]),prepareNative=strings.length?args=>{for(const i of strings)if(typeof args[i]==='string')args[i]=text(args[i]);return args;}:undefined;
+  installNativeDependency(local,name,target,nativeState,legacy,prepareNative);
  }
  const nested=(type,p,name)=>ctypes.locate(type,p,name).at;
  const bit=(p,i,v)=>{const n=abi.bits[i];if(!n)throw new Error('Unknown MHITM monster bit '+i);return v===undefined?ctypes.getField('struct monst',address(p),n,'unsigned int'):ctypes.setField('struct monst',address(p),n,'unsigned int',transport.uint(v));};
@@ -26,18 +32,15 @@ export function enableMhitm(environment,layouts){
  for(const[name,max]of[['pline',6],['pline_mon',2],['You',2],['You_hear',2],['You_feel',1],['Your',0]])local[name]=(...args)=>{const mon=name==='pline_mon'?args.shift():undefined,fmt=args.shift();if(args.length>max)throw new Error('Review MHITM '+name+' arity');return resolve(name)(...(mon===undefined?[]:[address(mon)]),text(fmt),...args.map(text));};
  for(const name of['rn2','rnd','d'])local[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(text('mhitm.c'),transport.int(line),text(caller));return resolve(name)(...args.map(transport.int));};
  for(const n of abi.globals)Object.defineProperty(local,n,{value:undefined,writable:true,configurable:true});
- const context=createMhitmEnvironment(local,L);
+ local.nativeOwner=nativeState;
+ const context=createMhitmEnvironment(local,L),native=createNativeMonsterCombat(context);
  const prepare=(name,args)=>{
-  if(name!=='attk_protection')args[0]=context.monster(address(args[0]));
-  if(['pre_mm_attack','missmm','mdisplacem','mattackm','failed_grab','hitmm','gazemm','engulf_target','gulpmm','explmm','mdamagem','mon_poly','mswingsm','passivemm'].includes(name))args[1]=context.monster(address(args[1]));
-  if(name==='noises')args[1]=context.attack(address(args[1]));
-  if(['missmm','failed_grab','hitmm','gazemm','gulpmm','explmm','mdamagem'].includes(name))args[2]=context.attack(address(args[2]));
-  if(['hitmm','mdamagem'].includes(name))args[3]=context.object(address(args[3]));
-  if(name==='rustm')args[1]=context.object(address(args[1]));if(name==='mswingsm')args[2]=context.object(address(args[2]));if(name==='passivemm')args[4]=context.object(address(args[4]));
+  args=prepareMhitmArguments(context,name,args);
   const proto=abi.public[name];if(proto){const types=proto.match(/\((.*)\)$/)[1].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void');args=args.map((v,i)=>ctypes.canonical(types[i]).includes('*')?v:scalar(types[i],v));}
   return args;
  };
- const call=(name,...args)=>{if(typeof source[name]!=='function')throw new Error('Unknown MHITM source function '+name);return transport.scoped(()=>withCEnvironment(context,source[name],...prepare(name,args)));};
- environment.register('mhitm',Object.fromEntries(Object.keys(abi.public).map(n=>[n,(...args)=>call(n,...args)])),local);
- return{context,services:local,exports:Object.keys(abi.public),call,limitation:'Whole original MHITM source owner connected; actual combat, status, equipment, special and death branches require real foreign owners and focused C acceptance.'};
+ const call=(name,...args)=>{if(typeof native[name]!=='function')throw new Error('Unknown MHITM native function '+name);const saved=nativeState.depth?undefined:transport.stackSave();nativeState.enter();try{return native[name](...prepare(name,args));}finally{try{nativeState.leave();}finally{if(saved!==undefined)transport.stackRestore(saved);}}};
+ environment.register('mhitm',Object.fromEntries(Object.keys(abi.public).map(n=>{let started=false;const invoke=(...args)=>{if(!started){environment.startModule('mhitm');started=true;}return call(n,...args);};invoke.nativeState=nativeState;invoke.nativeDirect=true;nativeState.functions.set(n,invoke);return[n,invoke];})),local);
+ const owner={context,services:local,native,exports:Object.keys(abi.public),call,limitation:'Native monster combat shares canonical actors and source policy; finite C matrices and recording acceptance are reported separately.'};
+ owners.set(environment,owner);return owner;
 }

@@ -1,11 +1,11 @@
-export default "\n" + // -- NetHack mines minetn-4.lua	$NHDT-Date: 1652196031 2022/05/10 15:20:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989-95 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991-95 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- Minetown variant 4 by Kelly Bailey
-"\n" + // -- "College Town"
-`
+export default String.raw`-- NetHack mines minetn-4.lua	$NHDT-Date: 1652196031 2022/05/10 15:20:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989-95 by Jean-Christophe Collet
+--	Copyright (c) 1991-95 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- Minetown variant 4 by Kelly Bailey
+-- "College Town"
+
 des.room({ type = "ordinary", lit=1, x=3,y=3,
            xalign="center", yalign="center", w=30, h=15,
            contents = function()

@@ -3,37 +3,17 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-newegd(mtmp)
-{
+export function newegd(mtmp) { /* void */
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EGD(mtmp)) {
         ((mtmp).mextra.egd) = view_of(struct_egd, addr_of(alloc(sizeof(struct_egd))));
-        void memset(addr_of(EGD(mtmp)), 0, sizeof(struct_egd));
+        memset(addr_of(EGD(mtmp)), 0, sizeof(struct_egd));
         EGD(mtmp).parentmid = mtmp.m_id;
     }
 }
 
-export function /* void */
-free_egd(mtmp)
-{
+export function free_egd(mtmp) { /* void */
     if (mtmp.mextra && EGD(mtmp)) {
         free(addr_of(EGD(mtmp)));
         ((mtmp).mextra.egd) = null;
@@ -44,9 +24,7 @@ free_egd(mtmp)
 /* try to remove the temporary corridor (from vault to rest of map) being
    maintained by guard 'grd'; if guard is still in it, removal will fail,
    to be tried again later */
-function /* boolean */
-clear_fcorr(grd, forceshow)
-{
+function clear_fcorr(grd, forceshow) { /* boolean */
     let fcx, fcy, fcbeg;
     let mtmp;
     let sawcorridor = FALSE,
@@ -119,9 +97,7 @@ clear_fcorr(grd, forceshow)
    spots to unlit; if player used scroll/wand/spell of light while inside
    the corridor, we don't want the light to reappear if/when a new tunnel
    goes through the same area */
-function /* void */
-blackout(x, y)
-{
+function blackout(x, y) { /* void */
     let lev;
     let i, j;
 
@@ -140,9 +116,7 @@ blackout(x, y)
         }
 }
 
-function /* void */
-restfakecorr(grd)
-{
+function restfakecorr(grd) { /* void */
     /* it seems you left the corridor - let the guard disappear */
     if (clear_fcorr(grd, FALSE)) {
         grd.isgd = 0; /* dmonsfree() should delete this mon */
@@ -151,9 +125,7 @@ restfakecorr(grd)
 }
 
 /* move guard--dead to alive--to <0,0> until temporary corridor is removed */
-function /* void */
-parkguard(grd)
-{
+function parkguard(grd) { /* void */
     /* either guard is dead or will now be treated as if so;
        monster traversal loops should skip it */
     if (grd == svc.context.polearm.hitmon)
@@ -171,9 +143,7 @@ parkguard(grd)
 }
 
 /* called in mon.c */
-export function /* boolean */
-grddead(grd)
-{
+export function grddead(grd) { /* boolean */
     let dispose = clear_fcorr(grd, TRUE);
 
     if (!dispose) {
@@ -188,9 +158,7 @@ grddead(grd)
     return dispose;
 }
 
-function /* boolean */
-in_fcorridor(grd, x, y)
-{
+function in_fcorridor(grd, x, y) { /* boolean */
     let fci;
     let egrd = EGD(grd);
 
@@ -200,9 +168,7 @@ in_fcorridor(grd, x, y)
     return FALSE;
 }
 
-export function /* struct monst * */
-findgd()
-{
+export function findgd() { /* struct monst * */
     let mtmp, mprev;
 
     /* this might find a guard parked at <0,0> since it'll be on fmon list */
@@ -233,16 +199,12 @@ findgd()
     return null;
 }
 
-export function /* void */
-vault_summon_gd()
-{
+export function vault_summon_gd() { /* void */
     if (vault_occupied(u.urooms) && !findgd())
         u.uinvault = (VAULT_GUARD_TIME - 1);
 }
 
-export function /* char */
-vault_occupied(array)
-{
+export function vault_occupied(array) { /* char */
     let ptr;
 
     for (ptr = array; chars[ptr]; ptr++)
@@ -252,9 +214,7 @@ vault_occupied(array)
 }
 
 /* hero has teleported out of vault while a guard is active */
-export function /* void */
-uleftvault(grd)
-{
+export function uleftvault(grd) { /* void */
     /* only called if caller has checked vault_occupied() and findgd() */
     if (!grd || !grd.isgd || DEADMONSTER(grd)) {
         impossible(_("escaping vault without guard?"));
@@ -273,13 +233,11 @@ uleftvault(grd)
            guard an extra move to deliver message(s) and to teleport
            out of and remove that corridor */
         if (!in_fcorridor(grd, u.ux, u.uy))
-            void gd_move(grd);
+            gd_move(grd);
     }
 }
 
-function /* boolean */
-find_guard_dest(guard, rx, ry)
-{
+function find_guard_dest(guard, rx, ry) { /* boolean */
     var x, y, dd, lx, ly;
 
     for (dd = 2; (dd < ROWNO || dd < COLNO); dd++) {
@@ -313,9 +271,8 @@ find_guard_dest(guard, rx, ry)
     return FALSE;
 }
 
-export function /* void */
-invault()
-{ const $frame = stack_frame(); try {
+export function invault() { /* void */
+    const $frame = stack_frame(); try {
     let guard;
     let otmp;
     let spotted;
@@ -334,7 +291,7 @@ invault()
         (vgdeathcount < 50 && !rn2(vgdeathcount * vgdeathcount)))
         ++u.uinvault;
     if (u.uinvault < VAULT_GUARD_TIME
-        || (u.uinvault % (Math.trunc(VAULT_GUARD_TIME / 2))) != 0)
+        || (u.uinvault % Math.trunc(VAULT_GUARD_TIME / 2)) != 0)
         return;
 
     guard = findgd();
@@ -437,7 +394,7 @@ invault()
             } while (otmp);
             /* You_hear() will handle Deaf/!Deaf */
             func = !Blind() ? You_see : You_hear;
-            (func)(_("%s shatter."),
+            func(_("%s shatter."),
                     (bcnt == 1) ? an(bname) : makeplural(bname));
         }
         spotted = canspotmon(guard);
@@ -501,7 +458,7 @@ invault()
         do {
             getlin(Deaf() ? _("You are required to supply your name. -")
                         : _("\"Hello stranger, who are you?\" -"), buf);
-            void mungspaces(buf);
+            mungspaces(buf);
         } while (!chars[buf + 0] && --trycount > 0);
 
         if (u.ualign.type == A_LAWFUL
@@ -510,8 +467,8 @@ invault()
             adjalign(-1); /* Liar! */
         }
 
-        if (!strcmpi(buf, _("Croesus")) || !strcmpi(buf, _("Kroisos"))
-            || !strcmpi(buf, _("Creosote"))) { /* Discworld */
+        if (!strncmpi((buf), _(("Croesus")), -1) || !strncmpi((buf), _(("Kroisos")), -1)
+            || !strncmpi((buf), _(("Creosote")), -1)) { /* Discworld */
             if (!svm.mvitals[PM_CROESUS].died) {
                 if (Deaf()) {
                     if (!Blind())
@@ -536,14 +493,14 @@ invault()
                 /* don't want guard to waste next turn wielding a weapon */
                 if (!MON_WEP(guard)) {
                     guard.weapon_check = NEED_HTH_WEAPON;
-                    void mon_wield_item(guard);
+                    mon_wield_item(guard);
                 }
             }
             return;
         }
         if (Deaf()) {
             pline(_("%s doesn't %srecognize you."), noit_Monnam(guard),
-                    (Blind()) ? _("") : _("appear to "));
+                    Blind() ? _("") : _("appear to "));
         } else {
                ;
             verbalize(_("I don't know you."));
@@ -552,7 +509,7 @@ invault()
         if (!umoney && !hidden_gold(TRUE)) {
             if (Deaf()) {
                 pline(_("%s stomps%s."), noit_Monnam(guard),
-                      (Blind()) ? _("") : _(" and beckons"));
+                      Blind() ? _("") : _(" and beckons"));
             } else {
                    ;
                 verbalize(_("Please follow me."));
@@ -626,11 +583,10 @@ invault()
         EGD(guard).fcend = 1;
         EGD(guard).warncnt = 1;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-move_gold(gold, vroom)
-{
+function move_gold(gold, vroom) { /* void */
     let nx, ny;
 
     remove_object(gold);
@@ -642,9 +598,7 @@ move_gold(gold, vroom)
     newsym(nx, ny);
 }
 
-function /* void */
-wallify_vault(grd)
-{
+function wallify_vault(grd) { /* void */
     let typ;
     let x, y;
     let vlt = EGD(grd).vroom;
@@ -730,9 +684,7 @@ wallify_vault(grd)
     }
 }
 
-function /* void */
-gd_mv_monaway(grd, nx, ny)
-{
+function gd_mv_monaway(grd, nx, ny) { /* void */
     let mtmp = m_at(nx, ny);
 
     if (mtmp && mtmp != grd) {
@@ -748,9 +700,8 @@ gd_mv_monaway(grd, nx, ny)
 
 /* have guard pick gold off the floor, possibly moving to the gold's
    position before message and back to his current spot after */
-function /* void */
-gd_pick_corridor_gold(grd, goldx, goldy)
-{ const $frame = stack_frame(); try {
+function gd_pick_corridor_gold(grd, goldx, goldy) { /* void */
+    const $frame = stack_frame(); try {
     let gold;
     let newcc = stack_struct(struct_nhcoord), bestcc = stack_struct(struct_nhcoord);
     let gdelta, newdelta, bestdelta, tryct,
@@ -828,16 +779,14 @@ gd_pick_corridor_gold(grd, goldx, goldy)
         newsym(guardx, guardy);
     }
     return;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* return 1: guard moved, -2: died  */
-function /* int */
-gd_move_cleanup(
+function gd_move_cleanup(
     grd,
     semi_dead,
-    disappear_msg_seen)
-{
+    disappear_msg_seen) { /* int */
     let x, y;
     let see_guard;
 
@@ -865,9 +814,7 @@ gd_move_cleanup(
     return -2;
 }
 
-function /* void */
-gd_letknow(grd)
-{
+function gd_letknow(grd) { /* void */
     if (!cansee(grd.mx, grd.my) || !mon_visible(grd))
         You_hear(_("%s."),
                     m_carrying(grd, TIN_WHISTLE)
@@ -884,9 +831,9 @@ gd_letknow(grd)
 /*
  * return  1: guard moved,  0: guard didn't,  -1: let m_move do it,  -2: died
  */
-export function /* int */
-gd_move(grd)
-{ const $frame = stack_frame(); try { let $goto = null; var buf = stack_array(char, BUFSZ);
+export function gd_move(grd) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var buf = stack_array(char, BUFSZ);
     var x, y, nx, ny, m, n, ex, ey;
     var dx, dy, ggx = 0, ggy = 0, fci;
     var typ;
@@ -898,7 +845,7 @@ gd_move(grd)
             semi_dead = DEADMONSTER(grd),
             u_carry_gold = FALSE, newspot = FALSE;
 
-    if (!on_level((egrd.gdlevel), u.uz))
+    if (!on_level(egrd.gdlevel, u.uz))
         return -1;
 
     if (semi_dead || !grd.mx || egrd.gddone) {
@@ -916,15 +863,15 @@ gd_move(grd)
         if (!u_in_vault
             && (grd_in_vault || (in_fcorridor(grd, grd.mx, grd.my)
                                  && !in_fcorridor(grd, u.ux, u.uy)))) {
-            void rloc(grd, RLOC_MSG);
+            rloc(grd, RLOC_MSG);
             wallify_vault(grd);
             if (!in_fcorridor(grd, grd.mx, grd.my))
-                void clear_fcorr(grd, TRUE);
+                clear_fcorr(grd, TRUE);
             gd_letknow(grd);
             return -1;
         }
         if (!in_fcorridor(grd, grd.mx, grd.my))
-            void clear_fcorr(grd, TRUE);
+            clear_fcorr(grd, TRUE);
         return -1;
     }
     if (abs(egrd.ogx - grd.mx) > 1 || abs(egrd.ogy - grd.my) > 1)
@@ -942,13 +889,11 @@ gd_move(grd)
     }
 
     umoney = money_cnt(gi.invent);
-    u_carry_gold = (+(umoney > 0 || hidden_gold(TRUE) > 0));
+    u_carry_gold = +(umoney > 0 || hidden_gold(TRUE) > 0);
     if (egrd.fcend == 1) {
         if (u_in_vault && (u_carry_gold || um_dist(grd.mx, grd.my, 1))) {
             if (egrd.warncnt == 3 && !Deaf()) {
-                
-
-                void sprintf(buf, _("%sfollow me!"), u_carry_gold ? (!umoney ? _("drop that hidden gold and ")
+                sprintf(buf, _("%sfollow me!"), u_carry_gold ? (!umoney ? _("drop that hidden gold and ")
                                                 : _("drop that gold and "))
                                      : _(""))
 ;
@@ -986,7 +931,7 @@ gd_move(grd)
             if (u_carry_gold) { /* player teleported */
                 m = grd.mx;
                 n = grd.my;
-                void rloc(grd, RLOC_MSG);
+                rloc(grd, RLOC_MSG);
                 levl()[m][n].typ = egrd.fakecorr[0].ftyp;
                 levl()[m][n].flags = egrd.fakecorr[0].flags;
                 recalc_block_point(m, n); /* guard corridor goes away */
@@ -1198,12 +1143,12 @@ gd_move(grd)
         newsym(grd.mx, grd.my);
     restfakecorr(grd);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Routine when dying or quitting with a vault guard around */
-export function /* void */
-paygd(silently)
-{ const $frame = stack_frame(); try {
+export function paygd(silently) { /* void */
+    const $frame = stack_frame(); try {
     var grd = findgd();
     var umoney = money_cnt(gi.invent);
     var coins, nextcoins;
@@ -1228,7 +1173,7 @@ paygd(silently)
             pline(_("%s remits your gold to the vault."), Monnam(grd));
         gdx = svr.rooms[EGD(grd).vroom].lx + rn2(2);
         gdy = svr.rooms[EGD(grd).vroom].ly + rn2(2);
-        void sprintf(buf, _("To Croesus: here's the gold recovered from %s the %s."), svp.plname, pmname(mons[u.umonster], flags.female ? FEMALE : MALE))
+        sprintf(buf, _("To Croesus: here's the gold recovered from %s the %s."), svp.plname, pmname(mons[u.umonster], flags.female ? FEMALE : MALE))
 
 ;
         make_grave(gdx, gdy, buf);
@@ -1244,7 +1189,8 @@ paygd(silently)
  }
     mongone(grd);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * amount of gold in carried containers
@@ -1253,9 +1199,7 @@ paygd(silently)
  *   True:  all gold
  *   False: limit to known contents
  */
-export function /* long long */
-hidden_gold(even_if_unknown)
-{
+export function hidden_gold(even_if_unknown) { /* long long */
     let value = 0;
     let obj;
 
@@ -1268,15 +1212,11 @@ hidden_gold(even_if_unknown)
 }
 
 /* prevent "You hear footsteps.." when inappropriate */
-export function /* boolean */
-gd_sound()
-{
+export function gd_sound() { /* boolean */
     return +!(vault_occupied(u.urooms) || findgd());
 }
 
-export function /* void */
-vault_gd_watching(activity)
-{
+export function vault_gd_watching(activity) { /* void */
     let guard = findgd();
 
     if (guard && guard.mx && guard.mcansee && m_canseeu(guard)) {
@@ -1286,205 +1226,85 @@ vault_gd_watching(activity)
 }
 
 /*vault.c*/
+
 import { A_LAWFUL } from "./align.h.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { COIN_CLASS } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { MM_EGD } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { RLOC_ERR } from "./hack.h.js";
-import { RLOC_MSG } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { VAULT_GUARD_TIME } from "./hack.h.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    ARTICLE_A, MM_EGD, MM_NOMSG, RLOC_ERR, RLOC_MSG, RLOC_NOMSG, VAULT_GUARD_TIME,
+} from "./hack.h.js";
 import { distu } from "./hack.h.macros.js";
 import { showdebug } from "./lint.h.macros.js";
-import { FCSIZ } from "./mextra.h.js";
-import { GD_DESTROYGOLD } from "./mextra.h.js";
-import { GD_EATGOLD } from "./mextra.h.js";
-import { struct_egd } from "./mextra.h.js";
+import { FCSIZ, GD_DESTROYGOLD, GD_EATGOLD, struct_egd } from "./mextra.h.js";
 import { EGD } from "./mextra.h.macros.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { VAULT } from "./mkroom.h.js";
+import { ROOMOFFSET, VAULT } from "./mkroom.h.js";
 import { is_silent } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { NEED_HTH_WEAPON } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { PM_CROESUS } from "./monsters.h.js";
-import { PM_GUARD } from "./monsters.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { TIN_WHISTLE } from "./objects.h.js";
-import { BLCORNER } from "./rm.h.js";
-import { BRCORNER } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { TLCORNER } from "./rm.h.js";
-import { TRCORNER } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_POOL } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
+import { FEMALE, MALE } from "./monflag.h.js";
+import { M_AP_OBJECT, NEED_HTH_WEAPON } from "./monst.h.js";
+import { DEADMONSTER, MON_WEP, U_AP_TYPE } from "./monst.h.macros.js";
+import { PM_CROESUS, PM_GUARD } from "./monsters.h.js";
+import { Has_contents, carried } from "./obj.h.macros.js";
+import { BOULDER, GOLD_PIECE, ROCK, TIN_WHISTLE } from "./objects.h.js";
+import {
+    BLCORNER, BRCORNER, CORR, DOOR, D_NODOOR, HWALL, ROOM, SCORR, STONE, TLCORNER, TRCORNER, VWALL,
+} from "./rm.h.js";
+import {
+    ACCESSIBLE, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_STWALL, IS_WALL, MON_AT, fmon, levl, m_at,
+    remove_monster,
+} from "./rm.h.macros.js";
 import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { COULD_SEE } from "./vision.h.js";
-import { IN_SIGHT } from "./vision.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { m_canseeu } from "./vision.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { noit_mhis } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
+import { COULD_SEE, IN_SIGHT } from "./vision.h.js";
+import { cansee, couldsee, m_canseeu } from "./vision.h.macros.js";
+import { Upolyd, mhe, noit_mhis, u_at } from "./you.h.macros.js";
+import { Blind, Deaf, Punished, Strangled } from "./youprop.h.macros.js";
+import { char, int, ord, schar, sizeof, uchar } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { abs, free, memset, sprintf, strlen } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, elt, ref_of, struct_assign, view_of } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
 import { alloc } from "./alloc.js";
 import { um_dist } from "./apply.js";
 import { adjalign } from "./attrib.js";
 import { isok } from "./cmd.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
-import { map_invisible } from "./display.js";
-import { map_location } from "./display.js";
-import { mon_visible } from "./display.js";
-import { newsym } from "./display.js";
-import { unset_seenv } from "./display.js";
-import { xy_set_wall_state } from "./display.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { Some_Monnam } from "./do_name.js";
-import { noit_Monnam } from "./do_name.js";
-import { noit_mon_nam } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { assign_level } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { is_fainted } from "./eat.js";
-import { reset_faint } from "./eat.js";
+import {
+    flags, gi, gm, gv, gy, iflags, program_state, svc, svl, svm, svp, svr, u,
+} from "./decl.js";
+import {
+    map_invisible, map_location, mon_visible, newsym, unset_seenv, xy_set_wall_state,
+} from "./display.js";
+import {
+    Mgender, Monnam, Some_Monnam, noit_Monnam, noit_mon_nam, pmname, x_monnam,
+} from "./do_name.js";
+import { assign_level, on_level } from "./dungeon.js";
+import { is_fainted, reset_faint } from "./eat.js";
 import { panic } from "./end.js";
-import { del_engr_at } from "./engrave.js";
-import { make_grave } from "./engrave.js";
-import { in_rooms } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { nomul } from "./hack.js";
-import { unmul } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { currency } from "./invent.js";
-import { freeinv } from "./invent.js";
-import { g_at } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { newmextra } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { add_to_minv } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { remove_object } from "./mkobj.js";
-import { m_into_limbo } from "./mon.js";
-import { mnexto } from "./mon.js";
-import { mongone } from "./mon.js";
-import { mpickgold } from "./mon.js";
-import { setmangry } from "./mon.js";
+import { del_engr_at, make_grave } from "./engrave.js";
+import { in_rooms, money_cnt, nomul, unmul } from "./hack.js";
+import { dist2, mungspaces, strncmpi, upstart } from "./hacklib.js";
+import { currency, freeinv, g_at, sobj_at, stackobj } from "./invent.js";
+import { makemon, newmextra, set_malign } from "./makemon.js";
+import { add_to_minv, obj_extract_self, place_object, remove_object } from "./mkobj.js";
+import { m_into_limbo, mnexto, mongone, mpickgold, setmangry } from "./mon.js";
 import { sticks } from "./mondata.js";
 import { mon_track_clear } from "./monmove.js";
 import { mons } from "./monst.js";
 import { m_carrying } from "./mthrowu.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { mimic_obj_name } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { an, makeplural, mimic_obj_name, simpleonames } from "./objnam.js";
+import { You, You_hear, You_see, Your, impossible, pline, pline_The, verbalize } from "./pline.js";
 import { rn2 } from "./rnd.js";
-import { contained_gold } from "./shk.js";
-import { obfree } from "./shk.js";
+import { contained_gold, obfree } from "./shk.js";
 import { yelp } from "./sounds.js";
 import { relobj } from "./steal.js";
 import { place_monster } from "./steed.js";
-import { enexto } from "./teleport.js";
-import { rloc } from "./teleport.js";
-import { tele } from "./teleport.js";
+import { enexto, rloc, tele } from "./teleport.js";
 import { spot_stop_timers } from "./timeout.js";
-import { deltrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { block_point } from "./vision.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
+import { deltrap, t_at } from "./trap.js";
+import { block_point, recalc_block_point, unblock_point } from "./vision.js";
 import { mon_wield_item } from "./weapon.js";
 import { getlin } from "./windows.js";
 import { fracture_rock } from "./zap.js";

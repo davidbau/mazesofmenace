@@ -1,3 +1,8 @@
+import {nativeStateFor} from '../native/state-bridge.js';
+import {createNativeDescriptorViews} from '../native/descriptor-state.js';
+import {createNativeVision} from '../native/vision.js';
+import measuredRecords from '../records.json' with {type:'json'};
+import hackAbi from '../hack-abi.json' with {type:'json'};
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -28,15 +33,27 @@ function ownedChildDescriptor(parent,child){
 const instances=new WeakMap();
 export function createVisionEnvironment(services,layout){
     for(const[k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,COLNO:80,ROWNO:21,MAX_RADIUS:15,charSigned:1,seenVSize:1,coordxySize:2,config_MACRO_CPATH:1,config_EXTEND_SPINE:0,config_DEBUG:1}))if(layout[k]!==v)throw Error('Review changed VISION ABI/config '+k);
+    const nativeState=nativeStateFor(services.moduleKey),originalServices=services,wrappers=new Map();
+    services=new Proxy(originalServices,{get(target,key){const value=Reflect.get(target,key);if(typeof value!=='function'||value.nativeState===nativeState)return value;if(['heap','global','storage','read','write','address','stackAlloc','stackSave','stackRestore'].includes(key))return value;const old=wrappers.get(key);if(old?.value===value)return old.call;const call=(...args)=>nativeState.boundary(value,...args);if('address' in value)Object.defineProperty(call,'address',{get:()=>value.address});wrappers.set(key,{value,call});return call;}});
     const addr=v=>Number(v?.address??v??0),raw=v=>CAdapter.unsignedPointer(v);
-    const memory=()=>CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
-    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:true,rows:false,coerceRecordSize:false,directIntegerReads:false,voidPointer:'bigint',arrays:{keyOf:d=>descriptorKey(d),childOf:d=>d.a.length===1?d.e:ownedChildDescriptor(d,{a:d.a.slice(1),e:d.e})}});
+    let dataView;
+    const memory=()=>{if(nativeState.nativeArena)return nativeState.nativeArena.view;if('dataView' in services)return services.dataView();const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;},cache=new Map(),names=Object.keys(schemas);
+    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:true,rows:false,coerceRecordSize:false,directIntegerReads:true,pointerRead:nativeState.nativeArena?(at=>nativeState.nativeArena.pointer(at)):undefined,pointerWrite:nativeState.nativeArena?((at,v)=>nativeState.nativeArena.storePointer(at,typeof v==='string'||(typeof v==='number'&&(!Number.isSafeInteger(v)||v<0))?raw(v):v)):undefined,beforeRead:nativeState.nativeArena?undefined:(d,at)=>{if(nativeState.dirty.size&&!privateRange(at,width(d)))nativeState.flush();},beforeWrite:nativeState.nativeArena?undefined:(d,at)=>{if(!privateRange(at,width(d))){if(nativeState.dirty.size)nativeState.flush();nativeState.invalidate();}},voidPointer:'bigint',arrays:{profile:'identity',types:new WeakMap(),keyOf:d=>descriptorKey(d),childOf:d=>d.a.length===1?d.e:ownedChildDescriptor(d,{a:d.a.slice(1),e:d.e})}});
 
 
 
 
-    const view=CAdapter.createDescriptorViewFactory({services,schemas,address:addr,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'vision')});
-    const env=Object.assign(Object.create(services),layout,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,
+    // These original VISION workspaces cannot alias canonical game records.
+    // Mutating a visibility byte must not invalidate unrelated hero/map fields.
+    const regions=privateStorage.map((row,i)=>{const begin=addr(services.storage(i));return [begin,begin+width(row.d)];}).concat(['circle_data','circle_start'].map((name,i)=>{const begin=addr(services.storage(20+i));return [begin,begin+core[name].length*2];})).sort((a,b)=>a[0]-b[0]);
+    let lastRegion;
+    function privateRange(at,bytes){
+        if(lastRegion&&at>=lastRegion[0]&&at+bytes<=lastRegion[1])return true;
+        let lo=0,hi=regions.length;while(lo<hi){const mid=(lo+hi)>>>1;if(regions[mid][0]<=at)lo=mid+1;else hi=mid;}
+        const row=regions[lo-1];if(row&&at>=row[0]&&at+bytes<=row[1]){lastRegion=row;return true;}return false;
+    }
+    const view=createNativeDescriptorViews({owner:nativeState,schemas,stableInline:Boolean(nativeState.nativeArena&&services.nativeGlobalBindings===true),records:{...measuredRecords.records,...hackAbi.records},memory,addr,raw,read,write,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'vision',true)});
+    const env=Object.assign(Object.create(services),layout,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,nativeState,
         boolean:v=>Number(v)<<24>>24,samePointer:(a,b)=>addr(a)===addr(b),reference:(get,set)=>({get value(){return get();},set value(v){set(v);}}),
         element:(a,i)=>({address:addr(a)+i*width(a.descriptor.e),descriptor:a.descriptor.e,get value(){return a[i];},set value(v){a[i]=v;}}),
         advance:(v,n)=>{return Crt.advanceDescriptor(view,addr,layout,array,width,read,write,v,n);},
@@ -46,14 +63,14 @@ export function createVisionEnvironment(services,layout){
 
     // Arrays carry their actual descriptor, including primitive multidimensional strides.
     env.arrayAddress=(o,...ix)=>{let d=o.descriptor,at=o.address;for(const i of ix){const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e};at+=i*width(child);d=child;}return at;};
-    CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr);
+    CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr,Boolean(nativeState.nativeArena&&services.nativeGlobalBindings===true));
 
 
     privateStorage.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>read(g.d,addr(services.storage(i))),set:v=>write(g.d,addr(services.storage(i)),v)}));
     for(const[name,index]of [['circle_data',20],['circle_start',21]])env[name]=array({a:[core[name].length],e:{t:'i16'}},addr(services.storage(index)));
     env.workspaceSize=name=>width(privateStorage.find(x=>x.name===name).d);
     Object.defineProperties(env,{
-      wizard:{get:()=>env.flags.debug},levl:{get:()=>env.svl.level.locations},Underwater:{get:()=>env.u.uinwater},
+      wizard:{get:()=>env.flags.debug},levl:{get:()=>nativeState.spatial?.cells??env.svl.level.locations},Underwater:{get:()=>env.u.uinwater},
     });
     const prop=n=>env.u.uprops[n];for(const[key,name]of [['Blind','BLINDED'],['See_invisible','SEE_INVIS'],['Detect_monsters','DETECT_MONSTERS']])Object.defineProperty(env,key,{get(){const p=prop(layout[name]);return key==='Blind'?(p.intrinsic||p.extrinsic)&&!p.blocked:p.intrinsic||p.extrinsic;}});
     env.IS_OBSTRUCTED=t=>t<layout.POOL;env.IS_DOOR=t=>t===layout.DOOR;env.IS_WALL=t=>t&&t<=layout.DBWALL;env.IS_WATERWALL=t=>t===layout.WATER;
@@ -69,6 +86,7 @@ export function createVisionEnvironment(services,layout){
     env.pointerBox=(p,d)=>({address:addr(p),get value(){return read(d,addr(p));},set value(v){write(d,addr(p),v);}});
     env.rowPointers=p=>addr(p)?array({a:[0],e:{q:{t:'u8'}}},addr(p)):0;env.coordArray=p=>addr(p)?array({a:[0],e:{t:'i16'}},addr(p)):0;
     env.invoke=(cb,x,y,arg)=>services.invoke(cb,x,y,arg);
+    env.nativeVision=createNativeVision(env);
     return env;
 }
 export function initializeVision(services,layout){const env=environment(services,layout);for(const name of ['circle_data','circle_start'])for(let i=0;i<core[name].length;i++)env[name][i]=core[name][i];return env;}
@@ -76,5 +94,5 @@ function environment(services,layout){const key=services.moduleKey;if(!key)throw
 export function callVision(services,layout,name,...args){const env=environment(services,layout);if(name==='environment')return env;
     const p={"get_viz_clear": ["int", "int"], "vision_init": [], "does_block": ["int", "int", "struct rm *"], "vision_reset": [], "get_unused_cs": ["seenV ***", "coordxy **", "coordxy **"], "rogue_vision": ["seenV **", "coordxy *", "coordxy *"], "vision_recalc": ["int"], "block_point": ["int", "int"], "unblock_point": ["int", "int"], "recalc_block_point": ["coordxy", "coordxy"], "dig_point": ["int", "int"], "fill_point": ["int", "int"], "clear_path": ["int", "int", "int", "int"], "view_init": [], "right_side": ["int", "int", "int", "const coordxy *"], "left_side": ["int", "int", "int", "const coordxy *"], "view_from": ["coordxy", "coordxy", "seenV **", "coordxy *", "coordxy *", "int", "void (*)(coordxy, coordxy, genericptr_t)", "genericptr_t"], "do_clear_area": ["coordxy", "coordxy", "int", "void (*)(coordxy, coordxy, genericptr_t)", "genericptr_t"], "howmonseen": ["struct monst *"]};
     args=args.map((v,i)=>{const t=p[name][i];if(t==='struct rm *')return env.view('rm',v);if(t==='struct monst *')return env.view('monst',v);if(t==='seenV ***')return env.pointerBox(v,{q:{q:{t:'u8'}}});if(t==='coordxy **')return env.pointerBox(v,{q:{t:'i16'}});if(t==='coordxy')return Number(v)<<16>>16;if(t==='seenV **')return env.rowPointers(v);if(t==='coordxy *'||t==='const coordxy *')return env.coordArray(v);return v;});
-    const sp=services.stackSave();try{return withCEnvironment(env,core[name],...args);}finally{services.stackRestore(sp);}
+    const owner=env.nativeState,sp=owner.depth?undefined:services.stackSave();owner.enter();try{return env.nativeVision[name](...args);}finally{try{owner.leave();}finally{if(sp!==undefined)services.stackRestore(sp);}}
 }

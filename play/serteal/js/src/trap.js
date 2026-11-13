@@ -3,76 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
  /* from zap.c */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const a_your = static_array("a_your", ptr_to(char), 2, [ _("a"), _("your") ]);
 const A_Your = static_array("A_Your", ptr_to(char), 2, [ _("A"), _("Your") ]);
@@ -84,9 +15,8 @@ const blindgas = static_array("blindgas", ptr_to(char), 6, [ _("humid"),   _("od
 
 /* called when you're hit by fire (dofiretrap,buzz,zapyourself,explode);
    returns TRUE if hit on torso */
-export function /* boolean */
-burnarmor(victim)
-{ const $frame = stack_frame(); try {
+export function burnarmor(victim) { /* boolean */
+    const $frame = stack_frame(); try {
     let item;
     let buf = stack_array(char, BUFSZ);
     let mat_idx, oldspe;
@@ -94,7 +24,7 @@ burnarmor(victim)
 
     if (!victim)
         return 0;
-    hitting_u = (+(victim == gy.youmonst));
+    hitting_u = +(victim == gy.youmonst);
 
     /* burning damage may dry wet towel */
     item = hitting_u ? carrying(TOWEL) : m_carrying(victim, TOWEL);
@@ -108,14 +38,13 @@ burnarmor(victim)
         item = item.nobj;
     }
 
-
     while (1) {
         switch (rn2(5)) {
         case 0:
             item = hitting_u ? uarmh : which_armor(victim, W_ARMH);
             if (item) {
                 mat_idx = objects[item.otyp].oc_material;
-                void sprintf(buf, _("%s %s"), materialnm[mat_idx], helm_simple_name(item))
+                sprintf(buf, _("%s %s"), materialnm[mat_idx], helm_simple_name(item))
 ;
             }
             if (!burn_dmg(item, item ? buf : _("helmet")))
@@ -124,17 +53,17 @@ burnarmor(victim)
         case 1:
             item = hitting_u ? uarmc : which_armor(victim, W_ARMC);
             if (item) {
-                void burn_dmg(item, cloak_simple_name(item));
+                burn_dmg(item, cloak_simple_name(item));
                 return TRUE;
             }
             item = hitting_u ? uarm : which_armor(victim, W_ARM);
             if (item) {
-                void erode_obj(item, xname(item), ERODE_BURN, EF_GREASE);
+                erode_obj(item, xname(item), ERODE_BURN, EF_GREASE);
                 return TRUE;
             }
             item = hitting_u ? uarmu : which_armor(victim, W_ARMU);
             if (item)
-                void burn_dmg(item, _("shirt"));
+                burn_dmg(item, _("shirt"));
             return TRUE;
         case 2:
             item = hitting_u ? uarms : which_armor(victim, W_ARMS);
@@ -155,9 +84,10 @@ burnarmor(victim)
         break; /* Out of while loop */
     }
 
-
     return FALSE;
-} finally { stack_pop($frame); } } export function burn_dmg(obj, descr) { return erode_obj(obj, descr, ERODE_BURN, EF_GREASE); }
+    } finally { stack_pop($frame); }
+}
+export function burn_dmg(obj, descr) { return erode_obj(obj, descr, ERODE_BURN, EF_GREASE); }
 
 /* Generic erode-item function.
  * "ostr", if non-null, is an alternate string to print instead of the
@@ -167,13 +97,12 @@ burnarmor(victim)
  *
  * Returns an erosion return value (ER_*)
  */
-export function /* int */
-erode_obj(
+export function erode_obj(
     otmp,
     ostr,
     type,
-    ef_flags)
-{ const $frame = stack_frame(); try {
+    ef_flags) { /* int */
+    const $frame = stack_frame(); try {
     let action = static_array("erode_obj.action", ptr_to(char), null, [ _("smoulder"), _("rust"), _("rot"), _("corrode"), _("crack") ]),
         msg = static_array("erode_obj.msg", ptr_to(char), null, [ _("burnt"), _("rusted"), _("rotten"), _("corroded"), _("cracked") ]),
         bythe = static_array("erode_obj.bythe", ptr_to(char), null, [ _("heat"), _("oxidation"), _("decay"), _("corrosion"),
@@ -193,12 +122,12 @@ erode_obj(
     victim = carried(otmp) ? gy.youmonst
              : mcarried(otmp) ? otmp.v.v_ocarry
                : null;
-    uvictim = (+(victim == gy.youmonst));
-    vismon = ((victim && (victim != gy.youmonst) && canseemon(victim)) ? 1 : 0);
+    uvictim = +(victim == gy.youmonst);
+    vismon = (victim && (victim != gy.youmonst) && canseemon(victim) ? 1 : 0);
     /* Is gb.bhitpos correct here? Ugh. */
-    visobj = (((!victim && cansee(gb.bhitpos.x, gb.bhitpos.y)
+    visobj = (!victim && cansee(gb.bhitpos.x, gb.bhitpos.y)
               && (!is_pool(gb.bhitpos.x, gb.bhitpos.y)
-                  || (next2u(gb.bhitpos.x,gb.bhitpos.y) && Underwater()))) ? 1 : 0));
+                  || (next2u(gb.bhitpos.x,gb.bhitpos.y) && Underwater())) ? 1 : 0);
 
     switch (type) {
     case ERODE_BURN:
@@ -304,9 +233,9 @@ erode_obj(
             let actbuf = stack_array(char, BUFSZ);
 
             if (!crackers)
-                void sprintf(actbuf, _("%s away"), vtense(ostr, action[type]));
+                sprintf(actbuf, _("%s away"), vtense(ostr, action[type]));
             else
-                void sprintf(actbuf, _("shatters"));
+                sprintf(actbuf, _("shatters"));
             pline(_("%s %s %s!"),
                   uvictim ? _("Your")
                   : !vismon ? _("The") /* visobj */
@@ -351,19 +280,18 @@ erode_obj(
         }
         return ER_NOTHING;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Protect an item from erosion with grease. Returns TRUE if the grease
  * wears off.
  */
-export function /* boolean */
-grease_protect(
+export function grease_protect(
     otmp,
     ostr,
-    victim)
-{
+    victim) { /* boolean */
     let txt = init_string(static_array("grease_protect.txt", char, sizeof_string("protected by the layer of grease!")), _("protected by the layer of grease!"), true);
-    let vismon = ((victim && (victim != gy.youmonst) && canseemon(victim)) ? 1 : 0);
+    let vismon = (victim && (victim != gy.youmonst) && canseemon(victim) ? 1 : 0);
 
     if (ostr) {
         if (victim == gy.youmonst)
@@ -386,9 +314,7 @@ grease_protect(
 }
 
 /* create a "living" statue at x,y */
-function /* void */
-mk_trap_statue(x, y)
-{
+function mk_trap_statue(x, y) { /* void */
     let mtmp;
     let otmp, statue;
     let mptr;
@@ -407,16 +333,14 @@ mk_trap_statue(x, y)
         otmp = mtmp.minvent;
         otmp.owornmask = 0;
         obj_extract_self(otmp);
-        void add_to_container(statue, otmp);
+        add_to_container(statue, otmp);
     }
     statue.owt = unsigned(weight(statue));
     mongone(mtmp);
 }
 
 /* find "bottom" level of specified dungeon, stopping at quest locate */
-function /* int */
-dng_bottom(lev)
-{
+function dng_bottom(lev) { /* int */
     let bottom = dunlevs_in_dungeon(lev);
 
     /* when in the upper half of the quest, don't fall past the
@@ -438,9 +362,7 @@ dng_bottom(lev)
 }
 
 /* destination dlevel for holes or trapdoors */
-function /* void */
-hole_destination(dst)
-{
+function hole_destination(dst) { /* void */
     let bottom = dng_bottom(u.uz);
 
     dst.dnum = u.uz.dnum;
@@ -452,9 +374,7 @@ hole_destination(dst)
     }
 }
 
-export function /* struct trap * */
-maketrap(x, y, typ)
-{
+export function maketrap(x, y, typ) { /* struct trap * */
     let zero_vl = static_struct("maketrap.zero_vl", struct_vlaunchinfo);
     let oldplace, was_ice, clear_flags;
     let ttmp;
@@ -474,7 +394,7 @@ maketrap(x, y, typ)
                 || (u.utraptype == TT_LAVA && !is_lava(x, y))))
             reset_utrap(FALSE);
         /* old <tx,ty> remain valid */
-    } else if (!((iflags.debug_overwrite_stairs || !((((lev.typ) == LADDER) || ((lev.typ) == STAIRS))))) /* stairs */
+    } else if (!(iflags.debug_overwrite_stairs || !(((lev.typ) == LADDER) || ((lev.typ) == STAIRS))) /* stairs */
                || is_pool_or_lava(x, y)
                || (IS_FURNITURE(lev.typ) && (typ != PIT && typ != HOLE))
                || (lev.typ == DRAWBRIDGE_UP && typ == MAGIC_PORTAL)
@@ -487,7 +407,7 @@ maketrap(x, y, typ)
     } else {
         oldplace = FALSE;
         ttmp = newtrap();
-        void memset(addr_of(ttmp), 0, sizeof(struct_trap));
+        memset(addr_of(ttmp), 0, sizeof(struct_trap));
         ttmp.ntrap = null;
         ttmp.tx = x;
         ttmp.ty = y;
@@ -509,7 +429,7 @@ maketrap(x, y, typ)
         mk_trap_statue(x, y);
         break;
     case ROLLING_BOULDER_TRAP: /* boulder will roll towards trigger */
-        void mkroll_launch(ttmp, x, y, BOULDER, 1);
+        mkroll_launch(ttmp, x, y, BOULDER, 1);
         break;
     case PIT:
     case SPIKED_PIT:
@@ -519,7 +439,7 @@ maketrap(x, y, typ)
     case HOLE:
     case TRAPDOOR:
         if (is_hole(typ))
-            hole_destination((ttmp.dst));
+            hole_destination(ttmp.dst);
         if (chars[in_rooms(x, y, SHOPBASE)]
             && (is_hole(typ) || IS_DOOR(lev.typ) || IS_WALL(lev.typ)))
             add_damage(x, y, /* schedule repair */
@@ -544,16 +464,16 @@ maketrap(x, y, typ)
                 spot_stop_timers(x, y, MELT_ICE_AWAY);
             }
         } else if (IS_ROOM(lev.typ)) {
-            void set_levltyp(x, y, ROOM);
+            set_levltyp(x, y, ROOM);
 
         /*
          * some cases which can happen when digging
          * down while phasing thru solid areas
          */
         } else if (lev.typ == STONE || lev.typ == SCORR) {
-            void set_levltyp(x, y, CORR);
+            set_levltyp(x, y, CORR);
         } else if (IS_WALL(lev.typ) || lev.typ == SDOOR) {
-            void set_levltyp(x, y, svl.level.flags.is_maze_lev ? ROOM
+            set_levltyp(x, y, svl.level.flags.is_maze_lev ? ROOM
                                      : svl.level.flags.is_cavernous_lev ? CORR
                                        : DOOR);
         }
@@ -589,20 +509,17 @@ maketrap(x, y, typ)
 
 /* limit the destination of a hole or trapdoor to the furthest level you
    should be able to fall to */
-export function /* d_level * */
-clamp_hole_destination(dlev)
-{
+export function clamp_hole_destination(dlev) { /* d_level * */
     let bottom = dng_bottom(dlev);
 
     dlev.dlevel = min(dlev.dlevel, bottom);
     return dlev;
 }
 
-export function /* void */
-fall_through(
+export function fall_through(
     td,
-    ftflags)
-{ const $frame = stack_frame(); try {
+    ftflags) { /* void */
+    const $frame = stack_frame(); try {
     let dtmp = stack_struct(struct_d_level);
     let msgbuf = stack_array(char, BUFSZ);
     let dont_fall = 0;
@@ -675,7 +592,7 @@ fall_through(
             assign_level(dtmp, t.dst);
             /* don't fall beyond the bottom, in case this came from a bones
                file with different dungeon size  */
-            void clamp_hole_destination(dtmp);
+            clamp_hole_destination(dtmp);
         } else {
             dtmp.dnum = u.uz.dnum;
             dtmp.dlevel = newlevel;
@@ -688,12 +605,13 @@ fall_through(
                 dist > 2 ? _("deep ") : _(""));
     }
     if (!td)
-        void sprintf(msgbuf, _("The hole in the %s above you closes up."), ceiling(u.ux, u.uy))
+        sprintf(msgbuf, _("The hole in the %s above you closes up."), ceiling(u.ux, u.uy))
 ;
 
     schedule_goto(dtmp, !Flying() ? UTOTYPE_FALLING : UTOTYPE_NONE, 0,
                   !td ? msgbuf : 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Animate the given statue.  May have been via shatter attempt, trap,
@@ -722,14 +640,13 @@ fall_through(
  *       first in order to give them to the monster before checking their
  *       shop status--it's not worth the hassle.]
  */
-export function /* struct monst * */
-animate_statue(
+export function animate_statue(
     statue,
     x,
     y,
     cause,
-    fail_reason)
-{ const $frame = stack_frame(); try {
+    fail_reason) { /* struct monst * */
+    const $frame = stack_frame(); try {
     let historic_statue_is_gone = init_string(static_array("animate_statue.historic_statue_is_gone", char, sizeof_string("that the historic statue is now gone")), _("that the historic statue is now gone"), true);
 
     let mnum = stack_var(int, statue.corpsenm);
@@ -737,8 +654,8 @@ animate_statue(
     let mon = null, shkp;
     let item;
     let cc = stack_struct(struct_nhcoord);
-    let historic = (+(Role_if(PM_ARCHEOLOGIST)
-                        && (statue.spe & CORPSTAT_HISTORIC) != 0)),
+    let historic = +(Role_if(PM_ARCHEOLOGIST)
+                        && (statue.spe & CORPSTAT_HISTORIC) != 0),
             golem_xform = FALSE, use_saved_traits;
     let comes_to_life;
     let statuename = stack_array(char, BUFSZ), tmpbuf = stack_array(char, BUFSZ);
@@ -750,10 +667,10 @@ animate_statue(
         use_saved_traits = FALSE;
     } else if (is_golem(mptr) && cause == ANIMATE_SPELL) {
         /* statue of any golem hit by stone-to-flesh becomes flesh golem */
-        golem_xform = (+(mptr != mons[PM_FLESH_GOLEM]));
+        golem_xform = +(mptr != mons[PM_FLESH_GOLEM]);
         mnum[0] = PM_FLESH_GOLEM;
         mptr = mons[PM_FLESH_GOLEM];
-        use_saved_traits = (((has_omonst(statue) && !golem_xform) ? 1 : 0));
+        use_saved_traits = (has_omonst(statue) && !golem_xform ? 1 : 0);
     } else {
         use_saved_traits = has_omonst(statue);
     }
@@ -761,7 +678,7 @@ animate_statue(
     if (use_saved_traits) {
         /* restore a petrified monster */
         cc.x = x, cc.y = y;
-        mon = montraits(statue, cc, (+(cause == ANIMATE_SPELL)));
+        mon = montraits(statue, cc, +(cause == ANIMATE_SPELL));
         if (mon && mon.mtame && !mon.isminion)
             wary_dog(mon, TRUE);
     } else {
@@ -782,7 +699,7 @@ animate_statue(
             /* if hero has protection from shape changers, cham field will
                be NON_PM; otherwise, set form to match the statue */
             if (mon && ismnum(mon.cham))
-                void newcham(mon, mptr, NO_NC_FLAGS);
+                newcham(mon, mptr, NO_NC_FLAGS);
         } else {
             if (cause == ANIMATE_SPELL)
                 mmflags = or64(mmflags, MM_ADJACENTOK);
@@ -822,7 +739,7 @@ animate_statue(
     if (u_at(x, y) || cause == ANIMATE_SPELL) {
         /* "the|your|Manlobbi's statue [of a wombat]" */
         shkp = shop_keeper(chars[in_rooms(mon.mx, mon.my, SHOPBASE)]);
-        void sprintf(statuename, _("%s%s"), shk_your(tmpbuf, statue), (cause == ANIMATE_SPELL
+        sprintf(statuename, _("%s%s"), shk_your(tmpbuf, statue), (cause == ANIMATE_SPELL
                  /* avoid "of a shopkeeper" if it's Manlobbi himself
                     (if carried, it can't be unpaid--hence won't be
                     described as "Manlobbi's statue"--because there
@@ -836,9 +753,9 @@ animate_statue(
         pline_The(_("%s suddenly seems more animated."), rndmonnam(0));
     } else if (cause == ANIMATE_SHATTER) {
         if (cansee(x, y))
-            void sprintf(statuename, _("%s%s"), shk_your(tmpbuf, statue), xname(statue));
+            sprintf(statuename, _("%s%s"), shk_your(tmpbuf, statue), xname(statue));
         else
-            void strcpy(statuename, _("a statue"))
+            strcpy(statuename, _("a statue"))
 ;
         pline(_("Instead of shattering, %s suddenly %s!"), statuename,
               comes_to_life);
@@ -864,7 +781,7 @@ animate_statue(
             /* avoid charging for Manlobbi's statue of Manlobbi
                if stone-to-flesh is used on petrified shopkeep */
             && mon != shkp)
-            void stolen_value(statue, x, y, shkp.mpeaceful,
+            stolen_value(statue, x, y, shkp.mpeaceful,
                                 FALSE);
 
         if (historic) {
@@ -880,7 +797,7 @@ animate_statue(
     /* transfer any statue contents to monster's inventory */
     while ((item = statue.cobj) != null) {
         obj_extract_self(item);
-        void mpickobj(mon, item);
+        mpickobj(mon, item);
     }
     m_dowear(mon, TRUE);
     /* in case statue is wielded and hero zaps stone-to-flesh at self */
@@ -897,20 +814,20 @@ animate_statue(
     if (fail_reason)
         fail_reason[0] = AS_OK;
     return mon;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * You've either stepped onto a statue trap's location or you've triggered a
  * statue trap by searching next to it or by trying to break it with a wand
  * or pick-axe.
  */
-export function /* struct monst * */
-activate_statue_trap(
+export function activate_statue_trap(
     trap,
     x,
     y,
-    shatter)
-{ const $frame = stack_frame(); try {
+    shatter) { /* struct monst * */
+    const $frame = stack_frame(); try {
     let mtmp = null;
     let otmp = sobj_at(STATUE, x, y);
     let fail_reason = stack_var(int);
@@ -933,14 +850,14 @@ activate_statue_trap(
 
     feel_newsym(x, y);
     return mtmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-keep_saddle_with_steedcorpse(
+function keep_saddle_with_steedcorpse(
     steed_mid,
     objchn,
-    saddle)
-{ const $frame = stack_frame(); try {
+    saddle) { /* boolean */
+    const $frame = stack_frame(); try {
     if (!saddle)
         return FALSE;
     while (objchn) {
@@ -964,17 +881,16 @@ keep_saddle_with_steedcorpse(
         objchn = objchn.nobj;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* monster or you go through and possibly destroy a web.
    return TRUE if could go through. */
-function /* boolean */
-mu_maybe_destroy_web(
+function mu_maybe_destroy_web(
     mtmp,
     domsg,
-    trap)
-{
-    let isyou = (+(mtmp == gy.youmonst));
+    trap) { /* boolean */
+    let isyou = +(mtmp == gy.youmonst);
     let mptr = mtmp.data;
 
     if (amorphous(mptr) || is_whirly(mptr) || flaming(mptr)
@@ -986,12 +902,12 @@ mu_maybe_destroy_web(
             if (domsg) {
                 if (isyou)
                     You(_("%s %s spider web!"),
-                        (flaming(mptr)) ? _("burn") : _("dissolve"),
+                        flaming(mptr) ? _("burn") : _("dissolve"),
                         a_your[trap.madeby_u]);
                 else
                     pline_mon(mtmp,
                           _("%s %s %s spider web!"), Monnam(mtmp),
-                          (flaming(mptr)) ? _("burns") : _("dissolves"),
+                          flaming(mptr) ? _("burns") : _("dissolves"),
                           a_your[trap.madeby_u]);
             }
             deltrap(trap);
@@ -1014,9 +930,7 @@ mu_maybe_destroy_web(
 }
 
 /* make a single arrow/dart/rock for a trap to shoot or drop */
-function /* struct obj * */
-t_missile(otyp, trap)
-{
+function t_missile(otyp, trap) { /* struct obj * */
     let otmp = mksobj(otyp, TRUE, FALSE);
 
     otmp.quan = 1;
@@ -1026,9 +940,7 @@ t_missile(otyp, trap)
     return otmp;
 }
 
-export function /* void */
-set_utrap(tim, typ)
-{
+export function set_utrap(tim, typ) { /* void */
     /* if we get here through reset_utrap(), the caller of that might
        have already set u.utrap to 0 so this check won't be sufficient
        in that situation; caller will need to set context.botl itself */
@@ -1041,10 +953,8 @@ set_utrap(tim, typ)
     float_vs_flight(); /* maybe block Lev and/or Fly */
 }
 
-export function /* void */
-reset_utrap(msg)
-{
-    let was_Lev = (+(Levitation() != 0)), was_Fly = (+(Flying() != 0));
+export function reset_utrap(msg) { /* void */
+    let was_Lev = +(Levitation() != 0), was_Fly = +(Flying() != 0);
 
     set_utrap(0, 0);
 
@@ -1057,9 +967,7 @@ reset_utrap(msg)
 }
 
 /* is trap type ttyp triggered by touching the floor? */
-function /* boolean */
-floor_trigger(ttyp)
-{
+function floor_trigger(ttyp) { /* boolean */
     switch (ttyp) {
     case ARROW_TRAP:
     case DART_TRAP:
@@ -1082,29 +990,23 @@ floor_trigger(ttyp)
 }
 
 /* return TRUE if monster mtmp is up in the air, considering trap flags */
-function /* boolean */
-check_in_air(mtmp, trflags)
-{
+function check_in_air(mtmp, trflags) { /* boolean */
     let is_you = +(mtmp == gy.youmonst),
             plunged = +((trflags & (TOOKPLUNGE | VIASITTING)) != 0);
 
-    return ((((trflags & HURTLING) != 0
+    return ((trflags & HURTLING) != 0
             || (is_you ? Levitation() : is_floater(mtmp.data))
-            || ((is_you ? Flying() : is_flyer(mtmp.data)) && !plunged)) ? 1 : 0));
+            || ((is_you ? Flying() : is_flyer(mtmp.data)) && !plunged) ? 1 : 0);
 }
 
 /* return TRUE if mtmp is wearing shoes made of iron (iron/kicking) */
-export function /* boolean */
-wearing_iron_shoes(mtmp)
-{
+export function wearing_iron_shoes(mtmp) { /* boolean */
     let armf = which_armor(mtmp, W_ARMF);
-    return ((armf && objects[armf.otyp].oc_material == IRON) ? 1 : 0);
+    return (armf && objects[armf.otyp].oc_material == IRON ? 1 : 0);
 }
 
 /* is trap ttmp harmless to monster mtmp? */
-export function /* boolean */
-m_harmless_trap(mtmp, ttmp)
-{
+export function m_harmless_trap(mtmp, ttmp) { /* boolean */
     let mdat = mtmp.data;
 
     /* this handles most of the traps, but those are still included
@@ -1186,12 +1088,11 @@ m_harmless_trap(mtmp, ttmp)
     return FALSE;
 }
 
-function /* int */
-trapeffect_arrow_trap(
+function trapeffect_arrow_trap(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj));
     let dam;
 
@@ -1221,7 +1122,7 @@ trapeffect_arrow_trap(
             newsym(u.ux, u.uy);
         }
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let see_it = cansee(mtmp.mx, mtmp.my);
         let trapkilled = FALSE;
 
@@ -1245,14 +1146,14 @@ trapeffect_arrow_trap(
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-trapeffect_dart_trap(
+function trapeffect_dart_trap(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj));
     let dam;
 
@@ -1292,7 +1193,7 @@ trapeffect_dart_trap(
             newsym(u.ux, u.uy);
         }
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let see_it = cansee(mtmp.mx, mtmp.my);
         let trapkilled = FALSE;
 
@@ -1318,14 +1219,13 @@ trapeffect_dart_trap(
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-trapeffect_rocktrap(
+function trapeffect_rocktrap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     let otmp;
     let harmless = FALSE;
 
@@ -1373,7 +1273,7 @@ trapeffect_rocktrap(
             }
         }
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let see_it = cansee(mtmp.mx, mtmp.my);
         let trapkilled = FALSE;
 
@@ -1399,21 +1299,20 @@ trapeffect_rocktrap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_sqky_board(
+function trapeffect_sqky_board(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     let tsnds = stack_array(unsigned, null, [
         se_squeak_C, se_squeak_D_flat, se_squeak_D,
         se_squeak_E_flat, se_squeak_E, se_squeak_F,
         se_squeak_F_sharp, se_squeak_G, se_squeak_G_sharp,
         se_squeak_A, se_squeak_B_flat, se_squeak_B,
     ]);
-    let forcetrap = ((((trflags & FORCETRAP) != 0
+    let forcetrap = ((trflags & FORCETRAP) != 0
                          || (trflags & FAILEDUNTRAP) != 0
-                         || (Flying() && (trflags & VIASITTING) != 0)) ? 1 : 0));
+                         || (Flying() && (trflags & VIASITTING) != 0) ? 1 : 0);
 
     if (mtmp == gy.youmonst) {
         if ((Levitation() || Flying()) && !forcetrap) {
@@ -1436,7 +1335,7 @@ trapeffect_sqky_board(
             wake_nearby(FALSE);
         }
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
 
         if (m_in_air(mtmp))
             return Trap_Effect_Finished;
@@ -1461,8 +1360,6 @@ trapeffect_sqky_board(
                 ? (BOLT_LIM + 1) : (BOLT_LIM - 3);
 
             if (IndexOk(trap.vl.v_tnote, tsnds)) {
-                
-                                 
                                    ;
             }
             You_hear(_("%s squeak %s."), trapnote(trap, FALSE),
@@ -1473,18 +1370,17 @@ trapeffect_sqky_board(
         wake_nearto(mtmp.mx, mtmp.my, 40);
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-trapeffect_bear_trap(
+function trapeffect_bear_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     let is_you = +(mtmp == gy.youmonst),
-            forcetrap = ((((trflags & FORCETRAP) != 0
+            forcetrap = ((trflags & FORCETRAP) != 0
                          || (trflags & FAILEDUNTRAP) != 0
-                         || (is_you && (trflags & VIASITTING) != 0)) ? 1 : 0));
+                         || (is_you && (trflags & VIASITTING) != 0) ? 1 : 0);
 
     if (is_you) {
         let dmg = d(2, 4);
@@ -1524,7 +1420,7 @@ trapeffect_bear_trap(
         exercise(A_DEX, FALSE);
     } else {
         let mptr = mtmp.data;
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let trapkilled = FALSE;
 
         if (mptr.msize > MZ_SMALL && !amorphous(mptr) && !m_in_air(mtmp)
@@ -1559,12 +1455,10 @@ trapeffect_bear_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_slp_gas_trap(
+function trapeffect_slp_gas_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         seetrap(trap);
         if (Sleep_resistance() || breathless(gy.youmonst.data)) {
@@ -1575,9 +1469,9 @@ trapeffect_slp_gas_trap(
             fall_asleep(-rnd(25), TRUE);
             monstunseesu(M_SEEN_SLEEP);
         }
-        void steedintrap(trap, null);
+        steedintrap(trap, null);
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
 
         if (!resists_sleep(mtmp) && !breathless(mtmp.data)
             && !helpless(mtmp)) {
@@ -1591,12 +1485,11 @@ trapeffect_slp_gas_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_rust_trap(
+function trapeffect_rust_trap(
     mtmp,
     trap,
-    trflags)
-{ let $goto = null;
+    trflags) { /* int */
+    let $goto = null;
     var otmp, nextobj;
 
     if (mtmp == gy.youmonst) {
@@ -1610,20 +1503,20 @@ trapeffect_rust_trap(
         $goto_uglovecheck: for (;;) { switch ($goto || (rn2(5))) {
         case 0:
             pline(_("%s you on the %s!"), A_gush_of_water_hits[0], body_part(HEAD));
-            void water_damage(uarmh, helm_simple_name(uarmh), TRUE);
+            water_damage(uarmh, helm_simple_name(uarmh), TRUE);
             break;
         case 1:
             pline(_("%s your left %s!"), A_gush_of_water_hits[0], body_part(ARM));
             if (water_damage(uarms, _("shield"), TRUE) != ER_NOTHING)
                 break;
             if (u.twoweap || (uwep && bimanual(uwep)))
-                void water_damage(u.twoweap ? uswapwep : uwep, 0, TRUE);
+                water_damage(u.twoweap ? uswapwep : uwep, 0, TRUE);
  case "uglovecheck": $goto = null;
-            void water_damage(uarmg, gloves_simple_name(uarmg), TRUE);
+            water_damage(uarmg, gloves_simple_name(uarmg), TRUE);
             break;
         case 2:
             pline(_("%s your right %s!"), A_gush_of_water_hits[0], body_part(ARM));
-            void water_damage(uwep, 0, TRUE);
+            water_damage(uwep, 0, TRUE);
             { $goto = "uglovecheck"; continue $goto_uglovecheck; }
         default:
             pline(_("%s you!"), A_gush_of_water_hits[0]);
@@ -1633,14 +1526,14 @@ trapeffect_rust_trap(
                 nextobj = otmp.nobj;
                 if (otmp.lamplit && otmp != uwep
                     && (otmp != uswapwep || !u.twoweap))
-                    void splash_lit(otmp);
+                    splash_lit(otmp);
             }
             if (uarmc)
-                void water_damage(uarmc, cloak_simple_name(uarmc), TRUE);
+                water_damage(uarmc, cloak_simple_name(uarmc), TRUE);
             else if (uarm)
-                void water_damage(uarm, suit_simple_name(uarm), TRUE);
+                water_damage(uarm, suit_simple_name(uarm), TRUE);
             else if (uarmu)
-                void water_damage(uarmu, _("shirt"), TRUE);
+                water_damage(uarmu, _("shirt"), TRUE);
         } break; }
         update_inventory();
 
@@ -1650,10 +1543,10 @@ trapeffect_rust_trap(
             You(_("are covered with rust!"));
             losehp(Maybe_Half_Phys(dam), _("rusting away"), KILLED_BY);
         } else if (u.umonnum == PM_GREMLIN && rn2(3)) {
-            void split_mon(gy.youmonst, null);
+            split_mon(gy.youmonst, null);
         }
     } else {
-        var in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        var in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         var trapkilled = FALSE;
         var mptr = mtmp.data;
         var target;
@@ -1667,7 +1560,7 @@ trapeffect_rust_trap(
                       _("%s %s on the %s!"), A_gush_of_water_hits[0],
                       mon_nam(mtmp), mbodypart(mtmp, HEAD));
             target = which_armor(mtmp, W_ARMH);
-            void water_damage(target, helm_simple_name(target), TRUE);
+            water_damage(target, helm_simple_name(target), TRUE);
             break;
         case 1:
             if (in_sight)
@@ -1679,17 +1572,17 @@ trapeffect_rust_trap(
                 break;
             target = MON_WEP(mtmp);
             if (target && bimanual(target))
-                void water_damage(target, 0, TRUE);
+                water_damage(target, 0, TRUE);
  case "mglovecheck": $goto = null;
             target = which_armor(mtmp, W_ARMG);
-            void water_damage(target, gloves_simple_name(target), TRUE);
+            water_damage(target, gloves_simple_name(target), TRUE);
             break;
         case 2:
             if (in_sight)
                 pline_mon(mtmp,
                       _("%s %s's right %s!"), A_gush_of_water_hits[0],
                       mon_nam(mtmp), mbodypart(mtmp, ARM));
-            void water_damage(MON_WEP(mtmp), 0, TRUE);
+            water_damage(MON_WEP(mtmp), 0, TRUE);
             { $goto = "mglovecheck"; continue $goto_mglovecheck; }
         default:
             if (in_sight)
@@ -1698,15 +1591,15 @@ trapeffect_rust_trap(
                 if (otmp.lamplit
                     /* exclude weapon(s) because cases 1 and 2 do them */
                     && (otmp.owornmask & (W_WEP | W_SWAPWEP)) == 0)
-                    void splash_lit(otmp);
+                    splash_lit(otmp);
             if ((target = which_armor(mtmp, W_ARMC)) != null)
-                void water_damage(target, cloak_simple_name(target),
+                water_damage(target, cloak_simple_name(target),
                                     TRUE);
             else if ((target = which_armor(mtmp, W_ARM)) != null)
-                void water_damage(target, suit_simple_name(target),
+                water_damage(target, suit_simple_name(target),
                                     TRUE);
             else if ((target = which_armor(mtmp, W_ARMU)) != null)
-                void water_damage(target, _("shirt"), TRUE);
+                water_damage(target, _("shirt"), TRUE);
         } break; }
 
         if (completelyrusts(mptr)) {
@@ -1717,7 +1610,7 @@ trapeffect_rust_trap(
             if (DEADMONSTER(mtmp))
                 trapkilled = TRUE;
         } else if (mptr == mons[PM_GREMLIN] && rn2(3)) {
-            void split_mon(mtmp, null);
+            split_mon(mtmp, null);
         }
 
         return trapkilled ? Trap_Killed_Mon : mtmp.mtrapped
@@ -1726,18 +1619,16 @@ trapeffect_rust_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_fire_trap(
+function trapeffect_fire_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         seetrap(trap);
         dofiretrap(null);
     } else {
         let tx = trap.tx, ty = trap.ty;
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let see_it = cansee(tx, ty);
         let trapkilled = FALSE;
         let mptr = mtmp.data;
@@ -1821,12 +1712,11 @@ trapeffect_fire_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_pit(
+function trapeffect_pit(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     let ttype = trap.ttyp;
     /* relevant_spikes is initially always true for spiked pits, but
        set to false if the spikes are found to not be relevant */
@@ -1867,10 +1757,10 @@ trapeffect_pit(
             chars[verbbuf] = ord('\0');
             if (u.usteed) {
                 if ((trflags & RECURSIVETRAP) != 0)
-                    void sprintf(verbbuf, _("and %s fall"), x_monnam(u.usteed, steed_article, 0,
+                    sprintf(verbbuf, _("and %s fall"), x_monnam(u.usteed, steed_article, 0,
                                      SUPPRESS_SADDLE, FALSE));
                 else
-                    void sprintf(verbbuf, _("lead %s"), x_monnam(u.usteed, steed_article, _("poor"),
+                    sprintf(verbbuf, _("lead %s"), x_monnam(u.usteed, steed_article, _("poor"),
                                      SUPPRESS_SADDLE, FALSE))
 
 ;
@@ -1884,7 +1774,7 @@ trapeffect_pit(
                 You(_("stumble over debris%s."),
                     !rn2(5) ? _(" between the pits") : _(""));
             } else {
-                void strcpy(verbbuf, !plunged ? _("fall") : (Flying() ? _("dive") : _("plunge")))
+                strcpy(verbbuf, !plunged ? _("fall") : (Flying() ? _("dive") : _("plunge")))
 ;
             }
             if (chars[verbbuf])
@@ -1922,7 +1812,7 @@ trapeffect_pit(
             if (relevant_spikes) {
                 let oldumort = u.umortality;
 
-                losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(conj_pit ? 4 : adj_pit ? 6 : 10)) + 1)) / 2))) : (rnd(conj_pit ? 4 : adj_pit ? 6 : 10)))),
+                losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(conj_pit ? 4 : adj_pit ? 6 : 10)) + 1) / 2))) : (rnd(conj_pit ? 4 : adj_pit ? 6 : 10))),
                        /* note: these don't need locomotion() handling;
                           if fatal while poly'd and Unchanging, the
                           death reason will be overridden with
@@ -1947,7 +1837,7 @@ trapeffect_pit(
                 /* plunging flyers take spike damage but not pit damage */
                 if (!conj_pit && !deliberate
                     && !(plunged && (Flying() || is_clinger(gy.youmonst.data))))
-                    losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(adj_pit ? 3 : 6)) + 1)) / 2))) : (rnd(adj_pit ? 3 : 6)))),
+                    losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(adj_pit ? 3 : 6)) + 1) / 2))) : (rnd(adj_pit ? 3 : 6))),
                            plunged ? _("deliberately plunged into a pit")
                            : _("fell into a pit"),
                            NO_KILLER_PREFIX);
@@ -1964,10 +1854,10 @@ trapeffect_pit(
             exercise(A_DEX, FALSE);
         }
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let trapkilled = FALSE;
-        let forcetrap = (+((trflags & FORCETRAP) != 0));
-        let inescapable = (((forcetrap || (Sokoban() && !trap.madeby_u)) ? 1 : 0));
+        let forcetrap = +((trflags & FORCETRAP) != 0);
+        let inescapable = (forcetrap || (Sokoban() && !trap.madeby_u) ? 1 : 0);
         let mptr = mtmp.data;
         let fallverb;
 
@@ -2007,14 +1897,13 @@ trapeffect_pit(
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-trapeffect_hole(
+function trapeffect_hole(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         if (!Can_fall_thru(u.uz)) {
             seetrap(trap); /* normally done in fall_through */
@@ -2026,9 +1915,9 @@ trapeffect_hole(
     } else {
         let tt = trap.ttyp;
         let mptr = mtmp.data;
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
-        let forcetrap = (+((trflags & FORCETRAP) != 0));
-        let inescapable = (((forcetrap || (Sokoban() && !trap.madeby_u)) ? 1 : 0));
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
+        let forcetrap = +((trflags & FORCETRAP) != 0);
+        let inescapable = (forcetrap || (Sokoban() && !trap.madeby_u) ? 1 : 0);
 
         if (!Can_fall_thru(u.uz)) {
             impossible(_("mintrap: %ss cannot exist on this level."),
@@ -2066,17 +1955,15 @@ trapeffect_hole(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_telep_trap(
+function trapeffect_telep_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         seetrap(trap);
         tele_trap(trap);
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
 
         mtele_trap(mtmp, trap, in_sight);
         return Trap_Moved_Mon;
@@ -2084,34 +1971,31 @@ trapeffect_telep_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_level_telep(
+function trapeffect_level_telep(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         seetrap(trap);
         level_tele_trap(trap, trflags);
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
-        let forcetrap = (+((trflags & FORCETRAP) != 0));
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
+        let forcetrap = +((trflags & FORCETRAP) != 0);
 
         return mlevel_tele_trap(mtmp, trap, forcetrap, in_sight);
     }
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_web(
+function trapeffect_web(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     if (mtmp == gy.youmonst) {
         let webmsgok = +((trflags & NOWEBMSG) == 0);
-        let forcetrap = (+((trflags & FORCETRAP) != 0
-                             || (trflags & FAILEDUNTRAP) != 0));
+        let forcetrap = +((trflags & FORCETRAP) != 0
+                             || (trflags & FAILEDUNTRAP) != 0);
         let viasitting = +((trflags & VIASITTING) != 0);
         let steed_article = ARTICLE_THE;
 
@@ -2133,13 +2017,13 @@ trapeffect_web(
             let verbbuf = stack_array(char, BUFSZ);
 
             if (forcetrap || viasitting) {
-                void strcpy(verbbuf, _("are caught by"));
+                strcpy(verbbuf, _("are caught by"));
             } else if (u.usteed) {
-                void sprintf(verbbuf, _("lead %s into"), x_monnam(u.usteed, steed_article, _("poor"),
+                sprintf(verbbuf, _("lead %s into"), x_monnam(u.usteed, steed_article, _("poor"),
                                  SUPPRESS_SADDLE, FALSE))
 ;
             } else {
-                void sprintf(verbbuf, _("%s into"), u_locomotion(_("stumble")));
+                sprintf(verbbuf, _("%s into"), u_locomotion(_("stumble")));
             }
             You(_("%s %s spider web!"), verbbuf, a_your[trap.madeby_u]);
         }
@@ -2204,8 +2088,8 @@ trapeffect_web(
     } else {
         /* Monster in a web. */
         let tear_web;
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
-        let forcetrap = (+((trflags & FORCETRAP) != 0));
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
+        let forcetrap = +((trflags & FORCETRAP) != 0);
         let mptr = mtmp.data;
 
         if (webmaker(mptr))
@@ -2273,28 +2157,25 @@ trapeffect_web(
         return mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-trapeffect_statue_trap(
+function trapeffect_statue_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
-        void activate_statue_trap(trap, u.ux, u.uy, FALSE);
+        activate_statue_trap(trap, u.ux, u.uy, FALSE);
     } else {
         /* monsters don't trigger statue traps */
     }
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_magic_trap(
+function trapeffect_magic_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         seetrap(trap);
         if (!rn2(30)) {
@@ -2310,7 +2191,7 @@ trapeffect_magic_trap(
         } else {
             domagictrap();
         }
-        void steedintrap(trap, null);
+        steedintrap(trap, null);
     } else {
         /* A magic trap.  Monsters usually immune. */
         if (!rn2(21))
@@ -2319,12 +2200,10 @@ trapeffect_magic_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_anti_magic(
+function trapeffect_anti_magic(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (wearing_iron_shoes(mtmp)) {
         let shoes = which_armor(mtmp, W_ARMF);
         /* iron shoes protect against antimagic traps only if
@@ -2398,7 +2277,7 @@ trapeffect_anti_magic(
         drain_en(drain, exclaim_it);
     } else {
         let trapkilled = FALSE;
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let see_it = cansee(mtmp.mx, mtmp.my);
         let mptr = mtmp.data;
 
@@ -2449,12 +2328,11 @@ trapeffect_anti_magic(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_poly_trap(
+function trapeffect_poly_trap(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     if (mtmp == gy.youmonst) {
         let viasitting = +((trflags & VIASITTING) != 0);
         let steed_article = ARTICLE_THE;
@@ -2467,12 +2345,12 @@ trapeffect_poly_trap(
 
         seetrap(trap);
         if (viasitting)
-            void strcpy(verbbuf, _("trigger")); /* follows "You sit down." */
+            strcpy(verbbuf, _("trigger")); /* follows "You sit down." */
         else if (u.usteed)
-            void sprintf(verbbuf, _("lead %s onto"), x_monnam(u.usteed, steed_article, 0,
+            sprintf(verbbuf, _("lead %s onto"), x_monnam(u.usteed, steed_article, 0,
                              SUPPRESS_SADDLE, FALSE));
         else
-            void sprintf(verbbuf, _("%s onto"), u_locomotion(_("step")))
+            sprintf(verbbuf, _("%s onto"), u_locomotion(_("step")))
 ;
         You(_("%s a polymorph trap!"), verbbuf);
         if (wearing_iron_shoes(mtmp)) {
@@ -2488,14 +2366,14 @@ trapeffect_poly_trap(
             You_feel(_("momentarily different."));
             /* Trap did nothing; don't remove it --KAA */
         } else {
-            void steedintrap(trap, null);
+            steedintrap(trap, null);
             deltrap(trap);      /* delete trap before polymorph */
             newsym(u.ux, u.uy); /* get rid of trap symbol */
             You_feel(_("a change coming over you."));
             polyself(POLY_NOFLAGS);
         }
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
 
         if (wearing_iron_shoes(mtmp)) {
             /* remove and readd the shoes to forcibly unwear them */
@@ -2516,20 +2394,19 @@ trapeffect_poly_trap(
         } else if (resists_magm(mtmp)) {
             shieldeff_mon(mtmp);
         } else if (!resist(mtmp, WAND_CLASS, 0, NOTELL)) {
-            void newcham(mtmp, null, NC_SHOW_MSG);
+            newcham(mtmp, null, NC_SHOW_MSG);
             if (in_sight)
                 seetrap(trap);
         }
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-trapeffect_landmine(
+function trapeffect_landmine(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     let damage = rnd(16);
     /* iron shoes protect against much of the damage from the
        explosion, but you still take some damage (and wound legs)
@@ -2539,8 +2416,8 @@ trapeffect_landmine(
 
     if (mtmp == gy.youmonst) {
         let already_seen = trap.tseen;
-        let forcetrap = (+((trflags & FORCETRAP) != 0
-                             || (trflags & FAILEDUNTRAP) != 0));
+        let forcetrap = +((trflags & FORCETRAP) != 0
+                             || (trflags & FAILEDUNTRAP) != 0);
         let forcebungle = +((trflags & FORCEBUNGLE) != 0);
         let steed_mid = 0;
         let saddle = null;
@@ -2575,7 +2452,7 @@ trapeffect_landmine(
             if (u.usteed)
                 steed_mid = u.usteed.m_id;
             recursive_mine[0] = TRUE;
-            void steedintrap(trap, null);
+            steedintrap(trap, null);
             recursive_mine[0] = FALSE;
             saddle = sobj_at(SADDLE, u.ux, u.uy);
             set_wounded_legs(LEFT_SIDE, rn1(35, 41));
@@ -2589,7 +2466,7 @@ trapeffect_landmine(
         losehp(Maybe_Half_Phys(damage), _("land mine"), KILLED_BY_AN);
         blow_up_landmine(trap);
         if (steed_mid && saddle && !u.usteed)
-            void keep_saddle_with_steedcorpse(steed_mid, fobj(), saddle);
+            keep_saddle_with_steedcorpse(steed_mid, fobj(), saddle);
         newsym(u.ux, u.uy); /* update trap symbol */
         /* fall recursively into the pit... */
         if ((trap = t_at(u.ux, u.uy)) != null)
@@ -2597,7 +2474,7 @@ trapeffect_landmine(
         fill_pit(u.ux, u.uy);
     } else {
         let trapkilled = FALSE;
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let tx = trap.tx, ty = trap.ty;
 
         /* heavier monsters are more likely to set off a land mine; on the
@@ -2654,15 +2531,13 @@ trapeffect_landmine(
             ? Trap_Caught_Mon : Trap_Effect_Finished;
     }
     return Trap_Effect_Finished;
-} export const MINE_TRIGGER_WT = (Math.trunc(WT_ELF / 2));
+}
+export const MINE_TRIGGER_WT = Math.trunc(WT_ELF / 2);
 
-
-function /* int */
-trapeffect_rolling_boulder_trap(
+function trapeffect_rolling_boulder_trap(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         let style = ROLL | (trap.tseen ? LAUNCH_KNOWN : 0);
 
@@ -2681,9 +2556,9 @@ trapeffect_rolling_boulder_trap(
         }
     } else {
         if (!m_in_air(mtmp)) {
-            let in_sight = (((mtmp == u.usteed
+            let in_sight = (mtmp == u.usteed
                                 || (cansee(mtmp.mx, mtmp.my)
-                                    && canspotmon(mtmp))) ? 1 : 0));
+                                    && canspotmon(mtmp)) ? 1 : 0);
             let style = ROLL | (in_sight ? 0 : LAUNCH_UNSEEN);
             let trapkilled = FALSE;
 
@@ -2706,12 +2581,10 @@ trapeffect_rolling_boulder_trap(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_magic_portal(
+function trapeffect_magic_portal(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     if (mtmp == gy.youmonst) {
         feeltrap(trap);
         domagicportal(trap);
@@ -2721,18 +2594,17 @@ trapeffect_magic_portal(
     return Trap_Effect_Finished;
 }
 
-function /* int */
-trapeffect_vibrating_square(
+function trapeffect_vibrating_square(
     mtmp,
     trap,
-    trflags)
-{ const $frame = stack_frame(); try {
+    trflags) { /* int */
+    const $frame = stack_frame(); try {
     if (mtmp == gy.youmonst) {
         feeltrap(trap);
         /* messages handled elsewhere; the trap symbol is merely to mark the
            square for future reference */
     } else {
-        let in_sight = ((canseemon(mtmp) || (mtmp == u.usteed)) ? 1 : 0);
+        let in_sight = (canseemon(mtmp) || (mtmp == u.usteed) ? 1 : 0);
         let see_it = cansee(mtmp.mx, mtmp.my);
 
         if (see_it && !Blind()) {
@@ -2742,13 +2614,13 @@ trapeffect_vibrating_square(
 
                 if (nolimbs(mtmp.data) || m_in_air(mtmp)) {
                     /* just "beneath <mon>" */
-                    void strcpy(buf, monnm);
+                    strcpy(buf, monnm);
                 } else {
-                    void strcpy(buf, s_suffix(monnm));
+                    strcpy(buf, s_suffix(monnm));
                     p = eos(strcat(buf, _(" ")));
-                    void strcpy(p, makeplural(mbodypart(mtmp, FOOT)));
+                    strcpy(p, makeplural(mbodypart(mtmp, FOOT)));
                     /* avoid "beneath 'rear paws'" or 'rear hooves' */
-                    void strsubst(p, _("rear "), _(""));
+                    strsubst(p, _("rear "), _(""));
                 }
                 You_see(_("a strange vibration beneath %s."), buf);
             } else {
@@ -2761,7 +2633,8 @@ trapeffect_vibrating_square(
         }
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * for PR#259 - paranoid_confirm:trap
@@ -2779,9 +2652,7 @@ trapeffect_vibrating_square(
  *    item or hidden intrinsic providing a resistance; the player should still
  *    be warned of this trap, while monsters implicitly know they're immune.
  */
-export function /* int */
-immune_to_trap(mon, ttype)
-{
+export function immune_to_trap(mon, ttype) { /* int */
     let pm;
     let obj;
     let is_you;
@@ -2791,7 +2662,7 @@ immune_to_trap(mon, ttype)
         return TRAP_NOT_IMMUNE;
     }
     pm = mon.data;
-    is_you = (+(mon == gy.youmonst));
+    is_you = +(mon == gy.youmonst);
 
     switch (ttype) {
     case ARROW_TRAP:
@@ -2933,12 +2804,10 @@ immune_to_trap(mon, ttype)
     return TRAP_NOT_IMMUNE;
 }
 
-function /* int */
-trapeffect_selector(
+function trapeffect_selector(
     mtmp,
     trap,
-    trflags)
-{
+    trflags) { /* int */
     switch (trap.ttyp) {
     case ARROW_TRAP:
         return trapeffect_arrow_trap(mtmp, trap, trflags);
@@ -2992,13 +2861,11 @@ trapeffect_selector(
     return Trap_Effect_Finished;
 }
 
-export function /* void */
-dotrap(trap, trflags)
-{
+export function dotrap(trap, trflags) { /* void */
     let ttype = trap.ttyp;
     let already_seen = trap.tseen,
-            forcetrap = (+((trflags & FORCETRAP) != 0
-                         || (trflags & FAILEDUNTRAP) != 0)),
+            forcetrap = +((trflags & FORCETRAP) != 0
+                         || (trflags & FAILEDUNTRAP) != 0),
             forcebungle = +((trflags & FORCEBUNGLE) != 0),
             plunged = +((trflags & TOOKPLUNGE) != 0),
             conj_pit = conjoined_pits(trap, t_at(u.ux0, u.uy0), TRUE),
@@ -3056,12 +2923,10 @@ dotrap(trap, trflags)
      *  would be somewhat harsh for what's usually a minor impairment.
      */
 
-    void trapeffect_selector(gy.youmonst, trap, trflags);
+    trapeffect_selector(gy.youmonst, trap, trflags);
 }
 
-function /* char * */
-trapnote(trap, noprefix)
-{
+function trapnote(trap, noprefix) { /* char * */
     let tnnames = static_array("trapnote.tnnames", ptr_to(char), null, [
         _("C note"),  _("D flat"), _("D note"),  _("E flat"),
         _("E note"),  _("F note"), _("F sharp"), _("G note"),
@@ -3073,15 +2938,14 @@ trapnote(trap, noprefix)
     chars[tnbuf + 0] = ord('\0');
     tn = tnnames[trap.vl.v_tnote];
     if (!noprefix)
-        void just_an(tnbuf, tn);
+        just_an(tnbuf, tn);
     return strcat(tnbuf, tn);
 }
 
 /* choose a note not used by any trap on current level,
    ignoring ttmp; if all are in use, pick a random one */
-function /* int */
-choose_trapnote(ttmp)
-{ const $frame = stack_frame(); try {
+function choose_trapnote(ttmp) { /* int */
+    const $frame = stack_frame(); try {
     let tavail = stack_array(int, 12), tpick = stack_array(int, 12), tcnt = 0, k;
     let t;
 
@@ -3096,11 +2960,10 @@ choose_trapnote(ttmp)
             tpick[tcnt++] = k;
     /* choose an unused note; if all are in use, pick a random one */
     return ((tcnt > 0) ? tpick[rn2(tcnt)] : rn2(12));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-steedintrap(trap, otmp)
-{
+function steedintrap(trap, otmp) { /* int */
     let steed = u.usteed;
     let tt;
     let trapkilled, steedhit;
@@ -3144,15 +3007,15 @@ steedintrap(trap, otmp)
         break;
     case PIT:
     case SPIKED_PIT:
-        trapkilled = (((DEADMONSTER(steed)
+        trapkilled = (DEADMONSTER(steed)
                       || thitm(0, steed, null,
-                               rnd((tt == PIT) ? 6 : 10), FALSE)) ? 1 : 0));
+                               rnd((tt == PIT) ? 6 : 10), FALSE) ? 1 : 0);
         steedhit = TRUE;
         break;
     case POLY_TRAP:
         if (!resists_magm(steed) && !resist(steed, WAND_CLASS, 0, NOTELL)) {
             /* newcham() will probably end up calling poly_steed() */
-            void newcham(steed, null, NC_SHOW_MSG);
+            newcham(steed, null, NC_SHOW_MSG);
         }
         steedhit = TRUE;
         break;
@@ -3168,15 +3031,14 @@ steedintrap(trap, otmp)
 }
 
 /* some actions common to both player and monsters for triggered landmine */
-export function /* void */
-blow_up_landmine(trap)
-{ const $frame = stack_frame(); try {
+export function blow_up_landmine(trap) { /* void */
+    const $frame = stack_frame(); try {
     let x = trap.tx, y = trap.ty, dbx = stack_var(coordxy), dby = stack_var(coordxy);
     let lev = levl()[x][y];
     let old_typ, typ;
 
     old_typ = lev.typ;
-    void scatter(x, y, 4,
+    scatter(x, y, 4,
                    MAY_DESTROY | MAY_HIT | MAY_FRACTURE | VIS_EFFECTS,
                    null);
     del_engr_at(x, y);
@@ -3216,11 +3078,10 @@ blow_up_landmine(trap)
     maybe_dunk_boulders(x, y);
     recalc_block_point(x, y);
     spot_checks(x, y, old_typ);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-launch_drop_spot(obj, x, y)
-{
+function launch_drop_spot(obj, x, y) { /* void */
     if (!obj) {
         gl.launchplace.obj = null;
         gl.launchplace.x = 0;
@@ -3232,17 +3093,13 @@ launch_drop_spot(obj, x, y)
     }
 }
 
-export function /* boolean */
-launch_in_progress()
-{
+export function launch_in_progress() { /* boolean */
     if (gl.launchplace.obj)
         return TRUE;
     return FALSE;
 }
 
-export function /* void */
-force_launch_placement()
-{
+export function force_launch_placement() { /* void */
     if (gl.launchplace.obj) {
         gl.launchplace.obj.otrapped = 0;
         place_object(gl.launchplace.obj, gl.launchplace.x, gl.launchplace.y);
@@ -3256,18 +3113,18 @@ force_launch_placement()
  *        1 if an object was launched and placed somewhere.
  *        2 if an object was launched, but used up.
  */
-export function /* int */
-launch_obj(
+export function launch_obj(
     otyp,
     x1, y1,
     x2, y2,
-    style)
-{ const $frame = stack_frame(); try { let $goto = null; var singleobj = stack_var(ptr_to(struct_obj)), dest = stack_struct(struct_d_level);
+    style) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var singleobj = stack_var(ptr_to(struct_obj)), dest = stack_struct(struct_d_level);
     var mtmp;
     var otmp, otmp2;
     var dx, dy;
     var x, y;
-    
+
     var used_up = FALSE, otherside = FALSE;
     var dist, tmp, delaycnt = 0;
 
@@ -3307,7 +3164,7 @@ launch_obj(
     if ((otyp == BOULDER || otyp == STATUE)
         && singleobj[0].ox == svc.context.digging.pos.x
         && singleobj[0].oy == svc.context.digging.pos.y)
-        void memset(addr_of(svc.context.digging), 0,
+        memset(addr_of(svc.context.digging), 0,
                       sizeof(struct_dig_info));
 
     dist = distmin(x1, y1, x2, y2);
@@ -3399,7 +3256,7 @@ launch_obj(
                         pline_mon(mtmp, _("%s snatches the boulder."),
                                   Monnam(mtmp));
                     singleobj[0].otrapped = 0;
-                    void mpickobj(mtmp, singleobj[0]);
+                    mpickobj(mtmp, singleobj[0]);
                     used_up = TRUE;
                     launch_drop_spot(null, 0, 0);
                     break;
@@ -3431,7 +3288,6 @@ launch_obj(
             if ((t = t_at(x, y)) != null
                 && otyp == BOULDER) {
                 var newlev = 0;
-                
 
                 switch (t.ttyp) {
                 case LANDMINE:
@@ -3447,7 +3303,7 @@ launch_obj(
                         place_object(singleobj[0], x, y);
                         singleobj[0].otrapped = 0;
                         fracture_rock(singleobj[0]);
-                        void scatter(x, y, 4,
+                        scatter(x, y, 4,
                                        MAY_DESTROY | MAY_HIT | MAY_FRACTURE
                                            | VIS_EFFECTS,
                                        null);
@@ -3474,7 +3330,7 @@ launch_obj(
                         You_hear(_("a rumbling stop abruptly."));
                     singleobj[0].otrapped = 0;
                     if (t.ttyp == TELEP_TRAP) {
-                        void rloco(singleobj[0]);
+                        rloco(singleobj[0]);
                     } else {
                         add_to_migration(singleobj[0]);
                         get_level(dest, newlev);
@@ -3572,11 +3428,10 @@ launch_obj(
         return 1;
     }
     return 2;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-seetrap(trap)
-{
+export function seetrap(trap) { /* void */
     if (!trap.tseen) {
         trap.tseen = 1;
         newsym(trap.tx, trap.ty);
@@ -3584,9 +3439,7 @@ seetrap(trap)
 }
 
 /* like seetrap() but overrides vision */
-export function /* void */
-feeltrap(trap)
-{
+export function feeltrap(trap) { /* void */
     trap.tseen = 1;
     map_trap(trap, 1);
     /* in case it's beneath something, redisplay the something */
@@ -3595,9 +3448,8 @@ feeltrap(trap)
 
 /* try to find a random coordinate where launching a rolling boulder
    could work. return TRUE if found, with coordinate in cc. */
-function /* boolean */
-find_random_launch_coord(ttmp, cc)
-{ const $frame = stack_frame(); try {
+function find_random_launch_coord(ttmp, cc) { /* boolean */
+    const $frame = stack_frame(); try {
     let tmp;
     let success = FALSE;
     let bcc = init_list(stack_struct(struct_nhcoord), {});
@@ -3641,7 +3493,7 @@ find_random_launch_coord(ttmp, cc)
 
             bcc.x = x;
             bcc.y = y;
-            success_otherway = isclearpath(bcc, distance, -(dx), -(dy));
+            success_otherway = isclearpath(bcc, distance, -dx, -dy);
             if (!success_otherway)
                 success = FALSE;
         }
@@ -3653,16 +3505,16 @@ find_random_launch_coord(ttmp, cc)
             --distance;
     }
     return success;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-mkroll_launch(
+function mkroll_launch(
     ttmp,
     x,
     y,
     otyp,
-    ocount)
-{ const $frame = stack_frame(); try {
+    ocount) { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let cc = init_list(stack_struct(struct_nhcoord), {});
     let success = FALSE;
@@ -3689,15 +3541,14 @@ mkroll_launch(
         ttmp.vl.v_launch_otyp = otyp;
     newsym(ttmp.launch.x, ttmp.launch.y);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-isclearpath(
+function isclearpath(
     cc,
     distance,
     dx,
-    dy)
-{
+    dy) { /* boolean */
     let t;
     let typ;
     let x, y;
@@ -3722,16 +3573,12 @@ isclearpath(
 }
 
 /* can monster escape from a pit easily */
-function /* boolean */
-m_easy_escape_pit(mtmp)
-{
-    return (+(mtmp.data == mons[PM_PIT_FIEND]
-            || mtmp.data.msize >= MZ_HUGE));
+function m_easy_escape_pit(mtmp) { /* boolean */
+    return +(mtmp.data == mons[PM_PIT_FIEND]
+            || mtmp.data.msize >= MZ_HUGE);
 }
 
-export function /* int */
-mintrap(mtmp, mintrapflags)
-{
+export function mintrap(mtmp, mintrapflags) { /* int */
     let trap = t_at(mtmp.mx, mtmp.my);
     let mptr = mtmp.data;
     let trap_result = Trap_Effect_Finished;
@@ -3789,11 +3636,11 @@ mintrap(mtmp, mintrapflags)
         trap_result = mtmp.mtrapped ? Trap_Caught_Mon : Trap_Effect_Finished;
     } else {
         let tt = trap.ttyp;
-        let forcetrap = (+((mintrapflags & FORCETRAP) != 0));
+        let forcetrap = +((mintrapflags & FORCETRAP) != 0);
         let forcebungle = +((mintrapflags & FORCEBUNGLE) != 0);
         /* monster has seen such a trap before */
-        let already_seen = (((mon_knows_traps(mtmp, tt)
-                                || (tt == HOLE && !mindless(mptr))) ? 1 : 0));
+        let already_seen = (mon_knows_traps(mtmp, tt)
+                                || (tt == HOLE && !mindless(mptr)) ? 1 : 0);
 
         if (fixed_tele_trap(trap)) {
             mintrapflags = unsigned(mintrapflags | FORCETRAP);
@@ -3840,9 +3687,7 @@ mintrap(mtmp, mintrapflags)
 }
 
 /* Combine cockatrice checks into single functions to avoid repeating code. */
-export function /* void */
-instapetrify(str)
-{
+export function instapetrify(str) { /* void */
     if (Stone_resistance())
         return;
     if (poly_when_stoned(gy.youmonst.data) && polymon(PM_STONE_GOLEM))
@@ -3850,13 +3695,11 @@ instapetrify(str)
     urgent_pline(_("You turn to stone..."));
     svk.killer.format = KILLED_BY;
     if (str != svk.killer.name)
-        void strcpy(svk.killer.name, str ? str : _(""));
+        strcpy(svk.killer.name, str ? str : _(""));
     done(STONING);
 }
 
-export function /* void */
-minstapetrify(mon, byplayer)
-{
+export function minstapetrify(mon, byplayer) { /* void */
     if (resists_ston(mon))
         return;
     if (poly_when_stoned(mon.data)) {
@@ -3879,9 +3722,8 @@ minstapetrify(mon, byplayer)
         monstone(mon);
 }
 
-export function /* void */
-selftouch(arg)
-{ const $frame = stack_frame(); try {
+export function selftouch(arg) { /* void */
+    const $frame = stack_frame(); try {
     let kbuf = stack_array(char, BUFSZ);
     let corpse_pmname;
 
@@ -3889,7 +3731,7 @@ selftouch(arg)
         && !Stone_resistance()) {
         corpse_pmname = obj_pmname(uwep);
         pline(_("%s touch the %s corpse."), arg, corpse_pmname);
-        void sprintf(kbuf, _("%s corpse"), an(corpse_pmname));
+        sprintf(kbuf, _("%s corpse"), an(corpse_pmname));
         instapetrify(kbuf);
         /* life-saved; unwield the corpse if we can't handle it */
         if (!uarmg && !Stone_resistance())
@@ -3901,20 +3743,19 @@ selftouch(arg)
         && touch_petrifies(mons[uswapwep.corpsenm]) && !Stone_resistance()) {
         corpse_pmname = obj_pmname(uswapwep);
         pline(_("%s touch the %s corpse."), arg, corpse_pmname);
-        void sprintf(kbuf, _("%s corpse"), an(corpse_pmname));
+        sprintf(kbuf, _("%s corpse"), an(corpse_pmname));
         instapetrify(kbuf);
         /* life-saved; unwield the corpse */
         if (!uarmg && !Stone_resistance())
             uswapwepgone();
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-mselftouch(
+export function mselftouch(
     mon,
     arg,
-    byplayer)
-{
+    byplayer) { /* void */
     let mwep = MON_WEP(mon);
 
     if (mwep && mwep.otyp == CORPSE && touch_petrifies(mons[mwep.corpsenm])
@@ -3933,9 +3774,8 @@ mselftouch(
 }
 
 /* start levitating */
-export function /* void */
-float_up()
-{ const $frame = stack_frame(); try {
+export function float_up() { /* void */
+    const $frame = stack_frame(); try {
     disp.botl = TRUE;
     if (u.utrap) {
         if (u.utraptype == TT_PIT) {
@@ -3954,7 +3794,7 @@ float_up()
             /* caveat: this finds the first buried iron ball within
                one step of the specified location, not necessarily the
                buried [former] uball at the original anchor point */
-            void buried_ball(cc);
+            buried_ball(cc);
             /* being chained to the floor blocks levitation from floating
                above that floor but not from enhancing carrying capacity */
             You(_("feel lighter, but your %s is still chained to the %s."),
@@ -3968,10 +3808,6 @@ float_up()
                 body_part(LEG));
         }
         /* when still trapped, float_vs_flight() below will block levitation */
-
-
-
-
     } else if (u.uinwater) {
         spoteffects(TRUE);
     } else if (u.uswallow) {
@@ -4003,28 +3839,26 @@ float_up()
        state might be reduced */
     encumber_msg();
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* a boulder fills a pit or a hole at x,y */
-export function /* void */
-fill_pit(x, y)
-{
+export function fill_pit(x, y) { /* void */
     let otmp;
     let t;
 
     if ((t = t_at(x, y)) != null && (is_pit(t.ttyp) || is_hole(t.ttyp))
         && (otmp = sobj_at(BOULDER, x, y)) != null) {
         obj_extract_self(otmp);
-        void flooreffects(otmp, x, y, _("settle"));
+        flooreffects(otmp, x, y, _("settle"));
     }
 }
 
 /* stop levitating */
-export function /* int */
-float_down(
+export function float_down(
     hmask,
-    emask) /* might cancel timeout */
-{ const $frame = stack_frame(); try {
+    emask) { /* int */ /* might cancel timeout */
+    const $frame = stack_frame(); try {
     let trap = null;
     let current_dungeon_level = stack_struct(struct_d_level);
     let no_msg = FALSE;
@@ -4038,7 +3872,7 @@ float_down(
            we don't give any end-of-levitation feedback or side-effects,
            but if blocking is solely due to being trapped in/on floor,
            do give some feedback but skip other float_down() effects */
-        let trapped = (+(BLevitation() == I_SPECIAL));
+        let trapped = +(BLevitation() == I_SPECIAL);
 
         float_vs_flight();
         if (trapped && u.utrap) /* u.utrap => paranoia */
@@ -4105,7 +3939,7 @@ float_down(
             no_msg = drown();
 
         if (is_lava(u.ux, u.uy) && !iflags.in_lava_effects) {
-            void lava_effects();
+            lava_effects();
             no_msg = TRUE;
         }
     }
@@ -4174,14 +4008,13 @@ float_down(
         /* falling through trap door calls goto_level,
            and goto_level does its own pickup() call */
         && on_level(u.uz, current_dungeon_level))
-        void pickup(1);
+        pickup(1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* shared code for climbing out of a pit */
-export function /* void */
-climb_pit()
-{
+export function climb_pit() { /* void */
     let pitname;
 
     if (!u.utrap || u.utraptype != TT_PIT)
@@ -4229,10 +4062,8 @@ climb_pit()
     }
 }
 
-function /* void */
-dofiretrap(
-    box) /* null for floor trap */
-{
+function dofiretrap(
+    box) { /* void */ /* null for floor trap */
     let see_it = +!Blind();
     let orig_dmg, num, alt;
     orig_dmg = num = d(2, 4);
@@ -4304,7 +4135,7 @@ dofiretrap(
     burn_away_slime();
 
     if (burnarmor(gy.youmonst) || rn2(3)) {
-        void destroy_items(gy.youmonst, AD_FIRE, orig_dmg);
+        destroy_items(gy.youmonst, AD_FIRE, orig_dmg);
         ignite_items(gi.invent);
     }
     if (!box && burn_floor_objects(u.ux, u.uy, see_it, TRUE) && !see_it)
@@ -4313,9 +4144,8 @@ dofiretrap(
         melt_ice(u.ux, u.uy, 0);
 }
 
-function /* void */
-domagictrap()
-{ const $frame = stack_frame(); try {
+function domagictrap() { /* void */
+    const $frame = stack_frame(); try {
     let fate = rnd(20);
 
     /* What happened to the poor sucker? */
@@ -4347,7 +4177,7 @@ domagictrap()
             disp.botl = TRUE;
         }
         while (cnt--)
-            void makemon(null, u.ux, u.uy, NO_MM_FLAGS);
+            makemon(null, u.ux, u.uy, NO_MM_FLAGS);
         /* roar: wake monsters in vicinity, after placing trap-created ones */
         wake_nearto(u.ux, u.uy, 7 * 7);
         /* [flash: should probably also hit nearby gremlins with light] */
@@ -4390,7 +4220,7 @@ domagictrap()
                                    : _("distant howling."));
             break;
         case 15:
-            if (on_level(u.uz, (svd.dungeon_topology.d_qstart_level)))
+            if (on_level(u.uz, svd.dungeon_topology.d_qstart_level))
                 You_feel(
                     _("%slike the prodigal son."),
                     (flags.female || (Upolyd() && is_neuter(gy.youmonst.data)))
@@ -4419,14 +4249,14 @@ domagictrap()
             let i, j;
             let mtmp;
 
-            void adjattrib(A_CHA, 1, FALSE);
+            adjattrib(A_CHA, 1, FALSE);
             for (i = -1; i <= 1; i++)
                 for (j = -1; j <= 1; j++) {
                     if (!isok(u.ux + i, u.uy + j))
                         continue;
                     mtmp = m_at(u.ux + i, u.uy + j);
                     if (mtmp)
-                        void tamedog(mtmp, null, TRUE);
+                        tamedog(mtmp, null, TRUE);
                 }
             break;
         }
@@ -4440,7 +4270,7 @@ domagictrap()
             pseudo.otyp = SPE_REMOVE_CURSE;
             pseudo.oclass = SPBOOK_CLASS;
             u.uprops[CONFUSION].intrinsic = 0;
-            void seffects(pseudo);
+            seffects(pseudo);
             u.uprops[CONFUSION].intrinsic = save_conf;
             break;
         }
@@ -4448,15 +4278,14 @@ domagictrap()
             break;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Set an item on fire.  Return whether the object was destroyed. */
-export function /* boolean */
-fire_damage(
+export function fire_damage(
     obj,
     force,
-    x, y) /* where to place contents of burned up container */
-{
+    x, y) { /* boolean */ /* where to place contents of burned up container */
     let chance;
     let otmp, ncobj;
     let in_sight = +(!Blind() && couldsee(x, y)); /* Don't care if it's lit */
@@ -4522,7 +4351,7 @@ fire_damage(
         dindx = (obj.oclass == SCROLL_CLASS) ? 3 : 4;
         if (in_sight)
             pline(_("%s %s."), Yname2(obj),
-                  destroy_strings[dindx][(+(obj.quan > 1))]);
+                  destroy_strings[dindx][+(obj.quan > 1)]);
         setnotworn(obj);
         delobj(obj);
         return TRUE;
@@ -4530,7 +4359,7 @@ fire_damage(
         dindx = (obj.otyp != POT_OIL) ? 1 : 2;
         if (in_sight)
             pline(_("%s %s."), Yname2(obj),
-                  destroy_strings[dindx][(+(obj.quan > 1))]);
+                  destroy_strings[dindx][+(obj.quan > 1)]);
         setnotworn(obj);
         delobj(obj);
         return TRUE;
@@ -4546,13 +4375,11 @@ fire_damage(
  *
  * Return number of objects destroyed. --ALI
  */
-export function /* int */
-fire_damage_chain(
+export function fire_damage_chain(
     chain,
     force,
     here,
-    x, y)
-{
+    x, y) { /* int */
     let obj, nobj;
     let num = 0;
 
@@ -4572,9 +4399,7 @@ fire_damage_chain(
 }
 
 /* obj has been thrown or dropped into lava; damage is worse than mere fire */
-export function /* boolean */
-lava_damage(obj, x, y)
-{
+export function lava_damage(obj, x, y) { /* boolean */
     let otyp = obj.otyp, ocls = obj.oclass;
 
     /* the Amulet, invocation items, and Rider corpses are never destroyed
@@ -4614,9 +4439,7 @@ lava_damage(obj, x, y)
     return fire_damage(obj, TRUE, x, y);
 }
 
-export function /* void */
-acid_damage(obj)
-{
+export function acid_damage(obj) { /* void */
     /* Scrolls but not spellbooks can be erased by acid. */
     let victim;
     let vismon;
@@ -4625,7 +4448,7 @@ acid_damage(obj)
         return;
 
     victim = carried(obj) ? gy.youmonst : mcarried(obj) ? obj.v.v_ocarry : null;
-    vismon = ((victim && (victim != gy.youmonst) && canseemon(victim)) ? 1 : 0);
+    vismon = (victim && (victim != gy.youmonst) && canseemon(victim) ? 1 : 0);
 
     if (victim == gy.youmonst && inventory_resistance_check(AD_ACID))
         return;
@@ -4653,23 +4476,21 @@ acid_damage(obj)
         erode_obj(obj, 0, ERODE_CORRODE, EF_GREASE | EF_VERBOSE);
 }
 
-function /* void */
-pot_acid_damage(
+function pot_acid_damage(
     obj,
     in_invent,
-    described)
-{
+    described) { /* void */
     let bufp;
     let one, exploded;
 
-    one = (+(obj.quan == 1));
+    one = +(obj.quan == 1);
     exploded = FALSE;
 
     if (Blind() && !in_invent)
         obj.dknown = 0;
     if (ga.acid_ctx.ctx_valid)
-        exploded = (+((obj.dknown ? ga.acid_ctx.dkn_boom
-                                 : ga.acid_ctx.unk_boom) > 0));
+        exploded = +((obj.dknown ? ga.acid_ctx.dkn_boom
+                                 : ga.acid_ctx.unk_boom) > 0);
     if (described) {
         /* just gave "The grease washes off your potion of acid."
             or "...your <color> potion." (or just "...your potion.");
@@ -4708,13 +4529,12 @@ pot_acid_damage(
 
 /* Get an object wet and damage it appropriately.
    Returns an erosion return value (ER_*). */
-export function /* int */
-water_damage(
+export function water_damage(
     obj,
     ostr,
-    force)    /* if True, skip luck-based protection check */
-{ const $frame = stack_frame(); try {
-    let in_invent = ((obj && carried(obj)) ? 1 : 0), described = FALSE;
+    force) { /* int */ /* if True, skip luck-based protection check */
+    const $frame = stack_frame(); try {
+    let in_invent = (obj && carried(obj) ? 1 : 0), described = FALSE;
 
     if (!obj)
         return ER_NOTHING;
@@ -4849,13 +4669,13 @@ water_damage(
         return erode_obj(obj, ostr, ERODE_RUST, EF_NONE);
     }
     return ER_NOTHING;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-water_damage_chain(
+export function water_damage_chain(
     obj,
-    here)
-{ const $frame = stack_frame(); try {
+    here) { /* void */
+    const $frame = stack_frame(); try {
     let otmp;
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let save_bhitpos = stack_struct(struct_nhcoord);
@@ -4885,7 +4705,8 @@ water_damage_chain(
     ga.acid_ctx.dkn_boom = ga.acid_ctx.unk_boom = 0;
     ga.acid_ctx.ctx_valid = FALSE;
     struct_assign(gb.bhitpos, save_bhitpos);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This function is potentially expensive - rolling
@@ -4893,9 +4714,7 @@ water_damage_chain(
  * Returns TRUE if disrobing made player unencumbered enough to
  * crawl out of the current predicament.
  */
-function /* boolean */
-emergency_disrobe(lostsome)
-{
+function emergency_disrobe(lostsome) { /* boolean */
     let invc = inv_cnt(TRUE);
 
     while (near_capacity() > (Punished() ? UNENCUMBERED : SLT_ENCUMBER)) {
@@ -4943,11 +4762,10 @@ emergency_disrobe(lostsome)
 /* pick a random goodpos() next to x,y for monster mtmp.
    mtmp could be &gy.youmonst, uses then crawl_destination().
    returns TRUE if any good position found, with the coord in x,y */
-export function /* boolean */
-rnd_nextto_goodpos(x, y, mtmp)
-{ const $frame = stack_frame(); try {
+export function rnd_nextto_goodpos(x, y, mtmp) { /* boolean */
+    const $frame = stack_frame(); try {
     let i, j;
-    let is_u = (+(mtmp == gy.youmonst));
+    let is_u = +(mtmp == gy.youmonst);
     let nx, ny, k, dirs = stack_array(short, N_DIRS);
 
     for (i = 0; i < N_DIRS; ++i)
@@ -4969,12 +4787,12 @@ rnd_nextto_goodpos(x, y, mtmp)
         }
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* print a message about being back on the ground after leaving a pool */
-export function /* void */
-back_on_ground(rescued)
-{ const $frame = stack_frame(); try {
+export function back_on_ground(rescued) { /* void */
+    const $frame = stack_frame(); try {
     let preposit = (Levitation() || Flying()) ? _("over") : _("on"),
                surf = surface(u.ux, u.uy), you_are_back;
     let icebuf = stack_array(char, QBUFSZ);
@@ -4982,15 +4800,15 @@ back_on_ground(rescued)
     if (is_ice(u.ux, u.uy)) {
         /* "on ice" */
         surf = ice_descr(u.ux, u.uy, icebuf);
-    } else if (!strcmpi(surf, _("floor")) || !strcmpi(surf, _("ground"))) {
+    } else if (!strncmpi((surf), _(("floor")), -1) || !strncmpi((surf), _(("ground")), -1)) {
         /* "on solid ground" */
         surf = _("solid ground");
-    } else if (!strcmpi(surf, _("bridge")) || !strcmpi(surf, _("altar"))
-               || !strcmpi(surf, _("headstone"))) {
+    } else if (!strncmpi((surf), _(("bridge")), -1) || !strncmpi((surf), _(("altar")), -1)
+               || !strncmpi((surf), _(("headstone")), -1)) {
         /* "on a bridge" */
         surf = an(surf);
-    } else if (!strcmpi(surf, _("stairs")) || !strcmpi(surf, _("lava"))
-               || !strcmpi(surf, _("bottom"))) {
+    } else if (!strncmpi((surf), _(("stairs")), -1) || !strncmpi((surf), _(("lava")), -1)
+               || !strncmpi((surf), _(("bottom")), -1)) {
         /* "on the stairs" */
         surf = the(surf);
     } else { /* "cloud", "air", "air bubble", "wall", "fountain", "doorway" */
@@ -5005,14 +4823,13 @@ back_on_ground(rescued)
     }
     pline(_("%s %s %s."), you_are_back, preposit, surf);
     iflags.last_msg = PLNMSG_BACK_ON_GROUND;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* life-saving or divine rescue has attempted to get the hero out of hostile
    terrain and put hero in an unexpected spot or failed due to overfull level
    and just prevented death so "back on solid ground" may be inappropriate */
-export function /* void */
-rescued_from_terrain(how)
-{
+export function rescued_from_terrain(how) { /* void */
     let find_yourself = init_string(static_array("rescued_from_terrain.find_yourself", char, sizeof_string("find yourself")), _("find yourself"), true);
     let lev = levl()[u.ux][u.uy];
     let mesggiven = FALSE;
@@ -5055,9 +4872,8 @@ rescued_from_terrain(how)
 }
 
 /* return TRUE iff player relocated */
-export function /* boolean */
-drown()
-{ const $frame = stack_frame(); try {
+export function drown() { /* boolean */
+    const $frame = stack_frame(); try {
     let pool_of_water;
     let inpool_ok = FALSE;
     let i;
@@ -5086,10 +4902,10 @@ drown()
     water_damage_chain(gi.invent, FALSE);
 
     if (u.umonnum == PM_GREMLIN && rn2(3)) {
-        void split_mon(gy.youmonst, null);
+        split_mon(gy.youmonst, null);
     } else if (u.umonnum == PM_IRON_GOLEM) {
         You(_("rust!"));
-        i = (((Half_physical_damage()) ? (Math.trunc(((((d(2, 6)) + 1)) / 2))) : (d(2, 6))));
+        i = ((Half_physical_damage()) ? (Math.trunc((((d(2, 6)) + 1) / 2))) : (d(2, 6)));
         if (u.mhmax > i)
             u.mhmax -= i;
         losehp(i, _("rusting away"), KILLED_BY);
@@ -5128,7 +4944,7 @@ drown()
         && (Teleport_control() || rn2(3) < Luck() + 2)) {
         You(_("attempt a teleport spell.")); /* utcsri!carroll */
         if (!noteleport_level(gy.youmonst)) {
-            void dotele(FALSE);
+            dotele(FALSE);
             if (!is_pool(u.ux, u.uy))
                 return TRUE;
         } else
@@ -5183,7 +4999,7 @@ drown()
         /* avoid "drowned in _a_ limitless water" on Plane of Water */
         else if (!strcmp(pool_of_water, _("limitless water")))
             svk.killer.format = KILLED_BY;
-        void strcpy(svk.killer.name, pool_of_water);
+        strcpy(svk.killer.name, pool_of_water);
         done(DROWNING);
         /* oops, we're still alive.  better get out of the water. */
         if (safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT))
@@ -5196,11 +5012,10 @@ drown()
         set_uinwater(0); /* u.uinwater = 0 */
     rescued_from_terrain(DROWNING);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-drain_en(n, max_already_drained)
-{
+export function drain_en(n, max_already_drained) { /* void */
     let mesg;
     let punct = max_already_drained ? ord('!') : ord('.');
 
@@ -5244,9 +5059,7 @@ drain_en(n, max_already_drained)
 }
 
 /* the #untrap command - disarm a trap */
-export function /* int */
-dountrap()
-{
+export function dountrap() { /* int */
     if (!could_untrap(TRUE, FALSE))
         return ECMD_OK;
 
@@ -5254,26 +5067,25 @@ dountrap()
 }
 
 /* preliminary checks for dountrap(); also used for autounlock */
-export function /* int */
-could_untrap(verbosely, check_floor)
-{ const $frame = stack_frame(); try {
+export function could_untrap(verbosely, check_floor) { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     chars[buf + 0] = ord('\0');
     if (near_capacity() >= HVY_ENCUMBER) {
-        void strcpy(buf, _("You're too strained to do that."));
+        strcpy(buf, _("You're too strained to do that."));
     } else if ((nohands(gy.youmonst.data) && !webmaker(gy.youmonst.data))
                || !gy.youmonst.data.mmove) {
-        void strcpy(buf, _("And just how do you expect to do that?"));
+        strcpy(buf, _("And just how do you expect to do that?"));
     } else if (u.ustuck && sticks(gy.youmonst.data)) {
-        void sprintf(buf, _("You'll have to let go of %s first."), mon_nam(u.ustuck));
+        sprintf(buf, _("You'll have to let go of %s first."), mon_nam(u.ustuck));
     } else if (u.ustuck || (welded(uwep) && bimanual(uwep))) {
-        void sprintf(buf, _("Your %s seem to be too busy for that."), makeplural(body_part(HAND)))
+        sprintf(buf, _("Your %s seem to be too busy for that."), makeplural(body_part(HAND)))
 ;
     } else if (check_floor && !can_reach_floor(FALSE)) {
         /* only checked here for autounlock of chest/box and that will
            be !verbosely so precise details of the message don't matter */
-        void sprintf(buf, _("You can't reach the %s."), surface(u.ux, u.uy));
+        sprintf(buf, _("You can't reach the %s."), surface(u.ux, u.uy));
     }
     if (chars[buf + 0]) {
         if (verbosely)
@@ -5281,14 +5093,13 @@ could_untrap(verbosely, check_floor)
         return 0;
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Probability of disabling a trap.  Helge Hafting;
    Returns 0 for success, non-0 for failure. */
-function /* int */
-untrap_prob(
-    ttmp) /* must not be Null */
-{
+function untrap_prob(
+    ttmp) { /* int */ /* must not be Null */
     let chance = 3;
 
     /* non-spiders are less adept at dealing with webs */
@@ -5337,13 +5148,11 @@ untrap_prob(
 }
 
 /* Replace trap with object(s).  Helge Hafting */
-export function /* void */
-cnv_trap_obj(
+export function cnv_trap_obj(
     otyp,
     cnt,
     ttmp,
-    bury_it)
-{
+    bury_it) { /* void */
     let otmp = mksobj(otyp, TRUE, FALSE);
     let mtmp;
 
@@ -5355,7 +5164,7 @@ cnv_trap_obj(
     place_object(otmp, ttmp.tx, ttmp.ty);
     if (bury_it) {
         /* magical digging first disarms this trap, then will unearth it */
-        void bury_an_obj(otmp, 0);
+        bury_an_obj(otmp, 0);
     } else {
         /* Sell your own traps only... */
         if (ttmp.madeby_u)
@@ -5363,7 +5172,7 @@ cnv_trap_obj(
         stackobj(otmp);
     }
     newsym(ttmp.tx, ttmp.ty);
-    if (u.utrap && ((((ttmp.tx) == u.ux) && ((ttmp.ty) == u.uy))))
+    if (u.utrap && (((ttmp.tx) == u.ux) && ((ttmp.ty) == u.uy)))
         reset_utrap(TRUE);
     if (((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) && mtmp.mtrapped)
         mtmp.mtrapped = 0;
@@ -5371,9 +5180,7 @@ cnv_trap_obj(
 }
 
 /* whether moving to a trap location is moving "into" the trap or "onto" it */
-export function /* boolean */
-into_vs_onto(traptype)
-{
+export function into_vs_onto(traptype) { /* boolean */
     switch (traptype) {
     case BEAR_TRAP:
     case PIT:
@@ -5389,9 +5196,8 @@ into_vs_onto(traptype)
 }
 
 /* while attempting to disarm an adjacent trap, we've fallen into it */
-function /* void */
-move_into_trap(ttmp)
-{ const $frame = stack_frame(); try {
+function move_into_trap(ttmp) { /* void */
+    const $frame = stack_frame(); try {
     let bc = stack_var(int, 0);
     let x = ttmp.tx, y = ttmp.ty, bx = stack_var(coordxy), by = stack_var(coordxy), cx = stack_var(coordxy), cy = stack_var(coordxy);
     let unused = stack_var(boolean);
@@ -5434,18 +5240,17 @@ move_into_trap(ttmp)
         pline(_("Fortunately, you don't move %s it."),
               into_vs_onto(ttmp.ttyp) ? _("into") : _("onto"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 0: doesn't even try; 1: tries and fails; 2: succeeds */
-function /* int */
-try_disarm(
+function try_disarm(
     ttmp,
-    force_failure)
-{
+    force_failure) { /* int */
     let mtmp = m_at(ttmp.tx, ttmp.ty);
     let ttype = ttmp.ttyp;
-    let under_u = (+(!u.dx && !u.dy));
-    let holdingtrap = (+(ttype == BEAR_TRAP || ttype == WEB));
+    let under_u = +(!u.dx && !u.dy);
+    let holdingtrap = +(ttype == BEAR_TRAP || ttype == WEB);
 
     /* Test for monster first, monsters are displayed instead of trap. */
     if (mtmp && (!mtmp.mtrapped || !holdingtrap)) {
@@ -5526,9 +5331,7 @@ try_disarm(
     return 2;
 }
 
-function /* void */
-reward_untrap(ttmp, mtmp)
-{
+function reward_untrap(ttmp, mtmp) { /* void */
     if (!ttmp.madeby_u) {
         if (rnl(10) < 8 && !mtmp.mpeaceful && !helpless(mtmp)
             && !mtmp.mfrozen && !mindless(mtmp.data)
@@ -5549,9 +5352,7 @@ reward_untrap(ttmp, mtmp)
 
 /* Help a monster out of a bear trap or web, or if no monster is
    present, disarm a bear trap or destroy a web.  Helge Hafting */
-function /* int */
-disarm_holdingtrap(ttmp)
-{
+function disarm_holdingtrap(ttmp) { /* int */
     let mtmp;
     let which = the_your()[ttmp.madeby_u];
     let fails = try_disarm(ttmp, FALSE);
@@ -5590,9 +5391,7 @@ disarm_holdingtrap(ttmp)
     return 1;
 }
 
-function /* int */
-disarm_landmine(ttmp) /* Helge Hafting */
-{
+function disarm_landmine(ttmp) { /* int */ /* Helge Hafting */
     let fails = try_disarm(ttmp, FALSE);
 
     if (fails < 2)
@@ -5603,9 +5402,7 @@ disarm_landmine(ttmp) /* Helge Hafting */
 }
 
 /* getobj callback for object to disarm a squeaky board with */
-function /* int */
-unsqueak_ok(obj)
-{
+function unsqueak_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_EXCLUDE;
 
@@ -5626,9 +5423,7 @@ unsqueak_ok(obj)
 }
 
 /* it may not make much sense to use grease on floor boards, but so what? */
-function /* int */
-disarm_squeaky_board(ttmp)
-{
+function disarm_squeaky_board(ttmp) { /* int */
     let obj;
     let bad_tool;
     let fails;
@@ -5637,9 +5432,9 @@ disarm_squeaky_board(ttmp)
     if (!obj)
         return 0;
 
-    bad_tool = (((obj.cursed
+    bad_tool = (obj.cursed
                 || ((obj.otyp != POT_OIL || obj.lamplit)
-                    && (obj.otyp != CAN_OF_GREASE || !obj.spe))) ? 1 : 0));
+                    && (obj.otyp != CAN_OF_GREASE || !obj.spe)) ? 1 : 0);
     fails = try_disarm(ttmp, bad_tool);
     if (fails < 2)
         return fails;
@@ -5660,9 +5455,7 @@ disarm_squeaky_board(ttmp)
 }
 
 /* removes traps that shoot arrows, darts, etc. */
-function /* int */
-disarm_shooting_trap(ttmp, otyp)
-{
+function disarm_shooting_trap(ttmp, otyp) { /* int */
     let fails = try_disarm(ttmp, FALSE);
 
     if (fails < 2)
@@ -5673,13 +5466,11 @@ disarm_shooting_trap(ttmp, otyp)
 }
 
 /* trying to #untrap a monster from a pit; is the weight too heavy? */
-function /* int */
-try_lift(
+function try_lift(
     mtmp,
     ttmp,
     xtra_wt,
-    stuff) /* False: monster w/o minvent; True: w/ minvent */
-{
+    stuff) { /* int */ /* False: monster w/o minvent; True: w/ minvent */
     if (calc_capacity(xtra_wt) >= HVY_ENCUMBER) {
         pline(_("%s is %s for you to lift."), Monnam(mtmp),
               stuff ? _("carrying too much") : _("too heavy"));
@@ -5696,11 +5487,10 @@ try_lift(
 }
 
 /* Help trapped monster (out of a (spiked) pit) */
-function /* int */
-help_monster_out(
+function help_monster_out(
     mtmp,
-    ttmp)
-{ const $frame = stack_frame(); try {
+    ttmp) { /* int */
+    const $frame = stack_frame(); try {
     let xtra_wt;
     let otmp;
     let uprob;
@@ -5741,7 +5531,7 @@ help_monster_out(
         } else {
             let kbuf = stack_array(char, BUFSZ);
 
-            void sprintf(kbuf, _("trying to help %s out of a pit"), an(mtmp_pmname));
+            sprintf(kbuf, _("trying to help %s out of a pit"), an(mtmp_pmname));
             instapetrify(kbuf);
             return 1;
         }
@@ -5788,11 +5578,10 @@ help_monster_out(
     reward_untrap(ttmp, mtmp);
     fill_pit(mtmp.mx, mtmp.my);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-disarm_box(box, force, confused)
-{
+function disarm_box(box, force, confused) { /* void */
     if (box.otrapped) {
         let ch = ACURR(A_DEX) + u.ulevel;
 
@@ -5800,7 +5589,7 @@ disarm_box(box, force, confused)
             ch *= 2;
         if (!force && (confused || Fumbling()
                        || rnd(75 + Math.trunc(level_difficulty() / 2)) > ch)) {
-            void chest_trap(box, FINGER, TRUE);
+            chest_trap(box, FINGER, TRUE);
             /* 'box' might be gone now */
         } else {
             You(_("disarm it!"));
@@ -5817,12 +5606,10 @@ disarm_box(box, force, confused)
 }
 
 /* check a particular container for a trap and optionally disarm it */
-function /* void */
-untrap_box(
+function untrap_box(
     box,
     force,
-    confused)
-{
+    confused) { /* void */
     if ((box.otrapped
          && (force || (!confused && rn2(MAXULEV + 1 - u.ulevel) < 10)))
         || box.tknown
@@ -5844,12 +5631,11 @@ untrap_box(
 }
 
 /* hero is able to attempt untrap, so do so */
-export function /* int */
-untrap(
+export function untrap(
     force,
     rx, ry,
-    container)
-{ const $frame = stack_frame(); try {
+    container) { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let x, y;
     let ch;
@@ -5857,7 +5643,7 @@ untrap(
     let mtmp;
     let trapdescr;
     let here, useplural, deal_with_floor_trap,
-            confused = (((Confusion() || Hallucination()) ? 1 : 0)),
+            confused = (Confusion() || Hallucination() ? 1 : 0),
             trap_skipped = FALSE, autounlock_door = FALSE;
     let boxcnt = 0;
     let the_trap = stack_array(char, BUFSZ), qbuf = stack_array(char, QBUFSZ);
@@ -5907,23 +5693,22 @@ untrap(
     } else if (!deal_with_floor_trap) {
         chars[the_trap] = ord('\0');
         if (ttmp)
-            void strcat(the_trap, an(trapdescr));
+            strcat(the_trap, an(trapdescr));
         if (ttmp && boxcnt)
-            void strcat(the_trap, _(" and "));
+            strcat(the_trap, _(" and "));
         if (boxcnt)
-            void strcat(the_trap, (boxcnt == 1) ? _("a container") : _("containers"));
-        useplural = ((((ttmp && boxcnt > 0) || boxcnt > 1) ? 1 : 0));
+            strcat(the_trap, (boxcnt == 1) ? _("a container") : _("containers"));
+        useplural = ((ttmp && boxcnt > 0) || boxcnt > 1 ? 1 : 0);
         /* note: boxcnt and useplural will always be 0 for !here case */
         if (ttmp || boxcnt)
             There(_("%s %s %s but you can't reach %s%s."),
                   useplural ? _("are") : _("is"), the_trap, here ? _("here") : _("there"),
                   useplural ? _("them") : _("it"),
                   u.usteed ? _(" while mounted") : _(""));
-        trap_skipped = (+(ttmp != null));
+        trap_skipped = +(ttmp != null);
     } else { /* deal_with_floor_trap */
-
         if (ttmp) {
-            void strcpy(the_trap, the(trapdescr));
+            strcpy(the_trap, the(trapdescr));
             if (boxcnt) {
                 if (is_pit(ttmp.ttyp)) {
                     You_cant(_("do much about %s%s."), the_trap,
@@ -5935,9 +5720,6 @@ untrap(
                     Snprintf(qbuf, sizeof(array_of(char, QBUFSZ)), _("There %s and %s here.  %s %s?"), (boxcnt == 1) ? _("is a container")
                                            : _("are containers"), an(trapdescr), (ttmp.ttyp == WEB) ? _("Remove")
                                                  : _("Disarm"), the_trap)
-
-
-
 
 ;
                     switch (ynq(qbuf)) {
@@ -6002,10 +5784,10 @@ untrap(
                 if (!Is_box(otmp))
                     continue;
                 if (otmp.tknown && otmp.dknown)
-                    void safe_qbuf(qbuf, _("Disarm this "), 0,
+                    safe_qbuf(qbuf, _("Disarm this "), 0,
                                      otmp, xname, ansimpleoname, _("a box"));
                 else
-                    void safe_qbuf(qbuf, _("There is "),
+                    safe_qbuf(qbuf, _("There is "),
                                      _(" here.  Check it for traps?"), otmp,
                                      doname, ansimpleoname, _("a box"));
                 switch (ynq(qbuf)) {
@@ -6093,20 +5875,19 @@ untrap(
         You(_("find no traps on the door."));
         return 1;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for magic unlocking; returns true if targeted monster (which might
    be hero) gets untrapped; the trap remains intact */
-export function /* boolean */
-openholdingtrap(
+export function openholdingtrap(
     mon,
-    noticed) /* set to true iff hero notices the effect;
-                       * otherwise left with its previous value intact */
-{ const $frame = stack_frame(); try {
+    noticed) { /* boolean */ /* set to true iff hero notices the effect; * otherwise left with its previous value intact */
+    const $frame = stack_frame(); try {
     let t, tdummy = stack_struct(struct_trap);
     let buf = stack_array(char, BUFSZ), whichbuf = stack_array(char, 20);
     let trapdescr = 0, which = 0;
-    let ishero = (+(mon == gy.youmonst));
+    let ishero = +(mon == gy.youmonst);
 
     if (!mon)
         return FALSE;
@@ -6120,7 +5901,7 @@ openholdingtrap(
            conversely, there might be an unrelated trap at that spot */
         if (!t) {
             t = tdummy;
-            void memset(addr_of(t), 0, sizeof(struct_trap)), t.ntrap = null;
+            memset(addr_of(t), 0, sizeof(struct_trap)), t.ntrap = null;
             /* fallback 't' is now nonNull, t->tseen and t->madeby_u are 0 */
         }
         which = the_your()[(!t || !t.tseen || !t.madeby_u) ? 0 : 1];
@@ -6169,11 +5950,11 @@ openholdingtrap(
             return FALSE;
         chars[noticed] = TRUE;
         if (!u.usteed)
-            void strcpy(buf, _("You are"));
+            strcpy(buf, _("You are"));
         else if (u.utraptype == TT_BURIEDBALL)
-            void sprintf(buf, _("You and %s are"), y_monnam(u.usteed));
+            sprintf(buf, _("You and %s are"), y_monnam(u.usteed));
         else
-            void sprintf(buf, _("%s is"), noit_Monnam(u.usteed));
+            sprintf(buf, _("%s is"), noit_Monnam(u.usteed));
         /* give release message before untrap in case it triggers a message */
         pline(_("%s released from %s%s."), buf, which, trapdescr);
         /* might float up if Levitation is being unblocked */
@@ -6202,19 +5983,17 @@ openholdingtrap(
             reward_untrap(t, mon);
     }
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for magic locking; returns true if targeted monster (which might
    be hero) gets hit by a trap (might avoid actually becoming trapped) */
-export function /* boolean */
-closeholdingtrap(
+export function closeholdingtrap(
     mon,
-    noticed) /* set to true iff hero notices the effect;
-                       * otherwise left with its previous value intact */
-{
+    noticed) { /* boolean */ /* set to true iff hero notices the effect; * otherwise left with its previous value intact */
     let t;
     let dotrapflags;
-    let ishero = (+(mon == gy.youmonst)), result;
+    let ishero = +(mon == gy.youmonst), result;
 
     if (!mon)
         return FALSE;
@@ -6234,28 +6013,27 @@ closeholdingtrap(
         if (u.usteed)
             dotrapflags = unsigned(dotrapflags | NOWEBMSG);
         dotrap(t, unsigned(dotrapflags | FORCETRAP));
-        result = (+(u.utrap != 0));
+        result = +(u.utrap != 0);
     } else {
         if (mon.mtrapped)
             return FALSE; /* already trapped */
         /* you notice it if you see the trap close/tremble/whatever
            or if you sense the monster who becomes trapped */
-        chars[noticed] = ((cansee(t.tx, t.ty) || canspotmon(mon)) ? 1 : 0);
-        result = (+(mintrap(mon, FORCETRAP) != Trap_Effect_Finished));
+        chars[noticed] = (cansee(t.tx, t.ty) || canspotmon(mon) ? 1 : 0);
+        result = +(mintrap(mon, FORCETRAP) != Trap_Effect_Finished);
     }
     return result;
 }
 
 /* for magic unlocking; returns true if targeted monster (which might
    be hero) gets hit by a trap (target might avoid its effect) */
-export function /* boolean */
-openfallingtrap(
+export function openfallingtrap(
     mon,
     trapdoor_only,
-    noticed) /* set to true iff hero notices the effect; */
-{                     /* otherwise left with its previous value intact */
+    noticed) { /* boolean */ /* set to true iff hero notices the effect; */
+                     /* otherwise left with its previous value intact */
     let t;
-    let ishero = (+(mon == gy.youmonst)), result;
+    let ishero = +(mon == gy.youmonst), result;
 
     if (!mon)
         return FALSE;
@@ -6273,16 +6051,16 @@ openfallingtrap(
             return FALSE; /* already trapped */
         chars[noticed] = TRUE;
         dotrap(t, FORCETRAP);
-        result = (+(u.utrap != 0));
+        result = +(u.utrap != 0);
     } else {
         if (mon.mtrapped)
             return FALSE; /* already trapped */
         /* you notice it if you see the trap close/tremble/whatever
            or if you sense the monster who becomes trapped */
-        chars[noticed] = ((cansee(t.tx, t.ty) || canspotmon(mon)) ? 1 : 0);
+        chars[noticed] = (cansee(t.tx, t.ty) || canspotmon(mon) ? 1 : 0);
         /* monster will be angered; mintrap doesn't handle that */
         wakeup(mon, TRUE);
-        result = (+(mintrap(mon, FORCETRAP) != Trap_Effect_Finished));
+        result = +(mintrap(mon, FORCETRAP) != Trap_Effect_Finished);
         /* mon might now be on the migrating monsters list */
     }
     return result;
@@ -6290,12 +6068,11 @@ openfallingtrap(
 
 /* only called when the player is doing something to the chest directly;
    returns True if chest is destroyed, False if it remains in play */
-export function /* boolean */
-chest_trap(
+export function chest_trap(
     obj,
     bodypart,
-    disarm)
-{ const $frame = stack_frame(); try {
+    disarm) { /* boolean */
+    const $frame = stack_frame(); try {
     let otmp = obj, otmp2;
     let buf = stack_array(char, 80);
     let msg;
@@ -6355,14 +6132,14 @@ chest_trap(
             let ox = obj.ox, oy = obj.oy;
 
             /* the obj location need not be that of player */
-            costly = (((costly_spot(ox, oy)
+            costly = (costly_spot(ox, oy)
                       && (shkp = shop_keeper(chars[in_rooms(ox, oy, SHOPBASE)]))
-                             != null) ? 1 : 0));
-            insider = (((chars[u.ushops] && inside_shop(u.ux, u.uy)
-                       && chars[in_rooms(ox, oy, SHOPBASE)] == chars[u.ushops]) ? 1 : 0));
+                             != null ? 1 : 0);
+            insider = (chars[u.ushops] && inside_shop(u.ux, u.uy)
+                       && chars[in_rooms(ox, oy, SHOPBASE)] == chars[u.ushops] ? 1 : 0);
 
             pline(_("%s!"), Tobjnam(obj, _("explode")));
-            void sprintf(buf, _("exploding %s"), xname(obj));
+            sprintf(buf, _("exploding %s"), xname(obj));
 
             if (costly)
                 loss += stolen_value(obj, ox, oy, shkp.mpeaceful,
@@ -6395,7 +6172,7 @@ chest_trap(
                 delobj(otmp);
             }
             wake_nearby(FALSE);
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((d(6, 6)) + 1)) / 2))) : (d(6, 6)))), buf, KILLED_BY_AN);
+            losehp(((Half_physical_damage()) ? (Math.trunc((((d(6, 6)) + 1) / 2))) : (d(6, 6))), buf, KILLED_BY_AN);
             exercise(A_STR, FALSE);
             if (costly && loss) {
                 if (insider) {
@@ -6451,7 +6228,7 @@ chest_trap(
             } else {
                 monstunseesu(M_SEEN_ELEC);
             }
-            void destroy_items(gy.youmonst, AD_ELEC, orig_dmg);
+            destroy_items(gy.youmonst, AD_ELEC, orig_dmg);
             if (dmg)
                 losehp(dmg, _("electric shock"), KILLED_BY_AN);
             break;
@@ -6484,7 +6261,7 @@ chest_trap(
                                                   : _(" and your vision blurs"));
             }
             make_stunned((HStun() & TIMEOUT) + rn1(7, 16), FALSE);
-            void make_hallucinated(
+            make_hallucinated(
                 (HHallucination() & TIMEOUT) + rn1(5, 16), FALSE, 0);
             break;
         default:
@@ -6496,11 +6273,10 @@ chest_trap(
 
     obj.tknown = 1; /* hero knows chest is no longer trapped */
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct trap * */
-t_at(x, y)
-{
+export function t_at(x, y) { /* struct trap * */
     let trap = gf.ftrap;
 
     while (trap) {
@@ -6512,9 +6288,7 @@ t_at(x, y)
 }
 
 /* return number of traps of type ttyp on this level */
-export function /* int */
-count_traps(ttyp)
-{
+export function count_traps(ttyp) { /* int */
     let ret = 0;
     let trap = gf.ftrap;
 
@@ -6527,9 +6301,7 @@ count_traps(ttyp)
     return ret;
 }
 
-export function /* void */
-deltrap(trap)
-{
+export function deltrap(trap) { /* void */
     let ttmp;
 
     clear_conjoined_pits(trap);
@@ -6548,12 +6320,10 @@ deltrap(trap)
     dealloc_trap(trap);
 }
 
-export function /* boolean */
-conjoined_pits(
+export function conjoined_pits(
     trap2,
     trap1,
-    u_entering_trap2)
-{
+    u_entering_trap2) { /* boolean */
     let dx, dy;
     let diridx, adjidx;
 
@@ -6576,9 +6346,7 @@ conjoined_pits(
     return FALSE;
 }
 
-function /* void */
-clear_conjoined_pits(trap)
-{
+function clear_conjoined_pits(trap) { /* void */
     let diridx, adjidx;
     let x, y;
     let t;
@@ -6600,9 +6368,7 @@ clear_conjoined_pits(trap)
     }
 }
 
-function /* boolean */
-adj_nonconjoined_pit(adjtrap)
-{
+function adj_nonconjoined_pit(adjtrap) { /* boolean */
     let trap_with_u = t_at(u.ux0, u.uy0);
 
     if (trap_with_u && adjtrap && u.utrap && u.utraptype == TT_PIT
@@ -6613,60 +6379,28 @@ adj_nonconjoined_pit(adjtrap)
     return FALSE;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /*
  * Returns TRUE if you escaped a pit and are standing on the precipice.
  */
-export function /* boolean */
-uteetering_at_seen_pit(trap)
-{
-    return (((trap && is_pit(trap.ttyp) && trap.tseen
-            && ((((trap.tx) == u.ux) && ((trap.ty) == u.uy)))
-            && !(u.utrap && u.utraptype == TT_PIT)) ? 1 : 0));
+export function uteetering_at_seen_pit(trap) { /* boolean */
+    return (trap && is_pit(trap.ttyp) && trap.tseen
+            && (((trap.tx) == u.ux) && ((trap.ty) == u.uy))
+            && !(u.utrap && u.utraptype == TT_PIT) ? 1 : 0);
 }
 
 /*
  * Returns TRUE if you didn't fall through a hole or didn't
  * release a trap door
  */
-export function /* boolean */
-uescaped_shaft(trap)
-{
-    return (((trap && is_hole(trap.ttyp) && trap.tseen
-            && ((((trap.tx) == u.ux) && ((trap.ty) == u.uy)))) ? 1 : 0));
+export function uescaped_shaft(trap) { /* boolean */
+    return (trap && is_hole(trap.ttyp) && trap.tseen
+            && (((trap.tx) == u.ux) && ((trap.ty) == u.uy)) ? 1 : 0);
 }
 
 /* Destroy a trap that emanates from the floor. */
-export function /* boolean */
-delfloortrap(ttmp)
-{
+export function delfloortrap(ttmp) { /* boolean */
     /* some of these are arbitrary -dlc */
     if (ttmp && ((ttmp.ttyp == SQKY_BOARD) || (ttmp.ttyp == BEAR_TRAP)
                  || (ttmp.ttyp == LANDMINE) || (ttmp.ttyp == FIRE_TRAP)
@@ -6677,7 +6411,7 @@ delfloortrap(ttmp)
                  || (ttmp.ttyp == ANTI_MAGIC))) {
         let mtmp;
 
-        if (((((ttmp.tx) == u.ux) && ((ttmp.ty) == u.uy)))) {
+        if ((((ttmp.tx) == u.ux) && ((ttmp.ty) == u.uy))) {
             if (u.utraptype != TT_BURIEDBALL)
                 reset_utrap(TRUE);
         } else if ((mtmp = m_at(ttmp.tx, ttmp.ty)) != null) {
@@ -6690,9 +6424,7 @@ delfloortrap(ttmp)
 }
 
 /* used for doors (also tins).  can be used for anything else that opens. */
-export function /* void */
-b_trapped(item, bodypart)
-{
+export function b_trapped(item, bodypart) { /* void */
     let lvl = level_difficulty(),
         dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
 
@@ -6707,23 +6439,21 @@ b_trapped(item, bodypart)
 }
 
 /* Monster is hit by trap. */
-function /* boolean */
-thitm(
+function thitm(
     tlev,
     mon,
     obj,
     d_override,
-    nocorpse)  /* True: a trap is completely burning up the target */
-{
+    nocorpse) { /* boolean */ /* True: a trap is completely burning up the target */
     let strike;
     let trapkilled = FALSE;
 
     if (d_override)
         strike = 1;
     else if (obj)
-        strike = (+(find_mac(mon) + tlev + obj.spe <= rnd(20)));
+        strike = +(find_mac(mon) + tlev + obj.spe <= rnd(20));
     else
-        strike = (+(find_mac(mon) + tlev <= rnd(20)));
+        strike = +(find_mac(mon) + tlev <= rnd(20));
 
     /* Actually more accurate than thitu, which doesn't take
      * obj->spe into account.
@@ -6734,8 +6464,8 @@ thitm(
                       Monnam(mon), doname(obj));
     } else {
         let dam = 1;
-        let harmless = (((obj && stone_missile(obj)
-                            && passes_rocks(mon.data)) ? 1 : 0));
+        let harmless = (obj && stone_missile(obj)
+                            && passes_rocks(mon.data) ? 1 : 0);
 
         if (obj && cansee(mon.mx, mon.my))
             pline_mon(mon, _("%s is hit by %s%s"),
@@ -6772,17 +6502,15 @@ thitm(
     return trapkilled;
 }
 
-export function /* boolean */
-unconscious()
-{
+export function unconscious() { /* boolean */
     if (gm.multi >= 0)
         return FALSE;
 
-    return (((u.usleep
+    return (u.usleep
             || (gn.nomovemsg
                 && (!strncmp(gn.nomovemsg, _("You awake"), 9)
                     || !strncmp(gn.nomovemsg, _("You regain con"), 14)
-                    || !strncmp(gn.nomovemsg, _("You are consci"), 14)))) ? 1 : 0));
+                    || !strncmp(gn.nomovemsg, _("You are consci"), 14))) ? 1 : 0);
 }
 
 const lava_killer = init_string(static_array("lava_killer", char, sizeof_string("molten lava")), _("molten lava"), true);
@@ -6790,9 +6518,7 @@ const lava_killer = init_string(static_array("lava_killer", char, sizeof_string(
 /* hero enters pool of molten lava; returns True if hero is killed and
    then life-saved (with teleport to safe spot), False for other survival;
    no return at all if hero dies and isn't life-saved */
-export function /* boolean */
-lava_effects()
-{
+export function lava_effects() { /* boolean */
     var obj, obj2, nextobj;
     var usurvive, boil_away;
     var protect_oid = 0;
@@ -6808,7 +6534,7 @@ lava_effects()
     if (likes_lava(gy.youmonst.data))
         return FALSE;
 
-    usurvive = ((Fire_resistance() || (Wwalking() && dmg < u.uhp)) ? 1 : 0);
+    usurvive = (Fire_resistance() || (Wwalking() && dmg < u.uhp) ? 1 : 0);
     /*
      * A timely interrupt might manage to salvage your life
      * but not your gear.  For scrolls and potions this
@@ -6861,7 +6587,7 @@ lava_effects()
         pline(_("%s into flame!"), Yobjnam2(obj, _("burst")));
         ++burnmesgcount;
         iflags.in_lava_effects++; /* (see above) */
-        void Boots_off();
+        Boots_off();
         if (obj.o_id != protect_oid)
             useup(obj);
         iflags.in_lava_effects--;
@@ -6878,7 +6604,7 @@ lava_effects()
         } else
             You(_("fall into the %s!"), waterbody_name(u.ux, u.uy));
 
-        usurvive = ((Lifesaved() || discover()) ? 1 : 0);
+        usurvive = (Lifesaved() || discover() ? 1 : 0);
         if (wizard())
             usurvive = TRUE;
 
@@ -6919,9 +6645,9 @@ lava_effects()
                   (burncount - burnmesgcount == 1) ? _("has") : _("have"));
 
         /* s/he died... */
-        boil_away = (+(u.umonnum == PM_WATER_ELEMENTAL
+        boil_away = +(u.umonnum == PM_WATER_ELEMENTAL
                      || u.umonnum == PM_STEAM_VORTEX
-                     || u.umonnum == PM_FOG_CLOUD));
+                     || u.umonnum == PM_FOG_CLOUD);
         /* burn to death; if hero is life-saved on the first pass, try
            to teleport to safety; if that fails, burn all over again */
         for (burncount = 0; burncount < 2; ++burncount) {
@@ -6929,7 +6655,7 @@ lava_effects()
             /* killer format and name are reconstructed every iteration
                because lifesaving resets them */
             svk.killer.format = KILLED_BY;
-            void strcpy(svk.killer.name, lava_killer);
+            strcpy(svk.killer.name, lava_killer);
             urgent_pline(_("You %s..."), boil_away ? _("boil away")
                                                 : _("burn to a crisp"));
             done(BURNING);
@@ -6976,20 +6702,17 @@ lava_effects()
         else
             monstunseesu(M_SEEN_FIRE);
         if (u.uhp > 1)
-            losehp(!boil_away ? 1 : (Math.trunc(u.uhp / 2)), lava_killer,
+            losehp(!boil_away ? 1 : Math.trunc(u.uhp / 2), lava_killer,
                    KILLED_BY); /* lava damage */
     }
-
  }
-     void destroy_items(gy.youmonst, AD_FIRE, dmg);
+     destroy_items(gy.youmonst, AD_FIRE, dmg);
     ignite_items(gi.invent);
     return FALSE;
 }
 
 /* called each turn when trapped in lava */
-export function /* void */
-sink_into_lava()
-{
+export function sink_into_lava() { /* void */
     let sink_deeper = init_string(static_array("sink_into_lava.sink_deeper", char, sizeof_string("You sink deeper into the lava.")), _("You sink deeper into the lava."), true);
 
     if (!u.utrap || u.utraptype != TT_LAVA) {
@@ -7010,7 +6733,7 @@ sink_into_lava()
         u.utrap -= (1 << 8);
         if (u.utrap < (1 << 8)) {
             svk.killer.format = KILLED_BY;
-            void strcpy(svk.killer.name, _("molten lava"));
+            strcpy(svk.killer.name, _("molten lava"));
             urgent_pline(_("You sink below the surface and die."));
             burn_away_slime(); /* add insult to injury? */
             done(DISSOLVED);
@@ -7018,7 +6741,7 @@ sink_into_lava()
             reset_utrap(TRUE);
             /* levitation or flight have become unblocked, otherwise Tport */
             if (!Levitation() && !Flying())
-                void safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
+                safe_teleds(TELEDS_ALLOW_DRAG | TELEDS_TELEPORT);
         } else if (!u.umoved) {
             /* can't fully turn into slime while in lava, but might not
                have it be burned away until you've come awfully close */
@@ -7035,9 +6758,7 @@ sink_into_lava()
 
 /* called when something has been done (breaking a boulder, for instance)
    which entails a luck penalty if performed on a sokoban level */
-export function /* void */
-sokoban_guilt()
-{
+export function sokoban_guilt() { /* void */
     if (Sokoban()) {
         u.uconduct.sokocheat++;
         change_luck(-1);
@@ -7055,9 +6776,7 @@ sokoban_guilt()
 }
 
 /* called when a trap has been deleted or had its ttyp replaced */
-function /* void */
-maybe_finish_sokoban()
-{
+function maybe_finish_sokoban() { /* void */
     let t;
 
     if (Sokoban() && !gi.in_mklev) {
@@ -7096,11 +6815,9 @@ maybe_finish_sokoban()
 
 /* Return the string name of the trap type passed in, unless the player is
    hallucinating, in which case return a random or hallucinatory trap name. */
-export function /* const char * */
-trapname(
+export function trapname(
     ttyp,
-    override) /* if True, ignore Hallucination */
-{
+    override) { /* const char * */ /* if True, ignore Hallucination */
     let halu_trapnames = static_array("trapname.halu_trapnames", ptr_to(char), null, [
         /* riffs on actual nethack traps */
         _("bottomless pit"), _("polymorphism trap"), _("devil teleporter"),
@@ -7142,7 +6859,7 @@ trapname(
                                                           : gu.urole.name.m)
                               : rank_of(u.ulevel, Role_switch(), fem),
                        (sizeof(array_of(char, 33)) - sizeof_string(" trap")));
-            void strcat(roletrap, _(" trap"));
+            strcat(roletrap, _(" trap"));
             return lcase(roletrap);
         } else if (nameidx >= TRAPNUM) {
             nameidx -= TRAPNUM;
@@ -7157,11 +6874,9 @@ trapname(
 /* Ignite ignitable items (limited to light sources) in the given object
    chain, due to some external source of fire.  The object chain should
    be somewhere exposed, like someone's open inventory or the floor. */
-export function /* void */
-ignite_items(objchn)
-{
+export function ignite_items(objchn) { /* void */
     let obj, nextobj;
-    let bynexthere = (((objchn && objchn.where == OBJ_FLOOR) ? 1 : 0));
+    let bynexthere = (objchn && objchn.where == OBJ_FLOOR ? 1 : 0);
 
     for (obj = objchn; obj; obj = bynexthere ? obj.v.v_nexthere : nextobj) {
         nextobj = obj.nobj;
@@ -7171,9 +6886,7 @@ ignite_items(objchn)
     }
 }
 
-export function /* void */
-trap_ice_effects(x, y, ice_is_melting)
-{
+export function trap_ice_effects(x, y, ice_is_melting) { /* void */
     let ttmp = t_at(x, y);
 
     if (ttmp && ice_is_melting) {
@@ -7194,9 +6907,7 @@ trap_ice_effects(x, y, ice_is_melting)
 }
 
 /* sanity check traps */
-export function /* void */
-trap_sanity_check()
-{
+export function trap_sanity_check() { /* void */
     let ttmp = gf.ftrap;
 
     while (ttmp) {
@@ -7209,902 +6920,278 @@ trap_sanity_check()
 }
 
 /*trap.c*/
+
 import { A_LAWFUL } from "./align.h.js";
-import { ART_MAGICBANE } from "./artilist.h.js";
-import { ART_STING } from "./artilist.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+import { ART_MAGICBANE, ART_STING } from "./artilist.h.js";
+import { A_CHA, A_CON, A_DEX, A_STR, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_dig_info } from "./context.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { Something } from "./decl.h.macros.js";
-import { You_can_move_again } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { the_your } from "./decl.h.macros.js";
-import { vision_clears } from "./decl.h.macros.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_bear_trap } from "./defsym.h.js";
-import { S_pit } from "./defsym.h.js";
-import { S_web } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { DISP_END } from "./display.h.js";
-import { DISP_FLASH } from "./display.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { obj_to_glyph } from "./display.h.macros.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { In_sokoban } from "./dungeon.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_qlocate } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import {
+    Something, You_can_move_again, something, the_your, vision_clears,
+} from "./decl.h.macros.js";
+import {
+    POTION_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_DRAGON, S_GIANT, S_HUMAN, S_bear_trap, S_pit, S_web,
+    WAND_CLASS,
+} from "./defsym.h.js";
+import { DISP_END, DISP_FLASH } from "./display.h.js";
+import { canspotmon, obj_to_glyph } from "./display.h.macros.js";
+import { MIGR_RANDOM, struct_d_level } from "./dungeon.h.js";
+import {
+    In_endgame, In_sokoban, Is_airlevel, Is_qlocate, Is_stronghold, Is_waterlevel,
+} from "./dungeon.h.macros.js";
 import { PLNMSG_BACK_ON_GROUND } from "./flag.h.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_DUMP } from "./global.h.js";
-import { LL_MINORAC } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ARM } from "./hack.h.js";
-import { ARTICLE_NONE } from "./hack.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { BURNING } from "./hack.h.js";
-import { CORPSTAT_FEMALE } from "./hack.h.js";
-import { CORPSTAT_GENDER } from "./hack.h.js";
-import { CORPSTAT_HISTORIC } from "./hack.h.js";
-import { CORPSTAT_MALE } from "./hack.h.js";
-import { CORPSTAT_NONE } from "./hack.h.js";
-import { COST_BURN } from "./hack.h.js";
-import { COST_CORRODE } from "./hack.h.js";
-import { COST_CRACK } from "./hack.h.js";
-import { COST_DECHNT } from "./hack.h.js";
-import { COST_ROT } from "./hack.h.js";
-import { COST_RUST } from "./hack.h.js";
-import { CXN_PFX_THE } from "./hack.h.js";
-import { DIR_ERR } from "./hack.h.js";
-import { DISMOUNT_FELL } from "./hack.h.js";
-import { DISMOUNT_GENERIC } from "./hack.h.js";
-import { DISMOUNT_POLY } from "./hack.h.js";
-import { DISSOLVED } from "./hack.h.js";
-import { DROWNING } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FAILEDUNTRAP } from "./hack.h.js";
-import { FINGER } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { FORCEBUNGLE } from "./hack.h.js";
-import { FORCETRAP } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { HURTLING } from "./hack.h.js";
-import { HVY_ENCUMBER } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LAUNCH_KNOWN } from "./hack.h.js";
-import { LAUNCH_UNSEEN } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { MAY_DESTROY } from "./hack.h.js";
-import { MAY_FRACTURE } from "./hack.h.js";
-import { MAY_HIT } from "./hack.h.js";
-import { MM_ADJACENTOK } from "./hack.h.js";
-import { MM_FEMALE } from "./hack.h.js";
-import { MM_MALE } from "./hack.h.js";
-import { MM_NOCOUNTBIRTH } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NC_SHOW_MSG } from "./hack.h.js";
-import { NOTELL } from "./hack.h.js";
-import { NOWEBMSG } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_MINVENT } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { NO_NC_FLAGS } from "./hack.h.js";
-import { NO_PART } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { RECURSIVETRAP } from "./hack.h.js";
-import { ROLL } from "./hack.h.js";
-import { SHOP_HOLE_COST } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { SPINE } from "./hack.h.js";
-import { STONING } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { TELEDS_ALLOW_DRAG } from "./hack.h.js";
-import { TELEDS_TELEPORT } from "./hack.h.js";
-import { TEST_MOVE } from "./hack.h.js";
-import { TOOKPLUNGE } from "./hack.h.js";
-import { UNENCUMBERED } from "./hack.h.js";
-import { VIASITTING } from "./hack.h.js";
-import { VIS_EFFECTS } from "./hack.h.js";
-import { XKILL_NOMSG } from "./hack.h.js";
-import { DIR_180 } from "./hack.h.macros.js";
-import { IndexOk } from "./hack.h.macros.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { You1 } from "./hack.h.macros.js";
-import { Your1 } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { qlocate_level } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import { discover, wizard } from "./flag.h.macros.js";
+import {
+    BUFSZ, FALSE, LL_DUMP, LL_MINORAC, MAXULEV, QBUFSZ, TRUE, boolean, coordxy,
+} from "./global.h.js";
+import {
+    ARM, ARTICLE_NONE, ARTICLE_THE, BOLT_LIM, BURNING, CORPSTAT_FEMALE, CORPSTAT_GENDER,
+    CORPSTAT_HISTORIC, CORPSTAT_MALE, CORPSTAT_NONE, COST_BURN, COST_CORRODE, COST_CRACK,
+    COST_DECHNT, COST_ROT, COST_RUST, CXN_PFX_THE, DIR_ERR, DISMOUNT_FELL, DISMOUNT_GENERIC,
+    DISMOUNT_POLY, DISSOLVED, DROWNING, ECMD_OK, ECMD_TIME, FAILEDUNTRAP, FINGER, FOOT, FORCEBUNGLE,
+    FORCETRAP, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_PROMPT, GETOBJ_SUGGEST, HAND, HEAD, HURTLING,
+    HVY_ENCUMBER, KILLED_BY, KILLED_BY_AN, LAUNCH_KNOWN, LAUNCH_UNSEEN, LEG, MAY_DESTROY,
+    MAY_FRACTURE, MAY_HIT, MM_ADJACENTOK, MM_FEMALE, MM_MALE, MM_NOCOUNTBIRTH, MM_NOMSG,
+    NC_SHOW_MSG, NOTELL, NOWEBMSG, NO_KILLER_PREFIX, NO_MINVENT, NO_MM_FLAGS, NO_NC_FLAGS, NO_PART,
+    NO_TRAP_FLAGS, N_DIRS, POLY_NOFLAGS, RECURSIVETRAP, ROLL, SHOP_HOLE_COST, SLT_ENCUMBER, SPINE,
+    STONING, SUPPRESS_SADDLE, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, TEST_MOVE, TOOKPLUNGE,
+    UNENCUMBERED, VIASITTING, VIS_EFFECTS, XKILL_NOMSG,
+} from "./hack.h.js";
+import {
+    DIR_180, IndexOk, Maybe_Half_Phys, ROLL_FROM, You1, Your1, distu, makeknown, mdistu, min, plur,
+    qlocate_level, rn1, ynq,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { debugpline0 } from "./lint.h.macros.js";
 import { has_mgivenname } from "./mextra.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { AD_RBRE } from "./monattk.h.js";
-import { AD_RUST } from "./monattk.h.js";
-import { AD_SLEE } from "./monattk.h.js";
-import { AT_BREA } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { acidic } from "./mondata.h.macros.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { breathless } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { ceiling_hider } from "./mondata.h.macros.js";
-import { completelyrusts } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { extra_nasty } from "./mondata.h.macros.js";
-import { flaming } from "./mondata.h.macros.js";
-import { grounded } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_clinger } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_golem } from "./mondata.h.macros.js";
-import { is_neuter } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { metallivorous } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { passes_rocks } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { pm_invisible } from "./mondata.h.macros.js";
-import { strongmonst } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { unique_corpstat } from "./mondata.h.macros.js";
-import { unsolid } from "./mondata.h.macros.js";
-import { webmaker } from "./mondata.h.macros.js";
-import { MS_GUARDIAN } from "./monflag.h.js";
-import { MZ_HUGE } from "./monflag.h.js";
-import { MZ_SMALL } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { M_SEEN_ELEC } from "./monst.h.js";
-import { M_SEEN_FIRE } from "./monst.h.js";
-import { M_SEEN_SLEEP } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { resists_fire } from "./monst.h.macros.js";
-import { resists_sleep } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BALROG } from "./monsters.h.js";
-import { PM_BALUCHITHERIUM } from "./monsters.h.js";
-import { PM_BUGBEAR } from "./monsters.h.js";
-import { PM_CYCLOPS } from "./monsters.h.js";
-import { PM_DOPPELGANGER } from "./monsters.h.js";
-import { PM_FLESH_GOLEM } from "./monsters.h.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_IRON_GOLEM } from "./monsters.h.js";
-import { PM_JABBERWOCK } from "./monsters.h.js";
-import { PM_KRAKEN } from "./monsters.h.js";
-import { PM_LEATHER_GOLEM } from "./monsters.h.js";
-import { PM_LORD_SURTUR } from "./monsters.h.js";
-import { PM_MASTODON } from "./monsters.h.js";
-import { PM_NORN } from "./monsters.h.js";
-import { PM_ORION } from "./monsters.h.js";
-import { PM_OWLBEAR } from "./monsters.h.js";
-import { PM_PAPER_GOLEM } from "./monsters.h.js";
-import { PM_PIT_FIEND } from "./monsters.h.js";
-import { PM_PIT_VIPER } from "./monsters.h.js";
-import { PM_PURPLE_WORM } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_STEAM_VORTEX } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { PM_STRAW_GOLEM } from "./monsters.h.js";
-import { PM_TITANOTHERE } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WOOD_GOLEM } from "./monsters.h.js";
-import { BURIED_TOO } from "./obj.h.js";
-import { CONTAINED_TOO } from "./obj.h.js";
-import { EF_DESTROY } from "./obj.h.js";
-import { EF_GREASE } from "./obj.h.js";
-import { EF_NONE } from "./obj.h.js";
-import { EF_PAY } from "./obj.h.js";
-import { EF_VERBOSE } from "./obj.h.js";
-import { ERODE_BURN } from "./obj.h.js";
-import { ERODE_CORRODE } from "./obj.h.js";
-import { ERODE_CRACK } from "./obj.h.js";
-import { ERODE_ROT } from "./obj.h.js";
-import { ERODE_RUST } from "./obj.h.js";
-import { ER_DAMAGED } from "./obj.h.js";
-import { ER_DESTROYED } from "./obj.h.js";
-import { ER_GREASED } from "./obj.h.js";
-import { ER_NOTHING } from "./obj.h.js";
-import { MAX_ERODE } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_box } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { OMONST } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { Waterproof_container } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_blade } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
-import { is_wet_towel } from "./obj.h.macros.js";
-import { mcarried } from "./obj.h.macros.js";
-import { stone_missile } from "./obj.h.macros.js";
-import { u_wield_art } from "./obj.h.macros.js";
-import { DRAGON_HIDE } from "./objclass.h.js";
-import { IRON } from "./objclass.h.js";
-import { is_corrodeable } from "./objclass.h.macros.js";
-import { is_crackable } from "./objclass.h.macros.js";
-import { is_organic } from "./objclass.h.macros.js";
-import { is_rustprone } from "./objclass.h.macros.js";
-import { ARROW } from "./objects.h.js";
-import { BEARTRAP } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CAN_OF_GREASE } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { DART } from "./objects.h.js";
-import { FIRE_HORN } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { IRON_SHOES } from "./objects.h.js";
-import { KICKING_BOOTS } from "./objects.h.js";
-import { LAND_MINE } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { POT_ACID } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_FIRE } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_FIREBALL } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { SPE_REMOVE_CURSE } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { WAN_FIRE } from "./objects.h.js";
-import { CONFUSION } from "./prop.h.js";
-import { DEAF } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { LEFT_SIDE } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { RIGHT_SIDE } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { WWALKING } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { CORR } from "./rm.h.js";
-import { DB_FLOOR } from "./rm.h.js";
-import { DB_ICE } from "./rm.h.js";
-import { DB_UNDER } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { IS_AIR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FURNITURE } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { IS_WATERWALL } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { Sokoban } from "./rm.h.macros.js";
-import { ZAP_POS } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { trap_to_defsym } from "./rm.h.macros.js";
-import { se_squeak_A } from "./seffects.h.js";
-import { se_squeak_B } from "./seffects.h.js";
-import { se_squeak_B_flat } from "./seffects.h.js";
-import { se_squeak_C } from "./seffects.h.js";
-import { se_squeak_D } from "./seffects.h.js";
-import { se_squeak_D_flat } from "./seffects.h.js";
-import { se_squeak_E } from "./seffects.h.js";
-import { se_squeak_E_flat } from "./seffects.h.js";
-import { se_squeak_F } from "./seffects.h.js";
-import { se_squeak_F_sharp } from "./seffects.h.js";
-import { se_squeak_G } from "./seffects.h.js";
-import { se_squeak_G_sharp } from "./seffects.h.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
+import {
+    AD_ACID, AD_ELEC, AD_FIRE, AD_MAGM, AD_PHYS, AD_RBRE, AD_RUST, AD_SLEE, AT_BREA, AT_MAGC,
+} from "./monattk.h.js";
+import {
+    acidic, amorphous, bigmonst, breathless, can_teleport, ceiling_hider, completelyrusts, digests,
+    extra_nasty, flaming, grounded, hides_under, is_animal, is_clinger, is_floater, is_flyer,
+    is_golem, is_neuter, is_unicorn, is_whirly, likes_lava, metallivorous, mindless, monsndx,
+    nohands, nolimbs, nonliving, passes_rocks, passes_walls, pm_invisible, strongmonst,
+    throws_rocks, touch_petrifies, unique_corpstat, unsolid, webmaker,
+} from "./mondata.h.macros.js";
+import { MS_GUARDIAN, MZ_HUGE, MZ_SMALL } from "./monflag.h.js";
+import { M_AP_FURNITURE, M_AP_OBJECT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_SLEEP } from "./monst.h.js";
+import {
+    DEADMONSTER, MON_WEP, M_AP_TYPE, helpless, is_vampshifter, ismnum, resists_fire, resists_sleep,
+    resists_ston,
+} from "./monst.h.macros.js";
+import {
+    PM_ARCHEOLOGIST, PM_BALROG, PM_BALUCHITHERIUM, PM_BUGBEAR, PM_CYCLOPS, PM_DOPPELGANGER,
+    PM_FLESH_GOLEM, PM_FOG_CLOUD, PM_GELATINOUS_CUBE, PM_GREMLIN, PM_IRON_GOLEM, PM_JABBERWOCK,
+    PM_KRAKEN, PM_LEATHER_GOLEM, PM_LORD_SURTUR, PM_MASTODON, PM_NORN, PM_ORION, PM_OWLBEAR,
+    PM_PAPER_GOLEM, PM_PIT_FIEND, PM_PIT_VIPER, PM_PURPLE_WORM, PM_RANGER, PM_ROGUE,
+    PM_STEAM_VORTEX, PM_STONE_GOLEM, PM_STRAW_GOLEM, PM_TITANOTHERE, PM_WATER_ELEMENTAL,
+    PM_WOOD_GOLEM,
+} from "./monsters.h.js";
+import {
+    BURIED_TOO, CONTAINED_TOO, EF_DESTROY, EF_GREASE, EF_NONE, EF_PAY, EF_VERBOSE, ERODE_BURN,
+    ERODE_CORRODE, ERODE_CRACK, ERODE_ROT, ERODE_RUST, ER_DAMAGED, ER_DESTROYED, ER_GREASED,
+    ER_NOTHING, MAX_ERODE, OBJ_FLOOR, struct_obj,
+} from "./obj.h.js";
+import {
+    Has_contents, Is_box, Is_container, OMONST, ONAME, Waterproof_container, bimanual, carried,
+    has_omonst, has_oname, is_blade, is_plural, is_wet_towel, mcarried, stone_missile, u_wield_art,
+} from "./obj.h.macros.js";
+import { DRAGON_HIDE, IRON } from "./objclass.h.js";
+import { is_corrodeable, is_crackable, is_organic, is_rustprone } from "./objclass.h.macros.js";
+import {
+    ARROW, BEARTRAP, BOULDER, CAN_OF_GREASE, CHEST, CORPSE, DART, FIRE_HORN, ICE_BOX, IRON_SHOES,
+    KICKING_BOOTS, LAND_MINE, LARGE_BOX, LOADSTONE, POT_ACID, POT_OIL, POT_WATER, ROCK, SADDLE,
+    SCR_BLANK_PAPER, SCR_FIRE, SCR_MAIL, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_FIREBALL,
+    SPE_NOVEL, SPE_REMOVE_CURSE, STATUE, TOWEL, WAN_FIRE,
+} from "./objects.h.js";
+import {
+    CONFUSION, DEAF, FIRE_RES, FROMOUTSIDE, INVIS, I_SPECIAL, LEFT_SIDE, LEVITATION, RIGHT_SIDE,
+    TIMEOUT, WWALKING, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU, W_SADDLE, W_SWAPWEP,
+    W_WEP,
+} from "./prop.h.js";
+import {
+    CORR, DB_FLOOR, DB_ICE, DB_UNDER, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_ISOPEN,
+    D_NODOOR, D_TRAPPED, IRONBARS, LADDER, ROOM, SCORR, SDOOR, STAIRS, STONE,
+} from "./rm.h.js";
+import {
+    IS_AIR, IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, IS_ROOM, IS_STWALL, IS_TREE, IS_WALL,
+    IS_WATERWALL, OBJ_AT, Sokoban, ZAP_POS, fobj, levl, m_at, trap_to_defsym,
+} from "./rm.h.macros.js";
+import {
+    se_squeak_A, se_squeak_B, se_squeak_B_flat, se_squeak_C, se_squeak_D, se_squeak_D_flat,
+    se_squeak_E, se_squeak_E_flat, se_squeak_F, se_squeak_F_sharp, se_squeak_G, se_squeak_G_sharp,
+} from "./seffects.h.js";
+import { P_BASIC, P_RIDING } from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
 import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { ANIMATE_NORMAL } from "./trap.h.js";
-import { ANIMATE_SHATTER } from "./trap.h.js";
-import { ANIMATE_SPELL } from "./trap.h.js";
-import { ANTI_MAGIC } from "./trap.h.js";
-import { ARROW_TRAP } from "./trap.h.js";
-import { AS_MON_IS_UNIQUE } from "./trap.h.js";
-import { AS_NO_MON } from "./trap.h.js";
-import { AS_OK } from "./trap.h.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { DART_TRAP } from "./trap.h.js";
-import { FIRE_TRAP } from "./trap.h.js";
-import { HOLE } from "./trap.h.js";
-import { LANDMINE } from "./trap.h.js";
-import { LEVEL_TELEP } from "./trap.h.js";
-import { MAGIC_PORTAL } from "./trap.h.js";
-import { MAGIC_TRAP } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { PIT } from "./trap.h.js";
-import { POLY_TRAP } from "./trap.h.js";
-import { ROCKTRAP } from "./trap.h.js";
-import { ROLLING_BOULDER_TRAP } from "./trap.h.js";
-import { RUST_TRAP } from "./trap.h.js";
-import { SLP_GAS_TRAP } from "./trap.h.js";
-import { SPIKED_PIT } from "./trap.h.js";
-import { SQKY_BOARD } from "./trap.h.js";
-import { STATUE_TRAP } from "./trap.h.js";
-import { TELEP_TRAP } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { TRAPNUM } from "./trap.h.js";
-import { TRAPPED_CHEST } from "./trap.h.js";
-import { TRAPPED_DOOR } from "./trap.h.js";
-import { TRAP_CLEARLY_IMMUNE } from "./trap.h.js";
-import { TRAP_HIDDEN_IMMUNE } from "./trap.h.js";
-import { TRAP_NOT_IMMUNE } from "./trap.h.js";
-import { Trap_Caught_Mon } from "./trap.h.js";
-import { Trap_Effect_Finished } from "./trap.h.js";
-import { Trap_Is_Gone } from "./trap.h.js";
-import { Trap_Killed_Mon } from "./trap.h.js";
-import { Trap_Moved_Mon } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
-import { struct_trap } from "./trap.h.js";
-import { struct_vlaunchinfo } from "./trap.h.js";
-import { dealloc_trap } from "./trap.h.macros.js";
-import { fixed_tele_trap } from "./trap.h.macros.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { is_xport } from "./trap.h.macros.js";
-import { newtrap } from "./trap.h.macros.js";
-import { undestroyable_trap } from "./trap.h.macros.js";
-import { unhideable_trap } from "./trap.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { WT_ELF } from "./weight.h.js";
-import { WT_TOOMUCH_DIAGONAL } from "./weight.h.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { TT_NONE } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
-import { UTOTYPE_FALLING } from "./you.h.js";
-import { UTOTYPE_NONE } from "./you.h.js";
-import { Luck } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { m_next2u } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Amphibious } from "./youprop.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { BFlying } from "./youprop.h.macros.js";
-import { BLevitation } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Drain_resistance } from "./youprop.h.macros.js";
-import { EInvis } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Free_action } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HHallucination } from "./youprop.h.macros.js";
-import { HInvis } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Half_spell_damage } from "./youprop.h.macros.js";
-import { Halluc_resistance } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Lev_at_will } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Lifesaved } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Shock_resistance } from "./youprop.h.macros.js";
-import { Sleep_resistance } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Swimming } from "./youprop.h.macros.js";
-import { Teleport_control } from "./youprop.h.macros.js";
-import { Teleportation } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Wwalking } from "./youprop.h.macros.js";
+import {
+    ANIMATE_NORMAL, ANIMATE_SHATTER, ANIMATE_SPELL, ANTI_MAGIC, ARROW_TRAP, AS_MON_IS_UNIQUE,
+    AS_NO_MON, AS_OK, BEAR_TRAP, DART_TRAP, FIRE_TRAP, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL,
+    MAGIC_TRAP, NO_TRAP, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SLP_GAS_TRAP,
+    SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TELEP_TRAP, TRAPDOOR, TRAPNUM, TRAPPED_CHEST, TRAPPED_DOOR,
+    TRAP_CLEARLY_IMMUNE, TRAP_HIDDEN_IMMUNE, TRAP_NOT_IMMUNE, Trap_Caught_Mon, Trap_Effect_Finished,
+    Trap_Is_Gone, Trap_Killed_Mon, Trap_Moved_Mon, VIBRATING_SQUARE, WEB, struct_trap,
+    struct_vlaunchinfo,
+} from "./trap.h.js";
+import {
+    dealloc_trap, fixed_tele_trap, is_hole, is_pit, is_xport, newtrap, undestroyable_trap,
+    unhideable_trap,
+} from "./trap.h.macros.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import { WT_ELF, WT_TOOMUCH_DIAGONAL } from "./weight.h.js";
+import { clear_nhwindow, display_nhwindow, nh_delay_output } from "./winprocs.h.macros.js";
+import {
+    TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_NONE, TT_PIT, TT_WEB, UTOTYPE_FALLING,
+    UTOTYPE_NONE,
+} from "./you.h.js";
+import { Luck, Role_if, Role_switch, Upolyd, m_next2u, next2u, u_at } from "./you.h.macros.js";
+import {
+    Amphibious, Antimagic, BFlying, BLevitation, Blind, Breathless, Confusion, Deaf,
+    Drain_resistance, EInvis, Fire_resistance, Flying, Free_action, Fumbling, HConfusion,
+    HHallucination, HInvis, HStun, Half_physical_damage, Half_spell_damage, Halluc_resistance,
+    Hallucination, Invis, Lev_at_will, Levitation, Lifesaved, Passes_walls, Punished, See_invisible,
+    Shock_resistance, Sleep_resistance, Slimed, Stone_resistance, Stunned, Swimming,
+    Teleport_control, Teleportation, Unaware, Unchanging, Underwater, Wwalking,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { not64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    char, int, ord, schar, short, sizeof, sizeof_string, uchar, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, not64, or64 } from "../rt/int64.js";
+import { assert, memset, sprintf, strcat, strchr, strcmp, strcpy, strncmp } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+    static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, array_of, elt, ptr_to, ref_of, struct_assign } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { catch_lit } from "./apply.js";
-import { check_leash } from "./apply.js";
-import { maybe_dunk_boulders } from "./apply.js";
-import { next_to_u } from "./apply.js";
-import { number_leashed } from "./apply.js";
-import { splash_lit } from "./apply.js";
-import { unleash_all } from "./apply.js";
-import { attacks } from "./artifact.js";
-import { defends_when_carried } from "./artifact.js";
-import { has_magic_key } from "./artifact.js";
-import { is_art } from "./artifact.js";
-import { adjalign } from "./attrib.js";
-import { adjattrib } from "./attrib.js";
-import { change_luck } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { minuhpmax } from "./attrib.js";
-import { poisoned } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
-import { ballfall } from "./ball.js";
-import { drag_ball } from "./ball.js";
-import { move_bc } from "./ball.js";
-import { placebc } from "./ball.js";
-import { unplacebc } from "./ball.js";
-import { bot } from "./botl.js";
-import { rank_of } from "./botl.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { xytodir } from "./cmd.js";
-import { destroy_drawbridge } from "./dbridge.js";
-import { find_drawbridge } from "./dbridge.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { is_ice } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { is_waterwall } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gb } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gt } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gx } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { materialnm } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { vowels } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
-import { buried_ball } from "./dig.js";
-import { bury_an_obj } from "./dig.js";
-import { fillholetyp } from "./dig.js";
-import { liquid_flow } from "./dig.js";
-import { unearth_objs } from "./dig.js";
-import { canseemon } from "./display.js";
-import { curs_on_u } from "./display.js";
-import { feel_newsym } from "./display.js";
-import { map_invisible } from "./display.js";
-import { map_trap } from "./display.js";
-import { newsym } from "./display.js";
-import { shieldeff } from "./display.js";
-import { tmp_at } from "./display.js";
-import { under_water } from "./display.js";
-import { dropx } from "./do.js";
-import { flooreffects } from "./do.js";
-import { schedule_goto } from "./do.js";
-import { set_wounded_legs } from "./do.js";
-import { Amonnam } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { YMonnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { christen_monst } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { mon_pmname } from "./do_name.js";
-import { noit_Monnam } from "./do_name.js";
-import { obj_pmname } from "./do_name.js";
-import { rndcolor } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
-import { Boots_off } from "./do_wear.js";
-import { hard_helmet } from "./do_wear.js";
-import { abuse_dog } from "./dog.js";
-import { tamedog } from "./dog.js";
-import { wary_dog } from "./dog.js";
-import { down_gate } from "./dokick.js";
-import { impact_drop } from "./dokick.js";
-import { ship_object } from "./dokick.js";
+import {
+    catch_lit, check_leash, maybe_dunk_boulders, next_to_u, number_leashed, splash_lit, unleash_all,
+} from "./apply.js";
+import { attacks, defends_when_carried, has_magic_key, is_art } from "./artifact.js";
+import {
+    adjalign, adjattrib, change_luck, exercise, minuhpmax, poisoned, setuhpmax,
+} from "./attrib.js";
+import { ballfall, drag_ball, move_bc, placebc, unplacebc } from "./ball.js";
+import { bot, rank_of } from "./botl.js";
+import { getdir, isok, xytodir } from "./cmd.js";
+import {
+    destroy_drawbridge, find_drawbridge, is_drawbridge_wall, is_ice, is_lava, is_pool,
+    is_pool_or_lava, is_waterwall,
+} from "./dbridge.js";
+import {
+    cg, disp, flags, ga, gb, gf, gi, gk, gl, gm, gn, gs, gt, gu, gv, gx, gy, iflags, materialnm,
+    svc, svd, svk, svl, u, vowels, xdir, ydir,
+} from "./decl.js";
+import { buried_ball, bury_an_obj, fillholetyp, liquid_flow, unearth_objs } from "./dig.js";
+import {
+    canseemon, curs_on_u, feel_newsym, map_invisible, map_trap, newsym, shieldeff, tmp_at,
+    under_water,
+} from "./display.js";
+import { dropx, flooreffects, schedule_goto, set_wounded_legs } from "./do.js";
+import {
+    Amonnam, Monnam, YMonnam, a_monnam, christen_monst, hcolor, hliquid, mon_nam, mon_pmname,
+    noit_Monnam, obj_pmname, rndcolor, rndmonnam, x_monnam, y_monnam,
+} from "./do_name.js";
+import { Boots_off, hard_helmet } from "./do_wear.js";
+import { abuse_dog, tamedog, wary_dog } from "./dog.js";
+import { down_gate, impact_drop, ship_object } from "./dokick.js";
 import { defsyms } from "./drawing.js";
-import { Can_fall_thru } from "./dungeon.js";
-import { In_hell } from "./dungeon.js";
-import { In_quest } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { at_dgn_entrance } from "./dungeon.js";
-import { ceiling } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlev } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { find_hell } from "./dungeon.js";
-import { get_level } from "./dungeon.js";
-import { has_ceiling } from "./dungeon.js";
-import { level_difficulty } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { single_level_branch } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { u_on_newpos } from "./dungeon.js";
-import { update_lastseentyp } from "./dungeon.js";
-import { is_fainted } from "./eat.js";
-import { reset_faint } from "./eat.js";
-import { done } from "./end.js";
-import { panic } from "./end.js";
-import { can_reach_floor } from "./engrave.js";
-import { del_engr_at } from "./engrave.js";
-import { losexp } from "./exper.js";
-import { more_experienced } from "./exper.js";
-import { newexplevel } from "./exper.js";
+import {
+    Can_fall_thru, In_hell, In_quest, assign_level, at_dgn_entrance, ceiling, depth, dunlev,
+    dunlevs_in_dungeon, find_hell, get_level, has_ceiling, level_difficulty, on_level,
+    single_level_branch, surface, u_on_newpos, update_lastseentyp,
+} from "./dungeon.js";
+import { is_fainted, reset_faint } from "./eat.js";
+import { done, panic } from "./end.js";
+import { can_reach_floor, del_engr_at } from "./engrave.js";
+import { losexp, more_experienced, newexplevel } from "./exper.js";
 import { scatter } from "./explode.js";
-import { bad_rock } from "./hack.js";
-import { calc_capacity } from "./hack.js";
-import { check_capacity } from "./hack.js";
-import { crawl_destination } from "./hack.js";
-import { in_rooms } from "./hack.js";
-import { inv_cnt } from "./hack.js";
-import { inv_weight } from "./hack.js";
-import { losehp } from "./hack.js";
-import { movobj } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { set_uinwater } from "./hack.js";
-import { spot_checks } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { test_move } from "./hack.js";
-import { u_locomotion } from "./hack.js";
-import { unmul } from "./hack.js";
-import { weight_cap } from "./hack.js";
-import { copynchars } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { lcase } from "./hacklib.js";
-import { ordin } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { carrying } from "./invent.js";
-import { consume_obj_charge } from "./invent.js";
-import { currency } from "./invent.js";
-import { delobj } from "./invent.js";
-import { getobj } from "./invent.js";
-import { nxtobj } from "./invent.js";
-import { prinv } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { useupall } from "./invent.js";
+import {
+    bad_rock, calc_capacity, check_capacity, crawl_destination, in_rooms, inv_cnt, inv_weight,
+    losehp, movobj, near_capacity, nomul, set_uinwater, spot_checks, spoteffects, test_move,
+    u_locomotion, unmul, weight_cap,
+} from "./hack.js";
+import {
+    copynchars, distmin, eos, lcase, ordin, s_suffix, sgn, strncmpi, strsubst, upstart,
+} from "./hacklib.js";
+import {
+    carrying, consume_obj_charge, currency, delobj, getobj, nxtobj, prinv, sobj_at, stackobj,
+    update_inventory, useup, useupall,
+} from "./invent.js";
 import { stumble_on_door_mimic } from "./lock.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { makemon, set_malign } from "./makemon.js";
 import { sleep_monst } from "./mhitm.js";
 import { set_levltyp } from "./mkmaze.js";
-import { add_to_container } from "./mkobj.js";
-import { add_to_migration } from "./mkobj.js";
-import { costly_alteration } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { is_flammable } from "./mkobj.js";
-import { is_rottable } from "./mkobj.js";
-import { mkcorpstat } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { obj_ice_effects } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { rndmonnum_adj } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { killed } from "./mon.js";
-import { m_in_air } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { mlifesaver } from "./mon.js";
-import { mon_to_stone } from "./mon.js";
-import { mongone } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { monstone } from "./mon.js";
-import { newcham } from "./mon.js";
-import { seemimic } from "./mon.js";
-import { set_ustuck } from "./mon.js";
-import { setmangry } from "./mon.js";
-import { shieldeff_mon } from "./mon.js";
-import { vamp_stone } from "./mon.js";
-import { wake_nearby } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { xkilled } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { defended } from "./mondata.js";
-import { mon_knows_traps } from "./mondata.js";
-import { mon_learns_traps } from "./mondata.js";
-import { mons_see_trap } from "./mondata.js";
-import { monstseesu } from "./mondata.js";
-import { monstunseesu } from "./mondata.js";
-import { poly_when_stoned } from "./mondata.js";
-import { resists_blnd } from "./mondata.js";
-import { resists_magm } from "./mondata.js";
-import { stagger } from "./mondata.js";
-import { sticks } from "./mondata.js";
+import {
+    add_to_container, add_to_migration, costly_alteration, dealloc_obj, is_flammable, is_rottable,
+    mkcorpstat, mksobj, obj_extract_self, obj_ice_effects, place_object, rndmonnum_adj, splitobj,
+    weight,
+} from "./mkobj.js";
+import {
+    killed, m_in_air, maybe_unhide_at, mlifesaver, mon_to_stone, mongone, monkilled, monstone,
+    newcham, seemimic, set_ustuck, setmangry, shieldeff_mon, vamp_stone, wake_nearby, wake_nearto,
+    wakeup, xkilled,
+} from "./mon.js";
+import {
+    attacktype, defended, mon_knows_traps, mon_learns_traps, mons_see_trap, monstseesu,
+    monstunseesu, poly_when_stoned, resists_blnd, resists_magm, stagger, sticks,
+} from "./mondata.js";
 import { closed_door } from "./monmove.js";
 import { mons } from "./monst.js";
-import { hits_bars } from "./mthrowu.js";
-import { linedup } from "./mthrowu.js";
-import { m_carrying } from "./mthrowu.js";
-import { ohitmon } from "./mthrowu.js";
-import { thitu } from "./mthrowu.js";
+import { hits_bars, linedup, m_carrying, ohitmon, thitu } from "./mthrowu.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { aobjnam } from "./objnam.js";
-import { bare_artifactname } from "./objnam.js";
-import { cloak_simple_name } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { cxname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { erosion_matters } from "./objnam.js";
-import { gloves_simple_name } from "./objnam.js";
-import { helm_simple_name } from "./objnam.js";
-import { just_an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { safe_qbuf } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { suit_simple_name } from "./objnam.js";
-import { the } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { ice_descr } from "./pager.js";
-import { waterbody_name } from "./pager.js";
-import { encumber_msg } from "./pickup.js";
-import { pickup } from "./pickup.js";
-import { Norep } from "./pline.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { pline_mon } from "./pline.js";
-import { pline_xy } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { urgent_pline } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { float_vs_flight } from "./polyself.js";
-import { mbodypart } from "./polyself.js";
-import { polymon } from "./polyself.js";
-import { polyself } from "./polyself.js";
-import { incr_itimeout } from "./potion.js";
-import { make_blinded } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { self_invis_message } from "./potion.js";
-import { set_itimeout } from "./potion.js";
-import { split_mon } from "./potion.js";
-import { is_quest_artifact } from "./questpgr.js";
-import { quest_info } from "./questpgr.js";
-import { cant_revive } from "./read.js";
-import { seffects } from "./read.js";
-import { unpunish } from "./read.js";
+import {
+    The, Tobjnam, Yname2, Yobjnam2, an, ansimpleoname, aobjnam, bare_artifactname,
+    cloak_simple_name, corpse_xname, cxname, doname, erosion_matters, gloves_simple_name,
+    helm_simple_name, just_an, makeplural, otense, safe_qbuf, simpleonames, suit_simple_name, the,
+    vtense, xname, yname,
+} from "./objnam.js";
+import { ice_descr, waterbody_name } from "./pager.js";
+import { encumber_msg, pickup } from "./pickup.js";
+import {
+    Norep, There, You, You_cant, You_feel, You_hear, You_see, Your, impossible, livelog_printf,
+    pline, pline_The, pline_mon, pline_xy, set_msg_xy, urgent_pline,
+} from "./pline.js";
+import { body_part, float_vs_flight, mbodypart, polymon, polyself } from "./polyself.js";
+import {
+    incr_itimeout, make_blinded, make_hallucinated, make_stunned, self_invis_message, set_itimeout,
+    split_mon,
+} from "./potion.js";
+import { is_quest_artifact, quest_info } from "./questpgr.js";
+import { cant_revive, seffects, unpunish } from "./read.js";
 import { create_gas_cloud } from "./region.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { add_damage } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { delete_contents } from "./shk.js";
-import { inside_shop } from "./shk.js";
-import { make_angry_shk } from "./shk.js";
-import { obfree } from "./shk.js";
-import { sellobj } from "./shk.js";
-import { shk_your } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { shopdig } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { mpickobj } from "./steal.js";
-import { remove_worn_item } from "./steal.js";
-import { dismount_steed } from "./steed.js";
-import { rider_cant_reach } from "./steed.js";
-import { domagicportal } from "./teleport.js";
-import { dotele } from "./teleport.js";
-import { goodpos } from "./teleport.js";
-import { level_tele_trap } from "./teleport.js";
-import { mlevel_tele_trap } from "./teleport.js";
-import { mtele_trap } from "./teleport.js";
-import { noteleport_level } from "./teleport.js";
-import { random_teleport_level } from "./teleport.js";
-import { rloco } from "./teleport.js";
-import { safe_teleds } from "./teleport.js";
-import { tele_trap } from "./teleport.js";
-import { teleds } from "./teleport.js";
-import { burn_away_slime } from "./timeout.js";
-import { fall_asleep } from "./timeout.js";
-import { spot_stop_timers } from "./timeout.js";
+import { d, rn2, rn2_on_display_rng, rnd, rnl } from "./rnd.js";
+import {
+    add_damage, costly_spot, delete_contents, inside_shop, make_angry_shk, obfree, sellobj,
+    shk_your, shop_keeper, shopdig, stolen_value,
+} from "./shk.js";
+import { mpickobj, remove_worn_item } from "./steal.js";
+import { dismount_steed, rider_cant_reach } from "./steed.js";
+import {
+    domagicportal, dotele, goodpos, level_tele_trap, mlevel_tele_trap, mtele_trap, noteleport_level,
+    random_teleport_level, rloco, safe_teleds, tele_trap, teleds,
+} from "./teleport.js";
+import { burn_away_slime, fall_asleep, spot_stop_timers } from "./timeout.js";
 import { stumble_onto_mimic } from "./uhitm.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { vision_recalc } from "./vision.js";
-import { dmgval } from "./weapon.js";
-import { dry_a_towel } from "./weapon.js";
-import { mwepgone } from "./weapon.js";
-import { wet_a_towel } from "./weapon.js";
-import { uswapwepgone } from "./wield.js";
-import { uwepgone } from "./wield.js";
-import { welded } from "./wield.js";
+import { recalc_block_point, unblock_point, vision_recalc } from "./vision.js";
+import { dmgval, dry_a_towel, mwepgone, wet_a_towel } from "./weapon.js";
+import { uswapwepgone, uwepgone, welded } from "./wield.js";
 import { mon_has_amulet } from "./wizard.js";
 import { count_wsegs } from "./worm.js";
-import { extract_from_minvent } from "./worn.js";
-import { find_mac } from "./worn.js";
-import { m_dowear } from "./worn.js";
-import { mon_adjust_speed } from "./worn.js";
-import { setnotworn } from "./worn.js";
-import { update_mon_extrinsics } from "./worn.js";
-import { which_armor } from "./worn.js";
-import { blank_novel } from "./zap.js";
-import { burn_floor_objects } from "./zap.js";
-import { destroy_items } from "./zap.js";
-import { destroy_strings } from "./zap.js";
-import { fracture_rock } from "./zap.js";
-import { get_obj_location } from "./zap.js";
-import { inventory_resistance_check } from "./zap.js";
-import { melt_ice } from "./zap.js";
-import { montraits } from "./zap.js";
-import { obj_resists } from "./zap.js";
-import { poly_obj } from "./zap.js";
-import { resist } from "./zap.js";
+import {
+    extract_from_minvent, find_mac, m_dowear, mon_adjust_speed, setnotworn, update_mon_extrinsics,
+    which_armor,
+} from "./worn.js";
+import {
+    blank_novel, burn_floor_objects, destroy_items, destroy_strings, fracture_rock,
+    get_obj_location, inventory_resistance_check, melt_ice, montraits, obj_resists, poly_obj,
+    resist,
+} from "./zap.js";
 const __FILE__ = "trap.c";

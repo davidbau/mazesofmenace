@@ -2,25 +2,11 @@
 /* Copyright (c) David Cohrs, 1992                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
 export const wp_tty = 1; export const wp_X11 = wp_tty + 1; export const wp_Qt = wp_X11 + 1; export const wp_mswin = wp_Qt + 1; export const wp_curses = wp_mswin + 1;
               export const wp_chainin = wp_curses + 1; export const wp_chainout = wp_chainin + 1; export const wp_shim = wp_chainout + 1;
               export const wp_hup = wp_shim + 1; export const wp_guistubs = wp_hup + 1; export const wp_ttystubs = wp_guistubs + 1;
 
-
-
-
-
-
               export const wp_trace = wp_ttystubs + 1; // XXX do we need this?  should chainin/out get an id? TBD
-
 
 /* NB: this MUST match chain_procs below */
 export const struct_window_procs = struct("struct_window_procs", {
@@ -48,7 +34,6 @@ export const struct_window_procs = struct("struct_window_procs", {
     win_display_file: fnptr_t,
     win_start_menu: fnptr_t,
 
-
                          win_add_menu: fnptr_t,
     win_end_menu: fnptr_t,
     win_select_menu: fnptr_t,
@@ -57,10 +42,6 @@ export const struct_window_procs = struct("struct_window_procs", {
     win_wait_synch: fnptr_t,
 
     win_cliparound: fnptr_t,
-
-
-
-
 
                             win_print_glyph: fnptr_t,
     win_raw_print: fnptr_t,
@@ -74,14 +55,6 @@ export const struct_window_procs = struct("struct_window_procs", {
     win_get_ext_cmd: fnptr_t,
     win_number_pad: fnptr_t,
     win_delay_output: fnptr_t,
-
-
-
-
-
-
-
-
 
     win_outrip: fnptr_t,
     win_preference_update: fnptr_t,
@@ -98,99 +71,9 @@ export const struct_window_procs = struct("struct_window_procs", {
     win_ctrl_nhwindow: fnptr_t,
 });
 
-
-
-
-
-
-
-/*
- * If you wish to only support one window system and not use procedure
- * pointers, add the appropriate #ifdef below.
- * XXX which is what?
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 5.0: There are real add_menu() and select_menu in the core now.
- *      add_menu does some common activities, such as menu_colors.
- *      select_menu does some before and after activities.
- *      add_menu() and select_menu() are in windows.c
- */
-/* #define add_menu (*windowprocs.win_add_menu) */
-/* #define select_menu (*windowprocs.win_select_menu) */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 5.0: There is a real getlin() in the core now, which does
- *      some before and after activities.
- *      [alternative fix for menu search via ':'.]
- *      getlin() is in windows.c
- */
-/* #define getlin (*windowprocs.win_getlin) */
-
-
-
-
-
-
-
-
-
-
-
-
-/* 3.4.2: There is a real yn_function() in the core now, which does
- *        some buffer length validation on the parameters prior to
- *        invoking the window port routine. yn_function() is in cmd.c
- */
-/* #define yn_function (*windowprocs.win_yn_function) */
-
-
-
-
-
-/* there is a status_initialize() in botl.c,
- * which calls win_status_init() directly; same with status_finish.
- */
-
-
-
-
 /*
  *
  */
-
-
 
 /*
  * WINCAP
@@ -231,8 +114,6 @@ export const WC_WINDOWCOLORS = 0x20000000;
 export const WC_PLAYER_SELECTION = 0x40000000;
 
 export const WC_MOUSE_SUPPORT = 0x80000000;
-
-
 
                                      /* no free bits */
 
@@ -299,11 +180,6 @@ export const struct_wc_Opt = struct("struct_wc_Opt", {
 
 /* 5.0 The string comparison version isn't used anymore */
 
-
-
-
-
-
 /* role selection by player_selection(); this ought to be in the core... */
 export const RS_NAME = 0;
 export const RS_ROLE = 1;
@@ -312,12 +188,10 @@ export const RS_GENDER = 3;
 export const RS_ALGNMNT = 4;
 export const RS_filter = 5;
 
-
 /* Choose_windows() may be called multiple times; these constants tell the
  * init function whether the window system is coming or going. */
 export const WININIT = 0;
 export const WININIT_UNDO = 1;
-
 
 /* Setup phases for window chain elements.
         void *  rv = X_procs_chain(int, int, void *, void *, void *);
@@ -331,14 +205,9 @@ export const WININIT_UNDO = 1;
         nextdata is the Xprivate* for the next link in the chain
 */
 
-
-
 /* clang-format on */
 
-
-
 /* Expose log file for additional debugging. */
-
 
     /* Names should start with [a-z].  Names must
                            * not start with '-'.  Names starting with
@@ -346,12 +215,7 @@ export const WININIT_UNDO = 1;
 
     /* window port capability options supported */
     /* additional window port capability options */
+
 import { CLR_MAX } from "./color.h.js";
-import { char } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, schar, ulong, unsigned } from "../rt/ctypes.js";
+import { array_of, fnptr_t, ptr_to, struct } from "../rt/struct.js";

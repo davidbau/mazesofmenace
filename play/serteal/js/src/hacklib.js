@@ -4,9 +4,6 @@
 /* Copyright (c) Robert Patrick Rankin, 1991                      */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-// #include "hack.h" /* for config.h+extern.h */
-
 const struct_nh_qsort_index = struct("struct_nh_qsort_index", {
     idx: unsigned,
 });
@@ -15,27 +12,23 @@ const nh_qsort_base = static_var("nh_qsort_base", ptr_to(uchar), 0);
 const nh_qsort_size = static_var("nh_qsort_size", unsigned, 0);
 const nh_qsort_cmp_fn = static_var("nh_qsort_cmp_fn", fnptr_t, null);
 
-function /* int QSORTCALLBACK */
-nh_qsort_idx_cmp(va, vb)
-{
+function nh_qsort_idx_cmp(va, vb) { /* int QSORTCALLBACK */
     let a = view_of(struct_nh_qsort_index, va);
     let b = view_of(struct_nh_qsort_index, vb);
-    let c = (nh_qsort_cmp_fn[0])((nh_qsort_base[0] + (unsigned(Math.imul(a.idx, nh_qsort_size[0])))),
-                               (nh_qsort_base[0] + (unsigned(Math.imul(b.idx, nh_qsort_size[0])))));
+    let c = (nh_qsort_cmp_fn[0])((nh_qsort_base[0] + unsigned(Math.imul(a.idx, nh_qsort_size[0]))),
+                               (nh_qsort_base[0] + unsigned(Math.imul(b.idx, nh_qsort_size[0]))));
     if (c)
         return c;
     if (a.idx < b.idx)
         return -1;
-    return (+(a.idx > b.idx));
+    return +(a.idx > b.idx);
 }
 
 /* Deterministic replacement for libc qsort(), preserving original order
  * for equal-key elements regardless of platform libc behavior.
  */
-export function /* void */
-nh_deterministic_qsort(base, nmemb, size,
-                       compar)
-{
+export function nh_deterministic_qsort(base, nmemb, size,
+                       compar) { /* void */
     let bytes = base;
     let order;
     let tmp;
@@ -62,9 +55,9 @@ nh_deterministic_qsort(base, nmemb, size,
     qsort(addr_of(order), nmemb, sizeof(struct_nh_qsort_index), nh_qsort_idx_cmp);
 
     for (i = 0; i < nmemb; ++i)
-        void memcpy((tmp + (unsigned(Math.imul(i, size)))),
-                      (bytes + (unsigned(Math.imul(ptr_add(order, i).idx, size)))), size);
-    void memcpy(bytes, tmp, unsigned(Math.imul(nmemb, size)));
+        memcpy((tmp + unsigned(Math.imul(i, size))),
+                      (bytes + unsigned(Math.imul(ptr_add(order, i).idx, size))), size);
+    memcpy(bytes, tmp, unsigned(Math.imul(nmemb, size)));
 
     free(tmp);
     free(addr_of(order));
@@ -122,37 +115,27 @@ nh_deterministic_qsort(base, nmemb, size,
 =*/
 
 /* is 'c' a digit? */
-export function /* boolean */
-digit(c)
-{
+export function digit(c) { /* boolean */
     return (+(ord('0') <= c && c <= ord('9')));
 }
 
 /* is 'c' a letter?  note: '@' classed as letter */
-export function /* boolean */
-letter(c)
-{
-    return (((+(ord('@') <= c && c <= ord('Z'))) || (ord('a') <= c && c <= ord('z'))) ? 1 : 0);
+export function letter(c) { /* boolean */
+    return ((+(ord('@') <= c && c <= ord('Z'))) || (ord('a') <= c && c <= ord('z')) ? 1 : 0);
 }
 
 /* force 'c' into uppercase */
-export function /* char */
-highc(c)
-{
+export function highc(c) { /* char */
     return char(((ord('a') <= c && c <= ord('z')) ? (c & ~0o40) : c));
 }
 
 /* force 'c' into lowercase */
-export function /* char */
-lowc(c)
-{
+export function lowc(c) { /* char */
     return char(((ord('A') <= c && c <= ord('Z')) ? (c | 0o40) : c));
 }
 
 /* convert a string into all lowercase */
-export function /* char * */
-lcase(s)
-{
+export function lcase(s) { /* char * */
     let p;
 
     for (p = s; chars[p]; p++)
@@ -162,9 +145,7 @@ lcase(s)
 }
 
 /* convert a string into all uppercase */
-export function /* char * */
-ucase(s)
-{
+export function ucase(s) { /* char * */
     let p;
 
     for (p = s; chars[p]; p++)
@@ -174,18 +155,14 @@ ucase(s)
 }
 
 /* convert first character of a string to uppercase */
-export function /* char * */
-upstart(s)
-{
+export function upstart(s) { /* char * */
     if (s)
         chars[s] = highc(chars[s]);
     return s;
 }
 
 /* capitalize first letter of every word in a string (in place) */
-export function /* char * */
-upwords(s)
-{
+export function upwords(s) { /* char * */
     let p;
     let space = TRUE;
 
@@ -202,9 +179,7 @@ upwords(s)
 }
 
 /* remove excess whitespace from a string buffer (in place) */
-export function /* char * */
-mungspaces(bp)
-{
+export function mungspaces(bp) { /* char * */
     let c, p, p2;
     let was_space = TRUE;
 
@@ -215,7 +190,7 @@ mungspaces(bp)
             c = ord(' ');
         if (c != ord(' ') || !was_space)
             chars[p2++] = c;
-        was_space = (+(c == ord(' ')));
+        was_space = +(c == ord(' '));
     }
     if (was_space && p2 > bp)
         p2--;
@@ -224,9 +199,7 @@ mungspaces(bp)
 }
 
 /* skip leading whitespace; remove trailing whitespace, in place */
-export function /* char * */
-trimspaces(txt)
-{
+export function trimspaces(txt) { /* char * */
     let end;
 
     /* leading whitespace will remain in the buffer */
@@ -240,9 +213,7 @@ trimspaces(txt)
 }
 
 /* remove \n from end of line; remove \r too if one is there */
-export function /* char * */
-strip_newline(str)
-{
+export function strip_newline(str) { /* char * */
     let p = strrchr(str, ord('\n'));
 
     if (p) {
@@ -254,18 +225,14 @@ strip_newline(str)
 }
 
 /* return the end of a string (pointing at '\0') */
-export function /* char * */
-eos(s)
-{
+export function eos(s) { /* char * */
     while (chars[s])
         s++; /* s += strlen(s); */
     return s;
 }
 
 /* version of eos() which takes a const* arg and returns that result */
-export function /* const char * */
-c_eos(s)
-{
+export function c_eos(s) { /* const char * */
     while (chars[s])
         s++; /* s += strlen(s); */
     return s;
@@ -273,18 +240,16 @@ c_eos(s)
 
 /* determine whether 'str' starts with 'chkstr', possibly ignoring case;
  * panics on huge strings */
-export function /* boolean */
-str_start_is(
+export function str_start_is(
     str,
     chkstr,
-    caseblind)
-{
+    caseblind) { /* boolean */
     let t1, t2;
     let n = LARGEST_INT;
 
     while (--n) {
         if (!chars[str])
-            return (+(chars[chkstr] == 0)); /* chkstr >= str */
+            return +(chars[chkstr] == 0); /* chkstr >= str */
         else if (!chars[chkstr])
             return TRUE; /* chkstr < str */
         t1 = caseblind ? lowc(chars[str]) : chars[str];
@@ -294,16 +259,11 @@ str_start_is(
             return FALSE;
     }
 
-
-
-
     return TRUE;
 }
 
 /* determine whether 'str' ends in 'chkstr' */
-export function /* boolean */
-str_end_is(str, chkstr)
-{
+export function str_end_is(str, chkstr) { /* boolean */
     let clen = int(strlen(chkstr));
 
     if (int(strlen(str)) >= clen)
@@ -312,9 +272,7 @@ str_end_is(str, chkstr)
 }
 
 /* return max line length from buffer comprising newline-separated strings */
-export function /* int */
-str_lines_maxlen(str)
-{
+export function str_lines_maxlen(str) { /* int */
     let s1, s2;
     let len, max_len = 0;
 
@@ -336,9 +294,7 @@ str_lines_maxlen(str)
 }
 
 /* append a character to a string (in place): strcat(s, {c,'\0'}); */
-export function /* char * */
-strkitten(s, c)
-{
+export function strkitten(s, c) { /* char * */
     let p = eos(s);
 
     chars[p++] = c;
@@ -347,9 +303,7 @@ strkitten(s, c)
 }
 
 /* truncating string copy */
-export function /* void */
-copynchars(dst, src, n)
-{
+export function copynchars(dst, src, n) { /* void */
     /* copies at most n characters, stopping sooner if terminator reached;
        treats newline as input terminator; unlike strncpy, always supplies
        '\0' terminator so dst must be able to hold at least n+1 characters */
@@ -361,13 +315,7 @@ copynchars(dst, src, n)
 }
 
 /* convert char nc into oc's case; mostly used by strcasecpy */
-export function /* char */
-chrcasecpy(oc, nc)
-{
-
-
-
-
+export function chrcasecpy(oc, nc) { /* char */
     if (ord('a') <= oc && oc <= ord('z')) {
         /* old char is lower case; if new char is upper case, downcase it */
         if (ord('A') <= nc && nc <= ord('Z'))
@@ -383,9 +331,7 @@ chrcasecpy(oc, nc)
 /* overwrite string, preserving old chars' case;
    for case-insensitive editions of makeplural() and makesingular();
    src might be shorter, same length, or longer than dst */
-export function /* char * */
-strcasecpy(dst, src)
-{
+export function strcasecpy(dst, src) { /* char * */
     let result = dst;
     let ic, oc, dst_exhausted = 0;
 
@@ -405,64 +351,60 @@ strcasecpy(dst, src)
 }
 
 /* return a name converted to possessive */
-export function /* char * */
-s_suffix(s)
-{
+export function s_suffix(s) { /* char * */
     let buf = static_array("s_suffix.buf", char, BUFSZ);
 
-    void strcpy(buf, s);
-    if (!strcmpi(buf, _("it"))) /* it -> its */
-        void strcat(buf, _("s"));
-    else if (!strcmpi(buf, _("you"))) /* you -> your */
-        void strcat(buf, _("r"));
+    strcpy(buf, s);
+    if (!strncmpi((buf), _(("it")), -1)) /* it -> its */
+        strcat(buf, _("s"));
+    else if (!strncmpi((buf), _(("you")), -1)) /* you -> your */
+        strcat(buf, _("r"));
     else if (chars[(eos(buf) - 1)] == ord('s')) /* Xs -> Xs' */
-        void strcat(buf, _("'"));
+        strcat(buf, _("'"));
     else /* X -> X's */
-        void strcat(buf, _("'s"));
+        strcat(buf, _("'s"));
     return buf;
 }
 
 /* construct a gerund (a verb formed by appending "ing" to a noun) */
-export function /* char * */
-ing_suffix(s)
-{ const $frame = stack_frame(); try {
+export function ing_suffix(s) { /* char * */
+    const $frame = stack_frame(); try {
     let vowel = init_string(static_array("ing_suffix.vowel", char, sizeof_string("aeiouwy")), _("aeiouwy"), true);
     let buf = static_array("ing_suffix.buf", char, BUFSZ);
     let onoff = stack_array(char, 10);
     let p;
 
-    void strcpy(buf, s);
+    strcpy(buf, s);
     p = eos(buf);
     chars[onoff + 0] = chars[p] = chars[(p + 1)] = ord('\0');
-    if ((p >= buf + 3 && !strcmpi(p - 3, _(" on")))
-        || (p >= buf + 4 && !strcmpi(p - 4, _(" off")))
-        || (p >= buf + 5 && !strcmpi(p - 5, _(" with")))) {
+    if ((p >= buf + 3 && !strncmpi((p - 3), _((" on")), -1))
+        || (p >= buf + 4 && !strncmpi((p - 4), _((" off")), -1))
+        || (p >= buf + 5 && !strncmpi((p - 5), _((" with")), -1))) {
         p = strrchr(buf, ord(' '));
-        void strcpy(onoff, p);
+        strcpy(onoff, p);
         chars[p] = ord('\0');
     }
-    if (p >= buf + 2 && !strcmpi(p - 2, _("er"))) { /* slither + ing */
+    if (p >= buf + 2 && !strncmpi((p - 2), _(("er")), -1)) { /* slither + ing */
         /* nothing here */
     } else if (p >= buf + 3 && !strchr(vowel, chars[(p - 1)])
         && strchr(vowel, chars[(p - 2)]) && !strchr(vowel, chars[(p - 3)])) {
         /* tip -> tipp + ing */
         chars[p] = chars[(p - 1)];
         chars[(p + 1)] = ord('\0');
-    } else if (p >= buf + 2 && !strcmpi(p - 2, _("ie"))) { /* vie -> vy + ing */
+    } else if (p >= buf + 2 && !strncmpi((p - 2), _(("ie")), -1)) { /* vie -> vy + ing */
         chars[(p - 2)] = ord('y');
         chars[(p - 1)] = ord('\0');
     } else if (p >= buf + 1 && chars[(p - 1)] == ord('e')) /* grease -> greas + ing */
         chars[(p - 1)] = ord('\0');
-    void strcat(buf, _("ing"));
+    strcat(buf, _("ing"));
     if (chars[onoff + 0])
-        void strcat(buf, onoff);
+        strcat(buf, onoff);
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* trivial text encryption routine (see makedefs) */
-export function /* char * */
-xcrypt(str, buf)
-{
+export function xcrypt(str, buf) { /* char * */
     let p;
     let q;
     let bitmask;
@@ -479,9 +421,7 @@ xcrypt(str, buf)
 }
 
 /* is a string entirely whitespace? */
-export function /* boolean */
-onlyspace(s)
-{
+export function onlyspace(s) { /* boolean */
     for (; chars[s]; s++)
         if (chars[s] != ord(' ') && chars[s] != ord('\t'))
             return FALSE;
@@ -489,12 +429,9 @@ onlyspace(s)
 }
 
 /* expand tabs into proper number of spaces (in place) */
-export function /* char * */
-tabexpand(
-    sbuf) /* assumed to be [BUFSZ] but can be smaller provided that
-                 * expanded string fits; expansion bigger than BUFSZ-1
-                 * will be truncated */
-{ const $frame = stack_frame(); try {
+export function tabexpand(
+    sbuf) { /* char * */ /* assumed to be [BUFSZ] but can be smaller provided that * expanded string fits; expansion bigger than BUFSZ-1 * will be truncated */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ + 10);
     let bp, s = sbuf;
     let idx;
@@ -525,13 +462,12 @@ tabexpand(
     }
     chars[bp] = 0;
     return strcpy(sbuf, buf);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 export const VISCTRL_NBUF = 5;
 /* make a displayable string from a character */
-export function /* char * */
-visctrl(c)
-{
+export function visctrl(c) { /* char * */
     let visctrl_bufs = static_array("visctrl.visctrl_bufs", array_of(char, 5), VISCTRL_NBUF);
     let nbuf = static_var("visctrl.nbuf", int, 0);
     let i = 0;
@@ -559,12 +495,10 @@ visctrl(c)
 /* strip all the chars in stuff_to_strip from orig */
 /* caller is responsible for ensuring that bp is a
    valid pointer to a BUFSZ buffer */
-export function /* char * */
-stripchars(
+export function stripchars(
     bp,
     stuff_to_strip,
-    orig)
-{
+    orig) { /* char * */
     let i = 0;
     let s = bp;
 
@@ -581,9 +515,7 @@ stripchars(
 }
 
 /* remove digits from string */
-export function /* char * */
-stripdigits(s)
-{
+export function stripdigits(s) { /* char * */
     let s1, s2;
 
     for (s1 = s2 = s; chars[s1]; s1++)
@@ -596,34 +528,33 @@ stripdigits(s)
 
 /* substitute a word or phrase in a string (in place);
    caller is responsible for ensuring that bp points to big enough buffer */
-export function /* char * */
-strsubst(
+export function strsubst(
     bp,
     orig,
-    replacement)
-{ const $frame = stack_frame(); try {
+    replacement) { /* char * */
+    const $frame = stack_frame(); try {
     let found, buf = stack_array(char, BUFSZ);
     /* [this could be replaced by strNsubst(bp, orig, replacement, 1)] */
 
     found = strstr(bp, orig);
     if (found) {
-        void strcpy(buf, found + strlen(orig));
-        void strcpy(found, replacement);
-        void strcat(bp, buf);
+        strcpy(buf, found + strlen(orig));
+        strcpy(found, replacement);
+        strcat(bp, buf);
     }
     return bp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* substitute the Nth occurrence of a substring within a string (in place);
    if N is 0, substitute all occurrences; returns the number of substitutions;
    maximum output length is BUFSZ (BUFSZ-1 chars + terminating '\0') */
-export function /* int */
-strNsubst(
+export function strNsubst(
     inoutbuf,
     orig,
     replacement,
-    n) /* which occurrence to replace; 0 => all */
-{ const $frame = stack_frame(); try {
+    n) { /* int */ /* which occurrence to replace; 0 => all */
+    const $frame = stack_frame(); try {
     let bp, op, workbuf = stack_array(char, BUFSZ);
     let rp;
     let len = strlen(orig);
@@ -655,19 +586,18 @@ strNsubst(
     }
     if (rcount) {
         chars[op] = ord('\0');
-        void strcpy(inoutbuf, workbuf);
+        strcpy(inoutbuf, workbuf);
     }
     return rcount;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* search for a word in a space-separated list; returns non-Null if found */
-export function /* const char * */
-findword(
+export function findword(
     list,
     word,
     wordlen,
-    ignorecase) /* T: case-blind, F: case-sensitive */
-{
+    ignorecase) { /* const char * */ /* T: case-blind, F: case-sensitive */
     let p = list;
 
     while (p) {
@@ -685,9 +615,7 @@ findword(
 }
 
 /* return the ordinal suffix of a number */
-export function /* const char * */
-ordin(n)               /* note: should be non-negative */
-{
+export function ordin(n) { /* const char * */ /* note: should be non-negative */
     let dd = n % 10;
 
     return (dd == 0 || dd > 3 || Math.trunc((n % 100) / 10) == 1) ? _("th")
@@ -698,28 +626,20 @@ ordin(n)               /* note: should be non-negative */
                                       result of ?: for format string */
 
 /* make a signed digit string from a number */
-export function /* char * */
-sitoa(n)
-{
+export function sitoa(n) { /* char * */
     let buf = static_array("sitoa.buf", char, 13);
 
-    void sprintf(buf, (n < 0) ? _("%d") : _("+%d"), n);
+    sprintf(buf, (n < 0) ? _("%d") : _("+%d"), n);
     return buf;
 }
 
-
-
 /* return the sign of a number: -1, 0, or 1 */
-export function /* int */
-sgn(n)
-{
-    return (n < 0) ? -1 : (+(n != 0));
+export function sgn(n) { /* int */
+    return (n < 0) ? -1 : +(n != 0);
 }
 
 /* distance between two points, in moves */
-export function /* int */
-distmin(x0, y0, x1, y1)
-{
+export function distmin(x0, y0, x1, y1) { /* int */
     let dx = x0 - x1, dy = y0 - y1;
 
     if (dx < 0)
@@ -733,18 +653,14 @@ distmin(x0, y0, x1, y1)
 }
 
 /* square of Euclidean distance between pair of pts */
-export function /* int */
-dist2(x0, y0, x1, y1)
-{
+export function dist2(x0, y0, x1, y1) { /* int */
     let dx = x0 - x1, dy = y0 - y1;
 
     return dx * dx + dy * dy;
 }
 
 /* integer square root function without using floating point */
-export function /* int */
-isqrt(val)
-{
+export function isqrt(val) { /* int */
     let rt = 0;
     let odd = 1;
     /*
@@ -764,9 +680,7 @@ isqrt(val)
 }
 
 /* are two points lined up (on a straight line)? */
-export function /* boolean */
-online2(x0, y0, x1, y1)
-{
+export function online2(x0, y0, x1, y1) { /* boolean */
     let dx = x0 - x1, dy = y0 - y1;
     /*  If either delta is zero then they're on an orthogonal line,
      *  else if the deltas are equal (signs ignored) they're on a diagonal.
@@ -774,19 +688,16 @@ online2(x0, y0, x1, y1)
     return (+(!dy || !dx || dy == dx || dy == -dx));
 }
 
-
 /* case-insensitive counted string comparison */
 /*{ aka strncasecmp }*/
-export function /* int */
-strncmpi(
+export function strncmpi(
     s1, s2,
-    n) /*(should probably be size_t, which is unsigned)*/
-{
+    n) { /* int */ /*(should probably be size_t, which is unsigned)*/
     let t1, t2;
 
     while (n--) {
         if (!chars[s2])
-            return (+(chars[s1] != 0)); /* s1 >= s2 */
+            return +(chars[s1] != 0); /* s1 >= s2 */
         else if (!chars[s1])
             return -1; /* s1  < s2 */
         t1 = lowc(chars[s1++]);
@@ -797,20 +708,13 @@ strncmpi(
     return 0; /* s1 == s2 */
 }
 
-
-
 /* case-insensitive substring search */
-export function /* char * */
-strstri(str, sub)
-{ const $frame = stack_frame(); try {
+export function strstri(str, sub) { /* char * */
+    const $frame = stack_frame(); try {
     let s1, s2;
     let i, k;
 
     let tstr = stack_array(char, TABSIZ), tsub = stack_array(char, TABSIZ); /* nibble count tables */
-
-
-
-
 
     /* special case: empty substring */
     if (!chars[sub])
@@ -840,17 +744,16 @@ strstri(str, sub)
                 return (str + i); /* full match */
     }
     return 0; /* not found */
-} finally { stack_pop($frame); } } export const TABSIZ = 0x20;
-
+    } finally { stack_pop($frame); }
+}
+export const TABSIZ = 0x20;
 
 /* compare two strings for equality, ignoring the presence of specified
    characters (typically whitespace) and possibly ignoring case */
-export function /* boolean */
-fuzzymatch(
+export function fuzzymatch(
     s1, s2,
     ignore_chars,
-    caseblind)
-{
+    caseblind) { /* boolean */
     let c1, c2;
 
     do {
@@ -885,22 +788,12 @@ fuzzymatch(
 /* TIME_type: type of the argument to time(); we actually use &(time_t);
    you might need to define either or both of these to 'long *' in *conf.h */
 
-
-
-
-
-
-
 /* swapbits(val, bita, bitb) swaps bit a with bit b in val */
-export function /* int */
-swapbits(val, bita, bitb)
-{
+export function swapbits(val, bita, bitb) { /* int */
     let tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
 
     return (val ^ ((tmp << bita) | (tmp << bitb)));
 }
-
-
 
 /*
  * Wrap snprintf for use in the main code.
@@ -914,12 +807,10 @@ swapbits(val, bita, bitb)
  *      Annoyingly, explicitly casting to void does not remove the error.
  *      So, use the result - see reason #2.
  */
-export function /* void */
-nh_snprintf(
+export function nh_snprintf(
     func, line,
     str, size,
-    fmt, ...args)
-{
+    fmt, ...args) { /* void */
     let ap;
     let n;
 
@@ -927,24 +818,13 @@ nh_snprintf(
     n = vsnprintf(str, size, fmt, ap);
     va_end(ap);
     if (n < 0 || unsigned(n) >= size) { /* is there a problem? */
-
-
-
-
-
-
-
         chars[str + unsigned(size - 1)] = ord('\0'); /* make sure it is nul terminated */
     }
 }
 
-
-
 /* Unicode routines */
 
-export function /* int */
-unicodeval_to_utf8str(uval, buffer, bufsz)
-{
+export function unicodeval_to_utf8str(uval, buffer, bufsz) { /* int */
     //    static uint8 buffer[7];
     let b = buffer;
 
@@ -982,17 +862,15 @@ unicodeval_to_utf8str(uval, buffer, bufsz)
     return 1;
 }
 
-export function /* int */
-case_insensitive_comp(s1, s2)
-{
+export function case_insensitive_comp(s1, s2) { /* int */
     let u1, u2;
 
     for (;; s1++, s2++) {
         u1 = uchar((chars[s1]));
-        if (((0 ? isupper(u1) : ((unsigned(((u1) - ord("A")))) < 26))))
+        if ((0 ? isupper(u1) : ((unsigned(((u1) - ord("A")))) < 26)))
             u1 = uchar(tolower(u1));
         u2 = uchar((chars[s2]));
-        if (((0 ? isupper(u2) : ((unsigned(((u2) - ord("A")))) < 26))))
+        if ((0 ? isupper(u2) : ((unsigned(((u2) - ord("A")))) < 26)))
             u2 = uchar(tolower(u2));
         if (u1 == ord('\0') || u1 != u2)
             break;
@@ -1000,15 +878,8 @@ case_insensitive_comp(s1, s2)
     return u1 - u2;
 }
 
-
-
-
-
-
-
-export function /* boolean */
-copy_bytes(ifd, ofd)
-{ const $frame = stack_frame(); try {
+export function copy_bytes(ifd, ofd) { /* boolean */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSIZ);
     let nfrom, nto;
 
@@ -1022,8 +893,8 @@ copy_bytes(ifd, ofd)
             return FALSE;
     } while (nfrom == BUFSIZ);
     return TRUE;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 export const MAX_D = 5;
 const struct_datamodel_information = struct("struct_datamodel_information", {
@@ -1038,13 +909,11 @@ const dm = static_array("dm", struct_datamodel_information, null, [
       datamodel: _(""), dmplatform: _("") },
     { sz: [ 2, 4, 4, 8, 4 ], datamodel: _("ILP32LL64"), dmplatform: _("x86 32-bit") }, /* Windows or Unix */
     { sz: [ 2, 4, 4, 8, 8 ], datamodel: _("IL32LLP64"), dmplatform: _("Windows x64 64-bit") },
-    { sz: [ 2, 4, 8, 8, 8 ], datamodel: _("I32LP64"), dmplatform: _("Unix 64-bit")}, 
+    { sz: [ 2, 4, 8, 8, 8 ], datamodel: _("I32LP64"), dmplatform: _("Unix 64-bit")},
     { sz: [ 2, 8, 8, 8, 8 ], datamodel: _("ILP64"), dmplatform: _("Unix ILP64")},      /* HAL, SPARC64 */
 ]);
 
-export function /* const char * */
-datamodel(retidx)
-{
+export function datamodel(retidx) { /* const char * */
     let i, j, matchcount;
     let unknown = static_var("datamodel.unknown", ptr_to(char), _("Unknown"));
 
@@ -1060,10 +929,8 @@ datamodel(retidx)
     return unknown[0];
 }
 
-export function /* const char * */
-what_datamodel_is_this(retidx, szshort, szint, szlong, szll,
-                       szptr)
-{
+export function what_datamodel_is_this(retidx, szshort, szint, szlong, szll,
+                       szptr) { /* const char * */
     let i;
     let unknown = static_var("what_datamodel_is_this.unknown", ptr_to(char), _("Unknown"));
 
@@ -1077,55 +944,20 @@ what_datamodel_is_this(retidx, szshort, szint, szlong, szll,
 }
 
 /*hacklib.c*/
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
+
+import { BUFSZ, FALSE, LARGEST_INT, TRUE } from "./global.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { BUFSIZ } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { isupper } from "../rt/libc.js";
-import { malloc } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { qsort } from "../rt/libc.js";
-import { read } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { strstr } from "../rt/libc.js";
-import { tolower } from "../rt/libc.js";
-import { vsnprintf } from "../rt/libc.js";
-import { write } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    char, int, long, ord, short, sizeof, sizeof_string, uchar, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import {
+    BUFSIZ, free, isupper, malloc, memcpy, qsort, read, sprintf, strcat, strchr, strcpy, strlen,
+    strncmp, strrchr, strstr, tolower, vsnprintf, write,
+} from "../rt/libc.js";
+import { init_string, stack_array, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
-import { va_end } from "../rt/varargs.js";
-import { va_start } from "../rt/varargs.js";
+import {
+    addr_of, array_of, fnptr_t, ptr_add, ptr_to, struct, view_of, void_t,
+} from "../rt/struct.js";
+import { va_end, va_start } from "../rt/varargs.js";

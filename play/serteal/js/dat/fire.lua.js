@@ -1,19 +1,19 @@
-export default "\n" + // -- NetHack endgame fire.lua	$NHDT-Date: 1700398454 2023/11/19 12:54:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1992,1993 by Izchak Miller, David Cohrs,
-"\n" + // --                      and Timo Hakulinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack endgame fire.lua	$NHDT-Date: 1700398454 2023/11/19 12:54:14 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1992,1993 by Izchak Miller, David Cohrs,
+--                      and Timo Hakulinen
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport", "hardfloor", "shortsighted", "hot", "fumaroles")
-` + "\n" + // -- The player lands, upon arrival, in the
-"\n" + // -- lower-right.  The location of the
-"\n" + // -- portal to the next level is randomly chosen.
-"\n" + // -- This map has no visible outer boundary, and
-"\n" + // -- is mostly open area, with lava lakes and bunches of fire traps.
-"\n" + // -- It fills the entire mappable area.
-`des.map([[
+-- The player lands, upon arrival, in the
+-- lower-right.  The location of the
+-- portal to the next level is randomly chosen.
+-- This map has no visible outer boundary, and
+-- is mostly open area, with lava lakes and bunches of fire traps.
+-- It fills the entire mappable area.
+des.map([[
 LL.............LL..............L...LL.........LL.................LL...........L
 LL....LLLLLLLL............L...L.............LL....LLL.......................LL.
 L....LL...................L......................LLLL................LL........
@@ -79,29 +79,29 @@ des.trap("fire")
 des.trap("fire")
 des.trap("fire")
 des.trap("fire")
-` + "\n" + // --  An assortment of fire-appropriate nasties
-`des.monster("red dragon")
+--  An assortment of fire-appropriate nasties
+des.monster("red dragon")
 des.monster("balrog")
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster("fire vortex")
 des.monster("hell hound")
-` + "\n" + // --
-`des.monster("fire giant")
+--
+des.monster("fire giant")
 des.monster("barbed devil")
 des.monster("hell hound")
 des.monster("stone golem")
 des.monster("pit fiend")
 des.monster({ id = "fire elemental", peaceful = 0 })
-` + "\n" + // --
-`des.monster({ id = "fire elemental", peaceful = 0 })
+--
+des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster("hell hound")
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster("scorpion")
 des.monster("fire giant")
-` + "\n" + // --
-`des.monster("hell hound")
+--
+des.monster("hell hound")
 des.monster("dust vortex")
 des.monster("fire vortex")
 des.monster({ id = "fire elemental", peaceful = 0 })
@@ -113,8 +113,8 @@ des.monster("stone golem")
 des.monster("pit viper")
 des.monster("pit viper")
 des.monster("fire vortex")
-` + "\n" + // --
-`des.monster({ id = "fire elemental", peaceful = 0 })
+--
+des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster("fire giant")
 des.monster({ id = "fire elemental", peaceful = 0 })
@@ -123,16 +123,16 @@ des.monster("fire vortex")
 des.monster("pit fiend")
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster("pit viper")
-` + "\n" + // --
-`des.monster({ id = "salamander", peaceful = 0 })
+--
+des.monster({ id = "salamander", peaceful = 0 })
 des.monster({ id = "salamander", peaceful = 0 })
 des.monster("minotaur")
 des.monster({ id = "salamander", peaceful = 0 })
 des.monster("steam vortex")
 des.monster({ id = "salamander", peaceful = 0 })
 des.monster({ id = "salamander", peaceful = 0 })
-` + "\n" + // --
-`des.monster("fire giant")
+--
+des.monster("fire giant")
 des.monster("barbed devil")
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster("fire vortex")
@@ -143,8 +143,8 @@ des.monster("fire giant")
 des.monster("pit fiend")
 des.monster({ id = "fire elemental", peaceful = 0 })
 des.monster({ id = "fire elemental", peaceful = 0 })
-` + "\n" + // --
-`des.monster("barbed devil")
+--
+des.monster("barbed devil")
 des.monster({ id = "salamander", peaceful = 0 })
 des.monster("steam vortex")
 des.monster({ id = "salamander", peaceful = 0 })

@@ -3,7 +3,8 @@
 // Scoring enters through js/jsmain.js runSegment().  In the browser the
 // engine (js/src) runs the real moveloop_core(); this
 // loop only waits for a key and hands it to the engine, which resumes
-// from its last command-boundary snapshot (see jsmain.js).
+// from its last command-boundary snapshot, or shows what it already ran
+// for keys that were typed ahead (see jsmain.js, host/game.js pushKey).
 
 import { game } from "./gstate.js";
 import { KEY_BINDINGS } from "./terminal.js";

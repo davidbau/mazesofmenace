@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack bigroom bigrm-9.lua	$NHDT-Date: 1652196023 2022/05/10 15:20:23 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1990 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack bigroom bigrm-9.lua	$NHDT-Date: 1652196023 2022/05/10 15:20:23 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1990 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 des.level_flags("mazelevel", "noflip");
 
 des.map([[
@@ -28,8 +28,8 @@ des.map([[
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 ]]);
 
-` + "\n" + // -- Unlit, except 3 mapgrids around the "pupil"
-`des.region(selection.area(00,00,73,18),"unlit");
+-- Unlit, except 3 mapgrids around the "pupil"
+des.region(selection.area(00,00,73,18),"unlit");
 des.region(selection.area(26,04,47,14),"lit");
 des.region(selection.area(21,05,51,13),"lit");
 des.region(selection.area(19,06,54,12),"lit");

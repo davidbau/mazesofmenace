@@ -1,44 +1,44 @@
-export default "\n" + // -- NetHack themerms.lua	$NHDT-Date: 1744445274 2025/04/12 00:07:54 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.40 $
-"\n" + // --	Copyright (c) 2020 by Pasi Kallinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- themerooms is an array of tables.
-"\n" + // -- the tables define "name", "frequency", "contents", "mindiff" and "maxdiff".
-"\n" + // -- * "name" is not shown in-game; it is so that developers can specify a
-"\n" + // --   certain room to generate by using the THEMERM or THEMERMFILL environment
-"\n" + // --   variable. While technically optional, it should be provided on all the
-"\n" + // --   rooms; if it isn't, the room can't be directly specified.
-"\n" + // -- * "frequency" is optional; if omitted, 1 is assumed.
-"\n" + // -- * "contents" is a function describing what gets put into the room.
-"\n" + // -- * "mindiff" and "maxdiff" are optional and independent; if omitted, the
-"\n" + // --    room is not constrained by level difficulty.
-"\n" + // -- * "eligible" is optional; if omitted, True is assumed.
-"\n" + // --
-"\n" + // -- themeroom_fills is an array of tables with the exact same structure as
-"\n" + // -- themerooms. It is used for contents of a room that are independent of its
-"\n" + // -- shape, so that interestingly-shaped themerooms can be filled with a variety
-"\n" + // -- of contents.
-"\n" + // -- * The "contents" functions in themeroom_fills take the room they are
-"\n" + // --   filling as an argument.
-"\n" + // -- * Frequency of themeroom_fills is a separate pool from themerooms, and has
-"\n" + // --   no effect on how likely that any given room will receive a themeroom_fill.
-"\n" + // --
-"\n" + // -- des.room({ type = "ordinary", filled = 1 })
-"\n" + // --   - ordinary rooms can be converted to shops or any other special rooms.
-"\n" + // --   - filled = 1 means the room gets random room contents, even if it
-"\n" + // --     doesn't get converted into a special room. Without filled,
-"\n" + // --     the room only gets what you define in here.
-"\n" + // --   - use type = "themed" to force a room that's never converted
-"\n" + // --     to a special room, such as a shop or a temple.
-"\n" + // --
-"\n" + // -- for each level, the core first calls pre_themerooms_generate(),
-"\n" + // -- then it calls themerooms_generate() multiple times until it decides
-"\n" + // -- enough rooms have been generated, and then it calls
-"\n" + // -- post_themerooms_generate(). When the level has been generated, with
-"\n" + // -- joining corridors and rooms filled, the core calls post_level_generate().
-"\n" + // -- The lua state is persistent through the gameplay, but not across saves,
-"\n" + // -- so remember to reset any variables.
-`
+export default String.raw`-- NetHack themerms.lua	$NHDT-Date: 1744445274 2025/04/12 00:07:54 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.40 $
+--	Copyright (c) 2020 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- themerooms is an array of tables.
+-- the tables define "name", "frequency", "contents", "mindiff" and "maxdiff".
+-- * "name" is not shown in-game; it is so that developers can specify a
+--   certain room to generate by using the THEMERM or THEMERMFILL environment
+--   variable. While technically optional, it should be provided on all the
+--   rooms; if it isn't, the room can't be directly specified.
+-- * "frequency" is optional; if omitted, 1 is assumed.
+-- * "contents" is a function describing what gets put into the room.
+-- * "mindiff" and "maxdiff" are optional and independent; if omitted, the
+--    room is not constrained by level difficulty.
+-- * "eligible" is optional; if omitted, True is assumed.
+--
+-- themeroom_fills is an array of tables with the exact same structure as
+-- themerooms. It is used for contents of a room that are independent of its
+-- shape, so that interestingly-shaped themerooms can be filled with a variety
+-- of contents.
+-- * The "contents" functions in themeroom_fills take the room they are
+--   filling as an argument.
+-- * Frequency of themeroom_fills is a separate pool from themerooms, and has
+--   no effect on how likely that any given room will receive a themeroom_fill.
+--
+-- des.room({ type = "ordinary", filled = 1 })
+--   - ordinary rooms can be converted to shops or any other special rooms.
+--   - filled = 1 means the room gets random room contents, even if it
+--     doesn't get converted into a special room. Without filled,
+--     the room only gets what you define in here.
+--   - use type = "themed" to force a room that's never converted
+--     to a special room, such as a shop or a temple.
+--
+-- for each level, the core first calls pre_themerooms_generate(),
+-- then it calls themerooms_generate() multiple times until it decides
+-- enough rooms have been generated, and then it calls
+-- post_themerooms_generate(). When the level has been generated, with
+-- joining corridors and rooms filled, the core calls post_level_generate().
+-- The lua state is persistent through the gameplay, but not across saves,
+-- so remember to reset any variables.
+
 local postprocess = { };
 
 themeroom_fills = {
@@ -135,8 +135,8 @@ themeroom_fills = {
       contents = function(rm)
          des.object({ id = "chest", buried = true, contents = function(otmp)
             local xobj = otmp:totable();
-` + "\n" + // -- keep track of the last buried treasure
-`            if (xobj.NO_OBJ == nil) then
+            -- keep track of the last buried treasure
+            if (xobj.NO_OBJ == nil) then
                table.insert(postprocess, { handler = make_dig_engraving,
                                         data = { x = xobj.ox, y = xobj.oy }});
             end
@@ -151,8 +151,8 @@ themeroom_fills = {
       name = "Buried zombies",
       contents = function(rm)
          local diff = nh.level_difficulty()
-` + "\n" + // -- start with [1..4] for low difficulty
-`         local zombifiable = { "kobold", "gnome", "orc", "dwarf" };
+         -- start with [1..4] for low difficulty
+         local zombifiable = { "kobold", "gnome", "orc", "dwarf" };
          if diff > 3 then          -- medium difficulty
             zombifiable[5], zombifiable[6] = "elf", "human";
             if diff > 6 then       -- high difficulty (relatively speaking)
@@ -777,16 +777,16 @@ xx|.....|xx
             local chest_spots = { { 2, 2 }, { 3, 2 }, { 2, 3 }, { 3, 3 } };
 
             shuffle(chest_spots)
-` + "\n" + // -- Guarantee an escape item inside one of the chests, to prevent
-"\n" + // -- the hero falling in from above and becoming permanently stuck
-"\n" + // -- [cf. generate_way_out_method(sp_lev.c)].
-"\n" + // -- If the escape item is made of glass or crystal, make sure that
-"\n" + // -- the chest isn't locked so that kicking it to gain access to its
-"\n" + // -- contents won't be necessary; otherwise retain lock state from
-"\n" + // -- random creation.
-"\n" + // -- "pick-axe", "dwarvish mattock" could be included in the list of
-"\n" + // -- escape items but don't normally generate in containers.
-`            local escape_items = {
+            -- Guarantee an escape item inside one of the chests, to prevent
+            -- the hero falling in from above and becoming permanently stuck
+            -- [cf. generate_way_out_method(sp_lev.c)].
+            -- If the escape item is made of glass or crystal, make sure that
+            -- the chest isn't locked so that kicking it to gain access to its
+            -- contents won't be necessary; otherwise retain lock state from
+            -- random creation.
+            -- "pick-axe", "dwarvish mattock" could be included in the list of
+            -- escape items but don't normally generate in containers.
+            local escape_items = {
                "scroll of teleportation", "ring of teleportation",
                "wand of teleportation", "wand of digging"
             };
@@ -794,12 +794,12 @@ xx|.....|xx
             local itmcls = itm:class()
             local box
             if itmcls[ "material" ] == "glass" then
-` + "\n" + // -- explicitly force chest to be unlocked
-`                  box = des.object({ id = "chest", coord = chest_spots[1],
+                  -- explicitly force chest to be unlocked
+                  box = des.object({ id = "chest", coord = chest_spots[1],
                                     olocked = "no" });
             else
-` + "\n" + // -- accept random locked/unlocked state
-`                  box = des.object({ id = "chest", coord = chest_spots[1] });
+                  -- accept random locked/unlocked state
+                  box = des.object({ id = "chest", coord = chest_spots[1] });
             end;
             box:addcontent(itm);
 
@@ -818,13 +818,13 @@ xx|.....|xx
       name = 'Twin businesses',
       mindiff = 4, -- arbitrary
       contents = function()
-` + "\n" + // -- Due to the way room connections work in mklev.c, we must guarantee
-"\n" + // -- that the "aisle" between the shops touches all four walls of the
-"\n" + // -- larger room. Thus it has an extra width and height.
-`         des.room({ type="themed", w=9, h=5, contents = function()
-` + "\n" + // -- There are eight possible placements of the two shops, four of
-"\n" + // -- which have the vertical aisle in the center.
-`               southeast = function() return percent(50) and "south" or "east" end
+         -- Due to the way room connections work in mklev.c, we must guarantee
+         -- that the "aisle" between the shops touches all four walls of the
+         -- larger room. Thus it has an extra width and height.
+         des.room({ type="themed", w=9, h=5, contents = function()
+               -- There are eight possible placements of the two shops, four of
+               -- which have the vertical aisle in the center.
+               southeast = function() return percent(50) and "south" or "east" end
                northeast = function() return percent(50) and "north" or "east" end
                northwest = function() return percent(50) and "north" or "west" end
                southwest = function() return percent(50) and "south" or "west" end
@@ -869,15 +869,15 @@ xx|.....|xx
 
 };
 
-` + "\n" + // -- store these at global scope, they will be reinitialized in
-"\n" + // -- pre_themerooms_generate
-`debug_rm_idx = nil
+-- store these at global scope, they will be reinitialized in
+-- pre_themerooms_generate
+debug_rm_idx = nil
 debug_fill_idx = nil
 
-` + "\n" + // -- Given a point in a themed room, ensure that themed room is stocked with
-"\n" + // -- regular room contents.
-"\n" + // -- With 30% chance, also give it a random themed fill.
-`function filler_region(x, y)
+-- Given a point in a themed room, ensure that themed room is stocked with
+-- regular room contents.
+-- With 30% chance, also give it a random themed fill.
+function filler_region(x, y)
    local rmtyp = "ordinary";
    local func = nil;
    if (percent(30)) then
@@ -901,8 +901,8 @@ function is_eligible(room, mkrm)
    return true
 end
 
-` + "\n" + // -- given the name of a themed room or fill, return its index in that array
-`function lookup_by_name(name, checkfills)
+-- given the name of a themed room or fill, return its index in that array
+function lookup_by_name(name, checkfills)
    if name == nil then
       return nil
    end
@@ -922,15 +922,15 @@ end
    return nil
 end
 
-` + "\n" + // -- called repeatedly until the core decides there are enough rooms
-`function themerooms_generate()
+-- called repeatedly until the core decides there are enough rooms
+function themerooms_generate()
    if debug_rm_idx ~= nil then
-` + "\n" + // -- room may not be suitable for stairs/portals, so create the "default"
-"\n" + // -- room half of the time
-"\n" + // -- (if the user specified BOTH a room and a fill, presumably they are
-"\n" + // -- interested in what happens when that room gets that fill, so don't
-"\n" + // -- bother generating default-with-fill rooms as happens below)
-`      local actualrm = lookup_by_name("default", false);
+      -- room may not be suitable for stairs/portals, so create the "default"
+      -- room half of the time
+      -- (if the user specified BOTH a room and a fill, presumably they are
+      -- interested in what happens when that room gets that fill, so don't
+      -- bother generating default-with-fill rooms as happens below)
+      local actualrm = lookup_by_name("default", false);
       if percent(50) then
          if is_eligible(themerooms[debug_rm_idx]) then
             actualrm = debug_rm_idx
@@ -942,10 +942,10 @@ end
       themerooms[actualrm].contents();
       return
    elseif debug_fill_idx ~= nil then
-` + "\n" + // -- when a fill is requested but not a room, still create the "default"
-"\n" + // -- room half of the time, and "default with themed fill" half of the time
-"\n" + // -- (themeroom_fill will take care of guaranteeing the fill in it)
-`      local actualrm = lookup_by_name(percent(50) and "Default room with themed fill"
+      -- when a fill is requested but not a room, still create the "default"
+      -- room half of the time, and "default with themed fill" half of the time
+      -- (themeroom_fill will take care of guaranteeing the fill in it)
+      local actualrm = lookup_by_name(percent(50) and "Default room with themed fill"
                                                   or "default")
       themerooms[actualrm].contents();
       return
@@ -956,17 +956,17 @@ end
       if (type(themerooms[i]) ~= "table") then
          nh.impossible('themed room '..i..' is not a table')
       elseif is_eligible(themerooms[i], nil) then
-` + "\n" + // -- Reservoir sampling: select one room from the set of eligible rooms,
-"\n" + // -- which may change on different levels because of level difficulty.
-`         local this_frequency;
+         -- Reservoir sampling: select one room from the set of eligible rooms,
+         -- which may change on different levels because of level difficulty.
+         local this_frequency;
          if (themerooms[i].frequency ~= nil) then
             this_frequency = themerooms[i].frequency;
          else
             this_frequency = 1;
          end
          total_frequency = total_frequency + this_frequency;
-` + "\n" + // -- avoid rn2(0) if a room has freq 0
-`         if this_frequency > 0 and nh.rn2(total_frequency) < this_frequency then
+         -- avoid rn2(0) if a room has freq 0
+         if this_frequency > 0 and nh.rn2(total_frequency) < this_frequency then
             pick = i;
          end
       end
@@ -978,8 +978,8 @@ end
    themerooms[pick].contents();
 end
 
-` + "\n" + // -- called before any rooms are generated
-`function pre_themerooms_generate()
+-- called before any rooms are generated
+function pre_themerooms_generate()
    local debug_themerm = nh.debug_themerm(false)
    local debug_fill = nh.debug_themerm(true)
    local xtrainfo = ""
@@ -1001,9 +1001,9 @@ end
    end
 end
 
-` + "\n" + // -- called after all rooms have been generated
-"\n" + // -- but before creating connecting corridors/doors, or filling rooms
-`function post_themerooms_generate()
+-- called after all rooms have been generated
+-- but before creating connecting corridors/doors, or filling rooms
+function post_themerooms_generate()
 end
 
 function themeroom_fill(rm)
@@ -1011,11 +1011,11 @@ function themeroom_fill(rm)
       if is_eligible(themeroom_fills[debug_fill_idx], rm) then
          themeroom_fills[debug_fill_idx].contents(rm);
       else
-` + "\n" + // -- ideally this would be a debugpline, not a full pline, and offer
-"\n" + // -- some more context on whether it failed because of difficulty or
-"\n" + // -- because of eligible function returning false; the warning doesn't
-"\n" + // -- necessarily mean anything.
-`         pline("Warning: fill '"..themeroom_fills[debug_fill_idx].name
+         -- ideally this would be a debugpline, not a full pline, and offer
+         -- some more context on whether it failed because of difficulty or
+         -- because of eligible function returning false; the warning doesn't
+         -- necessarily mean anything.
+         pline("Warning: fill '"..themeroom_fills[debug_fill_idx].name
                .."' is not eligible in room that generated it")
       end
       return
@@ -1026,17 +1026,17 @@ function themeroom_fill(rm)
       if (type(themeroom_fills[i]) ~= "table") then
          nh.impossible('themeroom fill '..i..' must be a table')
       elseif is_eligible(themeroom_fills[i], rm) then
-` + "\n" + // -- Reservoir sampling: select one room from the set of eligible rooms,
-"\n" + // -- which may change on different levels because of level difficulty.
-`         local this_frequency;
+         -- Reservoir sampling: select one room from the set of eligible rooms,
+         -- which may change on different levels because of level difficulty.
+         local this_frequency;
          if (themeroom_fills[i].frequency ~= nil) then
             this_frequency = themeroom_fills[i].frequency;
          else
             this_frequency = 1;
          end
          total_frequency = total_frequency + this_frequency;
-` + "\n" + // -- avoid rn2(0) if a fill has freq 0
-`         if this_frequency > 0 and nh.rn2(total_frequency) < this_frequency then
+         -- avoid rn2(0) if a fill has freq 0
+         if this_frequency > 0 and nh.rn2(total_frequency) < this_frequency then
             pick = i;
          end
       end
@@ -1048,8 +1048,8 @@ function themeroom_fill(rm)
    themeroom_fills[pick].contents(rm);
 end
 
-` + "\n" + // -- postprocess callback: create an engraving pointing at a location
-`function make_dig_engraving(data)
+-- postprocess callback: create an engraving pointing at a location
+function make_dig_engraving(data)
    local floors = selection.negate():filter_mapchar(".");
    local pos = floors:rndcoord(0);
    local tx = data.x - pos.x - 1;
@@ -1068,17 +1068,17 @@ end
    des.engraving({ coord = pos, type = "burn", text = "Dig" .. dig });
 end
 
-` + "\n" + // -- postprocess callback: turn room walls into trees
-`function make_garden_walls(data)
+-- postprocess callback: turn room walls into trees
+function make_garden_walls(data)
    local sel = data.sel:grow();
-` + "\n" + // -- change walls to trees
-`   des.replace_terrain({ selection = sel, fromterrain="w", toterrain = "T" });
-` + "\n" + // -- update secret doors; attempting to change to AIR will set arboreal flag
-`   des.replace_terrain({ selection = sel, fromterrain="S", toterrain = "A" });
+   -- change walls to trees
+   des.replace_terrain({ selection = sel, fromterrain="w", toterrain = "T" });
+   -- update secret doors; attempting to change to AIR will set arboreal flag
+   des.replace_terrain({ selection = sel, fromterrain="S", toterrain = "A" });
 end
 
-` + "\n" + // -- postprocess callback: make a trap
-`function make_a_trap(data)
+-- postprocess callback: make a trap
+function make_a_trap(data)
    if (data.teledest == 1 and data.type == "teleport") then
       local locs = selection.negate():filter_mapchar(".");
       repeat
@@ -1088,8 +1088,8 @@ end
    des.trap(data);
 end
 
-` + "\n" + // -- called once after the whole level has been generated
-`function post_level_generate()
+-- called once after the whole level has been generated
+function post_level_generate()
    for i, v in ipairs(postprocess) do
       v.handler(v.data);
    end

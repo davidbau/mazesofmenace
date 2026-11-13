@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/dungeon.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for DUNGEON JS bodies.
@@ -25,6 +27,8 @@ export function createDungeonEnvironment(services){
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of dungeon.dungeonStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callDungeon(services,name,...args){
@@ -36,11 +40,11 @@ export function callDungeon(services,name,...args){
   state.env=createDungeonEnvironment(forwarding);
   states.set(services.moduleKey,state);
  }
- const fn=dungeon[name];if(typeof fn!=='function')throw Error('Unknown original DUNGEON function '+name);
+ const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original DUNGEON function '+name);
  const previous=state.services;
  state.services=services;
  try{
   const stackFrame=services.stackSave();
-  try{return withCEnvironment(state.env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+  try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
  }finally{state.services=previous;}
 }

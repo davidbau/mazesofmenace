@@ -2,18 +2,6 @@
 /* Copyright (c) NetHack Development Team 1992.                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "config.h"
-// #include "color.h"
-// #include "rm.h"
-// #include "objclass.h"
-// #include "wintype.h"
-// #include "sym.h"
-
-
-
-
-
-
 /* Relevant header information in rm.h, objclass.h, sym.h, defsym.h. */
 
 /* Default object class symbols.  See objclass.h.
@@ -87,9 +75,7 @@ export const def_r_oc_syms = static_array("def_r_oc_syms", uchar, MAXOCLASSES, [
  * invent.c, o_init.c, objnam.c, options.c, pickup.c, sp_lev.c, and
  * windows.c.
  */
-export function /* int */
-def_char_to_objclass(ch)
-{
+export function def_char_to_objclass(ch) { /* int */
     let i;
 
     for (i = 1; i < MAXOCLASSES; i++)
@@ -104,9 +90,7 @@ def_char_to_objclass(ch)
  * Used in detect.c, drawing.c, mondata.c, options.c, pickup.c,
  * sp_lev.c, and windows.c.
  */
-export function /* int */
-def_char_to_monclass(ch)
-{
+export function def_char_to_monclass(ch) { /* int */
     let i;
 
     for (i = 1; i < MAXMCLASSES; i++)
@@ -116,9 +100,7 @@ def_char_to_monclass(ch)
 }
 
 /* does 'ch' represent a furniture character?  returns index into defsyms[] */
-export function /* int */
-def_char_is_furniture(ch)
-{
+export function def_char_is_furniture(ch) { /* int */
     /* note: these refer to defsyms[] order which is much different from
        levl[][].typ order but both keep furniture in a contiguous block */
     let first_furniture = init_string(static_array("def_char_is_furniture.first_furniture", char, sizeof_string("stair")), _("stair"), true),
@@ -142,118 +124,31 @@ def_char_is_furniture(ch)
 }
 
 /*drawing.c*/
-import { CLR_BLACK } from "./color.h.js";
-import { CLR_BLUE } from "./color.h.js";
-import { CLR_BRIGHT_BLUE } from "./color.h.js";
-import { CLR_BRIGHT_GREEN } from "./color.h.js";
-import { CLR_BRIGHT_MAGENTA } from "./color.h.js";
-import { CLR_BROWN } from "./color.h.js";
-import { CLR_CYAN } from "./color.h.js";
-import { CLR_GRAY } from "./color.h.js";
-import { CLR_GREEN } from "./color.h.js";
-import { CLR_MAGENTA } from "./color.h.js";
-import { CLR_ORANGE } from "./color.h.js";
-import { CLR_RED } from "./color.h.js";
-import { CLR_WHITE } from "./color.h.js";
-import { CLR_YELLOW } from "./color.h.js";
-import { HI_GOLD } from "./color.h.js";
-import { HI_METAL } from "./color.h.js";
-import { HI_WOOD } from "./color.h.js";
-import { HI_ZAP } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
-import { AMULET_SYM } from "./defsym.h.js";
-import { ARMOR_SYM } from "./defsym.h.js";
-import { BALL_SYM } from "./defsym.h.js";
-import { CHAIN_SYM } from "./defsym.h.js";
-import { DEF_ANGEL } from "./defsym.h.js";
-import { DEF_ANT } from "./defsym.h.js";
-import { DEF_BAT } from "./defsym.h.js";
-import { DEF_BLOB } from "./defsym.h.js";
-import { DEF_CENTAUR } from "./defsym.h.js";
-import { DEF_COCKATRICE } from "./defsym.h.js";
-import { DEF_DEMON } from "./defsym.h.js";
-import { DEF_DOG } from "./defsym.h.js";
-import { DEF_DRAGON } from "./defsym.h.js";
-import { DEF_EEL } from "./defsym.h.js";
-import { DEF_ELEMENTAL } from "./defsym.h.js";
-import { DEF_EYE } from "./defsym.h.js";
-import { DEF_FELINE } from "./defsym.h.js";
-import { DEF_FUNGUS } from "./defsym.h.js";
-import { DEF_GHOST } from "./defsym.h.js";
-import { DEF_GIANT } from "./defsym.h.js";
-import { DEF_GNOME } from "./defsym.h.js";
-import { DEF_GOLEM } from "./defsym.h.js";
-import { DEF_GREMLIN } from "./defsym.h.js";
-import { DEF_HUMAN } from "./defsym.h.js";
-import { DEF_HUMANOID } from "./defsym.h.js";
-import { DEF_IMP } from "./defsym.h.js";
-import { DEF_INVISIBLE } from "./defsym.h.js";
-import { DEF_JABBERWOCK } from "./defsym.h.js";
-import { DEF_JELLY } from "./defsym.h.js";
-import { DEF_KOBOLD } from "./defsym.h.js";
-import { DEF_KOP } from "./defsym.h.js";
-import { DEF_LEPRECHAUN } from "./defsym.h.js";
-import { DEF_LICH } from "./defsym.h.js";
-import { DEF_LIGHT } from "./defsym.h.js";
-import { DEF_LIZARD } from "./defsym.h.js";
-import { DEF_MIMIC } from "./defsym.h.js";
-import { DEF_MIMIC_DEF } from "./defsym.h.js";
-import { DEF_MUMMY } from "./defsym.h.js";
-import { DEF_NAGA } from "./defsym.h.js";
-import { DEF_NYMPH } from "./defsym.h.js";
-import { DEF_OGRE } from "./defsym.h.js";
-import { DEF_ORC } from "./defsym.h.js";
-import { DEF_PIERCER } from "./defsym.h.js";
-import { DEF_PUDDING } from "./defsym.h.js";
-import { DEF_QUADRUPED } from "./defsym.h.js";
-import { DEF_QUANTMECH } from "./defsym.h.js";
-import { DEF_RODENT } from "./defsym.h.js";
-import { DEF_RUSTMONST } from "./defsym.h.js";
-import { DEF_SNAKE } from "./defsym.h.js";
-import { DEF_SPIDER } from "./defsym.h.js";
-import { DEF_TRAPPER } from "./defsym.h.js";
-import { DEF_TROLL } from "./defsym.h.js";
-import { DEF_UMBER } from "./defsym.h.js";
-import { DEF_UNICORN } from "./defsym.h.js";
-import { DEF_VAMPIRE } from "./defsym.h.js";
-import { DEF_VORTEX } from "./defsym.h.js";
-import { DEF_WORM } from "./defsym.h.js";
-import { DEF_WORM_TAIL } from "./defsym.h.js";
-import { DEF_WRAITH } from "./defsym.h.js";
-import { DEF_XAN } from "./defsym.h.js";
-import { DEF_XORN } from "./defsym.h.js";
-import { DEF_YETI } from "./defsym.h.js";
-import { DEF_ZOMBIE } from "./defsym.h.js";
-import { DEF_ZRUTY } from "./defsym.h.js";
-import { FOOD_SYM } from "./defsym.h.js";
-import { GEM_SYM } from "./defsym.h.js";
-import { GOLD_SYM } from "./defsym.h.js";
-import { ILLOBJ_SYM } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { POTION_SYM } from "./defsym.h.js";
-import { RING_SYM } from "./defsym.h.js";
-import { ROCK_SYM } from "./defsym.h.js";
-import { SCROLL_SYM } from "./defsym.h.js";
-import { SPBOOK_SYM } from "./defsym.h.js";
-import { TOOL_SYM } from "./defsym.h.js";
-import { VENOM_SYM } from "./defsym.h.js";
-import { WAND_SYM } from "./defsym.h.js";
-import { WEAPON_SYM } from "./defsym.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+
+import {
+    CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN,
+    CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, HI_GOLD, HI_METAL,
+    HI_WOOD, HI_ZAP, NO_COLOR,
+} from "./color.h.js";
+import {
+    AMULET_SYM, ARMOR_SYM, BALL_SYM, CHAIN_SYM, DEF_ANGEL, DEF_ANT, DEF_BAT, DEF_BLOB, DEF_CENTAUR,
+    DEF_COCKATRICE, DEF_DEMON, DEF_DOG, DEF_DRAGON, DEF_EEL, DEF_ELEMENTAL, DEF_EYE, DEF_FELINE,
+    DEF_FUNGUS, DEF_GHOST, DEF_GIANT, DEF_GNOME, DEF_GOLEM, DEF_GREMLIN, DEF_HUMAN, DEF_HUMANOID,
+    DEF_IMP, DEF_INVISIBLE, DEF_JABBERWOCK, DEF_JELLY, DEF_KOBOLD, DEF_KOP, DEF_LEPRECHAUN,
+    DEF_LICH, DEF_LIGHT, DEF_LIZARD, DEF_MIMIC, DEF_MIMIC_DEF, DEF_MUMMY, DEF_NAGA, DEF_NYMPH,
+    DEF_OGRE, DEF_ORC, DEF_PIERCER, DEF_PUDDING, DEF_QUADRUPED, DEF_QUANTMECH, DEF_RODENT,
+    DEF_RUSTMONST, DEF_SNAKE, DEF_SPIDER, DEF_TRAPPER, DEF_TROLL, DEF_UMBER, DEF_UNICORN,
+    DEF_VAMPIRE, DEF_VORTEX, DEF_WORM, DEF_WORM_TAIL, DEF_WRAITH, DEF_XAN, DEF_XORN, DEF_YETI,
+    DEF_ZOMBIE, DEF_ZRUTY, FOOD_SYM, GEM_SYM, GOLD_SYM, ILLOBJ_SYM, MAXMCLASSES, MAXOCLASSES,
+    MAXPCHARS, POTION_SYM, RING_SYM, ROCK_SYM, SCROLL_SYM, SPBOOK_SYM, TOOL_SYM, VENOM_SYM,
+    WAND_SYM, WEAPON_SYM,
+} from "./defsym.h.js";
+import { FALSE, TRUE } from "./global.h.js";
 import { struct_class_sym } from "./objclass.h.js";
-import { WARNCOUNT } from "./sym.h.js";
-import { struct_symdef } from "./sym.h.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { strcmp } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { WARNCOUNT, struct_symdef } from "./sym.h.js";
+import { char, ord, sizeof_string, uchar } from "../rt/ctypes.js";
+import { strcmp, strncmp } from "../rt/libc.js";
+import { init_string, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 
 // the records of def_oc_syms[] from defsym.h, laid out like it
@@ -423,11 +318,7 @@ function defsyms_records() {
     { sym: ord(" "), explanation: _("air"), color: CLR_CYAN },
     { sym: ord("#"), explanation: _("cloud"), color: CLR_GRAY },
 
-
     { sym: ord("}"), explanation: _("water"), color: CLR_BRIGHT_BLUE },
-
-
-
 
     { sym: ord("^"), explanation: _("arrow trap"), color: HI_METAL },
     { sym: ord("^"), explanation: _("dart trap"), color: HI_METAL },
@@ -456,12 +347,6 @@ function defsyms_records() {
     { sym: ord("^"), explanation: _("trapped door"), color: CLR_ORANGE },
     { sym: ord("^"), explanation: _("trapped chest"), color: CLR_ORANGE },
 
-
-
-
-
-
-
     { sym: ord("|"), explanation: _(""), color: CLR_GRAY },
     { sym: ord("-"), explanation: _(""), color: CLR_GRAY },
     { sym: ord("\\"), explanation: _(""), color: CLR_GRAY },
@@ -478,21 +363,8 @@ function defsyms_records() {
     { sym: ord("*"), explanation: _(""), color: HI_ZAP },
     { sym: ord("#"), explanation: _("poison cloud"), color: CLR_BRIGHT_GREEN },
 
-
     { sym: ord("$"), explanation: _("valid position"), color: HI_ZAP },
 
-
-
-
-
-
-
-
-
-
-
-
-
     { sym: ord("/"), explanation: _(""), color: CLR_GREEN },
     { sym: ord("-"), explanation: _(""), color: CLR_GREEN },
     { sym: ord("\\"), explanation: _(""), color: CLR_GREEN },
@@ -501,15 +373,6 @@ function defsyms_records() {
     { sym: ord("\\"), explanation: _(""), color: CLR_GREEN },
     { sym: ord("-"), explanation: _(""), color: CLR_GREEN },
     { sym: ord("/"), explanation: _(""), color: CLR_GREEN },
-
-
-
-
-
-
-
-
-
 
     { sym: ord("/"), explanation: _(""), color: CLR_ORANGE },
     { sym: ord("-"), explanation: _(""), color: CLR_ORANGE },

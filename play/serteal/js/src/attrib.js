@@ -4,8 +4,6 @@
 
 /*  attribute modification routines. */
 
-// #include "hack.h"
-
 /* part of the output on gain or loss of attribute */
 
 const plusattr = static_array("plusattr", ptr_to(char), null, [ _("strong"), _("smart"), _("wise"),
@@ -14,8 +12,6 @@ const minusattr = static_array("minusattr", ptr_to(char), null, [ _("weak"),    
                            _("foolish"), _("clumsy"),
                            _("fragile"), _("repulsive") ]);
 /* also used by enlightenment in insight.c for non-abbreviated status info */
-
-
 
 export const attrname = static_array("attrname", ptr_to(char), null, [ _("strength"), _("intelligence"), _("wisdom"),
                           _("dexterity"), _("constitution"), _("charisma") ]);
@@ -87,7 +83,6 @@ const wiz_abil = static_array("wiz_abil", struct_innate, null, [ { ulevel: 15, a
                  { ulevel: 17, ability: ref_of(u.uprops[TELEPORT_CONTROL], "intrinsic"), gainstr: _("controlled"), losestr: _("uncontrolled") },
                  { ulevel: 0, ability: null, gainstr: 0, losestr: 0 } ]);
 
-
 const dwa_abil = static_array("dwa_abil", struct_innate, null, [ { ulevel: 1, ability: ref_of(u.uprops[INFRAVISION], "intrinsic"), gainstr: _(""), losestr: _("") },
                  { ulevel: 0, ability: null, gainstr: 0, losestr: 0 } ]);
 
@@ -104,21 +99,12 @@ const orc_abil = static_array("orc_abil", struct_innate, null, [ { ulevel: 1, ab
 
 const hum_abil = static_array("hum_abil", struct_innate, null, [ { ulevel: 0, ability: null, gainstr: 0, losestr: 0 } ]);
 
-
-
-
-
-
-
-
-
 /* adjust an attribute; return TRUE if change is made, FALSE otherwise */
-export function /* boolean */
-adjattrib(
+export function adjattrib(
     ndx,
     incr,
-    msgflg) /* positive => no message, zero => message, and */
-{               /* negative => conditional (msg if change made) */
+    msgflg) { /* boolean */ /* positive => no message, zero => message, and */
+               /* negative => conditional (msg if change made) */
     let old_acurr, old_abase, old_amax, decr;
     let abonflg;
     let attrstr;
@@ -143,7 +129,7 @@ adjattrib(
                 (chars[u.acurr.a + ndx]) = (chars[u.amax.a + ndx]) = ATTRMAX(ndx);
         }
         attrstr = plusattr[ndx];
-        abonflg = (+(ABON(ndx) < 0));
+        abonflg = +(ABON(ndx) < 0);
     } else { /* incr is negative */
         if (ABASE(ndx) < ATTRMIN(ndx)) {
             /*
@@ -170,7 +156,7 @@ adjattrib(
                 (chars[u.amax.a + ndx]) = ATTRMIN(ndx);
         }
         attrstr = minusattr[ndx];
-        abonflg = (+(ABON(ndx) > 0));
+        abonflg = +(ABON(ndx) > 0);
     }
     if (ACURR(ndx) == old_acurr) {
         if (msgflg == 0 && flags.verbose) {
@@ -199,9 +185,7 @@ adjattrib(
 }
 
 /* strength gain */
-export function /* void */
-gainstr(otmp, incr, givemsg)
-{
+export function gainstr(otmp, incr, givemsg) { /* void */
     let num = incr;
 
     if (!num) {
@@ -212,14 +196,12 @@ gainstr(otmp, incr, givemsg)
         else
             num = 1;
     }
-    void adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
+    adjattrib(A_STR, (otmp && otmp.cursed) ? -num : num,
                      givemsg ? -1 : 1);
 }
 
 /* strength loss, may kill you; cause may be poison or monster like 'a' */
-export function /* void */
-losestr(num, knam, k_format)
-{
+export function losestr(num, knam, k_format) { /* void */
     let uhpmin = minuhpmax(1), olduhpmax = u.uhpmax;
     let ustr = ABASE(A_STR) - num, amt, dmg;
     let waspolyd = Upolyd();
@@ -255,24 +237,16 @@ losestr(num, knam, k_format)
         disp.botl = TRUE;
     }
 
-
-
-
-
-
-
-    (void (olduhpmax));
+    (olduhpmax);
 
     /* 'num' could have been reduced to 0 in the minimum strength loop;
        '(Upolyd || !waspolyd)' is True unless damage caused rehumanization */
     if (num > 0 && (Upolyd() || !waspolyd))
-        void adjattrib(A_STR, -num, 1);
+        adjattrib(A_STR, -num, 1);
 }
 
 /* combined strength loss and damage from some poisons */
-export function /* void */
-poison_strdmg(strloss, dmg, knam, k_format)
-{
+export function poison_strdmg(strloss, dmg, knam, k_format) { /* void */
     losestr(strloss, knam, k_format);
     losehp(dmg, knam, k_format);
 }
@@ -290,10 +264,8 @@ poison_strdmg(strloss, dmg, knam, k_format)
 ]);
 
 /* feedback for attribute loss due to poisoning */
-export function /* void */
-poisontell(typ,
-           exclaim) /* emphasis */
-{
+export function poisontell(typ,
+           exclaim) { /* void */ /* emphasis */
     let func = poiseff[typ].delivery_func;
     let msg_txt = poiseff[typ].effect_msg;
 
@@ -309,18 +281,16 @@ poisontell(typ,
     else if (typ == A_CON && ACURR(A_CON) == 25)
         msg_txt = _("sick inside");
 
-    (func)(_("%s%c"), msg_txt, exclaim ? ord('!') : ord('.'));
+    func(_("%s%c"), msg_txt, exclaim ? ord('!') : ord('.'));
 }
 
 /* called when an attack or trap has poisoned hero (used to be in mon.c) */
-export function /* void */
-poisoned(
+export function poisoned(
     reason,
     typ,
     pkiller,
     fatal,
-    thrown_weapon) /* thrown weapons are less deadly */
-{
+    thrown_weapon) { /* void */ /* thrown weapons are less deadly */
     let i, loss, kprefix = KILLED_BY_AN;
     let blast = +!strcmp(reason, _("blast"));
 
@@ -332,7 +302,7 @@ poisoned(
 
         /* avoid "The" Orcus's sting was poisoned... */
         pline(_("%s%s %s poisoned!"),
-              ((0 ? isupper(uchar((chars[reason]))) : ((unsigned(((uchar((chars[reason]))) - ord("A")))) < 26))) ? _("") : _("The "), reason,
+              (0 ? isupper(uchar((chars[reason]))) : ((unsigned(((uchar((chars[reason]))) - ord("A")))) < 26)) ? _("") : _("The "), reason,
               plural ? _("were") : _("was"));
     }
     if (Poison_resistance()) {
@@ -370,7 +340,7 @@ poisoned(
         } else {
             /* survived, but with severe reaction */
             let olduhp = u.uhp,
-                newuhpmax = u.uhpmax - (Math.trunc(loss / 2));
+                newuhpmax = u.uhpmax - Math.trunc(loss / 2);
 
             setuhpmax(max(newuhpmax, minuhpmax(3)), TRUE); /*True: see FIXME*/
             loss = adjuhploss(loss, olduhp);
@@ -400,16 +370,14 @@ poisoned(
 
     if (u.uhp < 1) {
         svk.killer.format = kprefix;
-        void strcpy(svk.killer.name, pkiller);
+        strcpy(svk.killer.name, pkiller);
         /* "Poisoned by a poisoned ___" is redundant */
         done(strstri(pkiller, _("poison")) ? DIED : POISONING);
     }
     encumber_msg();
 }
 
-export function /* void */
-change_luck(n)
-{
+export function change_luck(n) { /* void */
     u.uluck += n;
     if (u.uluck < 0 && u.uluck < LUCKMIN)
         u.uluck = LUCKMIN;
@@ -419,9 +387,7 @@ change_luck(n)
 
 /* decide whether there are more blessed luckstones (plus luck-conferring
    artifacts) than cursed ones; optionally combine uncursed with blessed */
-export function /* int */
-stone_luck(include_uncursed)
-{
+export function stone_luck(include_uncursed) { /* int */
     let otmp;
     let bonchance = 0;
 
@@ -437,9 +403,7 @@ stone_luck(include_uncursed)
 }
 
 /* there has just been an inventory change affecting a luck-granting item */
-export function /* void */
-set_moreluck()
-{
+export function set_moreluck() { /* void */
     let luckbon = stone_luck(TRUE);
 
     if (!luckbon && !carrying(LUCKSTONE))
@@ -451,9 +415,7 @@ set_moreluck()
 }
 
 /* (not used) */
-export function /* void */
-restore_attrib()
-{
+export function restore_attrib() { /* void */
     let i, equilibrium;;
 
     /*
@@ -471,7 +433,7 @@ restore_attrib()
         equilibrium = ((i == A_STR && u.uhs >= WEAK)
                        || (i == A_DEX && Wounded_legs())) ? -1 : 0;
         if (ATEMP(i) != equilibrium && ATIME(i) != 0) {
-            if (!(--((chars[u.atime.a + i])))) { /* countdown for change */
+            if (!(--(chars[u.atime.a + i]))) { /* countdown for change */
                 (chars[u.atemp.a + i]) += (ATEMP(i) > 0) ? -1 : 1;
                 disp.botl = TRUE;
                 if (ATEMP(i)) /* reset timer */
@@ -485,9 +447,7 @@ restore_attrib()
 
 export const AVAL = 50;
 
-export function /* void */
-exercise(i, inc_or_dec)
-{
+export function exercise(i, inc_or_dec) { /* void */
     debugpline0(_("Exercise:"), __FILE__);
     if (i == A_INT || i == A_CHA)
         return; /* can't exercise these */
@@ -506,10 +466,10 @@ exercise(i, inc_or_dec)
          *
          *      Note: *YES* ACURR is the right one to use.
          */
-        (chars[u.aexe.a + i]) += (inc_or_dec) ? (+(rn2(19) > ACURR(i))) : -rn2(2);
+        (chars[u.aexe.a + i]) += inc_or_dec ? +(rn2(19) > ACURR(i)) : -rn2(2);
         do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("%s, %s AEXE = %d"), (i == A_STR) ? _("Str") : (i == A_WIS) ? _("Wis") : (i == A_DEX)
                                                                       ? _("Dex")
-                                                                      : _("Con"), (inc_or_dec) ? _("inc") : _("dec"), AEXE(i)); iflags.last_msg = save_plnmsg; } } while (0)
+                                                                      : _("Con"), inc_or_dec ? _("inc") : _("dec"), AEXE(i)); iflags.last_msg = save_plnmsg; } } while (0)
 
 ;
     }
@@ -517,9 +477,7 @@ exercise(i, inc_or_dec)
         encumber_msg();
 }
 
-function /* void */
-exerper()
-{
+function exerper() { /* void */
     if (!(svm.moves % 10)) {
         /* Hunger Checks */
         let hs = (u.uhunger > 1000) ? SATIATED
@@ -594,9 +552,7 @@ const exertext = static_array("exertext", array_of(ptr_to(char), 2), A_MAX, [
     [ 0, 0 ],                                                     /* Cha */
 ]);
 
-export function /* void */
-exerchk()
-{
+export function exerchk() { /* void */
     var i, ax, mod_val, lolim, hilim;
 
     /*  Check out the periodic accumulations */
@@ -652,7 +608,7 @@ exerchk()
              *  You don't *always* gain by exercising.
              *  [MRS 92/10/28 - Treat Wisdom specially for balance.]
              */
-            if (rn2(AVAL) > ((i != A_WIS) ? (Math.trunc(abs(ax) * 2 / 3)) : abs(ax)))
+            if (rn2(AVAL) > ((i != A_WIS) ? Math.trunc(abs(ax) * 2 / 3) : abs(ax)))
                 break nextattrib;;
 
             debugpline1(_("exerchk: changing %d."), i, __FILE__);
@@ -668,7 +624,7 @@ exerchk()
  }
             /* this used to be ``AEXE(i) /= 2'' but that would produce
                platform-dependent rounding/truncation for negative vals */
-            (chars[u.aexe.a + i]) = (Math.trunc(abs(ax) / 2)) * mod_val;
+            (chars[u.aexe.a + i]) = Math.trunc(abs(ax) / 2) * mod_val;
         }
         svc.context.next_attrib_check += rn1(200, 800);
         debugpline1(_("exerchk: next check at %lld."),
@@ -678,9 +634,7 @@ exerchk()
 
 /* return random hero attribute (by role's attr distribution).
    returns A_MAX if failed. */
-function /* int */
-rnd_attr()
-{
+function rnd_attr() { /* int */
     let i, x = rn2(100);
 
     /* 5.0: the x -= ... calculation used to have an off by 1 error that
@@ -695,9 +649,7 @@ rnd_attr()
    adjusting the base and maximum values of the attributes.
    if subtracting, np must be negative.
    returns the left over points. */
-function /* int */
-init_attr_role_redist(np, addition)
-{
+function init_attr_role_redist(np, addition) { /* int */
     let tryct = 0;
     let adj = addition ? 1 : -1;
 
@@ -719,9 +671,7 @@ init_attr_role_redist(np, addition)
 }
 
 /* allocate hero's initial characteristics */
-export function /* void */
-init_attr(np)
-{
+export function init_attr(np) { /* void */
     let i;
 
     for (i = 0; i < A_MAX; i++) {
@@ -736,9 +686,7 @@ init_attr(np)
     np = init_attr_role_redist(np, FALSE);
 }
 
-export function /* void */
-redist_attr()
-{
+export function redist_attr() { /* void */
     let i, tmp;
 
     for (i = 0; i < A_MAX; i++) {
@@ -760,34 +708,28 @@ redist_attr()
 }
 
 /* apply minor variation to attributes */
-export function /* void */
-vary_init_attr()
-{
+export function vary_init_attr() { /* void */
     let i;
 
     for (i = 0; i < A_MAX; i++)
         if (!rn2(20)) {
             let xd = rn2(7) - 2; /* biased variation */
 
-            void adjattrib(i, xd, TRUE);
+            adjattrib(i, xd, TRUE);
             if (ABASE(i) < AMAX(i))
                 (chars[u.amax.a + i]) = ABASE(i);
         }
 }
 
-function /* void */
-
-postadjabil(ability)
-{
+function postadjabil(ability) { /* void */
     if (!u.ulevel) /* initializing hero; don't attempt screen update yet */
         return;
     if ((addr_of(ability) == addr_of(ref_of(u.uprops[WARNING], "intrinsic"))) || (addr_of(ability) == addr_of(ref_of(u.uprops[SEE_INVIS], "intrinsic"))))
         see_monsters();
 }
 
-function /* const struct innate * */
-role_abil(r)
-{ const $frame = stack_frame(); try {
+function role_abil(r) { /* const struct innate * */
+    const $frame = stack_frame(); try {
     const struct___anon1 = struct("role_abil.struct___anon1", {
         role: short,
         abil: ptr_to("struct_innate"),
@@ -812,11 +754,10 @@ role_abil(r)
     for (i = 0; roleabils[i].abil && roleabils[i].role != r; i++)
         continue;
     return roleabils[i].abil;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* const struct innate * */
-check_innate_abil(ability, frommask)
-{
+function check_innate_abil(ability, frommask) { /* const struct innate * */
     let abil = null;
 
     if (frommask == FROMEXPER)
@@ -843,7 +784,7 @@ check_innate_abil(ability, frommask)
         }
 
     while (abil && abil.ability) {
-        if (((addr_of(abil.ability) == addr_of(ability))) && (u.ulevel >= abil.ulevel))
+        if ((addr_of(abil.ability) == addr_of(ability)) && (u.ulevel >= abil.ulevel))
             return abil;
         abil = ptr_add(abil, 1);
     }
@@ -860,9 +801,7 @@ export const FROM_FORM = 5;
 export const FROM_LYCN = 6;
 
 /* check whether particular ability has been obtained via innate attribute */
-function /* int */
-innately(ability)
-{
+function innately(ability) { /* int */
     let iptr;
 
     if ((iptr = check_innate_abil(ability, FROMEXPER)) != null)
@@ -876,9 +815,7 @@ innately(ability)
     return FROM_NONE;
 }
 
-export function /* int */
-is_innate(propidx)
-{
+export function is_innate(propidx) { /* int */
     let innateness;
 
     /* innately() would report FROM_FORM for this; caller wants specificity */
@@ -899,12 +836,8 @@ is_innate(propidx)
     return FROM_NONE;
 }
 
-
-
-export function /* char * */
-from_what(
-    propidx) /* special cases can have negative values */
-{
+export function from_what(
+    propidx) { /* char * */ /* special cases can have negative values */
     let buf = static_array("from_what.buf", char, BUFSZ);
 
     chars[buf + 0] = ord('\0');
@@ -935,19 +868,19 @@ from_what(
              */
             if ((propidx == BLINDED && u.uroleplay.blind)
                 || (propidx == DEAF && u.uroleplay.deaf))
-                void sprintf(buf, _(" from birth"));
+                sprintf(buf, _(" from birth"));
             else if (innateness == FROM_ROLE || innateness == FROM_RACE)
-                void strcpy(buf, _(" innately"));
+                strcpy(buf, _(" innately"));
             else if (innateness == FROM_INTR) /* [].intrinsic & FROMOUTSIDE */
-                void strcpy(buf, _(" intrinsically"));
+                strcpy(buf, _(" intrinsically"));
             else if (innateness == FROM_EXP)
-                void strcpy(buf, _(" because of your experience"));
+                strcpy(buf, _(" because of your experience"));
             else if (innateness == FROM_LYCN)
-                void strcpy(buf, _(" due to your lycanthropy"));
+                strcpy(buf, _(" due to your lycanthropy"));
             else if (innateness == FROM_FORM)
-                void strcpy(buf, _(" from your creature form"));
+                strcpy(buf, _(" from your creature form"));
             else if (propidx == FAST && Very_fast())
-                void sprintf(buf, because_of, ((HFast() & TIMEOUT) != 0) ? _("a potion or spell")
+                sprintf(buf, because_of, ((HFast() & TIMEOUT) != 0) ? _("a potion or spell")
                           : ((EFast() & W_ARMF) != 0 && uarmf.dknown
                              && objects[uarmf.otyp].oc_name_known)
                               ? ysimple_name(uarmf) /* speed boots */
@@ -955,15 +888,15 @@ from_what(
                                   : something());
             else if (wizard()
                      && (obj = what_gives(ref_of(u.uprops[propidx], "extrinsic"))) != null)
-                void sprintf(buf, because_of, obj.oartifact
+                sprintf(buf, because_of, obj.oartifact
                                              ? bare_artifactname(obj)
                                              : ysimple_name(obj));
             else if (propidx == BLINDED && Blindfolded_only())
-                void sprintf(buf, because_of, ysimple_name(ublindf));
+                sprintf(buf, because_of, ysimple_name(ublindf));
             else if (propidx == BLINDED && u.ucreamed
                      && BlindedTimeout() == u.ucreamed
                      && !EBlinded() && !(HBlinded() & ~TIMEOUT))
-                void sprintf(buf, _("due to goop covering your %s"), body_part(FACE))
+                sprintf(buf, _("due to goop covering your %s"), body_part(FACE))
 
 ;
 
@@ -973,7 +906,6 @@ from_what(
             else if (propidx == STRANGLED
                      && (p = strstri(buf, _(" of strangulation"))) != 0)
                 chars[p] = ord('\0');
-
         } else { /* negative property index */
             /* if more blocking capabilities get implemented we'll need to
                replace this with what_blocks() comparable to what_gives() */
@@ -981,30 +913,25 @@ from_what(
             case BLINDED:
                 /* wearing the Eyes of the Overworld overrides blindness */
                 if (BBlinded() && is_art(ublindf, ART_EYES_OF_THE_OVERWORLD))
-                    void sprintf(buf, because_of, bare_artifactname(ublindf));
+                    sprintf(buf, because_of, bare_artifactname(ublindf));
                 break;
             case INVIS:
                 if (u.uprops[INVIS].blocked & W_ARMC)
-                    void sprintf(buf, because_of, ysimple_name(uarmc))
+                    sprintf(buf, because_of, ysimple_name(uarmc))
 ; /* mummy wrapping */
                 break;
             case CLAIRVOYANT:
                 if (wizard() && (u.uprops[CLAIRVOYANT].blocked & W_ARMH))
-                    void sprintf(buf, because_of, ysimple_name(uarmh))
+                    sprintf(buf, because_of, ysimple_name(uarmh))
 ; /* cornuthaum */
                 break;
             }
         }
-
     } /*wizard*/
     return buf;
 }
 
-
-
-export function /* void */
-adjabil(oldlevel, newlevel)
-{
+export function adjabil(oldlevel, newlevel) { /* void */
     let abil, rabil;
     let prevabil, mask = FROMEXPER;
 
@@ -1035,7 +962,7 @@ adjabil(oldlevel, newlevel)
             rabil = null;
             mask = FROMRACE;
         }
-        prevabil = (abil.ability)[0];
+        prevabil = abil.ability[0];
         if (oldlevel < abil.ulevel && newlevel >= abil.ulevel) {
             /* Abilities gained at level 1 can never be lost
              * via level loss, only via means that remove _any_
@@ -1044,23 +971,23 @@ adjabil(oldlevel, newlevel)
              * FROMOUTSIDE to avoid such gains.
              */
             if (abil.ulevel == 1)
-                (abil.ability)[0] = or64((abil.ability)[0], (or64(mask, FROMOUTSIDE)));
+                abil.ability[0] = or64(abil.ability[0], or64(mask, FROMOUTSIDE));
             else
-                (abil.ability)[0] = or64((abil.ability)[0], mask);
-            if (!((abil.ability)[0] & INTRINSIC & not64(mask))) {
-                if (chars[(abil.gainstr)])
+                abil.ability[0] = or64(abil.ability[0], mask);
+            if (!(abil.ability[0] & INTRINSIC & not64(mask))) {
+                if (chars[abil.gainstr])
                     You_feel(_("%s!"), abil.gainstr);
             }
         } else if (oldlevel >= abil.ulevel && newlevel < abil.ulevel) {
-            (abil.ability)[0] = and64((abil.ability)[0], not64(mask));
-            if (!((abil.ability)[0] & INTRINSIC)) {
-                if (chars[(abil.losestr)])
+            abil.ability[0] = and64(abil.ability[0], not64(mask));
+            if (!(abil.ability[0] & INTRINSIC)) {
+                if (chars[abil.losestr])
                     You_feel(_("%s!"), abil.losestr);
-                else if (chars[(abil.gainstr)])
+                else if (chars[abil.gainstr])
                     You_feel(_("less %s!"), abil.gainstr);
             }
         }
-        if (prevabil != (abil.ability)[0]) /* it changed */
+        if (prevabil != abil.ability[0]) /* it changed */
             postadjabil(abil.ability);
         abil = ptr_add(abil, 1);
     }
@@ -1076,9 +1003,7 @@ adjabil(oldlevel, newlevel)
 /* called when gaining a level (before u.ulevel gets incremented);
    also called with u.ulevel==0 during hero initialization or for
    re-init if hero turns into a "new man/woman/elf/&c" */
-export function /* int */
-newhp()
-{
+export function newhp() { /* int */
     let hp, conplus;
 
     if (u.ulevel == 0) {
@@ -1143,9 +1068,7 @@ newhp()
 
 /* minimum value for uhpmax is ulevel but for life-saving it is always at
    least 10 if ulevel is less than that */
-export function /* int */
-minuhpmax(altmin)
-{
+export function minuhpmax(altmin) { /* int */
     if (altmin < 1)
         altmin = 1;
     return max(u.ulevel, altmin);
@@ -1153,9 +1076,7 @@ minuhpmax(altmin)
 
 /* update u.uhpmax or u.mhmax and values of other things that depend upon
    whichever of them is relevant */
-export function /* void */
-setuhpmax(newmax, even_when_polyd)
-{
+export function setuhpmax(newmax, even_when_polyd) { /* void */
     if (!Upolyd() || even_when_polyd) {
         if (newmax != u.uhpmax) {
             u.uhpmax = newmax;
@@ -1178,11 +1099,9 @@ setuhpmax(newmax, even_when_polyd)
 /* called after setuhpmax() when damage is pending;
    if uhpmax (or mhmax) has been reduced, it might have caused uhp (or mh)
    to be reduced too; if so, recalculate pending loss to account for that */
-export function /* int */
-adjuhploss(
+export function adjuhploss(
     loss,
-    olduhp) /* does double duty as oldmh when Upolyd */
-{
+    olduhp) { /* int */ /* does double duty as oldmh when Upolyd */
     if (!Upolyd()) {
         if (u.uhp < olduhp)
             loss -= (olduhp - u.uhp);
@@ -1196,9 +1115,7 @@ adjuhploss(
 /* return the current effective value of a specific characteristic
    (the 'a' in 'acurr()' comes from outdated use of "attribute" for the
    six Str/Dex/&c characteristics; likewise for u.abon, u.atemp, u.acurr) */
-export function /* schar */
-acurr(chridx)
-{
+export function acurr(chridx) { /* schar */
     let tmp, result = 0; /* 'result' will always be reset to positive value */
 
     assert(chridx >= 0 && chridx < A_MAX);
@@ -1241,9 +1158,7 @@ acurr(chridx)
 }
 
 /* condense clumsy ACURR(A_STR) value into value that fits into formulas */
-export function /* schar */
-acurrstr()
-{
+export function acurrstr() { /* schar */
     let str = ACURR(A_STR),
         result; /* 3..25 */
 
@@ -1264,10 +1179,8 @@ acurrstr()
 /* when wearing (or taking off) an unID'd item, this routine is used
    to distinguish between observable +0 result and no-visible-effect
    due to an attribute not being able to exceed maximum or minimum */
-export function /* boolean */
-extremeattr(
-    attrindx) /* does attrindx's value match its max or min? */
-{
+export function extremeattr(
+    attrindx) { /* boolean */ /* does attrindx's value match its max or min? */
     /* Fixed_abil and racial MINATTR/MAXATTR aren't relevant here */
     let lolimit = 3, hilimit = 25, curval = ACURR(attrindx);
 
@@ -1294,9 +1207,7 @@ extremeattr(
 
 /* avoid possible problems with alignment overflow, and provide a centralized
    location for any future alignment limits */
-export function /* void */
-adjalign(n)
-{
+export function adjalign(n) { /* void */
     let newalign = u.ualign.record + n;
 
     if (n < 0) {
@@ -1316,11 +1227,9 @@ adjalign(n)
 }
 
 /* change hero's alignment type, possibly losing use of artifacts */
-export function /* void */
-uchangealign(
+export function uchangealign(
     newalign,
-    reason) /* A_CG_CONVERT, A_CG_HELM_ON, or A_CG_HELM_OFF */
-{
+    reason) { /* void */ /* A_CG_CONVERT, A_CG_HELM_ON, or A_CG_HELM_OFF */
     let oldalign = u.ualign.type;
 
     u.ublessed = 0; /* lose divine protection */
@@ -1362,231 +1271,77 @@ uchangealign(
 }
 
 /*attrib.c*/
-import { A_CG_CONVERT } from "./align.h.js";
-import { A_CG_HELM_OFF } from "./align.h.js";
-import { A_CG_HELM_ON } from "./align.h.js";
-import { aligntyp } from "./align.h.js";
+
+import { A_CG_CONVERT, A_CG_HELM_OFF, A_CG_HELM_ON, aligntyp } from "./align.h.js";
 import { ALIGNLIM } from "./align.h.macros.js";
-import { ART_EYES_OF_THE_OVERWORLD } from "./artilist.h.js";
-import { ART_OGRESMASHER } from "./artilist.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_MAX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { ABON } from "./attrib.h.macros.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { AEXE } from "./attrib.h.macros.js";
-import { AMAX } from "./attrib.h.macros.js";
-import { ATEMP } from "./attrib.h.macros.js";
-import { ATIME } from "./attrib.h.macros.js";
-import { ATTRMAX } from "./attrib.h.macros.js";
-import { ATTRMIN } from "./attrib.h.macros.js";
-import { STR18 } from "./attrib.h.macros.js";
-import { STR19 } from "./attrib.h.macros.js";
+import { ART_EYES_OF_THE_OVERWORLD, ART_OGRESMASHER } from "./artilist.h.js";
+import { A_CHA, A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS } from "./attrib.h.js";
+import {
+    ABASE, ABON, ACURR, AEXE, AMAX, ATEMP, ATIME, ATTRMAX, ATTRMIN, STR18, STR19,
+} from "./attrib.h.macros.js";
 import { something } from "./decl.h.macros.js";
 import { S_NYMPH } from "./defsym.h.js";
 import { Is_astralevel } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_ALIGNMENT } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { DIED } from "./hack.h.js";
-import { EXT_ENCUMBER } from "./hack.h.js";
-import { FACE } from "./hack.h.js";
-import { FAINTED } from "./hack.h.js";
-import { FAINTING } from "./hack.h.js";
-import { HUNGRY } from "./hack.h.js";
-import { HVY_ENCUMBER } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MOD_ENCUMBER } from "./hack.h.js";
-import { NOT_HUNGRY } from "./hack.h.js";
-import { POISONING } from "./hack.h.js";
-import { SATIATED } from "./hack.h.js";
-import { WEAK } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { debugpline0 } from "./lint.h.macros.js";
-import { debugpline1 } from "./lint.h.macros.js";
-import { debugpline2 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
+import { BUFSZ, FALSE, LL_ALIGNMENT, MAXULEV, TRUE, xint16 } from "./global.h.js";
+import {
+    DIED, EXT_ENCUMBER, FACE, FAINTED, FAINTING, HUNGRY, HVY_ENCUMBER, KILLED_BY, KILLED_BY_AN,
+    MOD_ENCUMBER, NOT_HUNGRY, POISONING, SATIATED, WEAK,
+} from "./hack.h.js";
+import { max, min, rn1 } from "./hack.h.macros.js";
+import { debugpline0, debugpline1, debugpline2, showdebug } from "./lint.h.macros.js";
+import { haseyes, type_is_pname } from "./mondata.h.macros.js";
 import { G_UNIQ } from "./monflag.h.js";
 import { ismnum } from "./monst.h.macros.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import {
+    PM_AMOROUS_DEMON, PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_CLERIC, PM_DWARF, PM_ELF,
+    PM_GNOME, PM_HEALER, PM_HUMAN, PM_KNIGHT, PM_MONK, PM_ORC, PM_RANGER, PM_ROGUE, PM_SAMURAI,
+    PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
+} from "./monsters.h.js";
 import { u_wield_art } from "./obj.h.macros.js";
-import { DUNCE_CAP } from "./objects.h.js";
-import { GAUNTLETS_OF_POWER } from "./objects.h.js";
-import { HELM_OF_OPPOSITE_ALIGNMENT } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { BLINDED } from "./prop.h.js";
-import { BLND_RES } from "./prop.h.js";
-import { CLAIRVOYANT } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { DEAF } from "./prop.h.js";
-import { DRAIN_RES } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FROMEXPER } from "./prop.h.js";
-import { FROMFORM } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { FROMRACE } from "./prop.h.js";
-import { INFRAVISION } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { JUMPING } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { SEARCHING } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { STRANGLED } from "./prop.h.js";
-import { TELEPORT_CONTROL } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { WARNING } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { A_CURRENT } from "./you.h.js";
-import { LUCKADD } from "./you.h.js";
-import { LUCKMAX } from "./you.h.js";
-import { LUCKMIN } from "./you.h.js";
-import { Race_switch } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { BBlinded } from "./youprop.h.macros.js";
-import { BClairvoyant } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Blindfolded_only } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { EBlinded } from "./youprop.h.macros.js";
-import { EFast } from "./youprop.h.macros.js";
-import { Fixed_abil } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { HBlinded } from "./youprop.h.macros.js";
-import { HBlnd_resist } from "./youprop.h.macros.js";
-import { HClairvoyant } from "./youprop.h.macros.js";
-import { HFast } from "./youprop.h.macros.js";
-import { HRegeneration } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Half_gas_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Very_fast } from "./youprop.h.macros.js";
-import { Vomiting } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { not64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { isupper } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    DUNCE_CAP, GAUNTLETS_OF_POWER, HELM_OF_OPPOSITE_ALIGNMENT, LUCKSTONE,
+} from "./objects.h.js";
+import {
+    BLINDED, BLND_RES, CLAIRVOYANT, COLD_RES, DEAF, DRAIN_RES, FAST, FIRE_RES, FROMEXPER, FROMFORM,
+    FROMOUTSIDE, FROMRACE, INFRAVISION, INTRINSIC, INVIS, JUMPING, POISON_RES, SEARCHING, SEE_INVIS,
+    SHOCK_RES, SLEEP_RES, STEALTH, STRANGLED, TELEPORT_CONTROL, TIMEOUT, WARNING, W_ARMC, W_ARMF,
+    W_ARMH,
+} from "./prop.h.js";
+import { A_CURRENT, LUCKADD, LUCKMAX, LUCKMIN } from "./you.h.js";
+import { Race_switch, Role_if, Role_switch, Upolyd } from "./you.h.macros.js";
+import {
+    BBlinded, BClairvoyant, BlindedTimeout, Blindfolded_only, Confusion, EBlinded, EFast,
+    Fixed_abil, Fumbling, HBlinded, HBlnd_resist, HClairvoyant, HFast, HRegeneration, HStun,
+    Half_gas_damage, Hallucination, Poison_resistance, Sick, Very_fast, Vomiting, Wounded_legs,
+} from "./youprop.h.macros.js";
+import {
+    char, int, long, ord, schar, short, sizeof_string, uchar, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, not64, or64 } from "../rt/int64.js";
+import { abs, assert, isupper, sprintf, strcmp, strcpy, strlen } from "../rt/libc.js";
+import { init_list, init_string, stack_array, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { confers_luck } from "./artifact.js";
-import { is_art } from "./artifact.js";
-import { retouch_equipment } from "./artifact.js";
-import { what_gives } from "./artifact.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { see_monsters } from "./display.js";
-import { shieldeff } from "./display.js";
+import { addr_of, array_of, fnptr_t, ptr_add, ptr_to, ref_of, struct } from "../rt/struct.js";
+import { confers_luck, is_art, retouch_equipment, what_gives } from "./artifact.js";
+import { disp, flags, gi, gm, gu, gy, iflags, program_state, svc, svk, svm, u } from "./decl.js";
+import { see_monsters, shieldeff } from "./display.js";
 import { done } from "./end.js";
-import { losehp } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { copynchars } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
+import { losehp, near_capacity } from "./hack.js";
+import { copynchars, sgn, strncmpi, strstri } from "./hacklib.js";
 import { carrying } from "./invent.js";
 import { summon_furies } from "./makemon.js";
 import { adj_erinys } from "./mon.js";
 import { name_to_mon } from "./mondata.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { bare_artifactname } from "./objnam.js";
-import { the } from "./objnam.js";
-import { ysimple_name } from "./objnam.js";
+import { bare_artifactname, the, ysimple_name } from "./objnam.js";
 import { encumber_msg } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { You, You_feel, Your, impossible, livelog_printf, pline, pline_The } from "./pline.js";
 import { body_part } from "./polyself.js";
 import { make_confused } from "./potion.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { aligns } from "./role.js";
-import { add_weapon_skill } from "./weapon.js";
-import { lose_weapon_skill } from "./weapon.js";
+import { add_weapon_skill, lose_weapon_skill } from "./weapon.js";
 const __FILE__ = "attrib.c";

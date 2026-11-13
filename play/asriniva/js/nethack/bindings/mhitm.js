@@ -1,22 +1,24 @@
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // Native field/pointer ABI and original header macros only; combat is mhitm.js.
 import * as mhitm from '../../ported/mhitm.js';
 import { withCEnvironment } from '../../c-runtime/context.js';
 export function createMhitmEnvironment(services,L) {
+ const native=services.nativeOwner,canonical=(type,at)=>native?.nativeArena&&native.nativeRecords?native.nativeRecords.record(type,at):undefined,globals=new Map();
  const address=value=>Number(value?.address??value??0),raw=value=>CAdapter.unsignedPointer(value);
- const view=()=>CAdapter.currentDataView(services),global=i=>Number(services.global(i));
+ const view=()=>CAdapter.currentDataView(services),global=i=>{if(!native?.nativeArena)return Number(services.global(i));if(!globals.has(i))globals.set(i,Number(services.global(i)));return globals.get(i);};
  const int=value=>CAdapter.signedInt(value,true);
- const scalar=(obj,key,at,type)=>Object.defineProperty(obj,key,{get:()=>view()['get'+type](at(),true),set:value=>view()['set'+type](at(),type.includes('Big')?BigInt(value):Number(value),true)});
+ const scalar=(obj,key,at,type)=>{const read=()=>view()['get'+type](at(),true),normalize=value=>type.includes('Big')?BigInt(value):Number(value),write=value=>view()['set'+type](at(),value,true);Object.defineProperty(obj,key,native?.nativeArena?native.scalar(at(),type,normalize,read,write):{get:read,set:value=>write(normalize(value))});};
  const pointer=at=>CAdapter.readPointerNumber(view,at);
  const ptrField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{get:()=>wrap(pointer(at())),set:value=>view().setBigUint64(at(),raw(value),true)});
  const array=(at,stride,wrap)=>new Proxy({address:at},{get:(target,key)=>typeof key==='string'&&/^\d+$/.test(key)?wrap(at+Number(key)*stride):target[key]});
  const intArray=at=>new Proxy({address:at},{get:(target,key)=>typeof key==='string'&&/^\d+$/.test(key)?view().getInt32(at+Number(key)*4,true):target[key],set(target,key,value){if(typeof key==='string'&&/^\d+$/.test(key))view().setInt32(at+Number(key)*4,Number(value),true);else target[key]=value;return true;}});
- const attack=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const k of ['aatyp','adtyp','damn','damd'])scalar(item,k,()=>at+L['atk_'+k],'Uint8');return item;};
- const permonst=value=>{const at=address(value);if(!at)return 0;const item={address:at,mattk:array(at+L.pm_mattk,L.attackSize,attack)};for(const[k,type]of Object.entries({mlet:'Int8',msize:'Uint8',mflags1:'BigUint64',mflags2:'BigUint64',mlevel:'Int8',geno:'Uint16',pmidx:'Int32'}))scalar(item,k,()=>at+L['pm_'+k],type);return item;};
- const object=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({otyp:'Int16',oclass:'Int8',oartifact:'Int8',quan:'BigInt64'}))scalar(item,k,()=>at+L['obj_'+k],type);ptrField(item,'nobj',()=>at+L.obj_nobj,object);return item;};
- const monster=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({mhp:'Int32',mhpmax:'Int32',mx:'Int16',my:'Int16',movement:'Int16',mtame:'Int8',mstrategy:'BigUint64',mlstmv:'BigInt64',m_lev:'Uint8',m_id:'Uint32',weapon_check:'Int16',mspec_used:'Int32',meating:'Int32',cham:'Int16',m_ap_type:'Uint8',mstate:'BigInt64',misc_worn_check:'BigInt64'}))scalar(item,k,()=>at+L['mon_'+k],type);for(const[k,wrap]of [['nmon',monster],['data',permonst],['minvent',object],['mw',object]])ptrField(item,k,()=>at+L['mon_'+k],wrap);for(const[i,key]of ['mcan','mconf','mundetected','msleeping','mcanmove','wormno','mcansee','minvis','mleashed','mstun','mfrozen','mtrapped'].entries())Object.defineProperty(item,key,{get:()=>services.monsterBit(at,i),set:value=>services.setMonsterBit(at,i,value)});return item;};
- const record=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({damage:'Int32',hitflags:'Int32',done:'Int8',permdmg:'Int8',specialdmg:'Int32',dieroll:'Int32'}))scalar(item,k,()=>at+L['mhm_'+k],type);return item;};
- const coord=at=>{const item={address:at};for(const k of ['x','y'])scalar(item,k,()=>at+L['coord_'+k],'Int16');return item;};
+ const attack=value=>{const at=address(value);if(!at)return 0;const shared=canonical('struct attack',at);if(shared)return shared;const item={address:at};for(const k of ['aatyp','adtyp','damn','damd'])scalar(item,k,()=>at+L['atk_'+k],'Uint8');return item;};
+ const permonst=value=>{const at=address(value);if(!at)return 0;const shared=canonical('struct permonst',at);if(shared)return shared;const item={address:at,mattk:array(at+L.pm_mattk,L.attackSize,attack)};for(const[k,type]of Object.entries({mlet:'Int8',msize:'Uint8',mflags1:'BigUint64',mflags2:'BigUint64',mlevel:'Int8',geno:'Uint16',pmidx:'Int32'}))scalar(item,k,()=>at+L['pm_'+k],type);return item;};
+ const object=value=>{const at=address(value);if(!at)return 0;const shared=canonical('struct obj',at);if(shared)return shared;const item={address:at};for(const[k,type]of Object.entries({otyp:'Int16',oclass:'Int8',oartifact:'Int8',quan:'BigInt64'}))scalar(item,k,()=>at+L['obj_'+k],type);ptrField(item,'nobj',()=>at+L.obj_nobj,object);return item;};
+ const monster=value=>{const at=address(value);if(!at)return 0;const shared=canonical('struct monst',at);if(shared)return shared;const item={address:at};for(const[k,type]of Object.entries({mhp:'Int32',mhpmax:'Int32',mx:'Int16',my:'Int16',movement:'Int16',mtame:'Int8',mstrategy:'BigUint64',mlstmv:'BigInt64',m_lev:'Uint8',m_id:'Uint32',weapon_check:'Int16',mspec_used:'Int32',meating:'Int32',cham:'Int16',m_ap_type:'Uint8',mstate:'BigInt64',misc_worn_check:'BigInt64'}))scalar(item,k,()=>at+L['mon_'+k],type);for(const[k,wrap]of [['nmon',monster],['data',permonst],['minvent',object],['mw',object]])ptrField(item,k,()=>at+L['mon_'+k],wrap);for(const[i,key]of ['mcan','mconf','mundetected','msleeping','mcanmove','wormno','mcansee','minvis','mleashed','mstun','mfrozen','mtrapped'].entries())Object.defineProperty(item,key,{get:()=>services.monsterBit(at,i),set:value=>services.setMonsterBit(at,i,value)});return item;};
+ const record=value=>{const at=address(value);if(!at)return 0;const shared=canonical('struct mhitm_data',at);if(shared)return shared;const item={address:at};for(const[k,type]of Object.entries({damage:'Int32',hitflags:'Int32',done:'Int8',permdmg:'Int8',specialdmg:'Int32',dieroll:'Int32'}))scalar(item,k,()=>at+L['mhm_'+k],type);return item;};
+ const coord=at=>{const shared=canonical('struct nhcoord',at);if(shared)return shared;const item={address:at};for(const k of ['x','y'])scalar(item,k,()=>at+L['coord_'+k],'Int16');return item;};
  if(L.pointerSize!==8||L.longSize!==8||L.intSize!==4||L.booleanSize!==1)throw new Error('Review changed MHITM ABI');
  const env=Object.assign(Object.create(services),L,{monster,object,attack,permonst,
   int,char:value=>Number(BigInt.asIntN(8,BigInt(value))),long:value=>BigInt.asIntN(64,BigInt(value)),samePtr:(a,b)=>raw(a)===raw(b),
@@ -26,8 +28,9 @@ export function createMhitmEnvironment(services,L) {
   callLocal:(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);},
  });
  for(const name of Object.keys(L))if(/^(STRAT_|W_|M[12]_)/.test(name))env[name]=BigInt(L[name]);
- env.u={};for(const k of ['ux','uy'])scalar(env.u,k,()=>global(0)+L['u_'+k],'Int16');for(const k of ['ulycn','umonnum'])scalar(env.u,k,()=>global(0)+L['u_'+k],'Int32');for(const k of ['usteed','ustuck'])ptrField(env.u,k,()=>global(0)+L['u_'+k],monster);Object.defineProperty(env.u,'uswallow',{get:()=>services.heroBit(0)});
- const property=index=>{const at=global(0)+L.u_uprops+index*L.propSize;return{intrinsic:view().getBigInt64(at+L.prop_intrinsic,true),extrinsic:view().getBigInt64(at+L.prop_extrinsic,true),blocked:view().getBigInt64(at+L.prop_blocked,true)};};
+ env.u=canonical('struct you',global(0));if(!env.u){env.u={};for(const k of ['ux','uy'])scalar(env.u,k,()=>global(0)+L['u_'+k],'Int16');for(const k of ['ulycn','umonnum'])scalar(env.u,k,()=>global(0)+L['u_'+k],'Int32');for(const k of ['usteed','ustuck'])ptrField(env.u,k,()=>global(0)+L['u_'+k],monster);Object.defineProperty(env.u,'uswallow',{get:()=>services.heroBit(0)});}
+
+ const property=index=>{if(native?.nativeArena)return env.u.uprops[index];const at=global(0)+L.u_uprops+index*L.propSize;return{intrinsic:view().getBigInt64(at+L.prop_intrinsic,true),extrinsic:view().getBigInt64(at+L.prop_extrinsic,true),blocked:view().getBigInt64(at+L.prop_blocked,true)};};
  for(const[name,index]of [['Deaf','DEAF'],['Conflict','CONFLICT'],['Antimagic','ANTIMAGIC'],['Unchanging','UNCHANGING'],['Passes_walls','PASSES_WALLS'],['Blind','BLINDED']])Object.defineProperty(env,name,{get(){const p=property(L[index]);return Number(Boolean((p.intrinsic||p.extrinsic||(name==='Deaf'&&services.heroBit(1)))&&(name!=='Blind'||!p.blocked)));}});
  const addScalar=(target,field,glob,key,type)=>{env[target]??={};scalar(env[target],field,()=>global(glob)+L[key],type);};
  for(const[target,field,glob,key,type]of [['gf','far_noise',1,'far_noise','Int8'],['svm','moves',2,'moves','BigInt64'],['gn','noisetime',3,'noisetime','BigInt64'],['gn','notonhead',3,'notonhead','Int8'],['gv','vis',4,'vis','Int8'],['gs','skipdrin',6,'skipdrin','Int8'],['gl','last_hider',7,'last_hider','Uint32'],['iflags','last_msg',8,'last_msg','Int32'],['flags','verbose',9,'verbose','Int8'],['gm','multi',11,'multi','BigInt64'],['gm','mkcorpstat_norevive',11,'norevive','Int8'],['gz','zombify',12,'zombify','Int8']])addScalar(target,field,glob,key,type);
@@ -58,17 +61,23 @@ export function createMhitmEnvironment(services,L) {
  env.clone_mon=(...args)=>monster(services.clone_mon(...args));
  env.troll_baned=(mon,obj)=>Number(Boolean(mon.data.mlet===L.S_TROLL&&obj&&obj.oartifact===L.ART_TROLLSBANE));
  env.strcmpi=(a,b)=>services.strncmpi(a,b,-1);env.pline1=text=>services.pline('%s',text);
+ if(native?.nativeArena){const level=native.nativeRecords.record('struct instance_globals_saved_l',global(15)).level;env.levl=level.locations;const monsters=level.monsters;env.m_at=(x,y)=>monsters[x][y];env.remove_monster=(x,y)=>monsters[x][y]=0;installNativeIntegerCasts(env);env.nativeState=native;}
  return env;
 }
 export function callMhitm(services,layout,name,...args){
  const env=createMhitmEnvironment(services,layout),saved=services.stackSave();
  try{
-  if(name!=='attk_protection')args[0]=env.monster(args[0]);
-  if(['pre_mm_attack','missmm','mdisplacem','mattackm','failed_grab','hitmm','gazemm','engulf_target','gulpmm','explmm','mdamagem','mon_poly','mswingsm','passivemm'].includes(name))args[1]=env.monster(args[1]);
-  if(name==='noises')args[1]=env.attack(args[1]);
-  if(['missmm','failed_grab','hitmm','gazemm','gulpmm','explmm','mdamagem'].includes(name))args[2]=env.attack(args[2]);
-  if(['hitmm','mdamagem'].includes(name))args[3]=env.object(args[3]);
-  if(name==='rustm')args[1]=env.object(args[1]);if(name==='mswingsm')args[2]=env.object(args[2]);if(name==='passivemm')args[4]=env.object(args[4]);
+  args=prepareMhitmArguments(env,name,args);
   return withCEnvironment(env,()=>mhitm[name](...args));
  }finally{services.stackRestore(saved);}
+}
+
+export function prepareMhitmArguments(env,name,args){
+ if(name!=='attk_protection')args[0]=env.monster(args[0]);
+ if(['pre_mm_attack','missmm','mdisplacem','mattackm','failed_grab','hitmm','gazemm','engulf_target','gulpmm','explmm','mdamagem','mon_poly','mswingsm','passivemm'].includes(name))args[1]=env.monster(args[1]);
+ if(name==='noises')args[1]=env.attack(args[1]);
+ if(['missmm','failed_grab','hitmm','gazemm','gulpmm','explmm','mdamagem'].includes(name))args[2]=env.attack(args[2]);
+ if(['hitmm','mdamagem'].includes(name))args[3]=env.object(args[3]);
+ if(name==='rustm')args[1]=env.object(args[1]);if(name==='mswingsm')args[2]=env.object(args[2]);if(name==='passivemm')args[4]=env.object(args[4]);
+ return args;
 }

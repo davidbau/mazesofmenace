@@ -2,70 +2,48 @@
 /*      Copyright 1991, M. Stephenson             */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /*  quest dungeon branch routines. */
 
-// #include "quest.h"
+export function Not_firsttime() { return on_level(u.uz0, u.uz); }
 
-export function Not_firsttime() { return (on_level(u.uz0, u.uz)); }
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-on_start()
-{
-    if (!(svq.quest_status.first_start)) {
+function on_start() { /* void */
+    if (!svq.quest_status.first_start) {
         qt_pager(_("firsttime"));
-        (svq.quest_status.first_start) = TRUE;
+        svq.quest_status.first_start = TRUE;
     } else if ((u.uz0.dnum != u.uz.dnum) || (u.uz0.dlevel < u.uz.dlevel)) {
-        if ((svq.quest_status.not_ready) <= 2)
+        if (svq.quest_status.not_ready <= 2)
             qt_pager(_("nexttime"));
         else
             qt_pager(_("othertime"));
     }
 }
 
-function /* void */
-on_locate()
-{
+function on_locate() { /* void */
     /* the locate messages are phrased in a manner such that they only
        make sense when arriving on the level from above */
-    let from_above = (+(u.uz0.dlevel < u.uz.dlevel));
+    let from_above = +(u.uz0.dlevel < u.uz.dlevel);
 
-    if ((svq.quest_status.killed_nemesis)) {
+    if (svq.quest_status.killed_nemesis) {
         return;
-    } else if (!(svq.quest_status.first_locate)) {
+    } else if (!svq.quest_status.first_locate) {
         if (from_above)
             qt_pager(_("locate_first"));
         /* if we've arrived from below this will be a lie, but there won't
            be any point in delivering the message upon a return visit from
            above later since the level has now been seen */
-        (svq.quest_status.first_locate) = TRUE;
+        svq.quest_status.first_locate = TRUE;
     } else {
         if (from_above)
             qt_pager(_("locate_next"));
     }
 }
 
-function /* void */
-on_goal()
-{
-    if ((svq.quest_status.killed_nemesis)) {
+function on_goal() { /* void */
+    if (svq.quest_status.killed_nemesis) {
         return;
-    } else if (!(svq.quest_status.made_goal)) {
+    } else if (!svq.quest_status.made_goal) {
         qt_pager(_("goal_first"));
-        (svq.quest_status.made_goal) = 1;
+        svq.quest_status.made_goal = 1;
     } else {
         /*
          * Some QT_NEXTGOAL messages reference the quest artifact;
@@ -81,14 +59,12 @@ on_goal()
         let qarti = find_quest_artifact(whichobjchains);
 
         qt_pager(qarti ? _("goal_next") : _("goal_alt"));
-        if ((svq.quest_status.made_goal) < 7)
-            (svq.quest_status.made_goal)++;
+        if (svq.quest_status.made_goal < 7)
+            svq.quest_status.made_goal++;
     }
 }
 
-export function /* void */
-onquest()
-{
+export function onquest() { /* void */
     if (u.uevent.qcompleted || Not_firsttime())
         return;
     if (!Is_special(u.uz))
@@ -103,55 +79,43 @@ onquest()
     return;
 }
 
-export function /* void */
-nemdead()
-{
-    if (!(svq.quest_status.killed_nemesis)) {
-        (svq.quest_status.killed_nemesis) = TRUE;
+export function nemdead() { /* void */
+    if (!svq.quest_status.killed_nemesis) {
+        svq.quest_status.killed_nemesis = TRUE;
         qt_pager(_("killed_nemesis"));
     }
 }
 
-export function /* void */
-leaddead()
-{
-    if (!(svq.quest_status.killed_leader)) {
-        (svq.quest_status.killed_leader) = TRUE;
+export function leaddead() { /* void */
+    if (!svq.quest_status.killed_leader) {
+        svq.quest_status.killed_leader = TRUE;
         /* TODO: qt_pager("killed_leader"); ? */
     }
 }
 
-export function /* void */
-artitouch(obj)
-{
-    if (!(svq.quest_status.touched_artifact)) {
+export function artitouch(obj) { /* void */
+    if (!svq.quest_status.touched_artifact) {
         /* in case we haven't seen the item yet (ie, currently blinded),
            this quest message describes it by name so mark it as seen */
         observe_object(obj);
         /* only give this message once */
-        (svq.quest_status.touched_artifact) = TRUE;
+        svq.quest_status.touched_artifact = TRUE;
         qt_pager(_("gotit"));
         exercise(A_WIS, TRUE);
     }
 }
 
 /* external hook for do.c (level change check) */
-export function /* boolean */
-ok_to_quest()
-{
-    return ((((((svq.quest_status.got_quest) || (svq.quest_status.got_thanks))
-                       && is_pure(FALSE) > 0) || (svq.quest_status.killed_leader)) ? 1 : 0));
+export function ok_to_quest() { /* boolean */
+    return (((svq.quest_status.got_quest || svq.quest_status.got_thanks)
+                       && is_pure(FALSE) > 0) || svq.quest_status.killed_leader ? 1 : 0);
 }
 
-function /* boolean */
-not_capable()
-{
+function not_capable() { /* boolean */
     return (+(u.ulevel < MIN_QUEST_LEVEL));
 }
 
-function /* int */
-is_pure(talk)
-{
+function is_pure(talk) { /* int */
     let purity;
     let original_alignment = chars[u.ualignbase + A_ORIGINAL];
 
@@ -182,9 +146,7 @@ is_pure(talk)
  * This assumes that the hero is currently _in_ the quest dungeon and that
  * there is a single branch to and from it.
  */
-function /* void */
-expulsion(seal)
-{
+function expulsion(seal) { /* void */
     let br;
     let dest;
     let t;
@@ -222,10 +184,7 @@ expulsion(seal)
    and using the magic portal to return to the dungeon.  Also called
    if hero throws or kicks an invocation item (probably the Bell)
    at the leader. */
-export function /* void */
-finish_quest(obj) /* quest artifact or thrown unique item or faux
-                               * AoY; possibly null if carrying the Amulet */
-{
+export function finish_quest(obj) { /* void */ /* quest artifact or thrown unique item or faux * AoY; possibly null if carrying the Amulet */
     let otmp;
 
     if (obj && !is_quest_artifact(obj)) {
@@ -261,13 +220,13 @@ finish_quest(obj) /* quest artifact or thrown unique item or faux
         }
     } else {
         /* normal quest completion; threw artifact or walked up carrying it */
-        qt_pager(!(svq.quest_status.got_thanks) ? _("offeredit") : _("offeredit2"));
+        qt_pager(!svq.quest_status.got_thanks ? _("offeredit") : _("offeredit2"));
         /* should have obtained bell during quest;
            if not, suggest returning for it now */
         if ((otmp = carrying(BELL_OF_OPENING)) == null)
             com_pager(_("quest_complete_no_bell"));
     }
-    (svq.quest_status.got_thanks) = TRUE;
+    svq.quest_status.got_thanks = TRUE;
 
     if (obj) {
         u.uevent.qcompleted = 1; /* you did it! */
@@ -278,20 +237,18 @@ finish_quest(obj) /* quest artifact or thrown unique item or faux
     }
 }
 
-function /* void */
-chat_with_leader(mtmp)
-{
-    if (!mtmp.mpeaceful || (svq.quest_status.pissed_off))
+function chat_with_leader(mtmp) { /* void */
+    if (!mtmp.mpeaceful || svq.quest_status.pissed_off)
         return;
 
     /*  Rule 0: Cheater checks. */
-    if (u.uhave.questart && !(svq.quest_status.met_nemesis))
-        (svq.quest_status.cheater) = TRUE;
+    if (u.uhave.questart && !svq.quest_status.met_nemesis)
+        svq.quest_status.cheater = TRUE;
 
     /*  It is possible for you to get the amulet without completing
      *  the quest.  If so, try to induce the player to quest.
      */
-    if ((svq.quest_status.got_thanks)) {
+    if (svq.quest_status.got_thanks) {
         /* Rule 1: You've gone back with/without the amulet. */
         if (u.uhave.amulet)
             finish_quest(null);
@@ -311,23 +268,23 @@ chat_with_leader(mtmp)
         finish_quest(otmp);
 
     /* Rule 4: You haven't got the artifact yet. */
-    } else if ((svq.quest_status.got_quest)) {
+    } else if (svq.quest_status.got_quest) {
         qt_pager(_("encourage"));
 
     /* Rule 5: You aren't yet acceptable - or are you? */
     } else {
         let purity = 0;
 
-        if (!(svq.quest_status.met_leader)) {
+        if (!svq.quest_status.met_leader) {
             qt_pager(_("leader_first"));
-            (svq.quest_status.met_leader) = TRUE;
-            (svq.quest_status.not_ready) = 0;
+            svq.quest_status.met_leader = TRUE;
+            svq.quest_status.not_ready = 0;
         } else
             qt_pager(_("leader_next"));
 
         /* the quest leader might have passed through the portal into
            the regular dungeon; none of the remaining make sense there */
-        if (!on_level(u.uz, (svd.dungeon_topology.d_qstart_level)))
+        if (!on_level(u.uz, svd.dungeon_topology.d_qstart_level))
             return;
 
         if (not_capable()) {
@@ -335,9 +292,9 @@ chat_with_leader(mtmp)
             exercise(A_WIS, TRUE);
             expulsion(FALSE);
         } else if ((purity = is_pure(TRUE)) < 0) {
-            if (!(svq.quest_status.pissed_off)) {
+            if (!svq.quest_status.pissed_off) {
                 com_pager(_("banished"));
-                (svq.quest_status.pissed_off) = TRUE;
+                svq.quest_status.pissed_off = TRUE;
                 expulsion(FALSE);
 
                 /* being expelled is hardly an achievement but none of the
@@ -348,13 +305,13 @@ chat_with_leader(mtmp)
             }
         } else if (purity == 0) {
             qt_pager(_("badalign"));
-            (svq.quest_status.not_ready) = 1;
+            svq.quest_status.not_ready = 1;
             exercise(A_WIS, TRUE);
             expulsion(FALSE);
         } else { /* You are worthy! */
             qt_pager(_("assignquest"));
             exercise(A_WIS, TRUE);
-            (svq.quest_status.got_quest) = TRUE;
+            svq.quest_status.got_quest = TRUE;
 
             /* phrasing is a bit clumsy but allows #chronicle to provide a
                clue to players who are reaching the quest for first time;
@@ -367,64 +324,56 @@ chat_with_leader(mtmp)
     }
 }
 
-export function /* void */
-leader_speaks(mtmp)
-{
+export function leader_speaks(mtmp) { /* void */
     /* maybe you attacked leader? */
     if (!mtmp.mpeaceful) {
-        if (!(svq.quest_status.pissed_off)) {
+        if (!svq.quest_status.pissed_off) {
             /* again, don't end it permanently if the leader gets angry
              * since you're going to have to kill him to go questing... :)
              * ...but do only show this crap once. */
             qt_pager(_("leader_last"));
         }
-        (svq.quest_status.pissed_off) = TRUE;
+        svq.quest_status.pissed_off = TRUE;
         mtmp.mstrategy = and64u(mtmp.mstrategy, ~STRAT_WAITMASK); /* end the inaction */
     }
     /* the quest leader might have passed through the portal into the
        regular dungeon; if so, mustn't perform "backwards expulsion" */
-    if (!on_level(u.uz, (svd.dungeon_topology.d_qstart_level)))
+    if (!on_level(u.uz, svd.dungeon_topology.d_qstart_level))
         return;
 
-    if (!(svq.quest_status.pissed_off))
+    if (!svq.quest_status.pissed_off)
         chat_with_leader(mtmp);
 }
 
-function /* void */
-chat_with_nemesis()
-{
+function chat_with_nemesis() { /* void */
     /*  The nemesis will do most of the talking, but... */
     qt_pager(_("discourage"));
-    if (!(svq.quest_status.met_nemesis))
-        (svq.quest_status.met_nemesis++);
+    if (!svq.quest_status.met_nemesis)
+        svq.quest_status.met_nemesis++;
 }
 
-export function /* void */
-nemesis_speaks()
-{
-    if (!(svq.quest_status.in_battle)) {
+export function nemesis_speaks() { /* void */
+    if (!svq.quest_status.in_battle) {
         if (u.uhave.questart)
             qt_pager(_("nemesis_wantsit"));
-        else if ((svq.quest_status.made_goal) == 1 || !(svq.quest_status.met_nemesis))
+        else if (svq.quest_status.made_goal == 1 || !svq.quest_status.met_nemesis)
             qt_pager(_("nemesis_first"));
-        else if ((svq.quest_status.made_goal) < 4)
+        else if (svq.quest_status.made_goal < 4)
             qt_pager(_("nemesis_next"));
-        else if ((svq.quest_status.made_goal) < 7)
+        else if (svq.quest_status.made_goal < 7)
             qt_pager(_("nemesis_other"));
         else if (!rn2(5))
             qt_pager(_("discourage"));
-        if ((svq.quest_status.made_goal) < 7)
-            (svq.quest_status.made_goal)++;
-        (svq.quest_status.met_nemesis) = TRUE;
+        if (svq.quest_status.made_goal < 7)
+            svq.quest_status.made_goal++;
+        svq.quest_status.met_nemesis = TRUE;
     } else /* he will spit out random maledictions */
         if (!rn2(5))
         qt_pager(_("discourage"));
 }
 
 /* create cloud of stinking gas around dying nemesis */
-export function /* void */
-nemesis_stinks(mx, my)
-{
+export function nemesis_stinks(mx, my) { /* void */
     let save_mon_moving = svc.context.mon_moving;
 
     /*
@@ -437,19 +386,15 @@ nemesis_stinks(mx, my)
     svc.context.mon_moving = save_mon_moving;
 }
 
-function /* void */
-chat_with_guardian()
-{
+function chat_with_guardian() { /* void */
     /*  These guys/gals really don't have much to say... */
-    if (u.uhave.questart && (svq.quest_status.killed_nemesis))
+    if (u.uhave.questart && svq.quest_status.killed_nemesis)
         qt_pager(_("guardtalk_after"));
     else
         qt_pager(_("guardtalk_before"));
 }
 
-function /* void */
-prisoner_speaks(mtmp)
-{
+function prisoner_speaks(mtmp) { /* void */
     if (mtmp.data == mons[PM_PRISONER]
         && (mtmp.mstrategy & STRAT_WAITMASK)) {
         /* Awaken the prisoner */
@@ -464,18 +409,16 @@ prisoner_speaks(mtmp)
         adjalign(3);
 
         /* ...But the guards are not */
-        void angry_guards(FALSE);
+        angry_guards(FALSE);
     }
     return;
 }
 
-export function /* void */
-quest_chat(mtmp)
-{
-    if (mtmp.m_id == (svq.quest_status.leader_m_id)) {
+export function quest_chat(mtmp) { /* void */
+    if (mtmp.m_id == svq.quest_status.leader_m_id) {
         chat_with_leader(mtmp);
         /* leader might have become pissed during the chat */
-        if ((svq.quest_status.pissed_off))
+        if (svq.quest_status.pissed_off)
             setmangry(mtmp, FALSE);
         return;
     }
@@ -491,10 +434,8 @@ quest_chat(mtmp)
     }
 }
 
-export function /* void */
-quest_talk(mtmp)
-{
-    if (mtmp.m_id == (svq.quest_status.leader_m_id)) {
+export function quest_talk(mtmp) { /* void */
+    if (mtmp.m_id == svq.quest_status.leader_m_id) {
         leader_speaks(mtmp);
         return;
     }
@@ -510,90 +451,48 @@ quest_talk(mtmp)
     }
 }
 
-export function /* void */
-quest_stat_check(mtmp)
-{
+export function quest_stat_check(mtmp) { /* void */
     if (mtmp.data.msound == MS_NEMESIS)
-        (svq.quest_status.in_battle) = (((!helpless(mtmp) && monnear(mtmp, u.ux, u.uy)) ? 1 : 0));
+        svq.quest_status.in_battle = (!helpless(mtmp) && monnear(mtmp, u.ux, u.uy) ? 1 : 0);
 }
 
-
-
-
 /*quest.c*/
+
 import { A_WIS } from "./attrib.h.js";
-import { Is_nemesis } from "./dungeon.h.macros.js";
-import { Is_qlocate } from "./dungeon.h.macros.js";
-import { Is_qstart } from "./dungeon.h.macros.js";
+import { Is_nemesis, Is_qlocate, Is_qstart } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { LL_ACHIEVE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { FALSE, LL_ACHIEVE, TRUE } from "./global.h.js";
 import { quest_dnum } from "./hack.h.macros.js";
-import { MS_DJINNI } from "./monflag.h.js";
-import { MS_GUARDIAN } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
+import { MS_DJINNI, MS_GUARDIAN, MS_NEMESIS } from "./monflag.h.js";
 import { STRAT_WAITMASK } from "./monst.h.js";
 import { helpless } from "./monst.h.macros.js";
 import { PM_PRISONER } from "./monsters.h.js";
-import { OBJ_BURIED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { MIN_QUEST_ALIGN } from "./quest.h.js";
-import { MIN_QUEST_LEVEL } from "./quest.h.js";
+import { OBJ_BURIED, OBJ_FLOOR, OBJ_MINVENT } from "./obj.h.js";
+import { AMULET_OF_YENDOR, BELL_OF_OPENING, FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
+import { MIN_QUEST_ALIGN, MIN_QUEST_LEVEL } from "./quest.h.js";
 import { MAGIC_PORTAL } from "./trap.h.js";
-import { A_CURRENT } from "./you.h.js";
-import { A_ORIGINAL } from "./you.h.js";
-import { UTOTYPE_NONE } from "./you.h.js";
-import { UTOTYPE_PORTAL } from "./you.h.js";
-import { UTOTYPE_RMPORTAL } from "./you.h.js";
+import { A_CURRENT, A_ORIGINAL, UTOTYPE_NONE, UTOTYPE_PORTAL, UTOTYPE_RMPORTAL } from "./you.h.js";
 import { Deaf } from "./youprop.h.macros.js";
 import { ord } from "../rt/ctypes.js";
 import { chars } from "../rt/heap.js";
 import { and64u } from "../rt/int64.js";
 import { _ } from "../rt/strings.js";
-import { adjalign } from "./attrib.js";
-import { exercise } from "./attrib.js";
+import { adjalign, exercise } from "./attrib.js";
 import { yn_function } from "./cmd.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svq } from "./decl.js";
-import { u } from "./decl.js";
+import { gf, gi, svc, svd, svq, u } from "./decl.js";
 import { canseemon } from "./display.js";
 import { schedule_goto } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { noit_mon_nam } from "./do_name.js";
-import { Is_special } from "./dungeon.js";
-import { dungeon_branch } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { remdun_mapseen } from "./dungeon.js";
+import { Monnam, mon_nam, noit_mon_nam } from "./do_name.js";
+import { Is_special, dungeon_branch, on_level, remdun_mapseen } from "./dungeon.js";
 import { nomul } from "./hack.js";
 import { align_str } from "./insight.js";
-import { carrying } from "./invent.js";
-import { fully_identify_obj } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { angry_guards } from "./mon.js";
-import { monnear } from "./mon.js";
-import { setmangry } from "./mon.js";
+import { carrying, fully_identify_obj, update_inventory } from "./invent.js";
+import { angry_guards, monnear, setmangry } from "./mon.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { com_pager } from "./questpgr.js";
-import { find_quest_artifact } from "./questpgr.js";
-import { is_quest_artifact } from "./questpgr.js";
-import { qt_pager } from "./questpgr.js";
+import { the, xname } from "./objnam.js";
+import { You, impossible, livelog_printf, pline, verbalize } from "./pline.js";
+import { com_pager, find_quest_artifact, is_quest_artifact, qt_pager } from "./questpgr.js";
 import { create_gas_cloud } from "./region.js";
 import { rn2 } from "./rnd.js";
 import { deltrap } from "./trap.js";

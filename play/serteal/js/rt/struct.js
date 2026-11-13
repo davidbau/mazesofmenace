@@ -103,7 +103,8 @@ function declare(name, fields, isUnion) {
 
 function record(name, fields, isUnion) {
   class View {
-    constructor(a) { this._a = a; }
+    // _m: the member caches of the record and array fields (see accessor)
+    constructor(a) { this._a = a; this._m = View.members > 0 ? new Array(View.members).fill(undefined) : null; }
     valueOf() { return this._a; }
   }
   Object.defineProperty(View, "name", { value: name });
@@ -113,6 +114,7 @@ function record(name, fields, isUnion) {
   View.pages = null;
   View.shift = 0;
   View.laidOut = false;
+  View.members = 0;
   Object.defineProperty(View, "size", { get() { layout(View); return fix(View, "size", View._size); }, configurable: true });
   Object.defineProperty(View, "align", { get() { layout(View); return fix(View, "align", View._align); }, configurable: true });
   records.set(name, View);
@@ -207,16 +209,17 @@ function layout(cls) {
   cls.info = info;
   cls.shift = Math.min(3, Math.log2(maxAlign) | 0);
   cls.pages = new Array(65536).fill(undefined);
+  cls.members = 0;
   for (const [name, f] of Object.entries(info)) defineField(cls, name, f);
 }
 
 function defineField(cls, name, f) {
-  const desc = accessor(f.t, f.off, f, name);
+  const desc = accessor(f.t, f.off, f, name, cls);
   Object.defineProperty(cls.prototype, name, desc);
 }
 
 // getter/setter pair for a field of type t at offset o (or a bit-field described by f)
-function accessor(t, o, f, name) {
+function accessor(t, o, f, name, owner) {
   if (t.kind === "bits") {
     const w = t.width, sh = f.shift, u = f.unit, signed = /^i/.test(resolve(t.of).kind);
     const mask = w === 32 ? 0xffffffff : (1 << w) - 1;
@@ -260,23 +263,27 @@ function accessor(t, o, f, name) {
       return { get() { return fn_from_index(u32[(this._a + o) >> 2], t); }, set(v) { u32[(this._a + o) >> 2] = fn_index(v); } };
     case "record": {
       // a member struct's view is canonical and its address never changes: kept on the parent
-      // view after the first access (`svl.level.objects`, `otmp.v.v_nexthere` in hot loops)
-      const cls = t, key = "$" + name;
+      // view after the first access (`svl.level.objects`, `otmp.v.v_nexthere` in hot loops), in
+      // slot k of its member caches (an array made with the view, so that every view of a struct
+      // has the same shape whichever members are read first)
+      const cls = t, k = owner.members++;
       return {
-        get() { let v = this[key]; if (v === undefined) v = this[key] = view(cls, this._a + o); return v; },
+        get() { const m = this._m; let v = m[k]; if (v === undefined) v = m[k] = view(cls, this._a + o); return v; },
         set(v) { memcpy(this._a + o, v._a, cls.size); },
       };
     }
     case "array": {
-      // decayed arrays are cached on the (canonical) view; typed arrays are tied to one heap
-      const key = "$" + name, ekey = key + "$e", live = arrayIsHeapBound(t);
+      // decayed arrays are cached on the (canonical) view, in slot k; typed arrays are tied to one
+      // heap (slot k + 1: the heap epoch they were made for)
+      const live = arrayIsHeapBound(t), k = owner.members;
+      owner.members += live ? 2 : 1;
       return {
         get() {
-          let a = this[key];
-          if (a === undefined || (live && this[ekey] !== heap.epoch)) {
-            a = decay(t, this._a + o);
-            this[key] = a;
-            if (live) this[ekey] = heap.epoch;
+          const m = this._m;
+          let a = m[k];
+          if (a === undefined || (live && m[k + 1] !== heap.epoch)) {
+            a = m[k] = decay(t, this._a + o);
+            if (live) m[k + 1] = heap.epoch;
           }
           return a;
         },

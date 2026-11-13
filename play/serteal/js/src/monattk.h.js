@@ -2,9 +2,6 @@
 /* NetHack may be freely redistributed.  See license for details. */
 /* Copyright 1988, M. Stephenson */
 
-
-
-
 /*      Add new attack types below - ordering affects experience (exper.c).
  *      Attacks > AT_BUTT are worth extra experience.
  */
@@ -27,11 +24,6 @@ export const AT_TENT = 16;
 
 export const AT_WEAP = 254;
 export const AT_MAGC = 255;
-
-
-
-
-
 
 /*      Add new damage types below.
  *
@@ -110,6 +102,7 @@ export const M_ATTK_HIT = 0x1;
 export const M_ATTK_DEF_DIED = 0x2;
 export const M_ATTK_AGR_DIED = 0x4;
 export const M_ATTK_AGR_DONE = 0x8;
+
 import { boolean } from "./global.h.js";
 import { int } from "../rt/ctypes.js";
 import { struct } from "../rt/struct.js";

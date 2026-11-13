@@ -2,9 +2,6 @@
 /* Copyright (c) Michael Allison, 2025. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* weight-related constants and thresholds */
 
     export const WT_ETHEREAL = 0;

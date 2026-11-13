@@ -2,16 +2,6 @@
 /* Copyright (c) Michael Allison, 2023                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
     export const se_zero_invalid = 0; export const se_air_crackles = se_zero_invalid + 1;
     export const se_alarm = se_air_crackles + 1;
     export const se_angry_drone = se_alarm + 1;
@@ -209,7 +199,5 @@
     export const se_yelp = se_wall_of_force + 1;
     export const se_zap = se_yelp + 1;
     export const se_zap_then_explosion = se_zap + 1; export const number_of_se_entries = se_zap_then_explosion + 1;
-
-
 
 /* seffects.h */

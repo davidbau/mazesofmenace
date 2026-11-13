@@ -2,18 +2,8 @@
 /* Copyright (c) 2024 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "selvar.h"
-// #include "sp_lev.h"
-
-
-
-
-
 /* selection */
-export function /* struct selectionvar * */
-selection_new()
-{
+export function selection_new() { /* struct selectionvar * */
     let tmps = view_of(struct_selectionvar, addr_of(alloc(sizeof(struct_selectionvar))));
 
     tmps.wid = COLNO;
@@ -23,15 +13,13 @@ selection_new()
     tmps.bounds.ly = ROWNO;
     tmps.bounds.hx = tmps.bounds.hy = 0;
     tmps.map = addr_of(alloc((COLNO * ROWNO) + 1));
-    void memset(tmps.map, 1, (COLNO * ROWNO));
+    memset(tmps.map, 1, (COLNO * ROWNO));
     chars[tmps.map + (COLNO * ROWNO)] = ord('\0');
 
     return tmps;
 }
 
-export function /* void */
-selection_free(sel, freesel)
-{
+export function selection_free(sel, freesel) { /* void */
     if (sel) {
         if (sel.map)
             free(sel.map);
@@ -39,15 +27,13 @@ selection_free(sel, freesel)
         if (freesel)
             free(addr_of(sel));
         else
-            void memset(addr_of(sel), 0, sizeof(struct_selectionvar));
+            memset(addr_of(sel), 0, sizeof(struct_selectionvar));
     }
 }
 
 /* clear selection, setting all locations to value val */
-export function /* void */
-selection_clear(sel, val)
-{
-    void memset(sel.map, 1 + val, (COLNO * ROWNO));
+export function selection_clear(sel, val) { /* void */
+    memset(sel.map, 1 + val, (COLNO * ROWNO));
     if (val) {
         sel.bounds.lx = 0;
         sel.bounds.ly = 0;
@@ -61,9 +47,7 @@ selection_clear(sel, val)
     sel.bounds_dirty = FALSE;
 }
 
-export function /* struct selectionvar * */
-selection_clone(sel)
-{
+export function selection_clone(sel) { /* struct selectionvar * */
     let tmps = view_of(struct_selectionvar, addr_of(alloc(sizeof(struct_selectionvar))));
 
     struct_assign(tmps, sel);
@@ -73,9 +57,7 @@ selection_clone(sel)
 }
 
 /* get boundary rect of selection sel into b */
-export function /* void */
-selection_getbounds(sel, b)
-{
+export function selection_getbounds(sel, b) { /* void */
     if (!sel || !b)
         return;
 
@@ -95,9 +77,8 @@ selection_getbounds(sel, b)
 }
 
 /* recalc the boundary of selection, if necessary */
-export function /* void */
-selection_recalc_bounds(sel)
-{ const $frame = stack_frame(); try {
+export function selection_recalc_bounds(sel) { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let r = stack_struct(struct_nhrect);
 
@@ -162,13 +143,12 @@ selection_recalc_bounds(sel)
     }
 
     sel.bounds_dirty = FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* coordxy */
-selection_getpoint(
+export function selection_getpoint(
     x, y,
-    sel)
-{
+    sel) { /* coordxy */
     if (!sel || !sel.map)
         return 0;
     if (x < 0 || y < 0 || x >= sel.wid || y >= sel.hei)
@@ -177,12 +157,10 @@ selection_getpoint(
     return (chars[sel.map + (sel.wid * y + x)] - 1);
 }
 
-export function /* void */
-selection_setpoint(
+export function selection_setpoint(
     x, y,
     sel,
-    c)
-{
+    c) { /* void */
     if (!sel || !sel.map)
         return;
     if (x < 0 || y < 0 || x >= sel.wid || y >= sel.hei)
@@ -207,9 +185,8 @@ selection_setpoint(
     chars[sel.map + (sel.wid * y + x)] = char((c + 1));
 }
 
-export function /* struct selectionvar * */
-selection_not(s)
-{ const $frame = stack_frame(); try {
+export function selection_not(s) { /* struct selectionvar * */
+    const $frame = stack_frame(); try {
     let x, y;
     let tmprect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -218,13 +195,13 @@ selection_not(s)
             selection_setpoint(x, y, s, selection_getpoint(x, y, s) ? 0 : 1);
     selection_getbounds(s, tmprect);
     return s;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct selectionvar * */
-selection_filter_percent(
+export function selection_filter_percent(
     ov,
-    percent)
-{ const $frame = stack_frame(); try {
+    percent) { /* struct selectionvar * */
+    const $frame = stack_frame(); try {
     let x, y;
     let ret;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
@@ -242,11 +219,11 @@ selection_filter_percent(
                 selection_setpoint(x, y, ret, 1);
 
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct selectionvar * */
-selection_filter_mapchar(ov, typ, lit)
-{ const $frame = stack_frame(); try {
+export function selection_filter_mapchar(ov, typ, lit) { /* struct selectionvar * */
+    const $frame = stack_frame(); try {
     let x, y;
     let ret;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
@@ -278,14 +255,14 @@ selection_filter_mapchar(ov, typ, lit)
                 }
             }
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-selection_rndcoord(
+export function selection_rndcoord(
     ov,
     x, y,
-    removeit)
-{ const $frame = stack_frame(); try {
+    removeit) { /* int */
+    const $frame = stack_frame(); try {
     let idx = 0;
     let c;
     let dx, dy;
@@ -315,11 +292,11 @@ selection_rndcoord(
     }
     x[0] = y[0] = -1;
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-selection_do_grow(ov, dir)
-{ const $frame = stack_frame(); try {
+export function selection_do_grow(ov, dir) { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let tmp;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
@@ -364,23 +341,20 @@ selection_do_grow(ov, dir)
                 selection_setpoint(x, y, ov, 1);
 
     selection_free(tmp, TRUE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const selection_flood_check_func = static_var("selection_flood_check_func", fnptr_t);
 
-export function /* void */
-set_selection_floodfillchk(f)
-{
+export function set_selection_floodfillchk(f) { /* void */
     selection_flood_check_func[0] = f;
 }
 
 /* check whethere <x,y> is already in xs[],ys[] */
-function /* boolean */
-sel_flood_havepoint(
+function sel_flood_havepoint(
     x, y,
     xs, ys,
-    n)
-{
+    n) { /* boolean */
     let xx = x, yy = y;
 
     while (n > 0) {
@@ -391,30 +365,12 @@ sel_flood_havepoint(
     return FALSE;
 }
 
-export function /* void */
-selection_floodfill(
+export function selection_floodfill(
     ov,
     x, y,
-    diagonals)
-{ const $frame = stack_frame(); try {
+    diagonals) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = selection_new();
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     let floodfill_stack_overrun = init_string(static_array("selection_floodfill.floodfill_stack_overrun", char, sizeof_string("floodfill stack overrun")), _("floodfill stack overrun"), true);
     let idx = 0;
@@ -434,31 +390,30 @@ selection_floodfill(
             selection_setpoint(x, y, ov, 1);
             selection_setpoint(x, y, tmp, 1);
         }
-        do { if ((((isok(((x + 1)), (y)) && (selection_flood_check_func[0])(((x + 1)), (y))) && !selection_getpoint(((x + 1)), (y), (tmp))) && !sel_flood_havepoint(((x + 1)), (y), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (((x + 1))); dy[idx] = ((y)); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
-        do { if ((((isok(((x - 1)), (y)) && (selection_flood_check_func[0])(((x - 1)), (y))) && !selection_getpoint(((x - 1)), (y), (tmp))) && !sel_flood_havepoint(((x - 1)), (y), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (((x - 1))); dy[idx] = ((y)); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
-        do { if ((((isok((x), ((y + 1))) && (selection_flood_check_func[0])((x), ((y + 1)))) && !selection_getpoint((x), ((y + 1)), (tmp))) && !sel_flood_havepoint((x), ((y + 1)), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = ((x)); dy[idx] = (((y + 1))); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
-        do { if ((((isok((x), ((y - 1))) && (selection_flood_check_func[0])((x), ((y - 1)))) && !selection_getpoint((x), ((y - 1)), (tmp))) && !sel_flood_havepoint((x), ((y - 1)), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = ((x)); dy[idx] = (((y - 1))); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+        do { if ((((isok((x + 1), (y)) && (selection_flood_check_func[0])((x + 1), (y))) && !selection_getpoint((x + 1), (y), (tmp))) && !sel_flood_havepoint((x + 1), (y), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x + 1); dy[idx] = (y); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+        do { if ((((isok((x - 1), (y)) && (selection_flood_check_func[0])((x - 1), (y))) && !selection_getpoint((x - 1), (y), (tmp))) && !sel_flood_havepoint((x - 1), (y), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x - 1); dy[idx] = (y); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+        do { if ((((isok((x), (y + 1)) && (selection_flood_check_func[0])((x), (y + 1))) && !selection_getpoint((x), (y + 1), (tmp))) && !sel_flood_havepoint((x), (y + 1), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x); dy[idx] = (y + 1); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+        do { if ((((isok((x), (y - 1)) && (selection_flood_check_func[0])((x), (y - 1))) && !selection_getpoint((x), (y - 1), (tmp))) && !sel_flood_havepoint((x), (y - 1), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x); dy[idx] = (y - 1); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
         if (diagonals) {
-            do { if ((((isok(((x + 1)), ((y + 1))) && (selection_flood_check_func[0])(((x + 1)), ((y + 1)))) && !selection_getpoint(((x + 1)), ((y + 1)), (tmp))) && !sel_flood_havepoint(((x + 1)), ((y + 1)), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (((x + 1))); dy[idx] = (((y + 1))); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
-            do { if ((((isok(((x - 1)), ((y - 1))) && (selection_flood_check_func[0])(((x - 1)), ((y - 1)))) && !selection_getpoint(((x - 1)), ((y - 1)), (tmp))) && !sel_flood_havepoint(((x - 1)), ((y - 1)), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (((x - 1))); dy[idx] = (((y - 1))); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
-            do { if ((((isok(((x - 1)), ((y + 1))) && (selection_flood_check_func[0])(((x - 1)), ((y + 1)))) && !selection_getpoint(((x - 1)), ((y + 1)), (tmp))) && !sel_flood_havepoint(((x - 1)), ((y + 1)), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (((x - 1))); dy[idx] = (((y + 1))); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
-            do { if ((((isok(((x + 1)), ((y - 1))) && (selection_flood_check_func[0])(((x + 1)), ((y - 1)))) && !selection_getpoint(((x + 1)), ((y - 1)), (tmp))) && !sel_flood_havepoint(((x + 1)), ((y - 1)), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (((x + 1))); dy[idx] = (((y - 1))); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+            do { if ((((isok((x + 1), (y + 1)) && (selection_flood_check_func[0])((x + 1), (y + 1))) && !selection_getpoint((x + 1), (y + 1), (tmp))) && !sel_flood_havepoint((x + 1), (y + 1), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x + 1); dy[idx] = (y + 1); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+            do { if ((((isok((x - 1), (y - 1)) && (selection_flood_check_func[0])((x - 1), (y - 1))) && !selection_getpoint((x - 1), (y - 1), (tmp))) && !sel_flood_havepoint((x - 1), (y - 1), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x - 1); dy[idx] = (y - 1); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+            do { if ((((isok((x - 1), (y + 1)) && (selection_flood_check_func[0])((x - 1), (y + 1))) && !selection_getpoint((x - 1), (y + 1), (tmp))) && !sel_flood_havepoint((x - 1), (y + 1), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x - 1); dy[idx] = (y + 1); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
+            do { if ((((isok((x + 1), (y - 1)) && (selection_flood_check_func[0])((x + 1), (y - 1))) && !selection_getpoint((x + 1), (y - 1), (tmp))) && !sel_flood_havepoint((x + 1), (y - 1), dx, dy, idx))) do { if ((idx < SEL_FLOOD_STACK)) { dx[idx] = (x + 1); dy[idx] = (y - 1); idx++; } else panic(floodfill_stack_overrun); } while (0) } while (0);
         }
     } while (idx > 0);
 
-
-
     selection_free(tmp, TRUE);
-} finally { stack_pop($frame); } } export const SEL_FLOOD_STACK = (COLNO * ROWNO);
+    } finally { stack_pop($frame); }
+}
+export const SEL_FLOOD_STACK = (COLNO * ROWNO);
 
 /* McIlroy's Ellipse Algorithm */
-export function /* void */
-selection_do_ellipse(
+export function selection_do_ellipse(
     ov,
     xc, yc,
     a, b,
-    filled)
-{ /* e(x,y) = b^2*x^2 + a^2*y^2 - a^2*b^2 */
+    filled) { /* void */
+ /* e(x,y) = b^2*x^2 + a^2*y^2 - a^2*b^2 */
     let x = 0, y = b;
     let a2 = a * a, b2 = b * b;
     let crit1 = -(Math.trunc(a2 / 4) + a % 2 + b2);
@@ -538,9 +493,7 @@ selection_do_ellipse(
 }
 
 /* square of distance from line segment (x1,y1, x2,y2) to point (x3,y3) */
-function /* long long */
-line_dist_coord(x1, y1, x2, y2, x3, y3)
-{
+function line_dist_coord(x1, y1, x2, y2, x3, y3) { /* long long */
     let px = x2 - x1;
     let py = y2 - y1;
     let s = px * px + py * py;
@@ -566,14 +519,12 @@ line_dist_coord(x1, y1, x2, y2, x3, y3)
 }
 
 /* guts of l_selection_gradient */
-export function /* void */
-selection_do_gradient(
+export function selection_do_gradient(
     ov,
     x, y,
     x2, y2,
     gtyp,
-    mind, maxd)
-{
+    mind, maxd) { /* void */
     let dx, dy, dofs;
 
     if (mind > maxd) {
@@ -622,12 +573,10 @@ selection_do_gradient(
 }
 
 /* bresenham line algo */
-export function /* void */
-selection_do_line(
+export function selection_do_line(
     x1, y1,
     x2, y2,
-    ov)
-{
+    ov) { /* void */
     let d0, dx, dy, ai, bi, xi, yi;
 
     if (x1 < x2) {
@@ -679,32 +628,30 @@ selection_do_line(
     }
 }
 
-export function /* void */
-selection_do_randline(
+export function selection_do_randline(
     x1, y1,
     x2, y2,
     rough,
     rec,
-    ov)
-{
+    ov) { /* void */
     let mx, my;
     let dx, dy;
 
     if (rec < 1 || (x2 == x1 && y2 == y1))
         return;
 
-    if (rough > ((((abs(x2 - x1)) > (abs(y2 - y1))) ? (abs(x2 - x1)) : (abs(y2 - y1)))))
-        rough = ((((abs(x2 - x1)) > (abs(y2 - y1))) ? (abs(x2 - x1)) : (abs(y2 - y1))));
+    if (rough > (((abs(x2 - x1)) > (abs(y2 - y1))) ? (abs(x2 - x1)) : (abs(y2 - y1))))
+        rough = (((abs(x2 - x1)) > (abs(y2 - y1))) ? (abs(x2 - x1)) : (abs(y2 - y1)));
 
     if (rough < 2) {
-        mx = (Math.trunc((x1 + x2) / 2));
-        my = (Math.trunc((y1 + y2) / 2));
+        mx = Math.trunc((x1 + x2) / 2);
+        my = Math.trunc((y1 + y2) / 2);
     } else {
         do {
-            dx = rn2(rough) - (Math.trunc(rough / 2));
-            dy = rn2(rough) - (Math.trunc(rough / 2));
-            mx = (Math.trunc((x1 + x2) / 2)) + dx;
-            my = (Math.trunc((y1 + y2) / 2)) + dy;
+            dx = rn2(rough) - Math.trunc(rough / 2);
+            dy = rn2(rough) - Math.trunc(rough / 2);
+            mx = Math.trunc((x1 + x2) / 2) + dx;
+            my = Math.trunc((y1 + y2) / 2) + dy;
         } while ((mx > COLNO - 1 || mx < 0 || my < 0 || my > ROWNO - 1));
     }
 
@@ -722,12 +669,11 @@ selection_do_randline(
     selection_setpoint(x2, y2, ov, 1);
 }
 
-export function /* void */
-selection_iterate(
+export function selection_iterate(
     ov,
     func,
-    arg)
-{ const $frame = stack_frame(); try {
+    arg) { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -739,13 +685,13 @@ selection_iterate(
     for (x = rect.lx; x <= rect.hx; x++)
         for (y = rect.ly; y <= rect.hy; y++)
             if (isok(x,y) && selection_getpoint(x, y, ov))
-                (func)(x, y, arg);
-} finally { stack_pop($frame); } }
+                func(x, y, arg);
+    } finally { stack_pop($frame); }
+}
 
 /* selection is not rectangular, or has holes in it */
-export function /* boolean */
-selection_is_irregular(sel)
-{ const $frame = stack_frame(); try {
+export function selection_is_irregular(sel) { /* boolean */
+    const $frame = stack_frame(); try {
     let x, y;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -757,29 +703,28 @@ selection_is_irregular(sel)
                 return TRUE;
 
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return a description of the selection size */
-export function /* char * */
-selection_size_description(sel, buf)
-{ const $frame = stack_frame(); try {
+export function selection_size_description(sel, buf) { /* char * */
+    const $frame = stack_frame(); try {
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
     let dx, dy;
 
     selection_getbounds(sel, rect);
     dx = rect.hx - rect.lx + 1;
     dy = rect.hy - rect.ly + 1;
-    void sprintf(buf, _("%s %i by %i"), selection_is_irregular(sel) ? _("irregularly shaped")
+    sprintf(buf, _("%s %i by %i"), selection_is_irregular(sel) ? _("irregularly shaped")
             : (dx == dy) ? _("square")
               : _("rectangular"), dx, dy)
 
 ;
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct selectionvar * */
-selection_from_mkroom(croom)
-{
+export function selection_from_mkroom(croom) { /* struct selectionvar * */
     let sel = selection_new();
     let x, y;
     let rmno;
@@ -789,7 +734,7 @@ selection_from_mkroom(croom)
     if (!croom)
         return sel;
 
-    rmno = unsigned(((ptr_diff(croom, svr.rooms[0])) + ROOMOFFSET));
+    rmno = unsigned((ptr_diff(croom, svr.rooms[0]) + ROOMOFFSET));
     for (y = croom.ly; y <= croom.hy; y++)
         for (x = croom.lx; x <= croom.hx; x++)
             if (isok(x, y) && !levl()[x][y].edge
@@ -798,9 +743,7 @@ selection_from_mkroom(croom)
     return sel;
 }
 
-export function /* void */
-selection_force_newsyms(sel)
-{
+export function selection_force_newsyms(sel) { /* void */
     let x, y;
 
     for (x = 1; x < sel.wid; x++)
@@ -810,58 +753,28 @@ selection_force_newsyms(sel)
 }
 
 /*selvar.c*/
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+
+import { COLNO, FALSE, ROWNO, TRUE } from "./global.h.js";
 import { struct_selectionvar } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
+import { max, min } from "./hack.h.macros.js";
 import { ROOMOFFSET } from "./mkroom.h.js";
 import { struct_nhrect } from "./rect.h.js";
 import { levl } from "./rm.h.macros.js";
-import { SEL_GRADIENT_RADIAL } from "./sp_lev.h.js";
-import { SEL_GRADIENT_SQUARE } from "./sp_lev.h.js";
-import { W_EAST } from "./sp_lev.h.js";
-import { W_NORTH } from "./sp_lev.h.js";
-import { W_RANDOM } from "./sp_lev.h.js";
-import { W_SOUTH } from "./sp_lev.h.js";
-import { W_WEST } from "./sp_lev.h.js";
-import { char } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    SEL_GRADIENT_RADIAL, SEL_GRADIENT_SQUARE, W_EAST, W_NORTH, W_RANDOM, W_SOUTH, W_WEST,
+} from "./sp_lev.h.js";
+import { char, long, ord, short, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { abs, free, memset, sprintf } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import { addr_of, fnptr_t, ptr_diff, struct_assign, view_of } from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { cg } from "./decl.js";
-import { gc } from "./decl.js";
-import { svr } from "./decl.js";
+import { cg, gc, svr } from "./decl.js";
 import { newsym_force } from "./display.js";
 import { panic } from "./end.js";
 import { dist2 } from "./hacklib.js";
 import { impossible } from "./pline.js";
 import { rn2 } from "./rnd.js";
-import { match_maptyps } from "./sp_lev.js";
-import { random_wdir } from "./sp_lev.js";
+import { match_maptyps, random_wdir } from "./sp_lev.js";

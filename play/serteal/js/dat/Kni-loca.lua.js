@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Knight Kni-loca.lua	$NHDT-Date: 1652196005 2022/05/10 15:20:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991,92 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Knight Kni-loca.lua	$NHDT-Date: 1652196005 2022/05/10 15:20:05 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991,92 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "hardfloor")
 
@@ -23,18 +23,17 @@ xxxxxx..........................xxxxxxxx
 xxxxxxxx.........xx..........xxxxxxxxxxx
 xxxxxxxxx.......xxxxxx.....xxxxxxxxxxxxx
 ]]);
-` + "\n" + // -- Dungeon Description
-"\n" + // -- The Isle of Glass is a Tor rising out of the swamps surrounding it.
-`des.region(selection.area(00,00,39,11), "lit")
-` + "\n" + // -- The top area of the Tor is a holy site.
-`des.region({ region={09,02, 27,09}, lit=1, type="temple", filled=2 })
-` + "\n" + // -- Stairs
-`des.stair("up", 38,0)
+-- Dungeon Description
+-- The Isle of Glass is a Tor rising out of the swamps surrounding it.
+des.region(selection.area(00,00,39,11), "lit")
+-- The top area of the Tor is a holy site.
+des.region({ region={09,02, 27,09}, lit=1, type="temple", filled=2 })
+-- Stairs
+des.stair("up", 38,0)
 des.stair("down", 18,05)
-` + "\n" + // -- The altar atop the Tor and its attendant (creating altar makes the priest).
-`des.altar({ x=17, y=05, align="neutral", type="shrine" })
-` + "\n" + // -- Objects
-`des.object()
+-- The altar atop the Tor and its attendant (creating altar makes the priest).
+des.altar({ x=17, y=05, align="neutral", type="shrine" })
+-- Objects
 des.object()
 des.object()
 des.object()
@@ -49,10 +48,11 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-"\n" + // -- All of the avenues are guarded by magic except for the East.
-"\n" + // -- South
-`des.trap("magic",08,11)
+des.object()
+-- Random traps
+-- All of the avenues are guarded by magic except for the East.
+-- South
+des.trap("magic",08,11)
 des.trap("magic",09,11)
 des.trap("magic",10,11)
 des.trap("magic",11,11)
@@ -70,13 +70,13 @@ des.trap("magic",25,11)
 des.trap("magic",26,11)
 des.trap("magic",27,11)
 des.trap("magic",28,11)
-` + "\n" + // -- West
-`des.trap("magic",00,03)
+-- West
+des.trap("magic",00,03)
 des.trap("magic",00,04)
 des.trap("magic",00,05)
 des.trap("magic",00,06)
-` + "\n" + // -- North
-`des.trap("magic",06,00)
+-- North
+des.trap("magic",06,00)
 des.trap("magic",07,00)
 des.trap("magic",08,00)
 des.trap("magic",09,00)
@@ -99,16 +99,16 @@ des.trap("magic",29,00)
 des.trap("magic",30,00)
 des.trap("magic",31,00)
 des.trap("magic",32,00)
-` + "\n" + // -- Even so, there are magic "sinkholes" around.
-`des.trap("anti magic")
+-- Even so, there are magic "sinkholes" around.
 des.trap("anti magic")
 des.trap("anti magic")
 des.trap("anti magic")
 des.trap("anti magic")
 des.trap("anti magic")
 des.trap("anti magic")
-` + "\n" + // -- Random monsters.
-`des.monster({ id = "quasit", peaceful=0 })
+des.trap("anti magic")
+-- Random monsters.
+des.monster({ id = "quasit", peaceful=0 })
 des.monster({ id = "quasit", peaceful=0 })
 des.monster({ id = "quasit", peaceful=0 })
 des.monster({ id = "quasit", peaceful=0 })

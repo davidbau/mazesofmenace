@@ -3,8 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /* used to pick among the four basic elementals without worrying whether
    they've been reordered (difficulty reassessment?) or any new ones have
    been introduced (hybrid types added to 'E'-class?) */
@@ -13,21 +11,17 @@ const elementals = static_array("elementals", int, 4, [
     PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL
 ]);
 
-export function /* void */
-newemin(mtmp)
-{
+export function newemin(mtmp) { /* void */
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EMIN(mtmp)) {
         ((mtmp).mextra.emin) = view_of(struct_emin, addr_of(alloc(sizeof(struct_emin))));
-        void memset(addr_of(EMIN(mtmp)), 0, sizeof(struct_emin));
+        memset(addr_of(EMIN(mtmp)), 0, sizeof(struct_emin));
         EMIN(mtmp).parentmid = mtmp.m_id;
     }
 }
 
-export function /* void */
-free_emin(mtmp)
-{
+export function free_emin(mtmp) { /* void */
     if (mtmp.mextra && EMIN(mtmp)) {
         free(addr_of(EMIN(mtmp)));
         ((mtmp).mextra.emin) = null;
@@ -36,9 +30,7 @@ free_emin(mtmp)
 }
 
 /* count the number of monsters on the level */
-export function /* int */
-monster_census(spotted) /* seen|sensed vs all */
-{
+export function monster_census(spotted) { /* int */ /* seen|sensed vs all */
     let mtmp;
     let count = 0;
 
@@ -55,9 +47,8 @@ monster_census(spotted) /* seen|sensed vs all */
 }
 
 /* mon summons a monster */
-export function /* int */
-msummon(mon)
-{ const $frame = stack_frame(); try {
+export function msummon(mon) { /* int */
+    const $frame = stack_frame(); try {
     let ptr;
     let dtype = NON_PM, cnt = 0, result = 0, census;
     let xlight;
@@ -156,7 +147,7 @@ msummon(mon)
                 /* renegade if same alignment but not peaceful
                    or peaceful but different alignment */
                 EMIN(mtmp).renegade =
-                    (+(atyp != u.ualign.type)) ^ +!mtmp.mpeaceful;
+                    +(atyp != u.ualign.type) ^ +!mtmp.mpeaceful;
             }
 
             if (mtmp.data.mlet == S_ANGEL && !Blind()) {
@@ -192,11 +183,10 @@ msummon(mon)
         result = monster_census(FALSE) - census;
 
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-summon_minion(alignment, talk)
-{
+export function summon_minion(alignment, talk) { /* void */
     let mon;
     let mnum;
 
@@ -256,12 +246,8 @@ summon_minion(alignment, talk)
     }
 }
 
-
-
 /* returns 1 if it won't attack. */
-export function /* int */
-demon_talk(mtmp)
-{
+export function demon_talk(mtmp) { /* int */
     let cash, demand, offer;
 
     if (u_wield_art(ART_EXCALIBUR) || u_wield_art(ART_DEMONBANE)) {
@@ -303,12 +289,12 @@ demon_talk(mtmp)
         else if (canseemon(mtmp))
             pline(_("%s says something."), Amonnam(mtmp));
         if (!tele_restrict(mtmp))
-            void rloc(mtmp, RLOC_MSG);
+            rloc(mtmp, RLOC_MSG);
         return 1;
     }
     cash = money_cnt(gi.invent);
-    demand = Math.trunc((cash * (rnd(80) + 20 * (((Inhell() && ((mtmp.cham == NON_PM))) ? 1 : 0))))
-           / (100 * (1 + (+(sgn(u.ualign.type) == sgn(mtmp.data.maligntyp))))));
+    demand = Math.trunc((cash * (rnd(80) + 20 * ((Inhell() && (mtmp.cham == NON_PM)) ? 1 : 0)))
+           / (100 * (1 + +(sgn(u.ualign.type) == sgn(mtmp.data.maligntyp)))));
 
     if (!demand || gm.multi < 0) { /* you have no gold or can't move */
         mtmp.mpeaceful = 0;
@@ -357,9 +343,8 @@ demon_talk(mtmp)
     return 1;
 }
 
-export function /* long long */
-bribe(mtmp, prompt)
-{ const $frame = stack_frame(); try {
+export function bribe(mtmp, prompt) { /* long long */
+    const $frame = stack_frame(); try {
     let buf = init_list(stack_array(char, BUFSZ), []);
     let offer = stack_var(long);
     let umoney = money_cnt(gi.invent);
@@ -382,14 +367,13 @@ bribe(mtmp, prompt)
     } else {
         You(_("give %s %lld %s."), mon_nam(mtmp), offer[0], currency(offer[0]));
     }
-    void money2mon(mtmp, offer[0]);
+    money2mon(mtmp, offer[0]);
     disp.botl = TRUE;
     return offer[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-dprince(atyp)
-{
+export function dprince(atyp) { /* int */
     let tryct, pm;
 
     for (tryct = !In_endgame(u.uz) ? 20 : 0; tryct > 0; --tryct) {
@@ -401,9 +385,7 @@ dprince(atyp)
     return dlord(atyp); /* approximate */
 }
 
-export function /* int */
-dlord(atyp)
-{
+export function dlord(atyp) { /* int */
     let tryct, pm;
 
     for (tryct = !In_endgame(u.uz) ? 20 : 0; tryct > 0; --tryct) {
@@ -416,18 +398,14 @@ dlord(atyp)
 }
 
 /* create lawful (good) lord */
-export function /* int */
-llord()
-{
+export function llord() { /* int */
     if (!(svm.mvitals[PM_ARCHON].mvflags & G_GONE))
         return PM_ARCHON;
 
     return lminion(); /* approximate */
 }
 
-export function /* int */
-lminion()
-{
+export function lminion() { /* int */
     let tryct;
     let ptr;
 
@@ -440,9 +418,7 @@ lminion()
     return NON_PM;
 }
 
-export function /* int */
-ndemon(atyp) /* A_NONE is used for 'any alignment' */
-{
+export function ndemon(atyp) { /* int */ /* A_NONE is used for 'any alignment' */
     let ptr;
 
     /*
@@ -456,18 +432,14 @@ ndemon(atyp) /* A_NONE is used for 'any alignment' */
      * aspect of that changes someday.]
      */
 
-
-
-
     ptr = mkclass_aligned(S_DEMON, 0, atyp);
     return (ptr && is_ndemon(ptr)) ? monsndx(ptr) : NON_PM;
 }
 
 /* guardian angel has been affected by conflict so is abandoning hero */
-export function /* void */
-lose_guardian_angel(
-    mon) /* if Null, angel hasn't been created yet */
-{ const $frame = stack_frame(); try {
+export function lose_guardian_angel(
+    mon) { /* void */ /* if Null, angel hasn't been created yet */
+    const $frame = stack_frame(); try {
     let mm = stack_struct(struct_nhcoord);
     let i;
 
@@ -488,15 +460,15 @@ lose_guardian_angel(
         mm.x = u.ux;
         mm.y = u.uy;
         if (enexto(mm, mm.x, mm.y, mons[PM_ANGEL]))
-            void mk_roamer(mons[PM_ANGEL], u.ualign.type, mm.x, mm.y,
+            mk_roamer(mons[PM_ANGEL], u.ualign.type, mm.x, mm.y,
                              FALSE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* just entered the Astral Plane; receive tame guardian angel if worthy */
-export function /* void */
-gain_guardian_angel()
-{ const $frame = stack_frame(); try {
+export function gain_guardian_angel() { /* void */
+    const $frame = stack_frame(); try {
     let mtmp;
     let otmp;
     let mm = stack_struct(struct_nhcoord);
@@ -557,158 +529,74 @@ gain_guardian_angel()
                 otmp.spe += rnd(4);
             if ((otmp = which_armor(mtmp, W_ARMS)) == null
                 || otmp.otyp != SHIELD_OF_REFLECTION) {
-                void mongets(mtmp, AMULET_OF_REFLECTION);
+                mongets(mtmp, AMULET_OF_REFLECTION);
                 m_dowear(mtmp, TRUE);
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*minion.c*/
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
-import { ART_DEMONBANE } from "./artilist.h.js";
-import { ART_EXCALIBUR } from "./artilist.h.js";
+
+import { A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE } from "./align.h.js";
+import { ART_DEMONBANE, ART_EXCALIBUR } from "./artilist.h.js";
 import { A_CHA } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
+import { S_ANGEL, S_DEMON } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_UMONST } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { EXACT_NAME } from "./hack.h.js";
-import { MM_EMIN } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { RLOC_MSG } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import { In_endgame, Inhell } from "./dungeon.h.macros.js";
+import { BUFSZ, FALSE, LL_UMONST, TRUE } from "./global.h.js";
+import { ARTICLE_A, EXACT_NAME, MM_EMIN, MM_NOMSG, RLOC_MSG } from "./hack.h.js";
+import { ROLL_FROM, rn1 } from "./hack.h.macros.js";
 import { struct_emin } from "./mextra.h.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_dlord } from "./mondata.h.macros.js";
-import { is_dprince } from "./mondata.h.macros.js";
-import { is_lord } from "./mondata.h.macros.js";
-import { is_ndemon } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { G_GONE } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
+import { EMIN, EPRI } from "./mextra.h.macros.js";
+import { is_demon, is_dlord, is_dprince, is_lord, is_ndemon, monsndx } from "./mondata.h.macros.js";
+import { G_GONE, G_UNIQ } from "./monflag.h.js";
 import { STRAT_APPEARMSG } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { is_lminion } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_AIR_ELEMENTAL } from "./monsters.h.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_ANGEL } from "./monsters.h.js";
-import { PM_ARCHON } from "./monsters.h.js";
-import { PM_BONE_DEVIL } from "./monsters.h.js";
-import { PM_DEMOGORGON } from "./monsters.h.js";
-import { PM_EARTH_ELEMENTAL } from "./monsters.h.js";
-import { PM_FIRE_ELEMENTAL } from "./monsters.h.js";
-import { PM_GUARD } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
-import { PM_JUIBLEX } from "./monsters.h.js";
-import { PM_ORCUS } from "./monsters.h.js";
-import { PM_SHOPKEEPER } from "./monsters.h.js";
-import { PM_SKELETON } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WIZARD_OF_YENDOR } from "./monsters.h.js";
-import { PM_YEENOGHU } from "./monsters.h.js";
+import { DEADMONSTER, is_lminion } from "./monst.h.macros.js";
+import {
+    NON_PM, PM_AIR_ELEMENTAL, PM_ALIGNED_CLERIC, PM_ANGEL, PM_ARCHON, PM_BONE_DEVIL, PM_DEMOGORGON,
+    PM_EARTH_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_GUARD, PM_HIGH_CLERIC, PM_JUIBLEX, PM_ORCUS,
+    PM_SHOPKEEPER, PM_SKELETON, PM_WATER_ELEMENTAL, PM_WIZARD_OF_YENDOR, PM_YEENOGHU,
+} from "./monsters.h.js";
 import { u_wield_art } from "./obj.h.macros.js";
-import { AMULET_OF_REFLECTION } from "./objects.h.js";
-import { SHIELD_OF_REFLECTION } from "./objects.h.js";
-import { SILVER_SABER } from "./objects.h.js";
+import { AMULET_OF_REFLECTION, SHIELD_OF_REFLECTION, SILVER_SABER } from "./objects.h.js";
 import { W_ARMS } from "./prop.h.js";
 import { fmon } from "./rm.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { Blind, Conflict, Deaf } from "./youprop.h.macros.js";
+import { char, int, long, sizeof, uchar } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
+import { and64u, not64u } from "../rt/int64.js";
+import { free, memset, sscanf } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, ptr_to, view_of } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
 import { alloc } from "./alloc.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gy } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { Amonnam } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { Hear_again } from "./eat.js";
-import { is_fainted } from "./eat.js";
-import { reset_faint } from "./eat.js";
+import { disp, flags, gi, gm, gy, svm, u } from "./decl.js";
+import { canseemon, newsym } from "./display.js";
+import { Amonnam, Monnam, mon_nam, x_monnam } from "./do_name.js";
+import { Hear_again, is_fainted, reset_faint } from "./eat.js";
 import { panic } from "./end.js";
-import { money_cnt } from "./hack.js";
-import { nomul } from "./hack.js";
-import { unmul } from "./hack.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
+import { money_cnt, nomul, unmul } from "./hack.js";
+import { s_suffix, sgn } from "./hacklib.js";
 import { currency } from "./invent.js";
-import { show_transient_light } from "./light.js";
-import { transient_light_cleanup } from "./light.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
-import { mkclass_aligned } from "./makemon.js";
-import { mongets } from "./makemon.js";
-import { newmextra } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { bless } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
+import { show_transient_light, transient_light_cleanup } from "./light.js";
+import { makemon, mkclass, mkclass_aligned, mongets, newmextra, set_malign } from "./makemon.js";
+import { bless, mksobj } from "./mkobj.js";
 import { mongone } from "./mon.js";
 import { msummon_environ } from "./mondata.js";
 import { mons } from "./monst.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { You, You_feel, impossible, livelog_printf, pline, pline_The, verbalize } from "./pline.js";
 import { align_gname } from "./pray.js";
 import { mk_roamer } from "./priest.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { money2mon } from "./shk.js";
 import { mpickobj } from "./steal.js";
-import { enexto } from "./teleport.js";
-import { rloc } from "./teleport.js";
-import { tele_restrict } from "./teleport.js";
+import { enexto, rloc, tele_restrict } from "./teleport.js";
 import { select_hwep } from "./weapon.js";
 import { getlin } from "./windows.js";
 import { mon_has_amulet } from "./wizard.js";
-import { m_dowear } from "./worn.js";
-import { which_armor } from "./worn.js";
+import { m_dowear, which_armor } from "./worn.js";

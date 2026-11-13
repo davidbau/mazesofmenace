@@ -2,31 +2,21 @@
 /* Copyright (c) Izchak Miller, Steve Linhart, 1989.              */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "mfndpos.h"
-
 /* these match the categorizations shown by enlightenment */
 export const ALGN_SINNED = (-4);
 export const ALGN_DEVOUT = 14;
 
-
-
-
-export function /* void */
-newepri(mtmp)
-{
+export function newepri(mtmp) { /* void */
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EPRI(mtmp)) {
         ((mtmp).mextra.epri) = view_of(struct_epri, addr_of(alloc(sizeof(struct_epri))));
-        void memset(addr_of(EPRI(mtmp)), 0, sizeof(struct_epri));
+        memset(addr_of(EPRI(mtmp)), 0, sizeof(struct_epri));
         EPRI(mtmp).parentmid = mtmp.m_id;
     }
 }
 
-export function /* void */
-free_epri(mtmp)
-{
+export function free_epri(mtmp) { /* void */
     if (mtmp.mextra && EPRI(mtmp)) {
         free(addr_of(EPRI(mtmp)));
         ((mtmp).mextra.epri) = null;
@@ -38,20 +28,17 @@ free_epri(mtmp)
  * Move for priests and shopkeepers.  Called from shk_move() and pri_move().
  * Valid returns are  1: moved  0: didn't  -1: let m_move do it  -2: died.
  */
-export function /* int */
-move_special(mtmp, in_his_shop, appr,
+export function move_special(mtmp, in_his_shop, appr,
              uondoor, avoid,
-             omx, omy, ggx, ggy)
-{ const $frame = stack_frame(); try { let $goto = null; var mfp = stack_struct(struct_mfndposdata);
+             omx, omy, ggx, ggy) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var mfp = stack_struct(struct_mfndposdata);
     var nx, ny, nix, niy;
     var i;
     var chcnt, cnt;
-    
+
     var ninfo = 0;
     var allowflags;
-
-
-
 
     if (omx == ggx && omy == ggy)
         return 0;
@@ -72,7 +59,6 @@ move_special(mtmp, in_his_shop, appr,
         avoid = FALSE;
     }
 
-
  case "pick_move": $goto = null;
     chcnt = 0;
     for (i = 0; i < cnt; i++) {
@@ -83,7 +69,7 @@ move_special(mtmp, in_his_shop, appr,
             if (avoid && (mfp.info[i] & NOTONL) && !(mfp.info[i] & ALLOW_M))
                 continue;
             if ((!appr && !rn2(++chcnt))
-                || (appr && (dist2(nx, ny, ggx, ggy)) < (dist2(nix, niy, ggx, ggy)))
+                || (appr && dist2(nx, ny, ggx, ggy) < dist2(nix, niy, ggx, ggy))
                 || (mfp.info[i] & ALLOW_M)) {
                 nix = nx;
                 niy = ny;
@@ -101,7 +87,6 @@ move_special(mtmp, in_his_shop, appr,
     } } break; }
 
     if (nix != omx || niy != omy) {
-
         if (ninfo & ALLOW_ROCK) {
             m_break_boulder(mtmp, nix, niy);
             return 1;
@@ -125,22 +110,13 @@ move_special(mtmp, in_his_shop, appr,
         if (mtmp.isshk && !in_his_shop && inhishop(mtmp))
             check_special_room(FALSE);
 
-
-
-
-
-
-
-
-
         return 1;
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* char */
-temple_occupied(array)
-{
+export function temple_occupied(array) { /* char */
     let ptr;
 
     for (ptr = array; chars[ptr]; ptr++)
@@ -149,17 +125,13 @@ temple_occupied(array)
     return ord('\0');
 }
 
-function /* boolean */
-histemple_at(priest, x, y)
-{
-    return (((priest && priest.ispriest
+function histemple_at(priest, x, y) { /* boolean */
+    return (priest && priest.ispriest
                       && (EPRI(priest).shroom == chars[in_rooms(x, y, TEMPLE)])
-                      && on_level((EPRI(priest).shrlevel), u.uz)) ? 1 : 0));
+                      && on_level((EPRI(priest).shrlevel), u.uz) ? 1 : 0);
 }
 
-export function /* boolean */
-inhistemple(priest)
-{
+export function inhistemple(priest) { /* boolean */
     /* make sure we have a priest */
     if (!priest || !priest.ispriest)
         return FALSE;
@@ -173,9 +145,7 @@ inhistemple(priest)
 /*
  * pri_move: return 1: moved  0: didn't  -1: let m_move do it  -2: died
  */
-export function /* int */
-pri_move(priest)
-{
+export function pri_move(priest) { /* int */
     let ggx, ggy, omx, omy;
     let temple;
     let avoid = TRUE;
@@ -199,7 +169,7 @@ pri_move(priest)
         if (monnear(priest, u.ux, u.uy)) {
             if (Displaced())
                 Your(_("displaced image doesn't fool %s!"), mon_nam(priest));
-            void mattacku(priest);
+            mattacku(priest);
             return 0;
         } else if (strchr(u.urooms, temple)) {
             /* chase player if inside temple & can see him */
@@ -216,13 +186,11 @@ pri_move(priest)
 }
 
 /* exclusively for mktemple() */
-export function /* void */
-priestini(
+export function priestini(
     lvl,
     sroom,
     sx, sy,
-    sanctum) /* is it the seat of the high priest? */
-{
+    sanctum) { /* void */ /* is it the seat of the high priest? */
     let priest;
     let otmp;
     let cnt;
@@ -240,11 +208,11 @@ priestini(
         px = sx, py = sy;
 
     if (MON_AT(px, py))
-        void rloc(m_at(px, py), RLOC_NOMSG); /* insurance */
+        rloc(m_at(px, py), RLOC_NOMSG); /* insurance */
 
     priest = makemon(prim, px, py, MM_EPRI);
     if (priest) {
-        EPRI(priest).shroom = schar(((ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET));
+        EPRI(priest).shroom = schar((ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET));
         EPRI(priest).shralign = Amask2align(levl()[sx][sy].flags);
         EPRI(priest).shrpos.x = sx;
         EPRI(priest).shrpos.y = sy;
@@ -258,12 +226,12 @@ priestini(
 
         /* now his/her goodies... */
         if (sanctum && EPRI(priest).shralign == A_NONE
-            && on_level((svd.dungeon_topology.d_sanctum_level), u.uz)) {
-            void mongets(priest, AMULET_OF_YENDOR);
+            && on_level(svd.dungeon_topology.d_sanctum_level, u.uz)) {
+            mongets(priest, AMULET_OF_YENDOR);
         }
         /* 2 to 4 spellbooks */
         for (cnt = rn1(3, 2); cnt > 0; --cnt) {
-            void mpickobj(priest, mkobj(SPBOOK_no_NOVEL, FALSE));
+            mpickobj(priest, mkobj(SPBOOK_no_NOVEL, FALSE));
         }
         /* robe [via makemon()] */
         if (rn2(2) && (otmp = which_armor(priest, W_ARMC)) != null) {
@@ -276,9 +244,7 @@ priestini(
 }
 
 /* get a monster's alignment type without caller needing EPRI & EMIN */
-export function /* aligntyp */
-mon_aligntyp(mon)
-{
+export function mon_aligntyp(mon) { /* aligntyp */
     let algn = mon.ispriest ? EPRI(mon).shralign
                                   : mon.isminion ? EMIN(mon).min_align
                                                   : mon.data.maligntyp;
@@ -298,13 +264,12 @@ mon_aligntyp(mon)
  *      - caller needs to inhibit Hallucination if it wants to force
  *              the true name even when under that influence
  */
-export function /* char * */
-priestname(
+export function priestname(
     mon,
     article,
     reveal_high_priest,
-    pname) /* caller-supplied output buffer */
-{ const $frame = stack_frame(); try {
+    pname) { /* char * */ /* caller-supplied output buffer */
+    const $frame = stack_frame(); try {
     let do_hallu = Hallucination(),
             aligned_priest = +(mon.data == mons[PM_ALIGNED_CLERIC]),
             high_priest = +(mon.data == mons[PM_HIGH_CLERIC]);
@@ -324,57 +289,54 @@ priestname(
         if (article == ARTICLE_YOUR || (article == ARTICLE_A && high_priest))
             article = ARTICLE_THE;
         if (article == ARTICLE_THE) {
-            void strcpy(pname, _("the "));
+            strcpy(pname, _("the "));
         } else if (!strcmp(what, _("Angel"))) {
             /* bypass just_an(); it would yield "" due to treating capital A
                as indicating a personal name */
-            void strcpy(pname, _("an "));
+            strcpy(pname, _("an "));
         } else {
-            void just_an(pname, what);
+            just_an(pname, what);
         }
     }
     /* pname[] contains "" or {"a ","an ","the "} */
     if (mon.minvis) {
         /* avoid "a invisible priest" */
         if (!strcmp(pname, _("a ")))
-            void strcpy(pname, _("an "));
-        void strcat(pname, _("invisible "));
+            strcpy(pname, _("an "));
+        strcat(pname, _("invisible "));
     }
     if (mon.isminion && EMIN(mon).renegade) {
         /* avoid "an renegade Angel" */
         if (!strcmp(pname, _("an ")) && !mon.minvis)
-            void strcpy(pname, _("a "));
-        void strcat(pname, _("renegade "));
+            strcpy(pname, _("a "));
+        strcat(pname, _("renegade "));
     }
 
     if (mon.ispriest || aligned_priest) {
         if (high_priest)
-            void strcat(pname, do_hallu ? _("grand ") : _("high "));
+            strcat(pname, do_hallu ? _("grand ") : _("high "));
     } else {
-        if (mon.mtame && !strcmpi(what, _("Angel")))
-            void strcat(pname, _("guardian "));
+        if (mon.mtame && !strncmpi((what), _(("Angel")), -1))
+            strcat(pname, _("guardian "));
     }
 
-    void strcat(pname, what);
+    strcat(pname, what);
     /* same as distant_monnam(), more or less... */
     if (do_hallu || !high_priest || reveal_high_priest
         || !Is_astralevel(u.uz)
         || m_next2u(mon) || program_state.gameover) {
-        void strcat(pname, _(" of "));
-        void strcat(pname, halu_gname(mon_aligntyp(mon)));
+        strcat(pname, _(" of "));
+        strcat(pname, halu_gname(mon_aligntyp(mon)));
     }
     return pname;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-p_coaligned(priest)
-{
+export function p_coaligned(priest) { /* boolean */
     return (+(u.ualign.type == mon_aligntyp(priest)));
 }
 
-function /* boolean */
-has_shrine(pri)
-{
+function has_shrine(pri) { /* boolean */
     let lev;
     let epri_p;
 
@@ -385,12 +347,10 @@ has_shrine(pri)
     if (!IS_ALTAR(lev.typ) || !(lev.flags & AM_SHRINE))
         return FALSE;
     return (+(epri_p.shralign
-                      == (Amask2align(lev.flags & ~AM_SHRINE))));
+                      == Amask2align(lev.flags & ~AM_SHRINE)));
 }
 
-export function /* struct monst * */
-findpriest(roomno)
-{
+export function findpriest(roomno) { /* struct monst * */
     let mtmp;
 
     for (mtmp = fmon(); mtmp; mtmp = mtmp.nmon) {
@@ -403,12 +363,9 @@ findpriest(roomno)
     return null;
 }
 
-
-
 /* called from check_special_room() when the player enters the temple room */
-export function /* void */
-intemple(roomno)
-{ const $frame = stack_frame(); try {
+export function intemple(roomno) { /* void */
+    const $frame = stack_frame(); try {
     let priest, mtmp;
     let epri_p;
     let shrined, sanctum, can_speak;
@@ -426,8 +383,8 @@ intemple(roomno)
 
         epri_p = EPRI(priest);
         shrined = has_shrine(priest);
-        sanctum = (((priest.data == mons[PM_HIGH_CLERIC]
-                   && (Is_sanctum(u.uz) || In_endgame(u.uz))) ? 1 : 0));
+        sanctum = (priest.data == mons[PM_HIGH_CLERIC]
+                   && (Is_sanctum(u.uz) || In_endgame(u.uz)) ? 1 : 0);
         can_speak = +!helpless(priest);
         if (can_speak && !Deaf() && svm.moves >= epri_p.intone_time) {
             let save_priest = priest.ispriest;
@@ -459,7 +416,7 @@ intemple(roomno)
                 msg1 = _("You desecrate this place by your presence!");
             }
         } else if (svm.moves >= epri_p.enter_time) {
-            void sprintf(buf, _("Pilgrim, you enter a %s place!"), !shrined ? _("desecrated") : _("sacred"))
+            sprintf(buf, _("Pilgrim, you enter a %s place!"), !shrined ? _("desecrated") : _("sacred"))
 ;
             msg1 = buf;
         }
@@ -535,15 +492,12 @@ intemple(roomno)
             gn.nomovemsg = _("You regain your composure.");
         }
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* reset the move counters used to limit temple entry feedback;
    leaving the level and then returning yields a fresh start */
-export function /* void */
-forget_temple_entry(priest)
-{
+export function forget_temple_entry(priest) { /* void */
     let epri_p = priest.ispriest ? EPRI(priest) : null;
 
     if (!epri_p) {
@@ -554,11 +508,10 @@ forget_temple_entry(priest)
         epri_p.hostile_time = 0;
 }
 
-export function /* void */
-priest_talk(priest)
-{ const $frame = stack_frame(); try {
+export function priest_talk(priest) { /* void */
+    const $frame = stack_frame(); try {
     let coaligned = p_coaligned(priest);
-    let strayed = (+(u.ualign.record < 0));
+    let strayed = +(u.ualign.record < 0);
     let cheapskate = null;
     if (EPRI(priest)) cheapskate = ref_of(EPRI(priest), "cheapskate_count");
 
@@ -614,7 +567,7 @@ priest_talk(priest)
             let pmoney = money_cnt(priest.minvent);
             if (pmoney > 0) {
                 let bits;
-                bits = (Hallucination()) ? currency(pmoney)
+                bits = Hallucination() ? currency(pmoney)
                                        : (pmoney == 1) ? _("bit") : _("bits");
                 /* Note: two bits is actually 25 cents.  Hmm. */
                 pline(_("%s gives you %s%s for an ale."), Monnam(priest),
@@ -634,7 +587,7 @@ priest_talk(priest)
            cheapskate out to rerandomize the donation amounts they will be
            higher next time */
         let offer;
-        let suggested = unsigned(Math.imul(unsigned((u.ulevelpeak ? u.ulevelpeak : 1 )), (unsigned((unsigned(rn2(101)) + (unsigned(150 + unsigned(Math.imul((cheapskate ? cheapskate[0] : 0), 40)))))))));
+        let suggested = unsigned(Math.imul(unsigned((u.ulevelpeak ? u.ulevelpeak : 1 )), unsigned((unsigned(rn2(101)) + (unsigned(150 + unsigned(Math.imul((cheapskate ? cheapskate[0] : 0), 40))))))));
 
         let quan = Math.trunc(money_cnt(gi.invent) / (suggested * 3));
         let buf = stack_array(char, BUFSZ);
@@ -642,7 +595,7 @@ priest_talk(priest)
         if (quan < 1)
             quan = 1;
 
-        void sprintf(buf, _("How much will you offer (suggested: %lld or %lld)?"), suggested * quan, suggested * quan * 2)
+        sprintf(buf, _("How much will you offer (suggested: %lld or %lld)?"), suggested * quan, suggested * quan * 2)
 ;
 
         if (flags.debug)
@@ -718,28 +671,22 @@ priest_talk(priest)
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct monst * */
-mk_roamer(ptr, alignment, x, y,
-          peaceful)
-{
+export function mk_roamer(ptr, alignment, x, y,
+          peaceful) { /* struct monst * */
     let roamer;
-    let coaligned = (+(u.ualign.type == alignment));
-
-
-
-
-
+    let coaligned = +(u.ualign.type == alignment);
 
     if (MON_AT(x, y))
-        void rloc(m_at(x, y), RLOC_NOMSG); /* insurance */
+        rloc(m_at(x, y), RLOC_NOMSG); /* insurance */
 
     if (!(roamer = makemon(ptr, x, y, MM_ADJACENTOK | MM_EMIN | MM_NOMSG)))
         return null;
 
     EMIN(roamer).min_align = alignment;
-    EMIN(roamer).renegade = (((coaligned && !peaceful) ? 1 : 0));
+    EMIN(roamer).renegade = (coaligned && !peaceful ? 1 : 0);
     roamer.ispriest = 0;
     roamer.isminion = 1;
     mon_learns_traps(roamer, ALL_TRAPS); /* traps are known */
@@ -751,9 +698,7 @@ mk_roamer(ptr, alignment, x, y,
     return roamer;
 }
 
-export function /* void */
-reset_hostility(roamer)
-{
+export function reset_hostility(roamer) { /* void */
     if (!roamer.isminion)
         return;
     if (roamer.data != mons[PM_ALIGNED_CLERIC]
@@ -767,11 +712,9 @@ reset_hostility(roamer)
     newsym(roamer.mx, roamer.my);
 }
 
-export function /* boolean */
-in_your_sanctuary(
+export function in_your_sanctuary(
     mon,
-    x, y)
-{
+    x, y) { /* boolean */
     let roomno;
     let priest;
 
@@ -787,14 +730,12 @@ in_your_sanctuary(
         return FALSE;
     if ((priest = findpriest(roomno)) == null)
         return FALSE;
-    return (((has_shrine(priest) && p_coaligned(priest)
-                      && priest.mpeaceful) ? 1 : 0));
+    return (has_shrine(priest) && p_coaligned(priest)
+                      && priest.mpeaceful ? 1 : 0);
 }
 
 /* when attacking "priest" in his temple */
-export function /* void */
-ghod_hitsu(priest)
-{
+export function ghod_hitsu(priest) { /* void */
     let troom;
     let oldbuzzer;
     let oldcurrwand;
@@ -873,9 +814,7 @@ ghod_hitsu(priest)
     exercise(A_WIS, FALSE);
 }
 
-export function /* void */
-angry_priest()
-{
+export function angry_priest() { /* void */
     let priest;
     let lev;
 
@@ -915,9 +854,7 @@ angry_priest()
  * and remove them.  This avoids big problems when restoring bones.
  * [Perhaps we should convert them into roamers instead?]
  */
-export function /* void */
-clearpriests()
-{
+export function clearpriests() { /* void */
     let mtmp;
 
     for (mtmp = fmon(); mtmp; mtmp = mtmp.nmon) {
@@ -929,202 +866,82 @@ clearpriests()
 }
 
 /* munge priest-specific structure when restoring -dlc */
-export function /* void */
-restpriest(mtmp, ghostly)
-{
+export function restpriest(mtmp, ghostly) { /* void */
     if (u.uz.dlevel) {
         if (ghostly)
             assign_level((EPRI(mtmp).shrlevel), u.uz);
     }
 }
 
-
-
-
 /*priest.c*/
-import { AM_MASK } from "./align.h.js";
-import { AM_SHRINE } from "./align.h.js";
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
+
+import { AM_MASK, AM_SHRINE, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE } from "./align.h.js";
 import { Amask2align } from "./align.h.macros.js";
 import { A_WIS } from "./attrib.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_sanctum } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { ARTICLE_NONE } from "./hack.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { ARTICLE_YOUR } from "./hack.h.js";
-import { MM_ADJACENTOK } from "./hack.h.js";
-import { MM_EMIN } from "./hack.h.js";
-import { MM_EPRI } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { SPINE } from "./hack.h.js";
-import { BZ_M_SPELL } from "./hack.h.macros.js";
-import { BZ_OFS_AD } from "./hack.h.macros.js";
-import { DIR_CLAMP } from "./hack.h.macros.js";
-import { onlineu } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { verbalize1 } from "./hack.h.macros.js";
+import { In_endgame, Is_astralevel, Is_sanctum } from "./dungeon.h.macros.js";
+import { BUFSZ, FALSE, LL_CONDUCT, TRUE } from "./global.h.js";
+import {
+    ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, MM_ADJACENTOK, MM_EMIN, MM_EPRI, MM_NOMSG,
+    N_DIRS, RLOC_NOMSG, SPINE,
+} from "./hack.h.js";
+import { BZ_M_SPELL, BZ_OFS_AD, DIR_CLAMP, onlineu, rn1, verbalize1 } from "./hack.h.macros.js";
 import { struct_epri } from "./mextra.h.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { has_emin } from "./mextra.h.macros.js";
-import { ALLOW_M } from "./mfndpos.h.js";
-import { ALLOW_ROCK } from "./mfndpos.h.js";
-import { NOTONL } from "./mfndpos.h.js";
-import { struct_mfndposdata } from "./mfndpos.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { TEMPLE } from "./mkroom.h.js";
+import { EMIN, EPRI, ESHK, has_emin } from "./mextra.h.macros.js";
+import { ALLOW_M, ALLOW_ROCK, NOTONL, struct_mfndposdata } from "./mfndpos.h.js";
+import { ROOMOFFSET, TEMPLE } from "./mkroom.h.js";
 import { AD_ELEC } from "./monattk.h.js";
-import { is_minion } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_ANGEL } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
+import { is_minion, is_rider } from "./mondata.h.macros.js";
+import { DEADMONSTER, helpless } from "./monst.h.macros.js";
+import { PM_ALIGNED_CLERIC, PM_ANGEL, PM_GHOST, PM_HIGH_CLERIC } from "./monsters.h.js";
 import { SPBOOK_no_NOVEL } from "./objclass.h.js";
 import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { CLAIRVOYANT } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
+import { CLAIRVOYANT, FROMOUTSIDE, INTRINSIC, PROTECTION, W_ARMC } from "./prop.h.js";
+import {
+    IS_ALTAR, IS_DOOR, IS_ROOM, MON_AT, fmon, levl, m_at, remove_monster,
+} from "./rm.h.macros.js";
 import { ALL_TRAPS } from "./trap.h.js";
 import { m_canseeu } from "./vision.h.macros.js";
 import { ACH_TMPL } from "./you.h.js";
-import { m_next2u } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Displaced } from "./youprop.h.macros.js";
-import { HProtection } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { m_next2u, mhis, u_at } from "./you.h.macros.js";
+import {
+    Conflict, Deaf, Displaced, HProtection, Hallucination, Invis,
+} from "./youprop.h.macros.js";
+import { char, ord, schar, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { assert, free, memset, sprintf, strcat, strchr, strcmp, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, elt, ptr_diff, ptr_to, ref_of, view_of } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
-import { adjalign } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gt } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svd } from "./decl.js";
-import { svm } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { Monnam } from "./do_name.js";
-import { bogon_is_pname } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { mon_pmname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { assign_level } from "./dungeon.js";
-import { mapseen_temple } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { check_special_room } from "./hack.js";
-import { in_rooms } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { nomul } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
+import { adjalign, exercise } from "./attrib.js";
+import {
+    flags, gb, gc, gi, gm, gn, gt, program_state, svd, svm, svr, u, xdir, ydir,
+} from "./decl.js";
+import { canseemon, newsym } from "./display.js";
+import { Monnam, bogon_is_pname, mon_nam, mon_pmname, rndmonnam } from "./do_name.js";
+import { assign_level, mapseen_temple, on_level } from "./dungeon.js";
+import { check_special_room, in_rooms, money_cnt, nomul } from "./hack.js";
+import { dist2, s_suffix, sgn, strncmpi } from "./hacklib.js";
 import { record_achievement } from "./insight.js";
 import { currency } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { mongets } from "./makemon.js";
-import { newmextra } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { makemon, mongets, newmextra, set_malign } from "./makemon.js";
 import { mattacku } from "./mhitu.js";
-import { bribe } from "./minion.js";
-import { newemin } from "./minion.js";
-import { curse } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
-import { mfndpos } from "./mon.js";
-import { mon_allowflags } from "./mon.js";
-import { mongone } from "./mon.js";
-import { monnear } from "./mon.js";
-import { setmangry } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { mon_learns_traps } from "./mondata.js";
-import { resist_conflict } from "./mondata.js";
-import { m_break_boulder } from "./monmove.js";
-import { m_move_aggress } from "./monmove.js";
+import { bribe, newemin } from "./minion.js";
+import { curse, mkobj, uncurse } from "./mkobj.js";
+import { mfndpos, mon_allowflags, mongone, monnear, setmangry, wakeup } from "./mon.js";
+import { mon_learns_traps, resist_conflict } from "./mondata.js";
+import { m_break_boulder, m_move_aggress } from "./monmove.js";
 import { mons } from "./monst.js";
 import { linedup } from "./mthrowu.js";
 import { just_an } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { You, You_feel, Your, impossible, livelog_printf, pline, verbalize } from "./pline.js";
 import { body_part } from "./polyself.js";
 import { incr_itimeout } from "./potion.js";
-import { a_gname_at } from "./pray.js";
-import { halu_gname } from "./pray.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { inhishop } from "./shk.js";
-import { money2u } from "./shk.js";
+import { a_gname_at, halu_gname } from "./pray.js";
+import { d, rn2 } from "./rnd.js";
+import { inhishop, money2u } from "./shk.js";
 import { pm_good_location } from "./sp_lev.js";
 import { mpickobj } from "./steal.js";
 import { place_monster } from "./steed.js";

@@ -1,16 +1,16 @@
-export default "\n" + // -- NetHack nhlib.lua	$NHDT-Date: 1652196140 2022/05/10 15:22:20 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
-"\n" + // --	Copyright (c) 2021 by Pasi Kallinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // -- compatibility shim
-`math.random = function(...)
+export default String.raw`-- NetHack nhlib.lua	$NHDT-Date: 1652196140 2022/05/10 15:22:20 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
+--	Copyright (c) 2021 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
+-- compatibility shim
+math.random = function(...)
    local arg = {...};
    if (#arg == 1) then
       return 1 + nh.rn2(arg[1]);
    elseif (#arg == 2) then
       return nh.random(arg[1], arg[2] + 1 - arg[1]);
    else
-` + "\n" + // -- we don't support reals
-`      error("NetHack math.random requires at least one parameter");
+      -- we don't support reals
+      error("NetHack math.random requires at least one parameter");
    end
 end
 
@@ -24,12 +24,12 @@ end
 align = { "law", "neutral", "chaos" };
 shuffle(align);
 
-` + "\n" + // -- d(2,6) = 2d6
-"\n" + // -- d(20) = 1d20 (single argument = implicit 1 die)
-`function d(dice, faces)
+-- d(2,6) = 2d6
+-- d(20) = 1d20 (single argument = implicit 1 die)
+function d(dice, faces)
    if (faces == nil) then
-` + "\n" + // -- 1-arg form: argument "dice" is actually the number of faces
-`      return math.random(1, dice)
+      -- 1-arg form: argument "dice" is actually the number of faces
+      return math.random(1, dice)
    else
       local sum = 0
       for i=1,dice do
@@ -39,8 +39,8 @@ shuffle(align);
    end
 end
 
-` + "\n" + // -- percent(20) returns true 20% of the time
-`function percent(threshold)
+-- percent(20) returns true 20% of the time
+function percent(threshold)
    return math.random(0, 99) < threshold
 end
 
@@ -51,17 +51,17 @@ function monkfoodshop()
    return "food shop";
 end
 
-` + "\n" + // -- tweaks to gehennom levels; might add random lava pools or
-"\n" + // -- a lava river.
-"\n" + // -- protected_area is a selection where no changes will be done.
-`function hell_tweaks(protected_area)
+-- tweaks to gehennom levels; might add random lava pools or
+-- a lava river.
+-- protected_area is a selection where no changes will be done.
+function hell_tweaks(protected_area)
    local liquid = "L";
    local ground = ".";
    local n_prot = protected_area:numpoints();
    local prot = protected_area:negate();
 
-` + "\n" + // -- random pools
-`   if (percent(20 + u.depth)) then
+   -- random pools
+   if (percent(20 + u.depth)) then
       local pools = selection.new();
       local maxpools = 5 + math.random(u.depth);
       for i = 1, maxpools do
@@ -81,8 +81,8 @@ end
       des.terrain(pools, liquid)
    end
 
-` + "\n" + // -- river
-`   if (percent(50)) then
+   -- river
+   if (percent(50)) then
       local allrivers = selection.new();
       local reqpts = ((nhc.COLNO * nhc.ROWNO) - n_prot) / 12; -- # of lava pools required
       local rpts = 0;
@@ -117,10 +117,10 @@ end
       des.terrain(allrivers, liquid);
    end
 
-` + "\n" + // -- replacing some walls with boulders
-`   if (percent(20)) then
+   -- replacing some walls with boulders
+   if (percent(20)) then
       local amount = 3 * math.random(1, 8);
-      local bwalls = selection.match([[.w.]]):percentage(amount) | selection.match(".\\nw\\n."):percentage(amount);
+      local bwalls = selection.match([[.w.]]):percentage(amount) | selection.match(".\nw\n."):percentage(amount);
       bwalls = bwalls & prot;
       bwalls:iterate(function (x,y)
             des.terrain(x, y, ".");
@@ -128,65 +128,65 @@ end
       end);
    end
 
-` + "\n" + // -- replacing some walls with iron bars
-`   if (percent(20)) then
+   -- replacing some walls with iron bars
+   if (percent(20)) then
       local amount = 3 * math.random(1, 8);
-      local fwalls = selection.match([[.w.]]):percentage(amount) | selection.match(".\\nw\\n."):percentage(amount);
+      local fwalls = selection.match([[.w.]]):percentage(amount) | selection.match(".\nw\n."):percentage(amount);
       fwalls = fwalls:grow() & selection.match("w") & prot;
       des.terrain(fwalls, "F");
    end
 
 end
 
-` + "\n" + // -- pline with variable number of arguments
-`function pline(fmt, ...)
+-- pline with variable number of arguments
+function pline(fmt, ...)
    nh.pline(string.format(fmt, table.unpack({...})));
 end
 
-` + "\n" + // -- wrapper to make calling from nethack core easier
-`function nh_set_variables_string(key, tbl)
-   return "nh_lua_variables[\\"" .. key .. "\\"]=" .. table_stringify(tbl) .. ";";
+-- wrapper to make calling from nethack core easier
+function nh_set_variables_string(key, tbl)
+   return "nh_lua_variables[\"" .. key .. "\"]=" .. table_stringify(tbl) .. ";";
 end
 
-` + "\n" + // -- wrapper to make calling from nethack core easier
-`function nh_get_variables_string(tbl)
+-- wrapper to make calling from nethack core easier
+function nh_get_variables_string(tbl)
    return "return " .. table_stringify(tbl) .. ";";
 end
 
-` + "\n" + // -- return the (simple) table tbl converted into a string
-`function table_stringify(tbl)
+-- return the (simple) table tbl converted into a string
+function table_stringify(tbl)
    local str = "";
    for key, value in pairs(tbl) do
       local typ = type(value);
       if (typ == "table") then
-         str = str .. "[\\"" .. key .. "\\"]=" .. table_stringify(value);
+         str = str .. "[\"" .. key .. "\"]=" .. table_stringify(value);
       elseif (typ == "string") then
-         str = str .. "[\\"" .. key .. "\\"]=[[" .. value .. "]]";
+         str = str .. "[\"" .. key .. "\"]=[[" .. value .. "]]";
       elseif (typ == "boolean") then
-         str = str .. "[\\"" .. key .. "\\"]=" .. tostring(value);
+         str = str .. "[\"" .. key .. "\"]=" .. tostring(value);
       elseif (typ == "number") then
-         str = str .. "[\\"" .. key .. "\\"]=" .. value;
+         str = str .. "[\"" .. key .. "\"]=" .. value;
       elseif (typ == "nil") then
-         str = str .. "[\\"" .. key .. "\\"]=nil";
+         str = str .. "[\"" .. key .. "\"]=nil";
       end
       str = str .. ",";
    end
-` + "\n" + // -- pline("table_stringify:(%s)", str);
-`   return "{" .. str .. "}";
+   -- pline("table_stringify:(%s)", str);
+   return "{" .. str .. "}";
 end
 
-` + "\n" + // --
-"\n" + // -- TUTORIAL
-"\n" + // --
-`
-` + "\n" + // -- extended commands NOT available in tutorial
-`local tutorial_blacklist_commands = {
+--
+-- TUTORIAL
+--
+
+-- extended commands NOT available in tutorial
+local tutorial_blacklist_commands = {
    ["save"] = true,
 };
 
 function tutorial_cmd_before(cmd)
-` + "\n" + // -- nh.pline("TUT:cmd_before:" .. cmd);
-`
+   -- nh.pline("TUT:cmd_before:" .. cmd);
+
    if (tutorial_blacklist_commands[cmd]) then
       return false;
    end
@@ -194,25 +194,25 @@ function tutorial_cmd_before(cmd)
 end
 
 function tutorial_enter()
-` + "\n" + // -- nh.pline("TUT:enter");
-`
-` + "\n" + // -- add the tutorial branch callbacks
-`   nh.callback("cmd_before", "tutorial_cmd_before");
+   -- nh.pline("TUT:enter");
+
+   -- add the tutorial branch callbacks
+   nh.callback("cmd_before", "tutorial_cmd_before");
    nh.callback("end_turn", "tutorial_turn");
 
-` + "\n" + // -- save state for later restore
-`   nh.gamestate();
+   -- save state for later restore
+   nh.gamestate();
 end
 
 function tutorial_leave()
-` + "\n" + // -- nh.pline("TUT:leave");
-`
-` + "\n" + // -- remove the tutorial branch callbacks
-`   nh.callback("cmd_before", "tutorial_cmd_before", true);
+   -- nh.pline("TUT:leave");
+
+   -- remove the tutorial branch callbacks
+   nh.callback("cmd_before", "tutorial_cmd_before", true);
    nh.callback("end_turn", "tutorial_turn", true);
 
-` + "\n" + // -- restore state for regular play
-`   nh.gamestate(true);
+   -- restore state for regular play
+   nh.gamestate(true);
 end
 
 local tutorial_events = {
@@ -238,6 +238,6 @@ function tutorial_turn()
          end
       end
    end
-` + "\n" + // -- nh.pline("TUT:turn");
-`end
+   -- nh.pline("TUT:turn");
+end
 `;

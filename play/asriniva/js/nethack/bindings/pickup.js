@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/pickup.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for PICKUP JS bodies.
@@ -25,6 +27,8 @@ export function createPickupEnvironment(services){
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of pickup.pickupStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callPickup(services,name,...args){
@@ -36,11 +40,11 @@ export function callPickup(services,name,...args){
   state.env=createPickupEnvironment(forwarding);
   states.set(services.moduleKey,state);
  }
- const fn=pickup[name];if(typeof fn!=='function')throw Error('Unknown original PICKUP function '+name);
+ const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original PICKUP function '+name);
  const previous=state.services;
  state.services=services;
  try{
   const stackFrame=services.stackSave();
-  try{return withCEnvironment(state.env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+  try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
  }finally{state.services=previous;}
 }

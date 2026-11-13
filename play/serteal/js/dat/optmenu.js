@@ -1,4 +1,4 @@
-export default ` How dynamically setting options works:
+export default String.raw` How dynamically setting options works:
 
  The simple options menu shows a relatively small subset of options
  and operates on each choice you make immediately, then is put back

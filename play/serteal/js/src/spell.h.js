@@ -2,9 +2,6 @@
 /* Copyright 1986, M. Stephenson                                  */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const NO_SPELL = 0;
 export const UNKNOWN_SPELL = (-1);
 
@@ -17,23 +14,15 @@ export const struct_spell = struct("struct_spell", {
     sp_know: int, /* knowledge of spell */
 });
 
-
     export const spe_Forgotten = -1; /* known but no longer castable */
     export const spe_Unknown = 0; /* not yet known */
     export const spe_Fresh = 1; /* castable if various casting criteria are met */
     export const spe_GoingStale = 2; /* still castable but nearly forgotten */
 
-
 /* levels of memory destruction with a scroll of amnesia */
 
 export const ALL_SPELLS = 0x2;
 
-
-
-
-
-/* how much Pw a spell of level lvl costs to cast? */
 import { xint16 } from "./global.h.js";
-import { int } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
+import { int, short } from "../rt/ctypes.js";
 import { struct } from "../rt/struct.js";

@@ -2,41 +2,10 @@
 /* Copyright (c) Benson I. Margulies, Mike Stephenson, Steve Linhart, 1989. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
  /* NORETURN */
 
-
-
-
-
-
-
-
-
-
-
-
 /* simplify a few tests */
-export function Cursed_obj(obj, typ) { return ((((obj) && (obj).otyp == (typ) && (obj).cursed) ? 1 : 0)); }
+export function Cursed_obj(obj, typ) { return (obj && obj.otyp == typ && obj.cursed ? 1 : 0); }
 
 /*
  * Logic behind deities and altars and such:
@@ -100,11 +69,10 @@ export const TROUBLE_STUNNED = (-9);
 export const TROUBLE_CONFUSED = (-10);
 export const TROUBLE_HALLUCINATION = (-11);
 
-
-export function ugod_is_angry() { return (+(u.ualign.record < 0)); }
+export function ugod_is_angry() { return +(u.ualign.record < 0); }
 export function on_altar() { return IS_ALTAR(levl()[u.ux][u.uy].typ); }
-export function on_shrine() { return (+((levl()[u.ux][u.uy].flags & AM_SHRINE) != 0)); }
-export function a_align(x, y) { return (Amask2align(levl()[x][y].flags & AM_MASK)); }
+export function on_shrine() { return +((levl()[u.ux][u.uy].flags & AM_SHRINE) != 0); }
+export function a_align(x, y) { return Amask2align(levl()[x][y].flags & AM_MASK); }
 
 /* used by turn undead iteration function; always reinitialized
    before iterating that, so don't need to be globals */
@@ -112,10 +80,8 @@ const turn_undead_range = static_var("turn_undead_range", int);
 const turn_undead_msg_cnt = static_var("turn_undead_msg_cnt", int);
 
 /* critically low hit points if hp <= 5 or hp <= maxhp/N for some N */
-export function /* boolean */
-critically_low_hp(
-    only_if_injured) /* determines whether maxhp <= 5 matters */
-{
+export function critically_low_hp(
+    only_if_injured) { /* boolean */ /* determines whether maxhp <= 5 matters */
     let divisor, hplim,
         curhp = Upolyd() ? u.mh : u.uhp,
         maxhp = Upolyd() ? u.mhmax : u.uhpmax;
@@ -157,9 +123,7 @@ critically_low_hp(
 
 /* return True if surrounded by impassible rock, regardless of the state
    of your own location (for example, inside a doorless closet) */
-export function /* boolean */
-stuck_in_wall()
-{
+export function stuck_in_wall() { /* boolean */
     let i, j, x, y, count = 0;
 
     if (Passes_walls())
@@ -194,9 +158,7 @@ stuck_in_wall()
  * 3.4.2: make an exception if polymorphed into a form which lacks
  * hands; that's a case where the ramifications override this doubt.
  */
-function /* int */
-in_trouble()
-{
+function in_trouble() { /* int */
     let otmp;
     let i;
 
@@ -284,9 +246,7 @@ in_trouble()
 }
 
 /* select an item for TROUBLE_CURSED_ITEMS */
-function /* struct obj * */
-worst_cursed_item()
-{
+function worst_cursed_item() { /* struct obj * */
     let otmp;
 
     /* if strained or worse, check for loadstone first */
@@ -345,9 +305,7 @@ worst_cursed_item()
     return otmp;
 }
 
-function /* void */
-fix_curse_trouble(otmp, what)
-{
+function fix_curse_trouble(otmp, what) { /* void */
     if (!otmp) {
         impossible(_("fix_curse_trouble: nothing to uncurse."));
         return;
@@ -369,9 +327,8 @@ fix_curse_trouble(otmp, what)
     update_inventory();
 }
 
-function /* void */
-fix_worst_trouble(trouble)
-{ const $frame = stack_frame(); try {
+function fix_worst_trouble(trouble) { /* void */
+    const $frame = stack_frame(); try {
     let i, maxhp;
     let otmp = null;
     let what = 0;
@@ -561,14 +518,14 @@ fix_worst_trouble(trouble)
         if (Blinded()) {
             if (eyecount(gy.youmonst.data) != 1)
                 eyes = makeplural(eyes);
-            void sprintf(msgbuf, _("Your %s %s better"), eyes, vtense(eyes, _("feel")));
+            sprintf(msgbuf, _("Your %s %s better"), eyes, vtense(eyes, _("feel")));
             u.ucreamed = 0;
             make_blinded(0, FALSE);
         }
         if (cure_deaf) {
             make_deaf(0, FALSE);
             if (!Deaf())
-                void sprintf(eos(msgbuf), _("%s can hear again"), !chars[msgbuf] ? _("You") : _(" and you"))
+                sprintf(eos(msgbuf), _("%s can hear again"), !chars[msgbuf] ? _("You") : _(" and you"))
 ;
         }
         if (chars[msgbuf])
@@ -586,7 +543,7 @@ fix_worst_trouble(trouble)
         break;
     case TROUBLE_HALLUCINATION:
         pline(_("Looks like you are back in Kansas."));
-        void make_hallucinated(0, FALSE, 0);
+        make_hallucinated(0, FALSE, 0);
         break;
     case TROUBLE_SADDLE:
         otmp = which_armor(u.usteed, W_SADDLE);
@@ -597,7 +554,8 @@ fix_worst_trouble(trouble)
         uncurse(otmp);
         break;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* "I am sometimes shocked by... the nuns who never take a bath without
  * wearing a bathrobe all the time.  When asked why, since no man can see them,
@@ -606,9 +564,7 @@ fix_worst_trouble(trouble)
  * bathroom walls, but who is foiled by bathrobes." --Bertrand Russell, 1943
  * Divine wrath, dungeon walls, and armor follow the same principle.
  */
-function /* void */
-god_zaps_you(resp_god)
-{
+function god_zaps_you(resp_god) { /* void */
     if (u.uswallow) {
         pline(
           _("Suddenly a bolt of lightning comes down at you from the heavens!"));
@@ -630,7 +586,7 @@ god_zaps_you(resp_god)
             if (Blind())
                 pline(_("For some reason you're unaffected."));
             else
-                void ureflects(_("%s reflects from your %s."), _("It"));
+                ureflects(_("%s reflects from your %s."), _("It"));
             monstseesu(M_SEEN_REFL);
         } else if (Shock_resistance()) {
             shieldeff(u.ux, u.uy);
@@ -660,15 +616,15 @@ god_zaps_you(resp_god)
          */
         if (uarms && !(EReflecting() & W_ARMS)
             && !(EDisint_resistance() & W_ARMS))
-            void disintegrate_arm(uarms);
+            disintegrate_arm(uarms);
         if (uarmc && !(EReflecting() & W_ARMC)
             && !(EDisint_resistance() & W_ARMC))
-            void disintegrate_arm(uarmc);
+            disintegrate_arm(uarmc);
         if (uarm && !(EReflecting() & W_ARM) && !(EDisint_resistance() & W_ARM)
             && !uarmc)
-            void disintegrate_arm(uarm);
+            disintegrate_arm(uarm);
         if (uarmu && !uarm && !uarmc)
-            void disintegrate_arm(uarmu);
+            disintegrate_arm(uarmu);
         if (!Disint_resistance()) {
             fry_by_god(resp_god, TRUE);
             monstunseesu(M_SEEN_DISINT);
@@ -690,19 +646,15 @@ god_zaps_you(resp_god)
     }
 }
 
-function /* void */
-fry_by_god(resp_god, via_disintegration)
-{
+function fry_by_god(resp_god, via_disintegration) { /* void */
     You(_("%s!"), !via_disintegration ? _("fry to a crisp")
                                    : _("disintegrate into a pile of dust"));
     svk.killer.format = KILLED_BY;
-    void sprintf(svk.killer.name, _("the wrath of %s"), align_gname(resp_god));
+    sprintf(svk.killer.name, _("the wrath of %s"), align_gname(resp_god));
     done(DIED);
 }
 
-function /* void */
-angrygods(resp_god)
-{
+function angrygods(resp_god) { /* void */
     let maxanger, new_ublesscnt;
 
     if (Inhell())
@@ -738,7 +690,7 @@ angrygods(resp_god)
               gy.youmonst.data.mlet == S_HUMAN ? _("mortal") : _("creature"));
               ;
         verbalize(_("Thou must relearn thy lessons!"));
-        void adjattrib(A_WIS, -1, FALSE);
+        adjattrib(A_WIS, -1, FALSE);
         losexp(0);
         break;
     case 6:
@@ -784,9 +736,7 @@ angrygods(resp_god)
 }
 
 /* helper to print "str appears at your feet", or appropriate */
-function /* void */
-at_your_feet(str)
-{
+function at_your_feet(str) { /* void */
     if (Blind())
         str = Something();
     if (u.uswallow) {
@@ -801,14 +751,12 @@ at_your_feet(str)
     }
 }
 
-function /* void */
-gcrownu()
-{ const $frame = stack_frame(); try {
+function gcrownu() { /* void */
+    const $frame = stack_frame(); try {
     let obj;
     let what;
     let already_exists, in_hand;
     let class_gift;
-
 
     u.uprops[SEE_INVIS].intrinsic = or64(u.uprops[SEE_INVIS].intrinsic, FROMOUTSIDE);
     u.uprops[FIRE_RES].intrinsic = or64(u.uprops[FIRE_RES].intrinsic, FROMOUTSIDE);
@@ -875,7 +823,7 @@ gcrownu()
         /* get book type before dropping (don't think that could destroy
            the book because we need to be on an altar in order to become
            crowned, but be paranoid about it) */
-        void strcpy(bbuf, actualoname(obj)); /* for livelog; "spellbook of <foo>"
+        strcpy(bbuf, actualoname(obj)); /* for livelog; "spellbook of <foo>"
                                          * even if hero doesn't know book */
         bless(obj);
         obj.bknown = 1; /* ok to skip set_bknown() */
@@ -901,7 +849,7 @@ gcrownu()
         } else if (obj && obj.otyp == LONG_SWORD && !obj.oartifact) {
             let lbuf = stack_array(char, BUFSZ);
 
-            void strcpy(lbuf, simpleonames(obj)); /* before transformation */
+            strcpy(lbuf, simpleonames(obj)); /* before transformation */
             if (!Blind())
                 Your(_("sword shines brightly for a moment."));
             obj = oname(obj, artiname(ART_EXCALIBUR),
@@ -944,7 +892,7 @@ gcrownu()
     case A_CHAOTIC: {
         let swordbuf = stack_array(char, BUFSZ);
 
-        void sprintf(swordbuf, _("%s sword"), hcolor(NH_BLACK()));
+        sprintf(swordbuf, _("%s sword"), hcolor(NH_BLACK()));
         if (class_gift != STRANGE_OBJECT) {
             ; /* already got bonus above */
         } else if (obj && in_hand) {
@@ -993,11 +941,11 @@ gcrownu()
        up-to-29 you can get from gaining experience levels */
     add_weapon_skill(1);
     return;
-} finally { stack_pop($frame); } } export function ok_wep(o) { return ((((o) && ((o).oclass == WEAPON_CLASS || is_weptool(o))) ? 1 : 0)); }
+    } finally { stack_pop($frame); }
+}
+export function ok_wep(o) { return (o && (o.oclass == WEAPON_CLASS || is_weptool(o)) ? 1 : 0); }
 
-function /* void */
-give_spell()
-{
+function give_spell() { /* void */
     let otmp;
     let spe_let;
     let spe_knowledge, trycnt = u.ulevel + 1;
@@ -1067,9 +1015,8 @@ give_spell()
     return;
 }
 
-function /* void */
-pleased(g_align)
-{ const $frame = stack_frame(); try {
+function pleased(g_align) { /* void */
+    const $frame = stack_frame(); try {
     /* don't use p_trouble, worst trouble may get fixed while praying */
     let trouble = in_trouble(); /* what's your worst difficulty? */
     let pat_on_head = 0, kick_on_butt;
@@ -1174,7 +1121,7 @@ pleased(g_align)
 
                 chars[repair_buf] = ord('\0');
                 if (uwep.oeroded || uwep.oeroded2)
-                    void sprintf(repair_buf, _(" and %s now as good as new"), otense(uwep, _("are")))
+                    sprintf(repair_buf, _(" and %s now as good as new"), otense(uwep, _("are")))
 ;
 
                 if (uwep.cursed) {
@@ -1310,7 +1257,6 @@ pleased(g_align)
         case 5: {
             let msg = init_string(static_array("pleased.msg", char, sizeof_string("\"and thus I grant thee the gift of %s!\"")), _("\"and thus I grant thee the gift of %s!\""), true);
 
-
             godvoice(u.ualign.type,
                      _("Thou hast pleased me with thy progress,"));
             if (!(HTelepat() & INTRINSIC)) {
@@ -1378,14 +1324,13 @@ pleased(g_align)
     }
 
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* either blesses or curses water on the altar,
  * returns true if it found any water here.
  */
-function /* boolean */
-water_prayer(bless_water)
-{
+function water_prayer(bless_water) { /* boolean */
     let otmp;
     let changed = 0;
     let other = FALSE, bc_known = +!(Blind() || Hallucination());
@@ -1411,9 +1356,7 @@ water_prayer(bless_water)
     return (+(changed > 0));
 }
 
-function /* void */
-godvoice(g_align, words)
-{
+function godvoice(g_align, words) { /* void */
     let quot = _("");
 
     if (words)
@@ -1425,16 +1368,12 @@ godvoice(g_align, words)
               ROLL_FROM(godvoices), quot, words, quot);
 }
 
-function /* void */
-gods_angry(g_align)
-{
+function gods_angry(g_align) { /* void */
     godvoice(g_align, _("Thou hast angered me."));
 }
 
 /* The g_align god is upset with you. */
-function /* void */
-gods_upset(g_align)
-{
+function gods_upset(g_align) { /* void */
     if (g_align == u.ualign.type)
         u.ugangr++;
     else if (u.ugangr)
@@ -1442,9 +1381,7 @@ gods_upset(g_align)
     angrygods(g_align);
 }
 
-function /* void */
-consume_offering(otmp)
-{
+function consume_offering(otmp) { /* void */
     if (Hallucination())
         switch (rn2(3)) {
         case 0:
@@ -1476,9 +1413,7 @@ consume_offering(otmp)
 
 /* feedback when attempting to offer the Amulet on a "low altar" (not one of
    the high altars in the temples on the Astral Plane or Moloch's Sanctum) */
-function /* void */
-offer_too_soon(altaralign)
-{
+function offer_too_soon(altaralign) { /* void */
     if (altaralign == A_NONE && Inhell()) {
         /* offering on an unaligned altar in Gehennom;
            hero has left Moloch's Sanctum (caller handles that)
@@ -1497,9 +1432,8 @@ offer_too_soon(altaralign)
                         : _("ashamed"));
 }
 
-export function /* void */
-desecrate_altar(highaltar, altaralign)
-{ const $frame = stack_frame(); try {
+export function desecrate_altar(highaltar, altaralign) { /* void */
+    const $frame = stack_frame(); try {
     let gvbuf = stack_array(char, BUFSZ);
 
     /*
@@ -1515,21 +1449,19 @@ desecrate_altar(highaltar, altaralign)
     You_feel(_("the air around you grow charged..."));
     pline(_("Suddenly, you realize that %s has noticed you..."),
           align_gname(altaralign));
-    void sprintf(gvbuf, _("So, mortal!  You dare desecrate my %s!"), highaltar ? _("High Temple") : _("altar"))
+    sprintf(gvbuf, _("So, mortal!  You dare desecrate my %s!"), highaltar ? _("High Temple") : _("altar"))
 ;
     godvoice(altaralign, gvbuf);
     /* Throw everything we have at the player */
     god_zaps_you(altaralign);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* offering the Amulet on a high altar (checked by caller) ends the game;
    we don't declare this 'NORETURN' because done() can return (if called
    with some reasons other than ASCENDED and ESCAPED) */
-function /* void */
-offer_real_amulet(otmp, altaralign)
-{
+function offer_real_amulet(otmp, altaralign) { /* void */
     let cloud_of_smoke = init_string(static_array("offer_real_amulet.cloud_of_smoke", char, sizeof_string("A cloud of %s smoke surrounds you...")), _("A cloud of %s smoke surrounds you..."), true);
-
 
     /* The final Test.  Did you win? */
     if (uamul == otmp)
@@ -1549,7 +1481,7 @@ offer_real_amulet(otmp, altaralign)
         /*[apparently shrug/snarl can be sensed without being seen]*/
         pline(_("%s shrugs and retains dominion over %s,"), Moloch[0], u_gname());
         pline(_("then mercilessly snuffs out your life."));
-        void sprintf(svk.killer.name, _("%s indifference"), s_suffix(Moloch[0]));
+        sprintf(svk.killer.name, _("%s indifference"), s_suffix(Moloch[0]));
         svk.killer.format = KILLED_BY;
         done(DIED);
         /* life-saved (or declined to die in wizard/explore mode) */
@@ -1588,9 +1520,7 @@ offer_real_amulet(otmp, altaralign)
     /*NOTREACHED*/
 }
 
-function /* void */
-offer_negative_valued(highaltar, altaralign)
-{
+function offer_negative_valued(highaltar, altaralign) { /* void */
     if (altaralign != u.ualign.type && highaltar) {
         desecrate_altar(highaltar, altaralign);
     } else {
@@ -1598,12 +1528,10 @@ offer_negative_valued(highaltar, altaralign)
     }
 }
 
-function /* void */
-offer_fake_amulet(
+function offer_fake_amulet(
     otmp,
     highaltar,
-    altaralign)
-{
+    altaralign) { /* void */
     if (!highaltar && !otmp.known) {
         offer_too_soon(altaralign);
         return;
@@ -1627,11 +1555,9 @@ offer_fake_amulet(
 }
 
 /* possibly convert an altar's alignment or the hero's alignment */
-function /* void */
-offer_different_alignment_altar(
+function offer_different_alignment_altar(
     otmp,
-    altaralign)
-{
+    altaralign) { /* void */
     /* Is this a conversion ? */
     /* An unaligned altar in Gehennom will always elicit rejection. */
     if (ugod_is_angry() || (altaralign == A_NONE && Inhell())) {
@@ -1651,7 +1577,7 @@ offer_different_alignment_altar(
             pline(_("%s rejects your sacrifice!"), a_gname());
             godvoice(altaralign, _("Suffer, infidel!"));
             change_luck(-5);
-            void adjattrib(A_WIS, -2, TRUE);
+            adjattrib(A_WIS, -2, TRUE);
             if (!Inhell())
                 angrygods(u.ualign.type);
         }
@@ -1694,12 +1620,11 @@ offer_different_alignment_altar(
     }
 }
 
-function /* void */
-sacrifice_your_race(
+function sacrifice_your_race(
     otmp,
     highaltar,
-    altaralign)
-{ const $frame = stack_frame(); try {
+    altaralign) { /* void */
+    const $frame = stack_frame(); try {
     let pm;
 
     if (is_demon(gy.youmonst.data)) {
@@ -1746,9 +1671,9 @@ sacrifice_your_race(
                     != null) {
             let dbuf = stack_array(char, BUFSZ);
 
-            void strcpy(dbuf, a_monnam(dmon));
-            if (!strcmpi(dbuf, _("it")))
-                void strcpy(dbuf, _("something dreadful"));
+            strcpy(dbuf, a_monnam(dmon));
+            if (!strncmpi((dbuf), _(("it")), -1))
+                strcpy(dbuf, _("something dreadful"));
             else
                 dmon.mstrategy = and64u(dmon.mstrategy, not64u(STRAT_APPEARMSG));
             You(_("have summoned %s!"), dbuf);
@@ -1765,7 +1690,7 @@ sacrifice_your_race(
     if (u.ualign.type != A_CHAOTIC) {
         adjalign(-5);
         u.ugangr += 3;
-        void adjattrib(A_WIS, -1, TRUE);
+        adjattrib(A_WIS, -1, TRUE);
         if (!Inhell())
             angrygods(u.ualign.type);
         change_luck(-5);
@@ -1775,11 +1700,11 @@ sacrifice_your_race(
         useup(otmp);
     else
         useupf(otmp, 1);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-bestow_artifact(max_giftvalue)
-{ const $frame = stack_frame(); try {
+function bestow_artifact(max_giftvalue) { /* int */
+    const $frame = stack_frame(); try {
     let nartifacts = nartifact_exist();
     let do_bestow = +(u.ulevel > 2 && u.uluck >= 0);
     if (do_bestow) {
@@ -1806,11 +1731,11 @@ bestow_artifact(max_giftvalue)
             if (otmp.cursed)
                 uncurse(otmp);
             otmp.oerodeproof = TRUE;
-            void strcpy(buf, (Hallucination() ? _("a doodad")
+            strcpy(buf, (Hallucination() ? _("a doodad")
                             : Blind() ? _("an object")
                             : ansimpleoname(otmp)));
             if (!Blind())
-                void sprintf(eos(buf), _(" named %s"), bare_artifactname(otmp))
+                sprintf(eos(buf), _(" named %s"), bare_artifactname(otmp))
 ;
             at_your_feet(upstart(buf));
             dropy(otmp);
@@ -1833,11 +1758,10 @@ bestow_artifact(max_giftvalue)
         }
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-sacrifice_value(otmp)
-{
+function sacrifice_value(otmp) { /* int */
     let value = 0;
 
     if (otmp.corpsenm == PM_ACID_BLOB
@@ -1850,9 +1774,7 @@ sacrifice_value(otmp)
 }
 
 /* the #offer command - sacrifice something to the gods */
-export function /* int */
-dosacrifice()
-{
+export function dosacrifice() { /* int */
     let otmp;
     let highaltar;
     let altaralign = a_align(u.ux, u.uy);
@@ -1895,9 +1817,7 @@ dosacrifice()
     return ECMD_TIME;
 }
 
-function /* int */
-eval_offering(otmp, altaralign)
-{
+function eval_offering(otmp, altaralign) { /* int */
     let ptr;
     let value;
 
@@ -1926,7 +1846,7 @@ eval_offering(otmp, altaralign)
             pline(_("Such an action is an insult to %s!"),
                   (unicalign == A_CHAOTIC) ? _("chaos")
                      : unicalign ? _("law") : _("balance"));
-            void adjattrib(A_WIS, -1, TRUE);
+            adjattrib(A_WIS, -1, TRUE);
             return -1;
         } else if (u.ualign.type == altaralign) {
             /* When different from altar, and altar is same as yours,
@@ -1955,9 +1875,7 @@ eval_offering(otmp, altaralign)
     return value;
 }
 
-function /* void */
-offer_corpse(otmp, highaltar, altaralign)
-{
+function offer_corpse(otmp, highaltar, altaralign) { /* void */
     let value;
     let ptr;
     let mtmp;
@@ -1971,7 +1889,6 @@ offer_corpse(otmp, highaltar, altaralign)
      * toughness.  Human and pet sacrifice, as well as sacrificing unicorns
      * of your alignment, is strongly discouraged.
      */
-
 
     /* KMH, conduct */
     if (!u.uconduct.gnostic++)
@@ -2030,8 +1947,8 @@ offer_corpse(otmp, highaltar, altaralign)
     /* OK, you get brownie points. */
     if (u.ugangr) {
         let saved_anger = u.ugangr;
-        u.ugangr -= (Math.trunc((value * (u.ualign.type == A_CHAOTIC ? 2 : 3))
-                     / MAXVALUE));
+        u.ugangr -= Math.trunc((value * (u.ualign.type == A_CHAOTIC ? 2 : 3))
+                     / MAXVALUE);
         if (u.ugangr < 0)
             u.ugangr = 0;
         if (u.ugangr != saved_anger) {
@@ -2064,8 +1981,8 @@ offer_corpse(otmp, highaltar, altaralign)
         You_feel(_("partially absolved."));
     } else if (u.ublesscnt > 0) {
         let saved_cnt = u.ublesscnt;
-        u.ublesscnt -= (Math.trunc((value * (u.ualign.type == A_CHAOTIC ? 500 : 300))
-                        / MAXVALUE));
+        u.ublesscnt -= Math.trunc((value * (u.ualign.type == A_CHAOTIC ? 500 : 300))
+                        / MAXVALUE);
         if (u.ublesscnt < 0)
             u.ublesscnt = 0;
         if (u.ublesscnt != saved_cnt) {
@@ -2117,12 +2034,11 @@ offer_corpse(otmp, highaltar, altaralign)
                     makeplural(body_part(FOOT)));
         }
     }
-} export const MAXVALUE = 24;
+}
+export const MAXVALUE = 24;
 
 /* determine prayer results in advance; also used for enlightenment */
-export function /* boolean */
-can_pray(praying) /* false means no messages should be given */
-{
+export function can_pray(praying) { /* boolean */ /* false means no messages should be given */
     let alignment;
 
     gp.p_aligntyp = on_altar() ? a_align(u.ux, u.uy) : u.ualign.type;
@@ -2173,9 +2089,7 @@ can_pray(praying) /* false means no messages should be given */
 }
 
 /* return TRUE if praying revived a pet corpse */
-function /* boolean */
-pray_revive()
-{
+function pray_revive() { /* boolean */
     let otmp;
 
     for (otmp = svl.level.objects[u.ux][u.uy]; otmp; otmp = otmp.v.v_nexthere)
@@ -2188,16 +2102,14 @@ pray_revive()
         return FALSE;
 
     if (otmp.otyp == CORPSE)
-        return (+(revive(otmp, TRUE) != null));
+        return +(revive(otmp, TRUE) != null);
     else {
-        return (+(animate_statue(otmp, u.ux, u.uy, ANIMATE_SPELL, null) != null));
+        return +(animate_statue(otmp, u.ux, u.uy, ANIMATE_SPELL, null) != null);
     }
 }
 
 /* #pray command */
-export function /* int */
-dopray()
-{
+export function dopray() { /* int */
     let ok;
 
     /*
@@ -2208,11 +2120,6 @@ dopray()
     if (ParanoidPray()) {
         ok = paranoid_query(ParanoidConfirm(),
                             _("Are you sure you want to pray?"));
-
-
-
-
-
 
         if (!ok) /* declined the "are you sure?" confirmation */
             return ECMD_OK;
@@ -2241,10 +2148,10 @@ dopray()
             let save_doagain = gi.in_doagain;
 
             gi.in_doagain = FALSE;
-            ok = (+(YN(forcesuccess) == ord('y')));
+            ok = +(YN(forcesuccess) == ord('y'));
             gi.in_doagain = save_doagain;
         } else {
-            ok = (+(y_n(forcesuccess) == ord('y')));
+            ok = +(y_n(forcesuccess) == ord('y'));
         }
         if (ok) {
             u.ublesscnt = 0;
@@ -2272,9 +2179,7 @@ dopray()
     return ECMD_TIME;
 }
 
-function /* int */
-prayer_done() /* M. Stephenson (1.0.3b) */
-{
+function prayer_done() { /* int */ /* M. Stephenson (1.0.3b) */
     let alignment = gp.p_aligntyp;
 
     u.uinvulnerable = FALSE;
@@ -2315,13 +2220,13 @@ prayer_done() /* M. Stephenson (1.0.3b) */
 
     if (gp.p_type == 0) {
         if (on_altar() && u.ualign.type != alignment)
-            void water_prayer(FALSE);
+            water_prayer(FALSE);
         u.ublesscnt += rnz(250);
         change_luck(-3);
         gods_upset(u.ualign.type);
     } else if (gp.p_type == 1) {
         if (on_altar() && u.ualign.type != alignment)
-            void water_prayer(FALSE);
+            water_prayer(FALSE);
         angrygods(u.ualign.type); /* naughty */
     } else if (gp.p_type == 2) {
         if (water_prayer(FALSE)) {
@@ -2334,8 +2239,8 @@ prayer_done() /* M. Stephenson (1.0.3b) */
     } else {
         /* coaligned */
         if (on_altar()) {
-            void pray_revive();
-            void water_prayer(TRUE);
+            pray_revive();
+            water_prayer(TRUE);
         }
         pleased(alignment); /* nice */
     }
@@ -2343,9 +2248,7 @@ prayer_done() /* M. Stephenson (1.0.3b) */
 }
 
 /* iterable for undead turning by priest/knight */
-function /* void */
-maybe_turn_mon_iter(mtmp)
-{
+function maybe_turn_mon_iter(mtmp) { /* void */
     /* 3.6.3: used to use cansee() here but the purpose is to prevent
        #turn operating through walls, not to require that the hero be
        able to see the target location */
@@ -2355,7 +2258,7 @@ maybe_turn_mon_iter(mtmp)
 
     if (!mtmp.mpeaceful
         && (is_undead(mtmp.data) || is_vampshifter(mtmp)
-            || (is_demon(mtmp.data) && (u.ulevel > (Math.trunc(MAXULEV / 2)))))) {
+            || (is_demon(mtmp.data) && (u.ulevel > Math.trunc(MAXULEV / 2))))) {
         mtmp.msleeping = 0;
         if (Confusion()) {
             if (!turn_undead_msg_cnt[0]++)
@@ -2410,9 +2313,7 @@ maybe_turn_mon_iter(mtmp)
 }
 
 /* #turn command */
-export function /* int */
-doturn()
-{
+export function doturn() { /* int */
     /* Knights & Priest(esse)s only please */
     let Gname;
 
@@ -2459,7 +2360,7 @@ doturn()
     exercise(A_WIS, TRUE);
 
     /* note: does not perform unturn_dead() on victims' inventories */
-    turn_undead_range[0] = BOLT_LIM + (Math.trunc(u.ulevel / 5)); /* 8 to 14 */
+    turn_undead_range[0] = BOLT_LIM + Math.trunc(u.ulevel / 5); /* 8 to 14 */
     turn_undead_range[0] *= turn_undead_range[0];
     turn_undead_msg_cnt[0] = 0;
 
@@ -2480,15 +2381,13 @@ doturn()
      *  both and u.uspec_used only matters when Free_action prevents
      *  the brief paralysis?]
      */
-    nomul(-(5 - (Math.trunc((u.ulevel - 1) / 6)))); /* -5 .. -1 */
+    nomul(-(5 - Math.trunc((u.ulevel - 1) / 6))); /* -5 .. -1 */
     gm.multi_reason = _("trying to turn the monsters");
     gn.nomovemsg = You_can_move_again();
     return ECMD_TIME;
 }
 
-export function /* int */
-altarmask_at(x, y)
-{
+export function altarmask_at(x, y) { /* int */
     let res = 0;
 
     if (isok(x, y)) {
@@ -2503,16 +2402,12 @@ altarmask_at(x, y)
     return res;
 }
 
-export function /* const char * */
-a_gname()
-{
+export function a_gname() { /* const char * */
     return a_gname_at(u.ux, u.uy);
 }
 
 /* returns the name of an altar's deity */
-export function /* const char * */
-a_gname_at(x, y)
-{
+export function a_gname_at(x, y) { /* const char * */
     if (!IS_ALTAR(levl()[x][y].typ))
         return 0;
 
@@ -2520,15 +2415,11 @@ a_gname_at(x, y)
 }
 
 /* returns the name of the hero's deity */
-export function /* const char * */
-u_gname()
-{
+export function u_gname() { /* const char * */
     return align_gname(u.ualign.type);
 }
 
-export function /* const char * */
-align_gname(alignment)
-{
+export function align_gname(alignment) { /* const char * */
     let gnam;
 
     switch (alignment) {
@@ -2573,9 +2464,7 @@ const hallu_gods = static_array("hallu_gods", ptr_to(char), null, [
 
 /* hallucination handling for priest/minion names: select a random god
    iff character is hallucinating */
-export function /* const char * */
-halu_gname(alignment)
-{
+export function halu_gname(alignment) { /* const char * */
     let gnam = 0;
     let which;
 
@@ -2624,9 +2513,7 @@ halu_gname(alignment)
 }
 
 /* deity's title */
-export function /* const char * */
-align_gtitle(alignment)
-{
+export function align_gtitle(alignment) { /* const char * */
     let gnam, result = _("god");
 
     switch (alignment) {
@@ -2648,14 +2535,12 @@ align_gtitle(alignment)
     return result;
 }
 
-export function /* void */
-altar_wrath(x, y)
-{
+export function altar_wrath(x, y) { /* void */
     let altaralign = a_align(x, y);
 
     if (u.ualign.type == altaralign && u.ualign.record > -rn2(4)) {
         godvoice(altaralign, _("How darest thou desecrate my altar!"));
-        void adjattrib(A_WIS, -1, FALSE);
+        adjattrib(A_WIS, -1, FALSE);
         u.ualign.record--;
     } else {
         pline(_("%s %s%s:"),
@@ -2673,9 +2558,7 @@ altar_wrath(x, y)
 }
 
 /* assumes isok() at one space away, but not necessarily at two */
-function /* boolean */
-blocked_boulder(dx, dy)
-{
+function blocked_boulder(dx, dy) { /* boolean */
     let otmp;
     let nx, ny;
     let count = 0;
@@ -2719,436 +2602,154 @@ blocked_boulder(dx, dy)
 }
 
 /*pray.c*/
-import { AM_CHAOTIC } from "./align.h.js";
-import { AM_MASK } from "./align.h.js";
-import { AM_SANCTUM } from "./align.h.js";
-import { AM_SHRINE } from "./align.h.js";
-import { A_CG_CONVERT } from "./align.h.js";
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
-import { ALIGNLIM } from "./align.h.macros.js";
-import { Align2amask } from "./align.h.macros.js";
-import { Amask2align } from "./align.h.macros.js";
-import { ART_EXCALIBUR } from "./artilist.h.js";
-import { ART_STORMBRINGER } from "./artilist.h.js";
-import { ART_VORPAL_BLADE } from "./artilist.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_MAX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { AMAX } from "./attrib.h.macros.js";
-import { NH_AMBER } from "./decl.h.macros.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { NH_GOLDEN } from "./decl.h.macros.js";
-import { NH_LIGHT_BLUE } from "./decl.h.macros.js";
-import { NH_ORANGE } from "./decl.h.macros.js";
-import { NH_WHITE } from "./decl.h.macros.js";
-import { Something } from "./decl.h.macros.js";
-import { You_can_move_again } from "./decl.h.macros.js";
-import { nothing_happens } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_GHOST } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_LICH } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_sanctum } from "./dungeon.h.macros.js";
+
+import {
+    AM_CHAOTIC, AM_MASK, AM_SANCTUM, AM_SHRINE, A_CG_CONVERT, A_CHAOTIC, A_LAWFUL, A_NEUTRAL,
+    A_NONE,
+} from "./align.h.js";
+import { ALIGNLIM, Align2amask, Amask2align } from "./align.h.macros.js";
+import { ART_EXCALIBUR, ART_STORMBRINGER, ART_VORPAL_BLADE } from "./artilist.h.js";
+import { A_CON, A_MAX, A_STR, A_WIS } from "./attrib.h.js";
+import { ABASE, AMAX } from "./attrib.h.macros.js";
+import {
+    NH_AMBER, NH_BLACK, NH_GOLDEN, NH_LIGHT_BLUE, NH_ORANGE, NH_WHITE, Something,
+    You_can_move_again, nothing_happens, something,
+} from "./decl.h.macros.js";
+import {
+    POTION_CLASS, SPBOOK_CLASS, S_GHOST, S_HUMAN, S_LICH, S_MUMMY, S_VAMPIRE, S_WRAITH, S_ZOMBIE,
+    S_altar, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { Inhell, Is_astralevel, Is_sanctum } from "./dungeon.h.macros.js";
 import { PLNMSG_OBJ_GLOWS } from "./flag.h.js";
-import { ParanoidConfirm } from "./flag.h.macros.js";
-import { ParanoidPray } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { LL_ARTIFACT } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { LL_DIVINEGIFT } from "./global.h.js";
-import { LL_SPOILER } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ASCENDED } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { CXN_ARTICLE } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { DISSOLVED } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { ESCAPED } from "./hack.h.js";
-import { EXT_ENCUMBER } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { HUNGRY } from "./hack.h.js";
-import { HVY_ENCUMBER } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NOTELL } from "./hack.h.js";
-import { ONAME_GIFT } from "./hack.h.js";
-import { ONAME_KNOW_ARTI } from "./hack.h.js";
-import { STOMACH } from "./hack.h.js";
-import { TELEDS_NO_FLAGS } from "./hack.h.js";
-import { TELL } from "./hack.h.js";
-import { WEAK } from "./hack.h.js";
-import { XKILL_NOCONDUCT } from "./hack.h.js";
-import { XKILL_NOCORPSE } from "./hack.h.js";
-import { XKILL_NOMSG } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { YN } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { MCORPSENM } from "./mextra.h.macros.js";
-import { has_mcorpsenm } from "./mextra.h.macros.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AT_ENGL } from "./monattk.h.js";
-import { eyecount } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_human } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { your_race } from "./mondata.h.macros.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_SEEN_DISINT } from "./monst.h.js";
-import { M_SEEN_ELEC } from "./monst.h.js";
-import { M_SEEN_REFL } from "./monst.h.js";
-import { STRAT_APPEARMSG } from "./monst.h.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { resists_disint } from "./monst.h.macros.js";
-import { resists_elec } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ACID_BLOB } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { OMONST } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { u_wield_art } from "./obj.h.macros.js";
+import { ParanoidConfirm, ParanoidPray, wizard } from "./flag.h.macros.js";
+import {
+    BUFSZ, FALSE, LARGEST_INT, LL_ARTIFACT, LL_CONDUCT, LL_DIVINEGIFT, LL_SPOILER, MAXULEV, TRUE,
+} from "./global.h.js";
+import {
+    ASCENDED, BOLT_LIM, CXN_ARTICLE, DIED, DISSOLVED, ECMD_OK, ECMD_TIME, ESCAPED, EXT_ENCUMBER,
+    EYE, FOOT, HUNGRY, HVY_ENCUMBER, KILLED_BY, KILLED_BY_AN, MM_NOMSG, NOTELL, ONAME_GIFT,
+    ONAME_KNOW_ARTI, STOMACH, TELEDS_NO_FLAGS, TELL, WEAK, XKILL_NOCONDUCT, XKILL_NOCORPSE,
+    XKILL_NOMSG,
+} from "./hack.h.js";
+import { ROLL_FROM, YN, makeknown, max, mdistu, min, pline1, rn1, y_n } from "./hack.h.macros.js";
+import { MCORPSENM, has_mcorpsenm } from "./mextra.h.macros.js";
+import { AD_BLND, AT_ENGL } from "./monattk.h.js";
+import {
+    eyecount, is_demon, is_human, is_undead, is_unicorn, nohands, throws_rocks, your_race,
+} from "./mondata.h.macros.js";
+import {
+    M_AP_FURNITURE, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_REFL, STRAT_APPEARMSG,
+} from "./monst.h.js";
+import {
+    M_AP_TYPE, is_vampshifter, ismnum, resists_disint, resists_elec,
+} from "./monst.h.macros.js";
+import {
+    NON_PM, PM_ACID_BLOB, PM_CLERIC, PM_KNIGHT, PM_MONK, PM_WIZARD, PM_WRAITH,
+} from "./monsters.h.js";
+import { OMONST, bimanual, carried, has_omonst, is_weptool, u_wield_art } from "./obj.h.macros.js";
 import { SPBOOK_no_NOVEL } from "./objclass.h.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FUMBLE_BOOTS } from "./objects.h.js";
-import { GAUNTLETS_OF_FUMBLING } from "./objects.h.js";
-import { HELM_OF_OPPOSITE_ALIGNMENT } from "./objects.h.js";
-import { LEVITATION_BOOTS } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { RIN_LEVITATION } from "./objects.h.js";
-import { RIN_SUSTAIN_ABILITY } from "./objects.h.js";
-import { RUNESWORD } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_FINGER_OF_DEATH } from "./objects.h.js";
-import { SPE_RESTORE_ABILITY } from "./objects.h.js";
-import { SPE_TURN_UNDEAD } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { AGGRAVATE_MONSTER } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { PASSES_WALLS } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { STRANGLED } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { Sokoban } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { P_BROAD_SWORD } from "./skills.h.js";
-import { P_LONG_SWORD } from "./skills.h.js";
+import {
+    AMULET_OF_STRANGULATION, AMULET_OF_YENDOR, BOULDER, CORPSE, FAKE_AMULET_OF_YENDOR, FUMBLE_BOOTS,
+    GAUNTLETS_OF_FUMBLING, HELM_OF_OPPOSITE_ALIGNMENT, LEVITATION_BOOTS, LOADSTONE, LONG_SWORD,
+    MAGIC_MARKER, POT_WATER, RIN_LEVITATION, RIN_SUSTAIN_ABILITY, RUNESWORD, SADDLE,
+    SPE_BLANK_PAPER, SPE_FINGER_OF_DEATH, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD, STATUE,
+    STRANGE_OBJECT,
+} from "./objects.h.js";
+import {
+    AGGRAVATE_MONSTER, COLD_RES, FAST, FIRE_RES, FROMOUTSIDE, INTRINSIC, PASSES_WALLS, POISON_RES,
+    PROTECTION, SEE_INVIS, SHOCK_RES, SLEEP_RES, STEALTH, STRANGLED, TELEPAT, TIMEOUT, W_ARM,
+    W_ARMC, W_ARMS, W_SADDLE,
+} from "./prop.h.js";
+import { ROOM, SCORR, SDOOR } from "./rm.h.js";
+import { IS_ALTAR, IS_OBSTRUCTED, Sokoban, levl, m_at } from "./rm.h.macros.js";
+import { P_BROAD_SWORD, P_LONG_SWORD } from "./skills.h.js";
 import { P_RESTRICTED } from "./skills.h.macros.js";
-import { spe_Forgotten } from "./spell.h.js";
-import { spe_Fresh } from "./spell.h.js";
-import { spe_Unknown } from "./spell.h.js";
+import { spe_Forgotten, spe_Fresh, spe_Unknown } from "./spell.h.js";
 import { ANIMATE_SPELL } from "./trap.h.js";
 import { couldsee } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
-import { ACH_TUNE } from "./you.h.js";
-import { A_CURRENT } from "./you.h.js";
-import { A_ORIGINAL } from "./you.h.js";
-import { LUCKMAX } from "./you.h.js";
-import { SICK_ALL } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { Luck } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { uhim } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blinded } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Blindfolded } from "./youprop.h.macros.js";
-import { Blindfolded_only } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Disint_resistance } from "./youprop.h.macros.js";
-import { EDisint_resistance } from "./youprop.h.macros.js";
-import { EReflecting } from "./youprop.h.macros.js";
-import { Fixed_abil } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { HBlinded } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HDeaf } from "./youprop.h.macros.js";
-import { HFast } from "./youprop.h.macros.js";
-import { HHallucination } from "./youprop.h.macros.js";
-import { HProtection } from "./youprop.h.macros.js";
-import { HStealth } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { HTelepat } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { Reflecting } from "./youprop.h.macros.js";
-import { Shock_resistance } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
+import {
+    ACH_TUNE, A_CURRENT, A_ORIGINAL, LUCKMAX, SICK_ALL, TT_BURIEDBALL, TT_LAVA,
+} from "./you.h.js";
+import { Luck, Role_if, Upolyd, uhim, uhis } from "./you.h.macros.js";
+import {
+    Antimagic, Blind, Blinded, BlindedTimeout, Blindfolded, Blindfolded_only, Confusion, Deaf,
+    Disint_resistance, EDisint_resistance, EReflecting, Fixed_abil, Flying, Glib, HBlinded,
+    HConfusion, HDeaf, HFast, HHallucination, HProtection, HStealth, HStun, HTelepat, Hallucination,
+    Levitation, Passes_walls, Punished, Reflecting, Shock_resistance, Sick, Slimed, Stoned,
+    Strangled, Stunned, Unchanging, Wounded_legs,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64u, not64u, or64 } from "../rt/int64.js";
+import { sprintf, strcmp, strcpy } from "../rt/libc.js";
+import { init_string, stack_array, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { artifact_origin } from "./artifact.js";
-import { artiname } from "./artifact.js";
-import { confers_luck } from "./artifact.js";
-import { discover_artifact } from "./artifact.js";
-import { exist_artifact } from "./artifact.js";
-import { is_art } from "./artifact.js";
-import { mk_artifact } from "./artifact.js";
-import { nartifact_exist } from "./artifact.js";
-import { adjalign } from "./attrib.js";
-import { adjattrib } from "./attrib.js";
-import { change_luck } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
-import { uchangealign } from "./attrib.js";
+import { ptr_to, ref_of } from "../rt/struct.js";
+import {
+    artifact_origin, artiname, confers_luck, discover_artifact, exist_artifact, is_art, mk_artifact,
+    nartifact_exist,
+} from "./artifact.js";
+import { adjalign, adjattrib, change_luck, exercise, setuhpmax, uchangealign } from "./attrib.js";
 import { xlev_to_rank } from "./botl.js";
-import { isok } from "./cmd.js";
-import { paranoid_query } from "./cmd.js";
+import { isok, paranoid_query } from "./cmd.js";
 import { is_pool_or_lava } from "./dbridge.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gp } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svb } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svt } from "./decl.js";
-import { u } from "./decl.js";
+import {
+    disp, flags, ga, gi, gm, gn, gp, gu, gy, iflags, svb, svk, svl, svm, svt, u,
+} from "./decl.js";
 import { buried_ball_to_freedom } from "./dig.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { shieldeff } from "./display.js";
-import { dropy } from "./do.js";
-import { heal_legs } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { Amulet_off } from "./do_wear.js";
-import { disintegrate_arm } from "./do_wear.js";
-import { stuck_ring } from "./do_wear.js";
-import { unchanger } from "./do_wear.js";
-import { eaten_stat } from "./eat.js";
-import { floorfood } from "./eat.js";
-import { init_uhunger } from "./eat.js";
+import { newsym, see_monsters, shieldeff } from "./display.js";
+import { dropy, heal_legs } from "./do.js";
+import { Monnam, a_monnam, hcolor, mon_nam, oname } from "./do_name.js";
+import { Amulet_off, disintegrate_arm, stuck_ring, unchanger } from "./do_wear.js";
+import { eaten_stat, floorfood, init_uhunger } from "./eat.js";
 import { done } from "./end.js";
 import { freehand } from "./engrave.js";
-import { losexp } from "./exper.js";
-import { pluslvl } from "./exper.js";
-import { losehp } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { align_str } from "./insight.js";
-import { record_achievement } from "./insight.js";
-import { carrying } from "./invent.js";
-import { feel_cockatrice } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { useupf } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { dlord } from "./minion.js";
-import { summon_minion } from "./minion.js";
-import { bless } from "./mkobj.js";
-import { get_mtraits } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { peek_at_iced_corpse_age } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { set_bknown } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
-import { iter_mons } from "./mon.js";
-import { killed } from "./mon.js";
-import { wake_nearby } from "./mon.js";
-import { xkilled } from "./mon.js";
-import { attacktype_fordmg } from "./mondata.js";
-import { can_chant } from "./mondata.js";
-import { monstseesu } from "./mondata.js";
-import { monstunseesu } from "./mondata.js";
+import { losexp, pluslvl } from "./exper.js";
+import { losehp, near_capacity, nomul } from "./hack.js";
+import { eos, s_suffix, sgn, strncmpi, upstart } from "./hacklib.js";
+import { align_str, record_achievement } from "./insight.js";
+import { carrying, feel_cockatrice, sobj_at, update_inventory, useup, useupf } from "./invent.js";
+import { makemon, set_malign } from "./makemon.js";
+import { dlord, summon_minion } from "./minion.js";
+import {
+    bless, get_mtraits, mkobj, mksobj, peek_at_iced_corpse_age, place_object, set_bknown, uncurse,
+} from "./mkobj.js";
+import { iter_mons, killed, wake_nearby, xkilled } from "./mon.js";
+import { attacktype_fordmg, can_chant, monstseesu, monstunseesu } from "./mondata.js";
 import { monflee } from "./monmove.js";
 import { mons } from "./monst.js";
 import { ureflects } from "./muse.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { An } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { actualoname } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { bare_artifactname } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { gloves_simple_name } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { rnd_class } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { encumber_msg } from "./pickup.js";
-import { rider_corpse_revival } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { mbodypart } from "./polyself.js";
-import { rehumanize } from "./polyself.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_deaf } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stoned } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { set_itimeout } from "./potion.js";
-import { angry_priest } from "./priest.js";
-import { findpriest } from "./priest.js";
-import { p_coaligned } from "./priest.js";
-import { temple_occupied } from "./priest.js";
-import { punish } from "./read.js";
-import { unpunish } from "./read.js";
-import { region_danger } from "./region.js";
-import { region_safety } from "./region.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { rnz } from "./rnd.js";
-import { randrole } from "./role.js";
-import { roles } from "./role.js";
+import {
+    An, Yobjnam2, actualoname, an, ansimpleoname, bare_artifactname, corpse_xname,
+    gloves_simple_name, makeplural, otense, rnd_class, simpleonames, vtense, xname, yname,
+} from "./objnam.js";
+import { encumber_msg, rider_corpse_revival } from "./pickup.js";
+import {
+    You, You_feel, You_hear, Your, impossible, livelog_printf, pline, pline_The, verbalize,
+} from "./pline.js";
+import { body_part, mbodypart, rehumanize } from "./polyself.js";
+import {
+    make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed,
+    make_stoned, make_stunned, set_itimeout,
+} from "./potion.js";
+import { angry_priest, findpriest, p_coaligned, temple_occupied } from "./priest.js";
+import { punish, unpunish } from "./read.js";
+import { region_danger, region_safety } from "./region.js";
+import { d, rn2, rn2_on_display_rng, rnd, rnl, rnz } from "./rnd.js";
+import { randrole, roles } from "./role.js";
 import { obfree } from "./shk.js";
-import { attrcurse } from "./sit.js";
-import { rndcurse } from "./sit.js";
-import { force_learn_spell } from "./spell.js";
-import { known_spell } from "./spell.js";
-import { spell_skilltype } from "./spell.js";
-import { spelleffects } from "./spell.js";
+import { attrcurse, rndcurse } from "./sit.js";
+import { force_learn_spell, known_spell, spell_skilltype, spelleffects } from "./spell.js";
 import { safe_teleds } from "./teleport.js";
-import { animate_statue } from "./trap.js";
-import { rescued_from_terrain } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { add_weapon_skill } from "./weapon.js";
-import { unrestrict_weapon_skill } from "./weapon.js";
-import { weapon_type } from "./weapon.js";
+import { animate_statue, rescued_from_terrain, reset_utrap } from "./trap.js";
+import { add_weapon_skill, unrestrict_weapon_skill, weapon_type } from "./weapon.js";
 import { you_unwere } from "./were.js";
 import { welded } from "./wield.js";
 import { aggravate } from "./wizard.js";
 import { which_armor } from "./worn.js";
-import { resist } from "./zap.js";
-import { revive } from "./zap.js";
+import { resist, revive } from "./zap.js";

@@ -8,18 +8,11 @@
 /*             - dewimped and given some maledictions. -3. */
 /*             - generalized for 3.1 (mike@bullns.on01.bull.ca) */
 
-// #include "hack.h"
-
-
-
 /* other_mon_has_arti() won't blow up if passed a NULL monst,
  * but its caller target_on() passes it a nonnull monst;
  * it may return a NULL monst pointer */
 
   /* might return NULL obj pointer */
-
-
-
 
 /* adding more neutral creatures will tend to reduce the number of monsters
    summoned by nasty(); adding more lawful creatures will reduce the number
@@ -57,16 +50,10 @@ const wizapp = static_array("wizapp", unsigned, null, [
 
 /* If you've found the Amulet, make the Wizard appear after some time */
 /* Also, give hints about portal locations, if amulet is worn/wielded -dlc */
-export function /* void */
-amulet()
-{
+export function amulet() { /* void */
     let mtmp;
     let ttmp;
     let amu;
-
-
-
-
 
     if ((((amu = uamul) != null && amu.otyp == AMULET_OF_YENDOR)
          || ((amu = uwep) != null && amu.otyp == AMULET_OF_YENDOR))
@@ -102,9 +89,7 @@ amulet()
     }
 }
 
-export function /* int */
-mon_has_amulet(mtmp)
-{
+export function mon_has_amulet(mtmp) { /* int */
     let otmp;
 
     for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
@@ -113,9 +98,7 @@ mon_has_amulet(mtmp)
     return 0;
 }
 
-export function /* int */
-mon_has_special(mtmp)
-{
+export function mon_has_special(mtmp) { /* int */
     let otmp;
 
     for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
@@ -136,11 +119,7 @@ mon_has_special(mtmp)
  *      to attempt, the tactics section implements the decision.
  */
 
-
-
-function /* short */
-which_arti(mask)
-{
+function which_arti(mask) { /* short */
     switch (mask) {
     case M3_WANTSAMUL:
         return AMULET_OF_YENDOR;
@@ -161,9 +140,7 @@ which_arti(mask)
  *      since bell, book, candle, and amulet are all objects, not really
  *      artifacts right now.  [MRS]
  */
-function /* boolean */
-mon_has_arti(mtmp, otyp)
-{
+function mon_has_arti(mtmp, otyp) { /* boolean */
     let otmp;
 
     for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
@@ -180,9 +157,7 @@ mon_has_arti(mtmp, otyp)
  * Returns some monster other than mtmp that
  * has artifact, or NULL monst pointer.
  */
-function /* struct monst * */
-other_mon_has_arti(mtmp, otyp)
-{
+function other_mon_has_arti(mtmp, otyp) { /* struct monst * */
     let mtmp2;
 
     for (mtmp2 = fmon(); mtmp2; mtmp2 = mtmp2.nmon)
@@ -198,9 +173,7 @@ other_mon_has_arti(mtmp, otyp)
  * Returns obj of type specified if there is one
  * on the ground, otherwise returns NULL obj pointer.
  */
-function /* struct obj * */
-on_ground(otyp)
-{
+function on_ground(otyp) { /* struct obj * */
     let otmp;
 
     for (otmp = fobj(); otmp; otmp = otmp.nobj)
@@ -212,9 +185,7 @@ on_ground(otyp)
     return null;
 }
 
-function /* boolean */
-you_have(mask)
-{
+function you_have(mask) { /* boolean */
     switch (mask) {
     case M3_WANTSAMUL:
         return u.uhave.amulet;
@@ -232,14 +203,12 @@ you_have(mask)
     return 0;
 }
 
-function /* unsigned long long */
-target_on(mask, mtmp)
-{
+function target_on(mask, mtmp) { /* unsigned long long */
     let otyp;
     let otmp;
     let mtmp2;
 
-    if (!((mtmp.data.mflags3 & (mask))))
+    if (!(mtmp.data.mflags3 & (mask)))
         return STRAT_NONE;
 
     otyp = which_arti(mask);
@@ -266,9 +235,7 @@ target_on(mask, mtmp)
     return STRAT_NONE;
 }
 
-function /* unsigned long long */
-strategy(mtmp)
-{
+function strategy(mtmp) { /* unsigned long long */
     let strat, dstrat;
 
     if (!is_covetous(mtmp.data)
@@ -281,7 +248,6 @@ strategy(mtmp)
         return STRAT_NONE;
 
     switch (Math.trunc((mtmp.mhp * 3) / mtmp.mhpmax)) { /* 0-3 */
-
     default:
     case 0: /* panic time - mtmp is almost snuffed */
         return STRAT_HEAL;
@@ -328,11 +294,9 @@ strategy(mtmp)
 
 /* pick a destination for a covetous monster to flee to so that it can
    heal or for guardians (Kops) to congregate at to block hero's progress */
-export function /* void */
-choose_stairs(
+export function choose_stairs(
     sx, sy,
-    dir) /* True: forward, False: backtrack (usually up) */
-{
+    dir) { /* void */ /* True: forward, False: backtrack (usually up) */
     let stway;
     let stdir = builds_up(u.uz) ? dir : +!dir;
 
@@ -363,16 +327,13 @@ choose_stairs(
         sx[0] = stway.sx, sy[0] = stway.sy;
 }
 
-
-
-export function /* int */
-tactics(mtmp)
-{ const $frame = stack_frame(); try {
+export function tactics(mtmp) { /* int */
+    const $frame = stack_frame(); try {
     let strat = strategy(mtmp);
     let sx = stack_var(coordxy, 0), sy = stack_var(coordxy, 0), mx, my;
 
     mtmp.mstrategy =
-        or64u((and64u(mtmp.mstrategy, (or64u(STRAT_WAITMASK, STRAT_APPEARMSG)))), strat);
+        or64u(and64u(mtmp.mstrategy, or64u(STRAT_WAITMASK, STRAT_APPEARMSG)), strat);
 
     switch (strat) {
     case STRAT_HEAL: /* hide and recover */
@@ -388,7 +349,7 @@ tactics(mtmp)
             || (mtmp.iswiz && !sx[0] && !mon_has_amulet(mtmp))) {
             if (!noteleport_level(mtmp) &&
                 !rn2(3 + Math.trunc(mtmp.mhp / 10)))
-                void rloc(mtmp, RLOC_MSG);
+                rloc(mtmp, RLOC_MSG);
         } else if (sx[0] && (mx != sx[0] || my != sy[0])) {
             if (!noteleport_level(mtmp) &&
                 !mnearto(mtmp, sx[0], sy[0], TRUE, RLOC_MSG)) {
@@ -444,7 +405,7 @@ tactics(mtmp)
                         pline(_("%s picks up %s."), Monnam(mtmp),
                               distant_name(otmp, doname));
                     obj_extract_self(otmp);
-                    void mpickobj(mtmp, otmp);
+                    mpickobj(mtmp, otmp);
                     return 1;
                 } else
                     return 0;
@@ -465,14 +426,11 @@ tactics(mtmp)
     } /* switch */
     /*NOTREACHED*/
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* are there any monsters mon could aggravate? */
-export function /* boolean */
-has_aggravatables(mon)
-{
+export function has_aggravatables(mon) { /* boolean */
     let mtmp;
     let in_w_tower = In_W_tower(mon.mx, mon.my, u.uz);
 
@@ -490,9 +448,7 @@ has_aggravatables(mon)
     return FALSE;
 }
 
-export function /* void */
-aggravate()
-{
+export function aggravate() { /* void */
     let mtmp;
     let in_w_tower = In_W_tower(u.ux, u.uy, u.uz);
 
@@ -501,7 +457,7 @@ aggravate()
             continue;
         if (in_w_tower != In_W_tower(mtmp.mx, mtmp.my, u.uz))
             continue;
-        mtmp.mstrategy = and64u(mtmp.mstrategy, not64u((or64u(STRAT_WAITFORU, STRAT_APPEARMSG))));
+        mtmp.mstrategy = and64u(mtmp.mstrategy, not64u(or64u(STRAT_WAITFORU, STRAT_APPEARMSG)));
         mtmp.msleeping = 0;
         if (!mtmp.mcanmove && !rn2(5)) {
             mtmp.mfrozen = 0;
@@ -513,16 +469,14 @@ aggravate()
 /* "Double Trouble" spell cast by the Wizard; caller is responsible for
    only casting this when there is currently one wizard in existence;
    the clone can't use it unless/until its creator has been killed off */
-export function /* void */
-clonewiz()
-{
+export function clonewiz() { /* void */
     let mtmp2;
 
     if ((mtmp2 = makemon(mons[PM_WIZARD_OF_YENDOR], u.ux, u.uy, MM_NOWAIT))
         != null) {
         mtmp2.msleeping = mtmp2.mtame = mtmp2.mpeaceful = 0;
         if (!u.uhave.amulet && rn2(2)) { /* give clone a fake */
-            void add_to_minv(mtmp2,
+            add_to_minv(mtmp2,
                                mksobj(FAKE_AMULET_OF_YENDOR, TRUE, FALSE));
         }
         if (!Protection_from_shape_changers()) {
@@ -534,10 +488,8 @@ clonewiz()
 }
 
 /* also used by newcham() */
-export function /* int */
-pick_nasty(
-    difcap) /* if non-zero, try to make difficulty be lower than this */
-{
+export function pick_nasty(
+    difcap) { /* int */ /* if non-zero, try to make difficulty be lower than this */
     let alt, res = ROLL_FROM(nasties);
 
     /* To do?  Possibly should filter for appropriate forms when
@@ -587,9 +539,8 @@ pick_nasty(
    'summoner' as neutral, since that will produce the greatest number of
    creatures on average (in 3.6.0 and earlier, Null was treated as chaotic);
    returns the number of monsters created */
-export function /* int */
-nasty(summoner)
-{ const $frame = stack_frame(); try {
+export function nasty(summoner) { /* int */
+    const $frame = stack_frame(); try {
     var mtmp;
     var bypos = stack_struct(struct_nhcoord);
     var i, j, count, census, tmp, makeindex,
@@ -597,8 +548,6 @@ nasty(summoner)
     /* when a monster casts the "summon nasties" spell, it gives feedback;
        when random post-Wizard harassment casts that, we give feedback */
     var mmflags = summoner ? MM_NOMSG : NO_MM_FLAGS;
-
-
 
     /* some candidates may be created in groups, so simple count
        of non-null makemon() return is inadequate */
@@ -708,12 +657,12 @@ nasty(summoner)
     if (count)
         count = monster_census(FALSE) - census;
     return count;
-} finally { stack_pop($frame); } } export const MAXNASTIES = 10;
+    } finally { stack_pop($frame); }
+}
+export const MAXNASTIES = 10;
 
 /* Let's resurrect the Wizard, for some unexpected fun. */
-export function /* void */
-resurrect()
-{
+export function resurrect() { /* void */
     let mtmp, mmtmp;
     let elapsed;
     let verb;
@@ -734,7 +683,7 @@ resurrect()
             if (mtmp.iswiz
                 /* if he has the Amulet, he won't bring it to you */
                 && !mon_has_amulet(mtmp)
-                && (long(elapsed = svm.moves - mtmp.mlstmv)) > 0) {
+                && long(elapsed = svm.moves - mtmp.mlstmv) > 0) {
                 mon_catchup_elapsed_time(mtmp, elapsed);
                 if (elapsed >= LARGEST_INT)
                     elapsed = LARGEST_INT - 1;
@@ -781,9 +730,7 @@ resurrect()
 
 /* Here, we make trouble for the poor shmuck who actually
    managed to do in the Wizard. */
-export function /* void */
-intervene()
-{
+export function intervene() { /* void */
     let which = Is_astralevel(u.uz) ? rnd(4) : rn2(6);
 
     /* cases 0 and 5 don't apply on the Astral level */
@@ -801,7 +748,7 @@ intervene()
         aggravate();
         break;
     case 4:
-        void nasty(null);
+        nasty(null);
         break;
     case 5:
         resurrect();
@@ -811,9 +758,7 @@ intervene()
 
 /* Wizard of Yendor is being removed from play (dead or escaped the dungeon);
    keep the bookkeeping for him up to date */
-export function /* void */
-wizdeadorgone()
-{
+export function wizdeadorgone() { /* void */
     svc.context.no_of_wizards--;
     if (!u.uevent.udemigod) {
         u.uevent.udemigod = TRUE;
@@ -842,9 +787,7 @@ const random_malediction = static_array("random_malediction", ptr_to(char), null
 ]);
 
 /* Insult or intimidate the player */
-export function /* void */
-cuss(mtmp)
-{
+export function cuss(mtmp) { /* void */
     if (Deaf())
         return;
     if (mtmp.iswiz) {
@@ -883,192 +826,76 @@ cuss(mtmp)
 }
 
 /*wizard.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
 import { NH_BLACK } from "./decl.h.macros.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { MM_NOWAIT } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { RLOC_MSG } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import { S_ANGEL, S_DEMON } from "./defsym.h.js";
+import { In_endgame, Inhell, Is_astralevel, Is_rogue_level } from "./dungeon.h.macros.js";
+import { FALSE, LARGEST_INT, TRUE, coordxy } from "./global.h.js";
+import { BOLT_LIM, MM_NOMSG, MM_NOWAIT, NO_MM_FLAGS, RLOC_MSG } from "./hack.h.js";
+import { ROLL_FROM, distu, min, rn1 } from "./hack.h.macros.js";
 import { EMIN } from "./mextra.h.macros.js";
 import { AT_MAGC } from "./monattk.h.js";
-import { is_covetous } from "./mondata.h.macros.js";
-import { is_minion } from "./mondata.h.macros.js";
-import { monsym } from "./mondata.h.macros.js";
-import { G_GENOD } from "./monflag.h.js";
-import { G_HELL } from "./monflag.h.js";
-import { G_NOHELL } from "./monflag.h.js";
-import { M3_WANTSAMUL } from "./monflag.h.js";
-import { M3_WANTSARTI } from "./monflag.h.js";
-import { M3_WANTSBELL } from "./monflag.h.js";
-import { M3_WANTSBOOK } from "./monflag.h.js";
-import { M3_WANTSCAND } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { STRAT_APPEARMSG } from "./monst.h.js";
-import { STRAT_GOAL } from "./monst.h.js";
-import { STRAT_GROUND } from "./monst.h.js";
-import { STRAT_HEAL } from "./monst.h.js";
-import { STRAT_MONSTR } from "./monst.h.js";
-import { STRAT_NONE } from "./monst.h.js";
-import { STRAT_PLAYER } from "./monst.h.js";
-import { STRAT_STRATMASK } from "./monst.h.js";
-import { STRAT_WAITFORU } from "./monst.h.js";
-import { STRAT_WAITMASK } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_lminion } from "./monst.h.macros.js";
-import { PM_ALEAX } from "./monsters.h.js";
-import { PM_ARCHON } from "./monsters.h.js";
-import { PM_ARCH_LICH } from "./monsters.h.js";
-import { PM_BALUCHITHERIUM } from "./monsters.h.js";
-import { PM_BARBED_DEVIL } from "./monsters.h.js";
-import { PM_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_CAPTAIN } from "./monsters.h.js";
-import { PM_CARNIVOROUS_APE } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_COUATL } from "./monsters.h.js";
-import { PM_DISENCHANTER } from "./monsters.h.js";
-import { PM_DISPLACER_BEAST } from "./monsters.h.js";
-import { PM_ELF_NOBLE } from "./monsters.h.js";
-import { PM_ELVEN_MONARCH } from "./monsters.h.js";
-import { PM_ETTIN } from "./monsters.h.js";
-import { PM_FIRE_ELEMENTAL } from "./monsters.h.js";
-import { PM_FIRE_GIANT } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_GENETIC_ENGINEER } from "./monsters.h.js";
-import { PM_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA } from "./monsters.h.js";
-import { PM_HORNED_DEVIL } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_IRON_GOLEM } from "./monsters.h.js";
-import { PM_JABBERWOCK } from "./monsters.h.js";
-import { PM_LEOCROTTA } from "./monsters.h.js";
-import { PM_MASTER_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_OCHRE_JELLY } from "./monsters.h.js";
-import { PM_OGRE_TYRANT } from "./monsters.h.js";
-import { PM_OLOG_HAI } from "./monsters.h.js";
-import { PM_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_OWLBEAR } from "./monsters.h.js";
-import { PM_PURPLE_WORM } from "./monsters.h.js";
-import { PM_RED_DRAGON } from "./monsters.h.js";
-import { PM_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STORM_GIANT } from "./monsters.h.js";
-import { PM_TRAPPER } from "./monsters.h.js";
-import { PM_TROLL } from "./monsters.h.js";
-import { PM_UMBER_HULK } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_VAMPIRE_LEADER } from "./monsters.h.js";
-import { PM_WATER_DEMON } from "./monsters.h.js";
-import { PM_WINGED_GARGOYLE } from "./monsters.h.js";
-import { PM_WIZARD_OF_YENDOR } from "./monsters.h.js";
-import { PM_XAN } from "./monsters.h.js";
-import { PM_XORN } from "./monsters.h.js";
-import { PM_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_ZRUTY } from "./monsters.h.js";
+import { is_covetous, is_minion, monsym } from "./mondata.h.macros.js";
+import {
+    G_GENOD, G_HELL, G_NOHELL, M3_WANTSAMUL, M3_WANTSARTI, M3_WANTSBELL, M3_WANTSBOOK, M3_WANTSCAND,
+    NEUTRAL,
+} from "./monflag.h.js";
+import {
+    M_AP_MONSTER, STRAT_APPEARMSG, STRAT_GOAL, STRAT_GROUND, STRAT_HEAL, STRAT_MONSTR, STRAT_NONE,
+    STRAT_PLAYER, STRAT_STRATMASK, STRAT_WAITFORU, STRAT_WAITMASK,
+} from "./monst.h.js";
+import { DEADMONSTER, helpless, is_lminion } from "./monst.h.macros.js";
+import {
+    PM_ALEAX, PM_ARCHON, PM_ARCH_LICH, PM_BALUCHITHERIUM, PM_BARBED_DEVIL, PM_BLACK_DRAGON,
+    PM_CAPTAIN, PM_CARNIVOROUS_APE, PM_COCKATRICE, PM_COUATL, PM_DISENCHANTER, PM_DISPLACER_BEAST,
+    PM_ELF_NOBLE, PM_ELVEN_MONARCH, PM_ETTIN, PM_FIRE_ELEMENTAL, PM_FIRE_GIANT, PM_FLOATING_EYE,
+    PM_GENETIC_ENGINEER, PM_GREEN_DRAGON, PM_GREEN_SLIME, PM_GREMLIN, PM_GUARDIAN_NAGA,
+    PM_HORNED_DEVIL, PM_HUMAN, PM_IRON_GOLEM, PM_JABBERWOCK, PM_LEOCROTTA, PM_MASTER_MIND_FLAYER,
+    PM_MINOTAUR, PM_OCHRE_JELLY, PM_OGRE_TYRANT, PM_OLOG_HAI, PM_ORANGE_DRAGON, PM_OWLBEAR,
+    PM_PURPLE_WORM, PM_RED_DRAGON, PM_SILVER_DRAGON, PM_STALKER, PM_STORM_GIANT, PM_TRAPPER,
+    PM_TROLL, PM_UMBER_HULK, PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_WATER_DEMON, PM_WINGED_GARGOYLE,
+    PM_WIZARD_OF_YENDOR, PM_XAN, PM_XORN, PM_YELLOW_DRAGON, PM_ZRUTY,
+} from "./monsters.h.js";
 import { any_quest_artifact } from "./obj.h.macros.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
+import {
+    AMULET_OF_YENDOR, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, FAKE_AMULET_OF_YENDOR,
+    SPE_BOOK_OF_THE_DEAD,
+} from "./objects.h.js";
+import { MON_AT, fmon, fobj } from "./rm.h.macros.js";
 import { MAGIC_PORTAL } from "./trap.h.js";
 import { cansee } from "./vision.h.macros.js";
-import { m_next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
+import { m_next2u, u_at } from "./you.h.macros.js";
+import { Blind, Deaf, Protection_from_shape_changers } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { strcmp } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, long, ord, ulong, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
+import { and64u, not64u, or64u } from "../rt/int64.js";
+import { strcmp, strncmp, strrchr } from "../rt/libc.js";
+import { stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
+import { ptr_to, ref_of } from "../rt/struct.js";
 import { isok } from "./cmd.js";
-import { gf } from "./decl.js";
-import { gm } from "./decl.js";
-import { gs } from "./decl.js";
-import { svc } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
+import { gf, gm, gs, svc, svm, u } from "./decl.js";
 import { newsym } from "./display.js";
-import { Monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { mon_arrive } from "./dog.js";
-import { mon_catchup_elapsed_time } from "./dog.js";
-import { In_W_tower } from "./dungeon.js";
-import { builds_up } from "./dungeon.js";
+import { Monnam, hcolor } from "./do_name.js";
+import { mon_arrive, mon_catchup_elapsed_time } from "./dog.js";
+import { In_W_tower, builds_up } from "./dungeon.js";
 import { sgn } from "./hacklib.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { unmakemon } from "./makemon.js";
+import { makemon, set_malign, unmakemon } from "./makemon.js";
 import { expels } from "./mhitu.js";
-import { monster_census } from "./minion.js";
-import { msummon } from "./minion.js";
-import { add_to_minv } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { healmon } from "./mon.js";
-import { mnearto } from "./mon.js";
-import { mnexto } from "./mon.js";
-import { monnear } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { big_to_little } from "./mondata.js";
+import { monster_census, msummon } from "./minion.js";
+import { add_to_minv, mksobj, obj_extract_self } from "./mkobj.js";
+import { healmon, mnearto, mnexto, monnear, wake_nearto } from "./mon.js";
+import { attacktype, big_to_little } from "./mondata.js";
 import { mons } from "./monst.js";
-import { Tobjnam } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { Tobjnam, distant_name, doname } from "./objnam.js";
+import { You, You_feel, pline, verbalize } from "./pline.js";
 import { inhistemple } from "./priest.js";
 import { com_pager } from "./questpgr.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { inhishop } from "./shk.js";
 import { rndcurse } from "./sit.js";
 import { stairway_find_type_dir } from "./stairs.js";
 import { mpickobj } from "./steal.js";
-import { enexto } from "./teleport.js";
-import { noteleport_level } from "./teleport.js";
-import { rloc } from "./teleport.js";
-import { rloc_to } from "./teleport.js";
+import { enexto, noteleport_level, rloc, rloc_to } from "./teleport.js";

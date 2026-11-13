@@ -9,7 +9,7 @@ export function enableLight(environment,layouts){
  const {services:S,memory,ctypes,transport}=environment,L=layouts.light,address=environment.address;
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review LIGHT native ABI '+k);
  const text=v=>typeof v==='string'?S.literal(v):address(v),resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof S[n]==='function'?S[n]:environment.resolve(n);
- const value=(t,v)=>{t=ctypes.canonical(t);if(t==='void')return undefined;if(t.includes('*'))return text(v);if(t==='unsigned long')return transport.ulong(v);if(t==='long')return transport.long(v);if(t==='unsigned int')return transport.uint(v);if(t==='unsigned short')return transport.ushort(v);if(t==='short')return transport.short(v);if(t==='char'||t==='signed char')return transport.char(v);if(t==='unsigned char')return transport.uchar(v);return transport.int(v);};
+ const value=(t,v)=>{t=ctypes.abiType(t);if(t==='void')return undefined;if(t.includes('*'))return text(v);if(t==='unsigned long')return transport.ulong(v);if(t==='long')return transport.long(v);if(t==='unsigned int')return transport.uint(v);if(t==='unsigned short')return transport.ushort(v);if(t==='short')return transport.short(v);if(t==='char'||t==='signed char')return transport.char(v);if(t==='unsigned char')return transport.uchar(v);return transport.int(v);};
  const local={heap:()=>memory.HEAPU8,literal:S.literal,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,
   global:i=>{const n=abi.globals[i];if(!n)throw new Error('Unknown LIGHT global '+i);return environment.requireGlobal(n);},
   uskin:()=>ctypes.load('struct obj *',environment.requireGlobal('uskin')),

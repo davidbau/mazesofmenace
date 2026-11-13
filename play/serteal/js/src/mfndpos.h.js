@@ -3,9 +3,6 @@
 /*-Copyright (c) Michael Allison, 2005. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* clang-format off */
 export const ALLOW_MDISP = 0x00001000;
 export const ALLOW_TRAPS = 0x00020000;
@@ -26,8 +23,6 @@ export const ALLOW_SSM = 0x40000000;
 
 export const NOGARLIC = 0x80000000;
 
-
-
 /* clang-format on */
 
 export const struct_mfndposdata = struct("struct_mfndposdata", {
@@ -35,7 +30,6 @@ export const struct_mfndposdata = struct("struct_mfndposdata", {
     poss: array_of("struct_nhcoord", 9),
     info: array_of(long, 9),
 });
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { int, long } from "../rt/ctypes.js";
+import { array_of, struct } from "../rt/struct.js";

@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack bigroom bigrm-2.lua	$NHDT-Date: 1652196021 2022/05/10 15:20:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1990 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack bigroom bigrm-2.lua	$NHDT-Date: 1652196021 2022/05/10 15:20:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1990 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 des.level_flags("mazelevel", "noflip");
 
 des.map([[
@@ -26,8 +26,8 @@ des.map([[
 |.........................................................................|
 ---------------------------------------------------------------------------
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(01,01,73,16),"lit");
+-- Dungeon Description
+des.region(selection.area(01,01,73,16),"lit");
 
 local darkness;
 
@@ -52,21 +52,21 @@ if darkness ~= nil then
    end
 end
 
-` + "\n" + // -- Stairs
-`des.stair("up");
+-- Stairs
+des.stair("up");
 des.stair("down");
-` + "\n" + // -- Non diggable walls
-`des.non_diggable();
-` + "\n" + // -- Objects
-`for i = 1,15 do
+-- Non diggable walls
+des.non_diggable();
+-- Objects
+for i = 1,15 do
    des.object();
 end
-` + "\n" + // -- Random traps
-`for i = 1,6 do
+-- Random traps
+for i = 1,6 do
    des.trap();
 end
-` + "\n" + // -- Random monsters.
-`for i = 1,28 do
+-- Random monsters.
+for i = 1,28 do
    des.monster();
 end
 `;

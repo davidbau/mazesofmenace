@@ -9,159 +9,9 @@
  * It contains also the special level loader.
  */
 
-
-
-// #include "hack.h"
-// #include "sp_lev.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* lua_CFunction prototypes */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const SPLEV_LEFT = 1;
 export const SPLEV_H_LEFT = 2;
@@ -172,18 +22,13 @@ export const SPLEV_RIGHT = 5;
 export const TOP = 1;
 export const BOTTOM = 5;
 
-
-
 export const XLIM = 4;
 export const YLIM = 3;
 
-
-
-export function Free(ptr) { do {                                        
-        if (ptr)                                
-            free((ptr));         
+export function Free(ptr) { do {
+        if (ptr)
+            free(ptr);
     } while (0) }
-
 
     /*
      * No need for 'struct instance_globals g' to contain these.
@@ -200,11 +45,7 @@ const invent_carrying_monster = static_var("invent_carrying_monster", ptr_to(str
      * end of no 'g.'
      */
 
-
-
-export function /* void */
-reset_xystart_size()
-{
+export function reset_xystart_size() { /* void */
     gx.xstart = 1; /* column [0] is off limits */
     gy.ystart = 0;
     gx.xsize = COLNO - 1; /* 1..COLNO-1 */
@@ -213,9 +54,7 @@ reset_xystart_size()
 
 /* Does typ match with levl[][].typ, considering special types
    MATCH_WALL and MAX_TYPE (aka transparency)? */
-export function /* boolean */
-match_maptyps(typ, levltyp)
-{
+export function match_maptyps(typ, levltyp) { /* boolean */
     if ((typ == MATCH_WALL) && !IS_STWALL(levltyp))
         return FALSE;
     if ((typ < MAX_TYPE) && (typ != levltyp))
@@ -223,16 +62,14 @@ match_maptyps(typ, levltyp)
     return TRUE;
 }
 
-export function /* struct mapfragment * */
-mapfrag_fromstr(str)
-{
+export function mapfrag_fromstr(str) { /* struct mapfragment * */
     let mf = view_of(struct_mapfragment, addr_of(alloc(sizeof(struct_mapfragment))));
 
     let tmps;
 
     mf.data = dupstr(str);
 
-    void stripdigits(mf.data);
+    stripdigits(mf.data);
     mf.wid = str_lines_maxlen(mf.data);
     mf.hei = 0;
     tmps = mf.data;
@@ -252,9 +89,7 @@ mapfrag_fromstr(str)
     return mf;
 }
 
-export function /* void */
-mapfrag_free(mf)
-{
+export function mapfrag_free(mf) { /* void */
     if (mf && mf[0]) {
         free((mf[0]).data);
         free(addr_of(mf[0]));
@@ -262,24 +97,20 @@ mapfrag_free(mf)
     }
 }
 
-export function /* schar */
-mapfrag_get(mf, x, y)
-{
+export function mapfrag_get(mf, x, y) { /* schar */
     if (y < 0 || x < 0 || y > mf.hei - 1 || x > mf.wid - 1)
         panic(_("outside mapfrag (%i,%i), wanted (%i,%i)"),
               mf.wid, mf.hei, x, y);
     return splev_chr2typ(chars[mf.data + (y * (mf.wid + 1) + x)]);
 }
 
-export function /* boolean */
-mapfrag_canmatch(mf)
-{
-    return ((((mf.wid % 2) && (mf.hei % 2)) ? 1 : 0));
+export function mapfrag_canmatch(mf) { /* boolean */
+    return ((mf.wid % 2) && (mf.hei % 2) ? 1 : 0);
 }
 
-export function /* const char * */
-mapfrag_error(mf$)
-{ const $frame = stack_frame(); try { const mf = stack_var(ptr_to(struct_mapfragment), mf$);
+export function mapfrag_error(mf$) { /* const char * */
+    const $frame = stack_frame(); try {
+    const mf = stack_var(ptr_to(struct_mapfragment), mf$);
     let res = 0;
 
     if (!mf[0]) {
@@ -287,22 +118,21 @@ mapfrag_error(mf$)
     } else if (!mapfrag_canmatch(mf[0])) {
         mapfrag_free(mf);
         res = _("mapfragment needs to have odd height and width");
-    } else if (((((mapfrag_get(mf[0], Math.trunc(mf[0].wid / 2), Math.trunc(mf[0].hei / 2))) == MAX_TYPE) || ((mapfrag_get(mf[0], Math.trunc(mf[0].wid / 2), Math.trunc(mf[0].hei / 2))) == INVALID_TYPE)))) {
+    } else if ((((mapfrag_get(mf[0], Math.trunc(mf[0].wid / 2), Math.trunc(mf[0].hei / 2))) == MAX_TYPE) || ((mapfrag_get(mf[0], Math.trunc(mf[0].wid / 2), Math.trunc(mf[0].hei / 2))) == INVALID_TYPE))) {
         mapfrag_free(mf);
         res = _("mapfragment center must be valid terrain");
     }
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-mapfrag_match(mf, x, y)
-{
+export function mapfrag_match(mf, x, y) { /* boolean */
     let rx, ry;
 
-    for (rx = -(Math.trunc(mf.wid / 2)); rx <= (Math.trunc(mf.wid / 2)); rx++)
-        for (ry = -(Math.trunc(mf.hei / 2)); ry <= (Math.trunc(mf.hei / 2)); ry++) {
-            let mapc = mapfrag_get(mf, rx + (Math.trunc(mf.wid / 2)),
-                                     ry + (Math.trunc(mf.hei / 2)));
+    for (rx = -Math.trunc(mf.wid / 2); rx <= Math.trunc(mf.wid / 2); rx++)
+        for (ry = -Math.trunc(mf.hei / 2); ry <= Math.trunc(mf.hei / 2); ry++) {
+            let mapc = mapfrag_get(mf, rx + Math.trunc(mf.wid / 2),
+                                     ry + Math.trunc(mf.hei / 2));
             let levc = isok(x+rx, y+ry) ? levl()[x+rx][y+ry].typ : STONE;
 
             if (!match_maptyps(mapc, levc))
@@ -311,9 +141,7 @@ mapfrag_match(mf, x, y)
     return TRUE;
 }
 
-function /* void */
-solidify_map()
-{
+function solidify_map() { /* void */
     let x, y;
 
     for (x = 0; x < COLNO; x++)
@@ -324,9 +152,7 @@ solidify_map()
 
 /* do a post-level-creation cleanup of map, such as
    removing boulders and traps from lava */
-function /* void */
-map_cleanup()
-{
+function map_cleanup() { /* void */
     let otmp;
     let ttmp;
     let etmp;
@@ -355,9 +181,7 @@ map_cleanup()
         }
 }
 
-function /* void */
-lvlfill_maze_grid(x1, y1, x2, y2, filling)
-{
+function lvlfill_maze_grid(x1, y1, x2, y2, filling) { /* void */
     let x, y;
 
     for (x = x1; x <= x2; x++)
@@ -370,9 +194,7 @@ lvlfill_maze_grid(x1, y1, x2, y2, filling)
         }
 }
 
-function /* void */
-lvlfill_solid(filling, lit)
-{
+function lvlfill_solid(filling, lit) { /* void */
     let x, y;
 
     for (x = 2; x <= gx.x_maze_max; x++)
@@ -387,9 +209,7 @@ lvlfill_solid(filling, lit)
         }
 }
 
-function /* void */
-lvlfill_swamp(fg, bg, lit)
-{
+function lvlfill_swamp(fg, bg, lit) { /* void */
     let x, y;
 
     lvlfill_solid(bg, lit);
@@ -399,7 +219,7 @@ lvlfill_swamp(fg, bg, lit)
         for (y = 0; y <= min(gy.y_maze_max, ROWNO-2); y += 2) {
             let c = 0;
 
-            void set_levltyp_lit(x, y, fg, lit);
+            set_levltyp_lit(x, y, fg, lit);
             if (levl()[x + 1][y].typ == bg)
                 ++c;
             if (levl()[x][y + 1].typ == bg)
@@ -409,13 +229,13 @@ lvlfill_swamp(fg, bg, lit)
             if (c == 3) {
                 switch (rn2(3)) {
                 case 0:
-                    void set_levltyp_lit(x + 1,y, fg, lit);
+                    set_levltyp_lit(x + 1,y, fg, lit);
                     break;
                 case 1:
-                    void set_levltyp_lit(x, y + 1, fg, lit);
+                    set_levltyp_lit(x, y + 1, fg, lit);
                     break;
                 case 2:
-                    void set_levltyp_lit(x + 1, y + 1, fg, lit);
+                    set_levltyp_lit(x + 1, y + 1, fg, lit);
                     break;
                 default:
                     break;
@@ -424,9 +244,7 @@ lvlfill_swamp(fg, bg, lit)
         }
 }
 
-function /* void */
-flip_dbridge_horizontal(lev)
-{
+function flip_dbridge_horizontal(lev) { /* void */
     if (IS_DRAWBRIDGE(lev.typ)) {
         if ((lev.flags & DB_DIR) == DB_WEST) {
             lev.flags &= ~DB_WEST;
@@ -438,9 +256,7 @@ flip_dbridge_horizontal(lev)
     }
 }
 
-function /* void */
-flip_dbridge_vertical(lev)
-{
+function flip_dbridge_vertical(lev) { /* void */
     if (IS_DRAWBRIDGE(lev.typ)) {
         if ((lev.flags & DB_DIR) == DB_NORTH) {
             lev.flags &= ~DB_NORTH;
@@ -454,9 +270,7 @@ flip_dbridge_vertical(lev)
 
 /* for #wizfliplevel; not needed when flipping during level creation;
    update seen vector for whole flip area and glyph for known walls */
-function /* void */
-flip_visuals(flp, minx, miny, maxx, maxy)
-{
+function flip_visuals(flp, minx, miny, maxx, maxy) { /* void */
     let lev;
     let x, y, seenv;
 
@@ -495,9 +309,7 @@ flip_visuals(flp, minx, miny, maxx, maxy)
 }
 
 /* transpose an encoded direction */
-function /* int */
-flip_encoded_dir_bits(flp, val)
-{
+function flip_encoded_dir_bits(flp, val) { /* int */
     /* these depend on xdir[] and ydir[] order */
     if (flp & 1) {
         val = swapbits(val, 1, 7);
@@ -513,28 +325,12 @@ flip_encoded_dir_bits(flp, val)
     return val;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* transpose top with bottom or left with right or both; sometimes called
    for new special levels, or for any level via the #wizfliplevel command */
-export function /* void */
-flip_level(
+export function flip_level(
     flp,
-    extras) /* False: level creation; True: #wizfliplevel is
-                     * altering an active level so more needs to be done */
-{ const $frame = stack_frame(); try {
+    extras) { /* void */ /* False: level creation; True: #wizfliplevel is * altering an active level so more needs to be done */
+    const $frame = stack_frame(); try {
     let x, y, i, itmp;
     let minx = stack_var(coordxy), miny = stack_var(coordxy), maxx = stack_var(coordxy), maxy = stack_var(coordxy);
     let trm = stack_struct(struct_rm);
@@ -574,10 +370,10 @@ flip_level(
                hero's [possibly new] spot below */
             if (carried(uball))
                 uball.ox = u.ux, uball.oy = u.uy;
-            ball_fliparea = (+(((+(((((uball.ox) >= minx[0]) && ((uball.ox) <= maxx[0])) && ((uball.oy) >= miny[0])) && ((uball.oy) <= maxy[0])))
-                              == (+(((((uchain.ox) >= minx[0]) && ((uchain.ox) <= maxx[0])) && ((uchain.oy) >= miny[0])) && ((uchain.oy) <= maxy[0]))))
-                             && ((+(((((uball.ox) >= minx[0]) && ((uball.ox) <= maxx[0])) && ((uball.oy) >= miny[0])) && ((uball.oy) <= maxy[0])))
-                                 == (+(((((u.ux) >= minx[0]) && ((u.ux) <= maxx[0])) && ((u.uy) >= miny[0])) && ((u.uy) <= maxy[0]))))));
+            ball_fliparea = +((+(((((uball.ox) >= minx[0]) && ((uball.ox) <= maxx[0])) && ((uball.oy) >= miny[0])) && ((uball.oy) <= maxy[0]))
+                              == +(((((uchain.ox) >= minx[0]) && ((uchain.ox) <= maxx[0])) && ((uchain.oy) >= miny[0])) && ((uchain.oy) <= maxy[0])))
+                             && (+(((((uball.ox) >= minx[0]) && ((uball.ox) <= maxx[0])) && ((uball.oy) >= miny[0])) && ((uball.oy) <= maxy[0]))
+                                 == +(((((u.ux) >= minx[0]) && ((u.ux) <= maxx[0])) && ((u.uy) >= miny[0])) && ((u.uy) <= maxy[0]))));
             if (!ball_fliparea)
                 unplacebc();
         }
@@ -586,29 +382,29 @@ flip_level(
     /* stairs and ladders */
     for (stway = gs.stairs; stway; stway = stway.next) {
         if (flp & 1)
-            stway.sy = ((((maxy[0] - (stway.sy))) + miny[0]));
+            stway.sy = ((maxy[0] - (stway.sy)) + miny[0]);
         if (flp & 2)
-            stway.sx = ((((maxx[0] - (stway.sx))) + minx[0]));
+            stway.sx = ((maxx[0] - (stway.sx)) + minx[0]);
     }
 
     /* traps */
     for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
-        if (!((((((ttmp.tx) >= minx[0]) && ((ttmp.tx) <= maxx[0])) && ((ttmp.ty) >= miny[0])) && ((ttmp.ty) <= maxy[0]))))
+        if (!(((((ttmp.tx) >= minx[0]) && ((ttmp.tx) <= maxx[0])) && ((ttmp.ty) >= miny[0])) && ((ttmp.ty) <= maxy[0])))
             continue;
         if (flp & 1) {
-            ttmp.ty = ((((maxy[0] - (ttmp.ty))) + miny[0]));
+            ttmp.ty = ((maxy[0] - (ttmp.ty)) + miny[0]);
             if (ttmp.ttyp == ROLLING_BOULDER_TRAP) {
-                ttmp.launch.y = ((((maxy[0] - (ttmp.launch.y))) + miny[0]));
-                ttmp.vl.v_launch2.y = ((((maxy[0] - (ttmp.vl.v_launch2.y))) + miny[0]));
+                ttmp.launch.y = ((maxy[0] - (ttmp.launch.y)) + miny[0]);
+                ttmp.vl.v_launch2.y = ((maxy[0] - (ttmp.vl.v_launch2.y)) + miny[0]);
             } else if (is_pit(ttmp.ttyp) && ttmp.vl.v_conjoined) {
                 ttmp.vl.v_conjoined = uchar(flip_encoded_dir_bits(flp, ttmp.vl.v_conjoined));
             }
         }
         if (flp & 2) {
-            ttmp.tx = ((((maxx[0] - (ttmp.tx))) + minx[0]));
+            ttmp.tx = ((maxx[0] - (ttmp.tx)) + minx[0]);
             if (ttmp.ttyp == ROLLING_BOULDER_TRAP) {
-                ttmp.launch.x = ((((maxx[0] - (ttmp.launch.x))) + minx[0]));
-                ttmp.vl.v_launch2.x = ((((maxx[0] - (ttmp.vl.v_launch2.x))) + minx[0]));
+                ttmp.launch.x = ((maxx[0] - (ttmp.launch.x)) + minx[0]);
+                ttmp.vl.v_launch2.x = ((maxx[0] - (ttmp.vl.v_launch2.x)) + minx[0]);
             } else if (is_pit(ttmp.ttyp) && ttmp.vl.v_conjoined) {
                 ttmp.vl.v_conjoined = uchar(flip_encoded_dir_bits(flp, ttmp.vl.v_conjoined));
             }
@@ -617,22 +413,22 @@ flip_level(
 
     /* objects */
     for (otmp = fobj(); otmp; otmp = otmp.nobj) {
-        if (!((((((otmp.ox) >= minx[0]) && ((otmp.ox) <= maxx[0])) && ((otmp.oy) >= miny[0])) && ((otmp.oy) <= maxy[0]))))
+        if (!(((((otmp.ox) >= minx[0]) && ((otmp.ox) <= maxx[0])) && ((otmp.oy) >= miny[0])) && ((otmp.oy) <= maxy[0])))
             continue;
         if (flp & 1)
-            otmp.oy = ((((maxy[0] - (otmp.oy))) + miny[0]));
+            otmp.oy = ((maxy[0] - (otmp.oy)) + miny[0]);
         if (flp & 2)
-            otmp.ox = ((((maxx[0] - (otmp.ox))) + minx[0]));
+            otmp.ox = ((maxx[0] - (otmp.ox)) + minx[0]);
     }
 
     /* buried objects */
     for (otmp = svl.level.buriedobjlist; otmp; otmp = otmp.nobj) {
-        if (!((((((otmp.ox) >= minx[0]) && ((otmp.ox) <= maxx[0])) && ((otmp.oy) >= miny[0])) && ((otmp.oy) <= maxy[0]))))
+        if (!(((((otmp.ox) >= minx[0]) && ((otmp.ox) <= maxx[0])) && ((otmp.oy) >= miny[0])) && ((otmp.oy) <= maxy[0])))
             continue;
         if (flp & 1)
-            otmp.oy = ((((maxy[0] - (otmp.oy))) + miny[0]));
+            otmp.oy = ((maxy[0] - (otmp.oy)) + miny[0]);
         if (flp & 2)
-            otmp.ox = ((((maxx[0] - (otmp.ox))) + minx[0]));
+            otmp.ox = ((maxx[0] - (otmp.ox)) + minx[0]);
     }
 
     /* monsters */
@@ -644,32 +440,26 @@ flip_level(
                 continue;
         }
         /* skip the occasional earth elemental outside the flip area */
-        if (!((((((mtmp.mx) >= minx[0]) && ((mtmp.mx) <= maxx[0])) && ((mtmp.my) >= miny[0])) && ((mtmp.my) <= maxy[0]))))
+        if (!(((((mtmp.mx) >= minx[0]) && ((mtmp.mx) <= maxx[0])) && ((mtmp.my) >= miny[0])) && ((mtmp.my) <= maxy[0])))
             continue;
         if (flp & 1)
-            mtmp.my = ((((maxy[0] - (mtmp.my))) + miny[0]));
+            mtmp.my = ((maxy[0] - (mtmp.my)) + miny[0]);
         if (flp & 2)
-            mtmp.mx = ((((maxx[0] - (mtmp.mx))) + minx[0]));
+            mtmp.mx = ((maxx[0] - (mtmp.mx)) + minx[0]);
 
-        do { if (((mtmp.mgoal).x && (((((((mtmp.mgoal).x) >= minx[0]) && (((mtmp.mgoal).x) <= maxx[0])) && (((mtmp.mgoal).y) >= miny[0])) && (((mtmp.mgoal).y) <= maxy[0]))))) { if ((flp & 1)) (mtmp.mgoal).y = ((((maxy[0] - ((mtmp.mgoal).y))) + miny[0])); if ((flp & 2)) (mtmp.mgoal).x = ((((maxx[0] - ((mtmp.mgoal).x))) + minx[0])); } } while (0);
+        do { if (((mtmp.mgoal).x && ((((((mtmp.mgoal).x) >= minx[0]) && (((mtmp.mgoal).x) <= maxx[0])) && (((mtmp.mgoal).y) >= miny[0])) && (((mtmp.mgoal).y) <= maxy[0])))) { if ((flp & 1)) (mtmp.mgoal).y = ((maxy[0] - ((mtmp.mgoal).y)) + miny[0]); if ((flp & 2)) (mtmp.mgoal).x = ((maxx[0] - ((mtmp.mgoal).x)) + minx[0]); } } while (0);
 
         if (mtmp.ispriest) {
-            do { if (((EPRI(mtmp).shrpos).x && (((((((EPRI(mtmp).shrpos).x) >= minx[0]) && (((EPRI(mtmp).shrpos).x) <= maxx[0])) && (((EPRI(mtmp).shrpos).y) >= miny[0])) && (((EPRI(mtmp).shrpos).y) <= maxy[0]))))) { if ((flp & 1)) (EPRI(mtmp).shrpos).y = ((((maxy[0] - ((EPRI(mtmp).shrpos).y))) + miny[0])); if ((flp & 2)) (EPRI(mtmp).shrpos).x = ((((maxx[0] - ((EPRI(mtmp).shrpos).x))) + minx[0])); } } while (0);
+            do { if (((EPRI(mtmp).shrpos).x && ((((((EPRI(mtmp).shrpos).x) >= minx[0]) && (((EPRI(mtmp).shrpos).x) <= maxx[0])) && (((EPRI(mtmp).shrpos).y) >= miny[0])) && (((EPRI(mtmp).shrpos).y) <= maxy[0])))) { if ((flp & 1)) (EPRI(mtmp).shrpos).y = ((maxy[0] - ((EPRI(mtmp).shrpos).y)) + miny[0]); if ((flp & 2)) (EPRI(mtmp).shrpos).x = ((maxx[0] - ((EPRI(mtmp).shrpos).x)) + minx[0]); } } while (0);
         } else if (mtmp.isshk) {
-            do { if (((ESHK(mtmp).shk).x && (((((((ESHK(mtmp).shk).x) >= minx[0]) && (((ESHK(mtmp).shk).x) <= maxx[0])) && (((ESHK(mtmp).shk).y) >= miny[0])) && (((ESHK(mtmp).shk).y) <= maxy[0]))))) { if ((flp & 1)) (ESHK(mtmp).shk).y = ((((maxy[0] - ((ESHK(mtmp).shk).y))) + miny[0])); if ((flp & 2)) (ESHK(mtmp).shk).x = ((((maxx[0] - ((ESHK(mtmp).shk).x))) + minx[0])); } } while (0); /* shk's preferred spot */
-            do { if (((ESHK(mtmp).shd).x && (((((((ESHK(mtmp).shd).x) >= minx[0]) && (((ESHK(mtmp).shd).x) <= maxx[0])) && (((ESHK(mtmp).shd).y) >= miny[0])) && (((ESHK(mtmp).shd).y) <= maxy[0]))))) { if ((flp & 1)) (ESHK(mtmp).shd).y = ((((maxy[0] - ((ESHK(mtmp).shd).y))) + miny[0])); if ((flp & 2)) (ESHK(mtmp).shd).x = ((((maxx[0] - ((ESHK(mtmp).shd).x))) + minx[0])); } } while (0); /* shop door */
+            do { if (((ESHK(mtmp).shk).x && ((((((ESHK(mtmp).shk).x) >= minx[0]) && (((ESHK(mtmp).shk).x) <= maxx[0])) && (((ESHK(mtmp).shk).y) >= miny[0])) && (((ESHK(mtmp).shk).y) <= maxy[0])))) { if ((flp & 1)) (ESHK(mtmp).shk).y = ((maxy[0] - ((ESHK(mtmp).shk).y)) + miny[0]); if ((flp & 2)) (ESHK(mtmp).shk).x = ((maxx[0] - ((ESHK(mtmp).shk).x)) + minx[0]); } } while (0); /* shk's preferred spot */
+            do { if (((ESHK(mtmp).shd).x && ((((((ESHK(mtmp).shd).x) >= minx[0]) && (((ESHK(mtmp).shd).x) <= maxx[0])) && (((ESHK(mtmp).shd).y) >= miny[0])) && (((ESHK(mtmp).shd).y) <= maxy[0])))) { if ((flp & 1)) (ESHK(mtmp).shd).y = ((maxy[0] - ((ESHK(mtmp).shd).y)) + miny[0]); if ((flp & 2)) (ESHK(mtmp).shd).x = ((maxx[0] - ((ESHK(mtmp).shd).x)) + minx[0]); } } while (0); /* shop door */
         } else if (mtmp.wormno) {
             if (flp & 1)
                 flip_worm_segs_vertical(mtmp, miny[0], maxy[0]);
             if (flp & 2)
                 flip_worm_segs_horizontal(mtmp, minx[0], maxx[0]);
         }
-
-
-
-
-
-
     }
     if (extras) { /* #wizfliplevel rather than level creation */
         for (mtmp = gm.migrating_mons; mtmp; mtmp = mtmp.nmon) {
@@ -677,11 +467,11 @@ flip_level(
                 flip_vault_guard(flp, mtmp, minx[0], miny[0], maxx[0], maxy[0]); /* egd */
             } else if (mtmp.ispriest
                        && on_level(u.uz, EPRI(mtmp).shrlevel)) {
-                do { if (((EPRI(mtmp).shrpos).x && (((((((EPRI(mtmp).shrpos).x) >= minx[0]) && (((EPRI(mtmp).shrpos).x) <= maxx[0])) && (((EPRI(mtmp).shrpos).y) >= miny[0])) && (((EPRI(mtmp).shrpos).y) <= maxy[0]))))) { if ((flp & 1)) (EPRI(mtmp).shrpos).y = ((((maxy[0] - ((EPRI(mtmp).shrpos).y))) + miny[0])); if ((flp & 2)) (EPRI(mtmp).shrpos).x = ((((maxx[0] - ((EPRI(mtmp).shrpos).x))) + minx[0])); } } while (0); /* priest's altar */
+                do { if (((EPRI(mtmp).shrpos).x && ((((((EPRI(mtmp).shrpos).x) >= minx[0]) && (((EPRI(mtmp).shrpos).x) <= maxx[0])) && (((EPRI(mtmp).shrpos).y) >= miny[0])) && (((EPRI(mtmp).shrpos).y) <= maxy[0])))) { if ((flp & 1)) (EPRI(mtmp).shrpos).y = ((maxy[0] - ((EPRI(mtmp).shrpos).y)) + miny[0]); if ((flp & 2)) (EPRI(mtmp).shrpos).x = ((maxx[0] - ((EPRI(mtmp).shrpos).x)) + minx[0]); } } while (0); /* priest's altar */
             } else if (mtmp.isshk
                        && on_level(u.uz, ESHK(mtmp).shoplevel)) {
-                do { if (((ESHK(mtmp).shk).x && (((((((ESHK(mtmp).shk).x) >= minx[0]) && (((ESHK(mtmp).shk).x) <= maxx[0])) && (((ESHK(mtmp).shk).y) >= miny[0])) && (((ESHK(mtmp).shk).y) <= maxy[0]))))) { if ((flp & 1)) (ESHK(mtmp).shk).y = ((((maxy[0] - ((ESHK(mtmp).shk).y))) + miny[0])); if ((flp & 2)) (ESHK(mtmp).shk).x = ((((maxx[0] - ((ESHK(mtmp).shk).x))) + minx[0])); } } while (0); /* shk's preferred spot */
-                do { if (((ESHK(mtmp).shd).x && (((((((ESHK(mtmp).shd).x) >= minx[0]) && (((ESHK(mtmp).shd).x) <= maxx[0])) && (((ESHK(mtmp).shd).y) >= miny[0])) && (((ESHK(mtmp).shd).y) <= maxy[0]))))) { if ((flp & 1)) (ESHK(mtmp).shd).y = ((((maxy[0] - ((ESHK(mtmp).shd).y))) + miny[0])); if ((flp & 2)) (ESHK(mtmp).shd).x = ((((maxx[0] - ((ESHK(mtmp).shd).x))) + minx[0])); } } while (0); /* shop door */
+                do { if (((ESHK(mtmp).shk).x && ((((((ESHK(mtmp).shk).x) >= minx[0]) && (((ESHK(mtmp).shk).x) <= maxx[0])) && (((ESHK(mtmp).shk).y) >= miny[0])) && (((ESHK(mtmp).shk).y) <= maxy[0])))) { if ((flp & 1)) (ESHK(mtmp).shk).y = ((maxy[0] - ((ESHK(mtmp).shk).y)) + miny[0]); if ((flp & 2)) (ESHK(mtmp).shk).x = ((maxx[0] - ((ESHK(mtmp).shk).x)) + minx[0]); } } while (0); /* shk's preferred spot */
+                do { if (((ESHK(mtmp).shd).x && ((((((ESHK(mtmp).shd).x) >= minx[0]) && (((ESHK(mtmp).shd).x) <= maxx[0])) && (((ESHK(mtmp).shd).y) >= miny[0])) && (((ESHK(mtmp).shd).y) <= maxy[0])))) { if ((flp & 1)) (ESHK(mtmp).shd).y = ((maxy[0] - ((ESHK(mtmp).shd).y)) + miny[0]); if ((flp & 2)) (ESHK(mtmp).shd).x = ((maxx[0] - ((ESHK(mtmp).shd).x)) + minx[0]); } } while (0); /* shop door */
             }
         }
     }
@@ -689,24 +479,24 @@ flip_level(
     /* engravings */
     for (etmp = head_engr; etmp; etmp = etmp.nxt_engr) {
         if (flp & 1)
-            etmp.engr_y = ((((maxy[0] - (etmp.engr_y))) + miny[0]));
+            etmp.engr_y = ((maxy[0] - (etmp.engr_y)) + miny[0]);
         if (flp & 2)
-            etmp.engr_x = ((((maxx[0] - (etmp.engr_x))) + minx[0]));
+            etmp.engr_x = ((maxx[0] - (etmp.engr_x)) + minx[0]);
     }
 
     /* level (teleport) regions */
     for (i = 0; i < gn.num_lregions; i++) {
         if (flp & 1) {
-            ptr_add(gl.lregions, i).inarea.y1 = ((((maxy[0] - (ptr_add(gl.lregions, i).inarea.y1))) + miny[0]));
-            ptr_add(gl.lregions, i).inarea.y2 = ((((maxy[0] - (ptr_add(gl.lregions, i).inarea.y2))) + miny[0]));
+            ptr_add(gl.lregions, i).inarea.y1 = ((maxy[0] - (ptr_add(gl.lregions, i).inarea.y1)) + miny[0]);
+            ptr_add(gl.lregions, i).inarea.y2 = ((maxy[0] - (ptr_add(gl.lregions, i).inarea.y2)) + miny[0]);
             if (ptr_add(gl.lregions, i).inarea.y1 > ptr_add(gl.lregions, i).inarea.y2) {
                 itmp = ptr_add(gl.lregions, i).inarea.y1;
                 ptr_add(gl.lregions, i).inarea.y1 = ptr_add(gl.lregions, i).inarea.y2;
                 ptr_add(gl.lregions, i).inarea.y2 = itmp;
             }
 
-            ptr_add(gl.lregions, i).delarea.y1 = ((((maxy[0] - (ptr_add(gl.lregions, i).delarea.y1))) + miny[0]));
-            ptr_add(gl.lregions, i).delarea.y2 = ((((maxy[0] - (ptr_add(gl.lregions, i).delarea.y2))) + miny[0]));
+            ptr_add(gl.lregions, i).delarea.y1 = ((maxy[0] - (ptr_add(gl.lregions, i).delarea.y1)) + miny[0]);
+            ptr_add(gl.lregions, i).delarea.y2 = ((maxy[0] - (ptr_add(gl.lregions, i).delarea.y2)) + miny[0]);
             if (ptr_add(gl.lregions, i).delarea.y1 > ptr_add(gl.lregions, i).delarea.y2) {
                 itmp = ptr_add(gl.lregions, i).delarea.y1;
                 ptr_add(gl.lregions, i).delarea.y1 = ptr_add(gl.lregions, i).delarea.y2;
@@ -714,16 +504,16 @@ flip_level(
             }
         }
         if (flp & 2) {
-            ptr_add(gl.lregions, i).inarea.x1 = ((((maxx[0] - (ptr_add(gl.lregions, i).inarea.x1))) + minx[0]));
-            ptr_add(gl.lregions, i).inarea.x2 = ((((maxx[0] - (ptr_add(gl.lregions, i).inarea.x2))) + minx[0]));
+            ptr_add(gl.lregions, i).inarea.x1 = ((maxx[0] - (ptr_add(gl.lregions, i).inarea.x1)) + minx[0]);
+            ptr_add(gl.lregions, i).inarea.x2 = ((maxx[0] - (ptr_add(gl.lregions, i).inarea.x2)) + minx[0]);
             if (ptr_add(gl.lregions, i).inarea.x1 > ptr_add(gl.lregions, i).inarea.x2) {
                 itmp = ptr_add(gl.lregions, i).inarea.x1;
                 ptr_add(gl.lregions, i).inarea.x1 = ptr_add(gl.lregions, i).inarea.x2;
                 ptr_add(gl.lregions, i).inarea.x2 = itmp;
             }
 
-            ptr_add(gl.lregions, i).delarea.x1 = ((((maxx[0] - (ptr_add(gl.lregions, i).delarea.x1))) + minx[0]));
-            ptr_add(gl.lregions, i).delarea.x2 = ((((maxx[0] - (ptr_add(gl.lregions, i).delarea.x2))) + minx[0]));
+            ptr_add(gl.lregions, i).delarea.x1 = ((maxx[0] - (ptr_add(gl.lregions, i).delarea.x1)) + minx[0]);
+            ptr_add(gl.lregions, i).delarea.x2 = ((maxx[0] - (ptr_add(gl.lregions, i).delarea.x2)) + minx[0]);
             if (ptr_add(gl.lregions, i).delarea.x1 > ptr_add(gl.lregions, i).delarea.x2) {
                 itmp = ptr_add(gl.lregions, i).delarea.x1;
                 ptr_add(gl.lregions, i).delarea.x1 = ptr_add(gl.lregions, i).delarea.x2;
@@ -736,25 +526,25 @@ flip_level(
     for (i = 0; i < svn.n_regions; i++) {
         let j, tmp1, tmp2;
         if (flp & 1) {
-            tmp1 = ((((maxy[0] - (gr.regions[i].bounding_box.ly))) + miny[0]));
-            tmp2 = ((((maxy[0] - (gr.regions[i].bounding_box.hy))) + miny[0]));
+            tmp1 = ((maxy[0] - (gr.regions[i].bounding_box.ly)) + miny[0]);
+            tmp2 = ((maxy[0] - (gr.regions[i].bounding_box.hy)) + miny[0]);
             gr.regions[i].bounding_box.ly = min(tmp1, tmp2);
             gr.regions[i].bounding_box.hy = max(tmp1, tmp2);
             for (j = 0; j < gr.regions[i].nrects; j++) {
-                tmp1 = ((((maxy[0] - (ptr_add(gr.regions[i].rects, j).ly))) + miny[0]));
-                tmp2 = ((((maxy[0] - (ptr_add(gr.regions[i].rects, j).hy))) + miny[0]));
+                tmp1 = ((maxy[0] - (ptr_add(gr.regions[i].rects, j).ly)) + miny[0]);
+                tmp2 = ((maxy[0] - (ptr_add(gr.regions[i].rects, j).hy)) + miny[0]);
                 ptr_add(gr.regions[i].rects, j).ly = min(tmp1, tmp2);
                 ptr_add(gr.regions[i].rects, j).hy = max(tmp1, tmp2);
             }
         }
         if (flp & 2) {
-            tmp1 = ((((maxx[0] - (gr.regions[i].bounding_box.lx))) + minx[0]));
-            tmp2 = ((((maxx[0] - (gr.regions[i].bounding_box.hx))) + minx[0]));
+            tmp1 = ((maxx[0] - (gr.regions[i].bounding_box.lx)) + minx[0]);
+            tmp2 = ((maxx[0] - (gr.regions[i].bounding_box.hx)) + minx[0]);
             gr.regions[i].bounding_box.lx = min(tmp1, tmp2);
             gr.regions[i].bounding_box.hx = max(tmp1, tmp2);
             for (j = 0; j < gr.regions[i].nrects; j++) {
-                tmp1 = ((((maxx[0] - (ptr_add(gr.regions[i].rects, j).lx))) + minx[0]));
-                tmp2 = ((((maxx[0] - (ptr_add(gr.regions[i].rects, j).hx))) + minx[0]));
+                tmp1 = ((maxx[0] - (ptr_add(gr.regions[i].rects, j).lx)) + minx[0]);
+                tmp2 = ((maxx[0] - (ptr_add(gr.regions[i].rects, j).hx)) + minx[0]);
                 ptr_add(gr.regions[i].rects, j).lx = min(tmp1, tmp2);
                 ptr_add(gr.regions[i].rects, j).hx = max(tmp1, tmp2);
             }
@@ -767,8 +557,8 @@ flip_level(
             break;
 
         if (flp & 1) {
-            sroom.ly = ((((maxy[0] - (sroom.ly))) + miny[0]));
-            sroom.hy = ((((maxy[0] - (sroom.hy))) + miny[0]));
+            sroom.ly = ((maxy[0] - (sroom.ly)) + miny[0]);
+            sroom.hy = ((maxy[0] - (sroom.hy)) + miny[0]);
             if (sroom.ly > sroom.hy) {
                 itmp = sroom.ly;
                 sroom.ly = sroom.hy;
@@ -776,8 +566,8 @@ flip_level(
             }
         }
         if (flp & 2) {
-            sroom.lx = ((((maxx[0] - (sroom.lx))) + minx[0]));
-            sroom.hx = ((((maxx[0] - (sroom.hx))) + minx[0]));
+            sroom.lx = ((maxx[0] - (sroom.lx)) + minx[0]);
+            sroom.hx = ((maxx[0] - (sroom.hx)) + minx[0]);
             if (sroom.lx > sroom.hx) {
                 itmp = sroom.lx;
                 sroom.lx = sroom.hx;
@@ -790,8 +580,8 @@ flip_level(
                 let rroom = sroom.sbrooms[i];
 
                 if (flp & 1) {
-                    rroom.ly = ((((maxy[0] - (rroom.ly))) + miny[0]));
-                    rroom.hy = ((((maxy[0] - (rroom.hy))) + miny[0]));
+                    rroom.ly = ((maxy[0] - (rroom.ly)) + miny[0]);
+                    rroom.hy = ((maxy[0] - (rroom.hy)) + miny[0]);
                     if (rroom.ly > rroom.hy) {
                         itmp = rroom.ly;
                         rroom.ly = rroom.hy;
@@ -799,8 +589,8 @@ flip_level(
                     }
                 }
                 if (flp & 2) {
-                    rroom.lx = ((((maxx[0] - (rroom.lx))) + minx[0]));
-                    rroom.hx = ((((maxx[0] - (rroom.hx))) + minx[0]));
+                    rroom.lx = ((maxx[0] - (rroom.lx)) + minx[0]);
+                    rroom.hx = ((maxx[0] - (rroom.hx)) + minx[0]);
                     if (rroom.lx > rroom.hx) {
                         itmp = rroom.lx;
                         rroom.lx = rroom.hx;
@@ -812,14 +602,14 @@ flip_level(
 
     /* doors */
     for (i = 0; i < gd.doorindex; i++) {
-        do { if (((ptr_add(svd.doors, i)).x && (((((((ptr_add(svd.doors, i)).x) >= minx[0]) && (((ptr_add(svd.doors, i)).x) <= maxx[0])) && (((ptr_add(svd.doors, i)).y) >= miny[0])) && (((ptr_add(svd.doors, i)).y) <= maxy[0]))))) { if ((flp & 1)) (ptr_add(svd.doors, i)).y = ((((maxy[0] - ((ptr_add(svd.doors, i)).y))) + miny[0])); if ((flp & 2)) (ptr_add(svd.doors, i)).x = ((((maxx[0] - ((ptr_add(svd.doors, i)).x))) + minx[0])); } } while (0);
+        do { if (((ptr_add(svd.doors, i)).x && ((((((ptr_add(svd.doors, i)).x) >= minx[0]) && (((ptr_add(svd.doors, i)).x) <= maxx[0])) && (((ptr_add(svd.doors, i)).y) >= miny[0])) && (((ptr_add(svd.doors, i)).y) <= maxy[0])))) { if ((flp & 1)) (ptr_add(svd.doors, i)).y = ((maxy[0] - ((ptr_add(svd.doors, i)).y)) + miny[0]); if ((flp & 2)) (ptr_add(svd.doors, i)).x = ((maxx[0] - ((ptr_add(svd.doors, i)).x)) + minx[0]); } } while (0);
     }
 
     /* the map */
     if (flp & 1) {
         for (x = minx[0]; x <= maxx[0]; x++)
-            for (y = miny[0]; y < (miny[0] + (Math.trunc((maxy[0] - miny[0] + 1) / 2))); y++) {
-                let ny = ((((maxy[0] - (y))) + miny[0]));
+            for (y = miny[0]; y < (miny[0] + Math.trunc((maxy[0] - miny[0] + 1) / 2)); y++) {
+                let ny = ((maxy[0] - (y)) + miny[0]);
 
                 flip_dbridge_vertical(levl()[x][y]);
                 flip_dbridge_vertical(levl()[x][ny]);
@@ -838,9 +628,9 @@ flip_level(
             }
     }
     if (flp & 2) {
-        for (x = minx[0]; x < (minx[0] + (Math.trunc((maxx[0] - minx[0] + 1) / 2))); x++)
+        for (x = minx[0]; x < (minx[0] + Math.trunc((maxx[0] - minx[0] + 1) / 2)); x++)
             for (y = miny[0]; y <= maxy[0]; y++) {
-                let nx = ((((maxx[0] - (x))) + minx[0]));
+                let nx = ((maxx[0] - (x)) + minx[0]);
 
                 flip_dbridge_horizontal(levl()[x][y]);
                 flip_dbridge_horizontal(levl()[nx][y]);
@@ -863,21 +653,21 @@ flip_level(
     for (timer = gt.timer_base; timer; timer = timer.next) {
         if (timer.func_index == MELT_ICE_AWAY) {
             let ty = timer.arg.a_long & 0xffff;
-            let tx = (shr64(timer.arg.a_long, 16)) & 0xffff;
+            let tx = shr64(timer.arg.a_long, 16) & 0xffff;
 
             if (flp & 1)
-                ty = ((((maxy[0] - (ty))) + miny[0]));
+                ty = ((maxy[0] - (ty)) + miny[0]);
             if (flp & 2)
-                tx = ((((maxx[0] - (tx))) + minx[0]));
-            timer.arg.a_long = (or64((shl64(tx, 16)), ty));
+                tx = ((maxx[0] - (tx)) + minx[0]);
+            timer.arg.a_long = or64(shl64(tx, 16), ty);
         }
     }
 
     /* exclusion zones */
     for (ez = sve.exclusion_zones; ez; ez = ez.next) {
         if (flp & 1) {
-            ez.ly = ((((maxy[0] - (ez.ly))) + miny[0]));
-            ez.hy = ((((maxy[0] - (ez.hy))) + miny[0]));
+            ez.ly = ((maxy[0] - (ez.ly)) + miny[0]);
+            ez.hy = ((maxy[0] - (ez.hy)) + miny[0]);
             if (ez.ly > ez.hy) {
                 itmp = ez.ly;
                 ez.ly = ez.hy;
@@ -885,8 +675,8 @@ flip_level(
             }
         }
         if (flp & 2) {
-            ez.lx = ((((maxx[0] - (ez.lx))) + minx[0]));
-            ez.hx = ((((maxx[0] - (ez.hx))) + minx[0]));
+            ez.lx = ((maxx[0] - (ez.lx)) + minx[0]);
+            ez.hx = ((maxx[0] - (ez.hx)) + minx[0]);
             if (ez.lx > ez.hx) {
                 itmp = ez.lx;
                 ez.lx = ez.hx;
@@ -897,19 +687,19 @@ flip_level(
 
     if (extras) { /* for #wizfliplevel rather than during level creation */
         /* flip hero location only if inside the flippable area */
-        if (((((((u.ux) >= minx[0]) && ((u.ux) <= maxx[0])) && ((u.uy) >= miny[0])) && ((u.uy) <= maxy[0])))) {
+        if ((((((u.ux) >= minx[0]) && ((u.ux) <= maxx[0])) && ((u.uy) >= miny[0])) && ((u.uy) <= maxy[0]))) {
             if (flp & 1)
-                u.uy = ((((maxy[0] - (u.uy))) + miny[0]));
+                u.uy = ((maxy[0] - (u.uy)) + miny[0]);
             if (flp & 2)
-                u.ux = ((((maxx[0] - (u.ux))) + minx[0]));
+                u.ux = ((maxx[0] - (u.ux)) + minx[0]);
             /* we could flip <ux0,uy0> too if it's inside the flip area,
                but have to resort to this if outside, so just do this */
             u.ux0 = u.ux, u.uy0 = u.uy;
         }
         if (ball_active && !ball_fliparea)
             placebc();
-        do { if (((iflags.travelcc).x && (((((((iflags.travelcc).x) >= minx[0]) && (((iflags.travelcc).x) <= maxx[0])) && (((iflags.travelcc).y) >= miny[0])) && (((iflags.travelcc).y) <= maxy[0]))))) { if ((flp & 1)) (iflags.travelcc).y = ((((maxy[0] - ((iflags.travelcc).y))) + miny[0])); if ((flp & 2)) (iflags.travelcc).x = ((((maxx[0] - ((iflags.travelcc).x))) + minx[0])); } } while (0);
-        do { if (((svc.context.digging.pos).x && (((((((svc.context.digging.pos).x) >= minx[0]) && (((svc.context.digging.pos).x) <= maxx[0])) && (((svc.context.digging.pos).y) >= miny[0])) && (((svc.context.digging.pos).y) <= maxy[0]))))) { if ((flp & 1)) (svc.context.digging.pos).y = ((((maxy[0] - ((svc.context.digging.pos).y))) + miny[0])); if ((flp & 2)) (svc.context.digging.pos).x = ((((maxx[0] - ((svc.context.digging.pos).x))) + minx[0])); } } while (0);
+        do { if (((iflags.travelcc).x && ((((((iflags.travelcc).x) >= minx[0]) && (((iflags.travelcc).x) <= maxx[0])) && (((iflags.travelcc).y) >= miny[0])) && (((iflags.travelcc).y) <= maxy[0])))) { if ((flp & 1)) (iflags.travelcc).y = ((maxy[0] - ((iflags.travelcc).y)) + miny[0]); if ((flp & 2)) (iflags.travelcc).x = ((maxx[0] - ((iflags.travelcc).x)) + minx[0]); } } while (0);
+        do { if (((svc.context.digging.pos).x && ((((((svc.context.digging.pos).x) >= minx[0]) && (((svc.context.digging.pos).x) <= maxx[0])) && (((svc.context.digging.pos).y) >= miny[0])) && (((svc.context.digging.pos).y) <= maxy[0])))) { if ((flp & 1)) (svc.context.digging.pos).y = ((maxy[0] - ((svc.context.digging.pos).y)) + miny[0]); if ((flp & 2)) (svc.context.digging.pos).x = ((maxx[0] - ((svc.context.digging.pos).x)) + minx[0]); } } while (0);
     }
 
     fix_wall_spines(1, 0, COLNO - 1, ROWNO - 1);
@@ -919,53 +709,46 @@ flip_level(
         flip_visuals(flp, minx[0], miny[0], maxx[0], maxy[0]);
     }
     vision_reset();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for #wizfliplevel, flip guard's egd data; not needed for level creation */
-function /* void */
-flip_vault_guard(
+function flip_vault_guard(
     flp,
     grd,
     minx, miny,
-    maxx, maxy) /* and inFlipArea() macros     */
-{
+    maxx, maxy) { /* void */ /* and inFlipArea() macros */
     let i;
     let egd = EGD(grd);
 
-    if (((((((egd.gdx) >= minx) && ((egd.gdx) <= maxx)) && ((egd.gdy) >= miny)) && ((egd.gdy) <= maxy)))) {
+    if ((((((egd.gdx) >= minx) && ((egd.gdx) <= maxx)) && ((egd.gdy) >= miny)) && ((egd.gdy) <= maxy))) {
         if (flp & 1)
-            egd.gdy = ((((maxy - (egd.gdy))) + miny));
+            egd.gdy = ((maxy - (egd.gdy)) + miny);
         if (flp & 2)
-            egd.gdx = ((((maxx - (egd.gdx))) + minx));
+            egd.gdx = ((maxx - (egd.gdx)) + minx);
     }
-    if (((((((egd.ogx) >= minx) && ((egd.ogx) <= maxx)) && ((egd.ogy) >= miny)) && ((egd.ogy) <= maxy)))) {
+    if ((((((egd.ogx) >= minx) && ((egd.ogx) <= maxx)) && ((egd.ogy) >= miny)) && ((egd.ogy) <= maxy))) {
         if (flp & 1)
-            egd.ogy = ((((maxy - (egd.ogy))) + miny));
+            egd.ogy = ((maxy - (egd.ogy)) + miny);
         if (flp & 2)
-            egd.ogx = ((((maxx - (egd.ogx))) + minx));
+            egd.ogx = ((maxx - (egd.ogx)) + minx);
     }
     for (i = egd.fcbeg; i < egd.fcend; ++i) {
         let fx = egd.fakecorr[i].fx, fy = egd.fakecorr[i].fy;
 
-        if (((((((fx) >= minx) && ((fx) <= maxx)) && ((fy) >= miny)) && ((fy) <= maxy)))) {
+        if ((((((fx) >= minx) && ((fx) <= maxx)) && ((fy) >= miny)) && ((fy) <= maxy))) {
             if (flp & 1)
-                egd.fakecorr[i].fy = ((((maxy - (fy))) + miny));
+                egd.fakecorr[i].fy = ((maxy - (fy)) + miny);
             if (flp & 2)
-                egd.fakecorr[i].fx = ((((maxx - (fx))) + minx));
+                egd.fakecorr[i].fx = ((maxx - (fx)) + minx);
         }
     }
     return;
 }
 
-
-
-
-
 /* randomly transpose top with bottom or left with right or both;
    caller controls which transpositions are allowed */
-export function /* void */
-flip_level_rnd(flp, extras)
-{
+export function flip_level_rnd(flp, extras) { /* void */
     let c = 0;
 
     /* TODO?
@@ -981,10 +764,7 @@ flip_level_rnd(flp, extras)
         flip_level(c, extras);
 }
 
-
-function /* void */
-sel_set_wall_property(x, y, arg)
-{
+function sel_set_wall_property(x, y, arg) { /* void */
     let prop = ref_to(int, arg)[0];
 
     if (IS_STWALL(levl()[x][y].typ) || IS_TREE(levl()[x][y].typ)
@@ -997,9 +777,9 @@ sel_set_wall_property(x, y, arg)
 /*
  * Make walls of the area (x1, y1, x2, y2) non diggable/non passwall-able
  */
-function /* void */
-set_wall_property(x1, y1, x2, y2, prop$)
-{ const $frame = stack_frame(); try { const prop = stack_var(int, prop$);
+function set_wall_property(x1, y1, x2, y2, prop$) { /* void */
+    const $frame = stack_frame(); try {
+    const prop = stack_var(int, prop$);
     let x, y;
 
     x1 = max(x1, 1);
@@ -1010,11 +790,10 @@ set_wall_property(x1, y1, x2, y2, prop$)
         for (x = x1; x <= x2; x++) {
             sel_set_wall_property(x, y, addr_of(prop));
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-remove_boundary_syms()
-{
+function remove_boundary_syms() { /* void */
     /*
      * If any CROSSWALLs are found, must change to ROOM after REGION's
      * are laid out.  CROSSWALLS are used to specify "invisible"
@@ -1038,9 +817,7 @@ remove_boundary_syms()
 }
 
 /* used by sel_set_door() and link_doors_rooms() */
-function /* void */
-set_door_orientation(x, y)
-{
+function set_door_orientation(x, y) { /* void */
     let wleft, wright, wup, wdown;
 
     /* If there's a wall or door on either the left side or right
@@ -1061,34 +838,32 @@ set_door_orientation(x, y)
      * to that, we check for solid rock which hasn't been wallified
      * yet (cf lower leftside of leader's room in Cav quest).
      */
-    wleft  = (((isok(x - 1, y) && (IS_WALL(levl()[x - 1][y].typ)
+    wleft  = (isok(x - 1, y) && (IS_WALL(levl()[x - 1][y].typ)
                                  || IS_DOOR(levl()[x - 1][y].typ)
-                                 || levl()[x - 1][y].typ == SDOOR)) ? 1 : 0));
-    wright = (((isok(x + 1, y) && (IS_WALL(levl()[x + 1][y].typ)
+                                 || levl()[x - 1][y].typ == SDOOR) ? 1 : 0);
+    wright = (isok(x + 1, y) && (IS_WALL(levl()[x + 1][y].typ)
                                  || IS_DOOR(levl()[x + 1][y].typ)
-                                 || levl()[x + 1][y].typ == SDOOR)) ? 1 : 0));
-    wup    = (((isok(x, y - 1) && (IS_WALL(elt(levl()[x], y - 1).typ)
+                                 || levl()[x + 1][y].typ == SDOOR) ? 1 : 0);
+    wup    = (isok(x, y - 1) && (IS_WALL(elt(levl()[x], y - 1).typ)
                                  || IS_DOOR(elt(levl()[x], y - 1).typ)
-                                 || elt(levl()[x], y - 1).typ == SDOOR)) ? 1 : 0));
-    wdown  = (((isok(x, y + 1) && (IS_WALL(levl()[x][y + 1].typ)
+                                 || elt(levl()[x], y - 1).typ == SDOOR) ? 1 : 0);
+    wdown  = (isok(x, y + 1) && (IS_WALL(levl()[x][y + 1].typ)
                                  || IS_DOOR(levl()[x][y + 1].typ)
-                                 || levl()[x][y + 1].typ == SDOOR)) ? 1 : 0));
+                                 || levl()[x][y + 1].typ == SDOOR) ? 1 : 0);
     if (!wleft && !wright && !wup && !wdown) {
         /* out of bounds is treated as implicit wall; should be academic
            because we don't expect to have doors so near the level's edge */
-        wleft  = (+(!isok(x - 1, y) || IS_DOORJOIN(levl()[x - 1][y].typ)));
-        wright = (+(!isok(x + 1, y) || IS_DOORJOIN(levl()[x + 1][y].typ)));
-        wup    = (+(!isok(x, y - 1) || IS_DOORJOIN(elt(levl()[x], y - 1).typ)));
-        wdown  = (+(!isok(x, y + 1) || IS_DOORJOIN(levl()[x][y + 1].typ)));
+        wleft  = +(!isok(x - 1, y) || IS_DOORJOIN(levl()[x - 1][y].typ));
+        wright = +(!isok(x + 1, y) || IS_DOORJOIN(levl()[x + 1][y].typ));
+        wup    = +(!isok(x, y - 1) || IS_DOORJOIN(elt(levl()[x], y - 1).typ));
+        wdown  = +(!isok(x, y + 1) || IS_DOORJOIN(levl()[x][y + 1].typ));
     }
     levl()[x][y].horizontal = ((wleft || wright) && !(wup && wdown)) ? 1 : 0;
 }
 
 /* is x,y right next to room droom? */
-function /* boolean */
-shared_with_room(x, y, droom)
-{
-    let rmno = (ptr_diff(droom, svr.rooms[0])) + ROOMOFFSET;
+function shared_with_room(x, y, droom) { /* boolean */
+    let rmno = ptr_diff(droom, svr.rooms[0]) + ROOMOFFSET;
 
     if (!isok(x,y))
         return FALSE;
@@ -1106,21 +881,17 @@ shared_with_room(x, y, droom)
 }
 
 /* maybe add door at x,y to room droom */
-function /* void */
-maybe_add_door(x, y, droom)
-{
+function maybe_add_door(x, y, droom) { /* void */
     if (droom.hx >= 0
         && ((!droom.irregular && inside_room(droom, x, y))
-            || (levl()[x][y].roomno) == (ptr_diff(droom, svr.rooms[0])) + ROOMOFFSET
+            || (levl()[x][y].roomno) == ptr_diff(droom, svr.rooms[0]) + ROOMOFFSET
             || shared_with_room(x, y, droom))) {
         add_door(x, y, droom);
     }
 }
 
 /* link all doors in the map to their corresponding rooms */
-function /* void */
-link_doors_rooms()
-{
+function link_doors_rooms() { /* void */
     let x, y;
     let tmpi, m;
 
@@ -1144,9 +915,7 @@ link_doors_rooms()
 /*
  * Choose randomly the state (nodoor, open, closed or locked) for a door
  */
-function /* int */
-rnddoor()
-{
+function rnddoor() { /* int */
     let state = static_array("rnddoor.state", int, null, [ D_NODOOR, D_BROKEN, D_ISOPEN, D_CLOSED, D_LOCKED ]);
 
     return ROLL_FROM(state);
@@ -1155,9 +924,7 @@ rnddoor()
 /*
  * Select a random trap
  */
-function /* int */
-rndtrap()
-{
+function rndtrap() { /* int */
     let rtrap;
 
     do {
@@ -1198,12 +965,11 @@ rndtrap()
  * The "humidity" flag is used to ensure that engravings aren't created
  * underwater, or eels on dry land.
  */
-function /* void */
-get_location(
+function get_location(
     x, y,
     humidity,
-    croom)
-{ const $frame = stack_frame(); try {
+    croom) { /* void */
+    const $frame = stack_frame(); try {
     var cpt = 0;
     var mx, my, sx, sy;
 
@@ -1226,7 +992,7 @@ get_location(
         do {
             if (croom) { /* handle irregular areas */
                 var tmpc = stack_struct(struct_nhcoord);
-                void somexy(croom, tmpc);
+                somexy(croom, tmpc);
                 x[0] = tmpc.x;
                 y[0] = tmpc.y;
             } else {
@@ -1266,19 +1032,16 @@ get_location(
             x[0] = y[0] = -1;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const is_ok_location_func = static_var("is_ok_location_func", fnptr_t, null);
 
-function /* void */
-set_ok_location_func(func)
-{
+function set_ok_location_func(func) { /* void */
     is_ok_location_func[0] = func;
 }
 
-function /* boolean */
-is_ok_location(x, y, humidity)
-{
+function is_ok_location(x, y, humidity) { /* boolean */
     let typ = levl()[x][y].typ;
 
     if (Is_waterlevel(u.uz))
@@ -1295,7 +1058,7 @@ is_ok_location(x, y, humidity)
         return TRUE;
 
     if ((humidity & (DRY|SPACELOC)) && SPACE_POS(typ)) {
-        let bould = (+(sobj_at(BOULDER, x, y) != null));
+        let bould = +(sobj_at(BOULDER, x, y) != null);
 
         if (!bould || (bould && (humidity & SOLID)))
             return TRUE;
@@ -1307,21 +1070,17 @@ is_ok_location(x, y, humidity)
     return FALSE;
 }
 
-export function /* boolean */
-pm_good_location(x, y, pm)
-{
+export function pm_good_location(x, y, pm) { /* boolean */
     return is_ok_location(x, y, unsigned(pm_to_humidity(pm)));
 }
 
-function /* unpacked_coord */
-get_unpacked_coord(loc, defhumidity)
-{
+function get_unpacked_coord(loc, defhumidity) { /* unpacked_coord */
     let c = static_struct("get_unpacked_coord.c", unpacked_coord);
 
     if (loc & SP_COORD_IS_RANDOM) {
         c.x = c.y = -1;
         c.is_random = 1;
-        c.getloc_flags = getloc_flags_t((and64(loc, ~SP_COORD_IS_RANDOM)));
+        c.getloc_flags = getloc_flags_t(and64(loc, ~SP_COORD_IS_RANDOM));
         if (!c.getloc_flags)
             c.getloc_flags = unsigned(defhumidity);
     } else {
@@ -1333,13 +1092,12 @@ get_unpacked_coord(loc, defhumidity)
     return c;
 }
 
-export function /* void */
-get_location_coord(
+export function get_location_coord(
     x, y,
     humidity,
     croom,
-    crd)
-{ const $frame = stack_frame(); try {
+    crd) { /* void */
+    const $frame = stack_frame(); try {
     let c = stack_struct(unpacked_coord);
 
     struct_assign(c, get_unpacked_coord(crd, humidity));
@@ -1350,15 +1108,15 @@ get_location_coord(
 
     if (x[0] == -1 && y[0] == -1 && c.is_random)
         get_location(x, y, unsigned(humidity), croom);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Get a relative position inside a room.
  * negative values for x or y means RANDOM!
  */
-function /* void */
-get_room_loc(x, y, croom)
-{ const $frame = stack_frame(); try {
+function get_room_loc(x, y, croom) { /* void */
+    const $frame = stack_frame(); try {
     let c = stack_struct(struct_nhcoord);
 
     if (x[0] < 0 && y[0] < 0) {
@@ -1375,18 +1133,18 @@ get_room_loc(x, y, croom)
         x[0] += croom.lx;
         y[0] += croom.ly;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Get a relative position inside a room.
  * negative values for x or y means RANDOM!
  */
-function /* void */
-get_free_room_loc(
+function get_free_room_loc(
     x, y,
     croom,
-    pos)
-{ const $frame = stack_frame(); try {
+    pos) { /* void */
+    const $frame = stack_frame(); try {
     let try_x = stack_var(coordxy), try_y = stack_var(coordxy);
     let trycnt = 0;
 
@@ -1401,14 +1159,13 @@ get_free_room_loc(
             panic(_("get_free_room_loc:  can't find a place!"));
     }
     x[0] = try_x[0], y[0] = try_y[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-check_room(
+export function check_room(
     lowx, ddx,
     lowy, ddy,
-    vault)
-{
+    vault) { /* boolean */
     var x, y, hix = lowx[0] + ddx[0], hiy = lowy[0] + ddy[0];
     var lev;
     var xlim, ylim, ymax;
@@ -1482,13 +1239,12 @@ check_room(
  * Create a new room.
  * This is still very incomplete...
  */
-export function /* boolean */
-create_room(
+export function create_room(
     x, y,
     w, h,
     xal, yal,
-    rtype, rlit)
-{ const $frame = stack_frame(); try {
+    rtype, rlit) { /* boolean */
+    const $frame = stack_frame(); try {
     let xabs = stack_var(coordxy, 0), yabs = stack_var(coordxy, 0);
     let wtmp, htmp, xaltmp, yaltmp, xtmp, ytmp;
     let r1 = null, r2 = stack_struct(struct_nhrect);
@@ -1597,26 +1353,26 @@ create_room(
 
             /* Try to generate real (absolute) coordinates here! */
 
-            xabs[0] = (Math.trunc(((xtmp - 1) * COLNO) / 5)) + 1;
-            yabs[0] = (Math.trunc(((ytmp - 1) * ROWNO) / 5)) + 1;
+            xabs[0] = Math.trunc(((xtmp - 1) * COLNO) / 5) + 1;
+            yabs[0] = Math.trunc(((ytmp - 1) * ROWNO) / 5) + 1;
             switch (xaltmp) {
             case SPLEV_LEFT:
                 break;
             case SPLEV_RIGHT:
-                xabs[0] += (Math.trunc(COLNO / 5)) - wtmp;
+                xabs[0] += Math.trunc(COLNO / 5) - wtmp;
                 break;
             case SPLEV_CENTER:
-                xabs[0] += Math.trunc(((Math.trunc(COLNO / 5)) - wtmp) / 2);
+                xabs[0] += Math.trunc((Math.trunc(COLNO / 5) - wtmp) / 2);
                 break;
             }
             switch (yaltmp) {
             case TOP:
                 break;
             case BOTTOM:
-                yabs[0] += (Math.trunc(ROWNO / 5)) - htmp;
+                yabs[0] += Math.trunc(ROWNO / 5) - htmp;
                 break;
             case SPLEV_CENTER:
-                yabs[0] += Math.trunc(((Math.trunc(ROWNO / 5)) - htmp) / 2);
+                yabs[0] += Math.trunc((Math.trunc(ROWNO / 5) - htmp) / 2);
                 break;
             }
 
@@ -1658,19 +1414,18 @@ create_room(
         svr.rooms[svn.nroom].ly = yabs[0];
     }
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Create a subroom in room proom at pos x,y with width w & height h.
  * x & y are relative to the parent room.
  */
-function /* boolean */
-create_subroom(
+function create_subroom(
     proom,
     x, y,
     w, h,
-    rtype, rlit)
-{
+    rtype, rlit) { /* boolean */
     let width, height;
 
     width = proom.hx - proom.lx + 1;
@@ -1710,9 +1465,7 @@ create_subroom(
  * Create a new door in a room.
  * It's placed on a wall (north, south, east or west).
  */
-function /* void */
-create_door(dd, broom)
-{
+function create_door(dd, broom) { /* void */
     let x = 0, y = 0;
     let trycnt;
 
@@ -1808,9 +1561,8 @@ create_door(dd, broom)
 /*
  * Create a trap in a room.
  */
-function /* void */
-create_trap(t, croom)
-{ const $frame = stack_frame(); try {
+function create_trap(t, croom) { /* void */
+    const $frame = stack_frame(); try {
     let x = stack_var(coordxy, -1), y = stack_var(coordxy, -1);
     let tm = stack_struct(struct_nhcoord);
     let mktrap_flags = MKTRAP_MAZEFLAG;
@@ -1843,14 +1595,13 @@ create_trap(t, croom)
     tm.y = y[0];
 
     mktrap(t.type, mktrap_flags, null, tm);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Create a monster in a room.
  */
-function /* int */
-noncoalignment(alignment)
-{
+function noncoalignment(alignment) { /* int */
     let k;
 
     k = rn2(2);
@@ -1860,9 +1611,7 @@ noncoalignment(alignment)
 }
 
 /* attempt to screen out locations where a mimic-as-boulder shouldn't occur */
-function /* boolean */
-m_bad_boulder_spot(x, y)
-{
+function m_bad_boulder_spot(x, y) { /* boolean */
     let lev;
 
     /* avoid trap locations */
@@ -1880,9 +1629,7 @@ m_bad_boulder_spot(x, y)
     return FALSE;
 }
 
-function /* int */
-pm_to_humidity(pm)
-{
+function pm_to_humidity(pm) { /* int */
     let loc = DRY;
 
     if (!pm)
@@ -1904,15 +1651,13 @@ pm_to_humidity(pm)
  *
  * When random: there is an 80% chance that the altar will be co-aligned.
  */
-function /* unsigned int */
-sp_amask_to_amask(sp_amask)
-{
+function sp_amask_to_amask(sp_amask) { /* unsigned int */
     let amask;
 
     if (sp_amask == AM_SPLEV_CO)
         amask = Align2amask(chars[u.ualignbase + A_ORIGINAL]);
     else if (sp_amask == AM_SPLEV_NONCO)
-        amask = (unsigned((((((noncoalignment(chars[u.ualignbase + A_ORIGINAL])) == A_NONE)) ? AM_NONE : ((((noncoalignment(chars[u.ualignbase + A_ORIGINAL])) == A_LAWFUL)) ? AM_LAWFUL : (((noncoalignment(chars[u.ualignbase + A_ORIGINAL])) + 2)))))));
+        amask = unsigned((((noncoalignment(chars[u.ualignbase + A_ORIGINAL])) == A_NONE) ? AM_NONE : (((noncoalignment(chars[u.ualignbase + A_ORIGINAL])) == A_LAWFUL) ? AM_LAWFUL : ((noncoalignment(chars[u.ualignbase + A_ORIGINAL])) + 2))));
     else if (sp_amask == AM_SPLEV_RANDOM)
         amask = induced_align(80);
     else
@@ -1921,9 +1666,8 @@ sp_amask_to_amask(sp_amask)
     return amask;
 }
 
-function /* void */
-create_monster(m, croom)
-{ const $frame = stack_frame(); try {
+function create_monster(m, croom) { /* void */
+    const $frame = stack_frame(); try {
     let mtmp;
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let class_;
@@ -2063,7 +1807,7 @@ create_monster(m, croom)
             case M_AP_MONSTER: {
                 let mndx = stack_var(int), gender_name_var = stack_var(int, NEUTRAL);
 
-                if (!strcmpi(m.appear_as.str, _("random")))
+                if (!strncmpi((m.appear_as.str), _(("random")), -1))
                     mndx[0] = select_newcham_form(mtmp);
                 else
                     mndx[0] = name_to_mon(m.appear_as.str, gender_name_var);
@@ -2163,7 +1907,7 @@ create_monster(m, croom)
                bat/fog/wolf form and the special level or theme room didn't
                explicitly request that, shift back to vampire */
             if (vampshifted(mtmp) && m.appear != M_AP_MONSTER)
-                void newcham(mtmp, mons[mtmp.cham], NO_NC_FLAGS);
+                newcham(mtmp, mons[mtmp.cham], NO_NC_FLAGS);
         }
         if (m.m_lev_adj) {
             if (mtmp.m_lev + m.m_lev_adj > 49)
@@ -2184,14 +1928,14 @@ create_monster(m, croom)
             invent_carrying_monster[0] = mtmp;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Create an object in a room.
  */
-function /* struct obj * */
-create_object(o, croom)
-{ const $frame = stack_frame(); try {
+function create_object(o, croom) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let otmp;
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let c;
@@ -2267,7 +2011,7 @@ create_object(o, croom)
         otmp = oname(otmp, o.name.str, ONAME_LEVEL_DEF);
         if (otmp.otyp == SPE_NOVEL) {
             /* needs to be an existing title */
-            void lookup_novel(o.name.str, ref_of(otmp, "corpsenm"));
+            lookup_novel(o.name.str, ref_of(otmp, "corpsenm"));
         }
     }
     if (o.eroded) {
@@ -2318,7 +2062,7 @@ create_object(o, croom)
                 if (otmp.otyp == SADDLE && can_saddle(invent_carrying_monster[0]))
                     put_saddle_on_mon(otmp, invent_carrying_monster[0]);
                 else
-                    void mpickobj(invent_carrying_monster[0], otmp);
+                    mpickobj(invent_carrying_monster[0], otmp);
             }
         } else {
             let cobj = container_obj[container_idx[0] - 1];
@@ -2368,7 +2112,7 @@ create_object(o, croom)
             was = makemon(mons[wastyp], 0, 0, MM_NOCOUNTBIRTH|MM_NOMSG);
             if (was) {
                 if (!resists_ston(was) && !poly_when_stoned(mons[wastyp])) {
-                    void propagate(wastyp, TRUE, FALSE);
+                    propagate(wastyp, TRUE, FALSE);
                     break;
                 }
                 mongone(was);
@@ -2381,7 +2125,7 @@ create_object(o, croom)
                 obj = was.minvent;
                 obj.owornmask = 0;
                 obj_extract_self(obj);
-                void add_to_container(otmp, obj);
+                add_to_container(otmp, obj);
             }
             otmp.owt = unsigned(weight(otmp));
             mongone(was);
@@ -2413,7 +2157,7 @@ create_object(o, croom)
         } else if (!iflags.lua_testing) {
             let lbuf = stack_array(char, QBUFSZ);
 
-            void describe_level(lbuf, 1 | 2);
+            describe_level(lbuf, 1 | 2);
             impossible(_("create_object: unknown achievement (%s\"%s\")"),
                        lbuf, simpleonames(otmp));
         }
@@ -2428,7 +2172,7 @@ create_object(o, croom)
         if (o.buried) {
             let dealloced = stack_var(boolean);
 
-            void bury_an_obj(otmp, addr_of(dealloced));
+            bury_an_obj(otmp, addr_of(dealloced));
             if (dealloced[0]) {
                 if (container_idx[0])
                     container_obj[container_idx[0] - 1] = null;
@@ -2437,14 +2181,14 @@ create_object(o, croom)
         }
     }
     return otmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Create an altar in a room.
  */
-function /* void */
-create_altar(a, croom)
-{ const $frame = stack_frame(); try {
+function create_altar(a, croom) { /* void */
+    const $frame = stack_frame(); try {
     let sproom;
     let x = stack_var(coordxy, -1), y = stack_var(coordxy, -1);
     let amask;
@@ -2477,23 +2221,22 @@ create_altar(a, croom)
         return;
 
     if (a.shrine) { /* Is it a shrine  or sanctum? */
-        priestini(u.uz, croom, x[0], y[0], (+(a.shrine > 1)));
+        priestini(u.uz, croom, x[0], y[0], +(a.shrine > 1));
         levl()[x[0]][y[0]].flags |= AM_SHRINE;
         if (a.shrine == 2) /* high altar or sanctum */
             levl()[x[0]][y[0]].flags |= AM_SANCTUM;
         svl.level.flags.has_temple = TRUE;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Search for a door in a room on a specified wall.
  */
-function /* boolean */
-search_door(
+function search_door(
     croom,
     x, y,
-    wall, cnt)
-{
+    wall, cnt) { /* boolean */
     let dx, dy;
     let xx, yy;
 
@@ -2545,13 +2288,11 @@ search_door(
  * or just end without reaching the destination.
  * if not null, npoints has the number of map locations used
  */
-export function /* boolean */
-dig_corridor(
+export function dig_corridor(
     org, dest,
     npoints,
     nxcor,
-    ftyp, btyp)
-{
+    ftyp, btyp) { /* boolean */
     let dx = 0, dy = 0, dix, diy, cct;
     let crm;
     let tx, ty, xx, yy;
@@ -2602,7 +2343,7 @@ dig_corridor(
                     (npoints[0])++;
                 crm.typ = ftyp;
                 if (nxcor && !rn2(50))
-                    void mksobj_at(BOULDER, xx, yy, TRUE, FALSE);
+                    mksobj_at(BOULDER, xx, yy, TRUE, FALSE);
             }
         } else if (crm.typ != ftyp && crm.typ != SCORR) {
             /* strange ... */
@@ -2667,9 +2408,8 @@ dig_corridor(
  * Basically we search for door coordinates or for endpoints coordinates
  * (from a distance).
  */
-function /* void */
-create_corridor(c)
-{ const $frame = stack_frame(); try {
+function create_corridor(c) { /* void */
+    const $frame = stack_frame(); try {
     let org = stack_struct(struct_nhcoord), dest = stack_struct(struct_nhcoord);
 
     if (c.src.room == -1) {
@@ -2720,16 +2460,15 @@ create_corridor(c)
             dest.x++;
             break;
         }
-        void dig_corridor(org, dest, null, FALSE, CORR, STONE);
+        dig_corridor(org, dest, null, FALSE, CORR, STONE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Fill a room (shop, zoo, etc...) with appropriate stuff.
  */
-export function /* void */
-fill_special_room(croom)
-{
+export function fill_special_room(croom) { /* void */
     let i;
 
     if (!croom)
@@ -2760,7 +2499,7 @@ fill_special_room(croom)
         case VAULT:
             for (x = croom.lx; x <= croom.hx; x++)
                 for (y = croom.ly; y <= croom.hy; y++)
-                    void mkgold(((rn2(abs(depth(u.uz)) * 100) + (51))),
+                    mkgold((rn2(abs(depth(u.uz)) * 100) + (51)),
                                   x, y);
             break;
         case COURT:
@@ -2803,9 +2542,7 @@ fill_special_room(croom)
     }
 }
 
-function /* struct mkroom * */
-build_room(r, mkr)
-{
+function build_room(r, mkr) { /* struct mkroom * */
     let okroom;
     let aroom;
     let rtype = (!r.chance || rn2(100) < r.chance) ? r.rtype : OROOM;
@@ -2820,9 +2557,6 @@ build_room(r, mkr)
     }
 
     if (okroom) {
-
-
-
         topologize(aroom); /* set roomno */
 
         aroom.needfill = r.needfill;
@@ -2835,9 +2569,7 @@ build_room(r, mkr)
 /*
  * set lighting in a region that will not become a room.
  */
-function /* void */
-light_region(tmpregion)
-{
+function light_region(tmpregion) { /* void */
     let litstate = tmpregion.rlit ? 1 : 0;
     let hiy = tmpregion.y2;
     let x, y;
@@ -2861,9 +2593,7 @@ light_region(tmpregion)
     }
 }
 
-export function /* void */
-wallify_map(x1, y1, x2, y2)
-{
+export function wallify_map(x1, y1, x2, y2) { /* void */
     let x, y, xx, yy, lo_xx, lo_yy, hi_xx, hi_yy;
 
     y1 = max(y1, 0);
@@ -2896,9 +2626,7 @@ wallify_map(x1, y1, x2, y2)
  * We want a place not 'touched' by the loader.  That is, a place in
  * the maze outside every part of the special level.
  */
-function /* void */
-maze1xy(m, humidity)
-{
+function maze1xy(m, humidity) { /* void */
     let x, y, tryct = 2000;
     /* tryct:  normally it won't take more than ten or so tries due
        to the circumstances under which we'll be called, but the
@@ -2922,9 +2650,8 @@ maze1xy(m, humidity)
  * Makes the number of traps, monsters, etc. proportional
  * to the size of the maze.
  */
-function /* void */
-fill_empty_maze()
-{ const $frame = stack_frame(); try {
+function fill_empty_maze() { /* void */
+    const $frame = stack_frame(); try {
     let mapcountmax, mapcount, mapfact;
     let x, y;
     let mm = stack_struct(struct_nhcoord);
@@ -2937,11 +2664,11 @@ fill_empty_maze()
             if (chars[SpLev_Map[x] + y])
                 mapcount--;
 
-    if ((mapcount > (Math.trunc(mapcountmax / 10)))) {
-        mapfact = int((Math.trunc((mapcount * 100) / mapcountmax)));
+    if ((mapcount > Math.trunc(mapcountmax / 10))) {
+        mapfact = int(Math.trunc((mapcount * 100) / mapcountmax));
         for (x = rnd(Math.trunc((20 * mapfact) / 100)); x; x--) {
             maze1xy(mm, DRY);
-            void mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y,
+            mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y,
                             TRUE);
         }
         for (x = rnd(Math.trunc((12 * mapfact) / 100)); x; x--) {
@@ -2951,19 +2678,19 @@ fill_empty_maze()
             if ((ttmp = t_at(mm.x, mm.y)) != null
                 && (is_pit(ttmp.ttyp) || is_hole(ttmp.ttyp)))
                 continue;
-            void mksobj_at(BOULDER, mm.x, mm.y, TRUE, FALSE);
+            mksobj_at(BOULDER, mm.x, mm.y, TRUE, FALSE);
         }
         for (x = rn2(2); x; x--) {
             maze1xy(mm, DRY);
-            void makemon(mons[PM_MINOTAUR], mm.x, mm.y, NO_MM_FLAGS);
+            makemon(mons[PM_MINOTAUR], mm.x, mm.y, NO_MM_FLAGS);
         }
         for (x = rnd(Math.trunc((12 * mapfact) / 100)); x; x--) {
             maze1xy(mm, DRY);
-            void makemon(null, mm.x, mm.y, NO_MM_FLAGS);
+            makemon(null, mm.x, mm.y, NO_MM_FLAGS);
         }
         for (x = rn2(Math.trunc((15 * mapfact) / 100)); x; x--) {
             maze1xy(mm, DRY);
-            void mkgold(0, mm.x, mm.y);
+            mkgold(0, mm.x, mm.y);
         }
         for (x = rn2(Math.trunc((15 * mapfact) / 100)); x; x--) {
             let trytrap;
@@ -2973,14 +2700,13 @@ fill_empty_maze()
             if (sobj_at(BOULDER, mm.x, mm.y))
                 while (is_pit(trytrap) || is_hole(trytrap))
                     trytrap = rndtrap();
-            void maketrap(mm.x, mm.y, trytrap);
+            maketrap(mm.x, mm.y, trytrap);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-splev_initlev(linit)
-{
+function splev_initlev(linit) { /* void */
     switch (linit.init_style) {
     default:
         impossible(_("Unrecognized level init style."));
@@ -3017,28 +2743,15 @@ splev_initlev(linit)
     }
 }
 
-
-
-
-
-
-
-
-
-
 /*ARGUSED*/
-function /* void */
-spo_end_moninvent()
-{
+function spo_end_moninvent() { /* void */
     if (invent_carrying_monster[0])
         m_dowear(invent_carrying_monster[0], TRUE);
     invent_carrying_monster[0] = null;
 }
 
 /*ARGUSED*/
-function /* void */
-spo_pop_container()
-{
+function spo_pop_container() { /* void */
     if (container_idx[0] > 0) {
         container_idx[0]--;
         container_obj[container_idx[0]] = null;
@@ -3046,18 +2759,14 @@ spo_pop_container()
 }
 
 /* push a table on lua stack: {width=wid, height=hei} */
-function /* void */
-l_push_wid_hei_table(L, wid, hei)
-{
+function l_push_wid_hei_table(L, wid, hei) { /* void */
     lua_newtable(L);
     nhl_add_table_entry_int(L, _("width"), wid);
     nhl_add_table_entry_int(L, _("height"), hei);
 }
 
 /* push a table on lua stack containing room data */
-function /* void */
-l_push_mkroom_table(L, tmpr)
-{
+function l_push_mkroom_table(L, tmpr) { /* void */
     lua_newtable(L);
     nhl_add_table_entry_int(L, _("width"), 1 + (tmpr.hx - tmpr.lx));
     nhl_add_table_entry_int(L, _("height"), 1 + (tmpr.hy - tmpr.ly));
@@ -3069,12 +2778,8 @@ l_push_mkroom_table(L, tmpr)
     nhl_add_table_entry_str(L, _("type"), get_mkroom_name(tmpr.rtype));
 }
 
-
-
 /* message("What a strange feeling!"); */
-export function /* int */
-lspo_message(L)
-{
+export function lspo_message(L) { /* int */
     let levmsg;
     let old_n, n;
     let msg;
@@ -3091,16 +2796,16 @@ lspo_message(L)
 
     msg = luaL_checkstring(L, 1);
 
-    old_n = int(gl.lev_message ? (unsigned(Strlen(gl.lev_message) + 1)) : 0);
+    old_n = int(gl.lev_message ? unsigned(Strlen(gl.lev_message) + 1) : 0);
     n = int(Strlen(msg));
 
     levmsg = addr_of(alloc(unsigned(old_n + n + 1)));
     if (old_n)
         chars[levmsg + (old_n - 1)] = ord('\n');
     if (gl.lev_message)
-        void memcpy(levmsg, gl.lev_message,
+        memcpy(levmsg, gl.lev_message,
                       unsigned(old_n - 1));
-    void memcpy((levmsg + old_n), msg, unsigned(n));
+    memcpy((levmsg + old_n), msg, unsigned(n));
     chars[levmsg + (old_n + n)] = ord('\0');
     Free(gl.lev_message);
     gl.lev_message = levmsg;
@@ -3108,11 +2813,7 @@ lspo_message(L)
     return 0;  /* number of results */
 }
 
-
-
-function /* int */
-get_table_align(L)
-{
+function get_table_align(L) { /* int */
     let gtaligns = static_array("get_table_align.gtaligns", ptr_to(char), null, [
         _("noalign"), _("law"), _("neutral"), _("chaos"),
         _("coaligned"), _("noncoaligned"), _("random"), 0
@@ -3127,9 +2828,7 @@ get_table_align(L)
     return a;
 }
 
-function /* int */
-get_table_monclass(L)
-{
+function get_table_monclass(L) { /* int */
     let s = get_table_str_opt(L, _("class"), 0);
     let ret = -1;
 
@@ -3139,12 +2838,11 @@ get_table_monclass(L)
     return ret;
 }
 
-function /* int */
-find_montype(
+function find_montype(
     L,
     s,
-    mgender)
-{ const $frame = stack_frame(); try {
+    mgender) { /* int */
+    const $frame = stack_frame(); try {
     let i, mgend = stack_var(int, NEUTRAL);
 
     i = name_to_monplus(s, null, mgend);
@@ -3161,11 +2859,10 @@ find_montype(
     if (mgender)
         mgender[0] = NEUTRAL;
     return NON_PM;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-get_table_montype(L, mgender)
-{
+function get_table_montype(L, mgender) { /* int */
     let s = get_table_str_opt(L, _("id"), 0);
     let ret = NON_PM;
 
@@ -3184,24 +2881,24 @@ get_table_montype(L, mgender)
  * Returns absolute rather than map-relative coordinates; the caller of this
  * function must decide if it wants to interpret the coordinates as
  * map-relative and adjust accordingly. */
-function /* void */
-get_table_xy_or_coord(
+function get_table_xy_or_coord(
     L,
     x,
-    y)
-{ const $frame = stack_frame(); try {
+    y) { /* void */
+    const $frame = stack_frame(); try {
     let mx = stack_var(lua_Integer, get_table_int_opt(L, _("x"), -1));
     let my = stack_var(lua_Integer, get_table_int_opt(L, _("y"), -1));
 
     if (mx[0] == -1 && my[0] == -1) {
         lua_getfield(L, 1, _("coord"));
-        void get_coord(L, -1, mx, my);
+        get_coord(L, -1, mx, my);
         lua_pop(L, 1);
     }
 
     x[0] = mx[0];
     y[0] = my[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* monster(); */
 /* monster("wood nymph"); */
@@ -3210,9 +2907,8 @@ get_table_xy_or_coord(
 /* monster("hill giant", {08,06}); */
 /* monster({ id = "giant mimic", appear_as = "obj:boulder" }); */
 /* monster({ class = "H", peaceful = 0 }); */
-export function /* int */
-lspo_monster(L)
-{ const $frame = stack_frame(); try {
+export function lspo_monster(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let tmpmons = stack_struct(monster);
     let mx = stack_var(lua_Integer, -1), my = stack_var(lua_Integer, -1);
@@ -3259,7 +2955,7 @@ lspo_monster(L)
                && lua_type(L, 2) == LUA_TTABLE) {
         let paramstr = luaL_checkstring(L, 1);
 
-        void get_coord(L, 2, mx, my);
+        get_coord(L, 2, mx, my);
 
         if (strlen(paramstr) == 1) {
             tmpmons.class = chars[paramstr];
@@ -3270,7 +2966,6 @@ lspo_monster(L)
             tmpmons.female = (mgend[0] == FEMALE) ? FEMALE
                                 : (mgend[0] == MALE) ? MALE : rn2(2);
         }
-
     } else if (argc == 3) {
         let paramstr = luaL_checkstring(L, 1);
 
@@ -3378,7 +3073,7 @@ lspo_monster(L)
     if (mx[0] == -1 && my[0] == -1)
         tmpmons.coord = SP_COORD_PACK_RANDOM(0);
     else
-        tmpmons.coord = (((((mx[0]) & 255)) + (shl64((((my[0]) & 255)), 16))));
+        tmpmons.coord = (((mx[0]) & 255) + (shl64(((my[0]) & 255), 16)));
 
     if (tmpmons.id != NON_PM && tmpmons.class == -1)
         tmpmons.class = monsym(mons[tmpmons.id]);
@@ -3397,15 +3092,13 @@ lspo_monster(L)
     Free(tmpmons.appear_as.str);
 
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* the hash key 'name' is an integer or "random",
    or if not existent, also return rndval */
-function /* lua_Integer */
-get_table_int_or_random(L, name, rndval)
-{ const $frame = stack_frame(); try {
+function get_table_int_or_random(L, name, rndval) { /* lua_Integer */
+    const $frame = stack_frame(); try {
     let ret;
     let buf = stack_array(char, BUFSZ);
 
@@ -3417,15 +3110,15 @@ get_table_int_or_random(L, name, rndval)
     if (!lua_isnumber(L, -1)) {
         let tmp = lua_tostring(L, -1);
 
-        if (tmp && !strcmpi(_("random"), tmp)) {
+        if (tmp && !strncmpi(_(("random")), (tmp), -1)) {
             lua_pop(L, 1);
             return rndval;
         }
-        void sprintf(buf, _("Expected integer or \"random\" for \"%s\", got "), name);
+        sprintf(buf, _("Expected integer or \"random\" for \"%s\", got "), name);
         if (tmp)
-            void sprintf(eos(buf), _("\"%s\""), tmp);
+            sprintf(eos(buf), _("\"%s\""), tmp);
         else
-            void strcat(buf, _("<Null>"));
+            strcat(buf, _("<Null>"));
         nhl_error(L, buf);
         /*NOTREACHED*/
         lua_pop(L, 1);
@@ -3434,13 +3127,10 @@ get_table_int_or_random(L, name, rndval)
     ret = luaL_optinteger(L, -1, rndval);
     lua_pop(L, 1);
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* int */
-get_table_buc(L)
-{
+function get_table_buc(L) { /* int */
     let bucs = static_array("get_table_buc.bucs", ptr_to(char), null, [
         _("random"), _("blessed"), _("uncursed"), _("cursed"),
         _("not-cursed"), _("not-uncursed"), _("not-blessed"), 0,
@@ -3451,9 +3141,7 @@ get_table_buc(L)
     return curse_state;
 }
 
-export function /* int */
-get_table_objclass(L)
-{
+export function get_table_objclass(L) { /* int */
     let s = get_table_str_opt(L, _("class"), 0);
     let ret = -1;
 
@@ -3464,9 +3152,7 @@ get_table_objclass(L)
 }
 
 /* find object otyp by text s (optionally considering oclass) */
-function /* int */
-find_objtype(L, s, oclass)
-{
+function find_objtype(L, s, oclass) { /* int */
     if (s && chars[s]) {
         let i;
         let objname;
@@ -3535,9 +3221,7 @@ find_objtype(L, s, oclass)
     return STRANGE_OBJECT;
 }
 
-export function /* int */
-get_table_objtype(L)
-{
+export function get_table_objtype(L) { /* int */
     let s = get_table_str_opt(L, _("id"), 0);
     let oclass = get_table_objclass(L);
     let ret = find_objtype(L, s, oclass);
@@ -3553,9 +3237,8 @@ get_table_objtype(L)
 /* object({ class = "%" }); */
 /* object({ id = "boulder", x = 03, y = 12}); */
 /* object({ id = "boulder", coord = {03,12} }); */
-export function /* int */
-lspo_object(L)
-{ const $frame = stack_frame(); try {
+export function lspo_object(L) { /* int */
+    const $frame = stack_frame(); try {
     let zeroobject = static_struct("lspo_object.zeroobject", object, {
             name: { str: 0 },   /* Str_or_len name */
             corpsenm: 0,       /* corpsenm */
@@ -3570,8 +3253,6 @@ lspo_object(L)
             eroded: 0, locked: 0, trapped: 0, tknown: 0, recharged: 0, /* eroded, locked, trapped, tknown, recharged */
             invis: 0, greased: 0, broken: 0, achievement: 0, /* invis, greased, broken, achievement */
     });
-
-
 
     let quancnt;
     let tmpobj = stack_struct(object);
@@ -3605,7 +3286,7 @@ lspo_object(L)
                && lua_type(L, 2) == LUA_TTABLE) {
         let paramstr = luaL_checkstring(L, 1);
 
-        void get_coord(L, 2, ox, oy);
+        get_coord(L, 2, ox, oy);
 
         if (strlen(paramstr) == 1) {
             tmpobj.class = chars[paramstr];
@@ -3657,7 +3338,7 @@ lspo_object(L)
     if (ox[0] == -1 && oy[0] == -1)
         tmpobj.coord = SP_COORD_PACK_RANDOM(0);
     else
-        tmpobj.coord = (((((ox[0]) & 255)) + (shl64((((oy[0]) & 255)), 16))));
+        tmpobj.coord = (((ox[0]) & 255) + (shl64(((oy[0]) & 255), 16)));
 
     if (tmpobj.class == -1 && tmpobj.id > STRANGE_OBJECT)
         tmpobj.class = objects[tmpobj.id].oc_class;
@@ -3673,14 +3354,14 @@ lspo_object(L)
         let montype = get_table_str_opt(L, _("montype"), 0);
 
         if (montype) {
-            if ((tmpobj.id == TIN && (!strcmpi(montype, _("spinach"))
+            if ((tmpobj.id == TIN && (!strncmpi((montype), _(("spinach")), -1)
                 /* id="tin",montype="empty" produces an empty tin */
-                                      || !strcmpi(montype, _("empty"))))
+                                      || !strncmpi((montype), _(("empty")), -1)))
                 /* id="egg",montype="empty" produces a generic, unhatchable
                    egg rather than an "empty egg" */
-                || (tmpobj.id == EGG && !strcmpi(montype, _("empty")))) {
+                || (tmpobj.id == EGG && !strncmpi((montype), _(("empty")), -1))) {
                 tmpobj.corpsenm = NON_PM;
-                tmpobj.spe = !strcmpi(montype, _("spinach")) ? 1 : 0;
+                tmpobj.spe = !strncmpi((montype), _(("spinach")), -1) ? 1 : 0;
                 nonpmobj = TRUE;
             } else if (strlen(montype) == 1
                        && def_char_to_monclass(chars[montype]) != MAXMCLASSES) {
@@ -3752,12 +3433,12 @@ lspo_object(L)
     nhl_push_obj(L, otmp);
 
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* level_flags("noteleport", "mazelevel", ... ); */
-export function /* int */
-lspo_level_flags(L)
-{ const $frame = stack_frame(); try {
+export function lspo_level_flags(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let i;
 
@@ -3769,73 +3450,73 @@ lspo_level_flags(L)
     for (i = 1; i <= argc; i++) {
         let s = luaL_checkstring(L, i);
 
-        if (!strcmpi(s, _("noteleport")))
+        if (!strncmpi((s), _(("noteleport")), -1))
             svl.level.flags.noteleport = 1;
-        else if (!strcmpi(s, _("hardfloor")))
+        else if (!strncmpi((s), _(("hardfloor")), -1))
             svl.level.flags.hardfloor = 1;
-        else if (!strcmpi(s, _("nommap")))
+        else if (!strncmpi((s), _(("nommap")), -1))
             svl.level.flags.nommap = 1;
-        else if (!strcmpi(s, _("shortsighted")))
+        else if (!strncmpi((s), _(("shortsighted")), -1))
             svl.level.flags.shortsighted = 1;
-        else if (!strcmpi(s, _("arboreal")))
+        else if (!strncmpi((s), _(("arboreal")), -1))
             svl.level.flags.arboreal = 1;
-        else if (!strcmpi(s, _("mazelevel")))
+        else if (!strncmpi((s), _(("mazelevel")), -1))
             svl.level.flags.is_maze_lev = 1;
-        else if (!strcmpi(s, _("shroud")))
+        else if (!strncmpi((s), _(("shroud")), -1))
             svl.level.flags.hero_memory = 1;
-        else if (!strcmpi(s, _("graveyard")))
+        else if (!strncmpi((s), _(("graveyard")), -1))
             svl.level.flags.graveyard = 1;
-        else if (!strcmpi(s, _("icedpools")))
+        else if (!strncmpi((s), _(("icedpools")), -1))
             icedpools[0] = 1;
-        else if (!strcmpi(s, _("corrmaze")))
+        else if (!strncmpi((s), _(("corrmaze")), -1))
             svl.level.flags.corrmaze = 1;
-        else if (!strcmpi(s, _("premapped")))
+        else if (!strncmpi((s), _(("premapped")), -1))
             gc.coder.premapped = 1;
-        else if (!strcmpi(s, _("solidify")))
+        else if (!strncmpi((s), _(("solidify")), -1))
             gc.coder.solidify = 1;
-        else if (!strcmpi(s, _("sokoban")))
+        else if (!strncmpi((s), _(("sokoban")), -1))
             svl.level.flags.sokoban_rules = 1; /* svl.level.flags.sokoban_rules */
-        else if (!strcmpi(s, _("inaccessibles")))
+        else if (!strncmpi((s), _(("inaccessibles")), -1))
             gc.coder.check_inaccessibles = 1;
-        else if (!strcmpi(s, _("noflipx")))
+        else if (!strncmpi((s), _(("noflipx")), -1))
             gc.coder.allow_flips &= ~2;
-        else if (!strcmpi(s, _("noflipy")))
+        else if (!strncmpi((s), _(("noflipy")), -1))
             gc.coder.allow_flips &= ~1;
-        else if (!strcmpi(s, _("noflip")))
+        else if (!strncmpi((s), _(("noflip")), -1))
             gc.coder.allow_flips = 0;
-        else if (!strcmpi(s, _("temperate")))
+        else if (!strncmpi((s), _(("temperate")), -1))
             svl.level.flags.temperature = 0;
-        else if (!strcmpi(s, _("hot")))
+        else if (!strncmpi((s), _(("hot")), -1))
             svl.level.flags.temperature = 1;
-        else if (!strcmpi(s, _("cold")))
+        else if (!strncmpi((s), _(("cold")), -1))
             svl.level.flags.temperature = -1;
-        else if (!strcmpi(s, _("nomongen")))
+        else if (!strncmpi((s), _(("nomongen")), -1))
             svl.level.flags.rndmongen = 0;
-        else if (!strcmpi(s, _("nodeathdrops")))
+        else if (!strncmpi((s), _(("nodeathdrops")), -1))
             svl.level.flags.deathdrops = 0;
-        else if (!strcmpi(s, _("noautosearch")))
+        else if (!strncmpi((s), _(("noautosearch")), -1))
             svl.level.flags.noautosearch = 1;
-        else if (!strcmpi(s, _("fumaroles")))
+        else if (!strncmpi((s), _(("fumaroles")), -1))
             svl.level.flags.fumaroles = 1;
-        else if (!strcmpi(s, _("stormy")))
+        else if (!strncmpi((s), _(("stormy")), -1))
             svl.level.flags.stormy = 1;
         else {
             let buf = stack_array(char, BUFSZ);
 
-            void sprintf(buf, _("Unknown level flag %s"), s);
+            sprintf(buf, _("Unknown level flag %s"), s);
             nhl_error(L, buf);
         }
     }
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* level_init({ style = "solidfill", fg = " " }); */
 /* level_init({ style = "mines", fg = ".", bg = "}",
                 smoothed=true, joined=true, lit=0 }) */
-export function /* int */
-lspo_level_init(L)
-{ const $frame = stack_frame(); try {
+export function lspo_level_init(L) { /* int */
+    const $frame = stack_frame(); try {
     let initstyles = static_array("lspo_level_init.initstyles", ptr_to(char), null, [
         _("solidfill"), _("mazegrid"), _("maze"), _("rogue"), _("mines"), _("swamp"), 0
     ]);
@@ -3872,14 +3553,14 @@ lspo_level_init(L)
     splev_initlev(init_lev);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* engraving({ x = 1, y = 1, type="burn", text="Foo" }); */
 /* engraving({ coord={1, 1}, type="burn", text="Foo" }); */
 /* engraving({x,y}, "engrave", "Foo"); */
-export function /* int */
-lspo_engraving(L)
-{ const $frame = stack_frame(); try {
+export function lspo_engraving(L) { /* int */
+    const $frame = stack_frame(); try {
     let engrtypes = static_array("lspo_engraving.engrtypes", ptr_to(char), null, [
         _("dust"), _("engrave"), _("burn"), _("mark"), _("blood"), 0
     ]);
@@ -3910,7 +3591,7 @@ lspo_engraving(L)
         guardobjs = get_table_boolean_opt(L, _("guardobjects"), FALSE);
     } else if (argc == 3) {
         let ex = stack_var(lua_Integer), ey = stack_var(lua_Integer);
-        void get_coord(L, 1, ex, ey);
+        get_coord(L, 1, ex, ey);
         x[0] = ex[0];
         y[0] = ey[0];
         etyp = engrtypes2i[luaL_checkoption(L, 2, _("engrave"), engrtypes)];
@@ -3933,11 +3614,10 @@ lspo_engraving(L)
         ep.nowipeout = +!wipeout;
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-lspo_mineralize(L)
-{
+export function lspo_mineralize(L) { /* int */
     let gem_prob, gold_prob, kelp_moat, kelp_pool;
 
     create_des_coder();
@@ -3987,9 +3667,7 @@ lspo_mineralize(L)
     { name: 0, type: 0 }
 ]);
 
-function /* const char * */
-get_mkroom_name(rtype)
-{
+function get_mkroom_name(rtype) { /* const char * */
     let i;
 
     for (i = 0; room_types[i].name; i++)
@@ -4000,9 +3678,7 @@ get_mkroom_name(rtype)
     return _("unknown"); /* not NULL */
 }
 
-function /* int */
-get_table_roomtype_opt(L, name, defval)
-{
+function get_table_roomtype_opt(L, name, defval) { /* int */
     let roomstr = get_table_str_opt(L, name, emptystr);
     let i, res = defval;
 
@@ -4024,9 +3700,8 @@ get_table_roomtype_opt(L, name, defval)
 /* room({ lit=1, coord={3,3}, xalign="center",yalign="center", w=11,h=9 }); */
 /* room({ coord={3,3}, xalign="center",yalign="center", w=11,h=9,
  *        contents=function(room) ... end }); */
-export function /* int */
-lspo_room(L)
-{ const $frame = stack_frame(); try {
+export function lspo_room(L) { /* int */
+    const $frame = stack_frame(); try {
     create_des_coder();
 
     if (gi.in_mk_themerooms && gt.themeroom_failed)
@@ -4113,11 +3788,10 @@ lspo_room(L)
         gt.themeroom_failed = TRUE;
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-spo_endroom(coder)
-{
+function spo_endroom(coder) { /* void */
     if (gc.coder.n_subroom > 1) {
         gc.coder.n_subroom--;
         gc.coder.tmproomlist[gc.coder.n_subroom] = null;
@@ -4135,17 +3809,14 @@ spo_endroom(coder)
 
 /* callback for is_ok_location.
    stairs generated at random location shouldn't overwrite special terrain */
-function /* boolean */
-good_stair_loc(x, y)
-{
+function good_stair_loc(x, y) { /* boolean */
     let typ = levl()[x][y].typ;
 
-    return (+(typ == ROOM || typ == CORR || typ == ICE));
+    return +(typ == ROOM || typ == CORR || typ == ICE);
 }
 
-function /* int */
-l_create_stairway(L, using_ladder)
-{ const $frame = stack_frame(); try {
+function l_create_stairway(L, using_ladder) { /* int */
+    const $frame = stack_frame(); try {
     let stairdirs = static_array("l_create_stairway.stairdirs", ptr_to(char), null, [ _("down"), _("up"), 0 ]);
     let stairdirs2i = static_array("l_create_stairway.stairdirs2i", int, null, [ 0, 1 ]);
     let argc = lua_gettop(L);
@@ -4210,7 +3881,8 @@ l_create_stairway(L, using_ladder)
                  +!(scoord & SP_COORD_IS_RANDOM));
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* stair("up"); */
 /* stair({ dir = "down" }); */
@@ -4219,18 +3891,14 @@ l_create_stairway(L, using_ladder)
 /* stair("down", 4, 7); */
 /* TODO: stair(selection, "down"); */
 /* TODO: stair("up", {x,y}); */
-export function /* int */
-lspo_stair(L)
-{
+export function lspo_stair(L) { /* int */
     return l_create_stairway(L, FALSE);
 }
 
 /* ladder("down"); */
 /* ladder("up", 6,10); */
 /* ladder({ x=11, y=05, dir="down" }); */
-export function /* int */
-lspo_ladder(L)
-{
+export function lspo_ladder(L) { /* int */
     return l_create_stairway(L, TRUE);
 }
 
@@ -4239,9 +3907,8 @@ lspo_ladder(L)
 /* grave({ x = 1, y = 1 }); */
 /* grave({ x = 1, y = 1, text = "Foo" }); */
 /* grave({ coord = {1, 1}, text = "Foo" }); */
-export function /* int */
-lspo_grave(L)
-{ const $frame = stack_frame(); try {
+export function lspo_grave(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let scoord;
@@ -4265,7 +3932,7 @@ lspo_grave(L)
     if (x[0] == -1 && y[0] == -1)
         scoord = SP_COORD_PACK_RANDOM(0);
     else
-        scoord = (((((ax[0]) & 255)) + (shl64((((ay[0]) & 255)), 16))));
+        scoord = (((ax[0]) & 255) + (shl64(((ay[0]) & 255), 16)));
 
     get_location_coord(x, y, DRY, gc.coder.croom, scoord);
 
@@ -4275,13 +3942,13 @@ lspo_grave(L)
     }
     Free(txt);
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* altar({ x=NN, y=NN, align=ALIGNMENT, type=SHRINE }); */
 /* des.altar({ coord = {5, 10}, align="noalign", type="altar" }); */
-export function /* int */
-lspo_altar(L)
-{ const $frame = stack_frame(); try {
+export function lspo_altar(L) { /* int */
+    const $frame = stack_frame(); try {
     let shrines = static_array("lspo_altar.shrines", ptr_to(char), null, [
         _("altar"), _("shrine"), _("sanctum"), 0
     ]);
@@ -4306,7 +3973,7 @@ lspo_altar(L)
     if (x[0] == -1 && y[0] == -1)
         acoord = SP_COORD_PACK_RANDOM(0);
     else
-        acoord = (((((x[0]) & 255)) + (shl64((((y[0]) & 255)), 16))));
+        acoord = (((x[0]) & 255) + (shl64(((y[0]) & 255), 16)));
 
     tmpaltar.coord = acoord;
     tmpaltar.sp_amask = unsigned(al);
@@ -4315,7 +3982,8 @@ lspo_altar(L)
     create_altar(tmpaltar, gc.coder.croom);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
   const struct___anon5 = struct("sp_lev.struct___anon5", {
     name: ptr_to(char),
@@ -4346,9 +4014,7 @@ lspo_altar(L)
                    { name: _("random"), type: -1 },
                    { name: 0, type: NO_TRAP } ]);
 
-function /* int */
-get_table_traptype_opt(L, name, defval)
-{
+function get_table_traptype_opt(L, name, defval) { /* int */
     let trapstr = get_table_str_opt(L, name, emptystr);
     let i, res = defval;
 
@@ -4363,9 +4029,7 @@ get_table_traptype_opt(L, name, defval)
     return res;
 }
 
-export function /* const char * */
-get_trapname_bytype(ttyp)
-{
+export function get_trapname_bytype(ttyp) { /* const char * */
     let i;
 
     for (i = 0; trap_types[i].name; i++)
@@ -4375,9 +4039,7 @@ get_trapname_bytype(ttyp)
     return 0;
 }
 
-function /* int */
-get_traptype_byname(trapname)
-{
+function get_traptype_byname(trapname) { /* int */
     let i;
 
     for (i = 0; trap_types[i].name; i++)
@@ -4393,9 +4055,8 @@ get_traptype_byname(trapname)
 /* trap("level teleport", {5, 8}); */
 /* trap("rust") */
 /* trap(); */
-export function /* int */
-lspo_trap(L)
-{ const $frame = stack_frame(); try {
+export function lspo_trap(L) { /* int */
+    const $frame = stack_frame(); try {
     let tmptrap = stack_struct(spltrap);
     let x = stack_var(lua_Integer), y = stack_var(lua_Integer);
     let argc = lua_gettop(L);
@@ -4416,7 +4077,7 @@ lspo_trap(L)
         let trapstr = luaL_checkstring(L, 1);
 
         tmptrap.type = get_traptype_byname(trapstr);
-        void get_coord(L, 2, x, y);
+        get_coord(L, 2, x, y);
     } else if (argc == 3) {
         let trapstr = luaL_checkstring(L, 1);
 
@@ -4436,7 +4097,7 @@ lspo_trap(L)
         if (lua_type(L, -1) == LUA_TTABLE) {
             let lx = stack_var(lua_Integer, -1), ly = stack_var(lua_Integer, -1);
 
-            void get_coord(L, -1, lx, ly);
+            get_coord(L, -1, lx, ly);
             lua_pop(L, 1);
             gl.launchplace.x = lx[0];
             gl.launchplace.y = ly[0];
@@ -4447,7 +4108,7 @@ lspo_trap(L)
         if (lua_type(L, -1) == LUA_TTABLE) {
             let lx = stack_var(lua_Integer, -1), ly = stack_var(lua_Integer, -1);
 
-            void get_coord(L, -1, lx, ly);
+            get_coord(L, -1, lx, ly);
             lua_pop(L, 1);
             gl.launchplace.x = lx[0];
             gl.launchplace.y = ly[0];
@@ -4461,24 +4122,22 @@ lspo_trap(L)
     if (x[0] == -1 && y[0] == -1)
         tmptrap.coord = SP_COORD_PACK_RANDOM(0);
     else
-        tmptrap.coord = (((((x[0]) & 255)) + (shl64((((y[0]) & 255)), 16))));
+        tmptrap.coord = (((x[0]) & 255) + (shl64(((y[0]) & 255), 16)));
 
     create_trap(tmptrap, gc.coder.croom);
     gl.launchplace.x = gl.launchplace.y = 0;
 
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* gold(500, 3,5); */
 /* gold(500, {5, 6}); */
 /* gold({ amount = 500, x = 2, y = 5 });*/
 /* gold({ amount = 500, coord = {2, 5} });*/
 /* gold(); */
-export function /* int */
-lspo_gold(L)
-{ const $frame = stack_frame(); try {
+export function lspo_gold(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let amount;
@@ -4493,7 +4152,7 @@ lspo_gold(L)
         y[0] = gldy[0] = luaL_checkinteger(L, 3);
     } else if (argc == 2 && lua_type(L, 2) == LUA_TTABLE) {
         amount = luaL_checkinteger(L, 1);
-        void get_coord(L, 2, gldx, gldy);
+        get_coord(L, 2, gldx, gldy);
         x[0] = gldx[0];
         y[0] = gldy[0];
     } else if (argc == 0 || (argc == 1 && lua_type(L, 1) == LUA_TTABLE)) {
@@ -4511,7 +4170,7 @@ lspo_gold(L)
     if (x[0] == -1 && y[0] == -1)
         gcoord = SP_COORD_PACK_RANDOM(0);
     else
-        gcoord = (((((gldx[0]) & 255)) + (shl64((((gldy[0]) & 255)), 16))));
+        gcoord = (((gldx[0]) & 255) + (shl64(((gldy[0]) & 255), 16)));
 
     get_location_coord(x, y, DRY, gc.coder.croom, gcoord);
     if (amount < 0)
@@ -4519,15 +4178,13 @@ lspo_gold(L)
     mkgold(amount, x[0], y[0]);
 
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* corridor({ srcroom=1, srcdoor=2, srcwall="north",
  *            destroom=2, destdoor=1, destwall="west" }); */
-export function /* int */
-lspo_corridor(L)
-{ const $frame = stack_frame(); try {
+export function lspo_corridor(L) { /* int */
+    const $frame = stack_frame(); try {
     let walldirs = static_array("lspo_corridor.walldirs", ptr_to(char), null, [
         _("all"), _("random"), _("north"), _("west"), _("east"), _("south"), 0
     ]);
@@ -4551,12 +4208,12 @@ lspo_corridor(L)
     create_corridor(tc);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* random_corridors(); */
-export function /* int */
-lspo_random_corridors(L)
-{ const $frame = stack_frame(); try {
+export function lspo_random_corridors(L) { /* int */
+    const $frame = stack_frame(); try {
     let tc = stack_struct(corridor);
 
     create_des_coder();
@@ -4571,43 +4228,35 @@ lspo_random_corridors(L)
     create_corridor(tc);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Choose a single random W_* direction. */
-export function /* coordxy */
-random_wdir()
-{
+export function random_wdir() { /* coordxy */
     let wdirs = static_array("random_wdir.wdirs", short, 4, [ W_NORTH, W_SOUTH, W_EAST, W_WEST ]);
     return wdirs[rn2(4)];
 }
 
 const floodfillchk_match_under_typ = static_var("floodfillchk_match_under_typ", schar);
 
-function /* int */
-floodfillchk_match_under(x, y)
-{
-    return (+(floodfillchk_match_under_typ[0] == levl()[x][y].typ));
+function floodfillchk_match_under(x, y) { /* int */
+    return +(floodfillchk_match_under_typ[0] == levl()[x][y].typ);
 }
 
-export function /* void */
-set_floodfillchk_match_under(typ)
-{
+export function set_floodfillchk_match_under(typ) { /* void */
     floodfillchk_match_under_typ[0] = typ;
     set_selection_floodfillchk(floodfillchk_match_under);
 }
 
-function /* int */
-floodfillchk_match_accessible(x, y)
-{
-    return (+(ACCESSIBLE(levl()[x][y].typ)
+function floodfillchk_match_accessible(x, y) { /* int */
+    return +(ACCESSIBLE(levl()[x][y].typ)
             || levl()[x][y].typ == SDOOR
-            || levl()[x][y].typ == SCORR));
+            || levl()[x][y].typ == SCORR);
 }
 
 /* change map location terrain type during level creation */
-function /* void */
-sel_set_ter(x, y, arg)
-{ const $frame = stack_frame(); try {
+function sel_set_ter(x, y, arg) { /* void */
+    const $frame = stack_frame(); try {
     let terr = stack_struct(terrain);
 
     struct_assign(terr, view_of(terrain, arg));
@@ -4627,15 +4276,11 @@ sel_set_ter(x, y, arg)
     } else if (levl()[x][y].typ == CLOUD) {
         del_engr_at(x, y); /* clouds cannot have engravings */
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-sel_set_feature(x, y, arg)
-{
+function sel_set_feature(x, y, arg) { /* void */
     if (!isok(x, y)) {
-
-
-
         return;
     }
     if (IS_FURNITURE(levl()[x][y].typ))
@@ -4643,9 +4288,7 @@ sel_set_feature(x, y, arg)
     levl()[x][y].typ = (ref_to(int, arg)[0]);
 }
 
-function /* void */
-sel_set_door(dx, dy, arg)
-{
+function sel_set_door(dx, dy, arg) { /* void */
     let typ = ref_to(short, arg)[0];
     let x = dx, y = dy;
 
@@ -4661,15 +4304,12 @@ sel_set_door(dx, dy, arg)
     chars[SpLev_Map[x] + y] = 1;
 }
 
-
-
 /* door({ x = 1, y = 1, state = "nodoor" }); */
 /* door({ coord = {1, 1}, state = "nodoor" }); */
 /* door({ wall = "north", pos = 3, state="secret" }); */
 /* door("nodoor", 1, 2); */
-export function /* int */
-lspo_door(L)
-{ const $frame = stack_frame(); try {
+export function lspo_door(L) { /* int */
+    const $frame = stack_frame(); try {
     let doorstates = static_array("lspo_door.doorstates", ptr_to(char), null, [
         _("random"), _("open"), _("closed"), _("locked"), _("nodoor"), _("broken"),
         _("secret"), 0
@@ -4688,7 +4328,6 @@ lspo_door(L)
         msk = doorstates2i[luaL_checkoption(L, 1, _("random"), doorstates)];
         x[0] = luaL_checkinteger(L, 2);
         y[0] = luaL_checkinteger(L, 3);
-
     } else {
         let dx = stack_var(lua_Integer), dy = stack_var(lua_Integer);
         lcheck_param_table(L);
@@ -4731,17 +4370,14 @@ lspo_door(L)
     }
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* void */
-l_table_getset_feature_flag(
+function l_table_getset_feature_flag(
     L,
     x, y,
     name,
-    flag)
-{
+    flag) { /* void */
     let val = get_table_boolean_opt(L, name, -2);
 
     if (val != -2) {
@@ -4768,9 +4404,7 @@ l_table_getset_feature_flag(
  * an adjustment like this. (What this function supports which get_location
  * doesn't is the input coordinates being negative. get_location will treat
  * that as "level designer wants a random coordinate".) */
-export function /* void */
-cvt_to_abscoord(x, y)
-{
+export function cvt_to_abscoord(x, y) { /* void */
     /* since commit 99715e0, xstart and ystart are only relevant in mklev when
      * maps are being used, and 0 otherwise. It is possible in the future that
      * map positions and dimensions can be saved and retrieved outside of
@@ -4789,9 +4423,7 @@ cvt_to_abscoord(x, y)
 
 /* inverse of cvt_to_abscoord; turn an absolute svl.level.locations coordinate
  * into one relative to the current map or room. */
-export function /* void */
-cvt_to_relcoord(x, y)
-{
+export function cvt_to_relcoord(x, y) { /* void */
     if (gc.coder && gc.coder.croom) {
         x[0] -= gc.coder.croom.lx;
         y[0] -= gc.coder.croom.ly;
@@ -4801,15 +4433,12 @@ cvt_to_relcoord(x, y)
     }
 }
 
-
-
 /* convert map-relative coordinate to absolute.
   local ax,ay = nh.abscoord(rx, ry);
   local pt = nh.abscoord({ x = 10, y = 5 });
  */
-export function /* int */
-nhl_abs_coord(L)
-{ const $frame = stack_frame(); try {
+export function nhl_abs_coord(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let x = stack_var(coordxy, -1), y = stack_var(coordxy, -1);
 
@@ -4833,16 +4462,16 @@ nhl_abs_coord(L)
         /*NOTREACHED*/
         return 0;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* feature("fountain", x, y); */
 /* feature("fountain", {x,y}); */
 /* feature({ type="fountain", x=NN, y=NN }); */
 /* feature({ type="fountain", coord={NN, NN} }); */
 /* feature({ type="tree", coord={NN, NN}, swarm=true, looted=false }); */
-export function /* int */
-lspo_feature(L)
-{ const $frame = stack_frame(); try {
+export function lspo_feature(L) { /* int */
+    const $frame = stack_frame(); try {
     let features = static_array("lspo_feature.features", ptr_to(char), null, [ _("fountain"), _("sink"), _("pool"),
                                             _("throne"), _("tree"), 0 ]);
     let features2i = static_array("lspo_feature.features2i", int, null, [ FOUNTAIN, SINK, POOL,
@@ -4863,7 +4492,7 @@ lspo_feature(L)
         && lua_type(L, 2) == LUA_TTABLE) {
         let fx = stack_var(lua_Integer), fy = stack_var(lua_Integer);
         typ[0] = features2i[luaL_checkoption(L, 1, 0, features)];
-        void get_coord(L, 2, fx, fy);
+        get_coord(L, 2, fx, fy);
         x[0] = fx[0];
         y[0] = fy[0];
     } else if (argc == 3) {
@@ -4920,14 +4549,14 @@ lspo_feature(L)
     }
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* gas_cloud({ selection=SELECTION }); */
 /* gas_cloud({ selection=SELECTION, damage=N }); */
 /* gas_cloud({ selection=SELECTION, damage=N, ttl=N }); */
-export function /* int */
-lspo_gas_cloud(L)
-{ const $frame = stack_frame(); try {
+export function lspo_gas_cloud(L) { /* int */
+    const $frame = stack_frame(); try {
     let x = 0, y = 0;
     let sel = null;
     let argc = lua_gettop(L);
@@ -4962,8 +4591,8 @@ lspo_gas_cloud(L)
     }
 
     return 0;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * [lit_state: 1 On, 0 Off, -1 random, -2 leave as-is]
@@ -4974,9 +4603,8 @@ lspo_gas_cloud(L)
  * terrain({x,y}, MAPCHAR);
  * terrain(x,y, MAPCHAR);
  */
-export function /* int */
-lspo_terrain(L)
-{ const $frame = stack_frame(); try {
+export function lspo_terrain(L) { /* int */
+    const $frame = stack_frame(); try {
     let tmpterrain = stack_struct(terrain);
     let x = stack_var(coordxy, 0), y = stack_var(coordxy, 0);
     let sel = null;
@@ -5004,7 +4632,7 @@ lspo_terrain(L)
         let tx = stack_var(lua_Integer), ty = stack_var(lua_Integer);
         tmpterrain.ter = check_mapchr(luaL_checkstring(L, 2));
         lua_pop(L, 1);
-        void get_coord(L, 1, tx, ty);
+        get_coord(L, 1, tx, ty);
         x[0] = tx[0];
         y[0] = ty[0];
     } else if (argc == 2) {
@@ -5035,7 +4663,8 @@ lspo_terrain(L)
     }
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * replace_terrain({ x1=NN,y1=NN, x2=NN,y2=NN, fromterrain=MAPCHAR,
@@ -5047,9 +4676,8 @@ lspo_terrain(L)
  * replace_terrain({ selection=SEL, mapfragment=[[...]],
  *                   toterrain=MAPCHAR });
  */
-export function /* int */
-lspo_replace_terrain(L)
-{ const $frame = stack_frame(); try {
+export function lspo_replace_terrain(L) { /* int */
+    const $frame = stack_frame(); try {
     let totyp, fromtyp;
     let mf = stack_var(ptr_to(struct_mapfragment), null);
     let sel = null;
@@ -5106,7 +4734,7 @@ lspo_replace_terrain(L)
         freesel = TRUE;
 
         if (x1[0] == -1 && y1[0] == -1 && x2[0] == -1 && y2[0] == -1) {
-            void selection_clear(sel, 1);
+            selection_clear(sel, 1);
         } else {
             let rx1 = stack_var(coordxy), ry1 = stack_var(coordxy), rx2 = stack_var(coordxy), ry2 = stack_var(coordxy);
             rx1[0] = x1[0], ry1[0] = y1[0], rx2[0] = x2[0], ry2[0] = y2[0];
@@ -5124,13 +4752,13 @@ lspo_replace_terrain(L)
         for (y = rect.ly; y <= rect.hy; y++)
             if (selection_getpoint(x, y,sel)) {
                 if (mf[0]) {
-                    if (mapfrag_match(mf[0], x, y) && (rn2(100)) < chance)
-                        void set_levltyp_lit(x, y, totyp, tolit);
+                    if (mapfrag_match(mf[0], x, y) && rn2(100) < chance)
+                        set_levltyp_lit(x, y, totyp, tolit);
                 } else {
                     if (((fromtyp == MATCH_WALL && IS_STWALL(levl()[x][y].typ))
                          || levl()[x][y].typ == fromtyp)
                         && rn2(100) < chance)
-                        void set_levltyp_lit(x, y, totyp, tolit);
+                        set_levltyp_lit(x, y, totyp, tolit);
                 }
             }
 
@@ -5140,13 +4768,13 @@ lspo_replace_terrain(L)
     mapfrag_free(mf);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-generate_way_out_method(
+function generate_way_out_method(
     nx, ny,
-    ov)
-{ const $frame = stack_frame(); try {
+    ov) { /* boolean */
+    const $frame = stack_frame(); try {
     var escapeitems = static_array("generate_way_out_method.escapeitems", int, null, [
         PICK_AXE, DWARVISH_MATTOCK, WAN_DIGGING,
         WAN_TELEPORTATION, SCR_TELEPORTATION, RIN_TELEPORTATION
@@ -5211,11 +4839,10 @@ generate_way_out_method(
     selection_free(ov2, TRUE);
     selection_free(ov3, TRUE);
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-ensure_way_out()
-{
+function ensure_way_out() { /* void */
     var ov = selection_new();
     var ttmp = gf.ftrap;
     var x, y;
@@ -5254,11 +4881,8 @@ ensure_way_out()
     selection_free(ov, TRUE);
 }
 
-
-
-function /* lua_Integer */
-get_table_intarray_entry(L, tableidx, entrynum)
-{ const $frame = stack_frame(); try {
+function get_table_intarray_entry(L, tableidx, entrynum) { /* lua_Integer */
+    const $frame = stack_frame(); try {
     let ret = 0;
     if (tableidx < 0)
         tableidx--;
@@ -5270,22 +4894,21 @@ get_table_intarray_entry(L, tableidx, entrynum)
     } else {
         let buf = stack_array(char, BUFSZ);
 
-        void sprintf(buf, _("Array entry #%i is %s, expected number"), 1, luaL_typename(L, -1))
+        sprintf(buf, _("Array entry #%i is %s, expected number"), 1, luaL_typename(L, -1))
 ;
         nhl_error(L, buf);
     }
     lua_pop(L, 1);
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-get_table_region(
+function get_table_region(
     L,
     name,
     x1, y1,
     x2, y2,
-    optional)
-{
+    optional) { /* int */
     let arrlen;
 
     lua_getfield(L, 1, name);
@@ -5315,9 +4938,7 @@ get_table_region(
     return 1;
 }
 
-export function /* boolean */
-get_coord(L, i, x, y)
-{
+export function get_coord(L, i, x, y) { /* boolean */
     let ret = FALSE;
     let ltyp = lua_type(L, i);
 
@@ -5365,11 +4986,7 @@ get_coord(L, i, x, y)
     return ret;
 }
 
-
-
-function /* void */
-levregion_add(lregion)
-{
+function levregion_add(lregion) { /* void */
     if (!lregion.in_islev) {
         get_location(ref_of(lregion.inarea, "x1"), ref_of(lregion.inarea, "y1"), ANY_LOC,
                      null);
@@ -5386,9 +5003,9 @@ levregion_add(lregion)
     if (gn.num_lregions) {
         /* realloc the lregion space to add the new one */
         let newl = view_of(lev_region, addr_of(alloc(
-            unsigned(unsigned(Math.imul(sizeof(lev_region), unsigned((1 + gn.num_lregions))))))));
+            unsigned(Math.imul(sizeof(lev_region), unsigned((1 + gn.num_lregions)))))));
 
-        void memcpy(addr_of((newl)), addr_of(gl.lregions),
+        memcpy(addr_of(newl), addr_of(gl.lregions),
                       unsigned(Math.imul(sizeof(lev_region), unsigned(gn.num_lregions))));
         do { if (gl.lregions) free(addr_of((gl.lregions))); } while (0);
         gn.num_lregions++;
@@ -5397,7 +5014,7 @@ levregion_add(lregion)
         gn.num_lregions = 1;
         gl.lregions = view_of(lev_region, addr_of(alloc(sizeof(lev_region))));
     }
-    void memcpy(addr_of(ptr_add(gl.lregions, gn.num_lregions - 1)), addr_of(lregion),
+    memcpy(addr_of(ptr_add(gl.lregions, gn.num_lregions - 1)), addr_of(lregion),
                   sizeof(lev_region));
 }
 
@@ -5406,9 +5023,8 @@ levregion_add(lregion)
    - exclude = {x1,y1,x2,y2} (optional)
    - region_islev=true, exclude_islev=true (optional)
    - negative x and y are invalid */
-function /* void */
-l_get_lregion(L, tmplregion)
-{ const $frame = stack_frame(); try {
+function l_get_lregion(L, tmplregion) { /* void */
+    const $frame = stack_frame(); try {
     let x1 = stack_var(lua_Integer), y1 = stack_var(lua_Integer), x2 = stack_var(lua_Integer), y2 = stack_var(lua_Integer);
 
     get_table_region(L, _("region"), x1, y1, x2, y2, FALSE);
@@ -5433,15 +5049,15 @@ l_get_lregion(L, tmplregion)
      * interfere with branch or portal placement. */
     if (x1[0] < 0)
         tmplregion.del_islev = TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* teleport_region({ region = { x1,y1, x2,y2 } }); */
 /* teleport_region({ region = { x1,y1, x2,y2 }, [ region_islev = 1, ]
  *   exclude = { x1,y1, x2,y2 }, [ exclude_islen = 1, ] [ dir = "up" ] }); */
 /* TODO: maybe allow using selection, with a new method "getextents()"? */
-export function /* int */
-lspo_teleport_region(L)
-{ const $frame = stack_frame(); try {
+export function lspo_teleport_region(L) { /* int */
+    const $frame = stack_frame(); try {
     let teledirs = static_array("lspo_teleport_region.teledirs", ptr_to(char), null, [ _("both"), _("down"), _("up"), 0 ]);
     let teledirs2i = static_array("lspo_teleport_region.teledirs2i", int, null, [ LR_TELE, LR_DOWNTELE, LR_UPTELE, -1 ]);
     let tmplregion = stack_struct(lev_region);
@@ -5457,7 +5073,8 @@ lspo_teleport_region(L)
     levregion_add(tmplregion);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* TODO: FIXME
    from lev_comp SPO_LEVREGION was called as:
@@ -5468,9 +5085,8 @@ lspo_teleport_region(L)
 /* levregion({ region = { x1,y1, x2,y2 }, exclude = { x1,y1, x2,y2 },
  *             type = "portal", name="air" }); */
 /* TODO: allow region to be optional, defaulting to whole level */
-export function /* int */
-lspo_levregion(L)
-{ const $frame = stack_frame(); try {
+export function lspo_levregion(L) { /* int */
+    const $frame = stack_frame(); try {
     let regiontypes = static_array("lspo_levregion.regiontypes", ptr_to(char), null, [
         _("stair-down"), _("stair-up"), _("portal"), _("branch"),
         _("teleport"), _("teleport-up"), _("teleport-down"), 0
@@ -5491,12 +5107,12 @@ lspo_levregion(L)
 
     levregion_add(tmplregion);
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* exclusion({ type = "teleport", region = { x1,y1, x2,y2 } }); */
-export function /* int */
-lspo_exclusion(L)
-{ const $frame = stack_frame(); try {
+export function lspo_exclusion(L) { /* int */
+    const $frame = stack_frame(); try {
     let ez_types = static_array("lspo_exclusion.ez_types", ptr_to(char), null, [
         _("teleport"), _("teleport-up"), _("teleport-down"), _("monster-generation"), 0
     ]);
@@ -5529,20 +5145,17 @@ lspo_exclusion(L)
     ez.next = sve.exclusion_zones;
     sve.exclusion_zones = ez;
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-sel_set_lit(x, y, arg)
-{
+function sel_set_lit(x, y, arg) { /* void */
      let lit = ref_to(int, arg)[0];
 
      levl()[x][y].lit = (IS_LAVA(levl()[x][y].typ) || lit) ? 1 : 0;
 }
 
 /* Add to the room any doors within/bordering it */
-function /* void */
-add_doors_to_room(croom)
-{
+function add_doors_to_room(croom) { /* void */
     let x, y;
     let i;
 
@@ -5554,14 +5167,11 @@ add_doors_to_room(croom)
         add_doors_to_room(croom.sbrooms[i]);
 }
 
-
-
 /* inside a lua table, get fields x1,y1,x2,y2 or region table */
-function /* void */
-get_table_coords_or_region(L,
+function get_table_coords_or_region(L,
                            dx1, dy1,
-                           dx2, dy2)
-{ const $frame = stack_frame(); try {
+                           dx2, dy2) { /* void */
+    const $frame = stack_frame(); try {
     dx1[0] = get_table_int_opt(L, _("x1"), -1);
     dy1[0] = get_table_int_opt(L, _("y1"), -1);
     dx2[0] = get_table_int_opt(L, _("x2"), -1);
@@ -5574,15 +5184,15 @@ get_table_coords_or_region(L,
         dx1[0] = rx1[0]; dy1[0] = ry1[0];
         dx2[0] = rx2[0]; dy2[0] = ry2[0];
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* region(selection, lit); */
 /* region({ x1=NN, y1=NN, x2=NN, y2=NN, lit=BOOL, type=ROOMTYPE, joined=BOOL,
  *          irregular=BOOL, filled=NN [ , contents = FUNCTION ] }); */
 /* region({ region={x1,y1, x2,y2}, type="ordinary" }); */
-export function /* int */
-lspo_region(L)
-{ const $frame = stack_frame(); try {
+export function lspo_region(L) { /* int */
+    const $frame = stack_frame(); try {
     let dx1 = stack_var(coordxy), dy1 = stack_var(coordxy), dx2 = stack_var(coordxy), dy2 = stack_var(coordxy);
     let troom;
     let do_arrival_room = FALSE, room_not_needed,
@@ -5609,7 +5219,6 @@ lspo_region(L)
         if (dx1[0] == -1 && dy1[0] == -1 && dx2[0] == -1 && dy2[0] == -1) {
             nhl_error(L, _("region needs region"));
         }
-
     } else if (argc == 2) {
         /* region(selection, "lit"); */
         let lits = static_array("lspo_region.lits", ptr_to(char), null, [ _("unlit"), _("lit"), 0 ]);
@@ -5649,8 +5258,8 @@ lspo_region(L)
      *  - When a room is desired to constrain the arrival of migrating
      *    monsters (see the mon_arrive function for details).
      */
-    room_not_needed = (+(rtype == OROOM && !irregular
-                       && !do_arrival_room && !gi.in_mk_themerooms));
+    room_not_needed = +(rtype == OROOM && !irregular
+                       && !do_arrival_room && !gi.in_mk_themerooms);
     if (room_not_needed || svn.nroom >= MAXNROFROOMS) {
         let tmpregion = stack_struct(region);
         if (!room_not_needed)
@@ -5684,10 +5293,7 @@ lspo_region(L)
     } else {
         add_room(dx1[0], dy1[0], dx2[0], dy2[0], rlit[0], rtype, TRUE);
 
-
-
         topologize(troom); /* set roomno */
-
     }
 
     if (!room_not_needed) {
@@ -5712,13 +5318,13 @@ lspo_region(L)
     }
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* drawbridge({ dir="east", state="closed", x=05,y=08 }); */
 /* drawbridge({ dir="east", state="closed", coord={05,08} }); */
-export function /* int */
-lspo_drawbridge(L)
-{ const $frame = stack_frame(); try {
+export function lspo_drawbridge(L) { /* int */
+    const $frame = stack_frame(); try {
     let mwdirs = static_array("lspo_drawbridge.mwdirs", ptr_to(char), null, [
         _("north"), _("south"), _("west"), _("east"), _("random"), 0
     ]);
@@ -5742,7 +5348,7 @@ lspo_drawbridge(L)
     get_table_xy_or_coord(L, mx, my);
 
     dir = mwdirs2i[get_table_option(L, _("dir"), _("random"), mwdirs)];
-    dcoord = (((((mx[0]) & 255)) + (shl64((((my[0]) & 255)), 16))));
+    dcoord = (((mx[0]) & 255) + (shl64(((my[0]) & 255), 16)));
     db_open = dbopens2i[get_table_option(L, _("state"), _("random"), dbopens)];
     x[0] = mx[0];
     y[0] = my[0];
@@ -5760,14 +5366,14 @@ lspo_drawbridge(L)
     chars[SpLev_Map[x[0]] + (y[0])] = 1;
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* mazewalk({ x = NN, y = NN, typ = ".", dir = "north", stocked = 0 }); */
 /* mazewalk({ coord = {XX, YY}, typ = ".", dir = "north", stocked = 0 }); */
 /* mazewalk(x,y,dir); */
-export function /* int */
-lspo_mazewalk(L)
-{ const $frame = stack_frame(); try {
+export function lspo_mazewalk(L) { /* int */
+    const $frame = stack_frame(); try {
     let mwdirs = static_array("lspo_mazewalk.mwdirs", ptr_to(char), null, [
         _("north"), _("south"), _("east"), _("west"), _("random"), 0
     ]);
@@ -5796,7 +5402,7 @@ lspo_mazewalk(L)
         dir = mwdirs2i[get_table_option(L, _("dir"), _("random"), mwdirs)];
     }
 
-    mcoord = (((((mx[0]) & 255)) + (shl64((((my[0]) & 255)), 16))));
+    mcoord = (((mx[0]) & 255) + (shl64(((my[0]) & 255), 16)));
     x[0] = mx[0];
     y[0] = my[0];
 
@@ -5866,15 +5472,13 @@ lspo_mazewalk(L)
         fill_empty_maze();
 
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* wall_property({ x1=0, y1=0, x2=78, y2=20, property="nondiggable" }); */
 /* wall_property({ region = {1,0, 78,20}, property="nonpasswall" }); */
-export function /* int */
-lspo_wall_property(L)
-{ const $frame = stack_frame(); try {
+export function lspo_wall_property(L) { /* int */
+    const $frame = stack_frame(); try {
     let wprops = static_array("lspo_wall_property.wprops", ptr_to(char), null, [
         _("nondiggable"), _("nonpasswall"), 0
     ]);
@@ -5905,11 +5509,12 @@ lspo_wall_property(L)
     set_wall_property(dx1[0], dy1[0], dx2[0], dy2[0], wprop);
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-set_wallprop_in_selection(L, prop$)
-{ const $frame = stack_frame(); try { const prop = stack_var(int, prop$);
+function set_wallprop_in_selection(L, prop$) { /* void */
+    const $frame = stack_frame(); try {
+    const prop = stack_var(int, prop$);
     let argc = lua_gettop(L);
     let freesel = FALSE;
     let sel = null;
@@ -5929,41 +5534,27 @@ set_wallprop_in_selection(L, prop$)
         if (freesel)
             selection_free(sel, TRUE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* non_diggable(selection); */
 /* non_diggable(); */
-export function /* int */
-lspo_non_diggable(L)
-{
+export function lspo_non_diggable(L) { /* int */
     set_wallprop_in_selection(L, W_NONDIGGABLE);
     return 0;
 }
 
 /* non_passwall(selection); */
 /* non_passwall(); */
-export function /* int */
-lspo_non_passwall(L)
-{
+export function lspo_non_passwall(L) { /* int */
     set_wallprop_in_selection(L, W_NONPASSWALL);
     return 0;
 }
 
-
-
-
-
-
-
-
-
-
 /* TODO: wallify(selection) */
 /* wallify({ x1=NN,y1=NN, x2=NN,y2=NN }); */
 /* wallify(); */
-export function /* int */
-lspo_wallify(L)
-{
+export function lspo_wallify(L) { /* int */
     let dx1 = -1, dy1 = -1, dx2 = -1, dy2 = -1;
 
     /* TODO: clamp coord values */
@@ -5989,9 +5580,7 @@ lspo_wallify(L)
 }
 
 /* reset_level is only needed for testing purposes */
-export function /* int */
-lspo_reset_level(L)
-{
+export function lspo_reset_level(L) { /* int */
     let wtower = In_W_tower(u.ux, u.uy, u.uz);
 
     iflags.lua_testing = TRUE;
@@ -6010,9 +5599,7 @@ lspo_reset_level(L)
 }
 
 /* finalize_level is only needed for testing purposes */
-export function /* int */
-lspo_finalize_level(L)
-{
+export function lspo_finalize_level(L) { /* int */
     let wtower = In_W_tower(u.ux, u.uy, u.uz);
     let i;
 
@@ -6063,17 +5650,14 @@ lspo_finalize_level(L)
     return 0;
 }
 
-
-
 /* map({ x = 10, y = 10, map = [[...]] }); */
 /* map({ coord = {10, 10}, map = [[...]] }); */
 /* map({ halign = "center", valign = "center", map = [[...]] }); */
 /* map({ map = [[...]], contents = function(map) ... end }); */
 /* map([[...]]) */
 /* local selection = map( ... ); */
-export function /* int */
-lspo_map(L)
-{ const $frame = stack_frame(); try {
+export function lspo_map(L) { /* int */
+    const $frame = stack_frame(); try {
     /*
 TODO: allow passing an array of strings as map data
 TODO: handle if map lines aren't same length
@@ -6195,13 +5779,13 @@ TODO: gc.coder->croom needs to be updated
             gx.xstart = splev_init_present[0] ? 1 : 3;
             break;
         case SPLEV_H_LEFT:
-            gx.xstart = 2 + (Math.trunc((gx.x_maze_max - 2 - gx.xsize) / 4));
+            gx.xstart = 2 + Math.trunc((gx.x_maze_max - 2 - gx.xsize) / 4);
             break;
         case SPLEV_CENTER:
-            gx.xstart = 2 + (Math.trunc((gx.x_maze_max - 2 - gx.xsize) / 2));
+            gx.xstart = 2 + Math.trunc((gx.x_maze_max - 2 - gx.xsize) / 2);
             break;
         case SPLEV_H_RIGHT:
-            gx.xstart = 2 + (Math.trunc((gx.x_maze_max - 2 - gx.xsize) * 3 / 4));
+            gx.xstart = 2 + Math.trunc((gx.x_maze_max - 2 - gx.xsize) * 3 / 4);
             break;
         case SPLEV_RIGHT:
             gx.xstart = gx.x_maze_max - gx.xsize - 1;
@@ -6212,7 +5796,7 @@ TODO: gc.coder->croom needs to be updated
             gy.ystart = 3;
             break;
         case SPLEV_CENTER:
-            gy.ystart = 2 + (Math.trunc((gy.y_maze_max - 2 - gy.ysize) / 2));
+            gy.ystart = 2 + Math.trunc((gy.y_maze_max - 2 - gy.ysize) / 2);
             break;
         case BOTTOM:
             gy.ystart = gy.y_maze_max - gy.ysize - 1;
@@ -6296,7 +5880,6 @@ TODO: gc.coder->croom needs to be updated
                 sel_set_ter(x[0], y[0], addr_of(terr));
             }
     }
-
  }
     mapfrag_free(mf); break; }
 
@@ -6316,13 +5899,10 @@ TODO: gc.coder->croom needs to be updated
     selection_free(sel, TRUE);
 
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* void */
-update_croom()
-{
+export function update_croom() { /* void */
     if (!gc.coder)
         return;
 
@@ -6332,9 +5912,7 @@ update_croom()
         gc.coder.croom = null;
 }
 
-function /* struct sp_coder * */
-sp_level_coder_init()
-{
+function sp_level_coder_init() { /* struct sp_coder * */
     let tmpi;
     let coder = view_of(struct_sp_coder, addr_of(alloc(sizeof(struct_sp_coder))));
 
@@ -6363,7 +5941,7 @@ sp_level_coder_init()
 
     invent_carrying_monster[0] = null;
 
-    void memset(addr_of(SpLev_Map), 0, sizeof(array_of(array_of(char, ROWNO), COLNO)));
+    memset(addr_of(SpLev_Map), 0, sizeof(array_of(array_of(char, ROWNO), COLNO)));
 
     svl.level.flags.is_maze_lev = 0;
     svl.level.flags.temperature = In_hell(u.uz) ? 1 : 0;
@@ -6374,7 +5952,6 @@ sp_level_coder_init()
 
     return coder;
 }
-
 
 const nhl_functions = static_array("sp_lev.c/nhl_functions", struct_luaL_Reg, null, [
     { name: _("message"), func: lspo_message },
@@ -6431,18 +6008,14 @@ const nhl_functions = static_array("sp_lev.c/nhl_functions", struct_luaL_Reg, nu
 
 */
 
-export function /* void */
-l_register_des(L)
-{
+export function l_register_des(L) { /* void */
     /* register des -table, and functions for it */
     lua_newtable(L);
     luaL_setfuncs(L, nhl_functions[0], 0);
     lua_setglobal(L, _("des"));
 }
 
-export function /* void */
-create_des_coder()
-{
+export function create_des_coder() { /* void */
     if (!gc.coder)
         gc.coder = sp_level_coder_init();
 }
@@ -6450,9 +6023,8 @@ create_des_coder()
 /*
  * General loader
  */
-export function /* boolean */
-load_special(name)
-{ const $frame = stack_frame(); try {
+export function load_special(name) { /* boolean */
+    const $frame = stack_frame(); try {
     var result = FALSE;
     var sbi = init_list(stack_struct(struct_nhl_sandbox_info), {flags: NHL_SB_SAFE, memlimit: 1*1024*1024, steps: 0, perpcall: 1*1024*1024});
 
@@ -6499,622 +6071,211 @@ load_special(name)
     gc.coder = null;
 
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*sp_lev.c*/
-import { AM_CHAOTIC } from "./align.h.js";
-import { AM_LAWFUL } from "./align.h.js";
-import { AM_MASK } from "./align.h.js";
-import { AM_NEUTRAL } from "./align.h.js";
-import { AM_NONE } from "./align.h.js";
-import { AM_SANCTUM } from "./align.h.js";
-import { AM_SHRINE } from "./align.h.js";
-import { AM_SPLEV_CO } from "./align.h.js";
-import { AM_SPLEV_NONCO } from "./align.h.js";
-import { AM_SPLEV_RANDOM } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
-import { Align2amask } from "./align.h.macros.js";
-import { Amask2align } from "./align.h.macros.js";
+
+import {
+    AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, AM_NONE, AM_SANCTUM, AM_SHRINE, AM_SPLEV_CO,
+    AM_SPLEV_NONCO, AM_SPLEV_RANDOM, A_LAWFUL, A_NONE,
+} from "./align.h.js";
+import { Align2amask, Amask2align } from "./align.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
+import {
+    COIN_CLASS, GEM_CLASS, MAXMCLASSES, MAXOCLASSES, MAXPCHARS, POTION_CLASS, RANDOM_CLASS,
+    RING_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_EEL, S_HUMAN, S_MIMIC, WAND_CLASS,
+} from "./defsym.h.js";
 import { glyph_is_cmap } from "./display.h.macros.js";
-import { LR_BRANCH } from "./dungeon.h.js";
-import { LR_DOWNSTAIR } from "./dungeon.h.js";
-import { LR_DOWNTELE } from "./dungeon.h.js";
-import { LR_MONGEN } from "./dungeon.h.js";
-import { LR_PORTAL } from "./dungeon.h.js";
-import { LR_TELE } from "./dungeon.h.js";
-import { LR_UPSTAIR } from "./dungeon.h.js";
-import { LR_UPTELE } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { struct_exclusion_zone } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_medusa_level } from "./dungeon.h.macros.js";
-import { Is_mineend_level } from "./dungeon.h.macros.js";
-import { Is_sokoend_level } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { BURN } from "./engrave.h.js";
-import { DUST } from "./engrave.h.js";
-import { ENGRAVE } from "./engrave.h.js";
-import { ENGR_BLOOD } from "./engrave.h.js";
-import { MARK } from "./engrave.h.js";
-import { BOOL_RANDOM } from "./global.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXNROFROOMS } from "./global.h.js";
-import { NHL_SB_SAFE } from "./global.h.js";
-import { NHLpa_panic } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { struct_nhl_sandbox_info } from "./global.h.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { CORPSTAT_FEMALE } from "./hack.h.js";
-import { CORPSTAT_HISTORIC } from "./hack.h.js";
-import { CORPSTAT_MALE } from "./hack.h.js";
-import { MKTRAP_MAZEFLAG } from "./hack.h.js";
-import { MKTRAP_NOSPIDERONWEB } from "./hack.h.js";
-import { MKTRAP_NOVICTIM } from "./hack.h.js";
-import { MKTRAP_SEEN } from "./hack.h.js";
-import { MM_ADJACENTOK } from "./hack.h.js";
-import { MM_IGNOREWATER } from "./hack.h.js";
-import { MM_NOCOUNTBIRTH } from "./hack.h.js";
-import { MM_NOGRP } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { MM_NOTAIL } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { NO_NC_FLAGS } from "./hack.h.js";
-import { ONAME_LEVEL_DEF } from "./hack.h.js";
-import { ONAME_NO_FLAGS } from "./hack.h.js";
-import { lev_region } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import {
+    LR_BRANCH, LR_DOWNSTAIR, LR_DOWNTELE, LR_MONGEN, LR_PORTAL, LR_TELE, LR_UPSTAIR, LR_UPTELE,
+    struct_d_level, struct_exclusion_zone,
+} from "./dungeon.h.js";
+import {
+    In_endgame, Is_medusa_level, Is_mineend_level, Is_sokoend_level, Is_waterlevel,
+} from "./dungeon.h.macros.js";
+import { BURN, DUST, ENGRAVE, ENGR_BLOOD, MARK } from "./engrave.h.js";
+import {
+    BOOL_RANDOM, BUFSZ, COLNO, FALSE, MAXNROFROOMS, NHL_SB_SAFE, NHLpa_panic, QBUFSZ, ROWNO, TRUE,
+    boolean, coordxy, struct_nhl_sandbox_info,
+} from "./global.h.js";
+import { Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    CORPSTAT_FEMALE, CORPSTAT_HISTORIC, CORPSTAT_MALE, MKTRAP_MAZEFLAG, MKTRAP_NOSPIDERONWEB,
+    MKTRAP_NOVICTIM, MKTRAP_SEEN, MM_ADJACENTOK, MM_IGNOREWATER, MM_NOCOUNTBIRTH, MM_NOGRP,
+    MM_NOMSG, MM_NOTAIL, NO_MM_FLAGS, NO_NC_FLAGS, ONAME_LEVEL_DEF, ONAME_NO_FLAGS, lev_region,
+} from "./hack.h.js";
+import { ROLL_FROM, max, min, rn1 } from "./hack.h.macros.js";
 import { struct_luaL_Reg } from "./lauxlib.h.js";
-import { luaL_checkstring } from "./lauxlib.h.macros.js";
-import { luaL_typename } from "./lauxlib.h.macros.js";
-import { debugpline0 } from "./lint.h.macros.js";
-import { debugpline2 } from "./lint.h.macros.js";
-import { debugpline4 } from "./lint.h.macros.js";
-import { LUA_TFUNCTION } from "./lua.h.js";
-import { LUA_TNIL } from "./lua.h.js";
-import { LUA_TNUMBER } from "./lua.h.js";
-import { LUA_TSTRING } from "./lua.h.js";
-import { LUA_TTABLE } from "./lua.h.js";
-import { lua_Integer } from "./lua.h.js";
-import { lua_isnil } from "./lua.h.macros.js";
-import { lua_newtable } from "./lua.h.macros.js";
-import { lua_pop } from "./lua.h.macros.js";
-import { lua_remove } from "./lua.h.macros.js";
-import { lua_tointeger } from "./lua.h.macros.js";
-import { lua_tostring } from "./lua.h.macros.js";
-import { EGD } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { ANTHOLE } from "./mkroom.h.js";
-import { ARMORSHOP } from "./mkroom.h.js";
-import { BARRACKS } from "./mkroom.h.js";
-import { BEEHIVE } from "./mkroom.h.js";
-import { BOOKSHOP } from "./mkroom.h.js";
-import { CANDLESHOP } from "./mkroom.h.js";
-import { COCKNEST } from "./mkroom.h.js";
-import { COURT } from "./mkroom.h.js";
-import { DELPHI } from "./mkroom.h.js";
-import { FILL_NONE } from "./mkroom.h.js";
-import { FILL_NORMAL } from "./mkroom.h.js";
-import { FODDERSHOP } from "./mkroom.h.js";
-import { FOODSHOP } from "./mkroom.h.js";
-import { LEPREHALL } from "./mkroom.h.js";
-import { MORGUE } from "./mkroom.h.js";
-import { NO_ROOM } from "./mkroom.h.js";
-import { OROOM } from "./mkroom.h.js";
-import { POTIONSHOP } from "./mkroom.h.js";
-import { RINGSHOP } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { SCROLLSHOP } from "./mkroom.h.js";
-import { SHOPBASE } from "./mkroom.h.js";
-import { SWAMP } from "./mkroom.h.js";
-import { TEMPLE } from "./mkroom.h.js";
-import { THEMEROOM } from "./mkroom.h.js";
-import { TOOLSHOP } from "./mkroom.h.js";
-import { VAULT } from "./mkroom.h.js";
-import { WANDSHOP } from "./mkroom.h.js";
-import { WEAPONSHOP } from "./mkroom.h.js";
-import { ZOO } from "./mkroom.h.js";
-import { amphibious } from "./mondata.h.macros.js";
-import { emits_light } from "./mondata.h.macros.js";
-import { is_female } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_male } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { likes_fire } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { monsym } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { pm_invisible } from "./mondata.h.macros.js";
-import { your_race } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { G_EXTINCT } from "./monflag.h.js";
-import { G_GONE } from "./monflag.h.js";
-import { G_IGNORE } from "./monflag.h.js";
-import { G_NOGEN } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { STRAT_WAITFORU } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { vampshifted } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WIZARD_OF_YENDOR } from "./monsters.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
+import { luaL_checkstring, luaL_typename } from "./lauxlib.h.macros.js";
+import { debugpline0, debugpline2, debugpline4 } from "./lint.h.macros.js";
+import {
+    LUA_TFUNCTION, LUA_TNIL, LUA_TNUMBER, LUA_TSTRING, LUA_TTABLE, lua_Integer,
+} from "./lua.h.js";
+import {
+    lua_isnil, lua_newtable, lua_pop, lua_remove, lua_tointeger, lua_tostring,
+} from "./lua.h.macros.js";
+import { EGD, EPRI, ESHK } from "./mextra.h.macros.js";
+import {
+    ANTHOLE, ARMORSHOP, BARRACKS, BEEHIVE, BOOKSHOP, CANDLESHOP, COCKNEST, COURT, DELPHI, FILL_NONE,
+    FILL_NORMAL, FODDERSHOP, FOODSHOP, LEPREHALL, MORGUE, NO_ROOM, OROOM, POTIONSHOP, RINGSHOP,
+    ROOMOFFSET, SCROLLSHOP, SHOPBASE, SWAMP, TEMPLE, THEMEROOM, TOOLSHOP, VAULT, WANDSHOP,
+    WEAPONSHOP, ZOO,
+} from "./mkroom.h.js";
+import {
+    amphibious, emits_light, is_female, is_floater, is_flyer, is_male, is_swimmer, likes_fire,
+    monsndx, monsym, noncorporeal, passes_walls, pm_invisible, your_race,
+} from "./mondata.h.macros.js";
+import {
+    FEMALE, G_EXTINCT, G_GONE, G_IGNORE, G_NOGEN, G_UNIQ, MALE, NEUTRAL,
+} from "./monflag.h.js";
+import {
+    M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, STRAT_WAITFORU, struct_monst,
+} from "./monst.h.js";
+import { is_vampshifter, ismnum, resists_ston, vampshifted } from "./monst.h.macros.js";
+import {
+    LOW_PM, NON_PM, NUMMONS, PM_ARCHEOLOGIST, PM_DWARF, PM_GNOME, PM_MINOTAUR, PM_WIZARD,
+    PM_WIZARD_OF_YENDOR,
+} from "./monsters.h.js";
+import { OBJ_FREE, struct_obj } from "./obj.h.js";
 import { carried } from "./obj.h.macros.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { DWARVISH_MATTOCK } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { RIN_TELEPORTATION } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SCR_TELEPORTATION } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { WAN_DIGGING } from "./objects.h.js";
-import { WAN_TELEPORTATION } from "./objects.h.js";
+import { OBJ_DESCR, OBJ_NAME } from "./objclass.h.macros.js";
+import {
+    BOULDER, CORPSE, DWARVISH_MATTOCK, EGG, FIGURINE, NUM_OBJECTS, PICK_AXE, RIN_TELEPORTATION,
+    SADDLE, SCR_TELEPORTATION, SPE_NOVEL, STATUE, STRANGE_OBJECT, TIN, WAN_DIGGING,
+    WAN_TELEPORTATION,
+} from "./objects.h.js";
 import { struct_nhrect } from "./rect.h.js";
-import { ALTAR } from "./rm.h.js";
-import { CLOUD } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { CROSSWALL } from "./rm.h.js";
-import { DB_DIR } from "./rm.h.js";
-import { DB_EAST } from "./rm.h.js";
-import { DB_NORTH } from "./rm.h.js";
-import { DB_SOUTH } from "./rm.h.js";
-import { DB_WEST } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_SECRET } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { F_LOOTED } from "./rm.h.js";
-import { F_WARNED } from "./rm.h.js";
-import { GRAVE } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { ICED_MOAT } from "./rm.h.js";
-import { ICED_POOL } from "./rm.h.js";
-import { INVALID_TYPE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { LA_DOWN } from "./rm.h.js";
-import { LA_UP } from "./rm.h.js";
-import { MATCH_WALL } from "./rm.h.js";
-import { MAX_TYPE } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SET_LIT_NOCHANGE } from "./rm.h.js";
-import { SINK } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { SVALL } from "./rm.h.js";
-import { S_LDWASHER } from "./rm.h.js";
-import { S_LPUDDING } from "./rm.h.js";
-import { S_LRING } from "./rm.h.js";
-import { THRONE } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { TREE_LOOTED } from "./rm.h.js";
-import { TREE_SWARM } from "./rm.h.js";
-import { T_LOOTED } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { W_NONPASSWALL } from "./rm.h.js";
-import { struct_rm } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_DOORJOIN } from "./rm.h.macros.js";
-import { IS_DRAWBRIDGE } from "./rm.h.macros.js";
-import { IS_FURNITURE } from "./rm.h.macros.js";
-import { IS_LAVA } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_POOL } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { SPACE_POS } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { ANY_LOC } from "./sp_lev.h.js";
-import { CUSTOM_INVENT } from "./sp_lev.h.js";
-import { DEFAULT_INVENT } from "./sp_lev.h.js";
-import { DRY } from "./sp_lev.h.js";
-import { HOT } from "./sp_lev.h.js";
-import { LVLINIT_MAZE } from "./sp_lev.h.js";
-import { LVLINIT_MAZEGRID } from "./sp_lev.h.js";
-import { LVLINIT_MINES } from "./sp_lev.h.js";
-import { LVLINIT_NONE } from "./sp_lev.h.js";
-import { LVLINIT_ROGUE } from "./sp_lev.h.js";
-import { LVLINIT_SOLIDFILL } from "./sp_lev.h.js";
-import { LVLINIT_SWAMP } from "./sp_lev.h.js";
-import { MAP_Y_LIM } from "./sp_lev.h.js";
-import { MAX_NESTED_ROOMS } from "./sp_lev.h.js";
-import { NO_INVENT } from "./sp_lev.h.js";
-import { NO_LOC_WARN } from "./sp_lev.h.js";
-import { SOLID } from "./sp_lev.h.js";
-import { SPACELOC } from "./sp_lev.h.js";
-import { SP_COORD_IS_RANDOM } from "./sp_lev.h.js";
-import { SP_OBJ_CONTAINER } from "./sp_lev.h.js";
-import { SP_OBJ_CONTENT } from "./sp_lev.h.js";
-import { WET } from "./sp_lev.h.js";
-import { W_ANY } from "./sp_lev.h.js";
-import { W_EAST } from "./sp_lev.h.js";
-import { W_NORTH } from "./sp_lev.h.js";
-import { W_RANDOM } from "./sp_lev.h.js";
-import { W_SOUTH } from "./sp_lev.h.js";
-import { W_WEST } from "./sp_lev.h.js";
-import { altar } from "./sp_lev.h.js";
-import { corridor } from "./sp_lev.h.js";
-import { getloc_flags_t } from "./sp_lev.h.js";
-import { lev_init } from "./sp_lev.h.js";
-import { monster } from "./sp_lev.h.js";
-import { object } from "./sp_lev.h.js";
-import { region } from "./sp_lev.h.js";
-import { room_door } from "./sp_lev.h.js";
-import { spltrap } from "./sp_lev.h.js";
-import { struct__room } from "./sp_lev.h.js";
-import { struct_mapfragment } from "./sp_lev.h.js";
-import { struct_sp_coder } from "./sp_lev.h.js";
-import { terrain } from "./sp_lev.h.js";
-import { unpacked_coord } from "./sp_lev.h.js";
-import { SP_COORD_PACK } from "./sp_lev.h.macros.js";
-import { SP_COORD_PACK_RANDOM } from "./sp_lev.h.macros.js";
-import { SP_COORD_X } from "./sp_lev.h.macros.js";
-import { SP_COORD_Y } from "./sp_lev.h.macros.js";
+import {
+    ALTAR, CLOUD, CORR, CROSSWALL, DB_DIR, DB_EAST, DB_NORTH, DB_SOUTH, DB_WEST, DOOR, D_BROKEN,
+    D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_SECRET, D_TRAPPED, FOUNTAIN, F_LOOTED, F_WARNED,
+    GRAVE, HWALL, ICE, ICED_MOAT, ICED_POOL, INVALID_TYPE, IRONBARS, LADDER, LA_DOWN, LA_UP,
+    MATCH_WALL, MAX_TYPE, MOAT, POOL, ROOM, SCORR, SDOOR, SET_LIT_NOCHANGE, SINK, STAIRS, STONE,
+    SVALL, S_LDWASHER, S_LPUDDING, S_LRING, THRONE, TREE, TREE_LOOTED, TREE_SWARM, T_LOOTED, VWALL,
+    W_NONDIGGABLE, W_NONPASSWALL, struct_rm,
+} from "./rm.h.js";
+import {
+    ACCESSIBLE, IS_DOOR, IS_DOORJOIN, IS_DRAWBRIDGE, IS_FURNITURE, IS_LAVA, IS_OBSTRUCTED, IS_POOL,
+    IS_ROOM, IS_STWALL, IS_TREE, IS_WALL, MON_AT, SPACE_POS, fmon, fobj, levl, remove_monster,
+} from "./rm.h.macros.js";
+import {
+    ANY_LOC, CUSTOM_INVENT, DEFAULT_INVENT, DRY, HOT, LVLINIT_MAZE, LVLINIT_MAZEGRID, LVLINIT_MINES,
+    LVLINIT_NONE, LVLINIT_ROGUE, LVLINIT_SOLIDFILL, LVLINIT_SWAMP, MAP_Y_LIM, MAX_NESTED_ROOMS,
+    NO_INVENT, NO_LOC_WARN, SOLID, SPACELOC, SP_COORD_IS_RANDOM, SP_OBJ_CONTAINER, SP_OBJ_CONTENT,
+    WET, W_ANY, W_EAST, W_NORTH, W_RANDOM, W_SOUTH, W_WEST, altar, corridor, getloc_flags_t,
+    lev_init, monster, object, region, room_door, spltrap, struct__room, struct_mapfragment,
+    struct_sp_coder, terrain, unpacked_coord,
+} from "./sp_lev.h.js";
+import { SP_COORD_PACK, SP_COORD_PACK_RANDOM, SP_COORD_X, SP_COORD_Y } from "./sp_lev.h.macros.js";
 import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { ANTI_MAGIC } from "./trap.h.js";
-import { ARROW_TRAP } from "./trap.h.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { DART_TRAP } from "./trap.h.js";
-import { FIRE_TRAP } from "./trap.h.js";
-import { HOLE } from "./trap.h.js";
-import { LANDMINE } from "./trap.h.js";
-import { LEVEL_TELEP } from "./trap.h.js";
-import { MAGIC_PORTAL } from "./trap.h.js";
-import { MAGIC_TRAP } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { PIT } from "./trap.h.js";
-import { POLY_TRAP } from "./trap.h.js";
-import { ROCKTRAP } from "./trap.h.js";
-import { ROLLING_BOULDER_TRAP } from "./trap.h.js";
-import { RUST_TRAP } from "./trap.h.js";
-import { SLP_GAS_TRAP } from "./trap.h.js";
-import { SPIKED_PIT } from "./trap.h.js";
-import { SQKY_BOARD } from "./trap.h.js";
-import { STATUE_TRAP } from "./trap.h.js";
-import { TELEP_TRAP } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { TRAPNUM } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { undestroyable_trap } from "./trap.h.macros.js";
+import {
+    ANTI_MAGIC, ARROW_TRAP, BEAR_TRAP, DART_TRAP, FIRE_TRAP, HOLE, LANDMINE, LEVEL_TELEP,
+    MAGIC_PORTAL, MAGIC_TRAP, NO_TRAP, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP,
+    SLP_GAS_TRAP, SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TELEP_TRAP, TRAPDOOR, TRAPNUM,
+    VIBRATING_SQUARE, WEB,
+} from "./trap.h.js";
+import { is_hole, is_pit, undestroyable_trap } from "./trap.h.macros.js";
 import { LS_MONSTER } from "./vision.h.js";
 import { A_ORIGINAL } from "./you.h.js";
 import { Race_if } from "./you.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { shl64 } from "../rt/int64.js";
-import { shr64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
-import { luaL_checkinteger } from "../rt/lua.js";
-import { luaL_checkoption } from "../rt/lua.js";
-import { luaL_checktype } from "../rt/lua.js";
-import { luaL_optinteger } from "../rt/lua.js";
-import { luaL_setfuncs } from "../rt/lua.js";
-import { lua_getfield } from "../rt/lua.js";
-import { lua_gettable } from "../rt/lua.js";
-import { lua_gettop } from "../rt/lua.js";
-import { lua_isnumber } from "../rt/lua.js";
-import { lua_len } from "../rt/lua.js";
-import { lua_pushinteger } from "../rt/lua.js";
-import { lua_setglobal } from "../rt/lua.js";
-import { lua_type } from "../rt/lua.js";
+import { Protection_from_shape_changers, Punished } from "./youprop.h.macros.js";
+import {
+    char, int, ord, schar, short, sizeof, sizeof_string, uchar, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64, or64u, shl64, shr64 } from "../rt/int64.js";
+import {
+    abs, free, memcpy, memset, sprintf, strcat, strchr, strcmp, strlen, strncmp,
+} from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+    static_var,
+} from "../rt/locals.js";
+import {
+    luaL_checkinteger, luaL_checkoption, luaL_checktype, luaL_optinteger, luaL_setfuncs,
+    lua_getfield, lua_gettable, lua_gettop, lua_isnumber, lua_len, lua_pushinteger, lua_setglobal,
+    lua_type,
+} from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import {
+    addr_of, array_of, elt, fnptr_t, ptr_add, ptr_diff, ptr_to, ref_of, ref_to, struct,
+    struct_assign, view_of,
+} from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { artifact_exists } from "./artifact.js";
-import { placebc } from "./ball.js";
-import { unplacebc } from "./ball.js";
+import { placebc, unplacebc } from "./ball.js";
 import { describe_level } from "./botl.js";
-import { isok } from "./cmd.js";
-import { makemap_prepost } from "./cmd.js";
-import { create_drawbridge } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { emptystr } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gr } from "./decl.js";
-import { gs } from "./decl.js";
-import { gt } from "./decl.js";
-import { gx } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { sve } from "./decl.js";
-import { svi } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
+import { isok, makemap_prepost } from "./cmd.js";
+import { create_drawbridge, is_lava, is_pool } from "./dbridge.js";
+import {
+    cg, emptystr, gc, gd, gf, gi, gl, gm, gn, gr, gs, gt, gx, gy, iflags, svc, svd, sve, svi, svl,
+    svm, svn, svr, u,
+} from "./decl.js";
 import { premap_detect } from "./detect.js";
 import { bury_an_obj } from "./dig.js";
-import { back_to_glyph } from "./display.js";
-import { set_wall_state } from "./display.js";
-import { christen_monst } from "./do_name.js";
-import { lookup_novel } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { safe_oname } from "./do_name.js";
-import { def_char_to_monclass } from "./drawing.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { defsyms } from "./drawing.js";
-import { Can_dig_down } from "./dungeon.js";
-import { Can_fall_thru } from "./dungeon.js";
-import { In_W_tower } from "./dungeon.js";
-import { In_hell } from "./dungeon.js";
-import { In_mines } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { induced_align } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
+import { back_to_glyph, set_wall_state } from "./display.js";
+import { christen_monst, lookup_novel, oname, safe_oname } from "./do_name.js";
+import { def_char_to_monclass, def_char_to_objclass, defsyms } from "./drawing.js";
+import {
+    Can_dig_down, Can_fall_thru, In_W_tower, In_hell, In_mines, depth, induced_align, on_level,
+} from "./dungeon.js";
 import { panic } from "./end.js";
-import { del_engr } from "./engrave.js";
-import { del_engr_at } from "./engrave.js";
-import { engr_at } from "./engrave.js";
-import { make_engr_at } from "./engrave.js";
-import { make_grave } from "./engrave.js";
+import { del_engr, del_engr_at, engr_at, make_engr_at, make_grave } from "./engrave.js";
 import { makeroguerooms } from "./extralev.js";
-import { in_rooms } from "./hack.js";
-import { monst_to_any } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { str_lines_maxlen } from "./hacklib.js";
-import { stripdigits } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { swapbits } from "./hacklib.js";
-import { sobj_at } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { del_light_source } from "./light.js";
-import { new_light_source } from "./light.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
-import { propagate } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { set_mimic_sym } from "./makemon.js";
-import { add_door } from "./mklev.js";
-import { add_room } from "./mklev.js";
-import { add_subroom } from "./mklev.js";
-import { clear_level_structures } from "./mklev.js";
-import { count_level_features } from "./mklev.js";
-import { level_finalize_topology } from "./mklev.js";
-import { makecorridors } from "./mklev.js";
-import { maybe_sdoor } from "./mklev.js";
-import { mineralize } from "./mklev.js";
-import { mkstairs } from "./mklev.js";
-import { mktrap } from "./mklev.js";
-import { okdoor } from "./mklev.js";
-import { topologize } from "./mklev.js";
-import { flood_fill_rm } from "./mkmap.js";
-import { litstate_rnd } from "./mkmap.js";
-import { mkmap } from "./mkmap.js";
-import { create_maze } from "./mkmaze.js";
-import { fix_wall_spines } from "./mkmaze.js";
-import { fixup_special } from "./mkmaze.js";
-import { get_level_extends } from "./mkmaze.js";
-import { pick_vibrasquare_location } from "./mkmaze.js";
-import { set_levltyp } from "./mkmaze.js";
-import { set_levltyp_lit } from "./mkmaze.js";
-import { walkfrom } from "./mkmaze.js";
-import { wallification } from "./mkmaze.js";
-import { add_to_container } from "./mkobj.js";
-import { bless } from "./mkobj.js";
-import { blessorcurse } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { discard_minvent } from "./mkobj.js";
-import { mkgold } from "./mkobj.js";
-import { mkobj_at } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { remove_object } from "./mkobj.js";
-import { rndmonnum } from "./mkobj.js";
-import { set_corpsenm } from "./mkobj.js";
-import { unbless } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { fill_zoo } from "./mkroom.js";
-import { inside_room } from "./mkroom.js";
-import { somex } from "./mkroom.js";
-import { somexy } from "./mkroom.js";
-import { somey } from "./mkroom.js";
-import { mgender_from_permonst } from "./mon.js";
-import { mongone } from "./mon.js";
-import { newcham } from "./mon.js";
-import { select_newcham_form } from "./mon.js";
-import { validvamp } from "./mon.js";
-import { name_to_mon } from "./mondata.js";
-import { name_to_monplus } from "./mondata.js";
-import { poly_when_stoned } from "./mondata.js";
-import { set_mon_data } from "./mondata.js";
+import { in_rooms, monst_to_any } from "./hack.js";
+import { eos, str_lines_maxlen, stripdigits, strncmpi, strstri, swapbits } from "./hacklib.js";
+import { sobj_at, stackobj } from "./invent.js";
+import { del_light_source, new_light_source } from "./light.js";
+import { makemon, mkclass, propagate, set_malign, set_mimic_sym } from "./makemon.js";
+import {
+    add_door, add_room, add_subroom, clear_level_structures, count_level_features,
+    level_finalize_topology, makecorridors, maybe_sdoor, mineralize, mkstairs, mktrap, okdoor,
+    topologize,
+} from "./mklev.js";
+import { flood_fill_rm, litstate_rnd, mkmap } from "./mkmap.js";
+import {
+    create_maze, fix_wall_spines, fixup_special, get_level_extends, pick_vibrasquare_location,
+    set_levltyp, set_levltyp_lit, walkfrom, wallification,
+} from "./mkmaze.js";
+import {
+    add_to_container, bless, blessorcurse, curse, discard_minvent, mkgold, mkobj_at, mksobj_at,
+    obj_extract_self, remove_object, rndmonnum, set_corpsenm, unbless, uncurse, weight,
+} from "./mkobj.js";
+import { fill_zoo, inside_room, somex, somexy, somey } from "./mkroom.js";
+import { mgender_from_permonst, mongone, newcham, select_newcham_form, validvamp } from "./mon.js";
+import { name_to_mon, name_to_monplus, poly_when_stoned, set_mon_data } from "./mondata.js";
 import { mons } from "./monst.js";
 import { mk_mplayer } from "./mplayer.js";
 import { nhl_push_obj } from "./nhlobj.js";
-import { l_selection_check } from "./nhlsel.js";
-import { l_selection_push_copy } from "./nhlsel.js";
-import { check_mapchr } from "./nhlua.js";
-import { get_table_boolean_opt } from "./nhlua.js";
-import { get_table_int } from "./nhlua.js";
-import { get_table_int_opt } from "./nhlua.js";
-import { get_table_mapchr } from "./nhlua.js";
-import { get_table_mapchr_opt } from "./nhlua.js";
-import { get_table_option } from "./nhlua.js";
-import { get_table_str } from "./nhlua.js";
-import { get_table_str_opt } from "./nhlua.js";
-import { lcheck_param_table } from "./nhlua.js";
-import { load_lua } from "./nhlua.js";
-import { nhl_add_table_entry_bool } from "./nhlua.js";
-import { nhl_add_table_entry_int } from "./nhlua.js";
-import { nhl_add_table_entry_region } from "./nhlua.js";
-import { nhl_add_table_entry_str } from "./nhlua.js";
-import { nhl_error } from "./nhlua.js";
-import { nhl_get_xy_params } from "./nhlua.js";
-import { nhl_pcall_handle } from "./nhlua.js";
-import { splev_chr2typ } from "./nhlua.js";
+import { l_selection_check, l_selection_push_copy } from "./nhlsel.js";
+import {
+    check_mapchr, get_table_boolean_opt, get_table_int, get_table_int_opt, get_table_mapchr,
+    get_table_mapchr_opt, get_table_option, get_table_str, get_table_str_opt, lcheck_param_table,
+    load_lua, nhl_add_table_entry_bool, nhl_add_table_entry_int, nhl_add_table_entry_region,
+    nhl_add_table_entry_str, nhl_error, nhl_get_xy_params, nhl_pcall_handle, splev_chr2typ,
+} from "./nhlua.js";
 import { oinit } from "./o_init.js";
 import { objects } from "./objects.js";
 import { simpleonames } from "./objnam.js";
 import { impossible } from "./pline.js";
-import { mk_roamer } from "./priest.js";
-import { priestini } from "./priest.js";
-import { get_rect } from "./rect.js";
-import { rnd_rect } from "./rect.js";
-import { split_rects } from "./rect.js";
-import { create_gas_cloud } from "./region.js";
-import { create_gas_cloud_selection } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { selection_clear } from "./selvar.js";
-import { selection_clone } from "./selvar.js";
-import { selection_do_grow } from "./selvar.js";
-import { selection_floodfill } from "./selvar.js";
-import { selection_free } from "./selvar.js";
-import { selection_getbounds } from "./selvar.js";
-import { selection_getpoint } from "./selvar.js";
-import { selection_iterate } from "./selvar.js";
-import { selection_new } from "./selvar.js";
-import { selection_rndcoord } from "./selvar.js";
-import { selection_setpoint } from "./selvar.js";
-import { set_selection_floodfillchk } from "./selvar.js";
-import { delete_contents } from "./shk.js";
-import { obfree } from "./shk.js";
+import { mk_roamer, priestini } from "./priest.js";
+import { get_rect, rnd_rect, split_rects } from "./rect.js";
+import { create_gas_cloud, create_gas_cloud_selection } from "./region.js";
+import { rn2, rnd } from "./rnd.js";
+import {
+    selection_clear, selection_clone, selection_do_grow, selection_floodfill, selection_free,
+    selection_getbounds, selection_getpoint, selection_iterate, selection_new, selection_rndcoord,
+    selection_setpoint, set_selection_floodfillchk,
+} from "./selvar.js";
+import { delete_contents, obfree } from "./shk.js";
 import { stock_room } from "./shknam.js";
 import { stairway_add } from "./stairs.js";
-import { mdrop_special_objs } from "./steal.js";
-import { mpickobj } from "./steal.js";
-import { can_saddle } from "./steed.js";
-import { place_monster } from "./steed.js";
-import { put_saddle_on_mon } from "./steed.js";
+import { mdrop_special_objs, mpickobj } from "./steal.js";
+import { can_saddle, place_monster, put_saddle_on_mon } from "./steed.js";
 import { enexto } from "./teleport.js";
 import { begin_burn } from "./timeout.js";
-import { deltrap } from "./trap.js";
-import { maketrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { block_point } from "./vision.js";
-import { does_block } from "./vision.js";
-import { vision_reset } from "./vision.js";
-import { flip_worm_segs_horizontal } from "./worm.js";
-import { flip_worm_segs_vertical } from "./worm.js";
+import { deltrap, maketrap, t_at } from "./trap.js";
+import { block_point, does_block, vision_reset } from "./vision.js";
+import { flip_worm_segs_horizontal, flip_worm_segs_vertical } from "./worm.js";
 import { m_dowear } from "./worn.js";
 const __FILE__ = "sp_lev.c";

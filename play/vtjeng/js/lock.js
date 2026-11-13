@@ -162,7 +162,7 @@ import {
     unblock_point,
     vision_recalc_async,
 } from './vision.js';
-import { dist2, s_suffix } from './hacklib.js';
+import { dist2, s_suffix, upstart } from './hacklib.js';
 import { note_unported } from './unported.js';
 import { S_hcdoor, S_vcdoor } from './symbols.js';
 import { ttyPline } from './tty_message.js';
@@ -333,7 +333,7 @@ async function chest_shatter_msg(otmp, state = game) {
     }
     const subject = an(thing);
     await ttyPline(
-        `${subject[0].toUpperCase()}${subject.slice(1)} ${disposition}!`,
+        `${upstart(subject)} ${disposition}!`,
         state,
     );
 }
@@ -368,7 +368,7 @@ export async function breakchestlock(box, destroyit, state = game) {
             // C extracts each child before deciding whether it shatters, so a
             // destroyed object is free for obfree() and a survivor is ready
             // for place_object().
-            obj_extract_self(otmp, { state });
+            await obj_extract_self(otmp, { state });
             // lock.c:186 evaluates the random destruction gate first, but
             // potion-class contents shatter even when that gate is false.
             if (!rn2(3) || otmp.oclass === POTION_CLASS) {
@@ -404,7 +404,7 @@ export async function breakchestlock(box, destroyit, state = game) {
                 `You owe ${loss} ${currency(loss, state)} for objects destroyed.`,
                 state,
             );
-        delobj(box, { state, random: coreRandom });
+        await delobj(box, { state, random: coreRandom });
         return;
     }
     /* bill for the box but not for its contents */

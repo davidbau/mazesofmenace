@@ -2,27 +2,10 @@
 /* Copyright (c) J. C. Collet, M. Stephenson and D. Cohrs, 1992   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "sp_lev.h"
-
 export const HEIGHT = (ROWNO - 1);
 export const WIDTH = (COLNO - 2);
 
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-init_map(bg_typ)
-{
+function init_map(bg_typ) { /* void */
     let x, y;
 
     for (x = 1; x < COLNO; x++)
@@ -33,9 +16,7 @@ init_map(bg_typ)
         }
 }
 
-function /* void */
-init_fill(bg_typ, fg_typ)
-{
+function init_fill(bg_typ, fg_typ) { /* void */
     let x, y;
     let limit, count;
 
@@ -51,9 +32,7 @@ init_fill(bg_typ, fg_typ)
     }
 }
 
-function /* schar */
-get_map(col, row, bg_typ)
-{
+function get_map(col, row, bg_typ) { /* schar */
     if (col <= 0 || row < 0 || col > WIDTH || row >= HEIGHT)
         return bg_typ;
     return levl()[col][row].typ;
@@ -64,9 +43,7 @@ const dirs = static_array("dirs", int, 16, [
      0,  1 /**/,  1, -1 /**/,  1, 0 /**/, 1,  1
 ]);
 
-function /* void */
-pass_one(bg_typ, fg_typ)
-{
+function pass_one(bg_typ, fg_typ) { /* void */
     let x, y;
     let count, dr;
 
@@ -95,11 +72,9 @@ pass_one(bg_typ, fg_typ)
         }
 }
 
-export function new_loc(i, j) { return chars[(gn.new_locations + ((j) * (WIDTH + 1)) + (i))]; }
+export function new_loc(i, j) { return chars[(gn.new_locations + (j * (WIDTH + 1)) + i)]; }
 
-function /* void */
-pass_two(bg_typ, fg_typ)
-{
+function pass_two(bg_typ, fg_typ) { /* void */
     let x, y;
     let count, dr;
 
@@ -110,9 +85,9 @@ pass_two(bg_typ, fg_typ)
                     == fg_typ)
                     count++;
             if (count == 5)
-                chars[(((gn.new_locations + (((y) * ((WIDTH + 1))))) + (x)))] = bg_typ;
+                chars[((gn.new_locations + ((y) * (WIDTH + 1))) + (x))] = bg_typ;
             else
-                chars[(((gn.new_locations + (((y) * ((WIDTH + 1))))) + (x)))] = get_map(x, y, bg_typ);
+                chars[((gn.new_locations + ((y) * (WIDTH + 1))) + (x))] = get_map(x, y, bg_typ);
         }
 
     for (x = 2; x <= WIDTH; x++)
@@ -120,9 +95,7 @@ pass_two(bg_typ, fg_typ)
             levl()[x][y].typ = new_loc(x, y);
 }
 
-function /* void */
-pass_three(bg_typ, fg_typ)
-{
+function pass_three(bg_typ, fg_typ) { /* void */
     let x, y;
     let count, dr;
 
@@ -133,9 +106,9 @@ pass_three(bg_typ, fg_typ)
                     == fg_typ)
                     count++;
             if (count < 3)
-                chars[(((gn.new_locations + (((y) * ((WIDTH + 1))))) + (x)))] = bg_typ;
+                chars[((gn.new_locations + ((y) * (WIDTH + 1))) + (x))] = bg_typ;
             else
-                chars[(((gn.new_locations + (((y) * ((WIDTH + 1))))) + (x)))] = get_map(x, y, bg_typ);
+                chars[((gn.new_locations + ((y) * (WIDTH + 1))) + (x))] = get_map(x, y, bg_typ);
         }
 
     for (x = 2; x <= WIDTH; x++)
@@ -149,14 +122,12 @@ pass_three(bg_typ, fg_typ)
  * if anyroom is TRUE, use IS_ROOM to check room membership instead of
  * exactly matching levl[sx][sy].typ and walls are included as well.
  */
-export function /* void */
-flood_fill_rm(
+export function flood_fill_rm(
     sx,
     sy,
     rmno,
     lit,
-    anyroom)
-{
+    anyroom) { /* void */
     let i, nx;
     let fg_typ = levl()[sx][sy].typ;
 
@@ -242,9 +213,7 @@ flood_fill_rm(
 }
 
 /* join_map uses temporary rooms; clean up after it */
-function /* void */
-join_map_cleanup()
-{
+function join_map_cleanup() { /* void */
     let x, y;
 
     for (x = 1; x < COLNO; x++)
@@ -254,9 +223,8 @@ join_map_cleanup()
     svr.rooms[svn.nroom].hx = ptr_add(gs.subrooms, gn.nsubroom).hx = -1;
 }
 
-function /* void */
-join_map(bg_typ, fg_typ)
-{ const $frame = stack_frame(); try {
+function join_map(bg_typ, fg_typ) { /* void */
+    const $frame = stack_frame(); try {
     var croom, croom2;
 
     var x, y, sx, sy;
@@ -292,7 +260,6 @@ join_map(bg_typ, fg_typ)
                 }
             }
         }
-
  }
     /*
      * Ok, now we can actually join the regions with fg_typ's.
@@ -307,13 +274,13 @@ join_map(bg_typ, fg_typ)
             /* ack! -- the level is going to be busted */
             /* arbitrarily pick centers of both rooms and hope for the best */
             impossible(_("No start/end room loc in join_map."));
-            sm.x = croom.lx + (Math.trunc((croom.hx - croom.lx) / 2));
-            sm.y = croom.ly + (Math.trunc((croom.hy - croom.ly) / 2));
-            em.x = croom2.lx + (Math.trunc((croom2.hx - croom2.lx) / 2));
-            em.y = croom2.ly + (Math.trunc((croom2.hy - croom2.ly) / 2));
+            sm.x = croom.lx + Math.trunc((croom.hx - croom.lx) / 2);
+            sm.y = croom.ly + Math.trunc((croom.hy - croom.ly) / 2);
+            em.x = croom2.lx + Math.trunc((croom2.hx - croom2.lx) / 2);
+            em.y = croom2.ly + Math.trunc((croom2.hy - croom2.ly) / 2);
         }
 
-        void dig_corridor(sm, em, null, FALSE, fg_typ, bg_typ);
+        dig_corridor(sm, em, null, FALSE, fg_typ, bg_typ);
 
         /* choose next region to join */
         /* only increment croom if croom and croom2 are non-overlapping */
@@ -325,16 +292,15 @@ join_map(bg_typ, fg_typ)
         croom2 = ptr_add(croom2, 1); /* always increment the next room */
     }
     join_map_cleanup();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-finish_map(
+function finish_map(
     fg_typ,
     bg_typ,
     lit,
     walled,
-    icedpools)
-{
+    icedpools) { /* void */
     let x, y;
 
     if (walled)
@@ -375,9 +341,7 @@ finish_map(
  * region are already cleared, and roomno and irregular fields outside the
  * region are all set.
  */
-export function /* void */
-remove_rooms(lx, ly, hx, hy)
-{
+export function remove_rooms(lx, ly, hx, hy) { /* void */
     let i;
     let croom;
 
@@ -408,9 +372,7 @@ remove_rooms(lx, ly, hx, hy)
  * been reset.
  * Currently handles only the removal of rooms that have no subrooms.
  */
-function /* void */
-remove_room(roomno)
-{
+function remove_room(roomno) { /* void */
     let croom = svr.rooms[roomno];
     let maxroom = svr.rooms[--svn.nroom];
     let x, y;
@@ -439,17 +401,13 @@ export const N_P1_ITER = 1;
 export const N_P2_ITER = 1;
 export const N_P3_ITER = 2;
 
-export function /* boolean */
-litstate_rnd(litstate)
-{
+export function litstate_rnd(litstate) { /* boolean */
     if (litstate < 0)
         return (rnd(1 + abs(depth(u.uz))) < 11 && rn2(77)) ? TRUE : FALSE;
     return boolean(litstate);
 }
 
-export function /* void */
-mkmap(init_lev)
-{
+export function mkmap(init_lev) { /* void */
     let bg_typ = init_lev.bg, fg_typ = init_lev.fg;
     let smooth = init_lev.smoothed, join = init_lev.joined;
     let lit = init_lev.lit, walled = init_lev.walled;
@@ -486,58 +444,25 @@ mkmap(init_lev)
 }
 
 /*mkmap.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXNROFROOMS } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
+import { COLNO, FALSE, MAXNROFROOMS, ROWNO, TRUE, boolean, coordxy } from "./global.h.js";
 import { rn1 } from "./hack.h.macros.js";
-import { NO_ROOM } from "./mkroom.h.js";
-import { OROOM } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { SHARED } from "./mkroom.h.js";
-import { ICE } from "./rm.h.js";
-import { ICED_MOAT } from "./rm.h.js";
-import { ICED_POOL } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { int } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { NO_ROOM, OROOM, ROOMOFFSET, SHARED } from "./mkroom.h.js";
+import { ICE, ICED_MOAT, ICED_POOL, LAVAPOOL, SDOOR, TREE } from "./rm.h.js";
+import { IS_DOOR, IS_OBSTRUCTED, IS_ROOM, IS_WALL, levl } from "./rm.h.macros.js";
+import { int, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { abs, free } from "../rt/libc.js";
+import { stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, elt, ptr_add, struct_assign } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { svl } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
+import { gm, gn, gs, svl, svn, svr, u } from "./decl.js";
 import { depth } from "./dungeon.js";
 import { add_room } from "./mklev.js";
 import { somexy } from "./mkroom.js";
 import { impossible } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { dig_corridor } from "./sp_lev.js";
-import { wallify_map } from "./sp_lev.js";
+import { rn2, rnd } from "./rnd.js";
+import { dig_corridor, wallify_map } from "./sp_lev.js";

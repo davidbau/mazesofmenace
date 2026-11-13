@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Ranger Ran-goal.lua	$NHDT-Date: 1652196010 2022/05/10 15:20:10 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Ranger Ran-goal.lua	$NHDT-Date: 1652196010 2022/05/10 15:20:10 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel");
 
@@ -18,7 +18,7 @@ des.map([[
    .     .........     .   ....      +       . ...  .               ..  .   
    .        S          .         .........   .S.    .S...............   .   
    .  ...   .     ...  .         .........          .                   .   
-   . ........    .....S.+.......+....\\....+........+.                   .   
+   . ........    .....S.+.......+....\....+........+.                   .   
    .  ...         ...    S       .........           ..      .....      .   
    .                    ..       .........            ..      ......    .   
    .      .......     ...            +       ....    ....    .......... .   
@@ -29,14 +29,14 @@ des.map([[
   ...                                                                  ...  
                                                                             
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,75,19), "lit")
-` + "\n" + // -- Stairs
-`des.stair("up", 19,10)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,75,19))
-` + "\n" + // -- Objects
-`des.object({ id = "bow", x=37, y=10, buc="blessed", spe=0, name="The Longbow of Diana" })
+-- Dungeon Description
+des.region(selection.area(00,00,75,19), "lit")
+-- Stairs
+des.stair("up", 19,10)
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,75,19))
+-- Objects
+des.object({ id = "bow", x=37, y=10, buc="blessed", spe=0, name="The Longbow of Diana" })
 des.object("chest", 37, 10)
 des.object({ coord = { 36, 09 } })
 des.object({ coord = { 36, 10 } })
@@ -51,15 +51,15 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-`des.trap()
+-- Random traps
 des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap()
-` + "\n" + // -- doors
-`des.door("locked",12,08)
+des.trap()
+-- doors
+des.door("locked",12,08)
 des.door("closed",22,10)
 des.door("locked",24,10)
 des.door("closed",25,11)
@@ -73,8 +73,8 @@ des.door("locked",46,08)
 des.door("closed",51,10)
 des.door("locked",53,08)
 des.door("closed",65,05)
-` + "\n" + // -- Random monsters.
-`des.monster({ id = "Scorpius", x=37, y=10, peaceful=0 })
+-- Random monsters.
+des.monster({ id = "Scorpius", x=37, y=10, peaceful=0 })
 des.monster({ id = "forest centaur", x=36, y=09, peaceful=0 })
 des.monster({ id = "forest centaur", x=36, y=10, peaceful=0 })
 des.monster({ id = "forest centaur", x=36, y=11, peaceful=0 })

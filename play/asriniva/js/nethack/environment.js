@@ -1,3 +1,6 @@
+import {nativeGeometryFor} from './native/spatial-state.js';
+import {createNativeRngBindings} from './native/rng-bindings.js';
+import {createNativeRecordViews} from './native/record-views.js';
 import {createEnvironmentServices} from '../c-runtime/environment.js';
 import {address} from '../c-runtime/memory.js';
 import {createNetHackRuntime} from './runtime-bindings.js';
@@ -24,7 +27,6 @@ import {createMonstState,createMonstEnvironment} from './bindings/monst.js';
 import records from './records.json' with {type:'json'};
 import {createStdio} from '../c-runtime/stdio.js';
 import {createStandaloneLua} from './lua.js';
-import * as rnd from '../ported/rnd.js';
 import {createRndState,createRndEnvironment} from './bindings/rnd.js';
 import * as sys from '../ported/sys.js';
 import {enableAddressPort} from './address-ports.js';
@@ -45,6 +47,8 @@ import {enableMonsterCreation} from './monster-creation.js';
 import {enableMonsterInventory} from './monster-inventory.js';
 import {enableWorldPosition} from './world-position.js';
 import {createEnvironmentInputs} from '../c-runtime/environment-inputs.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {NativeTypedState} from './native/typed-state.js';
 import {enableLuaSandbox} from './lua-sandbox.js';
 import {enableMonsterLifecycle} from './monster-lifecycle.js';
 import {enableMonsterMovement} from './monster-movement.js';
@@ -172,7 +176,7 @@ export function createStandaloneEnvironment(options={}) {
         // Preserve the port's packet contract; the packet contains JS values,
         // not a native va_list pointer, in this provider.
         env.va_start=ap=>{ap.nativeVaList=ap[0]?.nativeVaList??ap;};
-        register('hacklib',hacklib,env);states.set('hacklib',state);return state;
+        register('hacklib',{...hacklib,...Object.fromEntries(Object.entries(nativeGeometryFor(environment)).filter(([name])=>name!=='isok'))},env);states.set('hacklib',state);return state;
     }
     function enableDecl(layout,{raw_printf}={}) {
         const pointers=declStorage.globals.map(g=>allocateGlobal(g.name,g.bytes));
@@ -231,7 +235,10 @@ export function createStandaloneEnvironment(options={}) {
             snprintf:(buffer,n,format,...args)=>{const value=base.libc.format(format,...args),bytes=Uint8Array.from(value.slice(0,Number(n)-1),c=>c.charCodeAt(0));buffer.set(bytes);buffer[bytes.length]=0;return value.length;},
         });
         const state=createRndState(local),env=createRndEnvironment(local,layout,state);
-        register('rnd',rnd,env,{prepareArgs:(fn,args)=>fn==='shuffle_int_array'?[env.intArray(args[0]),args[1]]:args});
+        register('rnd',createNativeRngBindings(environment,env),env);
+        // These three APIs only inspect/update the RNG logger's JS state.
+        // They neither step the generator nor inspect native actor/map bytes.
+        for(const name of ['rng_log_enabled','rng_log_set_caller','rng_log_get_call_count'])if(Object.getOwnPropertyDescriptor(services[name],'nativeEntry')?.get)Object.defineProperty(services[name],'nativeStateIndependent',{value:true});
         if(typeof initialize!=='boolean')throw new TypeError('RNG initialize must be boolean');
         if(initialize){call('rnd','init_isaac64',BigInt(seed),Number(core));call('rnd','init_isaac64',BigInt(displaySeed),Number(display));}
         states.set('rnd',state);return {core,display,state};
@@ -272,7 +279,7 @@ export function createStandaloneEnvironment(options={}) {
         for(const key of ['uleft','uright'])Object.defineProperty(env,key,{get(){const pointer=services[key];return pointer?{otyp:ctypes.getField('struct obj',pointer,'otyp','short')}:0;}});
         register('track',track,env,{prepareArgs:(fn,args)=>['gettrack','hastrack'].includes(fn)?args.map(transport.coordxy):args});states.set('track',state);return state;
     }
-    function enableCommandGeometry(){register('cmd-geometry',{isok},Object.assign(Object.create(services),{i16:transport.short,i32:transport.int}));}
+    function enableCommandGeometry(){register('cmd-geometry',{isok:nativeGeometryFor(environment).isok});}
     function enableDependencies() {
         const runtime=createLibraryBindings({regex:true,regexDialect:'sdk'});
         for(const name of ['tgetent','tgetflag','tgetnum','tgetstr','tparm','tgoto','tputs','regcomp','regexec','regerror','regfree','compressFile'])services[name]=(...args)=>runtime[name](services,...args);
@@ -368,7 +375,7 @@ export function createStandaloneEnvironment(options={}) {
         enableLuaSandbox:layouts=>enableLuaSandbox(environment,layouts),
         state:name=>states.get(name),hasFunction:linker.hasFunction,
         resolve,
-        status:linker.status,
+        status:linker.status,startModule:linker.start,
         record:transport.record,array:transport.array,address};
     register('runtime-string-helpers',{__isspace:c=>services.isspace(c),Strlen_:(value,caller,line)=>base.strutil('Strlen_',typeof value==='string'?services.literal(value):address(value),typeof caller==='string'?services.literal(caller):address(caller),transport.int(line))});
     register('runtime-public-allocation',{
@@ -386,5 +393,7 @@ export function createStandaloneEnvironment(options={}) {
         strbuf_nl_to_crlf:p=>base.strutil('strbuf_nl_to_crlf',base.strbuf(address(p))),
     });
     register('runtime-public-calendar',Object.fromEntries(['phase_of_the_moon','friday_13th'].map(name=>[name,()=>base.calendar(name)])));
+    nativeStateFor(environment).nativeArena=new NativeTypedState(memory);
+    createNativeRecordViews(environment);
     return environment;
 }

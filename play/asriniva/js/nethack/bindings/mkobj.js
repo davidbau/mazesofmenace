@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/mkobj.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Typed live-memory/callback ABI for original MKOBJ JS bodies.
@@ -15,5 +17,7 @@ export function createMkobjEnvironment(services,layout,namespace) {
     env.staticData=(owner,name,initializer)=>{const key=owner+'.'+name,index=schema.backings.findIndex(row=>row.name===key),row=schema.backings[index];if(index<0)throw Error('Review MKOBJ local static '+key);const at=ptr(services.global(schema.globals.length+index));if(!initialized.has(key)){fill(at,row.type,initializer());initialized.add(key);}return at;};
     env.functionPointer=name=>{const fn=services.functionPointers[name];if(!fn)throw Error('Review MKOBJ function pointer '+name);return ptr(fn());};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review MKOBJ varargs site');return services['var'+site](...args);};
-    return env;
+    env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
+ return env;
 }

@@ -3,31 +3,6 @@
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const struct_icp = struct("struct_icp", {
     iprob: int,
     iclass: char,
@@ -76,15 +51,11 @@ const hellprobs = static_array("hellprobs", struct_icp, null, [ { iprob: 20, icl
 
 const zerooextra = static_struct("zerooextra", struct_oextra, {});
 
-function /* void */
-init_oextra(oex)
-{
+function init_oextra(oex) { /* void */
     struct_assign(oex, zerooextra);
 }
 
-export function /* struct oextra * */
-newoextra()
-{
+export function newoextra() { /* struct oextra * */
     let oextra;
 
     oextra = view_of(struct_oextra, addr_of(alloc(sizeof(struct_oextra))));
@@ -92,9 +63,7 @@ newoextra()
     return oextra;
 }
 
-export function /* void */
-dealloc_oextra(o)
-{
+export function dealloc_oextra(o) { /* void */
     let x = o.oextra;
 
     if (x) {
@@ -110,9 +79,7 @@ dealloc_oextra(o)
     }
 }
 
-export function /* void */
-newomonst(otmp)
-{
+export function newomonst(otmp) { /* void */
     if (!otmp.oextra)
         otmp.oextra = newoextra();
 
@@ -124,9 +91,7 @@ newomonst(otmp)
     }
 }
 
-export function /* void */
-free_omonst(otmp)
-{
+export function free_omonst(otmp) { /* void */
     if (otmp.oextra) {
         let m = OMONST(otmp);
 
@@ -139,23 +104,17 @@ free_omonst(otmp)
     }
 }
 
-export function /* void */
-newomid(otmp)
-{
+export function newomid(otmp) { /* void */
     if (!otmp.oextra)
         otmp.oextra = newoextra();
     ((otmp).oextra.omid) = 0;
 }
 
-export function /* void */
-free_omid(otmp)
-{
+export function free_omid(otmp) { /* void */
     ((otmp).oextra.omid) = 0;
 }
 
-export function /* void */
-new_omailcmd(otmp, response_cmd)
-{
+export function new_omailcmd(otmp, response_cmd) { /* void */
     if (!otmp.oextra)
         otmp.oextra = newoextra();
     if (OMAILCMD(otmp))
@@ -163,9 +122,7 @@ new_omailcmd(otmp, response_cmd)
     ((otmp).oextra.omailcmd) = dupstr(response_cmd);
 }
 
-export function /* void */
-free_omailcmd(otmp)
-{
+export function free_omailcmd(otmp) { /* void */
     if (otmp.oextra && OMAILCMD(otmp)) {
         free(OMAILCMD(otmp));
         ((otmp).oextra.omailcmd) = 0;
@@ -173,9 +130,7 @@ free_omailcmd(otmp)
 }
 
 /* can object be generated eroded? */
-function /* boolean */
-may_generate_eroded(otmp)
-{
+function may_generate_eroded(otmp) { /* boolean */
     /* initial hero inventory */
     if (svm.moves <= 1 && !gi.in_mklev)
         return FALSE;
@@ -192,9 +147,7 @@ may_generate_eroded(otmp)
 }
 
 /* random chance of applying erosions/grease to object */
-function /* void */
-mkobj_erosions(otmp)
-{
+function mkobj_erosions(otmp) { /* void */
     if (may_generate_eroded(otmp)) {
         /* A small fraction of non-artifact items will generate eroded or
          * possibly erodeproof. An item that generates eroded will never be
@@ -223,9 +176,7 @@ mkobj_erosions(otmp)
 
 /* make a random object of class 'let' at a specific location;
    'let' might be random class; place_object() will validate <x,y> */
-export function /* struct obj * */
-mkobj_at(let_, x, y, artif)
-{
+export function mkobj_at(let_, x, y, artif) { /* struct obj * */
     let otmp;
 
     otmp = mkobj(let_, artif);
@@ -234,12 +185,10 @@ mkobj_at(let_, x, y, artif)
 }
 
 /* make a specific object at a specific location */
-export function /* struct obj * */
-mksobj_at(
+export function mksobj_at(
     otyp,
     x, y,
-    init, artif)
-{
+    init, artif) { /* struct obj * */
     let otmp;
 
     otmp = mksobj(otyp, init, artif);
@@ -247,14 +196,11 @@ mksobj_at(
     return otmp;
 }
 
-
 /* used for extra orctown loot */
-export function /* struct obj * */
-mksobj_migr_to_species(
+export function mksobj_migr_to_species(
     otyp,
     mflags2,
-    init, artif)
-{
+    init, artif) { /* struct obj * */
     let otmp;
 
     otmp = mksobj(otyp, init, artif);
@@ -266,9 +212,7 @@ mksobj_migr_to_species(
 
 /* mkobj(): select a type of item from a class, use mksobj() to create it;
    result is always non-Null */
-export function /* struct obj * */
-mkobj(oclass, artif)
-{
+export function mkobj(oclass, artif) { /* struct obj * */
     let tprob, i, prob;
 
     if (oclass == RANDOM_CLASS) {
@@ -300,9 +244,7 @@ mkobj(oclass, artif)
     return mksobj(i, TRUE, artif);
 }
 
-function /* void */
-mkbox_cnts(box)
-{
+function mkbox_cnts(box) { /* void */
     let n;
     let otmp;
 
@@ -343,9 +285,9 @@ mkbox_cnts(box)
              */
             otmp.age = 0;
             if (otmp.timed) {
-                void stop_timer(ROT_CORPSE, obj_to_any(otmp));
-                void stop_timer(REVIVE_MON, obj_to_any(otmp));
-                void stop_timer(SHRINK_GLOB, obj_to_any(otmp));
+                stop_timer(ROT_CORPSE, obj_to_any(otmp));
+                stop_timer(REVIVE_MON, obj_to_any(otmp));
+                stop_timer(SHRINK_GLOB, obj_to_any(otmp));
             }
         } else {
             let tprob;
@@ -378,22 +320,18 @@ mkbox_cnts(box)
                         otmp.otyp = rnd_class(WAN_LIGHT, WAN_LIGHTNING);
             }
         }
-        void add_to_container(box, otmp);
+        add_to_container(box, otmp);
     }
     /* caller will update box->owt */
 }
 
 /* select a random, common monster type */
-export function /* int */
-rndmonnum()
-{
+export function rndmonnum() { /* int */
     return rndmonnum_adj(0, 0);
 }
 
 /* select a random, common monster type, with adjusted difficulty */
-export function /* int */
-rndmonnum_adj(minadj, maxadj)
-{
+export function rndmonnum_adj(minadj, maxadj) { /* int */
     let ptr;
     let i;
     let excludeflags;
@@ -413,9 +351,7 @@ rndmonnum_adj(minadj, maxadj)
     return i;
 }
 
-export function /* void */
-copy_oextra(obj2, obj1)
-{
+export function copy_oextra(obj2, obj1) { /* void */
     if (!obj2 || !obj1 || !obj1.oextra)
         return;
 
@@ -427,12 +363,10 @@ copy_oextra(obj2, obj1)
         if (!OMONST(obj2))
             newomonst(obj2);
         assert(has_omonst(obj2));
-        void memcpy(addr_of(OMONST(obj2)),
+        memcpy(addr_of(OMONST(obj2)),
                       addr_of(OMONST(obj1)), sizeof(struct_monst));
         OMONST(obj2).mextra = null;
         OMONST(obj2).nmon = null;
-
-
 
         if (OMONST(obj1).mextra)
             copy_mextra(OMONST(obj2), OMONST(obj1));
@@ -453,9 +387,7 @@ copy_oextra(obj2, obj1)
  * has its wornmask cleared and is positioned just following the original
  * in the nobj chain (and nexthere chain when on the floor).
  */
-export function /* struct obj * */
-splitobj(obj, num)
-{
+export function splitobj(obj, num) { /* struct obj * */
     let otmp;
 
     /* can't split containers */
@@ -505,9 +437,7 @@ splitobj(obj, num)
 /* return the value of context.ident and then increment it to be ready for
    its next use; used to be simple += 1 so that every value from 1 to N got
    used but now has a random increase that skips half of potential values */
-export function /* unsigned */
-next_ident()
-{
+export function next_ident() { /* unsigned */
     let res = svc.context.ident;
 
     /* +rnd(2): originally just +1; changed to rnd() to avoid potential
@@ -532,9 +462,7 @@ next_ident()
 
 /* when splitting a stack that has o_id-based shop prices, pick an
    o_id value for the new stack that will maintain the same price */
-function /* unsigned */
-nextoid(oldobj, newobj)
-{
+function nextoid(oldobj, newobj) { /* unsigned */
     let olddif, newdif, trylimit = 256; /* limit of 4 suffices at present */
     let oid = unsigned(svc.context.ident - 1); /* loop increment will reverse -1 */
 
@@ -546,15 +474,14 @@ nextoid(oldobj, newobj)
         newdif = oid_price_adjustment(newobj, oid);
     } while (newdif != olddif && --trylimit >= 0);
     svc.context.ident = oid; /* update 'last ident used' */
-    void next_ident(); /* increment context.ident for next use */
+    next_ident(); /* increment context.ident for next use */
     return oid; /* caller will use this ident */
 }
 
 /* try to find the stack obj was split from, then merge them back together;
    returns the combined object if unsplit is successful, null otherwise */
-export function /* struct obj * */
-unsplitobj(obj)
-{ const $frame = stack_frame(); try {
+export function unsplitobj(obj) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let target_oid = 0;
     let oparent = stack_var(ptr_to(struct_obj), null), ochild = stack_var(ptr_to(struct_obj), null), list = null;
 
@@ -619,12 +546,11 @@ unsplitobj(obj)
     /* if we have both parent and child, try to merge them;
        if successful, return the combined stack, otherwise return null */
     return (oparent[0] && ochild[0] && merged(oparent, ochild)) ? oparent[0] : null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* reset splitobj()/unsplitobj() context */
-export function /* void */
-clear_splitobjs()
-{
+export function clear_splitobjs() { /* void */
     svc.context.objsplit.parent_oid = svc.context.objsplit.child_oid = 0;
 }
 
@@ -637,9 +563,7 @@ clear_splitobjs()
  * Note:  Don't use obj_extract_self() -- we are doing an in-place swap,
  * not actually moving something.
  */
-export function /* void */
-replace_object(obj, otmp)
-{
+export function replace_object(obj, otmp) { /* void */
     otmp.where = obj.where;
     switch (obj.where) {
     case OBJ_FREE:
@@ -680,9 +604,7 @@ replace_object(obj, otmp)
 
 /* is 'obj' inside a container whose contents aren't known?
    if so, return the outermost container meeting that criterium */
-export function /* struct obj * */
-unknwn_contnr_contents(obj)
-{
+export function unknwn_contnr_contents(obj) { /* struct obj * */
     let result = null, parent;
 
     while (obj.where == OBJ_CONTAINED) {
@@ -708,9 +630,7 @@ unknwn_contnr_contents(obj)
  * Note that check_unpaid_usage() should be used instead for partial
  * usage of an object.
  */
-export function /* void */
-bill_dummy_object(otmp)
-{
+export function bill_dummy_object(otmp) { /* void */
     let dummy;
     let cost = 0;
 
@@ -748,9 +668,8 @@ const alteration_verbs = static_array("alteration_verbs", ptr_to(char), null, [
 ]);
 
 /* possibly bill for an object which the player has just modified */
-export function /* void */
-costly_alteration(obj, alter_type)
-{ const $frame = stack_frame(); try {
+export function costly_alteration(obj, alter_type) { /* void */
+    const $frame = stack_frame(); try {
     let ox = stack_var(coordxy), oy = stack_var(coordxy);
     let objroom;
     let learn_bknown;
@@ -793,7 +712,7 @@ costly_alteration(obj, alter_type)
     /* when shopkeeper describes the object as being uncursed or unblessed
        hero will know that it is now uncursed; will also make the feedback
        from `I x' after bill_dummy_object() be more specific for this item */
-    learn_bknown = (+(alter_type == COST_UNCURS || alter_type == COST_UNBLSS));
+    learn_bknown = +(alter_type == COST_UNCURS || alter_type == COST_UNBLSS);
 
     switch (obj.where) {
     case OBJ_FREE: /* obj_no_longer_held() */
@@ -819,11 +738,12 @@ costly_alteration(obj, alter_type)
                       alteration_verbs[alter_type], those, them);
             bill_dummy_object(obj);
         } else {
-            void stolen_value(obj, ox[0], oy[0], FALSE, FALSE);
+            stolen_value(obj, ox[0], oy[0], FALSE, FALSE);
         }
         break;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const dknowns = static_array("dknowns", char, null, [ WAND_CLASS,   RING_CLASS, POTION_CLASS,
                                 SCROLL_CLASS, GEM_CLASS,  SPBOOK_CLASS,
@@ -831,9 +751,7 @@ const dknowns = static_array("dknowns", char, null, [ WAND_CLASS,   RING_CLASS, 
 
 /* set obj->dknown to 0 for most types of objects, to 1 otherwise;
    split off from unknow_object() */
-export function /* void */
-clear_dknown(obj)
-{
+export function clear_dknown(obj) { /* void */
     /* note: this is an unobserving not an observing, so don't call
        observe_object even if dknown is being set to 1 */
     obj.dknown = strchr(dknowns, obj.oclass) ? 0 : 1;
@@ -850,9 +768,7 @@ clear_dknown(obj)
 /* some init for a brand new object, or partial re-init when hero loses
    potentially known info about an object (called when an unseen monster
    picks up or uses it); moved from invent.c to here for access to dknowns */
-export function /* void */
-unknow_object(obj)
-{
+export function unknow_object(obj) { /* void */
     clear_dknown(obj); /* obj->dknown = 0; */
 
     obj.bknown = obj.rknown = 0;
@@ -865,9 +781,7 @@ unknow_object(obj)
 }
 
 /* do some initialization to newly created object; otyp must already be set */
-function /* void */
-mksobj_init(obj, artif)
-{
+function mksobj_init(obj, artif) { /* void */
     let mndx, tryct;
     let otmp = obj[0];
     let let_ = objects[otmp.otyp].oc_class;
@@ -1009,9 +923,9 @@ mksobj_init(obj, artif)
             break;
         case CHEST:
         case LARGE_BOX:
-            otmp.olocked = +!!(rn2(5));
-            otmp.otrapped = +!(rn2(10));
-            otmp.tknown = ((otmp.otrapped && !rn2(100)) ? 1 : 0); /* obvious trap */
+            otmp.olocked = +!!rn2(5);
+            otmp.otrapped = +!rn2(10);
+            otmp.tknown = (otmp.otrapped && !rn2(100) ? 1 : 0); /* obvious trap */
             /* FALLTHROUGH */;
             /*FALLTHRU*/
         case ICE_BOX:
@@ -1103,13 +1017,7 @@ mksobj_init(obj, artif)
         /* simulate lacquered armor for samurai */
         if (Role_if(PM_SAMURAI) && otmp.otyp == SPLINT_MAIL
             && (svm.moves <= 1 || In_quest(u.uz))) {
-
-
-
-
-
             otmp.oerodeproof = otmp.rknown = 1;
-
         }
         break;
     case WAND_CLASS:
@@ -1153,7 +1061,7 @@ mksobj_init(obj, artif)
             otmp.corpsenm = rndmonnum();
             if (!verysmall(mons[otmp.corpsenm])
                 && rn2(Math.trunc(level_difficulty() / 2) + 10) > 10)
-                void add_to_container(otmp, /* caller will update owt */
+                add_to_container(otmp, /* caller will update owt */
                                         mkobj(SPBOOK_no_NOVEL, FALSE));
         }
         /* boulder init'd below in the 'regardless of !init' code */
@@ -1175,9 +1083,8 @@ mksobj_init(obj, artif)
 }
 
 /* mksobj(): create a specific type of object; result is always non-Null */
-export function /* struct obj * */
-mksobj(otyp, init, artif)
-{ const $frame = stack_frame(); try {
+export function mksobj(otyp, init, artif) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj));
     let let_ = objects[otyp].oc_class;
 
@@ -1256,25 +1163,22 @@ mksobj(otyp, init, artif)
     }
     otmp[0].owt = unsigned(weight(otmp[0]));
     return otmp[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* potential mimic shapes that should be undone by stone-to-flesh;
    not used for objects that will be transformed when hit by stone-to-flesh */
-export function /* boolean */
-stone_object_type(mappearance)
-{
+export function stone_object_type(mappearance) { /* boolean */
     let otyp = int(mappearance);
 
     /* we exclude wands, rings, and gems even though some qualify as stone;
        there aren't any weapons or armor classified as made out of stone */
-    return (+(otyp == BOULDER || otyp == STATUE || otyp == FIGURINE));
+    return +(otyp == BOULDER || otyp == STATUE || otyp == FIGURINE);
 }
 
 /* possible mimic shapes that are affected by stone-to-flesh;
    mappearance for furniture is a display symbol rather than a terrain type */
-export function /* boolean */
-stone_furniture_type(mappearance)
-{
+export function stone_furniture_type(mappearance) { /* boolean */
     let sym = int(mappearance);
 
     switch (sym) {
@@ -1314,9 +1218,7 @@ stone_furniture_type(mappearance)
  * Existing timeout value for egg hatch is preserved.
  *
  */
-export function /* void */
-set_corpsenm(obj, id)
-{
+export function set_corpsenm(obj, id) { /* void */
     let old_id = obj.corpsenm;
     let when = 0;
 
@@ -1339,9 +1241,9 @@ set_corpsenm(obj, id)
         && mons[old_id].cnutrit != mons[id].cnutrit) {
         /* oeaten and cnutrit are unsigned; theoretically that could
            be 16 bits and the calculation might overflow, so force long */
-        obj.oeaten = unsigned((Math.trunc(obj.oeaten
+        obj.oeaten = unsigned(Math.trunc(obj.oeaten
                                   * (mons[id].cnutrit)
-                                  / (mons[old_id].cnutrit))));
+                                  / (mons[old_id].cnutrit)));
     }
 
     obj.corpsenm = id;
@@ -1367,9 +1269,7 @@ set_corpsenm(obj, id)
 }
 
 /* Return the number of turns after which a Rider corpse revives */
-export function /* long long */
-rider_revival_time(body, retry)
-{
+export function rider_revival_time(body, retry) { /* long long */
     let when;
     let minturn = retry ? 3 : (body.corpsenm == PM_DEATH) ? 6 : 12;
 
@@ -1385,9 +1285,7 @@ rider_revival_time(body, retry)
  * Start a corpse decay or revive timer.
  * This takes the age of the corpse into consideration as of 3.4.0.
  */
-export function /* void */
-start_corpse_timeout(body)
-{
+export function start_corpse_timeout(body) { /* void */
     let when;       /* rot away when this old */
     let age;        /* age of corpse          */
     let rot_adjust;
@@ -1428,7 +1326,7 @@ start_corpse_timeout(body)
         when = rn1(15, 5); /* 5..19 */
     }
 
-    void start_timer(when, TIMER_OBJECT, action, obj_to_any(body));
+    start_timer(when, TIMER_OBJECT, action, obj_to_any(body));
 }
 
 /* used by item_on_ice() and shrink_glob() */
@@ -1437,11 +1335,9 @@ start_corpse_timeout(body)
     const SET_ON_ICE = 1;
     const BURIED_UNDER_ICE = 2;
 
-
 /* used by shrink_glob(); is 'item' or enclosing container on or under ice? */
-function /* int */
-item_on_ice(item)
-{ const $frame = stack_frame(); try {
+function item_on_ice(item) { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let ox = stack_var(coordxy), oy = stack_var(coordxy);
 
@@ -1466,14 +1362,13 @@ item_on_ice(item)
         }
     }
     return NOT_ON_ICE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* schedule a timer that will shrink the target glob by 1 unit of weight */
-export function /* void */
-start_glob_timeout(
+export function start_glob_timeout(
     obj,
-    when)       /* when to shrink; if 0L, use random value close to 25 */
-{
+    when) { /* void */ /* when to shrink; if 0L, use random value close to 25 */
     if (!obj.globby) {
         impossible(_("start_glob_timeout for non-glob [%d: %s]?"),
                    obj.otyp, simpleonames(obj));
@@ -1481,13 +1376,13 @@ start_glob_timeout(
     }
     /* sanity precaution */
     if (obj.timed)
-        void stop_timer(SHRINK_GLOB, obj_to_any(obj));
+        stop_timer(SHRINK_GLOB, obj_to_any(obj));
 
     if (when < 1) /* caller usually passes 0L; should never be negative */
         when = 25 + rn2(5) - 2; /* 25+[0..4]-2 => 23..27, avg 25 */
     /* 1 new glob weighs 20 units and loses 1 unit every 25 turns,
        so lasts for 500 turns, twice as long as the average corpse */
-    void start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
+    start_timer(when, TIMER_OBJECT, SHRINK_GLOB, obj_to_any(obj));
 }
 
 /* globs have quantity 1 and size which varies by multiples of 20 in owt;
@@ -1496,17 +1391,14 @@ start_glob_timeout(
    part of the program destroys it, the timer will be cancelled);
    note: timer keeps going if an object gets buried or scheduled to
    migrate to another level and can delete the glob in those states */
-export function /* void */
-shrink_glob(
+export function shrink_glob(
     arg,
-    expire_time) /* turn the timer should have gone off; if less than
-                       * current 'moves', we're making up for lost time
-                       * after leaving and then returning to this level */
-{ const $frame = stack_frame(); try {
+    expire_time) { /* void */ /* turn the timer should have gone off; if less than * current 'moves', we're making up for lost time * after leaving and then returning to this level */
+    const $frame = stack_frame(); try {
     let globnambuf = stack_array(char, BUFSZ);
     let obj = arg.a_obj;
     let globloc = item_on_ice(obj);
-    let ininv = (+(obj.where == OBJ_INVENT)),
+    let ininv = +(obj.where == OBJ_INVENT),
             shrink = FALSE, gone = FALSE, updinv = FALSE;
     let contnr = (obj.where == OBJ_CONTAINED) ? obj.v.v_ocontainer : null,
                topcontnr = null;
@@ -1578,7 +1470,7 @@ shrink_glob(
        doname() rather than inserting that itself; ask xname() to add
        that when appropriate */
     iflags.partly_eaten_hack = TRUE;
-    void strcpy(globnambuf, Yname2(obj));
+    strcpy(globnambuf, Yname2(obj));
     iflags.partly_eaten_hack = FALSE;
 
     if (obj.owt > 0) { /* sanity precaution */
@@ -1586,7 +1478,7 @@ shrink_glob(
            when going from 20 to 19 and from 10 to 9; a different message
            is given for going from 1 to 0 (gone) */
         let basewt = objects[obj.otyp].oc_weight,
-                 msgwt = Math.trunc((unsigned(max(basewt, 1) + 1)) / 2); /* 10 */
+                 msgwt = Math.trunc(unsigned(max(basewt, 1) + 1) / 2); /* 10 */
 
         shrink = +((obj.owt % msgwt) == 0);
         obj.owt -= 1;
@@ -1643,9 +1535,9 @@ shrink_glob(
     if (gone) {
         let ox = stack_var(coordxy, 0), oy = stack_var(coordxy, 0);
         /* check location for visibility before destroying obj */
-        let seeit = (((obj.where == OBJ_FLOOR
+        let seeit = (obj.where == OBJ_FLOOR
                          && get_obj_location(obj, ox, oy, 0)
-                         && cansee(ox[0], oy[0])) ? 1 : 0));
+                         && cansee(ox[0], oy[0]) ? 1 : 0);
 
         /* weight has been reduced to 0 so destroy the glob */
         shrinking_glob_gone(obj);
@@ -1654,7 +1546,7 @@ shrink_glob(
             newsym(ox[0], oy[0]);
             if ((ox[0] != u.ux || oy[0] != u.uy) && !strncmp(globnambuf, _("The "), 4))
                 /* fortunately none of the glob adjectives warrant "An " */
-                void strsubst(globnambuf, _("The "), _("A "));
+                strsubst(globnambuf, _("The "), _("A "));
             /* again, quantity is always 1 so no need for otense()/vtense() */
             pline(_("%s fades away."), globnambuf);
         }
@@ -1666,12 +1558,11 @@ shrink_glob(
         update_inventory();
         encumber_msg();
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* a glob has shrunk away to nothing; handle owornmask, then delete glob */
-function /* void */
-shrinking_glob_gone(obj)
-{
+function shrinking_glob_gone(obj) { /* void */
     let owhere = obj.where;
 
     if (owhere == OBJ_INVENT) {
@@ -1700,9 +1591,8 @@ shrinking_glob_gone(obj)
     }
 }
 
-export function /* void */
-maybe_adjust_light(obj, old_range)
-{ const $frame = stack_frame(); try {
+export function maybe_adjust_light(obj, old_range) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let ox = stack_var(coordxy), oy = stack_var(coordxy);
     let new_range = arti_light_radius(obj), delta = new_range - old_range;
@@ -1718,9 +1608,9 @@ maybe_adjust_light(obj, old_range)
             chars[buf] = ord('\0');
             if (iflags.last_msg == PLNMSG_OBJ_GLOWS)
                 /* we just saw "The <obj> glows <color>." from dipping */
-                void strcpy(buf, (obj.quan == 1) ? _("It") : _("They"));
+                strcpy(buf, (obj.quan == 1) ? _("It") : _("They"));
             else if (carried(obj) || cansee(ox[0], oy[0]))
-                void strcpy(buf, Yname2(obj));
+                strcpy(buf, Yname2(obj));
             if (chars[buf]) {
                 /* initial activation says "dimly" if cursed,
                    "brightly" if uncursed, and "brilliantly" if blessed;
@@ -1733,7 +1623,8 @@ maybe_adjust_light(obj, old_range)
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  *      bless(), curse(), unbless(), uncurse() -- any relevant message
@@ -1741,9 +1632,7 @@ maybe_adjust_light(obj, old_range)
  *      these routines to make the actual curse/bless state change.
  */
 
-export function /* void */
-bless(otmp)
-{
+export function bless(otmp) { /* void */
     let old_light = 0;
 
     if (otmp.oclass == COIN_CLASS)
@@ -1757,15 +1646,13 @@ bless(otmp)
     else if (otmp.otyp == BAG_OF_HOLDING)
         otmp.owt = unsigned(weight(otmp));
     else if (otmp.otyp == FIGURINE && otmp.timed)
-        void stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
+        stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
     if (otmp.lamplit)
         maybe_adjust_light(otmp, old_light);
     return;
 }
 
-export function /* void */
-unbless(otmp)
-{
+export function unbless(otmp) { /* void */
     let old_light = 0;
 
     if (otmp.lamplit)
@@ -1779,9 +1666,7 @@ unbless(otmp)
         maybe_adjust_light(otmp, old_light);
 }
 
-export function /* void */
-curse(otmp)
-{
+export function curse(otmp) { /* void */
     let already_cursed;
     let old_light = 0;
 
@@ -1818,9 +1703,7 @@ curse(otmp)
     return;
 }
 
-export function /* void */
-uncurse(otmp)
-{
+export function uncurse(otmp) { /* void */
     let old_light = 0;
 
     if (otmp.lamplit)
@@ -1831,15 +1714,13 @@ uncurse(otmp)
     else if (otmp.otyp == BAG_OF_HOLDING)
         otmp.owt = unsigned(weight(otmp));
     else if (otmp.otyp == FIGURINE && otmp.timed)
-        void stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
+        stop_timer(FIG_TRANSFORM, obj_to_any(otmp));
     if (otmp.lamplit)
         maybe_adjust_light(otmp, old_light);
     return;
 }
 
-export function /* void */
-blessorcurse(otmp, chance)
-{
+export function blessorcurse(otmp, chance) { /* void */
     if (otmp.blessed || otmp.cursed)
         return;
 
@@ -1853,18 +1734,14 @@ blessorcurse(otmp, chance)
     return;
 }
 
-export function /* int */
-bcsign(otmp)
-{
+export function bcsign(otmp) { /* int */
     return (+!!otmp.blessed - +!!otmp.cursed);
 }
 
 /* set the object's bless/curse-state known flag */
-export function /* void */
-set_bknown(
+export function set_bknown(
     obj,
-    onoff) /* 1 or 0 */
-{
+    onoff) { /* void */ /* 1 or 0 */
     if (obj.bknown != onoff) {
         obj.bknown = onoff;
         if (obj.where == OBJ_INVENT && svm.moves > 1)
@@ -1884,9 +1761,7 @@ set_bknown(
  *         unsigned short int, so weight() should probably be changed to
  *         use and return unsigned int instead of signed int.
  */
-export function /* int */
-weight(obj)
-{
+export function weight(obj) { /* int */
     let wt = int((objects[obj.otyp].oc_weight)); /* weight of 1 'otyp' */
 
     if (obj.quan < 1) {
@@ -1949,8 +1824,8 @@ weight(obj)
          */
         if (obj.otyp == BAG_OF_HOLDING)
             cwt = obj.cursed ? (cwt * 2)
-                  : obj.blessed ? (Math.trunc((cwt + 3) / 4))
-                    : (Math.trunc((cwt + 1) / 2)); /* uncursed */
+                  : obj.blessed ? Math.trunc((cwt + 3) / 4)
+                    : Math.trunc((cwt + 1) / 2); /* uncursed */
 
         return wt + cwt;
     }
@@ -1965,7 +1840,7 @@ weight(obj)
         return eaten_stat(int(obj.quan) * wt, obj);
     } else if (obj.oclass == COIN_CLASS) {
         /* 5.0: always weigh at least 1 unit; used to yield 0 for 1..49 */
-        wt = int((Math.trunc((obj.quan + 50) / 100)));
+        wt = int(Math.trunc((obj.quan + 50) / 100));
         return max(wt, 1);
     } else if (obj.otyp == HEAVY_IRON_BALL && obj.owt != 0) {
         return int(obj.owt); /* kludge for "very" heavy iron ball */
@@ -1980,16 +1855,12 @@ const treefruits = static_array("treefruits", int, null, [
 ]);
 
 /* called when a tree is kicked; never returns Null */
-export function /* struct obj * */
-rnd_treefruit_at(x, y)
-{
+export function rnd_treefruit_at(x, y) { /* struct obj * */
     return mksobj_at(ROLL_FROM(treefruits), x, y, TRUE, FALSE);
 }
 
 /* for describing objects embedded in trees */
-export function /* boolean */
-is_treefruit(otmp)
-{
+export function is_treefruit(otmp) { /* boolean */
     let fruitidx;
 
     for (fruitidx = 0; fruitidx < SIZE(treefruits); ++fruitidx)
@@ -1999,9 +1870,7 @@ is_treefruit(otmp)
 }
 
 /* create a stack of N gold pieces; never returns Null */
-export function /* struct obj * */
-mkgold(amount, x, y)
-{
+export function mkgold(amount, x, y) { /* struct obj * */
     let gold = g_at(x, y);
 
     if (amount <= 0) {
@@ -2021,11 +1890,9 @@ mkgold(amount, x, y)
 
 /* potions of oil use their obj->age field differently from other potions
    so changing potion type to or from oil needs to have that fixed up */
-export function /* void */
-fixup_oil(
+export function fixup_oil(
     potion,
-    source) /* item used to create potion; might be Null */
-{
+    source) { /* void */ /* item used to create potion; might be Null */
     if (potion.otyp == POT_OIL) {
         if (source && source.otyp == POT_OIL) {
             /* potion of oil being used to set potion's otyp to oil;
@@ -2049,9 +1916,8 @@ fixup_oil(
 
 /* return TRUE if the corpse has special timing;
    lizards and lichen don't rot, trolls and Riders auto-revive */
-export function special_corpse(num) { return (+(((num) == PM_LIZARD || (num) == PM_LICHEN)                 
-     || (mons[num].mlet == S_TROLL || is_rider(mons[num])))); }
-
+export function special_corpse(num) { return +((num == PM_LIZARD || num == PM_LICHEN)
+     || (mons[num].mlet == S_TROLL || is_rider(mons[num]))); }
 
 /* mkcorpstat: make a corpse or statue; never returns Null.
  *
@@ -2063,22 +1929,20 @@ export function special_corpse(num) { return (+(((num) == PM_LIZARD || (num) == 
  * yet still allow restoration of the original monster upon
  * resurrection.
  */
-export function /* struct obj * */
-mkcorpstat(
+export function mkcorpstat(
     objtype,
     mtmp,
     ptr,
     x, y,
-    corpstatflags)
-{
+    corpstatflags) { /* struct obj * */
     let otmp;
-    let init = (+((corpstatflags & CORPSTAT_INIT) != 0));
+    let init = +((corpstatflags & CORPSTAT_INIT) != 0);
 
     if (objtype != CORPSE && objtype != STATUE)
         impossible(_("making corpstat type %d"), objtype);
     if (x == 0 && y == 0) { /* special case - random placement */
         otmp = mksobj(objtype, init, FALSE);
-        void rloco(otmp);
+        rloco(otmp);
     } else {
         otmp = mksobj_at(objtype, x, y, init, FALSE);
     }
@@ -2090,7 +1954,7 @@ mkcorpstat(
        corpse or statue; it will also force the 'ptr' override below */
     if (mtmp) {
         /* save_mtraits updates otmp->oextra->omonst in place */
-        void save_mtraits(otmp, mtmp);
+        save_mtraits(otmp, mtmp);
 
         if (!ptr)
             ptr = mtmp.data;
@@ -2125,9 +1989,7 @@ mkcorpstat(
  * type can, and often is, different.
  * The return value is an index into mons[].
  */
-export function /* int */
-corpse_revive_type(obj)
-{
+export function corpse_revive_type(obj) { /* int */
     let revivetype = obj.corpsenm;
     let mtmp;
 
@@ -2143,9 +2005,7 @@ corpse_revive_type(obj)
  * Attach a monster id to an object, to provide
  * a lasting association between the two.
  */
-export function /* struct obj * */
-obj_attach_mid(obj, mid)
-{
+export function obj_attach_mid(obj, mid) { /* struct obj * */
     if (!mid || !obj)
         return null;
     newomid(obj);
@@ -2153,9 +2013,7 @@ obj_attach_mid(obj, mid)
     return obj;
 }
 
-function /* struct obj * */
-save_mtraits(obj, mtmp)
-{
+function save_mtraits(obj, mtmp) { /* struct obj * */
     if (mtmp.ispriest)
         forget_temple_entry(mtmp); /* EPRI() */
     if (!has_omonst(obj))
@@ -2197,9 +2055,7 @@ save_mtraits(obj, mtmp)
 /* returns a pointer to a new monst structure based on
  * the one contained within the obj.
  */
-export function /* struct monst * */
-get_mtraits(obj, copyof)
-{
+export function get_mtraits(obj, copyof) { /* struct monst * */
     let mtmp = null;
     let mnew = null;
 
@@ -2223,16 +2079,14 @@ get_mtraits(obj, copyof)
 
 /* make an object named after someone listed in the scoreboard file;
    never returns Null */
-export function /* struct obj * */
-mk_tt_object(
+export function mk_tt_object(
     objtype,
-    x, y)
-{
+    x, y) { /* struct obj * */
     let otmp;
     let initialize_it;
 
     /* player statues never contain books */
-    initialize_it = (+(objtype != STATUE));
+    initialize_it = +(objtype != STATUE);
     otmp = mksobj_at(objtype, x, y, initialize_it, FALSE);
 
     /* tt_oname() will return null if the scoreboard is empty, which in
@@ -2249,13 +2103,11 @@ mk_tt_object(
 
 /* make a new corpse or statue, uninitialized if a statue (i.e. no books);
    never returns Null */
-export function /* struct obj * */
-mk_named_object(
+export function mk_named_object(
     objtype,
     ptr,
     x, y,
-    nm)
-{
+    nm) { /* struct obj * */
     let otmp;
     let corpstatflags = (objtype != STATUE) ? CORPSTAT_INIT
                                                  : CORPSTAT_NONE;
@@ -2266,9 +2118,7 @@ mk_named_object(
     return otmp;
 }
 
-export function /* boolean */
-is_flammable(otmp)
-{
+export function is_flammable(otmp) { /* boolean */
     let otyp = otmp.otyp;
     let omat = objects[otyp].oc_material;
 
@@ -2285,9 +2135,7 @@ is_flammable(otmp)
     return (+((omat <= WOOD && omat != LIQUID) || omat == PLASTIC));
 }
 
-export function /* boolean */
-is_rottable(otmp)
-{
+export function is_rottable(otmp) { /* boolean */
     let otyp = otmp.otyp;
 
     return (+((objects[otyp].oc_material <= WOOD
@@ -2301,9 +2149,7 @@ is_rottable(otmp)
  */
 
 /* put the object at the given location */
-export function /* void */
-place_object(otmp, x, y)
-{
+export function place_object(otmp, x, y) { /* void */
     let otmp2;
 
     if (!isok(x, y)) { /* validate location */
@@ -2311,7 +2157,7 @@ place_object(otmp, x, y)
 
         func = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1) ? panic
                : impossible;
-        (func)(_("place_object: \"%s\" [%d] off map <%d,%d>"),
+        func(_("place_object: \"%s\" [%d] off map <%d,%d>"),
                 safe_typename(otmp.otyp), otmp.where, x, y);
 
         /* we'll only get to here if we've issued a warning (and fuzzer
@@ -2367,9 +2213,7 @@ place_object(otmp, x, y)
 
 /* tear down the object pile at <x,y> and create it again, so that any
    boulders which are present get forced to the top */
-export function /* void */
-recreate_pile_at(x, y)
-{
+export function recreate_pile_at(x, y) { /* void */
     let otmp, next_obj, reversed = null;
 
     /* remove all objects at <x,y>, saving a reversed temporary list */
@@ -2393,9 +2237,7 @@ export const ROT_ICE_ADJUSTMENT = 2;
 /* If ice was affecting any objects correct that now
  * Also used for starting ice effects too. [zap.c]
  */
-export function /* void */
-obj_ice_effects(x, y, do_buried)
-{
+export function obj_ice_effects(x, y, do_buried) { /* void */
     let otmp;
 
     for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp.v.v_nexthere) {
@@ -2419,9 +2261,7 @@ obj_ice_effects(x, y, do_buried)
  * rot timers pertaining to the object don't have to be stopped and
  * restarted etc.
  */
-export function /* long long */
-peek_at_iced_corpse_age(otmp)
-{
+export function peek_at_iced_corpse_age(otmp) { /* long long */
     let age, retval = otmp.age;
 
     if (otmp.otyp == CORPSE && otmp.recharged) {
@@ -2436,17 +2276,15 @@ peek_at_iced_corpse_age(otmp)
     return retval;
 }
 
-function /* void */
-obj_timer_checks(
+function obj_timer_checks(
     otmp,
     x, y,
-    force) /* 0 = no force so do checks, <0 = force off, >0 force on */
-{
+    force) { /* void */ /* 0 = no force so do checks, <0 = force off, >0 force on */
     let tleft = 0;
     let action = ROT_CORPSE;
     let restart_timer = FALSE;
-    let on_floor = (+(otmp.where == OBJ_FLOOR));
-    let buried = (+(otmp.where == OBJ_BURIED));
+    let on_floor = +(otmp.where == OBJ_FLOOR);
+    let buried = +(otmp.where == OBJ_BURIED);
 
     /* Check for corpses just placed on or in ice */
     if (otmp.otyp == CORPSE && (on_floor || buried) && is_ice(x, y)) {
@@ -2499,14 +2337,10 @@ obj_timer_checks(
 
     /* now re-start the timer with the appropriate modifications */
     if (restart_timer)
-        void start_timer(tleft, TIMER_OBJECT, action, obj_to_any(otmp));
+        start_timer(tleft, TIMER_OBJECT, action, obj_to_any(otmp));
 }
 
-
-
-export function /* void */
-remove_object(otmp)
-{
+export function remove_object(otmp) { /* void */
     let x = otmp.ox;
     let y = otmp.oy;
 
@@ -2521,9 +2355,7 @@ remove_object(otmp)
 }
 
 /* throw away all of a monster's inventory */
-export function /* void */
-discard_minvent(mtmp, uncreate_artifacts)
-{
+export function discard_minvent(mtmp, uncreate_artifacts) { /* void */
     let otmp;
 
     while ((otmp = mtmp.minvent) != null) {
@@ -2553,9 +2385,7 @@ discard_minvent(mtmp, uncreate_artifacts)
  *      OBJ_LUAFREE     obj is dealloc'd from core, but still used by lua
  *      OBJ_DELETED     obj has been deleted from play but not yet deallocated
  */
-export function /* void */
-obj_extract_self(obj)
-{
+export function obj_extract_self(obj) { /* void */
     switch (obj.where) {
     case OBJ_FREE:
     case OBJ_LUAFREE:
@@ -2592,9 +2422,7 @@ obj_extract_self(obj)
 }
 
 /* Extract the given object from the chain, following nobj chain. */
-export function /* void */
-extract_nobj(obj, head_ptr)
-{
+export function extract_nobj(obj, head_ptr) { /* void */
     let curr, prev;
 
     curr = head_ptr[0];
@@ -2619,9 +2447,7 @@ extract_nobj(obj, head_ptr)
  * This does not set obj->where, this function is expected to be called
  * in tandem with extract_nobj, which does set it.
  */
-export function /* void */
-extract_nexthere(obj, head_ptr)
-{
+export function extract_nexthere(obj, head_ptr) { /* void */
     let curr, prev;
 
     curr = head_ptr[0];
@@ -2644,9 +2470,9 @@ extract_nexthere(obj, head_ptr)
  * in the inventory, then the passed obj is deleted and 1 is returned.
  * Otherwise 0 is returned.
  */
-export function /* int */
-add_to_minv(mon, obj$)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+export function add_to_minv(mon, obj$) { /* int */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     let otmp = stack_var(ptr_to(struct_obj));
 
     if (obj[0].where != OBJ_FREE)
@@ -2662,7 +2488,8 @@ add_to_minv(mon, obj$)
     obj[0].nobj = mon.minvent;
     mon.minvent = obj[0];
     return 0; /* obj on mon's inventory chain */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Add obj to container, make sure obj is "free".  Returns (merged) obj.
@@ -2672,9 +2499,9 @@ add_to_minv(mon, obj$)
  * prevent that from being recalculated repeatedly when adding multiple
  * items].
  */
-export function /* struct obj * */
-add_to_container(container, obj$)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+export function add_to_container(container, obj$) { /* struct obj * */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     let otmp = stack_var(ptr_to(struct_obj));
 
     if (obj[0].where != OBJ_FREE)
@@ -2692,11 +2519,10 @@ add_to_container(container, obj$)
     obj[0].nobj = container.cobj;
     container.cobj = obj[0];
     return obj[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-add_to_migration(obj)
-{
+export function add_to_migration(obj) { /* void */
     if (obj.where != OBJ_FREE)
         panic(_("add_to_migration: obj where=%d, not free"), obj.where);
 
@@ -2716,9 +2542,7 @@ add_to_migration(obj)
     gm.migrating_objs = obj;
 }
 
-export function /* void */
-add_to_buried(obj)
-{
+export function add_to_buried(obj) { /* void */
     if (obj.where != OBJ_FREE)
         panic(_("add_to_buried: obj where=%d, not free"), obj.where);
 
@@ -2729,9 +2553,7 @@ add_to_buried(obj)
 
 /* recalculate weight of object, which doesn't have to be a container
    itself; if it is contained, recursively handle _its_ container(s) */
-export function /* void */
-container_weight(object)
-{
+export function container_weight(object) { /* void */
     object.owt = unsigned(weight(object));
     if (object.where == OBJ_CONTAINED)
         container_weight(object.v.v_ocontainer);
@@ -2741,9 +2563,7 @@ container_weight(object)
  * Mark object to be deallocated.  _All_ objects should be run through here
  * for them to be deallocated.
  */
-export function /* void */
-dealloc_obj(obj)
-{
+export function dealloc_obj(obj) { /* void */
     if (obj.otyp == BOULDER)
         obj.corpsenm = 0;
     if (obj.where == OBJ_DELETED) {
@@ -2811,9 +2631,7 @@ dealloc_obj(obj)
 }
 
 /* actually deallocate the object */
-function /* void */
-dealloc_obj_real(obj)
-{
+function dealloc_obj_real(obj) { /* void */
     if (obj.oextra)
         dealloc_oextra(obj);
 
@@ -2827,9 +2645,7 @@ dealloc_obj_real(obj)
 }
 
 /* free all the objects marked for deletion */
-export function /* void */
-dobjsfree()
-{
+export function dobjsfree() { /* void */
     let otmp;
 
     while (go.objs_deleted) {
@@ -2843,12 +2659,10 @@ dobjsfree()
 }
 
 /* create an object from a horn of plenty; mirrors bagotricks(makemon.c) */
-export function /* int */
-hornoplenty(
+export function hornoplenty(
     horn,
     tipping,
-    targetbox) /* if non-Null, container to tip into */
-{
+    targetbox) { /* int */ /* if non-Null, container to tip into */
     let objcount = 0;
 
     if (!horn || horn.otyp != HORN_OF_PLENTY) {
@@ -2904,7 +2718,7 @@ hornoplenty(
                                           ? _("Oops!  %s away from you!")
                                           : _("Oops!  %s to the floor!"),
                                       The(aobjnam(obj, _("slip"))), 0);
-            (void (obj));
+            (obj);
         } else if (targetbox) {
             add_to_container(targetbox, obj);
             /* add to container doesn't update the weight */
@@ -2937,7 +2751,6 @@ hornoplenty(
 
 /* support for wizard-mode's `sanity_check' option */
 
-
 const ofmt0 = init_string(static_array("ofmt0", char, sizeof_string("%s obj %s %s: %s")), _("%s obj %s %s: %s"), true);
 const ofmt3 = init_string(static_array("ofmt3", char, sizeof_string("%s [not null] %s %s: %s")), _("%s [not null] %s %s: %s"), true);
 
@@ -2945,9 +2758,8 @@ const mfmt1 = init_string(static_array("mfmt1", char, sizeof_string("%s obj %s %
 const mfmt2 = init_string(static_array("mfmt2", char, sizeof_string("%s obj %s %s (%s) *not*")), _("%s obj %s %s (%s) *not*"), true);
 
 /* Check all object lists for consistency. */
-export function /* void */
-obj_sanity_check()
-{ const $frame = stack_frame(); try {
+export function obj_sanity_check() { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let obj, otop, prevo;
 
@@ -2966,7 +2778,7 @@ obj_sanity_check()
                 /* <ox,oy> should match <x,y>; <0,*> should always be empty */
                 if (obj.where != OBJ_FLOOR || x == 0
                     || obj.ox != x || obj.oy != y) {
-                    void sprintf(at_fmt, _("%%s obj@<%d,%d> %%s %%s: %%s@<%d,%d>"), x, y, obj.ox, obj.oy)
+                    sprintf(at_fmt, _("%%s obj@<%d,%d> %%s %%s: %%s@<%d,%d>"), x, y, obj.ox, obj.oy)
 ;
                     insane_object(obj, at_fmt, _("location sanity"),
                                   null);
@@ -2975,14 +2787,14 @@ obj_sanity_check()
                    be at the top of their pile; also never in water or lava */
                 } else if (obj.otyp == BOULDER) {
                     if (prevo && prevo.otyp != BOULDER) {
-                        void sprintf(at_fmt, _("%%s boulder@<%d,%d> %%s %%s: not on top"), x, y)
+                        sprintf(at_fmt, _("%%s boulder@<%d,%d> %%s %%s: not on top"), x, y)
 
 ;
                         insane_object(obj, at_fmt, _("boulder sanity"),
                                       null);
                     }
                     if (is_pool_or_lava(x, y)) {
-                        void sprintf(at_fmt, _("%%s boulder@<%d,%d> %%s %%s: on/in %s"), x, y, is_pool(x, y) ? _("water") : _("lava"))
+                        sprintf(at_fmt, _("%%s boulder@<%d,%d> %%s %%s: on/in %s"), x, y, is_pool(x, y) ? _("water") : _("lava"))
 
 ;
                         insane_object(obj, at_fmt, _("boulder sanity"),
@@ -3025,12 +2837,12 @@ obj_sanity_check()
     if (gc.current_wand)
         insane_object(gc.current_wand, ofmt3, _("current_wand sanity"),
                       null);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* sanity check for objects on specified list (fobj, &c) */
-function /* void */
-objlist_sanity(objlist, wheretype, mesg)
-{ const $frame = stack_frame(); try {
+function objlist_sanity(objlist, wheretype, mesg) { /* void */
+    const $frame = stack_frame(); try {
     let obj;
 
     for (obj = objlist; obj; obj = obj.nobj) {
@@ -3040,7 +2852,7 @@ objlist_sanity(objlist, wheretype, mesg)
             let lostbuf = stack_array(char, 40);
 
             /* %d: bitfield is unsigned but narrow, so promotes to int */
-            void sprintf(lostbuf, _("how_lost=%d obj in inventory!"), obj.how_lost);
+            sprintf(lostbuf, _("how_lost=%d obj in inventory!"), obj.how_lost);
             insane_object(obj, ofmt0, lostbuf, null);
         }
         if (Has_contents(obj)) {
@@ -3076,7 +2888,7 @@ objlist_sanity(objlist, wheretype, mesg)
                 if ((obj != uchain && obj != uball) || !bc_ok) {
                     /* discovered an object not in inventory which
                        erroneously has worn mask set */
-                    void sprintf(maskbuf, _("worn mask 0x%08llx"), obj.owornmask);
+                    sprintf(maskbuf, _("worn mask 0x%08llx"), obj.owornmask);
                     insane_object(obj, ofmt0, maskbuf, null);
                 }
                 break;
@@ -3088,12 +2900,12 @@ objlist_sanity(objlist, wheretype, mesg)
 
             if (obj.where == OBJ_INVENT) {
                 if (!mtmp) { /* found leash with phantom mon */
-                    void sprintf(buf, _("leashmon=%u no monst,"), unsigned(obj.corpsenm))
+                    sprintf(buf, _("leashmon=%u no monst,"), unsigned(obj.corpsenm))
 ;
                     insane_object(obj, ofmt0, buf, null);
                 } else if (!mtmp.mleashed) { /* found leashed mon
                                                * not flagged as leashed */
-                    void sprintf(buf, _("leashmon=%u %s not leashed,"), unsigned(obj.corpsenm), mon_pmname(mtmp))
+                    sprintf(buf, _("leashmon=%u %s not leashed,"), unsigned(obj.corpsenm), mon_pmname(mtmp))
 ;
                     insane_object(obj, ofmt0, buf, null);
                 }
@@ -3107,12 +2919,12 @@ objlist_sanity(objlist, wheretype, mesg)
                                       ? obj.v.v_ocarry : null;
 
                 if (mtmp) { /* found monst leashed by non-invent leash */
-                    void sprintf(buf, _("leashmon:%u %s leashed by %s leash,"), unsigned(obj.corpsenm), mon_pmname(mtmp), where_name(obj))
+                    sprintf(buf, _("leashmon:%u %s leashed by %s leash,"), unsigned(obj.corpsenm), mon_pmname(mtmp), where_name(obj))
 
 ;
                     insane_object(obj, ofmt0, buf, mtmp2);
                 } else { /* found non-invent leash with m_id of phantom mon */
-                    void sprintf(buf, _("leashmon:%u no monst for %s leash,"), unsigned(obj.corpsenm), where_name(obj))
+                    sprintf(buf, _("leashmon:%u no monst for %s leash,"), unsigned(obj.corpsenm), where_name(obj))
 ;
                     insane_object(obj, ofmt0, buf, mtmp2);
                 }
@@ -3126,13 +2938,13 @@ objlist_sanity(objlist, wheretype, mesg)
             || (obj.otyp == BOULDER && obj.corpsenm))
             insane_obj_bits(obj, null);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* check obj->unpaid and obj->no_charge for shop sanity; caller has
    verified that at least one of them is set */
-function /* void */
-shop_obj_sanity(obj, mesg)
-{ const $frame = stack_frame(); try {
+function shop_obj_sanity(obj, mesg) { /* void */
+    const $frame = stack_frame(); try {
     let otop;
     let shkp;
     let why;
@@ -3147,7 +2959,7 @@ shop_obj_sanity(obj, mesg)
        or otop->ox,oy because that would cause sanity checking to
        produce side-effects that won't occur when not sanity checking;
        no need for CONTAINED_TOO because we have a top level container */
-    void get_obj_location(otop, x, y, BURIED_TOO);
+    get_obj_location(otop, x, y, BURIED_TOO);
 
     /* these will always be needed for the normal case, so don't bother
        waiting until we find an insanity to fetch them */
@@ -3197,12 +3009,11 @@ shop_obj_sanity(obj, mesg)
         insane_object(obj, why, mesg,
                       mcarried(otop) ? otop.v.v_ocarry : null);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* sanity check for objects carried by all monsters in specified list */
-function /* void */
-mon_obj_sanity(monlist, mesg)
-{
+function mon_obj_sanity(monlist, mesg) { /* void */
     let mon;
     let obj, mwep;
 
@@ -3240,14 +3051,12 @@ mon_obj_sanity(monlist, mesg)
             impossible(_("monst (%s: %u) wielding %s (%u) not in %s inventory"),
                        pmname(mon.data, Mgender(mon)), mon.m_id,
                        safe_typename(mwep.otyp), mwep.o_id, mhis(mon));
-
         }
     }
 }
 
-function /* void */
-insane_obj_bits(obj, mon)
-{ const $frame = stack_frame(); try {
+function insane_obj_bits(obj, mon) { /* void */
+    const $frame = stack_frame(); try {
     let o_in_use, o_bypass, o_nomerge, o_boulder;
 
     if (obj.where == OBJ_DELETED)
@@ -3256,27 +3065,24 @@ insane_obj_bits(obj, mon)
     o_in_use = obj.in_use;
     o_bypass = obj.bypass;
     /* having obj->nomerge be set might be intentional */
-    o_nomerge = (((obj.nomerge && !nomerge_exception(obj)) ? 1 : 0));
+    o_nomerge = (obj.nomerge && !nomerge_exception(obj) ? 1 : 0);
     /* next_boulder is only for object name formatting when pushing
        boulders and should be reset by time of next sanity check */
-    o_boulder = (((obj.otyp == BOULDER && obj.corpsenm) ? 1 : 0));
+    o_boulder = (obj.otyp == BOULDER && obj.corpsenm ? 1 : 0);
 
     if (o_in_use || o_bypass || o_nomerge || o_boulder) {
         let infobuf = stack_array(char, QBUFSZ);
 
-        void sprintf(infobuf, _("flagged%s%s%s%s"), o_in_use ? _(" in_use") : _(""), o_bypass ? _(" bypass") : _(""), o_nomerge ? _(" nomerge") : _(""), o_boulder ? _(" nxtbldr") : _(""))
-
-
+        sprintf(infobuf, _("flagged%s%s%s%s"), o_in_use ? _(" in_use") : _(""), o_bypass ? _(" bypass") : _(""), o_nomerge ? _(" nomerge") : _(""), o_boulder ? _(" nxtbldr") : _(""))
 
 ;
         insane_object(obj, ofmt0, infobuf, mon);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* does 'obj' use the 'nomerge' flag persistently? */
-function /* boolean */
-nomerge_exception(obj)
-{
+function nomerge_exception(obj) { /* boolean */
     /* special prize objects for achievement tracking are set 'nomerge'
        until they get picked up by the hero */
     if (is_mines_prize(obj) || is_soko_prize(obj))
@@ -3292,9 +3098,7 @@ const obj_state_names = static_array("obj_state_names", ptr_to(char), NOBJ_STATE
     _("luafree"), _("deleted"),
 ]);
 
-function /* const char * */
-where_name(obj)
-{
+function where_name(obj) { /* const char * */
     let unknown = static_array("where_name.unknown", char, 32); /* big enough to handle rogue 64-bit int */
     let where;
 
@@ -3302,21 +3106,18 @@ where_name(obj)
         return _("nowhere");
     where = obj.where;
     if (where < 0 || where >= NOBJ_STATES || !obj_state_names[where]) {
-        void sprintf(unknown, _("unknown[%d]"), where);
+        sprintf(unknown, _("unknown[%d]"), where);
         return unknown;
     }
     return obj_state_names[where];
 }
 
-
-
-function /* void */
-insane_object(
+function insane_object(
     obj,
     fmt,
     mesg,
-    mon)
-{ const $frame = stack_frame(); try {
+    mon) { /* void */
+    const $frame = stack_frame(); try {
     let objnm, monnm;
     let altfmt = stack_array(char, BUFSZ);
 
@@ -3327,7 +3128,7 @@ insane_object(
         iflags.override_ID--;
     }
     if (mon || (strstri(mesg, _("minvent")) && !strstri(mesg, _("contained")))) {
-        void strcat(strcpy(altfmt, fmt), _(" held by mon %s (%s)"));
+        strcat(strcpy(altfmt, fmt), _(" held by mon %s (%s)"));
         if (mon)
             monnm = x_monnam(mon, ARTICLE_A, 0, EXACT_NAME, TRUE);
         impossible(altfmt, mesg, fmt_ptr(addr_of(obj)), where_name(obj),
@@ -3336,16 +3137,13 @@ insane_object(
         impossible(fmt, mesg, fmt_ptr(addr_of(obj)), where_name(obj),
                    objnm);
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* initialize a dummy obj with just enough info to allow some of the tests in
    obj.h that take an obj pointer to work; used when applying a stethoscope
    toward a mimic mimicking an object */
-export function /* struct obj * */
-init_dummyobj(obj, otyp, oquan)
-{
+export function init_dummyobj(obj, otyp, oquan) { /* struct obj * */
      if (obj) {
          struct_assign(obj, cg.zeroobj);
          obj.otyp = otyp;
@@ -3370,9 +3168,8 @@ init_dummyobj(obj, otyp, oquan)
 }
 
 /* obj sanity check: check objects inside container */
-function /* void */
-check_contained(container, mesg)
-{ const $frame = stack_frame(); try {
+function check_contained(container, mesg) { /* void */
+    const $frame = stack_frame(); try {
     let obj;
     /* big enough to work with, not too big to blow out stack in recursion */
     let mesgbuf = stack_array(char, 40), nestedmesg = stack_array(char, 120);
@@ -3406,47 +3203,39 @@ check_contained(container, mesg)
                 panic(_("failed sanity check: container holds its parent"));
             /* change "contained... sanity" to "nested contained... sanity"
                and "nested contained..." to "nested nested contained..." */
-            void strcpy(nestedmesg, _("nested "));
+            strcpy(nestedmesg, _("nested "));
             copynchars(eos(nestedmesg), mesg, sizeof(array_of(char, 120))
                                               - int(strlen(nestedmesg)) - 1);
             /* recursively check contents */
             check_contained(obj, nestedmesg);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called when 'obj->globby' is set so we don't recheck it here */
-function /* void */
-check_glob(obj, mesg)
-{ const $frame = stack_frame(); try {
-
-
+function check_glob(obj, mesg) { /* void */
+    const $frame = stack_frame(); try {
     if (obj.quan != 1 || obj.owt == 0
         || obj.otyp < LOWEST_GLOB || obj.otyp > HIGHEST_GLOB
-
-
-
-
-
-
-
 
         ) {
         let mesgbuf = stack_array(char, BUFSZ), globbuf = stack_array(char, QBUFSZ);
 
-        void sprintf(globbuf, _(" glob %d,quan=%lld,owt=%u "), obj.otyp, obj.quan, obj.owt)
+        sprintf(globbuf, _(" glob %d,quan=%lld,owt=%u "), obj.otyp, obj.quan, obj.owt)
 ;
         mesg = strsubst(strcpy(mesgbuf, mesg), _(" obj "), globbuf);
         insane_object(obj, ofmt0, mesg,
                       (obj.where == OBJ_MINVENT) ? obj.v.v_ocarry : null);
     }
-} finally { stack_pop($frame); } } export const LOWEST_GLOB = GLOB_OF_GRAY_OOZE; export const HIGHEST_GLOB = GLOB_OF_BLACK_PUDDING;
+    } finally { stack_pop($frame); }
+}
+export const LOWEST_GLOB = GLOB_OF_GRAY_OOZE;
+export const HIGHEST_GLOB = GLOB_OF_BLACK_PUDDING;
 
 /* check an object in hero's or monster's inventory which has worn mask set */
-function /* void */
-sanity_check_worn(obj)
-{ const $frame = stack_frame(); try {
-
+function sanity_check_worn(obj) { /* void */
+    const $frame = stack_frame(); try {
     let wearbits = static_array("sanity_check_worn.wearbits", ulong, null, [
         W_ARM,    W_ARMC,   W_ARMH,    W_ARMS, W_ARMG,  W_ARMF,  W_ARMU,
         W_WEP,    W_QUIVER, W_SWAPWEP, W_AMUL, W_RINGL, W_RINGR, W_TOOL,
@@ -3489,13 +3278,13 @@ sanity_check_worn(obj)
     }
     if (n > 1) {
         /* multiple bits set */
-        void sprintf(maskbuf, _("worn mask (multiple) 0x%08llx"), obj.owornmask);
+        sprintf(maskbuf, _("worn mask (multiple) 0x%08llx"), obj.owornmask);
         insane_object(obj, ofmt0, maskbuf, null);
     }
     if ((owornmask & not64u(allmask)) != 0
         || (carried(obj) && (owornmask & W_SADDLE) != 0)) {
         /* non-wearable bit(s) set */
-        void (sprintf(maskbuf, _("worn mask (bogus)) 0x%08llx"), obj.owornmask));
+        sprintf(maskbuf, _("worn mask (bogus)) 0x%08llx"), obj.owornmask);
         insane_object(obj, ofmt0, maskbuf, null);
     }
     if (n == 1 && (carried(obj) || (owornmask & (W_BALL | W_CHAIN)) != 0)) {
@@ -3572,7 +3361,7 @@ sanity_check_worn(obj)
             break;
         }
         if (what) {
-            void sprintf(maskbuf, _("worn mask 0x%08llx != %s"), obj.owornmask, what);
+            sprintf(maskbuf, _("worn mask 0x%08llx != %s"), obj.owornmask, what);
             insane_object(obj, ofmt0, maskbuf, null);
         }
     }
@@ -3624,24 +3413,18 @@ sanity_check_worn(obj)
 
             /* if we've found a potion worn in the amulet slot,
                this yields "worn (potion amulet)" */
-            void strcpy(oclassname, def_oc_syms[uchar(obj.oclass)].name);
-            void sprintf(maskbuf, _("worn (%s %s)"), makesingular(oclassname), what);
+            strcpy(oclassname, def_oc_syms[uchar(obj.oclass)].name);
+            sprintf(maskbuf, _("worn (%s %s)"), makesingular(oclassname), what);
             insane_object(obj, ofmt0, maskbuf, mon);
         }
     }
-
-
-
-
-
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * wrapper to make "near this object" convenient
  */
-export function /* struct obj * */
-obj_nexto(otmp)
-{
+export function obj_nexto(otmp) { /* struct obj * */
     if (!otmp) {
         impossible(_("obj_nexto: wasn't given an object to check"));
         return null;
@@ -3657,9 +3440,7 @@ obj_nexto(otmp)
  * TODO: return a list of all objects near us so we can more
  * reliably predict which one we want to 'find' first
  */
-export function /* struct obj * */
-obj_nexto_xy(obj, x, y, recurs)
-{
+export function obj_nexto_xy(obj, x, y, recurs) { /* struct obj * */
     let otmp;
     let fx, fy, ex, ey, otyp = obj.otyp;
     let dx, dy;
@@ -3698,9 +3479,7 @@ obj_nexto_xy(obj, x, y, recurs)
  * Causes one object to absorb another, increasing weight
  * accordingly.  Frees obj2; obj1 remains and is returned.
  */
-export function /* struct obj * */
-obj_absorb(obj1, obj2)
-{
+export function obj_absorb(obj1, obj2) { /* struct obj * */
     let otmp1, otmp2;
     let o1wt, o2wt;
     let agetmp;
@@ -3723,9 +3502,9 @@ obj_absorb(obj1, obj2)
             o2wt = int(otmp2.oeaten ? otmp2.oeaten : otmp2.owt);
             /* averaging the relative ages is less likely to overflow
                than averaging the absolute ages directly */
-            agetmp = (Math.trunc(((svm.moves - otmp1.age) * o1wt
+            agetmp = Math.trunc(((svm.moves - otmp1.age) * o1wt
                        + (svm.moves - otmp2.age) * o2wt)
-                      / (o1wt + o2wt)));
+                      / (o1wt + o2wt));
             /* convert relative age back to absolute age */
             otmp1.age = svm.moves - agetmp;
             otmp1.owt += unsigned(o2wt);
@@ -3764,9 +3543,7 @@ obj_absorb(obj1, obj2)
  * Wrapper for obj_absorb() so that floor_effects works more
  * cleanly (since we don't know which we want to stay around).
  */
-export function /* struct obj * */
-obj_meld(obj1, obj2)
-{
+export function obj_meld(obj1, obj2) { /* struct obj * */
     let otmp1, otmp2, result = null;
     let ox, oy; /* coordinates for the glob that goes away */
 
@@ -3814,13 +3591,11 @@ obj_meld(obj1, obj2)
 }
 
 /* give a message if hero notices two globs merging [used to be in pline.c] */
-export function /* void */
-pudding_merge_message(otmp, otmp2)
-{
-    let visible = (+(cansee(otmp.ox, otmp.oy)
-                       || cansee(otmp2.ox, otmp2.oy))),
-            onfloor = (+(otmp.where == OBJ_FLOOR || otmp2.where == OBJ_FLOOR)),
-            inpack = (+(carried(otmp) || carried(otmp2)));
+export function pudding_merge_message(otmp, otmp2) { /* void */
+    let visible = +(cansee(otmp.ox, otmp.oy)
+                       || cansee(otmp2.ox, otmp2.oy)),
+            onfloor = +(otmp.where == OBJ_FLOOR || otmp2.where == OBJ_FLOOR),
+            inpack = +(carried(otmp) || carried(otmp2));
 
     /* the player will know something happened inside his own inventory */
     if ((!Blind() && visible) || inpack) {
@@ -3834,8 +3609,8 @@ pudding_merge_message(otmp, otmp2)
              * they'll be out of our view (minvent or container)
              * so don't actually show anything */
         } else if (onfloor || inpack) {
-            let adj = (+((otmp.ox != u.ux || otmp.oy != u.uy)
-                           && (otmp2.ox != u.ux || otmp2.oy != u.uy)));
+            let adj = +((otmp.ox != u.ux || otmp.oy != u.uy)
+                           && (otmp2.ox != u.ux || otmp2.oy != u.uy));
 
             pline(_("The %s%s coalesce%s."),
                   (onfloor && adj) ? _("adjacent ") : _(""),
@@ -3849,470 +3624,156 @@ pudding_merge_message(otmp, otmp2)
 }
 
 /*mkobj.c*/
+
 import { A_NONE } from "./align.h.js";
 import { nothing_happens } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_brdnstair } from "./defsym.h.js";
-import { S_brupstair } from "./defsym.h.js";
-import { S_dnstair } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
-import { S_trwall } from "./defsym.h.js";
-import { S_upstair } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS,
+    POTION_CLASS, RANDOM_CLASS, RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_TROLL,
+    S_altar, S_brdnstair, S_brupstair, S_dnstair, S_sink, S_throne, S_trwall, S_upstair, S_vwall,
+    TOOL_CLASS, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { MIGR_TO_SPECIES } from "./dungeon.h.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import { Inhell, Is_airlevel, Is_rogue_level, Is_waterlevel } from "./dungeon.h.macros.js";
 import { PLNMSG_OBJ_GLOWS } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { CORPSTAT_FEMALE } from "./hack.h.js";
-import { CORPSTAT_INIT } from "./hack.h.js";
-import { CORPSTAT_MALE } from "./hack.h.js";
-import { CORPSTAT_NEUTER } from "./hack.h.js";
-import { CORPSTAT_NONE } from "./hack.h.js";
-import { CORPSTAT_SPE_VAL } from "./hack.h.js";
-import { COST_SINGLEOBJ } from "./hack.h.js";
-import { COST_UNBLSS } from "./hack.h.js";
-import { COST_UNCURS } from "./hack.h.js";
-import { EXACT_NAME } from "./hack.h.js";
-import { FM_FMON } from "./hack.h.js";
-import { ONAME_NO_FLAGS } from "./hack.h.js";
-import { ONAME_SKIP_INVUPD } from "./hack.h.js";
-import { RANDOM_TIN } from "./hack.h.js";
-import { ROT_AGE } from "./hack.h.js";
-import { SPINACH_TIN } from "./hack.h.js";
-import { TAINT_AGE } from "./hack.h.js";
-import { TROLL_REVIVE_CHANCE } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { debugpline1 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
+import { BUFSZ, COLNO, FALSE, LARGEST_INT, QBUFSZ, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    ARTICLE_A, CORPSTAT_FEMALE, CORPSTAT_INIT, CORPSTAT_MALE, CORPSTAT_NEUTER, CORPSTAT_NONE,
+    CORPSTAT_SPE_VAL, COST_SINGLEOBJ, COST_UNBLSS, COST_UNCURS, EXACT_NAME, FM_FMON, ONAME_NO_FLAGS,
+    ONAME_SKIP_INVUPD, RANDOM_TIN, ROT_AGE, SPINACH_TIN, TAINT_AGE, TROLL_REVIVE_CHANCE,
+} from "./hack.h.js";
+import { ROLL_FROM, makeknown, max, pline1, rn1 } from "./hack.h.macros.js";
+import { debugpline1, showdebug } from "./lint.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { is_female } from "./mondata.h.macros.js";
-import { is_human } from "./mondata.h.macros.js";
-import { is_male } from "./mondata.h.macros.js";
-import { is_neuter } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { G_GONE } from "./monflag.h.js";
-import { G_HELL } from "./monflag.h.js";
-import { G_NOCORPSE } from "./monflag.h.js";
-import { G_NOGEN } from "./monflag.h.js";
-import { G_NOHELL } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { MON_DETACH } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_NOWEP } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { newmonst } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_DEATH } from "./monsters.h.js";
-import { PM_GRAY_OOZE } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_LIZARD } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { SPECIAL_PM } from "./monsters.h.js";
-import { BURIED_TOO } from "./obj.h.js";
-import { CONTAINED_TOO } from "./obj.h.js";
-import { LOST_NONE } from "./obj.h.js";
-import { MAX_OIL_IN_FLASK } from "./obj.h.js";
-import { NOBJ_STATES } from "./obj.h.js";
-import { OBJ_BURIED } from "./obj.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_DELETED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { OBJ_LUAFREE } from "./obj.h.js";
-import { OBJ_MIGRATING } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { OBJ_ONBILL } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { struct_oextra } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_candle } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { Is_dragon_scales } from "./obj.h.macros.js";
-import { Is_mbag } from "./obj.h.macros.js";
-import { Is_pudding } from "./obj.h.macros.js";
-import { OMAILCMD } from "./obj.h.macros.js";
-import { OMID } from "./obj.h.macros.js";
-import { OMONST } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { has_omailcmd } from "./obj.h.macros.js";
-import { has_omid } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_mines_prize } from "./obj.h.macros.js";
-import { is_multigen } from "./obj.h.macros.js";
-import { is_poisonable } from "./obj.h.macros.js";
-import { is_soko_prize } from "./obj.h.macros.js";
-import { mcarried } from "./obj.h.macros.js";
-import { newobj } from "./obj.h.macros.js";
-import { DRAGON_HIDE } from "./objclass.h.js";
-import { LIQUID } from "./objclass.h.js";
-import { NODIR } from "./objclass.h.js";
-import { PLASTIC } from "./objclass.h.js";
-import { SPBOOK_no_NOVEL } from "./objclass.h.js";
-import { WOOD } from "./objclass.h.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { is_corrodeable } from "./objclass.h.macros.js";
-import { is_crackable } from "./objclass.h.macros.js";
-import { is_damageable } from "./objclass.h.macros.js";
-import { is_rustprone } from "./objclass.h.macros.js";
-import { AMULET_OF_CHANGE } from "./objects.h.js";
-import { AMULET_OF_RESTFUL_SLEEP } from "./objects.h.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { APPLE } from "./objects.h.js";
-import { BAG_OF_HOLDING } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BANANA } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { BRASS_LANTERN } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CANDY_BAR } from "./objects.h.js";
-import { CAN_OF_GREASE } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRYSTAL_BALL } from "./objects.h.js";
-import { DILITHIUM_CRYSTAL } from "./objects.h.js";
-import { DRUM_OF_EARTHQUAKE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ELVEN_SHIELD } from "./objects.h.js";
-import { EUCALYPTUS_LEAF } from "./objects.h.js";
-import { EXPENSIVE_CAMERA } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { FIRE_HORN } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { FROST_HORN } from "./objects.h.js";
-import { FUMBLE_BOOTS } from "./objects.h.js";
-import { GAUNTLETS_OF_FUMBLING } from "./objects.h.js";
-import { GLOB_OF_BLACK_PUDDING } from "./objects.h.js";
-import { GLOB_OF_GRAY_OOZE } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { HELM_OF_OPPOSITE_ALIGNMENT } from "./objects.h.js";
-import { HORN_OF_PLENTY } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { KELP_FROND } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { LEVITATION_BOOTS } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MAGIC_FLUTE } from "./objects.h.js";
-import { MAGIC_HARP } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { OILSKIN_SACK } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { ORANGE } from "./objects.h.js";
-import { ORCISH_SHIELD } from "./objects.h.js";
-import { PEAR } from "./objects.h.js";
-import { POT_BOOZE } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_SICKNESS } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { RIN_AGGRAVATE_MONSTER } from "./objects.h.js";
-import { RIN_HUNGER } from "./objects.h.js";
-import { RIN_POLYMORPH } from "./objects.h.js";
-import { RIN_TELEPORTATION } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SACK } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SHIELD_OF_REFLECTION } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { SPLINT_MAIL } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TINNING_KIT } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
-import { WAN_CANCELLATION } from "./objects.h.js";
-import { WAN_FIRE } from "./objects.h.js";
-import { WAN_LIGHT } from "./objects.h.js";
-import { WAN_LIGHTNING } from "./objects.h.js";
-import { WAN_STASIS } from "./objects.h.js";
-import { WAN_WISHING } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { WORM_TOOTH } from "./objects.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { W_BALL } from "./prop.h.js";
-import { W_CHAIN } from "./prop.h.js";
-import { W_QUIVER } from "./prop.h.js";
-import { W_RING } from "./prop.h.js";
-import { W_RINGL } from "./prop.h.js";
-import { W_RINGR } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { W_WEAPONS } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { ICE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { FIG_TRANSFORM } from "./timeout.h.js";
-import { HATCH_EGG } from "./timeout.h.js";
-import { REVIVE_MON } from "./timeout.h.js";
-import { ROT_CORPSE } from "./timeout.h.js";
-import { SHRINK_GLOB } from "./timeout.h.js";
-import { TIMER_OBJECT } from "./timeout.h.js";
-import { ZOMBIFY_MON } from "./timeout.h.js";
+import {
+    is_female, is_human, is_male, is_neuter, is_rider, monsndx, verysmall,
+} from "./mondata.h.macros.js";
+import { G_GONE, G_HELL, G_NOCORPSE, G_NOGEN, G_NOHELL, G_UNIQ } from "./monflag.h.js";
+import { MON_DETACH, struct_monst } from "./monst.h.js";
+import { DEADMONSTER, MON_NOWEP, MON_WEP, ismnum, newmonst } from "./monst.h.macros.js";
+import {
+    LOW_PM, NON_PM, PM_ARCHEOLOGIST, PM_DEATH, PM_GRAY_OOZE, PM_HUMAN, PM_LICHEN, PM_LIZARD,
+    PM_SAMURAI, PM_WIZARD, SPECIAL_PM,
+} from "./monsters.h.js";
+import {
+    BURIED_TOO, CONTAINED_TOO, LOST_NONE, MAX_OIL_IN_FLASK, NOBJ_STATES, OBJ_BURIED, OBJ_CONTAINED,
+    OBJ_DELETED, OBJ_FLOOR, OBJ_FREE, OBJ_INVENT, OBJ_LUAFREE, OBJ_MIGRATING, OBJ_MINVENT,
+    OBJ_ONBILL, struct_obj, struct_oextra,
+} from "./obj.h.js";
+import {
+    Has_contents, Is_candle, Is_container, Is_dragon_scales, Is_mbag, Is_pudding, OMAILCMD, OMID,
+    OMONST, ONAME, bimanual, carried, has_omailcmd, has_omid, has_omonst, has_oname, is_mines_prize,
+    is_multigen, is_poisonable, is_soko_prize, mcarried, newobj,
+} from "./obj.h.macros.js";
+import { DRAGON_HIDE, LIQUID, NODIR, PLASTIC, SPBOOK_no_NOVEL, WOOD } from "./objclass.h.js";
+import {
+    OBJ_NAME, is_corrodeable, is_crackable, is_damageable, is_rustprone,
+} from "./objclass.h.macros.js";
+import {
+    AMULET_OF_CHANGE, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_YENDOR, APPLE,
+    BAG_OF_HOLDING, BAG_OF_TRICKS, BANANA, BELL_OF_OPENING, BLINDFOLD, BOULDER, BRASS_LANTERN,
+    CANDELABRUM_OF_INVOCATION, CANDY_BAR, CAN_OF_GREASE, CHEST, CORPSE, CRYSTAL_BALL,
+    DILITHIUM_CRYSTAL, DRUM_OF_EARTHQUAKE, EGG, ELVEN_SHIELD, EUCALYPTUS_LEAF, EXPENSIVE_CAMERA,
+    FIGURINE, FIRE_HORN, FOOD_RATION, FROST_HORN, FUMBLE_BOOTS, GAUNTLETS_OF_FUMBLING,
+    GLOB_OF_BLACK_PUDDING, GLOB_OF_GRAY_OOZE, GOLD_PIECE, HEAVY_IRON_BALL,
+    HELM_OF_OPPOSITE_ALIGNMENT, HORN_OF_PLENTY, ICE_BOX, KELP_FROND, LARGE_BOX, LEASH, LENSES,
+    LEVITATION_BOOTS, LOADSTONE, LUCKSTONE, LUMP_OF_ROYAL_JELLY, MAGIC_FLUTE, MAGIC_HARP,
+    MAGIC_LAMP, MAGIC_MARKER, MEAT_RING, OILSKIN_SACK, OIL_LAMP, ORANGE, ORCISH_SHIELD, PEAR,
+    POT_BOOZE, POT_OIL, POT_SICKNESS, POT_WATER, RIN_AGGRAVATE_MONSTER, RIN_HUNGER, RIN_POLYMORPH,
+    RIN_TELEPORTATION, ROCK, SACK, SADDLE, SCR_MAIL, SHIELD_OF_REFLECTION, SLIME_MOLD,
+    SPE_BLANK_PAPER, SPE_NOVEL, SPLINT_MAIL, STATUE, TALLOW_CANDLE, TIN, TINNING_KIT, TOWEL,
+    UNICORN_HORN, WAN_CANCELLATION, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_STASIS, WAN_WISHING,
+    WAX_CANDLE, WORM_TOOTH,
+} from "./objects.h.js";
+import {
+    FIRE_RES, I_SPECIAL, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU,
+    W_BALL, W_CHAIN, W_QUIVER, W_RING, W_RINGL, W_RINGR, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEAPONS,
+    W_WEP,
+} from "./prop.h.js";
+import { ICE, IRONBARS } from "./rm.h.js";
+import { IS_ALTAR, fmon, fobj, levl } from "./rm.h.macros.js";
+import {
+    FIG_TRANSFORM, HATCH_EGG, REVIVE_MON, ROT_CORPSE, SHRINK_GLOB, TIMER_OBJECT, ZOMBIFY_MON,
+} from "./timeout.h.js";
 import { LS_OBJECT } from "./vision.h.js";
 import { cansee } from "./vision.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
+import { Role_if, mhis } from "./you.h.macros.js";
+import { Blind, Hallucination } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { char, int, ord, sizeof, sizeof_string, uchar, ulong, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, and64u, not64u, or64u } from "../rt/int64.js";
+import {
+    abs, assert, free, memcpy, sprintf, strcat, strchr, strcpy, strlen, strncmp,
+} from "../rt/libc.js";
+import { init_string, stack_array, stack_var, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, struct, struct_assign, view_of,
+} from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
-import { artifact_exists } from "./artifact.js";
-import { confers_luck } from "./artifact.js";
-import { mk_artifact } from "./artifact.js";
-import { nartifact_exist } from "./artifact.js";
-import { permapoisoned } from "./artifact.js";
+import { alloc, dupstr, fmt_ptr } from "./alloc.js";
+import {
+    artifact_exists, confers_luck, mk_artifact, nartifact_exist, permapoisoned,
+} from "./artifact.js";
 import { set_moreluck } from "./attrib.js";
 import { isok } from "./cmd.js";
-import { is_ice } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gt } from "./decl.js";
-import { gu } from "./decl.js";
-import { gz } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svb } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
+import { is_ice, is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    cg, flags, gb, gc, gi, gk, gm, go, gt, gu, gz, hands_obj, iflags, program_state, svb, svc, svl,
+    svm, u,
+} from "./decl.js";
 import { newsym } from "./display.js";
-import { doaltarobj } from "./do.js";
-import { dropy } from "./do.js";
-import { obj_no_longer_held } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { mon_pmname } from "./do_name.js";
-import { noveltitle } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { safe_oname } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
+import { doaltarobj, dropy, obj_no_longer_held } from "./do.js";
+import { Mgender, mon_pmname, noveltitle, oname, pmname, safe_oname, x_monnam } from "./do_name.js";
 import { reset_remarm } from "./do_wear.js";
 import { hitfloor } from "./dothrow.js";
 import { def_oc_syms } from "./drawing.js";
-import { In_quest } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { level_difficulty } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { eaten_stat } from "./eat.js";
-import { eating_glob } from "./eat.js";
-import { set_tin_variety } from "./eat.js";
+import { In_quest, depth, level_difficulty, surface } from "./dungeon.js";
+import { eaten_stat, eating_glob, set_tin_variety } from "./eat.js";
 import { panic } from "./end.js";
 import { can_reach_floor } from "./engrave.js";
-import { in_rooms } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { obj_to_any } from "./hack.js";
-import { copynchars } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { consume_obj_charge } from "./invent.js";
-import { freeinv } from "./invent.js";
-import { g_at } from "./invent.js";
-import { hold_another_object } from "./invent.js";
-import { mergable } from "./invent.js";
-import { merged } from "./invent.js";
-import { nxtobj } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useupall } from "./invent.js";
-import { arti_light_radius } from "./light.js";
-import { del_light_source } from "./light.js";
-import { find_mid } from "./light.js";
-import { obj_adjust_light_radius } from "./light.js";
-import { obj_sheds_light } from "./light.js";
-import { obj_split_light_source } from "./light.js";
+import { in_rooms, near_capacity, obj_to_any } from "./hack.js";
+import { copynchars, eos, s_suffix, strstri, strsubst } from "./hacklib.js";
+import {
+    consume_obj_charge, freeinv, g_at, hold_another_object, mergable, merged, nxtobj, sobj_at,
+    update_inventory, useupall,
+} from "./invent.js";
+import {
+    arti_light_radius, del_light_source, find_mid, obj_adjust_light_radius, obj_sheds_light,
+    obj_split_light_source,
+} from "./light.js";
 import { maybe_reset_pick } from "./lock.js";
 import { rndmonst_adj } from "./makemon.js";
-import { can_be_hatched } from "./mon.js";
-import { copy_mextra } from "./mon.js";
-import { dead_species } from "./mon.js";
-import { dealloc_mextra } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { undead_to_corpse } from "./mon.js";
-import { zombie_form } from "./mon.js";
+import {
+    can_be_hatched, copy_mextra, dead_species, dealloc_mextra, maybe_unhide_at, undead_to_corpse,
+    zombie_form,
+} from "./mon.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { Doname2 } from "./objnam.js";
-import { The } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { aobjnam } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { erosion_matters } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { obj_typename } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { rnd_class } from "./objnam.js";
-import { safe_typename } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
+import {
+    Doname2, The, Yname2, aobjnam, doname, erosion_matters, makeplural, makesingular, obj_typename,
+    otense, rnd_class, safe_typename, simpleonames, vtense, xname,
+} from "./objnam.js";
 import { encumber_msg } from "./pickup.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { You_hear, You_see, Your, impossible, pline, verbalize } from "./pline.js";
 import { forget_temple_entry } from "./priest.js";
 import { assign_candy_wrapper } from "./read.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rne } from "./rnd.js";
-import { rnz } from "./rnd.js";
-import { addtobill } from "./shk.js";
-import { alter_cost } from "./shk.js";
-import { billable } from "./shk.js";
-import { costly_adjacent } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { find_objowner } from "./shk.js";
-import { globby_bill_fixup } from "./shk.js";
-import { obfree } from "./shk.js";
-import { oid_price_adjustment } from "./shk.js";
-import { onshopbill } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { splitbill } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { subfrombill } from "./shk.js";
-import { unpaid_cost } from "./shk.js";
+import { rn2, rnd, rne, rnz } from "./rnd.js";
+import {
+    addtobill, alter_cost, billable, costly_adjacent, costly_spot, find_objowner, globby_bill_fixup,
+    obfree, oid_price_adjustment, onshopbill, shop_keeper, splitbill, stolen_value, subfrombill,
+    unpaid_cost,
+} from "./shk.js";
 import { book_cursed } from "./spell.js";
 import { remove_worn_item } from "./steal.js";
 import { rloco } from "./teleport.js";
-import { attach_egg_hatch_timeout } from "./timeout.js";
-import { attach_fig_transform_timeout } from "./timeout.js";
-import { obj_split_timers } from "./timeout.js";
-import { obj_stop_timers } from "./timeout.js";
-import { start_timer } from "./timeout.js";
-import { stop_timer } from "./timeout.js";
+import {
+    attach_egg_hatch_timeout, attach_fig_transform_timeout, obj_split_timers, obj_stop_timers,
+    start_timer, stop_timer,
+} from "./timeout.js";
 import { tt_oname } from "./topten.js";
-import { block_point } from "./vision.js";
-import { recalc_block_point } from "./vision.js";
+import { block_point, recalc_block_point } from "./vision.js";
 import { setmnotwielded } from "./weapon.js";
 import { drop_uswapwep } from "./wield.js";
 import { extract_from_minvent } from "./worn.js";

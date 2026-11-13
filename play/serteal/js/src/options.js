@@ -3,28 +3,7 @@
 /*-Copyright (c) Michael Allison, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-// #include "hack.h"
-// #include "tcap.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* whether the 'msg_window' option is used to control ^P behavior */
-
-
-
-
-
 
 /*
  *  NOTE:  If you add (or delete) an option, please review the following:
@@ -50,13 +29,6 @@
  *
  */
 
-
-
-
-// #include "optlist.h"
-
-
-
 const allopt_init = static_array("allopt_init", struct_allopt_t, null, [
 ...allopt_init_records(),
     {name: 0, section: OptS_Advanced, minmatch: 0, expectedbuf: 0, idx: 0, setwhere: set_in_sysconf, opttyp: BoolOpt,
@@ -65,13 +37,7 @@ const allopt_init = static_array("allopt_init", struct_allopt_t, null, [
      alias: 0, descr: 0, prefixgw: 0, initval: 0, has_handler: 0, dupdetected: 0, disregarded: TRUE }
 ]);
 
-
-
-
 export const PILE_LIMIT_DFLT = 5;
-
-
-
 
     const MESSAGE_OPTION = 1;
     const STATUS_OPTION = MESSAGE_OPTION + 1;
@@ -79,29 +45,15 @@ export const PILE_LIMIT_DFLT = 5;
     const MENU_OPTION = MAP_OPTION + 1;
     const TEXT_OPTION = MENU_OPTION + 1;
 
-
-
     const optn_silenterr = -1; const optn_err = 0; const optn_ok = optn_err + 1;
-
 
     const do_nothing = 0; const do_init = do_nothing + 1; const do_set = do_init + 1; const do_handler = do_set + 1; const get_val = do_handler + 1; const get_cnf_val = get_val + 1;
 
-
 const allopt = static_array("allopt", struct_allopt_t, SIZE(allopt_init));
-
-
 
 /* use rest of file */
 
 /* extern char configfile[]; */ /* for messages; files.c */
-
-
-
-
-
-
-
-
 
 const empty_optstr = static_array("empty_optstr", char, null, [ ord('\0') ]);
 const duplicate = static_var("duplicate", schar); const using_alias = static_var("using_alias", schar);
@@ -229,9 +181,6 @@ const perminv_modes = static_array("perminv_modes", array_of(ptr_to(char), 3), n
   /*3*/ [ 0,        0,         0 ],
   /*4*/ [ 0,        0,         0 ],
 
-
-
-
   /*5*/ [ 0,        0,         0 ],
   /*6*/ [ 0,        0,         0 ],
 
@@ -339,96 +288,14 @@ const default_menu_cmd_info = static_array("default_menu_cmd_info", menu_cmd_t, 
 
 const n_currently_set = init_string(static_array("n_currently_set", char, sizeof_string("(%d currently set)")), _("(%d currently set)"), true);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* next few are not allopt[] entries, so will only be called
    directly from doset, not from individual optfn's */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ask user if they want a tutorial, except if tutorial boolean option has
    been set in config - either on or off - in which case just obey that
    setting without asking */
-export function /* boolean */
-ask_do_tutorial()
-{ const $frame = stack_frame(); try {
+export function ask_do_tutorial() { /* boolean */
+    const $frame = stack_frame(); try {
     let dotut = flags.tutorial;
 
     if (!chars[opt_set_in_config + opt_tutorial]) {
@@ -469,14 +336,15 @@ ask_do_tutorial()
             destroy_nhwindow()(win);
         } while (!n);
         if (n > 0) {
-            dotut = (+(ptr_add(sel[0], 0).item.a_char == ord('y')));
+            dotut = +(ptr_add(sel[0], 0).item.a_char == ord('y'));
             free(addr_of(sel[0]));
         } else { /* ESC */
             dotut = FALSE;
         }
     }
     return dotut;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  **********************************
@@ -485,16 +353,13 @@ ask_do_tutorial()
  *
  **********************************
  */
-export function /* boolean */
-parseoptions(
+export function parseoptions(
     opts,
     tinitial,
-    tfrom_file)
-{ const $frame = stack_frame(); try {
+    tfrom_file) { /* boolean */
+    const $frame = stack_frame(); try {
     let op;
     let negated, got_match = FALSE, pfx_match = FALSE;
-
-
 
     let i, matchidx = -1, optresult = optn_err, optlen, optlen_wo_val;
     let retval = TRUE;
@@ -521,7 +386,7 @@ parseoptions(
     }
     if (strlen(opts) > Math.trunc(BUFSZ / 2)) {
         config_error_add(_("Option too long, max length is %i characters"),
-                         (Math.trunc(BUFSZ / 2)));
+                         Math.trunc(BUFSZ / 2));
         return FALSE;
     }
 
@@ -544,14 +409,7 @@ parseoptions(
     optlen = int(strlen(opts));
     optlen_wo_val = length_without_val(opts, optlen);
     if (optlen_wo_val < optlen) {
-
-
-
         optlen = optlen_wo_val;
-
-
-
-
     }
 
     for (i = 0; i < OPTCOUNT; ++i) {
@@ -563,11 +421,6 @@ parseoptions(
                 got_match = pfx_match = TRUE;
             }
         }
-
-
-
-
-
 
         /*
          * During option initialization, the function
@@ -644,19 +497,7 @@ parseoptions(
     if (program_state.in_parseoptions > 0)
         program_state.in_parseoptions--;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     if (!got_match) {
         /* Is it a symbol? */
@@ -688,11 +529,10 @@ parseoptions(
     /* out of valid options */
     config_error_add(_("Unknown option '%s'"), opts);
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-check_misc_menu_command(opts, op)
-{
+function check_misc_menu_command(opts, op) { /* int */
     let i;
     let name_to_check;
 
@@ -711,9 +551,7 @@ const roleopt2opt = static_array("roleopt2opt", int, 4, [
 ]);
 
 /* role => 0, race => 1, gender => 2, alignment =>3 */
-function /* int */
-opt2roleopt(roleopt)
-{
+function opt2roleopt(roleopt) { /* int */
     switch (roleopt) {
     case opt_role:
         return 0;
@@ -730,9 +568,7 @@ opt2roleopt(roleopt)
 }
 
 /* fetch saved option string for a particular option phase */
-function /* char * */
-getoptstr(optidx, ophase)
-{
+function getoptstr(optidx, ophase) { /* char * */
     let roleoptindx = opt2roleopt(optidx);
 
     if (ophase == num_opt_phases) { /* any source */
@@ -754,9 +590,7 @@ getoptstr(optidx, ophase)
 }
 
 /* to track some unparsed option settings in case #saveoptions needs them */
-function /* void */
-saveoptstr(optidx, optstr)
-{
+function saveoptstr(optidx, optstr) { /* void */
     let phase = int(go.opt_phase), roleoptindx = opt2roleopt(optidx);
     let p = strchr(optstr, ord(':')), q = strchr(optstr, ord('='));
 
@@ -772,9 +606,7 @@ saveoptstr(optidx, optstr)
 }
 
 /* discard specific saved option string */
-function /* void */
-unsaveoptstr(optidx, ophase)
-{
+function unsaveoptstr(optidx, ophase) { /* void */
     let roleoptindx = opt2roleopt(optidx);
 
     if (roleoptvals[roleoptindx][ophase])
@@ -783,9 +615,7 @@ unsaveoptstr(optidx, ophase)
 }
 
 /* discard all saved option strings */
-export function /* void */
-freeroleoptvals()
-{
+export function freeroleoptvals() { /* void */
     let i, j;
 
     for (i = 0; i < 4; ++i)
@@ -793,63 +623,14 @@ freeroleoptvals()
             unsaveoptstr(roleopt2opt[i], j);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* common to optfn_catname(), optfn_dogname(), optfn_horsename() */
-function /* int */
-petname_optfn(
+function petname_optfn(
     optidx, req,
     negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     let failsafe = stack_array(char, PL_PSIZ + 1);
     let petname = (optidx == opt_catname) ? gc.catname
                     : (optidx == opt_dogname) ? gd.dogname
@@ -867,11 +648,12 @@ petname_optfn(
         sanitize_name(petname);
     } else if (req == get_val || req == get_cnf_val) {
         chars[failsafe + 0] = ord('\0');
-        void sprintf(opts, _("%s"), chars[petname] ? petname
+        sprintf(opts, _("%s"), chars[petname] ? petname
                             : (req == get_cnf_val) ? _("none") : none);
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  **********************************
@@ -881,14 +663,14 @@ petname_optfn(
  **********************************
  */
 
-function /* int */
-optfn_alignment(
+function optfn_alignment(
     optidx,
     req,
     negated,
     opts,
-    op$)
-{ const $frame = stack_frame(); try { const op = stack_var(ptr_to(char), op$);
+    op$) { /* int */
+    const $frame = stack_frame(); try {
+    const op = stack_var(ptr_to(char), op$);
     if (req == do_init) {
         return optn_ok;
     }
@@ -902,28 +684,26 @@ optfn_alignment(
                 config_error_add(_("Unknown %s '%s'"), allopt[optidx].name, op[0]);
                 return optn_err;
             }
-            saveoptstr(optidx, ((((flags.initalign >= 0)) ? aligns[flags.initalign].adj : (((flags.initalign == ROLE_RANDOM)) ? randomrole : none))));
+            saveoptstr(optidx, ((flags.initalign >= 0) ? aligns[flags.initalign].adj : ((flags.initalign == ROLE_RANDOM) ? randomrole : none)));
         }
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), ((((flags.initalign >= 0)) ? aligns[flags.initalign].adj : (((flags.initalign == ROLE_RANDOM)) ? randomrole : none))));
+        sprintf(opts, _("%s"), ((flags.initalign >= 0) ? aligns[flags.initalign].adj : ((flags.initalign == ROLE_RANDOM) ? randomrole : none)));
         return optn_ok;
     }
     if (req == get_cnf_val) {
         op[0] = get_cnf_role_opt(optidx);
-        void strcpy(opts, op[0] ? op[0] : _("none"));
+        strcpy(opts, op[0] ? op[0] : _("none"));
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* int */
-optfn_align_message(
+function optfn_align_message(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -955,7 +735,7 @@ optfn_align_message(
         let which;
 
         which = iflags.wc_align_message;
-        void sprintf(opts, _("%s"), (which == ALIGN_TOP) ? _("top")
+        sprintf(opts, _("%s"), (which == ALIGN_TOP) ? _("top")
                 : (which == ALIGN_LEFT) ? _("left")
                   : (which == ALIGN_BOTTOM) ? _("bottom")
                     : (which == ALIGN_RIGHT) ? _("right")
@@ -969,11 +749,9 @@ optfn_align_message(
     return optn_ok;
 }
 
-function /* int */
-optfn_align_status(
+function optfn_align_status(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1004,7 +782,7 @@ optfn_align_status(
         let which;
 
         which = iflags.wc_align_status;
-        void sprintf(opts, _("%s"), (which == ALIGN_TOP) ? _("top")
+        sprintf(opts, _("%s"), (which == ALIGN_TOP) ? _("top")
                 : (which == ALIGN_LEFT) ? _("left")
                   : (which == ALIGN_BOTTOM) ? _("bottom")
                     : (which == ALIGN_RIGHT) ? _("right")
@@ -1018,58 +796,38 @@ optfn_align_status(
     return optn_ok;
 }
 
-function /* int */
-optfn_altkeyhandling(
+function optfn_altkeyhandling(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
         /* altkeyhandling:string */
 
-
-
-
-
-
-        (void (negated));
-        (void (op));
+        (negated);
+        (op);
 
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
         chars[opts + 0] = ord('\0');
 
-
-
-
-
-
-
-
         return optn_ok;
     }
-
-
-
-
 
     return optn_ok;
 }
 
-function /* int */
-optfn_autounlock(
+function optfn_autounlock(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         flags.autounlock = AUTOUNLOCK_APPLY_KEY;
         return optn_ok;
@@ -1144,20 +902,20 @@ optfn_autounlock(
     }
     if (req == get_val || req == get_cnf_val) {
         if (!flags.autounlock) {
-            void strcpy(opts, _("none"));
+            strcpy(opts, _("none"));
         } else {
             let plus = init_string(static_array("optfn_autounlock.plus", char, sizeof_string(" + ")), _(" + "), true);
             let p = _("");
 
             chars[opts] = ord('\0');
             if (flags.autounlock & AUTOUNLOCK_UNTRAP)
-                void sprintf(eos(opts), _("%s%s"), p, unlocktypes[0][0]), p = plus;
+                sprintf(eos(opts), _("%s%s"), p, unlocktypes[0][0]), p = plus;
             if (flags.autounlock & AUTOUNLOCK_APPLY_KEY)
-                void sprintf(eos(opts), _("%s%s"), p, unlocktypes[1][0]), p = plus;
+                sprintf(eos(opts), _("%s%s"), p, unlocktypes[1][0]), p = plus;
             if (flags.autounlock & AUTOUNLOCK_KICK)
-                void sprintf(eos(opts), _("%s%s"), p, unlocktypes[2][0]), p = plus;
+                sprintf(eos(opts), _("%s%s"), p, unlocktypes[2][0]), p = plus;
             if (flags.autounlock & AUTOUNLOCK_FORCE)
-                void sprintf(eos(opts), _("%s%s"), p, unlocktypes[3][0]); /*no more p*/
+                sprintf(eos(opts), _("%s%s"), p, unlocktypes[3][0]); /*no more p*/
         }
         return optn_ok;
     }
@@ -1167,22 +925,16 @@ optfn_autounlock(
     return optn_ok;
 }
 
-function /* int */
-optfn_boulder(
+function optfn_boulder(
     optidx, req, negated,
-    opts, op)
-{
-
+    opts, op) { /* int */
     let clash = 0;
-
 
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
         /* boulder:symbol */
-
-
 
         /* if ((opts = string_for_env_opt(allopt[optidx].name, opts, FALSE))
                == empty_optstr)
@@ -1226,16 +978,11 @@ optfn_boulder(
             }
         }
         return optn_ok;
-
-
-
-
-
     }
     if (req == get_val || req == get_cnf_val) {
         chars[opts + 0] = ord('\0');
 
-        void sprintf(opts, _("%c"), uchars[go.ov_primary_syms + (SYM_BOULDER + SYM_OFF_X)]
+        sprintf(opts, _("%c"), uchars[go.ov_primary_syms + (SYM_BOULDER + SYM_OFF_X)]
                   ? uchars[go.ov_primary_syms + (SYM_BOULDER + SYM_OFF_X)]
                   : uchars[gs.showsyms + ((objects[BOULDER].oc_class) + SYM_OFF_O)])
 ;
@@ -1245,21 +992,16 @@ optfn_boulder(
     return optn_ok;
 }
 
-function /* int */
-optfn_catname(
+function optfn_catname(
     optidx, req,
     negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return petname_optfn(optidx, req, negated, opts, op);
 }
 
-
-function /* int */
-optfn_crash_email(
+function optfn_crash_email(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1275,17 +1017,15 @@ optfn_crash_email(
         if (!opts)
             return optn_err;
         if (gc.crash_email)
-            void sprintf(opts, _("%s"), gc.crash_email);
+            sprintf(opts, _("%s"), gc.crash_email);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_crash_name(
+function optfn_crash_name(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1301,17 +1041,15 @@ optfn_crash_name(
         if (!opts)
             return optn_err;
         if (gc.crash_name)
-            void sprintf(opts, _("%s"), gc.crash_name);
+            sprintf(opts, _("%s"), gc.crash_name);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_crash_urlmax(
+function optfn_crash_urlmax(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1332,79 +1070,24 @@ optfn_crash_urlmax(
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, _("%d"), gc.crash_urlmax);
+        sprintf(opts, _("%d"), gc.crash_urlmax);
         return optn_ok;
     }
     return optn_ok;
 }
 
+/* #ifdef CURSES_GRAPHICS: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-optfn_DECgraphics(
+function optfn_DECgraphics(
     optidx, req, negated,
-    opts, op)
-{
-
+    opts, op) { /* int */
     let badflag = FALSE;
-
 
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
         /* "DECgraphics" */
-
 
         if (!negated) {
             /* There is no rogue level DECgraphics-specific set */
@@ -1425,11 +1108,6 @@ optfn_DECgraphics(
             }
         }
         return optn_ok;
-
-
-
-
-
     }
     if (req == get_val || req == get_cnf_val) {
         chars[opts + 0] = ord('\0');
@@ -1438,11 +1116,9 @@ optfn_DECgraphics(
     return optn_ok;
 }
 
-function /* int */
-optfn_disclose(
+function optfn_disclose(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let i, idx, prefix_val;
     let num;
 
@@ -1483,9 +1159,9 @@ optfn_disclose(
         }
         /* "disclose" without a value means "all with prompting"
            and negated means "none without prompting" */
-        if (op == empty_optstr || !strcmpi(op, _("all"))
-            || !strcmpi(op, _("none"))) {
-            if (op != empty_optstr && !strcmpi(op, _("none")))
+        if (op == empty_optstr || !strncmpi((op), _(("all")), -1)
+            || !strncmpi((op), _(("none")), -1)) {
+            if (op != empty_optstr && !strncmpi((op), _(("none")), -1))
                 negated = TRUE;
             for (num = 0; num < NUM_DISCLOSURE_OPTIONS; num++)
                 chars[flags.end_disclose + num] = negated
@@ -1547,9 +1223,9 @@ optfn_disclose(
         chars[opts + 0] = ord('\0');
         for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
             if (i)
-                void strkitten(opts, ord(' '));
-            void strkitten(opts, chars[flags.end_disclose + i]);
-            void strkitten(opts, chars[disclosure_options + i]);
+                strkitten(opts, ord(' '));
+            strkitten(opts, chars[flags.end_disclose + i]);
+            strkitten(opts, chars[disclosure_options + i]);
         }
         return optn_ok;
     }
@@ -1559,20 +1235,16 @@ optfn_disclose(
     return optn_ok;
 }
 
-function /* int */
-optfn_dogname(
+function optfn_dogname(
     optidx, req,
     negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return petname_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_dungeon(
+function optfn_dungeon(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1580,7 +1252,7 @@ optfn_dungeon(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), to_be_done);
+        sprintf(opts, _("%s"), to_be_done);
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -1590,11 +1262,9 @@ optfn_dungeon(
     return optn_ok;
 }
 
-function /* int */
-optfn_effects(
+function optfn_effects(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1602,7 +1272,7 @@ optfn_effects(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), to_be_done);
+        sprintf(opts, _("%s"), to_be_done);
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -1612,108 +1282,87 @@ optfn_effects(
     return optn_ok;
 }
 
-function /* int */
-optfn_font_map(
+function optfn_font_map(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_menu(
+function optfn_font_menu(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_message(
+function optfn_font_message(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_size_map(
+function optfn_font_size_map(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_size_menu(
+function optfn_font_size_menu(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_size_message(
+function optfn_font_size_message(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_size_status(
+function optfn_font_size_status(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_size_text(
+function optfn_font_size_text(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_status(
+function optfn_font_status(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_font_text(
+function optfn_font_text(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     /* send them over to the prefix handling for font_ */
     return pfxfn_font(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_fruit(
+function optfn_fruit(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     var forig = null;
 
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
-        op = string_for_opt(opts, ((negated || !go.opt_initial) ? 1 : 0));
+        op = string_for_opt(opts, (negated || !go.opt_initial ? 1 : 0));
         goodfruit: { if (negated) {
             if (op != empty_optstr) {
                 bad_negation(_("fruit"), TRUE);
@@ -1755,7 +1404,7 @@ optfn_fruit(
             /* if 'forig' is nonNull, we replace it rather than add
                a new fruit; it can only be nonNull if no fruits have
                been created since the previous name was put in place */
-            void fruitadd(svp.pl_fruit, forig);
+            fruitadd(svp.pl_fruit, forig);
             if (give_opt_msg[0])
                 pline(_("Fruit is now \"%s\"."), svp.pl_fruit);
         }
@@ -1767,20 +1416,21 @@ optfn_fruit(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), svp.pl_fruit);
+        sprintf(opts, _("%s"), svp.pl_fruit);
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_gender(
+function optfn_gender(
     optidx,
     req,
     negated,
     opts,
-    op$)
-{ const $frame = stack_frame(); try { const op = stack_var(ptr_to(char), op$);
+    op$) { /* int */
+    const $frame = stack_frame(); try {
+    const op = stack_var(ptr_to(char), op$);
     if (req == do_init) {
         return optn_ok;
     }
@@ -1795,27 +1445,27 @@ optfn_gender(
                 return optn_err;
             }
             flags.female = flags.initgend;
-            saveoptstr(optidx, ((((flags.initgend >= 0)) ? genders[flags.initgend].adj : (((flags.initgend == ROLE_RANDOM)) ? randomrole : none))));
+            saveoptstr(optidx, ((flags.initgend >= 0) ? genders[flags.initgend].adj : ((flags.initgend == ROLE_RANDOM) ? randomrole : none)));
         }
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), ((((flags.initgend >= 0)) ? genders[flags.initgend].adj : (((flags.initgend == ROLE_RANDOM)) ? randomrole : none))));
+        sprintf(opts, _("%s"), ((flags.initgend >= 0) ? genders[flags.initgend].adj : ((flags.initgend == ROLE_RANDOM) ? randomrole : none)));
         return optn_ok;
     }
     if (req == get_cnf_val) {
         op[0] = get_cnf_role_opt(optidx);
-        void strcpy(opts, op[0] ? op[0] : _("none"));
+        strcpy(opts, op[0] ? op[0] : _("none"));
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_glyph(
+function optfn_glyph(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     let glyph = stack_var(int);
 
     if (req == do_init) {
@@ -1838,7 +1488,7 @@ optfn_glyph(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), to_be_done);
+        sprintf(opts, _("%s"), to_be_done);
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -1846,16 +1496,15 @@ optfn_glyph(
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_hilite_status(
+function optfn_hilite_status(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -1873,18 +1522,12 @@ optfn_hilite_status(
         if (!parse_status_hl1(op, go.opt_from_file))
             return optn_err;
         return optn_ok;
-
-
-
-
-
-
     }
     if (req == get_val || req == get_cnf_val) {
         chars[opts + 0] = ord('\0');
 
         if (req == get_val)
-            void strcpy(opts, count_status_hilites()
+            strcpy(opts, count_status_hilites()
                      ? _("(see \"status highlight rules\" below)")
                      : _("(none)"));
 
@@ -1893,33 +1536,25 @@ optfn_hilite_status(
     return optn_ok;
 }
 
-function /* int */
-optfn_horsename(
+function optfn_horsename(
     optidx,
     req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return petname_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_IBMgraphics(
+function optfn_IBMgraphics(
     optidx, req, negated,
-    opts, op)
-{
-
+    opts, op) { /* int */
     let sym_name = allopt[optidx].name;
     let badflag = FALSE;
     let i;
-
 
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
         /* "IBMgraphics" */
-
-
 
         if (!negated) {
             for (i = 0; i < NUM_GRAPHICS; ++i) {
@@ -1946,11 +1581,6 @@ optfn_IBMgraphics(
             }
         }
         return optn_ok;
-
-
-
-
-
     }
     if (req == get_val || req == get_cnf_val) {
         chars[opts + 0] = ord('\0');
@@ -1959,11 +1589,9 @@ optfn_IBMgraphics(
     return optn_ok;
 }
 
-function /* int */
-optfn_map_mode(
+function optfn_map_mode(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let i;
 
     if (req == do_init) {
@@ -1980,7 +1608,7 @@ optfn_map_mode(
         if (op != empty_optstr && !negated) {
             let save_map_mode = iflags.wc_map_mode;
 
-            if (!strcmpi(op, _("tiles")))
+            if (!strncmpi((op), _(("tiles")), -1))
                 iflags.wc_map_mode = MAP_MODE_TILES;
             else if (!strncmpi(op, _("ascii4x6"), sizeof_string("ascii4x6") - 1))
                 iflags.wc_map_mode = MAP_MODE_ASCII4x6;
@@ -2027,7 +1655,7 @@ optfn_map_mode(
     }
     if (req == get_val || req == get_cnf_val) {
         i = iflags.wc_map_mode;
-        void sprintf(opts, _("%s"), (i == MAP_MODE_TILES) ? _("tiles")
+        sprintf(opts, _("%s"), (i == MAP_MODE_TILES) ? _("tiles")
                 : (i == MAP_MODE_ASCII4x6) ? _("ascii4x6")
                   : (i == MAP_MODE_ASCII6x8) ? _("ascii6x8")
                     : (i == MAP_MODE_ASCII8x8) ? _("ascii8x8")
@@ -2048,10 +1676,8 @@ optfn_map_mode(
 
 /* all the key assignment options for menu_* commands are identical
    but optlist.h treats them as distinct rather than sharing one */
-function /* int */
-shared_menu_optfn(optidx, req, negated,
-                   opts, op)
-{
+function shared_menu_optfn(optidx, req, negated,
+                   opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -2063,7 +1689,7 @@ shared_menu_optfn(optidx, req, negated,
         return spcfn_misc_menu_cmd(res, req, negated, opts, op);
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), to_be_done);
+        sprintf(opts, _("%s"), to_be_done);
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -2073,118 +1699,91 @@ shared_menu_optfn(optidx, req, negated,
     return optn_ok;
 }
 
-function /* int */
-optfn_menu_deselect_all(
+function optfn_menu_deselect_all(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_deselect_page(
+function optfn_menu_deselect_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_first_page(
+function optfn_menu_first_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_invert_all(
+function optfn_menu_invert_all(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_invert_page(
+function optfn_menu_invert_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_last_page(
+function optfn_menu_last_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_next_page(
+function optfn_menu_next_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_previous_page(
+function optfn_menu_previous_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_search(
+function optfn_menu_search(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_select_all(
+function optfn_menu_select_all(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_select_page(
+function optfn_menu_select_page(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_shift_left(
+function optfn_menu_shift_left(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
-function /* int */
-optfn_menu_shift_right(
+function optfn_menu_shift_right(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     return shared_menu_optfn(optidx, req, negated, opts, op);
 }
 
 /* end of shared key assignments for menu commands */
 
-function /* int */
-optfn_menu_headings(
+function optfn_menu_headings(
     optidx,
     req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     if (req == do_init) {
         return optn_ok;
     }
@@ -2209,24 +1808,23 @@ optfn_menu_headings(
     if (req == get_val || req == get_cnf_val) {
         let ca_buf = stack_array(char, BUFSZ);
 
-        void strcpy(ca_buf, color_attr_to_str(iflags.menu_headings));
+        strcpy(ca_buf, color_attr_to_str(iflags.menu_headings));
         /* change "no color" to "no-color" or "light blue" to "light-blue" */
-        void strNsubst(ca_buf, _(" "), _("-"), 0);
-        void strcpy(opts, ca_buf);
+        strNsubst(ca_buf, _(" "), _("-"), 0);
+        strcpy(opts, ca_buf);
         return optn_ok;
     }
     if (req == do_handler) {
         return handler_menu_headings();
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_menu_objsyms(
+function optfn_menu_objsyms(
     optidx, req,
     negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         /* set iflags.menu_objsyms to 4, "conditional"; also sets
            iflags.menu_head_objsym to False and
@@ -2277,7 +1875,7 @@ optfn_menu_objsyms(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), objsymvals[iflags.menuobjsyms].nam);
+        sprintf(opts, _("%s"), objsymvals[iflags.menuobjsyms].nam);
         return optn_ok;
     }
     if (req == do_handler) {
@@ -2286,12 +1884,10 @@ optfn_menu_objsyms(
     return optn_ok;
 }
 
-function /* int */
-optfn_menuinvertmode(
+function optfn_menuinvertmode(
     optidx, req,
     negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -2310,17 +1906,15 @@ optfn_menuinvertmode(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%d"), iflags.menuinvertmode);
+        sprintf(opts, _("%d"), iflags.menuinvertmode);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_menustyle(
+function optfn_menustyle(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let tmp;
     let val_required; /* no initializer based on opts because this can be
                              called with init and invalid opts and op */
@@ -2331,7 +1925,7 @@ optfn_menustyle(
     if (req == do_set) {
         /* menustyle:traditional or combination or full or partial */
 
-        val_required = (+(strlen(opts) > 5 && !negated));
+        val_required = +(strlen(opts) > 5 && !negated);
         if ((op = string_for_opt(opts, +!val_required)) == empty_optstr) {
             if (val_required)
                 return optn_err; /* string_for_opt gave feedback */
@@ -2365,7 +1959,7 @@ optfn_menustyle(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), menutype[flags.menu_style][0]);
+        sprintf(opts, _("%s"), menutype[flags.menu_style][0]);
         return optn_ok;
     }
     if (req == do_handler) {
@@ -2374,11 +1968,9 @@ optfn_menustyle(
     return optn_ok;
 }
 
-function /* int */
-optfn_monsters(
+function optfn_monsters(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -2392,19 +1984,17 @@ optfn_monsters(
     return optn_ok;
 }
 
-function /* int */
-optfn_mouse_support(
+function optfn_mouse_support(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let compat;
 
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
-        compat = (+(strlen(opts) <= 13));
-        op = string_for_opt(opts, (((compat || !go.opt_initial) ? 1 : 0)));
+        compat = +(strlen(opts) <= 13);
+        op = string_for_opt(opts, (compat || !go.opt_initial ? 1 : 0));
         if (op == empty_optstr) {
             if (compat || negated || go.opt_initial) {
                 /* for backwards compatibility, "mouse_support" without a
@@ -2425,46 +2015,33 @@ optfn_mouse_support(
         return optn_ok;
     }
     if (req == get_val) {
-
-
-
-
-
-
-
         let mousemodes = static_array("optfn_mouse_support.mousemodes", array_of(ptr_to(char), 2), null, [
             [ _("0=off"), _("") ],
             [ _("1=on"),  _(MOUSEFIX1) ],
             [ _("2=on"),  _(MOUSEFIX2) ],
         ]);
 
-
         let ms = iflags.wc_mouse_support;
 
         if (ms >= 0 && ms <= 2)
-            void sprintf(opts, _("%s%s"), mousemodes[ms][0], mousemodes[ms][1]);
+            sprintf(opts, _("%s%s"), mousemodes[ms][0], mousemodes[ms][1]);
         return optn_ok;
     }
     if (req == get_cnf_val) {
-        void sprintf(opts, _("%i"), iflags.wc_mouse_support);
+        sprintf(opts, _("%i"), iflags.wc_mouse_support);
         return optn_ok;
     }
     return optn_ok;
-} export const MOUSEFIX1 = ", O/S adjusted"; export const MOUSEFIX2 = ", O/S unchanged";
+}
+export const MOUSEFIX1 = ", O/S adjusted";
+export const MOUSEFIX2 = ", O/S unchanged";
 
-function /* int */
-optfn_msg_window(
+function optfn_msg_window(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let retval = optn_ok;
 
     let tmp;
-
-
-
-
-
 
     if (req == do_init) {
         return optn_ok;
@@ -2502,11 +2079,11 @@ optfn_msg_window(
         chars[opts + 0] = ord('\0');
 
         tmp = iflags.prevmsg_window;
-        if (((windowprocs.wp_id == wp_curses))) {
+        if ((windowprocs.wp_id == wp_curses)) {
             if (tmp == ord('s') || tmp == ord('c'))
                 tmp = iflags.prevmsg_window = ord('r');
         }
-        void sprintf(opts, _("%s"), (tmp == ord('s')) ? _("single")
+        sprintf(opts, _("%s"), (tmp == ord('s')) ? _("single")
                             : (tmp == ord('c')) ? _("combination")
                               : (tmp == ord('f')) ? _("full")
                                 : _("reversed"));
@@ -2519,11 +2096,9 @@ optfn_msg_window(
     return optn_ok;
 }
 
-function /* int */
-optfn_msghistory(
+function optfn_msghistory(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -2539,17 +2114,15 @@ optfn_msghistory(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%u"), iflags.msg_history);
+        sprintf(opts, _("%u"), iflags.msg_history);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_name(
+function optfn_name(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -2564,25 +2137,23 @@ optfn_name(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), svp.plname);
+        sprintf(opts, _("%s"), svp.plname);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_number_pad(
+function optfn_number_pad(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let compat;
 
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
-        compat = (+(strlen(opts) <= 10));
-        op = string_for_opt(opts, (((compat || !go.opt_initial) ? 1 : 0)));
+        compat = +(strlen(opts) <= 10);
+        op = string_for_opt(opts, (compat || !go.opt_initial ? 1 : 0));
         if (op == empty_optstr) {
             if (compat || negated || go.opt_initial) {
                 /* for backwards compatibility, "number_pad" without a
@@ -2603,7 +2174,7 @@ optfn_number_pad(
             } else if (mode <= 0) {
                 iflags.num_pad = FALSE;
                 /* German keyboard; y and z keys swapped */
-                iflags.num_pad_mode = (+(mode < 0)); /* 0 or 1 */
+                iflags.num_pad_mode = +(mode < 0); /* 0 or 1 */
             } else {                              /* mode > 0 */
                 iflags.num_pad = TRUE;
                 iflags.num_pad_mode = 0;
@@ -2632,9 +2203,9 @@ optfn_number_pad(
                        : gc.Cmd.swap_yz ? 5 : 0;
 
         if (req == get_val)
-            void strcpy(opts, numpadmodes[indx]);
+            strcpy(opts, numpadmodes[indx]);
         else {
-            void sprintf(opts, _("%i"), (indx == 5) ? -1 : indx);
+            sprintf(opts, _("%i"), (indx == 5) ? -1 : indx);
         }
         return optn_ok;
     }
@@ -2644,11 +2215,9 @@ optfn_number_pad(
     return optn_ok;
 }
 
-function /* int */
-optfn_objects(
+function optfn_objects(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -2656,7 +2225,7 @@ optfn_objects(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), to_be_done);
+        sprintf(opts, _("%s"), to_be_done);
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -2666,11 +2235,10 @@ optfn_objects(
     return optn_ok;
 }
 
-function /* int */
-optfn_packorder(
+function optfn_packorder(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     if (req == do_init) {
         return optn_ok;
     }
@@ -2685,140 +2253,20 @@ optfn_packorder(
         let ocl = stack_array(char, MAXOCLASSES + 1);
 
         oc_to_str(flags.inv_order, ocl);
-        void sprintf(opts, _("%s"), ocl);
+        sprintf(opts, _("%s"), ocl);
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef CHANGE_COLOR: not in this build */
 
 /* for "paranoid_confirmation:foo" and alias "[!]prayconfirm" */
-function /* int */
-optfn_paranoid_confirmation(
+function optfn_paranoid_confirmation(
     optidx, req, opt_negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     let fld_negated;
     let i;
     /*
@@ -2883,7 +2331,7 @@ optfn_paranoid_confirmation(
 
             /* convert prayconfirm to paranoid_confirm:+pray and
                !prayconfirm to paranoid_confirm:-pray */
-            void sprintf(prayconfirm, _("%cpray"), opt_negated ? ord('-') : ord('+'));
+            sprintf(prayconfirm, _("%cpray"), opt_negated ? ord('-') : ord('+'));
             op = prayconfirm;
             /* possibly changing !prayconfirm to paranoid_confirm:-pray
                which clears a paranoia bit but isn't a negated option */
@@ -2891,7 +2339,6 @@ optfn_paranoid_confirmation(
         /*
          * end of 'prayconfirm' processing
          */
-
         } else if (opt_negated) {
             /* "!paranoid_confirm" w/o args is same as paranoid_confirm:none;
                "!paranoid_confirm:anything" is disallowed */
@@ -2941,20 +2388,20 @@ optfn_paranoid_confirmation(
          * paranoid_confirm:-all is the same as paranoid_confirm:none;
          * paranoid_confirm:+none and paranoid_confirm:-none are no-ops.
          */
-        void mungspaces(op);
+        mungspaces(op);
         if (chars[op] != ord('+') && chars[op] != ord('-')) {
             /* new value; first clear all old bits */
             flags.paranoia_bits = 0;
         } else {
             /* augmenting existing value; keep old bits */
             plus_or_minus = TRUE; /* only used for "+none" and "-none" */
-            opt_negated = (+(chars[op] == ord('-'))); /* context is changed */
+            opt_negated = +(chars[op] == ord('-')); /* context is changed */
             if (chars[++op] == ord(' ')) /* skip '+' or '-', maybe whitespace */
                 ++op;
         }
 
         for (;;) {
-            fld_negated = (+(chars[op] == ord('!')));
+            fld_negated = +(chars[op] == ord('!'));
             if (fld_negated) {
                 /* there shouldn't be a space after '!' because then
                    "! foo bar" looks like it might be intended to mean
@@ -3033,34 +2480,24 @@ optfn_paranoid_confirmation(
         }
         /* note: always leaves enough room for caller to tack on '\n' */
         chars[opts + 0] = ord('\0');
-        void strncat(opts, chars[tmpbuf + 0] ? tmpbuf + 1 : _("none"), BUFSZ - 1);
+        strncat(opts, chars[tmpbuf + 0] ? tmpbuf + 1 : _("none"), BUFSZ - 1);
         return optn_ok;
     }
     if (req == do_handler) {
         return handler_paranoid_confirmation();
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_perminv_mode(
+function optfn_perminv_mode(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let old_perm_invent = iflags.perm_invent;
     let old_perminv_mode = iflags.perminv_mode;
     let retval = optn_ok;
 
     if (req == do_init) {
-
-
-
-
-
-
-
-
-
         return optn_ok;
     } else if (req == do_set) {
         op = string_for_opt(opts, negated);
@@ -3078,8 +2515,7 @@ optfn_perminv_mode(
                 pi1 = perminv_modes[i][1];
                 if (!strncmpi(op, pi0, int(ln)) || !strncmpi(op, pi1, int(ln))
                     || chars[op + 0] == i + ord('0')) { /* also accept '0'..'8' */
-
-                    if (strstri(pi0, _("+grid")) && !((windowprocs.wp_id == wp_tty))) {
+                    if (strstri(pi0, _("+grid")) && !(windowprocs.wp_id == wp_tty)) {
                         i &= ~InvSparse;
                         config_error_add(
                           _("%s: unavailable perm_invent mode '%s', using '%s'"),
@@ -3114,7 +2550,7 @@ optfn_perminv_mode(
     } else if (req == get_val) {
         /* value shown when examining current option settings; enclosed
            within square brackets for 'O', shown as-is when setting value */
-        void sprintf(opts, _("%s"), perminv_modes[iflags.perminv_mode][2]);
+        sprintf(opts, _("%s"), perminv_modes[iflags.perminv_mode][2]);
         if (iflags.perminv_mode != InvOptNone && !iflags.perm_invent
             /* 'op' is Null when called by handler_perminv_mode() while
                setting, non-Null when 'm O' shows current option values */
@@ -3122,23 +2558,21 @@ optfn_perminv_mode(
             /* perminv_mode is set but isn't useful because perm_invent is
                Off; say so after squeezing out enough for it to barely fit */
             if (iflags.perminv_mode == InvOptInUse)
-                void strsubst(opts, _(" currently"), _(""));
+                strsubst(opts, _(" currently"), _(""));
             else
-                void strsubst(opts, _(" inventory"), _(" invent"));
-            void strcat(opts, (((iflags.perminv_mode & InvSparse) != 0) ? _(" (Off)")
+                strsubst(opts, _(" inventory"), _(" invent"));
+            strcat(opts, (((iflags.perminv_mode & InvSparse) != 0) ? _(" (Off)")
                           : _(" ('perm_invent' is Off)")));
         }
     } else if (req == get_cnf_val) {
-        void sprintf(opts, _("%s"), perminv_modes[iflags.perminv_mode][0]);
+        sprintf(opts, _("%s"), perminv_modes[iflags.perminv_mode][0]);
     }
     return retval;
 }
 
-function /* int */
-optfn_petattr(
+function optfn_petattr(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let retval = optn_ok;
 
     if (req == do_init) {
@@ -3152,7 +2586,6 @@ optfn_petattr(
             bad_negation(allopt[optidx].name, TRUE);
             retval = optn_err;
         } else if (op != empty_optstr) {
-
             let itmp = match_str2attr(op, FALSE);
 
             if (itmp == -1) {
@@ -3161,31 +2594,27 @@ optfn_petattr(
                 retval = optn_err;
             } else
                 iflags.wc2_petattr = itmp;
-
-
-
         } else if (negated) {
             iflags.wc2_petattr = ATR_NONE;
         }
         if (retval != optn_err) {
-            iflags.wc_hilite_pet = (+(iflags.wc2_petattr != ATR_NONE));
+            iflags.wc_hilite_pet = +(iflags.wc2_petattr != ATR_NONE);
             if (!go.opt_initial)
                 go.opt_need_redraw = TRUE;
         }
         return retval;
     }
     if (req == get_val || req == get_cnf_val) {
-
-        if (((windowprocs.wp_id == wp_tty)) || ((windowprocs.wp_id == wp_curses))) {
-            void strcpy(opts, attr2attrname(iflags.wc2_petattr));
+        if ((windowprocs.wp_id == wp_tty) || (windowprocs.wp_id == wp_curses)) {
+            strcpy(opts, attr2attrname(iflags.wc2_petattr));
         } else
 
         if (iflags.wc2_petattr != 0)
-            void sprintf(opts, _("0x%08x"), iflags.wc2_petattr);
+            sprintf(opts, _("0x%08x"), iflags.wc2_petattr);
         else if (req == get_cnf_val)
             chars[opts + 0] = ord('\0');
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
     }
     if (req == do_handler) {
         return handler_petattr();
@@ -3193,11 +2622,9 @@ optfn_petattr(
     return optn_ok;
 }
 
-function /* int */
-optfn_pettype(
+function optfn_pettype(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3235,7 +2662,7 @@ optfn_pettype(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), (gp.preferred_pet == ord('c')) ? _("cat")
+        sprintf(opts, _("%s"), (gp.preferred_pet == ord('c')) ? _("cat")
                            : (gp.preferred_pet == ord('d')) ? _("dog")
                              : (gp.preferred_pet == ord('h')) ? _("horse")
                                : (gp.preferred_pet == ord('n')) ? _("none")
@@ -3244,7 +2671,7 @@ optfn_pettype(
     }
     if (req == get_cnf_val) {
         if (gp.preferred_pet)
-            void sprintf(opts, _("%c"), gp.preferred_pet);
+            sprintf(opts, _("%c"), gp.preferred_pet);
         else
             chars[opts + 0] = ord('\0');
         return optn_ok;
@@ -3252,11 +2679,9 @@ optfn_pettype(
     return optn_ok;
 }
 
-function /* int */
-optfn_pickup_burden(
+function optfn_pickup_burden(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3295,7 +2720,7 @@ optfn_pickup_burden(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), burdentype[flags.pickup_burden]);
+        sprintf(opts, _("%s"), burdentype[flags.pickup_burden]);
         return optn_ok;
     }
     if (req == do_handler) {
@@ -3304,16 +2729,15 @@ optfn_pickup_burden(
     return optn_ok;
 }
 
-function /* int */
-optfn_pickup_types(
+function optfn_pickup_types(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     let ocl = stack_array(char, MAXOCLASSES + 1), tbuf = stack_array(char, MAXOCLASSES + 1), qbuf = stack_array(char, QBUFSZ),
         abuf = stack_array(char, BUFSZ);
     let oc_sym;
     let num;
-    let badopt = FALSE, compat = (+(strlen(opts) <= 6)), use_menu;
+    let badopt = FALSE, compat = +(strlen(opts) <= 6), use_menu;
 
     if (req == do_init) {
         return optn_ok;
@@ -3323,7 +2747,7 @@ optfn_pickup_types(
 
         oc_to_str(flags.pickup_types, tbuf);
         chars[flags.pickup_types + 0] = ord('\0'); /* all */
-        op = string_for_opt(opts, (((compat || !go.opt_initial) ? 1 : 0)));
+        op = string_for_opt(opts, (compat || !go.opt_initial ? 1 : 0));
         if (op == empty_optstr) {
             if (compat || negated || go.opt_initial) {
                 /* for backwards compatibility, "pickup" without a
@@ -3339,11 +2763,11 @@ optfn_pickup_types(
                 let wasspace;
 
                 use_menu = FALSE;
-                void sprintf(qbuf, _("New %s: [%s am] (%s)"), allopt[optidx].name, ocl, chars[tbuf] ? tbuf : _("all"))
+                sprintf(qbuf, _("New %s: [%s am] (%s)"), allopt[optidx].name, ocl, chars[tbuf] ? tbuf : _("all"))
 ;
                 chars[abuf + 0] = ord('\0');
                 getlin(qbuf, abuf);
-                wasspace = (+(chars[abuf + 0] == ord(' '))); /* before mungspaces */
+                wasspace = +(chars[abuf + 0] == ord(' ')); /* before mungspaces */
                 op = mungspaces(abuf);
                 if (wasspace && !chars[abuf + 0])
                     ; /* one or more spaces will remove old value */
@@ -3357,7 +2781,7 @@ optfn_pickup_types(
             if (use_menu) {
                 if (wizard() && !strchr(ocl, VENOM_SYM))
                     strkitten(ocl, VENOM_SYM);
-                void choose_classes_menu(_("Autopickup what?"),
+                choose_classes_menu(_("Autopickup what?"),
                                            1, TRUE, ocl, tbuf);
                 op = tbuf;
             }
@@ -3391,20 +2815,19 @@ optfn_pickup_types(
     }
     if (req == get_val || req == get_cnf_val) {
         oc_to_str(flags.pickup_types, ocl);
-        void sprintf(opts, _("%s"), chars[ocl + 0] ? ocl : _("all"));
+        sprintf(opts, _("%s"), chars[ocl + 0] ? ocl : _("all"));
         return optn_ok;
     }
     if (req == do_handler) {
         return handler_pickup_types();
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_pile_limit(
+function optfn_pile_limit(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3428,17 +2851,15 @@ optfn_pile_limit(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%d"), flags.pile_limit);
+        sprintf(opts, _("%d"), flags.pile_limit);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_player_selection(
+function optfn_player_selection(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3460,18 +2881,16 @@ optfn_player_selection(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), iflags.wc_player_selection ? _("prompts") : _("dialog"))
+        sprintf(opts, _("%s"), iflags.wc_player_selection ? _("prompts") : _("dialog"))
 ;
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_playmode(
+function optfn_playmode(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3482,7 +2901,7 @@ optfn_playmode(
             return optn_err;
         if (op == empty_optstr)
             return optn_err;
-        if (!strncmpi(op, _("normal"), 6) || !strcmpi(op, _("play"))) {
+        if (!strncmpi(op, _("normal"), 6) || !strncmpi((op), _(("play")), -1)) {
             flags.debug = flags.explore = FALSE;
         } else if (!strncmpi(op, _("explore"), 6)
                    || !strncmpi(op, _("discovery"), 6)) {
@@ -3497,20 +2916,20 @@ optfn_playmode(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void strcpy(opts, wizard() ? _("debug") : discover() ? _("explore") : _("normal"));
+        strcpy(opts, wizard() ? _("debug") : discover() ? _("explore") : _("normal"));
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_race(
+function optfn_race(
     optidx,
     req,
     negated,
     opts,
-    op$)
-{ const $frame = stack_frame(); try { const op = stack_var(ptr_to(char), op$);
+    op$) { /* int */
+    const $frame = stack_frame(); try {
+    const op = stack_var(ptr_to(char), op$);
     if (req == do_init) {
         return optn_ok;
     }
@@ -3525,27 +2944,26 @@ optfn_race(
                 return optn_err;
             }
             gp.pl_race = chars[op[0]]; /* Backwards compatibility */
-            saveoptstr(optidx, ((((flags.initrace >= 0)) ? races[flags.initrace].noun : (((flags.initrace == ROLE_RANDOM)) ? randomrole : none))));
+            saveoptstr(optidx, ((flags.initrace >= 0) ? races[flags.initrace].noun : ((flags.initrace == ROLE_RANDOM) ? randomrole : none)));
         }
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), ((((flags.initrace >= 0)) ? races[flags.initrace].noun : (((flags.initrace == ROLE_RANDOM)) ? randomrole : none))));
+        sprintf(opts, _("%s"), ((flags.initrace >= 0) ? races[flags.initrace].noun : ((flags.initrace == ROLE_RANDOM) ? randomrole : none)));
         return optn_ok;
     }
     if (req == get_cnf_val) {
         op[0] = get_cnf_role_opt(optidx);
-        void strcpy(opts, op[0] ? op[0] : _("none"));
+        strcpy(opts, op[0] ? op[0] : _("none"));
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_roguesymset(
+function optfn_roguesymset(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3572,11 +2990,11 @@ optfn_roguesymset(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), gs.symset[ROGUESET].name ? gs.symset[ROGUESET].name
+        sprintf(opts, _("%s"), gs.symset[ROGUESET].name ? gs.symset[ROGUESET].name
                                          : _("default"))
 ;
         if (gc.currentgraphics == ROGUESET && gs.symset[ROGUESET].name)
-            void strcat(opts, _(", active"));
+            strcat(opts, _(", active"));
         return optn_ok;
     }
     if (req == do_handler) {
@@ -3585,14 +3003,14 @@ optfn_roguesymset(
     return optn_ok;
 }
 
-function /* int */
-optfn_role(
+function optfn_role(
     optidx,
     req,
     negated,
     opts,
-    op$)
-{ const $frame = stack_frame(); try { const op = stack_var(ptr_to(char), op$);
+    op$) { /* int */
+    const $frame = stack_frame(); try {
+    const op = stack_var(ptr_to(char), op$);
     if (req == do_init) {
         return optn_ok;
     }
@@ -3607,27 +3025,26 @@ optfn_role(
                 return optn_err;
             }
             nmcpy(svp.pl_character, op[0], PL_NSIZ); /* Backwards compat */
-            saveoptstr(optidx, ((((flags.initrole >= 0)) ? roles[flags.initrole].name.m : (((flags.initrole == ROLE_RANDOM)) ? randomrole : none))));
+            saveoptstr(optidx, ((flags.initrole >= 0) ? roles[flags.initrole].name.m : ((flags.initrole == ROLE_RANDOM) ? randomrole : none)));
         }
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), ((((flags.initrole >= 0)) ? roles[flags.initrole].name.m : (((flags.initrole == ROLE_RANDOM)) ? randomrole : none))));
+        sprintf(opts, _("%s"), ((flags.initrole >= 0) ? roles[flags.initrole].name.m : ((flags.initrole == ROLE_RANDOM) ? randomrole : none)));
         return optn_ok;
     }
     if (req == get_cnf_val) {
         op[0] = get_cnf_role_opt(optidx);
-        void strcpy(opts, op[0] ? op[0] : _("none"));
+        strcpy(opts, op[0] ? op[0] : _("none"));
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_runmode(
+function optfn_runmode(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3656,7 +3073,7 @@ optfn_runmode(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), runmodes[flags.runmode]);
+        sprintf(opts, _("%s"), runmodes[flags.runmode]);
         return optn_ok;
     }
     if (req == do_handler) {
@@ -3665,11 +3082,9 @@ optfn_runmode(
     return optn_ok;
 }
 
-function /* int */
-optfn_scores(
+function optfn_scores(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3745,25 +3160,23 @@ optfn_scores(
     if (req == get_val || req == get_cnf_val) {
         chars[opts] = ord('\0');
         if (flags.end_top > 0)
-            void sprintf(opts, _("%d top"), flags.end_top);
+            sprintf(opts, _("%d top"), flags.end_top);
         if (flags.end_around > 0)
-            void sprintf(eos(opts), _("%s%d around"), (flags.end_top > 0) ? _("/") : _(""), flags.end_around)
+            sprintf(eos(opts), _("%s%d around"), (flags.end_top > 0) ? _("/") : _(""), flags.end_around)
 ;
         if (flags.end_own)
-            void sprintf(eos(opts), _("%sown"), (flags.end_top > 0 || flags.end_around > 0) ? _("/") : _(""))
+            sprintf(eos(opts), _("%sown"), (flags.end_top > 0 || flags.end_around > 0) ? _("/") : _(""))
 ;
         if (!chars[opts])
-            void strcpy(opts, _("none"));
+            strcpy(opts, _("none"));
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_scroll_amount(
+function optfn_scroll_amount(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3782,19 +3195,17 @@ optfn_scroll_amount(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc_scroll_amount)
-            void sprintf(opts, _("%d"), iflags.wc_scroll_amount);
+            sprintf(opts, _("%d"), iflags.wc_scroll_amount);
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_scroll_margin(
+function optfn_scroll_margin(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -3812,19 +3223,18 @@ optfn_scroll_margin(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc_scroll_margin)
-            void sprintf(opts, _("%d"), iflags.wc_scroll_margin);
+            sprintf(opts, _("%d"), iflags.wc_scroll_margin);
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_soundlib(
+function optfn_soundlib(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     let soundlibbuf = stack_array(char, WINTYPELEN);
 
     if (req == do_init) {
@@ -3853,17 +3263,16 @@ optfn_soundlib(
     }
     if (req == get_val || req == get_cnf_val) {
         get_soundlib_name(soundlibbuf, WINTYPELEN);
-        void sprintf(opts, _("%s"), soundlibbuf);
+        sprintf(opts, _("%s"), soundlibbuf);
         return optn_ok;
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_sortdiscoveries(
+function optfn_sortdiscoveries(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         flags.discosort = ord('o');
         return optn_ok;
@@ -3905,16 +3314,14 @@ optfn_sortdiscoveries(
     }
     if (req == do_handler) {
         /* return handler_sortdiscoveries(); */
-        void choose_disco_sort(0); /* o_init.c */
+        choose_disco_sort(0); /* o_init.c */
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_sortloot(
+function optfn_sortloot(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let i;
 
     if (req == do_init) {
@@ -3943,7 +3350,7 @@ optfn_sortloot(
     if (req == get_val || req == get_cnf_val) {
         for (i = 0; i < SIZE(sortltype); i++)
             if (flags.sortloot == chars[sortltype[i] + 0]) {
-                void strcpy(opts, sortltype[i]);
+                strcpy(opts, sortltype[i]);
                 break;
             }
         return optn_ok;
@@ -3954,11 +3361,10 @@ optfn_sortloot(
     return optn_ok;
 }
 
-function /* int */
-optfn_sortvanquished(
+function optfn_sortvanquished(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
      /* insight.c */
     let vanqmodes = init_string(static_array("optfn_sortvanquished.vanqmodes", char, sizeof_string("tdaACcnz")), _("tdaACcnz"), true);
     let optname = allopt[optidx].name;
@@ -3989,16 +3395,16 @@ optfn_sortvanquished(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void strcpy(opts, vanqorders[flags.vanq_sortmode][0]);
+        strcpy(opts, vanqorders[flags.vanq_sortmode][0]);
         if (req == get_val)
-            void sprintf(eos(opts), _(": %s"), vanqorders[flags.vanq_sortmode][1]);
+            sprintf(eos(opts), _(": %s"), vanqorders[flags.vanq_sortmode][1]);
         return optn_ok;
     }
     if (req == do_handler) {
         let prev_sortmode = flags.vanq_sortmode;
 
         /* return handler_sortvanquished(); */
-        void set_vanq_order(TRUE); /* insight.c */
+        set_vanq_order(TRUE); /* insight.c */
         pline(_("'%s' %s \"%s: %s\"."), optname,
               (flags.vanq_sortmode == prev_sortmode)
                  ? _("not changed, still")
@@ -4007,20 +3413,18 @@ optfn_sortvanquished(
               vanqorders[flags.vanq_sortmode][1]);
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-optfn_statushilites(
+function optfn_statushilites(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
     if (req == do_set) {
         /* control over whether highlights should be displayed (non-zero), and
            also for how long to show temporary ones (N turns; default 3) */
-
 
         if (negated) {
             iflags.hilite_delta = 0;
@@ -4034,40 +3438,25 @@ optfn_statushilites(
         if (!go.opt_from_file)
             reset_status_hilites();
         return optn_ok;
-
-
-
-
-
-
     }
     if (req == get_val) {
-
         if (!iflags.hilite_delta)
-            void strcpy(opts, _("0 (off: don't highlight status fields)"));
+            strcpy(opts, _("0 (off: don't highlight status fields)"));
         else
-            void sprintf(opts, _("%lld (on: highlight status for %lld turns)"), iflags.hilite_delta, iflags.hilite_delta)
+            sprintf(opts, _("%lld (on: highlight status for %lld turns)"), iflags.hilite_delta, iflags.hilite_delta)
 ;
-
-
 
         return optn_ok;
     }
     if (req == get_cnf_val) {
-
-        void sprintf(opts, _("%lld"), iflags.hilite_delta);
-
-
-
+        sprintf(opts, _("%lld"), iflags.hilite_delta);
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_statuslines(
+function optfn_statuslines(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let retval = optn_ok, itmp = 0;
 
     if (req == do_init) {
@@ -4098,44 +3487,19 @@ optfn_statuslines(
     }
     if (req == get_val || req == get_cnf_val) {
         if (wc2_supported(allopt[optidx].name))
-            void strcpy(opts, (iflags.wc2_statuslines < 3) ? _("2") : _("3"));
+            strcpy(opts, (iflags.wc2_statuslines < 3) ? _("2") : _("3"));
         else
-            void strcpy(opts, _("unknown"));
+            strcpy(opts, _("unknown"));
         return optn_ok;
     }
     return optn_ok;
 }
 
+/* #ifdef WIN32CON: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-optfn_suppress_alert(
+function optfn_suppress_alert(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4144,16 +3508,16 @@ optfn_suppress_alert(
             bad_negation(allopt[optidx].name, FALSE);
             return optn_err;
         } else if (op != empty_optstr)
-            void feature_alert_opts(op, allopt[optidx].name);
+            feature_alert_opts(op, allopt[optidx].name);
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
         if (req == get_cnf_val && flags.suppress_alert == 0)
             chars[opts + 0] = ord('\0');
         else if (flags.suppress_alert == 0)
-            void strcpy(opts, none);
+            strcpy(opts, none);
         else
-            void sprintf(opts, _("%llu.%llu.%llu"), FEATURE_NOTICE_VER_MAJ(), FEATURE_NOTICE_VER_MIN(), FEATURE_NOTICE_VER_PATCH())
+            sprintf(opts, _("%llu.%llu.%llu"), FEATURE_NOTICE_VER_MAJ(), FEATURE_NOTICE_VER_MIN(), FEATURE_NOTICE_VER_PATCH())
 ;
         return optn_ok;
     }
@@ -4163,11 +3527,9 @@ optfn_suppress_alert(
      /* symbols.c */
  /* symbols.c */
 
-function /* int */
-optfn_symset(
+function optfn_symset(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4185,14 +3547,6 @@ optfn_symset(
                 return optn_err;
             } else {
                 if (gs.symset[PRIMARYSET].handling) {
-
-
-
-
-
-
-
-
                 }
                 switch_symbols(+(gs.symset[PRIMARYSET].name != 0));
                 go.opt_need_redraw = go.opt_need_glyph_reset = TRUE;
@@ -4203,19 +3557,19 @@ optfn_symset(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name
+        sprintf(opts, _("%s"), gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name
                                           : _("default"))
 ;
         if (gc.currentgraphics == PRIMARYSET && gs.symset[PRIMARYSET].name)
-            void strcat(opts, _(", active"));
+            strcat(opts, _(", active"));
         if (gs.symset[PRIMARYSET].handling) {
-            void sprintf(eos(opts), _(", handler=%s"), known_handling[gs.symset[PRIMARYSET].handling])
+            sprintf(eos(opts), _(", handler=%s"), known_handling[gs.symset[PRIMARYSET].handling])
 ;
         }
         return optn_ok;
     }
     if (req == get_cnf_val) {
-        void sprintf(opts, _("%s"), gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name
+        sprintf(opts, _("%s"), gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name
                                           : _("default"))
 ;
         return optn_ok;
@@ -4235,11 +3589,9 @@ optfn_symset(
     return optn_ok;
 }
 
-function /* int */
-optfn_term_cols(
+function optfn_term_cols(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let retval = optn_ok;
     let ltmp;
 
@@ -4266,21 +3618,19 @@ optfn_term_cols(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc2_term_cols)
-            void sprintf(opts, _("%d"), iflags.wc2_term_cols);
+            sprintf(opts, _("%d"), iflags.wc2_term_cols);
         else if (req == get_cnf_val)
             chars[opts + 0] = ord('\0');
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_term_rows(
+function optfn_term_rows(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let retval = optn_ok;
     let ltmp;
 
@@ -4307,21 +3657,19 @@ optfn_term_rows(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc2_term_rows)
-            void sprintf(opts, _("%d"), iflags.wc2_term_rows);
+            sprintf(opts, _("%d"), iflags.wc2_term_rows);
         else if (req == get_cnf_val)
             chars[opts + 0] = ord('\0');
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_tile_file(
+function optfn_tile_file(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4336,13 +3684,13 @@ optfn_tile_file(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), iflags.wc_tile_file ? iflags.wc_tile_file : defopt)
+        sprintf(opts, _("%s"), iflags.wc_tile_file ? iflags.wc_tile_file : defopt)
 ;
         return optn_ok;
     }
     if (req == get_cnf_val) {
         if (iflags.wc_tile_file)
-            void sprintf(opts, _("%s"), iflags.wc_tile_file);
+            sprintf(opts, _("%s"), iflags.wc_tile_file);
         else
             chars[opts + 0] = ord('\0');
         return optn_ok;
@@ -4350,11 +3698,9 @@ optfn_tile_file(
     return optn_ok;
 }
 
-function /* int */
-optfn_tile_height(
+function optfn_tile_height(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4372,21 +3718,19 @@ optfn_tile_height(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc_tile_height)
-            void sprintf(opts, _("%d"), iflags.wc_tile_height);
+            sprintf(opts, _("%d"), iflags.wc_tile_height);
         else if (req == get_cnf_val)
             chars[opts + 0] = ord('\0');
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_tile_width(
+function optfn_tile_width(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4404,21 +3748,19 @@ optfn_tile_width(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc_tile_width)
-            void sprintf(opts, _("%d"), iflags.wc_tile_width);
+            sprintf(opts, _("%d"), iflags.wc_tile_width);
         else if (req == get_cnf_val)
             chars[opts + 0] = ord('\0');
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_traps(
+function optfn_traps(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4426,7 +3768,7 @@ optfn_traps(
         return optn_ok;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), to_be_done);
+        sprintf(opts, _("%s"), to_be_done);
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -4436,11 +3778,9 @@ optfn_traps(
     return optn_ok;
 }
 
-function /* int */
-optfn_vary_msgcount(
+function optfn_vary_msgcount(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4458,21 +3798,20 @@ optfn_vary_msgcount(
     }
     if (req == get_val || req == get_cnf_val) {
         if (iflags.wc_vary_msgcount)
-            void sprintf(opts, _("%d"), iflags.wc_vary_msgcount);
+            sprintf(opts, _("%d"), iflags.wc_vary_msgcount);
         else if (req == get_cnf_val)
             chars[opts + 0] = ord('\0');
         else
-            void strcpy(opts, defopt);
+            strcpy(opts, defopt);
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-optfn_versinfo(
+function optfn_versinfo(
     optidx, req, negated,
-    opts, op)
-{ const $frame = stack_frame(); try {
+    opts, op) { /* int */
+    const $frame = stack_frame(); try {
     let optname = allopt[optidx].name;
     let vi = flags.versinfo;
 
@@ -4486,8 +3825,8 @@ optfn_versinfo(
            If branch is requested but unavailable, status_version will
            treat 4 as 1.
          */
-        let have_branch = (((nomakedefs.git_branch
-                               && chars[nomakedefs.git_branch]) ? 1 : 0));
+        let have_branch = (nomakedefs.git_branch
+                               && chars[nomakedefs.git_branch] ? 1 : 0);
         let val, dflt = have_branch ? VI_BRANCH : VI_NUMBER;
 
         if (negated) {
@@ -4510,7 +3849,7 @@ optfn_versinfo(
         flags.versinfo = unsigned(val);
     } else if (req == do_handler) {
         /* return handler_versinfo(); */
-        void handler_versinfo();
+        handler_versinfo();
         pline(_("'%s' %s %u."), optname,
               (flags.versinfo == vi) ? _("not changed, still") : _("changed to"),
               flags.versinfo);
@@ -4520,169 +3859,26 @@ optfn_versinfo(
                 b = +((vi & VI_BRANCH) != 0),
                 n = +((vi & VI_NUMBER) != 0);
 
-        void sprintf(opts, _("%u: %s%s%s%s%s (%.99s)"), flags.versinfo, g ? _("name") : _(""), (b && g) ? _("+") : _(""), b ? _("branch") : _(""), (n && (b || g)) ? _("+") : _(""), n ? _("number") : _(""), status_version(vbuf, sizeof(array_of(char, QBUFSZ)), FALSE))
-
+        sprintf(opts, _("%u: %s%s%s%s%s (%.99s)"), flags.versinfo, g ? _("name") : _(""), (b && g) ? _("+") : _(""), b ? _("branch") : _(""), (n && (b || g)) ? _("+") : _(""), n ? _("number") : _(""), status_version(vbuf, sizeof(array_of(char, QBUFSZ)), FALSE))
 
 ;
     } else if (req == get_cnf_val) {
-        void sprintf(opts, _("%u"), flags.versinfo);
+        sprintf(opts, _("%u"), flags.versinfo);
     }
     if (flags.versinfo != vi && !go.opt_initial)
         go.opt_need_redraw = TRUE; /* context.botlx = TRUE ought to suffice
                                     * but doesn't for X11 fancy status */
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
+/* #ifdef VIDEOSHADES: not in this build */
 
+/* #ifdef MSDOS: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-optfn_warnings(
+function optfn_warnings(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let reslt;
 
     if (req == do_init) {
@@ -4699,11 +3895,9 @@ optfn_warnings(
     return optn_ok;
 }
 
-function /* int */
-optfn_whatis_coord(
+function optfn_whatis_coord(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4730,7 +3924,7 @@ optfn_whatis_coord(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), (iflags.getpos_coords == GPCOORDS_MAP) ? _("map")
+        sprintf(opts, _("%s"), (iflags.getpos_coords == GPCOORDS_MAP) ? _("map")
                 : (iflags.getpos_coords == GPCOORDS_COMPASS) ? _("compass")
                 : (iflags.getpos_coords == GPCOORDS_COMFULL) ? _("full compass")
                 : (iflags.getpos_coords == GPCOORDS_SCREEN) ? _("screen")
@@ -4744,11 +3938,9 @@ optfn_whatis_coord(
     return optn_ok;
 }
 
-function /* int */
-optfn_whatis_filter(
+function optfn_whatis_filter(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4781,7 +3973,7 @@ optfn_whatis_filter(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), (iflags.getloc_filter == GFILTER_VIEW) ? _("view")
+        sprintf(opts, _("%s"), (iflags.getloc_filter == GFILTER_VIEW) ? _("view")
                 : (iflags.getloc_filter == GFILTER_AREA) ? _("area")
                 : _("none"))
 ;
@@ -4793,11 +3985,9 @@ optfn_whatis_filter(
     return optn_ok;
 }
 
-function /* int */
-optfn_windowborders(
+function optfn_windowborders(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let retval = optn_ok;
 
     if (req == do_init) {
@@ -4831,7 +4021,7 @@ optfn_windowborders(
         return retval;
     }
     if (req == get_val) {
-        void sprintf(opts, _("%s"), (iflags.wc2_windowborders == 0) ? _("0=off")
+        sprintf(opts, _("%s"), (iflags.wc2_windowborders == 0) ? _("0=off")
                 : (iflags.wc2_windowborders == 1) ? _("1=on")
                   : (iflags.wc2_windowborders == 2) ? _("2=auto")
                     : (iflags.wc2_windowborders == 3)
@@ -4843,7 +4033,7 @@ optfn_windowborders(
         return optn_ok;
     }
     if (req == get_cnf_val) {
-        void sprintf(opts, _("%i"), iflags.wc2_windowborders);
+        sprintf(opts, _("%i"), iflags.wc2_windowborders);
         return optn_ok;
     }
     if (req == do_handler) {
@@ -4852,34 +4042,7 @@ optfn_windowborders(
     return optn_ok;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef WINCHAIN: not in this build */
 
 /* Win GUI and curses */
 const wcnames = static_array("wcnames", ptr_to(char), WC_COUNT, [
@@ -4890,12 +4053,10 @@ const wcshortnames = static_array("wcshortnames", ptr_to(char), WC_COUNT, [
 ]);
 export const wcolors_opt = static_array("wcolors_opt", int, WC_COUNT);
 
-function /* int */
-optfn_windowcolors(
+function optfn_windowcolors(
     optidx, req,
     negated,
-    opts, op)
-{
+    opts, op) { /* int */
     let wccount;
 
     if (req == do_init) {
@@ -4930,7 +4091,7 @@ optfn_windowcolors(
                 fg = 0;
             if (bg && (!chars[bg] || !strcmp(bg, defbrief)))
                 bg = 0;
-            void sprintf(eos(opts), _("%s%s %s/%s"), !wccount ? _("") : _(" "), (fg || bg) ? wcnames[wccount] : wcshortnames[wccount], fg ? fg : defbrief, bg ? bg : defbrief)
+            sprintf(eos(opts), _("%s%s %s/%s"), !wccount ? _("") : _(" "), (fg || bg) ? wcnames[wccount] : wcshortnames[wccount], fg ? fg : defbrief, bg ? bg : defbrief)
 
 ;
         }
@@ -4939,12 +4100,10 @@ optfn_windowcolors(
     return optn_ok;
 }
 
-function /* int */
-optfn_windowtype(
+function optfn_windowtype(
     optidx, req,
     negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -4980,7 +4139,7 @@ optfn_windowtype(
         return optn_ok;
     }
     if (req == get_val || req == get_cnf_val) {
-        void sprintf(opts, _("%s"), windowprocs.name);
+        sprintf(opts, _("%s"), windowprocs.name);
         return optn_ok;
     }
     return optn_ok;
@@ -4990,14 +4149,12 @@ optfn_windowtype(
  *    Prefix-handling functions
  */
 
-function /* int */
-pfxfn_cond_(
+function pfxfn_cond_(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         condopt(0, 0, 0); /* make the choices match defaults */
         return optn_ok;
@@ -5029,15 +4186,13 @@ pfxfn_cond_(
         return optn_ok;
     }
     if (req == do_handler) { /* not used */
-        void cond_menu();    /* in botl.c */
+        cond_menu();    /* in botl.c */
         return optn_ok;
     }
     return optn_ok;
 }
 
-function /* int */
-pfxfn_font(optidx, req, negated, opts, op)
-{
+function pfxfn_font(optidx, req, negated, opts, op) { /* int */
     let opttype = -1;
 
     if (req == do_init) {
@@ -5108,8 +4263,6 @@ pfxfn_font(optidx, req, negated, opts, op)
             && (op = string_for_opt(opts, FALSE)) != empty_optstr) {
             wc_set_font_name(opttype, op);
 
-
-
             return optn_ok;
         } else if (negated) {
             bad_negation(allopt[optidx].name, TRUE);
@@ -5119,80 +4272,61 @@ pfxfn_font(optidx, req, negated, opts, op)
     }
     if (req == get_val || req == get_cnf_val) {
         if (optidx == opt_font_map) {
-            void sprintf(opts, _("%s"), iflags.wc_font_map ? iflags.wc_font_map : defopt)
+            sprintf(opts, _("%s"), iflags.wc_font_map ? iflags.wc_font_map : defopt)
 ;
         } else if (optidx == opt_font_message) {
-            void sprintf(opts, _("%s"), iflags.wc_font_message ? iflags.wc_font_message : defopt)
+            sprintf(opts, _("%s"), iflags.wc_font_message ? iflags.wc_font_message : defopt)
 ;
         } else if (optidx == opt_font_status) {
-            void sprintf(opts, _("%s"), iflags.wc_font_status ? iflags.wc_font_status : defopt)
+            sprintf(opts, _("%s"), iflags.wc_font_status ? iflags.wc_font_status : defopt)
 ;
         } else if (optidx == opt_font_menu) {
-            void sprintf(opts, _("%s"), iflags.wc_font_menu ? iflags.wc_font_menu : defopt)
+            sprintf(opts, _("%s"), iflags.wc_font_menu ? iflags.wc_font_menu : defopt)
 ;
         } else if (optidx == opt_font_text) {
-            void sprintf(opts, _("%s"), iflags.wc_font_text ? iflags.wc_font_text : defopt)
+            sprintf(opts, _("%s"), iflags.wc_font_text ? iflags.wc_font_text : defopt)
 ;
         } else if (optidx == opt_font_size_map) {
             if (iflags.wc_fontsiz_map)
-                void sprintf(opts, _("%d"), iflags.wc_fontsiz_map);
+                sprintf(opts, _("%d"), iflags.wc_fontsiz_map);
             else
-                void strcpy(opts, defopt);
+                strcpy(opts, defopt);
         } else if (optidx == opt_font_size_message) {
             if (iflags.wc_fontsiz_message)
-                void sprintf(opts, _("%d"), iflags.wc_fontsiz_message);
+                sprintf(opts, _("%d"), iflags.wc_fontsiz_message);
             else
-                void strcpy(opts, defopt);
+                strcpy(opts, defopt);
         } else if (optidx == opt_font_size_status) {
             if (iflags.wc_fontsiz_status)
-                void sprintf(opts, _("%d"), iflags.wc_fontsiz_status);
+                sprintf(opts, _("%d"), iflags.wc_fontsiz_status);
             else
-                void strcpy(opts, defopt);
+                strcpy(opts, defopt);
         } else if (optidx == opt_font_size_menu) {
             if (iflags.wc_fontsiz_menu)
-                void sprintf(opts, _("%d"), iflags.wc_fontsiz_menu);
+                sprintf(opts, _("%d"), iflags.wc_fontsiz_menu);
             else
-                void strcpy(opts, defopt);
+                strcpy(opts, defopt);
         } else if (optidx == opt_font_size_text) {
             if (iflags.wc_fontsiz_text)
-                void sprintf(opts, _("%d"), iflags.wc_fontsiz_text);
+                sprintf(opts, _("%d"), iflags.wc_fontsiz_text);
             else
-                void strcpy(opts, defopt);
+                strcpy(opts, defopt);
         }
         return optn_ok;
     }
     return optn_ok;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if defined(MICRO) && !defined(AMIGA): not in this build */
 
 /*
  *    General boolean option handler
  *    (Use optidx to reference the specific option)
  */
 
-export function /* int */
-optfn_boolean(
+export function optfn_boolean(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -5223,12 +4357,12 @@ optfn_boolean(
             ln = int(strlen(op));
             if (!strncmpi(op, _("true"), ln)
                 || !strncmpi(op, _("yes"), ln)
-                || !strcmpi(op, _("on"))
+                || !strncmpi((op), _(("on")), -1)
                 || (digit(chars[op]) && atoi(op) == 1)) {
                 negated = FALSE;
             } else if (!strncmpi(op, _("false"), ln)
                        || !strncmpi(op, _("no"), ln)
-                       || !strcmpi(op, _("off"))
+                       || !strncmpi((op), _(("off")), -1)
                        || (digit(chars[op]) && atoi(op) == 0)) {
                 negated = TRUE;
             } else if (!allopt[optidx].valok) {
@@ -5299,7 +4433,7 @@ optfn_boolean(
             break;
         case opt_hilite_pet:
 
-            if (((windowprocs.wp_id == wp_tty)) || ((windowprocs.wp_id == wp_curses))) {
+            if ((windowprocs.wp_id == wp_tty) || (windowprocs.wp_id == wp_curses)) {
                 /* if we're enabling hilite_pet and petattr isn't set,
                    set it to Inverse; if we're disabling, leave petattr
                    alone so that re-enabling will get current value back
@@ -5313,7 +4447,7 @@ optfn_boolean(
 
         case opt_idlecheckpoint:
             pline(_("There is no underlying support for 'idlecheckpoint'" +
-                  " compiled in.")); 
+                  " compiled in."));
             iflags.idlecheckpoint = FALSE;
             give_opt_msg[0] = FALSE;
             break;
@@ -5388,22 +4522,9 @@ optfn_boolean(
                 /* [is reassessment really needed here?] */
                 status_initialize(TRUE);
                 go.opt_need_redraw = TRUE;
-
-
-
-
-
-
             }
             break;
         case opt_color:
-
-
-
-
-
-
-
 
             go.opt_need_redraw = TRUE;
             go.opt_need_glyph_reset = TRUE;
@@ -5448,9 +4569,7 @@ optfn_boolean(
     return optn_ok;
 }
 
-function /* int */
-spcfn_misc_menu_cmd(midx, req, negated, opts, op)
-{
+function spcfn_misc_menu_cmd(midx, req, negated, opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -5474,7 +4593,6 @@ spcfn_misc_menu_cmd(midx, req, negated, opts, op)
     return optn_ok;
 }
 
-
 /*
  **********************************
  *
@@ -5484,9 +4602,7 @@ spcfn_misc_menu_cmd(midx, req, negated, opts, op)
  */
 
 /* test whether 'perm_invent' can be toggled On */
-function /* boolean */
-can_set_perm_invent()
-{
+function can_set_perm_invent() { /* boolean */
     /*
      * Assumption: only called when iflags.perm_invent is False
      * and is about to be changed to True.
@@ -5494,55 +4610,23 @@ can_set_perm_invent()
     let old_perminv_mode = iflags.perminv_mode;
 
     if (!(windowprocs.wincap & WC_PERM_INVENT)) {
-
-
-
-
-
-
-
             return FALSE;
     }
 
     if (iflags.perminv_mode == InvOptNone)
         iflags.perminv_mode = InvOptOn;
 
+    /* #ifdef TTY_PERM_INVENT: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (old_perminv_mode));
+    (old_perminv_mode);
 
     return TRUE;
 }
 
+/* #ifdef TTY_PERM_INVENT: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-handler_menustyle()
-{ const $frame = stack_frame(); try {
+function handler_menustyle() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let chngd;
@@ -5555,13 +4639,13 @@ handler_menustyle()
     start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
     struct_assign(any, cg.zeroany);
     for (i = 0; i < SIZE(menutype); i++) {
-        void sprintf(buf, _("%-12.12s%c%.60s"), menutype[i][0], sep, menutype[i][1]);
+        sprintf(buf, _("%-12.12s%c%.60s"), menutype[i][0], sep, menutype[i][1]);
         any.a_int = i + 1;
         add_menu(tmpwin, nul_glyphinfo, any, chars[buf], 0, ATR_NONE, clr, buf,
                  (i == flags.menu_style) ? MENU_ITEMFLAGS_SELECTED
                                          : MENU_ITEMFLAGS_NONE);
         /* second line is prefixed by spaces that "c - " would use */
-        void sprintf(buf, _("%4s%-12.12s%c%.60s"), _(""), _(""), sep, menutype[i][2]);
+        sprintf(buf, _("%4s%-12.12s%c%.60s"), _(""), _(""), sep, menutype[i][2]);
         add_menu_str(tmpwin, buf);
     }
     end_menu()(tmpwin, _("Select menustyle:"));
@@ -5575,16 +4659,16 @@ handler_menustyle()
         free(addr_of(style_pick[0]));
     }
     destroy_nhwindow()(tmpwin);
-    chngd = (+(flags.menu_style != old_menu_style));
+    chngd = +(flags.menu_style != old_menu_style);
     if (chngd || flags.verbose)
         pline(_("'menustyle' %s \"%s\"."), chngd ? _("changed to") : _("is still"),
               menutype[flags.menu_style][0]);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_align_misc(optidx)
-{ const $frame = stack_frame(); try {
+function handler_align_misc(optidx) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let window_pick = stack_var(ptr_to(struct_mi), null);
@@ -5606,7 +4690,7 @@ handler_align_misc(optidx)
     any.a_int = ALIGN_RIGHT;
     add_menu(tmpwin, nul_glyphinfo, any, ord('r'), 0, ATR_NONE, clr, _("right"),
              MENU_ITEMFLAGS_NONE);
-    void sprintf(abuf, _("Select %s window placement relative to the map:"), (optidx == opt_align_message) ? _("message") : _("status"))
+    sprintf(abuf, _("Select %s window placement relative to the map:"), (optidx == opt_align_message) ? _("message") : _("status"))
 ;
     end_menu()(tmpwin, abuf);
     if (select_menu(tmpwin, PICK_ONE, window_pick) > 0) {
@@ -5618,11 +4702,11 @@ handler_align_misc(optidx)
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_autounlock(optidx)
-{ const $frame = stack_frame(); try {
+function handler_autounlock(optidx) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let chngd;
@@ -5637,15 +4721,15 @@ handler_autounlock(optidx)
     start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
     struct_assign(any, cg.zeroany);
     for (i = 0; i < SIZE(unlocktypes); ++i) {
-        void sprintf(buf, _("%-10.10s%c%.40s"), unlocktypes[i][0], sep, unlocktypes[i][1])
+        sprintf(buf, _("%-10.10s%c%.40s"), unlocktypes[i][0], sep, unlocktypes[i][1])
 ;
-        presel = int((unsigned(flags.autounlock & unsigned((1 << i)))));
+        presel = int(unsigned(flags.autounlock & unsigned((1 << i))));
         any.a_int = i + 1;
         add_menu(tmpwin, nul_glyphinfo, any, chars[unlocktypes[i][0]], 0,
                  ATR_NONE, clr, buf,
                  (presel ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE));
     }
-    void sprintf(buf, _("Select '%.20s' actions:"), optname);
+    sprintf(buf, _("Select '%.20s' actions:"), optname);
     end_menu()(tmpwin, buf);
     n = select_menu(tmpwin, PICK_ANY, window_pick);
     if (n > 0) {
@@ -5662,18 +4746,18 @@ handler_autounlock(optidx)
         flags.autounlock = 0;
     }
     destroy_nhwindow()(tmpwin);
-    chngd = (+(flags.autounlock != oldflags));
+    chngd = +(flags.autounlock != oldflags);
     if ((chngd || flags.verbose) && give_opt_msg[0]) {
         optfn_autounlock(optidx, get_val, FALSE, buf, (0));
         pline(_("'%s' %s '%s'."), optname,
               chngd ? _("changed to") : _("is still"), buf);
     }
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_disclose()
-{ const $frame = stack_frame(); try {
+function handler_disclose() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i, n;
@@ -5694,7 +4778,7 @@ handler_disclose()
     start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
     struct_assign(any, cg.zeroany);
     for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
-        void sprintf(buf, _("%-12s[%c%c]"), disclosure_names[i], chars[flags.end_disclose + i], chars[disclosure_options + i])
+        sprintf(buf, _("%-12s[%c%c]"), disclosure_names[i], chars[flags.end_disclose + i], chars[disclosure_options + i])
 ;
         any.a_int = i + 1;
         add_menu(tmpwin, nul_glyphinfo, any, chars[disclosure_options + i],
@@ -5716,7 +4800,7 @@ handler_disclose()
     for (i = 0; i < NUM_DISCLOSURE_OPTIONS; i++) {
         if (disc_cat[i]) {
             c = chars[flags.end_disclose + i];
-            void sprintf(buf, _("Disclosure options for %s:"), disclosure_names[i])
+            sprintf(buf, _("Disclosure options for %s:"), disclosure_names[i])
 ;
             tmpwin = create_nhwindow()(NHW_MENU);
             start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
@@ -5774,11 +4858,10 @@ handler_disclose()
         }
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_menu_headings()
-{
+function handler_menu_headings() { /* int */
     let gotca = query_color_attr(iflags.menu_headings,
                                      _("How to highlight menu headings:"));
 
@@ -5791,9 +4874,8 @@ handler_menu_headings()
     return optn_ok;
 }
 
-function /* int */
-handler_menu_objsyms()
-{ const $frame = stack_frame(); try {
+function handler_menu_objsyms() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let buf = stack_array(char, BUFSZ);
@@ -5826,15 +4908,14 @@ handler_menu_objsyms()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_msg_window()
-{ const $frame = stack_frame(); try {
-
+function handler_msg_window() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
-    let is_tty = (+(windowprocs.wp_id == wp_tty)), is_curses = (+(windowprocs.wp_id == wp_curses));
+    let is_tty = +(windowprocs.wp_id == wp_tty), is_curses = +(windowprocs.wp_id == wp_curses);
     let clr = NO_COLOR;
 
     if (is_tty || is_curses) {
@@ -5853,7 +4934,7 @@ handler_msg_window()
         for (i = 0; i < SIZE(menutype); i++) {
             if (i < 2 && is_curses)
                 continue;
-            void sprintf(buf, _("%-12.12s%c%.60s"), msgwind[i][0], sep, msgwind[i][1])
+            sprintf(buf, _("%-12.12s%c%.60s"), msgwind[i][0], sep, msgwind[i][1])
 ;
             any.a_char = c = chars[msgwind[i][0]];
             add_menu(tmpwin, nul_glyphinfo, any, chars[buf], 0,
@@ -5861,7 +4942,7 @@ handler_msg_window()
                      (c == iflags.prevmsg_window) ? MENU_ITEMFLAGS_SELECTED
                                                   : MENU_ITEMFLAGS_NONE);
             /* second line is prefixed by spaces that "c - " would use */
-            void sprintf(buf, _("%4s%-12.12s%c%.60s"), _(""), _(""), sep, msgwind[i][2]);
+            sprintf(buf, _("%4s%-12.12s%c%.60s"), _(""), _(""), sep, msgwind[i][2]);
             add_menu_str(tmpwin, buf);
         }
         end_menu()(tmpwin, _("Select message history display type:"));
@@ -5875,9 +4956,9 @@ handler_msg_window()
             free(addr_of(window_pick[0]));
         }
         destroy_nhwindow()(tmpwin);
-        chngd = (+(iflags.prevmsg_window != old_prevmsg_window));
+        chngd = +(iflags.prevmsg_window != old_prevmsg_window);
         if (chngd || flags.verbose) {
-            void optfn_msg_window(opt_msg_window, get_val,
+            optfn_msg_window(opt_msg_window, get_val,
                                     FALSE, buf, empty_optstr);
             pline(_("'msg_window' %.20s \"%.20s\"."),
                   chngd ? _("changed to") : _("is still"), buf);
@@ -5887,11 +4968,11 @@ handler_msg_window()
         pline(_("'%s' option is not supported for '%s'."),
               allopt[opt_msg_window].name, windowprocs.name);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_number_pad()
-{ const $frame = stack_frame(); try {
+function handler_number_pad() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i;
@@ -5947,11 +5028,11 @@ handler_number_pad()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_paranoid_confirmation()
-{ const $frame = stack_frame(); try {
+function handler_paranoid_confirmation() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i;
@@ -5973,12 +5054,12 @@ handler_paranoid_confirmation()
         if (strstri(explain, _("'m'"))
             && (mkey = cmd_from_func(do_reqmenu)) != ord('m')) {
             if (mkey) { /* key for 'm' prefix */
-                void sprintf(mbuf, _("'%.9s'"), visctrl(mkey)); /* .5 is enough */
+                sprintf(mbuf, _("'%.9s'"), visctrl(mkey)); /* .5 is enough */
             } else { /* extended command name for 'm' prefix */
                 cmdnm = cmdname_from_func(do_reqmenu, cbuf, TRUE);
                 if (!cmdnm)
                     cmdnm = _("reqmenu");
-                void sprintf(mbuf, _("'%s%.31s'"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
+                sprintf(mbuf, _("'%s%.31s'"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
             }
             explain = strsubst(strcpy(ebuf, explain), _("'m'"), mbuf);
         }
@@ -6005,11 +5086,11 @@ handler_paranoid_confirmation()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_perminv_mode()
-{ const $frame = stack_frame(); try {
+function handler_perminv_mode() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let let_, buf = stack_array(char, BUFSZ), sepbuf = stack_array(char, 10);
@@ -6017,7 +5098,7 @@ handler_perminv_mode()
     let pi_pick = stack_var(ptr_to(struct_mi), null);
     let old_perm_invent = iflags.perm_invent;
     let i, n, old_pi = iflags.perminv_mode, new_pi = old_pi,
-        widest = !((windowprocs.wp_id == wp_tty)) ? 8 : 11; /* "in-use__" or "full+grid__" */
+        widest = !(windowprocs.wp_id == wp_tty) ? 8 : 11; /* "in-use__" or "full+grid__" */
 
     tmpwin = create_nhwindow()(NHW_MENU);
     start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
@@ -6026,18 +5107,15 @@ handler_perminv_mode()
         if (!(pi0 = perminv_modes[i][0]))
             continue;
 
-
-
-
         pi1 = perminv_modes[i][1];
         if (!iflags.menu_tab_sep) {
             let numspaces = widest - int(strlen(pi0));
 
-            void sprintf(sepbuf, _("%*s"), max(numspaces, 1), _(" "));
+            sprintf(sepbuf, _("%*s"), max(numspaces, 1), _(" "));
         } else {
-            void strcpy(sepbuf, _("\t"));
+            strcpy(sepbuf, _("\t"));
         }
-        void sprintf(buf, _("%s%s%s"), pi0, sepbuf, perminv_modes[i][2]);
+        sprintf(buf, _("%s%s%s"), pi0, sepbuf, perminv_modes[i][2]);
         let_ = ((i & InvSparse) != 0) ? highc(chars[pi1 + 0]) : chars[pi0 + 0];
         any.a_int = i + 1;
         add_menu(tmpwin, nul_glyphinfo, any, let_, ord('0') + i,
@@ -6057,7 +5135,7 @@ handler_perminv_mode()
     }
     if (n >= 0) { /* not ESC */
         chars[buf + 0] = ord('\0');
-        void optfn_perminv_mode(opt_perm_invent, get_val, FALSE, buf, 0);
+        optfn_perminv_mode(opt_perm_invent, get_val, FALSE, buf, 0);
         pline(_("'perminv_mode' %s '%s' (%s)."),
               (new_pi != old_pi) ? _("changed to") : _("is still"),
               perminv_modes[new_pi][0], buf);
@@ -6067,24 +5145,15 @@ handler_perminv_mode()
             iflags.perm_invent = FALSE;
 
         if (new_pi != old_pi || iflags.perm_invent != old_perm_invent) {
-
-
-
-
-
-
-
-
-
             go.opt_need_redraw = TRUE;
         }
     }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_pickup_burden()
-{ const $frame = stack_frame(); try {
+function handler_pickup_burden() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i;
@@ -6108,21 +5177,21 @@ handler_pickup_burden()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_pickup_types()
-{ const $frame = stack_frame(); try {
+function handler_pickup_types() { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     /* parseoptions will prompt for the list of types */
-    void parseoptions(strcpy(buf, _("pickup_types")), FALSE, FALSE);
+    parseoptions(strcpy(buf, _("pickup_types")), FALSE, FALSE);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_runmode()
-{ const $frame = stack_frame(); try {
+function handler_runmode() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i;
@@ -6146,26 +5215,23 @@ handler_runmode()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_petattr()
-{
+function handler_petattr() { /* int */
     let tmp = query_attr(_("Select pet highlight attribute"), iflags.wc2_petattr);
-
 
     if (tmp != -1) {
         iflags.wc2_petattr = tmp;
-        iflags.wc_hilite_pet = (+(iflags.wc2_petattr != ATR_NONE));
+        iflags.wc_hilite_pet = +(iflags.wc2_petattr != ATR_NONE);
         if (!go.opt_initial)
             go.opt_need_redraw = TRUE;
     }
     return optn_ok;
 }
 
-function /* int */
-handler_sortloot()
-{ const $frame = stack_frame(); try {
+function handler_sortloot() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i, n;
@@ -6200,11 +5266,11 @@ handler_sortloot()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_whatis_coord()
-{ const $frame = stack_frame(); try {
+function handler_whatis_coord() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let buf = stack_array(char, BUFSZ);
@@ -6244,7 +5310,7 @@ handler_whatis_coord()
              (gpc == GPCOORDS_NONE)
                 ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
     add_menu_str(tmpwin, _(""));
-    void sprintf(buf, _("map: upper-left: <%d,%d>, lower-right: <%d,%d>%s"), 1, 0, COLNO - 1, ROWNO - 1, flags.verbose ? _("; column 0 unused, off left edge") : _(""))
+    sprintf(buf, _("map: upper-left: <%d,%d>, lower-right: <%d,%d>%s"), 1, 0, COLNO - 1, ROWNO - 1, flags.verbose ? _("; column 0 unused, off left edge") : _(""))
 
 ;
     add_menu_str(tmpwin, buf);
@@ -6252,11 +5318,7 @@ handler_whatis_coord()
         add_menu_str(tmpwin,
       _("screen: row is offset to accommodate tty interface's use of top line"));
 
-
-
-
-
-    void sprintf(buf, _("screen: upper-left: [%02d,%02d], lower-right: [%d,%d]%s"), 0 + 2, 1, ROWNO - 1 + 2, COLNO - 1, COL80ARG())
+    sprintf(buf, _("screen: upper-left: [%02d,%02d], lower-right: [%d,%d]%s"), 0 + 2, 1, ROWNO - 1 + 2, COLNO - 1, COL80ARG())
 ;
 
     add_menu_str(tmpwin, buf);
@@ -6273,11 +5335,12 @@ handler_whatis_coord()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } } export function COL80ARG() { return flags.verbose ? _("; column 80 is not used") : _(""); }
+    } finally { stack_pop($frame); }
+}
+export function COL80ARG() { return flags.verbose ? _("; column 80 is not used") : _(""); }
 
-function /* int */
-handler_whatis_filter()
-{ const $frame = stack_frame(); try {
+function handler_whatis_filter() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let window_pick = stack_var(ptr_to(struct_mi), null);
@@ -6315,11 +5378,10 @@ handler_whatis_filter()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_symset(optidx)
-{
+function handler_symset(optidx) { /* int */
     let reslt;
 
     reslt = do_symset(+(optidx == opt_roguesymset));   /* symbols.c */
@@ -6327,9 +5389,8 @@ handler_symset(optidx)
     return reslt;
 }
 
-function /* int */
-handler_autopickup_exception()
-{ const $frame = stack_frame(); try {
+function handler_autopickup_exception() { /* int */
+    const $frame = stack_frame(); try {
     var tmpwin;
     var any = stack_struct(struct_any);
     var i;
@@ -6357,7 +5418,7 @@ handler_autopickup_exception()
                -2 is good enough for apebuf[] but -3 makes
                sure the whole thing fits within normal BUFSZ */
             chars[apebuf + (sizeof(array_of(char, 2 + BUFSZ)) - 2)] = ord('\0');
-            void strcat(apebuf, _("\""));
+            strcat(apebuf, _("\""));
             add_autopickup_exception(apebuf);
         }
         continue ape_again;
@@ -6376,14 +5437,14 @@ handler_autopickup_exception()
                 any.a_void = addr_of((opt_idx == 1) ? null : ape);
                 /* length of pattern plus quotes (plus '<'/'>') is
                    less than BUFSZ */
-                void sprintf(apebuf, _("\"%c%s\""), ape.grab ? ord('<') : ord('>'), ape.pattern)
+                sprintf(apebuf, _("\"%c%s\""), ape.grab ? ord('<') : ord('>'), ape.pattern)
 ;
                 add_menu(tmpwin, nul_glyphinfo, any, 0, 0,
                          ATR_NONE, clr, apebuf, MENU_ITEMFLAGS_NONE);
                 ape = ape.next;
             }
         }
-        void sprintf(apebuf, _("%s autopickup exceptions"), (opt_idx == 1) ? _("List of") : _("Remove which"))
+        sprintf(apebuf, _("%s autopickup exceptions"), (opt_idx == 1) ? _("List of") : _("Remove which"))
 ;
         end_menu()(tmpwin, apebuf);
         pick_cnt = select_menu(tmpwin,
@@ -6401,16 +5462,16 @@ handler_autopickup_exception()
             continue ape_again;;
     } break; }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_menu_colors()
-{ const $frame = stack_frame(); try { let $goto = null; var any = stack_struct(struct_any), buf = stack_array(char, BUFSZ), mcbuf = stack_array(char, BUFSZ), pick_list = stack_var(ptr_to(struct_mi)), clrbuf = stack_array(char, QBUFSZ);
+function handler_menu_colors() { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var any = stack_struct(struct_any), buf = stack_array(char, BUFSZ), mcbuf = stack_array(char, BUFSZ), pick_list = stack_var(ptr_to(struct_mi)), clrbuf = stack_array(char, QBUFSZ);
     var tmpwin;
-    
-    
+
     var opt_idx, nmc, mcclr, mcattr;
-    
+
     var clr = NO_COLOR;
 
  $goto_menucolors_again: for (;;) { switch ($goto) { default: case "menucolors_again": $goto = null;
@@ -6425,10 +5486,8 @@ handler_menu_colors()
         if (iflags.use_menu_color) {
             if (iflags.perm_invent)
                 update_inventory();
-
         }
         return optn_ok;
-
     } else if (opt_idx == 0) { /* add new */
         chars[mcbuf + 0] = ord('\0');
         getlin(_("What new menucolor pattern?"), mcbuf);
@@ -6443,7 +5502,6 @@ handler_menu_colors()
             wait_synch()();
         }
         { $goto = "menucolors_again"; continue $goto_menucolors_again; }
-
     } else { /* list (1) or remove (2) */
         var pick_idx, pick_cnt;
         var mc_idx;
@@ -6451,7 +5509,6 @@ handler_menu_colors()
         var sattr, sclr;
         pick_list[0] = null;
         var tmp = gm.menu_colorings;
-        
 
         tmpwin = create_nhwindow()(NHW_MENU);
         start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
@@ -6460,26 +5517,26 @@ handler_menu_colors()
         while (tmp) {
             sattr = attr2attrname(tmp.attr);
             sclr = strcpy(clrbuf, clr2colorname(tmp.color));
-            void strNsubst(clrbuf, _(" "), _("-"), 0);
+            strNsubst(clrbuf, _(" "), _("-"), 0);
             any.a_int = ++mc_idx;
             /* construct suffix */
-            void sprintf(buf, _("\"\"=%s%s%s"), sclr, (tmp.attr != ATR_NONE) ? _("&") : _(""), (tmp.attr != ATR_NONE) ? sattr : _(""))
+            sprintf(buf, _("\"\"=%s%s%s"), sclr, (tmp.attr != ATR_NONE) ? _("&") : _(""), (tmp.attr != ATR_NONE) ? sattr : _(""))
 
 ;
             /* now main string */
-            ln = unsigned(unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - Strlen(buf)) - 1)); /* length available */
-            void strcpy(mcbuf, _("\""));
+            ln = unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - Strlen(buf)) - 1); /* length available */
+            strcpy(mcbuf, _("\""));
             if (strlen(tmp.origstr) > ln)
-                void strcat(strncat(mcbuf, tmp.origstr, unsigned(unsigned(ln - 3))), _("..."));
+                strcat(strncat(mcbuf, tmp.origstr, unsigned(ln - 3)), _("..."));
             else
-                void strcat(mcbuf, tmp.origstr);
+                strcat(mcbuf, tmp.origstr);
             /* combine main string and suffix */
-            void strcat(mcbuf, buf + 1); /* skip buf[]'s initial quote */
+            strcat(mcbuf, buf + 1); /* skip buf[]'s initial quote */
             add_menu(tmpwin, nul_glyphinfo, any, 0, 0,
                      ATR_NONE, clr, mcbuf, MENU_ITEMFLAGS_NONE);
             tmp = tmp.next;
         }
-        void sprintf(mcbuf, _("%s menu colors"), (opt_idx == 1) ? _("List of") : _("Remove which"))
+        sprintf(mcbuf, _("%s menu colors"), (opt_idx == 1) ? _("List of") : _("Remove which"))
 ;
         end_menu()(tmpwin, mcbuf);
         pick_cnt = select_menu(tmpwin,
@@ -6496,11 +5553,11 @@ handler_menu_colors()
             { $goto = "menucolors_again"; continue $goto_menucolors_again; };
     } } break; }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_msgtype()
-{ const $frame = stack_frame(); try {
+function handler_msgtype() { /* int */
+    const $frame = stack_frame(); try {
     var tmpwin;
     var any = stack_struct(struct_any);
     var opt_idx, nmt, mttyp;
@@ -6540,17 +5597,17 @@ handler_msgtype()
         while (tmp) {
             mtype = msgtype2name(tmp.msgtype);
             any.a_int = ++mt_idx;
-            void sprintf(mtbuf, _("%-5s \""), mtype);
-            ln = unsigned(unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - Strlen(mtbuf)) - sizeof_string("\"")));
+            sprintf(mtbuf, _("%-5s \""), mtype);
+            ln = unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - Strlen(mtbuf)) - sizeof_string("\""));
             if (strlen(tmp.pattern) > ln)
-                void strcat(strncat(mtbuf, tmp.pattern, unsigned(unsigned(ln - 3))), _("...\""));
+                strcat(strncat(mtbuf, tmp.pattern, unsigned(ln - 3)), _("...\""));
             else
-                void strcat(strcat(mtbuf, tmp.pattern), _("\""));
+                strcat(strcat(mtbuf, tmp.pattern), _("\""));
             add_menu(tmpwin, nul_glyphinfo, any, 0, 0,
                      ATR_NONE, clr, mtbuf, MENU_ITEMFLAGS_NONE);
             tmp = tmp.next;
         }
-        void sprintf(mtbuf, _("%s message types"), (opt_idx == 1) ? _("List of") : _("Remove which"))
+        sprintf(mtbuf, _("%s message types"), (opt_idx == 1) ? _("List of") : _("Remove which"))
 ;
         end_menu()(tmpwin, mtbuf);
         pick_cnt = select_menu(tmpwin,
@@ -6567,15 +5624,15 @@ handler_msgtype()
             continue msgtypes_again;;
     } break; }
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_versinfo()
-{ const $frame = stack_frame(); try {
+function handler_versinfo() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let vi_pick = stack_var(ptr_to(struct_mi), null);
-    let have_branch = (((nomakedefs.git_branch && chars[nomakedefs.git_branch]) ? 1 : 0));
+    let have_branch = (nomakedefs.git_branch && chars[nomakedefs.git_branch] ? 1 : 0);
     let n, vi = int(flags.versinfo);
 
     tmpwin = create_nhwindow()(NHW_MENU);
@@ -6596,8 +5653,6 @@ handler_versinfo()
 
                           : _("(not applicable)")
 
-
-
               ), (vi & n) ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
 
     end_menu()(tmpwin, _("Select version information flags:"));
@@ -6614,11 +5669,11 @@ handler_versinfo()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-handler_windowborders()
-{ const $frame = stack_frame(); try {
+function handler_windowborders() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i;
@@ -6651,7 +5706,8 @@ handler_windowborders()
     }
     destroy_nhwindow()(tmpwin);
     return optn_ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  **********************************
@@ -6661,9 +5717,7 @@ handler_windowborders()
  **********************************
  */
 
-function /* char * */
-string_for_opt(opts, val_optional)
-{
+function string_for_opt(opts, val_optional) { /* char * */
     let colon, equals;
 
     colon = strchr(opts, ord(':'));
@@ -6679,9 +5733,7 @@ string_for_opt(opts, val_optional)
     return colon;
 }
 
-function /* char * */
-string_for_env_opt(optname, opts, val_optional)
-{
+function string_for_env_opt(optname, opts, val_optional) { /* char * */
     if (!go.opt_initial) {
         rejectoption(optname);
         return empty_optstr;
@@ -6689,9 +5741,7 @@ string_for_env_opt(optname, opts, val_optional)
     return string_for_opt(opts, val_optional);
 }
 
-function /* void */
-bad_negation(optname, with_parameter)
-{
+function bad_negation(optname, with_parameter) { /* void */
     config_error_add(_("The %s option may not %sbe negated."), optname,
                      with_parameter ? _("both have a value and ") : _(""));
 }
@@ -6699,9 +5749,8 @@ bad_negation(optname, with_parameter)
 /* go through all of the options and set the minmatch value
    based on what is needed for uniqueness of each individual
    option. Set a minimum of 3 characters. */
-function /* void */
-determine_ambiguities()
-{ const $frame = stack_frame(); try {
+function determine_ambiguities() { /* void */
+    const $frame = stack_frame(); try {
     let i, j, len, tmpneeded, needed = stack_array(int, SIZE(allopt));
     let p1, p2;
 
@@ -6733,11 +5782,10 @@ determine_ambiguities()
         allopt[i].minmatch = (needed[i] < 3) ? 3
                                 : (needed[i] <= len) ? needed[i] : len;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-length_without_val(user_string, len)
-{
+function length_without_val(user_string, len) { /* int */
     let p = strchr(user_string, ord(':')),
                q = strchr(user_string, ord('='));
 
@@ -6756,10 +5804,8 @@ length_without_val(user_string, len)
 /* check whether a user-supplied option string is a proper leading
    substring of a particular option name; option string might have
    a colon or equals sign and arbitrary value appended to it */
-export function /* boolean */
-match_optname(user_string, optn_name,
-              min_length, val_allowed)
-{
+export function match_optname(user_string, optn_name,
+              min_length, val_allowed) { /* boolean */
     let len = int(strlen(user_string));
 
     if (val_allowed)
@@ -6769,54 +5815,38 @@ match_optname(user_string, optn_name,
                       && !strncmpi(optn_name, user_string, len)));
 }
 
-export function /* void */
-reset_duplicate_opt_detection()
-{
+export function reset_duplicate_opt_detection() { /* void */
     let k;
 
     for (k = 0; k < OPTCOUNT; ++k)
         allopt[k].dupdetected = 0;
 }
 
-function /* boolean */
-duplicate_opt_detection(optidx)
-{
+function duplicate_opt_detection(optidx) { /* boolean */
     if (go.opt_initial && go.opt_from_file)
         return allopt[optidx].dupdetected++;
     return FALSE;
 }
 
-function /* void */
-complain_about_duplicate(optidx)
-{ const $frame = stack_frame(); try {
+function complain_about_duplicate(optidx) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
-
-
-
-
-
-
 
     chars[buf + 0] = ord('\0');
     if (using_alias[0])
-        void sprintf(buf, _(" (via alias: %s)"), allopt[optidx].alias);
+        sprintf(buf, _(" (via alias: %s)"), allopt[optidx].alias);
     config_error_add(_("%s option specified multiple times: %s%s"),
                      (allopt[optidx].opttyp == CompOpt) ? _("compound")
                                                         : _("boolean"),
                      allopt[optidx].name, buf);
 
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-rejectoption(optname)
-{
-
-
-
+function rejectoption(optname) { /* void */
     pline(_("%s can be set only from NETHACKOPTIONS or %s."), optname,
           get_configfile());
-
 }
 
 /*
@@ -6844,12 +5874,10 @@ OPTIONS=gender
  * if it's put in a smaller buffer, the responsible code will have to
  * bounds-check itself.
  */
-export function /* char * */
-nh_getenv(ev)
-{
+export function nh_getenv(ev) { /* char * */
     let getev = getenv(ev);
 
-    if (getev && strlen(getev) <= (Math.trunc(BUFSZ / 2)))
+    if (getev && strlen(getev) <= Math.trunc(BUFSZ / 2))
         return getev;
     else
         return 0;
@@ -6857,9 +5885,7 @@ nh_getenv(ev)
 
 /* copy up to maxlen-1 characters; 'dest' must be able to hold maxlen;
    treat comma as alternate end of 'src' */
-function /* void */
-nmcpy(dest, src, maxlen)
-{
+function nmcpy(dest, src, maxlen) { /* void */
     let count;
 
     for (count = 1; count < maxlen; count++) {
@@ -6892,10 +5918,8 @@ nmcpy(dest, src, maxlen)
  * an appropriate digit will also fall through to \<other> and yield 'X'
  * or 'O', plus stop if the non-digit is end-of-string.
  */
-function /* void */
-escapes(cp,
-        tp)       /* result is never longer than 'cp' */
-{
+function escapes(cp,
+        tp) { /* void */ /* result is never longer than 'cp' */
     let oct = init_string(static_array("escapes.oct", char, sizeof_string("01234567")), _("01234567"), true), dec = init_string(static_array("escapes.dec", char, sizeof_string("0123456789")), _("0123456789"), true);
     /* hexdd[] is defined in decl.c */
 
@@ -6905,7 +5929,7 @@ escapes(cp,
     while (chars[cp]) {
         /* \M has to be followed by something to do meta conversion,
            otherwise it will just be \M which ultimately yields 'M' */
-        meta = (((chars[cp] == ord('\\') && (chars[cp + 1] == ord('m') || chars[cp + 1] == ord('M')) && chars[cp + 2]) ? 1 : 0));
+        meta = (chars[cp] == ord('\\') && (chars[cp + 1] == ord('m') || chars[cp + 1] == ord('M')) && chars[cp + 2] ? 1 : 0);
         if (meta)
             cp += 2;
 
@@ -6933,7 +5957,7 @@ escapes(cp,
                    && (dp = strchr(hexdd, chars[cp + 2])) != 0) {
             cp += 2; /* move past backslash and 'X' */
             do {
-                cval = (cval * 16) + (Math.trunc((dp - hexdd) / 2));
+                cval = (cval * 16) + Math.trunc((dp - hexdd) / 2);
             } while (chars[++cp] && (dp = strchr(hexdd, chars[cp])) != 0 && ++dcount < 2);
         } else { /* C-style character escapes */
             switch (chars[++cp]) {
@@ -6967,9 +5991,8 @@ escapes(cp,
 
 /* returns a one-byte character from the text; may change txt[];
    moved from cmd.c in order to get access to escapes() */
-export function /* uchar */
-txt2key(txt)
-{ const $frame = stack_frame(); try {
+export function txt2key(txt) { /* uchar */
+    const $frame = stack_frame(); try {
     let uc;
     let makemeta = FALSE;
 
@@ -7064,7 +6087,8 @@ txt2key(txt)
     }
 
     return ord('\0');
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  **********************************
@@ -7075,9 +6099,7 @@ txt2key(txt)
  */
 
 /* process options, possibly including SYSCF */
-export function /* void */
-initoptions()
-{
+export function initoptions() { /* void */
     /*
      * Most places that call initoptions_init()/initoptions() would
      * have the calls next to each other, so instead of adding
@@ -7105,8 +6127,6 @@ initoptions()
      * lists of usernames into arrays with one name per element.
      */
 
-
-
     /* Carry out options that got deferred from early_options */
     if (gd.deferred_showpaths)
         do_deferred_showpaths(0);  /* does not return */
@@ -7115,14 +6135,11 @@ initoptions()
 }
 
 /* set up default values for options where 0 or False isn't sufficient */
-export function /* void */
-initoptions_init()
-{
-
+export function initoptions_init() { /* void */
     let opts;
 
     let i;
-    let have_branch = (((nomakedefs.git_branch && chars[nomakedefs.git_branch]) ? 1 : 0));
+    let have_branch = (nomakedefs.git_branch && chars[nomakedefs.git_branch] ? 1 : 0);
 
     go.opt_phase = builtin_opt;    /* Did I need to move this here? */
     /* initialize the function pointers for saving the game */
@@ -7180,11 +6197,6 @@ initoptions_init()
 
     iflags.prevmsg_window = ord('s');
 
-
-
-
-
-
     iflags.menu_headings.attr = ATR_INVERSE;
     iflags.menu_headings.color = NO_COLOR;
     iflags.getpos_coords = GPCOORDS_NONE;
@@ -7201,7 +6213,7 @@ initoptions_init()
         uchars[gw.warnsyms + i] = def_warnsyms[i].sym;
 
     /* assert( sizeof flags.inv_order == sizeof def_inv_order ); */
-    void memcpy(flags.inv_order,
+    memcpy(flags.inv_order,
                   def_inv_order, sizeof_member(flags, "inv_order"));
     chars[flags.pickup_types + 0] = ord('\0');
     flags.pickup_burden = MOD_ENCUMBER;
@@ -7229,8 +6241,6 @@ initoptions_init()
         iflags.wc_color = TRUE;
     }
 
-
-
     /* detect whether a "vt" terminal can handle alternate charsets */
     if ((opts = nh_getenv(_("TERM")))
         /* [could also check "xterm" which emulates vtXXX by default] */
@@ -7240,20 +6250,6 @@ initoptions_init()
             load_symset(_("DECGraphics"), PRIMARYSET);
         switch_symbols(TRUE);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     flags.menu_style = MENU_FULL;
 
@@ -7282,7 +6278,6 @@ initoptions_init()
     objects[SLIME_MOLD].oc_name_idx = SLIME_MOLD;
     nmcpy(svp.pl_fruit, OBJ_NAME(objects[SLIME_MOLD]), PL_FSIZ);
 
-
 /* someday there may be other SYSCF alternatives besides text file */
 
     /* If SYSCF_FILE is specified, it _must_ exist... */
@@ -7300,8 +6295,6 @@ initoptions_init()
      * TODO [maybe]: parse the sysopt entries which are space-separated
      * lists of usernames into arrays with one name per element.
      */
-
-
 }
 
 /*
@@ -7320,13 +6313,12 @@ initoptions_init()
  *        by default,
  *      then process the value of NETHACKOPTIONS as extra options.
  */
-export function /* void */
-initoptions_finish()
-{   let sym = 0;
+export function initoptions_finish() { /* void */
+   let sym = 0;
 
     rcfile();
 
-    void fruitadd(svp.pl_fruit, null);
+    fruitadd(svp.pl_fruit, null);
     /*
      * Remove "slime mold" from list of object names.  This will
      * prevent it from being wished unless it's actually present
@@ -7373,7 +6365,6 @@ initoptions_finish()
              && wc_supported(_("tiled_map")))
         iflags.wc_ascii_map = FALSE, iflags.wc_tiled_map = TRUE;
 
-
     if (glyphid_cache_status())
         free_glyphid_cache();
     apply_customizations(unsigned(gc.currentgraphics),
@@ -7383,27 +6374,9 @@ initoptions_finish()
     return;
 }
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-allopt_array_init()
-{
+export function allopt_array_init() { /* void */
     let i;
     let options_array_inited_already = static_var("allopt_array_init.options_array_inited_already", schar, FALSE);
 
@@ -7442,9 +6415,7 @@ allopt_array_init()
 
 /* iflags.menuobjsyms also controls iflags.menu_head_objsym, and
    iflags.use_menu_glyphs; they affect execution but are no longer options */
-function /* void */
-set_menuobjsyms_flags(newobjsyms)
-{
+function set_menuobjsyms_flags(newobjsyms) { /* void */
     iflags.menuobjsyms = newobjsyms;
     iflags.menu_head_objsym = ((newobjsyms & 1) != 0) ? TRUE : FALSE;
     iflags.use_menu_glyphs = ((newobjsyms & (2 | 4)) != 0) ? TRUE : FALSE;
@@ -7462,9 +6433,8 @@ set_menuobjsyms_flags(newobjsyms)
  * Used by: optfn_packorder()
  *
  */
-function /* int */
-change_inv_order(op)
-{ const $frame = stack_frame(); try {
+function change_inv_order(op) { /* int */
+    const $frame = stack_frame(); try {
     let oc_sym, num;
     let sp, buf = stack_array(char, QBUFSZ);
     let retval = 1;
@@ -7502,13 +6472,13 @@ change_inv_order(op)
     /* fill in any omitted classes, using previous ordering */
     for (sp = flags.inv_order; chars[sp]; sp++)
         if (!strchr(buf, chars[sp]))
-            void strkitten(buf + (num++), chars[sp]);
+            strkitten(buf + (num++), chars[sp]);
     chars[buf + (MAXOCLASSES - 1)] = ord('\0');
 
-    void strcpy(flags.inv_order, buf);
+    strcpy(flags.inv_order, buf);
     return retval;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Support functions for "warning"
@@ -7517,9 +6487,8 @@ change_inv_order(op)
  *
  */
 
-function /* boolean */
-warning_opts(opts, optype)
-{ const $frame = stack_frame(); try {
+function warning_opts(opts, optype) { /* boolean */
+    const $frame = stack_frame(); try {
     let translate = stack_array(uchar, WARNCOUNT);
     let length, i;
 
@@ -7535,11 +6504,10 @@ warning_opts(opts, optype)
                                                : def_warnsyms[i].sym;
     assign_warnings(translate);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-assign_warnings(graph_chars)
-{
+export function assign_warnings(graph_chars) { /* void */
     let i;
 
     for (i = 0; i < WARNCOUNT; i++)
@@ -7554,9 +6522,8 @@ assign_warnings(graph_chars)
  *
  */
 
-function /* int */
-feature_alert_opts(op, optn)
-{ const $frame = stack_frame(); try {
+function feature_alert_opts(op, optn) { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let fnv = get_feature_notice_ver(op); /* version.c */
 
@@ -7575,14 +6542,15 @@ feature_alert_opts(op, optn)
 
     flags.suppress_alert = fnv;
     if (!go.opt_initial) {
-        void sprintf(buf, _("%llu.%llu.%llu"), FEATURE_NOTICE_VER_MAJ(), FEATURE_NOTICE_VER_MIN(), FEATURE_NOTICE_VER_PATCH())
+        sprintf(buf, _("%llu.%llu.%llu"), FEATURE_NOTICE_VER_MAJ(), FEATURE_NOTICE_VER_MIN(), FEATURE_NOTICE_VER_PATCH())
 ;
         pline(
           _("Feature change alerts disabled for NetHack %s features and prior."),
               buf);
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This is used by parse_config_line() in files.c
@@ -7592,9 +6560,7 @@ feature_alert_opts(op, optn)
 /* parse key:command[,key2:command2,...] after BINDINGS= prefix has been
    stripped; returns False if any problem seen, True if every binding in
    the comma-separated list is successful */
-export function /* boolean */
-parsebindings(bindings)
-{
+export function parsebindings(bindings) { /* boolean */
     let bind;
     let key;
     let i;
@@ -7686,9 +6652,7 @@ parsebindings(bindings)
     { name: _("norep"), msgtyp: MSGTYP_NOREP, descr: _("Do not repeat the message") }
 ]);
 
-function /* const char * */
-msgtype2name(typ)
-{
+function msgtype2name(typ) { /* const char * */
     let i;
 
     for (i = 0; i < SIZE(msgtype_names); i++)
@@ -7697,9 +6661,8 @@ msgtype2name(typ)
     return 0;
 }
 
-function /* int */
-query_msgtype()
-{ const $frame = stack_frame(); try {
+function query_msgtype() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i, pick_cnt;
@@ -7725,11 +6688,11 @@ query_msgtype()
         return i;
     }
     return -1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-msgtype_add(typ, pattern)
-{ const $frame = stack_frame(); try {
+function msgtype_add(typ, pattern) { /* boolean */
+    const $frame = stack_frame(); try {
     let re_error = static_var("msgtype_add.re_error", ptr_to(char), _("MSGTYPE regex error"));
     let tmp = view_of(struct_plinemsg_type, addr_of(alloc(sizeof(struct_plinemsg_type))));
 
@@ -7751,11 +6714,10 @@ msgtype_add(typ, pattern)
     tmp.next = gp.plinemsg_types;
     gp.plinemsg_types = tmp;
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-msgtype_free()
-{
+export function msgtype_free() { /* void */
     let tmp, tmp2 = null;
 
     for (tmp = gp.plinemsg_types; tmp; tmp = tmp2) {
@@ -7768,9 +6730,7 @@ msgtype_free()
     gp.plinemsg_types = null;
 }
 
-function /* void */
-free_one_msgtype(idx) /* 0 .. */
-{
+function free_one_msgtype(idx) { /* void */ /* 0 .. */
     let tmp = gp.plinemsg_types;
     let prev = null;
 
@@ -7793,10 +6753,8 @@ free_one_msgtype(idx) /* 0 .. */
     }
 }
 
-export function /* int */
-msgtype_type(msg,
-             norepeat) /* called from Norep(via pline) */
-{
+export function msgtype_type(msg,
+             norepeat) { /* int */ /* called from Norep(via pline) */
     let tmp = gp.plinemsg_types;
 
     while (tmp) {
@@ -7811,9 +6769,7 @@ msgtype_type(msg,
 
 /* negate one or more types of messages so that their type handling will
    be disabled or re-enabled; MSGTYPE_NORMAL (value 0) is not affected */
-export function /* void */
-hide_unhide_msgtypes(hide, hide_mask)
-{
+export function hide_unhide_msgtypes(hide, hide_mask) { /* void */
     let tmp;
     let mt;
 
@@ -7827,9 +6783,7 @@ hide_unhide_msgtypes(hide, hide_mask)
     }
 }
 
-function /* int */
-msgtype_count()
-{
+function msgtype_count() { /* int */
     let c = 0;
     let tmp = gp.plinemsg_types;
 
@@ -7840,9 +6794,8 @@ msgtype_count()
     return c;
 }
 
-export function /* boolean */
-msgtype_parse_add(str)
-{ const $frame = stack_frame(); try {
+export function msgtype_parse_add(str) { /* boolean */
+    const $frame = stack_frame(); try {
     let pattern = stack_array(char, 256);
     let msgtype = stack_array(char, 11);
 
@@ -7863,13 +6816,13 @@ msgtype_parse_add(str)
         config_error_add(_("Malformed MSGTYPE"));
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* parse 'str' as a regular expression to check whether it's valid;
    compiled regexp gets thrown away regardless of the outcome */
-function /* boolean */
-test_regex_pattern(str, errmsg)
-{ const $frame = stack_frame(); try {
+function test_regex_pattern(str, errmsg) { /* boolean */
+    const $frame = stack_frame(); try {
     let def_errmsg = init_string(static_array("test_regex_pattern.def_errmsg", char, sizeof_string("NHregex error")), _("NHregex error"), true);
     let match;
     let re_error_desc, errbuf = stack_array(char, BUFSZ);
@@ -7898,17 +6851,17 @@ test_regex_pattern(str, errmsg)
         config_error_add(_("%s: %s"), errmsg, re_error_desc);
 
     return retval;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* parse 'role' or 'race' or 'gender' or 'alignment' */
-function /* boolean */
-parse_role_opt(
+function parse_role_opt(
     optidx,
     negated,
     fullname,
     opts,
-    opp)
-{ const $frame = stack_frame(); try {
+    opp) { /* boolean */
+    const $frame = stack_frame(); try {
     let neg_opt = init_string(static_array("parse_role_opt.neg_opt", char, sizeof_string("!")), _("!"), true); /* not 'const' but never modified */
     let preval, op;
     let which = (optidx == opt_role) ? RS_ROLE
@@ -8013,13 +6966,12 @@ parse_role_opt(
         ok = TRUE;
     }
     return ok;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* fetch a saved role|race|gender|alignment value suitable for writing into
    a new run-time config file */
-function /* char * */
-get_cnf_role_opt(optidx)
-{
+function get_cnf_role_opt(optidx) { /* char * */
     let phase;
     let op = 0;
 
@@ -8033,9 +6985,7 @@ get_cnf_role_opt(optidx)
 }
 
 /* Check if character c is illegal as a menu command key */
-function /* boolean */
-illegal_menu_cmd_key(c)
-{
+function illegal_menu_cmd_key(c) { /* boolean */
     if (c == 0 || c == ord('\r') || c == ord('\n') || c == ord('\x1b') || c == ord(' ')
         || digit(char(c)) || (letter(char(c)) && c != ord('@'))) {
         config_error_add(_("Reserved menu command key '%s'"), visctrl(char(c)));
@@ -8053,14 +7003,11 @@ illegal_menu_cmd_key(c)
     return FALSE;
 }
 
-
 /*
  * Convert the given string of object classes to a string of default object
  * symbols.
  */
-export function /* void */
-oc_to_str(src, dest)
-{
+export function oc_to_str(src, dest) { /* void */
     let i;
 
     while ((i = (chars[src++])) != 0) {
@@ -8076,9 +7023,7 @@ oc_to_str(src, dest)
  * Add the given mapping to the menu command map list.  Always keep the
  * maps valid C strings.
  */
-export function /* void */
-add_menu_cmd_alias(from_ch, to_ch)
-{
+export function add_menu_cmd_alias(from_ch, to_ch) { /* void */
     if (gn.n_menu_mapped >= MAX_MENU_MAPPED_CMDS) {
         pline(_("out of menu map space."));
     } else {
@@ -8090,9 +7035,7 @@ add_menu_cmd_alias(from_ch, to_ch)
     }
 }
 
-export function /* char */
-get_menu_cmd_key(ch)
-{
+export function get_menu_cmd_key(ch) { /* char */
     let found = strchr(gm.mapped_menu_op, ch);
 
     if (found) {
@@ -8107,9 +7050,7 @@ get_menu_cmd_key(ch)
  * Map the given character to its corresponding menu command.  If it
  * doesn't match anything, just return the original.
  */
-export function /* char */
-map_menu_cmd(ch)
-{
+export function map_menu_cmd(ch) { /* char */
     let found = strchr(gm.mapped_menu_cmds, ch);
 
     if (found) {
@@ -8122,16 +7063,11 @@ map_menu_cmd(ch)
 
 /* get keystrokes that are used for menu scrolling operations which apply;
    printable: for use in a prompt, non-printable: for yn_function() choices */
-export function /* char * */
-collect_menu_keys(
+export function collect_menu_keys(
     outbuf,
     scrollmask,
 
-    printable)   /* False: output is string of raw characters,
-                          * True: output is a string of visctrl() sequences;
-                          * matters iff user has mapped any menu scrolling
-                          * commands to control or meta characters */
-{
+    printable) { /* char * */ /* False: output is string of raw characters, * True: output is a string of visctrl() sequences; * matters iff user has mapped any menu scrolling * commands to control or meta characters */
     const struct_menuscrollinfo = struct("collect_menu_keys.struct_menuscrollinfo", {
         cmdkey: char,
         maskindx: uchar,
@@ -8152,9 +7088,9 @@ collect_menu_keys(
             let c = get_menu_cmd_key(scroll_keys[i].cmdkey);
 
             if (printable)
-                void strcat(outbuf, visctrl(c));
+                strcat(outbuf, visctrl(c));
             else
-                void strkitten(outbuf, c);
+                strkitten(outbuf, c);
         }
     }
     return outbuf;
@@ -8166,14 +7102,13 @@ collect_menu_keys(
  * If replace_fruit is sent in, replace the fruit in the chain rather than
  * adding a new entry--for user specified fruits only.
  */
-export function /* int */
-fruitadd(str, replace_fruit)
-{ const $frame = stack_frame(); try {
+export function fruitadd(str, replace_fruit) { /* int */
+    const $frame = stack_frame(); try {
     var i;
     var f;
     var highest_fruit_id = stack_var(int, 0), globpfx;
     var buf = stack_array(char, PL_FSIZ), altname = stack_array(char, PL_FSIZ);
-    var user_specified = (+(str == svp.pl_fruit));
+    var user_specified = +(str == svp.pl_fruit);
     /* if not user-specified, then it's a fruit name for a fruit on
      * a bones level or from orctown raider's loot...
      */
@@ -8227,15 +7162,15 @@ fruitadd(str, replace_fruit)
             || !strncmp(svp.pl_fruit, _("partly eaten "), 13)
             || (!strncmp(svp.pl_fruit, _("tin of "), 7)
                 && (!strcmp(svp.pl_fruit + 7, _("spinach"))
-                    || ((((name_to_mon(svp.pl_fruit + 7, null)) >= LOW_PM) && ((name_to_mon(svp.pl_fruit + 7, null)) < NUMMONS)))))
+                    || (((name_to_mon(svp.pl_fruit + 7, null)) >= LOW_PM) && ((name_to_mon(svp.pl_fruit + 7, null)) < NUMMONS))))
             || !strcmp(svp.pl_fruit, _("empty tin"))
             || (!strcmp(svp.pl_fruit, _("glob"))
                 || (globpfx > 0 && !strcmp(_("glob"), svp.pl_fruit + globpfx)))
             || ((str_end_is(svp.pl_fruit, _(" corpse"))
                  || str_end_is(svp.pl_fruit, _(" egg")))
-                && ((((name_to_mon(svp.pl_fruit, null)) >= LOW_PM) && ((name_to_mon(svp.pl_fruit, null)) < NUMMONS))))) {
-            void strcpy(buf, svp.pl_fruit);
-            void strcpy(svp.pl_fruit, _("candied "));
+                && (((name_to_mon(svp.pl_fruit, null)) >= LOW_PM) && ((name_to_mon(svp.pl_fruit, null)) < NUMMONS)))) {
+            strcpy(buf, svp.pl_fruit);
+            strcpy(svp.pl_fruit, _("candied "));
             nmcpy(svp.pl_fruit + 8, buf, PL_FSIZ - 8);
         }
         chars[altname] = ord('\0');
@@ -8273,7 +7208,7 @@ fruitadd(str, replace_fruit)
         return rnd(127);
 
     f = newfruit();
-    void memset(addr_of(f), 0, sizeof(struct_fruit));
+    memset(addr_of(f), 0, sizeof(struct_fruit));
     copynchars(f.fname, chars[altname] ? altname : str, PL_FSIZ - 1);
     f.fid = ++highest_fruit_id[0];
     /* we used to go out of our way to add it at the end of the list,
@@ -8284,7 +7219,8 @@ fruitadd(str, replace_fruit)
     if (user_specified)
         svc.context.current_fruit = f.fid;
     return f.fid;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  **********************************
@@ -8295,14 +7231,11 @@ fruitadd(str, replace_fruit)
  **********************************
  */
 
-
    /* RESTORE is after show_menucontrols() */
 
-function /* int */
-optfn_o_autopickup_exceptions(
+function optfn_o_autopickup_exceptions(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8311,7 +7244,7 @@ optfn_o_autopickup_exceptions(
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, n_currently_set, count_apes());
+        sprintf(opts, n_currently_set, count_apes());
         return optn_ok;
     }
     if (req == do_handler) {
@@ -8320,11 +7253,9 @@ optfn_o_autopickup_exceptions(
     return optn_ok;
 }
 
-function /* int */
-optfn_o_bind_keys(
+function optfn_o_bind_keys(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8333,7 +7264,7 @@ optfn_o_bind_keys(
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, n_currently_set, count_bind_keys());
+        sprintf(opts, n_currently_set, count_bind_keys());
         return optn_ok;
     }
     if (req == do_handler) {
@@ -8342,11 +7273,9 @@ optfn_o_bind_keys(
     return optn_ok;
 }
 
-function /* int */
-optfn_o_autocomplete(
+function optfn_o_autocomplete(
     optidx, req, negated,
-    opts, op)
-{
+    opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8355,7 +7284,7 @@ optfn_o_autocomplete(
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, n_currently_set, count_autocompletions());
+        sprintf(opts, n_currently_set, count_autocompletions());
         return optn_ok;
     }
     if (req == do_handler) {
@@ -8364,10 +7293,8 @@ optfn_o_autocomplete(
     return optn_ok;
 }
 
-function /* int */
-optfn_o_menu_colors(optidx, req, negated,
-              opts, op)
-{
+function optfn_o_menu_colors(optidx, req, negated,
+              opts, op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8376,7 +7303,7 @@ optfn_o_menu_colors(optidx, req, negated,
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, n_currently_set, count_menucolors());
+        sprintf(opts, n_currently_set, count_menucolors());
         return optn_ok;
     }
     if (req == do_handler) {
@@ -8385,14 +7312,12 @@ optfn_o_menu_colors(optidx, req, negated,
     return optn_ok;
 }
 
-function /* int */
-optfn_o_message_types(
+function optfn_o_message_types(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8401,7 +7326,7 @@ optfn_o_message_types(
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, n_currently_set, msgtype_count());
+        sprintf(opts, n_currently_set, msgtype_count());
         return optn_ok;
     }
     if (req == do_handler) {
@@ -8410,14 +7335,12 @@ optfn_o_message_types(
     return optn_ok;
 }
 
-function /* int */
-optfn_o_status_cond(
+function optfn_o_status_cond(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8427,7 +7350,7 @@ optfn_o_status_cond(
     if (req == get_val) {
         if (!opts) /* opts[] is used as an output argument */
             return optn_err;
-        void sprintf(opts, n_currently_set, count_cond());
+        sprintf(opts, n_currently_set, count_cond());
         return optn_ok;
     }
     if (req == get_cnf_val) {
@@ -8441,15 +7364,12 @@ optfn_o_status_cond(
     return optn_ok;
 }
 
-
-function /* int */
-optfn_o_status_hilites(
+function optfn_o_status_hilites(
     optidx,
     req,
     negated,
     opts,
-    op)
-{
+    op) { /* int */
     if (req == do_init) {
         return optn_ok;
     }
@@ -8458,7 +7378,7 @@ optfn_o_status_hilites(
     if (req == get_val || req == get_cnf_val) {
         if (!opts)
             return optn_err;
-        void sprintf(opts, n_currently_set, count_status_hilites());
+        sprintf(opts, n_currently_set, count_status_hilites());
         return optn_ok;
     }
     if (req == do_handler) {
@@ -8473,13 +7393,10 @@ optfn_o_status_hilites(
     return optn_ok;
 }
 
-
 /* Get string value of configuration option.
  * Currently handles only boolean and compound options.
  */
-export function /* char * */
-get_option_value(optname, cnfvalid)
-{
+export function get_option_value(optname, cnfvalid) { /* char * */
     let retbuf = static_array("get_option_value.retbuf", char, BUFSZ);
     let bool_p;
     let i;
@@ -8488,7 +7405,7 @@ get_option_value(optname, cnfvalid)
         if (!strcmp(optname, allopt[i].name)) {
             if (allopt[i].opttyp == BoolOpt
                 && (bool_p = allopt[i].addr) != 0) {
-                void sprintf(retbuf, _("%s"), chars[bool_p] ? _("true") : _("false"));
+                sprintf(retbuf, _("%s"), chars[bool_p] ? _("true") : _("false"));
                 return retbuf;
             } else if (allopt[i].opttyp == CompOpt && allopt[i].optfn) {
                 let reslt = optn_err;
@@ -8504,9 +7421,7 @@ get_option_value(optname, cnfvalid)
     return 0;
 }
 
-function /* unsigned int */
-longest_option_name(startpass, endpass)
-{
+function longest_option_name(startpass, endpass) { /* unsigned int */
     /* spin through the options to find the longest name */
     let longest_name_len = 0;
     let i, pass, optflags;
@@ -8532,9 +7447,8 @@ longest_option_name(startpass, endpass)
 }
 
 /* guts of doset_simple(); called repeatedly until no choice is made */
-function /* int */
-doset_simple_menu()
-{ const $frame = stack_frame(); try {
+function doset_simple_menu() { /* int */
+    const $frame = stack_frame(); try {
     /* unlike doset()'s fmtstr, there is no leading %s for indentation */
     var fmtstr_tab_doset_simple = init_string(static_array("doset_simple_menu.fmtstr_tab_doset_simple", char, sizeof_string("%s\t[%s]")), _("%s\t[%s]"), true);
     var fmtstr_doset_simple = stack_array(char, sizeof_string("%-15s [%s]   "));
@@ -8552,9 +7466,9 @@ doset_simple_menu()
        in case 'menu_tab_sep' ever gets included in the simple menu so
        becomes subject to being changed while doset_simple() is running */
     if (!iflags.menu_tab_sep)
-        void sprintf(fmtstr_doset_simple, _("%%-%us [%%s]"), longest_option_name(set_gameview, set_in_game));
+        sprintf(fmtstr_doset_simple, _("%%-%us [%%s]"), longest_option_name(set_gameview, set_in_game));
     else
-        void strcpy(fmtstr_doset_simple, fmtstr_tab_doset_simple)
+        strcpy(fmtstr_doset_simple, fmtstr_tab_doset_simple)
 ;
     fmtstr = fmtstr_doset_simple;
 
@@ -8568,7 +7482,7 @@ doset_simple_menu()
            and show that, or whether #reqmenu and #options are both still
            bound to keys and show those, but if meta keys are involved
            the player might not know how to type them; keep this simple */
-        void strcpy(buf, _("Use command '#optionsfull'" +
+        strcpy(buf, _("Use command '#optionsfull'" +
                     " to get the complete options list."));
         add_menu_str(tmpwin, buf);
     }
@@ -8581,7 +7495,7 @@ doset_simple_menu()
     for (section = OptS_General; section < OptS_Advanced; section++) {
         struct_assign(any, cg.zeroany);
         add_menu_str(tmpwin, _(""));
-        void sprintf(buf, _(" %-30s "), OptS_type[section]);
+        sprintf(buf, _(" %-30s "), OptS_type[section]);
         add_menu_heading(tmpwin, buf);
         for (i = 0; (name = allopt[i].name) != 0; i++) {
             if (allopt[i].section != section)
@@ -8598,7 +7512,7 @@ doset_simple_menu()
                     continue;
                 if (iflags.wc_tiled_map && allopt[i].idx == opt_color)
                     continue;
-                void sprintf(buf, fmtstr, name, chars[bool_p] ? _("X") : _(" "));
+                sprintf(buf, fmtstr, name, chars[bool_p] ? _("X") : _(" "));
                 break;
             case CompOpt:
             case OthrOpt:
@@ -8615,12 +7529,12 @@ doset_simple_menu()
                     if (allopt[k].optfn)
                         reslt = (allopt[k].optfn)(allopt[k].idx, get_val,
                                                    FALSE, buf2, empty_optstr);
-                    void sprintf(buf, fmtstr, name, ((reslt == optn_ok && chars[buf2 + 0])
+                    sprintf(buf, fmtstr, name, ((reslt == optn_ok && chars[buf2 + 0])
                              ? buf2 : _("unknown")))
 ;
                 break;
             default:
-                void sprintf(buf, _("ERROR"));
+                sprintf(buf, _("ERROR"));
                 break;
             }
             /* pickup_types is separated from autopickup due to the
@@ -8629,11 +7543,11 @@ doset_simple_menu()
                 || allopt[i].idx == opt_pickup_thrown
                 || allopt[i].idx == opt_pickup_stolen
                 || allopt[i].idx == opt_dropped_nopick)
-                void strcat(buf, _("  (for autopickup)"));
+                strcat(buf, _("  (for autopickup)"));
             add_menu(tmpwin, nul_glyphinfo, any, 0, 0,
                      ATR_NONE, NO_COLOR, buf, MENU_ITEMFLAGS_NONE);
             if (gs.simple_options_help && allopt[i].descr) {
-                void sprintf(buf, _("    %s"), allopt[i].descr);
+                sprintf(buf, _("    %s"), allopt[i].descr);
                 add_menu_str(tmpwin, buf);
                 add_menu_str(tmpwin, _(""));
             }
@@ -8658,8 +7572,8 @@ doset_simple_menu()
             toggled_help = TRUE;
         } else if (allopt[k].opttyp == BoolOpt) {
             /* boolean option */
-            void sprintf(buf, _("%s%s"), chars[allopt[k].addr] ? _("!") : _(""), allopt[k].name);
-            void parseoptions(buf, FALSE, FALSE);
+            sprintf(buf, _("%s%s"), chars[allopt[k].addr] ? _("!") : _(""), allopt[k].name);
+            parseoptions(buf, FALSE, FALSE);
         } else {
             /* compound option */
             if (allopt[k].has_handler && allopt[k].optfn) {
@@ -8669,14 +7583,14 @@ doset_simple_menu()
                 if (reslt == optn_ok && allopt[k].idx != pfx_cond_)
                     chars[opt_set_in_config + k] = TRUE;
             } else {
-                void sprintf(buf, _("Set %s to what?"), allopt[k].name);
+                sprintf(buf, _("Set %s to what?"), allopt[k].name);
                 getlin(buf, abuf);
                 if (chars[abuf + 0] != ord('\x1b')) { /* ESC */
-                    void sprintf(buf, _("%s:"), allopt[k].name);
+                    sprintf(buf, _("%s:"), allopt[k].name);
                     copynchars(eos(buf), abuf,
-                               int((unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(buf)))));
+                               int(unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(buf))));
                     /* pass the buck */
-                    void parseoptions(buf, FALSE, FALSE);
+                    parseoptions(buf, FALSE, FALSE);
                 }
                 /* Note: using ESC to not set a new value will still return
                    'picked 1' to caller which will loop for another choice */
@@ -8699,13 +7613,12 @@ doset_simple_menu()
     } break; }
 
     return pick_cnt;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #options - the user friendly version:  get one option from a subset of
    the zillion choices, act upon it, and prompt for another */
-export function /* int */
-doset_simple()
-{
+export function doset_simple() { /* int */
     let pickedone = 0;
     let flush = FALSE;
 
@@ -8734,9 +7647,7 @@ doset_simple()
     return ECMD_OK;
 }
 
-function /* const char * */
-term_for_boolean(idx, b)
-{
+function term_for_boolean(idx, b) { /* const char * */
     let i, f_t = (chars[b]) ? 1: 0;
     let boolean_term;
     let booleanterms = static_array("term_for_boolean.booleanterms", array_of(ptr_to(char), num_terms), 2, [
@@ -8751,12 +7662,11 @@ term_for_boolean(idx, b)
     return boolean_term;
 }
 
-export const HELP_IDX = (SIZE(allopt));
+export const HELP_IDX = SIZE(allopt);
 
 /* the #optionsfull command */
-export function /* int */
-doset() /* changing options via menu by Per Liboriussen */
-{ const $frame = stack_frame(); try {
+export function doset() { /* int */ /* changing options via menu by Per Liboriussen */
+    const $frame = stack_frame(); try {
     var fmtstr_tab_doset = init_string(static_array("doset.fmtstr_tab_doset", char, sizeof_string("%s%s\t[%s]")), _("%s%s\t[%s]"), true);
     var fmtstr_doset = stack_array(char, sizeof_string("%s%-15s [%s]   "));
     var buf = stack_array(char, BUFSZ);
@@ -8798,7 +7708,7 @@ doset() /* changing options via menu by Per Liboriussen */
         struct_assign(any, cg.zeroany);
         for (i = 0; i < SIZE(helptext); ++i) {
             if (helptext[i]) {
-                void sprintf(buf, _("%4s%.75s"), _(""), helptext[i]);
+                sprintf(buf, _("%4s%.75s"), _(""), helptext[i]);
                 add_menu_str(tmpwin, buf);
             } else {
                 any.a_int = HELP_IDX + 1; /* handling pick_list subtracts 1 */
@@ -8809,21 +7719,14 @@ doset() /* changing options via menu by Per Liboriussen */
         }
     }
 
-
-
-
-
-
-
-
         startpass = set_gameview;
-    endpass = (wizard()) ? set_wiznofuz : set_in_game;
+    endpass = wizard() ? set_wiznofuz : set_in_game;
 
     if (!iflags.menu_tab_sep)
         /* initial "%s" is for indentation of non-selectable items */
-        void sprintf(fmtstr_doset, _("%%s%%-%us [%%s]"), longest_option_name(startpass, endpass));
+        sprintf(fmtstr_doset, _("%%s%%-%us [%%s]"), longest_option_name(startpass, endpass));
     else
-        void strcpy(fmtstr_doset, fmtstr_tab_doset)
+        strcpy(fmtstr_doset, fmtstr_tab_doset)
 ;
 
     indexoffset = 1;
@@ -8850,7 +7753,7 @@ doset() /* changing options via menu by Per Liboriussen */
 
                 any.a_int = (pass == 0) ? 0 : i + 1 + indexoffset;
                 indent = (pass == 0 && !iflags.menu_tab_sep) ? _("    ") : _("");
-                void sprintf(buf, fmtstr_doset, indent, name, term_for_boolean(i, bool_p))
+                sprintf(buf, fmtstr_doset, indent, name, term_for_boolean(i, bool_p))
 ;
                 if (pass == 0)
                     enhance_menu_text(buf, sizeof(array_of(char, BUFSZ)), pass, bool_p,
@@ -8894,12 +7797,6 @@ doset() /* changing options via menu by Per Liboriussen */
             }
         }
 
-
-
-
-
-
-
     end_menu()(tmpwin, _("Set what options?"));
     go.opt_need_redraw = FALSE;
     go.opt_need_glyph_reset = FALSE;
@@ -8924,9 +7821,9 @@ doset() /* changing options via menu by Per Liboriussen */
             assert(IndexOk(opt_indx, allopt));
             if (allopt[opt_indx].opttyp == BoolOpt) {
                 /* boolean option */
-                void sprintf(buf, _("%s%s"), chars[allopt[opt_indx].addr] ? _("!") : _(""), allopt[opt_indx].name)
+                sprintf(buf, _("%s%s"), chars[allopt[opt_indx].addr] ? _("!") : _(""), allopt[opt_indx].name)
 ;
-                void parseoptions(buf, FALSE, FALSE);
+                parseoptions(buf, FALSE, FALSE);
             } else {
                 /* compound option */
                 var k = opt_indx, reslt;
@@ -8941,16 +7838,16 @@ doset() /* changing options via menu by Per Liboriussen */
                 } else {
                     var abuf = stack_array(char, BUFSZ);
 
-                    void sprintf(buf, _("Set %s to what?"), allopt[opt_indx].name);
+                    sprintf(buf, _("Set %s to what?"), allopt[opt_indx].name);
                     chars[abuf + 0] = ord('\0');
                     getlin(buf, abuf);
                     if (chars[abuf + 0] == ord('\x1b'))
                         continue;
-                    void sprintf(buf, _("%s:"), allopt[opt_indx].name);
-                    void strncat(eos(buf), abuf,
-                                   (unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(buf))));
+                    sprintf(buf, _("%s:"), allopt[opt_indx].name);
+                    strncat(eos(buf), abuf,
+                                   unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(buf)));
                     /* pass the buck */
-                    void parseoptions(buf, FALSE, FALSE);
+                    parseoptions(buf, FALSE, FALSE);
                 }
             }
             if (wc_supported(allopt[opt_indx].name)
@@ -8972,22 +7869,16 @@ doset() /* changing options via menu by Per Liboriussen */
 
     reset_needed_visuals();
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* void */
-reset_needed_visuals()
-{
+function reset_needed_visuals() { /* void */
     if (go.opt_need_glyph_reset) {
         reset_glyphmap(gm_optionchange);
     }
     if (go.opt_reset_customcolors || go.opt_update_basic_palette
         || go.opt_reset_customsymbols || go.opt_need_redraw) {
         if (go.opt_update_basic_palette) {
-
-
-
             go.opt_update_basic_palette = FALSE;
         }
         if (go.opt_reset_customcolors)
@@ -9014,22 +7905,18 @@ reset_needed_visuals()
 }
 
 /* doset(#optionsfull command) menu entries for compound options */
-function /* void */
-doset_add_menu(
+function doset_add_menu(
     win,
     option,
     fmtstr,
     idx,
-    indexoffset)    /* value to add to index in allopt[],
-                         * or zero if option cannot be changed */
-{ const $frame = stack_frame(); try {
+    indexoffset) { /* void */ /* value to add to index in allopt[], * or zero if option cannot be changed */
+    const $frame = stack_frame(); try {
     let value = _("unknown"); /* current value */
     let indent;
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ);
     let any = stack_struct(struct_any);
     let i = idx, reslt = optn_err;
-
-
 
     let clr = NO_COLOR;
 
@@ -9048,27 +7935,22 @@ doset_add_menu(
            (with a zero value, so it can't be selected). */
         any.a_int = 0;
 
-
-
-
-
         if (!chars[buf2 + 0])
-            void strcpy(buf2, _("unknown"));
+            strcpy(buf2, _("unknown"));
         value = buf2;
     }
 
     /* "    " replaces "a - " -- assumes menus follow that style */
     indent = !any.a_int ? _("    ") : _("");
-    void sprintf(buf, fmtstr, indent, option, value);
+    sprintf(buf, fmtstr, indent, option, value);
     add_menu(win, nul_glyphinfo, any, 0, 0,
              ATR_NONE, clr, buf, MENU_ITEMFLAGS_SKIPINVERT);
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* display keys for menu actions; used by cmd.c '?i' and pager.c '?k' */
-export function /* void */
-show_menu_controls(win, dolist)
-{ const $frame = stack_frame(); try {
+export function show_menu_controls(win, dolist) { /* void */
+    const $frame = stack_frame(); try {
     const struct_xtra_cntrls = struct("show_menu_controls.struct_xtra_cntrls", {
         key: ptr_to(char), desc: ptr_to(char),
     });
@@ -9103,7 +7985,7 @@ show_menu_controls(win, dolist)
             if ((ch == MENU_SHIFT_RIGHT
                  || ch == MENU_SHIFT_LEFT) && !has_menu_shift)
                 continue;
-            void sprintf(buf, fmt, visctrl(get_menu_cmd_key(ch)), default_menu_cmd_info[i].desc)
+            sprintf(buf, fmt, visctrl(get_menu_cmd_key(ch)), default_menu_cmd_info[i].desc)
 
 ;
             putstr()(win, 0, buf);
@@ -9113,51 +7995,51 @@ show_menu_controls(win, dolist)
         arg = _(""); /* no extra prefix for 'dolist' */
     } else { /* menu controls help: '?k' */
         putstr()(win, 0, _(""));
-        void sprintf(buf, mc_altfmt, _(""), _("Whole"), _("Current"));
+        sprintf(buf, mc_altfmt, _(""), _("Whole"), _("Current"));
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_altfmt, _(""), _(" Menu"), _(" Page"));
+        sprintf(buf, mc_altfmt, _(""), _(" Menu"), _(" Page"));
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_fmt, _("Select"), visctrl(get_menu_cmd_key(MENU_SELECT_ALL)), visctrl(get_menu_cmd_key(MENU_SELECT_PAGE)))
+        sprintf(buf, mc_fmt, _("Select"), visctrl(get_menu_cmd_key(MENU_SELECT_ALL)), visctrl(get_menu_cmd_key(MENU_SELECT_PAGE)))
 
 ;
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_fmt, _("Invert"), visctrl(get_menu_cmd_key(MENU_INVERT_ALL)), visctrl(get_menu_cmd_key(MENU_INVERT_PAGE)))
+        sprintf(buf, mc_fmt, _("Invert"), visctrl(get_menu_cmd_key(MENU_INVERT_ALL)), visctrl(get_menu_cmd_key(MENU_INVERT_PAGE)))
 
 ;
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_fmt, _("Deselect"), visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)), visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE)))
+        sprintf(buf, mc_fmt, _("Deselect"), visctrl(get_menu_cmd_key(MENU_UNSELECT_ALL)), visctrl(get_menu_cmd_key(MENU_UNSELECT_PAGE)))
 
 ;
         putstr()(win, 0, buf);
         putstr()(win, 0, _(""));
-        void sprintf(buf, mc_fmt, _("Go to"), visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)), _("Next page"))
+        sprintf(buf, mc_fmt, _("Go to"), visctrl(get_menu_cmd_key(MENU_NEXT_PAGE)), _("Next page"))
 
 ;
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)), _("Previous page"))
+        sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_PREVIOUS_PAGE)), _("Previous page"))
 
 ;
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)), _("First page"))
+        sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_FIRST_PAGE)), _("First page"))
 
 ;
         putstr()(win, 0, buf);
-        void sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_LAST_PAGE)), _("Last page"))
+        sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_LAST_PAGE)), _("Last page"))
 
 ;
         putstr()(win, 0, buf);
         if (has_menu_shift) {
-            void sprintf(buf, mc_fmt, _("Pan view"), visctrl(get_menu_cmd_key(MENU_SHIFT_RIGHT)), _("Right (perm_invent only)"))
+            sprintf(buf, mc_fmt, _("Pan view"), visctrl(get_menu_cmd_key(MENU_SHIFT_RIGHT)), _("Right (perm_invent only)"))
 
 ;
             putstr()(win, 0, buf);
-            void sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_SHIFT_LEFT)), _("Left"))
+            sprintf(buf, mc_fmt, _(""), visctrl(get_menu_cmd_key(MENU_SHIFT_LEFT)), _("Left"))
 
 ;
             putstr()(win, 0, buf);
         }
         putstr()(win, 0, _(""));
-        void sprintf(buf, mc_fmt, _("Search"), visctrl(get_menu_cmd_key(MENU_SEARCH)), _("Exter a target string and invert all matching entries"))
+        sprintf(buf, mc_fmt, _("Search"), visctrl(get_menu_cmd_key(MENU_SEARCH)), _("Exter a target string and invert all matching entries"))
 
 ;
         putstr()(win, 0, buf);
@@ -9167,17 +8049,14 @@ show_menu_controls(win, dolist)
         arg = _("Other "); /* prefix for first hardcoded[] entry, then reset */
     }
     for (xcp = hardcoded[0]; xcp.key; xcp = ptr_add(xcp, 1)) {
-        void sprintf(buf, fmt, arg, xcp.key, xcp.desc);
+        sprintf(buf, fmt, arg, xcp.key, xcp.desc);
         putstr()(win, 0, buf);
         arg = _("");
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* int */
-count_cond()
-{
+function count_cond() { /* int */
     let i, cnt = 0;
 
     for (i = 0; i < CONDITION_COUNT; ++i) {
@@ -9187,9 +8066,7 @@ count_cond()
     return cnt;
 }
 
-function /* int */
-count_apes()
-{
+function count_apes() { /* int */
     let numapes = 0;
     let ape = ga.apelist;
 
@@ -9201,12 +8078,9 @@ count_apes()
     return numapes;
 }
 
-
-
 /* common to msg-types, menu-colors, autopickup-exceptions */
-function /* int */
-handle_add_list_remove(optname, numtotal)
-{ const $frame = stack_frame(); try {
+function handle_add_list_remove(optname, numtotal) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i, pick_cnt, opt_idx;
@@ -9232,7 +8106,7 @@ handle_add_list_remove(optname, numtotal)
         /* omit list and remove if there aren't any yet */
         if (!numtotal && (i == 1 || i == 2))
             continue;
-        void sprintf(tmpbuf, action_titles[i].desc, (i == 1) ? makeplural(optname) : optname)
+        sprintf(tmpbuf, action_titles[i].desc, (i == 1) ? makeplural(optname) : optname)
 ;
         add_menu(tmpwin, nul_glyphinfo,any, action_titles[i].letr,
                  0, ATR_NONE, clr, tmpbuf,
@@ -9248,35 +8122,33 @@ handle_add_list_remove(optname, numtotal)
         opt_idx = 3; /* none selected, exit menu */
     destroy_nhwindow()(tmpwin);
     return opt_idx;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* int */
-dotogglepickup()
-{ const $frame = stack_frame(); try {
+export function dotogglepickup() { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), ocl = stack_array(char, MAXOCLASSES + 1);
 
     flags.pickup = +!flags.pickup;
     if (flags.pickup) {
         oc_to_str(flags.pickup_types, ocl);
-        void sprintf(buf, _("ON, for %s objects%s"), chars[ocl + 0] ? ocl : _("all"), (ga.apelist)
+        sprintf(buf, _("ON, for %s objects%s"), chars[ocl + 0] ? ocl : _("all"), ga.apelist
                     ? ((count_apes() == 1)
                            ? _(", with one exception")
                            : _(", with some exceptions"))
                     : _(""))
 ;
     } else {
-        void strcpy(buf, _("OFF"));
+        strcpy(buf, _("OFF"));
     }
     pline(_("Autopickup: %s."), buf);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* toggle any (settable in-game) boolean option by name */
-export function /* int */
-toggle_bool_option(p)
-{ const $frame = stack_frame(); try {
+export function toggle_bool_option(p) { /* int */
+    const $frame = stack_frame(); try {
     let i;
     let ret = ECMD_FAIL;
 
@@ -9287,21 +8159,20 @@ toggle_bool_option(p)
             && allopt[i].addr != 0) {
             let buf = stack_array(char, BUFSZ);
 
-            void sprintf(buf, _("%s%s"), chars[allopt[i].addr] ? _("!") : _(""), allopt[i].name);
+            sprintf(buf, _("%s%s"), chars[allopt[i].addr] ? _("!") : _(""), allopt[i].name);
             if (parseoptions(buf, FALSE, FALSE))
                 ret = ECMD_OK;
 
             reset_needed_visuals();
         }
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-add_autopickup_exception(mapping)
-{ const $frame = stack_frame(); try {
+export function add_autopickup_exception(mapping) { /* int */
+    const $frame = stack_frame(); try {
     let APE_regex_error = init_string(static_array("add_autopickup_exception.APE_regex_error", char, sizeof_string("regex error in AUTOPICKUP_EXCEPTION")), _("regex error in AUTOPICKUP_EXCEPTION"), true),
         APE_syntax_error = init_string(static_array("add_autopickup_exception.APE_syntax_error", char, sizeof_string("syntax error in AUTOPICKUP_EXCEPTION")), _("syntax error in AUTOPICKUP_EXCEPTION"), true);
-
 
     let ape;
     let text = stack_array(char, 256), end = stack_var(char);
@@ -9343,11 +8214,10 @@ add_autopickup_exception(mapping)
     ape.next = ga.apelist;
     ga.apelist = ape;
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-remove_autopickup_exception(whichape)
-{
+function remove_autopickup_exception(whichape) { /* void */
     let ape, freeape, prev = null;
 
     for (ape = ga.apelist; ape;) {
@@ -9368,9 +8238,7 @@ remove_autopickup_exception(whichape)
     }
 }
 
-export function /* void */
-free_autopickup_exceptions()
-{
+export function free_autopickup_exceptions() { /* void */
     let ape;
 
     while ((ape = ga.apelist) != null) {
@@ -9381,10 +8249,8 @@ free_autopickup_exceptions()
     }
 }
 
-export function /* int */
-sym_val(strval) /* up to 4*BUFSZ-1 long; only first few
-                               chars matter */
-{ const $frame = stack_frame(); try {
+export function sym_val(strval) { /* int */ /* up to 4*BUFSZ-1 long; only first few chars matter */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, QBUFSZ), tmp = stack_array(char, QBUFSZ); /* to hold truncated copy of 'strval' */
 
     chars[buf + 0] = ord('\0');
@@ -9409,7 +8275,7 @@ sym_val(strval) /* up to 4*BUFSZ-1 long; only first few
             let p;
 
             /* +1: skip opening single quote */
-            void strncpy(tmp, strval + 1, sizeof(array_of(char, QBUFSZ)) - 1);
+            strncpy(tmp, strval + 1, sizeof(array_of(char, QBUFSZ)) - 1);
             chars[tmp + (sizeof(array_of(char, QBUFSZ)) - 1)] = ord('\0');
             if ((p = strrchr(tmp, ord('\''))) != 0) {
                 chars[p] = ord('\0');
@@ -9417,13 +8283,14 @@ sym_val(strval) /* up to 4*BUFSZ-1 long; only first few
             } /* else buf[0] stays '\0' */
         }
     } else { /* not lone char nor single quote */
-        void strncpy(tmp, strval, sizeof(array_of(char, QBUFSZ)) - 1);
+        strncpy(tmp, strval, sizeof(array_of(char, QBUFSZ)) - 1);
         chars[tmp + (sizeof(array_of(char, QBUFSZ)) - 1)] = ord('\0');
         escapes(tmp, buf);
     }
 
     return (chars[buf]);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* data for option_help() */
 export const CONFIG_SLOT = 3; const opt_intro = static_array("opt_intro", ptr_to(char), null, [
@@ -9435,8 +8302,6 @@ export const CONFIG_SLOT = 3; const opt_intro = static_array("opt_intro", ptr_to
     _("or use `NETHACKOPTIONS=\"<options>\"' in your environment"),
 
     _("(<options> is a list of options separated by commas)"),
-
-
 
     _("or press \"O\" while playing and use the menu."),
     _(""),
@@ -9458,9 +8323,8 @@ const opt_epilog = static_array("opt_epilog", ptr_to(char), null, [
     0
 ]);
 
-export function /* void */
-option_help()
-{ const $frame = stack_frame(); try {
+export function option_help() { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ);
     let optname;
     let i;
@@ -9502,7 +8366,7 @@ option_help()
         if ((is_wc_option(optname) && !wc_supported(optname))
             || (is_wc2_option(optname) && !wc2_supported(optname)))
             continue;
-        void sprintf(buf2, _("`%s'"), optname);
+        sprintf(buf2, _("`%s'"), optname);
         Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%-20s - %s%c"), buf2, allopt[i].descr, allopt[i + 1].name ? ord(',') : ord('.'))
 ;
         putstr()(datawin, 0, buf);
@@ -9514,7 +8378,7 @@ option_help()
     for (i = 0; allopt[i].name; i++) {
         if (allopt[i].opttyp != OthrOpt)
             continue;
-        void sprintf(buf, _(" %s"), allopt[i].name);
+        sprintf(buf, _(" %s"), allopt[i].name);
         putstr()(datawin, 0, buf);
     }
 
@@ -9546,15 +8410,15 @@ option_help()
     display_nhwindow()(datawin, FALSE);
     destroy_nhwindow()(datawin);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* gather all non-default cond_xyz options into one OPTIONS=cond_foo,!cond_bar
    entry spread across multiple lines with backslash+newline if needed;
    conditions with their default settings (cond_blind, !cond_glowhands, &c)
    are excluded */
-function /* void */
-all_options_conds(sbuf)
-{ const $frame = stack_frame(); try {
+function all_options_conds(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), nextcond = stack_array(char, BUFSZ);
     let idx = 0;
     let gotone = FALSE;
@@ -9564,19 +8428,19 @@ all_options_conds(sbuf)
         /* 75: room for about 5 conditions, with enough space for player
            to edit resulting file manually and insert '!' in front of them */
         if (idx == 0) {
-            void strcpy(buf, _("OPTIONS="));
+            strcpy(buf, _("OPTIONS="));
         } else if (unsigned(unsigned(Strlen(buf) + 1) + Strlen(nextcond)) >= 75) {
             /* finish off previous line */
-            void strcat(buf, _(",\\\n")); /* comma and backslash+newline */
+            strcat(buf, _(",\\\n")); /* comma and backslash+newline */
             strbuf_append(sbuf, buf);
             /* indent continuation line */
-            void sprintf(buf, _("%8s"), _(" ")); /* 8: strlen("OPTIONS=") */
+            sprintf(buf, _("%8s"), _(" ")); /* 8: strlen("OPTIONS=") */
         } else if (chars[nextcond + 0] && gotone) {
-            void strcat(buf, _(","));
+            strcat(buf, _(","));
         }
         if (chars[nextcond + 0]) {
             gotone = TRUE;
-            void strcat(buf, nextcond);
+            strcat(buf, nextcond);
         }
         ++idx;
     }
@@ -9585,15 +8449,15 @@ all_options_conds(sbuf)
        default values--which will produce "OPTIONS=" with nothing after the
        equals sign; only add to the output when there is more present */
     if (strcmp(buf, _("OPTIONS="))) {
-        void strcat(buf, _("\n"));
+        strcat(buf, _("\n"));
         strbuf_append(sbuf, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* append menucolor lines to strbuf */
-function /* void */
-all_options_menucolors(sbuf)
-{ const $frame = stack_frame(); try {
+function all_options_menucolors(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let i = 0, ncolors = count_menucolors();
     let tmp = gm.menu_colorings;
     let buf = stack_array(char, BUFSZ*2); /* see also: add_menu_coloring() */
@@ -9603,7 +8467,7 @@ all_options_menucolors(sbuf)
         return;
 
     /* reverse the order */
-    arr = ref_to(ptr_to(struct_menucoloring), addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(ncolors), sizeof(ptr_to(struct_menucoloring))))))));
+    arr = ref_to(ptr_to(struct_menucoloring), addr_of(alloc(unsigned(Math.imul(unsigned(ncolors), sizeof(ptr_to(struct_menucoloring)))))));
     while (tmp) {
         arr[i++] = tmp;
         tmp = tmp.next;
@@ -9613,70 +8477,50 @@ all_options_menucolors(sbuf)
         tmp = arr[i-1];
         let sattr = attr2attrname(tmp.attr);
         let sclr = clr2colorname(tmp.color);
-        void sprintf(buf, _("MENUCOLOR=\"%s\"=%s%s%s\n"), tmp.origstr, sclr, (tmp.attr != ATR_NONE) ? _("&") : _(""), (tmp.attr != ATR_NONE) ? sattr : _(""))
-
-
+        sprintf(buf, _("MENUCOLOR=\"%s\"=%s%s%s\n"), tmp.origstr, sclr, (tmp.attr != ATR_NONE) ? _("&") : _(""), (tmp.attr != ATR_NONE) ? sattr : _(""))
 
 ;
         strbuf_append(sbuf, buf);
     }
 
     free(addr_of(arr));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-all_options_msgtypes(sbuf)
-{ const $frame = stack_frame(); try {
+function all_options_msgtypes(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = gp.plinemsg_types;
     let buf = stack_array(char, BUFSZ);
 
     while (tmp) {
         let mtype = msgtype2name(tmp.msgtype);
-        void sprintf(buf, _("MSGTYPE=%s \"%s\"\n"), mtype, tmp.pattern)
+        sprintf(buf, _("MSGTYPE=%s \"%s\"\n"), mtype, tmp.pattern)
 ;
         strbuf_append(sbuf, buf);
         tmp = tmp.next;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-all_options_apes(sbuf)
-{ const $frame = stack_frame(); try {
+function all_options_apes(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = ga.apelist;
     let buf = stack_array(char, BUFSZ);
 
     while (tmp) {
-        void sprintf(buf, _("autopickup_exception=\"%c%s\"\n"), tmp.grab ? ord('<') : ord('>'), tmp.pattern)
+        sprintf(buf, _("autopickup_exception=\"%c%s\"\n"), tmp.grab ? ord('<') : ord('>'), tmp.pattern)
 ;
         strbuf_append(sbuf, buf);
         tmp = tmp.next;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef CHANGE_COLOR: not in this build */
 
 /* return strbuf of all options, to write to file */
-export function /* void */
-all_options_strbuf(sbuf)
-{ const $frame = stack_frame(); try {
+export function all_options_strbuf(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let name;
     let tmp = stack_array(char, BUFSZ);
     let buf2;
@@ -9684,7 +8528,7 @@ all_options_strbuf(sbuf)
     let i;
 
     strbuf_init(sbuf);
-    void sprintf(tmp, _("# NetHack config, saved %s\n#\n"), yyyymmddhhmmss(0))
+    sprintf(tmp, _("# NetHack config, saved %s\n#\n"), yyyymmddhhmmss(0))
 ;
     strbuf_append(sbuf, tmp);
 
@@ -9697,7 +8541,7 @@ all_options_strbuf(sbuf)
             if (!bool_p || bool_p == addr_of(ref_of(flags, "female")))
                 break; /* obsolete */
             if (chars[bool_p] != allopt[i].initval) {
-                void sprintf(tmp, _("OPTIONS=%s%s\n"), chars[bool_p] ? _("") : _("!"), name);
+                sprintf(tmp, _("OPTIONS=%s%s\n"), chars[bool_p] ? _("") : _("!"), name);
                 strbuf_append(sbuf, tmp);
             }
             break;
@@ -9712,7 +8556,7 @@ all_options_strbuf(sbuf)
             buf2 = get_option_value(name, TRUE);
             if (buf2) {
                 Snprintf(tmp, sizeof(array_of(char, BUFSZ)) - 1, _("OPTIONS=%s:%s"), name, buf2);
-                void strcat(tmp, _("\n")); /* guaranteed to fit */
+                strcat(tmp, _("\n")); /* guaranteed to fit */
                 strbuf_append(sbuf, tmp);
             }
             break;
@@ -9728,9 +8572,6 @@ all_options_strbuf(sbuf)
     if (chars[opt_set_in_config + pfx_cond_])
         all_options_conds(sbuf);
 
-
-
-
     get_changed_key_binds(sbuf);
     savedsym_strbuf(sbuf);
     all_options_menucolors(sbuf);
@@ -9740,20 +8581,18 @@ all_options_strbuf(sbuf)
 
     all_options_statushilites(sbuf);
 
-
     if (chars[gw.wizkit + 0]) {
-        void sprintf(tmp, _("WIZKIT=%s\n"), gw.wizkit);
+        sprintf(tmp, _("WIZKIT=%s\n"), gw.wizkit);
         strbuf_append(sbuf, tmp);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * prints the next boolean option, on the same line if possible, on a new
  * line if not. End with next_opt("").
  */
-export function /* void */
-next_opt(datawin, str)
-{
+export function next_opt(datawin, str) { /* void */
     let buf = static_var("next_opt.buf", ptr_to(char), 0);
     let i;
     let s;
@@ -9775,8 +8614,8 @@ next_opt(datawin, str)
         chars[buf[0] + 0] = 0;
     }
     if (chars[str]) {
-        void strcat(buf[0], str);
-        void strcat(buf[0], _(", "));
+        strcat(buf[0], str);
+        strcat(buf[0], _(", "));
     } else {
         putstr()(datawin, 0, str);
         free((buf[0])), buf[0] = 0;
@@ -9851,9 +8690,7 @@ const wc2_options = static_array("wc2_options", struct_wc_Opt, null, [
  * set_option_mod_status()
  * with the appropriate second argument.
  */
-export function /* void */
-set_option_mod_status(optnam, status)
-{
+export function set_option_mod_status(optnam, status) { /* void */
     let k;
 
     if (SET__IS_VALUE_VALID(status)) {
@@ -9877,9 +8714,7 @@ set_option_mod_status(optnam, status)
  *    example: set_wc_option_mod_status(WC_COLOR|WC_SCROLL_MARGIN,
  * set_in_game);
  */
-export function /* void */
-set_wc_option_mod_status(optmask, status)
-{
+export function set_wc_option_mod_status(optmask, status) { /* void */
     let k = 0;
 
     if (SET__IS_VALUE_VALID(status)) {
@@ -9895,9 +8730,7 @@ set_wc_option_mod_status(optmask, status)
     }
 }
 
-function /* boolean */
-is_wc_option(optnam)
-{
+function is_wc_option(optnam) { /* boolean */
     let k = 0;
 
     while (wc_options[k].wc_name) {
@@ -9908,9 +8741,7 @@ is_wc_option(optnam)
     return FALSE;
 }
 
-function /* boolean */
-wc_supported(optnam)
-{
+function wc_supported(optnam) { /* boolean */
     let k;
 
     for (k = 0; wc_options[k].wc_name; ++k) {
@@ -9931,9 +8762,7 @@ wc_supported(optnam)
  * set_in_config);
  */
 
-export function /* void */
-set_wc2_option_mod_status(optmask, status)
-{
+export function set_wc2_option_mod_status(optmask, status) { /* void */
     let k = 0;
 
     if (SET__IS_VALUE_VALID(status)) {
@@ -9949,9 +8778,7 @@ set_wc2_option_mod_status(optmask, status)
     }
 }
 
-function /* boolean */
-is_wc2_option(optnam)
-{
+function is_wc2_option(optnam) { /* boolean */
     let k = 0;
 
     while (wc2_options[k].wc_name) {
@@ -9962,9 +8789,7 @@ is_wc2_option(optnam)
     return FALSE;
 }
 
-function /* boolean */
-wc2_supported(optnam)
-{
+function wc2_supported(optnam) { /* boolean */
     let k;
 
     for (k = 0; wc2_options[k].wc_name; ++k) {
@@ -9975,9 +8800,7 @@ wc2_supported(optnam)
     return FALSE;
 }
 
-function /* void */
-wc_set_font_name(opttype, fontname)
-{
+function wc_set_font_name(opttype, fontname) { /* void */
     let fn = null;
 
     if (!fontname)
@@ -10019,9 +8842,8 @@ const bgp = static_array("bgp", ptr_to(ptr_to(char)), null, [ ref_of(iflags.wcol
                         ref_of(iflags.wcolors[wcolor_text], "bg") ]);
 global_scalar("options_set_window_colors_flag", int, 0);
 
-function /* int */
-wc_set_window_colors(op)
-{ const $frame = stack_frame(); try {
+function wc_set_window_colors(op) { /* int */
+    const $frame = stack_frame(); try {
     /* syntax:
      *  menu white/black message green/yellow status white/blue text
      * white/black
@@ -10032,7 +8854,7 @@ wc_set_window_colors(op)
     let buf = stack_array(char, BUFSZ);
     let wn, tfg, tbg, newop;
 
-    void strcpy(buf, op);
+    strcpy(buf, op);
     newop = mungspaces(buf);
     while (chars[newop]) {
         wn = tfg = tbg = 0;
@@ -10110,11 +8932,10 @@ wc_set_window_colors(op)
     }
     options_set_window_colors_flag = 1;
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-options_free_window_colors()
-{
+export function options_free_window_colors() { /* void */
     let j;
 
     for (j = 0; j < WC_COUNT; ++j) {
@@ -10130,9 +8951,7 @@ options_free_window_colors()
    called from port-specific startup code to handle `nethack -D' or
    OPTIONS=playmode:debug, or from dorecover()'s restgamestate() if
    restoring a game which was saved in wizard mode */
-export function /* void */
-set_playmode()
-{
+export function set_playmode() { /* void */
     if (wizard()) {
         if (authorize_wizard_mode())
             gp.plnamelen = int(strlen(strcpy(svp.plname, _("wizard"))));
@@ -10151,14 +8970,12 @@ set_playmode()
     /* don't need to do anything special for normal play */
 }
 
-function /* void */
-enhance_menu_text(
+function enhance_menu_text(
     buf,
     sz,
     whichpass,
     bool_p,
-    thisopt)
-{
+    thisopt) { /* void */
     let nowsz, availsz;
 
     if (!buf)
@@ -10166,813 +8983,253 @@ enhance_menu_text(
     nowsz = unsigned(strlen(buf) + 1);
     availsz = unsigned(sz - nowsz);
 
-
-
-
-
-
-
-    (void (availsz));
-    (void (bool_p));
-    (void (thisopt));
+    (availsz);
+    (bool_p);
+    (thisopt);
 
     return;
 }
 
-export function /* void */
-heed_all_options()
-{
+export function heed_all_options() { /* void */
     let i;
 
     for (i = 0; i < OPTCOUNT; i++)
         allopt[i].disregarded = FALSE;
 }
 
-export function /* void */
-disregard_all_options()
-{
+export function disregard_all_options() { /* void */
     let i;
 
     for (i = 0; i < OPTCOUNT ; i++)
         allopt[i].disregarded = TRUE;
 }
 
-export function /* void */
-heed_this_option(optidx)
-{
+export function heed_this_option(optidx) { /* void */
     if (optidx >= 0 && optidx < OPTCOUNT)
          allopt[optidx].disregarded = FALSE;
 }
-export function /* void */
-disregard_this_option(optidx)
-{
+export function disregard_this_option(optidx) { /* void */
     if (optidx >= 0 && optidx < OPTCOUNT)
         allopt[optidx].disregarded = TRUE;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 /*options.c*/
+
 import { CONDITION_COUNT } from "./botl.h.js";
 import { VIA_WINDOWPORT } from "./botl.h.macros.js";
-import { NO_COLOR } from "./color.h.js";
-import { struct_color_and_attr } from "./color.h.js";
+import { NO_COLOR, struct_color_and_attr } from "./color.h.js";
 import { SYSCF_FILE } from "./config.h.js";
-import { AE } from "./decl.h.macros.js";
-import { AS } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { GOLD_SYM } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { VENOM_SYM } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { AE, AS } from "./decl.h.macros.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, GOLD_SYM,
+    MAXMCLASSES, MAXOCLASSES, POTION_CLASS, RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+    TOOL_CLASS, VENOM_SYM, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { gm_optionchange } from "./display.h.js";
 import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { AUTOUNLOCK_APPLY_KEY } from "./flag.h.js";
-import { AUTOUNLOCK_FORCE } from "./flag.h.js";
-import { AUTOUNLOCK_KICK } from "./flag.h.js";
-import { AUTOUNLOCK_UNTRAP } from "./flag.h.js";
-import { DISCLOSE_NO_WITHOUT_PROMPT } from "./flag.h.js";
-import { DISCLOSE_PROMPT_DEFAULT_NO } from "./flag.h.js";
-import { DISCLOSE_PROMPT_DEFAULT_SPECIAL } from "./flag.h.js";
-import { DISCLOSE_PROMPT_DEFAULT_YES } from "./flag.h.js";
-import { DISCLOSE_SPECIAL_WITHOUT_PROMPT } from "./flag.h.js";
-import { DISCLOSE_YES_WITHOUT_PROMPT } from "./flag.h.js";
-import { GFILTER_AREA } from "./flag.h.js";
-import { GFILTER_NONE } from "./flag.h.js";
-import { GFILTER_VIEW } from "./flag.h.js";
-import { GPCOORDS_COMFULL } from "./flag.h.js";
-import { GPCOORDS_COMPASS } from "./flag.h.js";
-import { GPCOORDS_MAP } from "./flag.h.js";
-import { GPCOORDS_NONE } from "./flag.h.js";
-import { GPCOORDS_SCREEN } from "./flag.h.js";
-import { NUM_DISCLOSURE_OPTIONS } from "./flag.h.js";
-import { PARANOID_AUTOALL } from "./flag.h.js";
-import { PARANOID_BONES } from "./flag.h.js";
-import { PARANOID_BREAKWAND } from "./flag.h.js";
-import { PARANOID_CONFIRM } from "./flag.h.js";
-import { PARANOID_DIE } from "./flag.h.js";
-import { PARANOID_EATING } from "./flag.h.js";
-import { PARANOID_HIT } from "./flag.h.js";
-import { PARANOID_PRAY } from "./flag.h.js";
-import { PARANOID_QUIT } from "./flag.h.js";
-import { PARANOID_REMOVE } from "./flag.h.js";
-import { PARANOID_SWIM } from "./flag.h.js";
-import { PARANOID_TRAP } from "./flag.h.js";
-import { PARANOID_WERECHANGE } from "./flag.h.js";
-import { RUN_CRAWL } from "./flag.h.js";
-import { RUN_LEAP } from "./flag.h.js";
-import { RUN_STEP } from "./flag.h.js";
-import { RUN_TPORT } from "./flag.h.js";
-import { VI_BRANCH } from "./flag.h.js";
-import { VI_NAME } from "./flag.h.js";
-import { VI_NUMBER } from "./flag.h.js";
-import { WC_COUNT } from "./flag.h.js";
-import { wcolor_menu } from "./flag.h.js";
-import { wcolor_message } from "./flag.h.js";
-import { wcolor_status } from "./flag.h.js";
-import { wcolor_text } from "./flag.h.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLBUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { OPTMENUHELP } from "./global.h.js";
-import { PL_CSIZ } from "./global.h.js";
-import { PL_FSIZ } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { PL_PSIZ } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { SYMBOLS } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { builtin_opt } from "./global.h.js";
-import { cmdline_opt } from "./global.h.js";
-import { environ_opt } from "./global.h.js";
-import { nhsym } from "./global.h.js";
-import { num_opt_phases } from "./global.h.js";
-import { opt_in } from "./global.h.js";
-import { opt_out } from "./global.h.js";
-import { play_opt } from "./global.h.js";
-import { set_gameview } from "./global.h.js";
-import { set_hidden } from "./global.h.js";
-import { set_in_config } from "./global.h.js";
-import { set_in_game } from "./global.h.js";
-import { set_in_sysconf } from "./global.h.js";
-import { set_wiznofuz } from "./global.h.js";
-import { set_wizonly } from "./global.h.js";
-import { syscf_opt } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { C } from "./global.h.macros.js";
-import { M } from "./global.h.macros.js";
-import { SET__IS_VALUE_VALID } from "./global.h.macros.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { EXT_ENCUMBER } from "./hack.h.js";
-import { HVY_ENCUMBER } from "./hack.h.js";
-import { MAX_MENU_MAPPED_CMDS } from "./hack.h.js";
-import { MENUTYPELEN } from "./hack.h.js";
-import { MENU_COMBINATION } from "./hack.h.js";
-import { MENU_FULL } from "./hack.h.js";
-import { MENU_PARTIAL } from "./hack.h.js";
-import { MENU_TRADITIONAL } from "./hack.h.js";
-import { MOD_ENCUMBER } from "./hack.h.js";
-import { MSGTYP_NOREP } from "./hack.h.js";
-import { MSGTYP_NORMAL } from "./hack.h.js";
-import { MSGTYP_NOSHOW } from "./hack.h.js";
-import { MSGTYP_STOP } from "./hack.h.js";
-import { OVERLOADED } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { SYM_OFF_O } from "./hack.h.js";
-import { SYM_OFF_X } from "./hack.h.js";
-import { UNENCUMBERED } from "./hack.h.js";
-import { VANQ_MLVL_MNDX } from "./hack.h.js";
-import { WINTYPELEN } from "./hack.h.js";
-import { struct_autopickup_exception } from "./hack.h.js";
-import { struct_menucoloring } from "./hack.h.js";
-import { struct_plinemsg_type } from "./hack.h.js";
-import { FEATURE_NOTICE_VER_MAJ } from "./hack.h.macros.js";
-import { FEATURE_NOTICE_VER_MIN } from "./hack.h.macros.js";
-import { FEATURE_NOTICE_VER_PATCH } from "./hack.h.macros.js";
-import { IndexOk } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
+import {
+    AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP,
+    DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_NO, DISCLOSE_PROMPT_DEFAULT_SPECIAL,
+    DISCLOSE_PROMPT_DEFAULT_YES, DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_YES_WITHOUT_PROMPT,
+    GFILTER_AREA, GFILTER_NONE, GFILTER_VIEW, GPCOORDS_COMFULL, GPCOORDS_COMPASS, GPCOORDS_MAP,
+    GPCOORDS_NONE, GPCOORDS_SCREEN, NUM_DISCLOSURE_OPTIONS, PARANOID_AUTOALL, PARANOID_BONES,
+    PARANOID_BREAKWAND, PARANOID_CONFIRM, PARANOID_DIE, PARANOID_EATING, PARANOID_HIT,
+    PARANOID_PRAY, PARANOID_QUIT, PARANOID_REMOVE, PARANOID_SWIM, PARANOID_TRAP,
+    PARANOID_WERECHANGE, RUN_CRAWL, RUN_LEAP, RUN_STEP, RUN_TPORT, VI_BRANCH, VI_NAME, VI_NUMBER,
+    WC_COUNT, wcolor_menu, wcolor_message, wcolor_status, wcolor_text,
+} from "./flag.h.js";
+import { discover, wizard } from "./flag.h.macros.js";
+import {
+    BUFSZ, COLBUFSZ, COLNO, FALSE, LARGEST_INT, OPTMENUHELP, PL_CSIZ, PL_FSIZ, PL_NSIZ, PL_PSIZ,
+    QBUFSZ, ROWNO, SYMBOLS, TRUE, builtin_opt, cmdline_opt, environ_opt, nhsym, num_opt_phases,
+    opt_in, opt_out, play_opt, set_gameview, set_hidden, set_in_config, set_in_game, set_in_sysconf,
+    set_wiznofuz, set_wizonly, syscf_opt, xint8,
+} from "./global.h.js";
+import { C, M, SET__IS_VALUE_VALID, Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    ECMD_FAIL, ECMD_OK, EXT_ENCUMBER, HVY_ENCUMBER, MAX_MENU_MAPPED_CMDS, MENUTYPELEN,
+    MENU_COMBINATION, MENU_FULL, MENU_PARTIAL, MENU_TRADITIONAL, MOD_ENCUMBER, MSGTYP_NOREP,
+    MSGTYP_NORMAL, MSGTYP_NOSHOW, MSGTYP_STOP, OVERLOADED, SLT_ENCUMBER, SYM_OFF_O, SYM_OFF_X,
+    UNENCUMBERED, VANQ_MLVL_MNDX, WINTYPELEN, struct_autopickup_exception, struct_menucoloring,
+    struct_plinemsg_type,
+} from "./hack.h.js";
+import {
+    FEATURE_NOTICE_VER_MAJ, FEATURE_NOTICE_VER_MIN, FEATURE_NOTICE_VER_PATCH, IndexOk, max,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
+import { LOW_PM, NUMMONS } from "./monsters.h.js";
 import { struct_fruit } from "./objclass.h.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { newfruit } from "./objclass.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { BoolOpt } from "./optlist.h.js";
-import { CompOpt } from "./optlist.h.js";
-import { No } from "./optlist.h.js";
-import { OPTCOUNT } from "./optlist.h.js";
-import { Off } from "./optlist.h.js";
-import { On } from "./optlist.h.js";
-import { OptS_Advanced } from "./optlist.h.js";
-import { OptS_Behavior } from "./optlist.h.js";
-import { OptS_General } from "./optlist.h.js";
-import { OptS_Map } from "./optlist.h.js";
-import { OptS_Status } from "./optlist.h.js";
-import { OthrOpt } from "./optlist.h.js";
-import { Term_Excluded } from "./optlist.h.js";
-import { Term_False } from "./optlist.h.js";
-import { Term_Off } from "./optlist.h.js";
-import { Yes } from "./optlist.h.js";
-import { ascii_map_Def } from "./optlist.h.js";
-import { num_terms } from "./optlist.h.js";
-import { opt_BIOS } from "./optlist.h.js";
-import { opt_DECgraphics } from "./optlist.h.js";
-import { opt_IBMgraphics } from "./optlist.h.js";
-import { opt_accessiblemsg } from "./optlist.h.js";
-import { opt_acoustics } from "./optlist.h.js";
-import { opt_align_message } from "./optlist.h.js";
-import { opt_align_status } from "./optlist.h.js";
-import { opt_alignment } from "./optlist.h.js";
-import { opt_altkeyhandling } from "./optlist.h.js";
-import { opt_altmeta } from "./optlist.h.js";
-import { opt_armorstatus } from "./optlist.h.js";
-import { opt_ascii_map } from "./optlist.h.js";
-import { opt_autodescribe } from "./optlist.h.js";
-import { opt_autodig } from "./optlist.h.js";
-import { opt_autoopen } from "./optlist.h.js";
-import { opt_autopickup } from "./optlist.h.js";
-import { opt_autoquiver } from "./optlist.h.js";
-import { opt_autounlock } from "./optlist.h.js";
-import { opt_bgcolors } from "./optlist.h.js";
-import { opt_blind } from "./optlist.h.js";
-import { opt_bones } from "./optlist.h.js";
-import { opt_boulder } from "./optlist.h.js";
-import { opt_catname } from "./optlist.h.js";
-import { opt_checkpoint } from "./optlist.h.js";
-import { opt_cmdassist } from "./optlist.h.js";
-import { opt_color } from "./optlist.h.js";
-import { opt_confirm } from "./optlist.h.js";
-import { opt_crash_email } from "./optlist.h.js";
-import { opt_crash_name } from "./optlist.h.js";
-import { opt_crash_urlmax } from "./optlist.h.js";
-import { opt_customcolors } from "./optlist.h.js";
-import { opt_customsymbols } from "./optlist.h.js";
-import { opt_dark_room } from "./optlist.h.js";
-import { opt_deaf } from "./optlist.h.js";
-import { opt_debug_hunger } from "./optlist.h.js";
-import { opt_debug_mongen } from "./optlist.h.js";
-import { opt_debug_overwrite_stairs } from "./optlist.h.js";
-import { opt_disclose } from "./optlist.h.js";
-import { opt_dogname } from "./optlist.h.js";
-import { opt_dropped_nopick } from "./optlist.h.js";
-import { opt_dungeon } from "./optlist.h.js";
-import { opt_effects } from "./optlist.h.js";
-import { opt_eight_bit_tty } from "./optlist.h.js";
-import { opt_extmenu } from "./optlist.h.js";
-import { opt_female } from "./optlist.h.js";
-import { opt_fireassist } from "./optlist.h.js";
-import { opt_fixinv } from "./optlist.h.js";
-import { opt_font_map } from "./optlist.h.js";
-import { opt_font_menu } from "./optlist.h.js";
-import { opt_font_message } from "./optlist.h.js";
-import { opt_font_size_map } from "./optlist.h.js";
-import { opt_font_size_menu } from "./optlist.h.js";
-import { opt_font_size_message } from "./optlist.h.js";
-import { opt_font_size_status } from "./optlist.h.js";
-import { opt_font_size_text } from "./optlist.h.js";
-import { opt_font_status } from "./optlist.h.js";
-import { opt_font_text } from "./optlist.h.js";
-import { opt_force_invmenu } from "./optlist.h.js";
-import { opt_fruit } from "./optlist.h.js";
-import { opt_fullscreen } from "./optlist.h.js";
-import { opt_gender } from "./optlist.h.js";
-import { opt_glyph } from "./optlist.h.js";
-import { opt_goldX } from "./optlist.h.js";
-import { opt_guicolor } from "./optlist.h.js";
-import { opt_help } from "./optlist.h.js";
-import { opt_herecmd_menu } from "./optlist.h.js";
-import { opt_hilite_pet } from "./optlist.h.js";
-import { opt_hilite_pile } from "./optlist.h.js";
-import { opt_hilite_status } from "./optlist.h.js";
-import { opt_hitpointbar } from "./optlist.h.js";
-import { opt_horsename } from "./optlist.h.js";
-import { opt_idlecheckpoint } from "./optlist.h.js";
-import { opt_ignintr } from "./optlist.h.js";
-import { opt_implicit_uncursed } from "./optlist.h.js";
-import { opt_legacy } from "./optlist.h.js";
-import { opt_lit_corridor } from "./optlist.h.js";
-import { opt_lootabc } from "./optlist.h.js";
-import { opt_mail } from "./optlist.h.js";
-import { opt_map_mode } from "./optlist.h.js";
-import { opt_mention_decor } from "./optlist.h.js";
-import { opt_mention_map } from "./optlist.h.js";
-import { opt_mention_walls } from "./optlist.h.js";
-import { opt_menu_deselect_all } from "./optlist.h.js";
-import { opt_menu_deselect_page } from "./optlist.h.js";
-import { opt_menu_first_page } from "./optlist.h.js";
-import { opt_menu_headings } from "./optlist.h.js";
-import { opt_menu_invert_all } from "./optlist.h.js";
-import { opt_menu_invert_page } from "./optlist.h.js";
-import { opt_menu_last_page } from "./optlist.h.js";
-import { opt_menu_next_page } from "./optlist.h.js";
-import { opt_menu_objsyms } from "./optlist.h.js";
-import { opt_menu_overlay } from "./optlist.h.js";
-import { opt_menu_previous_page } from "./optlist.h.js";
-import { opt_menu_search } from "./optlist.h.js";
-import { opt_menu_select_all } from "./optlist.h.js";
-import { opt_menu_select_page } from "./optlist.h.js";
-import { opt_menu_shift_left } from "./optlist.h.js";
-import { opt_menu_shift_right } from "./optlist.h.js";
-import { opt_menu_tab_sep } from "./optlist.h.js";
-import { opt_menucolors } from "./optlist.h.js";
-import { opt_menuinvertmode } from "./optlist.h.js";
-import { opt_menustyle } from "./optlist.h.js";
-import { opt_mon_movement } from "./optlist.h.js";
-import { opt_monpolycontrol } from "./optlist.h.js";
-import { opt_monsters } from "./optlist.h.js";
-import { opt_montelecontrol } from "./optlist.h.js";
-import { opt_mouse_support } from "./optlist.h.js";
-import { opt_msg_window } from "./optlist.h.js";
-import { opt_msghistory } from "./optlist.h.js";
-import { opt_name } from "./optlist.h.js";
-import { opt_news } from "./optlist.h.js";
-import { opt_nudist } from "./optlist.h.js";
-import { opt_null } from "./optlist.h.js";
-import { opt_number_pad } from "./optlist.h.js";
-import { opt_o_autocomplete } from "./optlist.h.js";
-import { opt_o_autopickup_exceptions } from "./optlist.h.js";
-import { opt_o_bind_keys } from "./optlist.h.js";
-import { opt_o_menu_colors } from "./optlist.h.js";
-import { opt_o_message_types } from "./optlist.h.js";
-import { opt_o_status_cond } from "./optlist.h.js";
-import { opt_o_status_hilites } from "./optlist.h.js";
-import { opt_objects } from "./optlist.h.js";
-import { opt_packorder } from "./optlist.h.js";
-import { opt_paranoid_confirmation } from "./optlist.h.js";
-import { opt_pauper } from "./optlist.h.js";
-import { opt_perm_invent } from "./optlist.h.js";
-import { opt_perminv_mode } from "./optlist.h.js";
-import { opt_petattr } from "./optlist.h.js";
-import { opt_pettype } from "./optlist.h.js";
-import { opt_pickup_burden } from "./optlist.h.js";
-import { opt_pickup_stolen } from "./optlist.h.js";
-import { opt_pickup_thrown } from "./optlist.h.js";
-import { opt_pickup_types } from "./optlist.h.js";
-import { opt_pile_limit } from "./optlist.h.js";
-import { opt_player_selection } from "./optlist.h.js";
-import { opt_playmode } from "./optlist.h.js";
-import { opt_popup_dialog } from "./optlist.h.js";
-import { opt_preload_tiles } from "./optlist.h.js";
-import { opt_price_quotes } from "./optlist.h.js";
-import { opt_pushweapon } from "./optlist.h.js";
-import { opt_query_menu } from "./optlist.h.js";
-import { opt_quick_farsight } from "./optlist.h.js";
-import { opt_race } from "./optlist.h.js";
-import { opt_rawio } from "./optlist.h.js";
-import { opt_reroll } from "./optlist.h.js";
-import { opt_rest_on_space } from "./optlist.h.js";
-import { opt_roguesymset } from "./optlist.h.js";
-import { opt_role } from "./optlist.h.js";
-import { opt_runmode } from "./optlist.h.js";
-import { opt_safe_pet } from "./optlist.h.js";
-import { opt_safe_wait } from "./optlist.h.js";
-import { opt_sanity_check } from "./optlist.h.js";
-import { opt_scores } from "./optlist.h.js";
-import { opt_scroll_amount } from "./optlist.h.js";
-import { opt_scroll_margin } from "./optlist.h.js";
-import { opt_selectsaved } from "./optlist.h.js";
-import { opt_showdamage } from "./optlist.h.js";
-import { opt_showexp } from "./optlist.h.js";
-import { opt_showrace } from "./optlist.h.js";
-import { opt_showscore } from "./optlist.h.js";
-import { opt_showvers } from "./optlist.h.js";
-import { opt_silent } from "./optlist.h.js";
-import { opt_softkeyboard } from "./optlist.h.js";
-import { opt_sortdiscoveries } from "./optlist.h.js";
-import { opt_sortloot } from "./optlist.h.js";
-import { opt_sortpack } from "./optlist.h.js";
-import { opt_sortvanquished } from "./optlist.h.js";
-import { opt_soundlib } from "./optlist.h.js";
-import { opt_sounds } from "./optlist.h.js";
-import { opt_sparkle } from "./optlist.h.js";
-import { opt_splash_screen } from "./optlist.h.js";
-import { opt_spot_monsters } from "./optlist.h.js";
-import { opt_standout } from "./optlist.h.js";
-import { opt_status_updates } from "./optlist.h.js";
-import { opt_statushilites } from "./optlist.h.js";
-import { opt_statuslines } from "./optlist.h.js";
-import { opt_suppress_alert } from "./optlist.h.js";
-import { opt_symset } from "./optlist.h.js";
-import { opt_term_cols } from "./optlist.h.js";
-import { opt_term_rows } from "./optlist.h.js";
-import { opt_terrainstatus } from "./optlist.h.js";
-import { opt_tile_file } from "./optlist.h.js";
-import { opt_tile_height } from "./optlist.h.js";
-import { opt_tile_width } from "./optlist.h.js";
-import { opt_tiled_map } from "./optlist.h.js";
-import { opt_time } from "./optlist.h.js";
-import { opt_timed_delay } from "./optlist.h.js";
-import { opt_tips } from "./optlist.h.js";
-import { opt_tombstone } from "./optlist.h.js";
-import { opt_toptenwin } from "./optlist.h.js";
-import { opt_traps } from "./optlist.h.js";
-import { opt_travel } from "./optlist.h.js";
-import { opt_travel_debug } from "./optlist.h.js";
-import { opt_tutorial } from "./optlist.h.js";
-import { opt_use_darkgray } from "./optlist.h.js";
-import { opt_use_inverse } from "./optlist.h.js";
-import { opt_use_truecolor } from "./optlist.h.js";
-import { opt_vary_msgcount } from "./optlist.h.js";
-import { opt_verbose } from "./optlist.h.js";
-import { opt_versinfo } from "./optlist.h.js";
-import { opt_voices } from "./optlist.h.js";
-import { opt_vt_sounddata } from "./optlist.h.js";
-import { opt_vt_tiledata } from "./optlist.h.js";
-import { opt_warnings } from "./optlist.h.js";
-import { opt_weaponstatus } from "./optlist.h.js";
-import { opt_whatis_coord } from "./optlist.h.js";
-import { opt_whatis_filter } from "./optlist.h.js";
-import { opt_whatis_menu } from "./optlist.h.js";
-import { opt_whatis_moveskip } from "./optlist.h.js";
-import { opt_windowborders } from "./optlist.h.js";
-import { opt_windowcolors } from "./optlist.h.js";
-import { opt_windowtype } from "./optlist.h.js";
-import { opt_wizmgender } from "./optlist.h.js";
-import { opt_wizweight } from "./optlist.h.js";
-import { opt_wraptext } from "./optlist.h.js";
-import { pfx_cond_ } from "./optlist.h.js";
-import { pfx_font } from "./optlist.h.js";
-import { struct_allopt_t } from "./optlist.h.js";
-import { tiled_map_Def } from "./optlist.h.js";
+import { OBJ_NAME, newfruit } from "./objclass.h.macros.js";
+import { BOULDER, SLIME_MOLD } from "./objects.h.js";
+import {
+    BoolOpt, CompOpt, No, OPTCOUNT, Off, On, OptS_Advanced, OptS_Behavior, OptS_General, OptS_Map,
+    OptS_Status, OthrOpt, Term_Excluded, Term_False, Term_Off, Yes, ascii_map_Def, num_terms,
+    opt_BIOS, opt_DECgraphics, opt_IBMgraphics, opt_accessiblemsg, opt_acoustics, opt_align_message,
+    opt_align_status, opt_alignment, opt_altkeyhandling, opt_altmeta, opt_armorstatus,
+    opt_ascii_map, opt_autodescribe, opt_autodig, opt_autoopen, opt_autopickup, opt_autoquiver,
+    opt_autounlock, opt_bgcolors, opt_blind, opt_bones, opt_boulder, opt_catname, opt_checkpoint,
+    opt_cmdassist, opt_color, opt_confirm, opt_crash_email, opt_crash_name, opt_crash_urlmax,
+    opt_customcolors, opt_customsymbols, opt_dark_room, opt_deaf, opt_debug_hunger,
+    opt_debug_mongen, opt_debug_overwrite_stairs, opt_disclose, opt_dogname, opt_dropped_nopick,
+    opt_dungeon, opt_effects, opt_eight_bit_tty, opt_extmenu, opt_female, opt_fireassist,
+    opt_fixinv, opt_font_map, opt_font_menu, opt_font_message, opt_font_size_map,
+    opt_font_size_menu, opt_font_size_message, opt_font_size_status, opt_font_size_text,
+    opt_font_status, opt_font_text, opt_force_invmenu, opt_fruit, opt_fullscreen, opt_gender,
+    opt_glyph, opt_goldX, opt_guicolor, opt_help, opt_herecmd_menu, opt_hilite_pet, opt_hilite_pile,
+    opt_hilite_status, opt_hitpointbar, opt_horsename, opt_idlecheckpoint, opt_ignintr,
+    opt_implicit_uncursed, opt_legacy, opt_lit_corridor, opt_lootabc, opt_mail, opt_map_mode,
+    opt_mention_decor, opt_mention_map, opt_mention_walls, opt_menu_deselect_all,
+    opt_menu_deselect_page, opt_menu_first_page, opt_menu_headings, opt_menu_invert_all,
+    opt_menu_invert_page, opt_menu_last_page, opt_menu_next_page, opt_menu_objsyms,
+    opt_menu_overlay, opt_menu_previous_page, opt_menu_search, opt_menu_select_all,
+    opt_menu_select_page, opt_menu_shift_left, opt_menu_shift_right, opt_menu_tab_sep,
+    opt_menucolors, opt_menuinvertmode, opt_menustyle, opt_mon_movement, opt_monpolycontrol,
+    opt_monsters, opt_montelecontrol, opt_mouse_support, opt_msg_window, opt_msghistory, opt_name,
+    opt_news, opt_nudist, opt_null, opt_number_pad, opt_o_autocomplete, opt_o_autopickup_exceptions,
+    opt_o_bind_keys, opt_o_menu_colors, opt_o_message_types, opt_o_status_cond,
+    opt_o_status_hilites, opt_objects, opt_packorder, opt_paranoid_confirmation, opt_pauper,
+    opt_perm_invent, opt_perminv_mode, opt_petattr, opt_pettype, opt_pickup_burden,
+    opt_pickup_stolen, opt_pickup_thrown, opt_pickup_types, opt_pile_limit, opt_player_selection,
+    opt_playmode, opt_popup_dialog, opt_preload_tiles, opt_price_quotes, opt_pushweapon,
+    opt_query_menu, opt_quick_farsight, opt_race, opt_rawio, opt_reroll, opt_rest_on_space,
+    opt_roguesymset, opt_role, opt_runmode, opt_safe_pet, opt_safe_wait, opt_sanity_check,
+    opt_scores, opt_scroll_amount, opt_scroll_margin, opt_selectsaved, opt_showdamage, opt_showexp,
+    opt_showrace, opt_showscore, opt_showvers, opt_silent, opt_softkeyboard, opt_sortdiscoveries,
+    opt_sortloot, opt_sortpack, opt_sortvanquished, opt_soundlib, opt_sounds, opt_sparkle,
+    opt_splash_screen, opt_spot_monsters, opt_standout, opt_status_updates, opt_statushilites,
+    opt_statuslines, opt_suppress_alert, opt_symset, opt_term_cols, opt_term_rows,
+    opt_terrainstatus, opt_tile_file, opt_tile_height, opt_tile_width, opt_tiled_map, opt_time,
+    opt_timed_delay, opt_tips, opt_tombstone, opt_toptenwin, opt_traps, opt_travel,
+    opt_travel_debug, opt_tutorial, opt_use_darkgray, opt_use_inverse, opt_use_truecolor,
+    opt_vary_msgcount, opt_verbose, opt_versinfo, opt_voices, opt_vt_sounddata, opt_vt_tiledata,
+    opt_warnings, opt_weaponstatus, opt_whatis_coord, opt_whatis_filter, opt_whatis_menu,
+    opt_whatis_moveskip, opt_windowborders, opt_windowcolors, opt_windowtype, opt_wizmgender,
+    opt_wizweight, opt_wraptext, pfx_cond_, pfx_font, struct_allopt_t, tiled_map_Def,
+} from "./optlist.h.js";
 import { NoAlias } from "./optlist.h.macros.js";
 import { STONE } from "./rm.h.js";
-import { MAXDCHARS } from "./sym.h.js";
-import { MAXECHARS } from "./sym.h.js";
-import { MAXTCHARS } from "./sym.h.js";
-import { NUM_GRAPHICS } from "./sym.h.js";
-import { PRIMARYSET } from "./sym.h.js";
-import { ROGUESET } from "./sym.h.js";
-import { SYM_BOULDER } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
-import { do_custom_colors } from "./sym.h.js";
-import { do_custom_symbols } from "./sym.h.js";
-import { ALIGN_BOTTOM } from "./winprocs.h.js";
-import { ALIGN_LEFT } from "./winprocs.h.js";
-import { ALIGN_RIGHT } from "./winprocs.h.js";
-import { ALIGN_TOP } from "./winprocs.h.js";
-import { MAP_MODE_ASCII10x18 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII12x16 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII16x12 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII16x8 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII4x6 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII6x8 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII7x12 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII8x12 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII8x8 } from "./winprocs.h.js";
-import { MAP_MODE_ASCII_FIT_TO_SCREEN } from "./winprocs.h.js";
-import { MAP_MODE_TILES } from "./winprocs.h.js";
-import { MAP_MODE_TILES_FIT_TO_SCREEN } from "./winprocs.h.js";
-import { RS_ALGNMNT } from "./winprocs.h.js";
-import { RS_GENDER } from "./winprocs.h.js";
-import { RS_RACE } from "./winprocs.h.js";
-import { RS_ROLE } from "./winprocs.h.js";
-import { RS_filter } from "./winprocs.h.js";
-import { VIA_DIALOG } from "./winprocs.h.js";
-import { VIA_PROMPTS } from "./winprocs.h.js";
-import { WC2_DARKGRAY } from "./winprocs.h.js";
-import { WC2_EXTRASTATUS } from "./winprocs.h.js";
-import { WC2_FULLSCREEN } from "./winprocs.h.js";
-import { WC2_GUICOLOR } from "./winprocs.h.js";
-import { WC2_HILITE_STATUS } from "./winprocs.h.js";
-import { WC2_HITPOINTBAR } from "./winprocs.h.js";
-import { WC2_MENU_SHIFT } from "./winprocs.h.js";
-import { WC2_PETATTR } from "./winprocs.h.js";
-import { WC2_SOFTKEYBOARD } from "./winprocs.h.js";
-import { WC2_STATUSLINES } from "./winprocs.h.js";
-import { WC2_TERM_SIZE } from "./winprocs.h.js";
-import { WC2_WINDOWBORDERS } from "./winprocs.h.js";
-import { WC2_WRAPTEXT } from "./winprocs.h.js";
-import { WC_ALIGN_MESSAGE } from "./winprocs.h.js";
-import { WC_ALIGN_STATUS } from "./winprocs.h.js";
-import { WC_ASCII_MAP } from "./winprocs.h.js";
-import { WC_COLOR } from "./winprocs.h.js";
-import { WC_EIGHT_BIT_IN } from "./winprocs.h.js";
-import { WC_FONTSIZ_MAP } from "./winprocs.h.js";
-import { WC_FONTSIZ_MENU } from "./winprocs.h.js";
-import { WC_FONTSIZ_MESSAGE } from "./winprocs.h.js";
-import { WC_FONTSIZ_STATUS } from "./winprocs.h.js";
-import { WC_FONTSIZ_TEXT } from "./winprocs.h.js";
-import { WC_FONT_MAP } from "./winprocs.h.js";
-import { WC_FONT_MENU } from "./winprocs.h.js";
-import { WC_FONT_MESSAGE } from "./winprocs.h.js";
-import { WC_FONT_STATUS } from "./winprocs.h.js";
-import { WC_FONT_TEXT } from "./winprocs.h.js";
-import { WC_HILITE_PET } from "./winprocs.h.js";
-import { WC_INVERSE } from "./winprocs.h.js";
-import { WC_MAP_MODE } from "./winprocs.h.js";
-import { WC_MOUSE_SUPPORT } from "./winprocs.h.js";
-import { WC_PERM_INVENT } from "./winprocs.h.js";
-import { WC_PLAYER_SELECTION } from "./winprocs.h.js";
-import { WC_POPUP_DIALOG } from "./winprocs.h.js";
-import { WC_PRELOAD_TILES } from "./winprocs.h.js";
-import { WC_SCROLL_AMOUNT } from "./winprocs.h.js";
-import { WC_SCROLL_MARGIN } from "./winprocs.h.js";
-import { WC_SPLASH_SCREEN } from "./winprocs.h.js";
-import { WC_TILED_MAP } from "./winprocs.h.js";
-import { WC_TILE_FILE } from "./winprocs.h.js";
-import { WC_TILE_HEIGHT } from "./winprocs.h.js";
-import { WC_TILE_WIDTH } from "./winprocs.h.js";
-import { WC_VARY_MSGCOUNT } from "./winprocs.h.js";
-import { WC_WINDOWCOLORS } from "./winprocs.h.js";
-import { struct_wc_Opt } from "./winprocs.h.js";
-import { wp_curses } from "./winprocs.h.js";
-import { wp_tty } from "./winprocs.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_file } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { number_pad } from "./winprocs.h.macros.js";
-import { preference_update } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { ATR_INVERSE } from "./wintype.h.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { InvOptInUse } from "./wintype.h.js";
-import { InvOptNone } from "./wintype.h.js";
-import { InvOptOn } from "./wintype.h.js";
-import { InvSparse } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_FIRST_PAGE } from "./wintype.h.js";
-import { MENU_INVERT_ALL } from "./wintype.h.js";
-import { MENU_INVERT_PAGE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPINVERT } from "./wintype.h.js";
-import { MENU_LAST_PAGE } from "./wintype.h.js";
-import { MENU_NEXT_PAGE } from "./wintype.h.js";
-import { MENU_PREVIOUS_PAGE } from "./wintype.h.js";
-import { MENU_SEARCH } from "./wintype.h.js";
-import { MENU_SELECT_ALL } from "./wintype.h.js";
-import { MENU_SELECT_PAGE } from "./wintype.h.js";
-import { MENU_SHIFT_LEFT } from "./wintype.h.js";
-import { MENU_SHIFT_RIGHT } from "./wintype.h.js";
-import { MENU_UNSELECT_ALL } from "./wintype.h.js";
-import { MENU_UNSELECT_PAGE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { NUM_MOUSE_BUTTONS } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { ROLE_NONE } from "./you.h.js";
-import { ROLE_RANDOM } from "./you.h.js";
+import {
+    MAXDCHARS, MAXECHARS, MAXTCHARS, NUM_GRAPHICS, PRIMARYSET, ROGUESET, SYM_BOULDER, WARNCOUNT,
+    do_custom_colors, do_custom_symbols,
+} from "./sym.h.js";
+import {
+    ALIGN_BOTTOM, ALIGN_LEFT, ALIGN_RIGHT, ALIGN_TOP, MAP_MODE_ASCII10x18, MAP_MODE_ASCII12x16,
+    MAP_MODE_ASCII16x12, MAP_MODE_ASCII16x8, MAP_MODE_ASCII4x6, MAP_MODE_ASCII6x8,
+    MAP_MODE_ASCII7x12, MAP_MODE_ASCII8x12, MAP_MODE_ASCII8x8, MAP_MODE_ASCII_FIT_TO_SCREEN,
+    MAP_MODE_TILES, MAP_MODE_TILES_FIT_TO_SCREEN, RS_ALGNMNT, RS_GENDER, RS_RACE, RS_ROLE,
+    RS_filter, VIA_DIALOG, VIA_PROMPTS, WC2_DARKGRAY, WC2_EXTRASTATUS, WC2_FULLSCREEN, WC2_GUICOLOR,
+    WC2_HILITE_STATUS, WC2_HITPOINTBAR, WC2_MENU_SHIFT, WC2_PETATTR, WC2_SOFTKEYBOARD,
+    WC2_STATUSLINES, WC2_TERM_SIZE, WC2_WINDOWBORDERS, WC2_WRAPTEXT, WC_ALIGN_MESSAGE,
+    WC_ALIGN_STATUS, WC_ASCII_MAP, WC_COLOR, WC_EIGHT_BIT_IN, WC_FONTSIZ_MAP, WC_FONTSIZ_MENU,
+    WC_FONTSIZ_MESSAGE, WC_FONTSIZ_STATUS, WC_FONTSIZ_TEXT, WC_FONT_MAP, WC_FONT_MENU,
+    WC_FONT_MESSAGE, WC_FONT_STATUS, WC_FONT_TEXT, WC_HILITE_PET, WC_INVERSE, WC_MAP_MODE,
+    WC_MOUSE_SUPPORT, WC_PERM_INVENT, WC_PLAYER_SELECTION, WC_POPUP_DIALOG, WC_PRELOAD_TILES,
+    WC_SCROLL_AMOUNT, WC_SCROLL_MARGIN, WC_SPLASH_SCREEN, WC_TILED_MAP, WC_TILE_FILE,
+    WC_TILE_HEIGHT, WC_TILE_WIDTH, WC_VARY_MSGCOUNT, WC_WINDOWCOLORS, struct_wc_Opt, wp_curses,
+    wp_tty,
+} from "./winprocs.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_file, display_nhwindow, end_menu, number_pad,
+    preference_update, putstr, start_menu, wait_synch,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_INVERSE, ATR_NONE, InvOptInUse, InvOptNone, InvOptOn, InvSparse, MENU_BEHAVE_STANDARD,
+    MENU_FIRST_PAGE, MENU_INVERT_ALL, MENU_INVERT_PAGE, MENU_ITEMFLAGS_NONE,
+    MENU_ITEMFLAGS_SELECTED, MENU_ITEMFLAGS_SKIPINVERT, MENU_LAST_PAGE, MENU_NEXT_PAGE,
+    MENU_PREVIOUS_PAGE, MENU_SEARCH, MENU_SELECT_ALL, MENU_SELECT_PAGE, MENU_SHIFT_LEFT,
+    MENU_SHIFT_RIGHT, MENU_UNSELECT_ALL, MENU_UNSELECT_PAGE, NHW_MENU, NHW_TEXT, NUM_MOUSE_BUTTONS,
+    PICK_ANY, PICK_NONE, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { ROLE_NONE, ROLE_RANDOM } from "./you.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+import { char, int, ord, schar, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
 import { global_scalar } from "../rt/globals.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { EXIT_FAILURE } from "../rt/libc.js";
-import { __isspace } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { atoi } from "../rt/libc.js";
-import { atoll } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncat } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { strstr } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import {
+    EXIT_FAILURE, __isspace, assert, atoi, atoll, free, getenv, memcpy, memset, sprintf, sscanf,
+    strcat, strchr, strcmp, strcpy, strlen, strncat, strncmp, strncpy, strrchr, strstr,
+} from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, ref_to, sizeof_member, struct, struct_assign,
+    view_of,
+} from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { sanitize_name } from "./bones.js";
-import { all_options_statushilites } from "./botl.js";
-import { bot } from "./botl.js";
-import { check_gold_symbol } from "./botl.js";
-import { clear_status_hilites } from "./botl.js";
-import { cond_menu } from "./botl.js";
-import { condopt } from "./botl.js";
-import { condtests } from "./botl.js";
-import { count_status_hilites } from "./botl.js";
-import { opt_next_cond } from "./botl.js";
-import { parse_cond_option } from "./botl.js";
-import { parse_status_hl1 } from "./botl.js";
-import { reset_status_hilites } from "./botl.js";
-import { status_hilite_menu } from "./botl.js";
-import { status_initialize } from "./botl.js";
+import {
+    all_options_statushilites, bot, check_gold_symbol, clear_status_hilites, cond_menu, condopt,
+    condtests, count_status_hilites, opt_next_cond, parse_cond_option, parse_status_hl1,
+    reset_status_hilites, status_hilite_menu, status_initialize,
+} from "./botl.js";
 import { yyyymmddhhmmss } from "./calendar.js";
-import { assure_syscf_file } from "./cfgfiles.js";
-import { config_error_add } from "./cfgfiles.js";
-import { config_error_done } from "./cfgfiles.js";
-import { config_error_init } from "./cfgfiles.js";
-import { config_unmatched_ignored } from "./cfgfiles.js";
-import { get_configfile } from "./cfgfiles.js";
-import { rcfile } from "./cfgfiles.js";
-import { read_config_file } from "./cfgfiles.js";
-import { all_options_autocomplete } from "./cmd.js";
-import { bind_key } from "./cmd.js";
-import { bind_mousebtn } from "./cmd.js";
-import { bind_specialkey } from "./cmd.js";
-import { cmd_from_func } from "./cmd.js";
-import { cmdname_from_func } from "./cmd.js";
-import { count_autocompletions } from "./cmd.js";
-import { count_bind_keys } from "./cmd.js";
-import { do_reqmenu } from "./cmd.js";
-import { get_changed_key_binds } from "./cmd.js";
-import { handler_change_autocompletions } from "./cmd.js";
-import { handler_rebind_keys } from "./cmd.js";
-import { reset_commands } from "./cmd.js";
-import { update_rest_on_space } from "./cmd.js";
-import { add_menu_coloring_parsed } from "./coloratt.js";
-import { attr2attrname } from "./coloratt.js";
-import { check_enhanced_colors } from "./coloratt.js";
-import { clr2colorname } from "./coloratt.js";
-import { color_attr_parse_str } from "./coloratt.js";
-import { color_attr_to_str } from "./coloratt.js";
-import { count_menucolors } from "./coloratt.js";
-import { free_one_menu_coloring } from "./coloratt.js";
-import { match_str2attr } from "./coloratt.js";
-import { query_attr } from "./coloratt.js";
-import { query_color } from "./coloratt.js";
-import { query_color_attr } from "./coloratt.js";
-import { wc_color_name } from "./coloratt.js";
+import {
+    assure_syscf_file, config_error_add, config_error_done, config_error_init,
+    config_unmatched_ignored, get_configfile, rcfile, read_config_file,
+} from "./cfgfiles.js";
+import {
+    all_options_autocomplete, bind_key, bind_mousebtn, bind_specialkey, cmd_from_func,
+    cmdname_from_func, count_autocompletions, count_bind_keys, do_reqmenu, get_changed_key_binds,
+    handler_change_autocompletions, handler_rebind_keys, reset_commands, update_rest_on_space,
+} from "./cmd.js";
+import {
+    add_menu_coloring_parsed, attr2attrname, check_enhanced_colors, clr2colorname,
+    color_attr_parse_str, color_attr_to_str, count_menucolors, free_one_menu_coloring,
+    match_str2attr, query_attr, query_color, query_color_attr, wc_color_name,
+} from "./coloratt.js";
 import { nomakedefs } from "./date.js";
-import { a11y } from "./decl.js";
-import { cg } from "./decl.js";
-import { disclosure_options } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gf } from "./decl.js";
-import { gh } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gp } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { gw } from "./decl.js";
-import { hexdd } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svb } from "./decl.js";
-import { svc } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { docrt } from "./display.js";
-import { flush_screen } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { reglyph_darkroom } from "./display.js";
-import { reset_glyphmap } from "./display.js";
-import { def_char_to_monclass } from "./drawing.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { def_warnsyms } from "./drawing.js";
-import { nh_terminate } from "./end.js";
-import { panic } from "./end.js";
-import { do_deferred_showpaths } from "./files.js";
-import { nh_basename } from "./files.js";
-import { read_sym_file } from "./files.js";
-import { apply_customizations } from "./glyphs.js";
-import { fill_glyphid_cache } from "./glyphs.js";
-import { free_glyphid_cache } from "./glyphs.js";
-import { glyphid_cache_status } from "./glyphs.js";
-import { glyphrep_to_custom_map_entries } from "./glyphs.js";
-import { reset_customcolors } from "./glyphs.js";
+import {
+    a11y, cg, disclosure_options, disp, flags, ga, gc, gd, gf, gh, gm, gn, go, gp, gs, gv, gw,
+    hexdd, iflags, program_state, svb, svc, svp, u,
+} from "./decl.js";
+import { docrt, flush_screen, nul_glyphinfo, reglyph_darkroom, reset_glyphmap } from "./display.js";
+import {
+    def_char_to_monclass, def_char_to_objclass, def_oc_syms, def_warnsyms,
+} from "./drawing.js";
+import { nh_terminate, panic } from "./end.js";
+import { do_deferred_showpaths, nh_basename, read_sym_file } from "./files.js";
+import {
+    apply_customizations, fill_glyphid_cache, free_glyphid_cache, glyphid_cache_status,
+    glyphrep_to_custom_map_entries, reset_customcolors,
+} from "./glyphs.js";
 import { classify_terrain } from "./hack.js";
-import { copynchars } from "./hacklib.js";
-import { digit } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { fuzzymatch } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { letter } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { strNsubst } from "./hacklib.js";
-import { str_end_is } from "./hacklib.js";
-import { str_start_is } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { trimspaces } from "./hacklib.js";
-import { visctrl } from "./hacklib.js";
-import { set_vanq_order } from "./insight.js";
-import { vanqorders } from "./insight.js";
-import { reassign } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import {
+    copynchars, digit, eos, fuzzymatch, highc, letter, lowc, mungspaces, strNsubst, str_end_is,
+    str_start_is, strkitten, strncmpi, strstri, strsubst, trimspaces, visctrl,
+} from "./hacklib.js";
+import { set_vanq_order, vanqorders } from "./insight.js";
+import { reassign, update_inventory } from "./invent.js";
 import { name_to_mon } from "./mondata.js";
-import { choose_disco_sort } from "./o_init.js";
-import { get_sortdisco } from "./o_init.js";
-import { obj_descr } from "./objects.js";
-import { objects } from "./objects.js";
-import { fruit_from_name } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { You_cant } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { raw_printf } from "./pline.js";
-import { init_random } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { aligns } from "./role.js";
-import { clearrolefilter } from "./role.js";
-import { genders } from "./role.js";
-import { races } from "./role.js";
-import { rolefilterstring } from "./role.js";
-import { roles } from "./role.js";
-import { setrolefilter } from "./role.js";
-import { str2align } from "./role.js";
-import { str2gend } from "./role.js";
-import { str2race } from "./role.js";
-import { str2role } from "./role.js";
+import { choose_disco_sort, get_sortdisco } from "./o_init.js";
+import { obj_descr, objects } from "./objects.js";
+import { fruit_from_name, makeplural, makesingular } from "./objnam.js";
+import { You_cant, impossible, pline, raw_printf } from "./pline.js";
+import { init_random, rn2, rn2_on_display_rng, rnd } from "./rnd.js";
+import {
+    aligns, clearrolefilter, genders, races, rolefilterstring, roles, setrolefilter, str2align,
+    str2gend, str2race, str2role,
+} from "./role.js";
 import { sf_init } from "./sfbase.js";
-import { assign_soundlib } from "./sounds.js";
-import { get_soundlib_name } from "./sounds.js";
-import { soundlib_id_from_opt } from "./sounds.js";
-import { strbuf_append } from "./strutil.js";
-import { strbuf_init } from "./strutil.js";
-import { assign_graphics } from "./symbols.js";
-import { clear_symsetentry } from "./symbols.js";
-import { do_symset } from "./symbols.js";
-import { get_othersym } from "./symbols.js";
-import { init_ov_primary_symbols } from "./symbols.js";
-import { init_ov_rogue_symbols } from "./symbols.js";
-import { init_rogue_symbols } from "./symbols.js";
-import { init_symbols } from "./symbols.js";
-import { known_handling } from "./symbols.js";
-import { load_symset } from "./symbols.js";
-import { parsesymbols } from "./symbols.js";
-import { savedsym_strbuf } from "./symbols.js";
-import { switch_symbols } from "./symbols.js";
+import { assign_soundlib, get_soundlib_name, soundlib_id_from_opt } from "./sounds.js";
+import { strbuf_append, strbuf_init } from "./strutil.js";
+import {
+    assign_graphics, clear_symsetentry, do_symset, get_othersym, init_ov_primary_symbols,
+    init_ov_rogue_symbols, init_rogue_symbols, init_symbols, known_handling, load_symset,
+    parsesymbols, savedsym_strbuf, switch_symbols,
+} from "./symbols.js";
 import { reset_customsymbols } from "./utf8map.js";
-import { get_current_feature_ver } from "./version.js";
-import { get_feature_notice_ver } from "./version.js";
-import { status_version } from "./version.js";
+import { get_current_feature_ver, get_feature_notice_ver, status_version } from "./version.js";
 import { vision_recalc } from "./vision.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { adjust_menu_promptstyle } from "./windows.js";
-import { choose_classes_menu } from "./windows.js";
-import { choose_windows } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { windowprocs } from "./windows.js";
-import { regex_compile } from "../sys/share/posixregex.js";
-import { regex_error_desc } from "../sys/share/posixregex.js";
-import { regex_free } from "../sys/share/posixregex.js";
-import { regex_init } from "../sys/share/posixregex.js";
-import { regex_match } from "../sys/share/posixregex.js";
-import { authorize_explore_mode } from "../sys/unix/unixmain.js";
-import { authorize_wizard_mode } from "../sys/unix/unixmain.js";
+import {
+    add_menu, add_menu_heading, add_menu_str, adjust_menu_promptstyle, choose_classes_menu,
+    choose_windows, getlin, select_menu, windowprocs,
+} from "./windows.js";
+import {
+    regex_compile, regex_error_desc, regex_free, regex_init, regex_match,
+} from "../sys/share/posixregex.js";
+import { authorize_explore_mode, authorize_wizard_mode } from "../sys/unix/unixmain.js";
 
 // the records of allopt_init[] from optlist.h, laid out like it
 function allopt_init_records() {
@@ -11018,7 +9275,6 @@ function allopt_init_records() {
                 descr: _("your starting alignment (lawful, neutral, or chaotic)"), initval: Off,
         has_handler: No },
 
-
     { name: _("accessiblemsg"), section: OptS_Advanced, idx: opt_accessiblemsg, setwhere: set_in_game,
         opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False,
@@ -11043,15 +9299,11 @@ function allopt_init_records() {
         optfn: optfn_align_status, alias: NoAlias(), descr: _("status window alignment"),
         initval: Off, has_handler: Yes },
 
-
-
-
     { name: _("altkeyhandling"), section: OptS_Advanced, expectedbuf: 20, idx: opt_altkeyhandling,
         setwhere: set_in_config, opttyp: CompOpt,
                 negateok: No, valok: Yes, dupeok: No, pfx: No, opt_in_out: opt_in,
         optfn: optfn_altkeyhandling, alias: _("altkeyhandler"), descr: _("(not applicable)"),
         initval: Off, has_handler: Yes },
-
 
     { name: _("altmeta"), section: OptS_Advanced, idx: opt_altmeta, setwhere: set_in_game,
         opttyp: BoolOpt,
@@ -11059,10 +9311,6 @@ function allopt_init_records() {
         opt_in_out: opt_out, addr: addr_of(ref_of(iflags, "altmeta")), optfn: optfn_boolean,
         alias: NoAlias(),
            descr: _("treat \"ESC c\" as M-c (Meta+c, 8th bit set)"), initval: Off },
-
-
-
-
 
     { name: _("armorstatus"), section: OptS_Advanced, idx: opt_armorstatus, setwhere: set_in_game,
         opttyp: BoolOpt,
@@ -11130,10 +9378,6 @@ function allopt_init_records() {
         optfn: optfn_o_bind_keys, alias: NoAlias(), descr: _("edit key binds"), initval: On,
         has_handler: On },
 
-
-
-
-
     { name: _("BIOS"), section: OptS_Advanced, idx: opt_BIOS, setwhere: set_in_config, opttyp: BoolOpt,
            negateok: No, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
         optfn: optfn_boolean, alias: NoAlias(), initval: Off },
@@ -11169,10 +9413,6 @@ function allopt_init_records() {
         alias: NoAlias(),
            descr: _("save game state after each level change"), initval: On },
 
-
-
-
-
     { name: _("cmdassist"), section: OptS_Behavior, idx: opt_cmdassist, setwhere: set_in_game,
         opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False,
@@ -11205,11 +9445,6 @@ function allopt_init_records() {
                 negateok: No, valok: Yes, dupeok: No, pfx: No, opt_in_out: opt_in,
         optfn: optfn_crash_urlmax, alias: NoAlias(),
                 descr: _("length of longest url we can generate"), initval: Off, has_handler: No },
-
-
-
-
-
 
     { name: _("customcolors"), section: OptS_Map, idx: opt_customcolors, setwhere: set_in_game,
         opttyp: BoolOpt,
@@ -11408,10 +9643,6 @@ function allopt_init_records() {
         addr: addr_of(ref_of(iflags, "herecmd_menu")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("show commands available in this location"), initval: Off },
 
-
-
-
-
     { name: _("hilite_pet"), section: OptS_Map, idx: opt_hilite_pet, setwhere: set_in_game,
         opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
@@ -11429,9 +9660,6 @@ function allopt_init_records() {
         optfn: optfn_hilite_status, alias: NoAlias(),
                 descr: _("a status highlighting rule (can occur multiple times)"), initval: Off,
         has_handler: No },
-
-
-
 
     { name: _("hitpointbar"), section: OptS_Status, idx: opt_hitpointbar, setwhere: set_in_game,
         opttyp: BoolOpt,
@@ -11464,20 +9692,12 @@ function allopt_init_records() {
         addr: addr_of(ref_of(flags, "ignintr")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("ignore interrupt signals"), initval: Off },
 
-
-
-
-
     { name: _("implicit_uncursed"), section: OptS_Advanced, idx: opt_implicit_uncursed,
         setwhere: set_in_game, opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False,
         opt_in_out: opt_out, addr: addr_of(ref_of(flags, "implicit_uncursed")),
         optfn: optfn_boolean, alias: NoAlias(),
            descr: _("omit \"uncursed\" from inventory"), initval: On },
-
-
-
-
 
     { name: _("legacy"), section: OptS_Advanced, idx: opt_legacy, setwhere: set_in_config,
         opttyp: BoolOpt,
@@ -11573,10 +9793,6 @@ function allopt_init_records() {
         addr: addr_of(ref_of(iflags, "menu_overlay")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("menus overlay and align to right"), initval: On },
 
-
-
-
-
     { name: _("menu_previous_page"), section: OptS_Advanced, expectedbuf: 4, idx: opt_menu_previous_page,
         setwhere: set_in_config, opttyp: CompOpt,
                 negateok: No, valok: Yes, dupeok: No, pfx: No, opt_in_out: opt_in,
@@ -11671,24 +9887,16 @@ function allopt_init_records() {
                 descr: _("control of \"view previous message(s)\" (^P) behavior"), initval: Off,
         has_handler: Yes },
 
-
-
-
     { name: _("msghistory"), section: OptS_Advanced, expectedbuf: 5, idx: opt_msghistory,
         setwhere: set_gameview, opttyp: CompOpt,
                 negateok: Yes, valok: Yes, dupeok: No, pfx: No, opt_in_out: opt_in,
         optfn: optfn_msghistory, alias: NoAlias(),
                 descr: _("number of top line messages to save"), initval: Off, has_handler: No },
 
-
     { name: _("news"), section: OptS_Advanced, idx: opt_news, setwhere: set_in_config, opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
         addr: addr_of(ref_of(iflags, "news")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("show any news at game start"), initval: Off },
-
-
-
-
 
     { name: _("nudist"), section: OptS_Advanced, idx: opt_nudist, setwhere: set_in_config,
         opttyp: BoolOpt,
@@ -11716,17 +9924,6 @@ function allopt_init_records() {
         optfn: optfn_packorder, alias: NoAlias(),
                 descr: _("the inventory order of the items in your pack"), initval: Off,
         has_handler: No },
-
-
-
-
-
-
-
-
-
-
-
 
     { name: _("paranoid_confirmation"), section: OptS_Advanced, expectedbuf: 28,
         idx: opt_paranoid_confirmation, setwhere: set_in_game, opttyp: CompOpt,
@@ -11827,11 +10024,6 @@ function allopt_init_records() {
         addr: addr_of(ref_of(flags, "quick_farsight")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("skip map browse when forced to looked at map"), initval: Off },
 
-
-
-
-
-
     { name: _("rawio"), section: OptS_Advanced, idx: opt_rawio, setwhere: set_in_config, opttyp: BoolOpt,
            negateok: No, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
         optfn: optfn_boolean, alias: NoAlias(), initval: Off },
@@ -11912,10 +10104,6 @@ function allopt_init_records() {
         addr: addr_of(ref_of(flags, "showrace")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("show your character by race rather than role"), initval: Off },
 
-
-
-
-
     { name: _("showscore"), section: OptS_Status, idx: opt_showscore, setwhere: set_in_config,
         opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
@@ -11966,10 +10154,6 @@ function allopt_init_records() {
                 negateok: No, valok: Yes, dupeok: No, pfx: No, opt_in_out: opt_in,
         optfn: optfn_soundlib, alias: NoAlias(),
                 descr: _("soundlib interface to use (if any)"), initval: Off, has_handler: No },
-
-
-
-
 
     { name: _("sounds"), section: OptS_Advanced, idx: opt_sounds, setwhere: set_in_game, opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_Off, opt_in_out: opt_in,
@@ -12022,17 +10206,11 @@ function allopt_init_records() {
         optfn: optfn_o_status_hilites, alias: NoAlias(),
         descr: _("change status line highlighting"), initval: On, has_handler: On },
 
-
-
-
     { name: _("statuslines"), section: OptS_Status, expectedbuf: 20, idx: opt_statuslines,
         setwhere: set_in_game, opttyp: CompOpt,
                 negateok: No, valok: Yes, dupeok: No, pfx: No, opt_in_out: opt_in,
         optfn: optfn_statuslines, alias: NoAlias(), descr: _("2 or 3 lines for status display"),
         initval: Off, has_handler: No },
-
-
-
 
     { name: _("suppress_alert"), section: OptS_Advanced, expectedbuf: 8, idx: opt_suppress_alert,
         setwhere: set_in_game, opttyp: CompOpt,
@@ -12087,10 +10265,6 @@ function allopt_init_records() {
         addr: addr_of(ref_of(flags, "time")), optfn: optfn_boolean, alias: NoAlias(),
            descr: _("display game turns in status line"), initval: Off },
 
-
-
-
-
     { name: _("timed_delay"), section: OptS_Map, idx: opt_timed_delay, setwhere: set_in_config,
         opttyp: BoolOpt,
            negateok: No, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
@@ -12128,10 +10302,6 @@ function allopt_init_records() {
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False,
         opt_in_out: opt_out, addr: addr_of(ref_of(iflags, "trav_debug")), optfn: optfn_boolean,
         alias: NoAlias(), initval: Off },
-
-
-
-
 
     { name: _("tutorial"), section: OptS_Advanced, idx: opt_tutorial, setwhere: set_in_config,
         opttyp: BoolOpt,
@@ -12173,48 +10343,16 @@ function allopt_init_records() {
         optfn: optfn_versinfo, alias: NoAlias(), descr: _("extra information for 'showvers'"),
         initval: Off, has_handler: Yes },
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     { name: _("voices"), section: OptS_Advanced, idx: opt_voices, setwhere: set_gameview,
         opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_Excluded,
         opt_in_out: opt_in, addr: addr_of(ref_of(iflags, "voices")), optfn: optfn_boolean,
         alias: NoAlias(), initval: Off },
 
-
-
-
-
-
     { name: _("vt_tiledata"), section: OptS_Advanced, idx: opt_vt_tiledata, setwhere: set_in_config,
         opttyp: BoolOpt,
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
         optfn: optfn_boolean, alias: NoAlias(), initval: Off },
-
-
-
-
-
 
     { name: _("vt_sounddata"), section: OptS_Advanced, idx: opt_vt_sounddata, setwhere: set_in_config,
         opttyp: BoolOpt,
@@ -12260,9 +10398,6 @@ function allopt_init_records() {
         optfn: optfn_windowborders, alias: NoAlias(), descr: _("0 (off), 1 (on), 2 (auto)"),
         initval: Off, has_handler: Yes },
 
-
-
-
     { name: _("windowcolors"), section: OptS_Advanced, expectedbuf: 80, idx: opt_windowcolors,
         setwhere: set_gameview, opttyp: CompOpt,
                 negateok: No, valok: Yes, dupeok: Yes, pfx: No, opt_in_out: opt_in,
@@ -12285,10 +10420,6 @@ function allopt_init_records() {
            negateok: Yes, valok: No, dupeok: No, pfx: No, termpref: Term_False, opt_in_out: opt_in,
         addr: addr_of(ref_of(iflags, "wc2_wraptext")), optfn: optfn_boolean, alias: NoAlias(),
         initval: Off },
-
-
-
-
 
     { name: _("cond_"), section: OptS_Advanced, idx: pfx_cond_, setwhere: set_hidden, opttyp: CompOpt,
                 negateok: Yes, valok: No, dupeok: Yes, pfx: Yes, opt_in_out: opt_in,

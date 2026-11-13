@@ -3,39 +3,7 @@
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "tcap.h" /* for TERMLIB and ASCIIGRAPH */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* these ones are declared non-static in extern.h if SFCTOOL is defined */
-
-
-
-
-
 
 /*
  * Save a mapping of IDs from ghost levels to the current level.  This
@@ -50,26 +18,11 @@ const struct_bucket = struct("struct_bucket", {
     }), N_PER_BUCKET),
 });
 
-
-
-
-
-
-
-
-
-
-
-// #include "display.h"
-
-export function Is_IceBox(o) { return ((o).otyp == ICE_BOX ? TRUE : FALSE); }
-
+export function Is_IceBox(o) { return (o.otyp == ICE_BOX ? TRUE : FALSE); }
 
 /* Recalculate svl.level.objects[x][y], since this info was not saved. */
 
-function /* void */
-find_lev_obj()
-{
+function find_lev_obj() { /* void */
     let fobjtmp = null;
     let otmp;
     let x, y;
@@ -109,9 +62,7 @@ find_lev_obj()
 /* Things that were marked "in_use" when the game was saved (ex. via the
  * infamous "HUP" cheat) get used up here.
  */
-export function /* void */
-inven_inuse(quietly)
-{
+export function inven_inuse(quietly) { /* void */
     let otmp, otmp2;
 
     for (otmp = gi.invent; otmp; otmp = otmp2) {
@@ -124,11 +75,8 @@ inven_inuse(quietly)
     }
 }
 
-
-
-function /* void */
-restlevchn(nhfp)
-{ const $frame = stack_frame(); try {
+function restlevchn(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let cnt = stack_var(int, 0);
     let tmplev, x;
 
@@ -147,17 +95,16 @@ restlevchn(nhfp)
         }
         tmplev.next = null;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-restdamage(nhfp)
-{ const $frame = stack_frame(); try {
+function restdamage(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let dmgcount = stack_var(unsigned, 0);
     let counter;
     let tmp_dam;
 
-    let ghostly = (+(nhfp.ftype == NHF_BONESFILE));
-
+    let ghostly = +(nhfp.ftype == NHF_BONESFILE);
 
     sfi_unsigned(nhfp, dmgcount, _("damage-damage_count"));
     counter = int((dmgcount[0]));
@@ -174,14 +121,13 @@ restdamage(nhfp)
 
         tmp_dam.next = svl.level.damagelist;
         svl.level.damagelist = tmp_dam;
-
     } while (--counter > 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* restore one object */
-function /* void */
-restobj(nhfp, otmp)
-{ const $frame = stack_frame(); try {
+function restobj(nhfp, otmp) { /* void */
+    const $frame = stack_frame(); try {
     let buflen = stack_var(int, 0);
     let omid = stack_var(unsigned, 0);
 
@@ -225,17 +171,16 @@ restobj(nhfp, otmp)
         sfi_unsigned(nhfp, omid, _("obj-omid"));
         ((otmp).oextra.omid) = omid[0];
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct obj * */
-restobjchn(nhfp, frozen)
-{ const $frame = stack_frame(); try {
+function restobjchn(nhfp, frozen) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let otmp, otmp2 = null;
     let first = null;
     let buflen = stack_var(int, 0);
 
-    let ghostly = (+(nhfp.ftype == NHF_BONESFILE));
-
+    let ghostly = +(nhfp.ftype == NHF_BONESFILE);
 
     while (1) {
         sfi_int(nhfp, buflen, _("obj-obj_length"));
@@ -249,7 +194,6 @@ restobjchn(nhfp, frozen)
             first = otmp;
         else
             otmp2.nobj = otmp;
-
 
         if (ghostly) {
             let nid = next_ident();
@@ -266,7 +210,6 @@ restobjchn(nhfp, frozen)
         if (ghostly && !frozen && !age_is_relative(otmp))
             otmp.age = svm.moves - svo.omoves + otmp.age;
 
-
         /* get contents of a container or statue */
         if (Has_contents(otmp)) {
             let otmp3;
@@ -276,7 +219,6 @@ restobjchn(nhfp, frozen)
             for (otmp3 = otmp.cobj; otmp3; otmp3 = otmp3.nobj)
                 otmp3.v.v_ocontainer = otmp;
         }
-
 
         if (otmp.bypass)
             otmp.bypass = 0;
@@ -297,15 +239,13 @@ restobjchn(nhfp, frozen)
         otmp2.nobj = null;
     }
 
-
-
     return first;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* restore one monster */
-function /* void */
-restmon(nhfp, mtmp)
-{ const $frame = stack_frame(); try {
+function restmon(nhfp, mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let buflen = stack_var(int, 0), mc = stack_var(int, 0);
 
     Sfi_monst(nhfp, mtmp, _("monst"));
@@ -370,18 +310,17 @@ restmon(nhfp, mtmp)
         sfi_int(nhfp, mc, _("monst-mcorpsenm"));
         ((mtmp).mextra.mcorpsenm) = mc[0];
     } /* mextra */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct monst * */
-restmonchn(nhfp)
-{ const $frame = stack_frame(); try {
+function restmonchn(nhfp) { /* struct monst * */
+    const $frame = stack_frame(); try {
     let mtmp, mtmp2 = null;
     let first = null;
     let buflen = stack_var(int, 0);
 
     let offset;
-    let ghostly = (+(nhfp.ftype == NHF_BONESFILE));
-
+    let ghostly = +(nhfp.ftype == NHF_BONESFILE);
 
     while (1) {
         sfi_int(nhfp, buflen, _("monst-monst_length"));
@@ -395,7 +334,6 @@ restmonchn(nhfp)
             first = mtmp;
         else
             mtmp2.nmon = mtmp;
-
 
         if (ghostly) {
             let nid = next_ident();
@@ -415,7 +353,6 @@ restmonchn(nhfp)
             }
         }
 
-
         if (mtmp.minvent) {
             let obj;
             mtmp.minvent = restobjchn(nhfp, FALSE);
@@ -423,11 +360,7 @@ restmonchn(nhfp)
             /* restore monster back pointer */
             for (obj = mtmp.minvent; obj; obj = obj.nobj)
                 obj.v.v_ocarry = mtmp;
-
-
-
         }
-
 
         if (mtmp.mw) {
             let obj;
@@ -462,11 +395,10 @@ restmonchn(nhfp)
     }
 
     return first;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct fruit * */
-loadfruitchn(nhfp)
-{
+function loadfruitchn(nhfp) { /* struct fruit * */
     let flist, fnext;
 
     flist = null;
@@ -483,9 +415,7 @@ loadfruitchn(nhfp)
     return flist;
 }
 
-function /* void */
-freefruitchn(flist)
-{
+function freefruitchn(flist) { /* void */
     let fnext;
 
     while (flist) {
@@ -495,10 +425,7 @@ freefruitchn(flist)
     }
 }
 
-
-function /* void */
-ghostfruit(otmp)
-{
+function ghostfruit(otmp) { /* void */
     let oldf;
 
     for (oldf = go.oldfruit; oldf; oldf = oldf.nextf)
@@ -511,19 +438,10 @@ ghostfruit(otmp)
         otmp.spe = fruitadd(oldf.fname, null);
 }
 
-
-
 export function SYSOPT_CHECK_SAVE_UID() { return sysopt.check_save_uid; }
 
-
-
-
-
-function /* #endif boolean */
-
-
-restgamestate(nhfp)
-{ const $frame = stack_frame(); try {
+function restgamestate(nhfp) { /* boolean */
+    const $frame = stack_frame(); try {
     let i;
     let newgameflags = stack_struct(struct_flag);
     let newgamecontext = stack_struct(struct_context_info); /* all 0, but has some pointers */
@@ -533,7 +451,6 @@ restgamestate(nhfp)
 
     let defer_perm_invent, restoring_special;
     let otmp;
-
 
     sfi_ulong(nhfp, uid, _("gamestate-uid"));
     Sfi_char(nhfp, svn.nhuuid + 0, _("nhuuid"), sizeof_member(svn, "nhuuid"));
@@ -557,7 +474,7 @@ restgamestate(nhfp)
     Sfi_context_info(nhfp, svc.context, _("gamestate-context"));
     relative_time_to_moves(ref_of(svc.context, "seer_turn"));
     relative_time_to_moves(ref_of(svc.context.digging, "lastdigtime"));
-    svc.context.warntype.species = (ismnum(svc.context.warntype.speciesidx))
+    svc.context.warntype.species = ismnum(svc.context.warntype.speciesidx)
                                   ? mons[svc.context.warntype.speciesidx]
                                   : null;
     /* context.victual.piece, .tin.tin, .spellbook.book, and .polearm.hitmon
@@ -569,7 +486,6 @@ restgamestate(nhfp)
        if partial restore fails and we resort to starting a new game */
     struct_assign(newgameflags, flags);
     Sfi_flag(nhfp, flags, _("gamestate-flags"));
-
 
     /* avoid keeping permanent inventory window up to date during restore
        (setworn() calls update_inventory); attempting to include the cost
@@ -584,8 +500,8 @@ restgamestate(nhfp)
        player might be overriding the save file values for them;
        in the discover case, we don't want to set that for a normal
        game until after the save file has been removed */
-    iflags.deferred_X = (((newgameflags.explore && !discover()) ? 1 : 0));
-    restoring_special = (((wizard() || discover()) ? 1 : 0));
+    iflags.deferred_X = (newgameflags.explore && !discover() ? 1 : 0);
+    restoring_special = (wizard() || discover() ? 1 : 0);
     if (newgameflags.debug) {
         /* authorized by startup code; wizard mode exists and is allowed */
         flags.debug = TRUE, flags.explore = iflags.deferred_X = FALSE;
@@ -595,14 +511,10 @@ restgamestate(nhfp)
     }
     role_init(); /* Reset the initial role, race, gender, and alignment */
 
-
-
-
     sfi_long(nhfp, ref_of(svw, "wreserve"), _("wreserve"));
     Sfi_int32(nhfp, ref_of(svw, "wtreserved"), _("wtreserved"));
     Sfi_you(nhfp, u, _("gamestate-you"));
     gy.youmonst.cham = u.mcham;
-
 
     if (restoring_special && iflags.explore_error_flag) {
         /* savefile has wizard or explore mode, but player is no longer
@@ -610,7 +522,6 @@ restgamestate(nhfp)
            fail restoration. */
         u.uhp = 0;
     }
-
 
     Sfi_char(nhfp, timebuf, _("gamestate-ubirthday"), 14);
     chars[timebuf + 14] = ord('\0');
@@ -648,7 +559,6 @@ restgamestate(nhfp)
     /* in case hangup save occurred in midst of level change */
     assign_level(u.uz0, u.uz);
 
-
     /* this stuff comes after potential aborted restore attempts */
     restore_killers(nhfp);
     restore_timers(nhfp, RANGE_GLOBAL, 0);
@@ -675,7 +585,6 @@ restgamestate(nhfp)
         Sfi_mvitals(nhfp, svm.mvitals[i], _("gamestate-mvitals"));
     }
 
-
     /*
      * There are some things after this that can have unintended display
      * side-effects too early in the game.
@@ -697,7 +606,6 @@ restgamestate(nhfp)
     setuwep(otmp); /* (don't need any null check here) */
     if (!uwep || uwep.otyp == PICK_AXE || uwep.otyp == GRAPPLING_HOOK)
         gu.unweapon = TRUE;
-
 
     restore_dungeon(nhfp);
     restlevchn(nhfp);
@@ -728,19 +636,13 @@ restgamestate(nhfp)
     /* inventory display is now viable */
     iflags.perm_invent = defer_perm_invent;
 
-
-
-
-
     return TRUE;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* update game state pointers to those valid for the current level (so we
    don't dereference a wild u.ustuck when saving game state, for instance) */
-function /* void */
-restlevelstate()
-{
+function restlevelstate() { /* void */
     /*
      * Note: restoring steed and engulfer/holder/holdee is now handled
      * in getlev() and there's nothing left for restlevelstate() to do.
@@ -751,9 +653,8 @@ restlevelstate()
 /* after getlev(), put current level into a level/lock file;
    essential when splitting a save file into individual level files */
 /*ARGSUSED*/
-function /* int */
-restlevelfile(ltmp)
-{ const $frame = stack_frame(); try {
+function restlevelfile(ltmp) { /* int */
+    const $frame = stack_frame(); try {
     let whynot = stack_array(char, BUFSZ);
     let nhfp = null;
 
@@ -768,7 +669,8 @@ restlevelfile(ltmp)
     savelev(nhfp, ltmp);
     close_nhfile(nhfp);
     return 2;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * restore_saved_game() prior to this left us at this position in
@@ -785,9 +687,8 @@ restlevelfile(ltmp)
  *     other levels
  */
 
-export function /* int */
-dorecover(nhfp)
-{ const $frame = stack_frame(); try {
+export function dorecover(nhfp) { /* int */
+    const $frame = stack_frame(); try {
     let ltmp = stack_var(xint8, 0);
     let rtmp;
 
@@ -816,7 +717,7 @@ dorecover(nhfp)
         savelev(tnhfp, 0); /* discard current level */
         close_nhfile(tnhfp);
         close_nhfile(nhfp);
-        void delete_savefile();
+        delete_savefile();
         u.usteed_mid = u.ustuck_mid = 0;
         program_state.restoring = 0;
         return 0;
@@ -842,28 +743,7 @@ dorecover(nhfp)
     u.ustuck = null;
     u.usteed = null;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef MICRO: not in this build */
 
     restoreinfo.mread_flags = 1; /* return despite error */
     while (1) {
@@ -871,16 +751,7 @@ dorecover(nhfp)
         if (nhfp.eof)
             break;
         getlev(nhfp, 0, ltmp[0]);
-
-
-
-
-
-
-
-
-
-
+        /* #ifdef MICRO: not in this build */
 
         rtmp = restlevelfile(ltmp[0]);
         if (rtmp < 2)
@@ -889,7 +760,7 @@ dorecover(nhfp)
     restoreinfo.mread_flags = 0;
 
     rewind_nhfile(nhfp);        /* return to beginning of file */
-    void validate(nhfp, 0, FALSE);
+    validate(nhfp, 0, FALSE);
     get_plname_from_file(nhfp, svp.plname, TRUE);
 
     /* not 0 nor REST_GSTATE nor REST_LEVELS */
@@ -901,7 +772,7 @@ dorecover(nhfp)
     program_state.something_worth_saving = 1; /* useful data now exists */
 
     if (!wizard() && !discover())
-        void delete_savefile();
+        delete_savefile();
     if (Is_rogue_level(u.uz))
         assign_graphics(ROGUESET);
     reset_glyphmap(gm_levelchange);
@@ -948,18 +819,15 @@ dorecover(nhfp)
     welcome(FALSE);
     check_special_room(FALSE);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* void */
-rest_stairs(nhfp)
-{ const $frame = stack_frame(); try {
+function rest_stairs(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let buflen = stack_var(int, 0);
     let stway = init_list(stack_struct(struct_stairway), {});
 
     let newst;
-
-
 
     stairway_free_all();
 
@@ -976,17 +844,16 @@ rest_stairs(nhfp)
         }
 
         stairway_add(stway.sx, stway.sy, stway.up, stway.isladder,
-                     (stway.tolev));
+                     stway.tolev);
         newst = stairway_at(stway.sx, stway.sy);
         if (newst)
             newst.u_traversed = stway.u_traversed;
-
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-restcemetery(nhfp, cemeteryaddr)
-{ const $frame = stack_frame(); try {
+export function restcemetery(nhfp, cemeteryaddr) { /* void */
+    const $frame = stack_frame(); try {
     let bonesinfo, bonesaddr;
     let cflag = stack_var(int, 0);
 
@@ -1014,12 +881,11 @@ restcemetery(nhfp, cemeteryaddr)
         }
         cemeteryaddr[0] = null;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*ARGSUSED*/
-function /* void */
-rest_levl(nhfp)
-{
+function rest_levl(nhfp) { /* void */
     let c, r;
 
     for (c = 0; c < COLNO; ++c) {
@@ -1029,22 +895,16 @@ rest_levl(nhfp)
     }
 }
 
-
-
-export function /* void */
-trickery(reason)
-{
+export function trickery(reason) { /* void */
     pline(_("Strange, this map is not as I remember it."));
     pline(_("Somebody is trying some trickery here..."));
     pline(_("This game is void."));
-    void strcpy(svk.killer.name, reason ? reason : _(""));
+    strcpy(svk.killer.name, reason ? reason : _(""));
     done(TRICKED);
 }
 
-
-export function /* void */
-getlev(nhfp, pid, lev)
-{ const $frame = stack_frame(); try {
+export function getlev(nhfp, pid, lev) { /* void */
+    const $frame = stack_frame(); try {
     let trap;
 
     let mtmp;
@@ -1055,25 +915,13 @@ getlev(nhfp, pid, lev)
     let hpid = stack_var(int, 0);
     let dlvl = stack_var(xint8, 0);
     let i, c, r;
-    let ghostly = (+(nhfp.ftype == NHF_BONESFILE));
+    let ghostly = +(nhfp.ftype == NHF_BONESFILE);
     let tmpc = null;
-
-
-
 
     program_state.in_getlev = TRUE;
 
-
     if (ghostly)
         clear_id_mapping();
-
-
-
-
-
-
-
-
 
     /* Load the old fruit info.  We have to do it first, so the
      * information is available when restoring the objects.
@@ -1090,9 +938,9 @@ getlev(nhfp, pid, lev)
         let trickbuf = stack_array(char, BUFSZ);
 
         if (pid && pid != hpid[0])
-            void sprintf(trickbuf, _("PID (%d) doesn't match saved PID (%d)!"), hpid[0], pid);
+            sprintf(trickbuf, _("PID (%d) doesn't match saved PID (%d)!"), hpid[0], pid);
         else
-            void sprintf(trickbuf, _("This is level %d, not %d!"), dlvl[0], lev)
+            sprintf(trickbuf, _("This is level %d, not %d!"), dlvl[0], lev)
 ;
         if (wizard())
             pline1(trickbuf);
@@ -1122,7 +970,7 @@ getlev(nhfp, pid, lev)
 
     sfi_int(nhfp, ref_of(svd, "doors_alloc"), _("lev-doors_alloc"));
     if (svd.doors_alloc) { /* avoid pointless alloc(0) */
-        svd.doors = view_of(struct_nhcoord, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(svd.doors_alloc), sizeof(struct_nhcoord)))))));
+        svd.doors = view_of(struct_nhcoord, addr_of(alloc(unsigned(Math.imul(unsigned(svd.doors_alloc), sizeof(struct_nhcoord))))));
         tmpc = svd.doors;
         for (i = 0; i < svd.doors_alloc; ++i) {
             Sfi_nhcoord(nhfp, tmpc, _("lev-doors"));
@@ -1131,14 +979,10 @@ getlev(nhfp, pid, lev)
     }
     rest_rooms(nhfp); /* No joke :-) */
     if (svn.nroom) {
-
         gd.doorindex = elt(svr.rooms, svn.nroom - 1).fdoor
                                + elt(svr.rooms, svn.nroom - 1).doorct;
     } else {
         gd.doorindex = 0;
-
-
-
     }
 
     restore_timers(nhfp, RANGE_LEVEL, elapsed);
@@ -1173,7 +1017,6 @@ getlev(nhfp, pid, lev)
     gb.billobjs = restobjchn(nhfp, FALSE);
     rest_engravings(nhfp);
 
-
     /* reset level.monsters for new level */
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
@@ -1194,7 +1037,7 @@ getlev(nhfp, pid, lev)
             if (mtmp.wormno)
                 place_wsegs(mtmp, null);
             if (hides_under(mtmp.data) && mtmp.mundetected)
-                void hideunder(mtmp);
+                hideunder(mtmp);
         }
 
         /* regenerate monsters while on another level */
@@ -1220,13 +1063,11 @@ getlev(nhfp, pid, lev)
             hide_monst(mtmp);
     }
 
-
     restdamage(nhfp);
     rest_regions(nhfp);
     rest_bubbles(nhfp); /* for water and air; empty marker on other levels */
     load_exclusions(nhfp);
     rest_track(nhfp);
-
 
     if (ghostly) {
         let stway = gs.stairs;
@@ -1240,8 +1081,8 @@ getlev(nhfp, pid, lev)
         /* Now get rid of all the temp fruits... */
         freefruitchn(go.oldfruit), go.oldfruit = null;
 
-        if (lev > ledger_no((svd.dungeon_topology.d_medusa_level))
-            && lev < ledger_no((svd.dungeon_topology.d_stronghold_level)) && !stway) {
+        if (lev > ledger_no(svd.dungeon_topology.d_medusa_level)
+            && lev < ledger_no(svd.dungeon_topology.d_stronghold_level) && !stway) {
             let cc = stack_struct(struct_nhcoord);
             let dest = stack_struct(struct_d_level);
 
@@ -1273,7 +1114,7 @@ getlev(nhfp, pid, lev)
                     stway = stway.next;
                 }
                 if (stway)
-                    assign_level((stway.tolev), ltmp);
+                    assign_level(stway.tolev, ltmp);
                 break;
             case BR_PORTAL: /* max of 1 portal per level */
                 for (trap = gf.ftrap; trap; trap = trap.ntrap)
@@ -1304,29 +1145,21 @@ getlev(nhfp, pid, lev)
         clear_id_mapping();
     program_state.in_getlev = FALSE;
 
-
-
-
     program_state.in_getlev = FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-rest_adjust_levelflags()
-{
+export function rest_adjust_levelflags() { /* void */
     /* adjust timestamps */
     relative_time_to_moves(ref_of(svl.level.flags, "stasis_until"));
 }
-export function /* void */
-moves_to_relative_time(timestamp)
-{
+export function moves_to_relative_time(timestamp) { /* void */
     let prevts = timestamp[0];
 
     timestamp[0] = prevts - svm.moves;
 }
 
-export function /* void */
-relative_time_to_moves(timestamp)
-{
+export function relative_time_to_moves(timestamp) { /* void */
     let prevts = timestamp[0];
 
     timestamp[0] = svm.moves + prevts;
@@ -1334,12 +1167,11 @@ relative_time_to_moves(timestamp)
 
 /* "name-role-race-gend-algn" occurs very early in a save file; sometimes we
    want the whole thing, other times just "name" (for svp.plname[]) */
-export function /* void */
-get_plname_from_file(
+export function get_plname_from_file(
     nhfp,
     outbuf,
-    name_only) /* True: just name; False: name-role-race-gend-algn */
-{ const $frame = stack_frame(); try {
+    name_only) { /* void */ /* True: just name; False: name-role-race-gend-algn */
+    const $frame = stack_frame(); try {
     let plbuf = stack_array(char, PL_NSIZ_PLUS);
     let pltmpsiz = stack_var(int, 0);
 
@@ -1357,17 +1189,15 @@ get_plname_from_file(
         chars[eos(plbuf)] = ord('-');
     /* not simple strcpy(); playmode is in the last slot and could (probably
        will) be preceded by NULs */
-    void memcpy(outbuf, plbuf, PL_NSIZ_PLUS);
+    memcpy(outbuf, plbuf, PL_NSIZ_PLUS);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* restore Plane of Water's air bubbles and Plane of Air's clouds */
 
-function /* #endif void */
-
-
-rest_bubbles(nhfp)
-{ const $frame = stack_frame(); try {
+function rest_bubbles(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let bbubbly = stack_var(xint8);
 
     /* whether or not the Plane of Water's air bubbles or Plane of Air's
@@ -1376,19 +1206,13 @@ rest_bubbles(nhfp)
     bbubbly[0] = 0;
     sfi_xint8(nhfp, addr_of(bbubbly), _("bubbles-bbubbly"));
 
-
-
-
     if (bbubbly[0])
         restore_waterlevel(nhfp);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* #endif void */
-
-
-restore_gamelog(nhfp)
-{ const $frame = stack_frame(); try {
+function restore_gamelog(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let slen = stack_var(int, 0);
     let msg = stack_array(char, BUFSZ*2);
     let tmp = init_list(stack_struct(struct_gamelog_line), { turn: 0 });
@@ -1404,16 +1228,12 @@ restore_gamelog(nhfp)
         Sfi_gamelog_line(nhfp, tmp, _("gamelog-gamelog_line"));
 
         gamelog_add(tmp.flags, tmp.turn, msg);
-
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* #endif void */
-
-
-restore_msghistory(nhfp)
-{ const $frame = stack_frame(); try {
+function restore_msghistory(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let msgsize = stack_var(int, 0);
 
     let msgcount = 0;
@@ -1431,21 +1251,16 @@ restore_msghistory(nhfp)
 
         putmsghistory()(msg, TRUE);
         ++msgcount;
-
     }
 
     if (msgcount)
         putmsghistory()(0, TRUE);
     debugpline1(_("Read %d messages from savefile."), msgcount, __FILE__);
-
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* Clear all structures for object and monster ID mapping. */
-function /* void */
-clear_id_mapping()
-{
+function clear_id_mapping() { /* void */
     let curr;
 
     while ((curr = gi.id_map) != null) {
@@ -1456,9 +1271,7 @@ clear_id_mapping()
 }
 
 /* Add a mapping to the ID map. */
-function /* void */
-add_id_mapping(gid, nid)
-{
+function add_id_mapping(gid, nid) { /* void */
     let idx;
 
     idx = gn.n_ids_mapped % N_PER_BUCKET;
@@ -1480,9 +1293,7 @@ add_id_mapping(gid, nid)
  * in the new ID value.  Otherwise, return false and return -1 in the new
  * ID.
  */
-export function /* boolean */
-lookup_id_mapping(gid, nidp)
-{
+export function lookup_id_mapping(gid, nidp) { /* boolean */
     let i;
     let curr;
 
@@ -1506,9 +1317,8 @@ lookup_id_mapping(gid, nidp)
     return FALSE;
 }
 
-function /* void */
-reset_oattached_mids(ghostly)
-{ const $frame = stack_frame(); try {
+function reset_oattached_mids(ghostly) { /* void */
+    const $frame = stack_frame(); try {
     let otmp;
     let oldid, nid = stack_var(unsigned);
 
@@ -1527,16 +1337,14 @@ reset_oattached_mids(ghostly)
                 free_omid(otmp);
         }
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* put up a menu listing each character from this player's saved games;
    returns 1: use svp.plname[], 0: new game, -1: quit */
-export function /* int */
-restore_menu(
-    bannerwin) /* if not WIN_ERR, clear window
-                      * and show copyright in menu */
-{ const $frame = stack_frame(); try {
+export function restore_menu(
+    bannerwin) { /* int */ /* if not WIN_ERR, clear window * and show copyright in menu */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let saved, next, mode, menutext = stack_array(char, BUFSZ);
@@ -1575,9 +1383,9 @@ restore_menu(
             next = saved[k];
             mode = chars[next + (PL_NSIZ_PLUS - 1)];
             if (all_normal)
-                void sprintf(menutext, _("%.*s"), PL_NSIZ_PLUS - 1, next);
+                sprintf(menutext, _("%.*s"), PL_NSIZ_PLUS - 1, next);
             else
-                void sprintf(menutext, _("%c %.*s"), mode, PL_NSIZ_PLUS - 1, next);
+                sprintf(menutext, _("%c %.*s"), mode, PL_NSIZ_PLUS - 1, next);
             add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr,
                      menutext, MENU_ITEMFLAGS_SKIPMENUCOLORS);
         }
@@ -1596,7 +1404,7 @@ restore_menu(
         if (select_menu(tmpwin, PICK_ONE, chosen_game) > 0) {
             ch = chosen_game[0].item.a_int;
             if (ch > 0)
-                void strcpy(svp.plname, saved[ch - 1]);
+                strcpy(svp.plname, saved[ch - 1]);
             else if (ch < 0)
                 ++ch; /* -1 -> 0 (new game), -2 -> -1 (quit) */
             free(addr_of(chosen_game[0]));
@@ -1615,314 +1423,134 @@ restore_menu(
     }
     free_saved_games(saved);
     return (ch > 0) ? 1 : ch;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*restore.c*/
+
 import { NO_COLOR } from "./color.h.js";
 import { struct_context_info } from "./context.h.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { gm_levelchange } from "./display.h.js";
-import { BR_NO_END1 } from "./dungeon.h.js";
-import { BR_NO_END2 } from "./dungeon.h.js";
-import { BR_PORTAL } from "./dungeon.h.js";
-import { BR_STAIR } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { struct_s_level } from "./dungeon.h.js";
+import {
+    BR_NO_END1, BR_NO_END2, BR_PORTAL, BR_STAIR, struct_d_level, struct_s_level,
+} from "./dungeon.h.js";
 import { Is_rogue_level } from "./dungeon.h.macros.js";
 import { struct_flag } from "./flag.h.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ_PLUS } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { CONVERTING } from "./hack.h.js";
-import { DEFUNCT_MONSTER } from "./hack.h.js";
-import { FREEING } from "./hack.h.js";
-import { NHF_BONESFILE } from "./hack.h.js";
-import { REST_CURRENT_LEVEL } from "./hack.h.js";
-import { REST_GSTATE } from "./hack.h.js";
-import { REST_LEVELS } from "./hack.h.js";
-import { TRICKED } from "./hack.h.js";
-import { UNCONVERTING } from "./hack.h.js";
-import { WRITING } from "./hack.h.js";
-import { struct_gamelog_line } from "./hack.h.js";
-import { pline1 } from "./hack.h.macros.js";
-import { wiz1_level } from "./hack.h.macros.js";
+import { discover, wizard } from "./flag.h.macros.js";
+import { BUFSZ, COLNO, FALSE, PL_NSIZ_PLUS, ROWNO, TRUE, xint8 } from "./global.h.js";
+import {
+    CONVERTING, DEFUNCT_MONSTER, FREEING, NHF_BONESFILE, REST_CURRENT_LEVEL, REST_GSTATE,
+    REST_LEVELS, TRICKED, UNCONVERTING, WRITING, struct_gamelog_line,
+} from "./hack.h.js";
+import { pline1, wiz1_level } from "./hack.h.macros.js";
 import { debugpline1 } from "./lint.h.macros.js";
-import { EBONES } from "./mextra.h.macros.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { EGD } from "./mextra.h.macros.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { MON_NOWEP } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { newmonst } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
+import { EBONES, EDOG, EGD, EMIN, EPRI, ESHK, MGIVENNAME } from "./mextra.h.macros.js";
+import { hides_under, is_unicorn, monsndx } from "./mondata.h.macros.js";
+import { MON_NOWEP, ismnum, newmonst } from "./monst.h.macros.js";
+import { NON_PM, NUMMONS } from "./monsters.h.js";
 import { OBJ_FREE } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { OMID } from "./obj.h.macros.js";
-import { OMONST } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { age_is_relative } from "./obj.h.macros.js";
-import { has_omid } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { newobj } from "./obj.h.macros.js";
+import {
+    Has_contents, OMID, OMONST, ONAME, age_is_relative, has_omid, has_omonst, newobj,
+} from "./obj.h.macros.js";
 import { MAXSPELL } from "./objclass.h.js";
-import { dealloc_fruit } from "./objclass.h.macros.js";
-import { newfruit } from "./objclass.h.macros.js";
-import { GRAPPLING_HOOK } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { W_BALL } from "./prop.h.js";
-import { W_CHAIN } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { STAIRS } from "./rm.h.js";
-import { struct_cemetery } from "./rm.h.js";
-import { struct_damage } from "./rm.h.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_cemetery } from "./savefile.h.macros.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfi_context_info } from "./savefile.h.macros.js";
-import { Sfi_damage } from "./savefile.h.macros.js";
-import { Sfi_dest_area } from "./savefile.h.macros.js";
-import { Sfi_ebones } from "./savefile.h.macros.js";
-import { Sfi_edog } from "./savefile.h.macros.js";
-import { Sfi_egd } from "./savefile.h.macros.js";
-import { Sfi_emin } from "./savefile.h.macros.js";
-import { Sfi_epri } from "./savefile.h.macros.js";
-import { Sfi_eshk } from "./savefile.h.macros.js";
-import { Sfi_flag } from "./savefile.h.macros.js";
-import { Sfi_fruit } from "./savefile.h.macros.js";
-import { Sfi_gamelog_line } from "./savefile.h.macros.js";
-import { Sfi_int32 } from "./savefile.h.macros.js";
-import { Sfi_levelflags } from "./savefile.h.macros.js";
-import { Sfi_monst } from "./savefile.h.macros.js";
-import { Sfi_mvitals } from "./savefile.h.macros.js";
-import { Sfi_nhcoord } from "./savefile.h.macros.js";
-import { Sfi_obj } from "./savefile.h.macros.js";
-import { Sfi_q_score } from "./savefile.h.macros.js";
-import { Sfi_rm } from "./savefile.h.macros.js";
-import { Sfi_s_level } from "./savefile.h.macros.js";
-import { Sfi_schar } from "./savefile.h.macros.js";
-import { Sfi_spell } from "./savefile.h.macros.js";
-import { Sfi_stairway } from "./savefile.h.macros.js";
-import { Sfi_trap } from "./savefile.h.macros.js";
-import { Sfi_you } from "./savefile.h.macros.js";
+import { dealloc_fruit, newfruit } from "./objclass.h.macros.js";
+import { GRAPPLING_HOOK, ICE_BOX, PICK_AXE, SLIME_MOLD } from "./objects.h.js";
+import { W_BALL, W_CHAIN, W_WEP } from "./prop.h.js";
+import { STAIRS, struct_cemetery, struct_damage } from "./rm.h.js";
+import { fmon, fobj, levl } from "./rm.h.macros.js";
+import {
+    Sfi_cemetery, Sfi_char, Sfi_context_info, Sfi_damage, Sfi_dest_area, Sfi_ebones, Sfi_edog,
+    Sfi_egd, Sfi_emin, Sfi_epri, Sfi_eshk, Sfi_flag, Sfi_fruit, Sfi_gamelog_line, Sfi_int32,
+    Sfi_levelflags, Sfi_monst, Sfi_mvitals, Sfi_nhcoord, Sfi_obj, Sfi_q_score, Sfi_rm, Sfi_s_level,
+    Sfi_schar, Sfi_spell, Sfi_stairway, Sfi_trap, Sfi_you,
+} from "./savefile.h.macros.js";
 import { struct_stairway } from "./stairs.h.js";
 import { ROGUESET } from "./sym.h.js";
-import { RANGE_GLOBAL } from "./timeout.h.js";
-import { RANGE_LEVEL } from "./timeout.h.js";
+import { RANGE_GLOBAL, RANGE_LEVEL } from "./timeout.h.js";
 import { MAGIC_PORTAL } from "./trap.h.js";
-import { dealloc_trap } from "./trap.h.macros.js";
-import { newtrap } from "./trap.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { cliparound } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putmsghistory } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPMENUCOLORS } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import { dealloc_trap, newtrap } from "./trap.h.macros.js";
+import {
+    clear_nhwindow, cliparound, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu,
+    putmsghistory, putstr, start_menu, wait_synch,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+    MENU_ITEMFLAGS_SKIPMENUCOLORS, NHW_MENU, PICK_ONE, WIN_ERR, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { Upolyd } from "./you.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { char, int, ord, sizeof, ulong, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { shl64 } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getuid } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
+import { assert, free, getuid, memcpy, sprintf, strcpy } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, stack_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, ptr_add, ptr_to, ref_of, sizeof_member, struct, struct_assign, view_of,
+} from "../rt/struct.js";
 import { welcome } from "./allmain.js";
 import { alloc } from "./alloc.js";
 import { restore_artifacts } from "./artifact.js";
 import { newebones } from "./bones.js";
 import { max_rank_sz } from "./botl.js";
-import { getnow } from "./calendar.js";
-import { time_from_yyyymmddhhmmss } from "./calendar.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { ge } from "./decl.js";
-import { gf } from "./decl.js";
-import { gh } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svo } from "./decl.js";
-import { svp } from "./decl.js";
-import { svq } from "./decl.js";
-import { svr } from "./decl.js";
-import { svs } from "./decl.js";
-import { svu } from "./decl.js";
-import { svw } from "./decl.js";
-import { u } from "./decl.js";
-import { urealtime } from "./decl.js";
-import { docrt } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { reglyph_darkroom } from "./display.js";
-import { reset_glyphmap } from "./display.js";
-import { new_mgivenname } from "./do_name.js";
-import { new_oname } from "./do_name.js";
-import { mon_catchup_elapsed_time } from "./dog.js";
-import { newedog } from "./dog.js";
-import { Is_branchlev } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { load_exclusions } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { restore_dungeon } from "./dungeon.js";
-import { done } from "./end.js";
-import { panic } from "./end.js";
-import { restore_killers } from "./end.js";
+import { getnow, time_from_yyyymmddhhmmss } from "./calendar.js";
+import {
+    cg, flags, gb, gc, gd, ge, gf, gh, gi, gm, gn, go, gs, gu, gv, gy, iflags, program_state, svc,
+    svd, svk, svl, svm, svn, svo, svp, svq, svr, svs, svu, svw, u, urealtime,
+} from "./decl.js";
+import { docrt, nul_glyphinfo, reglyph_darkroom, reset_glyphmap } from "./display.js";
+import { new_mgivenname, new_oname } from "./do_name.js";
+import { mon_catchup_elapsed_time, newedog } from "./dog.js";
+import {
+    Is_branchlev, assign_level, ledger_no, load_exclusions, on_level, restore_dungeon,
+} from "./dungeon.js";
+import { done, panic, restore_killers } from "./end.js";
 import { rest_engravings } from "./engrave.js";
-import { close_nhfile } from "./files.js";
-import { create_levelfile } from "./files.js";
-import { delete_savefile } from "./files.js";
-import { free_saved_games } from "./files.js";
-import { get_freeing_nhfile } from "./files.js";
-import { get_saved_games } from "./files.js";
-import { rewind_nhfile } from "./files.js";
+import {
+    close_nhfile, create_levelfile, delete_savefile, free_saved_games, get_freeing_nhfile,
+    get_saved_games, rewind_nhfile,
+} from "./files.js";
 import { check_special_room } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
+import { eos, sgn } from "./hacklib.js";
 import { useup } from "./invent.js";
-import { relink_light_sources } from "./light.js";
-import { restore_light_sources } from "./light.js";
-import { newmextra } from "./makemon.js";
-import { peace_minded } from "./makemon.js";
-import { propagate } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { relink_light_sources, restore_light_sources } from "./light.js";
+import { newmextra, peace_minded, propagate, set_malign } from "./makemon.js";
 import { newemin } from "./minion.js";
-import { mazexy } from "./mkmaze.js";
-import { restore_waterlevel } from "./mkmaze.js";
-import { free_omid } from "./mkobj.js";
-import { new_omailcmd } from "./mkobj.js";
-import { newoextra } from "./mkobj.js";
-import { newomid } from "./mkobj.js";
-import { newomonst } from "./mkobj.js";
-import { next_ident } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
+import { mazexy, restore_waterlevel } from "./mkmaze.js";
+import {
+    free_omid, new_omailcmd, newoextra, newomid, newomonst, next_ident, place_object,
+} from "./mkobj.js";
 import { rest_rooms } from "./mkroom.js";
-import { adj_erinys } from "./mon.js";
-import { hide_monst } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { restore_cham } from "./mon.js";
-import { set_ustuck } from "./mon.js";
+import { adj_erinys, hide_monst, hideunder, restore_cham, set_ustuck } from "./mon.js";
 import { mons } from "./monst.js";
 import { restore_luadata } from "./nhlua.js";
-import { init_oclass_probs } from "./o_init.js";
-import { restnames } from "./o_init.js";
+import { init_oclass_probs, restnames } from "./o_init.js";
 import { xname } from "./objnam.js";
-import { fruitadd } from "./options.js";
-import { set_playmode } from "./options.js";
-import { You } from "./pline.js";
-import { gamelog_add } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
+import { fruitadd, set_playmode } from "./options.js";
+import { You, gamelog_add, impossible, pline } from "./pline.js";
 import { set_uasmon } from "./polyself.js";
-import { newepri } from "./priest.js";
-import { restpriest } from "./priest.js";
+import { newepri, restpriest } from "./priest.js";
 import { rest_regions } from "./region.js";
 import { rnd } from "./rnd.js";
 import { role_init } from "./role.js";
 import { restore_oracles } from "./rumors.js";
-import { savelev } from "./save.js";
-import { savestateinlock } from "./save.js";
-import { sfi_int } from "./sfbase.js";
-import { sfi_long } from "./sfbase.js";
-import { sfi_ulong } from "./sfbase.js";
-import { sfi_unsigned } from "./sfbase.js";
-import { sfi_xint8 } from "./sfbase.js";
-import { bufon } from "./sfstruct.js";
-import { restoreinfo } from "./sfstruct.js";
-import { restshk } from "./shk.js";
-import { set_residency } from "./shk.js";
+import { savelev, savestateinlock } from "./save.js";
+import { sfi_int, sfi_long, sfi_ulong, sfi_unsigned, sfi_xint8 } from "./sfbase.js";
+import { bufon, restoreinfo } from "./sfstruct.js";
+import { restshk, set_residency } from "./shk.js";
 import { neweshk } from "./shknam.js";
-import { stairway_add } from "./stairs.js";
-import { stairway_at } from "./stairs.js";
-import { stairway_free_all } from "./stairs.js";
+import { stairway_add, stairway_at, stairway_free_all } from "./stairs.js";
 import { place_monster } from "./steed.js";
 import { assign_graphics } from "./symbols.js";
 import { sysopt } from "./sys.js";
-import { relink_timers } from "./timeout.js";
-import { restore_timers } from "./timeout.js";
-import { run_timers } from "./timeout.js";
+import { relink_timers, restore_timers, run_timers } from "./timeout.js";
 import { rest_track } from "./track.js";
 import { deltrap } from "./trap.js";
 import { newegd } from "./vault.js";
-import { copyright_banner_line } from "./version.js";
-import { validate } from "./version.js";
+import { copyright_banner_line, validate } from "./version.js";
 import { vision_reset } from "./vision.js";
 import { setuwep } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { place_wsegs } from "./worm.js";
-import { rest_worm } from "./worm.js";
+import { add_menu, add_menu_str, select_menu } from "./windows.js";
+import { place_wsegs, rest_worm } from "./worm.js";
 import { setworn } from "./worn.js";
 const __FILE__ = "restore.c";

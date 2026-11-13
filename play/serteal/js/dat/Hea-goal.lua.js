@@ -1,14 +1,14 @@
-export default "\n" + // -- NetHack Healer Hea-goal.lua	$NHDT-Date: 1652196003 2022/05/10 15:20:03 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991, 1993 by M. Stephenson, P. Winner
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = "P" });
+export default String.raw`-- NetHack Healer Hea-goal.lua	$NHDT-Date: 1652196003 2022/05/10 15:20:03 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991, 1993 by M. Stephenson, P. Winner
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = "P" });
 
 des.level_flags("mazelevel");
 
-` + "\n" + // --
-`des.level_init({ style="mines", fg=".", bg="P", smoothed=false, joined=true, lit=1, walled=false })
+--
+des.level_init({ style="mines", fg=".", bg="P", smoothed=false, joined=true, lit=1, walled=false })
 
 des.map([[
 .P....................................PP.
@@ -24,14 +24,14 @@ PP.......PPPPPPP....PPPPPPP....PPPP...PP.
 P....PPPPP...PPPP..PPPPP...PPPPPPP...PP..
 PPP..................................PPP.
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,40,11), "lit")
-` + "\n" + // -- Stairs
-`des.stair("up", 39,10)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,40,11))
-` + "\n" + // -- Objects
-`des.object({ id = "quarterstaff", x=20, y=06, buc="blessed", spe=0, name="The Staff of Aesculapius" })
+-- Dungeon Description
+des.region(selection.area(00,00,40,11), "lit")
+-- Stairs
+des.stair("up", 39,10)
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,40,11))
+-- Objects
+des.object({ id = "quarterstaff", x=20, y=06, buc="blessed", spe=0, name="The Staff of Aesculapius" })
 des.object("wand of lightning", 20, 06)
 des.object()
 des.object()
@@ -47,15 +47,15 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-`des.trap()
+-- Random traps
 des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap()
-` + "\n" + // -- Random monsters.
-`des.monster({ id = "Cyclops", x=20, y=06, peaceful=0 })
+des.trap()
+-- Random monsters.
+des.monster({ id = "Cyclops", x=20, y=06, peaceful=0 })
 des.monster("rabid rat")
 des.monster("rabid rat")
 des.monster("rabid rat")

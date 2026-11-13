@@ -23,7 +23,7 @@ export function enableRestoreLifecycle(environment,layouts){
  const field=(kind,index)=>{const name=kinds[kind],f=abi.schemas[name]?.fields[index];if(!f)throw new Error('Unknown RESTORE field '+kind+':'+index);return{type:abi.recordTypes[name],f};};
  const code=t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':/\b(float|double)\b/.test(t)?'d':ctypes.size(t)===8?'j':'i';};
  function windowCall(name,...args){
-  const row=abi.schemas.window_procs.fields.find(f=>f.name===name),m=row?.ctype.match(/^(.+?)\s*\(\*\)\s*\((.*)\)$/);if(!m)throw new Error('Unknown RESTORE window callback '+name);
+  const row=ctypes.record('struct window_procs').fields[name],m=row?.ctype.replace(new RegExp('\\s+'+name+'$'),'').match(/^(.+?)\s*\(\*\)\s*\((.*)\)$/);if(!m)throw new Error('Unknown RESTORE window callback '+name);
   const signature=[m[1],...m[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')].map(code).join('');
   const at=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),name).at;
   return functions.indirect(memory.view.getBigUint64(at,true),signature,...boundary(args));
@@ -46,7 +46,7 @@ export function enableRestoreLifecycle(environment,layouts){
  for(const[name,target]of Object.entries(callbacks))local[name]=(...args)=>windowCall(target,...args);
  const exports=Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  const parameters=name=>{const m=publicFunctions.functions[name]?.match(/^(.+?)\s*\((.*)\)$/);if(!m)throw new Error('Unknown RESTORE public prototype '+name);return m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void');};
- const convert=(type,value)=>{type=ctypes.canonical(type);if(type.includes('*'))return text(value);if(type.startsWith('enum '))return transport.int(value);const n=ctypes.size(type);return n===8?type.startsWith('unsigned')?transport.ulong(value):transport.long(value):n===1?type.startsWith('unsigned')?transport.uchar(value):transport.char(value):n===2?type.startsWith('unsigned')?transport.ushort(value):transport.short(value):type.startsWith('unsigned')?transport.uint(value):transport.int(value);};
+ const convert=(type,value)=>{type=ctypes.abiType(type);if(type.includes('*'))return text(value);if(type.startsWith('enum '))return transport.int(value);const n=ctypes.size(type);return n===8?type.startsWith('unsigned')?transport.ulong(value):transport.long(value):n===1?type.startsWith('unsigned')?transport.uchar(value):transport.char(value):n===2?type.startsWith('unsigned')?transport.ushort(value):transport.short(value):type.startsWith('unsigned')?transport.uint(value):transport.int(value);};
  environment.register('restore-lifecycle',Object.fromEntries(exports.map(name=>[name,(...args)=>{const params=parameters(name),result=callRestore(local,L,name,...args.map((value,i)=>convert(params[i],value)));return result?.address??result;}])));
  return{services:local,exports,limitation:'Original RESTORE transport connected on shared state; object/monster graphs, ghost mapping, recovery/errors and full save/resume require original-C verification.'};
 }

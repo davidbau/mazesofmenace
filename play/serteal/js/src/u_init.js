@@ -3,8 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 const struct_trobj = struct("struct_trobj", {
     trotyp: short,
     trspe: schar,
@@ -13,23 +11,6 @@ const struct_trobj = struct("struct_trobj", {
     trquan_max: char,
     trbless: char,
 });
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const UNDEF_TYP = 0;
 export const UNDEF_SPE = ord('\x7f');
@@ -216,7 +197,6 @@ const Wishing = static_array("Wishing", struct_trobj, null, [ { trotyp: WAN_WISH
 
 const Money = static_array("Money", struct_trobj, null, [ { trotyp: GOLD_PIECE, trspe: 0, trclass: COIN_CLASS, trquan_min: 1, trquan_max: 1, trbless: 0 },
       { trotyp: 0, trspe: 0, trclass: 0, trquan_min: 0, trquan_max: 0, trbless: 0 } ]);
-
 
 /* race-based substitutions for initial inventory;
    the weaker cloak for elven rangers is intentional--they shoot better */
@@ -571,9 +551,7 @@ const Skill_W = static_array("Skill_W", struct_def_skill, null, [
     { skill: P_NONE, skmax: 0 }
 ]);
 
-function /* void */
-knows_object(obj, override_pauper)
-{
+function knows_object(obj, override_pauper) { /* void */
     if (u.uroleplay.pauper && !override_pauper)
         return;
     /* mark as known, but not yet encountered */
@@ -582,9 +560,8 @@ knows_object(obj, override_pauper)
 
 /* Know ordinary (non-magical) objects of a certain class,
    like all gems except the loadstone and luckstone. */
-function /* void */
-knows_class(sym)
-{ const $frame = stack_frame(); try {
+function knows_class(sym) { /* void */
+    const $frame = stack_frame(); try {
     let odummy = stack_struct(struct_obj), o;
     let ct;
 
@@ -626,16 +603,15 @@ knows_class(sym)
         if (objects[ct].oc_class == sym && !objects[ct].oc_magic)
             knows_object(ct, FALSE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* role-specific initializations, mostly inventory
 
    other things may be initialised here, but the function might run more than
    once, so any non-inventory initialisations should be nonrandom and
    idempotent (i.e. doing them twice is OK) */
-function /* void */
-u_init_role()
-{
+function u_init_role() { /* void */
     let i;
 
     /* the program used to check moves<=1 && invent==NULL do decide whether
@@ -788,9 +764,8 @@ u_init_role()
 }
 
 /* race-specific initializations, same restrictions as u_init_role */
-function /* void */
-u_init_race()
-{ const $frame = stack_frame(); try {
+function u_init_race() { /* void */
+    const $frame = stack_frame(); try {
     switch (Race_switch()) {
     case PM_HUMAN:
         /* Nothing special */
@@ -861,14 +836,13 @@ u_init_race()
     default: /* impossible */
         break;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for 'pauper' aka 'unprepared'; take away any skills (bare-handed combat,
    riding) that are better than unskilled; learn the book (without carrying
    it or knowing its spell yet) for some key spells */
-function /* void */
-pauper_reinit()
-{
+function pauper_reinit() { /* void */
     let skill, preknown = STRANGE_OBJECT;
 
     if (!u.uroleplay.pauper)
@@ -925,9 +899,7 @@ pauper_reinit()
 }
 
 /* boost STR and CON until hero can carry inventory */
-function /* void */
-u_init_carry_attr_boost()
-{
+function u_init_carry_attr_boost() { /* void */
     /* make sure you can carry all you have - especially for Tourists */
     while (inv_weight() > 0) {
         if (adjattrib(A_STR, 1, TRUE))
@@ -940,9 +912,8 @@ u_init_carry_attr_boost()
 }
 
 /* initialise u, except inventory, attributes, skills and discoveries */
-export function /* void */
-u_init_misc()
-{ const $frame = stack_frame(); try {
+export function u_init_misc() { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let tmpuroleplay = struct_assign(stack_struct(struct_u_roleplay), u.uroleplay); /* set by rcfile options */
 
@@ -951,34 +922,14 @@ u_init_misc()
 
     /* zero u, including pointer values --
      * necessary when aborting from a failed restore */
-    void memset(addr_of(u), 0, sizeof(struct_you));
+    memset(addr_of(u), 0, sizeof(struct_you));
     u.ustuck = null;
-    void memset(addr_of(global_ref("ubirthday", long)), 0, sizeof(long));
-    void memset(addr_of(urealtime), 0, sizeof(struct_u_realtime));
+    memset(addr_of(global_ref("ubirthday", long)), 0, sizeof(long));
+    memset(addr_of(urealtime), 0, sizeof(struct_u_realtime));
 
     struct_assign(u.uroleplay, tmpuroleplay); /* restore options set via rcfile */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     u.uz.dlevel = 1;
     u.uz0.dlevel = 0;
@@ -1030,12 +981,11 @@ u_init_misc()
     max_rank_sz(); /* set max str size for class ranks */
 
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the appropriate set of skills for the role */
-function /* const struct def_skill * */
-skills_for_role()
-{
+function skills_for_role() { /* const struct def_skill * */
     let skills;
 
     switch (Role_switch()) {
@@ -1087,9 +1037,7 @@ skills_for_role()
 }
 
 /* skills aren't initialized, so we use the role-specific skill lists */
-function /* boolean */
-restricted_spell_discipline(otyp)
-{
+function restricted_spell_discipline(otyp) { /* boolean */
     let skills = skills_for_role();
     let this_skill = spell_skilltype(otyp);
 
@@ -1102,18 +1050,14 @@ restricted_spell_discipline(otyp)
 }
 
 /* randomizes the quantity given a trobj description */
-function /* long long */
-trquan(trop)
-{
+function trquan(trop) { /* long long */
     if (!trop.trquan_min)
         return 1;
     return trop.trquan_min + rn2(trop.trquan_max - trop.trquan_min + 1);
 }
 
 /* create random object of certain class, filtering out too powerful items */
-function /* struct obj * */
-ini_inv_mkobj_filter(oclass, got_level1_spellbook)
-{
+function ini_inv_mkobj_filter(oclass, got_level1_spellbook) { /* struct obj * */
     let obj;
     let otyp, trycnt = 0;
 
@@ -1175,9 +1119,7 @@ ini_inv_mkobj_filter(oclass, got_level1_spellbook)
 
 /* substitute object with something else based on race.
    only changes otyp, and returns it. */
-function /* short */
-ini_inv_obj_substitution(trop, obj)
-{
+function ini_inv_obj_substitution(trop, obj) { /* short */
     if (gu.urace.mnum != PM_HUMAN) {
         let i;
 
@@ -1190,7 +1132,6 @@ ini_inv_obj_substitution(trop, obj)
                 && obj.otyp == inv_subs[i].item_otyp) {
                 do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("ini_inv: substituting %s for %s%s"), OBJ_NAME(objects[inv_subs[i].subs_otyp]), (trop.trotyp == UNDEF_TYP) ? _("random ") : _(""), OBJ_NAME(objects[obj.otyp])); iflags.last_msg = save_plnmsg; } } while (0)
 
-
 ;
                 obj.otyp = inv_subs[i].subs_otyp;
                 break;
@@ -1201,9 +1142,7 @@ ini_inv_obj_substitution(trop, obj)
 
 /* returns: TRUE to stop generating items from this trobj,
    FALSE for normal behaviour */
-function /* boolean */
-ini_inv_adjust_obj(trop, obj)
-{
+function ini_inv_adjust_obj(trop, obj) { /* boolean */
     let stop = FALSE;
     if (trop.trclass == COIN_CLASS) {
         /* no "blessed" or "identified" money */
@@ -1239,7 +1178,6 @@ ini_inv_adjust_obj(trop, obj)
         }
         if (trop.trbless != UNDEF_BLESS)
             obj.blessed = unsigned(trop.trbless);
-
     }
     /* defined after setting otyp+quan + blessedness */
     obj.owt = unsigned(weight(obj));
@@ -1247,9 +1185,7 @@ ini_inv_adjust_obj(trop, obj)
 }
 
 /* initial inventory: wear, wield, learn the spell/obj */
-function /* void */
-ini_inv_use_obj(obj)
-{
+function ini_inv_use_obj(obj) { /* void */
     /* Make the type known if necessary */
     if (OBJ_DESCR(objects[obj.otyp]) && obj.known)
         discover_object(obj.otyp, TRUE, TRUE, FALSE);
@@ -1294,9 +1230,7 @@ ini_inv_use_obj(obj)
         initialspell(obj);
 }
 
-function /* void */
-ini_inv(trop)
-{
+function ini_inv(trop) { /* void */
     let obj;
     let otyp;
     let got_sp1 = FALSE; /* got a level 1 spellbook? */
@@ -1338,7 +1272,7 @@ ini_inv(trop)
          * it was UNDEF_TYP or not after this. */
 
         otyp = ini_inv_obj_substitution(trop, obj);
-        (void (otyp));
+        (otyp);
 
         /* nudist gets no armor */
         if (u.uroleplay.nudist && obj.oclass == ARMOR_CLASS) {
@@ -1366,9 +1300,7 @@ ini_inv(trop)
 
    this function can be run multiple times and will overwrite the effects of
    previous runs */
-export function /* void */
-u_init_inventory_attrs()
-{
+export function u_init_inventory_attrs() { /* void */
     gl.lastinvnr = 51;
     while (gi.invent)
         useupall(gi.invent);
@@ -1391,9 +1323,7 @@ u_init_inventory_attrs()
 
 /* side effects of starting inventory (e.g. discovering it) and skills (both
    those based on role and those based on starting inventory) */
-export function /* void */
-u_init_skills_discoveries()
-{
+export function u_init_skills_discoveries() { /* void */
     let otmp;
     for (otmp = gi.invent; otmp; otmp = otmp.nobj)
         ini_inv_use_obj(otmp);
@@ -1410,351 +1340,102 @@ u_init_skills_discoveries()
     find_ac();     /* get initial ac value */
 }
 
-
-
-
-
 /*u_init.c*/
+
 import { A_CHAOTIC } from "./align.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { A_CON, A_STR } from "./attrib.h.js";
+import {
+    ARMOR_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, MAXOCLASSES, POTION_CLASS, RING_CLASS,
+    SCROLL_CLASS, SPBOOK_CLASS, TOOL_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { discover } from "./flag.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import { FALSE, TRUE } from "./global.h.js";
+import { ROLL_FROM, rn1 } from "./hack.h.macros.js";
 import { showdebug } from "./lint.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import {
+    NON_PM, PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_CLERIC, PM_DWARF, PM_ELF, PM_GNOME,
+    PM_HEALER, PM_HUMAN, PM_KNIGHT, PM_MONK, PM_ORC, PM_RANGER, PM_ROGUE, PM_SAMURAI, PM_TOURIST,
+    PM_VALKYRIE, PM_WIZARD,
+} from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
-import { Is_container } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { is_ammo } from "./obj.h.macros.js";
-import { is_boots } from "./obj.h.macros.js";
-import { is_cloak } from "./obj.h.macros.js";
-import { is_gloves } from "./obj.h.macros.js";
-import { is_graystone } from "./obj.h.macros.js";
-import { is_helmet } from "./obj.h.macros.js";
-import { is_launcher } from "./obj.h.macros.js";
-import { is_missile } from "./obj.h.macros.js";
-import { is_pole } from "./obj.h.macros.js";
-import { is_shield } from "./obj.h.macros.js";
-import { is_shirt } from "./obj.h.macros.js";
-import { is_spear } from "./obj.h.macros.js";
-import { is_suit } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
+import {
+    Is_container, bimanual, is_ammo, is_boots, is_cloak, is_gloves, is_graystone, is_helmet,
+    is_launcher, is_missile, is_pole, is_shield, is_shirt, is_spear, is_suit, is_weptool,
+} from "./obj.h.macros.js";
 import { MAXSPELL } from "./objclass.h.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { APPLE } from "./objects.h.js";
-import { ARROW } from "./objects.h.js";
-import { AXE } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { BELL } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { BOW } from "./objects.h.js";
-import { BUGLE } from "./objects.h.js";
-import { BULLWHIP } from "./objects.h.js";
-import { CARROT } from "./objects.h.js";
-import { CHAIN_MAIL } from "./objects.h.js";
-import { CLOAK_OF_DISPLACEMENT } from "./objects.h.js";
-import { CLOAK_OF_MAGIC_RESISTANCE } from "./objects.h.js";
-import { CLOVE_OF_GARLIC } from "./objects.h.js";
-import { CLUB } from "./objects.h.js";
-import { CORNUTHAUM } from "./objects.h.js";
-import { CRAM_RATION } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { CROSSBOW } from "./objects.h.js";
-import { CROSSBOW_BOLT } from "./objects.h.js";
-import { DAGGER } from "./objects.h.js";
-import { DART } from "./objects.h.js";
-import { DUNCE_CAP } from "./objects.h.js";
-import { DWARVISH_CLOAK } from "./objects.h.js";
-import { DWARVISH_IRON_HELM } from "./objects.h.js";
-import { DWARVISH_MATTOCK } from "./objects.h.js";
-import { DWARVISH_MITHRIL_COAT } from "./objects.h.js";
-import { DWARVISH_ROUNDSHIELD } from "./objects.h.js";
-import { DWARVISH_SHORT_SWORD } from "./objects.h.js";
-import { DWARVISH_SPEAR } from "./objects.h.js";
-import { ELVEN_ARROW } from "./objects.h.js";
-import { ELVEN_BOOTS } from "./objects.h.js";
-import { ELVEN_BOW } from "./objects.h.js";
-import { ELVEN_BROADSWORD } from "./objects.h.js";
-import { ELVEN_CLOAK } from "./objects.h.js";
-import { ELVEN_DAGGER } from "./objects.h.js";
-import { ELVEN_LEATHER_HELM } from "./objects.h.js";
-import { ELVEN_MITHRIL_COAT } from "./objects.h.js";
-import { ELVEN_SHIELD } from "./objects.h.js";
-import { ELVEN_SHORT_SWORD } from "./objects.h.js";
-import { ELVEN_SPEAR } from "./objects.h.js";
-import { EXPENSIVE_CAMERA } from "./objects.h.js";
-import { FEDORA } from "./objects.h.js";
-import { FLINT } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { FORTUNE_COOKIE } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { HAWAIIAN_SHIRT } from "./objects.h.js";
-import { HELMET } from "./objects.h.js";
-import { KATANA } from "./objects.h.js";
-import { LANCE } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LEATHER_ARMOR } from "./objects.h.js";
-import { LEATHER_DRUM } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LEATHER_JACKET } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { ORANGE } from "./objects.h.js";
-import { ORCISH_ARROW } from "./objects.h.js";
-import { ORCISH_BOW } from "./objects.h.js";
-import { ORCISH_CHAIN_MAIL } from "./objects.h.js";
-import { ORCISH_CLOAK } from "./objects.h.js";
-import { ORCISH_DAGGER } from "./objects.h.js";
-import { ORCISH_HELM } from "./objects.h.js";
-import { ORCISH_RING_MAIL } from "./objects.h.js";
-import { ORCISH_SHIELD } from "./objects.h.js";
-import { ORCISH_SHORT_SWORD } from "./objects.h.js";
-import { ORCISH_SPEAR } from "./objects.h.js";
-import { PANCAKE } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { POT_ACID } from "./objects.h.js";
-import { POT_EXTRA_HEALING } from "./objects.h.js";
-import { POT_FULL_HEALING } from "./objects.h.js";
-import { POT_HALLUCINATION } from "./objects.h.js";
-import { POT_HEALING } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_POLYMORPH } from "./objects.h.js";
-import { POT_SICKNESS } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { QUARTERSTAFF } from "./objects.h.js";
-import { RING_MAIL } from "./objects.h.js";
-import { RIN_AGGRAVATE_MONSTER } from "./objects.h.js";
-import { RIN_HUNGER } from "./objects.h.js";
-import { RIN_LEVITATION } from "./objects.h.js";
-import { RIN_POISON_RESISTANCE } from "./objects.h.js";
-import { RIN_POLYMORPH } from "./objects.h.js";
-import { RIN_POLYMORPH_CONTROL } from "./objects.h.js";
-import { ROBE } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SACK } from "./objects.h.js";
-import { SCALPEL } from "./objects.h.js";
-import { SCR_AMNESIA } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_ENCHANT_WEAPON } from "./objects.h.js";
-import { SCR_FIRE } from "./objects.h.js";
-import { SCR_MAGIC_MAPPING } from "./objects.h.js";
-import { SHORT_SWORD } from "./objects.h.js";
-import { SHURIKEN } from "./objects.h.js";
-import { SLING } from "./objects.h.js";
-import { SMALL_SHIELD } from "./objects.h.js";
-import { SPEAR } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_CONFUSE_MONSTER } from "./objects.h.js";
-import { SPE_EXTRA_HEALING } from "./objects.h.js";
-import { SPE_FORCE_BOLT } from "./objects.h.js";
-import { SPE_HEALING } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { SPE_POLYMORPH } from "./objects.h.js";
-import { SPE_PROTECTION } from "./objects.h.js";
-import { SPE_STONE_TO_FLESH } from "./objects.h.js";
-import { SPLINT_MAIL } from "./objects.h.js";
-import { SPRIG_OF_WOLFSBANE } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STETHOSCOPE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TINNING_KIT } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TOOLED_HORN } from "./objects.h.js";
-import { TOUCHSTONE } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { TRIPE_RATION } from "./objects.h.js";
-import { TWO_HANDED_SWORD } from "./objects.h.js";
-import { URUK_HAI_SHIELD } from "./objects.h.js";
-import { WAN_NOTHING } from "./objects.h.js";
-import { WAN_POLYMORPH } from "./objects.h.js";
-import { WAN_SLEEP } from "./objects.h.js";
-import { WAN_WISHING } from "./objects.h.js";
-import { WOODEN_FLUTE } from "./objects.h.js";
-import { WOODEN_HARP } from "./objects.h.js";
-import { YA } from "./objects.h.js";
-import { YUMI } from "./objects.h.js";
-import { BLINDED } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { JUMPING } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { P_ATTACK_SPELL } from "./skills.h.js";
-import { P_AXE } from "./skills.h.js";
-import { P_BARE_HANDED_COMBAT } from "./skills.h.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_BOOMERANG } from "./skills.h.js";
-import { P_BOW } from "./skills.h.js";
-import { P_BROAD_SWORD } from "./skills.h.js";
-import { P_CLERIC_SPELL } from "./skills.h.js";
-import { P_CLUB } from "./skills.h.js";
-import { P_CROSSBOW } from "./skills.h.js";
-import { P_DAGGER } from "./skills.h.js";
-import { P_DART } from "./skills.h.js";
-import { P_DIVINATION_SPELL } from "./skills.h.js";
-import { P_ENCHANTMENT_SPELL } from "./skills.h.js";
-import { P_ESCAPE_SPELL } from "./skills.h.js";
-import { P_EXPERT } from "./skills.h.js";
-import { P_FLAIL } from "./skills.h.js";
-import { P_GRAND_MASTER } from "./skills.h.js";
-import { P_HAMMER } from "./skills.h.js";
-import { P_HEALING_SPELL } from "./skills.h.js";
-import { P_KNIFE } from "./skills.h.js";
-import { P_LANCE } from "./skills.h.js";
-import { P_LONG_SWORD } from "./skills.h.js";
-import { P_MACE } from "./skills.h.js";
-import { P_MARTIAL_ARTS } from "./skills.h.js";
-import { P_MASTER } from "./skills.h.js";
-import { P_MATTER_SPELL } from "./skills.h.js";
-import { P_MORNING_STAR } from "./skills.h.js";
-import { P_NONE } from "./skills.h.js";
-import { P_NUM_SKILLS } from "./skills.h.js";
-import { P_PICK_AXE } from "./skills.h.js";
-import { P_POLEARMS } from "./skills.h.js";
-import { P_QUARTERSTAFF } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
-import { P_SABER } from "./skills.h.js";
-import { P_SHORT_SWORD } from "./skills.h.js";
-import { P_SHURIKEN } from "./skills.h.js";
-import { P_SKILLED } from "./skills.h.js";
-import { P_SLING } from "./skills.h.js";
-import { P_SPEAR } from "./skills.h.js";
-import { P_TRIDENT } from "./skills.h.js";
-import { P_TWO_HANDED_SWORD } from "./skills.h.js";
-import { P_TWO_WEAPON_COMBAT } from "./skills.h.js";
-import { P_UNICORN_HORN } from "./skills.h.js";
-import { P_UNSKILLED } from "./skills.h.js";
-import { P_WHIP } from "./skills.h.js";
-import { struct_def_skill } from "./skills.h.js";
+import { OBJ_DESCR, OBJ_NAME } from "./objclass.h.macros.js";
+import {
+    APPLE, ARROW, AXE, BATTLE_AXE, BELL, BLINDFOLD, BOW, BUGLE, BULLWHIP, CARROT, CHAIN_MAIL,
+    CLOAK_OF_DISPLACEMENT, CLOAK_OF_MAGIC_RESISTANCE, CLOVE_OF_GARLIC, CLUB, CORNUTHAUM,
+    CRAM_RATION, CREDIT_CARD, CROSSBOW, CROSSBOW_BOLT, DAGGER, DART, DUNCE_CAP, DWARVISH_CLOAK,
+    DWARVISH_IRON_HELM, DWARVISH_MATTOCK, DWARVISH_MITHRIL_COAT, DWARVISH_ROUNDSHIELD,
+    DWARVISH_SHORT_SWORD, DWARVISH_SPEAR, ELVEN_ARROW, ELVEN_BOOTS, ELVEN_BOW, ELVEN_BROADSWORD,
+    ELVEN_CLOAK, ELVEN_DAGGER, ELVEN_LEATHER_HELM, ELVEN_MITHRIL_COAT, ELVEN_SHIELD,
+    ELVEN_SHORT_SWORD, ELVEN_SPEAR, EXPENSIVE_CAMERA, FEDORA, FLINT, FOOD_RATION, FORTUNE_COOKIE,
+    GOLD_PIECE, HAWAIIAN_SHIRT, HELMET, KATANA, LANCE, LEASH, LEATHER_ARMOR, LEATHER_DRUM,
+    LEATHER_GLOVES, LEATHER_JACKET, LEMBAS_WAFER, LOCK_PICK, LONG_SWORD, MACE, MAGIC_MARKER,
+    NUM_OBJECTS, OIL_LAMP, ORANGE, ORCISH_ARROW, ORCISH_BOW, ORCISH_CHAIN_MAIL, ORCISH_CLOAK,
+    ORCISH_DAGGER, ORCISH_HELM, ORCISH_RING_MAIL, ORCISH_SHIELD, ORCISH_SHORT_SWORD, ORCISH_SPEAR,
+    PANCAKE, PICK_AXE, POT_ACID, POT_EXTRA_HEALING, POT_FULL_HEALING, POT_HALLUCINATION,
+    POT_HEALING, POT_OIL, POT_POLYMORPH, POT_SICKNESS, POT_WATER, QUARTERSTAFF, RING_MAIL,
+    RIN_AGGRAVATE_MONSTER, RIN_HUNGER, RIN_LEVITATION, RIN_POISON_RESISTANCE, RIN_POLYMORPH,
+    RIN_POLYMORPH_CONTROL, ROBE, ROCK, SACK, SCALPEL, SCR_AMNESIA, SCR_BLANK_PAPER,
+    SCR_ENCHANT_WEAPON, SCR_FIRE, SCR_MAGIC_MAPPING, SHORT_SWORD, SHURIKEN, SLING, SMALL_SHIELD,
+    SPEAR, SPE_BLANK_PAPER, SPE_CONFUSE_MONSTER, SPE_EXTRA_HEALING, SPE_FORCE_BOLT, SPE_HEALING,
+    SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION, SPE_STONE_TO_FLESH, SPLINT_MAIL, SPRIG_OF_WOLFSBANE,
+    STATUE, STETHOSCOPE, STRANGE_OBJECT, TINNING_KIT, TIN_OPENER, TOOLED_HORN, TOUCHSTONE, TOWEL,
+    TRIPE_RATION, TWO_HANDED_SWORD, URUK_HAI_SHIELD, WAN_NOTHING, WAN_POLYMORPH, WAN_SLEEP,
+    WAN_WISHING, WOODEN_FLUTE, WOODEN_HARP, YA, YUMI,
+} from "./objects.h.js";
+import {
+    BLINDED, FROMOUTSIDE, JUMPING, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU,
+} from "./prop.h.js";
+import {
+    P_ATTACK_SPELL, P_AXE, P_BARE_HANDED_COMBAT, P_BASIC, P_BOOMERANG, P_BOW, P_BROAD_SWORD,
+    P_CLERIC_SPELL, P_CLUB, P_CROSSBOW, P_DAGGER, P_DART, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL,
+    P_ESCAPE_SPELL, P_EXPERT, P_FLAIL, P_GRAND_MASTER, P_HAMMER, P_HEALING_SPELL, P_KNIFE, P_LANCE,
+    P_LONG_SWORD, P_MACE, P_MARTIAL_ARTS, P_MASTER, P_MATTER_SPELL, P_MORNING_STAR, P_NONE,
+    P_NUM_SKILLS, P_PICK_AXE, P_POLEARMS, P_QUARTERSTAFF, P_RIDING, P_SABER, P_SHORT_SWORD,
+    P_SHURIKEN, P_SKILLED, P_SLING, P_SPEAR, P_TRIDENT, P_TWO_HANDED_SWORD, P_TWO_WEAPON_COMBAT,
+    P_UNICORN_HORN, P_UNSKILLED, P_WHIP, struct_def_skill,
+} from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
 import { NO_SPELL } from "./spell.h.js";
 import { SPELL_LEV_PW } from "./spell.h.macros.js";
-import { A_CURRENT } from "./you.h.js";
-import { A_ORIGINAL } from "./you.h.js";
-import { LEFT_HANDED } from "./you.h.js";
-import { RIGHT_HANDED } from "./you.h.js";
-import { struct_u_realtime } from "./you.h.js";
-import { struct_u_roleplay } from "./you.h.js";
-import { struct_you } from "./you.h.js";
-import { Race_if } from "./you.h.macros.js";
-import { Race_switch } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+import {
+    A_CURRENT, A_ORIGINAL, LEFT_HANDED, RIGHT_HANDED, struct_u_realtime, struct_u_roleplay,
+    struct_you,
+} from "./you.h.js";
+import { Race_if, Race_switch, Role_if, Role_switch } from "./you.h.macros.js";
+import { char, int, long, ord, schar, short, sizeof, uchar, unsigned } from "../rt/ctypes.js";
 import { global_ref } from "../rt/globals.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
 import { memset } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { init_list, stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { adjabil } from "./attrib.js";
-import { adjattrib } from "./attrib.js";
-import { init_attr } from "./attrib.js";
-import { newhp } from "./attrib.js";
-import { vary_init_attr } from "./attrib.js";
+import { addr_of, ptr_add, ptr_to, struct, struct_assign } from "../rt/struct.js";
+import { adjabil, adjattrib, init_attr, newhp, vary_init_attr } from "./attrib.js";
 import { max_rank_sz } from "./botl.js";
 import { getnow } from "./calendar.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gn } from "./decl.js";
-import { gu } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svb } from "./decl.js";
-import { svm } from "./decl.js";
-import { svs } from "./decl.js";
-import { u } from "./decl.js";
-import { urealtime } from "./decl.js";
+import { cg, flags, gi, gl, gn, gu, iflags, svb, svm, svs, u, urealtime } from "./decl.js";
 import { find_ac } from "./do_wear.js";
 import { init_uhunger } from "./eat.js";
 import { panic } from "./end.js";
 import { newpw } from "./exper.js";
 import { inv_weight } from "./hack.js";
-import { addinv } from "./invent.js";
-import { useupall } from "./invent.js";
-import { dealloc_obj } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import { addinv, useupall } from "./invent.js";
+import { dealloc_obj, mkobj, mksobj, weight } from "./mkobj.js";
 import { discover_object } from "./o_init.js";
 import { objects } from "./objects.js";
 import { Japanese_item_name } from "./objnam.js";
 import { pline } from "./pline.js";
 import { set_uasmon } from "./polyself.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rne } from "./rnd.js";
+import { rn2, rnd, rne } from "./rnd.js";
 import { aligns } from "./role.js";
-import { initialspell } from "./spell.js";
-import { num_spells } from "./spell.js";
-import { spell_skilltype } from "./spell.js";
+import { initialspell, num_spells, spell_skilltype } from "./spell.js";
 import { hidden_gold } from "./vault.js";
 import { skill_init } from "./weapon.js";
-import { set_twoweap } from "./wield.js";
-import { setuqwep } from "./wield.js";
-import { setuswapwep } from "./wield.js";
-import { setuwep } from "./wield.js";
+import { set_twoweap, setuqwep, setuswapwep, setuwep } from "./wield.js";
 import { setworn } from "./worn.js";
 const __FILE__ = "u_init.c";

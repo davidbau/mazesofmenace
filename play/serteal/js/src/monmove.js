@@ -3,35 +3,8 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "mfndpos.h"
-// #include "artifact.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* a11y: give a message when monster moved */
-function /* void */
-msg_mon_movement(mtmp, omx, omy)
-{
+function msg_mon_movement(mtmp, omx, omy) { /* void */
     if (a11y.mon_movement && canspotmon(mtmp) && mtmp.mspotted) {
         let nix = mtmp.mx, niy = mtmp.my;
         let n2u = next2u(nix, niy),
@@ -50,9 +23,7 @@ msg_mon_movement(mtmp, omx, omy)
 /* monster has triggered trapped door lock or was present when it got
    triggered remotely (at door spot, door hit by zap);
    returns True if mtmp dies */
-export function /* boolean */
-mb_trapped(mtmp, canseeit)
-{
+export function mb_trapped(mtmp, canseeit) { /* boolean */
     if (flags.verbose) {
         if (canseeit && !Unaware())
             pline_mon(mtmp, _("KABOOM!!  You see a door explode."));
@@ -74,9 +45,7 @@ mb_trapped(mtmp, canseeit)
 }
 
 /* push coordinate x,y to mtrack, making monster remember where it was */
-export function /* void */
-mon_track_add(mtmp, x, y)
-{
+export function mon_track_add(mtmp, x, y) { /* void */
     let j;
 
     for (j = MTSZ - 1; j > 0; j--)
@@ -85,26 +54,20 @@ mon_track_add(mtmp, x, y)
     mtmp.mtrack[0].y = y;
 }
 
-export function /* void */
-mon_track_clear(mtmp)
-{
+export function mon_track_clear(mtmp) { /* void */
     memset(addr_of(mtmp.mtrack[0]), 0, sizeof_member(mtmp, "mtrack"));
 }
 
 /* check whether a monster is carrying a locking/unlocking tool */
-export function /* boolean */
-monhaskey(
+export function monhaskey(
     mon,
-    for_unlocking) /* true => credit card ok, false => not ok */
-{
+    for_unlocking) { /* boolean */ /* true => credit card ok, false => not ok */
     if (for_unlocking && m_carrying(mon, CREDIT_CARD))
         return TRUE;
-    return ((m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK)) ? 1 : 0);
+    return (m_carrying(mon, SKELETON_KEY) || m_carrying(mon, LOCK_PICK) ? 1 : 0);
 }
 
-export function /* void */
-mon_yells(mon, shout)
-{
+export function mon_yells(mon, shout) { /* void */
     if (Deaf()) {
         if (canspotmon(mon))
             /* Sidenote on "A watchman angrily waves her arms!"
@@ -129,19 +92,15 @@ mon_yells(mon, shout)
 }
 
 /* can monster mtmp break boulders? */
-export function /* boolean */
-m_can_break_boulder(mtmp)
-{
-    return (((is_rider(mtmp.data)
+export function m_can_break_boulder(mtmp) { /* boolean */
+    return (is_rider(mtmp.data)
             || (!mtmp.mspec_used
                 && (mtmp.isshk || mtmp.ispriest
-                    || (mtmp.data.msound == MS_LEADER)))) ? 1 : 0));
+                    || (mtmp.data.msound == MS_LEADER))) ? 1 : 0);
 }
 
 /* monster mtmp breaks boulder at x,y */
-export function /* void */
-m_break_boulder(mtmp, x, y)
-{
+export function m_break_boulder(mtmp, x, y) { /* void */
     let otmp;
 
     if (m_can_break_boulder(mtmp) && ((otmp = sobj_at(BOULDER, x, y)) != null)) {
@@ -172,9 +131,8 @@ m_break_boulder(mtmp, x, y)
     }
 }
 
-function /* void */
-watch_on_duty(mtmp)
-{ const $frame = stack_frame(); try {
+function watch_on_duty(mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let x = stack_var(coordxy), y = stack_var(coordxy);
 
     if (mtmp.mpeaceful && in_town(u.ux + u.dx, u.uy + u.dy)
@@ -184,7 +142,7 @@ watch_on_duty(mtmp)
             if (couldsee(mtmp.mx, mtmp.my)) {
                 if (levl()[x[0]][y[0]].flags & D_WARNED) {
                     mon_yells(mtmp, _("Halt, thief!  You're under arrest!"));
-                    void angry_guards(+!!Deaf());
+                    angry_guards(+!!Deaf());
                 } else {
                     mon_yells(mtmp, _("Hey, stop picking that lock!"));
                     levl()[x[0]][y[0]].flags |= D_WARNED;
@@ -197,17 +155,13 @@ watch_on_duty(mtmp)
                       svc.context.digging.pos.y, FALSE);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* move a monster; if a threat to busy hero, stop doing whatever it is */
-export function /* int */
-dochugw(
+export function dochugw(
     mtmp,
-    chug) /* True: monster is moving;
-                   * False: monster was just created or has teleported
-                   * so perform stop-what-you're-doing-if-close-enough-
-                   * to-be-a-threat check but don't move mtmp */
-{
+    chug) { /* int */ /* True: monster is moving; * False: monster was just created or has teleported * so perform stop-what-you're-doing-if-close-enough- * to-be-a-threat check but don't move mtmp */
     let x = mtmp.mx, y = mtmp.my; /* 'mtmp's location before dochug() */
     /* skip canspotmon() if occupation is Null */
     let already_saw_mon = (chug && go.occupation) ? canspotmon(mtmp) : 0;
@@ -237,13 +191,11 @@ dochugw(
     return rd;
 }
 
-export function /* boolean */
-onscary(x, y, mtmp)
-{
+export function onscary(x, y, mtmp) { /* boolean */
     let ep;
     /* <0,0> is used by musical scaring;
      * it doesn't care about scrolls or engravings or dungeon branch */
-    let auditory_scare = (+(x == 0 && y == 0)),
+    let auditory_scare = +(x == 0 && y == 0),
             magical_scare = +!auditory_scare;
 
     /* creatures who are directly resistant to any type of scaring:
@@ -292,20 +244,18 @@ onscary(x, y, mtmp)
      * Elbereth doesn't work in Gehennom, the Elemental Planes, or the
      * Astral Plane; the influence of the Valar only reaches so far.
      */
-    return ((((ep = sengr_at(_("Elbereth"), x, y, TRUE)) != null
+    return ((ep = sengr_at(_("Elbereth"), x, y, TRUE)) != null
             && (u_at(x, y)
                 || (Displaced() && mtmp.mux == x && mtmp.muy == y)
                 || (ep.guardobjects && vobj_at(x, y)))
             && !(mtmp.isshk || mtmp.isgd || !mtmp.mcansee
                  || mtmp.mpeaceful
                  || mtmp.data == mons[PM_MINOTAUR]
-                 || Inhell() || In_endgame(u.uz))) ? 1 : 0));
+                 || Inhell() || In_endgame(u.uz)) ? 1 : 0);
 }
 
 /* regenerate lost hit points */
-export function /* void */
-mon_regen(mon, digest_meal)
-{
+export function mon_regen(mon, digest_meal) { /* void */
     if (svm.moves % 20 == 0 || regenerates(mon.data))
         healmon(mon, 1, 0);
     if (mon.mspec_used)
@@ -323,9 +273,7 @@ mon_regen(mon, digest_meal)
  * Possibly awaken the given monster.  Return a 1 if the monster has been
  * jolted awake.
  */
-function /* int */
-disturb(mtmp)
-{
+function disturb(mtmp) { /* int */
     /*
      * + Ettins are hard to surprise.
      * + Nymphs, jabberwocks, and leprechauns do not easily wake up.
@@ -343,8 +291,6 @@ disturb(mtmp)
         && (!(mtmp.data.mlet == S_NYMPH
               || mtmp.data == mons[PM_JABBERWOCK]
 
-
-
               || mtmp.data.mlet == S_LEPRECHAUN) || !rn2(50))
         && (Aggravate_monster()
             || (mtmp.data.mlet == S_DOG || mtmp.data.mlet == S_HUMAN)
@@ -358,9 +304,7 @@ disturb(mtmp)
 }
 
 /* ungrab/expel held/swallowed hero */
-function /* void */
-release_hero(mon)
-{
+function release_hero(mon) { /* void */
     if (mon == u.ustuck) {
         if (u.uswallow) {
             expels(mon, mon.data, TRUE);
@@ -371,9 +315,7 @@ release_hero(mon)
     }
 }
 
-export function /* struct monst * */
-find_pmmonst(pm)
-{
+export function find_pmmonst(pm) { /* struct monst * */
     let mtmp = null;
 
     if ((svm.mvitals[pm].mvflags & G_GENOD) == 0)
@@ -390,9 +332,7 @@ find_pmmonst(pm)
 /* killer bee 'mon' is on a spot containing lump of royal jelly 'obj' and
    will eat it if there is no queen bee on the level; return 1: mon died,
    0: mon ate jelly and lived; -1: mon didn't eat jelly to use its move */
-export function /* int */
-bee_eat_jelly(mon, obj)
-{
+export function bee_eat_jelly(mon, obj) { /* int */
     let m_delay;
     let mtmp = find_pmmonst(PM_QUEEN_BEE);
 
@@ -409,7 +349,7 @@ bee_eat_jelly(mon, obj)
             mon.m_lev = uchar((mons[PM_QUEEN_BEE].mlevel - 1));
         /* there should be delay after eating, but that's too much
            hassle; transform immediately, then have a short delay */
-        void grow_up(mon, null);
+        grow_up(mon, null);
 
         if (DEADMONSTER(mon))
             return 1; /* dead; apparently queen bees have been genocided */
@@ -420,9 +360,7 @@ bee_eat_jelly(mon, obj)
 }
 
 /* gelatinous cube eats something from its inventory */
-function /* int */
-gelcube_digests(mtmp)
-{
+function gelcube_digests(mtmp) { /* int */
     let otmp = mtmp.minvent;
 
     if (mtmp.meating || !mtmp.minvent)
@@ -444,27 +382,22 @@ gelcube_digests(mtmp)
     return 0; /* used a move */
 }
 
-
 /* FIXME: gremlins don't flee from monsters wielding Sunsword or wearing
    gold dragon scales/mail, nor from gold dragons, only from the hero */
-export function flees_light(mon) { return ((((mon).data == mons[PM_GREMLIN]                                     
-     && ((uwep && uwep.lamplit && artifact_light(uwep))                  
-         || (uarm && uarm.lamplit && artifact_light(uarm)))              
-     /* not applicable if mon can't see or hero isn't in line of sight */ 
-     && mon.mcansee && couldsee(mon.mx, mon.my)) ? 1 : 0)); }
-
-
+export function flees_light(mon) { return (mon.data == mons[PM_GREMLIN]
+     && ((uwep && uwep.lamplit && artifact_light(uwep))
+         || (uarm && uarm.lamplit && artifact_light(uarm)))
+     /* not applicable if mon can't see or hero isn't in line of sight */
+     && mon.mcansee && couldsee(mon.mx, mon.my) ? 1 : 0); }
 
 /* monster begins fleeing for the specified time, 0 means untimed flee
  * if first, only adds fleetime if monster isn't already fleeing
  * if fleemsg, prints a message about new flight, otherwise, caller should */
-export function /* void */
-monflee(
+export function monflee(
     mtmp,
     fleetime,
     first,
-    fleemsg)
-{
+    fleemsg) { /* void */
     /* shouldn't happen; maybe warrants impossible()? */
     if (DEADMONSTER(mtmp))
         return;
@@ -520,7 +453,7 @@ monflee(
 
         if (mtmp.data == mons[PM_VROCK] && !mtmp.mspec_used) {
             mtmp.mspec_used = 75 + rn2(25);
-            void create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
+            create_gas_cloud(mtmp.mx, mtmp.my, 5, 8);
         }
 
         mtmp.mflee = 1;
@@ -529,17 +462,15 @@ monflee(
     mon_track_clear(mtmp);
 }
 
-function /* void */
-distfleeck(
+function distfleeck(
     mtmp,
-    inrange, nearby, scared) /* output */
-{
+    inrange, nearby, scared) { /* void */ /* output */
     let seescaryx, seescaryy;
-    let sawscary = FALSE, bravegremlin = (+(rn2(5) == 0));
+    let sawscary = FALSE, bravegremlin = +(rn2(5) == 0);
 
-    inrange[0] = (+(dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
-                <= (BOLT_LIM * BOLT_LIM)));
-    nearby[0] = ((inrange[0] && monnear(mtmp, mtmp.mux, mtmp.muy)) ? 1 : 0);
+    inrange[0] = +(dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
+                <= (BOLT_LIM * BOLT_LIM));
+    nearby[0] = (inrange[0] && monnear(mtmp, mtmp.mux, mtmp.muy) ? 1 : 0);
 
     /* Note: if your image is displaced, the monster sees the Elbereth
      * at your displaced position, thus never attacking your displaced
@@ -566,22 +497,16 @@ distfleeck(
         scared[0] = 0;
 }
 
-
-
 /* perform a special one-time action for a monster; returns -1 if nothing
    special happened, 0 if monster uses up its turn, 1 if monster is killed */
-function /* int */
-m_arrival(mon)
-{
+function m_arrival(mon) { /* int */
     mon.mstrategy = and64u(mon.mstrategy, ~STRAT_ARRIVE); /* always reset */
 
     return -1;
 }
 
 /* a mind flayer unleashes a mind blast  */
-function /* void */
-mind_blast(mtmp)
-{
+function mind_blast(mtmp) { /* void */
     let m2, nmon = null;
 
     if (canseemon(mtmp))
@@ -646,9 +571,7 @@ mind_blast(mtmp)
 
 /* called every turn for each living monster on the map, and the hero;
    caller makes sure that we're not called for DEADMONSTER() */
-export function /* void */
-m_everyturn_effect(mtmp)
-{
+export function m_everyturn_effect(mtmp) { /* void */
     let is_u = (mtmp == gy.youmonst) ? TRUE : FALSE;
     let x = is_u ? u.ux : mtmp.mx,
             y = is_u ? u.uy : mtmp.my;
@@ -668,9 +591,7 @@ m_everyturn_effect(mtmp)
    to prevent spam messages for hero getting enveloped in a cloud.
    for monsters, called before location changes,
    because monsters don't have "previous location" field */
-export function /* void */
-m_postmove_effect(mtmp)
-{
+export function m_postmove_effect(mtmp) { /* void */
     let is_u = (mtmp == gy.youmonst) ? TRUE : FALSE;
     let x = is_u ? u.ux0 : mtmp.mx,
             y = is_u ? u.uy0 : mtmp.my;
@@ -686,9 +607,8 @@ m_postmove_effect(mtmp)
 /* The whole dochugw/m_move/distfleeck/mfndpos section is serious spaghetti
  * code. --KAA
  */
-export function /* int */
-dochug(mtmp)
-{ const $frame = stack_frame(); try {
+export function dochug(mtmp) { /* int */
+    const $frame = stack_frame(); try {
     let mdat;
     let status = MMOVE_NOTHING;
     let inrange = stack_var(int), nearby = stack_var(int), scared = stack_var(int), res;
@@ -780,7 +700,7 @@ dochug(mtmp)
     /* Monsters that want to acquire things may teleport, so do it before
        inrange is set. This costs a turn only if mstate is set.  */
     if (is_covetous(mdat)) {
-        void tactics(mtmp);
+        tactics(mtmp);
         /* tactics -> mnexto -> deal_with_overcrowding */
         if (mtmp.mstate)
             return 0;
@@ -809,7 +729,7 @@ dochug(mtmp)
             if (is_demon(gy.youmonst.data)) {
                 /* "Good hunting, brother" */
                 if (!tele_restrict(mtmp))
-                    void rloc(mtmp, RLOC_MSG);
+                    rloc(mtmp, RLOC_MSG);
             } else {
                 mtmp.minvis = mtmp.perminvis = 0;
                 /* Why?  For the same reason in real demon talk */
@@ -885,7 +805,6 @@ dochug(mtmp)
             && (findgold(mtmp.minvent) || rn2(2)))
         || (is_wanderer(mdat) && !rn2(4)) || (Conflict() && !mtmp.iswiz)
         || (!mtmp.mcansee && !rn2(4)) || mtmp.mpeaceful) {
-
         /* Possibly cast an undirected spell if not attacking you */
         /* note that most of the time castmu() will pick a directed
            spell and do nothing, so the monster moves normally */
@@ -985,8 +904,9 @@ dochug(mtmp)
         cuss(mtmp);
 
     /* note: can't get here when monster is dead, so this always returns 0 */
-    return (+(status == MMOVE_DIED));
-} finally { stack_pop($frame); } }
+    return +(status == MMOVE_DIED);
+    } finally { stack_pop($frame); }
+}
 
 const practical = static_array("practical", char, null, [ WEAPON_CLASS, ARMOR_CLASS,
                                            GEM_CLASS, FOOD_CLASS, 0 ]);
@@ -995,9 +915,7 @@ const magical = static_array("magical", char, null, [ AMULET_CLASS, POTION_CLASS
                                          RING_CLASS,   SPBOOK_CLASS, 0 ]);
 
 /* monster mtmp would love to take object otmp? */
-export function /* boolean */
-mon_would_take_item(mtmp, otmp)
-{
+export function mon_would_take_item(mtmp, otmp) { /* boolean */
     let pctload = Math.trunc((curr_mon_load(mtmp) * 100) / max_mon_load(mtmp));
 
     if (otmp == uball || otmp == uchain)
@@ -1032,9 +950,7 @@ mon_would_take_item(mtmp, otmp)
 }
 
 /* monster mtmp would love to consume object otmp, without picking it up */
-export function /* boolean */
-mon_would_consume_item(mtmp, otmp)
-{
+export function mon_would_consume_item(mtmp, otmp) { /* boolean */
     let ftyp;
 
     if (otmp.otyp == CORPSE && !touch_petrifies(mons[otmp.corpsenm])
@@ -1049,9 +965,7 @@ mon_would_consume_item(mtmp, otmp)
     return FALSE;
 }
 
-export function /* boolean */
-itsstuck(mtmp)
-{
+export function itsstuck(mtmp) { /* boolean */
     if (sticks(gy.youmonst.data) && mtmp == u.ustuck && !u.uswallow) {
         pline_mon(mtmp, _("%s cannot escape from you!"), Monnam(mtmp));
         return TRUE;
@@ -1066,13 +980,11 @@ itsstuck(mtmp)
  * used on approach. If there are better ways to get to target,
  * those should be used instead. This function does that evaluation.
  */
-export function /* boolean */
-should_displace(
+export function should_displace(
     mtmp,
     data,
     ggx,
-    ggy)
-{
+    ggy) { /* boolean */
     let shortest_with_displacing = -1;
     let shortest_without_displacing = -1;
     let count_without_displacing = 0;
@@ -1104,11 +1016,9 @@ should_displace(
 
 /* have monster wield a pick-axe if it wants to dig and it has one;
    return True if it spends this move wielding one, False otherwise */
-export function /* boolean */
-m_digweapon_check(
+export function m_digweapon_check(
     mtmp,
-    nix, niy)
-{
+    nix, niy) { /* boolean */
     let can_tunnel = FALSE;
     let mw_tmp = MON_WEP(mtmp);
 
@@ -1135,9 +1045,7 @@ m_digweapon_check(
 }
 
 /* does leprechaun want to avoid the hero? */
-function /* boolean */
-leppie_avoidance(mtmp)
-{
+function leppie_avoidance(mtmp) { /* boolean */
     let lepgold, ygold;
 
     if (mtmp.data == mons[PM_LEPRECHAUN]
@@ -1150,9 +1058,7 @@ leppie_avoidance(mtmp)
 }
 
 /* unseen leprechaun with gold might stash it */
-function /* void */
-leppie_stash(mtmp)
-{
+function leppie_stash(mtmp) { /* void */
     let gold;
 
     if (mtmp.data == mons[PM_LEPRECHAUN]
@@ -1166,7 +1072,7 @@ leppie_stash(mtmp)
         mdrop_obj(mtmp, gold, FALSE);
         gold = g_at(mtmp.mx, mtmp.my);
         if (gold)
-            void bury_an_obj(gold, 0);
+            bury_an_obj(gold, 0);
     }
 }
 
@@ -1177,10 +1083,8 @@ leppie_stash(mtmp)
  *             which may actually be further away,
  *             and sets *pdistmin and *pdistmax to describe that range
  */
-function /* int */
-m_balks_at_approaching(oldappr, mtmp, pdistmin,
-                       pdistmax)
-{
+function m_balks_at_approaching(oldappr, mtmp, pdistmin,
+                       pdistmax) { /* int */
     let mwep = MON_WEP(mtmp);
     let x = mtmp.mx, y = mtmp.my, ux = mtmp.mux, uy = mtmp.muy;
     let edist = dist2(x, y, ux, uy);
@@ -1223,9 +1127,7 @@ m_balks_at_approaching(oldappr, mtmp, pdistmin,
     return oldappr; /* leaves appr unchanged */
 }
 
-function /* boolean */
-holds_up_web(x, y)
-{
+function holds_up_web(x, y) { /* boolean */
     let sway;
 
     if (!isok(x, y)
@@ -1240,17 +1142,13 @@ holds_up_web(x, y)
 
 /* returns the number of walls in the four cardinal directions that could
    hold up a web */
-function /* int */
-count_webbing_walls(x, y)
-{
+function count_webbing_walls(x, y) { /* int */
     return (holds_up_web(x, y - 1) + holds_up_web(x + 1, y)
             + holds_up_web(x, y + 1) + holds_up_web(x - 1, y));
 }
 
 /* reject webs which interfere with solving Sokoban */
-function /* boolean */
-soko_allow_web(mon)
-{
+function soko_allow_web(mon) { /* boolean */
     let stway;
 
     /* for a non-Sokoban level or a solved Sokoban level, no restriction */
@@ -1265,9 +1163,8 @@ soko_allow_web(mon)
 }
 
 /* monster might spin a web */
-function /* void */
-maybe_spin_web(mtmp)
-{ const $frame = stack_frame(); try {
+function maybe_spin_web(mtmp) { /* void */
+    const $frame = stack_frame(); try {
     if (webmaker(mtmp.data)
         && !helpless(mtmp) && !mtmp.mspec_used
         && !t_at(mtmp.mx, mtmp.my) && soko_allow_web(mtmp)) {
@@ -1282,7 +1179,7 @@ maybe_spin_web(mtmp)
             if (cansee(mtmp.mx, mtmp.my)) {
                 let mbuf = stack_array(char, BUFSZ);
 
-                void strcpy(mbuf, canspotmon(mtmp) ? y_monnam(mtmp) : something());
+                strcpy(mbuf, canspotmon(mtmp) ? y_monnam(mtmp) : something());
                 pline_mon(mtmp, _("%s spins a web."), upstart(mbuf));
                 trap.tseen = 1;
             }
@@ -1290,12 +1187,11 @@ maybe_spin_web(mtmp)
                 add_damage(mtmp.mx, mtmp.my, 0);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* monster avoids a location nx, ny, if hero kicked that location */
-export function /* boolean */
-m_avoid_kicked_loc(mtmp, nx, ny)
-{
+export function m_avoid_kicked_loc(mtmp, nx, ny) { /* boolean */
     if ((mtmp.mpeaceful || mtmp.mtame)
         && mtmp.mcansee
         && !mtmp.mconf && !mtmp.mstun
@@ -1309,9 +1205,7 @@ m_avoid_kicked_loc(mtmp, nx, ny)
 
 /* monster avoids a location nx, ny, if we're in sokoban, and
    there's a boulder between the location and hero */
-export function /* boolean */
-m_avoid_soko_push_loc(mtmp, nx, ny)
-{
+export function m_avoid_soko_push_loc(mtmp, nx, ny) { /* boolean */
     if (Sokoban()
         && (mtmp.mpeaceful || mtmp.mtame)
         && !mtmp.mconf && !mtmp.mstun
@@ -1326,13 +1220,11 @@ m_avoid_soko_push_loc(mtmp, nx, ny)
 export const SQSRCHRADIUS = 5;
 
 /* monster looks for items it wants nearby */
-function /* boolean */
-m_search_items(
+function m_search_items(
     mtmp,
     ggx, ggy,
     mmoved,
-    appr)
-{
+    appr) { /* boolean */
     var minr = SQSRCHRADIUS; /* not too far away */
     var otmp;
     var xx, yy;
@@ -1437,7 +1329,6 @@ m_search_items(
             }
         }
     }
-
  }
     if (minr < SQSRCHRADIUS && appr[0] == -1) {
         if (distmin(omx, omy, mtmp.mux, mtmp.muy) <= 3) {
@@ -1449,10 +1340,7 @@ m_search_items(
     return FALSE;
 }
 
-
-
-function /* int */
-postmov(
+function postmov(
     mtmp,
     ptr,
     omx, omy,
@@ -1460,8 +1348,7 @@ postmov(
     seenflgs,
     can_tunnel,
     can_unlock,
-    can_open)
-{
+    can_open) { /* int */
     let nix, niy;
     let etmp, trapret;
     let canseeit = cansee(mtmp.mx, mtmp.my),
@@ -1496,7 +1383,7 @@ postmov(
             if (vamp_shift(mtmp, mons[PM_FOG_CLOUD],
                            ((seenflgs & 1) != 0) ? TRUE : FALSE)) {
                 ptr = mtmp.data; /* update cached value */
-                (void (ptr));
+                (ptr);
             }
             if (seenflgs) {
                 remove_monster(omx, omy);
@@ -1525,15 +1412,6 @@ postmov(
 
     /* used after monster 'who' has been moved to closed door spot 'where'
        which will now be changed to door state 'what' with map update */
-
-
-
-
-
-
-
-
-
 
             /* if mon has MKoT, disarm door trap; no message given */
             if (btrapped && has_magic_key(mtmp)) {
@@ -1619,8 +1497,6 @@ postmov(
                 if (chars[in_rooms(mtmp.mx, mtmp.my, SHOPBASE)])
                     add_damage(mtmp.mx, mtmp.my, 0);
             }
-
-
         } else if (levl()[mtmp.mx][mtmp.my].typ == IRONBARS) {
             /* 3.6.2: was using may_dig() but that doesn't handle bars;
                AD_RUST catches rust monsters but metallivorous() is
@@ -1659,7 +1535,6 @@ postmov(
 
     if (mmoved == MMOVE_MOVED || mmoved == MMOVE_DONE) {
         if (OBJ_AT(mtmp.mx, mtmp.my) && mtmp.mcanmove) {
-
             /* Maybe a rock mole just ate some metal object */
             if (metallivorous(ptr)) {
                 if (meatmetal(mtmp) == 2)
@@ -1694,7 +1569,7 @@ postmov(
                (just in case the object it was hiding under went away);
                usually set mundetected unless monster can't move. */
             if (mtmp.mundetected || (!helpless(mtmp) && rn2(5)))
-                void hideunder(mtmp);
+                hideunder(mtmp);
             newsym(mtmp.mx, mtmp.my);
         }
         if (mtmp.isshk) {
@@ -1711,9 +1586,8 @@ postmov(
  * 2: monster died;
  * 3: did not move, and can't do anything else either.
  */
-export function /* int */
-m_move(mtmp, after)
-{ const $frame = stack_frame(); try {
+export function m_move(mtmp, after) { /* int */
+    const $frame = stack_frame(); try {
     var appr = stack_var(int);
     var ggx = stack_var(coordxy), ggy = stack_var(coordxy), nix, niy;
     var chcnt;
@@ -1763,8 +1637,8 @@ m_move(mtmp, after)
     if (!Is_rogue_level(u.uz))
         can_tunnel = tunnels(ptr);
     can_open = +!(nohands(ptr) || verysmall(ptr));
-    can_unlock = ((((can_open && monhaskey(mtmp, TRUE))
-                  || mtmp.iswiz || is_rider(ptr)) ? 1 : 0));
+    can_unlock = ((can_open && monhaskey(mtmp, TRUE))
+                  || mtmp.iswiz || is_rider(ptr) ? 1 : 0);
     /* doorbuster = is_giant(ptr); */
     not_special: { if (mtmp.wormno)
         break not_special;;
@@ -1790,7 +1664,7 @@ m_move(mtmp, after)
                attack was disallowed if they were adjacent diagonally */
             && dist2(mtmp.mx, mtmp.my, tx, ty) <= 2) {
             gb.bhitpos.x = tx, gb.bhitpos.y = ty;
-            gn.notonhead = (+(intruder.mx != tx || intruder.my != ty));
+            gn.notonhead = +(intruder.mx != tx || intruder.my != ty);
             covetousattack = mattackm(mtmp, intruder);
             /* 5.0: this used to erroneously use '== 2' (M_ATTK_DEF_DIED) */
             if (covetousattack & M_ATTK_AGR_DIED)
@@ -1826,7 +1700,6 @@ m_move(mtmp, after)
         }
     }
 
-
     if (ptr == mons[PM_MAIL_DAEMON]) {
         if (!Deaf() && canseemon(mtmp)) {
                ;
@@ -1836,12 +1709,11 @@ m_move(mtmp, after)
         return MMOVE_DIED;
     }
 
-
     /* teleport if that lies in our nature */
     if (ptr == mons[PM_TENGU] && !rn2(5) && !mtmp.mcan
         && !tele_restrict(mtmp)) {
         if (mtmp.mhp < 7 || mtmp.mpeaceful || rn2(2))
-            void rloc(mtmp, RLOC_MSG);
+            rloc(mtmp, RLOC_MSG);
         else
             mnexto(mtmp, RLOC_MSG);
         return postmov(mtmp, ptr, omx, omy, MMOVE_MOVED,
@@ -1858,9 +1730,9 @@ m_move(mtmp, after)
     if (mtmp.mconf || engulfing_u(mtmp)) {
         appr[0] = 0;
     } else {
-        var should_see = (((couldsee(omx, omy)
+        var should_see = (couldsee(omx, omy)
                               && (levl()[ggx[0]][ggy[0]].lit || !levl()[omx][omy].lit)
-                              && (dist2(omx, omy, ggx[0], ggy[0]) <= 36)) ? 1 : 0));
+                              && (dist2(omx, omy, ggx[0], ggy[0]) <= 36) ? 1 : 0);
 
         if (!mtmp.mcansee
             || (should_see && Invis() && !perceives(ptr) && rn2(11))
@@ -1889,10 +1761,10 @@ m_move(mtmp, after)
     }
 
     if ((!mtmp.mpeaceful || !rn2(10)) && (!Is_rogue_level(u.uz))) {
-        var in_line = (((lined_up(mtmp)
+        var in_line = (lined_up(mtmp)
              && (distmin(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
                  <= (throws_rocks(gy.youmonst.data) ? 20
-                                                    : (Math.trunc(ACURRSTR() / 2) + 1)))) ? 1 : 0));
+                                                    : (Math.trunc(ACURRSTR() / 2) + 1))) ? 1 : 0);
 
         if (appr[0] != 1 || !in_line) {
             /* Monsters in combat won't pick stuff up, avoiding the
@@ -1964,7 +1836,7 @@ m_move(mtmp, after)
                             break nxti;;
             }
 
-            nearer = (+((ndist = dist2(nx, ny, ggx[0], ggy[0])) < nidist));
+            nearer = +((ndist = dist2(nx, ny, ggx[0], ggy[0])) < nidist);
 
             if ((appr[0] == 1 && nearer) || (appr[0] == -1 && !nearer)
                 || (!appr[0] && !rn2(++chcnt))
@@ -2040,7 +1912,7 @@ m_move(mtmp, after)
             return MMOVE_DONE;
 
         if ((mfp.info[chi] & ALLOW_ROCK) && m_can_break_boulder(mtmp)) {
-            void m_break_boulder(mtmp, nix, niy);
+            m_break_boulder(mtmp, nix, niy);
             return MMOVE_DONE;
         }
 
@@ -2062,7 +1934,7 @@ m_move(mtmp, after)
         mon_track_add(mtmp, omx, omy);
     } else {
         if (is_unicorn(ptr) && rn2(2) && !tele_restrict(mtmp)) {
-            void rloc(mtmp, RLOC_MSG);
+            rloc(mtmp, RLOC_MSG);
             return MMOVE_MOVED;
         }
         /* for a long worm, shrink it (by discarding end of tail) when
@@ -2072,7 +1944,8 @@ m_move(mtmp, after)
     }
     return postmov(mtmp, ptr, omx, omy, mmoved[0],
                    seenflgs, can_tunnel, can_unlock, can_open);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* The part of m_move that deals with a monster attacking another monster (and
  * that monster possibly retaliating).
@@ -2084,16 +1957,14 @@ m_move(mtmp, after)
  * Return values are the same as for m_move, but this function only return 2
  * (mtmp died) or 3 (mtmp made its move).
  */
-export function /* int */
-m_move_aggress(mtmp, x, y)
-{
+export function m_move_aggress(mtmp, x, y) { /* int */
     let mtmp2;
     let mstatus = 0; /* M_ATTK_MISS */
 
     mtmp2 = m_at(x, y);
     if (mtmp2) {
         gb.bhitpos.x = x, gb.bhitpos.y = y;
-        gn.notonhead = (+(x != mtmp2.mx || y != mtmp2.my));
+        gn.notonhead = +(x != mtmp2.mx || y != mtmp2.my);
         mstatus = mattackm(mtmp, mtmp2);
     }
 
@@ -2117,9 +1988,7 @@ m_move_aggress(mtmp, x, y)
 }
 
 /* returns TRUE if a mon can hide under the obj */
-export function /* boolean */
-can_hide_under_obj(obj)
-{
+export function can_hide_under_obj(obj) { /* boolean */
 /* uncomment '#define NO_HIDING_UNDER_STATUES' to prevent hiding under
  * statues; that was introduced to avoid nullifying statue traps but
  * isn't needed now that hiding at any non-pit trap site is disallowed */
@@ -2146,29 +2015,12 @@ can_hide_under_obj(obj)
                 return FALSE; /* whole pile was less than 10 coins */
         } while (obj.oclass == COIN_CLASS);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef NO_HIDING_UNDER_STATUES: not in this build */
 
     return TRUE; /* can hide under the object */
 }
 
-export function /* void */
-dissolve_bars(x, y)
-{
+export function dissolve_bars(x, y) { /* void */
     levl()[x][y].typ = (levl()[x][y].edge == 1) ? DOOR
         : (Is_special(u.uz) || chars[in_rooms(x, y, 0)]) ? ROOM : CORR;
     levl()[x][y].flags = 0; /* doormask = D_NODOOR */
@@ -2177,16 +2029,12 @@ dissolve_bars(x, y)
         switch_terrain();
 }
 
-export function /* boolean */
-closed_door(x, y)
-{
-    return (((IS_DOOR(levl()[x][y].typ)
-                      && (levl()[x][y].flags & (D_LOCKED | D_CLOSED))) ? 1 : 0));
+export function closed_door(x, y) { /* boolean */
+    return (IS_DOOR(levl()[x][y].typ)
+                      && (levl()[x][y].flags & (D_LOCKED | D_CLOSED)) ? 1 : 0);
 }
 
-export function /* boolean */
-accessible(x, y)
-{
+export function accessible(x, y) { /* boolean */
     /* use underlying terrain in front of closed drawbridge */
     let levtyp = SURFACE_AT(x, y);
 
@@ -2194,9 +2042,7 @@ accessible(x, y)
 }
 
 /* decide where the monster thinks you are standing */
-export function /* void */
-set_apparxy(mtmp)
-{
+export function set_apparxy(mtmp) { /* void */
     let notseen, notthere, gotu;
     let displ;
     let mx = mtmp.mux, my = mtmp.muy;
@@ -2214,8 +2060,8 @@ set_apparxy(mtmp)
             return;
     }
 
-    notseen = (((!mtmp.mcansee || (Invis() && !perceives(mtmp.data))) ? 1 : 0));
-    notthere = (((Displaced() && mtmp.data != mons[PM_DISPLACER_BEAST]) ? 1 : 0));
+    notseen = (!mtmp.mcansee || (Invis() && !perceives(mtmp.data)) ? 1 : 0);
+    notthere = (Displaced() && mtmp.data != mons[PM_DISPLACER_BEAST] ? 1 : 0);
     /* add cases as required.  eg. Displacement ... */
     if (Underwater()) {
         displ = 1;
@@ -2273,13 +2119,11 @@ set_apparxy(mtmp)
  * We do consider many other things about the target and its
  * location however.
  */
-export function /* boolean */
-undesirable_disp(
+export function undesirable_disp(
     mtmp,
     x,
-    y) /* spot 'mtmp' is considering moving to */
-{
-    let is_pet = (((mtmp.mtame && !mtmp.isminion) ? 1 : 0));
+    y) { /* boolean */ /* spot 'mtmp' is considering moving to */
+    let is_pet = (mtmp.mtame && !mtmp.isminion ? 1 : 0);
     let trap = t_at(x, y);
 
     if (is_pet) {
@@ -2315,9 +2159,7 @@ undesirable_disp(
  * Inventory prevents passage under door.
  * Used by can_ooze() and can_fog().
  */
-function /* boolean */
-stuff_prevents_passage(mtmp)
-{
+function stuff_prevents_passage(mtmp) { /* boolean */
     let chain, obj;
 
     if (mtmp == gy.youmonst) {
@@ -2352,18 +2194,14 @@ stuff_prevents_passage(mtmp)
     return FALSE;
 }
 
-export function /* boolean */
-can_ooze(mtmp)
-{
+export function can_ooze(mtmp) { /* boolean */
     if (!amorphous(mtmp.data) || stuff_prevents_passage(mtmp))
         return FALSE;
     return TRUE;
 }
 
 /* monster can change form into a fog if necessary */
-export function /* boolean */
-can_fog(mtmp)
-{
+export function can_fog(mtmp) { /* boolean */
     if (!(svm.mvitals[PM_FOG_CLOUD].mvflags & G_GENOD) && is_vampshifter(mtmp)
         && !Protection_from_shape_changers() && !stuff_prevents_passage(mtmp))
         return TRUE;
@@ -2373,12 +2211,10 @@ can_fog(mtmp)
 /* this is called when a vampire turns into a fog cloud in order to move
    under a closed door; if it was sensed via telepathy or seen via
    infravision, its new fog cloud shape will disappear */
-function /* int */
-vamp_shift(
+function vamp_shift(
     mon,
     ptr,
-    domsg)
-{
+    domsg) { /* int */
     let reslt = 0;
 
     if (mon.data == ptr) {
@@ -2394,463 +2230,157 @@ vamp_shift(
 }
 
 /*monmove.c*/
+
 import { ACURRSTR } from "./attrib.h.macros.js";
 import { something } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_BAT } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_LEPRECHAUN } from "./defsym.h.js";
-import { S_LIGHT } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { vobj_at } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ARM } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MMOVE_DIED } from "./hack.h.js";
-import { MMOVE_DONE } from "./hack.h.js";
-import { MMOVE_MOVED } from "./hack.h.js";
-import { MMOVE_NOMOVES } from "./hack.h.js";
-import { MMOVE_NOTHING } from "./hack.h.js";
-import { MON_POLE_DIST } from "./hack.h.js";
-import { NC_SHOW_MSG } from "./hack.h.js";
-import { NO_NC_FLAGS } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { RLOC_MSG } from "./hack.h.js";
-import { IndexOk } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { verbalize1 } from "./hack.h.macros.js";
-import { ACCFOOD } from "./mextra.h.js";
-import { MANFOOD } from "./mextra.h.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { has_edog } from "./mextra.h.macros.js";
-import { ALLOW_M } from "./mfndpos.h.js";
-import { ALLOW_MDISP } from "./mfndpos.h.js";
-import { ALLOW_ROCK } from "./mfndpos.h.js";
-import { ALLOW_U } from "./mfndpos.h.js";
-import { NOTONL } from "./mfndpos.h.js";
-import { struct_mfndposdata } from "./mfndpos.h.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, POTION_CLASS,
+    RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_BAT, S_DOG, S_EEL, S_HUMAN, S_LEPRECHAUN,
+    S_LIGHT, S_NYMPH, S_VAMPIRE, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { canspotmon, vobj_at } from "./display.h.macros.js";
+import { In_endgame, Inhell, Is_rogue_level } from "./dungeon.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    ARM, BOLT_LIM, HEAD, KILLED_BY_AN, MMOVE_DIED, MMOVE_DONE, MMOVE_MOVED, MMOVE_NOMOVES,
+    MMOVE_NOTHING, MON_POLE_DIST, NC_SHOW_MSG, NO_NC_FLAGS, NO_TRAP_FLAGS, RLOC_MSG,
+} from "./hack.h.js";
+import { IndexOk, distu, max, mdistu, min, rn1, verbalize1 } from "./hack.h.macros.js";
+import { ACCFOOD, MANFOOD } from "./mextra.h.js";
+import { EDOG, has_edog } from "./mextra.h.macros.js";
+import {
+    ALLOW_M, ALLOW_MDISP, ALLOW_ROCK, ALLOW_U, NOTONL, struct_mfndposdata,
+} from "./mfndpos.h.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AD_CLRC } from "./monattk.h.js";
-import { AD_CORR } from "./monattk.h.js";
-import { AD_DRIN } from "./monattk.h.js";
-import { AD_RUST } from "./monattk.h.js";
-import { AD_SPEL } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { AT_WEAP } from "./monattk.h.js";
-import { M_ATTK_AGR_DIED } from "./monattk.h.js";
-import { M_ATTK_DEF_DIED } from "./monattk.h.js";
-import { M_ATTK_HIT } from "./monattk.h.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { corpse_eater } from "./mondata.h.macros.js";
-import { grounded } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_covetous } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_mercenary } from "./mondata.h.macros.js";
-import { is_mind_flayer } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { is_wanderer } from "./mondata.h.macros.js";
-import { is_watch } from "./mondata.h.macros.js";
-import { likes_gems } from "./mondata.h.macros.js";
-import { likes_gold } from "./mondata.h.macros.js";
-import { likes_magic } from "./mondata.h.macros.js";
-import { likes_objs } from "./mondata.h.macros.js";
-import { metallivorous } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { needspick } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { regenerates } from "./mondata.h.macros.js";
-import { telepathic } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { tunnels } from "./mondata.h.macros.js";
-import { unique_corpstat } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { webmaker } from "./mondata.h.macros.js";
-import { G_GENOD } from "./monflag.h.js";
-import { MS_BRIBE } from "./monflag.h.js";
-import { MS_CUSS } from "./monflag.h.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MTSZ } from "./monst.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { NEED_AXE } from "./monst.h.js";
-import { NEED_HTH_WEAPON } from "./monst.h.js";
-import { NEED_PICK_AXE } from "./monst.h.js";
-import { NEED_PICK_OR_AXE } from "./monst.h.js";
-import { NEED_WEAPON } from "./monst.h.js";
-import { STRAT_ARRIVE } from "./monst.h.js";
-import { STRAT_CLOSE } from "./monst.h.js";
-import { STRAT_WAITFORU } from "./monst.h.js";
-import { STRAT_WAITMASK } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_lminion } from "./monst.h.macros.js";
-import { is_obj_mappear } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { mon_offmap } from "./monst.h.macros.js";
-import { PM_ANGEL } from "./monsters.h.js";
-import { PM_DISPLACER_BEAST } from "./monsters.h.js";
-import { PM_ETTIN } from "./monsters.h.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GIANT_SPIDER } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_HEZROU } from "./monsters.h.js";
-import { PM_JABBERWOCK } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_LEPRECHAUN } from "./monsters.h.js";
-import { PM_MAIL_DAEMON } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STEAM_VORTEX } from "./monsters.h.js";
-import { PM_TENGU } from "./monsters.h.js";
-import { PM_VROCK } from "./monsters.h.js";
-import { PM_XORN } from "./monsters.h.js";
+import {
+    AD_CLRC, AD_CORR, AD_DRIN, AD_RUST, AD_SPEL, AT_MAGC, AT_WEAP, M_ATTK_AGR_DIED, M_ATTK_DEF_DIED,
+    M_ATTK_HIT,
+} from "./monattk.h.js";
+import {
+    amorphous, can_teleport, corpse_eater, grounded, hides_under, is_animal, is_covetous, is_demon,
+    is_mercenary, is_mind_flayer, is_rider, is_unicorn, is_wanderer, is_watch, likes_gems,
+    likes_gold, likes_magic, likes_objs, metallivorous, mindless, monsndx, needspick, nohands,
+    nolimbs, passes_walls, perceives, regenerates, telepathic, throws_rocks, touch_petrifies,
+    tunnels, unique_corpstat, verysmall, webmaker,
+} from "./mondata.h.macros.js";
+import { G_GENOD, MS_BRIBE, MS_CUSS, MS_LEADER } from "./monflag.h.js";
+import {
+    MTSZ, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, NEED_AXE, NEED_HTH_WEAPON,
+    NEED_PICK_AXE, NEED_PICK_OR_AXE, NEED_WEAPON, STRAT_ARRIVE, STRAT_CLOSE, STRAT_WAITFORU,
+    STRAT_WAITMASK,
+} from "./monst.h.js";
+import {
+    DEADMONSTER, MON_WEP, M_AP_TYPE, U_AP_TYPE, engulfing_u, helpless, is_lminion, is_obj_mappear,
+    is_vampshifter, mon_offmap,
+} from "./monst.h.macros.js";
+import {
+    PM_ANGEL, PM_DISPLACER_BEAST, PM_ETTIN, PM_FOG_CLOUD, PM_GELATINOUS_CUBE, PM_GIANT_SPIDER,
+    PM_GREMLIN, PM_HEZROU, PM_JABBERWOCK, PM_KILLER_BEE, PM_LEPRECHAUN, PM_MAIL_DAEMON, PM_MINOTAUR,
+    PM_QUEEN_BEE, PM_STALKER, PM_STEAM_VORTEX, PM_TENGU, PM_VROCK, PM_XORN,
+} from "./monsters.h.js";
 import { OBJ_FLOOR } from "./obj.h.js";
-import { Is_candle } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { is_axe } from "./obj.h.macros.js";
-import { is_cloak } from "./obj.h.macros.js";
-import { is_gloves } from "./obj.h.macros.js";
-import { is_mines_prize } from "./obj.h.macros.js";
-import { is_pick } from "./obj.h.macros.js";
-import { is_pole } from "./obj.h.macros.js";
-import { is_shirt } from "./obj.h.macros.js";
-import { is_soko_prize } from "./obj.h.macros.js";
-import { GEMSTONE } from "./objclass.h.js";
-import { MINERAL } from "./objclass.h.js";
+import {
+    Is_candle, Is_container, is_axe, is_cloak, is_gloves, is_mines_prize, is_pick, is_pole,
+    is_shirt, is_soko_prize,
+} from "./obj.h.macros.js";
+import { GEMSTONE, MINERAL } from "./objclass.h.js";
 import { is_organic } from "./objclass.h.macros.js";
-import { ARROW } from "./objects.h.js";
-import { BAG_OF_HOLDING } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { BOOMERANG } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CANDY_BAR } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { CRYSKNIFE } from "./objects.h.js";
-import { DAGGER } from "./objects.h.js";
-import { FEDORA } from "./objects.h.js";
-import { FORTUNE_COOKIE } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LEATHER_JACKET } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { MAGIC_WHISTLE } from "./objects.h.js";
-import { OILSKIN_SACK } from "./objects.h.js";
-import { PANCAKE } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SACK } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { SLING } from "./objects.h.js";
-import { STETHOSCOPE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TIN_WHISTLE } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { NATTK } from "./permonst.h.js";
-import { NORMAL_SPEED } from "./permonst.h.js";
-import { CORR } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { D_WARNED } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { SURFACE_AT } from "./rm.h.macros.js";
-import { Sokoban } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { TRAPPED_DOOR } from "./trap.h.js";
-import { Trap_Caught_Mon } from "./trap.h.js";
-import { Trap_Killed_Mon } from "./trap.h.js";
-import { Trap_Moved_Mon } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
+import {
+    ARROW, BAG_OF_HOLDING, BAG_OF_TRICKS, BLINDFOLD, BOOMERANG, BOULDER, CANDY_BAR, CORPSE,
+    CREDIT_CARD, CRYSKNIFE, DAGGER, FEDORA, FORTUNE_COOKIE, GOLD_PIECE, LEASH, LEATHER_JACKET,
+    LEMBAS_WAFER, LOCK_PICK, LUMP_OF_ROYAL_JELLY, MAGIC_MARKER, MAGIC_WHISTLE, OILSKIN_SACK,
+    PANCAKE, ROCK, SACK, SCR_SCARE_MONSTER, SKELETON_KEY, SLING, STETHOSCOPE, STRANGE_OBJECT,
+    TIN_OPENER, TIN_WHISTLE, TOWEL,
+} from "./objects.h.js";
+import { NATTK, NORMAL_SPEED } from "./permonst.h.js";
+import {
+    CORR, DOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, IRONBARS,
+    LADDER, ROOM, STAIRS, W_NONDIGGABLE,
+} from "./rm.h.js";
+import {
+    ACCESSIBLE, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, MON_AT, OBJ_AT, SURFACE_AT,
+    Sokoban, fmon, levl, m_at, remove_monster,
+} from "./rm.h.macros.js";
+import { TRAPPED_DOOR, Trap_Caught_Mon, Trap_Killed_Mon, Trap_Moved_Mon, WEB } from "./trap.h.js";
 import { is_pit } from "./trap.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { m_cansee } from "./vision.h.macros.js";
-import { m_canseeu } from "./vision.h.macros.js";
+import { cansee, couldsee, m_cansee, m_canseeu } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { m_next2u } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Aggravate_monster } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Displaced } from "./youprop.h.macros.js";
-import { Half_spell_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Stealth } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { Upolyd, m_next2u, mhis, next2u, u_at } from "./you.h.macros.js";
+import {
+    Aggravate_monster, Blind_telepat, Conflict, Deaf, Displaced, Half_spell_damage, Hallucination,
+    Invis, Protection_from_shape_changers, Stealth, Unaware, Underwater,
+} from "./youprop.h.macros.js";
+import { char, int, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { and64u } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { assert, memset, strchr, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, ptr_add, sizeof_member, struct_assign } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { artifact_light } from "./artifact.js";
-import { has_magic_key } from "./artifact.js";
+import { artifact_light, has_magic_key } from "./artifact.js";
 import { isok } from "./cmd.js";
 import { is_pool } from "./dbridge.js";
-import { a11y } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gy } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { bury_an_obj } from "./dig.js";
-import { is_digging } from "./dig.js";
-import { mdig_tunnel } from "./dig.js";
-import { watch_dig } from "./dig.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { sensemon } from "./display.js";
-import { swallowed } from "./display.js";
-import { Adjmonnam } from "./do_name.js";
-import { Amonnam } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { YMonnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
+import { a11y, flags, gb, gi, gk, gn, go, gy, svc, svl, svm, u } from "./decl.js";
+import { bury_an_obj, is_digging, mdig_tunnel, watch_dig } from "./dig.js";
+import { canseemon, newsym, sensemon, swallowed } from "./display.js";
+import { Adjmonnam, Amonnam, Monnam, YMonnam, mon_nam, y_monnam } from "./do_name.js";
 import { dogfood } from "./dog.js";
-import { could_reach_item } from "./dogmove.js";
-import { cursed_object_at } from "./dogmove.js";
-import { dog_move } from "./dogmove.js";
-import { finish_meating } from "./dogmove.js";
-import { Is_special } from "./dungeon.js";
-import { u_on_newpos } from "./dungeon.js";
+import { could_reach_item, cursed_object_at, dog_move, finish_meating } from "./dogmove.js";
+import { Is_special, u_on_newpos } from "./dungeon.js";
 import { eaten_stat } from "./eat.js";
-import { sengr_at } from "./engrave.js";
-import { wipe_engr_at } from "./engrave.js";
-import { disturb_buried_zombies } from "./hack.js";
-import { in_rooms } from "./hack.js";
-import { in_town } from "./hack.js";
-import { losehp } from "./hack.js";
-import { may_dig } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { notice_mon } from "./hack.js";
-import { switch_terrain } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { delobj } from "./invent.js";
-import { g_at } from "./invent.js";
-import { sobj_at } from "./invent.js";
+import { sengr_at, wipe_engr_at } from "./engrave.js";
+import {
+    disturb_buried_zombies, in_rooms, in_town, losehp, may_dig, money_cnt, notice_mon,
+    switch_terrain,
+} from "./hack.js";
+import { dist2, distmin, sgn, upstart } from "./hacklib.js";
+import { delobj, g_at, sobj_at } from "./invent.js";
 import { picking_lock } from "./lock.js";
-import { grow_up } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { grow_up, set_malign } from "./makemon.js";
 import { castmu } from "./mcastu.js";
-import { mattackm } from "./mhitm.js";
-import { mdisplacem } from "./mhitm.js";
-import { expels } from "./mhitu.js";
-import { mattacku } from "./mhitu.js";
-import { ranged_attk_available } from "./mhitu.js";
+import { mattackm, mdisplacem } from "./mhitm.js";
+import { expels, mattacku, ranged_attk_available } from "./mhitu.js";
 import { demon_talk } from "./minion.js";
-import { bill_dummy_object } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { angry_guards } from "./mon.js";
-import { can_carry } from "./mon.js";
-import { can_touch_safely } from "./mon.js";
-import { curr_mon_load } from "./mon.js";
-import { healmon } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { m_consume_obj } from "./mon.js";
-import { m_respond } from "./mon.js";
-import { max_mon_load } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { meatcorpse } from "./mon.js";
-import { meatmetal } from "./mon.js";
-import { meatobj } from "./mon.js";
-import { mfndpos } from "./mon.js";
-import { mnexto } from "./mon.js";
-import { mon_allowflags } from "./mon.js";
-import { mondied } from "./mon.js";
-import { mongone } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { monnear } from "./mon.js";
-import { mpickstuff } from "./mon.js";
-import { newcham } from "./mon.js";
-import { unstuck } from "./mon.js";
-import { wake_msg } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { can_track } from "./mondata.js";
-import { dmgtype } from "./mondata.js";
-import { locomotion } from "./mondata.js";
-import { mon_knows_traps } from "./mondata.js";
-import { mon_learns_traps } from "./mondata.js";
-import { noattacks } from "./mondata.js";
-import { resist_conflict } from "./mondata.js";
-import { sticks } from "./mondata.js";
+import { bill_dummy_object, splitobj } from "./mkobj.js";
+import {
+    angry_guards, can_carry, can_touch_safely, curr_mon_load, healmon, hideunder, m_consume_obj,
+    m_respond, max_mon_load, maybe_unhide_at, meatcorpse, meatmetal, meatobj, mfndpos, mnexto,
+    mon_allowflags, mondied, mongone, monkilled, monnear, mpickstuff, newcham, unstuck, wake_msg,
+    wake_nearto, wakeup,
+} from "./mon.js";
+import {
+    attacktype, can_track, dmgtype, locomotion, mon_knows_traps, mon_learns_traps, noattacks,
+    resist_conflict, sticks,
+} from "./mondata.js";
 import { mons } from "./monst.js";
-import { lined_up } from "./mthrowu.js";
-import { m_carrying } from "./mthrowu.js";
-import { m_has_launcher_and_ammo } from "./mthrowu.js";
-import { find_defensive } from "./muse.js";
-import { find_misc } from "./muse.js";
-import { find_offensive } from "./muse.js";
-import { searches_for_item } from "./muse.js";
-import { use_defensive } from "./muse.js";
-import { use_misc } from "./muse.js";
+import { lined_up, m_carrying, m_has_launcher_and_ammo } from "./mthrowu.js";
+import {
+    find_defensive, find_misc, find_offensive, searches_for_item, use_defensive, use_misc,
+} from "./muse.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { bare_artifactname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { Norep } from "./pline.js";
-import { You } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { pline_mon } from "./pline.js";
-import { pline_xy } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { an, bare_artifactname, makeplural, vtense, xname, yname } from "./objnam.js";
+import {
+    Norep, You, You_hear, You_see, impossible, pline, pline_The, pline_mon, pline_xy, set_msg_xy,
+    verbalize,
+} from "./pline.js";
 import { mbodypart } from "./polyself.js";
-import { in_your_sanctuary } from "./priest.js";
-import { inhistemple } from "./priest.js";
-import { pri_move } from "./priest.js";
-import { quest_stat_check } from "./quest.js";
-import { quest_talk } from "./quest.js";
-import { create_gas_cloud } from "./region.js";
-import { m_in_out_region } from "./region.js";
-import { visible_region_at } from "./region.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { add_damage } from "./shk.js";
-import { after_shk_move } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { inhishop } from "./shk.js";
-import { shk_move } from "./shk.js";
-import { stairway_at } from "./stairs.js";
-import { stairway_find_dir } from "./stairs.js";
-import { findgold } from "./steal.js";
-import { mdrop_obj } from "./steal.js";
+import { in_your_sanctuary, inhistemple, pri_move } from "./priest.js";
+import { quest_stat_check, quest_talk } from "./quest.js";
+import { create_gas_cloud, m_in_out_region, visible_region_at } from "./region.js";
+import { d, rn2, rnd } from "./rnd.js";
+import { add_damage, after_shk_move, costly_spot, inhishop, shk_move } from "./shk.js";
+import { stairway_at, stairway_find_dir } from "./stairs.js";
+import { findgold, mdrop_obj } from "./steal.js";
 import { place_monster } from "./steed.js";
-import { noteleport_level } from "./teleport.js";
-import { rloc } from "./teleport.js";
-import { tele_restrict } from "./teleport.js";
+import { noteleport_level, rloc, tele_restrict } from "./teleport.js";
 import { gettrack } from "./track.js";
-import { count_traps } from "./trap.js";
-import { maketrap } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { t_at } from "./trap.js";
+import { count_traps, maketrap, mintrap, t_at } from "./trap.js";
 import { gd_move } from "./vault.js";
-import { recalc_block_point } from "./vision.js";
-import { vision_recalc } from "./vision.js";
-import { autoreturn_weapon } from "./weapon.js";
-import { mon_wield_item } from "./weapon.js";
-import { select_rwep } from "./weapon.js";
+import { recalc_block_point, vision_recalc } from "./vision.js";
+import { autoreturn_weapon, mon_wield_item, select_rwep } from "./weapon.js";
 import { mwelded } from "./wield.js";
-import { cuss } from "./wizard.js";
-import { tactics } from "./wizard.js";
-import { see_wsegs } from "./worm.js";
-import { worm_move } from "./worm.js";
-import { worm_nomove } from "./worm.js";
-import { wormhitu } from "./worm.js";
+import { cuss, tactics } from "./wizard.js";
+import { see_wsegs, worm_move, worm_nomove, wormhitu } from "./worm.js";
 import { extract_from_minvent } from "./worn.js";
 import { fracture_rock } from "./zap.js";

@@ -3,32 +3,15 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
 /* does monster block others from teleporting? */
-function /* boolean */
-m_blocks_teleporting(mtmp)
-{
+function m_blocks_teleporting(mtmp) { /* boolean */
     if (is_dlord(mtmp.data) || is_dprince(mtmp.data))
         return TRUE;
     return FALSE;
 }
 
 /* teleporting is prevented on this level for this monster? */
-export function /* boolean */
-noteleport_level(mon)
-{
+export function noteleport_level(mon) { /* boolean */
     /* demon court in Gehennom prevent others from teleporting */
     if (In_hell(u.uz) && !(is_dlord(mon.data) || is_dprince(mon.data)))
         if (get_iter_mons(m_blocks_teleporting))
@@ -49,11 +32,9 @@ noteleport_level(mon)
 /* this is an approximation of onscary() that doesn't use any 'struct monst'
    fields aside from 'monst->data'; used primarily for new monster creation
    and monster teleport destination, not for ordinary monster movement */
-function /* boolean */
-goodpos_onscary(
+function goodpos_onscary(
     x, y,
-    mptr)
-{
+    mptr) { /* boolean */
     /* onscary() checks Angels and lawful minions; this oversimplifies */
     if (mptr.mlet == S_HUMAN || mptr.mlet == S_ANGEL
         || is_rider(mptr) || unique_corpstat(mptr))
@@ -82,18 +63,16 @@ goodpos_onscary(
  * This function will only look at mtmp->mdat, so makemon, mplayer, etc can
  * call it to generate new monster positions with fake monster structures.
  */
-export function /* boolean */
-goodpos(
+export function goodpos(
     x, y,
     mtmp,
-    gpflags)
-{
+    gpflags) { /* boolean */
     let mdat = null;
-    let ignorewater = (+((gpflags & MM_IGNOREWATER) != 0)),
-            ignorelava = (+((gpflags & MM_IGNORELAVA) != 0)),
-            checkscary = (+((gpflags & GP_CHECKSCARY) != 0)),
-            allow_u = (+((gpflags & GP_ALLOW_U) != 0)),
-            avoid_monpos = (+((gpflags & GP_AVOID_MONPOS) != 0));
+    let ignorewater = +((gpflags & MM_IGNOREWATER) != 0),
+            ignorelava = +((gpflags & MM_IGNORELAVA) != 0),
+            checkscary = +((gpflags & GP_CHECKSCARY) != 0),
+            allow_u = +((gpflags & GP_ALLOW_U) != 0),
+            avoid_monpos = +((gpflags & GP_AVOID_MONPOS) != 0);
 
     if (!isok(x, y))
         return FALSE;
@@ -134,17 +113,17 @@ goodpos(
         if (is_pool(x, y) && !ignorewater) {
             /* [what about Breathless?] */
             if (mtmp == gy.youmonst)
-                return (((Swimming() || Amphibious()
+                return ((Swimming() || Amphibious()
                         || (!Is_waterlevel(u.uz)
                             && !is_waterwall(x, y)
                             /* water on the Plane of Water has no surface
                                so there's no way to be on or above that */
-                            && (Levitation() || Flying() || Wwalking()))) ? 1 : 0));
+                            && (Levitation() || Flying() || Wwalking())) ? 1 : 0));
             else
-                return (((is_swimmer(mdat)
+                return (is_swimmer(mdat)
                         || (!Is_waterlevel(u.uz)
                             && !is_waterwall(x, y)
-                            && m_in_air(mtmp))) ? 1 : 0));
+                            && m_in_air(mtmp)) ? 1 : 0);
         } else if (mdat.mlet == S_EEL && rn2(13) && !ignorewater) {
             return FALSE;
         } else if (is_lava(x, y) && !ignorelava) {
@@ -153,12 +132,12 @@ goodpos(
             if (mdat == mons[PM_FLOATING_EYE])
                 return FALSE;
             else if (mtmp == gy.youmonst)
-                return (((Levitation() || Flying()
+                return (Levitation() || Flying()
                         || (Fire_resistance() && Wwalking() && uarmf
                             && uarmf.oerodeproof)
-                        || (Upolyd() && likes_lava(gy.youmonst.data))) ? 1 : 0));
+                        || (Upolyd() && likes_lava(gy.youmonst.data)) ? 1 : 0);
             else
-                return (((m_in_air(mtmp) || likes_lava(mdat)) ? 1 : 0));
+                return (m_in_air(mtmp) || likes_lava(mdat) ? 1 : 0);
         }
         if (passes_walls(mdat) && may_passwall(x, y))
             return TRUE;
@@ -192,37 +171,30 @@ goodpos(
  * If there is more than one valid position in the ring, choose one randomly.
  * Return TRUE and the position chosen when successful, FALSE otherwise.
  */
-export function /* boolean */
-enexto(
+export function enexto(
     cc,
     xx, yy,
-    mdat)
-{
-    return (((enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY)
-            || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS)) ? 1 : 0));
+    mdat) { /* boolean */
+    return (enexto_core(cc, xx, yy, mdat, GP_CHECKSCARY)
+            || enexto_core(cc, xx, yy, mdat, NO_MM_FLAGS) ? 1 : 0);
 }
 
-export function /* boolean */
-enexto_gpflags(
+export function enexto_gpflags(
     cc,
     xx, yy,
     mdat,
-    entflags)
-{
-    return (((enexto_core(cc, xx, yy, mdat, or64(GP_CHECKSCARY, entflags))
-            || enexto_core(cc, xx, yy, mdat, entflags)) ? 1 : 0));
+    entflags) { /* boolean */
+    return (enexto_core(cc, xx, yy, mdat, or64(GP_CHECKSCARY, entflags))
+            || enexto_core(cc, xx, yy, mdat, entflags) ? 1 : 0);
 }
 
-
-
-export function /* boolean */
-enexto_core(
+export function enexto_core(
     cc,
     xx, yy,
     mdat,
 
-    entflags)   /* flags for goodpos() */
-{ const $frame = stack_frame(); try {
+    entflags) { /* boolean */ /* flags for goodpos() */
+    const $frame = stack_frame(); try {
     let candy = stack_array(struct_nhcoord, ROWNO * (COLNO - 1)); /* enough room for every location */
     let i, nearcandyct, allcandyct;
     let fakemon = stack_struct(struct_monst); /* dummy monster */
@@ -273,118 +245,17 @@ enexto_core(
 
 ;
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef NEW_ENEXTO): not in this build */
 
 /*
  * Check for restricted areas present in some special levels.  (This might
  * need to be augmented to allow deliberate passage in wizard mode, but
  * only for explicitly chosen destinations.)
  */
-function /* boolean */
-tele_jump_ok(x1, y1, x2, y2)
-{
+function tele_jump_ok(x1, y1, x2, y2) { /* boolean */
     if (!isok(x2, y2))
         return FALSE;
     if (svd.dndest.nlx > 0) {
@@ -416,9 +287,7 @@ tele_jump_ok(x1, y1, x2, y2)
     return TRUE;
 }
 
-function /* boolean */
-teleok(x, y, trapok)
-{
+function teleok(x, y, trapok) { /* boolean */
     if (!trapok) {
         /* allow teleportation onto vibrating square, it's not a real trap;
            also allow pits and holes if levitating or flying */
@@ -444,9 +313,8 @@ teleok(x, y, trapok)
     return TRUE;
 }
 
-export function /* void */
-teleds(nux, nuy, teleds_flags)
-{ const $frame = stack_frame(); try {
+export function teleds(nux, nuy, teleds_flags) { /* void */
+    const $frame = stack_frame(); try {
     let was_swallowed;
     let ball_active, ball_still_in_range = FALSE,
             allow_drag = +((teleds_flags & TELEDS_ALLOW_DRAG) != 0),
@@ -457,7 +325,7 @@ teleds(nux, nuy, teleds_flags)
         /* unearth it */
         buried_ball_to_punishment();
     }
-    ball_active = (+(Punished() && uball.where != OBJ_FREE));
+    ball_active = +(Punished() && uball.where != OBJ_FREE);
     if (!ball_active
         || near_capacity() > SLT_ENCUMBER
         || distmin(u.ux, u.uy, nux, nuy) > 1)
@@ -514,7 +382,7 @@ teleds(nux, nuy, teleds_flags)
             /* dragging fails if hero is encumbered beyond 'burdened' */
             /* uball might've been cleared via drag_ball -> spoteffects ->
                dotrap -> magic trap unpunishment */
-            ball_active = (+(Punished() && uball.where != OBJ_FREE));
+            ball_active = +(Punished() && uball.where != OBJ_FREE);
             if (ball_active)
                 unplacebc(); /* to match placebc() below */
         }
@@ -557,12 +425,12 @@ teleds(nux, nuy, teleds_flags)
     if (vault_guard) {
         let save_urooms = stack_array(char, 5); /* [sizeof u.urooms] */
 
-        void strcpy(save_urooms, u.urooms);
-        void strcpy(u.urooms, in_rooms(u.ux, u.uy, VAULT));
+        strcpy(save_urooms, u.urooms);
+        strcpy(u.urooms, in_rooms(u.ux, u.uy, VAULT));
         /* if hero has left vault, make guard notice */
         if (!vault_occupied(u.urooms))
             uleftvault(vault_guard);
-        void strcpy(u.urooms, save_urooms); /* reset prior to spoteffects() */
+        strcpy(u.urooms, save_urooms); /* reset prior to spoteffects() */
     }
     /* possible shop entry message comes after guard's shrill whistle */
     spoteffects(TRUE);
@@ -570,25 +438,20 @@ teleds(nux, nuy, teleds_flags)
     notice_mon_on();
     notice_all_mons(TRUE);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* make a list of coordinates in expanding distance from <cx,cy>;
    return value is number of coordinates inserted into ccc[]  */
-export function /* int */
-collect_coords(
+export function collect_coords(
     ccc,
     cx, cy,
     maxradius,
 
     cc_flags,
 
-
-
-
-
-
-    filter) /* if Null, no filtering */
-{ const $frame = stack_frame(); try {
+    filter) { /* int */ /* if Null, no filtering */
+    const $frame = stack_frame(); try {
     let x, y, lox, hix, loy, hiy;
     let radius, rowrange, colrange, k, n = 0;
     let cc = stack_struct(struct_nhcoord), passcc = null;
@@ -598,7 +461,7 @@ collect_coords(
 
             scramble = +((cc_flags & CC_UNSHUFFLED) == 0),
 
-            ring_pairs = (((scramble && (cc_flags & CC_RING_PAIRS) != 0) ? 1 : 0)),
+            ring_pairs = (scramble && (cc_flags & CC_RING_PAIRS) != 0 ? 1 : 0),
 
             skip_mons = +((cc_flags & CC_SKIP_MONS) != 0),
 
@@ -661,8 +524,8 @@ collect_coords(
             newpass = passend = TRUE;
         } else {
             /* 0 (if include_cxcy) and maxradius override odd/even */
-            newpass = (+((radius % 2) != 0 || radius == 0)); /* odd */
-            passend = (+((radius % 2) == 0 || radius == maxradius)); /* even */
+            newpass = +((radius % 2) != 0 || radius == 0); /* odd */
+            passend = +((radius % 2) == 0 || radius == maxradius); /* even */
         }
         if (newpass || !passcc) { /* !passcc is redundant but used to fend
                                    * off analyzers thinking use of passcc
@@ -686,7 +549,7 @@ collect_coords(
                        !ZAP_POS() accepts them; caller needs to handle such */
                     || (skip_inaccessible && !ZAP_POS(levl()[x][y].typ)))
                     continue; /* quick filters */
-                if (filter && !(filter)(x, y))
+                if (filter && !filter(x, y))
                     continue;
                 cc.x = x, cc.y = y;
                 struct_assign((ccc = ptr_add(ccc, 1), ptr_add(ccc, -1)), cc);
@@ -710,12 +573,12 @@ collect_coords(
     } /* radius loop */
     debugpline4(_("collect_coords(,%d,%d,%d,,)=%d"), cx, cy, maxradius, result, __FILE__);
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* [try to] teleport hero to a safe spot */
-export function /* boolean */
-safe_teleds(teleds_flags)
-{ const $frame = stack_frame(); try {
+export function safe_teleds(teleds_flags) { /* boolean */
+    const $frame = stack_frame(); try {
     let nux, nuy;
     let cc_flags;
     let candy = stack_array(struct_nhcoord, ROWNO * (COLNO - 1)), backupspot = stack_struct(struct_nhcoord);
@@ -767,11 +630,11 @@ safe_teleds(teleds_flags)
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-vault_tele()
-{ const $frame = stack_frame(); try {
+function vault_tele() { /* void */
+    const $frame = stack_frame(); try {
     let croom = search_special(VAULT);
     let c = stack_struct(struct_nhcoord);
 
@@ -780,11 +643,11 @@ vault_tele()
         return;
     }
     tele();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-teleport_pet(mtmp, force_it)
-{ let $goto = null;
+export function teleport_pet(mtmp, force_it) { /* boolean */
+    let $goto = null;
     var otmp;
 
     if (mtmp == u.usteed)
@@ -810,9 +673,7 @@ teleport_pet(mtmp, force_it)
 }
 
 /* teleport to random pet, if valid location next to it */
-export function /* void */
-tele_to_rnd_pet()
-{
+export function tele_to_rnd_pet() { /* void */
     let mtmp, pet = null;
     let cnt = 0;
 
@@ -838,16 +699,13 @@ tele_to_rnd_pet()
 }
 
 /* teleport the hero via some method other than scroll of teleport */
-export function /* void */
-tele()
-{
+export function tele() { /* void */
     scrolltele(null);
 }
 
 /* teleport the hero; usually discover scroll of teleportation if via scroll */
-export function /* void */
-scrolltele(scroll)
-{ const $frame = stack_frame(); try {
+export function scrolltele(scroll) { /* void */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
 
     /* Disable teleportation in stronghold && Vlad's Tower */
@@ -876,9 +734,9 @@ scrolltele(scroll)
         } else {
             let whobuf = stack_array(char, BUFSZ);
 
-            void strcpy(whobuf, _("you"));
+            strcpy(whobuf, _("you"));
             if (u.usteed)
-                void sprintf(eos(whobuf), _(" and %s"), mon_nam(u.usteed));
+                sprintf(eos(whobuf), _(" and %s"), mon_nam(u.usteed));
             pline(_("Where do %s want to be teleported?"), whobuf);
             if (scroll)
                 learnscroll(scroll);
@@ -911,22 +769,17 @@ scrolltele(scroll)
     if (scroll)
         learnscroll(scroll);
 
-    void safe_teleds(TELEDS_TELEPORT);
-} finally { stack_pop($frame); } }
+    safe_teleds(TELEDS_TELEPORT);
+    } finally { stack_pop($frame); }
+}
 
 /* the #teleport command; 'm ^T' == choose among several teleport modes */
-export function /* int */
-dotelecmd()
-{ const $frame = stack_frame(); try {
+export function dotelecmd() { /* int */
+    const $frame = stack_frame(); try {
     let save_HTele, save_ETele;
     let res, added, hidden;
     let ignore_restrictions = FALSE;
 /* also defined in spell.c */
-
-
-
-
-
 
     /* normal mode; ignore 'm' prefix if it was given */
     if (!wizard())
@@ -1020,20 +873,17 @@ dotelecmd()
     u.uprops[TELEPORT].extrinsic = save_ETele;
     if (added != NOOP_SPELL || hidden != NOOP_SPELL)
         /* can't both be non-NOOP so addition will yield the non-NOOP one */
-        void tport_spell(added + hidden - NOOP_SPELL);
+        tport_spell(added + hidden - NOOP_SPELL);
 
     return res ? ECMD_TIME : ECMD_OK;
+    } finally { stack_pop($frame); }
+}
+export const NOOP_SPELL = 0;
+export const HIDE_SPELL = 1;
+export const ADD_SPELL = 2;
 
-
-
-
-
-} finally { stack_pop($frame); } } export const NOOP_SPELL = 0; export const HIDE_SPELL = 1; export const ADD_SPELL = 2;
-
-export function /* int */
-dotele(
-    break_the_rules) /* True: wizard mode ^T */
-{
+export function dotele(
+    break_the_rules) { /* int */ /* True: wizard mode ^T */
     let trap;
     let cantdoit;
     let trap_once = FALSE;
@@ -1077,7 +927,7 @@ dotele(
             let knownsp = known_spell(SPE_TELEPORT_AWAY);
 
             /* casting isn't inhibited by being Stunned (...it ought to be) */
-            castit = (+(knownsp >= spe_Fresh && !Confusion()));
+            castit = +(knownsp >= spe_Fresh && !Confusion());
             if (!castit && !break_the_rules) {
                 You(_("%s."), (!Teleportation() ? ((knownsp != spe_Unknown)
                                               ? _("can't cast that spell")
@@ -1097,20 +947,7 @@ dotele(
 
         energy = 5 * spellev(SPE_TELEPORT_AWAY);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        /* #if 0: not in this build */
 
         if (u.uhunger <= 10) {
             cantdoit = _("are too weak from hunger");
@@ -1151,7 +988,7 @@ dotele(
             iflags.travelcc.x = iflags.travelcc.y = 0;
             tele();
         }
-        void next_to_u();
+        next_to_u();
     } else {
         You(_("%s"), shudder_for_moment());
         return 0;
@@ -1159,16 +996,17 @@ dotele(
     if (!trap)
         morehungry(100);
     return 1;
-} export function spellev(spell_otyp) { return ((objects[spell_otyp].oc_oc2)); }
+}
+export function spellev(spell_otyp) { return (objects[spell_otyp].oc_oc2); }
 
-export function /* void */
-level_tele()
-{ const $frame = stack_frame(); try { let $goto = null; var get_there_from = init_string(static_array("level_tele.get_there_from", char, sizeof_string("get there from %s.")), _("get there from %s."), true), newlevel = stack_struct(struct_d_level), buf = stack_array(char, BUFSZ), qbuf = stack_array(char, BUFSZ), destlev = stack_var(schar), destdnum = stack_var(xint16), lsav = stack_struct(struct_d_level);
-    
+export function level_tele() { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var get_there_from = init_string(static_array("level_tele.get_there_from", char, sizeof_string("get there from %s.")), _("get there from %s."), true), newlevel = stack_struct(struct_d_level), buf = stack_array(char, BUFSZ), qbuf = stack_array(char, BUFSZ), destlev = stack_var(schar), destdnum = stack_var(xint16), lsav = stack_struct(struct_d_level);
+
     var newlev;
-    
+
     var escape_by_flying = 0; /* when surviving dest of -N */
-    
+
     var force_dest = FALSE;
 
     if (iflags.debug_fuzzer) {
@@ -1188,10 +1026,9 @@ level_tele()
         return;
     }
     $goto_random_levtport: for (;;) { switch ($goto) { default: case "random_levtport": if (!$goto && ((Teleport_control() && !Stunned()) || wizard())) {
-        
         var trycnt = 0;
 
-        void strcpy(qbuf, _("To what level do you want to teleport?"));
+        strcpy(qbuf, _("To what level do you want to teleport?"));
         do {
             $goto_levTport_menu: for (;;) { switch ($goto) { default: if (iflags.menu_requested) {
                 /* wizard mode 'm ^V' skips prompting on first pass
@@ -1202,9 +1039,9 @@ level_tele()
             }
             if (++trycnt == 2) {
                 if (wizard())
-                    void strcat(qbuf, _(" [type a number, name, or ? for a menu]"));
+                    strcat(qbuf, _(" [type a number, name, or ? for a menu]"));
                 else
-                    void strcat(qbuf, _(" [type a number or name]"));
+                    strcat(qbuf, _(" [type a number or name]"));
             }
             chars[buf] = ord('\0'); /* EDIT_GETLIN: if we're on second or later pass,
                             the previous input was invalid so don't use it
@@ -1219,8 +1056,7 @@ level_tele()
                 return;
             }
             case "levTport_menu": if ($goto || (wizard() && !strcmp(buf, _("?")))) {
-                switch ($goto) { default: 
-                
+                switch ($goto) { default:
 
  case "levTport_menu": $goto = null;
                 destlev[0] = 0; }
@@ -1264,7 +1100,7 @@ level_tele()
                 Your(_("possessions land on the %s with a thud."),
                      surface(u.ux, u.uy));
             svk.killer.format = NO_KILLER_PREFIX;
-            void strcpy(svk.killer.name, _("committed suicide"));
+            strcpy(svk.killer.name, _("committed suicide"));
             done(DIED);
             pline(_("An energized cloud of dust begins to coalesce."));
             Your(_("body rematerializes%s."),
@@ -1336,7 +1172,7 @@ level_tele()
                   ;
             verbalize(_("Thou art early, but we'll admit thee."));
             svk.killer.format = NO_KILLER_PREFIX;
-            void strcpy(svk.killer.name, _("went to heaven prematurely"));
+            strcpy(svk.killer.name, _("went to heaven prematurely"));
         } else if (newlev == -9) {
             You_feel(_("deliriously happy."));
             pline(_("(In fact, you're on Cloud 9!)"));
@@ -1353,7 +1189,7 @@ level_tele()
         } else {
             pline(_("Unfortunately, you don't know how to fly."));
             You(_("plummet a few thousand feet to your death."));
-            void sprintf(svk.killer.name, _("teleported out of the dungeon and fell to %s death"), uhis())
+            sprintf(svk.killer.name, _("teleported out of the dungeon and fell to %s death"), uhis())
 
 ;
             svk.killer.format = NO_KILLER_PREFIX;
@@ -1361,8 +1197,6 @@ level_tele()
     }
 
     if (chars[svk.killer.name + 0]) { /* the chosen destination was not survivable */
-        
-
         /* set specific death location; this also suppresses bones */
         struct_assign(lsav, u.uz);   /* save current level; see below */
         u.uz.dnum = 0; /* main dungeon */
@@ -1394,9 +1228,9 @@ level_tele()
            which branches don't connect to anything deeper;
            mainly used to distinguish "can't get there from here"
            vs "from anywhere" rather than to control destination */
-        var qbranch = In_quest(u.uz) ? (svd.dungeon_topology.d_qstart_level)
-                          : In_mines(u.uz) ? (svd.dungeon_topology.d_mineend_level)
-                            : (svd.dungeon_topology.d_sanctum_level);
+        var qbranch = In_quest(u.uz) ? svd.dungeon_topology.d_qstart_level
+                          : In_mines(u.uz) ? svd.dungeon_topology.d_mineend_level
+                            : svd.dungeon_topology.d_sanctum_level;
         var deepest = svd.dungeons[qbranch.dnum].depth_start
                       + dunlevs_in_dungeon(qbranch) - 1;
 
@@ -1408,8 +1242,8 @@ level_tele()
             pline(_("Sorry..."));
         }
         /* no teleporting out of quest dungeon */
-        if (In_quest(u.uz) && newlev < depth((svd.dungeon_topology.d_qstart_level)))
-            newlev = depth((svd.dungeon_topology.d_qstart_level));
+        if (In_quest(u.uz) && newlev < depth(svd.dungeon_topology.d_qstart_level))
+            newlev = depth(svd.dungeon_topology.d_qstart_level);
         /* the player thinks of levels purely in logical terms, so
          * we must translate newlev to a number relative to the
          * current dungeon.
@@ -1426,23 +1260,12 @@ level_tele()
     schedule_goto(newlevel, UTOTYPE_NONE, 0,
                   flags.verbose ? _("You materialize on a different level!")
                                 : 0);
+    /* #if 0: not in this build */
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-} finally { stack_pop($frame); } }
-
-export function /* void */
-domagicportal(ttmp)
-{ const $frame = stack_frame(); try {
+export function domagicportal(ttmp) { /* void */
+    const $frame = stack_frame(); try {
     let target_level = stack_struct(struct_d_level);
     let totype;
     let stunmsg = 0;
@@ -1486,11 +1309,11 @@ domagicportal(ttmp)
     }
 
     schedule_goto(target_level, totype, stunmsg, 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-tele_trap(trap)
-{ const $frame = stack_frame(); try {
+export function tele_trap(trap) { /* void */
+    const $frame = stack_frame(); try {
     /* a fixed-destination teleport trap could theoretically place hero onto a
      * second teleport trap; prevent the recursive call from spoteffects() from
      * triggering the trap at the destination */
@@ -1532,19 +1355,19 @@ tele_trap(trap)
         tele();
 
     in_tele_trap[0] = FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-level_tele_trap(trap, trflags)
-{ const $frame = stack_frame(); try {
+export function level_tele_trap(trap, trflags) { /* void */
+    const $frame = stack_frame(); try {
     let verbbuf = stack_array(char, BUFSZ);
     let intentional = FALSE;
 
     if ((trflags & (VIASITTING | FORCETRAP)) != 0) {
-        void strcpy(verbbuf, _("trigger")); /* follows "You sit down." */
+        strcpy(verbbuf, _("trigger")); /* follows "You sit down." */
         intentional = TRUE;
     } else
-        void sprintf(verbbuf, _("%s onto"), u_locomotion(_("step")));
+        sprintf(verbbuf, _("%s onto"), u_locomotion(_("step")));
     You(_("%s a level teleport trap!"), verbbuf);
 
     if (Antimagic() && !intentional) {
@@ -1568,14 +1391,13 @@ level_tele_trap(trap, trflags)
        can affect the outcome ("Oops" result) */
     if (!Teleport_control())
         make_confused((HConfusion() & TIMEOUT) + 3, FALSE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* check whether monster can arrive at location <x,y> via Tport (or fall) */
-function /* boolean */
-rloc_pos_ok(
+function rloc_pos_ok(
     x, y,
-    mtmp)
-{
+    mtmp) { /* boolean */
     let xx, yy;
 
     if (!goodpos(x, y, mtmp, GP_CHECKSCARY))
@@ -1592,27 +1414,27 @@ rloc_pos_ok(
     if (!xx) {
         /* no current location (migrating monster arrival) */
         if (svd.dndest.nlx && On_W_tower_level(u.uz))
-            return ((+((yy & 2) != 0))
+            return (+((yy & 2) != 0)
                     /* inside xor not within */
                     ^ +!within_bounded_area(x, y,
                                            svd.dndest.nlx, svd.dndest.nly,
                                            svd.dndest.nhx, svd.dndest.nhy));
         if (svu.updest.lx && (yy & 1) != 0) /* moving up */
-            return (+(within_bounded_area(x, y,
+            return +(within_bounded_area(x, y,
                                         svu.updest.lx, svu.updest.ly,
                                         svu.updest.hx, svu.updest.hy)
                     && (!svu.updest.nlx
                         || !within_bounded_area(x, y,
                                             svu.updest.nlx, svu.updest.nly,
-                                            svu.updest.nhx, svu.updest.nhy))));
+                                            svu.updest.nhx, svu.updest.nhy)));
         if (svd.dndest.lx && (yy & 1) == 0) /* moving down */
-            return (+(within_bounded_area(x, y,
+            return +(within_bounded_area(x, y,
                                         svd.dndest.lx, svd.dndest.ly,
                                         svd.dndest.hx, svd.dndest.hy)
                     && (!svd.dndest.nlx
                         || !within_bounded_area(x, y,
                                             svd.dndest.nlx, svd.dndest.nly,
-                                            svd.dndest.nhx, svd.dndest.nhy))));
+                                            svd.dndest.nhx, svd.dndest.nhy)));
     } else {
         /* [try to] prevent a shopkeeper or temple priest from being
            sent out of his room (caller might resort to goodpos() if
@@ -1641,18 +1463,16 @@ rloc_pos_ok(
  * a value because mtmp is a migrating_mon.  Worm tails are always
  * placed randomly around the head of the worm.
  */
-function /* void */
-rloc_to_core(
+function rloc_to_core(
     mtmp,
     x, y,
-    rlocflags)
-{
+    rlocflags) { /* void */
     let oldx = mtmp.mx, oldy = mtmp.my;
-    let resident_shk = ((mtmp.isshk && inhishop(mtmp)) ? 1 : 0);
+    let resident_shk = (mtmp.isshk && inhishop(mtmp) ? 1 : 0);
     let preventmsg = +((rlocflags & RLOC_NOMSG) != 0);
     let vanishmsg = +((rlocflags & RLOC_MSG) != 0);
     let appearmsg = +((mtmp.mstrategy & STRAT_APPEARMSG) != 0);
-    let domsg = ((!gi.in_mklev && (vanishmsg || appearmsg) && !preventmsg) ? 1 : 0);
+    let domsg = (!gi.in_mklev && (vanishmsg || appearmsg) && !preventmsg ? 1 : 0);
     let telemsg = FALSE;
 
     if (x == mtmp.mx && y == mtmp.my && m_at(x, y) == mtmp)
@@ -1748,7 +1568,7 @@ rloc_to_core(
     if (mtmp.minvent && !costly_spot(x, y)) {
         let otmp;
         let shkp = find_objowner(mtmp.minvent, oldx, oldy);
-        let peaceful = ((!shkp || shkp.mpeaceful) ? 1 : 0);
+        let peaceful = (!shkp || shkp.mpeaceful ? 1 : 0);
 
         for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
             if (otmp.no_charge)
@@ -1760,31 +1580,25 @@ rloc_to_core(
 
     /* if hero is busy, maybe stop occupation */
     if (go.occupation)
-        void dochugw(mtmp, FALSE);
+        dochugw(mtmp, FALSE);
 
     /* trapped monster teleported away */
     if (mtmp.mtrapped && !mtmp.wormno)
-        void mintrap(mtmp, NO_TRAP_FLAGS);
+        mintrap(mtmp, NO_TRAP_FLAGS);
 }
 
-export function /* void */
-rloc_to(mtmp, x, y)
-{
+export function rloc_to(mtmp, x, y) { /* void */
     rloc_to_core(mtmp, x, y, RLOC_NOMSG);
 }
 
-export function /* void */
-rloc_to_flag(
+export function rloc_to_flag(
     mtmp,
     x, y,
-    rlocflags)
-{
+    rlocflags) { /* void */
     rloc_to_core(mtmp, x, y, rlocflags);
 }
 
-function /* stairway * */
-stairway_find_forwiz(isladder, up)
-{
+function stairway_find_forwiz(isladder, up) { /* stairway * */
     let stway = gs.stairs;
 
     while (stway && !(stway.isladder == isladder
@@ -1795,11 +1609,10 @@ stairway_find_forwiz(isladder, up)
 
 /* place a monster at a random location, typically due to teleport;
    return TRUE if successful, FALSE if not; rlocflags is RLOC_foo flags */
-export function /* boolean */
-rloc(
+export function rloc(
     mtmp,
-    rlocflags)
-{ const $frame = stack_frame(); try {
+    rlocflags) { /* boolean */
+    const $frame = stack_frame(); try {
     var cc = stack_struct(struct_nhcoord), backupcc = stack_struct(struct_nhcoord), candy = stack_array(struct_nhcoord, ROWNO * (COLNO - 1)); /* room for entire map */
     var cc_flags;
     var x, y;
@@ -1892,16 +1705,16 @@ rloc(
  }
     rloc_to_core(mtmp, x, y, rlocflags);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* let wizard-mode player choose a teleporting monster's destination */
-export function /* boolean */
-control_mon_tele(
+export function control_mon_tele(
     mon,
     cc_p,
     rlocflags,
-    via_rloc)
-{ const $frame = stack_frame(); try {
+    via_rloc) { /* boolean */
+    const $frame = stack_frame(); try {
     let tcbuf = stack_array(char, BUFSZ);
 
     if (!isok(cc_p.x, cc_p.y)) {
@@ -1916,14 +1729,14 @@ control_mon_tele(
     pline(_("Teleport %s @ <%d,%d> where?"),
           noit_mon_nam(mon), mon.mx, mon.my);
     /* getpos '?' will show "Move the cursor to <where to teleport Foo>:" */
-    void sprintf(tcbuf, _("where to teleport %s"), noit_mon_nam(mon));
-    if (getpos(cc_p, FALSE, tcbuf) >= 0 && !((((cc_p.x) == u.ux) && ((cc_p.y) == u.uy)))) {
+    sprintf(tcbuf, _("where to teleport %s"), noit_mon_nam(mon));
+    if (getpos(cc_p, FALSE, tcbuf) >= 0 && !(((cc_p.x) == u.ux) && ((cc_p.y) == u.uy))) {
         if (via_rloc
               ? rloc_pos_ok(cc_p.x, cc_p.y, mon)
               : goodpos(cc_p.x, cc_p.y, mon, rlocflags))
             return TRUE;
         if (!iflags.debug_fuzzer) {
-            void sprintf(tcbuf, _("<%d,%d> is not considered viable; force anyway?"), mon.mx, mon.my)
+            sprintf(tcbuf, _("<%d,%d> is not considered viable; force anyway?"), mon.mx, mon.my)
 ;
             if (y_n(tcbuf) == ord('y'))
                 return TRUE;
@@ -1931,11 +1744,11 @@ control_mon_tele(
     }
     pline(_("%s destination."), via_rloc ? _("Picking random") : _("Using derived"));
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mvault_tele(mtmp)
-{ const $frame = stack_frame(); try {
+function mvault_tele(mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let croom = search_special(VAULT);
     let c = stack_struct(struct_nhcoord);
 
@@ -1943,12 +1756,11 @@ mvault_tele(mtmp)
         rloc_to(mtmp, c.x, c.y);
         return;
     }
-    void rloc(mtmp, RLOC_NONE);
-} finally { stack_pop($frame); } }
+    rloc(mtmp, RLOC_NONE);
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-tele_restrict(mon)
-{
+export function tele_restrict(mon) { /* boolean */
     if (noteleport_level(mon)) {
         if (canseemon(mon))
             pline(_("A mysterious force prevents %s from teleporting!"),
@@ -1958,9 +1770,7 @@ tele_restrict(mon)
     return FALSE;
 }
 
-export function /* void */
-mtele_trap(mtmp, trap, in_sight)
-{
+export function mtele_trap(mtmp, trap, in_sight) { /* void */
     let monname;
 
     /* don't print feedback here: a monster stepping on a trap and not
@@ -1984,12 +1794,12 @@ mtele_trap(mtmp, trap, in_sight)
              * the incoming monster displaces the resident to the nearest
              * possible space - instead it just doesn't work. */
             if (!(m_at(trap.launch.x, trap.launch.y)
-                  || ((((trap.launch.x) == u.ux) && ((trap.launch.y) == u.uy))))) {
+                  || (((trap.launch.x) == u.ux) && ((trap.launch.y) == u.uy)))) {
                 rloc_to_core(mtmp, trap.launch.x, trap.launch.y,
                              RLOC_MSG);
             }
         } else
-            void rloc(mtmp, RLOC_NONE);
+            rloc(mtmp, RLOC_NONE);
 
         if (in_sight) {
             if (canseemon(mtmp))
@@ -2002,13 +1812,12 @@ mtele_trap(mtmp, trap, in_sight)
 }
 
 /* return Trap_Effect_Finished if still on level, Trap_Moved_Mon if not */
-export function /* int */
-mlevel_tele_trap(
+export function mlevel_tele_trap(
     mtmp,
     trap,
     force_it,
-    in_sight)
-{ const $frame = stack_frame(); try {
+    in_sight) { /* int */
+    const $frame = stack_frame(); try {
     let tt = (trap ? trap.ttyp : NO_TRAP);
 
     if (mtmp == u.ustuck) /* probably a vortex */
@@ -2019,7 +1828,7 @@ mlevel_tele_trap(
 
         if (is_hole(tt)) {
             if (Is_stronghold(u.uz)) {
-                assign_level(tolevel, (svd.dungeon_topology.d_valley_level));
+                assign_level(tolevel, svd.dungeon_topology.d_valley_level);
             } else if (Is_botlevel(u.uz)) {
                 if (in_sight && trap.tseen)
                     pline_mon(mtmp, _("%s avoids the %s."),
@@ -2028,7 +1837,7 @@ mlevel_tele_trap(
                 return Trap_Effect_Finished;
             } else {
                 assign_level(tolevel, trap.dst);
-                void clamp_hole_destination(tolevel);
+                clamp_hole_destination(tolevel);
             }
         } else if (tt == MAGIC_PORTAL) {
             if (In_endgame(u.uz) && (mon_has_amulet(mtmp)
@@ -2095,12 +1904,11 @@ mlevel_tele_trap(
         return Trap_Moved_Mon; /* no longer on this level */
     }
     return Trap_Effect_Finished;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* place object randomly, returns False if it's gone (eg broken) */
-export function /* boolean */
-rloco(obj)
-{
+export function rloco(obj) { /* boolean */
     let tx, ty, otx, oty;
     let restricted_fall;
     let try_limit = 4000;
@@ -2113,7 +1921,7 @@ rloco(obj)
     obj_extract_self(obj);
     otx = obj.ox;
     oty = obj.oy;
-    restricted_fall = (((otx == 0 && svd.dndest.lx) ? 1 : 0));
+    restricted_fall = (otx == 0 && svd.dndest.lx ? 1 : 0);
     do {
         tx = rn1(COLNO - 3, 2);
         ty = rn2(ROWNO);
@@ -2148,8 +1956,8 @@ rloco(obj)
         ; /* fell through a trap door; no update of old loc needed */
     } else {
         let shkp = find_objowner(obj, otx, oty);
-        let objinshop = ((shkp && costly_spot(otx, oty)) ? 1 : 0),
-                onboundary = ((shkp && costly_adjacent(shkp, otx, oty)) ? 1 : 0);
+        let objinshop = (shkp && costly_spot(otx, oty) ? 1 : 0),
+                onboundary = (shkp && costly_adjacent(shkp, otx, oty) ? 1 : 0);
 
         /*
          * If object starts inside shop or is unpaid and on shop boundary:
@@ -2162,7 +1970,7 @@ rloco(obj)
         if (objinshop || (obj.unpaid && onboundary)) {
             let h = chars[in_rooms(u.ux, u.uy, SHOPBASE)],
                  oo = chars[in_rooms(otx, oty, 0)];
-            let hinshop = ((h && strchr(in_rooms(shkp.mx, shkp.my, 0), h)) ? 1 : 0);
+            let hinshop = (h && strchr(in_rooms(shkp.mx, shkp.my, 0), h) ? 1 : 0);
 
             if (hinshop && costly_spot(tx, ty)
                 /* verify that it's the same shop */
@@ -2174,7 +1982,7 @@ rloco(obj)
                 if (!obj.unpaid)
                     addtobill(obj, FALSE, FALSE, FALSE);
             } else {
-                void stolen_value(obj, otx, oty, FALSE, FALSE);
+                stolen_value(obj, otx, oty, FALSE, FALSE);
             }
         }
 
@@ -2187,9 +1995,7 @@ rloco(obj)
 }
 
 /* Returns an absolute depth */
-export function /* int */
-random_teleport_level()
-{
+export function random_teleport_level() { /* int */
     let nlev, max_depth, min_depth, cur_depth = depth(u.uz);
 
     /* [the endgame case can only occur in wizard mode] */
@@ -2259,11 +2065,10 @@ random_teleport_level()
 
 /* you teleport a monster (via wand, spell, or poly'd q.mechanic attack);
    return false iff the attempt fails */
-export function /* boolean */
-u_teleport_mon(
+export function u_teleport_mon(
     mtmp,
-    give_feedback)
-{ const $frame = stack_frame(); try {
+    give_feedback) { /* boolean */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
 
     if (svl.level.flags.stasis_until >= svm.moves) {
@@ -2289,383 +2094,149 @@ u_teleport_mon(
             return FALSE;
     }
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*teleport.c*/
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+
+import { A_STR, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { shudder_for_moment } from "./decl.h.macros.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
+import { S_ANGEL, S_EEL, S_ELEMENTAL, S_HUMAN, S_MIMIC, S_VAMPIRE } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { LR_MONGEN } from "./dungeon.h.js";
-import { MIGR_PORTAL } from "./dungeon.h.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { In_sokoban } from "./dungeon.h.macros.js";
-import { In_tutorial } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { within_bounded_area } from "./dungeon.h.macros.js";
-import { notice_mon_off } from "./flag.h.macros.js";
-import { notice_mon_on } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { CC_INCL_CENTER } from "./hack.h.js";
-import { CC_NO_FLAGS } from "./hack.h.js";
-import { CC_RING_PAIRS } from "./hack.h.js";
-import { CC_SKIP_INACCS } from "./hack.h.js";
-import { CC_SKIP_MONS } from "./hack.h.js";
-import { CC_UNSHUFFLED } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FORCETRAP } from "./hack.h.js";
-import { GP_ALLOW_U } from "./hack.h.js";
-import { GP_ALLOW_XY } from "./hack.h.js";
-import { GP_AVOID_MONPOS } from "./hack.h.js";
-import { GP_CHECKSCARY } from "./hack.h.js";
-import { MM_IGNORELAVA } from "./hack.h.js";
-import { MM_IGNOREWATER } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { RLOC_ERR } from "./hack.h.js";
-import { RLOC_MSG } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { RLOC_NONE } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { TELEDS_ALLOW_DRAG } from "./hack.h.js";
-import { TELEDS_TELEPORT } from "./hack.h.js";
-import { VIASITTING } from "./hack.h.js";
-import { You1 } from "./hack.h.macros.js";
-import { astral_level } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { dunlev_reached } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { medusa_level } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { qlocate_level } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
-import { debugpline0 } from "./lint.h.macros.js";
-import { debugpline4 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { SHOPBASE } from "./mkroom.h.js";
-import { TEMPLE } from "./mkroom.h.js";
-import { VAULT } from "./mkroom.h.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { control_teleport } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { is_covetous } from "./mondata.h.macros.js";
-import { is_dlord } from "./mondata.h.macros.js";
-import { is_dprince } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { is_silent } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { unique_corpstat } from "./mondata.h.macros.js";
+import { LR_MONGEN, MIGR_PORTAL, MIGR_RANDOM, struct_d_level } from "./dungeon.h.js";
+import {
+    In_endgame, In_sokoban, In_tutorial, Inhell, Is_stronghold, Is_waterlevel, within_bounded_area,
+} from "./dungeon.h.macros.js";
+import { notice_mon_off, notice_mon_on, wizard } from "./flag.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, boolean, coordxy, xint16 } from "./global.h.js";
+import {
+    BOLT_LIM, CC_INCL_CENTER, CC_NO_FLAGS, CC_RING_PAIRS, CC_SKIP_INACCS, CC_SKIP_MONS,
+    CC_UNSHUFFLED, DIED, ECMD_OK, ECMD_TIME, FORCETRAP, GP_ALLOW_U, GP_ALLOW_XY, GP_AVOID_MONPOS,
+    GP_CHECKSCARY, MM_IGNORELAVA, MM_IGNOREWATER, NO_KILLER_PREFIX, NO_MM_FLAGS, NO_TRAP_FLAGS,
+    RLOC_ERR, RLOC_MSG, RLOC_NOMSG, RLOC_NONE, SLT_ENCUMBER, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT,
+    VIASITTING,
+} from "./hack.h.js";
+import {
+    You1, astral_level, distu, dunlev_reached, makeknown, max, medusa_level, min, qlocate_level,
+    rn1, y_n, ynq,
+} from "./hack.h.macros.js";
+import { debugpline0, debugpline4, showdebug } from "./lint.h.macros.js";
+import { EPRI, ESHK } from "./mextra.h.macros.js";
+import { SHOPBASE, TEMPLE, VAULT } from "./mkroom.h.js";
+import {
+    amorphous, can_teleport, control_teleport, haseyes, is_covetous, is_dlord, is_dprince, is_rider,
+    is_silent, is_swimmer, likes_lava, passes_walls, throws_rocks, unique_corpstat,
+} from "./mondata.h.macros.js";
 import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { STRAT_APPEARMSG } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { mon_offmap } from "./monst.h.macros.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import { M_AP_NOTHING, STRAT_APPEARMSG, struct_monst } from "./monst.h.js";
+import { DEADMONSTER, engulfing_u, mon_offmap } from "./monst.h.macros.js";
+import { PM_FLOATING_EYE, PM_MINOTAUR, PM_WIZARD } from "./monsters.h.js";
 import { OBJ_FREE } from "./obj.h.js";
 import { carried } from "./obj.h.macros.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SPE_TELEPORT_AWAY } from "./objects.h.js";
-import { WAN_TELEPORTATION } from "./objects.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { TELEPORT } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { ZAP_POS } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { spe_Fresh } from "./spell.h.js";
-import { spe_Unknown } from "./spell.h.js";
-import { HOLE } from "./trap.h.js";
-import { LEVEL_TELEP } from "./trap.h.js";
-import { MAGIC_PORTAL } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { TELEP_TRAP } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { Trap_Effect_Finished } from "./trap.h.js";
-import { Trap_Moved_Mon } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { is_xport } from "./trap.h.macros.js";
+import {
+    AMULET_OF_YENDOR, BOULDER, CORPSE, SCR_SCARE_MONSTER, SPE_TELEPORT_AWAY, WAN_TELEPORTATION,
+} from "./objects.h.js";
+import { I_SPECIAL, TELEPORT, TIMEOUT } from "./prop.h.js";
+import { IS_ALTAR, MON_AT, ZAP_POS, fmon, levl, m_at, remove_monster } from "./rm.h.macros.js";
+import { spe_Fresh, spe_Unknown } from "./spell.h.js";
+import {
+    HOLE, LEVEL_TELEP, MAGIC_PORTAL, NO_TRAP, TELEP_TRAP, TRAPDOOR, Trap_Effect_Finished,
+    Trap_Moved_Mon, VIBRATING_SQUARE,
+} from "./trap.h.js";
+import { is_hole, is_pit, is_xport } from "./trap.h.macros.js";
 import { couldsee } from "./vision.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { UTOTYPE_ATSTAIRS } from "./you.h.js";
-import { UTOTYPE_NONE } from "./you.h.js";
-import { UTOTYPE_PORTAL } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { m_next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Amphibious } from "./youprop.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blinded } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { ETeleportation } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { HTeleportation } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Swimming } from "./youprop.h.macros.js";
-import { Teleport_control } from "./youprop.h.macros.js";
-import { Teleportation } from "./youprop.h.macros.js";
-import { Wwalking } from "./youprop.h.macros.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, NHW_MENU,
+    PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { TT_BURIEDBALL, UTOTYPE_ATSTAIRS, UTOTYPE_NONE, UTOTYPE_PORTAL } from "./you.h.js";
+import { Role_if, Upolyd, m_next2u, u_at, uhis } from "./you.h.macros.js";
+import {
+    Amphibious, Antimagic, Blind, Blinded, Confusion, ETeleportation, Fire_resistance, Flying,
+    HConfusion, HStun, HTeleportation, Hallucination, Levitation, Passes_walls, Punished, Stunned,
+    Swimming, Teleport_control, Teleportation, Wwalking,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { atoi } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, schar, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64u, not64u, or64 } from "../rt/int64.js";
+import { atoi, free, sprintf, strcat, strchr, strcmp, strcpy } from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { get_mleash } from "./apply.js";
-import { m_unleash } from "./apply.js";
-import { next_to_u } from "./apply.js";
+import { addr_of, ptr_add, ptr_to, struct, struct_assign } from "../rt/struct.js";
+import { get_mleash, m_unleash, next_to_u } from "./apply.js";
 import { exercise } from "./attrib.js";
-import { drag_ball } from "./ball.js";
-import { move_bc } from "./ball.js";
-import { placebc } from "./ball.js";
-import { unplacebc } from "./ball.js";
+import { drag_ball, move_bc, placebc, unplacebc } from "./ball.js";
 import { isok } from "./cmd.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_waterwall } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gi } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svd } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svu } from "./decl.js";
-import { u } from "./decl.js";
+import { is_lava, is_pool, is_waterwall } from "./dbridge.js";
+import {
+    cg, disp, flags, gc, gi, go, gs, gv, gy, iflags, svd, svk, svl, svm, svn, svu, u,
+} from "./decl.js";
 import { buried_ball_to_punishment } from "./dig.js";
-import { canseemon } from "./display.js";
-import { docrt } from "./display.js";
-import { newsym } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { see_monsters } from "./display.js";
-import { sensemon } from "./display.js";
-import { shieldeff } from "./display.js";
-import { flooreffects } from "./do.js";
-import { revive_corpse } from "./do.js";
-import { schedule_goto } from "./do.js";
-import { Amonnam } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { noit_mon_nam } from "./do_name.js";
+import {
+    canseemon, docrt, newsym, nul_glyphinfo, see_monsters, sensemon, shieldeff,
+} from "./display.js";
+import { flooreffects, revive_corpse, schedule_goto } from "./do.js";
+import { Amonnam, Monnam, mon_nam, noit_mon_nam } from "./do_name.js";
 import { migrate_to_level } from "./dog.js";
-import { In_W_tower } from "./dungeon.js";
-import { In_hell } from "./dungeon.js";
-import { In_mines } from "./dungeon.js";
-import { In_quest } from "./dungeon.js";
-import { Is_botlevel } from "./dungeon.js";
-import { On_W_tower_level } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { find_hell } from "./dungeon.js";
-import { get_level } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { lev_by_name } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { print_dungeon } from "./dungeon.js";
-import { single_level_branch } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { u_on_newpos } from "./dungeon.js";
+import {
+    In_W_tower, In_hell, In_mines, In_quest, Is_botlevel, On_W_tower_level, assign_level, depth,
+    dunlevs_in_dungeon, find_hell, get_level, ledger_no, lev_by_name, on_level, print_dungeon,
+    single_level_branch, surface, u_on_newpos,
+} from "./dungeon.js";
 import { morehungry } from "./eat.js";
 import { done } from "./end.js";
 import { sengr_at } from "./engrave.js";
 import { getpos } from "./getpos.js";
-import { check_capacity } from "./hack.js";
-import { check_special_room } from "./hack.js";
-import { in_rooms } from "./hack.js";
-import { invocation_message } from "./hack.js";
-import { may_passwall } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { notice_all_mons } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { switch_terrain } from "./hack.js";
-import { u_locomotion } from "./hack.js";
-import { digit } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { addinv } from "./invent.js";
-import { prinv } from "./invent.js";
-import { sobj_at } from "./invent.js";
+import {
+    check_capacity, check_special_room, in_rooms, invocation_message, may_passwall, near_capacity,
+    nomul, notice_all_mons, spoteffects, switch_terrain, u_locomotion,
+} from "./hack.js";
+import { digit, distmin, eos } from "./hacklib.js";
+import { addinv, prinv, sobj_at } from "./invent.js";
 import { is_home_elemental } from "./makemon.js";
 import { is_exclusion_zone } from "./mkmaze.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { search_special } from "./mkroom.js";
-import { somexyspace } from "./mkroom.js";
-import { get_iter_mons } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { m_in_air } from "./mon.js";
-import { m_into_limbo } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { set_ustuck } from "./mon.js";
-import { unstuck } from "./mon.js";
+import { mksobj, obj_extract_self, place_object } from "./mkobj.js";
+import { search_special, somexyspace } from "./mkroom.js";
+import {
+    get_iter_mons, hideunder, m_in_air, m_into_limbo, maybe_unhide_at, set_ustuck, unstuck,
+} from "./mon.js";
 import { set_mon_data } from "./mondata.js";
-import { accessible } from "./monmove.js";
-import { closed_door } from "./monmove.js";
-import { dochugw } from "./monmove.js";
-import { mon_track_clear } from "./monmove.js";
-import { onscary } from "./monmove.js";
-import { set_apparxy } from "./monmove.js";
+import {
+    accessible, closed_door, dochugw, mon_track_clear, onscary, set_apparxy,
+} from "./monmove.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_mon } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_stunned } from "./potion.js";
+import {
+    You, You_cant, You_feel, Your, impossible, pline, pline_mon, set_msg_xy, verbalize,
+} from "./pline.js";
+import { make_blinded, make_confused, make_stunned } from "./potion.js";
 import { inhistemple } from "./priest.js";
 import { learnscroll } from "./read.js";
-import { in_out_region } from "./region.js";
-import { update_monster_region } from "./region.js";
-import { update_player_regions } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { addtobill } from "./shk.js";
-import { costly_adjacent } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { find_objowner } from "./shk.js";
-import { inhishop } from "./shk.js";
-import { make_angry_shk } from "./shk.js";
-import { onshopbill } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { subfrombill } from "./shk.js";
-import { u_left_shop } from "./shk.js";
+import { in_out_region, update_monster_region, update_player_regions } from "./region.js";
+import { rn2, rnd, rnl } from "./rnd.js";
+import {
+    addtobill, costly_adjacent, costly_spot, find_objowner, inhishop, make_angry_shk, onshopbill,
+    stolen_value, subfrombill, u_left_shop,
+} from "./shk.js";
 import { yelp } from "./sounds.js";
-import { known_spell } from "./spell.js";
-import { spelleffects } from "./spell.js";
-import { tport_spell } from "./spell.js";
+import { known_spell, spelleffects, tport_spell } from "./spell.js";
 import { place_monster } from "./steed.js";
 import { settrack } from "./track.js";
-import { clamp_hole_destination } from "./trap.js";
-import { deltrap } from "./trap.js";
-import { fill_pit } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { seetrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { unconscious } from "./trap.js";
-import { findgd } from "./vault.js";
-import { uleftvault } from "./vault.js";
-import { vault_occupied } from "./vault.js";
+import {
+    clamp_hole_destination, deltrap, fill_pit, mintrap, reset_utrap, seetrap, t_at, unconscious,
+} from "./trap.js";
+import { findgd, uleftvault, vault_occupied } from "./vault.js";
 import { vision_recalc } from "./vision.js";
-import { add_menu } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { add_menu, getlin, select_menu } from "./windows.js";
 import { mon_has_amulet } from "./wizard.js";
-import { place_worm_tail_randomly } from "./worm.js";
-import { remove_worm } from "./worm.js";
+import { place_worm_tail_randomly, remove_worm } from "./worm.js";
 const __FILE__ = "teleport.c";

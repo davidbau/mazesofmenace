@@ -1,4 +1,4 @@
-export default `NetHack History file for release 5.0
+export default String.raw`NetHack History file for release 5.0
 
 Behold, mortal, the origins of NetHack...
 

@@ -2,9 +2,6 @@
 /* Copyright (c) Michael Allison, 2003                            */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* Note: this comment is about the pre-VIA_WINDOWPORT two line status
  * which is still available but has not added a bunch of conditional
  * extra status conditions (Grab, InLava, Held, Zzz and many others)
@@ -29,9 +26,6 @@ Astral Plane \GXXXXNNNN:123456 HP:1234(1234) Pw:1234(1234) AC:-127
 
 export const MAXCO = 200;
 
-
-
-
 /* limit of the player's name in the status window */
 export const BOTL_NSIZ = 16;
 
@@ -39,7 +33,6 @@ export const struct_condmap = struct("struct_condmap", {
     id: ptr_to(char),
     bitmask: ulong,
 });
-
 
     export const BL_CHARACTERISTICS = -3; /* alias for BL_STR..BL_CH */
     export const BL_RESET = -2; /* Force everything to redisplay */
@@ -59,13 +52,9 @@ export const struct_condmap = struct("struct_condmap", {
     export const BL_VERS = BL_TERRAIN + 1; /*   26   */
     export const MAXBLSTATS = BL_VERS + 1; /* [27] */
 
-
-
     export const NO_LTEQGT = -1;
     export const EQ_VALUE = NO_LTEQGT + 1; export const LT_VALUE = EQ_VALUE + 1; export const LE_VALUE = LT_VALUE + 1;
     export const GE_VALUE = LE_VALUE + 1; export const GT_VALUE = GE_VALUE + 1; export const TXT_VALUE = GT_VALUE + 1;
-
-
 
     export const bl_bareh = 0; /* deprecated -- bl_weapon encompasses this */
     export const bl_blind = bl_bareh + 1;
@@ -99,7 +88,6 @@ export const struct_condmap = struct("struct_condmap", {
     export const bl_holding = bl_woundedl + 1;
 
     export const CONDITION_COUNT = bl_holding + 1;
-
 
 /* Boolean condition bits for the condition mask */
 
@@ -144,7 +132,6 @@ export const struct_conditions_t = struct("struct_conditions_t", {
     text: array_of(ptr_to(char), 3),
 });
 
-
 export const struct_condtests_t = struct("struct_condtests_t", {
     c: unsigned,
     useroption: ptr_to(char),
@@ -154,80 +141,13 @@ export const struct_condtests_t = struct("struct_condtests_t", {
     test: boolean,
 });
 
-
-
-
 export const BEFORE = 0;
 export const NOW = 1;
-
-/*
- * Possible additional conditions:
- *  major:
- *      grab   - grabbed by eel so about to be drowned ("wrapd"? damage type
- *               is AD_WRAP but message is "<mon> swings itself around you")
- *      digst  - swallowed and being digested
- *      lava   - trapped sinking into lava
- *  in_between: (potentially severe but don't necessarily lead to death;
- *               explains to player why he isn't getting to take any turns)
- *      unconc - unconscious
- *      parlyz - (multi < 0 && (!strncmp(multi_reason, "paralyzed", 9)
- *                              || !strncmp(multi_reason, "frozen", 6)))
- *      asleep - (multi < 0 && !strncmp(multi_reason, "sleeping", 8))
- *      busy   - other multi < 0
- *  minor:
- *      held   - grabbed by non-eel or by eel but not susceptible to drowning
- *      englf  - engulfed or swallowed but not being digested (usually
- *               obvious but the blank symbol set makes that uncertain)
- *      vomit  - vomiting (causes confusion and stun late in countdown)
- *      trap   - trapped in pit, bear trap, web, or floor (solidified lava)
- *      teth   - tethered to buried iron ball
- *      chain  - punished
- *      slip   - slippery fingers
- *      ice    - standing on ice (movement becomes uncertain)
- *     [underwater - movement uncertain, vision truncated, equipment at risk]
- *  other:
- *     [hold      - poly'd into grabber and holding adjacent monster]
- *      Stormbringer - wielded weapon poses risks
- *      Cleaver   - wielded weapon risks unintended consequences
- *      barehand  - not wielding any weapon nor wearing gloves
- *      no-weapon - not wielding any weapon
- *      bow/xbow/sling - wielding a missile launcher of specified type
- *      pole      - wielding a polearm
- *      pick      - wielding a pickaxe
- *      junk      - wielding non-weapon, non-weptool
- *      naked     - no armor
- *      no-gloves - self-explanatory
- *      no-cloak  - ditto
- *     [no-{other armor slots?} - probably much too verbose]
- *  conduct?
- *      [maybe if third status line is added]
- *
- *  Can't add all of these and probably don't want to.  But maybe we
- *  can add some of them and it's not as many as first appears:
- *  lava/trap/teth are mutually exclusive;
- *  digst/grab/englf/held/hold are also mutually exclusive;
- *  Stormbringer/Cleaver/barehand/no-weapon/bow&c/pole/pick/junk too;
- *  naked/no-{any armor slot} likewise.
- */
-
-
-
-
-
 
 /* #ifdef STATUS_HILITES */
 /* hilite status field behavior - coloridx values */
 
-
-
-
-
-
-
-
-
                                 /* or any CLR_ index (0 - 15) */
-
 
 export const BL_TH_NONE = 0;
 export const BL_TH_VAL_PERCENTAGE = 100;
@@ -238,7 +158,6 @@ export const BL_TH_TEXTMATCH = 104;
 export const BL_TH_ALWAYS_HILITE = 105;
 export const BL_TH_CRITICALHP = 106;
 
-
 export const HL_ATTCLR_BOLD = CLR_MAX + 2;
 export const HL_ATTCLR_DIM = CLR_MAX + 3;
 export const HL_ATTCLR_ITALIC = CLR_MAX + 4;
@@ -246,7 +165,6 @@ export const HL_ATTCLR_ULINE = CLR_MAX + 5;
 export const HL_ATTCLR_BLINK = CLR_MAX + 6;
 export const HL_ATTCLR_INVERSE = CLR_MAX + 7;
 export const BL_ATTCLR_MAX = CLR_MAX + 8;
-
 
     export const HL_UNDEF = 0x00;
     export const HL_NONE = 0x01;
@@ -257,9 +175,7 @@ export const BL_ATTCLR_MAX = CLR_MAX + 8;
     export const HL_BLINK = 0x20;
     export const HL_INVERSE = 0x40;
 
-
 export const MAXVALWIDTH = 80;
-
 
 export const struct_hilite_s = struct("struct_hilite_s", {
     fld: int,
@@ -272,7 +188,6 @@ export const struct_hilite_s = struct("struct_hilite_s", {
     coloridx: int,
     next: ptr_to("struct_hilite_s"),
 });
-
 
 /*
  * Note: If you add/change/remove fields in istat_s, you need to
@@ -296,18 +211,11 @@ export const struct_istat_s = struct("struct_istat_s", {
     hilite_rule: ptr_to("struct_hilite_s"), /* the entry, if any, in 'thresholds'
                                    * list that currently applies        */
     thresholds: ptr_to("struct_hilite_s"),
-
 });
 
 /* in botl.c */
+
 import { CLR_MAX } from "./color.h.js";
 import { boolean } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, int, long, short, ulong, unsigned } from "../rt/ctypes.js";
+import { array_of, ptr_to, struct } from "../rt/struct.js";

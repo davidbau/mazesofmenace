@@ -118,7 +118,7 @@ import {
     verysmall,
     is_whirly,
 } from './mondata.js';
-import { s_suffix, strsubst, strncmpi } from './hacklib.js';
+import { s_suffix, strsubst, strncmpi, lcase } from './hacklib.js';
 import {
     AMULET_OF_GUARDING,
     AMULET_OF_LIFE_SAVING,
@@ -361,8 +361,9 @@ export function set_twoweap(enabled, state = game) {
     return state.u.twoweap;
 }
 
-// C ref: worn.c setworn(). The I_SPECIAL/uskin restore case is deliberately
-// outside the new-game boundary; all ordinary worn slots are complete here.
+// C ref: worn.c setworn(). Its restore-only I_SPECIAL/uskin branch
+// (worn.c:79-82) is in js/restore.js setWornPointers(), which rebuilds the
+// pointers of a restored game; all ordinary worn slots are complete here.
 // Worn setters normally complete without waiting. Artifact display can
 // suspend, so advance the source statements until that operation completes.
 function finishWornSteps(steps) {
@@ -821,7 +822,7 @@ async function applyMonsterArmorRuntime(
     if (sawMonster) {
         oldName = old ? distant_name(old, donameFresh, state) : '';
         newName = distant_name(best, donameFresh, state);
-        if (newName.toLowerCase() === oldName.toLowerCase()) {
+        if (lcase(newName) === lcase(oldName)) {
             if (strncmpi(newName, 'a ', 2) === 0)
                 newName = strsubst(newName, 'a ', 'another ');
             else if (strncmpi(newName, 'an ', 3) === 0)

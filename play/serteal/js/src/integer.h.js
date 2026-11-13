@@ -29,75 +29,29 @@
  *
  */
 
-
-
-
 /* DEC C (aka Compaq C for a while, HP C these days) for VMS is
    classified as a freestanding implementation rather than a hosted one
    and even though it claims to be C99, it does not provide <stdint.h>. */
 
-
-
-
-
-
 /* The compiler claims to conform to C99. Use stdint.h */
 
-
-
 /* The compiler claims to conform to C99. Use inttypes.h */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * STDINT_WORKAROUND section begins here
  */
 
-
-
-
-
-
 /* Open Watcom providing a 16 bit build for MS-DOS or OS/2 */
 /* int is 16 bits; use long for 32 bits */
 
-
-
 /* Otherwise, assume either a 32- or 64-bit compiler */
 /* long may be 64 bits; use int for 32 bits */
-
-
-
 
 /* The only place where nethack cares about 64-bit integers is in the
    Isaac64 random number generator.  If your environment can't support
    64-bit integers, you should comment out USE_ISAAC64 in config.h so
    that the previous RNG gets used instead.  Then this file will be
    inhibited and it won't matter what the int64_t and uint64_t lines are. */
-
-
-
-
-
-
-
-
-
 
 /* Provide int8, uint8, int16, uint16, int32, uint32, int64 and uint64 */
 export const int8 = schar;
@@ -107,30 +61,4 @@ export const uint16 = ushort;
 export const int32 = int;
 export const uint32 = unsigned;
 
-
-
-/* Also provide ushort, uint, ulong */
-
-
-
-
-
-
-
-/* for non-negative L, calculate L * 10 + D, avoiding signed overflow;
-   yields -1 if overflow would have happened;
-   assumes compiler will optimize the constants */
-
-
-
-
-
-
-/* add a and b, return max long value if overflow would have occurred;
-   assumes that both a and b are non-negative; caller should apply
-   cast(s) to (long) in the arguments if any are needed */
-import { int } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
+import { int, schar, uchar, unsigned, ushort } from "../rt/ctypes.js";

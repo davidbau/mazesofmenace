@@ -2,11 +2,8 @@
 /* Copyright (c) 1989 Mike Threepoint                             */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* clang-format off */
 /* *INDENT-OFF* */
-
 
     export const MS_SILENT = 0; /* makes no sound */
     export const MS_BARK = 1; /* if full moon, may howl */
@@ -58,7 +55,6 @@
     export const MS_BOAST = 43; /* giants */
     export const MS_GROAN = 44; /* zombies groan */
 
-
 export const MR_FIRE = 0x01;
 export const MR_COLD = 0x02;
 export const MR_SLEEP = 0x04;
@@ -74,13 +70,6 @@ export const MR_STONE = 0x80;
 /* other conveyances: teleport, teleport control, telepathy */
 
 /* individual resistances */
-
-
-
-
-
-
-
 
 export const M1_FLY = 0x00000001;
 export const M1_SWIM = 0x00000002;
@@ -117,9 +106,6 @@ export const M1_OMNIVORE = 0x60000000;
 
 export const M1_METALLIVORE = 0x80000000;
 
-
-
-
 export const M2_NOPOLY = 0x00000001;
 export const M2_UNDEAD = 0x00000002;
 export const M2_WERE = 0x00000004;
@@ -152,9 +138,6 @@ export const M2_JEWELS = 0x20000000;
 export const M2_COLLECT = 0x40000000;
 
 export const M2_MAGIC = 0x80000000;
-
-
-
 
 export const M3_WANTSAMUL = 0x0001;
 export const M3_WANTSBELL = 0x0002;

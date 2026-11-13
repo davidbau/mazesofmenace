@@ -2,24 +2,11 @@
 /* Copyright (c) Kenneth Lorber, Kensington, Maryland, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
+/* #ifndef SYSCF: not in this build */
 
 export const sysopt = static_struct("sysopt", struct_sysopt_s);
 
-export function /* void */
-sys_early_init()
-{
+export function sys_early_init() { /* void */
     let p;
 
     /* Don't assume that these are not already set, and that it is
@@ -30,29 +17,16 @@ sys_early_init()
 
     sysopt.wizards = 0;
 
-
-
-
-
-
     if ((p = getenv(_("DEBUGFILES"))) != 0) {
         if (sysopt.debugfiles)
             free(sysopt.debugfiles);
         sysopt.debugfiles = dupstr(p);
         sysopt.env_dbgfl = 1; /* prevent sysconf processing from overriding */
     } else {
-
         sysopt.debugfiles = 0;
-
-
-
-
 
         sysopt.env_dbgfl = 0;
     }
-
-
-
 
     sysopt.shellers = 0;
     sysopt.explorers = 0;
@@ -73,25 +47,7 @@ sys_early_init()
     if (sysopt.pers_is_uid != 0 && sysopt.pers_is_uid != 1)
         panic(_("config error: PERS_IS_UID must be either 0 or 1"));
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef PANICTRACE: not in this build */
 
     sysopt.crashreporturl = 0;
 
@@ -102,18 +58,13 @@ sys_early_init()
     sysopt.saveformat[0] = sysopt.bonesformat[0] = historical;
     sysopt.accessibility = 0;
 
-
-
-
     /* help menu */
     sysopt.hideusage = 0;
 
     return;
 }
 
-export function /* void */
-sysopt_release()
-{
+export function sysopt_release() { /* void */
     if (sysopt.support)
         free(sysopt.support), sysopt.support = 0;
     if (sysopt.recover)
@@ -131,9 +82,6 @@ sysopt_release()
     if (sysopt.msghandler)
         free(sysopt.msghandler), sysopt.msghandler = 0;
 
-
-
-
     if (sysopt.genericusers)
         free(sysopt.genericusers),
             sysopt.genericusers = 0;
@@ -141,13 +89,6 @@ sysopt_release()
         free(sysopt.gdbpath), sysopt.gdbpath = 0;
     if (sysopt.greppath)
         free(sysopt.greppath), sysopt.greppath = 0;
-
-
-
-
-
-
-
 
     /* this one's last because it might be used in panic feedback, although
        none of the preceding ones are likely to trigger a controlled panic */
@@ -157,42 +98,20 @@ sysopt_release()
     return;
 }
 
+export function sysopt_seduce_set(
 
-
-
-export function /* void */
-sysopt_seduce_set(
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-val)
-{
-
+val) { /* void */
     return;
 }
 
 /*sys.c*/
-import { ENTRYMAX } from "./config.h.js";
-import { PERSMAX } from "./config.h.js";
-import { PERS_IS_UID } from "./config.h.js";
-import { POINTSMIN } from "./config.h.js";
+
+import { ENTRYMAX, PERSMAX, PERS_IS_UID, POINTSMIN } from "./config.h.js";
 import { LL_NONE } from "./global.h.js";
 import { historical } from "./hack.h.js";
 import { max } from "./hack.h.macros.js";
 import { struct_sysopt_s } from "./sys.h.js";
-import { free } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
+import { free, getenv } from "../rt/libc.js";
 import { static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { dupstr } from "./alloc.js";

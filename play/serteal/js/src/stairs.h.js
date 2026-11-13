@@ -2,9 +2,6 @@
 /* Copyright (c) 2024 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const struct_stairway = struct("struct_stairway", { /* basic stairway identifier */
     sx: coordxy, sy: coordxy, /* x / y location of the stair */
     tolev: "struct_d_level", /* where does it go */
@@ -13,7 +10,6 @@ export const struct_stairway = struct("struct_stairway", { /* basic stairway ide
     u_traversed: boolean, /* hero has traversed this stair */
     next: ptr_to("struct_stairway"),
 });
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { boolean, coordxy } from "./global.h.js";
+import { ptr_to, struct } from "../rt/struct.js";

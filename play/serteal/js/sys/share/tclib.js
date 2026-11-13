@@ -4,11 +4,7 @@
 
 /* termcap library implementation */
 
-// #include "config.h"
-
-
 export const TERMCAP = "/etc/termcap";
-
 
 export const TCBUFSIZ = 1024;
 
@@ -22,13 +18,6 @@ global_scalar("ospeed", short);
 
 /* exported routines */
 
-
-
-
-
-
-
-
 /* local support data */
 const tc_entry = static_var("tc_entry", ptr_to(char));
 const bc_up_buf = static_array("bc_up_buf", char, 24);
@@ -37,32 +26,20 @@ const bc_up_buf = static_array("bc_up_buf", char, 24);
 const baud_rates = static_array("baud_rates", short, null, [
     0,    50,   75,    110,  135,  150,
 
-
-
     200,  300,  600,  1200, 1800, 2400, 4800,
 
     9600, -192, -384, /* negative is used as `100 * abs(entry)' */
 
-
-
 ]);
-
 
 /* local support code */
 
-
-
-
-
-
-export function min(a, b) { return ((a) < (b) ? (a) : (b)); }
-
+export function min(a, b) { return (a < b ? a : b); }
 
 /* retrieve the specified terminal entry and return it in `entbuf' */
-export function /* int */
-tgetent(entbuf,
-        term)
-{ const $frame = stack_frame(); try {
+export function tgetent(entbuf,
+        term) { /* int */
+    const $frame = stack_frame(); try {
     let result;
     let fp;
     let tc = getenv(_("TERMCAP"));
@@ -84,19 +61,19 @@ tgetent(entbuf,
     /* otherwise, look `term' up in the file */
     if (fp) {
         let wrkbuf = stack_array(char, TCBUFSIZ);
-        tc = tc_find(fp, term, wrkbuf, int((unsigned(sizeof(array_of(char, TCBUFSIZ)) - strlen(term)))));
+        tc = tc_find(fp, term, wrkbuf, int(unsigned(sizeof(array_of(char, TCBUFSIZ)) - strlen(term))));
         result = tc_store(term, tc);
-        void fclose(fp);
+        fclose(fp);
     } else {
         result = -1;
     }
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* copy the entry into the output buffer */
-function /* int */
-tc_store(trm, ent)
-{ const $frame = stack_frame(); try {
+function tc_store(trm, ent) { /* int */
+    const $frame = stack_frame(); try {
     let bar, col;
     let s = stack_var(ptr_to(char));
     let n;
@@ -104,24 +81,24 @@ tc_store(trm, ent)
 
     if (!ent || !chars[ent] || !trm || !chars[trm] || (col = strchr(ent, ord(':'))) == 0)
         return 0;
-    void strcpy(tc_entry[0], trm);
+    strcpy(tc_entry[0], trm);
     if (((bar = strchr(ent, ord('|'))) != 0 && bar < col)
         || ((n = strlen(trm)) == (col - ent)
             && strncmp(ent, trm, n) == 0))
-        void strcat(tc_entry[0], col);
+        strcat(tc_entry[0], col);
     else if (chars[ent] == ord(':'))
-        void strcat(tc_entry[0], ent);
+        strcat(tc_entry[0], ent);
     else
-        void strcat(strcat(tc_entry[0], _(":")), ent);
+        strcat(strcat(tc_entry[0], _(":")), ent);
 
     /* initialize global variables */
     k = tgetnum(_("pc"));
     PC = (k == -1) ? ord('\0') : char(k);
     BC = s[0] = bc_up_buf;
     if (!tgetstr(_("bc"), s))
-        void strcpy(s[0], _("\b")), s[0] += 2;
+        strcpy(s[0], _("\b")), s[0] += 2;
     UP = s[0];
-    void tgetstr(_("up"), s);
+    tgetstr(_("up"), s);
 
     /* caller must set `ospeed' */
     if (ospeed >= SIZE(baud_rates))
@@ -129,14 +106,13 @@ tc_store(trm, ent)
     else if (ospeed < 0)
         ospeed = 0;
 
-
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* search for an entry in the termcap file */
-function /* char * */
-tc_find(fp, term, buffer, bufsiz)
-{ const $frame = stack_frame(); try {
+function tc_find(fp, term, buffer, bufsiz) { /* char * */
+    const $frame = stack_frame(); try {
     let in_, len, first, skip;
     let ip, op, tc_fetch, tcbuf = stack_array(char, TCBUFSIZ);
 
@@ -149,7 +125,7 @@ tc_find(fp, term, buffer, bufsiz)
             if (!fgets(ip, min(in_, BUFSIZ), fp))
                 break;
             if (first)
-                skip = (+(chars[ip] == ord('#'))), first = 0;
+                skip = +(chars[ip] == ord('#')), first = 0;
             len = int(strlen(ip));
             if (!skip && len > 1 && chars[(ip + len - 1)] == ord('\n')
                 && chars[(ip + len - 2)] == ord('\\'))
@@ -188,12 +164,11 @@ tc_find(fp, term, buffer, bufsiz)
         strcpy(op, tc_fetch);
     }
     return buffer;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* check whether `ent' contains `nam'; return start of field entries */
-function /* char * */
-tc_name(nam, ent)
-{
+function tc_name(nam, ent) { /* char * */
     let nxt, lst, p = ent;
     let n = strlen(nam);
 
@@ -211,9 +186,8 @@ tc_name(nam, ent)
 }
 
 /* look up a numeric entry */
-export function /* int */
-tgetnum(which)
-{ const $frame = stack_frame(); try {
+export function tgetnum(which) { /* int */
+    const $frame = stack_frame(); try {
     let q = stack_var(ptr_to(char)), p = tc_field(which, q);
     let numbuf = stack_array(char, 32);
     let n;
@@ -223,24 +197,22 @@ tgetnum(which)
     p += 3;
     if ((n = unsigned((q[0] - p))) >= sizeof(array_of(char, 32)))
         return -1;
-    void strncpy(numbuf, p, n);
+    strncpy(numbuf, p, n);
     chars[numbuf + n] = ord('\0');
     return atoi(numbuf);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* look up a boolean entry */
-export function /* int */
-tgetflag(which)
-{
+export function tgetflag(which) { /* int */
     let p = tc_field(which, null);
 
     return (!p || chars[p + 2] != ord(':')) ? 0 : 1;
 }
 
 /* look up a string entry; update `*outptr' */
-export function /* char * */
-tgetstr(which, outptr)
-{ const $frame = stack_frame(); try {
+export function tgetstr(which, outptr) { /* char * */
+    const $frame = stack_frame(); try {
     let n;
     let c, r, result;
     let q = stack_var(ptr_to(char)), p = tc_field(which, q);
@@ -310,12 +282,11 @@ tgetstr(which, outptr)
     chars[r++] = ord('\0');
     outptr[0] = r;
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* look for a particular field name */
-function /* const char * */
-tc_field(field, tc_end)
-{
+function tc_field(field, tc_end) { /* const char * */
     let end, q, p = tc_entry[0];
 
     end = p + strlen(p);
@@ -341,25 +312,21 @@ tc_field(field, tc_end)
 const cmbuf = static_array("cmbuf", char, 64);
 
 /* produce a string which will position the cursor at <row,col> if output */
-export function /* char * */
-tgoto(cm, col, row)
-{
-    return tparam(cm, cmbuf, (sizeof(array_of(char, 64))), row, col, 0, 0);
+export function tgoto(cm, col, row) { /* char * */
+    return tparam(cm, cmbuf, sizeof(array_of(char, 64)), row, col, 0, 0);
 }
 
 /* format a parameterized string, ala sprintf */
-export function /* char * */
-tparam(ctl,
+export function tparam(ctl,
        buf,
        buflen,
-       row, col, row2, col2)
-{ const $frame = stack_frame(); try {
+       row, col, row2, col2) { /* char * */
+    const $frame = stack_frame(); try {
     let atmp, ac, av = stack_array(int, 5);
     let c, r, z, bufend, numbuf = stack_array(char, 32);
     let fmt;
 
     let bc = 0, up = 0;
-
 
     av[0] = row, av[1] = col, av[2] = row2, av[3] = col2, av[4] = 0;
     ac = 0;
@@ -389,7 +356,6 @@ tparam(ctl,
                 if (!chars[r]) {
                     chars[r] = ord('\x80');
                 } else {
-
                     /* avoid terminal driver intervention for
                        various control characters, to prevent
                        LF from becoming CR+LF, for instance; only
@@ -407,7 +373,6 @@ tparam(ctl,
                         }
                         (chars[r])++;
                     }
-
                 }
                 break;
             case ord('>'):
@@ -439,10 +404,10 @@ tparam(ctl,
                 --r;
                 break;
             case ord('B'):
-                av[0] = ((Math.trunc(av[0] / 10)) << 4) + (av[0] % 10);
-                av[1] = ((Math.trunc(av[1] / 10)) << 4) + (av[1] % 10);
-                av[2] = ((Math.trunc(av[2] / 10)) << 4) + (av[2] % 10);
-                av[3] = ((Math.trunc(av[3] / 10)) << 4) + (av[3] % 10);
+                av[0] = (Math.trunc(av[0] / 10) << 4) + (av[0] % 10);
+                av[1] = (Math.trunc(av[1] / 10) << 4) + (av[1] % 10);
+                av[2] = (Math.trunc(av[2] / 10) << 4) + (av[2] % 10);
+                av[3] = (Math.trunc(av[3] / 10) << 4) + (av[3] % 10);
                 --r;
                 break;
             case ord('D'):
@@ -457,7 +422,7 @@ tparam(ctl,
                 break; /* erroneous entry... */
             }
             if (fmt) {
-                void sprintf(numbuf, fmt, av[ac++]);
+                sprintf(numbuf, fmt, av[ac++]);
                 for (z = numbuf; chars[z] && r <= bufend; z++)
                     chars[r++] = chars[z];
                 --r; /* will be re-incremented below */
@@ -480,15 +445,13 @@ tparam(ctl,
 
     chars[r] = ord('\0');
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* send a string to the terminal, possibly padded with trailing NULs */
-export function /* void */
-tputs(string,
+export function tputs(string,
       range,
-      output_func) /* actual output routine;
-                                  * return value ignored */
-{
+      output_func) { /* void */ /* actual output routine; * return value ignored */
     let c, num = 0;
     let p = string;
 
@@ -510,9 +473,8 @@ tputs(string,
     while ((c = chars[p++]) != ord('\0')) {
         if (c == ord('\x80'))
             c = ord('\0'); /* undo tgetstr's encoding */
-        void ((output_func)(c));
+        output_func(c);
     }
-
 
     /* perform padding */
     if (num) {
@@ -524,49 +486,26 @@ tputs(string,
             pad *= -100;
         pad *= num;
         /* 100000 == 10 bits/char * (1000 millisec/sec scaled by 10) */
-        num = int((Math.trunc(pad / 100000))); /* number of characters */
+        num = int(Math.trunc(pad / 100000)); /* number of characters */
 
         c = PC; /* assume output_func isn't allowed to change PC */
         while (--num >= 0)
-            void ((output_func)(c));
+            output_func(c);
     }
-
 
     return;
 }
 
 /*tclib.c*/
+
 import { SIZE } from "../../rt/cmacros.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { short } from "../../rt/ctypes.js";
-import { sizeof } from "../../rt/ctypes.js";
-import { unsigned } from "../../rt/ctypes.js";
+import { char, int, ord, short, sizeof, unsigned } from "../../rt/ctypes.js";
 import { global_scalar } from "../../rt/globals.js";
-import { chars } from "../../rt/heap.js";
-import { stack_frame } from "../../rt/heap.js";
-import { stack_pop } from "../../rt/heap.js";
-import { BUFSIZ } from "../../rt/libc.js";
-import { atoi } from "../../rt/libc.js";
-import { fclose } from "../../rt/libc.js";
-import { ferror } from "../../rt/libc.js";
-import { fgets } from "../../rt/libc.js";
-import { fopen } from "../../rt/libc.js";
-import { getenv } from "../../rt/libc.js";
-import { rewind } from "../../rt/libc.js";
-import { sprintf } from "../../rt/libc.js";
-import { strcat } from "../../rt/libc.js";
-import { strchr } from "../../rt/libc.js";
-import { strcmp } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { strlen } from "../../rt/libc.js";
-import { strncmp } from "../../rt/libc.js";
-import { strncpy } from "../../rt/libc.js";
-import { stack_array } from "../../rt/locals.js";
-import { stack_var } from "../../rt/locals.js";
-import { static_array } from "../../rt/locals.js";
-import { static_var } from "../../rt/locals.js";
+import { chars, stack_frame, stack_pop } from "../../rt/heap.js";
+import {
+    BUFSIZ, atoi, fclose, ferror, fgets, fopen, getenv, rewind, sprintf, strcat, strchr, strcmp,
+    strcpy, strlen, strncmp, strncpy,
+} from "../../rt/libc.js";
+import { stack_array, stack_var, static_array, static_var } from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
-import { array_of } from "../../rt/struct.js";
-import { ptr_to } from "../../rt/struct.js";
+import { array_of, ptr_to } from "../../rt/struct.js";

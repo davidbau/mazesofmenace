@@ -2,9 +2,6 @@
 /* Copyright (c) Dean Luick, 1994                                       */
 /* NetHack may be freely redistributed.  See license for details.       */
 
-// #include "hack.h"
-// #include "nhjs_recorder_sizes.h" /* c2js recorder #stats sizes */
-
 /*
  * Mobile light sources.
  *
@@ -43,32 +40,16 @@ export const LSF_SHOW = 0x1;
 export const LSF_NEEDS_FIXUP = 0x2;
 export const LSF_IS_PROBLEMATIC = 0x4;
 
-
-
-
-
-
-
-
-
-
 /* imported from vision.c, for small circles */
-
-
-
 
 /* Create a new light source.  Caller (and extern.h) doesn't need to know
    anything about type 'light_source'. */
-export function /* void */
-new_light_source(x, y, range, type, id)
-{
-    void new_light_core(x, y, range, type, id);
+export function new_light_source(x, y, range, type, id) { /* void */
+    new_light_core(x, y, range, type, id);
 }
 
 /* Create a new light source and return it.  Only used within this file. */
-function /* light_source * */
-new_light_core(x, y, range, type, id)
-{
+function new_light_core(x, y, range, type, id) { /* light_source * */
     let ls;
 
     if (range > MAX_RADIUS || range < 0
@@ -80,7 +61,7 @@ new_light_core(x, y, range, type, id)
 
     ls = view_of(struct_ls_t, addr_of(alloc(sizeof(struct_ls_t))));
 
-    void memset(addr_of(ls), 0, sizeof(struct_ls_t));
+    memset(addr_of(ls), 0, sizeof(struct_ls_t));
     ls.next = gl.light_base;
     ls.x = x;
     ls.y = y;
@@ -96,9 +77,8 @@ new_light_core(x, y, range, type, id)
 
 /* Find and delete a light source.
    Assumes at most one light source is attached to an object at a time. */
-export function /* void */
-del_light_source(type, id)
-{ const $frame = stack_frame(); try {
+export function del_light_source(type, id) { /* void */
+    const $frame = stack_frame(); try {
     let curr;
     let tmp_id = stack_struct(struct_any);
 
@@ -136,12 +116,11 @@ del_light_source(type, id)
         impossible(_("del_light_source: not found type=%d, id=%s"), type,
                    fmt_ptr(addr_of(id.a_obj)));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* remove a light source from the light_base list and free it */
-function /* void */
-delete_ls(ls)
-{
+function delete_ls(ls) { /* void */
     let curr, prev;
 
     for (prev = null, curr = gl.light_base; curr;
@@ -156,7 +135,7 @@ delete_ls(ls)
     }
     if (curr) {
         assert(curr == ls);
-        void memset(addr_of(ls), 0, sizeof(struct_ls_t));
+        memset(addr_of(ls), 0, sizeof(struct_ls_t));
         free(addr_of(ls));
         gv.vision_full_recalc = 1;
     } else {
@@ -166,9 +145,7 @@ delete_ls(ls)
 }
 
 /* Mark locations that are temporarily lit via mobile light sources. */
-export function /* void */
-do_light_sources(cs_rows)
-{
+export function do_light_sources(cs_rows) { /* void */
     let x, y, min_x, max_x, max_y;
     let offset;
     let limits;
@@ -196,7 +173,7 @@ do_light_sources(cs_rows)
 
         /* minor optimization: don't bother with duplicate light sources
            at hero */
-        if (((((ls.x) == u.ux) && ((ls.y) == u.uy)))) {
+        if ((((ls.x) == u.ux) && ((ls.y) == u.uy))) {
             if (at_hero_range >= ls.range)
                 ls.flags &= ~LSF_SHOW;
             else
@@ -224,7 +201,7 @@ do_light_sources(cs_rows)
                 if ((max_x = (ls.x + offset)) >= COLNO)
                     max_x = COLNO - 1;
 
-                if (((((ls.x) == u.ux) && ((ls.y) == u.uy)))) {
+                if ((((ls.x) == u.ux) && ((ls.y) == u.uy))) {
                     /*
                      * If the light source is located at the hero, then
                      * we can use the COULD_SEE bits already calculated
@@ -254,9 +231,8 @@ do_light_sources(cs_rows)
    way to its destination; show its light so that hero has a chance to
    remember terrain, objects, and monsters being revealed;
    if 'obj' is Null, <x,y> is being hit by a camera's light flash */
-export function /* void */
-show_transient_light(obj, x, y)
-{ const $frame = stack_frame(); try {
+export function show_transient_light(obj, x, y) { /* void */
+    const $frame = stack_frame(); try {
     let ls = null;
     let cameraflash = stack_struct(struct_any);
     let mon;
@@ -322,14 +298,13 @@ show_transient_light(obj, x, y)
         nh_delay_output()();
         remove_object(obj);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* delete any camera flash light sources and draw "remembered, unseen
    monster" glyph at locations where a monster was flagged for being
    visible during transient light movement but can't be seen now */
-export function /* void */
-transient_light_cleanup()
-{
+export function transient_light_cleanup() { /* void */
     let mon;
     let mtempcount;
 
@@ -358,9 +333,7 @@ transient_light_cleanup()
 }
 
 /* camera flashes have Null object; caller wants to get rid of them now */
-function /* void */
-discard_flashes()
-{
+function discard_flashes() { /* void */
     let ls, nxt_ls;
 
     for (ls = gl.light_base; ls; ls = nxt_ls) {
@@ -372,10 +345,7 @@ discard_flashes()
 
 /* (mon->mx == 0) implies migrating */
 
-
-export function /* struct monst * */
-find_mid(nid, fmflags)
-{
+export function find_mid(nid, fmflags) { /* struct monst * */
     let mtmp;
 
     if ((fmflags & FM_YOU) && nid == 1)
@@ -395,9 +365,7 @@ find_mid(nid, fmflags)
     return null;
 }
 
-function /* unsigned */
-whereis_mon(mon, fmflags)
-{
+function whereis_mon(mon, fmflags) { /* unsigned */
     let mtmp;
 
     if ((fmflags & FM_YOU) && mon == gy.youmonst)
@@ -418,9 +386,8 @@ whereis_mon(mon, fmflags)
 }
 
 /* Save all light sources of the given range. */
-export function /* void */
-save_light_sources(nhfp, range)
-{ const $frame = stack_frame(); try {
+export function save_light_sources(nhfp, range) { /* void */
+    const $frame = stack_frame(); try {
     let count = stack_var(int), actual, is_global;
     let prev, curr;
 
@@ -451,7 +418,7 @@ save_light_sources(nhfp, range)
                     is_global = +!obj_is_local(curr.id.a_obj);
                     break;
                 case LS_MONSTER:
-                    is_global = +!(((curr.id.a_monst).mx > 0));
+                    is_global = +!((curr.id.a_monst).mx > 0);
                     break;
                 default:
                     is_global = 0;
@@ -460,25 +427,24 @@ save_light_sources(nhfp, range)
                     break;
                 }
             /* if global and not doing local, or vice versa, remove it */
-            if (is_global ^ (+(range == RANGE_LEVEL))) {
+            if (is_global ^ +(range == RANGE_LEVEL)) {
                 prev[0] = curr.next;
-                void memset(addr_of(curr), 0, sizeof(struct_ls_t));
+                memset(addr_of(curr), 0, sizeof(struct_ls_t));
                 free(addr_of(curr));
             } else {
                 prev = ref_of((prev[0]), "next");
             }
         }
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Pull in the structures from disk, but don't recalculate the object
  * pointers.
  */
-export function /* void */
-restore_light_sources(nhfp)
-{ const $frame = stack_frame(); try {
+export function restore_light_sources(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let count = stack_var(int, 0);
     let ls;
 
@@ -491,32 +457,24 @@ restore_light_sources(nhfp)
         ls.next = gl.light_base;
         gl.light_base = ls;
     }
-} finally { stack_pop($frame); } }
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* to support '#stats' wizard-mode command */
-export function /* void */
-light_stats(hdrfmt, hdrbuf, count, size)
-{
+export function light_stats(hdrfmt, hdrbuf, count, size) { /* void */
     let ls;
 
-    void sprintf(hdrbuf, hdrfmt, (NHJS_LP64_SIZEOF_light_source));
+    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_light_source);
     count[0] = size[0] = 0;
     for (ls = gl.light_base; ls; ls = ls.next) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_light_source);
+        size[0] += NHJS_LP64_SIZEOF_light_source;
     }
 }
 
-
-
 /* Relink all lights that are so marked. */
-export function /* void */
-relink_light_sources(ghostly)
-{ const $frame = stack_frame(); try {
+export function relink_light_sources(ghostly) { /* void */
+    const $frame = stack_frame(); try {
     let which;
     let nid = stack_var(unsigned);
     let ls;
@@ -561,16 +519,15 @@ relink_light_sources(ghostly)
             ls.flags &= ~LSF_NEEDS_FIXUP;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Part of the light source save routine.  Count up the number of light
  * sources that would be written.  If write_it is true, actually write
  * the light source out.
  */
-function /* int */
-maybe_write_ls(nhfp, range, write_it)
-{
+function maybe_write_ls(nhfp, range, write_it) { /* int */
     let count = 0, is_global;
     let ls;
 
@@ -584,7 +541,7 @@ maybe_write_ls(nhfp, range, write_it)
             is_global = +!obj_is_local(ls.id.a_obj);
             break;
         case LS_MONSTER:
-            is_global = +!(((ls.id.a_monst).mx > 0));
+            is_global = +!((ls.id.a_monst).mx > 0);
             break;
         default:
             is_global = 0;
@@ -593,7 +550,7 @@ maybe_write_ls(nhfp, range, write_it)
             break;
         }
         /* if global and not doing local, or vice versa, count it */
-        if (is_global ^ (+(range == RANGE_LEVEL))) {
+        if (is_global ^ +(range == RANGE_LEVEL)) {
             count++;
             if (write_it)
                 write_ls(nhfp, ls);
@@ -603,9 +560,7 @@ maybe_write_ls(nhfp, range, write_it)
     return count;
 }
 
-export function /* void */
-light_sources_sanity_check()
-{
+export function light_sources_sanity_check() { /* void */
     let ls;
     let mtmp;
     let otmp;
@@ -631,9 +586,8 @@ light_sources_sanity_check()
 }
 
 /* Write a light source structure to disk. */
-function /* void */
-write_ls(nhfp, ls)
-{ const $frame = stack_frame(); try {
+function write_ls(nhfp, ls) { /* void */
+    const $frame = stack_frame(); try {
     let arg_save = stack_struct(struct_any);
     let otmp;
     let mtmp;
@@ -700,12 +654,11 @@ write_ls(nhfp, ls)
     } else {
         impossible(_("write_ls: bad type (%d)"), ls.type);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Change light source's ID from src to dest. */
-export function /* void */
-obj_move_light_source(src, dest)
-{
+export function obj_move_light_source(src, dest) { /* void */
     let ls;
 
     for (ls = gl.light_base; ls; ls = ls.next)
@@ -716,9 +669,7 @@ obj_move_light_source(src, dest)
 }
 
 /* return true if there exist any light sources */
-export function /* boolean */
-any_light_source()
-{
+export function any_light_source() { /* boolean */
     return (+(gl.light_base != null));
 }
 
@@ -726,9 +677,7 @@ any_light_source()
  * Snuff an object light source if at (x,y).  This currently works
  * only for burning light sources.
  */
-export function /* void */
-snuff_light_source(x, y)
-{
+export function snuff_light_source(x, y) { /* void */
     let ls;
     let obj;
 
@@ -760,25 +709,19 @@ snuff_light_source(x, y)
 }
 
 /* Return TRUE if object sheds any light at all. */
-export function /* boolean */
-obj_sheds_light(obj)
-{
+export function obj_sheds_light(obj) { /* boolean */
     /* so far, only burning objects shed light */
     return obj_is_burning(obj);
 }
 
 /* Return TRUE if sheds light AND will be snuffed by end_burn(). */
-export function /* boolean */
-obj_is_burning(obj)
-{
-    return (((obj.lamplit && (ignitable(obj)
-                                       || artifact_light(obj))) ? 1 : 0));
+export function obj_is_burning(obj) { /* boolean */
+    return (obj.lamplit && (ignitable(obj)
+                                       || artifact_light(obj)) ? 1 : 0);
 }
 
 /* copy the light source(s) attached to src, and attach it/them to dest */
-export function /* void */
-obj_split_light_source(src, dest)
-{
+export function obj_split_light_source(src, dest) { /* void */
     let ls, new_ls;
 
     for (ls = gl.light_base; ls; ls = ls.next)
@@ -805,9 +748,7 @@ obj_split_light_source(src, dest)
 
 /* light source `src' has been folded into light source `dest';
    used for merging lit candles and adding candle(s) to lit candelabrum */
-export function /* void */
-obj_merge_light_sources(src, dest)
-{
+export function obj_merge_light_sources(src, dest) { /* void */
     let ls;
 
     /* src == dest implies adding to candelabrum */
@@ -823,9 +764,7 @@ obj_merge_light_sources(src, dest)
 }
 
 /* light source `obj' is being made brighter or dimmer */
-export function /* void */
-obj_adjust_light_radius(obj, new_radius)
-{
+export function obj_adjust_light_radius(obj, new_radius) { /* void */
     let ls;
 
     for (ls = gl.light_base; ls; ls = ls.next)
@@ -840,9 +779,7 @@ obj_adjust_light_radius(obj, new_radius)
 
 /* Candlelight is proportional to the number of candles;
    minimum range is 2 rather than 1 for playability. */
-export function /* int */
-candle_light_range(obj)
-{
+export function candle_light_range(obj) { /* int */
     let radius;
 
     if (obj.otyp == CANDELABRUM_OF_INVOCATION) {
@@ -878,9 +815,7 @@ candle_light_range(obj)
 }
 
 /* light emitting artifact's range depends upon its curse/bless state */
-export function /* int */
-arti_light_radius(obj)
-{
+export function arti_light_radius(obj) { /* int */
     let res;
 
     /*
@@ -913,9 +848,7 @@ arti_light_radius(obj)
 
 /* adverb describing lit artifact's light; radius varies depending upon
    curse/bless state; also used for gold dragon scales/scale mail */
-export function /* const char * */
-arti_light_description(obj)
-{
+export function arti_light_description(obj) { /* const char * */
     switch (arti_light_radius(obj)) {
     case 4:
         return _("radiantly"); /* blessed gold dragon scale mail */
@@ -932,9 +865,8 @@ arti_light_description(obj)
 }
 
 /* the #lightsources command */
-export function /* int */
-wiz_light_sources()
-{ const $frame = stack_frame(); try {
+export function wiz_light_sources() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let buf = stack_array(char, BUFSZ);
     let ls;
@@ -943,7 +875,7 @@ wiz_light_sources()
     if (win == WIN_ERR)
         return ECMD_OK;
 
-    void sprintf(buf, _("Mobile light sources: hero @ (%2d,%2d)"), u.ux, u.uy);
+    sprintf(buf, _("Mobile light sources: hero @ (%2d,%2d)"), u.ux, u.uy);
     putstr()(win, 0, buf);
     putstr()(win, 0, _(""));
 
@@ -951,17 +883,16 @@ wiz_light_sources()
         putstr()(win, 0, _("location range flags  type    id"));
         putstr()(win, 0, _("-------- ----- ------ ----  -------"));
         for (ls = gl.light_base; ls; ls = ls.next) {
-            void sprintf(buf, _("  %2d,%2d   %2d   0x%04x  %s  %s"), ls.x, ls.y, ls.range, ls.flags, (ls.type == LS_OBJECT
+            sprintf(buf, _("  %2d,%2d   %2d   0x%04x  %s  %s"), ls.x, ls.y, ls.range, ls.flags, (ls.type == LS_OBJECT
                        ? _("obj")
                        : ls.type == LS_MONSTER
-                          ? ((((ls.id.a_monst).mx > 0))
+                          ? (((ls.id.a_monst).mx > 0)
                              ? _("mon")
                              : (ls.id.a_monst == gy.youmonst)
                                 ? _("you")
                                 /* migrating monster */
                                 : _("<m>"))
                           : _("???")), fmt_ptr(ls.id.a_void))
-
 
 ;
             putstr()(win, 0, buf);
@@ -973,109 +904,52 @@ wiz_light_sources()
     destroy_nhwindow()(win);
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* for 'onefile' processing where end of this file isn't necessarily the
    end of the source code seen by the compiler */
 
-
-
-
-
 /*light.c*/
+
 import { canspotmon } from "./display.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { FM_EVERYWHERE } from "./hack.h.js";
-import { FM_FMON } from "./hack.h.js";
-import { FM_MIGRATE } from "./hack.h.js";
-import { FM_MYDOGS } from "./hack.h.js";
-import { FM_YOU } from "./hack.h.js";
-import { struct_ls_t } from "./hack.h.js";
-import { release_data } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE } from "./global.h.js";
+import {
+    ECMD_OK, FM_EVERYWHERE, FM_FMON, FM_MIGRATE, FM_MYDOGS, FM_YOU, struct_ls_t,
+} from "./hack.h.js";
+import { release_data, update_file } from "./hack.h.macros.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
 import { NHJS_LP64_SIZEOF_light_source } from "./nhjs_recorder_sizes.h.js";
 import { OBJ_FREE } from "./obj.h.js";
-import { Is_candle } from "./obj.h.macros.js";
-import { ignitable } from "./obj.h.macros.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { GOLD_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_ls_t } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
-import { Sfo_ls_t } from "./savefile.h.macros.js";
+import { Is_candle, ignitable } from "./obj.h.macros.js";
+import { CANDELABRUM_OF_INVOCATION, GOLD_DRAGON_SCALE_MAIL, MAGIC_LAMP } from "./objects.h.js";
+import { fmon, levl } from "./rm.h.macros.js";
+import { Sfi_ls_t, Sfo_int, Sfo_ls_t } from "./savefile.h.macros.js";
 import { RANGE_LEVEL } from "./timeout.h.js";
-import { COULD_SEE } from "./vision.h.js";
-import { LS_MONSTER } from "./vision.h.js";
-import { LS_NONE } from "./vision.h.js";
-import { LS_OBJECT } from "./vision.h.js";
-import { MAX_RADIUS } from "./vision.h.js";
-import { TEMP_LIT } from "./vision.h.js";
+import { COULD_SEE, LS_MONSTER, LS_NONE, LS_OBJECT, MAX_RADIUS, TEMP_LIT } from "./vision.h.js";
 import { circle_ptr } from "./vision.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, nh_delay_output, putstr,
+} from "./winprocs.h.macros.js";
+import { NHW_MENU, WIN_ERR, struct_any } from "./wintype.h.js";
+import { char, int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { abs, assert, free, memset, sprintf } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
+import { addr_of, ref_of, struct_assign, view_of } from "../rt/struct.js";
+import { alloc, fmt_ptr } from "./alloc.js";
 import { artifact_light } from "./artifact.js";
-import { cg } from "./decl.js";
-import { gb } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { flush_screen } from "./display.js";
-import { map_invisible } from "./display.js";
+import { cg, gb, gl, gm, gv, gy, u } from "./decl.js";
+import { canseemon, flush_screen, map_invisible } from "./display.js";
 import { panic } from "./end.js";
 import { dist2 } from "./hacklib.js";
-import { place_object } from "./mkobj.js";
-import { remove_object } from "./mkobj.js";
-import { otense } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { xname } from "./objnam.js";
+import { place_object, remove_object } from "./mkobj.js";
+import { otense, simpleonames, xname } from "./objnam.js";
 import { impossible } from "./pline.js";
 import { lookup_id_mapping } from "./restore.js";
 import { sfi_int } from "./sfbase.js";
 import { find_oid } from "./shk.js";
-import { end_burn } from "./timeout.js";
-import { obj_is_local } from "./timeout.js";
-import { clear_path } from "./vision.js";
-import { vision_recalc } from "./vision.js";
-import { get_mon_location } from "./zap.js";
-import { get_obj_location } from "./zap.js";
+import { end_burn, obj_is_local } from "./timeout.js";
+import { clear_path, vision_recalc } from "./vision.js";
+import { get_mon_location, get_obj_location } from "./zap.js";

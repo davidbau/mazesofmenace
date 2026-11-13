@@ -3,30 +3,10 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "artifact.h"
-
 const brief_feeling = init_string(static_array("mhitm.c/brief_feeling", char, sizeof_string("have a %s feeling for a moment, then it passes.")), _("have a %s feeling for a moment, then it passes."), true);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-noises(magr, mattk)
-{
-    let farq = (+(mdistu(magr) > 15));
+function noises(magr, mattk) { /* void */
+    let farq = +(mdistu(magr) > 15);
 
     if (!Deaf() && (farq != gf.far_noise || svm.moves - gn.noisetime > 10)) {
         gf.far_noise = farq;
@@ -37,9 +17,7 @@ noises(magr, mattk)
     }
 }
 
-function /* void */
-pre_mm_attack(magr, mdef)
-{
+function pre_mm_attack(magr, mdef) { /* void */
     let showit = FALSE;
 
     /* unhiding or unmimicking happens even if hero can't see it
@@ -72,12 +50,10 @@ pre_mm_attack(magr, mdef)
 }
 
 /* feedback for when a monster-vs-monster attack misses */
-function /* void */
-missmm(
+function missmm(
     magr,
     mdef,
-    mattk) /* attack and damage types */
-{
+    mattk) { /* void */ /* attack and damage types */
     pre_mm_attack(magr, mdef);
 
     if (gv.vis) {
@@ -102,9 +78,7 @@ missmm(
  *  digest the hero.
  */
  /* have monsters fight each other */
-export function /* int */
-fightm(mtmp)
-{
+export function fightm(mtmp) { /* int */
     let mon, nmon;
     let result, has_u_swallowed;
     /* perhaps the monster will resist Conflict */
@@ -161,7 +135,7 @@ fightm(mtmp)
                         mon.movement = 0;
                     gb.bhitpos.x = mtmp.mx, gb.bhitpos.y = mtmp.my;
                     gn.notonhead = FALSE;
-                    void mattackm(mon, mtmp); /* return attack */
+                    mattackm(mon, mtmp); /* return attack */
                 }
 
                 return (result & M_ATTK_HIT) ? 1 : 0;
@@ -175,12 +149,10 @@ fightm(mtmp)
  * mdisplacem() -- attacker moves defender out of the way;
  *                 returns same results as mattackm().
  */
-export function /* int */
-mdisplacem(
+export function mdisplacem(
     magr,
     mdef,
-    quietly)
-{
+    quietly) { /* int */
     let pa, pd;
     let tx, ty, fx, fy;
 
@@ -219,7 +191,7 @@ mdisplacem(
      * You can observe monster displacement if you can see both of
      * the monsters involved.
      */
-    gv.vis = (((canspotmon(magr) && canspotmon(mdef)) ? 1 : 0));
+    gv.vis = (canspotmon(magr) && canspotmon(mdef) ? 1 : 0);
 
     if (touch_petrifies(pd) && !resists_ston(magr)) {
         if (!which_armor(magr, W_ARMG)) {
@@ -289,11 +261,10 @@ mdisplacem(
  *
  * In the case of exploding monsters, the monster dies as well.
  */
-export function /* int */
-mattackm(
+export function mattackm(
     magr,
-    mdef)
-{ const $frame = stack_frame(); try {
+    mdef) { /* int */
+    const $frame = stack_frame(); try {
     let i,
         tmp,
         strike = 0,
@@ -355,8 +326,8 @@ mattackm(
         tmp++;
 
     /* Set up the visibility of action */
-    gv.vis = ((((cansee(magr.mx, magr.my) && canspotmon(magr))
-              || (cansee(mdef.mx, mdef.my) && canspotmon(mdef))) ? 1 : 0));
+    gv.vis = ((cansee(magr.mx, magr.my) && canspotmon(magr))
+              || (cansee(mdef.mx, mdef.my) && canspotmon(mdef)) ? 1 : 0);
 
     /* Set flag indicating monster has moved this turn.  Necessary since a
      * monster might get an attack out of sequence (i.e. before its move) in
@@ -439,7 +410,7 @@ mattackm(
                 break;
             }
             dieroll = rnd(20 + i);
-            strike = (+(tmp > dieroll));
+            strike = +(tmp > dieroll);
             /* KMH -- don't accumulate to-hit bonuses */
             if (mwep)
                 tmp -= hitval(mwep, mdef);
@@ -464,7 +435,7 @@ mattackm(
                         if (gv.vis && canspotmon(mdef))
                             pline(_("%s divides as %s hits it!"),
                                   Monnam(mdef), mon_nam(magr));
-                        void mintrap(mclone, NO_TRAP_FLAGS);
+                        mintrap(mclone, NO_TRAP_FLAGS);
                         if (DEADMONSTER(magr))
                             res[i] |= M_ATTK_AGR_DIED;
                     }
@@ -474,8 +445,8 @@ mattackm(
             break;
 
         case AT_HUGS: /* automatic if prev two attacks succeed */
-            strike = (+(i >= 2 && res[i - 1] == M_ATTK_HIT
-                      && res[i - 2] == M_ATTK_HIT));
+            strike = +(i >= 2 && res[i - 1] == M_ATTK_HIT
+                      && res[i - 2] == M_ATTK_HIT);
             if (strike) {
                 /* note: monsters with hug attacks don't wear cloaks or gloves
                    so this doesn't need a special case for hugging a shade
@@ -525,7 +496,7 @@ mattackm(
             /* Engulfing attacks are directed at the hero if possible. -dlc */
             if (engulfing_u(magr)) {
                 strike = 0;
-            } else if ((strike = (+(tmp > rnd(20 + i)))) != 0) {
+            } else if ((strike = +(tmp > rnd(20 + i))) != 0) {
                 if (failed_grab(magr, mdef, mattk))
                     strike = 0; /* purple worm can't swallow unsolid mons */
                 else
@@ -589,16 +560,16 @@ mattackm(
     } /* for (;i < NATTK;) loop */
 
     return (struck ? M_ATTK_HIT : M_ATTK_MISS);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* can't hold an unsolid target (ghosts, lights, vortices, most elementals)
    or a long worm tail */
-export function /* boolean */
-failed_grab(
+export function failed_grab(
     magr,
     mdef,
-    mattk)
-{ const $frame = stack_frame(); try {
+    mattk) { /* boolean */
+    const $frame = stack_frame(); try {
     if ((unsolid(mdef.data) || gn.notonhead)
         /* hug attack: most holders (owlbear, python, pit fiend, &c);
            wrap damage: eel grabbing, trapper/lurker-above engulfing;
@@ -618,15 +589,15 @@ failed_grab(
                mon_nam(x_monnam) calls s_suffix() for named ghosts and
                s_suffix() uses a single static buffer; make copies of both
                names to overcome that [note: comment predates 'tailmiss'] */
-            void strcpy(magrnam, (magr == gy.youmonst) ? _("Your")
+            strcpy(magrnam, (magr == gy.youmonst) ? _("Your")
                                                    : s_suffix(Monnam(magr)));
             if (!tailmiss) {
-                void strcpy(mdefnam, (mdef == gy.youmonst) ? _("you")
+                strcpy(mdefnam, (mdef == gy.youmonst) ? _("you")
                                                        : mon_nam(mdef));
             } else {
                 /* hero poly'd into long worm can't grow tail
                    so no 'youmonst' handling is needed here */
-                void sprintf(mdefnam, _("%s tail"), s_suffix(some_mon_nam(mdef)));
+                sprintf(mdefnam, _("%s tail"), s_suffix(some_mon_nam(mdef)));
             }
             /* unsolid grab misses are actually somewhat iffy--how come
                ordinary attacks don't also pass right through? */
@@ -637,22 +608,22 @@ failed_grab(
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Returns the result of mdamagem(). */
-function /* int */
-hitmm(
+function hitmm(
     magr,
     mdef,
     mattk,
     mwep,
-    dieroll)
-{ const $frame = stack_frame(); try {
+    dieroll) { /* int */
+    const $frame = stack_frame(); try {
     let compat;
-    let weaponhit = (((mattk.aatyp == AT_WEAP
-                         || (mattk.aatyp == AT_CLAW && mwep)) ? 1 : 0)),
-            silverhit = (((weaponhit && mwep
-                         && objects[mwep.otyp].oc_material == SILVER) ? 1 : 0));
+    let weaponhit = (mattk.aatyp == AT_WEAP
+                         || (mattk.aatyp == AT_CLAW && mwep) ? 1 : 0),
+            silverhit = (weaponhit && mwep
+                         && objects[mwep.otyp].oc_material == SILVER ? 1 : 0);
 
     pre_mm_attack(magr, mdef);
 
@@ -663,7 +634,7 @@ hitmm(
     if (gv.vis) {
         let buf = stack_array(char, BUFSZ), magr_name = stack_array(char, BUFSZ);
 
-        void strcpy(magr_name, Monnam(magr));
+        strcpy(magr_name, Monnam(magr));
         if (compat) {
             Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%s %s"), magr_name, mdef.mcansee ? _("smiles at") : _("talks to"))
 ;
@@ -709,16 +680,16 @@ hitmm(
                 /* note: mon_nam_too returns a modifiable buffer; so
                    does s_suffix, but it returns a single static buffer
                    and we might be calling it twice for this message */
-                void strcpy(magr_name, s_suffix(magr_name));
+                strcpy(magr_name, s_suffix(magr_name));
                 if (!noncorporeal(mdef.data) && !amorphous(mdef.data)) {
                     if (mdef != magr) {
                         mdef_name = s_suffix(mdef_name);
                     } else {
-                        void strsubst(mdef_name, _("himself"), _("his own"));
-                        void strsubst(mdef_name, _("herself"), _("her own"));
-                        void strsubst(mdef_name, _("itself"), _("its own"));
+                        strsubst(mdef_name, _("himself"), _("his own"));
+                        strsubst(mdef_name, _("herself"), _("her own"));
+                        strsubst(mdef_name, _("itself"), _("its own"));
                     }
-                    void strcat(mdef_name, _(" flesh"));
+                    strcat(mdef_name, _(" flesh"));
                 }
 
                 pline(_("%s %s sears %s!"), magr_name, /* s_suffix(magr_name), */
@@ -729,17 +700,17 @@ hitmm(
         noises(magr, mattk);
 
     return mdamagem(magr, mdef, mattk, mwep, dieroll);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Returns the same values as mdamagem(). */
-function /* int */
-gazemm(magr, mdef, mattk)
-{ const $frame = stack_frame(); try {
+function gazemm(magr, mdef, mattk) { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     /* an Archon's gaze affects target even if Archon itself is blinded */
-    let archon = (+(magr.data == mons[PM_ARCHON]
-                      && mattk.adtyp == AD_BLND)),
-            altmesg = (((archon && !magr.mcansee) ? 1 : 0));
+    let archon = +(magr.data == mons[PM_ARCHON]
+                      && mattk.adtyp == AD_BLND),
+            altmesg = (archon && !magr.mcansee ? 1 : 0);
 
     /* bring target out of hiding even if hero doesn't see it happen (this
        is already done in pre_mm_attack() and shouldn't be needed here) */
@@ -748,7 +719,7 @@ gazemm(magr, mdef, mattk)
     mdef.mundetected = 0;
 
     if (gv.vis) {
-        void sprintf(buf, _("%s gazes %s"), altmesg ? Adjmonnam(magr, _("blinded")) : Monnam(magr), altmesg ? _("toward") : _("at"))
+        sprintf(buf, _("%s gazes %s"), altmesg ? Adjmonnam(magr, _("blinded")) : Monnam(magr), altmesg ? _("toward") : _("at"))
 
 ;
         pline(_("%s %s..."), buf,
@@ -765,11 +736,11 @@ gazemm(magr, mdef, mattk)
     /* call mon_reflects 2x, first test, then, if visible, print message */
     if (magr.data == mons[PM_MEDUSA] && mon_reflects(mdef, 0)) {
         if (canseemon(mdef))
-            void mon_reflects(mdef, _("The gaze is reflected away by %s %s."));
+            mon_reflects(mdef, _("The gaze is reflected away by %s %s."));
         if (mdef.mcansee) {
             if (mon_reflects(magr, 0)) {
                 if (canseemon(magr))
-                    void mon_reflects(magr,
+                    mon_reflects(magr,
                                       _("The gaze is reflected away by %s %s."));
                 return M_ATTK_MISS;
             }
@@ -800,16 +771,15 @@ gazemm(magr, mdef, mattk)
     }
 
     return mdamagem(magr, mdef, mattk, null, 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return True if magr is allowed to swallow mdef, False otherwise */
-export function /* boolean */
-engulf_target(magr, mdef)
-{
+export function engulf_target(magr, mdef) { /* boolean */
     let lev;
     let ax, ay, dx, dy;
-    let uatk = (+(magr == gy.youmonst)),
-            udef = (+(mdef == gy.youmonst));
+    let uatk = +(magr == gy.youmonst),
+            udef = +(mdef == gy.youmonst);
 
     /* can't swallow something that's too big */
     if (mdef.data.msize >= MZ_HUGE
@@ -845,12 +815,10 @@ engulf_target(magr, mdef)
 }
 
 /* Returns the same values as mattackm(). */
-function /* int */
-gulpmm(
+function gulpmm(
     magr,
     mdef,
-    mattk)
-{
+    mattk) { /* int */
     let ax, ay, dx, dy;
     let status;
     let obj;
@@ -867,7 +835,7 @@ gulpmm(
     }
     if (!flaming(magr.data)) {
         for (obj = mdef.minvent; obj; obj = obj.nobj)
-            void snuff_lit(obj);
+            snuff_lit(obj);
     }
 
     if (is_vampshifter(mdef)
@@ -966,9 +934,7 @@ gulpmm(
     return status;
 }
 
-function /* int */
-explmm(magr, mdef, mattk)
-{
+function explmm(magr, mdef, mattk) { /* int */
     let result;
 
     if (magr.mcan)
@@ -991,7 +957,7 @@ explmm(magr, mdef, mattk)
 
     /* Kill off aggressor if it didn't die. */
     if (!(result & M_ATTK_AGR_DIED)) {
-        let was_leashed = (+(magr.mleashed != 0));
+        let was_leashed = +(magr.mleashed != 0);
 
         mondead(magr);
         if (!DEADMONSTER(magr))
@@ -1012,14 +978,13 @@ explmm(magr, mdef, mattk)
 /*
  *  See comment at top of mattackm(), for return values.
  */
-function /* int */
-mdamagem(
+function mdamagem(
     magr,
     mdef,
     mattk,
     mwep,
-    dieroll)
-{ const $frame = stack_frame(); try {
+    dieroll) { /* int */
+    const $frame = stack_frame(); try {
     let pa = magr.data, pd = mdef.data;
     let mhm = stack_struct(struct_mhitm_data);
     mhm.damage = d(mattk.damn, mattk.damd);
@@ -1040,7 +1005,7 @@ mdamagem(
             wornitems = or64(wornitems, W_ARMG);
 
         if (protector == 0
-            || (protector != ~0 && (and64(wornitems, protector)) != protector)) {
+            || (protector != ~0 && and64(wornitems, protector) != protector)) {
             if (poly_when_stoned(pa)) {
                 mon_to_stone(magr);
                 return M_ATTK_HIT; /* no damage during the polymorph */
@@ -1059,7 +1024,7 @@ mdamagem(
     mhitm_adtyping(magr, mattk, mdef, mhm);
 
     if (mhitm_knockback(magr, mdef, mattk, ref_of(mhm, "hitflags"),
-                        (+(MON_WEP(magr) != null)))
+                        +(MON_WEP(magr) != null))
         && ((mhm.hitflags & (M_ATTK_DEF_DIED | M_ATTK_HIT)) != 0
             || mon_offmap(mdef)))
         return mhm.hitflags;
@@ -1080,11 +1045,11 @@ mdamagem(
         }
         if (mattk.aatyp == AT_WEAP || mattk.aatyp == AT_CLAW)
             gm.mkcorpstat_norevive = troll_baned(mdef, mwep) ? TRUE : FALSE;
-        gz.zombify = (((!mwep && zombie_maker(magr)
+        gz.zombify = (!mwep && zombie_maker(magr)
                      && (mattk.aatyp == AT_TUCH
                          || mattk.aatyp == AT_CLAW
                          || mattk.aatyp == AT_BITE)
-                     && zombie_form(mdef.data) != NON_PM) ? 1 : 0));
+                     && zombie_form(mdef.data) != NON_PM ? 1 : 0);
         monkilled(mdef, _(""), mattk.adtyp);
         gz.zombify = FALSE; /* reset */
         gm.mkcorpstat_norevive = FALSE;
@@ -1097,11 +1062,11 @@ mdamagem(
             /* various checks similar to dog_eat and meatobj.
              * after monkilled() to provide better message ordering */
             if (ismnum(mdef.cham)) {
-                void newcham(magr, null, NC_SHOW_MSG);
+                newcham(magr, null, NC_SHOW_MSG);
             } else if (pd == mons[PM_GREEN_SLIME] && !slimeproof(pa)) {
-                void newcham(magr, mons[PM_GREEN_SLIME], NC_SHOW_MSG);
+                newcham(magr, mons[PM_GREEN_SLIME], NC_SHOW_MSG);
             } else if (pd == mons[PM_WRAITH]) {
-                void grow_up(magr, null);
+                grow_up(magr, null);
                 /* don't grow up twice */
                 return (M_ATTK_DEF_DIED
                         | (!DEADMONSTER(magr) ? 0 : M_ATTK_AGR_DIED));
@@ -1116,11 +1081,11 @@ mdamagem(
                 | (grow_up(magr, mdef) ? 0 : M_ATTK_AGR_DIED));
     }
     return (mhm.hitflags == M_ATTK_AGR_DIED) ? M_ATTK_AGR_DIED : M_ATTK_HIT;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-mon_poly(magr, mdef, dmg)
-{ const $frame = stack_frame(); try {
+export function mon_poly(magr, mdef, dmg) { /* int */
+    const $frame = stack_frame(); try {
     let freaky = init_string(static_array("mon_poly.freaky", char, sizeof_string(" undergoes a freakish metamorphosis")), _(" undergoes a freakish metamorphosis"), true);
     let oldform = mdef.data;
 
@@ -1146,7 +1111,7 @@ mon_poly(magr, mdef, dmg)
     } else {
         let Before = stack_array(char, BUFSZ);
 
-        void strcpy(Before, Monnam(mdef));
+        strcpy(Before, Monnam(mdef));
         if (resists_magm(mdef)) {
             /* Magic resistance */
             if (gv.vis)
@@ -1173,8 +1138,8 @@ mon_poly(magr, mdef, dmg)
             }
         } else if (newcham(mdef, null, NO_NC_FLAGS)) {
             if (gv.vis) { /* either seen or adjacent */
-                let was_seen = +!!strcmpi(_("It"), Before),
-                        verbosely = ((flags.verbose || !was_seen) ? 1 : 0);
+                let was_seen = +!!strncmpi(_(("It")), (Before), -1),
+                        verbosely = (flags.verbose || !was_seen ? 1 : 0);
 
                 if (canspotmon(mdef))
                     pline(_("%s%s%s turns into %s."), Before,
@@ -1191,7 +1156,7 @@ mon_poly(magr, mdef, dmg)
                 if (magr == gy.youmonst)
                     tele();
                 else if (!tele_restrict(magr))
-                    void rloc(magr, RLOC_MSG);
+                    rloc(magr, RLOC_MSG);
             }
         } else {
             if (gv.vis && flags.verbose)
@@ -1204,11 +1169,10 @@ mon_poly(magr, mdef, dmg)
         magr.mspec_used += rnd(2);
 
     return dmg;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-paralyze_monst(mon, amt)
-{
+export function paralyze_monst(mon, amt) { /* void */
     if (amt > 127)
         amt = 127;
 
@@ -1219,9 +1183,7 @@ paralyze_monst(mon, amt)
 }
 
 /* `mon' is hit by a sleep attack; return 1 if it's affected, 0 otherwise */
-export function /* int */
-sleep_monst(mon, amt, how)
-{
+export function sleep_monst(mon, amt, how) { /* int */
     /* reveal mimic unless already asleep or paralyzed (won't be 'busy') */
     if (how >= 0 && !mon.msleeping && !mon.mfrozen
         && mon.data.mlet == S_MIMIC && (M_AP_TYPE(mon) == M_AP_FURNITURE
@@ -1246,9 +1208,7 @@ sleep_monst(mon, amt, how)
 }
 
 /* sleeping grabber releases, engulfer doesn't; don't use for paralysis! */
-export function /* void */
-slept_monst(mon)
-{
+export function slept_monst(mon) { /* void */
     if (helpless(mon) && mon == u.ustuck
         && !sticks(gy.youmonst.data) && !u.uswallow) {
         pline_mon(mon, _("%s grip relaxes."), s_suffix(Monnam(mon)));
@@ -1256,9 +1216,7 @@ slept_monst(mon)
     }
 }
 
-export function /* void */
-rustm(mdef, obj)
-{
+export function rustm(mdef, obj) { /* void */
     let dmgtyp = ERODE_NONE, chance = 1;
 
     if (!mdef || !obj)
@@ -1276,19 +1234,17 @@ rustm(mdef, obj)
     }
 
     if (dmgtyp != ERODE_NONE && !rn2(chance))
-        void erode_obj(obj, 0, dmgtyp, EF_GREASE | EF_VERBOSE);
+        erode_obj(obj, 0, dmgtyp, EF_GREASE | EF_VERBOSE);
 }
 
-function /* void */
-mswingsm(
+function mswingsm(
     magr,
     mdef,
-    otemp)  /* attacker's weapon */
-{
+    otemp) { /* void */ /* attacker's weapon */
     if (flags.verbose && !Blind() && mon_visible(magr)) {
-        let bash = (((is_pole(otemp) && !is_art(otemp, ART_SNICKERSNEE)
+        let bash = (is_pole(otemp) && !is_art(otemp, ART_SNICKERSNEE)
                         && (dist2(magr.mx, magr.my, mdef.mx, mdef.my)
-                            <= 2)) ? 1 : 0));
+                            <= 2) ? 1 : 0);
 
         pline(_("%s %s %s%s %s at %s."), Monnam(magr), mswings_verb(otemp, bash),
               (otemp.quan > 1) ? _("one of ") : _(""), mhis(magr), xname(otemp),
@@ -1300,14 +1256,13 @@ mswingsm(
  * Passive responses by defenders.  Does not replicate responses already
  * handled above.  Returns same values as mattackm.
  */
-function /* int */
-passivemm(
+function passivemm(
     magr,
     mdef,
     mhitb,
     mdead,
-    mwep)
-{ const $frame = stack_frame(); try {
+    mwep) { /* int */
+    const $frame = stack_frame(); try {
     var mddat = mdef.data;
     var madat = magr.data;
     var buf = stack_array(char, BUFSZ);
@@ -1331,7 +1286,7 @@ passivemm(
     assess_dmg: { switch (mddat.mattk[i].adtyp) {
     case AD_ACID:
         if (mhitb && !rn2(2)) {
-            void strcpy(buf, Monnam(magr));
+            strcpy(buf, Monnam(magr));
             if (canseemon(magr))
                 pline(_("%s is splashed by %s %s!"), buf,
                       s_suffix(mon_nam(mdef)), hliquid(_("acid")));
@@ -1349,7 +1304,7 @@ passivemm(
         break assess_dmg;
     case AD_ENCH: /* KMH -- remove enchantment (disenchanter) */
         if (mhitb && !mdef.mcan && mwep) {
-            void drain_item(mwep, FALSE);
+            drain_item(mwep, FALSE);
             /* No message */
         }
         break;
@@ -1371,13 +1326,13 @@ passivemm(
                 if (magr.mcansee && haseyes(madat) && mdef.mcansee
                     && (perceives(madat) || !mdef.minvis)) {
                     /* construct format string; guard against '%' in Monnam */
-                    void strcpy(buf, s_suffix(Monnam(mdef)));
-                    void strNsubst(buf, _("%"), _("%%"), 0);
-                    void strcat(buf, _(" gaze is reflected by %s %s."));
+                    strcpy(buf, s_suffix(Monnam(mdef)));
+                    strNsubst(buf, _("%"), _("%%"), 0);
+                    strcat(buf, _(" gaze is reflected by %s %s."));
                     if (mon_reflects(magr,
                                      canseemon(magr) ? buf : 0))
                         return (mdead | mhit);
-                    void strcpy(buf, Monnam(magr));
+                    strcpy(buf, Monnam(magr));
                     if (canseemon(magr))
                         pline(_("%s is frozen by %s gaze!"), buf,
                               s_suffix(mon_nam(mdef)));
@@ -1385,7 +1340,7 @@ passivemm(
                     return (mdead | mhit);
                 }
             } else { /* gelatinous cube */
-                void strcpy(buf, Monnam(magr));
+                strcpy(buf, Monnam(magr));
                 if (canseemon(magr))
                     pline(_("%s is frozen by %s."), buf, mon_nam(mdef));
                 paralyze_monst(magr, tmp);
@@ -1405,7 +1360,7 @@ passivemm(
                 pline_mon(magr, _("%s is suddenly very cold!"), Monnam(magr));
             healmon(mdef, Math.trunc(tmp/2), Math.trunc(tmp/2));
             if (mdef.mhpmax > ((mdef.m_lev + 1) * 8))
-                void split_mon(mdef, magr);
+                split_mon(mdef, magr);
             break;
         case AD_STUN:
             if (!magr.mstun) {
@@ -1447,19 +1402,17 @@ passivemm(
         }
     else
         tmp = 0;
-
  }
     if ((magr.mhp -= tmp) <= 0) {
         monkilled(magr, _(""), (mddat.mattk[i].adtyp));
         return (mdead | mhit | M_ATTK_AGR_DIED);
     }
     return (mdead | mhit);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* hero or monster has successfully hit target mon with drain energy attack */
-export function /* void */
-xdrainenergym(mon, givemsg)
-{
+export function xdrainenergym(mon, givemsg) { /* void */
     if (mon.mspec_used < 20 /* limit draining */
         && (attacktype(mon.data, AT_MAGC)
             || attacktype(mon.data, AT_BREA))) {
@@ -1471,9 +1424,7 @@ xdrainenergym(mon, givemsg)
 
 /* "aggressive defense"; what type of armor prevents specified attack
    from touching its target? */
-export function /* long long */
-attk_protection(aatyp)
-{
+export function attk_protection(aatyp) { /* long long */
     let w_mask = 0;
 
     switch (aatyp) {
@@ -1512,303 +1463,110 @@ attk_protection(aatyp)
 }
 
 /*mhitm.c*/
+
 import { ART_SNICKERSNEE } from "./artilist.h.js";
-import { nothing_happens } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
+import { nothing_happens, something } from "./decl.h.macros.js";
+import { S_MIMIC, WAND_CLASS } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
 import { PLNMSG_HIDE_UNDER } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { ARTICLE_NONE } from "./hack.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { MM_IGNOREWATER } from "./hack.h.js";
-import { NC_SHOW_MSG } from "./hack.h.js";
-import { NOTELL } from "./hack.h.js";
-import { NO_NC_FLAGS } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { RLOC_MSG } from "./hack.h.js";
-import { SUPPRESS_INVISIBLE } from "./hack.h.js";
-import { SUPPRESS_IT } from "./hack.h.js";
-import { SUPPRESS_NAME } from "./hack.h.js";
-import { TELL } from "./hack.h.js";
-import { XKILL_GIVEMSG } from "./hack.h.js";
-import { XKILL_NOCORPSE } from "./hack.h.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
+import { BUFSZ, FALSE, TRUE } from "./global.h.js";
+import {
+    ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, MM_IGNOREWATER, NC_SHOW_MSG, NOTELL, NO_NC_FLAGS,
+    NO_TRAP_FLAGS, POLY_NOFLAGS, RLOC_MSG, SUPPRESS_INVISIBLE, SUPPRESS_IT, SUPPRESS_NAME, TELL,
+    XKILL_GIVEMSG, XKILL_NOCORPSE,
+} from "./hack.h.js";
+import { mdistu, min, pline1 } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_CORR } from "./monattk.h.js";
-import { AD_DGST } from "./monattk.h.js";
-import { AD_DRIN } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_ENCH } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_PLYS } from "./monattk.h.js";
-import { AD_RBRE } from "./monattk.h.js";
-import { AD_RUST } from "./monattk.h.js";
-import { AD_SLEE } from "./monattk.h.js";
-import { AD_STCK } from "./monattk.h.js";
-import { AD_STUN } from "./monattk.h.js";
-import { AD_WRAP } from "./monattk.h.js";
-import { AT_BITE } from "./monattk.h.js";
-import { AT_BOOM } from "./monattk.h.js";
-import { AT_BREA } from "./monattk.h.js";
-import { AT_BUTT } from "./monattk.h.js";
-import { AT_CLAW } from "./monattk.h.js";
-import { AT_ENGL } from "./monattk.h.js";
-import { AT_EXPL } from "./monattk.h.js";
-import { AT_GAZE } from "./monattk.h.js";
-import { AT_HUGS } from "./monattk.h.js";
-import { AT_KICK } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { AT_NONE } from "./monattk.h.js";
-import { AT_SPIT } from "./monattk.h.js";
-import { AT_STNG } from "./monattk.h.js";
-import { AT_TENT } from "./monattk.h.js";
-import { AT_TUCH } from "./monattk.h.js";
-import { AT_WEAP } from "./monattk.h.js";
-import { M_ATTK_AGR_DIED } from "./monattk.h.js";
-import { M_ATTK_AGR_DONE } from "./monattk.h.js";
-import { M_ATTK_DEF_DIED } from "./monattk.h.js";
-import { M_ATTK_HIT } from "./monattk.h.js";
-import { M_ATTK_MISS } from "./monattk.h.js";
-import { struct_mhitm_data } from "./monattk.h.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { enfolds } from "./mondata.h.macros.js";
-import { flaming } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { is_elf } from "./mondata.h.macros.js";
-import { is_orc } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { slimeproof } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { unsolid } from "./mondata.h.macros.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { MZ_HUGE } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { NEED_HTH_WEAPON } from "./monst.h.js";
-import { NEED_WEAPON } from "./monst.h.js";
-import { STRAT_WAITFORU } from "./monst.h.js";
-import { STRAT_WAITMASK } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { mon_offmap } from "./monst.h.macros.js";
-import { resists_acid } from "./monst.h.macros.js";
-import { resists_cold } from "./monst.h.macros.js";
-import { resists_elec } from "./monst.h.macros.js";
-import { resists_fire } from "./monst.h.macros.js";
-import { resists_sleep } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { troll_baned } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ARCHON } from "./monsters.h.js";
-import { PM_BLACK_PUDDING } from "./monsters.h.js";
-import { PM_BROWN_PUDDING } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_GRID_BUG } from "./monsters.h.js";
-import { PM_MEDUSA } from "./monsters.h.js";
-import { PM_NURSE } from "./monsters.h.js";
-import { PM_SHADE } from "./monsters.h.js";
-import { PM_STEAM_VORTEX } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { EF_GREASE } from "./obj.h.js";
-import { EF_VERBOSE } from "./obj.h.js";
-import { ERODE_BURN } from "./obj.h.js";
-import { ERODE_CORRODE } from "./obj.h.js";
-import { ERODE_NONE } from "./obj.h.js";
-import { ERODE_RUST } from "./obj.h.js";
+import {
+    AD_ACID, AD_BLND, AD_COLD, AD_CORR, AD_DGST, AD_DRIN, AD_ELEC, AD_ENCH, AD_FIRE, AD_PLYS,
+    AD_RBRE, AD_RUST, AD_SLEE, AD_STCK, AD_STUN, AD_WRAP, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT,
+    AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG,
+    AT_TENT, AT_TUCH, AT_WEAP, M_ATTK_AGR_DIED, M_ATTK_AGR_DONE, M_ATTK_DEF_DIED, M_ATTK_HIT,
+    M_ATTK_MISS, struct_mhitm_data,
+} from "./monattk.h.js";
+import {
+    amorphous, can_teleport, digests, enfolds, flaming, haseyes, is_elf, is_orc, is_rider,
+    is_whirly, monsndx, noncorporeal, passes_walls, perceives, slimeproof, touch_petrifies, unsolid,
+} from "./mondata.h.macros.js";
+import { G_UNIQ, MZ_HUGE } from "./monflag.h.js";
+import {
+    M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT, NEED_HTH_WEAPON, NEED_WEAPON,
+    STRAT_WAITFORU, STRAT_WAITMASK,
+} from "./monst.h.js";
+import {
+    DEADMONSTER, MON_WEP, M_AP_TYPE, engulfing_u, helpless, is_vampshifter, ismnum, mon_offmap,
+    resists_acid, resists_cold, resists_elec, resists_fire, resists_sleep, resists_ston,
+    troll_baned,
+} from "./monst.h.macros.js";
+import {
+    NON_PM, PM_ARCHON, PM_BLACK_PUDDING, PM_BROWN_PUDDING, PM_FLOATING_EYE, PM_GREEN_SLIME,
+    PM_GRID_BUG, PM_MEDUSA, PM_NURSE, PM_SHADE, PM_STEAM_VORTEX, PM_WRAITH,
+} from "./monsters.h.js";
+import {
+    EF_GREASE, EF_VERBOSE, ERODE_BURN, ERODE_CORRODE, ERODE_NONE, ERODE_RUST,
+} from "./obj.h.js";
 import { is_pole } from "./obj.h.macros.js";
-import { IRON } from "./objclass.h.js";
-import { METAL } from "./objclass.h.js";
-import { SILVER } from "./objclass.h.js";
-import { NATTK } from "./permonst.h.js";
-import { NORMAL_SPEED } from "./permonst.h.js";
-import { struct_attack } from "./permonst.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
+import { IRON, METAL, SILVER } from "./objclass.h.js";
+import { NATTK, NORMAL_SPEED, struct_attack } from "./permonst.h.js";
+import { W_ARMC, W_ARMF, W_ARMG, W_ARMH } from "./prop.h.js";
 import { IRONBARS } from "./rm.h.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
+import { IS_OBSTRUCTED, IS_TREE, fmon, levl, m_at, remove_monster } from "./rm.h.macros.js";
 import { Trap_Killed_Mon } from "./trap.h.js";
 import { cansee } from "./vision.h.macros.js";
 import { mhis } from "./you.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { and64u } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    Antimagic, Blind, Conflict, Deaf, Passes_walls, Unaware, Unchanging,
+} from "./youprop.h.macros.js";
+import { char, int, ord, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, and64u, or64 } from "../rt/int64.js";
+import { sprintf, strcat, strcpy } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
+import { array_of, ref_of } from "../rt/struct.js";
 import { snuff_lit } from "./apply.js";
 import { is_art } from "./artifact.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gf } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { gz } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { flush_screen } from "./display.js";
-import { map_invisible } from "./display.js";
-import { mon_visible } from "./display.js";
-import { newsym } from "./display.js";
-import { sensemon } from "./display.js";
-import { shieldeff } from "./display.js";
-import { Adjmonnam } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { mon_nam_too } from "./do_name.js";
-import { noname_monnam } from "./do_name.js";
-import { some_mon_nam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
+import { flags, gb, gf, gl, gm, gn, gs, gv, gy, gz, iflags, svm, u } from "./decl.js";
+import {
+    canseemon, flush_screen, map_invisible, mon_visible, newsym, sensemon, shieldeff,
+} from "./display.js";
+import {
+    Adjmonnam, Monnam, a_monnam, hliquid, mon_nam, mon_nam_too, noname_monnam, some_mon_nam,
+    x_monnam,
+} from "./do_name.js";
 import { finish_meating } from "./dogmove.js";
 import { mon_explodes } from "./explode.js";
-import { dist2 } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strNsubst } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { clone_mon } from "./makemon.js";
-import { grow_up } from "./makemon.js";
-import { could_seduce } from "./mhitu.js";
-import { getmattk } from "./mhitu.js";
-import { mswings_verb } from "./mhitu.js";
-import { mtrapped_in_pit } from "./mhitu.js";
-import { golemeffects } from "./mon.js";
-import { healmon } from "./mon.js";
-import { minliquid } from "./mon.js";
-import { mon_givit } from "./mon.js";
-import { mon_to_stone } from "./mon.js";
-import { mondead } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { monnear } from "./mon.js";
-import { monstone } from "./mon.js";
-import { newcham } from "./mon.js";
-import { pm_to_cham } from "./mon.js";
-import { seemimic } from "./mon.js";
-import { set_ustuck } from "./mon.js";
-import { shieldeff_mon } from "./mon.js";
-import { unstuck } from "./mon.js";
-import { xkilled } from "./mon.js";
-import { zombie_form } from "./mon.js";
-import { zombie_maker } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { defended } from "./mondata.js";
-import { dmgtype } from "./mondata.js";
-import { mon_hates_silver } from "./mondata.js";
-import { poly_when_stoned } from "./mondata.js";
-import { resist_conflict } from "./mondata.js";
-import { resists_blnd } from "./mondata.js";
-import { resists_magm } from "./mondata.js";
-import { stagger } from "./mondata.js";
-import { sticks } from "./mondata.js";
-import { closed_door } from "./monmove.js";
-import { itsstuck } from "./monmove.js";
+import { dist2, distmin, s_suffix, strNsubst, strncmpi, strsubst } from "./hacklib.js";
+import { clone_mon, grow_up } from "./makemon.js";
+import { could_seduce, getmattk, mswings_verb, mtrapped_in_pit } from "./mhitu.js";
+import {
+    golemeffects, healmon, minliquid, mon_givit, mon_to_stone, mondead, monkilled, monnear,
+    monstone, newcham, pm_to_cham, seemimic, set_ustuck, shieldeff_mon, unstuck, xkilled,
+    zombie_form, zombie_maker,
+} from "./mon.js";
+import {
+    attacktype, defended, dmgtype, mon_hates_silver, poly_when_stoned, resist_conflict,
+    resists_blnd, resists_magm, stagger, sticks,
+} from "./mondata.js";
+import { closed_door, itsstuck } from "./monmove.js";
 import { mons } from "./monst.js";
-import { breamm } from "./mthrowu.js";
-import { spitmm } from "./mthrowu.js";
-import { thrwmm } from "./mthrowu.js";
+import { breamm, spitmm, thrwmm } from "./mthrowu.js";
 import { mon_reflects } from "./muse.js";
 import { objects } from "./objects.js";
-import { makeplural } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_mon } from "./pline.js";
+import { makeplural, simpleonames, xname } from "./objnam.js";
+import { You, You_feel, You_hear, Your, pline, pline_mon } from "./pline.js";
 import { polyself } from "./polyself.js";
 import { split_mon } from "./potion.js";
 import { update_monster_region } from "./region.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { place_monster } from "./steed.js";
-import { goodpos } from "./teleport.js";
-import { rloc } from "./teleport.js";
-import { tele } from "./teleport.js";
-import { tele_restrict } from "./teleport.js";
-import { acid_damage } from "./trap.js";
-import { erode_obj } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { erode_armor } from "./uhitm.js";
-import { mhitm_ad_blnd } from "./uhitm.js";
-import { mhitm_adtyping } from "./uhitm.js";
-import { mhitm_knockback } from "./uhitm.js";
-import { shade_miss } from "./uhitm.js";
-import { hitval } from "./weapon.js";
-import { mon_wield_item } from "./weapon.js";
-import { possibly_unwield } from "./weapon.js";
-import { you_unwere } from "./were.js";
-import { you_were } from "./were.js";
-import { place_worm_tail_randomly } from "./worm.js";
-import { remove_worm } from "./worm.js";
-import { find_mac } from "./worn.js";
-import { which_armor } from "./worn.js";
-import { drain_item } from "./zap.js";
-import { resist } from "./zap.js";
+import { goodpos, rloc, tele, tele_restrict } from "./teleport.js";
+import { acid_damage, erode_obj, mintrap, t_at } from "./trap.js";
+import {
+    erode_armor, mhitm_ad_blnd, mhitm_adtyping, mhitm_knockback, shade_miss,
+} from "./uhitm.js";
+import { hitval, mon_wield_item, possibly_unwield } from "./weapon.js";
+import { you_unwere, you_were } from "./were.js";
+import { place_worm_tail_randomly, remove_worm } from "./worm.js";
+import { find_mac, which_armor } from "./worn.js";
+import { drain_item, resist } from "./zap.js";

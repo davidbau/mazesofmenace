@@ -2,22 +2,9 @@
 /* Copyright (c) Michael Allison, 2021.                           */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "config.h"
-// #include "hacklib.h"
-
-
-
 export function Snprintf(str, size, ...args) { return nh_snprintf(_("Snprintf"), 0, str, size, ...args); }
 
-
 /* these are in extern.h but we don't include hack.h */
-
-
-
-
-
-
-
 
 /* nomakedefs_populated: flag for whether 'nomakedefs' should be freed */
 const nomakedefs_populated = static_var("nomakedefs_populated", int, 0);
@@ -39,18 +26,8 @@ export const nomakedefs = static_struct("nomakedefs", struct_nomakedefs_s, {
     build_time: 554476737,
 });
 
-
-
-
-
-
-
-
-
-
-export function /* void */
-populate_nomakedefs(version)
-{ const $frame = stack_frame(); try {
+export function populate_nomakedefs(version) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let tmpbuf1 = stack_array(char, BUFSZ), tmpbuf2 = stack_array(char, BUFSZ), strp;
     let mth = stack_array(ptr_to(char), null, [
@@ -125,22 +102,12 @@ populate_nomakedefs(version)
     nomakedefs.copyright_banner_c = dupstr(
               bannerc_string(tmpbuf2, sizeof(array_of(char, BUFSZ)), nomakedefs.build_date));
 
-
-
-
-
-
-
-
-
-
     nomakedefs_populated[0] = 1;
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-free_nomakedefs()
-{
+export function free_nomakedefs() { /* void */
     /* can't just free non-Null values because they're initialized at
        compile-time with static strings and won't have dynamic values
        unless populate_nomakedefs() has been called */
@@ -160,59 +127,24 @@ free_nomakedefs()
         free(nomakedefs.copyright_banner_c),
             nomakedefs.copyright_banner_c = 0;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /* values are Null now; dynamic vs static doesn't really matter anymore */
     nomakedefs_populated[0] = 0;
     return;
 }
 
-
-
-
 /*date.c*/
-import { BUFSZ } from "./global.h.js";
-import { struct_nomakedefs_s } from "./global.h.js";
+
+import { BUFSZ, struct_nomakedefs_s } from "./global.h.js";
 import { struct_tm } from "../libc/records.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { atoi } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
-import { mktime } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, sizeof, ulong } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { atoi, free, getenv, mktime, strlen } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, static_struct, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
+import { array_of, ptr_to } from "../rt/struct.js";
 import { dupstr } from "./alloc.js";
-import { case_insensitive_comp } from "./hacklib.js";
-import { nh_snprintf } from "./hacklib.js";
-import { bannerc_string } from "./mdlib.js";
-import { md_ignored_features } from "./mdlib.js";
-import { mdlib_version_string } from "./mdlib.js";
-import { version_id_string } from "./mdlib.js";
+import { case_insensitive_comp, nh_snprintf } from "./hacklib.js";
+import {
+    bannerc_string, md_ignored_features, mdlib_version_string, version_id_string,
+} from "./mdlib.js";

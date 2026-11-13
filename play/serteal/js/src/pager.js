@@ -8,65 +8,18 @@
  * a few other help related facilities such as data.base lookup.
  */
 
-// #include "hack.h"
-// #include "dlb.h"
-
-
-
-
-
-
-
 /* lookat() can return Null */
-
-
- 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     const chkfilNone = 0;
     const chkfilUsrTyped = 1;
     const chkfilDontAsk = 2;
     const chkfilIaCheck = 4;
 
-
 const invisexplain = init_string(static_array("invisexplain", char, sizeof_string("remembered, unseen, creature")), _("remembered, unseen, creature"), true);
 const altinvisexplain = init_string(static_array("altinvisexplain", char, sizeof_string("unseen creature")), _("unseen creature"), true); /* for clairvoyance */
 
 /* Returns "true" for characters that could represent a monster's stomach. */
-function /* boolean */
-is_swallow_sym(c)
-{
+function is_swallow_sym(c) { /* boolean */
     let i;
 
     for (i = S_sw_tl; i <= S_sw_br; i++)
@@ -78,9 +31,7 @@ is_swallow_sym(c)
 /* Append " or "+new_str to the end of buf if new_str doesn't already exist
    as a substring of buf.  Return 1 if the string was appended, 0 otherwise.
    It is expected that buf is of size BUFSZ. */
-function /* int */
-append_str(buf, new_str)
-{
+function append_str(buf, new_str) { /* int */
     let sep = init_string(static_array("append_str.sep", char, sizeof_string(" or ")), _(" or "), true);
     let oldlen, space_left;
 
@@ -97,98 +48,77 @@ append_str(buf, new_str)
 
     /* some space available, but not necessarily enough for full append */
     space_left = unsigned(BUFSZ - 1 - oldlen);  /* space remaining in buf */
-    void strncat(buf, sep, space_left);
+    strncat(buf, sep, space_left);
     if (space_left > sizeof_string(" or ") - 1)
-        void strncat(buf, new_str, unsigned(space_left - (sizeof_string(" or ") - 1)));
+        strncat(buf, new_str, unsigned(space_left - (sizeof_string(" or ") - 1)));
     return 1; /* something was appended, possibly just part of " or " */
 }
 
 /* shared by monster probing (via query_objlist!) as well as lookat() */
-export function /* char * */
-self_lookat(outbuf)
-{ const $frame = stack_frame(); try {
+export function self_lookat(outbuf) { /* char * */
+    const $frame = stack_frame(); try {
     let race = stack_array(char, QBUFSZ), trapbuf = stack_array(char, QBUFSZ);
 
     /* include race with role unless polymorphed */
     chars[race + 0] = ord('\0');
     if (!Upolyd())
-        void sprintf(race, _("%s "), gu.urace.adj);
-    void sprintf(outbuf, _("%s%s%s called %s"), (Invis() && (senseself() || !Blind())) ? _("invisible ") : _(""), race, pmname(mons[u.umonnum], Ugender()), svp.plname)
-
+        sprintf(race, _("%s "), gu.urace.adj);
+    sprintf(outbuf, _("%s%s%s called %s"), (Invis() && (senseself() || !Blind())) ? _("invisible ") : _(""), race, pmname(mons[u.umonnum], Ugender()), svp.plname)
 
 ;
     if (u.usteed)
-        void sprintf(eos(outbuf), _(", mounted on %s"), y_monnam(u.usteed));
+        sprintf(eos(outbuf), _(", mounted on %s"), y_monnam(u.usteed));
     if (u.uundetected || (Upolyd() && U_AP_TYPE())
         || visible_region_at(u.ux, u.uy))
         mhidden_description(gy.youmonst,
                             MHID_PREFIX | MHID_ARTICLE | MHID_REGION,
                             eos(outbuf));
     if (Punished())
-        void sprintf(eos(outbuf), _(", chained to %s"), uball ? ansimpleoname(uball) : _("nothing?"))
+        sprintf(eos(outbuf), _(", chained to %s"), uball ? ansimpleoname(uball) : _("nothing?"))
 ;
     if (u.utrap) /* bear trap, pit, web, in-floor, in-lava, tethered */
-        void sprintf(eos(outbuf), _(", %s"), trap_predicament(trapbuf, 0, FALSE));
+        sprintf(eos(outbuf), _(", %s"), trap_predicament(trapbuf, 0, FALSE));
     return outbuf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* format a description of 'mon's health for look_at_monster(), done_in_by();
    result isn't Healer-specific (not trained for arbitrary creatures) */
-export function /* char * */
-monhealthdescr(mon, addspace, outbuf)
-{
+export function monhealthdescr(mon, addspace, outbuf) { /* char * */
+    /* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (mon));
-    (void (addspace));
+    (mon);
+    (addspace);
     chars[outbuf] = ord('\0');
 
     return outbuf;
 }
 
 /* copy a trap's description into outbuf[] */
-function /* void */
-trap_description(outbuf, tnum, x, y)
-{
+function trap_description(outbuf, tnum, x, y) { /* void */
     /*
      * Trap detection used to display a bear trap at locations having
      * a trapped door or trapped container or both.  They're semi-real
      * traps now (defined trap types but not part of ftrap chain).
      */
     if (trapped_chest_at(tnum, x, y))
-        void strcpy(outbuf, _("trapped chest")); /* might actually be a large box */
+        strcpy(outbuf, _("trapped chest")); /* might actually be a large box */
     else if (trapped_door_at(tnum, x, y))
-        void strcpy(outbuf, _("trapped door")); /* not "trap door"... */
+        strcpy(outbuf, _("trapped door")); /* not "trap door"... */
     else
-        void strcpy(outbuf, trapname(tnum, FALSE));
+        strcpy(outbuf, trapname(tnum, FALSE));
     return;
 }
 
 /* describe a hidden monster; used for look_at during extended monster
    detection and for probing; also when looking at self and camera feedback */
-export function /* void */
-mhidden_description(
+export function mhidden_description(
     mon,
     mhid_flags,
-    outbuf)        /* output buffer */
-{ const $frame = stack_frame(); try { let $goto = null; var otmp = stack_var(ptr_to(struct_obj));
-    
+    outbuf) { /* void */ /* output buffer */
+    const $frame = stack_frame(); try {
+    let $goto = null; var otmp = stack_var(ptr_to(struct_obj));
+
     var what;
     var reg;
     var buflen;
@@ -196,7 +126,7 @@ mhidden_description(
             incl_article = +((mhid_flags & MHID_ARTICLE) != 0),
             show_altmon = +((mhid_flags & MHID_ALTMON) != 0),
             force_region = +((mhid_flags & MHID_REGION) != 0);
-    var fakeobj, isyou = (+(mon == gy.youmonst));
+    var fakeobj, isyou = +(mon == gy.youmonst);
     var x = isyou ? u.ux : mon.mx, y = isyou ? u.uy : mon.my;
     var glyph = (svl.level.flags.hero_memory && !isyou) ? levl()[x][y].glyph
                                                        : glyph_at(x, y);
@@ -205,12 +135,12 @@ mhidden_description(
     $goto_objfrommap: for (;;) { switch ($goto) { default: case "objfrommap": if ($goto || (M_AP_TYPE(mon) == M_AP_FURNITURE
         || M_AP_TYPE(mon) == M_AP_OBJECT)) {
         switch ($goto) { default: if (incl_prefix)
-            void strcpy(outbuf, _(", mimicking "));
+            strcpy(outbuf, _(", mimicking "));
         case "objfrommap": if (!$goto && (M_AP_TYPE(mon) == M_AP_FURNITURE)) {
             what = defsyms[mon.mappearance].explanation;
             if (incl_article)
                 what = an(what);
-            void strcat(outbuf, what);
+            strcat(outbuf, what);
         } else if ($goto || (M_AP_TYPE(mon) == M_AP_OBJECT
                    /* remembered glyph, not glyph_at() which is 'mon' */
                    && glyph_is_object(glyph))) {
@@ -222,39 +152,39 @@ mhidden_description(
                    : obj_descr[STRANGE_OBJECT].oc_name;
             if (incl_article && (!otmp[0] || otmp[0].quan == 1))
                 what = an(what);
-            void strcat(outbuf, what);
+            strcat(outbuf, what);
 
             if (fakeobj && otmp[0]) {
                 otmp[0].where = OBJ_FREE; /* object_from_map set to OBJ_FLOOR */
                 dealloc_obj(otmp[0]); /* has no contents */
             }
         } else {
-            void strcat(outbuf, something());
+            strcat(outbuf, something());
         } }
     } else if (M_AP_TYPE(mon) == M_AP_MONSTER) {
         if (show_altmon) {
             if (incl_prefix)
-                void strcat(outbuf, _(", masquerading as "));
+                strcat(outbuf, _(", masquerading as "));
             what = pmname(mons[mon.mappearance], Mgender(mon));
             if (incl_prefix)
                 what = an(what);
-            void strcat(outbuf, what);
+            strcat(outbuf, what);
         }
     } else if (isyou ? u.uundetected : mon.mundetected) {
-        void strcpy(outbuf, _(", hiding"));
+        strcpy(outbuf, _(", hiding"));
         if (hides_under(mon.data)) {
-            void strcat(outbuf, _(" under "));
+            strcat(outbuf, _(" under "));
             /* remembered glyph, not glyph_at() which is 'mon' */
             if (glyph_is_object(glyph))
                 { $goto = "objfrommap"; continue $goto_objfrommap; };
-            void strcat(outbuf, something());
+            strcat(outbuf, something());
         } else if (is_hider(mon.data)) {
-            void sprintf(eos(outbuf), _(" on the %s"), ceiling_hider(mon.data) ? _("ceiling")
+            sprintf(eos(outbuf), _(" on the %s"), ceiling_hider(mon.data) ? _("ceiling")
                        : surface(x, y))
 ; /* trapper */
         } else {
             if (mon.data.mlet == S_EEL && is_pool(x, y))
-                void strcat(outbuf, _(" in murky water"));
+                strcat(outbuf, _(" in murky water"));
         }
     } } break; }
 
@@ -270,22 +200,21 @@ mhidden_description(
            additional vision bit for "hero's side of edge of gas cloud"?] */
         if (distu(x, y) <= r * (r + 1) || force_region) {
             var rglyph = reg.glyph;
-            var poison_gas = (+(glyph_is_cmap(rglyph)
-                                  && glyph_to_cmap(rglyph) == S_poisoncloud));
+            var poison_gas = +(glyph_is_cmap(rglyph)
+                                  && glyph_to_cmap(rglyph) == S_poisoncloud);
 
             Snprintf(eos(outbuf), unsigned(BUFSZ - buflen), _(", in a cloud of %s"), poison_gas ? _("poison gas") : _("vapor"))
 ;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* extracted from lookat(); also used by namefloorobj() */
-export function /* boolean */
-object_from_map(
+export function object_from_map(
     glyph,
     x, y,
-    obj_p)
-{
+    obj_p) { /* boolean */
     let fakeobj = FALSE, mimic_obj = FALSE;
     let mtmp;
     let otmp;
@@ -353,7 +282,7 @@ object_from_map(
         /* extra fields needed for shop price with doname() formatting */
         otmp.where = OBJ_FLOOR;
         otmp.ox = x, otmp.oy = y;
-        otmp.no_charge = (((otmp.otyp == STRANGE_OBJECT && costly_spot(x, y)) ? 1 : 0));
+        otmp.no_charge = (otmp.otyp == STRANGE_OBJECT && costly_spot(x, y) ? 1 : 0);
     }
     /* if located at adjacent spot, mark it as having been seen up close
        (corpse type will be known even if dknown is 0, so we don't need a
@@ -376,17 +305,16 @@ object_from_map(
     return fakeobj; /* when True, caller needs to dealloc *obj_p */
 }
 
-function /* void */
-look_at_object(
+function look_at_object(
     buf,
     x, y,
-    glyph)
-{ const $frame = stack_frame(); try {
+    glyph) { /* void */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj), null);
     let fakeobj = object_from_map(glyph, x, y, otmp);
 
     if (otmp[0]) {
-        void strcpy(buf, (otmp[0].otyp != STRANGE_OBJECT)
+        strcpy(buf, (otmp[0].otyp != STRANGE_OBJECT)
                      ? distant_name(otmp[0], otmp[0].dknown ? doname_with_price
                                                        : doname_vague_quan)
                      : obj_descr[STRANGE_OBJECT].oc_name);
@@ -395,42 +323,42 @@ look_at_object(
             dealloc_obj(otmp[0]), otmp[0] = null; /* has no contents */
         }
     } else {
-        void strcpy(buf, something()); /* sanity precaution */
+        strcpy(buf, something()); /* sanity precaution */
     }
 
     if (otmp[0] && otmp[0].where == OBJ_BURIED)
-        void strcat(buf, _(" (buried)"));
+        strcat(buf, _(" (buried)"));
     /* check TREE before STONE due to level.flags.arboreal */
     else if (IS_TREE(levl()[x][y].typ))
         /* "dangling": "hanging" could imply that it's growing on this tree */
         Snprintf(eos(buf), unsigned(BUFSZ - strlen(buf)), _(" %s in a tree"), (otmp[0] && is_treefruit(otmp[0])) ? _("dangling") : _("stuck"));
     else if (levl()[x][y].typ == STONE || levl()[x][y].typ == SCORR)
-        void strcat(buf, _(" embedded in stone"));
+        strcat(buf, _(" embedded in stone"));
     else if (IS_WALL(levl()[x][y].typ) || levl()[x][y].typ == SDOOR)
-        void strcat(buf, _(" embedded in a wall"));
+        strcat(buf, _(" embedded in a wall"));
     else if (closed_door(x, y))
-        void strcat(buf, _(" embedded in a door"));
+        strcat(buf, _(" embedded in a door"));
     else if (is_pool(x, y))
-        void strcat(buf, _(" in water"));
+        strcat(buf, _(" in water"));
     else if (is_lava(x, y))
-        void strcat(buf, _(" in molten lava"))
+        strcat(buf, _(" in molten lava"))
 ; /* [can this ever happen?] */
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-look_at_monster(
+function look_at_monster(
     buf, monbuf,
     mtmp,
-    x, y)
-{ const $frame = stack_frame(); try {
+    x, y) { /* void */
+    const $frame = stack_frame(); try {
     let name, monnambuf = stack_array(char, BUFSZ), healthbuf = stack_array(char, BUFSZ);
     let accurate = +!Hallucination();
 
     name = (mtmp.data == mons[PM_COYOTE] && accurate)
               ? coyotename(mtmp, monnambuf)
               : distant_monnam(mtmp, ARTICLE_NONE, monnambuf);
-    void sprintf(buf, _("%s%s%s%s"), (mtmp.mx != x || mtmp.my != y)
+    sprintf(buf, _("%s%s%s%s"), (mtmp.mx != x || mtmp.my != y)
                 ? ((mtmp.isshk && accurate) ? _("tail of ") : _("tail of a "))
                 : _(""), accurate ? monhealthdescr(mtmp, TRUE, healthbuf) : _(""), (mtmp.mtame && accurate)
                 ? _("tame ")
@@ -438,15 +366,13 @@ look_at_monster(
                     ? _("peaceful ")
                     : _(""), name)
 
-
-
 ;
     if (u.ustuck == mtmp) {
         if (u.uswallow || iflags.save_uswallow) /* monster detection */
-            void strcat(buf, digests(mtmp.data) ? _(", swallowing you")
+            strcat(buf, digests(mtmp.data) ? _(", swallowing you")
                                             : _(", engulfing you"));
         else
-            void strcat(buf, (Upolyd() && sticks(gy.youmonst.data))
+            strcat(buf, (Upolyd() && sticks(gy.youmonst.data))
                           ? _(", being held") : _(", holding you"));
     }
     /* if mtmp isn't able to move (other than because it is a type of
@@ -455,23 +381,23 @@ look_at_monster(
     if (mtmp.mfrozen)
         /* unfortunately mfrozen covers temporary sleep and being busy
            (donning armor, for instance) as well as paralysis */
-        void strcat(buf, _(", can't move (paralyzed or sleeping or busy)"));
+        strcat(buf, _(", can't move (paralyzed or sleeping or busy)"));
     else if (mtmp.msleeping)
         /* sleeping for an indeterminate duration */
-        void strcat(buf, _(", asleep"));
+        strcat(buf, _(", asleep"));
     else if ((mtmp.mstrategy & STRAT_WAITMASK) != 0)
         /* arbitrary reason why it isn't moving */
-        void strcat(buf, _(", meditating"));
+        strcat(buf, _(", meditating"));
 
     if (mtmp.mleashed)
-        void strcat(buf, _(", leashed to you"));
+        strcat(buf, _(", leashed to you"));
     if (mtmp.mtrapped && cansee(mtmp.mx, mtmp.my)) {
         let t = t_at(mtmp.mx, mtmp.my);
         let tt = t ? t.ttyp : NO_TRAP;
 
         /* newsym lets you know of the trap, so mention it here */
         if (tt == BEAR_TRAP || is_pit(tt) || tt == WEB) {
-            void sprintf(eos(buf), _(", trapped in %s"), an(trapname(tt, FALSE)));
+            sprintf(eos(buf), _(", trapped in %s"), an(trapname(tt, FALSE)));
             t.tseen = 1;
         }
     }
@@ -488,48 +414,48 @@ look_at_monster(
         chars[monbuf + 0] = ord('\0');
         if (how_seen != 0 && how_seen != MONSEEN_NORMAL) {
             if (how_seen & MONSEEN_NORMAL) {
-                void strcat(monbuf, _("normal vision"));
+                strcat(monbuf, _("normal vision"));
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_NORMAL));
                 /* how_seen can't be 0 yet... */
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             if (how_seen & MONSEEN_SEEINVIS) {
-                void strcat(monbuf, _("see invisible"));
+                strcat(monbuf, _("see invisible"));
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_SEEINVIS));
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             if (how_seen & MONSEEN_INFRAVIS) {
-                void strcat(monbuf, _("infravision"));
+                strcat(monbuf, _("infravision"));
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_INFRAVIS));
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             if (how_seen & MONSEEN_TELEPAT) {
-                void strcat(monbuf, _("telepathy"));
+                strcat(monbuf, _("telepathy"));
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_TELEPAT));
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             if (how_seen & MONSEEN_XRAYVIS) {
                 /* Eyes of the Overworld */
-                void strcat(monbuf, _("astral vision"));
+                strcat(monbuf, _("astral vision"));
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_XRAYVIS));
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             if (how_seen & MONSEEN_DETECT) {
-                void strcat(monbuf, _("monster detection"));
+                strcat(monbuf, _("monster detection"));
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_DETECT));
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             if (how_seen & MONSEEN_WARNMON) {
                 if (Hallucination()) {
-                    void strcat(monbuf, _("paranoid delusion"));
+                    strcat(monbuf, _("paranoid delusion"));
                 } else {
-                    let mW = (or64u(svc.context.warntype.obj, svc.context.warntype.polyd)),
+                    let mW = or64u(svc.context.warntype.obj, svc.context.warntype.polyd),
                                   m2 = mtmp.data.mflags2;
 
                     let whom = ((mW & M2_HUMAN & m2) ? _("human")
@@ -539,30 +465,29 @@ look_at_monster(
                                               : pmname(mtmp.data,
                                                        Mgender(mtmp)));
 
-                    void sprintf(eos(monbuf), _("warned of %s"), makeplural(whom));
+                    sprintf(eos(monbuf), _("warned of %s"), makeplural(whom));
                 }
                 how_seen = unsigned(how_seen & unsigned(~MONSEEN_WARNMON));
                 if (how_seen)
-                    void strcat(monbuf, _(", "));
+                    strcat(monbuf, _(", "));
             }
             /* should have used up all the how_seen bits by now */
             if (how_seen) {
                 impossible(_("lookat: unknown method of seeing monster"));
-                void sprintf(eos(monbuf), _("(%u)"), how_seen);
+                sprintf(eos(monbuf), _("(%u)"), how_seen);
             }
         } /* seen by something other than normal vision */
     } /* monbuf is non-null */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* describe a pool location's contents; might return a static buffer so
    caller should use it or copy it before calling waterbody_name() again
    [5.0: moved here from mkmaze.c] */
-export function /* const char * */
-waterbody_name(x, y)
-{
+export function waterbody_name(x, y) { /* const char * */
     let pooltype = static_array("waterbody_name.pooltype", char, 40);
     let ltyp;
-    let hallucinate = ((Hallucination() && !program_state.gameover) ? 1 : 0);
+    let hallucinate = (Hallucination() && !program_state.gameover ? 1 : 0);
 
     if (!isok(x, y))
         return _("drink"); /* should never happen */
@@ -610,9 +535,7 @@ waterbody_name(x, y)
     return _("water"); /* don't hallucinate this as some other liquid */
 }
 
-export function /* char * */
-ice_descr(x, y, outbuf)
-{
+export function ice_descr(x, y, outbuf) { /* char * */
     let icetyp = static_array("ice_descr.icetyp", ptr_to(char), null, [
         _("solid"),    /* 0: not melting */
         _("sturdy"),   /* 1: more than 1000 turns left */
@@ -627,11 +550,11 @@ ice_descr(x, y, outbuf)
 
     iflags.ice_rating = -1; /* secondary output, for 'mention_decor' */
     if (SURFACE_AT(x, y) != ICE) {
-        void sprintf(outbuf, _("[ice:%d?]"), (levl()[x][y].typ));
+        sprintf(outbuf, _("[ice:%d?]"), (levl()[x][y].typ));
     } else if ((distu(x, y) > neardist
                 || (!cansee(x, y) && (!u_at(x, y) || Levitation())))
                && !gd.decor_levitate_override) { /* probe_decor(pickup.c) */
-        void strcpy(outbuf, waterbody_name(x, y)); /* "ice" or "frozen <liquid>" */
+        strcpy(outbuf, waterbody_name(x, y)); /* "ice" or "frozen <liquid>" */
     } else {
         let time_left = spot_time_left(x, y, MELT_ICE_AWAY);
 
@@ -643,7 +566,7 @@ ice_descr(x, y, outbuf)
                                 : (time_left > 50) ? 3   /* unsteady */
                                   : (time_left > 14) ? 4 /* thin */
                                     : 5;                  /* slushy */
-        void sprintf(outbuf, _("%s %s"), icetyp[iflags.ice_rating], waterbody_name(x, y))
+        sprintf(outbuf, _("%s %s"), icetyp[iflags.ice_rating], waterbody_name(x, y))
 ;
     }
     return outbuf;
@@ -653,9 +576,7 @@ ice_descr(x, y, outbuf)
  * Return the name of the glyph found at (x,y).
  * If not hallucinating and the glyph is a monster, also monster data.
  */
-function /* struct permonst * */
-lookat(x, y, buf, monbuf)
-{
+function lookat(x, y, buf, monbuf) { /* struct permonst * */
     let mtmp = null;
     let pm = null;
     let glyph;
@@ -667,7 +588,7 @@ lookat(x, y, buf, monbuf)
              && glyph == mon_to_glyph(u.ustuck, rn2_on_display_rng))
         && (!iflags.terrainmode || (iflags.terrainmode & TER_MON) != 0)) {
         /* fill in buf[] */
-        void self_lookat(buf);
+        self_lookat(buf);
 
         /* file lookup can't distinguish between "gnomish wizard" monster
            and correspondingly named player character, always picking the
@@ -691,19 +612,14 @@ lookat(x, y, buf, monbuf)
                 how = unsigned(how | 4);
 
             if (how)
-                void sprintf(eos(buf), _(" [seen: %s%s%s%s%s]"), (how & 1) ? _("infravision") : _(""), ((how & 3) > 2) ? _(", ") : _(""), (how & 2) ? _("telepathy") : _(""), ((how & 7) > 4) ? _(", ") : _(""), (how & 4) ? _("monster detection") : _(""))
-
-
-
-
-
+                sprintf(eos(buf), _(" [seen: %s%s%s%s%s]"), (how & 1) ? _("infravision") : _(""), ((how & 3) > 2) ? _(", ") : _(""), (how & 2) ? _("telepathy") : _(""), ((how & 7) > 4) ? _(", ") : _(""), (how & 4) ? _("monster detection") : _(""))
 
 ;
         }
     } else if (u.uswallow) {
         /* when swallowed, we're only called for spots adjacent to hero,
            and blindness doesn't prevent hero from feeling what holds him */
-        void sprintf(buf, _("interior of %s"), mon_nam(u.ustuck));
+        sprintf(buf, _("interior of %s"), mon_nam(u.ustuck));
         pm = u.ustuck.data;
     } else if (glyph_is_monster(glyph)) {
         if ((mtmp = m_at(x, y)) != null) {
@@ -711,7 +627,7 @@ lookat(x, y, buf, monbuf)
             pm = mtmp.data;
         } else if (Hallucination()) {
             /* 'monster' must actually be a statue */
-            void strcpy(buf, rndmonnam(0));
+            strcpy(buf, rndmonnam(0));
         }
     } else if (glyph_is_object(glyph)) {
         look_at_object(buf, x, y, glyph); /* fill in buf[] */
@@ -722,18 +638,18 @@ lookat(x, y, buf, monbuf)
     } else if (glyph_is_warning(glyph)) {
         let warnindx = glyph_to_warning(glyph);
 
-        void strcpy(buf, def_warnsyms[warnindx].explanation);
+        strcpy(buf, def_warnsyms[warnindx].explanation);
     } else if (glyph_is_invisible(glyph)) {
-        void strcpy(buf, invisexplain); /* redundant; handled by caller */
+        strcpy(buf, invisexplain); /* redundant; handled by caller */
     } else if (glyph_is_nothing(glyph)) {
-        void strcpy(buf, _("dark part of a room"));
+        strcpy(buf, _("dark part of a room"));
     } else if (glyph_is_unexplored(glyph)) {
         if (Underwater() && !Is_waterlevel(u.uz)) {
             /* "unknown" == previously mapped but not visible when
                submerged; better terminology appreciated... */
-            void strcpy(buf, (next2u(x, y)) ? _("land") : _("unknown"));
+            strcpy(buf, next2u(x, y) ? _("land") : _("unknown"));
         } else {
-            void strcpy(buf, _("unexplored area"));
+            strcpy(buf, _("unexplored area"));
         }
     } else if (glyph_is_cmap(glyph)) {
         let amsk;
@@ -744,25 +660,23 @@ lookat(x, y, buf, monbuf)
         case S_altar:
             amsk = altarmask_at(x, y);
             algn = Amask2align(amsk & AM_MASK);
-            void sprintf(buf, _("%s %saltar"), (Is_astralevel(u.uz) && !next2u(x, y)
+            sprintf(buf, _("%s %saltar"), (Is_astralevel(u.uz) && !next2u(x, y)
                      && (amsk & AM_SANCTUM))
                         ? _("aligned")
                         : align_str(algn), (amsk & AM_SANCTUM) ? _("high ") : _(""))
-
-
 
 ;
             break;
         case S_ndoor:
             if (is_drawbridge_wall(x, y) >= 0)
-                void strcpy(buf, _("open drawbridge portcullis"));
+                strcpy(buf, _("open drawbridge portcullis"));
             else if ((levl()[x][y].flags & ~D_TRAPPED) == D_BROKEN)
-                void strcpy(buf, _("broken door"));
+                strcpy(buf, _("broken door"));
             else
-                void strcpy(buf, _("doorway"));
+                strcpy(buf, _("doorway"));
             break;
         case S_cloud:
-            void strcpy(buf, Is_airlevel(u.uz) ? _("cloudy area") : _("fog/vapor cloud"))
+            strcpy(buf, Is_airlevel(u.uz) ? _("cloudy area") : _("fog/vapor cloud"))
 ;
             break;
         case S_pool:
@@ -770,49 +684,49 @@ lookat(x, y, buf, monbuf)
         case S_lava:
         case S_lavawall:
         case S_ice: /* for hallucination; otherwise defsyms[] would be fine */
-            void strcpy(buf, waterbody_name(x, y));
+            strcpy(buf, waterbody_name(x, y));
             break;
         case S_engroom:
         case S_engrcorr:
-            void strcpy(buf, _("engraving"));
+            strcpy(buf, _("engraving"));
             break;
         case S_stone:
             if (!levl()[x][y].seenv) {
-                void strcpy(buf, _("unexplored"));
+                strcpy(buf, _("unexplored"));
                 break;
             } else if (Underwater() && !Is_waterlevel(u.uz)) {
                 /* "unknown" == previously mapped but not visible when
                    submerged; better terminology appreciated... */
-                void strcpy(buf, (next2u(x, y)) ? _("land") : _("unknown"));
+                strcpy(buf, next2u(x, y) ? _("land") : _("unknown"));
                 break;
             } else if (levl()[x][y].typ == STONE || levl()[x][y].typ == SCORR) {
-                void strcpy(buf, _("stone"));
+                strcpy(buf, _("stone"));
                 break;
             }
             /* FALLTHROUGH */;
             /*FALLTHRU*/
         default:
-            void strcpy(buf, defsyms[symidx].explanation);
+            strcpy(buf, defsyms[symidx].explanation);
             break;
         }
     } else { /* not mon, obj, trap, or cmap */
-        void strcpy(buf, _("unexplored area"));
+        strcpy(buf, _("unexplored area"));
     }
     return (pm && !Hallucination()) ? pm : null;
 }
 
 /* used to decide whether the context-sensitive inventory action menu for
    item 'otmp' should include the "/ - look up this item" choice */
-export function /* boolean */
-ia_checkfile(otmp)
-{ const $frame = stack_frame(); try {
+export function ia_checkfile(otmp) { /* boolean */
+    const $frame = stack_frame(); try {
     let itemnam = stack_array(char, BUFSZ);
 
     /* singular() of xname() of otmp is what "/i" looks up */
-    void strcpy(itemnam, singular(otmp, xname));
+    strcpy(itemnam, singular(otmp, xname));
     return checkfile(itemnam, null,
                      chkfilIaCheck | chkfilDontAsk, 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Look in the "data" file for more info.  Called if the user typed in the
@@ -826,13 +740,12 @@ ia_checkfile(otmp)
  *
  * Returns True if an entry is found, False otherwise.
  */
-function /* boolean */
-checkfile(
+function checkfile(
     inp,
     pm,
     chkflags,
-    supplemental_name)
-{ const $frame = stack_frame(); try {
+    supplemental_name) { /* boolean */
+    const $frame = stack_frame(); try {
     var fp;
     var buf = stack_array(char, BUFSZ), newstr = stack_array(char, BUFSZ), givenname = stack_array(char, BUFSZ);
     var ep, dbase_str;
@@ -863,7 +776,7 @@ checkfile(
         dbase_str = strcpy(newstr, pm.pmnames[NEUTRAL]);
     else
         dbase_str = strcpy(newstr, inp);
-    void lcase(dbase_str);
+    lcase(dbase_str);
 
     /*
      * TODO:
@@ -1017,7 +930,7 @@ checkfile(
                 } else if (!skipping_entry) {
                     if (!(ep = strchr(buf, ord('\n'))))
                         break bad_data_file;;
-                    void strip_newline((ep > buf) ? ep - 1 : ep);
+                    strip_newline((ep > buf) ? ep - 1 : ep);
                     /* if we match a key that begins with "~", skip
                        this entry */
                     chk_skip = (chars[buf] == ord('~')) ? 1 : 0;
@@ -1058,12 +971,12 @@ checkfile(
                     var entrytext = pass ? alt : dbase_str;
                     var question = stack_array(char, QBUFSZ);
 
-                    void strcpy(question, _("More info about \""));
+                    strcpy(question, _("More info about \""));
                     /* +2 => length of "\"?" */
                     copynchars(eos(question), entrytext,
-                               int((unsigned(sizeof(array_of(char, QBUFSZ)) - 1
-                                      - (unsigned(strlen(question) + 2))))));
-                    void strcat(question, _("\"?"));
+                               int(unsigned(sizeof(array_of(char, QBUFSZ)) - 1
+                                      - unsigned(strlen(question) + 2))));
+                    strcat(question, _("\"?"));
                     if (y_n(question) == ord('y'))
                         yes_to_moreinfo = TRUE;
                 }
@@ -1087,7 +1000,7 @@ checkfile(
                         tp = tabbuf;
                         if (!strchr(tp, ord('\n')))
                             break bad_data_file;;
-                        void strip_newline(tp);
+                        strip_newline(tp);
                         /* text in this file is indented with one tab but
                            someone modifying it might use spaces instead */
                         if (chars[tp] == ord('\t')) {
@@ -1106,7 +1019,7 @@ checkfile(
                            convert tabs into spaces; the attributions
                            at the end of quotes typically have them */
                         if (strchr(tp, ord('\t')) != 0)
-                            void tabexpand(tp);
+                            tabexpand(tp);
                         putstr()(datawin, 0, tp);
                     }
                     display_nhwindow()(datawin, FALSE);
@@ -1118,19 +1031,18 @@ checkfile(
         }
     }
     break checkfile_done; /* skip error feedback */
-
  }
     impossible(_("'data' file in wrong format or corrupted"));
  }
     if (datawin != WIN_ERR)
         destroy_nhwindow()(datawin);
-    void dlb_fclose(fp);
+    dlb_fclose(fp);
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* extracted from do_screen_description() */
-function /* int */
-add_cmap_descr(
+function add_cmap_descr(
     found,
     idx,
     glyph,
@@ -1141,8 +1053,7 @@ add_cmap_descr(
     prefix,
     hit_trap,
     firstmatch,
-    out_str)      /* input/output: current description gets appended */
-{
+    out_str) { /* int */ /* input/output: current description gets appended */
     let mbuf = 0;
     let p;
     let absidx = abs(idx);
@@ -1183,7 +1094,7 @@ add_cmap_descr(
                                        : ICE;
         }
         u.uprops[HALLUC_RES].extrinsic = 1;
-        void strcpy(mbuf, waterbody_name(cc.x, cc.y));
+        strcpy(mbuf, waterbody_name(cc.x, cc.y));
         u.uprops[HALLUC_RES].extrinsic = save_prop;
         levl()[cc.x][cc.y].typ = save_ltyp;
 
@@ -1191,7 +1102,7 @@ add_cmap_descr(
         if (!strcmp(mbuf, _("pool of water")))
             chars[mbuf + 4] = ord('\0');
         else if (!strcmp(mbuf, _("molten lava")))
-            void strcpy(mbuf, _("lava"));
+            strcpy(mbuf, _("lava"));
         x_str = mbuf;
         /* avoid "an ice" and so forth; "a pool", "a moat", and
            "a wall of ..." are grammatically correct but make
@@ -1210,17 +1121,17 @@ add_cmap_descr(
                     /* ice while hallucinating */
                     || !strncmp(x_str, _("frozen"), 6)
                     /* thawing ice ("solid ice", "thin ice", &c) */
-                    || ((p = strchr(x_str, ord(' '))) != 0 && !strcmpi(p, _(" ice")))
+                    || ((p = strchr(x_str, ord(' '))) != 0 && !strncmpi((p), _((" ice")), -1))
                     );
     }
 
     if (!found) {
         /* this is the first match */
         if (is_cmap_trap(idx) && idx != S_vibrating_square) {
-            void sprintf(out_str, _("%sa trap"), prefix);
+            sprintf(out_str, _("%sa trap"), prefix);
             chars[hit_trap] = TRUE;
         } else {
-            void sprintf(out_str, _("%s%s"), prefix, (article == 2) ? the(x_str)
+            sprintf(out_str, _("%s%s"), prefix, (article == 2) ? the(x_str)
                                              : (article == 1) ? an(x_str)
                                                : x_str);
         }
@@ -1243,13 +1154,12 @@ add_cmap_descr(
     return found;
 }
 
-export function /* int */
-do_screen_description(
+export function do_screen_description(
     cc, looked,
     sym, out_str,
     firstmatch,
-    for_supplement)
-{ const $frame = stack_frame(); try {
+    for_supplement) { /* int */
+    const $frame = stack_frame(); try {
     var mon_interior = init_string(static_array("do_screen_description.mon_interior", char, sizeof_string("the interior of a monster")), _("the interior of a monster"), true),
                       unreconnoitered = init_string(static_array("do_screen_description.unreconnoitered", char, sizeof_string("unreconnoitered")), _("unreconnoitered"), true);
     var look_buf = static_array("do_screen_description.look_buf", char, BUFSZ);
@@ -1257,8 +1167,8 @@ do_screen_description(
     var i, j, alt_i, glyph = NO_GLYPH,
         skipped_venom = 0, found = 0; /* count of matching syms found */
     var hit_trap = stack_var(boolean), need_to_look = FALSE,
-            submerged = (((Underwater() && !Is_waterlevel(u.uz)) ? 1 : 0)),
-            hallucinate = (((Hallucination() && !program_state.gameover) ? 1 : 0));
+            submerged = (Underwater() && !Is_waterlevel(u.uz) ? 1 : 0),
+            hallucinate = (Hallucination() && !program_state.gameover ? 1 : 0);
     var x_str;
     var tmpsym;
     var glyphinfo = struct_assign(stack_struct(struct_glyphinfo), nul_glyphinfo);
@@ -1268,9 +1178,9 @@ do_screen_description(
         /* Convert glyph at selected position to a symbol for use below. */
         map_glyphinfo(cc.x, cc.y, glyph, 0, glyphinfo);
         sym = glyphinfo.ttychar;
-        void sprintf(prefix, _("%s        "), encglyph(glyphinfo.glyph));
+        sprintf(prefix, _("%s        "), encglyph(glyphinfo.glyph));
     } else
-        void sprintf(prefix, _("%c        "), sym);
+        sprintf(prefix, _("%c        "), sym);
 
     /*
      * Check all the possibilities, saving all explanations in a buffer.
@@ -1310,7 +1220,7 @@ do_screen_description(
         /* we know 'found' is zero here, but guard against some other
            special case being inserted ahead of us someday */
         if (!found) {
-            void sprintf(out_str, _("%s%s"), prefix, x_str);
+            sprintf(out_str, _("%s%s"), prefix, x_str);
             firstmatch[0] = x_str;
             found++;
         } else {
@@ -1334,7 +1244,7 @@ do_screen_description(
                 && def_monsyms[i].explain && chars[def_monsyms[i].explain]) {
                 need_to_look = TRUE;
                 if (!found) {
-                    void sprintf(out_str, _("%s%s"), prefix, an(def_monsyms[i].explain))
+                    sprintf(out_str, _("%s%s"), prefix, an(def_monsyms[i].explain))
 ;
                     firstmatch[0] = def_monsyms[i].explain;
                     found++;
@@ -1389,7 +1299,7 @@ do_screen_description(
                     continue;
                 }
                 if (!found) {
-                    void sprintf(out_str, _("%s%s"), prefix, an(oc_ptr));
+                    sprintf(out_str, _("%s%s"), prefix, an(oc_ptr));
                     /* note: if the value assigned to *firstmatch ever
                        becomes dynamically constructed, it will need to be
                        copied into a static buffer; as of now, all alternate
@@ -1410,7 +1320,7 @@ do_screen_description(
                                                        : invisexplain;
 
         if (!found) {
-            void sprintf(out_str, _("%s%s"), prefix, an(unseen_explain));
+            sprintf(out_str, _("%s%s"), prefix, an(unseen_explain));
             firstmatch[0] = unseen_explain;
             found++;
         } else {
@@ -1421,7 +1331,7 @@ do_screen_description(
         || (looked && sym == uchars[gs.showsyms + (SYM_NOTHING + SYM_OFF_X)])) {
         x_str = _("the dark part of a room");
         if (!found) {
-            void sprintf(out_str, _("%s%s"), prefix, x_str);
+            sprintf(out_str, _("%s%s"), prefix, x_str);
             firstmatch[0] = x_str;
             found++;
         } else {
@@ -1434,7 +1344,7 @@ do_screen_description(
         if (submerged)
             x_str = _("land"); /* replace "unexplored" */
         if (!found) {
-            void sprintf(out_str, _("%s%s"), prefix, x_str);
+            sprintf(out_str, _("%s%s"), prefix, x_str);
             firstmatch[0] = x_str;
             found++;
         } else {
@@ -1491,7 +1401,7 @@ do_screen_description(
                    but have different descriptions; when handling pool, add
                    it a second time for moat but pass an alternate symbol;
                    skip incrementing 'found' to avoid "can be many things" */
-                void add_cmap_descr(found, -S_pool, glyph, 1,
+                add_cmap_descr(found, -S_pool, glyph, 1,
                                       struct_copy(cc), _("moat"), prefix,
                                       addr_of(hit_trap), firstmatch, out_str);
                 need_to_look = TRUE;
@@ -1513,7 +1423,7 @@ do_screen_description(
         x_str = def_warnsyms[i].explanation;
         if (sym == (looked ? uchars[gw.warnsyms + i] : def_warnsyms[i].sym)) {
             if (!found) {
-                void sprintf(out_str, _("%s%s"), prefix, x_str);
+                sprintf(out_str, _("%s%s"), prefix, x_str);
                 firstmatch[0] = x_str;;
                 found++;
             } else {
@@ -1522,7 +1432,7 @@ do_screen_description(
             /* Kludge: warning trumps boulders on the display.
                Reveal the boulder too or player can get confused */
             if (looked && sobj_at(BOULDER, cc.x, cc.y))
-                void strcat(out_str, _(" co-located with a boulder"));
+                strcat(out_str, _(" co-located with a boulder"));
             break; /* out of for loop*/
         }
     }
@@ -1531,7 +1441,7 @@ do_screen_description(
     if (skipped_venom && found < 2) {
         x_str = def_oc_syms[VENOM_CLASS].explain;
         if (!found) {
-            void sprintf(out_str, _("%s%s"), prefix, an(x_str));
+            sprintf(out_str, _("%s%s"), prefix, an(x_str));
             firstmatch[0] = x_str;
             found++;
         } else {
@@ -1547,19 +1457,7 @@ do_screen_description(
                                        : uchars[go.ov_primary_syms + j];
         if (tmpsym && sym == tmpsym) {
             switch (j) {
-
-
-
-
-
-
-
-
-
-
-
-
-
+            /* #if 0: not in this build */
 
             case SYM_PET_OVERRIDE + SYM_OFF_X:
                 if (looked) {
@@ -1586,8 +1484,7 @@ do_screen_description(
         /* 3.6.3: this used to be "That can be many things" (without prefix)
            which turned it into a sentence that lacked its terminating period;
            we could add one below but reinstating the prefix here is better */
-        void sprintf(out_str, _("%scan be many things"), prefix);
-
+        sprintf(out_str, _("%scan be many things"), prefix);
  }
     if (looked) {
         var pm = null;
@@ -1600,39 +1497,39 @@ do_screen_description(
             if (pm && for_supplement)
                 for_supplement[0] = pm;
             if (!strcmp(look_buf, _("ice")))
-                void ice_descr(cc.x, cc.y, look_buf);
+                ice_descr(cc.x, cc.y, look_buf);
             if (!strcmp(look_buf, _("staircase down"))
-                && on_level(u.uz, (svd.dungeon_topology.d_qstart_level)) && !ok_to_quest())
-                void strcpy(look_buf, _("blocked staircase down"));
+                && on_level(u.uz, svd.dungeon_topology.d_qstart_level) && !ok_to_quest())
+                strcpy(look_buf, _("blocked staircase down"));
 
             if (chars[look_buf + 0] != ord('\0'))
                 firstmatch[0] = look_buf;
             if (chars[(firstmatch[0])]) {
-                void (sprintf(temp_buf, _(" (%s"), firstmatch[0]));
-                void add_quoted_engraving(cc.x, cc.y, temp_buf, FALSE);
-                void (strcat(temp_buf, _(")")));
-                void strncat(out_str, temp_buf,
+                sprintf(temp_buf, _(" (%s"), firstmatch[0]);
+                add_quoted_engraving(cc.x, cc.y, temp_buf, FALSE);
+                strcat(temp_buf, _(")"));
+                strncat(out_str, temp_buf,
                                unsigned(unsigned(BUFSZ - strlen(out_str)) - 1));
                 found = 1; /* we have something to look up */
             }
             if (chars[monbuf + 0]) {
                 Snprintf(temp_buf, sizeof(array_of(char, BUFSZ)), _(" [seen: %s]"), monbuf);
-                void strncat(out_str, temp_buf,
+                strncat(out_str, temp_buf,
                                unsigned(unsigned(BUFSZ - strlen(out_str)) - 1));
             }
         }
     }
 
     return found;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* when farlook is reporting on an engraving, include its text */
-function /* boolean */
-add_quoted_engraving(
+function add_quoted_engraving(
     x, y,
     buf,
-    force) /* True: '/e' or '/E', False: '//' or ';' */
-{ const $frame = stack_frame(); try {
+    force) { /* boolean */ /* True: '/e' or '/E', False: '//' or ';' */
+    const $frame = stack_frame(); try {
     let temp_buf = stack_array(char, BUFSZ);
     let ep = engr_at(x, y);
     let floorengr = +!strcmp(buf, _(" (engraving")),
@@ -1659,21 +1556,21 @@ add_quoted_engraving(
     else
         Snprintf(temp_buf, sizeof(array_of(char, BUFSZ)), _(" %s you haven't read"), headstone ? _("whose headstone") : _("that"))
 
-
 ;
 
-    void strncat(buf, temp_buf, unsigned(unsigned(BUFSZ - strlen(buf)) - 1));
+    strncat(buf, temp_buf, unsigned(unsigned(BUFSZ - strlen(buf)) - 1));
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* also used by getpos hack in getpos.c */
 export const what_is_a_location = init_string(static_array("what_is_a_location", char, sizeof_string("a monster, object or location")), _("a monster, object or location"), true);
 
-export function /* int */
-do_look(mode, click_cc)
-{ const $frame = stack_frame(); try { let $goto = null; var out_str = stack_array(char, BUFSZ), cq = stack_struct(struct__cmd_queue), firstmatch = stack_var(ptr_to(char)), supplemental_pm = stack_var(ptr_to(struct_permonst)), cc = stack_struct(struct_nhcoord), pick_list = stack_var(ptr_to(struct_mi)), any = stack_struct(struct_any), temp_buf = stack_array(char, BUFSZ), supplemental_name = stack_array(char, BUFSZ);
-    var quick = (+(mode == 1)); /* use cursor; don't search for "more info" */
-    var clicklook = (+(mode == 2)); /* right mouse-click method */
+export function do_look(mode, click_cc) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var out_str = stack_array(char, BUFSZ), cq = stack_struct(struct__cmd_queue), firstmatch = stack_var(ptr_to(char)), supplemental_pm = stack_var(ptr_to(struct_permonst)), cc = stack_struct(struct_nhcoord), pick_list = stack_var(ptr_to(struct_mi)), any = stack_struct(struct_any), temp_buf = stack_array(char, BUFSZ), supplemental_name = stack_array(char, BUFSZ);
+    var quick = +(mode == 1); /* use cursor; don't search for "more info" */
+    var clicklook = +(mode == 2); /* right mouse-click method */
     init_list(out_str, []);
     var cmdq;
     firstmatch[0] = 0;
@@ -1705,7 +1602,6 @@ do_look(mode, click_cc)
         } else {
             pick_list[0] = null;
             var win;
-            
 
             struct_assign(any, cg.zeroany);
             win = create_nhwindow()(NHW_MENU);
@@ -1831,11 +1727,11 @@ do_look(mode, click_cc)
             chars[out_str] = ord('\0');
             for (invobj = gi.invent; invobj; invobj = invobj.nobj)
                 if (invobj.invlet == invlet) {
-                    void strcpy(out_str, singular(invobj, xname));
+                    strcpy(out_str, singular(invobj, xname));
                     break;
                 }
             if (chars[out_str])
-                void checkfile(out_str, pm, chkfilUsrTyped | chkfilDontAsk,
+                checkfile(out_str, pm, chkfilUsrTyped | chkfilDontAsk,
                                  0);
             return ECMD_OK;
           }
@@ -1850,7 +1746,7 @@ do_look(mode, click_cc)
                 return ECMD_OK;
 
             if (chars[out_str + 1]) { /* user typed in a complete string */
-                void checkfile(out_str, pm,  chkfilUsrTyped | chkfilDontAsk,
+                checkfile(out_str, pm,  chkfilUsrTyped | chkfilDontAsk,
                                  0);
                 return ECMD_OK;
             }
@@ -1890,7 +1786,7 @@ do_look(mode, click_cc)
 
     /* Save the verbose flag, we change it later. */
     save_verbose = flags.verbose;
-    flags.verbose = ((flags.verbose && !quick) ? 1 : 0);
+    flags.verbose = (flags.verbose && !quick ? 1 : 0);
     /*
      * The user typed one letter, or we're identifying from the screen.
      */
@@ -1914,38 +1810,22 @@ do_look(mode, click_cc)
             }
         }
 
-        found = do_screen_description(struct_copy(cc), (((from_screen || clicklook) ? 1 : 0)), sym,
+        found = do_screen_description(struct_copy(cc), (from_screen || clicklook ? 1 : 0), sym,
                                       out_str, firstmatch, supplemental_pm);
 
         /* Finally, print out our explanation. */
         if (found) {
             /* use putmixed() because there may be an encoded glyph present */
             putmixed()(WIN_MESSAGE, 0, out_str);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+            /* #ifdef DUMPLOG_CORE: not in this build */
 
             /* check the data file for information about this thing */
             if (found == 1 && ans != LOOK_QUICK && ans != LOOK_ONCE
                 && (ans == LOOK_VERBOSE || (flags.help && !quick))
                 && !clicklook) {
-                
-
                 chars[supplemental_name + 0] = ord('\0');
-                void strcpy(temp_buf, firstmatch[0]);
-                void checkfile(temp_buf, pm,
+                strcpy(temp_buf, firstmatch[0]);
+                checkfile(temp_buf, pm,
                                  (ans == LOOK_VERBOSE) ? chkfilDontAsk
                                                        : chkfilNone,
                                  supplemental_name);
@@ -1960,13 +1840,12 @@ do_look(mode, click_cc)
 
     flags.verbose = save_verbose;
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-look_region_nearby(
+function look_region_nearby(
     lo_x, lo_y,
-    hi_x, hi_y, nearby)
-{
+    hi_x, hi_y, nearby) { /* void */
     lo_y[0] = nearby ? max(u.uy - BOLT_LIM, 0) : 0;
     lo_x[0] = nearby ? max(u.ux - BOLT_LIM, 1) : 1;
     hi_y[0] = nearby ? min(u.uy + BOLT_LIM, ROWNO - 1) : ROWNO - 1;
@@ -1975,11 +1854,10 @@ look_region_nearby(
 
  /* RESTORE is after do_supplemental_info() */
 
-function /* void */
-look_all(
+function look_all(
     nearby,
-    do_mons) /* True => monsters, False => objects */
-{ const $frame = stack_frame(); try {
+    do_mons) { /* void */ /* True => monsters, False => objects */
+    const $frame = stack_frame(); try {
     let win;
     let glyph, count = 0;
     let x, y, lo_x = stack_var(coordxy), lo_y = stack_var(coordxy), hi_x = stack_var(coordxy), hi_y = stack_var(coordxy);
@@ -1996,7 +1874,7 @@ look_all(
                     let mtmp;
 
                     if (u_at(x, y) && canspotself()) {
-                        void self_lookat(lookbuf);
+                        self_lookat(lookbuf);
                         ++count;
                     } else if ((mtmp = m_at(x, y)) != null) {
                         look_at_monster(lookbuf, 0, mtmp, x, y);
@@ -2004,12 +1882,12 @@ look_all(
                     }
                 } else if (glyph_is_invisible(glyph)) {
                     /* remembered, unseen, creature */
-                    void strcpy(lookbuf, invisexplain);
+                    strcpy(lookbuf, invisexplain);
                     ++count;
                 } else if (glyph_is_warning(glyph)) {
                     let warnindx = glyph_to_warning(glyph);
 
-                    void strcpy(lookbuf, def_warnsyms[warnindx].explanation);
+                    strcpy(lookbuf, def_warnsyms[warnindx].explanation);
                     ++count;
                 }
             } else { /* !do_mons */
@@ -2024,14 +1902,13 @@ look_all(
                 cmode = (iflags.getpos_coords != GPCOORDS_NONE)
                            ? iflags.getpos_coords : GPCOORDS_MAP;
                 if (count == 1) {
-                    void strcpy(which, do_mons ? _("monsters") : _("objects"));
+                    strcpy(which, do_mons ? _("monsters") : _("objects"));
                     if (nearby)
-                        void sprintf(outbuf, _("%s currently shown near %s:"), upstart(which), (cmode != GPCOORDS_COMPASS)
+                        sprintf(outbuf, _("%s currently shown near %s:"), upstart(which), (cmode != GPCOORDS_COMPASS)
                                   ? coord_desc(u.ux, u.uy, coordbuf, cmode)
                                   : !canspotself() ? _("your position") : _("you"));
                     else
-                        void sprintf(outbuf, _("All %s currently shown on the map:"), which)
-
+                        sprintf(outbuf, _("All %s currently shown on the map:"), which)
 
 ;
                     putstr()(win, 0, outbuf);
@@ -2040,7 +1917,7 @@ look_all(
                        in a fixed-width font it if finds at least one */
                     putstr()(win, 0, _("    ")); /* separator */
                 }
-                void coord_desc(x, y, coordbuf, cmode);
+                coord_desc(x, y, coordbuf, cmode);
                 /* this format wrinkle makes the commas of <x,y> line up;
                    it isn't needed when all the y values have same number
                    of digits but looks better when there is a mixture of 1
@@ -2050,16 +1927,16 @@ look_all(
                    because the result gets right-justified by %8s; adding
                    a trailing space effectively pushes non-space text left */
                 if (cmode == GPCOORDS_MAP && y < 10)
-                    void strkitten(coordbuf, ord(' '));
+                    strkitten(coordbuf, ord(' '));
                 /* prefix: "coords  C  " where 'C' is mon or obj symbol */
-                void sprintf(outbuf, (cmode == GPCOORDS_SCREEN) ? _("%s  ")
+                sprintf(outbuf, (cmode == GPCOORDS_SCREEN) ? _("%s  ")
                                   : (cmode == GPCOORDS_MAP) ? _("%8s  ")
                                       : _("%12s  "), coordbuf)
 ;
-                void sprintf(eos(outbuf), _("%s  "), encglyph(glyph));
+                sprintf(eos(outbuf), _("%s  "), encglyph(glyph));
                 /* guard against potential overflow */
                 chars[lookbuf + unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(outbuf))] = ord('\0');
-                void strcat(outbuf, lookbuf);
+                strcat(outbuf, lookbuf);
                 putmixed()(win, 0, outbuf);
             }
         }
@@ -2071,12 +1948,12 @@ look_all(
               do_mons ? _("monsters") : _("objects"),
               nearby ? _("nearby") : _("on the map"));
     destroy_nhwindow()(win);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* give a /M style display of discovered traps, even when they're covered */
-function /* void */
-look_traps(nearby)
-{ const $frame = stack_frame(); try {
+function look_traps(nearby) { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let t;
     let glyph, tnum, count = 0;
@@ -2098,8 +1975,8 @@ look_traps(nearby)
                           clouds except when hero has direct line of sight */
                        && ((!Is_waterlevel(u.uz) && !Is_airlevel(u.uz))
                            || couldsee(x, y))) {
-                void strcpy(lookbuf, trapname(t.ttyp, FALSE));
-                void sprintf(eos(lookbuf), _(", obscured by %s"), encglyph(glyph));
+                strcpy(lookbuf, trapname(t.ttyp, FALSE));
+                sprintf(eos(lookbuf), _(", obscured by %s"), encglyph(glyph));
                 glyph = trap_to_glyph(t);
                 ++count;
             }
@@ -2109,7 +1986,7 @@ look_traps(nearby)
                 cmode = (iflags.getpos_coords != GPCOORDS_NONE)
                            ? iflags.getpos_coords : GPCOORDS_MAP;
                 if (count == 1) {
-                    void sprintf(outbuf, _("%sseen or remembered traps%s:"), nearby ? _("nearby ") : _(""), nearby ? _("") : _(" on this level"))
+                    sprintf(outbuf, _("%sseen or remembered traps%s:"), nearby ? _("nearby ") : _(""), nearby ? _("") : _(" on this level"))
 
 ;
                     putstr()(win, 0, upstart(outbuf));
@@ -2119,14 +1996,14 @@ look_traps(nearby)
                     putstr()(win, 0, _("    ")); /* separator */
                 }
                 /* prefix: "coords  C  " where 'C' is trap symbol */
-                void sprintf(outbuf, (cmode == GPCOORDS_SCREEN) ? _("%s  ")
+                sprintf(outbuf, (cmode == GPCOORDS_SCREEN) ? _("%s  ")
                                   : (cmode == GPCOORDS_MAP) ? _("%8s  ")
                                       : _("%12s  "), coord_desc(x, y, coordbuf, cmode))
 ;
-                void sprintf(eos(outbuf), _("%s  "), encglyph(glyph));
+                sprintf(eos(outbuf), _("%s  "), encglyph(glyph));
                 /* guard against potential overflow */
                 chars[lookbuf + unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(outbuf))] = ord('\0');
-                void strcat(outbuf, lookbuf);
+                strcat(outbuf, lookbuf);
                 putmixed()(win, 0, outbuf);
             }
         }
@@ -2136,13 +2013,13 @@ look_traps(nearby)
     else
         pline(_("No traps seen or remembered%s."), nearby ? _(" nearby") : _(""));
     destroy_nhwindow()(win);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* display of discovered engravings including headstones, even when they're
    covered provided they've been read */
-function /* void */
-look_engrs(nearby)
-{ const $frame = stack_frame(); try {
+function look_engrs(nearby) { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let e;
     let lookbuf = stack_array(char, BUFSZ), outbuf = stack_array(char, BUFSZ);
@@ -2167,16 +2044,16 @@ look_engrs(nearby)
             if (!e)
                 continue;
             is_headstone = IS_GRAVE(chars[svl.lastseentyp[x] + y]);
-            void (sprintf(lookbuf, _(" (%s"), is_headstone ? _("grave") : _("engraving")));
-            void add_quoted_engraving(x, y, lookbuf, TRUE);
+            sprintf(lookbuf, _(" (%s"), is_headstone ? _("grave") : _("engraving"));
+            add_quoted_engraving(x, y, lookbuf, TRUE);
             /* the paren is used by farlook and add_quoted_engraving()
                expected to see it; we don't want it here */
             if (is_headstone) {
-                void (strsubst(lookbuf, _("(grave with "), _("")));
-                void (strsubst(lookbuf, _("(grave whose "), _("")));
+                strsubst(lookbuf, _("(grave with "), _(""));
+                strsubst(lookbuf, _("(grave whose "), _(""));
             } else {
-                void (strsubst(lookbuf, _("(engraving with "), _("")));
-                void (strsubst(lookbuf, _("(engraving "), _("engraving ")));
+                strsubst(lookbuf, _("(engraving with "), _(""));
+                strsubst(lookbuf, _("(engraving "), _("engraving "));
             }
 
             glyph = glyph_at(x, y);
@@ -2198,7 +2075,7 @@ look_engrs(nearby)
                 cmode = (iflags.getpos_coords != GPCOORDS_NONE)
                            ? iflags.getpos_coords : GPCOORDS_MAP;
                 if (count == 1) {
-                    void sprintf(outbuf, _("%sseen or remembered engravings%s:"), nearby ? _("nearby ") : _(""), nearby ? _("") : _(" on this level"))
+                    sprintf(outbuf, _("%sseen or remembered engravings%s:"), nearby ? _("nearby ") : _(""), nearby ? _("") : _(" on this level"))
 
 ;
                     putstr()(win, 0, upstart(outbuf));
@@ -2208,14 +2085,14 @@ look_engrs(nearby)
                     putstr()(win, 0, _("    ")); /* separator */
                 }
                 /* prefix: "coords  C  " where 'C' is engrvng|grave symbol */
-                void sprintf(outbuf, (cmode == GPCOORDS_SCREEN) ? _("%s  ")
+                sprintf(outbuf, (cmode == GPCOORDS_SCREEN) ? _("%s  ")
                                   : (cmode == GPCOORDS_MAP) ? _("%8s  ")
                                       : _("%12s  "), coord_desc(x, y, coordbuf, cmode))
 ;
-                void sprintf(eos(outbuf), _("%s "), encglyph(glyph));
+                sprintf(eos(outbuf), _("%s "), encglyph(glyph));
                 /* guard against potential overflow */
                 chars[lookbuf + unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(outbuf))] = ord('\0');
-                void strcat(outbuf, lookbuf);
+                strcat(outbuf, lookbuf);
                 putmixed()(win, 0, outbuf);
             }
         }
@@ -2225,7 +2102,8 @@ look_engrs(nearby)
     else
         pline(_("No engravings seen or remembered%s."), nearby ? _(" nearby") : _(""));
     destroy_nhwindow()(win);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const suptext1 = static_array("suptext1", ptr_to(char), null, [
     _("%s is a member of a marauding horde of orcs"),
@@ -2249,12 +2127,11 @@ const suptext2 = static_array("suptext2", ptr_to(char), null, [
     0,
 ]);
 
-function /* void */
-do_supplemental_info(
+function do_supplemental_info(
     name,
     pm,
-    without_asking)
-{ const $frame = stack_frame(); try {
+    without_asking) { /* void */
+    const $frame = stack_frame(); try {
     let textp;
     let datawin = WIN_ERR;
     let entrytext = name, bp = 0, bp2 = 0;
@@ -2274,13 +2151,13 @@ do_supplemental_info(
         bp2 = strstri(name, _(" the Fence"));
 
         if (bp || bp2) {
-            void strcpy(fullname, name);
+            strcpy(fullname, name);
             if (!without_asking) {
-                void strcpy(question, _("More info about \""));
+                strcpy(question, _("More info about \""));
                 /* +2 => length of "\"?" */
                 copynchars(eos(question), entrytext,
-                        int((unsigned(sizeof(array_of(char, QBUFSZ)) - 1 - (unsigned(strlen(question) + 2))))));
-                void strcat(question, _("\"?"));
+                        int(unsigned(sizeof(array_of(char, QBUFSZ)) - 1 - unsigned(strlen(question) + 2))));
+                strcat(question, _("\"?"));
                 if (y_n(question) == ord('y'))
                 yes_to_moreinfo = TRUE;
             }
@@ -2302,7 +2179,7 @@ do_supplemental_info(
                     let txt;
 
                     if (strstri(textp[i], _("%s")) != 0) {
-                        void sprintf(buf, textp[i], subs++ ? gang : fullname);
+                        sprintf(buf, textp[i], subs++ ? gang : fullname);
                         txt = buf;
                     } else
                         txt = textp[i];
@@ -2313,28 +2190,21 @@ do_supplemental_info(
             }
         }
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* the #whatis command */
-export function /* int */
-dowhatis()
-{
+export function dowhatis() { /* int */
     return do_look(0, null);
 }
 
 /* the #glance command */
-export function /* int */
-doquickwhatis()
-{
+export function doquickwhatis() { /* int */
     return do_look(1, null);
 }
 
 /* the #showtrap command */
-export function /* int */
-doidtrap()
-{
+export function doidtrap() { /* int */
     let trap;
     let tt, glyph;
     let x, y;
@@ -2417,9 +2287,8 @@ doidtrap()
     rest_on_space, #if SHELL, #if SUSPEND) are booleans.
 */
 
-function /* void */
-whatdoes_help()
-{ const $frame = stack_frame(); try {
+function whatdoes_help() { /* void */
+    const $frame = stack_frame(); try {
     let fp;
     let p, buf = stack_array(char, BUFSZ);
     let tmpwin;
@@ -2439,149 +2308,17 @@ whatdoes_help()
                 break;
         putstr()(tmpwin, 0, p);
     }
-    void dlb_fclose(fp);
+    dlb_fclose(fp);
     display_nhwindow()(tmpwin, TRUE);
     destroy_nhwindow()(tmpwin);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* char * */
-dowhatdoes_core(q, cbuf)
-{ const $frame = stack_frame(); try {
+export function dowhatdoes_core(q, cbuf) { /* char * */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
-
-
-
-
-
 
     let ec_desc;
 
@@ -2590,74 +2327,18 @@ dowhatdoes_core(q, cbuf)
 
         /* note: if "%-8s" gets changed, the "%8.8s" in dowhatdoes() will
            need a comparable change */
-        void sprintf(buf, _("%-8s%s."), key2txt(uchar(q), keybuf), ec_desc);
-        void strcpy(cbuf, buf);
+        sprintf(buf, _("%-8s%s."), key2txt(uchar(q), keybuf), ec_desc);
+        strcpy(cbuf, buf);
         return cbuf;
     }
     return 0;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-} finally { stack_pop($frame); } }
+    /* #if 0: not in this build */
+    } finally { stack_pop($frame); }
+}
 
 /* the whatdoes command */
-export function /* int */
-dowhatdoes()
-{ const $frame = stack_frame(); try {
+export function dowhatdoes() { /* int */
+    const $frame = stack_frame(); try {
     let once = static_var("dowhatdoes.once", schar, FALSE);
     let bufr = stack_array(char, BUFSZ);
     let q, reslt;
@@ -2685,7 +2366,6 @@ dowhatdoes()
             q = char((uchar(q) | 0o200));
     }
 
-
     intron(); /* reenables ^C */
 
     reslt = dowhatdoes_core(q, bufr);
@@ -2712,113 +2392,88 @@ dowhatdoes()
               visctrl(q), uchar(q), uchar(q), uchar(q));
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-docontact()
-{ const $frame = stack_frame(); try {
+function docontact() { /* void */
+    const $frame = stack_frame(); try {
     let cwin = create_nhwindow()(NHW_TEXT);
     let buf = stack_array(char, BUFSZ);
 
     if (sysopt.support) {
         /*XXX overflow possibilities*/
-        void sprintf(buf, _("To contact local support, %s"), sysopt.support);
+        sprintf(buf, _("To contact local support, %s"), sysopt.support);
         putstr()(cwin, 0, buf);
         putstr()(cwin, 0, _(""));
     } else if (sysopt.fmtd_wizard_list) { /* formatted SYSCF WIZARDS */
-        void sprintf(buf, _("To contact local support, contact %s."), sysopt.fmtd_wizard_list)
+        sprintf(buf, _("To contact local support, contact %s."), sysopt.fmtd_wizard_list)
 ;
         putstr()(cwin, 0, buf);
         putstr()(cwin, 0, _(""));
     }
     putstr()(cwin, 0, _("To contact the NetHack development team directly,"));
     /*XXX overflow possibilities*/
-    void sprintf(buf, _("see the 'Contact' form on our website or email <%s>."), _(DEVTEAM_EMAIL))
+    sprintf(buf, _("see the 'Contact' form on our website or email <%s>."), _(DEVTEAM_EMAIL))
 ;
     putstr()(cwin, 0, buf);
     putstr()(cwin, 0, _(""));
     putstr()(cwin, 0, _("For more information on NetHack, or to report a bug,"));
-    void sprintf(buf, _("visit our website \"%s\"."), _(DEVTEAM_URL));
+    sprintf(buf, _("visit our website \"%s\"."), _(DEVTEAM_URL));
     putstr()(cwin, 0, buf);
     display_nhwindow()(cwin, FALSE);
     destroy_nhwindow()(cwin);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-dispfile_help()
-{
+function dispfile_help() { /* void */
     display_file()(_(HELP), TRUE);
 }
 
-function /* void */
-dispfile_shelp()
-{
+function dispfile_shelp() { /* void */
     display_file()(_(SHELP), TRUE);
 }
 
-function /* void */
-dispfile_optionfile()
-{
+function dispfile_optionfile() { /* void */
     display_file()(_(OPTIONFILE), TRUE);
 }
 
-function /* void */
-dispfile_optmenu()
-{
+function dispfile_optmenu() { /* void */
     display_file()(_(OPTMENUHELP), TRUE);
 }
 
-function /* void */
-dispfile_license()
-{
+function dispfile_license() { /* void */
     display_file()(_(LICENSE), TRUE);
 }
 
-function /* void */
-dispfile_debughelp()
-{
+function dispfile_debughelp() { /* void */
     display_file()(_(DEBUGHELP), TRUE);
 }
 
-function /* void */
-dispfile_usagehelp()
-{
+function dispfile_usagehelp() { /* void */
     display_file()(_(USAGEHELP), TRUE);
 }
 
-function /* void */
-hmenu_doextversion()
-{
-    void doextversion();
+function hmenu_doextversion() { /* void */
+    doextversion();
 }
 
-function /* void */
-hmenu_dohistory()
-{
-    void dohistory();
+function hmenu_dohistory() { /* void */
+    dohistory();
 }
 
-function /* void */
-hmenu_dowhatis()
-{
-    void dowhatis();
+function hmenu_dowhatis() { /* void */
+    dowhatis();
 }
 
-function /* void */
-hmenu_dowhatdoes()
-{
-    void dowhatdoes();
+function hmenu_dowhatdoes() { /* void */
+    dowhatdoes();
 }
 
-function /* void */
-hmenu_doextlist()
-{
-    void doextlist();
+function hmenu_doextlist() { /* void */
+    doextlist();
 }
 
-function /* void */
-domenucontrols()
-{
+function domenucontrols() { /* void */
     let cwin = create_nhwindow()(NHW_TEXT);
 
     show_menu_controls(cwin, FALSE);
@@ -2847,18 +2502,13 @@ domenucontrols()
     { f: dispfile_license, text: _("The NetHack license.") },
     { f: docontact, text: _("Support information.") },
 
-
-
     { f: dispfile_debughelp, text: _("List of wizard-mode commands.") },
     { f: null, text: 0 }
 ]);
 
-
-
 /* the #help command */
-export function /* int */
-dohelp()
-{ const $frame = stack_frame(); try {
+export function dohelp() { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin = create_nhwindow()(NHW_MENU);
     let helpbuf = stack_array(char, QBUFSZ), tmpbuf = stack_array(char, QBUFSZ);
     let i, n;
@@ -2877,11 +2527,11 @@ dohelp()
             continue;
 
         if (chars[help_menu_items[i].text + 0] == ord('%')) {
-            void sprintf(helpbuf, help_menu_items[i].text, _("MacOS"));
+            sprintf(helpbuf, help_menu_items[i].text, _("MacOS"));
         } else if (help_menu_items[i].f == dispfile_optmenu) {
-            void sprintf(helpbuf, help_menu_items[i].text, setopt_cmd(tmpbuf));
+            sprintf(helpbuf, help_menu_items[i].text, setopt_cmd(tmpbuf));
         } else {
-            void strcpy(helpbuf, help_menu_items[i].text);
+            strcpy(helpbuf, help_menu_items[i].text);
         }
         any.a_int = i + 1;
         add_menu(tmpwin, nul_glyphinfo, any, 0, 0, ATR_NONE, clr,
@@ -2893,472 +2543,216 @@ dohelp()
     if (n > 0) {
         sel = ptr_add(selected[0], 0).item.a_int - 1;
         free(addr_of(selected[0]));
-        void ((help_menu_items[sel].f)());
+        (help_menu_items[sel].f)();
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* format the key or extended command name of command used to set options;
    normally 'O' but could be bound to something else, or not bound at all;
    with the implementation of a simple options subset, now need 'mO' to get
    the full options command; format it as 'm O' */
-function /* char * */
-setopt_cmd(outbuf)
-{ const $frame = stack_frame(); try {
+function setopt_cmd(outbuf) { /* char * */
+    const $frame = stack_frame(); try {
     let cmdbuf = stack_array(char, QBUFSZ);
     let cmdnm;
     let key;
 
-    void strcpy(outbuf, _("\'"));
+    strcpy(outbuf, _("\'"));
     /* #optionsfull */
     key = cmd_from_func(doset);
     if (key) {
-        void strcat(outbuf, visctrl(key));
+        strcat(outbuf, visctrl(key));
     } else {
         /* extended command name, with leading "#" */
         cmdnm = cmdname_from_func(doset, cmdbuf, TRUE);
         if (!cmdnm) /* paranoia */
             cmdnm = _("optionsfull");
-        void sprintf(eos(outbuf), _("%s%.31s"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
+        sprintf(eos(outbuf), _("%s%.31s"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
 
         /* since there's no key bound to #optionsfull, include 'm O' */
-        void strcat(outbuf, _("\' or \'"));
+        strcat(outbuf, _("\' or \'"));
         /* m prefix plus #options */
         key = cmd_from_func(do_reqmenu);
         if (key) {
             /* key for 'm' prefix */
-            void strcat(outbuf, visctrl(key));
+            strcat(outbuf, visctrl(key));
         } else {
             /* extended command name for 'm' prefix */
             cmdnm = cmdname_from_func(do_reqmenu, cmdbuf, TRUE);
             if (!cmdnm)
                 cmdnm = _("reqmenu");
-            void sprintf(eos(outbuf), _("%s%.31s"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
+            sprintf(eos(outbuf), _("%s%.31s"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
         }
         /* this is slightly iffy because the user shouldn't type <space> to
            get the command we're describing, but it improves readability */
-        void strcat(outbuf, _(" "));
+        strcat(outbuf, _(" "));
         /* now #options, normally 'O' */
         key = cmd_from_func(doset_simple);
         if (key) {
-            void strcat(outbuf, visctrl(key));
+            strcat(outbuf, visctrl(key));
         } else {
             /* extended command name */
             cmdnm = cmdname_from_func(doset_simple, cmdbuf, TRUE);
             if (!cmdnm) /* paranoia */
                 cmdnm = _("options");
-            void sprintf(eos(outbuf), _("%s%.31s"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
+            sprintf(eos(outbuf), _("%s%.31s"), (chars[cmdnm] != ord('#')) ? _("#") : _(""), cmdnm);
         }
     }
-    void strcat(outbuf, _("\'"));
+    strcat(outbuf, _("\'"));
     return outbuf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the 'V' command; also a choice for '?' */
-export function /* int */
-dohistory()
-{
+export function dohistory() { /* int */
     display_file()(_(HISTORY), TRUE);
     return ECMD_OK;
 }
 
 /*pager.c*/
-import { AM_MASK } from "./align.h.js";
-import { AM_SANCTUM } from "./align.h.js";
+
+import { AM_MASK, AM_SANCTUM } from "./align.h.js";
 import { Amask2align } from "./align.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { something } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { DEF_INVISIBLE } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_darkroom } from "./defsym.h.js";
-import { S_engrcorr } from "./defsym.h.js";
-import { S_engroom } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_invisible } from "./defsym.h.js";
-import { S_lava } from "./defsym.h.js";
-import { S_lavawall } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_poisoncloud } from "./defsym.h.js";
-import { S_pool } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_sw_br } from "./defsym.h.js";
-import { S_sw_tl } from "./defsym.h.js";
-import { S_vibrating_square } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { MG_FLAG_NOOVERRIDE } from "./display.h.js";
-import { NO_GLYPH } from "./display.h.js";
-import { canspotself } from "./display.h.macros.js";
-import { cmap_to_glyph } from "./display.h.macros.js";
-import { engraving_to_glyph } from "./display.h.macros.js";
-import { glyph_is_body } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { glyph_is_monster } from "./display.h.macros.js";
-import { glyph_is_nothing } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { glyph_is_statue } from "./display.h.macros.js";
-import { glyph_is_trap } from "./display.h.macros.js";
-import { glyph_is_unexplored } from "./display.h.macros.js";
-import { glyph_is_warning } from "./display.h.macros.js";
-import { glyph_to_body_corpsenm } from "./display.h.macros.js";
-import { glyph_to_obj } from "./display.h.macros.js";
-import { glyph_to_statue_corpsenm } from "./display.h.macros.js";
-import { glyph_to_trap } from "./display.h.macros.js";
-import { glyph_to_warning } from "./display.h.macros.js";
-import { mon_to_glyph } from "./display.h.macros.js";
-import { senseself } from "./display.h.macros.js";
-import { trap_to_glyph } from "./display.h.macros.js";
-import { dlb_fclose } from "./dlb.h.macros.js";
-import { dlb_fgets } from "./dlb.h.macros.js";
-import { dlb_fopen } from "./dlb.h.macros.js";
-import { dlb_fseek } from "./dlb.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_juiblex_level } from "./dungeon.h.macros.js";
-import { Is_medusa_level } from "./dungeon.h.macros.js";
-import { Is_qstart } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import {
+    COIN_CLASS, DEF_INVISIBLE, MAXMCLASSES, MAXOCLASSES, MAXPCHARS, ROCK_CLASS, S_EEL, S_HUMAN,
+    S_altar, S_cloud, S_darkroom, S_engrcorr, S_engroom, S_grave, S_ice, S_invisible, S_lava,
+    S_lavawall, S_ndoor, S_poisoncloud, S_pool, S_stone, S_sw_br, S_sw_tl, S_vibrating_square,
+    S_water, VENOM_CLASS,
+} from "./defsym.h.js";
+import { MG_FLAG_NOOVERRIDE, NO_GLYPH } from "./display.h.js";
+import {
+    canspotself, cmap_to_glyph, engraving_to_glyph, glyph_is_body, glyph_is_cmap,
+    glyph_is_invisible, glyph_is_monster, glyph_is_nothing, glyph_is_object, glyph_is_statue,
+    glyph_is_trap, glyph_is_unexplored, glyph_is_warning, glyph_to_body_corpsenm, glyph_to_obj,
+    glyph_to_statue_corpsenm, glyph_to_trap, glyph_to_warning, mon_to_glyph, senseself,
+    trap_to_glyph,
+} from "./display.h.macros.js";
+import { dlb_fclose, dlb_fgets, dlb_fopen, dlb_fseek } from "./dlb.h.macros.js";
+import {
+    Inhell, Is_airlevel, Is_astralevel, Is_juiblex_level, Is_medusa_level, Is_qstart,
+    Is_rogue_level, Is_waterlevel,
+} from "./dungeon.h.macros.js";
 import { remembered_text } from "./engrave.h.js";
-import { GPCOORDS_COMPASS } from "./flag.h.js";
-import { GPCOORDS_MAP } from "./flag.h.js";
-import { GPCOORDS_NONE } from "./flag.h.js";
-import { GPCOORDS_SCREEN } from "./flag.h.js";
-import { TER_DETECT } from "./flag.h.js";
-import { TER_MAP } from "./flag.h.js";
-import { TER_MON } from "./flag.h.js";
-import { TER_OBJ } from "./flag.h.js";
+import {
+    GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_NONE, GPCOORDS_SCREEN, TER_DETECT, TER_MAP, TER_MON,
+    TER_OBJ,
+} from "./flag.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { DATAFILE } from "./global.h.js";
-import { DEBUGHELP } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { HELP } from "./global.h.js";
-import { HISTORY } from "./global.h.js";
-import { KEYHELP } from "./global.h.js";
-import { LICENSE } from "./global.h.js";
-import { OPTIONFILE } from "./global.h.js";
-import { OPTMENUHELP } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { SHELP } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { USAGEHELP } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ARTICLE_NONE } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { DEVTEAM_EMAIL } from "./hack.h.js";
-import { DEVTEAM_URL } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { LOOK_ONCE } from "./hack.h.js";
-import { LOOK_QUICK } from "./hack.h.js";
-import { LOOK_VERBOSE } from "./hack.h.js";
-import { MHID_ALTMON } from "./hack.h.js";
-import { MHID_ARTICLE } from "./hack.h.js";
-import { MHID_PREFIX } from "./hack.h.js";
-import { MHID_REGION } from "./hack.h.js";
-import { SYM_MAX } from "./hack.h.js";
-import { SYM_OFF_M } from "./hack.h.js";
-import { SYM_OFF_O } from "./hack.h.js";
-import { SYM_OFF_X } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
-import { distu } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import {
+    BUFSZ, COLNO, DATAFILE, DEBUGHELP, FALSE, HELP, HISTORY, KEYHELP, LICENSE, OPTIONFILE,
+    OPTMENUHELP, QBUFSZ, ROWNO, SHELP, TRUE, USAGEHELP, boolean, coordxy,
+} from "./global.h.js";
+import {
+    ARTICLE_NONE, BOLT_LIM, CMDQ_KEY, CQ_CANNED, DEVTEAM_EMAIL, DEVTEAM_URL, ECMD_CANCEL, ECMD_OK,
+    LOOK_ONCE, LOOK_QUICK, LOOK_VERBOSE, MHID_ALTMON, MHID_ARTICLE, MHID_PREFIX, MHID_REGION,
+    SYM_MAX, SYM_OFF_M, SYM_OFF_O, SYM_OFF_X, struct__cmd_queue,
+} from "./hack.h.js";
+import { distu, max, min, y_n } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { MCORPSENM } from "./mextra.h.macros.js";
-import { has_mcorpsenm } from "./mextra.h.macros.js";
-import { ceiling_hider } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_hider } from "./mondata.h.macros.js";
-import { is_orc } from "./mondata.h.macros.js";
-import { M2_DEMON } from "./monflag.h.js";
-import { M2_ELF } from "./monflag.h.js";
-import { M2_HUMAN } from "./monflag.h.js";
-import { M2_ORC } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_F_DKNOWN } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { STRAT_WAITMASK } from "./monst.h.js";
-import { M_AP_FLAG } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { is_obj_mappear } from "./monst.h.macros.js";
-import { PM_COYOTE } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { OBJ_BURIED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
+import { MCORPSENM, has_mcorpsenm } from "./mextra.h.macros.js";
+import { ceiling_hider, digests, hides_under, is_hider, is_orc } from "./mondata.h.macros.js";
+import { M2_DEMON, M2_ELF, M2_HUMAN, M2_ORC, NEUTRAL } from "./monflag.h.js";
+import {
+    M_AP_FURNITURE, M_AP_F_DKNOWN, M_AP_MONSTER, M_AP_OBJECT, STRAT_WAITMASK,
+} from "./monst.h.js";
+import { M_AP_FLAG, M_AP_TYPE, U_AP_TYPE, is_obj_mappear } from "./monst.h.macros.js";
+import { PM_COYOTE, PM_ELF, PM_GNOME, PM_HUMAN, PM_SAMURAI, PM_WIZARD } from "./monsters.h.js";
+import { OBJ_BURIED, OBJ_FLOOR, OBJ_FREE, struct_obj } from "./obj.h.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
+import {
+    BOULDER, CHEST, CORPSE, LARGE_BOX, LEASH, SLIME_MOLD, STATUE, STRANGE_OBJECT,
+} from "./objects.h.js";
 import { struct_permonst } from "./permonst.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { IS_WATERWALL } from "./rm.h.macros.js";
-import { SURFACE_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { SYM_BOULDER } from "./sym.h.js";
-import { SYM_HERO_OVERRIDE } from "./sym.h.js";
-import { SYM_INVISIBLE } from "./sym.h.js";
-import { SYM_NOTHING } from "./sym.h.js";
-import { SYM_PET_OVERRIDE } from "./sym.h.js";
-import { SYM_UNEXPLORED } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
-import { is_cmap_drawbridge } from "./sym.h.macros.js";
-import { is_cmap_engraving } from "./sym.h.macros.js";
-import { is_cmap_trap } from "./sym.h.macros.js";
+import { HALLUC_RES, I_SPECIAL } from "./prop.h.js";
+import {
+    D_BROKEN, D_TRAPPED, ICE, LAVAPOOL, LAVAWALL, MOAT, POOL, SCORR, SDOOR, STONE, WATER,
+} from "./rm.h.js";
+import { IS_GRAVE, IS_TREE, IS_WALL, IS_WATERWALL, SURFACE_AT, levl, m_at } from "./rm.h.macros.js";
+import {
+    SYM_BOULDER, SYM_HERO_OVERRIDE, SYM_INVISIBLE, SYM_NOTHING, SYM_PET_OVERRIDE, SYM_UNEXPLORED,
+    WARNCOUNT,
+} from "./sym.h.js";
+import { is_cmap_drawbridge, is_cmap_engraving, is_cmap_trap } from "./sym.h.macros.js";
 import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { HOLE } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { PIT } from "./trap.h.js";
-import { ROCKTRAP } from "./trap.h.js";
-import { TRAPPED_CHEST } from "./trap.h.js";
-import { TRAPPED_DOOR } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { MONSEEN_DETECT } from "./vision.h.js";
-import { MONSEEN_INFRAVIS } from "./vision.h.js";
-import { MONSEEN_NORMAL } from "./vision.h.js";
-import { MONSEEN_SEEINVIS } from "./vision.h.js";
-import { MONSEEN_TELEPAT } from "./vision.h.js";
-import { MONSEEN_WARNMON } from "./vision.h.js";
-import { MONSEEN_XRAYVIS } from "./vision.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_file } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putmixed } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_glyphinfo } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { Race_if } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Ugender } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Detect_monsters } from "./youprop.h.macros.js";
-import { EDetect_monsters } from "./youprop.h.macros.js";
-import { EHalluc_resistance } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Infravision } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Invisible } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { Unblind_telepat } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
+import {
+    BEAR_TRAP, HOLE, NO_TRAP, PIT, ROCKTRAP, TRAPPED_CHEST, TRAPPED_DOOR, VIBRATING_SQUARE, WEB,
+} from "./trap.h.js";
+import { is_hole, is_pit } from "./trap.h.macros.js";
+import {
+    MONSEEN_DETECT, MONSEEN_INFRAVIS, MONSEEN_NORMAL, MONSEEN_SEEINVIS, MONSEEN_TELEPAT,
+    MONSEEN_WARNMON, MONSEEN_XRAYVIS,
+} from "./vision.h.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_file, display_nhwindow, end_menu, putmixed, putstr,
+    start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, NHW_TEXT, PICK_ONE, WIN_ERR,
+    struct_any, struct_glyphinfo, struct_mi,
+} from "./wintype.h.js";
+import { Race_if, Role_if, Ugender, Upolyd, next2u, u_at } from "./you.h.macros.js";
+import {
+    Blind, Detect_monsters, EDetect_monsters, EHalluc_resistance, Hallucination, Infravision, Invis,
+    Invisible, Levitation, Punished, Unblind_telepat, Underwater,
+} from "./youprop.h.macros.js";
+import {
+    char, int, long, ord, schar, sizeof, sizeof_string, uchar, ulong, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
 import { or64u } from "../rt/int64.js";
-import { SEEK_SET } from "../rt/libc.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncat } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    SEEK_SET, abs, free, memcpy, sprintf, sscanf, strcat, strchr, strcmp, strcpy, strlen, strncat,
+    strncmp,
+} from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { struct_copy } from "../rt/struct.js";
-import { cmd_from_func } from "./cmd.js";
-import { cmdname_from_func } from "./cmd.js";
-import { cmdq_clear } from "./cmd.js";
-import { cmdq_pop } from "./cmd.js";
-import { do_reqmenu } from "./cmd.js";
-import { doextlist } from "./cmd.js";
-import { dokeylist } from "./cmd.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { key2extcmddesc } from "./cmd.js";
-import { key2txt } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gd } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { trapped_chest_at } from "./detect.js";
-import { trapped_door_at } from "./detect.js";
-import { glyph_at } from "./display.js";
-import { map_glyphinfo } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { Mgender } from "./do_name.js";
-import { coyotename } from "./do_name.js";
-import { distant_monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
-import { def_monsyms } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { def_warnsyms } from "./drawing.js";
-import { defsyms } from "./drawing.js";
-import { on_level } from "./dungeon.js";
-import { surface } from "./dungeon.js";
+import {
+    addr_of, array_of, fnptr_t, ptr_add, ptr_to, struct, struct_assign, struct_copy,
+} from "../rt/struct.js";
+import {
+    cmd_from_func, cmdname_from_func, cmdq_clear, cmdq_pop, do_reqmenu, doextlist, dokeylist,
+    getdir, isok, key2extcmddesc, key2txt, yn_function,
+} from "./cmd.js";
+import { is_drawbridge_wall, is_lava, is_pool } from "./dbridge.js";
+import {
+    cg, flags, gd, gf, gi, go, gs, gu, gw, gy, iflags, program_state, svc, svd, svl, svp, u,
+} from "./decl.js";
+import { trapped_chest_at, trapped_door_at } from "./detect.js";
+import { glyph_at, map_glyphinfo, nul_glyphinfo } from "./display.js";
+import {
+    Mgender, coyotename, distant_monnam, hliquid, mon_nam, pmname, rndmonnam, y_monnam,
+} from "./do_name.js";
+import { def_monsyms, def_oc_syms, def_warnsyms, defsyms } from "./drawing.js";
+import { on_level, surface } from "./dungeon.js";
 import { engr_at } from "./engrave.js";
-import { coord_desc } from "./getpos.js";
-import { getpos } from "./getpos.js";
+import { coord_desc, getpos } from "./getpos.js";
 import { glyph_to_cmap } from "./glyphs.js";
-import { copynchars } from "./hacklib.js";
-import { digit } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { lcase } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { strip_newline } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { tabexpand } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { visctrl } from "./hacklib.js";
-import { align_str } from "./insight.js";
-import { trap_predicament } from "./insight.js";
-import { display_inventory } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { dealloc_obj } from "./mkobj.js";
-import { is_treefruit } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
+import {
+    copynchars, digit, eos, lcase, mungspaces, strip_newline, strkitten, strncmpi, strstri,
+    strsubst, tabexpand, upstart, visctrl,
+} from "./hacklib.js";
+import { align_str, trap_predicament } from "./insight.js";
+import { display_inventory, sobj_at } from "./invent.js";
+import { dealloc_obj, is_treefruit, mkobj, mksobj } from "./mkobj.js";
 import { sticks } from "./mondata.js";
 import { closed_door } from "./monmove.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
-import { obj_descr } from "./objects.js";
-import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname_vague_quan } from "./objnam.js";
-import { doname_with_price } from "./objnam.js";
-import { fruit_from_name } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { singular } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { doset } from "./options.js";
-import { doset_simple } from "./options.js";
-import { option_help } from "./options.js";
-import { show_menu_controls } from "./options.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
+import { obj_descr, objects } from "./objects.js";
+import {
+    an, ansimpleoname, distant_name, doname_vague_quan, doname_with_price, fruit_from_name,
+    makeplural, makesingular, simpleonames, singular, the, xname,
+} from "./objnam.js";
+import { doset, doset_simple, option_help, show_menu_controls } from "./options.js";
+import { impossible, pline } from "./pline.js";
 import { altarmask_at } from "./pray.js";
 import { ok_to_quest } from "./quest.js";
 import { visible_region_at } from "./region.js";
@@ -3366,16 +2760,9 @@ import { rn2_on_display_rng } from "./rnd.js";
 import { costly_spot } from "./shk.js";
 import { pmatch } from "./strutil.js";
 import { sysopt } from "./sys.js";
-import { obj_stop_timers } from "./timeout.js";
-import { spot_time_left } from "./timeout.js";
-import { t_at } from "./trap.js";
-import { trapname } from "./trap.js";
+import { obj_stop_timers, spot_time_left } from "./timeout.js";
+import { t_at, trapname } from "./trap.js";
 import { doextversion } from "./version.js";
 import { howmonseen } from "./vision.js";
-import { add_menu } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { encglyph } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { introff } from "../sys/c2js/nhjs_host.js";
-import { intron } from "../sys/c2js/nhjs_host.js";
+import { add_menu, add_menu_str, encglyph, getlin, select_menu } from "./windows.js";
+import { introff, intron } from "../sys/c2js/nhjs_host.js";

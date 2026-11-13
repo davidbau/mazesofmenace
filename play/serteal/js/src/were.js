@@ -3,11 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-export function /* void */
-were_change(mon)
-{
+export function were_change(mon) { /* void */
     if (!is_were(mon.data))
         return;
 
@@ -44,9 +40,7 @@ were_change(mon)
     }
 }
 
-export function /* int */
-counter_were(pm)
-{
+export function counter_were(pm) { /* int */
     switch (pm) {
     case PM_WEREWOLF:
         return PM_HUMAN_WEREWOLF;
@@ -66,9 +60,7 @@ counter_were(pm)
 }
 
 /* convert monsters similar to werecritters into appropriate werebeast */
-export function /* int */
-were_beastie(pm)
-{
+export function were_beastie(pm) { /* int */
     switch (pm) {
     case PM_WERERAT:
     case PM_SEWER_RAT:
@@ -92,9 +84,7 @@ were_beastie(pm)
     return NON_PM;
 }
 
-export function /* void */
-new_were(mon)
-{
+export function new_were(mon) { /* void */
     let pm;
 
     /* neither hero nor werecreature can change from human form to
@@ -138,13 +128,11 @@ new_were(mon)
 }
 
 /* were-creature (even you) summons a horde */
-export function /* int */
-were_summon(
+export function were_summon(
     ptr,
     yours,
     visible,
-    genbuf)
-{
+    genbuf) { /* int */
     let i, typ, pm = monsndx(ptr);
     let mtmp;
     let total = 0;
@@ -159,19 +147,19 @@ were_summon(
             typ = rn2(3) ? PM_SEWER_RAT
                          : rn2(3) ? PM_GIANT_RAT : PM_RABID_RAT;
             if (genbuf)
-                void strcpy(genbuf, _("rat"));
+                strcpy(genbuf, _("rat"));
             break;
         case PM_WEREJACKAL:
         case PM_HUMAN_WEREJACKAL:
             typ = rn2(7) ? PM_JACKAL : rn2(3) ? PM_COYOTE : PM_FOX;
             if (genbuf)
-                void strcpy(genbuf, _("jackal"));
+                strcpy(genbuf, _("jackal"));
             break;
         case PM_WEREWOLF:
         case PM_HUMAN_WEREWOLF:
             typ = rn2(5) ? PM_WOLF : rn2(2) ? PM_WARG : PM_WINTER_WOLF;
             if (genbuf)
-                void strcpy(genbuf, _("wolf"));
+                strcpy(genbuf, _("wolf"));
             break;
         default:
             continue;
@@ -183,22 +171,21 @@ were_summon(
                 visible[0] += 1;
         }
         if (yours && mtmp)
-            void tamedog(mtmp, null, FALSE);
+            tamedog(mtmp, null, FALSE);
     }
     return total;
 }
 
-export function /* void */
-you_were()
-{ const $frame = stack_frame(); try {
+export function you_were() { /* void */
+    const $frame = stack_frame(); try {
     let qbuf = stack_array(char, QBUFSZ);
-    let controllable_poly = ((Polymorph_control() && !(Stunned() || Unaware())) ? 1 : 0);
+    let controllable_poly = (Polymorph_control() && !(Stunned() || Unaware()) ? 1 : 0);
 
     if (Unchanging() || u.umonnum == u.ulycn)
         return;
     if (controllable_poly) {
         /* `+4' => skip "were" prefix to get name of beast */
-        void sprintf(qbuf, _("Do you want to change into %s?"), an(mons[u.ulycn].pmnames[NEUTRAL] + 4))
+        sprintf(qbuf, _("Do you want to change into %s?"), an(mons[u.ulycn].pmnames[NEUTRAL] + 4))
 ;
         if (!paranoid_query(ParanoidWerechange(), qbuf))
             return;
@@ -206,13 +193,12 @@ you_were()
         return;
     }
     gw.were_changes++;
-    void polymon(u.ulycn);
-} finally { stack_pop($frame); } }
+    polymon(u.ulycn);
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-you_unwere(purify)
-{
-    let controllable_poly = ((Polymorph_control() && !(Stunned() || Unaware())) ? 1 : 0);
+export function you_unwere(purify) { /* void */
+    let controllable_poly = (Polymorph_control() && !(Stunned() || Unaware()) ? 1 : 0);
 
     if (purify) {
         You_feel(_("purified."));
@@ -228,90 +214,51 @@ you_unwere(purify)
 }
 
 /* lycanthropy is being caught or cured, but no shape change is involved */
-export function /* void */
-set_ulycn(which)
-{
+export function set_ulycn(which) { /* void */
     u.ulycn = which;
     /* add or remove lycanthrope's innate intrinsics (Drain_resistance) */
     set_uasmon();
 }
 
 /*were.c*/
+
 import { FULL_MOON } from "./flag.h.js";
 import { ParanoidWerechange } from "./flag.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { FALSE, QBUFSZ, TRUE } from "./global.h.js";
 import { NO_MM_FLAGS } from "./hack.h.js";
 import { rn1 } from "./hack.h.macros.js";
-import { is_human } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
+import { is_human, is_were, monsndx } from "./mondata.h.macros.js";
 import { NEUTRAL } from "./monflag.h.js";
 import { helpless } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_COYOTE } from "./monsters.h.js";
-import { PM_FOX } from "./monsters.h.js";
-import { PM_GIANT_RAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREJACKAL } from "./monsters.h.js";
-import { PM_HUMAN_WERERAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREWOLF } from "./monsters.h.js";
-import { PM_JACKAL } from "./monsters.h.js";
-import { PM_RABID_RAT } from "./monsters.h.js";
-import { PM_SEWER_RAT } from "./monsters.h.js";
-import { PM_WARG } from "./monsters.h.js";
-import { PM_WEREJACKAL } from "./monsters.h.js";
-import { PM_WERERAT } from "./monsters.h.js";
-import { PM_WEREWOLF } from "./monsters.h.js";
-import { PM_WINTER_WOLF } from "./monsters.h.js";
-import { PM_WINTER_WOLF_CUB } from "./monsters.h.js";
-import { PM_WOLF } from "./monsters.h.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Polymorph_control } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
+import {
+    LOW_PM, NON_PM, PM_COYOTE, PM_FOX, PM_GIANT_RAT, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT,
+    PM_HUMAN_WEREWOLF, PM_JACKAL, PM_RABID_RAT, PM_SEWER_RAT, PM_WARG, PM_WEREJACKAL, PM_WERERAT,
+    PM_WEREWOLF, PM_WINTER_WOLF, PM_WINTER_WOLF_CUB, PM_WOLF,
+} from "./monsters.h.js";
+import {
+    Deaf, Hallucination, Polymorph_control, Protection_from_shape_changers, Stunned, Unaware,
+    Unchanging,
+} from "./youprop.h.macros.js";
 import { char } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
+import { sprintf, strcpy } from "../rt/libc.js";
 import { stack_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { night } from "./calendar.js";
 import { paranoid_query } from "./cmd.js";
-import { flags } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { svc } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { pmname } from "./do_name.js";
+import { flags, gw, gy, svc, u } from "./decl.js";
+import { canseemon, newsym } from "./display.js";
+import { Mgender, Monnam, pmname } from "./do_name.js";
 import { tamedog } from "./dog.js";
 import { monster_nearby } from "./hack.js";
 import { makemon } from "./makemon.js";
-import { healmon } from "./mon.js";
-import { monnear } from "./mon.js";
-import { wake_nearto } from "./mon.js";
+import { healmon, monnear, wake_nearto } from "./mon.js";
 import { set_mon_data } from "./mondata.js";
-import { monflee } from "./monmove.js";
-import { onscary } from "./monmove.js";
+import { monflee, onscary } from "./monmove.js";
 import { mons } from "./monst.js";
 import { an } from "./objnam.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { polymon } from "./polyself.js";
-import { rehumanize } from "./polyself.js";
-import { set_uasmon } from "./polyself.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { You_feel, You_hear, impossible, pline } from "./pline.js";
+import { polymon, rehumanize, set_uasmon } from "./polyself.js";
+import { rn2, rnd } from "./rnd.js";
 import { possibly_unwield } from "./weapon.js";
 import { mon_break_armor } from "./worn.js";

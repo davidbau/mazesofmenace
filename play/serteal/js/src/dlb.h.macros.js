@@ -2,19 +2,9 @@
 /* Copyright (c) Kenneth Lorber, Bethesda, Maryland, 1993. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
 /* definitions for data library */
 
-
-
 /* implementations */
-
-
-
-
-
-
 
 /* directory structure in memory */
 
@@ -22,7 +12,6 @@
     /* offset in lib file to start of this file */
     /* file size */
     /* how to handle the file (compression, etc) */
-
 
 /* information about each open library */
 
@@ -34,25 +23,7 @@
     /* dlb file revision */
     /* dlb file string size */
 
-
 /* library definitions */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /* pointer to an external file, use if non-null */
 
@@ -61,50 +32,13 @@
     /* size of file */
     /* current file marker */
 
-
     /* HandleFile file descriptor */
-
-
-
 
 /* buggy old Ultrix compiler wants this for the (*dlb_fread_proc)
    and (*dlb_fgets_proc) prototypes in struct dlb_procs (dlb.c);
    we'll use it in all the declarations for consistency */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Resource DLB entry points */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const dlb_fopen = fopen;
 export const dlb_fclose = fclose;
@@ -114,12 +48,4 @@ export const dlb_fgets = fgets;
 
 export const dlb_ftell = ftell;
 
-
-
-/* various other I/O stuff we don't want to replicate everywhere */
-import { fclose } from "../rt/libc.js";
-import { fgets } from "../rt/libc.js";
-import { fopen } from "../rt/libc.js";
-import { fread } from "../rt/libc.js";
-import { fseek } from "../rt/libc.js";
-import { ftell } from "../rt/libc.js";
+import { fclose, fgets, fopen, fread, fseek, ftell } from "../rt/libc.js";

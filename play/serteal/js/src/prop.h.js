@@ -2,9 +2,6 @@
 /* Copyright (c) 1989 Mike Threepoint                             */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*** What the properties are ***
  *
  * note:  propertynames[] array in timeout.c has string values for these.
@@ -20,9 +17,6 @@
     export const POISON_RES = 6;
     export const ACID_RES = 7;
     export const STONE_RES = 8;
-    /* note: the first eight properties above are equivalent to MR_xxx bits
-     * MR_FIRE through MR_STONE, and can be directly converted to them: */
-
 
     export const DRAIN_RES = 9;
     export const SICK_RES = 10;
@@ -91,7 +85,6 @@
     export const LIFESAVED = 68;
     export const LAST_PROP = LIFESAVED;
 
-
 /*** Where the properties come from ***/
 /* Definitions were moved here from obj.h and you.h */
 export const W_ARM = 0x00000001; export const W_ARMC = 0x00000002; export const W_ARMH = 0x00000004; export const W_ARMS = 0x00000008; export const W_ARMG = 0x00000010; export const W_ARMF = 0x00000020; export const W_ARMU = 0x00000040; export const W_ARMOR = (W_ARM | W_ARMC | W_ARMH | W_ARMS | W_ARMG | W_ARMF | W_ARMU); export const W_WEP = 0x00000100; export const W_QUIVER = 0x00000200; export const W_SWAPWEP = 0x00000400; export const W_WEAPONS = (W_WEP | W_SWAPWEP | W_QUIVER); export const W_ART = 0x00001000; export const W_ARTI = 0x00002000; export const W_AMUL = 0x00010000; export const W_RINGL = 0x00020000; export const W_RINGR = 0x00040000; export const W_RING = (W_RINGL | W_RINGR); export const W_TOOL = 0x00080000; export const W_ACCESSORY = (W_RING | W_AMUL | W_TOOL); export const W_SADDLE = 0x00100000; export const W_BALL = 0x00200000; export const W_CHAIN = 0x00400000; export const TIMEOUT = 0x00ffffff; export const FROMEXPER = 0x01000000; export const FROMRACE = 0x02000000; export const FROMOUTSIDE = 0x04000000; export const INTRINSIC = (FROMOUTSIDE | FROMRACE | FROMEXPER); export const FROMFORM = 0x10000000; export const I_SPECIAL = 0x20000000; export const struct_prop = struct("struct_prop", {
@@ -99,32 +92,12 @@ export const W_ARM = 0x00000001; export const W_ARMC = 0x00000002; export const 
     extrinsic: long,
 /* Armor */
 
-
-
-
-
-
-
-
 /* Weapons and artifacts */
-
-
-
-
-
 
 /* Amulets, rings, tools, and other items */
 
-
-
-
-
-
     /* historical note: originally in slash'em, 'worn' saddle stayed in
        hero's inventory; in nethack, it's kept in the steed's inventory */
-
-
-
 
     /*** Property is blocked by an object ***/
     blocked: long, /* Same assignments as extrinsic */
@@ -135,12 +108,7 @@ export const W_ARM = 0x00000001; export const W_ARMC = 0x00000002; export const 
 
 /* Permanent properties */
 
-
-
-
 /* Control flags */
-
-
 });
 
 /*** Definitions for backwards compatibility ***/
@@ -158,5 +126,6 @@ export const WORN_BOOTS = W_ARMF;
 export const WORN_AMUL = W_AMUL;
 export const WORN_BLINDF = W_TOOL;
 export const WORN_SHIRT = W_ARMU;
+
 import { long } from "../rt/ctypes.js";
 import { struct } from "../rt/struct.js";

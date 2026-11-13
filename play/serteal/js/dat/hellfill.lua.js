@@ -1,15 +1,15 @@
-export default "\n" + // -- NetHack 5.0	hellfill.des	$NHDT-Date: 1432512783 2015/05/25 00:13:03 $  $NHDT-Branch: master $:$NHDT-Revision: 1.25 $
-"\n" + // --	Copyright (c) 2022 by Pasi Kallinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // --
-`
-` + "\n" + // --	The "fill" level for gehennom.
-"\n" + // --
-"\n" + // --	This level is used to fill out any levels not occupied by
-"\n" + // --	specific levels.
-"\n" + // --
-`
+export default `-- NetHack 5.0	hellfill.des	$NHDT-Date: 1432512783 2015/05/25 00:13:03 $  $NHDT-Branch: master $:$NHDT-Revision: 1.25 $
+--	Copyright (c) 2022 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
+--
+--
+
+--	The "fill" level for gehennom.
+--
+--	This level is used to fill out any levels not occupied by
+--	specific levels.
+--
+
 function hellobjects()
    local objclass = { "(", "/", "=", "+", ")", "[", "?", "*", "%" };
    shuffle(objclass);
@@ -24,8 +24,8 @@ function hellobjects()
    des.object()
 end
 
-` + "\n" + // --
-`
+--
+
 function hellmonsters()
    local monclass = { "V", "D", " ", "&", "Z" };
    shuffle(monclass);
@@ -40,16 +40,16 @@ function hellmonsters()
    des.monster({ class = "H", peaceful = 0 });
 end
 
-` + "\n" + // --
-`
+--
+
 function helltraps()
    for i = 1, 12 do
       des.trap()
    end
 end
 
-` + "\n" + // --
-`
+--
+
 function populatemaze()
    for i = 1, math.random(8) + 11 do
       if (percent(50)) then
@@ -80,8 +80,8 @@ function populatemaze()
    end
 end
 
-` + "\n" + // --
-`
+--
+
 function rnd_halign()
    local aligns = { "half-left", "center", "half-right" };
    return aligns[math.random(1, #aligns)];
@@ -92,11 +92,11 @@ function rnd_valign()
    return aligns[math.random(1, #aligns)];
 end
 
-` + "\n" + // -- the prefab maps must have contents-function, or populatemaze()
-"\n" + // -- puts the stuff only inside the prefab map.
-"\n" + // -- contains either a function, or an object with "repeatable" and "contents".
-"\n" + // -- function alone implies not repeatable.
-`local hell_prefabs = {
+-- the prefab maps must have contents-function, or populatemaze()
+-- puts the stuff only inside the prefab map.
+-- contains either a function, or an object with "repeatable" and "contents".
+-- function alone implies not repeatable.
+local hell_prefabs = {
    {
       repeatable = true,
       contents = function ()
@@ -317,8 +317,8 @@ function rnd_hell_prefab(coldhell)
 end
 
 hells = {
-` + "\n" + // -- 1: "mines" style with lava
-`   function ()
+   -- 1: "mines" style with lava
+   function ()
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip");
       des.level_init({ style="mines", fg=".", smoothed=true ,joined=true, lit=0, walled=true });
@@ -328,8 +328,8 @@ hells = {
       des.replace_terrain({ mapfragment = [[w]], toterrain = ".", chance = 15 });
    end,
 
-` + "\n" + // -- 2: mazes like original, with some hell_tweaks
-`   function ()
+   -- 2: mazes like original, with some hell_tweaks
+   function ()
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip");
       des.level_init({ style = "mazegrid", bg = "-" });
@@ -343,15 +343,15 @@ hells = {
       end
    end,
 
-` + "\n" + // -- 3: mazes, style 1: wall thick = 1, random wid corr
-`   function ()
+   -- 3: mazes, style 1: wall thick = 1, random wid corr
+   function ()
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip");
       des.level_init({ style = "maze", wallthick = 1 });
    end,
 
-` + "\n" + // -- 4: mazes, style 2: replace wall with iron bars or lava
-`   function ()
+   -- 4: mazes, style 2: replace wall with iron bars or lava
+   function ()
       local cwid = math.random(4);
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip");
@@ -362,8 +362,8 @@ hells = {
       des.replace_terrain({ mapfragment = "w", toterrain = wallterrain[1] });
       if (cwid == 1) then
          if (wallterrain[1] == "F" and percent(80)) then
-` + "\n" + // -- replace some horizontal iron bars walls with floor
-`            des.replace_terrain({ mapfragment = ".\\nF\\n.", toterrain = ".", chance = 25 * math.random(4) });
+            -- replace some horizontal iron bars walls with floor
+            des.replace_terrain({ mapfragment = ".\\nF\\n.", toterrain = ".", chance = 25 * math.random(4) });
          elseif (percent(25)) then
             rnd_hell_prefab(false);
          end
@@ -371,8 +371,8 @@ hells = {
       des.terrain(outside_walls, " ");  -- return the outside back to solid wall
    end,
 
-` + "\n" + // -- 5: mazes, thick walls, occasionally lava instead of walls
-`   function ()
+   -- 5: mazes, thick walls, occasionally lava instead of walls
+   function ()
       local wwid = 1 + math.random(2);
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip");
@@ -388,8 +388,8 @@ hells = {
       end
    end,
 
-` + "\n" + // -- 6: cold maze, with ice and water
-`   function ()
+   -- 6: cold maze, with ice and water
+   function ()
       local cwid = math.random(4);
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip", "cold");
@@ -398,8 +398,8 @@ hells = {
       local icey = selection.negate():percentage(10):grow():filter_mapchar(".");
       des.terrain(icey, "I");
       if (cwid > 1) then
-` + "\n" + // -- turn some ice into wall of water
-`         des.terrain(icey:percentage(1), "W");
+         -- turn some ice into wall of water
+         des.terrain(icey:percentage(1), "W");
       end
       des.terrain(icey:percentage(5), "P");
       if (percent(25)) then
@@ -411,10 +411,10 @@ hells = {
       des.terrain(outside_walls, " ");  -- return the outside back to solid wall
    end,
 
-` + "\n" + // -- 7: open cavern, "mines" with more space
-`   function ()
-` + "\n" + // -- walls are either stone or lava
-`      local wter = percent(50) and " " or "L";
+   -- 7: open cavern, "mines" with more space
+   function ()
+      -- walls are either stone or lava
+      local wter = percent(50) and " " or "L";
       des.level_init({ style = "solidfill", fg = " ", lit = 0 });
       des.level_flags("mazelevel", "noflip");
       des.level_init({ style="mines", fg=".", bg = wter, smoothed=true ,joined=true, lit=0 });
@@ -431,8 +431,8 @@ hells = {
 local hellno = math.random(1, #hells);
 hells[hellno]();
 
-` + "\n" + // --
-`
+--
+
 des.stair("up")
 if (u.invocation_level) then
    des.trap("vibrating square");

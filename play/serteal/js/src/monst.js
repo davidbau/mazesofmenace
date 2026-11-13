@@ -3,38 +3,13 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "config.h"
-// #include "weight.h"
-// #include "permonst.h"
-// #include "wintype.h"
-// #include "sym.h"
-
-// #include "color.h"
-
-
-
-
-
-
 /* monster type with single name */
-
-
-
-
-
-
 
 /* LVL() and SIZ() collect several fields to cut down on number of args
  * for MON().  Using more than 15 would fail to conform to the C Standard.
  * ATTK() and A() are to avoid braces and commas within args to MON().
  * NAM() and NAMS() are used for both reasons.
  */
-
-
-
-
-
-
 
 const mons_init = static_array("mons_init", struct_permonst, NUMMONS + 1, [
 ...mons_init_records(),
@@ -46,31 +21,16 @@ const mons_init = static_array("mons_init", struct_permonst, NUMMONS + 1, [
      * uses NON_PM for that.  Now, a few monster flags also get set.
      */
 
-
-
-
-
-
-
     { pmnames: [0, 0, _("")], pmidx: NON_PM,
         geno: G_NOGEN | G_NOCORPSE,
         mflags2: M2_NOPOLY },
 ]);
 
-
-
-
-
-
-
-
  /* in hack.h but we're using config.h */
 
 export const mons = static_array("mons", struct_permonst, SIZE(mons_init));
 
-export function /* void */
-monst_globals_init()
-{
+export function monst_globals_init() { /* void */
     memcpy(addr_of(mons[0]), addr_of(mons_init[0]), sizeof(array_of(struct_permonst, SIZE(mons_init))));
     return;
 }
@@ -81,704 +41,127 @@ export const c_sa_no = static_array("c_sa_no", struct_attack, NATTK, [{ aatyp: A
 /* for 'onefile' processing where end of this file isn't necessarily the
    end of the source code seen by the compiler */
 
-
-
-
-
-
 /*monst.c*/
+
 import { A_NONE } from "./align.h.js";
-import { CLR_BLACK } from "./color.h.js";
-import { CLR_BLUE } from "./color.h.js";
-import { CLR_BRIGHT_BLUE } from "./color.h.js";
-import { CLR_BRIGHT_GREEN } from "./color.h.js";
-import { CLR_BRIGHT_MAGENTA } from "./color.h.js";
-import { CLR_BROWN } from "./color.h.js";
-import { CLR_CYAN } from "./color.h.js";
-import { CLR_GRAY } from "./color.h.js";
-import { CLR_GREEN } from "./color.h.js";
-import { CLR_MAGENTA } from "./color.h.js";
-import { CLR_ORANGE } from "./color.h.js";
-import { CLR_RED } from "./color.h.js";
-import { CLR_WHITE } from "./color.h.js";
-import { CLR_YELLOW } from "./color.h.js";
-import { DRAGON_SILVER } from "./color.h.js";
-import { HI_DOMESTIC } from "./color.h.js";
-import { HI_GOLD } from "./color.h.js";
-import { HI_LEATHER } from "./color.h.js";
-import { HI_LORD } from "./color.h.js";
-import { HI_METAL } from "./color.h.js";
-import { HI_OVERLORD } from "./color.h.js";
-import { HI_PAPER } from "./color.h.js";
-import { HI_WOOD } from "./color.h.js";
-import { HI_ZAP } from "./color.h.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_ANT } from "./defsym.h.js";
-import { S_BAT } from "./defsym.h.js";
-import { S_BLOB } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_COCKATRICE } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_EYE } from "./defsym.h.js";
-import { S_FELINE } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_GHOST } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_GNOME } from "./defsym.h.js";
-import { S_GOLEM } from "./defsym.h.js";
-import { S_GREMLIN } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_HUMANOID } from "./defsym.h.js";
-import { S_IMP } from "./defsym.h.js";
-import { S_JABBERWOCK } from "./defsym.h.js";
-import { S_JELLY } from "./defsym.h.js";
-import { S_KOBOLD } from "./defsym.h.js";
-import { S_KOP } from "./defsym.h.js";
-import { S_LEPRECHAUN } from "./defsym.h.js";
-import { S_LICH } from "./defsym.h.js";
-import { S_LIGHT } from "./defsym.h.js";
-import { S_LIZARD } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_NAGA } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_ORC } from "./defsym.h.js";
-import { S_PIERCER } from "./defsym.h.js";
-import { S_PUDDING } from "./defsym.h.js";
-import { S_QUADRUPED } from "./defsym.h.js";
-import { S_QUANTMECH } from "./defsym.h.js";
-import { S_RODENT } from "./defsym.h.js";
-import { S_RUSTMONST } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
-import { S_SPIDER } from "./defsym.h.js";
-import { S_TRAPPER } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { S_UMBER } from "./defsym.h.js";
-import { S_UNICORN } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_VORTEX } from "./defsym.h.js";
-import { S_WORM } from "./defsym.h.js";
-import { S_WORM_TAIL } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
-import { S_XAN } from "./defsym.h.js";
-import { S_XORN } from "./defsym.h.js";
-import { S_YETI } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_ZRUTY } from "./defsym.h.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_CLRC } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_CONF } from "./monattk.h.js";
-import { AD_CORR } from "./monattk.h.js";
-import { AD_CURS } from "./monattk.h.js";
-import { AD_DCAY } from "./monattk.h.js";
-import { AD_DETH } from "./monattk.h.js";
-import { AD_DGST } from "./monattk.h.js";
-import { AD_DISE } from "./monattk.h.js";
-import { AD_DISN } from "./monattk.h.js";
-import { AD_DRCO } from "./monattk.h.js";
-import { AD_DRDX } from "./monattk.h.js";
-import { AD_DREN } from "./monattk.h.js";
-import { AD_DRIN } from "./monattk.h.js";
-import { AD_DRLI } from "./monattk.h.js";
-import { AD_DRST } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_ENCH } from "./monattk.h.js";
-import { AD_FAMN } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_HALU } from "./monattk.h.js";
-import { AD_HEAL } from "./monattk.h.js";
-import { AD_LEGS } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_PEST } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { AD_PLYS } from "./monattk.h.js";
-import { AD_POLY } from "./monattk.h.js";
-import { AD_RBRE } from "./monattk.h.js";
-import { AD_RUST } from "./monattk.h.js";
-import { AD_SAMU } from "./monattk.h.js";
-import { AD_SEDU } from "./monattk.h.js";
-import { AD_SGLD } from "./monattk.h.js";
-import { AD_SITM } from "./monattk.h.js";
-import { AD_SLEE } from "./monattk.h.js";
-import { AD_SLIM } from "./monattk.h.js";
-import { AD_SLOW } from "./monattk.h.js";
-import { AD_SPEL } from "./monattk.h.js";
-import { AD_SSEX } from "./monattk.h.js";
-import { AD_STCK } from "./monattk.h.js";
-import { AD_STON } from "./monattk.h.js";
-import { AD_STUN } from "./monattk.h.js";
-import { AD_TLPT } from "./monattk.h.js";
-import { AD_WERE } from "./monattk.h.js";
-import { AD_WRAP } from "./monattk.h.js";
-import { AT_BITE } from "./monattk.h.js";
-import { AT_BOOM } from "./monattk.h.js";
-import { AT_BREA } from "./monattk.h.js";
-import { AT_BUTT } from "./monattk.h.js";
-import { AT_CLAW } from "./monattk.h.js";
-import { AT_ENGL } from "./monattk.h.js";
-import { AT_EXPL } from "./monattk.h.js";
-import { AT_GAZE } from "./monattk.h.js";
-import { AT_HUGS } from "./monattk.h.js";
-import { AT_KICK } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { AT_NONE } from "./monattk.h.js";
-import { AT_SPIT } from "./monattk.h.js";
-import { AT_STNG } from "./monattk.h.js";
-import { AT_TENT } from "./monattk.h.js";
-import { AT_TUCH } from "./monattk.h.js";
-import { AT_WEAP } from "./monattk.h.js";
-import { G_GENO } from "./monflag.h.js";
-import { G_HELL } from "./monflag.h.js";
-import { G_LGROUP } from "./monflag.h.js";
-import { G_NOCORPSE } from "./monflag.h.js";
-import { G_NOGEN } from "./monflag.h.js";
-import { G_NOHELL } from "./monflag.h.js";
-import { G_SGROUP } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { M1_ACID } from "./monflag.h.js";
-import { M1_AMORPHOUS } from "./monflag.h.js";
-import { M1_AMPHIBIOUS } from "./monflag.h.js";
-import { M1_ANIMAL } from "./monflag.h.js";
-import { M1_BREATHLESS } from "./monflag.h.js";
-import { M1_CARNIVORE } from "./monflag.h.js";
-import { M1_CLING } from "./monflag.h.js";
-import { M1_CONCEAL } from "./monflag.h.js";
-import { M1_FLY } from "./monflag.h.js";
-import { M1_HERBIVORE } from "./monflag.h.js";
-import { M1_HIDE } from "./monflag.h.js";
-import { M1_HUMANOID } from "./monflag.h.js";
-import { M1_METALLIVORE } from "./monflag.h.js";
-import { M1_MINDLESS } from "./monflag.h.js";
-import { M1_NEEDPICK } from "./monflag.h.js";
-import { M1_NOEYES } from "./monflag.h.js";
-import { M1_NOHANDS } from "./monflag.h.js";
-import { M1_NOHEAD } from "./monflag.h.js";
-import { M1_NOLIMBS } from "./monflag.h.js";
-import { M1_NOTAKE } from "./monflag.h.js";
-import { M1_OMNIVORE } from "./monflag.h.js";
-import { M1_OVIPAROUS } from "./monflag.h.js";
-import { M1_POIS } from "./monflag.h.js";
-import { M1_REGEN } from "./monflag.h.js";
-import { M1_SEE_INVIS } from "./monflag.h.js";
-import { M1_SLITHY } from "./monflag.h.js";
-import { M1_SWIM } from "./monflag.h.js";
-import { M1_THICK_HIDE } from "./monflag.h.js";
-import { M1_TPORT } from "./monflag.h.js";
-import { M1_TPORT_CNTRL } from "./monflag.h.js";
-import { M1_TUNNEL } from "./monflag.h.js";
-import { M1_UNSOLID } from "./monflag.h.js";
-import { M1_WALLWALK } from "./monflag.h.js";
-import { M2_COLLECT } from "./monflag.h.js";
-import { M2_DEMON } from "./monflag.h.js";
-import { M2_DOMESTIC } from "./monflag.h.js";
-import { M2_DWARF } from "./monflag.h.js";
-import { M2_ELF } from "./monflag.h.js";
-import { M2_FEMALE } from "./monflag.h.js";
-import { M2_GIANT } from "./monflag.h.js";
-import { M2_GNOME } from "./monflag.h.js";
-import { M2_GREEDY } from "./monflag.h.js";
-import { M2_HOSTILE } from "./monflag.h.js";
-import { M2_HUMAN } from "./monflag.h.js";
-import { M2_JEWELS } from "./monflag.h.js";
-import { M2_LORD } from "./monflag.h.js";
-import { M2_MAGIC } from "./monflag.h.js";
-import { M2_MALE } from "./monflag.h.js";
-import { M2_MERC } from "./monflag.h.js";
-import { M2_MINION } from "./monflag.h.js";
-import { M2_NASTY } from "./monflag.h.js";
-import { M2_NEUTER } from "./monflag.h.js";
-import { M2_NOPOLY } from "./monflag.h.js";
-import { M2_ORC } from "./monflag.h.js";
-import { M2_PEACEFUL } from "./monflag.h.js";
-import { M2_PNAME } from "./monflag.h.js";
-import { M2_PRINCE } from "./monflag.h.js";
-import { M2_ROCKTHROW } from "./monflag.h.js";
-import { M2_SHAPESHIFTER } from "./monflag.h.js";
-import { M2_STALK } from "./monflag.h.js";
-import { M2_STRONG } from "./monflag.h.js";
-import { M2_UNDEAD } from "./monflag.h.js";
-import { M2_WANDER } from "./monflag.h.js";
-import { M2_WERE } from "./monflag.h.js";
-import { M3_CLOSE } from "./monflag.h.js";
-import { M3_COVETOUS } from "./monflag.h.js";
-import { M3_DISPLACES } from "./monflag.h.js";
-import { M3_INFRAVISIBLE } from "./monflag.h.js";
-import { M3_INFRAVISION } from "./monflag.h.js";
-import { M3_WAITFORU } from "./monflag.h.js";
-import { M3_WANTSAMUL } from "./monflag.h.js";
-import { M3_WANTSARTI } from "./monflag.h.js";
-import { M3_WANTSBOOK } from "./monflag.h.js";
-import { M3_WANTSCAND } from "./monflag.h.js";
-import { MR_ACID } from "./monflag.h.js";
-import { MR_COLD } from "./monflag.h.js";
-import { MR_DISINT } from "./monflag.h.js";
-import { MR_ELEC } from "./monflag.h.js";
-import { MR_FIRE } from "./monflag.h.js";
-import { MR_POISON } from "./monflag.h.js";
-import { MR_SLEEP } from "./monflag.h.js";
-import { MR_STONE } from "./monflag.h.js";
-import { MS_ARREST } from "./monflag.h.js";
-import { MS_BARK } from "./monflag.h.js";
-import { MS_BELLOW } from "./monflag.h.js";
-import { MS_BOAST } from "./monflag.h.js";
-import { MS_BONES } from "./monflag.h.js";
-import { MS_BRIBE } from "./monflag.h.js";
-import { MS_BURBLE } from "./monflag.h.js";
-import { MS_BUZZ } from "./monflag.h.js";
-import { MS_CHIRP } from "./monflag.h.js";
-import { MS_CUSS } from "./monflag.h.js";
-import { MS_DJINNI } from "./monflag.h.js";
-import { MS_GROAN } from "./monflag.h.js";
-import { MS_GROWL } from "./monflag.h.js";
-import { MS_GRUNT } from "./monflag.h.js";
-import { MS_GUARD } from "./monflag.h.js";
-import { MS_GUARDIAN } from "./monflag.h.js";
-import { MS_GURGLE } from "./monflag.h.js";
-import { MS_HISS } from "./monflag.h.js";
-import { MS_HUMANOID } from "./monflag.h.js";
-import { MS_IMITATE } from "./monflag.h.js";
-import { MS_LAUGH } from "./monflag.h.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MS_MEW } from "./monflag.h.js";
-import { MS_MOO } from "./monflag.h.js";
-import { MS_MUMBLE } from "./monflag.h.js";
-import { MS_NEIGH } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
-import { MS_NURSE } from "./monflag.h.js";
-import { MS_ORACLE } from "./monflag.h.js";
-import { MS_ORC } from "./monflag.h.js";
-import { MS_PRIEST } from "./monflag.h.js";
-import { MS_RIDER } from "./monflag.h.js";
-import { MS_ROAR } from "./monflag.h.js";
-import { MS_SEDUCE } from "./monflag.h.js";
-import { MS_SELL } from "./monflag.h.js";
-import { MS_SHRIEK } from "./monflag.h.js";
-import { MS_SILENT } from "./monflag.h.js";
-import { MS_SOLDIER } from "./monflag.h.js";
-import { MS_SPELL } from "./monflag.h.js";
-import { MS_SQAWK } from "./monflag.h.js";
-import { MS_SQEEK } from "./monflag.h.js";
-import { MS_TRUMPET } from "./monflag.h.js";
-import { MS_VAMPIRE } from "./monflag.h.js";
-import { MS_WAIL } from "./monflag.h.js";
-import { MS_WERE } from "./monflag.h.js";
-import { MZ_GIGANTIC } from "./monflag.h.js";
-import { MZ_HUGE } from "./monflag.h.js";
-import { MZ_HUMAN } from "./monflag.h.js";
-import { MZ_LARGE } from "./monflag.h.js";
-import { MZ_MEDIUM } from "./monflag.h.js";
-import { MZ_SMALL } from "./monflag.h.js";
-import { MZ_TINY } from "./monflag.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_ABBOT } from "./monsters.h.js";
-import { PM_ACID_BLOB } from "./monsters.h.js";
-import { PM_ACOLYTE } from "./monsters.h.js";
-import { PM_AIR_ELEMENTAL } from "./monsters.h.js";
-import { PM_ALEAX } from "./monsters.h.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_ANGEL } from "./monsters.h.js";
-import { PM_APE } from "./monsters.h.js";
-import { PM_APPRENTICE } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_ARCHON } from "./monsters.h.js";
-import { PM_ARCH_LICH } from "./monsters.h.js";
-import { PM_ARCH_PRIEST } from "./monsters.h.js";
-import { PM_ASHIKAGA_TAKAUJI } from "./monsters.h.js";
-import { PM_ASMODEUS } from "./monsters.h.js";
-import { PM_ATTENDANT } from "./monsters.h.js";
-import { PM_BAALZEBUB } from "./monsters.h.js";
-import { PM_BABY_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BABY_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_CROCODILE } from "./monsters.h.js";
-import { PM_BABY_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_BABY_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_BABY_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_BABY_LONG_WORM } from "./monsters.h.js";
-import { PM_BABY_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_PURPLE_WORM } from "./monsters.h.js";
-import { PM_BABY_RED_DRAGON } from "./monsters.h.js";
-import { PM_BABY_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_BABY_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_BALROG } from "./monsters.h.js";
-import { PM_BALUCHITHERIUM } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_BARBED_DEVIL } from "./monsters.h.js";
-import { PM_BARROW_WIGHT } from "./monsters.h.js";
-import { PM_BAT } from "./monsters.h.js";
-import { PM_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BLACK_LIGHT } from "./monsters.h.js";
-import { PM_BLACK_NAGA } from "./monsters.h.js";
-import { PM_BLACK_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_BLACK_PUDDING } from "./monsters.h.js";
-import { PM_BLACK_UNICORN } from "./monsters.h.js";
-import { PM_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_BLUE_JELLY } from "./monsters.h.js";
-import { PM_BONE_DEVIL } from "./monsters.h.js";
-import { PM_BROWN_MOLD } from "./monsters.h.js";
-import { PM_BROWN_PUDDING } from "./monsters.h.js";
-import { PM_BUGBEAR } from "./monsters.h.js";
-import { PM_CAPTAIN } from "./monsters.h.js";
-import { PM_CARNIVOROUS_APE } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CAVE_SPIDER } from "./monsters.h.js";
-import { PM_CENTIPEDE } from "./monsters.h.js";
-import { PM_CHAMELEON } from "./monsters.h.js";
-import { PM_CHICKATRICE } from "./monsters.h.js";
-import { PM_CHIEFTAIN } from "./monsters.h.js";
-import { PM_CHROMATIC_DRAGON } from "./monsters.h.js";
-import { PM_CLAY_GOLEM } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_COBRA } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_COUATL } from "./monsters.h.js";
-import { PM_COYOTE } from "./monsters.h.js";
-import { PM_CROCODILE } from "./monsters.h.js";
-import { PM_CROESUS } from "./monsters.h.js";
-import { PM_CYCLOPS } from "./monsters.h.js";
-import { PM_DARK_ONE } from "./monsters.h.js";
-import { PM_DEATH } from "./monsters.h.js";
-import { PM_DEMILICH } from "./monsters.h.js";
-import { PM_DEMOGORGON } from "./monsters.h.js";
-import { PM_DINGO } from "./monsters.h.js";
-import { PM_DISENCHANTER } from "./monsters.h.js";
-import { PM_DISPATER } from "./monsters.h.js";
-import { PM_DISPLACER_BEAST } from "./monsters.h.js";
-import { PM_DJINNI } from "./monsters.h.js";
-import { PM_DOG } from "./monsters.h.js";
-import { PM_DOPPELGANGER } from "./monsters.h.js";
-import { PM_DUST_VORTEX } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_DWARF_LEADER } from "./monsters.h.js";
-import { PM_DWARF_MUMMY } from "./monsters.h.js";
-import { PM_DWARF_RULER } from "./monsters.h.js";
-import { PM_DWARF_ZOMBIE } from "./monsters.h.js";
-import { PM_EARTH_ELEMENTAL } from "./monsters.h.js";
-import { PM_ELECTRIC_EEL } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_ELF_MUMMY } from "./monsters.h.js";
-import { PM_ELF_NOBLE } from "./monsters.h.js";
-import { PM_ELF_ZOMBIE } from "./monsters.h.js";
-import { PM_ELVEN_MONARCH } from "./monsters.h.js";
-import { PM_ENERGY_VORTEX } from "./monsters.h.js";
-import { PM_ERINYS } from "./monsters.h.js";
-import { PM_ETTIN } from "./monsters.h.js";
-import { PM_ETTIN_MUMMY } from "./monsters.h.js";
-import { PM_ETTIN_ZOMBIE } from "./monsters.h.js";
-import { PM_FAMINE } from "./monsters.h.js";
-import { PM_FIRE_ANT } from "./monsters.h.js";
-import { PM_FIRE_ELEMENTAL } from "./monsters.h.js";
-import { PM_FIRE_GIANT } from "./monsters.h.js";
-import { PM_FIRE_VORTEX } from "./monsters.h.js";
-import { PM_FLAMING_SPHERE } from "./monsters.h.js";
-import { PM_FLESH_GOLEM } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_FOREST_CENTAUR } from "./monsters.h.js";
-import { PM_FOX } from "./monsters.h.js";
-import { PM_FREEZING_SPHERE } from "./monsters.h.js";
-import { PM_FROST_GIANT } from "./monsters.h.js";
-import { PM_GARGOYLE } from "./monsters.h.js";
-import { PM_GARTER_SNAKE } from "./monsters.h.js";
-import { PM_GAS_SPORE } from "./monsters.h.js";
-import { PM_GECKO } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GENETIC_ENGINEER } from "./monsters.h.js";
-import { PM_GERYON } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_GHOUL } from "./monsters.h.js";
-import { PM_GIANT } from "./monsters.h.js";
-import { PM_GIANT_ANT } from "./monsters.h.js";
-import { PM_GIANT_BAT } from "./monsters.h.js";
-import { PM_GIANT_BEETLE } from "./monsters.h.js";
-import { PM_GIANT_EEL } from "./monsters.h.js";
-import { PM_GIANT_MIMIC } from "./monsters.h.js";
-import { PM_GIANT_MUMMY } from "./monsters.h.js";
-import { PM_GIANT_RAT } from "./monsters.h.js";
-import { PM_GIANT_SPIDER } from "./monsters.h.js";
-import { PM_GIANT_ZOMBIE } from "./monsters.h.js";
-import { PM_GLASS_GOLEM } from "./monsters.h.js";
-import { PM_GLASS_PIERCER } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_GNOME_LEADER } from "./monsters.h.js";
-import { PM_GNOME_MUMMY } from "./monsters.h.js";
-import { PM_GNOME_RULER } from "./monsters.h.js";
-import { PM_GNOME_ZOMBIE } from "./monsters.h.js";
-import { PM_GNOMISH_WIZARD } from "./monsters.h.js";
-import { PM_GOBLIN } from "./monsters.h.js";
-import { PM_GOLDEN_NAGA } from "./monsters.h.js";
-import { PM_GOLDEN_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_GOLD_GOLEM } from "./monsters.h.js";
-import { PM_GRAND_MASTER } from "./monsters.h.js";
-import { PM_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_GRAY_OOZE } from "./monsters.h.js";
-import { PM_GRAY_UNICORN } from "./monsters.h.js";
-import { PM_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_GREEN_ELF } from "./monsters.h.js";
-import { PM_GREEN_MOLD } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_GREY_ELF } from "./monsters.h.js";
-import { PM_GRID_BUG } from "./monsters.h.js";
-import { PM_GUARD } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_GUIDE } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HELL_HOUND } from "./monsters.h.js";
-import { PM_HELL_HOUND_PUP } from "./monsters.h.js";
-import { PM_HEZROU } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
-import { PM_HILL_GIANT } from "./monsters.h.js";
-import { PM_HILL_ORC } from "./monsters.h.js";
-import { PM_HIPPOCRATES } from "./monsters.h.js";
-import { PM_HOBBIT } from "./monsters.h.js";
-import { PM_HOBGOBLIN } from "./monsters.h.js";
-import { PM_HOMUNCULUS } from "./monsters.h.js";
-import { PM_HORNED_DEVIL } from "./monsters.h.js";
-import { PM_HORSE } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_HUMAN_MUMMY } from "./monsters.h.js";
-import { PM_HUMAN_WEREJACKAL } from "./monsters.h.js";
-import { PM_HUMAN_WERERAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREWOLF } from "./monsters.h.js";
-import { PM_HUMAN_ZOMBIE } from "./monsters.h.js";
-import { PM_HUNTER } from "./monsters.h.js";
-import { PM_ICE_DEVIL } from "./monsters.h.js";
-import { PM_ICE_TROLL } from "./monsters.h.js";
-import { PM_ICE_VORTEX } from "./monsters.h.js";
-import { PM_IGUANA } from "./monsters.h.js";
-import { PM_IMP } from "./monsters.h.js";
-import { PM_IRON_GOLEM } from "./monsters.h.js";
-import { PM_IRON_PIERCER } from "./monsters.h.js";
-import { PM_IXOTH } from "./monsters.h.js";
-import { PM_JABBERWOCK } from "./monsters.h.js";
-import { PM_JACKAL } from "./monsters.h.js";
-import { PM_JAGUAR } from "./monsters.h.js";
-import { PM_JELLYFISH } from "./monsters.h.js";
-import { PM_JUIBLEX } from "./monsters.h.js";
-import { PM_KEYSTONE_KOP } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_KING_ARTHUR } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_KI_RIN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_KOBOLD } from "./monsters.h.js";
-import { PM_KOBOLD_LEADER } from "./monsters.h.js";
-import { PM_KOBOLD_MUMMY } from "./monsters.h.js";
-import { PM_KOBOLD_SHAMAN } from "./monsters.h.js";
-import { PM_KOBOLD_ZOMBIE } from "./monsters.h.js";
-import { PM_KOP_KAPTAIN } from "./monsters.h.js";
-import { PM_KOP_LIEUTENANT } from "./monsters.h.js";
-import { PM_KOP_SERGEANT } from "./monsters.h.js";
-import { PM_KRAKEN } from "./monsters.h.js";
-import { PM_LARGE_CAT } from "./monsters.h.js";
-import { PM_LARGE_DOG } from "./monsters.h.js";
-import { PM_LARGE_KOBOLD } from "./monsters.h.js";
-import { PM_LARGE_MIMIC } from "./monsters.h.js";
-import { PM_LEATHER_GOLEM } from "./monsters.h.js";
-import { PM_LEMURE } from "./monsters.h.js";
-import { PM_LEOCROTTA } from "./monsters.h.js";
-import { PM_LEPRECHAUN } from "./monsters.h.js";
-import { PM_LICH } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_LIEUTENANT } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LIZARD } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { PM_LORD_CARNARVON } from "./monsters.h.js";
-import { PM_LORD_SATO } from "./monsters.h.js";
-import { PM_LORD_SURTUR } from "./monsters.h.js";
-import { PM_LURKER_ABOVE } from "./monsters.h.js";
-import { PM_LYNX } from "./monsters.h.js";
-import { PM_MAIL_DAEMON } from "./monsters.h.js";
-import { PM_MANES } from "./monsters.h.js";
-import { PM_MARILITH } from "./monsters.h.js";
-import { PM_MASTER_ASSASSIN } from "./monsters.h.js";
-import { PM_MASTER_KAEN } from "./monsters.h.js";
-import { PM_MASTER_LICH } from "./monsters.h.js";
-import { PM_MASTER_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MASTER_OF_THIEVES } from "./monsters.h.js";
-import { PM_MASTODON } from "./monsters.h.js";
-import { PM_MEDUSA } from "./monsters.h.js";
-import { PM_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MINION_OF_HUHETOTL } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_MONKEY } from "./monsters.h.js";
-import { PM_MORDOR_ORC } from "./monsters.h.js";
-import { PM_MOUNTAIN_CENTAUR } from "./monsters.h.js";
-import { PM_MOUNTAIN_NYMPH } from "./monsters.h.js";
-import { PM_MUMAK } from "./monsters.h.js";
-import { PM_NALFESHNEE } from "./monsters.h.js";
-import { PM_NALZOK } from "./monsters.h.js";
-import { PM_NAZGUL } from "./monsters.h.js";
-import { PM_NEANDERTHAL } from "./monsters.h.js";
-import { PM_NEFERET_THE_GREEN } from "./monsters.h.js";
-import { PM_NEWT } from "./monsters.h.js";
-import { PM_NINJA } from "./monsters.h.js";
-import { PM_NORN } from "./monsters.h.js";
-import { PM_NURSE } from "./monsters.h.js";
-import { PM_OCHRE_JELLY } from "./monsters.h.js";
-import { PM_OGRE } from "./monsters.h.js";
-import { PM_OGRE_LEADER } from "./monsters.h.js";
-import { PM_OGRE_TYRANT } from "./monsters.h.js";
-import { PM_OLOG_HAI } from "./monsters.h.js";
-import { PM_ORACLE } from "./monsters.h.js";
-import { PM_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_ORCUS } from "./monsters.h.js";
-import { PM_ORC_CAPTAIN } from "./monsters.h.js";
-import { PM_ORC_MUMMY } from "./monsters.h.js";
-import { PM_ORC_SHAMAN } from "./monsters.h.js";
-import { PM_ORC_ZOMBIE } from "./monsters.h.js";
-import { PM_ORION } from "./monsters.h.js";
-import { PM_OWLBEAR } from "./monsters.h.js";
-import { PM_PAGE } from "./monsters.h.js";
-import { PM_PANTHER } from "./monsters.h.js";
-import { PM_PAPER_GOLEM } from "./monsters.h.js";
-import { PM_PELIAS } from "./monsters.h.js";
-import { PM_PESTILENCE } from "./monsters.h.js";
-import { PM_PIRANHA } from "./monsters.h.js";
-import { PM_PIT_FIEND } from "./monsters.h.js";
-import { PM_PIT_VIPER } from "./monsters.h.js";
-import { PM_PLAINS_CENTAUR } from "./monsters.h.js";
-import { PM_PONY } from "./monsters.h.js";
-import { PM_PRISONER } from "./monsters.h.js";
-import { PM_PURPLE_WORM } from "./monsters.h.js";
-import { PM_PYROLISK } from "./monsters.h.js";
-import { PM_PYTHON } from "./monsters.h.js";
-import { PM_QUANTUM_MECHANIC } from "./monsters.h.js";
-import { PM_QUASIT } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_QUIVERING_BLOB } from "./monsters.h.js";
-import { PM_RABID_RAT } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_RAVEN } from "./monsters.h.js";
-import { PM_RED_DRAGON } from "./monsters.h.js";
-import { PM_RED_MOLD } from "./monsters.h.js";
-import { PM_RED_NAGA } from "./monsters.h.js";
-import { PM_RED_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_ROCK_MOLE } from "./monsters.h.js";
-import { PM_ROCK_PIERCER } from "./monsters.h.js";
-import { PM_ROCK_TROLL } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_ROPE_GOLEM } from "./monsters.h.js";
-import { PM_ROSHI } from "./monsters.h.js";
-import { PM_ROTHE } from "./monsters.h.js";
-import { PM_RUST_MONSTER } from "./monsters.h.js";
-import { PM_SALAMANDER } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_SANDESTIN } from "./monsters.h.js";
-import { PM_SASQUATCH } from "./monsters.h.js";
-import { PM_SCORPION } from "./monsters.h.js";
-import { PM_SCORPIUS } from "./monsters.h.js";
-import { PM_SERGEANT } from "./monsters.h.js";
-import { PM_SEWER_RAT } from "./monsters.h.js";
-import { PM_SHADE } from "./monsters.h.js";
-import { PM_SHAMAN_KARNOV } from "./monsters.h.js";
-import { PM_SHARK } from "./monsters.h.js";
-import { PM_SHOCKING_SPHERE } from "./monsters.h.js";
-import { PM_SHOPKEEPER } from "./monsters.h.js";
-import { PM_SHRIEKER } from "./monsters.h.js";
-import { PM_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_SKELETON } from "./monsters.h.js";
-import { PM_SMALL_MIMIC } from "./monsters.h.js";
-import { PM_SNAKE } from "./monsters.h.js";
-import { PM_SOLDIER } from "./monsters.h.js";
-import { PM_SOLDIER_ANT } from "./monsters.h.js";
-import { PM_SPOTTED_JELLY } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STEAM_VORTEX } from "./monsters.h.js";
-import { PM_STONE_GIANT } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { PM_STORM_GIANT } from "./monsters.h.js";
-import { PM_STRAW_GOLEM } from "./monsters.h.js";
-import { PM_STUDENT } from "./monsters.h.js";
-import { PM_TENGU } from "./monsters.h.js";
-import { PM_THOTH_AMON } from "./monsters.h.js";
-import { PM_THUG } from "./monsters.h.js";
-import { PM_TIGER } from "./monsters.h.js";
-import { PM_TITAN } from "./monsters.h.js";
-import { PM_TITANOTHERE } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_TRAPPER } from "./monsters.h.js";
-import { PM_TROLL } from "./monsters.h.js";
-import { PM_TWOFLOWER } from "./monsters.h.js";
-import { PM_UMBER_HULK } from "./monsters.h.js";
-import { PM_URUK_HAI } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_VAMPIRE_BAT } from "./monsters.h.js";
-import { PM_VAMPIRE_LEADER } from "./monsters.h.js";
-import { PM_VIOLET_FUNGUS } from "./monsters.h.js";
-import { PM_VLAD_THE_IMPALER } from "./monsters.h.js";
-import { PM_VROCK } from "./monsters.h.js";
-import { PM_WARG } from "./monsters.h.js";
-import { PM_WARHORSE } from "./monsters.h.js";
-import { PM_WARRIOR } from "./monsters.h.js";
-import { PM_WATCHMAN } from "./monsters.h.js";
-import { PM_WATCH_CAPTAIN } from "./monsters.h.js";
-import { PM_WATER_DEMON } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WATER_MOCCASIN } from "./monsters.h.js";
-import { PM_WATER_NYMPH } from "./monsters.h.js";
-import { PM_WATER_TROLL } from "./monsters.h.js";
-import { PM_WEREJACKAL } from "./monsters.h.js";
-import { PM_WERERAT } from "./monsters.h.js";
-import { PM_WEREWOLF } from "./monsters.h.js";
-import { PM_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_WHITE_UNICORN } from "./monsters.h.js";
-import { PM_WINGED_GARGOYLE } from "./monsters.h.js";
-import { PM_WINTER_WOLF } from "./monsters.h.js";
-import { PM_WINTER_WOLF_CUB } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WIZARD_OF_YENDOR } from "./monsters.h.js";
-import { PM_WOLF } from "./monsters.h.js";
-import { PM_WOODCHUCK } from "./monsters.h.js";
-import { PM_WOODLAND_ELF } from "./monsters.h.js";
-import { PM_WOOD_GOLEM } from "./monsters.h.js";
-import { PM_WOOD_NYMPH } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { PM_WUMPUS } from "./monsters.h.js";
-import { PM_XAN } from "./monsters.h.js";
-import { PM_XORN } from "./monsters.h.js";
-import { PM_YEENOGHU } from "./monsters.h.js";
-import { PM_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_YELLOW_LIGHT } from "./monsters.h.js";
-import { PM_YELLOW_MOLD } from "./monsters.h.js";
-import { PM_YETI } from "./monsters.h.js";
-import { PM_ZRUTY } from "./monsters.h.js";
-import { NATTK } from "./permonst.h.js";
-import { struct_attack } from "./permonst.h.js";
-import { struct_permonst } from "./permonst.h.js";
-import { WT_BABY_DRAGON } from "./weight.h.js";
-import { WT_DRAGON } from "./weight.h.js";
-import { WT_ELF } from "./weight.h.js";
-import { WT_ETHEREAL } from "./weight.h.js";
-import { WT_HUMAN } from "./weight.h.js";
-import { WT_JELLY } from "./weight.h.js";
-import { WT_NYMPH } from "./weight.h.js";
+import {
+    CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA, CLR_BROWN, CLR_CYAN,
+    CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_ORANGE, CLR_RED, CLR_WHITE, CLR_YELLOW, DRAGON_SILVER,
+    HI_DOMESTIC, HI_GOLD, HI_LEATHER, HI_LORD, HI_METAL, HI_OVERLORD, HI_PAPER, HI_WOOD, HI_ZAP,
+} from "./color.h.js";
+import {
+    S_ANGEL, S_ANT, S_BAT, S_BLOB, S_CENTAUR, S_COCKATRICE, S_DEMON, S_DOG, S_DRAGON, S_EEL,
+    S_ELEMENTAL, S_EYE, S_FELINE, S_FUNGUS, S_GHOST, S_GIANT, S_GNOME, S_GOLEM, S_GREMLIN, S_HUMAN,
+    S_HUMANOID, S_IMP, S_JABBERWOCK, S_JELLY, S_KOBOLD, S_KOP, S_LEPRECHAUN, S_LICH, S_LIGHT,
+    S_LIZARD, S_MIMIC, S_MUMMY, S_NAGA, S_NYMPH, S_OGRE, S_ORC, S_PIERCER, S_PUDDING, S_QUADRUPED,
+    S_QUANTMECH, S_RODENT, S_RUSTMONST, S_SNAKE, S_SPIDER, S_TRAPPER, S_TROLL, S_UMBER, S_UNICORN,
+    S_VAMPIRE, S_VORTEX, S_WORM, S_WORM_TAIL, S_WRAITH, S_XAN, S_XORN, S_YETI, S_ZOMBIE, S_ZRUTY,
+} from "./defsym.h.js";
+import {
+    AD_ACID, AD_BLND, AD_CLRC, AD_COLD, AD_CONF, AD_CORR, AD_CURS, AD_DCAY, AD_DETH, AD_DGST,
+    AD_DISE, AD_DISN, AD_DRCO, AD_DRDX, AD_DREN, AD_DRIN, AD_DRLI, AD_DRST, AD_ELEC, AD_ENCH,
+    AD_FAMN, AD_FIRE, AD_HALU, AD_HEAL, AD_LEGS, AD_MAGM, AD_PEST, AD_PHYS, AD_PLYS, AD_POLY,
+    AD_RBRE, AD_RUST, AD_SAMU, AD_SEDU, AD_SGLD, AD_SITM, AD_SLEE, AD_SLIM, AD_SLOW, AD_SPEL,
+    AD_SSEX, AD_STCK, AD_STON, AD_STUN, AD_TLPT, AD_WERE, AD_WRAP, AT_BITE, AT_BOOM, AT_BREA,
+    AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT,
+    AT_STNG, AT_TENT, AT_TUCH, AT_WEAP,
+} from "./monattk.h.js";
+import {
+    G_GENO, G_HELL, G_LGROUP, G_NOCORPSE, G_NOGEN, G_NOHELL, G_SGROUP, G_UNIQ, M1_ACID,
+    M1_AMORPHOUS, M1_AMPHIBIOUS, M1_ANIMAL, M1_BREATHLESS, M1_CARNIVORE, M1_CLING, M1_CONCEAL,
+    M1_FLY, M1_HERBIVORE, M1_HIDE, M1_HUMANOID, M1_METALLIVORE, M1_MINDLESS, M1_NEEDPICK, M1_NOEYES,
+    M1_NOHANDS, M1_NOHEAD, M1_NOLIMBS, M1_NOTAKE, M1_OMNIVORE, M1_OVIPAROUS, M1_POIS, M1_REGEN,
+    M1_SEE_INVIS, M1_SLITHY, M1_SWIM, M1_THICK_HIDE, M1_TPORT, M1_TPORT_CNTRL, M1_TUNNEL,
+    M1_UNSOLID, M1_WALLWALK, M2_COLLECT, M2_DEMON, M2_DOMESTIC, M2_DWARF, M2_ELF, M2_FEMALE,
+    M2_GIANT, M2_GNOME, M2_GREEDY, M2_HOSTILE, M2_HUMAN, M2_JEWELS, M2_LORD, M2_MAGIC, M2_MALE,
+    M2_MERC, M2_MINION, M2_NASTY, M2_NEUTER, M2_NOPOLY, M2_ORC, M2_PEACEFUL, M2_PNAME, M2_PRINCE,
+    M2_ROCKTHROW, M2_SHAPESHIFTER, M2_STALK, M2_STRONG, M2_UNDEAD, M2_WANDER, M2_WERE, M3_CLOSE,
+    M3_COVETOUS, M3_DISPLACES, M3_INFRAVISIBLE, M3_INFRAVISION, M3_WAITFORU, M3_WANTSAMUL,
+    M3_WANTSARTI, M3_WANTSBOOK, M3_WANTSCAND, MR_ACID, MR_COLD, MR_DISINT, MR_ELEC, MR_FIRE,
+    MR_POISON, MR_SLEEP, MR_STONE, MS_ARREST, MS_BARK, MS_BELLOW, MS_BOAST, MS_BONES, MS_BRIBE,
+    MS_BURBLE, MS_BUZZ, MS_CHIRP, MS_CUSS, MS_DJINNI, MS_GROAN, MS_GROWL, MS_GRUNT, MS_GUARD,
+    MS_GUARDIAN, MS_GURGLE, MS_HISS, MS_HUMANOID, MS_IMITATE, MS_LAUGH, MS_LEADER, MS_MEW, MS_MOO,
+    MS_MUMBLE, MS_NEIGH, MS_NEMESIS, MS_NURSE, MS_ORACLE, MS_ORC, MS_PRIEST, MS_RIDER, MS_ROAR,
+    MS_SEDUCE, MS_SELL, MS_SHRIEK, MS_SILENT, MS_SOLDIER, MS_SPELL, MS_SQAWK, MS_SQEEK, MS_TRUMPET,
+    MS_VAMPIRE, MS_WAIL, MS_WERE, MZ_GIGANTIC, MZ_HUGE, MZ_HUMAN, MZ_LARGE, MZ_MEDIUM, MZ_SMALL,
+    MZ_TINY,
+} from "./monflag.h.js";
+import {
+    NON_PM, NUMMONS, PM_ABBOT, PM_ACID_BLOB, PM_ACOLYTE, PM_AIR_ELEMENTAL, PM_ALEAX,
+    PM_ALIGNED_CLERIC, PM_AMOROUS_DEMON, PM_ANGEL, PM_APE, PM_APPRENTICE, PM_ARCHEOLOGIST,
+    PM_ARCHON, PM_ARCH_LICH, PM_ARCH_PRIEST, PM_ASHIKAGA_TAKAUJI, PM_ASMODEUS, PM_ATTENDANT,
+    PM_BAALZEBUB, PM_BABY_BLACK_DRAGON, PM_BABY_BLUE_DRAGON, PM_BABY_CROCODILE, PM_BABY_GOLD_DRAGON,
+    PM_BABY_GRAY_DRAGON, PM_BABY_GREEN_DRAGON, PM_BABY_LONG_WORM, PM_BABY_ORANGE_DRAGON,
+    PM_BABY_PURPLE_WORM, PM_BABY_RED_DRAGON, PM_BABY_SILVER_DRAGON, PM_BABY_WHITE_DRAGON,
+    PM_BABY_YELLOW_DRAGON, PM_BALROG, PM_BALUCHITHERIUM, PM_BARBARIAN, PM_BARBED_DEVIL,
+    PM_BARROW_WIGHT, PM_BAT, PM_BLACK_DRAGON, PM_BLACK_LIGHT, PM_BLACK_NAGA,
+    PM_BLACK_NAGA_HATCHLING, PM_BLACK_PUDDING, PM_BLACK_UNICORN, PM_BLUE_DRAGON, PM_BLUE_JELLY,
+    PM_BONE_DEVIL, PM_BROWN_MOLD, PM_BROWN_PUDDING, PM_BUGBEAR, PM_CAPTAIN, PM_CARNIVOROUS_APE,
+    PM_CAVE_DWELLER, PM_CAVE_SPIDER, PM_CENTIPEDE, PM_CHAMELEON, PM_CHICKATRICE, PM_CHIEFTAIN,
+    PM_CHROMATIC_DRAGON, PM_CLAY_GOLEM, PM_CLERIC, PM_COBRA, PM_COCKATRICE, PM_COUATL, PM_COYOTE,
+    PM_CROCODILE, PM_CROESUS, PM_CYCLOPS, PM_DARK_ONE, PM_DEATH, PM_DEMILICH, PM_DEMOGORGON,
+    PM_DINGO, PM_DISENCHANTER, PM_DISPATER, PM_DISPLACER_BEAST, PM_DJINNI, PM_DOG, PM_DOPPELGANGER,
+    PM_DUST_VORTEX, PM_DWARF, PM_DWARF_LEADER, PM_DWARF_MUMMY, PM_DWARF_RULER, PM_DWARF_ZOMBIE,
+    PM_EARTH_ELEMENTAL, PM_ELECTRIC_EEL, PM_ELF, PM_ELF_MUMMY, PM_ELF_NOBLE, PM_ELF_ZOMBIE,
+    PM_ELVEN_MONARCH, PM_ENERGY_VORTEX, PM_ERINYS, PM_ETTIN, PM_ETTIN_MUMMY, PM_ETTIN_ZOMBIE,
+    PM_FAMINE, PM_FIRE_ANT, PM_FIRE_ELEMENTAL, PM_FIRE_GIANT, PM_FIRE_VORTEX, PM_FLAMING_SPHERE,
+    PM_FLESH_GOLEM, PM_FLOATING_EYE, PM_FOG_CLOUD, PM_FOREST_CENTAUR, PM_FOX, PM_FREEZING_SPHERE,
+    PM_FROST_GIANT, PM_GARGOYLE, PM_GARTER_SNAKE, PM_GAS_SPORE, PM_GECKO, PM_GELATINOUS_CUBE,
+    PM_GENETIC_ENGINEER, PM_GERYON, PM_GHOST, PM_GHOUL, PM_GIANT, PM_GIANT_ANT, PM_GIANT_BAT,
+    PM_GIANT_BEETLE, PM_GIANT_EEL, PM_GIANT_MIMIC, PM_GIANT_MUMMY, PM_GIANT_RAT, PM_GIANT_SPIDER,
+    PM_GIANT_ZOMBIE, PM_GLASS_GOLEM, PM_GLASS_PIERCER, PM_GNOME, PM_GNOME_LEADER, PM_GNOME_MUMMY,
+    PM_GNOME_RULER, PM_GNOME_ZOMBIE, PM_GNOMISH_WIZARD, PM_GOBLIN, PM_GOLDEN_NAGA,
+    PM_GOLDEN_NAGA_HATCHLING, PM_GOLD_DRAGON, PM_GOLD_GOLEM, PM_GRAND_MASTER, PM_GRAY_DRAGON,
+    PM_GRAY_OOZE, PM_GRAY_UNICORN, PM_GREEN_DRAGON, PM_GREEN_ELF, PM_GREEN_MOLD, PM_GREEN_SLIME,
+    PM_GREMLIN, PM_GREY_ELF, PM_GRID_BUG, PM_GUARD, PM_GUARDIAN_NAGA, PM_GUARDIAN_NAGA_HATCHLING,
+    PM_GUIDE, PM_HEALER, PM_HELL_HOUND, PM_HELL_HOUND_PUP, PM_HEZROU, PM_HIGH_CLERIC, PM_HILL_GIANT,
+    PM_HILL_ORC, PM_HIPPOCRATES, PM_HOBBIT, PM_HOBGOBLIN, PM_HOMUNCULUS, PM_HORNED_DEVIL, PM_HORSE,
+    PM_HOUSECAT, PM_HUMAN, PM_HUMAN_MUMMY, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF,
+    PM_HUMAN_ZOMBIE, PM_HUNTER, PM_ICE_DEVIL, PM_ICE_TROLL, PM_ICE_VORTEX, PM_IGUANA, PM_IMP,
+    PM_IRON_GOLEM, PM_IRON_PIERCER, PM_IXOTH, PM_JABBERWOCK, PM_JACKAL, PM_JAGUAR, PM_JELLYFISH,
+    PM_JUIBLEX, PM_KEYSTONE_KOP, PM_KILLER_BEE, PM_KING_ARTHUR, PM_KITTEN, PM_KI_RIN, PM_KNIGHT,
+    PM_KOBOLD, PM_KOBOLD_LEADER, PM_KOBOLD_MUMMY, PM_KOBOLD_SHAMAN, PM_KOBOLD_ZOMBIE,
+    PM_KOP_KAPTAIN, PM_KOP_LIEUTENANT, PM_KOP_SERGEANT, PM_KRAKEN, PM_LARGE_CAT, PM_LARGE_DOG,
+    PM_LARGE_KOBOLD, PM_LARGE_MIMIC, PM_LEATHER_GOLEM, PM_LEMURE, PM_LEOCROTTA, PM_LEPRECHAUN,
+    PM_LICH, PM_LICHEN, PM_LIEUTENANT, PM_LITTLE_DOG, PM_LIZARD, PM_LONG_WORM, PM_LONG_WORM_TAIL,
+    PM_LORD_CARNARVON, PM_LORD_SATO, PM_LORD_SURTUR, PM_LURKER_ABOVE, PM_LYNX, PM_MAIL_DAEMON,
+    PM_MANES, PM_MARILITH, PM_MASTER_ASSASSIN, PM_MASTER_KAEN, PM_MASTER_LICH,
+    PM_MASTER_MIND_FLAYER, PM_MASTER_OF_THIEVES, PM_MASTODON, PM_MEDUSA, PM_MIND_FLAYER,
+    PM_MINION_OF_HUHETOTL, PM_MINOTAUR, PM_MONK, PM_MONKEY, PM_MORDOR_ORC, PM_MOUNTAIN_CENTAUR,
+    PM_MOUNTAIN_NYMPH, PM_MUMAK, PM_NALFESHNEE, PM_NALZOK, PM_NAZGUL, PM_NEANDERTHAL,
+    PM_NEFERET_THE_GREEN, PM_NEWT, PM_NINJA, PM_NORN, PM_NURSE, PM_OCHRE_JELLY, PM_OGRE,
+    PM_OGRE_LEADER, PM_OGRE_TYRANT, PM_OLOG_HAI, PM_ORACLE, PM_ORANGE_DRAGON, PM_ORC, PM_ORCUS,
+    PM_ORC_CAPTAIN, PM_ORC_MUMMY, PM_ORC_SHAMAN, PM_ORC_ZOMBIE, PM_ORION, PM_OWLBEAR, PM_PAGE,
+    PM_PANTHER, PM_PAPER_GOLEM, PM_PELIAS, PM_PESTILENCE, PM_PIRANHA, PM_PIT_FIEND, PM_PIT_VIPER,
+    PM_PLAINS_CENTAUR, PM_PONY, PM_PRISONER, PM_PURPLE_WORM, PM_PYROLISK, PM_PYTHON,
+    PM_QUANTUM_MECHANIC, PM_QUASIT, PM_QUEEN_BEE, PM_QUIVERING_BLOB, PM_RABID_RAT, PM_RANGER,
+    PM_RAVEN, PM_RED_DRAGON, PM_RED_MOLD, PM_RED_NAGA, PM_RED_NAGA_HATCHLING, PM_ROCK_MOLE,
+    PM_ROCK_PIERCER, PM_ROCK_TROLL, PM_ROGUE, PM_ROPE_GOLEM, PM_ROSHI, PM_ROTHE, PM_RUST_MONSTER,
+    PM_SALAMANDER, PM_SAMURAI, PM_SANDESTIN, PM_SASQUATCH, PM_SCORPION, PM_SCORPIUS, PM_SERGEANT,
+    PM_SEWER_RAT, PM_SHADE, PM_SHAMAN_KARNOV, PM_SHARK, PM_SHOCKING_SPHERE, PM_SHOPKEEPER,
+    PM_SHRIEKER, PM_SILVER_DRAGON, PM_SKELETON, PM_SMALL_MIMIC, PM_SNAKE, PM_SOLDIER,
+    PM_SOLDIER_ANT, PM_SPOTTED_JELLY, PM_STALKER, PM_STEAM_VORTEX, PM_STONE_GIANT, PM_STONE_GOLEM,
+    PM_STORM_GIANT, PM_STRAW_GOLEM, PM_STUDENT, PM_TENGU, PM_THOTH_AMON, PM_THUG, PM_TIGER,
+    PM_TITAN, PM_TITANOTHERE, PM_TOURIST, PM_TRAPPER, PM_TROLL, PM_TWOFLOWER, PM_UMBER_HULK,
+    PM_URUK_HAI, PM_VALKYRIE, PM_VAMPIRE, PM_VAMPIRE_BAT, PM_VAMPIRE_LEADER, PM_VIOLET_FUNGUS,
+    PM_VLAD_THE_IMPALER, PM_VROCK, PM_WARG, PM_WARHORSE, PM_WARRIOR, PM_WATCHMAN, PM_WATCH_CAPTAIN,
+    PM_WATER_DEMON, PM_WATER_ELEMENTAL, PM_WATER_MOCCASIN, PM_WATER_NYMPH, PM_WATER_TROLL,
+    PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WHITE_DRAGON, PM_WHITE_UNICORN, PM_WINGED_GARGOYLE,
+    PM_WINTER_WOLF, PM_WINTER_WOLF_CUB, PM_WIZARD, PM_WIZARD_OF_YENDOR, PM_WOLF, PM_WOODCHUCK,
+    PM_WOODLAND_ELF, PM_WOOD_GOLEM, PM_WOOD_NYMPH, PM_WRAITH, PM_WUMPUS, PM_XAN, PM_XORN,
+    PM_YEENOGHU, PM_YELLOW_DRAGON, PM_YELLOW_LIGHT, PM_YELLOW_MOLD, PM_YETI, PM_ZRUTY,
+} from "./monsters.h.js";
+import { NATTK, struct_attack, struct_permonst } from "./permonst.h.js";
+import {
+    WT_BABY_DRAGON, WT_DRAGON, WT_ELF, WT_ETHEREAL, WT_HUMAN, WT_JELLY, WT_NYMPH,
+} from "./weight.h.js";
 import { SIZE } from "../rt/cmacros.js";
 import { sizeof } from "../rt/ctypes.js";
 import { or64u } from "../rt/int64.js";
 import { memcpy } from "../rt/libc.js";
 import { static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
+import { addr_of, array_of } from "../rt/struct.js";
 
 // the records of mons_init[] from monsters.h, laid out like it
 function mons_init_records() {
@@ -1008,16 +391,6 @@ function mons_init_records() {
         mflags1: M1_ANIMAL | M1_NOHANDS | M1_CARNIVORE, mflags2: M2_HOSTILE | M2_STRONG,
         mflags3: M3_INFRAVISIBLE, difficulty: 14, mcolor: CLR_RED },
 
-
-
-
-
-
-
-
-
-
-
     /*
      * eyes
      */
@@ -1061,16 +434,6 @@ function mons_init_records() {
             | M1_NOTAKE,
         mflags2: M2_HOSTILE | M2_NEUTER, mflags3: M3_INFRAVISIBLE,
         difficulty: 10, mcolor: HI_ZAP },
-
-
-
-
-
-
-
-
-
-
 
     /*
      * felines
@@ -2058,16 +1421,6 @@ function mons_init_records() {
         mflags2: M2_HOSTILE | M2_STRONG | M2_GREEDY | M2_JEWELS,
         difficulty: 13, mcolor: DRAGON_SILVER },
 
-
-
-
-
-
-
-
-
-
-
     { pmnames: [0, 0, _("baby red dragon")], pmidx: PM_BABY_RED_DRAGON, mlet: S_DRAGON,
         mlevel: 12, mmove: 9, ac: 2, mr: 10, geno: G_GENO,
         mattk: [{ aatyp: AT_BITE, adtyp: AD_PHYS, damn: 2, damd: 6 }],
@@ -2153,22 +1506,6 @@ function mons_init_records() {
             | M1_CARNIVORE,
         mflags2: or64u(M2_HOSTILE | M2_STRONG | M2_NASTY | M2_GREEDY | M2_JEWELS, M2_MAGIC),
         difficulty: 20, mcolor: DRAGON_SILVER },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     /* red dragon has infravision and can be seen via infravision */
     { pmnames: [0, 0, _("red dragon")], pmidx: PM_RED_DRAGON, mlet: S_DRAGON,
@@ -2503,16 +1840,6 @@ function mons_init_records() {
         mflags1: M1_ANIMAL | M1_FLY | M1_CARNIVORE,
         mflags2: M2_HOSTILE | M2_STRONG | M2_NASTY | M2_COLLECT, mflags3: M3_INFRAVISIBLE,
         difficulty: 18, mcolor: CLR_ORANGE },
-
-
-
-
-
-
-
-
-
-
 
     /*
      * Kops
@@ -2990,17 +2317,6 @@ function mons_init_records() {
             | M2_SHAPESHIFTER,
         mflags3: M3_INFRAVISIBLE,
         difficulty: 14, mcolor: CLR_BLUE },
-
-
-
-
-
-
-
-
-
-
-
 
     { pmnames: [0, 0, _("Vlad the Impaler")], pmidx: PM_VLAD_THE_IMPALER, mlet: S_VAMPIRE,
         mlevel: 28, mmove: 26, ac: -6, mr: 80, maligntyp: -10,
@@ -3562,18 +2878,6 @@ function mons_init_records() {
         mflags3: M3_INFRAVISIBLE,
         difficulty: 22, mcolor: HI_LORD },
 
-
-
-
-
-
-
-
-
-
-
-
-
     /*
      * ghosts
      *  ghosts and shades don't leave corpses; assigning human weight
@@ -3614,11 +2918,6 @@ function mons_init_records() {
         difficulty: 11, mcolor: CLR_BLUE },
     /* standard demons & devils
      */
-
-
-
-
-
 
     /* incubus and succubus; prior to 5.0 succubus and incubus were
        distinct monsters; "amorous demon" is considered to be a temporary
@@ -4215,29 +3514,6 @@ function mons_init_records() {
             mflags3: M3_CLOSE | M3_INFRAVISIBLE,
         difficulty: 24, mcolor: HI_LORD },
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     { pmnames: [0, 0, _("Hippocrates")], pmidx: PM_HIPPOCRATES, mlet: S_HUMAN,
         mlevel: 20, mmove: 15, mr: 90, geno: (G_NOGEN | G_UNIQ),
         mattk: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 1, damd: 6 },
@@ -4396,17 +3672,6 @@ function mons_init_records() {
         mflags3: M3_WANTSARTI | M3_WAITFORU | M3_INFRAVISION | M3_INFRAVISIBLE,
         difficulty: 23, mcolor: HI_LORD },
 
-
-
-
-
-
-
-
-
-
-
-
     { pmnames: [0, 0, _("Cyclops")], pmidx: PM_CYCLOPS, mlet: S_GIANT,
         mlevel: 18, mmove: 12, maligntyp: -15, geno: (G_NOGEN | G_UNIQ),
         mattk: [{ aatyp: AT_WEAP, adtyp: AD_PHYS, damn: 4, damd: 8 },
@@ -4546,16 +3811,6 @@ function mons_init_records() {
         mflags2: M2_NOPOLY | M2_HUMAN | M2_PEACEFUL | M2_STRONG | M2_COLLECT,
         mflags3: M3_INFRAVISIBLE,
         difficulty: 7, mcolor: HI_DOMESTIC },
-
-
-
-
-
-
-
-
-
-
 
     /* attendants used to be lawful but have been changed to neutral because
        grow_up() promotes them to healer and the latter is always neutral */

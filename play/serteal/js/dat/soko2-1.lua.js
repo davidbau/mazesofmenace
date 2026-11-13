@@ -1,8 +1,8 @@
-export default "\n" + // -- NetHack sokoban soko2-1.lua	$NHDT-Date: 1652196035 2022/05/10 15:20:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1998-1999 by Kevin Hugo
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack sokoban soko2-1.lua	$NHDT-Date: 1652196035 2022/05/10 15:20:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1998-1999 by Kevin Hugo
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport", "premapped", "sokoban", "solidify");
 
@@ -27,29 +27,29 @@ des.region(selection.area(00,00, 19,11), "lit");
 des.non_diggable(selection.area(00,00,19,11));
 des.non_passwall(selection.area(00,00,19,11));
 
-` + "\n" + // -- Boulders
-`des.object("boulder",02,02)
+-- Boulders
+des.object("boulder",02,02)
 des.object("boulder",03,02)
-` + "\n" + // --
-`des.object("boulder",05,03)
+--
+des.object("boulder",05,03)
 des.object("boulder",07,03)
 des.object("boulder",07,02)
 des.object("boulder",08,02)
-` + "\n" + // --
-`des.object("boulder",10,03)
+--
+des.object("boulder",10,03)
 des.object("boulder",11,03)
-` + "\n" + // --
-`des.object("boulder",02,07)
+--
+des.object("boulder",02,07)
 des.object("boulder",02,08)
 des.object("boulder",03,09)
-` + "\n" + // --
-`des.object("boulder",05,07)
+--
+des.object("boulder",05,07)
 des.object("boulder",06,06)
 
-` + "\n" + // -- prevent monster generation over the (filled) holes
-`des.exclusion({ type = "monster-generation", region = { 07,09, 18,09 } });
-` + "\n" + // -- Traps
-`des.trap("rolling boulder",07,09)
+-- prevent monster generation over the (filled) holes
+des.exclusion({ type = "monster-generation", region = { 07,09, 18,09 } });
+-- Traps
+des.trap("rolling boulder",07,09)
 des.trap("hole",08,09)
 des.trap("hole",09,09)
 des.trap("hole",10,09)
@@ -61,8 +61,8 @@ des.trap("hole",15,09)
 des.trap("hole",16,09)
 des.trap("hole",17,09)
 
-` + "\n" + // -- Random objects
-`des.object({ class = "%" });
+-- Random objects
+des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "%" });

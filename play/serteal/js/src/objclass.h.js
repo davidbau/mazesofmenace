@@ -3,9 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* [misnamed] definition of a type of object; many objects are composites
    (liquid potion inside glass bottle, metal arrowhead on wooden shaft)
    and object definitions only specify one type on a best-fit basis */
@@ -33,8 +30,6 @@
     export const GEMSTONE = 20;
     export const MINERAL = 21;
 
-
-
     export const ARM_SUIT = 0;
     export const ARM_SHIELD = 1; /* needed for special wear function */
     export const ARM_HELM = 2;
@@ -42,7 +37,6 @@
     export const ARM_BOOTS = 4;
     export const ARM_CLOAK = 5;
     export const ARM_SHIRT = 6;
-
 
 export const NODIR = 1; export const IMMEDIATE = 2; export const RAY = 3; export const PIERCE = 1; export const SLASH = 2; export const WHACK = 4; export const struct_objclass = struct("struct_objclass", {
     oc_name_idx: short, /* index of actual name */
@@ -63,7 +57,6 @@ export const NODIR = 1; export const IMMEDIATE = 2; export const RAY = 3; export
 
     oc_big: Bitfield(1),
 
-
     oc_tough: Bitfield(1), /* hard gems/rings */
 
     oc_spare1: Bitfield(6), /* padding to align oc_dir + oc_material;
@@ -73,17 +66,11 @@ export const NODIR = 1; export const IMMEDIATE = 2; export const RAY = 3; export
     oc_dir: Bitfield(3),
     /* oc_dir: zap style for wands and spells */
 
-
-
     /* overloaded oc_dir: strike mode bit mask for weapons and weptools */
-
-
 
     oc_material: Bitfield(5), /* one of obj_material_types */
 
     oc_subtyp: schar,
-
-
 
     oc_oprop: uchar, /* property (invis, &c.) conveyed */
     oc_class: char, /* object class (enum obj_class_types) */
@@ -97,11 +84,6 @@ export const NODIR = 1; export const IMMEDIATE = 2; export const RAY = 3; export
     /* for weapons, and tools, rocks, and gems useful as weapons */
     oc_wsdam: schar, oc_wldam: schar, /* max small/large monster damage */
     oc_oc1: schar, oc_oc2: schar,
-
-
-
-
-
 
     oc_nutrition: ushort, /* food value */
 
@@ -127,26 +109,9 @@ export const struct_objdescr = struct("struct_objdescr", {
  * symbol below.
  */
 
-
-
-
-
-
-
-
     /* used for generating random objects */
 
-
-
-
-
-
 /* Default characters for object classes */
-
-
-
-
-
 
 /* for mkobj() use ONLY! odd '-SPBOOK_CLASS' is in case of unsigned enums */
 export const SPBOOK_no_NOVEL = (0 - SPBOOK_CLASS);
@@ -155,11 +120,8 @@ export const BURNING_OIL = (MAXOCLASSES + 1);
 export const MON_EXPLODE = (MAXOCLASSES + 2);
 export const TRAP_EXPLODE = (MAXOCLASSES + 3);
 
-
-
         /* default class symbols */
 /* current class symbols */
-
 
 export const struct_fruit = struct("struct_fruit", {
     fname: array_of(char, PL_FSIZ),
@@ -167,63 +129,16 @@ export const struct_fruit = struct("struct_fruit", {
     nextf: ptr_to("struct_fruit"),
 });
 
-
-
-
-
-
-
-
-
-
-
     export const NUM_REAL_GEMS = (LAST_REAL_GEM - FIRST_REAL_GEM + 1);
     export const NUM_GLASS_GEMS = (LAST_GLASS_GEM - FIRST_GLASS_GEM + 1);
     /* LAST_SPELL is SPE_BLANK_PAPER, guaranteeing that spl_book[] will
        have at least one unused slot at end to be used as a terminator */
     export const MAXSPELL = (LAST_SPELL - FIRST_SPELL + 1);
 
-
-
-
-
-
-
-
-
-
-
-
-
-/* primary damage: fire/rust/--- */
-/* is_flammable(otmp), is_rottable(otmp) in mkobj.c */
-
-
-
-
-/* secondary damage: rot/acid/acid */
-
-
-
-/* subject to any damage */
-import { MAXOCLASSES } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
+import { MAXOCLASSES, SPBOOK_CLASS } from "./defsym.h.js";
 import { PL_FSIZ } from "./global.h.js";
-import { FIRST_GLASS_GEM } from "./objects.h.js";
-import { FIRST_REAL_GEM } from "./objects.h.js";
-import { FIRST_SPELL } from "./objects.h.js";
-import { LAST_GLASS_GEM } from "./objects.h.js";
-import { LAST_REAL_GEM } from "./objects.h.js";
-import { LAST_SPELL } from "./objects.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import {
+    FIRST_GLASS_GEM, FIRST_REAL_GEM, FIRST_SPELL, LAST_GLASS_GEM, LAST_REAL_GEM, LAST_SPELL,
+} from "./objects.h.js";
+import { char, int, schar, short, uchar, ulong, unsigned, ushort } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

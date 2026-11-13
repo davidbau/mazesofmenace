@@ -3,8 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /*** Table of all roles ***/
 /* According to AD&D, HD for some classes (ex. Wizard) should be smaller
  * (4-sided for wizards).  But this is not AD&D, and using the AD&D
@@ -357,18 +355,7 @@ export const roles = static_array("roles", struct_Role, NUM_ROLES+1, [
       spelsbon: -4 },
     { name: { m: _("Ranger"), f: 0 },
       rank: [
-
-
-
-
-
-
-
-
-
-
-
-
+        /* #if 0: not in this build */
 
         { m: _("Tenderfoot"), f: 0 },
         { m: _("Lookout"), f: 0 },
@@ -701,23 +688,14 @@ export const aligns = static_array("aligns", struct_Align, null, [
     { noun: _("evil"), adj: _("unaligned"), filecode: _("Una"), allow: 0, value: A_NONE }
 ]);
 
-
-
-
-
-
 /* used by str2XXX() */
 const randomstr = init_string(static_array("randomstr", char, sizeof_string("random")), _("random"), true);
 
-export function /* boolean */
-validrole(rolenum)
-{
-    return (IndexOkT(rolenum, roles));
+export function validrole(rolenum) { /* boolean */
+    return IndexOkT(rolenum, roles);
 }
 
-export function /* int */
-randrole(for_display)
-{
+export function randrole(for_display) { /* int */
     let res = SIZE(roles) - 1;
 
     if (for_display)
@@ -727,9 +705,8 @@ randrole(for_display)
     return res;
 }
 
-function /* int */
-randrole_filtered()
-{ const $frame = stack_frame(); try {
+function randrole_filtered() { /* int */
+    const $frame = stack_frame(); try {
     let i, n = 0, set = stack_array(int, SIZE(roles));
 
     /* this doesn't rule out impossible combinations but attempts to
@@ -741,11 +718,10 @@ randrole_filtered()
             && ok_align(i, ROLE_NONE, ROLE_NONE, ROLE_RANDOM))
             set[n++] = i;
     return n ? set[rn2(n)] : randrole(FALSE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-str2role(str)
-{
+export function str2role(str) { /* int */
     let i, len;
 
     /* Is str valid? */
@@ -774,18 +750,14 @@ str2role(str)
     return ROLE_NONE;
 }
 
-export function /* boolean */
-validrace(rolenum, racenum)
-{
+export function validrace(rolenum, racenum) { /* boolean */
     /* Assumes validrole */
-    return (((IndexOkT(racenum, races)
+    return (IndexOkT(racenum, races)
                       && (roles[rolenum].allow & races[racenum].allow
-                          & ROLE_RACEMASK)) ? 1 : 0));
+                          & ROLE_RACEMASK) ? 1 : 0);
 }
 
-export function /* int */
-randrace(rolenum)
-{
+export function randrace(rolenum) { /* int */
     let i, n = 0;
 
     /* Count the number of valid races */
@@ -809,9 +781,7 @@ randrace(rolenum)
     return rn2(SIZE(races) - 1);
 }
 
-export function /* int */
-str2race(str)
-{
+export function str2race(str) { /* int */
     let i, len;
 
     /* Is str valid? */
@@ -840,18 +810,14 @@ str2race(str)
     return ROLE_NONE;
 }
 
-export function /* boolean */
-validgend(rolenum, racenum, gendnum)
-{
+export function validgend(rolenum, racenum, gendnum) { /* boolean */
     /* Assumes validrole and validrace */
-    return (((gendnum >= 0 && gendnum < ROLE_GENDERS
+    return (gendnum >= 0 && gendnum < ROLE_GENDERS
                       && (roles[rolenum].allow & races[racenum].allow
-                          & genders[gendnum].allow & ROLE_GENDMASK)) ? 1 : 0));
+                          & genders[gendnum].allow & ROLE_GENDMASK) ? 1 : 0);
 }
 
-export function /* int */
-randgend(rolenum, racenum)
-{
+export function randgend(rolenum, racenum) { /* int */
     let i, n = 0;
 
     /* Count the number of valid genders */
@@ -876,9 +842,7 @@ randgend(rolenum, racenum)
     return rn2(ROLE_GENDERS);
 }
 
-export function /* int */
-str2gend(str)
-{
+export function str2gend(str) { /* int */
     let i, len;
 
     /* Is str valid? */
@@ -903,18 +867,14 @@ str2gend(str)
     return ROLE_NONE;
 }
 
-export function /* boolean */
-validalign(rolenum, racenum, alignnum)
-{
+export function validalign(rolenum, racenum, alignnum) { /* boolean */
     /* Assumes validrole and validrace */
-    return (((alignnum >= 0 && alignnum < ROLE_ALIGNS
+    return (alignnum >= 0 && alignnum < ROLE_ALIGNS
                       && (roles[rolenum].allow & races[racenum].allow
-                          & aligns[alignnum].allow & AM_MASK)) ? 1 : 0));
+                          & aligns[alignnum].allow & AM_MASK) ? 1 : 0);
 }
 
-export function /* int */
-randalign(rolenum, racenum)
-{
+export function randalign(rolenum, racenum) { /* int */
     let i, n = 0;
 
     /* Count the number of valid alignments */
@@ -939,9 +899,7 @@ randalign(rolenum, racenum)
     return rn2(ROLE_ALIGNS);
 }
 
-export function /* int */
-str2align(str)
-{
+export function str2align(str) { /* int */
     let i, len;
 
     /* Is str valid? */
@@ -967,9 +925,7 @@ str2align(str)
 }
 
 /* is rolenum compatible with any racenum/gendnum/alignnum constraints? */
-export function /* boolean */
-ok_role(rolenum, racenum, gendnum, alignnum)
-{
+export function ok_role(rolenum, racenum, gendnum, alignnum) { /* boolean */
     let i;
     let allow;
 
@@ -1011,9 +967,8 @@ ok_role(rolenum, racenum, gendnum, alignnum)
 /* pick a random role subject to any racenum/gendnum/alignnum constraints */
 /* If pickhow == PICK_RIGID a role is returned only if there is  */
 /* a single possibility */
-export function /* int */
-pick_role(racenum, gendnum, alignnum, pickhow)
-{ const $frame = stack_frame(); try {
+export function pick_role(racenum, gendnum, alignnum, pickhow) { /* int */
+    const $frame = stack_frame(); try {
     let i;
     let roles_ok = 0, set = stack_array(int, SIZE(roles));
 
@@ -1030,12 +985,11 @@ pick_role(racenum, gendnum, alignnum, pickhow)
     if (roles_ok == 0 || (roles_ok > 1 && pickhow == PICK_RIGID))
         return ROLE_NONE;
     return set[rn2(roles_ok)];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* is racenum compatible with any rolenum/gendnum/alignnum constraints? */
-export function /* boolean */
-ok_race(rolenum, racenum, gendnum, alignnum)
-{
+export function ok_race(rolenum, racenum, gendnum, alignnum) { /* boolean */
     let i;
     let allow;
 
@@ -1077,9 +1031,7 @@ ok_race(rolenum, racenum, gendnum, alignnum)
 /* Pick a random race subject to any rolenum/gendnum/alignnum constraints.
    If pickhow == PICK_RIGID a race is returned only if there is
    a single possibility. */
-export function /* int */
-pick_race(rolenum, gendnum, alignnum, pickhow)
-{
+export function pick_race(rolenum, gendnum, alignnum, pickhow) { /* int */
     let i;
     let races_ok = 0;
 
@@ -1103,9 +1055,7 @@ pick_race(rolenum, gendnum, alignnum, pickhow)
 
 /* is gendnum compatible with any rolenum/racenum/alignnum constraints? */
 /* gender and alignment are not comparable (and also not constrainable) */
-export function /* boolean */
-ok_gend(rolenum, racenum, gendnum, alignnum)
-{
+export function ok_gend(rolenum, racenum, gendnum, alignnum) { /* boolean */
     let i;
     let allow;
 
@@ -1142,9 +1092,7 @@ ok_gend(rolenum, racenum, gendnum, alignnum)
 /* gender and alignment are not comparable (and also not constrainable) */
 /* If pickhow == PICK_RIGID a gender is returned only if there is  */
 /* a single possibility */
-export function /* int */
-pick_gend(rolenum, racenum, alignnum, pickhow)
-{
+export function pick_gend(rolenum, racenum, alignnum, pickhow) { /* int */
     let i;
     let gends_ok = 0;
 
@@ -1168,9 +1116,7 @@ pick_gend(rolenum, racenum, alignnum, pickhow)
 
 /* is alignnum compatible with any rolenum/racenum/gendnum constraints? */
 /* alignment and gender are not comparable (and also not constrainable) */
-export function /* boolean */
-ok_align(rolenum, racenum, gendnum, alignnum)
-{
+export function ok_align(rolenum, racenum, gendnum, alignnum) { /* boolean */
     let i;
     let allow;
 
@@ -1207,9 +1153,7 @@ ok_align(rolenum, racenum, gendnum, alignnum)
    alignment and gender are not comparable (and also not constrainable).
    If pickhow == PICK_RIGID an alignment is returned only if there is
    a single possibility. */
-export function /* int */
-pick_align(rolenum, racenum, gendnum, pickhow)
-{
+export function pick_align(rolenum, racenum, gendnum, pickhow) { /* int */
     let i;
     let aligns_ok = 0;
 
@@ -1231,9 +1175,7 @@ pick_align(rolenum, racenum, gendnum, pickhow)
     return ROLE_NONE;
 }
 
-export function /* void */
-rigid_role_checks()
-{
+export function rigid_role_checks() { /* void */
     let tmp;
 
     /* Some roles are limited to a single race, alignment, or gender and
@@ -1280,9 +1222,7 @@ rigid_role_checks()
     }
 }
 
-export function /* boolean */
-setrolefilter(bufp)
-{
+export function setrolefilter(bufp) { /* boolean */
     let i;
     let reslt = TRUE;
 
@@ -1299,9 +1239,7 @@ setrolefilter(bufp)
     return reslt;
 }
 
-export function /* boolean */
-gotrolefilter()
-{
+export function gotrolefilter() { /* boolean */
     let i;
 
     if (gr.rfilter.mask)
@@ -1314,9 +1252,7 @@ gotrolefilter()
 
 /* create a string like " !Bar !Kni" or " !chaotic" that can be
    put back into an RC file by #saveoptions */
-export function /* char * */
-rolefilterstring(outbuf, which)
-{
+export function rolefilterstring(outbuf, which) { /* char * */
     let i;
 
     chars[outbuf + 0] = chars[outbuf + 1] = ord('\0');
@@ -1324,39 +1260,37 @@ rolefilterstring(outbuf, which)
     case RS_ROLE:
         for (i = 0; i < SIZE(roles) - 1; ++i) {
             if (chars[gr.rfilter.roles + i])
-                void sprintf(eos(outbuf), _(" !%.3s"), roles[i].name.m);
+                sprintf(eos(outbuf), _(" !%.3s"), roles[i].name.m);
         }
         break;
     case RS_RACE:
         for (i = 0; i < SIZE(races) - 1; ++i) {
             if ((gr.rfilter.mask & races[i].selfmask) != 0)
-                void sprintf(eos(outbuf), _(" !%s"), races[i].noun);
+                sprintf(eos(outbuf), _(" !%s"), races[i].noun);
         }
         break;
     case RS_GENDER:
         for (i = 0; i < SIZE(genders) - 1; ++i) {
             if ((gr.rfilter.mask & genders[i].allow) != 0)
-                void sprintf(eos(outbuf), _(" !%s"), genders[i].adj);
+                sprintf(eos(outbuf), _(" !%s"), genders[i].adj);
         }
         break;
     case RS_ALGNMNT:
         for (i = 0; i < SIZE(aligns) - 1; ++i) {
             if ((gr.rfilter.mask & aligns[i].allow) != 0)
-                void sprintf(eos(outbuf), _(" !%s"), aligns[i].adj);
+                sprintf(eos(outbuf), _(" !%s"), aligns[i].adj);
         }
         break;
     default:
         impossible(_("rolefilterstring: bad role aspect (%d)"), which);
-        void strcpy(outbuf, _(" ?"));
+        strcpy(outbuf, _(" ?"));
         break;
     }
     /* constructed with a leading space; drop it */
     return outbuf + 1;
 }
 
-export function /* void */
-clearrolefilter(which)
-{
+export function clearrolefilter(which) { /* void */
     let i;
 
     switch (which) {
@@ -1380,24 +1314,20 @@ clearrolefilter(which)
     }
 }
 
-function /* char * */
-promptsep(buf, num_post_attribs)
-{
+function promptsep(buf, num_post_attribs) { /* char * */
     let conjuct = _("and ");
 
     if (num_post_attribs > 1 && gr.role_post_attribs < num_post_attribs
         && gr.role_post_attribs > 1)
-        void strcat(buf, _(","));
-    void strcat(buf, _(" "));
+        strcat(buf, _(","));
+    strcat(buf, _(" "));
     --gr.role_post_attribs;
     if (!gr.role_post_attribs && num_post_attribs > 1)
-        void strcat(buf, conjuct);
+        strcat(buf, conjuct);
     return buf;
 }
 
-function /* int */
-role_gendercount(rolenum)
-{
+function role_gendercount(rolenum) { /* int */
     let gendcount = 0;
 
     if (validrole(rolenum)) {
@@ -1411,9 +1341,7 @@ role_gendercount(rolenum)
     return gendcount;
 }
 
-function /* int */
-race_alignmentcount(racenum)
-{
+function race_alignmentcount(racenum) { /* int */
     let aligncount = 0;
 
     if (racenum != ROLE_NONE && racenum != ROLE_RANDOM) {
@@ -1427,11 +1355,10 @@ race_alignmentcount(racenum)
     return aligncount;
 }
 
-export function /* char * */
-root_plselection_prompt(
+export function root_plselection_prompt(
     suppliedbuf, buflen,
-    rolenum, racenum, gendnum, alignnum)
-{ const $frame = stack_frame(); try {
+    rolenum, racenum, gendnum, alignnum) { /* char * */
+    const $frame = stack_frame(); try {
     let k, gendercount = 0, aligncount = 0;
     let buf = stack_array(char, BUFSZ);
     let err_ret = init_string(static_array("root_plselection_prompt.err_ret", char, sizeof_string(" character's")), _(" character's"), true);
@@ -1453,18 +1380,9 @@ root_plselection_prompt(
 
     if (alignnum != ROLE_NONE && alignnum != ROLE_RANDOM
         && ok_align(rolenum, racenum, gendnum, alignnum)) {
-
-
-
-
-
-
-
-
-
         if (donefirst)
-            void strcat(buf, _(" "));
-        void strcat(buf, aligns[alignnum].adj);
+            strcat(buf, _(" "));
+        strcat(buf, aligns[alignnum].adj);
         donefirst = TRUE;
     } else {
         /* in case we got here by failing the ok_align() test */
@@ -1494,14 +1412,14 @@ root_plselection_prompt(
             if ((rolenum != ROLE_NONE) && (gendercount > 1)
                 && !roles[rolenum].name.f) {
                 if (donefirst)
-                    void strcat(buf, _(" "));
-                void strcat(buf, genders[gendnum].adj);
+                    strcat(buf, _(" "));
+                strcat(buf, genders[gendnum].adj);
                 donefirst = TRUE;
             }
         } else {
             if (donefirst)
-                void strcat(buf, _(" "));
-            void strcat(buf, genders[gendnum].adj);
+                strcat(buf, _(" "));
+            strcat(buf, genders[gendnum].adj);
             donefirst = TRUE;
         }
     } else {
@@ -1520,14 +1438,14 @@ root_plselection_prompt(
         if (validrole(rolenum)
             && ok_race(rolenum, racenum, gendnum, alignnum)) {
             if (donefirst)
-                void strcat(buf, _(" "));
-            void strcat(buf, (rolenum == ROLE_NONE) ? races[racenum].noun
+                strcat(buf, _(" "));
+            strcat(buf, (rolenum == ROLE_NONE) ? races[racenum].noun
                                                : races[racenum].adj);
             donefirst = TRUE;
         } else if (!validrole(rolenum)) {
             if (donefirst)
-                void strcat(buf, _(" "));
-            void strcat(buf, races[racenum].noun);
+                strcat(buf, _(" "));
+            strcat(buf, races[racenum].noun);
             donefirst = TRUE;
         } else {
             chars[gr.role_pa + BP_RACE] = 1;
@@ -1542,19 +1460,19 @@ root_plselection_prompt(
     if (validrole(rolenum)) {
         assert(IndexOkT(rolenum, roles));
         if (donefirst)
-            void strcat(buf, _(" "));
+            strcat(buf, _(" "));
         if (gendnum != ROLE_NONE) {
             if (gendnum == 1 && roles[rolenum].name.f)
-                void strcat(buf, roles[rolenum].name.f);
+                strcat(buf, roles[rolenum].name.f);
             else
-                void strcat(buf, roles[rolenum].name.m);
+                strcat(buf, roles[rolenum].name.m);
         } else {
             if (roles[rolenum].name.f) {
-                void strcat(buf, roles[rolenum].name.m);
-                void strcat(buf, _("/"));
-                void strcat(buf, roles[rolenum].name.f);
+                strcat(buf, roles[rolenum].name.m);
+                strcat(buf, _("/"));
+                strcat(buf, roles[rolenum].name.f);
             } else
-                void strcat(buf, roles[rolenum].name.m);
+                strcat(buf, roles[rolenum].name.m);
         }
         donefirst = TRUE;
     } else if (rolenum == ROLE_NONE) {
@@ -1565,25 +1483,25 @@ root_plselection_prompt(
     if ((racenum == ROLE_NONE || racenum == ROLE_RANDOM)
         && !validrole(rolenum)) {
         if (donefirst)
-            void strcat(buf, _(" "));
-        void strcat(buf, _("character"));
+            strcat(buf, _(" "));
+        strcat(buf, _("character"));
         /*donefirst = TRUE;*/
     }
     /* <your lawful female gnomish cavewoman> || <your lawful female gnome>
      *    || <your lawful female character>
      */
-    if (buflen > int((unsigned(strlen(buf) + 1)))) {
-        void strcpy(suppliedbuf, buf);
+    if (buflen > int(unsigned(strlen(buf) + 1))) {
+        strcpy(suppliedbuf, buf);
         return suppliedbuf;
     } else
         return err_ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* char * */
-build_plselection_prompt(
+export function build_plselection_prompt(
     buf, buflen,
-    rolenum, racenum, gendnum, alignnum)
-{ const $frame = stack_frame(); try {
+    rolenum, racenum, gendnum, alignnum) { /* char * */
+    const $frame = stack_frame(); try {
     let defprompt = _("Shall I pick a character for you? [ynaq] ");
     let num_post_attribs = 0;
     let tmpbuf = stack_array(char, BUFSZ), p;
@@ -1591,20 +1509,20 @@ build_plselection_prompt(
     if (buflen < QBUFSZ)
         return defprompt;
 
-    void strcpy(tmpbuf, _("Shall I pick "));
+    strcpy(tmpbuf, _("Shall I pick "));
     if (racenum != ROLE_NONE || validrole(rolenum))
-        void strcat(tmpbuf, _("your "));
+        strcat(tmpbuf, _("your "));
     else
-        void strcat(tmpbuf, _("a "));
+        strcat(tmpbuf, _("a "));
     /* <your> */
 
-    void root_plselection_prompt(eos(tmpbuf), int(unsigned(unsigned(buflen) - Strlen(tmpbuf))),
+    root_plselection_prompt(eos(tmpbuf), int(unsigned(unsigned(buflen) - Strlen(tmpbuf))),
                                    rolenum, racenum, gendnum, alignnum);
     /* "Shall I pick a character's role, race, gender, and alignment for you?"
        plus " [ynaq] (y)" is a little too long for a conventional 80 columns;
        also, "pick a character's <anything>" sounds a bit stilted */
     strsubst(tmpbuf, _("pick a character"), _("pick character"));
-    void sprintf(buf, _("%s"), s_suffix(tmpbuf));
+    sprintf(buf, _("%s"), s_suffix(tmpbuf));
     /* don't bother splitting caveman/cavewoman or priest/priestess
        in order to apply possessive suffix to both halves, but do
        change "priest/priestess'" to "priest/priestess's" */
@@ -1635,35 +1553,28 @@ build_plselection_prompt(
     }
     if (num_post_attribs) {
         if (chars[gr.role_pa + BP_RACE]) {
-            void promptsep(eos(buf), num_post_attribs);
-            void strcat(buf, _("race"));
+            promptsep(eos(buf), num_post_attribs);
+            strcat(buf, _("race"));
         }
         if (chars[gr.role_pa + BP_ROLE]) {
-            void promptsep(eos(buf), num_post_attribs);
-            void strcat(buf, _("role"));
+            promptsep(eos(buf), num_post_attribs);
+            strcat(buf, _("role"));
         }
         if (chars[gr.role_pa + BP_GEND]) {
-            void promptsep(eos(buf), num_post_attribs);
-            void strcat(buf, _("gender"));
+            promptsep(eos(buf), num_post_attribs);
+            strcat(buf, _("gender"));
         }
         if (chars[gr.role_pa + BP_ALIGN]) {
-            void promptsep(eos(buf), num_post_attribs);
-            void strcat(buf, _("alignment"));
+            promptsep(eos(buf), num_post_attribs);
+            strcat(buf, _("alignment"));
         }
     }
-    void strcat(buf, _(" for you? [ynaq] "));
+    strcat(buf, _(" for you? [ynaq] "));
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-export function /* void */
-plnamesuffix()
-{
+export function plnamesuffix() { /* void */
     let sptr, eptr;
     let i;
 
@@ -1717,14 +1628,13 @@ plnamesuffix()
     } while (!chars[svp.plname + 0] && !iflags.defer_plname);
 
     /* commas in the svp.plname confuse the record file, convert to spaces */
-    void strNsubst(svp.plname, _(","), _(" "), 0);
+    strNsubst(svp.plname, _(","), _(" "), 0);
 }
 
 /* show current settings for name, role, race, gender, and alignment
    in the specified window */
-export function /* void */
-role_selection_prolog(which, where)
-{ const $frame = stack_frame(); try {
+export function role_selection_prolog(which, where) { /* void */
+    const $frame = stack_frame(); try {
     let choosing = init_string(static_array("role_selection_prolog.choosing", char, sizeof_string(" choosing now")), _(" choosing now"), true),
                                not_yet = init_string(static_array("role_selection_prolog.not_yet", char, sizeof_string(" not yet specified")), _(" not yet specified"), true),
                                rand_choice = init_string(static_array("role_selection_prolog.rand_choice", char, sizeof_string(" random")), _(" random"), true);
@@ -1768,14 +1678,14 @@ role_selection_prolog(which, where)
     /* [g and a don't constrain anything sufficiently
        to narrow something done to a single choice] */
 
-    void sprintf(buf, _("%12s "), _("name:"));
-    void strcat(buf, (which == RS_NAME) ? choosing
+    sprintf(buf, _("%12s "), _("name:"));
+    strcat(buf, (which == RS_NAME) ? choosing
                 : !chars[svp.plname] ? not_yet : svp.plname);
     putstr()(where, 0, buf);
-    void sprintf(buf, _("%12s "), _("role:"));
+    sprintf(buf, _("%12s "), _("role:"));
     assert(which == RS_ROLE || r == ROLE_NONE || r == ROLE_RANDOM
            || IndexOkT(r, roles));
-    void strcat(buf, (which == RS_ROLE) ? choosing
+    strcat(buf, (which == RS_ROLE) ? choosing
                 : (r == ROLE_NONE) ? not_yet
                   : (r == ROLE_RANDOM) ? rand_choice
                     : roles[r].name.m);
@@ -1783,38 +1693,38 @@ role_selection_prolog(which, where)
         /* distinct female name [caveman/cavewoman, priest/priestess] */
         if (gend == 1)
             /* female specified; replace male role name with female one */
-            void sprintf(strchr(buf, ord(':')), _(": %s"), roles[r].name.f);
+            sprintf(strchr(buf, ord(':')), _(": %s"), roles[r].name.f);
         else if (gend < 0)
             /* gender unspecified; append slash and female role name */
-            void sprintf(eos(buf), _("/%s"), roles[r].name.f);
+            sprintf(eos(buf), _("/%s"), roles[r].name.f);
     }
     putstr()(where, 0, buf);
-    void sprintf(buf, _("%12s "), _("race:"));
+    sprintf(buf, _("%12s "), _("race:"));
     assert(which == RS_RACE || c == ROLE_NONE || c == ROLE_RANDOM
            || IndexOkT(c, races));
-    void strcat(buf, (which == RS_RACE) ? choosing
+    strcat(buf, (which == RS_RACE) ? choosing
                 : (c == ROLE_NONE) ? not_yet
                   : (c == ROLE_RANDOM) ? rand_choice
                     : races[c].noun);
     putstr()(where, 0, buf);
-    void sprintf(buf, _("%12s "), _("gender:"));
-    void strcat(buf, (which == RS_GENDER) ? choosing
+    sprintf(buf, _("%12s "), _("gender:"));
+    strcat(buf, (which == RS_GENDER) ? choosing
                 : (gend == ROLE_NONE) ? not_yet
                   : (gend == ROLE_RANDOM) ? rand_choice
                     : genders[gend].adj);
     putstr()(where, 0, buf);
-    void sprintf(buf, _("%12s "), _("alignment:"));
-    void strcat(buf, (which == RS_ALGNMNT) ? choosing
+    sprintf(buf, _("%12s "), _("alignment:"));
+    strcat(buf, (which == RS_ALGNMNT) ? choosing
                 : (a == ROLE_NONE) ? not_yet
                   : (a == ROLE_RANDOM) ? rand_choice
                     : aligns[a].adj);
     putstr()(where, 0, buf);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* add a "pick alignment first"-type entry to the specified menu */
-export function /* void */
-role_menu_extra(which, where, preselect)
-{ const $frame = stack_frame(); try {
+export function role_menu_extra(which, where, preselect) { /* void */
+    const $frame = stack_frame(); try {
     let RS_menu_let = static_array("role_menu_extra.RS_menu_let", char, null, [
         ord('='),  /* name */
         ord('?'),  /* role */
@@ -1929,18 +1839,18 @@ role_menu_extra(which, where, preselect)
     if (constrainer) {
         any.a_int = 0;
         /* use four spaces of padding to fake a grayed out menu choice */
-        void sprintf(buf, _("%4s%s forces %s"), _(""), constrainer, forcedvalue);
+        sprintf(buf, _("%4s%s forces %s"), _(""), constrainer, forcedvalue);
         add_menu_str(where, buf);
     } else if (what) {
         any.a_int = RS_menu_arg(which);
-        void sprintf(buf, _("Pick%s %s first"), (f >= 0) ? _(" another") : _(""), what);
+        sprintf(buf, _("Pick%s %s first"), (f >= 0) ? _(" another") : _(""), what);
         add_menu(where, nul_glyphinfo, any, chars[RS_menu_let + which], 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     } else if (which == RS_filter) {
         let setfiltering = stack_array(char, 40);
 
         any.a_int = RS_menu_arg(RS_filter);
-        void sprintf(setfiltering, _("%s role/race/&c filtering"), gotrolefilter() ? _("Reset") : _("Set"))
+        sprintf(setfiltering, _("%s role/race/&c filtering"), gotrolefilter() ? _("Reset") : _("Set"))
 ;
         add_menu(where, nul_glyphinfo, any, ord('~'), 0, ATR_NONE,
                  clr, setfiltering, MENU_ITEMFLAGS_NONE);
@@ -1957,7 +1867,8 @@ role_menu_extra(which, where, preselect)
     } else {
         impossible(_("role_menu_extra: bad arg (%d)"), which);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  *      Special setup modifications here:
@@ -1976,9 +1887,7 @@ role_menu_extra(which, where, preselect)
  *
  * This code also replaces quest_init().
  */
-export function /* void */
-role_init()
-{
+export function role_init() { /* void */
     let alignmnt;
     let pm;
 
@@ -1997,7 +1906,7 @@ role_init()
 
     /* We now have a valid role index.  Copy the role name back. */
     /* This should become OBSOLETE */
-    void strcpy(svp.pl_character, roles[flags.initrole].name.m);
+    strcpy(svp.pl_character, roles[flags.initrole].name.m);
     chars[svp.pl_character + (PL_CSIZ - 1)] = ord('\0');
 
     /* Check for a valid race */
@@ -2028,7 +1937,7 @@ role_init()
     if (gu.urole.ldrnum != NON_PM) {
         pm = mons[gu.urole.ldrnum];
         pm.msound = MS_LEADER;
-        pm.mflags2 = or64u(pm.mflags2, (M2_PEACEFUL));
+        pm.mflags2 = or64u(pm.mflags2, M2_PEACEFUL);
         pm.mflags3 |= M3_CLOSE;
         pm.maligntyp = alignmnt * 3;
         /* if gender is random, we choose it now instead of waiting
@@ -2036,13 +1945,13 @@ role_init()
         svq.quest_status.ldrgend =
             is_neuter(pm) ? 2 : is_female(pm) ? 1 : is_male(pm)
                                                         ? 0
-                                                        : (+(rn2(100) < 50));
+                                                        : +(rn2(100) < 50);
     }
 
     /* Fix up the quest guardians */
     if (gu.urole.guardnum != NON_PM) {
         pm = mons[gu.urole.guardnum];
-        pm.mflags2 = or64u(pm.mflags2, (M2_PEACEFUL));
+        pm.mflags2 = or64u(pm.mflags2, M2_PEACEFUL);
         pm.maligntyp = alignmnt * 3;
     }
 
@@ -2050,14 +1959,14 @@ role_init()
     if (gu.urole.neminum != NON_PM) {
         pm = mons[gu.urole.neminum];
         pm.msound = MS_NEMESIS;
-        pm.mflags2 = and64u(pm.mflags2, ~(M2_PEACEFUL));
+        pm.mflags2 = and64u(pm.mflags2, ~M2_PEACEFUL);
         pm.mflags2 = or64u(pm.mflags2, (M2_NASTY | M2_STALK | M2_HOSTILE));
-        pm.mflags3 &= ~(M3_CLOSE);
+        pm.mflags3 &= ~M3_CLOSE;
         pm.mflags3 |= M3_WANTSARTI | M3_WAITFORU;
         /* if gender is random, we choose it now instead of waiting
            until the nemesis monster is created */
         svq.quest_status.nemgend = is_neuter(pm) ? 2 : is_female(pm) ? 1
-                                   : is_male(pm) ? 0 : (+(rn2(100) < 50));
+                                   : is_male(pm) ? 0 : +(rn2(100) < 50);
     }
 
     /* Fix up the god names */
@@ -2082,33 +1991,12 @@ role_init()
         gu.urole.cgod = roles[flags.pantheon].cgod;
     }
     /* 0 or 1; no gods are neuter, nor is gender randomized */
-    svq.quest_status.godgend = +!strcmpi(align_gtitle(alignmnt), _("goddess"));
+    svq.quest_status.godgend = +!strncmpi((align_gtitle(alignmnt)), _(("goddess")), -1);
 
     if (Role_if(PM_CLERIC))
         objects[SPE_LIGHT].oc_subtyp = P_CLERIC_SPELL;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     /* Artifacts are fixed in hack_artifacts() */
 
@@ -2116,9 +2004,7 @@ role_init()
     return;
 }
 
-export function /* const char * */
-Hello(mtmp)
-{
+export function Hello(mtmp) { /* const char * */
     switch (Role_switch()) {
     case PM_KNIGHT:
         return _("Salutations"); /* Olde English */
@@ -2139,9 +2025,7 @@ Hello(mtmp)
     }
 }
 
-export function /* const char * */
-Goodbye()
-{
+export function Goodbye() { /* const char * */
     switch (Role_switch()) {
     case PM_KNIGHT:
         return _("Fare thee well"); /* Olde English */
@@ -2159,9 +2043,7 @@ Goodbye()
 /* if pmindex is any player race (not necessarily the hero's),
    return a pointer to the races[] entry for it; if pmindex is for some
    other type of monster which isn't a player race, return Null */
-export function /* const struct Race * */
-character_race(pmindex)
-{
+export function character_race(pmindex) { /* const struct Race * */
     let r;
 
     for (r = races[0]; r.noun != (0); r = ptr_add(r, 1))
@@ -2173,9 +2055,7 @@ character_race(pmindex)
 /*--------------------------------------------------------------------------*/
 
 /* potential interface routine */
-export function /* void */
-genl_player_selection()
-{
+export function genl_player_selection() { /* void */
     if (genl_player_setup(0))
         return;
 
@@ -2184,16 +2064,7 @@ genl_player_selection()
     /*NOTREACHED*/
 }
 
-
 /* ['#else' far below] */
-
-
-
-
-
-
-
-
 
 /* try to reduce clutter in the code below... */
 export function ROLE() { return flags.initrole; }
@@ -2202,9 +2073,8 @@ export function GEND() { return flags.initgend; }
 export function ALGN() { return flags.initalign; }
 
 /* guts of tty's player_selection() */
-export function /* int */
-genl_player_setup(screenheight)
-{ const $frame = stack_frame(); try {
+export function genl_player_setup(screenheight) { /* int */
+    const $frame = stack_frame(); try {
     var pbuf = stack_array(char, QBUFSZ);
     var any = stack_struct(struct_any);
     var i, k, n, choice, nextpick;
@@ -2222,8 +2092,8 @@ genl_player_setup(screenheight)
      * have a specific value, but that will still require confirmation;
      * player can specify the forced ones if avoiding that is demanded.
      */
-    picksomething = (+(ROLE() == ROLE_NONE || RACE() == ROLE_NONE
-                     || GEND() == ROLE_NONE || ALGN() == ROLE_NONE));
+    picksomething = +(ROLE() == ROLE_NONE || RACE() == ROLE_NONE
+                     || GEND() == ROLE_NONE || ALGN() == ROLE_NONE);
     /* Used for '-@';
      * choose randomly without asking for all unspecified facets.
      */
@@ -2269,20 +2139,7 @@ genl_player_setup(screenheight)
             /* TODO? handle response of '?' */
         } while (pick4u != ord('y') && pick4u != ord('n') && pick4u != ord('a')); /* [yna] */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #else (#if 1): not in this build */
     }
 
  makepicks: for (;;) {
@@ -2320,7 +2177,7 @@ genl_player_setup(screenheight)
                     role_menu_extra(RS_ALGNMNT, win, FALSE);
                     role_menu_extra(RS_filter, win, FALSE);
                     role_menu_extra(ROLE_NONE, win, FALSE); /* quit */
-                    void strcpy(pbuf, _("Pick a role or profession"));
+                    strcpy(pbuf, _("Pick a role or profession"));
                     end_menu()(win, pbuf);
                     n = select_menu(win, PICK_ONE, selected);
                     /*
@@ -2356,7 +2213,7 @@ genl_player_setup(screenheight)
                         nextpick = RS_RACE;
                     } else if (choice == RS_menu_arg(RS_filter)) {
                         flags.initrole = k = ROLE_NONE;
-                        void reset_role_filtering();
+                        reset_role_filtering();
                         nextpick = RS_ROLE;
                     } else if (choice == ROLE_RANDOM) {
                         k = pick_role(RACE(), GEND(), ALGN(), PICK_RANDOM);
@@ -2414,7 +2271,7 @@ genl_player_setup(screenheight)
                         role_menu_extra(RS_ALGNMNT, win, FALSE);
                         role_menu_extra(RS_filter, win, FALSE);
                         role_menu_extra(ROLE_NONE, win, FALSE); /* quit */
-                        void strcpy(pbuf, _("Pick a race or species"));
+                        strcpy(pbuf, _("Pick a race or species"));
                         end_menu()(win, pbuf);
                         n = select_menu(win, PICK_ONE, selected);
                         if (n > 0) {
@@ -2502,7 +2359,7 @@ genl_player_setup(screenheight)
                         role_menu_extra(RS_ALGNMNT, win, FALSE);
                         role_menu_extra(RS_filter, win, FALSE);
                         role_menu_extra(ROLE_NONE, win, FALSE); /* quit */
-                        void strcpy(pbuf, _("Pick a gender or sex"));
+                        strcpy(pbuf, _("Pick a gender or sex"));
                         end_menu()(win, pbuf);
                         n = select_menu(win, PICK_ONE, selected);
                         if (n > 0) {
@@ -2588,7 +2445,7 @@ genl_player_setup(screenheight)
                         role_menu_extra(RS_GENDER, win, FALSE);
                         role_menu_extra(RS_filter, win, FALSE);
                         role_menu_extra(ROLE_NONE, win, FALSE); /* quit */
-                        void strcpy(pbuf, _("Pick an alignment or creed"));
+                        strcpy(pbuf, _("Pick an alignment or creed"));
                         end_menu()(win, pbuf);
                         n = select_menu(win, PICK_ONE, selected);
                         if (n > 0) {
@@ -2630,7 +2487,6 @@ genl_player_setup(screenheight)
                 flags.initalign = k;
             } /* needed alignment */
         }     /* picking alignment */
-
     } while (ROLE() < 0 || RACE() < 0 || GEND() < 0 || ALGN() < 0);
 
     /*
@@ -2650,7 +2506,7 @@ genl_player_setup(screenheight)
      *           q - quit
      *           (end)
      */
-    getconfirmation = (((picksomething && pick4u != ord('a') && !flags.randomall) ? 1 : 0));
+    getconfirmation = (picksomething && pick4u != ord('a') && !flags.randomall ? 1 : 0);
     while (getconfirmation) {
         win = plsel_startmenu(screenheight, RS_filter); /* filter: not ROLE */
         struct_assign(any, cg.zeroany); /* zero out all bits */
@@ -2670,7 +2526,7 @@ genl_player_setup(screenheight)
         any.a_int = -1;
         add_menu(win, nul_glyphinfo, any, ord('q'), 0,
                  ATR_NONE, clr, _("Quit"), MENU_ITEMFLAGS_NONE);
-        void sprintf(pbuf, _("Is this ok? [yn%sq]"), iflags.renameallowed ? _("a") : _(""));
+        sprintf(pbuf, _("Is this ok? [yn%sq]"), iflags.renameallowed ? _("a") : _(""));
         end_menu()(win, pbuf);
         n = select_menu(win, PICK_ONE, selected);
         /* [pick-one menus with a preselected entry behave oddly...] */
@@ -2718,15 +2574,14 @@ genl_player_setup(screenheight)
     } break; } /* while 'getconfirmation' */
     /* Success! */
     result = 1;
-
  }
     program_state.in_role_selection--;
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-reset_role_filtering()
-{ const $frame = stack_frame(); try {
+function reset_role_filtering() { /* boolean */
+    const $frame = stack_frame(); try {
     let win;
     let i, n;
     let filterprompt = stack_array(char, QBUFSZ);
@@ -2751,7 +2606,7 @@ reset_role_filtering()
     add_menu_str(win, _("Unacceptable alignments"));
     setup_algnmenu(win, FALSE, ROLE_NONE, ROLE_NONE, ROLE_NONE);
 
-    void sprintf(filterprompt, _("Pick all that apply%s"), gotrolefilter() ? _(" and/or unpick any that no longer apply") : _(""))
+    sprintf(filterprompt, _("Pick all that apply%s"), gotrolefilter() ? _(" and/or unpick any that no longer apply") : _(""))
 ;
     end_menu()(win, filterprompt);
     n = select_menu(win, PICK_ANY, selected);
@@ -2767,15 +2622,14 @@ reset_role_filtering()
         free(addr_of(selected[0])), selected[0] = null;
     destroy_nhwindow()(win);
     return (n > 0) ? TRUE : FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the change in format when this extended role selection was converted from
    tty-only to tty+curses+? made the role selection menu require two pages
    on a traditional 24-line tty; that wasn't fair to tty, so squeeze out
    some blank separator lines from the menu if that will make it fit on one */
-function /* int */
-maybe_skip_seps(rows, aspect)
-{
+function maybe_skip_seps(rows, aspect) { /* int */
     let i, n = 0;
 
     /* not much point to generalizing this to other aspects */
@@ -2802,9 +2656,8 @@ maybe_skip_seps(rows, aspect)
 }
 
 /* start a menu; show role aspects specified so far as a header line */
-function /* winid */
-plsel_startmenu(ttyrows, aspect)
-{ const $frame = stack_frame(); try {
+function plsel_startmenu(ttyrows, aspect) { /* winid */
+    const $frame = stack_frame(); try {
     let qbuf = stack_array(char, QBUFSZ);
     let win;
     let rolename;
@@ -2818,17 +2671,12 @@ plsel_startmenu(ttyrows, aspect)
                  : roles[ROLE()].name.m;
     if (!chars[svp.plname + 0] || ROLE() < 0 || RACE() < 0 || GEND() < 0 || ALGN() < 0) {
         /* "<role> <race.noun> <gender> <alignment>" */
-        void sprintf(qbuf, _("%.20s %.20s %.20s %.20s"), rolename, (RACE() < 0) ? _("<race>") : races[RACE()].noun, (GEND() < 0) ? _("<gender>") : genders[GEND()].adj, (ALGN() < 0) ? _("<alignment>") : aligns[ALGN()].adj)
-
-
+        sprintf(qbuf, _("%.20s %.20s %.20s %.20s"), rolename, (RACE() < 0) ? _("<race>") : races[RACE()].noun, (GEND() < 0) ? _("<gender>") : genders[GEND()].adj, (ALGN() < 0) ? _("<alignment>") : aligns[ALGN()].adj)
 
 ;
     } else {
         /* "<name> the <alignment> <gender> <race.adjective> <role>" */
-        void sprintf(qbuf, _("%.20s the %.20s %.20s %.20s %.20s"), svp.plname, aligns[ALGN()].adj, genders[GEND()].adj, races[RACE()].adj, rolename)
-
-
-
+        sprintf(qbuf, _("%.20s the %.20s %.20s %.20s %.20s"), svp.plname, aligns[ALGN()].adj, genders[GEND()].adj, races[RACE()].adj, rolename)
 
 ;
     }
@@ -2842,21 +2690,16 @@ plsel_startmenu(ttyrows, aspect)
     if (maybe_skip_seps(ttyrows, aspect) != 2)
         add_menu_str(win, _(""));
     return win;
-} finally { stack_pop($frame); } }
-
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* add entries a-Archeologist, b-Barbarian, &c to menu being built in 'win' */
-function /* void */
-setup_rolemenu(
+function setup_rolemenu(
     win,
     filtering,
 
-    race, gend, algn) /* all ROLE_NONE for !filtering case */
-{ const $frame = stack_frame(); try {
+    race, gend, algn) { /* void */ /* all ROLE_NONE for !filtering case */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
     let i;
     let role_ok;
@@ -2866,10 +2709,10 @@ setup_rolemenu(
     struct_assign(any, cg.zeroany); /* zero out all bits */
     for (i = 0; roles[i].name.m; i++) {
         /* role can be constrained by any of race, gender, or alignment */
-        role_ok = (((ok_role(i, race, gend, algn)
+        role_ok = (ok_role(i, race, gend, algn)
                    && ok_race(i, race, gend, algn)
                    && ok_gend(i, race, gend, algn)
-                   && ok_align(i, race, gend, algn)) ? 1 : 0));
+                   && ok_align(i, race, gend, algn) ? 1 : 0);
         if (filtering && !role_ok)
             continue;
         if (filtering)
@@ -2879,16 +2722,16 @@ setup_rolemenu(
         thisch = lowc(chars[roles[i].name.m]);
         if (thisch == lastch)
             thisch = highc(thisch);
-        void strcpy(rolenamebuf, roles[i].name.m);
+        strcpy(rolenamebuf, roles[i].name.m);
         if (roles[i].name.f) {
             /* role has distinct name for female (C,P) */
             if (gend == 1) {
                 /* female already chosen; replace male name */
-                void strcpy(rolenamebuf, roles[i].name.f);
+                strcpy(rolenamebuf, roles[i].name.f);
             } else if (gend < 0) {
                 /* not chosen yet; append slash+female name */
-                void strcat(rolenamebuf, _("/"));
-                void strcat(rolenamebuf, roles[i].name.f);
+                strcat(rolenamebuf, _("/"));
+                strcat(rolenamebuf, roles[i].name.f);
             }
         }
         /* !filtering implies reset_role_filtering() where we want to
@@ -2899,14 +2742,14 @@ setup_rolemenu(
                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
         lastch = thisch;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-setup_racemenu(
+function setup_racemenu(
     win,
     filtering,
-    role, gend, algn)
-{ const $frame = stack_frame(); try {
+    role, gend, algn) { /* void */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
     let race_ok;
     let i;
@@ -2916,9 +2759,9 @@ setup_racemenu(
     struct_assign(any, cg.zeroany);
     for (i = 0; races[i].noun; i++) {
         /* no ok_gend(); race isn't constrained by gender */
-        race_ok = (((ok_race(role, i, gend, algn)
+        race_ok = (ok_race(role, i, gend, algn)
                    && ok_role(role, i, gend, algn)
-                   && ok_align(role, i, gend, algn)) ? 1 : 0));
+                   && ok_align(role, i, gend, algn) ? 1 : 0);
         if (filtering && !race_ok)
             continue;
         if (filtering)
@@ -2937,14 +2780,14 @@ setup_racemenu(
                  (!filtering && !race_ok)
                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-setup_gendmenu(
+function setup_gendmenu(
     win,
     filtering,
-    role, race, algn)
-{ const $frame = stack_frame(); try {
+    role, race, algn) { /* void */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
     let gend_ok;
     let i;
@@ -2954,9 +2797,9 @@ setup_gendmenu(
     struct_assign(any, cg.zeroany);
     for (i = 0; i < ROLE_GENDERS; i++) {
         /* no ok_align(); gender isn't constrained by alignment */
-        gend_ok = (((ok_gend(role, race, i, algn)
+        gend_ok = (ok_gend(role, race, i, algn)
                    && ok_role(role, race, i, algn)
-                   && ok_race(role, race, i, algn)) ? 1 : 0));
+                   && ok_race(role, race, i, algn) ? 1 : 0);
         if (filtering && !gend_ok)
             continue;
         if (filtering)
@@ -2973,14 +2816,14 @@ setup_gendmenu(
                  (!filtering && !gend_ok)
                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-setup_algnmenu(
+function setup_algnmenu(
     win,
     filtering,
-    role, race, gend)
-{ const $frame = stack_frame(); try {
+    role, race, gend) { /* void */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
     let algn_ok;
     let i;
@@ -2990,9 +2833,9 @@ setup_algnmenu(
     struct_assign(any, cg.zeroany);
     for (i = 0; i < ROLE_ALIGNS; i++) {
         /* no ok_gend(); alignment isn't constrained by gender */
-        algn_ok = (((ok_align(role, race, gend, i)
+        algn_ok = (ok_align(role, race, gend, i)
                    && ok_role(role, race, gend, i)
-                   && ok_race(role, race, gend, i)) ? 1 : 0));
+                   && ok_race(role, race, gend, i) ? 1 : 0);
         if (filtering && !algn_ok)
             continue;
         if (filtering)
@@ -3009,308 +2852,96 @@ setup_algnmenu(
                  (!filtering && !algn_ok)
                     ? MENU_ITEMFLAGS_SELECTED : MENU_ITEMFLAGS_NONE);
     }
-} finally { stack_pop($frame); } }
-
-
-
-
-
-
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* role.c */
-import { AM_CHAOTIC } from "./align.h.js";
-import { AM_LAWFUL } from "./align.h.js";
-import { AM_MASK } from "./align.h.js";
-import { AM_NEUTRAL } from "./align.h.js";
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
-import { ART_EYES_OF_THE_OVERWORLD } from "./artilist.h.js";
-import { ART_EYE_OF_THE_AETHIOPICA } from "./artilist.h.js";
-import { ART_HEART_OF_AHRIMAN } from "./artilist.h.js";
-import { ART_LONGBOW_OF_DIANA } from "./artilist.h.js";
-import { ART_MAGIC_MIRROR_OF_MERLIN } from "./artilist.h.js";
-import { ART_MASTER_KEY_OF_THIEVERY } from "./artilist.h.js";
-import { ART_MITRE_OF_HOLINESS } from "./artilist.h.js";
-import { ART_ORB_OF_DETECTION } from "./artilist.h.js";
-import { ART_ORB_OF_FATE } from "./artilist.h.js";
-import { ART_SCEPTRE_OF_MIGHT } from "./artilist.h.js";
-import { ART_STAFF_OF_AESCULAPIUS } from "./artilist.h.js";
-import { ART_TSURUGI_OF_MURAMASA } from "./artilist.h.js";
-import { ART_YENDORIAN_EXPRESS_CARD } from "./artilist.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+
+import {
+    AM_CHAOTIC, AM_LAWFUL, AM_MASK, AM_NEUTRAL, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE,
+} from "./align.h.js";
+import {
+    ART_EYES_OF_THE_OVERWORLD, ART_EYE_OF_THE_AETHIOPICA, ART_HEART_OF_AHRIMAN,
+    ART_LONGBOW_OF_DIANA, ART_MAGIC_MIRROR_OF_MERLIN, ART_MASTER_KEY_OF_THIEVERY,
+    ART_MITRE_OF_HOLINESS, ART_ORB_OF_DETECTION, ART_ORB_OF_FATE, ART_SCEPTRE_OF_MIGHT,
+    ART_STAFF_OF_AESCULAPIUS, ART_TSURUGI_OF_MURAMASA, ART_YENDORIAN_EXPRESS_CARD,
+} from "./artilist.h.js";
+import { A_INT, A_WIS } from "./attrib.h.js";
 import { STR18 } from "./attrib.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
-import { S_ANT } from "./defsym.h.js";
-import { S_BAT } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_HUMANOID } from "./defsym.h.js";
-import { S_IMP } from "./defsym.h.js";
-import { S_JELLY } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_NAGA } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_RODENT } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
-import { S_SPIDER } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
-import { S_XORN } from "./defsym.h.js";
-import { S_YETI } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_CSIZ } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { BP_ALIGN } from "./hack.h.js";
-import { BP_GEND } from "./hack.h.js";
-import { BP_RACE } from "./hack.h.js";
-import { BP_ROLE } from "./hack.h.js";
-import { NUM_BP } from "./hack.h.js";
-import { NUM_RACES } from "./hack.h.js";
-import { NUM_ROLES } from "./hack.h.js";
-import { PICK_RANDOM } from "./hack.h.js";
-import { PICK_RIGID } from "./hack.h.js";
+import {
+    S_ANT, S_BAT, S_CENTAUR, S_DOG, S_ELEMENTAL, S_GIANT, S_HUMANOID, S_IMP, S_JELLY, S_MUMMY,
+    S_NAGA, S_NYMPH, S_OGRE, S_RODENT, S_SNAKE, S_SPIDER, S_TROLL, S_WRAITH, S_XORN, S_YETI,
+    S_ZOMBIE,
+} from "./defsym.h.js";
+import { BUFSZ, FALSE, PL_CSIZ, QBUFSZ, TRUE } from "./global.h.js";
+import { Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    BP_ALIGN, BP_GEND, BP_RACE, BP_ROLE, NUM_BP, NUM_RACES, NUM_ROLES, PICK_RANDOM, PICK_RIGID,
+} from "./hack.h.js";
 import { IndexOkT } from "./hack.h.macros.js";
-import { is_female } from "./mondata.h.macros.js";
-import { is_male } from "./mondata.h.macros.js";
-import { is_neuter } from "./mondata.h.macros.js";
-import { M2_HOSTILE } from "./monflag.h.js";
-import { M2_NASTY } from "./monflag.h.js";
-import { M2_PEACEFUL } from "./monflag.h.js";
-import { M2_STALK } from "./monflag.h.js";
-import { M3_CLOSE } from "./monflag.h.js";
-import { M3_WAITFORU } from "./monflag.h.js";
-import { M3_WANTSARTI } from "./monflag.h.js";
-import { MH_DWARF } from "./monflag.h.js";
-import { MH_ELF } from "./monflag.h.js";
-import { MH_GNOME } from "./monflag.h.js";
-import { MH_HUMAN } from "./monflag.h.js";
-import { MH_ORC } from "./monflag.h.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ABBOT } from "./monsters.h.js";
-import { PM_ACOLYTE } from "./monsters.h.js";
-import { PM_APPRENTICE } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_ARCH_PRIEST } from "./monsters.h.js";
-import { PM_ASHIKAGA_TAKAUJI } from "./monsters.h.js";
-import { PM_ATTENDANT } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_BUGBEAR } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CHIEFTAIN } from "./monsters.h.js";
-import { PM_CHROMATIC_DRAGON } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_CYCLOPS } from "./monsters.h.js";
-import { PM_DARK_ONE } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_DWARF_MUMMY } from "./monsters.h.js";
-import { PM_DWARF_ZOMBIE } from "./monsters.h.js";
-import { PM_EARTH_ELEMENTAL } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_ELF_MUMMY } from "./monsters.h.js";
-import { PM_ELF_ZOMBIE } from "./monsters.h.js";
-import { PM_FIRE_ANT } from "./monsters.h.js";
-import { PM_FIRE_GIANT } from "./monsters.h.js";
-import { PM_FOREST_CENTAUR } from "./monsters.h.js";
-import { PM_GIANT_RAT } from "./monsters.h.js";
-import { PM_GIANT_SPIDER } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_GNOME_MUMMY } from "./monsters.h.js";
-import { PM_GNOME_ZOMBIE } from "./monsters.h.js";
-import { PM_GRAND_MASTER } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA } from "./monsters.h.js";
-import { PM_GUIDE } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HILL_GIANT } from "./monsters.h.js";
-import { PM_HIPPOCRATES } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_HUMAN_MUMMY } from "./monsters.h.js";
-import { PM_HUMAN_ZOMBIE } from "./monsters.h.js";
-import { PM_HUNTER } from "./monsters.h.js";
-import { PM_IXOTH } from "./monsters.h.js";
-import { PM_KING_ARTHUR } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_LEPRECHAUN } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LORD_CARNARVON } from "./monsters.h.js";
-import { PM_LORD_SATO } from "./monsters.h.js";
-import { PM_LORD_SURTUR } from "./monsters.h.js";
-import { PM_MAIL_DAEMON } from "./monsters.h.js";
-import { PM_MASTER_ASSASSIN } from "./monsters.h.js";
-import { PM_MASTER_KAEN } from "./monsters.h.js";
-import { PM_MASTER_OF_THIEVES } from "./monsters.h.js";
-import { PM_MINION_OF_HUHETOTL } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_NALZOK } from "./monsters.h.js";
-import { PM_NEANDERTHAL } from "./monsters.h.js";
-import { PM_NEFERET_THE_GREEN } from "./monsters.h.js";
-import { PM_NORN } from "./monsters.h.js";
-import { PM_OCHRE_JELLY } from "./monsters.h.js";
-import { PM_OGRE } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_ORC_MUMMY } from "./monsters.h.js";
-import { PM_ORC_ZOMBIE } from "./monsters.h.js";
-import { PM_ORION } from "./monsters.h.js";
-import { PM_PAGE } from "./monsters.h.js";
-import { PM_PELIAS } from "./monsters.h.js";
-import { PM_PONY } from "./monsters.h.js";
-import { PM_QUASIT } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_ROSHI } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_SCORPION } from "./monsters.h.js";
-import { PM_SCORPIUS } from "./monsters.h.js";
-import { PM_SHAMAN_KARNOV } from "./monsters.h.js";
-import { PM_SHOPKEEPER } from "./monsters.h.js";
-import { PM_SNAKE } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STUDENT } from "./monsters.h.js";
-import { PM_THOTH_AMON } from "./monsters.h.js";
-import { PM_THUG } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_TROLL } from "./monsters.h.js";
-import { PM_TWOFLOWER } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_VAMPIRE_BAT } from "./monsters.h.js";
-import { PM_WARRIOR } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WOLF } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { PM_XORN } from "./monsters.h.js";
-import { SPE_CHARM_MONSTER } from "./objects.h.js";
-import { SPE_CLAIRVOYANCE } from "./objects.h.js";
-import { SPE_CONE_OF_COLD } from "./objects.h.js";
-import { SPE_CURE_SICKNESS } from "./objects.h.js";
-import { SPE_DETECT_TREASURE } from "./objects.h.js";
-import { SPE_DIG } from "./objects.h.js";
-import { SPE_HASTE_SELF } from "./objects.h.js";
-import { SPE_INVISIBILITY } from "./objects.h.js";
-import { SPE_LIGHT } from "./objects.h.js";
-import { SPE_MAGIC_MAPPING } from "./objects.h.js";
-import { SPE_MAGIC_MISSILE } from "./objects.h.js";
-import { SPE_REMOVE_CURSE } from "./objects.h.js";
-import { SPE_RESTORE_ABILITY } from "./objects.h.js";
-import { SPE_TURN_UNDEAD } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
+import { is_female, is_male, is_neuter } from "./mondata.h.macros.js";
+import {
+    M2_HOSTILE, M2_NASTY, M2_PEACEFUL, M2_STALK, M3_CLOSE, M3_WAITFORU, M3_WANTSARTI, MH_DWARF,
+    MH_ELF, MH_GNOME, MH_HUMAN, MH_ORC, MS_LEADER, MS_NEMESIS,
+} from "./monflag.h.js";
+import {
+    NON_PM, PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ARCHEOLOGIST, PM_ARCH_PRIEST,
+    PM_ASHIKAGA_TAKAUJI, PM_ATTENDANT, PM_BARBARIAN, PM_BUGBEAR, PM_CAVE_DWELLER, PM_CHIEFTAIN,
+    PM_CHROMATIC_DRAGON, PM_CLERIC, PM_CYCLOPS, PM_DARK_ONE, PM_DWARF, PM_DWARF_MUMMY,
+    PM_DWARF_ZOMBIE, PM_EARTH_ELEMENTAL, PM_ELF, PM_ELF_MUMMY, PM_ELF_ZOMBIE, PM_FIRE_ANT,
+    PM_FIRE_GIANT, PM_FOREST_CENTAUR, PM_GIANT_RAT, PM_GIANT_SPIDER, PM_GNOME, PM_GNOME_MUMMY,
+    PM_GNOME_ZOMBIE, PM_GRAND_MASTER, PM_GUARDIAN_NAGA, PM_GUIDE, PM_HEALER, PM_HILL_GIANT,
+    PM_HIPPOCRATES, PM_HUMAN, PM_HUMAN_MUMMY, PM_HUMAN_ZOMBIE, PM_HUNTER, PM_IXOTH, PM_KING_ARTHUR,
+    PM_KITTEN, PM_KNIGHT, PM_LEPRECHAUN, PM_LITTLE_DOG, PM_LORD_CARNARVON, PM_LORD_SATO,
+    PM_LORD_SURTUR, PM_MAIL_DAEMON, PM_MASTER_ASSASSIN, PM_MASTER_KAEN, PM_MASTER_OF_THIEVES,
+    PM_MINION_OF_HUHETOTL, PM_MONK, PM_NALZOK, PM_NEANDERTHAL, PM_NEFERET_THE_GREEN, PM_NORN,
+    PM_OCHRE_JELLY, PM_OGRE, PM_ORC, PM_ORC_MUMMY, PM_ORC_ZOMBIE, PM_ORION, PM_PAGE, PM_PELIAS,
+    PM_PONY, PM_QUASIT, PM_RANGER, PM_ROGUE, PM_ROSHI, PM_SAMURAI, PM_SCORPION, PM_SCORPIUS,
+    PM_SHAMAN_KARNOV, PM_SHOPKEEPER, PM_SNAKE, PM_STALKER, PM_STUDENT, PM_THOTH_AMON, PM_THUG,
+    PM_TOURIST, PM_TROLL, PM_TWOFLOWER, PM_VALKYRIE, PM_VAMPIRE_BAT, PM_WARRIOR, PM_WIZARD, PM_WOLF,
+    PM_WRAITH, PM_XORN,
+} from "./monsters.h.js";
+import {
+    SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CURE_SICKNESS, SPE_DETECT_TREASURE,
+    SPE_DIG, SPE_HASTE_SELF, SPE_INVISIBILITY, SPE_LIGHT, SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE,
+    SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_TURN_UNDEAD, STRANGE_OBJECT,
+} from "./objects.h.js";
 import { P_CLERIC_SPELL } from "./skills.h.js";
-import { RS_ALGNMNT } from "./winprocs.h.js";
-import { RS_GENDER } from "./winprocs.h.js";
-import { RS_NAME } from "./winprocs.h.js";
-import { RS_RACE } from "./winprocs.h.js";
-import { RS_ROLE } from "./winprocs.h.js";
-import { RS_filter } from "./winprocs.h.js";
-import { RS_menu_arg } from "./winprocs.h.macros.js";
-import { askname } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { ROLE_ALIGNS } from "./you.h.js";
-import { ROLE_FEMALE } from "./you.h.js";
-import { ROLE_GENDERS } from "./you.h.js";
-import { ROLE_GENDMASK } from "./you.h.js";
-import { ROLE_MALE } from "./you.h.js";
-import { ROLE_NEUTER } from "./you.h.js";
-import { ROLE_NONE } from "./you.h.js";
-import { ROLE_RACEMASK } from "./you.h.js";
-import { ROLE_RANDOM } from "./you.h.js";
-import { struct_Align } from "./you.h.js";
-import { struct_Gender } from "./you.h.js";
-import { struct_Race } from "./you.h.js";
-import { struct_Role } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
+import { RS_ALGNMNT, RS_GENDER, RS_NAME, RS_RACE, RS_ROLE, RS_filter } from "./winprocs.h.js";
+import {
+    RS_menu_arg, askname, create_nhwindow, destroy_nhwindow, end_menu, putstr, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, NHW_MENU,
+    PICK_ANY, PICK_ONE, WIN_ERR, struct_any, struct_mi,
+} from "./wintype.h.js";
+import {
+    ROLE_ALIGNS, ROLE_FEMALE, ROLE_GENDERS, ROLE_GENDMASK, ROLE_MALE, ROLE_NEUTER, ROLE_NONE,
+    ROLE_RACEMASK, ROLE_RANDOM, struct_Align, struct_Gender, struct_Race, struct_Role,
+} from "./you.h.js";
+import { Role_if, Role_switch } from "./you.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { EXIT_SUCCESS } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64u, or64u } from "../rt/int64.js";
+import { EXIT_SUCCESS, assert, free, sprintf, strcat, strchr, strcpy, strlen } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, ptr_add, ptr_to, struct_assign } from "../rt/struct.js";
 import { yn_function } from "./cmd.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gp } from "./decl.js";
-import { gr } from "./decl.js";
-import { gu } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svp } from "./decl.js";
-import { svq } from "./decl.js";
+import { cg, flags, gp, gr, gu, iflags, program_state, svp, svq } from "./decl.js";
 import { nul_glyphinfo } from "./display.js";
-import { nh_terminate } from "./end.js";
-import { panic } from "./end.js";
-import { eos } from "./hacklib.js";
-import { findword } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strNsubst } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { trimspaces } from "./hacklib.js";
+import { nh_terminate, panic } from "./end.js";
+import {
+    eos, findword, highc, lowc, s_suffix, strNsubst, strkitten, strncmpi, strstri, strsubst,
+    trimspaces,
+} from "./hacklib.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
 import { an } from "./objnam.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
+import { impossible, pline } from "./pline.js";
 import { align_gtitle } from "./pray.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
+import { rn2, rn2_on_display_rng } from "./rnd.js";
 import { sysopt } from "./sys.js";
-import { add_menu } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { add_menu, add_menu_str, select_menu } from "./windows.js";

@@ -1,11 +1,11 @@
-export default "\n" + // -- NetHack mines minend-3.lua	$NHDT-Date: 1652196029 2022/05/10 15:20:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989-95 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991-95 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- "Catacombs" by Kelly Bailey
-"\n" + // -- Relies on some very specific behavior of MAZEWALK.
-`
+export default String.raw`-- NetHack mines minend-3.lua	$NHDT-Date: 1652196029 2022/05/10 15:20:29 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989-95 by Jean-Christophe Collet
+--	Copyright (c) 1991-95 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- "Catacombs" by Kelly Bailey
+-- Relies on some very specific behavior of MAZEWALK.
+
 des.level_init({ style = "solidfill", fg = "-" });
 
 des.level_flags("mazelevel", "nommap")
@@ -47,8 +47,8 @@ des.mazewalk({ x=36, y=8, dir="west", stocked=false })
 des.stair("up", 42,8)
 des.wallify()
 
-` + "\n" + // -- Objects
-`des.object("diamond")
+-- Objects
+des.object("diamond")
 des.object("*")
 des.object("diamond")
 des.object("*")
@@ -85,8 +85,8 @@ des.trap()
 des.trap()
 des.trap()
 des.trap()
-` + "\n" + // -- One-time annoyance factor
-`des.trap("level teleport",place[2])
+-- One-time annoyance factor
+des.trap("level teleport",place[2])
 des.trap("level teleport",place[1])
 des.monster("M")
 des.monster("M")

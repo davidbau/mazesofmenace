@@ -23,7 +23,7 @@ export function enableEating(environment,layouts,hungerTable){
  const convert={pointer:address,text,int:transport.int,uint:transport.uint,byte:transport.char,ubyte:transport.uchar,short:transport.short,long:transport.long,ulong:transport.ulong};
  for(const[name,args]of Object.entries(abi.calls))local[name]=(...values)=>{
   const value=name==='alloc'?environment.alloc(name,...values.map((v,i)=>convert[args[i]](v))):resolve(name)(...values.map((v,i)=>convert[args[i]](v)));
-  const ret=ctypes.canonical(publicFunctions.functions[name]?.match(/^(.+?)\s*\(/)?.[1]??'int');
+  const ret=ctypes.abiType(publicFunctions.functions[name]?.match(/^(.+?)\s*\(/)?.[1]??'int');
   return ret.includes('*')?text(value):ret==='void'?undefined:ctypes.size(ret)===8?(ret.startsWith('unsigned')?transport.ulong(value):transport.long(value)):typeof value==='boolean'?Number(value):value;
  };
  const formatArgs=(format,args)=>{
@@ -68,7 +68,7 @@ export function enableEating(environment,layouts,hungerTable){
  initializeEat(local,L);
  const names=Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  const parameters=Object.fromEntries(Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)).map(name=>[name,publicFunctions.functions[name].match(/^[^(]+\((.*)\)$/)[1].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')]));
- const prepare=(name,args)=>args.map((v,i)=>{const type=ctypes.canonical(parameters[name][i]);if(type.includes('*'))return text(v);if(type==='signed char'||type==='char')return transport.char(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);});
+ const prepare=(name,args)=>args.map((v,i)=>{const type=ctypes.abiType(parameters[name][i]);if(type.includes('*'))return text(v);if(type==='signed char'||type==='char')return transport.char(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);});
  environment.register('hero-hunger',Object.fromEntries(names.map(name=>[name,(...args)=>callEat(local,L,name,...prepare(name,args))])),local);
  // Earlier construction groups keep their symbol ownership, while their EAT
  // hooks now execute with this same full source state and shared context.

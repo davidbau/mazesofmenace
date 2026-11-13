@@ -1,8 +1,8 @@
-export default "\n" + // -- NetHack sokoban soko1-1.lua	$NHDT-Date: 1652196034 2022/05/10 15:20:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.6 $
-"\n" + // --	Copyright (c) 1998-1999 by Kevin Hugo
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack sokoban soko1-1.lua	$NHDT-Date: 1652196034 2022/05/10 15:20:34 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.6 $
+--	Copyright (c) 1998-1999 by Kevin Hugo
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport", "premapped", "sokoban", "solidify");
 des.map([[
@@ -36,33 +36,33 @@ des.region(selection.area(00,00,25,17),"lit");
 des.non_diggable(selection.area(00,00,25,17));
 des.non_passwall(selection.area(00,00,25,17));
 
-` + "\n" + // -- Boulders
-`des.object("boulder", 03, 05);
+-- Boulders
+des.object("boulder", 03, 05);
 des.object("boulder", 05, 05);
 des.object("boulder", 07, 05);
 des.object("boulder", 09, 05);
 des.object("boulder", 11, 05);
-` + "\n" + // --
-`des.object("boulder", 04, 07);
+--
+des.object("boulder", 04, 07);
 des.object("boulder", 04, 08);
 des.object("boulder", 06, 07);
 des.object("boulder", 09, 07);
 des.object("boulder", 11, 07);
-` + "\n" + // --
-`des.object("boulder", 03, 12);
+--
+des.object("boulder", 03, 12);
 des.object("boulder", 04, 10);
 des.object("boulder", 05, 12);
 des.object("boulder", 06, 10);
 des.object("boulder", 07, 11);
 des.object("boulder", 08, 10);
 des.object("boulder", 09, 12);
-` + "\n" + // --
-`des.object("boulder", 03, 14);
+--
+des.object("boulder", 03, 14);
 
-` + "\n" + // -- prevent monster generation over the (filled) holes
-`des.exclusion({ type = "monster-generation", region = { 07,01, 23,01 } });
-` + "\n" + // -- Traps
-`des.trap("hole", 07, 01);
+-- prevent monster generation over the (filled) holes
+des.exclusion({ type = "monster-generation", region = { 07,01, 23,01 } });
+-- Traps
+des.trap("hole", 07, 01);
 des.trap("rolling boulder", 08, 01);
 des.trap("hole", 09, 01);
 des.trap("hole", 10, 01);
@@ -83,16 +83,16 @@ des.trap("hole", 23, 01);
 des.monster({ id = "giant mimic", appear_as = "obj:boulder" });
 des.monster({ id = "giant mimic", appear_as = "obj:boulder" });
 
-` + "\n" + // -- Random objects
-`des.object({ class = "%" });
+-- Random objects
+des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "=" });
 des.object({ class = "/" });
 
-` + "\n" + // -- Rewards
-`des.door("locked", 23, 13);
+-- Rewards
+des.door("locked", 23, 13);
 des.door("closed", 17, 11);
 des.door("closed", 17, 13);
 des.door("closed", 17, 15);

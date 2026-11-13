@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Samurai Sam-goal.lua	$NHDT-Date: 1652196013 2022/05/10 15:20:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991-92 by M. Stephenson, P. Winner
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Samurai Sam-goal.lua	$NHDT-Date: 1652196013 2022/05/10 15:20:13 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991-92 by M. Stephenson, P. Winner
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport");
 
@@ -29,21 +29,21 @@ des.map([[
        ......-------------------......       
            .......................           
 ]]);
-` + "\n" + // -- Dungeon Description
-`local place = { {02,11},{42,09} }
+-- Dungeon Description
+local place = { {02,11},{42,09} }
 local placeidx = math.random(1, #place);
 
 des.region(selection.area(00,00,44,19), "unlit")
-` + "\n" + // -- Doors
-`des.door("closed",19,10)
+-- Doors
+des.door("closed",19,10)
 des.door("closed",22,08)
 des.door("closed",22,12)
 des.door("closed",25,10)
-` + "\n" + // -- Stairs
-`des.stair({ dir = "up", coord = place[placeidx] })
+-- Stairs
+des.stair({ dir = "up", coord = place[placeidx] })
 
-` + "\n" + // -- Holes in the concentric ring walls
-`local place = { {22,14},{30,10},{22, 6},{14,10} }
+-- Holes in the concentric ring walls
+local place = { {22,14},{30,10},{22, 6},{14,10} }
 local placeidx = math.random(1, #place);
 des.terrain(place[placeidx], ".")
 local place = { {22, 4},{35,10},{22,16},{ 9,10} }
@@ -53,10 +53,10 @@ local place = { {22, 2},{22,18} }
 local placeidx = math.random(1, #place);
 des.terrain(place[placeidx], ".")
 
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,44,19))
-` + "\n" + // -- Objects
-`des.object({ id = "tsurugi", x=22, y=10, buc="blessed", spe=0, name="The Tsurugi of Muramasa" })
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,44,19))
+-- Objects
+des.object({ id = "tsurugi", x=22, y=10, buc="blessed", spe=0, name="The Tsurugi of Muramasa" })
 des.object()
 des.object()
 des.object()
@@ -71,19 +71,19 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // --
-`des.trap("board",22,09)
+--
+des.trap("board",22,09)
 des.trap("board",24,10)
 des.trap("board",22,11)
-` + "\n" + // -- Random traps
-`des.trap()
+-- Random traps
 des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap()
-` + "\n" + // -- Random monsters.
-`des.monster("Ashikaga Takauji", 22, 10)
+des.trap()
+-- Random monsters.
+des.monster("Ashikaga Takauji", 22, 10)
 des.monster({ id = "samurai", peaceful=0 })
 des.monster({ id = "samurai", peaceful=0 })
 des.monster({ id = "samurai", peaceful=0 })

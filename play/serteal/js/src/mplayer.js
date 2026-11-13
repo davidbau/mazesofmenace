@@ -2,12 +2,6 @@
 /*      Copyright (c) Izchak Miller, 1992.                        */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
 /* These are the names of those who
  * contributed to the development of NetHack 3.2/3.3/3.4/3.6.
  *
@@ -40,9 +34,7 @@ const developers = static_array("developers", ptr_to(char), null, [
 ]);
 
 /* return a randomly chosen developer name */
-function /* const char * */
-dev_name()
-{
+function dev_name() { /* const char * */
     let i, m = 0, n = SIZE(developers);
     let mtmp;
     let match;
@@ -54,7 +46,7 @@ dev_name()
             if (!is_mplayer(mtmp.data))
                 continue;
             if (!strncmp(developers[i],
-                         (has_mgivenname(mtmp)) ? MGIVENNAME(mtmp) : _(""),
+                         has_mgivenname(mtmp) ? MGIVENNAME(mtmp) : _(""),
                          strlen(developers[i]))) {
                 match = TRUE;
                 break;
@@ -68,32 +60,28 @@ dev_name()
     return (developers[i]);
 }
 
-function /* void */
-get_mplname(mtmp, nam)
-{
+function get_mplname(mtmp, nam) { /* void */
     let fmlkind = is_female(mtmp.data);
     let devnam;
 
     devnam = dev_name();
     if (!devnam)
-        void strcpy(nam, fmlkind ? _("Eve") : _("Adam"));
+        strcpy(nam, fmlkind ? _("Eve") : _("Adam"));
     else if (fmlkind && !!strcmp(devnam, _("Janet")))
-        void strcpy(nam, rn2(2) ? _("Maud") : _("Eve"));
+        strcpy(nam, rn2(2) ? _("Maud") : _("Eve"));
     else
-        void strcpy(nam, devnam);
+        strcpy(nam, devnam);
 
     if (fmlkind || !strcmp(nam, _("Janet")))
         mtmp.female = 1;
     else
         mtmp.female = 0;
-    void strcat(nam, _(" the "));
-    void strcat(nam, rank_of(mtmp.m_lev, monsndx(mtmp.data),
+    strcat(nam, _(" the "));
+    strcat(nam, rank_of(mtmp.m_lev, monsndx(mtmp.data),
                         mtmp.female));
 }
 
-function /* void */
-mk_mplayer_armor(mon, typ)
-{
+function mk_mplayer_armor(mon, typ) { /* void */
     let obj;
 
     if (typ == STRANGE_OBJECT)
@@ -111,20 +99,19 @@ mk_mplayer_armor(mon, typ)
      * chances of having plusses is the same as usual....
      */
     obj.spe = rn2(10) ? (rn2(3) ? rn2(5) : rn1(4, 4)) : -rnd(3);
-    void mpickobj(mon, obj);
+    mpickobj(mon, obj);
 }
 
-export function /* struct monst * */
-mk_mplayer(ptr, x, y, special)
-{ const $frame = stack_frame(); try {
+export function mk_mplayer(ptr, x, y, special) { /* struct monst * */
+    const $frame = stack_frame(); try {
     let mtmp;
     let nam = stack_array(char, PL_NSIZ);
 
     if (!is_mplayer(ptr))
-        return (null);
+        return null;
 
     if (MON_AT(x, y))
-        void rloc(m_at(x, y), RLOC_ERR|RLOC_NOMSG); /* insurance */
+        rloc(m_at(x, y), RLOC_ERR|RLOC_NOMSG); /* insurance */
 
     if (!In_endgame(u.uz))
         special = FALSE;
@@ -141,7 +128,7 @@ mk_mplayer(ptr, x, y, special)
             get_mplname(mtmp, nam);
             mtmp = christen_monst(mtmp, nam);
             /* that's why they are "stuck" in the endgame :-) */
-            void mongets(mtmp, FAKE_AMULET_OF_YENDOR);
+            mongets(mtmp, FAKE_AMULET_OF_YENDOR);
         }
         mtmp.mpeaceful = 0;
         set_malign(mtmp); /* peaceful may have changed again */
@@ -272,12 +259,12 @@ mk_mplayer(ptr, x, y, special)
             /* mplayers knew better than to overenchant Magicbane */
             if (is_art(otmp, ART_MAGICBANE))
                 otmp.spe = rnd(4);
-            void mpickobj(mtmp, otmp);
+            mpickobj(mtmp, otmp);
         }
 
         if (special) {
             if (!rn2(10))
-                void mongets(mtmp, rn2(3) ? LUCKSTONE : LOADSTONE);
+                mongets(mtmp, rn2(3) ? LUCKSTONE : LOADSTONE);
             mk_mplayer_armor(mtmp, armor);
             mk_mplayer_armor(mtmp, cloak);
             mk_mplayer_armor(mtmp, helm);
@@ -294,27 +281,28 @@ mk_mplayer(ptr, x, y, special)
 
             quan = rn2(3) ? rn2(3) : rn2(16);
             while (quan--)
-                void mongets(mtmp, rnd_class(DILITHIUM_CRYSTAL, JADE));
+                mongets(mtmp, rnd_class(DILITHIUM_CRYSTAL, JADE));
             /* To get the gold "right" would mean a player can double his
                gold supply by killing one mplayer.  Not good. */
             mkmonmoney(mtmp, rn2(1000));
             quan = rn2(10);
             while (quan--)
-                void mpickobj(mtmp, mkobj(RANDOM_CLASS, FALSE));
+                mpickobj(mtmp, mkobj(RANDOM_CLASS, FALSE));
         }
         quan = rnd(3);
         while (quan--)
-            void mongets(mtmp, rnd_offensive_item(mtmp));
+            mongets(mtmp, rnd_offensive_item(mtmp));
         quan = rnd(3);
         while (quan--)
-            void mongets(mtmp, rnd_defensive_item(mtmp));
+            mongets(mtmp, rnd_defensive_item(mtmp));
         quan = rnd(3);
         while (quan--)
-            void mongets(mtmp, rnd_misc_item(mtmp));
+            mongets(mtmp, rnd_misc_item(mtmp));
     }
 
-    return (mtmp);
-} finally { stack_pop($frame); } }
+    return mtmp;
+    } finally { stack_pop($frame); }
+}
 
 /* create the indicated number (num) of monster-players,
  * randomly chosen, and in randomly chosen (free) locations
@@ -323,9 +311,8 @@ mk_mplayer(ptr, x, y, special)
  * developers array, otherwise a bunch of Adams and Eves will
  * fill up the overflow.
  */
-export function /* void */
-create_mplayers(num, special)
-{ const $frame = stack_frame(); try {
+export function create_mplayers(num, special) { /* void */
+    const $frame = stack_frame(); try {
     let pm, x, y;
     let fakemon = stack_struct(struct_monst);
 
@@ -347,14 +334,13 @@ create_mplayers(num, special)
         if (tryct > 50)
             return;
 
-        void mk_mplayer(mons[pm], coordxy(x), coordxy(y), special);
+        mk_mplayer(mons[pm], coordxy(x), coordxy(y), special);
         num--;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-mplayer_talk(mtmp)
-{
+export function mplayer_talk(mtmp) { /* void */
     let same_class_msg = static_array("mplayer_talk.same_class_msg", ptr_to(char), 3, [
             _("I can't win, and neither will you!"),
             _("You don't deserve to win!"),
@@ -366,7 +352,6 @@ mplayer_talk(mtmp)
             _("Here is what I have to say!"),
         ]);
 
-
     if (mtmp.mpeaceful)
         return; /* will drop to humanoid talk */
 
@@ -377,135 +362,54 @@ mplayer_talk(mtmp)
 }
 
 /*mplayer.c*/
+
 import { A_NONE } from "./align.h.js";
 import { ART_MAGICBANE } from "./artilist.h.js";
 import { RANDOM_CLASS } from "./defsym.h.js";
 import { In_endgame } from "./dungeon.h.macros.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { RLOC_ERR } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
+import { COLNO, FALSE, PL_NSIZ, ROWNO, TRUE, coordxy } from "./global.h.js";
+import { MM_NOMSG, NO_MM_FLAGS, RLOC_ERR, RLOC_NOMSG } from "./hack.h.js";
 import { rn1 } from "./hack.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
-import { has_mgivenname } from "./mextra.h.macros.js";
-import { is_female } from "./mondata.h.macros.js";
-import { is_mplayer } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
+import { MGIVENNAME, has_mgivenname } from "./mextra.h.macros.js";
+import { is_female, is_mplayer, monsndx } from "./mondata.h.macros.js";
 import { struct_monst } from "./monst.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import {
+    PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_CLERIC, PM_HEALER, PM_KNIGHT, PM_MONK,
+    PM_RANGER, PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
+} from "./monsters.h.js";
 import { is_spear } from "./obj.h.macros.js";
-import { ATHAME } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { BLACK_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { BULLWHIP } from "./objects.h.js";
-import { CHAIN_MAIL } from "./objects.h.js";
-import { CLOAK_OF_DISPLACEMENT } from "./objects.h.js";
-import { CLOAK_OF_MAGIC_RESISTANCE } from "./objects.h.js";
-import { CLUB } from "./objects.h.js";
-import { DILITHIUM_CRYSTAL } from "./objects.h.js";
-import { ELVEN_DAGGER } from "./objects.h.js";
-import { ELVEN_LEATHER_HELM } from "./objects.h.js";
-import { ELVEN_SHIELD } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { GAUNTLETS_OF_DEXTERITY } from "./objects.h.js";
-import { GAUNTLETS_OF_POWER } from "./objects.h.js";
-import { GRAY_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { HELM_OF_BRILLIANCE } from "./objects.h.js";
-import { HELM_OF_TELEPATHY } from "./objects.h.js";
-import { JADE } from "./objects.h.js";
-import { KATANA } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LEVITATION_BOOTS } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { LOW_BOOTS } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { OILSKIN_CLOAK } from "./objects.h.js";
-import { ORCISH_DAGGER } from "./objects.h.js";
-import { PLATE_MAIL } from "./objects.h.js";
-import { QUARTERSTAFF } from "./objects.h.js";
-import { ROBE } from "./objects.h.js";
-import { SCALPEL } from "./objects.h.js";
-import { SHIELD_OF_REFLECTION } from "./objects.h.js";
-import { SHORT_SWORD } from "./objects.h.js";
-import { SHURIKEN } from "./objects.h.js";
-import { SILVER_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { SPEAR } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TWO_HANDED_SWORD } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
-import { WAR_HAMMER } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
+import {
+    ATHAME, BATTLE_AXE, BLACK_DRAGON_SCALE_MAIL, BULLWHIP, CHAIN_MAIL, CLOAK_OF_DISPLACEMENT,
+    CLOAK_OF_MAGIC_RESISTANCE, CLUB, DILITHIUM_CRYSTAL, ELVEN_DAGGER, ELVEN_LEATHER_HELM,
+    ELVEN_SHIELD, FAKE_AMULET_OF_YENDOR, GAUNTLETS_OF_DEXTERITY, GAUNTLETS_OF_POWER,
+    GRAY_DRAGON_SCALE_MAIL, HELM_OF_BRILLIANCE, HELM_OF_TELEPATHY, JADE, KATANA, LEATHER_GLOVES,
+    LEVITATION_BOOTS, LOADSTONE, LONG_SWORD, LOW_BOOTS, LUCKSTONE, MACE, OILSKIN_CLOAK,
+    ORCISH_DAGGER, PLATE_MAIL, QUARTERSTAFF, ROBE, SCALPEL, SHIELD_OF_REFLECTION, SHORT_SWORD,
+    SHURIKEN, SILVER_DRAGON_SCALE_MAIL, SPEAR, STRANGE_OBJECT, TWO_HANDED_SWORD, UNICORN_HORN,
+    WAR_HAMMER, YELLOW_DRAGON_SCALE_MAIL,
+} from "./objects.h.js";
+import { MON_AT, fmon, m_at } from "./rm.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { strcat } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, uchar, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
+import { strcat, strcmp, strcpy, strlen, strncmp } from "../rt/libc.js";
+import { stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { is_art } from "./artifact.js";
-import { mk_artifact } from "./artifact.js";
+import { ptr_to, struct_assign } from "../rt/struct.js";
+import { is_art, mk_artifact } from "./artifact.js";
 import { rank_of } from "./botl.js";
-import { cg } from "./decl.js";
-import { gu } from "./decl.js";
-import { u } from "./decl.js";
+import { cg, gu, u } from "./decl.js";
 import { christen_monst } from "./do_name.js";
-import { makemon } from "./makemon.js";
-import { mkmonmoney } from "./makemon.js";
-import { mongets } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { bless } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import { makemon, mkmonmoney, mongets, set_malign } from "./makemon.js";
+import { bless, curse, mkobj, mksobj, weight } from "./mkobj.js";
 import { set_mon_data } from "./mondata.js";
 import { mons } from "./monst.js";
-import { rnd_defensive_item } from "./muse.js";
-import { rnd_misc_item } from "./muse.js";
-import { rnd_offensive_item } from "./muse.js";
+import { rnd_defensive_item, rnd_misc_item, rnd_offensive_item } from "./muse.js";
 import { objects } from "./objects.js";
 import { rnd_class } from "./objnam.js";
-import { impossible } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { impossible, verbalize } from "./pline.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { mpickobj } from "./steal.js";
-import { goodpos } from "./teleport.js";
-import { rloc } from "./teleport.js";
+import { goodpos, rloc } from "./teleport.js";
 import { monmightthrowwep } from "./weapon.js";
 import { m_dowear } from "./worn.js";

@@ -3,14 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
- 
-
-
-
-
   const struct_worn = struct("struct_worn", {
     w_mask: long,
     w_obj: ptr_to(ptr_to("struct_obj")),
@@ -35,25 +27,23 @@
 ]);
 
 /* This only allows for one blocking item per property */
-export function w_blocks(o, m) { return ((o.otyp == MUMMY_WRAPPING && ((m) & W_ARMC) != 0) ? INVIS        
-     : (o.otyp == CORNUTHAUM && ((m) & W_ARMH) != 0                   
-        && !Role_if(PM_WIZARD)) ? CLAIRVOYANT                           
-       : (is_art(o, ART_EYES_OF_THE_OVERWORLD)                          
-          && ((m) & W_TOOL) != 0) ? BLINDED                            
+export function w_blocks(o, m) { return ((o.otyp == MUMMY_WRAPPING && (m & W_ARMC) != 0) ? INVIS
+     : (o.otyp == CORNUTHAUM && (m & W_ARMH) != 0
+        && !Role_if(PM_WIZARD)) ? CLAIRVOYANT
+       : (is_art(o, ART_EYES_OF_THE_OVERWORLD)
+          && (m & W_TOOL) != 0) ? BLINDED
          : 0); }
 
 /* note: monsters don't have clairvoyance, so dependency on hero's role here
    has no significant effect on their use of w_blocks() */
 
 /* calc the range of hero's unblind telepathy */
-export function /* void */
-recalc_telepat_range()
-{
+export function recalc_telepat_range() { /* void */
     let wp;
     let nobjs = 0;
 
     for (wp = worn[0]; wp.w_mask; wp = ptr_add(wp, 1)) {
-        let oobj = (wp.w_obj)[0];
+        let oobj = wp.w_obj[0];
 
         if (oobj && objects[oobj.otyp].oc_oprop == TELEPAT)
             nobjs++;
@@ -69,9 +59,7 @@ recalc_telepat_range()
 }
 
 /* Updated to use the extrinsic and blocked fields. */
-export function /* void */
-setworn(obj, mask)
-{
+export function setworn(obj, mask) { /* void */
     let wp;
     let oobj;
     let p;
@@ -83,7 +71,7 @@ setworn(obj, mask)
     } else {
         for (wp = worn[0]; wp.w_mask; wp = ptr_add(wp, 1)) {
             if (wp.w_mask & mask) {
-                oobj = (wp.w_obj)[0];
+                oobj = wp.w_obj[0];
                 if (oobj && !(oobj.owornmask & wp.w_mask))
                     impossible(_("Setworn: mask=0x%08llx."), wp.w_mask);
                 if (oobj) {
@@ -109,7 +97,7 @@ setworn(obj, mask)
                        is pending (via 'A' command for multiple items) */
                     cancel_doff(oobj, wp.w_mask);
                 }
-                (wp.w_obj)[0] = obj;
+                wp.w_obj[0] = obj;
                 if (obj) {
                     obj.owornmask = or64(obj.owornmask, wp.w_mask);
                     /* Prevent getting/blocking intrinsics from wielding
@@ -135,7 +123,7 @@ setworn(obj, mask)
         if (obj && (obj.owornmask & W_ARMOR) != 0)
             u.uroleplay.nudist = FALSE;
         /* tux -> tuxedo -> "monkey suit" -> monk's suit */
-        iflags.tux_penalty = (((uarm && Role_if(PM_MONK) && gu.urole.spelarmr) ? 1 : 0));
+        iflags.tux_penalty = (uarm && Role_if(PM_MONK) && gu.urole.spelarmr ? 1 : 0);
     }
     if ((flags.weaponstatus && (mask & W_WEP) != 0)
         || (flags.armorstatus && (mask & W_ARMOR) != 0))
@@ -146,9 +134,7 @@ setworn(obj, mask)
 
 /* called e.g. when obj is destroyed */
 /* Updated to use the extrinsic and blocked fields. */
-export function /* void */
-setnotworn(obj)
-{
+export function setnotworn(obj) { /* void */
     let wp;
     let p;
     let unworn = 0;
@@ -158,12 +144,12 @@ setnotworn(obj)
     if (u.twoweap && (obj == uwep || obj == uswapwep))
         set_twoweap(FALSE); /* u.twoweap = FALSE */
     for (wp = worn[0]; wp.w_mask; wp = ptr_add(wp, 1))
-        if (obj == (wp.w_obj)[0]) {
+        if (obj == wp.w_obj[0]) {
             /* in case wearing or removal is in progress or removal
                is pending (via 'A' command for multiple items) */
             cancel_doff(obj, wp.w_mask);
 
-            (wp.w_obj)[0] = null;
+            wp.w_obj[0] = null;
             unworn = or64(unworn, wp.w_mask);
             p = objects[obj.otyp].oc_oprop;
             u.uprops[p].extrinsic = and64(u.uprops[p].extrinsic, not64(wp.w_mask));
@@ -171,7 +157,7 @@ setnotworn(obj)
             obj.owornmask = and64(obj.owornmask, not64(wp.w_mask));
             if (obj.oartifact)
                 set_artifact_intrinsic(obj, 0, wp.w_mask);
-            if ((p = (((((obj.otyp == MUMMY_WRAPPING) && ((((wp.w_mask) & W_ARMC)) != 0))) ? INVIS : (((((obj.otyp == CORNUTHAUM) && ((((wp.w_mask) & W_ARMH)) != 0)) && !Role_if(PM_WIZARD))) ? CLAIRVOYANT : (((is_art(obj, ART_EYES_OF_THE_OVERWORLD) && ((((wp.w_mask) & W_TOOL)) != 0))) ? BLINDED : 0))))) != 0)
+            if ((p = (((obj.otyp == MUMMY_WRAPPING) && (((wp.w_mask) & W_ARMC) != 0)) ? INVIS : ((((obj.otyp == CORNUTHAUM) && (((wp.w_mask) & W_ARMH) != 0)) && !Role_if(PM_WIZARD)) ? CLAIRVOYANT : ((is_art(obj, ART_EYES_OF_THE_OVERWORLD) && (((wp.w_mask) & W_TOOL) != 0)) ? BLINDED : 0)))) != 0)
                 u.uprops[p].blocked = and64(u.uprops[p].blocked, not64(wp.w_mask));
         }
     if (!uarm)
@@ -184,9 +170,7 @@ setnotworn(obj)
 }
 
 /* called when saving with FREEING flag set has just discarded inventory */
-export function /* void */
-allunworn()
-{
+export function allunworn() { /* void */
     let wp;
 
     u.twoweap = 0; /* uwep and uswapwep are going away */
@@ -196,15 +180,12 @@ allunworn()
        here anyway (savegamestate() and its callers deal with them) */
     for (wp = worn[0]; wp.w_mask; wp = ptr_add(wp, 1)) {
         /* object is already gone so we don't/can't update is owornmask */
-        (wp.w_obj)[0] = null;
+        wp.w_obj[0] = null;
     }
 }
 
-
 /* return item worn in slot indicated by wornmask; needed by poly_obj() */
-export function /* struct obj * */
-wearmask_to_obj(wornmask)
-{
+export function wearmask_to_obj(wornmask) { /* struct obj * */
     let wp;
 
     for (wp = worn[0]; wp.w_mask; wp = ptr_add(wp, 1))
@@ -214,9 +195,7 @@ wearmask_to_obj(wornmask)
 }
 
 /* convert an armor wornmask to corresponding category */
-export function /* int */
-wornmask_to_armcat(mask)
-{
+export function wornmask_to_armcat(mask) { /* int */
     let cat = 0;
 
     switch (mask & W_ARMOR) {
@@ -246,9 +225,7 @@ wornmask_to_armcat(mask)
 }
 
 /* convert an armor category to corresponding wornmask */
-export function /* long long */
-armcat_to_wornmask(cat)
-{
+export function armcat_to_wornmask(cat) { /* long long */
     let mask = 0;
 
     switch (cat) {
@@ -278,9 +255,7 @@ armcat_to_wornmask(cat)
 }
 
 /* return a bitmask of the equipment slot(s) a given item might be worn in */
-export function /* long long */
-wearslot(obj)
-{
+export function wearslot(obj) { /* long long */
     let otyp = obj.otyp;
     /* practically any item can be wielded or quivered; it's up to
        our caller to handle such things--we assume "normal" usage */
@@ -351,9 +326,8 @@ wearslot(obj)
 }
 
 /* for 'sanity_check' option, called by you_sanity_check() */
-export function /* void */
-check_wornmask_slots()
-{ const $frame = stack_frame(); try {
+export function check_wornmask_slots() { /* void */
+    const $frame = stack_frame(); try {
     /* we'll skip ball and chain here--they warrant separate sanity check */
 
     let whybuf = stack_array(char, BUFSZ);
@@ -373,12 +347,11 @@ check_wornmask_slots()
                 if (otmp == o)
                     break;
             if (!otmp)
-                void sprintf(whybuf, _("%s (%s) not found in invent"), wp.w_what, fmt_ptr(addr_of(o)));
+                sprintf(whybuf, _("%s (%s) not found in invent"), wp.w_what, fmt_ptr(addr_of(o)));
             else if ((o.owornmask & m) == 0)
-                void sprintf(whybuf, _("%s bit not set in owornmask [0x%08llx]"), wp.w_what, o.owornmask);
-            else if ((o.owornmask & not64((or64(m, IGNORE_SLOTS)))) != 0)
-                void sprintf(whybuf, _("%s wrong bit set in owornmask [0x%08llx]"), wp.w_what, o.owornmask)
-
+                sprintf(whybuf, _("%s bit not set in owornmask [0x%08llx]"), wp.w_what, o.owornmask);
+            else if ((o.owornmask & not64(or64(m, IGNORE_SLOTS))) != 0)
+                sprintf(whybuf, _("%s wrong bit set in owornmask [0x%08llx]"), wp.w_what, o.owornmask)
 
 ;
             if (chars[whybuf + 0])
@@ -396,85 +369,25 @@ check_wornmask_slots()
                    W_ARM bit set if we didn't screen it out here */
                 && (m != W_ARM || otmp != uskin
                     || (otmp.owornmask & I_SPECIAL) == 0)) {
-                void sprintf(whybuf, _("%s [0x%08llx] has %s mask 0x%08llx bit set"), simpleonames(otmp), otmp.owornmask, wp.w_what, m)
+                sprintf(whybuf, _("%s [0x%08llx] has %s mask 0x%08llx bit set"), simpleonames(otmp), otmp.owornmask, wp.w_what, m)
 ;
                 impossible(_("Worn-slot insanity: %s."), whybuf);
             }
         }
     } /* for wp in worn[] */
 
+    /* #ifdef EXTRA_SANITY_CHECKS: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef EXTRA_SANITY_CHECKS: not in this build */
 
     return;
+    } finally { stack_pop($frame); }
+} /* check_wornmask_slots() */
+export const IGNORE_SLOTS = (W_ART | W_ARTI | W_SADDLE | W_BALL| W_CHAIN);
 
-} finally { stack_pop($frame); } } /* check_wornmask_slots() */ export const IGNORE_SLOTS = (W_ART | W_ARTI | W_SADDLE | W_BALL| W_CHAIN);
-
-export function /* void */
-mon_set_minvis(
+export function mon_set_minvis(
     mon,
-    cursed_potion)
-{
+    cursed_potion) { /* void */
     mon.perminvis = !cursed_potion ? 1 : 0;
     if (!mon.invis_blkd) {
         mon.minvis = mon.perminvis;
@@ -484,12 +397,10 @@ mon_set_minvis(
     }
 }
 
-export function /* void */
-mon_adjust_speed(
+export function mon_adjust_speed(
     mon,
     adjust,
-    obj)   /* item to make known if effect can be seen */
-{
+    obj) { /* void */ /* item to make known if effect can be seen */
     let otmp;
     let give_msg = +!gi.in_mklev, petrify = FALSE;
     let oldspeed = mon.mspeed;
@@ -544,7 +455,6 @@ mon_adjust_speed(
         /* fast to slow (skipping intermediate state) or vice versa */
         let howmuch = (unsigned(mon.mspeed + oldspeed) == MFAST + MSLOW) ? _("much ") : _("");
 
-
         if (petrify) {
             /* mimic the player's petrification countdown; "slowing down"
                even if fast movement rate retained via worn speed boots */
@@ -569,19 +479,16 @@ mon_adjust_speed(
    if someone changes it to acid resistance, alt becomes poison resist;
    if someone changes it to hallucination resistance, all bets are off
    [TODO: handle alternate properties conferred by dragon scales/mail] */
-export function altprop(o) { return (((o).otyp == ALCHEMY_SMOCK)                               
-     ? (POISON_RES + ACID_RES - objects[(o).otyp].oc_oprop)    
+export function altprop(o) { return ((o.otyp == ALCHEMY_SMOCK)
+     ? (POISON_RES + ACID_RES - objects[o.otyp].oc_oprop)
      : 0); }
 
-
 /* armor put on or taken off; might be magical variety */
-export function /* void */
-update_mon_extrinsics(
+export function update_mon_extrinsics(
     mon,
     obj,
     on,
-    silently)
-{
+    silently) { /* void */
     var unseen;
     var mask;
     var otmp;
@@ -676,7 +583,7 @@ update_mon_extrinsics(
                     break;
             }
             if (!otmp)
-                mon.mextrinsics &= ~(mask);
+                mon.mextrinsics &= ~mask;
             break;
         default:
             break;
@@ -689,7 +596,6 @@ update_mon_extrinsics(
         which = altwhich;
         continue again;
     } break; }
-
  }
     /* obj->owornmask has been cleared by this point, so we can't use it.
        However, since monsters don't wield armor, we don't have to guard
@@ -711,11 +617,7 @@ update_mon_extrinsics(
         newsym(mon.mx, mon.my);
 }
 
-
-
-export function /* int */
-find_mac(mon)
-{
+export function find_mac(mon) { /* int */
     let obj;
     let base = mon.data.ac;
     let mwflags = mon.misc_worn_check;
@@ -753,11 +655,8 @@ find_mac(mon)
  * players to influence what gets worn.  Putting on a shirt underneath
  * already worn body armor is too obviously buggy...
  */
-export function /* void */
-m_dowear(mon, creation)
-{
+export function m_dowear(mon, creation) { /* void */
     let can_wear_armor;
-
 
     /* Note the restrictions here are the same as in dowear in do_wear.c
      * except for the additional restriction on intelligence.  (Players
@@ -793,16 +692,15 @@ m_dowear(mon, creation)
         m_dowear_type(mon, W_ARM, creation, FALSE);
     else
         m_dowear_type(mon, W_ARM, creation, RACE_EXCEPTION);
-} export const RACE_EXCEPTION = TRUE;
+}
+export const RACE_EXCEPTION = TRUE;
 
-function /* void */
-m_dowear_type(
+function m_dowear_type(
     mon,
     flag,
     creation,
-    racialexception) /* small monsters that are allowed for player
-                              * races (gnomes) can wear suits */
-{ const $frame = stack_frame(); try {
+    racialexception) { /* void */ /* small monsters that are allowed for player * races (gnomes) can wear suits */
+    const $frame = stack_frame(); try {
     var old, best, obj;
     var oldmask = 0;
     var m_delay = 0;
@@ -814,7 +712,7 @@ m_dowear_type(
         return; /* probably putting previous item on */
 
     /* Get a copy of monster's name before altering its visibility */
-    void strcpy(nambuf, See_invisible() ? Monnam(mon) : mon_nam(mon));
+    strcpy(nambuf, See_invisible() ? Monnam(mon) : mon_nam(mon));
 
     old = which_armor(mon, flag);
     if (old && old.cursed)
@@ -906,8 +804,8 @@ m_dowear_type(
         return;
 
     /* same auto-cursing behavior as for hero */
-    autocurse = (+((best.otyp == HELM_OF_OPPOSITE_ALIGNMENT
-                  || best.otyp == DUNCE_CAP) && !best.cursed));
+    autocurse = +((best.otyp == HELM_OF_OPPOSITE_ALIGNMENT
+                  || best.otyp == DUNCE_CAP) && !best.cursed);
     /* if wearing a cloak, account for the time spent removing
        and re-wearing it when putting on a suit or shirt */
     if ((flag == W_ARM || flag == W_ARMU) && (mon.misc_worn_check & W_ARMC))
@@ -928,12 +826,12 @@ m_dowear_type(
             /* "<Mon> [removes <oldarm> and ]puts on <newarm>."
                uses accessory verbs for armor but we can live with that */
             if (old) {
-                void strcpy(oldarm, distant_name(old, doname));
+                strcpy(oldarm, distant_name(old, doname));
                 Snprintf(buf, sizeof(array_of(char, BUFSZ)), _(" removes %s and"), oldarm);
             } else {
                 chars[buf + 0] = chars[oldarm + 0] = ord('\0');
             }
-            void strcpy(newarm, distant_name(best, doname));
+            strcpy(newarm, distant_name(best, doname));
             /* a monster will swap an item of the same type as the one it
                is replacing when the enchantment is better;
                if newarm and oldarm have identical descriptions, substitute
@@ -942,9 +840,9 @@ m_dowear_type(
                 /* size of newarm[] has been overallocated to guarantee
                    enough room to insert "another " */
                 if (!strncmpi(newarm, _("a "), 2))
-                    void strsubst(newarm, _("a "), _("another "));
+                    strsubst(newarm, _("a "), _("another "));
                 else if (!strncmpi(newarm, _("an "), 3))
-                    void strsubst(newarm, _("an "), _("another "));
+                    strsubst(newarm, _("an "), _("another "));
                 chars[newarm + (BUFSZ - 1)] = ord('\0');
             }
             pline_mon(mon, _("%s%s puts on %s."), Monnam(mon), buf, newarm);
@@ -999,12 +897,10 @@ m_dowear_type(
          *     pline("%s suddenly appears!", Amonnam(mon)); */
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* struct obj * */
-which_armor(mon, flag)
-{
+export function which_armor(mon, flag) { /* struct obj * */
     if (mon == gy.youmonst) {
         switch (flag) {
         case W_ARM:
@@ -1036,12 +932,10 @@ which_armor(mon, flag)
 }
 
 /* remove an item of armor and then drop it */
-function /* void */
-m_lose_armor(
+function m_lose_armor(
     mon,
     obj,
-    polyspot)
-{
+    polyspot) { /* void */
     extract_from_minvent(mon, obj, TRUE, FALSE);
     place_object(obj, mon.mx, mon.my);
     if (polyspot)
@@ -1051,9 +945,7 @@ m_lose_armor(
 }
 
 /* clear bypass bits for an object chain, plus contents if applicable */
-function /* void */
-clear_bypass(objchn)
-{
+function clear_bypass(objchn) { /* void */
     let o;
 
     for (o = objchn; o; o = o.nobj) {
@@ -1066,9 +958,7 @@ clear_bypass(objchn)
 /* all objects with their bypass bit set should now be reset to normal;
    this can be a relatively expensive operation so is only called if
    svc.context.bypasses is set */
-export function /* void */
-clear_bypasses()
-{
+export function clear_bypasses() { /* void */
     let mtmp;
 
     /*
@@ -1115,19 +1005,15 @@ clear_bypasses()
     svc.context.bypasses = FALSE;
 }
 
-export function /* void */
-bypass_obj(obj)
-{
+export function bypass_obj(obj) { /* void */
     obj.bypass = 1;
     svc.context.bypasses = TRUE;
 }
 
 /* set or clear the bypass bit in a list of objects */
-export function /* void */
-bypass_objlist(
+export function bypass_objlist(
     objchain,
-    on) /* TRUE => set, FALSE => clear */
-{
+    on) { /* void */ /* TRUE => set, FALSE => clear */
     if (on && objchain)
         svc.context.bypasses = TRUE;
     while (objchain) {
@@ -1138,9 +1024,7 @@ bypass_objlist(
 
 /* return the first object without its bypass bit set; set that bit
    before returning so that successive calls will find further objects */
-export function /* struct obj * */
-nxt_unbypassed_obj(objchain)
-{
+export function nxt_unbypassed_obj(objchain) { /* struct obj * */
     while (objchain) {
         if (!objchain.bypass) {
             bypass_obj(objchain);
@@ -1155,9 +1039,7 @@ nxt_unbypassed_obj(objchain)
    than an object linked list; the array contains obj==Null terminator;
    there's an added complication that the array may have stale pointers
    for deleted objects (see Multiple-Drop case in askchain(invent.c)) */
-export function /* struct obj * */
-nxt_unbypassed_loot(lootarray, listhead)
-{
+export function nxt_unbypassed_loot(lootarray, listhead) { /* struct obj * */
     let o, obj;
 
     while ((obj = lootarray.obj) != null) {
@@ -1173,13 +1055,12 @@ nxt_unbypassed_loot(lootarray, listhead)
     return obj;
 }
 
-export function /* void */
-mon_break_armor(mon, polyspot)
-{ const $frame = stack_frame(); try {
+export function mon_break_armor(mon, polyspot) { /* void */
+    const $frame = stack_frame(); try {
     let otmp;
     let mdat = mon.data;
     let vis = cansee(mon.mx, mon.my),
-            handless_or_tiny = (+(nohands(mdat) || verysmall(mdat))),
+            handless_or_tiny = +(nohands(mdat) || verysmall(mdat)),
             noride = FALSE;
     let pronoun = mhim(mon), ppronoun = mhis(mon);
 
@@ -1325,19 +1206,18 @@ mon_break_armor(mon, polyspot)
             let buf = stack_array(char, BUFSZ);
 
             You(_("touch %s."), mon_nam(u.usteed));
-            void sprintf(buf, _("falling off %s"), an(pmname(u.usteed.data, Mgender(u.usteed))))
+            sprintf(buf, _("falling off %s"), an(pmname(u.usteed.data, Mgender(u.usteed))))
 ;
             instapetrify(buf);
         }
         dismount_steed(DISMOUNT_FELL);
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* bias a monster's preferences towards armor that has special benefits. */
-function /* int */
-extra_pref(mon, obj)
-{
+function extra_pref(mon, obj) { /* int */
     /* currently only does speed boots, but might be expanded if monsters
      * get to use more armor abilities
      */
@@ -1356,9 +1236,7 @@ extra_pref(mon, obj)
  *       1 If the race/object combination is acceptable.
  *      -1 If the race/object combination is unacceptable.
  */
-export function /* int */
-racial_exception(mon, obj)
-{
+export function racial_exception(mon, obj) { /* int */
     let ptr = raceptr(mon);
 
     /* Acceptable Exceptions: */
@@ -1373,14 +1251,11 @@ racial_exception(mon, obj)
 }
 
 /* Remove an object from a monster's inventory. */
-export function /* void */
-extract_from_minvent(
+export function extract_from_minvent(
     mon,
     obj,
     do_extrinsics,
-    silently)       /* doesn't affect all possible messages,
-                             * just update_mon_extrinsics's */
-{
+    silently) { /* void */ /* doesn't affect all possible messages, * just update_mon_extrinsics's */
     let unwornmask = obj.owornmask;
 
     /*
@@ -1416,236 +1291,87 @@ extract_from_minvent(
     }
 }
 
-
-
 /*worn.c*/
+
 import { ART_EYES_OF_THE_OVERWORLD } from "./artilist.h.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { Something } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { NH_BLACK, Something } from "./decl.h.macros.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, FOOD_CLASS, GEM_CLASS, RING_CLASS,
+    S_CENTAUR, S_MUMMY, TOOL_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { BUFSZ, FALSE, TRUE } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { DISMOUNT_FELL } from "./hack.h.js";
-import { ARM_BONUS } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
+import { BOLT_LIM, DISMOUNT_FELL } from "./hack.h.js";
+import { ARM_BONUS, makeknown } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { has_mcorpsenm } from "./mextra.h.macros.js";
-import { cantweararm } from "./mondata.h.macros.js";
-import { has_horns } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { MZ_HUMAN } from "./monflag.h.js";
-import { MZ_SMALL } from "./monflag.h.js";
-import { MFAST } from "./monst.h.js";
-import { MSLOW } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { monstunseesu_prop } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_HOBBIT } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_SKELETON } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Dragon_mail_to_pm } from "./obj.h.macros.js";
-import { Dragon_scales_to_pm } from "./obj.h.macros.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_dragon_mail } from "./obj.h.macros.js";
-import { Is_dragon_scales } from "./obj.h.macros.js";
-import { WrappingAllowed } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { is_boots } from "./obj.h.macros.js";
-import { is_cloak } from "./obj.h.macros.js";
-import { is_elven_armor } from "./obj.h.macros.js";
-import { is_flimsy } from "./obj.h.macros.js";
-import { is_gloves } from "./obj.h.macros.js";
-import { is_helmet } from "./obj.h.macros.js";
-import { is_shield } from "./obj.h.macros.js";
-import { is_shirt } from "./obj.h.macros.js";
-import { is_suit } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { ARM_BOOTS } from "./objclass.h.js";
-import { ARM_CLOAK } from "./objclass.h.js";
-import { ARM_GLOVES } from "./objclass.h.js";
-import { ARM_HELM } from "./objclass.h.js";
-import { ARM_SHIELD } from "./objclass.h.js";
-import { ARM_SHIRT } from "./objclass.h.js";
-import { ARM_SUIT } from "./objclass.h.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMULET_OF_GUARDING } from "./objects.h.js";
-import { AMULET_OF_LIFE_SAVING } from "./objects.h.js";
-import { AMULET_OF_REFLECTION } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { CORNUTHAUM } from "./objects.h.js";
-import { DUNCE_CAP } from "./objects.h.js";
-import { HELM_OF_OPPOSITE_ALIGNMENT } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { MUMMY_WRAPPING } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SPEED_BOOTS } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { ACID_RES } from "./prop.h.js";
-import { ANTIMAGIC } from "./prop.h.js";
-import { BLINDED } from "./prop.h.js";
-import { CLAIRVOYANT } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { DISINT_RES } from "./prop.h.js";
-import { DISPLACED } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FLYING } from "./prop.h.js";
-import { FUMBLING } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { JUMPING } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { REFLECTING } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { STONE_RES } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { WWALKING } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { W_ART } from "./prop.h.js";
-import { W_ARTI } from "./prop.h.js";
-import { W_BALL } from "./prop.h.js";
-import { W_CHAIN } from "./prop.h.js";
-import { W_QUIVER } from "./prop.h.js";
-import { W_RINGL } from "./prop.h.js";
-import { W_RINGR } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
+import {
+    cantweararm, has_horns, is_animal, is_whirly, mindless, nohands, slithy, touch_petrifies,
+    verysmall,
+} from "./mondata.h.macros.js";
+import { MZ_HUMAN, MZ_SMALL } from "./monflag.h.js";
+import { MFAST, MSLOW } from "./monst.h.js";
+import { DEADMONSTER, MON_WEP, monstunseesu_prop } from "./monst.h.macros.js";
+import { NON_PM, PM_HOBBIT, PM_LONG_WORM, PM_MONK, PM_SKELETON, PM_WIZARD } from "./monsters.h.js";
+import { OBJ_MINVENT, struct_obj } from "./obj.h.js";
+import {
+    Dragon_mail_to_pm, Dragon_scales_to_pm, Has_contents, Is_dragon_mail, Is_dragon_scales,
+    WrappingAllowed, bimanual, is_boots, is_cloak, is_elven_armor, is_flimsy, is_gloves, is_helmet,
+    is_shield, is_shirt, is_suit, is_weptool,
+} from "./obj.h.macros.js";
+import {
+    ARM_BOOTS, ARM_CLOAK, ARM_GLOVES, ARM_HELM, ARM_SHIELD, ARM_SHIRT, ARM_SUIT,
+} from "./objclass.h.js";
+import {
+    ALCHEMY_SMOCK, AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING, AMULET_OF_REFLECTION, BLINDFOLD,
+    CORNUTHAUM, DUNCE_CAP, HELM_OF_OPPOSITE_ALIGNMENT, LENSES, MEAT_RING, MUMMY_WRAPPING, SADDLE,
+    SPEED_BOOTS, TIN_OPENER, TOWEL,
+} from "./objects.h.js";
+import {
+    ACID_RES, ANTIMAGIC, BLINDED, CLAIRVOYANT, COLD_RES, DISINT_RES, DISPLACED, FAST, FIRE_RES,
+    FLYING, FUMBLING, INVIS, I_SPECIAL, JUMPING, LEVITATION, POISON_RES, PROTECTION, REFLECTING,
+    SHOCK_RES, SLEEP_RES, STEALTH, STONE_RES, TELEPAT, WWALKING, W_AMUL, W_ARM, W_ARMC, W_ARMF,
+    W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_ART, W_ARTI, W_BALL, W_CHAIN, W_QUIVER, W_RINGL,
+    W_RINGR, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEP,
+} from "./prop.h.js";
 import { res_to_mr } from "./prop.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
+import { fmon, fobj } from "./rm.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
 import { AC_MAX } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { mhim } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { ETelepat } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+import { Role_if, mhim, mhis } from "./you.h.macros.js";
+import { ETelepat, See_invisible, Stone_resistance } from "./youprop.h.macros.js";
+import { char, long, ord, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
 import { global_ref } from "../rt/globals.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { not64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, not64, or64 } from "../rt/int64.js";
+import { abs, sprintf, strcpy } from "../rt/libc.js";
+import { stack_array, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { addr_of, array_of, ptr_add, ptr_to, struct } from "../rt/struct.js";
 import { fmt_ptr } from "./alloc.js";
-import { artifact_light } from "./artifact.js";
-import { is_art } from "./artifact.js";
-import { set_artifact_intrinsic } from "./artifact.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
+import { artifact_light, is_art, set_artifact_intrinsic } from "./artifact.js";
+import { disp, flags, gb, gi, gm, go, gu, gy, iflags, svc, svl, u } from "./decl.js";
+import { canseemon, newsym } from "./display.js";
 import { obj_no_longer_held } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { pmname } from "./do_name.js";
+import { Mgender, Monnam, hcolor, mon_nam, pmname } from "./do_name.js";
 import { cancel_doff } from "./do_wear.js";
 import { surface } from "./dungeon.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
+import { s_suffix, sgn, strncmpi, strsubst } from "./hacklib.js";
 import { update_inventory } from "./invent.js";
 import { arti_light_description } from "./light.js";
-import { curse } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
+import { curse, obj_extract_self, place_object } from "./mkobj.js";
 import { check_gear_next_turn } from "./mon.js";
-import { breakarm } from "./mondata.js";
-import { raceptr } from "./mondata.js";
-import { sliparm } from "./mondata.js";
+import { breakarm, raceptr, sliparm } from "./mondata.js";
 import { mons } from "./monst.js";
 import { m_useup } from "./mthrowu.js";
 import { objects } from "./objects.js";
-import { Yname2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { cloak_simple_name } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_mon } from "./pline.js";
+import {
+    Yname2, an, cloak_simple_name, distant_name, doname, otense, simpleonames,
+} from "./objnam.js";
+import { You, You_hear, impossible, pline, pline_mon } from "./pline.js";
 import { rnl } from "./rnd.js";
-import { can_ride } from "./steed.js";
-import { can_saddle } from "./steed.js";
-import { dismount_steed } from "./steed.js";
-import { begin_burn } from "./timeout.js";
-import { end_burn } from "./timeout.js";
+import { can_ride, can_saddle, dismount_steed } from "./steed.js";
+import { begin_burn, end_burn } from "./timeout.js";
 import { instapetrify } from "./trap.js";
 import { vision_recalc } from "./vision.js";
 import { mwepgone } from "./weapon.js";

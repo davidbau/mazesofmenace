@@ -3,34 +3,14 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
 /* since this file is also used in auxiliary programs, don't include all the
    function declarations for all of nethack */
-
-
-// #include "config.h"
-
-// #include "nhlua.h"
-
-
 
 /*#define FITSint(x) FITSint_(x, __func__, __LINE__)*/
 
 /*#define FITSuint(x) FITSuint_(x, __func__, __LINE__)*/
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef MONITOR_HEAP: not in this build */
 
 /*
  * For historical reasons, nethack's alloc() returns 'long *' rather
@@ -46,27 +26,7 @@
  * alloc(sizeof (long)) instead.
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-
-export function /* long long * */
-alloc(lth)
-{
+export function alloc(lth) { /* long long * */
     let ptr;
 
     do { if ((!(lth) || (((lth) % sizeof(long)) != 0))) (lth) = unsigned((lth) + (sizeof(long) - ((lth) % sizeof(long)))); } while (0);
@@ -75,15 +35,11 @@ alloc(lth)
     if (!ptr)
         panic(_("Memory allocation failure; cannot get %u bytes"), lth);
 
-
-
     return ref_to(long, ptr);
 }
 
 /* realloc() call that might get substituted by nhrealloc(p,n,file,line) */
-export function /* long long * */
-re_alloc(oldptr, newlth)
-{
+export function re_alloc(oldptr, newlth) { /* long long * */
     let newptr;
 
     do { if ((!(newlth) || (((newlth) % sizeof(long)) != 0))) (newlth) = unsigned((newlth) + (sizeof(long) - ((newlth) % sizeof(long)))); } while (0);
@@ -93,18 +49,10 @@ re_alloc(oldptr, newlth)
     if (newlth && !newptr)
         panic(_("Memory allocation failure; cannot extend to %u bytes"), newlth);
 
-
-
     return newptr;
 }
 
-
 export const PTR_FMT = "%p";
-
-
-
-
-
 
 /* A small pool of static formatting buffers.
  * PTRBUFSIZ:  We assume that pointers will be formatted as integers in
@@ -121,150 +69,36 @@ const ptrbuf = static_array("ptrbuf", array_of(char, PTRBUFSIZ), PTRBUFCNT);
 const ptrbufidx = static_var("ptrbufidx", int, 0);
 
 /* format a pointer for display purposes; returns a static buffer */
-export function /* char * */
-fmt_ptr(ptr)
-{
+export function fmt_ptr(ptr) { /* char * */
     let buf;
 
     buf = ptrbuf[ptrbufidx[0]];
     if (++ptrbufidx[0] >= PTRBUFCNT)
         ptrbufidx[0] = 0;
 
-    void sprintf(buf, _(PTR_FMT), ptr);
+    sprintf(buf, _(PTR_FMT), ptr);
     return buf;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef MONITOR_HEAP: not in this build */
 
 /* strdup() which uses our alloc() rather than libc's malloc();
    not used when MONITOR_HEAP is enabled, but included unconditionally
    in case utility programs get built using a different setting for that */
-export function /* char * */
-dupstr(string)
-{
+export function dupstr(string) { /* char * */
     let len = strlen(string);
 
     /* make sure len+1 doesn't overflow plain unsigned (for alloc()) */
     if (len > (unsigned(~0) - 1))
         panic(_("dupstr: string length overflow"));
 
-    return strcpy(addr_of(alloc(unsigned(unsigned(len + 1)))), string);
+    return strcpy(addr_of(alloc(unsigned(len + 1))), string);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* cast to int or panic on overflow; use via macro */
-export function /* int */
-FITSint_(i, file, line)
-{
+export function FITSint_(i, file, line) { /* int */
     let iret = int(i);
 
     if (iret != i)
@@ -272,9 +106,7 @@ FITSint_(i, file, line)
     return iret;
 }
 
-export function /* unsigned */
-FITSuint_(ull, file, line)
-{
+export function FITSuint_(ull, file, line) { /* unsigned */
     let uret = unsigned(ull);
 
     if (uret != ull)
@@ -283,20 +115,10 @@ FITSuint_(ull, file, line)
 }
 
 /*alloc.c*/
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { malloc } from "../rt/libc.js";
-import { realloc } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+
+import { char, int, long, sizeof, unsigned } from "../rt/ctypes.js";
+import { malloc, realloc, sprintf, strcpy, strlen } from "../rt/libc.js";
+import { static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
+import { addr_of, array_of, ref_to } from "../rt/struct.js";
 import { panic } from "./end.js";

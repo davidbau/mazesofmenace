@@ -40,6 +40,7 @@ export class CMemory {
     get HEAPU8() { if(!this._heapU8||this._heapU8.buffer!==this.buffer)this._heapU8=new Uint8Array(this.buffer);return this._heapU8; }
     get HEAP8() { if(!this._heap8||this._heap8.buffer!==this.buffer)this._heap8=new Int8Array(this.buffer);return this._heap8; }
     get view() { if(!this._dataView||this._dataView.buffer!==this.buffer)this._dataView=new DataView(this.buffer);return this._dataView; }
+    onGrow(listener) {if(typeof listener!=='function')throw new TypeError('Growth listener must be a function');this._growListeners??=new Set();this._growListeners.add(listener);return()=>this._growListeners.delete(listener);}
     bounds(address, length = 1) {
         if (!Number.isSafeInteger(address) || !Number.isSafeInteger(length)
             || address < ALIGN || length < 0 || address + length > this.buffer.byteLength)
@@ -56,11 +57,12 @@ export class CMemory {
             this.buffer = replacement;
             this._heapU8=this._heap8=this._dataView=undefined;
             this.generation++;
-            return true;
         } catch (error) {
             if (error instanceof RangeError) return false;
             throw error;
         }
+        if(this._growListeners)for(const listener of this._growListeners)listener();
+        return true;
     }
     malloc(size) {
         if (!Number.isSafeInteger(size) || size < 0 || size > this.maximumBytes) return 0;

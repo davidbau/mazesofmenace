@@ -4,9 +4,6 @@
 /* Copyright (c) Robert Patrick Rankin, 1991                      */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
 /* c2js recorder fixed datetime timezone: public traces are recorded with
    TZ=America/New_York and fixed datetimes parsed through mktime().  The
    recorder leaves tm_isdst set from the real current time, so fixed wall
@@ -16,64 +13,40 @@ export const NH_C2JS_RECORDER_STD_OFFSET_SECONDS = (-5 * 60 * 60);
 export const NH_C2JS_RECORDER_DST_OFFSET_SECONDS = (-4 * 60 * 60);
 export const NH_C2JS_RECORDER_MKTIME_ISDST = 1;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-nh_c2js_leap_year(year)
-{
-    return (+(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0)));
+function nh_c2js_leap_year(year) { /* int */
+    return +(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
 }
 
-function /* long long */
-nh_c2js_days_from_civil(year, month, day)
-{
+function nh_c2js_days_from_civil(year, month, day) { /* long long */
     let era;
     let yoe, doy, doe;
 
     year -= +(month <= 2);
     era = Math.trunc((year >= 0 ? year : year - 399) / 400);
     yoe = unsigned((year - era * 400));
-    doy = unsigned(unsigned(Math.trunc((unsigned(unsigned(Math.imul(153, (unsigned(month + unsigned((month > 2 ? -3 : 9)))))) + 2)) / 5) + day) - 1);
+    doy = unsigned(unsigned(Math.trunc(unsigned(unsigned(Math.imul(153, unsigned(month + unsigned((month > 2 ? -3 : 9))))) + 2) / 5) + day) - 1);
     doe = unsigned(unsigned(unsigned(unsigned(Math.imul(yoe, 365)) + Math.trunc(yoe / 4)) - Math.trunc(yoe / 100)) + doy);
     return era * 146097 + doe - 719468;
 }
 
-function /* void */
-nh_c2js_civil_from_days(z, year, month,
-                        day)
-{
+function nh_c2js_civil_from_days(z, year, month,
+                        day) { /* void */
     let era;
     let doe, yoe, doy, mp;
 
     z += 719468;
     era = Math.trunc((z >= 0 ? z : z - 146096) / 146097);
     doe = unsigned((z - era * 146097));
-    yoe = Math.trunc((unsigned(unsigned(unsigned(doe - Math.trunc(doe / 1460)) + Math.trunc(doe / 36524)) - Math.trunc(doe / 146096))) / 365);
+    yoe = Math.trunc(unsigned(unsigned(unsigned(doe - Math.trunc(doe / 1460)) + Math.trunc(doe / 36524)) - Math.trunc(doe / 146096)) / 365);
     year[0] = int(yoe) + int(era) * 400;
-    doy = unsigned(doe - (unsigned(unsigned(unsigned(Math.imul(365, yoe)) + Math.trunc(yoe / 4)) - Math.trunc(yoe / 100))));
-    mp = Math.trunc((unsigned(unsigned(Math.imul(5, doy)) + 2)) / 153);
-    day[0] = unsigned(unsigned(doy - Math.trunc((unsigned(unsigned(Math.imul(153, mp)) + 2)) / 5)) + 1);
+    doy = unsigned(doe - unsigned(unsigned(unsigned(Math.imul(365, yoe)) + Math.trunc(yoe / 4)) - Math.trunc(yoe / 100)));
+    mp = Math.trunc(unsigned(unsigned(Math.imul(5, doy)) + 2) / 153);
+    day[0] = unsigned(unsigned(doy - Math.trunc(unsigned(unsigned(Math.imul(153, mp)) + 2) / 5)) + 1);
     month[0] = unsigned(mp + unsigned((mp < 10 ? 3 : -9)));
     year[0] += +(month[0] <= 2);
 }
 
-function /* int */
-nh_c2js_weekday_from_days(days)
-{
+function nh_c2js_weekday_from_days(days) { /* int */
     let wday = ((days + 4) % 7);
 
     if (wday < 0)
@@ -81,30 +54,24 @@ nh_c2js_weekday_from_days(days)
     return wday;
 }
 
-function /* unsigned */
-nh_c2js_nth_sunday_mday(year, month, nth)
-{
+function nh_c2js_nth_sunday_mday(year, month, nth) { /* unsigned */
     let days = nh_c2js_days_from_civil(year, month, 1);
     let first_sunday = unsigned((1 + ((7 - nh_c2js_weekday_from_days(days)) % 7)));
 
-
-    return unsigned(first_sunday + unsigned(Math.imul(7, (unsigned(nth - 1)))));
+    return unsigned(first_sunday + unsigned(Math.imul(7, unsigned(nth - 1))));
 }
 
-function /* long long */
-nh_c2js_epoch_from_civil_offset(year, month, day,
+function nh_c2js_epoch_from_civil_offset(year, month, day,
                                 hour, minute, second,
-                                offset)
-{
+                                offset) { /* long long */
     let days = nh_c2js_days_from_civil(year, month, day);
 
     return days * 86400 + hour * 3600
            + minute * 60 + second - offset;
 }
 
-function /* int */
-nh_c2js_recorder_dst_for_epoch(epoch)
-{ const $frame = stack_frame(); try {
+function nh_c2js_recorder_dst_for_epoch(epoch) { /* int */
+    const $frame = stack_frame(); try {
     let shifted = epoch + NH_C2JS_RECORDER_STD_OFFSET_SECONDS;
     let days = Math.trunc(shifted / 86400);
     let year = stack_var(int);
@@ -147,12 +114,11 @@ nh_c2js_recorder_dst_for_epoch(epoch)
         year[0], end_month, november_end, 2, 0, 0,
         NH_C2JS_RECORDER_DST_OFFSET_SECONDS);
     return +(epoch >= start_epoch && epoch < end_epoch);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-nh_c2js_parse_yyyymmddhhmmss(buf, year, month, day,
-                             hour, minute, second)
-{
+function nh_c2js_parse_yyyymmddhhmmss(buf, year, month, day,
+                             hour, minute, second) { /* int */
     let i;
 
     if (!buf || strlen(buf) != 14)
@@ -179,10 +145,8 @@ nh_c2js_parse_yyyymmddhhmmss(buf, year, month, day,
     return 1;
 }
 
-function /* void */
-nh_c2js_fill_tm(t, year, month, day, hour,
-                minute, second, isdst)
-{
+function nh_c2js_fill_tm(t, year, month, day, hour,
+                minute, second, isdst) { /* void */
     let days = nh_c2js_days_from_civil(year, unsigned(month),
                                              unsigned(day));
     let year_start = nh_c2js_days_from_civil(year, 1, 1);
@@ -199,9 +163,8 @@ nh_c2js_fill_tm(t, year, month, day, hour,
     t.tm_isdst = isdst;
 }
 
-function /* time_t */
-nh_c2js_time_from_yyyymmddhhmmss(buf)
-{ const $frame = stack_frame(); try {
+function nh_c2js_time_from_yyyymmddhhmmss(buf) { /* time_t */
+    const $frame = stack_frame(); try {
     let year = stack_var(int), month = stack_var(int), day = stack_var(int), hour = stack_var(int), minute = stack_var(int), second = stack_var(int);
     let offset;
 
@@ -213,11 +176,11 @@ nh_c2js_time_from_yyyymmddhhmmss(buf)
                  : NH_C2JS_RECORDER_STD_OFFSET_SECONDS;
     return nh_c2js_epoch_from_civil_offset(
         year[0], unsigned((month[0])), unsigned((day[0])), hour[0], minute[0], second[0], offset);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct tm * */
-nh_c2js_tm_from_time(date)
-{ const $frame = stack_frame(); try {
+function nh_c2js_tm_from_time(date) { /* struct tm * */
+    const $frame = stack_frame(); try {
     let t = static_struct("nh_c2js_tm_from_time.t", struct_tm);
     let epoch = date;
     let isdst = nh_c2js_recorder_dst_for_epoch(epoch);
@@ -235,25 +198,23 @@ nh_c2js_tm_from_time(date)
         --days;
     }
     nh_c2js_civil_from_days(days, year, month, day);
-    hour = int((Math.trunc(rem / 3600)));
+    hour = int(Math.trunc(rem / 3600));
     rem %= 3600;
-    minute = int((Math.trunc(rem / 60)));
+    minute = int(Math.trunc(rem / 60));
     second = (rem % 60);
     nh_c2js_fill_tm(t, year[0], int((month[0])), int((day[0])), hour, minute, second,
                     isdst);
     return t;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct tm * */
-nh_c2js_tm_from_yyyymmddhhmmss(buf)
-{
+function nh_c2js_tm_from_yyyymmddhhmmss(buf) { /* struct tm * */
     let date = nh_c2js_time_from_yyyymmddhhmmss(buf);
 
     if (date == 0)
         return null;
     return nh_c2js_tm_from_time(date);
 }
-
 
 /*
  * Time routines
@@ -269,65 +230,41 @@ nh_c2js_tm_from_yyyymmddhhmmss(buf)
 /* TIME_type: type of the argument to time(); we actually use &(time_t);
    you might need to define either or both of these to 'long *' in *conf.h */
 
-
-
-
-
-
-
-
-
-export function /* time_t */
-getnow()
-{ const $frame = stack_frame(); try {
+export function getnow() { /* time_t */
+    const $frame = stack_frame(); try {
     let fixed_dt = nh_getenv(_("NETHACK_FIXED_DATETIME"));
     let datetime = stack_var(long, 0);
 
     if (fixed_dt && chars[fixed_dt]) {
-
         let parsed = nh_c2js_time_from_yyyymmddhhmmss(fixed_dt);
-
-
 
         if (parsed != 0)
             return parsed;
     }
-    void time(datetime);
+    time(datetime);
     return datetime[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct tm * */
-getlt()
-{
+function getlt() { /* struct tm * */
     let date = getnow();
 
     return nh_c2js_tm_from_time(date);
-
-
-
 }
 
-export function /* int */
-getyear()
-{
+export function getyear() { /* int */
     return (1900 + getlt().tm_year);
 }
 
-
-export function /* long long */
-yyyymmdd(date)
-{
+export function yyyymmdd(date) { /* long long */
     let datenum;
     let lt;
 
     if (date == 0)
         lt = getlt();
     else
-        
+
         lt = nh_c2js_tm_from_time(date);
-
-
-
 
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -342,28 +279,21 @@ yyyymmdd(date)
     return datenum;
 }
 
-export function /* long long */
-hhmmss(date)
-{
+export function hhmmss(date) { /* long long */
     let timenum;
     let lt;
 
     if (date == 0)
         lt = getlt();
     else
-        
+
         lt = nh_c2js_tm_from_time(date);
-
-
-
 
     timenum = lt.tm_hour * 10000 + lt.tm_min * 100 + lt.tm_sec;
     return timenum;
 }
 
-export function /* char * */
-yyyymmddhhmmss(date)
-{
+export function yyyymmddhhmmss(date) { /* char * */
     let datenum;
     let datestr = static_array("yyyymmddhhmmss.datestr", char, 15);
     let lt;
@@ -371,11 +301,8 @@ yyyymmddhhmmss(date)
     if (date == 0)
         lt = getlt();
     else
-        
+
         lt = nh_c2js_tm_from_time(date);
-
-
-
 
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -390,69 +317,9 @@ yyyymmddhhmmss(date)
     return datestr;
 }
 
-export function /* time_t */
-time_from_yyyymmddhhmmss(buf)
-{
-
+export function time_from_yyyymmddhhmmss(buf) { /* time_t */
     return nh_c2js_time_from_yyyymmddhhmmss(buf);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef NH_C2JS_RECORDER_PLATFORM): not in this build */
 }
 
 /*
@@ -468,9 +335,7 @@ time_from_yyyymmddhhmmss(buf)
  * 177 ~= 8 reported phases * 22
  * + 11/22 for rounding
  */
-export function /* int */
-phase_of_the_moon() /* 0-7, with 0: new, 4: full */
-{
+export function phase_of_the_moon() { /* int */ /* 0-7, with 0: new, 4: full */
     let lt = getlt();
     let epact, diy, goldn;
 
@@ -480,49 +345,34 @@ phase_of_the_moon() /* 0-7, with 0: new, 4: full */
     if ((epact == 25 && goldn > 11) || epact == 24)
         epact++;
 
-    return ((Math.trunc(((((diy + epact) * 6) + 11) % 177) / 22)) & 7);
+    return (Math.trunc(((((diy + epact) * 6) + 11) % 177) / 22) & 7);
 }
 
-export function /* boolean */
-friday_13th()
-{
+export function friday_13th() { /* boolean */
     let lt = getlt();
 
     /* tm_wday (day of week; 0==Sunday) == 5 => Friday */
     return (+(lt.tm_wday == 5 && lt.tm_mday == 13));
 }
 
-export function /* int */
-night()
-{
+export function night() { /* int */
     let hour = getlt().tm_hour;
 
-    return (+(hour < 6 || hour > 21));
+    return +(hour < 6 || hour > 21);
 }
 
-export function /* int */
-midnight()
-{
-    return (+(getlt().tm_hour == 0));
+export function midnight() { /* int */
+    return +(getlt().tm_hour == 0);
 }
 
 /* calendar.c */
+
 import { Snprintf } from "./hacklib.h.macros.js";
 import { struct_tm } from "../libc/records.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { strlen } from "../rt/libc.js";
-import { time } from "../rt/libc.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { char, int, long, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { strlen, time } from "../rt/libc.js";
+import { stack_var, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { array_of } from "../rt/struct.js";
 import { nh_getenv } from "./options.js";

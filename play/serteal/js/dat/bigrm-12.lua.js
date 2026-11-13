@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack bigroom bigrm-12.lua	$NHDT-Date: $  $NHDT-Branch: NetHack-3.7 $
-"\n" + // --	Copyright (c) 2024 by Pasi Kallinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- Two hexagons
-`
+export default String.raw`-- NetHack bigroom bigrm-12.lua	$NHDT-Date: $  $NHDT-Branch: NetHack-3.7 $
+--	Copyright (c) 2024 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- Two hexagons
+
 des.level_flags("mazelevel", "noflipy");
 des.level_init({ style = "solidfill", fg = " " });
 
@@ -29,8 +29,8 @@ des.map([[
                                                                            
 ]]);
 
-` + "\n" + // -- maybe replace lavawalls/waterwalls with stone walls
-`if percent(20) then
+-- maybe replace lavawalls/waterwalls with stone walls
+if percent(20) then
    if percent(50) then
       des.replace_terrain({ fromterrain = "W", toterrain = "-" });
    end
@@ -39,8 +39,8 @@ des.map([[
    end
 end
 
-` + "\n" + // -- maybe replace pools with floor and then possibly walls with pools
-`if percent(25) then
+-- maybe replace pools with floor and then possibly walls with pools
+if percent(25) then
    des.replace_terrain({ fromterrain = "P", toterrain = "." });
    if percent(75) then
       des.replace_terrain({ fromterrain = "W", toterrain = "P" });
@@ -53,15 +53,15 @@ if percent(25) then
    end
 end
 
-` + "\n" + // -- maybe make both sides have the same terrain
-`if percent(20) then
+-- maybe make both sides have the same terrain
+if percent(20) then
    if percent(50) then
-` + "\n" + // -- both are lava
-`      des.replace_terrain({ fromterrain = "P", toterrain = "L" });
+      -- both are lava
+      des.replace_terrain({ fromterrain = "P", toterrain = "L" });
       des.replace_terrain({ fromterrain = "W", toterrain = "Z" });
    else
-` + "\n" + // -- both are water
-`      des.replace_terrain({ fromterrain = "L", toterrain = "P" });
+      -- both are water
+      des.replace_terrain({ fromterrain = "L", toterrain = "P" });
       des.replace_terrain({ fromterrain = "Z", toterrain = "W" });
    end
 end

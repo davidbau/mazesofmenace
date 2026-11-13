@@ -235,7 +235,7 @@ import {
     spoteffects,
     u_locomotion,
 } from './hack.js';
-import { dist2, online2, ordin, s_suffix, upstart } from './hacklib.js';
+import { dist2, online2, ordin, s_suffix, upstart, lcase } from './hacklib.js';
 import {
     add_to_container,
     add_to_minv,
@@ -1449,7 +1449,7 @@ export async function meatbox(mon, obj, rawEnv = {}) {
     }
     while (obj.cobj) {
         const child = obj.cobj;
-        obj_extract_self(child, objectGenerationEnv({ ...rawEnv, state }));
+        await obj_extract_self(child, objectGenerationEnv({ ...rawEnv, state }));
         if (obj.otyp === ICE_BOX)
             removed_from_icebox(child, state);
         if (engulfContents) {
@@ -1494,7 +1494,7 @@ export async function m_consume_obj(mtmp, otmp, rawEnv = {}) {
     if (otmp === state.uball) {
         const objectEnv = objectGenerationEnv({ ...rawEnv, state });
         unpunish(state, objectEnv);
-        delobj(otmp, objectEnv);
+        await delobj(otmp, objectEnv);
         return;
     }
     if (otmp === state.uchain) {
@@ -1529,7 +1529,7 @@ export async function m_consume_obj(mtmp, otmp, rawEnv = {}) {
     if (ispet && deadmimic && typeof rawEnv.quickMimic !== 'function')
         throw new TypeError('m_consume_obj requires a quickMimic operation');
 
-    delobj(otmp, objectGenerationEnv({ ...rawEnv, state })); /* munch */
+    await delobj(otmp, objectGenerationEnv({ ...rawEnv, state })); /* munch */
 
     if (poly || slimer) {
         await newcham(mtmp, slimer ? state.mons[PM_GREEN_SLIME] : null, {
@@ -1724,7 +1724,7 @@ export async function meatobj(mtmp, rawEnv = {}) {
                 messageText = `${capitalizedMonsterName(mtmp, state)} engulfs ${name}.`;
             else if (engulfed === 2)
                 messageText = `${capitalizedMonsterName(mtmp, state)} engulfs several objects.`;
-            obj_extract_self(obj, objectGenerationEnv({ ...rawEnv, state }));
+            await obj_extract_self(obj, objectGenerationEnv({ ...rawEnv, state }));
             await mpickobjRuntime(mtmp, obj, rawEnv);
         } else {
             count++;
@@ -1992,7 +1992,7 @@ export async function mpickstuff(monster, obj, carryamt, rawEnv = {}) {
             );
         }
     }
-    obj_extract_self(taken, objectEnv);
+    await obj_extract_self(taken, objectEnv);
     await mpickobjRuntime(monster, taken, objectEnv);
     // let them try to equip it on the next turn
     check_gear_next_turn(monster);
@@ -2812,7 +2812,7 @@ function shapeOldNames(monster, state, msg, env = {}) {
         env,
     );
     return {
-        oldname: oldname ? oldname[0].toUpperCase() + oldname.slice(1) : '',
+        oldname: oldname ? upstart(oldname) : '',
         l_oldname,
     };
 }
@@ -3074,7 +3074,7 @@ function* apply_newcham_steps(
                 continue;
             }
             if (polyspot) bypass_obj(object, state);
-            obj_extract_self(object, normalized);
+            yield obj_extract_self(object, normalized);
             const floorEffects = normalized.floorEffects ?? flooreffects;
             const effect = floorEffects(object, monster.mx, monster.my, '', {
                 ...normalized,
@@ -3422,7 +3422,7 @@ export async function wiz_force_cham_form(monster, rawEnv = {}) {
         monclass = 0;
         buf = mungspaces(await input(prompt, state));
         if (buf === '\x1b') break;
-        if (buf === '*' || buf.toLowerCase() === 'random') {
+        if (buf === '*' || lcase(buf) === 'random') {
             mndx = NON_PM;
             break;
         }
@@ -3802,7 +3802,7 @@ export async function peacefuls_respond(attacked, rawEnv = {}) {
                 if (!Deaf(state.u) && !random.rn2(5)) {
                     const gasp = maybe_gasp(monster, state, random);
                     if (gasp) {
-                        if (gasp.slice(0, 4).toLowerCase() === 'gasp') {
+                        if (lcase(gasp.slice(0, 4)) === 'gasp') {
                             buf = `${Monnam(monster, state)} gasps`;
                             needPunct = true;
                         } else {
@@ -6116,7 +6116,7 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
                     /* "don't drop newly created permafood from kills, unless
                         the monster collects food; it creates too much
                         nutrition in the late game" */
-                    delobj(otmp, dropEnv);
+                    await delobj(otmp, dropEnv);
                 } else if (mdat.msize < MZ_MEDIUM /* MZ_HUMAN */
                            && otyp !== FIGURINE
                            /* "oc_big is also oc_bimanual and oc_bulky" */
@@ -6126,7 +6126,7 @@ export async function xkilled(mtmp, xkill_flags, state = game, env = {}) {
                         artifact_exists(otmp, safe_oname(otmp), false,
                                         ONAME_NO_FLAGS, state);
                     }
-                    delobj(otmp, dropEnv);
+                    await delobj(otmp, dropEnv);
                 } else if (!await flooreffects(otmp, x, y, nomsg ? '' : 'fall',
                                          dropEnv)) {
                     const placement = place_object(otmp, x, y, dropEnv);

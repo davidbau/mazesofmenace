@@ -3058,7 +3058,7 @@ async function eatcorpse(otmp, state, env = {}) {
         const use_is = Hallucination(state.u)
             || (palatable && palat_msg[0] === 'I');
 
-        if (pmxnam.slice(0, 4).toLowerCase() === 'the ')
+        if (lcase(pmxnam.slice(0, 4)) === 'the ')
             pmxnam = pmxnam.slice(4);
         await ttyPline(
             `${type_is_pname(corpse) ? ''
@@ -3668,7 +3668,7 @@ export async function floorfood(verb, corpsecheck, state = game) {
                     const dropQbuf = `You only manage to ${uInBeartrap
                         ? 'free yourself from' : 'disarm'} the bear trap.`;
                     if (await check_capacity(dropQbuf, state) && beartrap) {
-                        obj_extract_self(beartrap, { state });
+                        await obj_extract_self(beartrap, { state });
                         await dropy(beartrap, objectEnv);
                         return null;
                     }

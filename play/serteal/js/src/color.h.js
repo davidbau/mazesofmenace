@@ -2,9 +2,6 @@
 /* Copyright (c) Steve Linhart, Eric Raymond, 1989. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * The color scheme used is tailored for an IBM PC.  It consists of the
  * standard 8 colors, followed by their bright counterparts.  There are
@@ -56,8 +53,6 @@ export const HI_ZAP = CLR_BRIGHT_BLUE;
 
 export const NH_BASIC_COLOR = 0x1000000;
 
-
-
 export const no_color = 0; export const nh_color = no_color + 1; export const rgb_color = nh_color + 1;
 
 export const struct_nethack_color = struct("struct_nethack_color", {
@@ -72,14 +67,7 @@ export const struct_color_and_attr = struct("struct_color_and_attr", {
            color: int, attr: int,
 });
 
-
-
-
-
 /*color.h*/
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { char, int, long, unsigned } from "../rt/ctypes.js";
+import { ptr_to, struct } from "../rt/struct.js";

@@ -1,18 +1,8 @@
 /* CC0 (Public domain) - see http://creativecommons.org/publicdomain/zero/1.0/ for details */
 
-
-
-
-
-
-
-
-
 export const ISAAC64_SZ_LOG = (8);
 export const ISAAC64_SZ = (1<<ISAAC64_SZ_LOG);
 export const ISAAC64_SEED_SZ_MAX = (ISAAC64_SZ<<3);
-
-
 
 /*ISAAC is the most advanced of a series of pseudo-random number generators
    designed by Robert J. Jenkins Jr. in 1996.
@@ -34,7 +24,6 @@ export const struct_isaac64_ctx = struct("struct_isaac64_ctx", {
   c: uint64_t,
 });
 
-
 /**
  * isaac64_init - Initialize an instance of ISAAC64 random number generator.
  * @_ctx:   The ISAAC64 instance to initialize.
@@ -44,7 +33,6 @@ export const struct_isaac64_ctx = struct("struct_isaac64_ctx", {
  *          If this is greater than ISAAC64_SEED_SZ_MAX, the extra bytes are
  *           ignored.
  */
-
 
 /**
  * isaac64_reseed - Mix a new batch of entropy into the current state.
@@ -84,7 +72,6 @@ export const struct_isaac64_ctx = struct("struct_isaac64_ctx", {
  * To generate cheaper float values that do not have these properties, use
  *   ldexpf((float)isaac64_next_uint64(_ctx),-64);
  */
-import { uint64_t } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { uint64_t, unsigned } from "../rt/ctypes.js";
+import { array_of, struct } from "../rt/struct.js";

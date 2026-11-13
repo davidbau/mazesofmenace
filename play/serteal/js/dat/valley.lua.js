@@ -1,10 +1,10 @@
-export default "\n" + // -- NetHack gehennom valley.lua	$NHDT-Date: 1652196038 2022/05/10 15:20:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1992 by M. Stephenson and Izchak Miller
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // --
-`
+export default String.raw`-- NetHack gehennom valley.lua	$NHDT-Date: 1652196038 2022/05/10 15:20:38 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1992 by M. Stephenson and Izchak Miller
+-- NetHack may be freely redistributed.  See license for details.
+--
+--
+
 des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport", "hardfloor", "nommap", "temperate");
@@ -32,9 +32,9 @@ des.map([[
 ----------------------------------------------------------------------------
 ]]);
 
-` + "\n" + // -- Make the path somewhat unpredictable
-"\n" + // -- If you get "lucky", you may have to go through all three graveyards.
-`if percent(50) then
+-- Make the path somewhat unpredictable
+-- If you get "lucky", you may have to go through all three graveyards.
+if percent(50) then
    des.terrain(selection.line(50,8, 53,8), '-')
    des.terrain(selection.line(40,8, 43,8), 'B')
 end
@@ -49,36 +49,36 @@ if percent(50) then
 end
 
 
-` + "\n" + // -- Dungeon Description
-"\n" + // -- The shrine to Moloch.
-`des.region({ region={01,06, 05,14},lit=1,type="temple",filled=2 })
-` + "\n" + // -- The Morgues
-`des.region({ region={19,01, 24,08},lit=0,type="morgue",filled=1,irregular=1 })
+-- Dungeon Description
+-- The shrine to Moloch.
+des.region({ region={01,06, 05,14},lit=1,type="temple",filled=2 })
+-- The Morgues
+des.region({ region={19,01, 24,08},lit=0,type="morgue",filled=1,irregular=1 })
 des.region({ region={09,14, 16,18},lit=0,type="morgue",filled=1,irregular=1 })
 des.region({ region={37,09, 43,14},lit=0,type="morgue",filled=1,irregular=1 })
-` + "\n" + // -- Stairs
-`des.stair("down", 01,01)
-` + "\n" + // -- Branch location
-`des.levregion({ type="branch", region={66,17,66,17} })
+-- Stairs
+des.stair("down", 01,01)
+-- Branch location
+des.levregion({ type="branch", region={66,17,66,17} })
 des.teleport_region({ region = {58,09,72,18}, dir="down" })
 
-` + "\n" + // -- Secret Doors
-`des.door("locked",04,01)
+-- Secret Doors
+des.door("locked",04,01)
 des.door("locked",08,04)
 des.door("locked",06,06)
 
-` + "\n" + // -- The altar of Moloch.
-`des.altar({ x=03,y=10,align="noalign", type="shrine" })
+-- The altar of Moloch.
+des.altar({ x=03,y=10,align="noalign", type="shrine" })
 
-` + "\n" + // -- Non diggable walls - everywhere!
-`des.non_diggable(selection.area(00,00,75,19))
+-- Non diggable walls - everywhere!
+des.non_diggable(selection.area(00,00,75,19))
 
-` + "\n" + // -- Objects
-"\n" + // -- **LOTS** of dead bodies (all human).
-"\n" + // -- note: no priest(esse)s or monks - maybe Moloch has a *special*
-"\n" + // --       fate reserved for members of *those* classes.
-"\n" + // --
-`des.object({ id="corpse",montype="archeologist" })
+-- Objects
+-- **LOTS** of dead bodies (all human).
+-- note: no priest(esse)s or monks - maybe Moloch has a *special*
+--       fate reserved for members of *those* classes.
+--
+des.object({ id="corpse",montype="archeologist" })
 des.object({ id="corpse",montype="archeologist" })
 des.object({ id="corpse",montype="barbarian" })
 des.object({ id="corpse",montype="barbarian" })
@@ -100,21 +100,21 @@ des.object({ id="corpse",montype="valkyrie" })
 des.object({ id="corpse",montype="valkyrie" })
 des.object({ id="corpse",montype="wizard" })
 des.object({ id="corpse",montype="wizard" })
-` + "\n" + // --
-"\n" + // -- Some random weapons and armor.
-"\n" + // --
-`des.object("[")
+--
+-- Some random weapons and armor.
+--
 des.object("[")
 des.object("[")
 des.object("[")
+des.object("[")
 des.object(")")
 des.object(")")
 des.object(")")
 des.object(")")
-` + "\n" + // --
-"\n" + // -- Some random loot.
-"\n" + // --
-`des.object("ruby")
+--
+-- Some random loot.
+--
+des.object("ruby")
 des.object("*")
 des.object("*")
 des.object("!")
@@ -133,8 +133,8 @@ des.object("(")
 des.object("(")
 des.object("(")
 
-` + "\n" + // -- (Not so) Random traps.
-`des.trap("spiked pit", 05,02)
+-- (Not so) Random traps.
+des.trap("spiked pit", 05,02)
 des.trap("spiked pit", 14,05)
 des.trap("sleep gas", 03,01)
 des.trap("board", 21,12)
@@ -146,22 +146,22 @@ des.trap("anti magic")
 des.trap("magic")
 des.trap("magic")
 
-` + "\n" + // -- Random monsters.
-"\n" + // -- The ghosts.
-`des.monster("ghost")
+-- Random monsters.
+-- The ghosts.
 des.monster("ghost")
 des.monster("ghost")
 des.monster("ghost")
 des.monster("ghost")
 des.monster("ghost")
-` + "\n" + // -- Add a few bats for atmosphere.
-`des.monster("vampire bat")
+des.monster("ghost")
+-- Add a few bats for atmosphere.
 des.monster("vampire bat")
 des.monster("vampire bat")
-` + "\n" + // -- And a lich for good measure.
-`des.monster("L")
-` + "\n" + // -- Some undead nasties for good measure
-`des.monster("V")
+des.monster("vampire bat")
+-- And a lich for good measure.
+des.monster("L")
+-- Some undead nasties for good measure
+des.monster("V")
 des.monster("V")
 des.monster("V")
 des.monster("Z")

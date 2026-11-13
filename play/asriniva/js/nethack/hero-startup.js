@@ -1,3 +1,6 @@
+import {createNativeAbiCaster} from './native/execution.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
 // Shared storage/typed transport for unchanged artifact and hero-startup policy.
 import abi from './hero-abi.json' with {type:'json'};
 import attributeAbi from './attribute-abi.json' with {type:'json'};
@@ -107,30 +110,33 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
  environment.register('monster-gender-material',{mon_hates_silver,hates_silver,mon_hates_blessings,hates_blessings,pronoun_gender,gender,passes_bars,Resists_Elem,max_passive_dmg,can_track,noattacks,can_blow,levl_follower,can_blnd,can_chant,locomotion,msummon_environ},biology,{prepareArgs:(fn,args)=>{if(fn==='msummon_environ'){const p=address(args[1]);return [record('struct permonst',args[0]),{address:p,get value(){return Number(memory.view.getBigUint64(p,true));},set value(v){memory.view.setBigUint64(p,BigInt(biology.charPointer(v)),true);}}];}if(fn==='can_blnd')return [record('struct monst',args[0]),record('struct monst',args[1]),transport.uchar(args[2]),record('struct obj',args[3])];args[0]=record(['hates_silver','hates_blessings','passes_bars','can_track','noattacks','locomotion'].includes(fn)?'struct permonst':'struct monst',args[0]);if(fn==='locomotion')args[1]=biology.charPointer(args[1]);if(fn==='max_passive_dmg')args[1]=record('struct monst',args[1]);return args;}});
  environment.register('hero-monster-resistance-memory',{cvt_prop_to_mseenres,cvt_adtyp_to_mseenres,monstunseesu},biology);
 
+ const attributeOwner=nativeStateFor(environment);createNativeRecordViews(environment);
+ const attributeRecord=(type,p)=>attributeOwner.nativeRecords.record(type,p);
+ const attributePointer=name=>attributeOwner.nativeArena.pointer(environment.requireGlobal(name));
  const a=shadow(foreign(),['u','gu','gy','gi','svm','gm','svc','svk','flags','program_state','disp','mons','aligns','objects']);
  const ag=['u','gu.urole','gu.urace','gy.youmonst','gi.invent','svm.moves','gm.multi','svc.context.next_attrib_check','svk.killer.format','svk.killer.name','flags.initalign','flags.verbose','program_state.in_moveloop',null,'mons','aligns'];
  const count=Object.keys(attrib).filter(k=>Array.isArray(attrib[k])&&/_abil$/.test(k)).reduce((n,k)=>n+attrib[k].length,0),at=environment.allocateGlobal('attrib.innates',count*layouts.attrib.innateSize),names=environment.allocateGlobal('attrname',attrib.attrname.length*8),from=environment.allocateGlobal('attrib.fromWhat',256);
- Object.assign(a,{global:i=>{const path=ag[i];if(!path)throw new Error('Unknown ATTRIB global '+i);const [name,...fields]=path.split('.');return fields.length?named(name,fields.join('.')).at:environment.requireGlobal(name);},tableStorage:()=>at,tableCount:()=>count,attrnameStorage:()=>names,fromWhatBuffer:()=>from,heroData:()=>record('struct instance_globals_y',environment.requireGlobal('gy')).youmonst.data.address,
-  botl:()=>record('struct display_hints',environment.requireGlobal('disp')).botl,setBotl:v=>{record('struct display_hints',environment.requireGlobal('disp')).botl=v;},
-  roleplayBit:i=>record('struct you',environment.requireGlobal('u')).uroleplay[i?'deaf':'blind'],
-  objectBit:(o,i)=>{const key=attributeAbi.objectBits[i];if(!key)throw new Error('Unknown ATTRIB object field '+i);return ctypes.getField('struct obj',address(o),key,'unsigned int');},
+ Object.assign(a,{nativeOwner:attributeOwner,global:i=>{const path=ag[i];if(!path)throw new Error('Unknown ATTRIB global '+i);const [name,...fields]=path.split('.');return fields.length?named(name,fields.join('.')).at:environment.requireGlobal(name);},tableStorage:()=>at,tableCount:()=>count,attrnameStorage:()=>names,fromWhatBuffer:()=>from,heroData:()=>attributeRecord('struct instance_globals_y',environment.requireGlobal('gy')).youmonst.data.address,
+  botl:()=>attributeRecord('struct display_hints',environment.requireGlobal('disp')).botl,setBotl:v=>{attributeRecord('struct display_hints',environment.requireGlobal('disp')).botl=v;},
+  roleplayBit:i=>attributeRecord('struct you',environment.requireGlobal('u')).uroleplay[i?'deaf':'blind'],
+  objectBit:(o,i)=>{const key=attributeAbi.objectBits[i];if(!key)throw new Error('Unknown ATTRIB object field '+i);return attributeRecord('struct obj',address(o))[key];},
  });
  for(const kind of ['rn2','rnd','rn1','d'])a[kind]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('attrib.c'),line,services.literal(caller));return kind==='rn1'?services.rn2(args[0])+args[1]:services[kind](...args);};
- a.u_wield_art=id=>services.is_art(ctypes.load('struct obj *',environment.requireGlobal('uwep')),id);
- a.haseyes=pm=>Number(!(record('struct permonst',address(pm)).mflags1&BigInt(layouts.attrib.M1_NOEYES)));
- a.type_is_pname=pm=>Number(Boolean(record('struct permonst',address(pm)).mflags2&BigInt(layouts.attrib.M2_PNAME)));
- a.Is_astralevel=level=>{const astral=record('struct instance_globals_saved_d',environment.requireGlobal('svd')).dungeon_topology.d_astral_level;return Number(Boolean((astral.dnum||astral.dlevel)&&services.on_level(address(level),address(astral))));};
- Object.defineProperty(a,'something',{get:()=>record('struct c_common_strings',environment.requireGlobal('c_common_strings')).c_something});
- a.equipment=i=>ctypes.load('struct obj *',environment.requireGlobal(['uarmh','uarmg','uarmf','uarmc','ublindf'][i]));
+ a.u_wield_art=id=>services.is_art(attributePointer('uwep'),id);
+ a.haseyes=pm=>Number(!(attributeRecord('struct permonst',address(pm)).mflags1&BigInt(layouts.attrib.M1_NOEYES)));
+ a.type_is_pname=pm=>Number(Boolean(attributeRecord('struct permonst',address(pm)).mflags2&BigInt(layouts.attrib.M2_PNAME)));
+ a.Is_astralevel=level=>{const astral=attributeRecord('struct instance_globals_saved_d',environment.requireGlobal('svd')).dungeon_topology.d_astral_level;return Number(Boolean((astral.dnum||astral.dlevel)&&services.on_level(address(level),address(astral))));};
+ Object.defineProperty(a,'something',{get:()=>attributeRecord('struct c_common_strings',environment.requireGlobal('c_common_strings')).c_something});
+ a.equipment=i=>attributePointer(['uarmh','uarmg','uarmf','uarmc','ublindf'][i]);
  a.objectNameKnown=i=>objects[i].oc_name_known;
- a.flag=i=>{const u=record('struct you',environment.requireGlobal('u')),L=layouts.attrib,prop=name=>u.uprops[L[name]],h=name=>prop(name).intrinsic,e=name=>prop(name).extrinsic,b=name=>prop(name).blocked,active=name=>h(name)||e(name);
-  switch(i){case 0:return e('FIXED_ABIL');case 1:return active('POISON_RES');case 2:{const o=record('struct obj',ctypes.load('struct obj *',environment.requireGlobal('ublindf')));return Number(Boolean(o&&o.otyp===L.TOWEL&&o.spe>0));}case 3:return active('WOUNDED_LEGS');case 4:return Number(u.umonnum!==u.umonster);case 5:return Number(Boolean(h('HALLUC')&&!active('HALLUC_RES')));case 6:return h('CONFUSION');case 7:return h('SICK');case 8:return h('VOMITING');case 9:return active('FUMBLING');case 10:return Number(Boolean(e('BLINDED')&&!(h('BLINDED')&&!b('BLINDED'))));case 11:return (h('FAST')&~BigInt(L.INTRINSIC))||e('FAST');case 12:return record('struct flag',environment.requireGlobal('flags')).debug;
+ a.flag=i=>{const u=attributeRecord('struct you',environment.requireGlobal('u')),L=layouts.attrib,prop=name=>u.uprops[L[name]],h=name=>prop(name).intrinsic,e=name=>prop(name).extrinsic,b=name=>prop(name).blocked,active=name=>h(name)||e(name);
+  switch(i){case 0:return e('FIXED_ABIL');case 1:return active('POISON_RES');case 2:{const o=attributeRecord('struct obj',attributePointer('ublindf'));return Number(Boolean(o&&o.otyp===L.TOWEL&&o.spe>0));}case 3:return active('WOUNDED_LEGS');case 4:return Number(u.umonnum!==u.umonster);case 5:return Number(Boolean(h('HALLUC')&&!active('HALLUC_RES')));case 6:return h('CONFUSION');case 7:return h('SICK');case 8:return h('VOMITING');case 9:return active('FUMBLING');case 10:return Number(Boolean(e('BLINDED')&&!(h('BLINDED')&&!b('BLINDED'))));case 11:return (h('FAST')&~BigInt(L.INTRINSIC))||e('FAST');case 12:return attributeRecord('struct flag',environment.requireGlobal('flags')).debug;
    case 13:return h('CLAIRVOYANT');case 14:return b('CLAIRVOYANT');case 15:return h('REGENERATION');case 16:return h('STUNNED');case 17:return h('BLND_RES');case 18:return h('FAST');case 19:return e('FAST');case 20:return h('BLINDED');case 21:return e('BLINDED');case 22:return b('BLINDED');case 23:return h('BLINDED')&BigInt(L.TIMEOUT);default:throw new Error('Unknown ATTRIB property '+i);}
  };
  a.assert=ok=>{if(!ok)environment.resolve('__assert_fail')(services.literal('chridx >= 0 && chridx < A_MAX'),services.literal('attrib.c'),1204,services.literal('acurr'));};
  const attributeDebug=(format,values)=>{
   if(!services.debugcore(attributeAbi.debugSource,1))return;
-  const flags=record('struct instance_flags',environment.requireGlobal('iflags')),previous=flags.last_msg;
+  const flags=attributeRecord('struct instance_flags',environment.requireGlobal('iflags')),previous=flags.last_msg;
   try{return environment.resolve('pline')(typeof format==='string'?services.literal(format):address(format),...values());}finally{flags.last_msg=previous;}
  };
  const attributeText=value=>typeof value==='string'?services.literal(value):address(value);
@@ -147,12 +153,16 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
  const attr=createAttribEnvironment(a,layouts.attrib,attrib);
  const attributeEntries=Object.fromEntries(Object.entries(attrib).filter(([name,fn])=>typeof fn==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name)));
  const attributeParameters=Object.fromEntries(Object.keys(attributeEntries).map(name=>[name,publicFunctions.functions[name].match(/^[^(]+\((.*)\)$/)[1].split(',').map(type=>type.trim()).filter(type=>type&&type!=='void')]));
- environment.register('hero-attributes',attributeEntries,attr,{prepareArgs:(name,args)=>args.map((value,i)=>{
+ const attributeCast=createNativeAbiCaster(ctypes,transport,address);
+ const attributeCasts=Object.fromEntries(Object.entries(attributeParameters).map(([name,params])=>[name,params.map(type=>attributeCast(type))]));
+ const prepareAttributeArgs=(name,args)=>args.map((value,i)=>{
   const type=ctypes.canonical(attributeParameters[name][i]);
   if(type==='struct obj *')return attr.object(value);
   if(type.includes('*'))return typeof value==='string'?services.literal(value):address(value);
-  return type==='signed char'||type==='char'?transport.char(value):type==='short'?transport.short(value):transport.int(value);
- })});
+  return attributeCasts[name][i](value);
+ });
+ const nativeAttributes=Object.fromEntries(Object.keys(attributeEntries).map(name=>{const call=(...args)=>{const saved=attributeOwner.depth?undefined:transport.stackSave();attributeOwner.enter();try{return attr.nativeNamespace[name](...prepareAttributeArgs(name,args));}finally{try{attributeOwner.leave();}finally{if(saved!==undefined)transport.stackRestore(saved);}}};call.nativeState=attributeOwner;call.nativeDirect=true;call.nativePrepared=true;attributeOwner.functions.set(name,call);return [name,call];}));
+ environment.register('hero-attributes',nativeAttributes,attr);
  const power=enableExperience(environment,layouts);
  const vault=context(layouts.vault);vault.Has_contents=o=>Number(Boolean(o.cobj));vault.contained_gold=(o,known)=>environment.resolve('contained_gold')(address(o),known);environment.exposeAddressPort('shk',['contained_gold']);environment.register('inventory-hidden-gold',{hidden_gold},vault);
  enableSpell(environment,layouts);

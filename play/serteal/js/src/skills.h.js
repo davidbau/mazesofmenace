@@ -3,13 +3,9 @@
 /*-Copyright (c) Pasi Kallinen, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* Much of this code was taken from you.h.  It is now
  * in a separate file so it can be included in objects.c.
  */
-
 
     /* Code to denote that no skill is applicable */
     export const P_NONE = 0;
@@ -65,7 +61,6 @@
 
     export const P_NUM_SKILLS = 38;
 
-
 export const P_MARTIAL_ARTS = P_BARE_HANDED_COMBAT;
 
 export const P_FIRST_WEAPON = P_DAGGER;
@@ -76,9 +71,6 @@ export const P_LAST_SPELL = P_MATTER_SPELL;
 
 export const P_LAST_H_TO_H = P_RIDING;
 export const P_FIRST_H_TO_H = P_BARE_HANDED_COMBAT;
-
-/* These roles qualify for a martial arts bonus */
-
 
 /*
  * These are the standard weapon skill levels.  It is important that
@@ -102,20 +94,12 @@ export const P_FIRST_H_TO_H = P_BARE_HANDED_COMBAT;
     export const P_MASTER = 5; /* Unarmed combat/martial arts only */
     export const P_GRAND_MASTER = 6; /* ditto */
 
-
-
-
 /* The hero's skill in various weapons. */
 export const struct_skills = struct("struct_skills", {
     skill: xint16,
     max_skill: xint16,
     advance: ushort,
 });
-
-
-
-
-
 
 export const P_SKILL_LIMIT = 60;
 
@@ -124,6 +108,7 @@ export const struct_def_skill = struct("struct_def_skill", {
     skill: xint16,
     skmax: xint16,
 });
+
 import { xint16 } from "./global.h.js";
 import { ushort } from "../rt/ctypes.js";
 import { struct } from "../rt/struct.js";

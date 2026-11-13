@@ -10,7 +10,7 @@ export function enableWere(environment,layouts){
  const text=v=>typeof v==='string'?services.literal(v):address(v);
  const resolve=name=>environment.hasFunction(name)?environment.resolve(name):typeof services[name]==='function'?services[name]:environment.resolve(name);
  const local=Object.create(services);
- const scalar=(type,v)=>{type=ctypes.canonical(type);if(type.includes('*'))return text(v);if(type==='char'||type==='signed char')return transport.char(v);if(type==='unsigned char')return transport.uchar(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
+ const scalar=(type,v)=>{type=ctypes.abiType(type);if(type.includes('*'))return text(v);if(type==='char'||type==='signed char')return transport.char(v);if(type==='unsigned char')return transport.uchar(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
  const prototype=name=>{const p=publicFunctions.functions[name];if(!p)throw new Error('Missing WERE foreign public prototype '+name);const m=p.match(/^(.+?)\s*\((.*)\)$/);return{result:m[1],args:m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')};};
  for(const[name,target]of Object.entries(abi.calls)){
   const p=prototype(target);

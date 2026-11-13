@@ -3,9 +3,6 @@
 /*-Copyright (c) Michael Allison, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* NetHack 5.0.x */
 export const VERSION_MAJOR = 5;
 export const VERSION_MINOR = 0;
@@ -23,18 +20,9 @@ export const EDITLEVEL = 0;
  * Development status possibilities.
  */
 
-
-
-
-
 /*
  * Development status of this NetHack version.
  */
-
-
-
-
-
 
 export const COPYRIGHT_BANNER_A = "NetHack, Copyright 1985-2026";
 export const COPYRIGHT_BANNER_B = "         By Stichting Mathematisch Centrum and M. Stephenson.";
@@ -597,6 +585,5 @@ export const COPYRIGHT_BANNER_D = "         See license for details.";
 /* Version 3.0 */
 
 /****************************************************************************/
-
 
 /*patchlevel.h*/

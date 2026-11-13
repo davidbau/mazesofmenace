@@ -5,58 +5,10 @@
 
 /* main.c - Unix NetHack */
 
-// #include "hack.h"
-// #include "dlb.h"
-
-// #include <sys/stat.h>
-// #include <signal.h>
-// #include <pwd.h>
-
-// #include <fcntl.h>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* int */
-nhjs_unix_main(argc$, argv$)
-{ const $frame = stack_frame(); try { const argc = stack_var(int, argc$); const argv = stack_var(ptr_to(ptr_to(char)), argv$);
+export function nhjs_unix_main(argc$, argv$) { /* int */
+    const $frame = stack_frame(); try {
+    const argc = stack_var(int, argc$);
+    const argv = stack_var(ptr_to(ptr_to(char)), argv$);
     var dir = stack_var(ptr_to(char), 0);
     var nhfp;
     var exact_username;
@@ -66,58 +18,15 @@ nhjs_unix_main(argc$, argv$)
     early_init(argc[0], argv[0]);
     rng_log_init();  /* 004-prng-logging: open log if NETHACK_RNGLOG is set */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(__APPLE__): not in this build */
 
     gh.hname = argv[0][0];
     svh.hackpid = getpid();
-    void umask(0o777 & ~FCMASK);
+    umask(0o777 & ~FCMASK);
 
     choose_windows(_(DEFAULT_WINDOW_SYS));
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef SND_LIB_INTEGRATED: not in this build */
 
     /*
      * See if we must change directory to the playground.
@@ -141,19 +50,7 @@ nhjs_unix_main(argc$, argv$)
      */
     chdirx(dir[0], TRUE);
 
-
-
-
-
-
-
-
     initoptions();
-
-
-
-
-
 
     exact_username = whoami();
 
@@ -166,29 +63,11 @@ nhjs_unix_main(argc$, argv$)
 
     sethanguphandler(hangup);
 
-
-
     process_options(argc[0], argv[0]); /* command line options */
-
-
 
     init_nhwindows()(argc, argv[0]); /* now we can set up window system */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     getmailstatus();
-
 
     /* wizard mode access is deferred until here */
     set_playmode(); /* sets plname to "wizard" for wizard mode */
@@ -203,8 +82,8 @@ nhjs_unix_main(argc$, argv$)
         gl.locknum = 0;
     } else {
         /* suppress interrupts while processing lock file */
-        void signal(SIGQUIT, SIG_IGN);
-        void signal(SIGINT, SIG_IGN);
+        signal(SIGQUIT, SIG_IGN);
+        signal(SIGINT, SIG_IGN);
     }
 
     ; /* must be before newgame() */
@@ -222,7 +101,6 @@ nhjs_unix_main(argc$, argv$)
      * We'll return here if new game player_selection() renames the hero.
      */
  attempt_restore: for (;;) {
-
     /*
      * getlock() complains and quits if there is already a game
      * in progress for current character name (when gl.locknum == 0)
@@ -238,16 +116,14 @@ nhjs_unix_main(argc$, argv$)
         getlock();
 
         program_state.preserve_locks = 0; /* after getlock() */
-
     }
 
     if (chars[svp.plname] && (nhfp = restore_saved_game()) != null) {
         var fq_save = fqname(gs.SAVEF, SAVEPREFIX, 1);
 
-        void chmod(fq_save, 0); /* disallow parallel restores */
+        chmod(fq_save, 0); /* disallow parallel restores */
 
-        void signal(SIGINT, done1);
-
+        signal(SIGINT, done1);
 
         if (iflags.news) {
             display_file()(_(NEWS), FALSE);
@@ -267,9 +143,9 @@ nhjs_unix_main(argc$, argv$)
             if (discover() || wizard()) {
                 /* this seems like a candidate for paranoid_confirmation... */
                 if (y_n(_("Do you want to keep the save file?")) == ord('n')) {
-                    void delete_savefile();
+                    delete_savefile();
                 } else {
-                    void chmod(fq_save, FCMASK); /* back to readable */
+                    chmod(fq_save, FCMASK); /* back to readable */
                     nh_compress(fq_save);
                 }
             }
@@ -304,13 +180,11 @@ nhjs_unix_main(argc$, argv$)
             }
         }
 
-
         /* no save file; check for a panic save; if the check finds one,
            ask the player whether to proceed with a new game; it will
            quit instead of returning if the answer isn't yes */
         if (check_panic_save())
             ask_about_panic_save();
-
 
         /* no save file; start a new game */
         newgame();
@@ -323,12 +197,11 @@ nhjs_unix_main(argc$, argv$)
     exit(EXIT_SUCCESS);
     /*NOTREACHED*/
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* caveat: argv elements might be arbitrarily long */
-function /* void */
-process_options(argc, argv)
-{
+function process_options(argc, argv) { /* void */
     let arg, origarg;
     let i, l;
 
@@ -359,7 +232,7 @@ process_options(argc, argv)
         switch (chars[arg + 1]) {
         case ord('D'):
         case ord('d'):
-            if ((chars[arg + 1] == ord('D') && !chars[arg + 2]) || !strcmpi(arg, _("-debug"))) {
+            if ((chars[arg + 1] == ord('D') && !chars[arg + 2]) || !strncmpi((arg), _(("-debug")), -1)) {
                 flags.debug = TRUE, flags.explore = FALSE;
             } else if (!strncmpi(arg, _("-DECgraphics"), l)) {
                 load_symset(_("DECGraphics"), PRIMARYSET);
@@ -385,12 +258,12 @@ process_options(argc, argv)
             break;
         case ord('u'):
             if (chars[arg + 2]) {
-                void strncpy(svp.plname, arg + 2, sizeof_member(svp, "plname") - 1);
+                strncpy(svp.plname, arg + 2, sizeof_member(svp, "plname") - 1);
                 gp.plnamelen = 0; /* plname[] might have -role-race attached */
             } else if (argc > 1) {
                 argc--;
                 argv = argv.subarray(1);
-                void strncpy(svp.plname, argv[0], sizeof_member(svp, "plname") - 1);
+                strncpy(svp.plname, argv[0], sizeof_member(svp, "plname") - 1);
                 gp.plnamelen = 0;
             } else {
                 config_error_add(_("Character name expected after -u"));
@@ -457,25 +330,13 @@ process_options(argc, argv)
 
     if (argc > 1) {
         let mxplyrs = atoi(argv[1]);
-        let mx_ok = (+(mxplyrs > 0));
+        let mx_ok = +(mxplyrs > 0);
 
         config_error_add(_("%s%s%s"),
                          mx_ok ? _("MAXPLAYERS are set in sysconf file")
                                : _("Expected MAXPLAYERS, found \""),
                          mx_ok ? _("") : argv[1], mx_ok ? _("") : _("\""));
-
-
-
-
-
-
-
     }
-
-
-
-
-
 
     /* let syscf override compile-time limit */
     if (!gl.locknum || (sysopt.maxplayers && gl.locknum > sysopt.maxplayers))
@@ -486,42 +347,22 @@ process_options(argc, argv)
     return;
 }
 
-
-export function /* void */
-chdirx(dir, wr)
-{
+export function chdirx(dir, wr) { /* void */
     if (dir /* User specified directory? */
 
         && strcmp(dir, _(HACKDIR)) /* and not the default? */
 
         ) {
-
-
-
-
     } else {
         /* non-default data files is a sign that scores may not be
          * compatible, or perhaps that a binary not fitting this
          * system's layout is being used.
          */
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef VAR_PLAYGROUND: not in this build */
     }
-
 
     if (!dir)
         dir = _(HACKDIR);
-
 
     if (dir && chdir(dir) < 0) {
         perror(dir);
@@ -534,29 +375,15 @@ chdirx(dir, wr)
      * unfortunately the access system-call is worthless.
      */
     if (wr) {
-
-
-
-
-
-
-
-
-
-
-
-
+        /* #ifdef VAR_PLAYGROUND: not in this build */
 
         check_recordfile(dir);
     }
     return;
 }
 
-
 /* returns True iff we set plname[] to username which contains a hyphen */
-export function /* boolean */
-whoami()
-{
+export function whoami() { /* boolean */
     /*
      * Who am i? Algorithm: 1. Use name as specified in NETHACKOPTIONS
      *                      2. Use $USER or $LOGNAME    (if 1. fails)
@@ -578,7 +405,7 @@ whoami()
             s = getlogin();
 
         if (s && chars[s]) {
-            void strncpy(svp.plname, s, sizeof_member(svp, "plname") - 1);
+            strncpy(svp.plname, s, sizeof_member(svp, "plname") - 1);
             if (strchr(svp.plname, ord('-')))
                 return TRUE;
         }
@@ -586,10 +413,8 @@ whoami()
     return FALSE;
 }
 
-export function /* void */
-sethanguphandler(handler)
-{ const $frame = stack_frame(); try {
-
+export function sethanguphandler(handler) { /* void */
+    const $frame = stack_frame(); try {
     /* don't want reads to restart.  If SA_RESTART is defined, we know
      * sigaction exists and can be used to ensure reads won't restart.
      * If it's not defined, assume reads do not restart.  If reads restart
@@ -598,36 +423,18 @@ sethanguphandler(handler)
      * reading from, say, a window manager). */
     let sact = stack_struct(struct_sigaction);
 
-    void memset(addr_of(sact), 0, sizeof(struct_sigaction));
+    memset(addr_of(sact), 0, sizeof(struct_sigaction));
     sact.__sa_handler.sa_handler = handler;
-    void sigaction(SIGHUP, sact, null);
+    sigaction(SIGHUP, sact, null);
 
-    void sigaction(SIGXCPU, sact, null);
+    sigaction(SIGXCPU, sact, null);
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-} finally { stack_pop($frame); } }
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef PORT_HELP: not in this build */
 
 /* validate wizard mode if player has requested access to it */
-export function /* boolean */
-authorize_wizard_mode()
-{
+export function authorize_wizard_mode() { /* boolean */
     if (sysopt.wizards && chars[sysopt.wizards + 0]) {
         if (check_user_string(sysopt.wizards))
             return TRUE;
@@ -637,24 +444,16 @@ authorize_wizard_mode()
 }
 
 /* similar to above, validate explore mode access */
-export function /* boolean */
-authorize_explore_mode()
-{
-
+export function authorize_explore_mode() { /* boolean */
     if (sysopt.explorers && chars[sysopt.explorers + 0]) {
         if (check_user_string(sysopt.explorers))
             return TRUE;
     }
     iflags.explore_error_flag = TRUE; /* not allowed into explore mode */
     return FALSE;
-
-
-
 }
 
-function /* void */
-wd_message()
-{
+function wd_message() { /* void */
     if (iflags.wiz_error_flag) {
         if (sysopt.wizards && chars[sysopt.wizards + 0]) {
             let tmp = build_english_list(sysopt.wizards);
@@ -678,14 +477,12 @@ wd_message()
  * Add a slash to any name not ending in /. There must
  * be room for the /
  */
-export function /* void */
-append_slash(name)
-{
+export function append_slash(name) { /* void */
     let ptr;
 
     if (!chars[name])
         return;
-    ptr = name + (unsigned(strlen(name) - 1));
+    ptr = name + unsigned(strlen(name) - 1);
     if (chars[ptr] != ord('/')) {
         chars[++ptr] = ord('/');
         chars[++ptr] = ord('\0');
@@ -693,9 +490,7 @@ append_slash(name)
     return;
 }
 
-export function /* boolean */
-check_user_string(optstr)
-{
+export function check_user_string(optstr) { /* boolean */
     let pw;
     let pwlen;
     let eop, w;
@@ -729,9 +524,7 @@ check_user_string(optstr)
     return FALSE;
 }
 
-function /* struct passwd * */
-get_unix_pw()
-{
+function get_unix_pw() { /* struct passwd * */
     let user;
     let uid;
     let pw = static_var("get_unix_pw.pw", ptr_to(struct_passwd), null);
@@ -760,59 +553,20 @@ get_unix_pw()
     return pw[0];
 }
 
-export function /* char * */
-get_login_name()
-{
+export function get_login_name() { /* char * */
     let buf = static_array("get_login_name.buf", char, BUFSZ);
     let pw = get_unix_pw();
 
     chars[buf + 0] = ord('\0');
     if (pw)
-        void strcpy(buf, pw.pw_name);
+        strcpy(buf, pw.pw_name);
 
     return buf;
 }
 
+/* #ifdef __APPLE__: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* unsigned long long */
-sys_random_seed()
-{
+export function sys_random_seed() { /* unsigned long long */
     /* Harness comparison testing: if NETHACK_SEED is set, use it directly.
      * Leave has_strong_rngseed false so reseed_random() remains a no-op. */
     {
@@ -826,19 +580,7 @@ sys_random_seed()
     let seed = 0n;
     let pid = u64(ulong(getpid()));
     let no_seed = TRUE;
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef DEV_RANDOM: not in this build */
 
     if (no_seed) {
         seed = u64(ulong(getnow())); /* time((TIME_type) 0) */
@@ -852,38 +594,11 @@ sys_random_seed()
     return seed;
 }
 
-
-
-
-
-export function /* void */
-get_nhuuid()
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function get_nhuuid() { /* void */
+/* #if defined(NHUUID): not in this build */
 }
 
-export function /* void */
-free_nhuuid()
-{
+export function free_nhuuid() { /* void */
     let i;
 
     for (i = 0; i < (Math.trunc((sizeof_member(svn, "nhuuid") / sizeof(char)))); i++) {
@@ -891,124 +606,52 @@ free_nhuuid()
     }
 }
 /*unixmain.c*/
-import { DEFAULT_WINDOW_SYS } from "../../src/config.h.js";
-import { HACKDIR } from "../../src/config.h.js";
-import { NEWS } from "../../src/config.h.js";
-import { discover } from "../../src/flag.h.macros.js";
-import { wizard } from "../../src/flag.h.macros.js";
-import { BUFSZ } from "../../src/global.h.js";
-import { FALSE } from "../../src/global.h.js";
-import { TRUE } from "../../src/global.h.js";
-import { strcmpi } from "../../src/global.h.macros.js";
+
+import { DEFAULT_WINDOW_SYS, HACKDIR, NEWS } from "../../src/config.h.js";
+import { discover, wizard } from "../../src/flag.h.macros.js";
+import { BUFSZ, FALSE, TRUE } from "../../src/global.h.js";
 import { SAVEPREFIX } from "../../src/hack.h.js";
 import { y_n } from "../../src/hack.h.macros.js";
-import { PRIMARYSET } from "../../src/sym.h.js";
-import { ROGUESET } from "../../src/sym.h.js";
+import { PRIMARYSET, ROGUESET } from "../../src/sym.h.js";
 import { FCMASK } from "../../src/unixconf.h.js";
-import { display_file } from "../../src/winprocs.h.macros.js";
-import { init_nhwindows } from "../../src/winprocs.h.macros.js";
-import { mark_synch } from "../../src/winprocs.h.macros.js";
-import { player_selection } from "../../src/winprocs.h.macros.js";
-import { raw_print } from "../../src/winprocs.h.macros.js";
-import { struct_passwd } from "../../libc/records.js";
-import { struct_sigaction } from "../../libc/records.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { sizeof } from "../../rt/ctypes.js";
-import { ulong } from "../../rt/ctypes.js";
-import { unsigned } from "../../rt/ctypes.js";
-import { chars } from "../../rt/heap.js";
-import { stack_frame } from "../../rt/heap.js";
-import { stack_pop } from "../../rt/heap.js";
+import {
+    display_file, init_nhwindows, mark_synch, player_selection, raw_print,
+} from "../../src/winprocs.h.macros.js";
+import { struct_passwd, struct_sigaction } from "../../libc/records.js";
+import { char, int, ord, sizeof, ulong, unsigned } from "../../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../../rt/heap.js";
 import { u64 } from "../../rt/int64.js";
-import { EXIT_SUCCESS } from "../../rt/libc.js";
-import { SIGHUP } from "../../rt/libc.js";
-import { SIGINT } from "../../rt/libc.js";
-import { SIGQUIT } from "../../rt/libc.js";
-import { SIGXCPU } from "../../rt/libc.js";
-import { SIG_IGN } from "../../rt/libc.js";
-import { __isspace } from "../../rt/libc.js";
-import { atoi } from "../../rt/libc.js";
-import { chdir } from "../../rt/libc.js";
-import { chmod } from "../../rt/libc.js";
-import { exit } from "../../rt/libc.js";
-import { free } from "../../rt/libc.js";
-import { getenv } from "../../rt/libc.js";
-import { getlogin } from "../../rt/libc.js";
-import { getpid } from "../../rt/libc.js";
-import { getpwnam } from "../../rt/libc.js";
-import { getpwuid } from "../../rt/libc.js";
-import { getuid } from "../../rt/libc.js";
-import { memset } from "../../rt/libc.js";
-import { perror } from "../../rt/libc.js";
-import { sigaction } from "../../rt/libc.js";
-import { signal } from "../../rt/libc.js";
-import { strchr } from "../../rt/libc.js";
-import { strcmp } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { strlen } from "../../rt/libc.js";
-import { strncmp } from "../../rt/libc.js";
-import { strncpy } from "../../rt/libc.js";
-import { strtoull } from "../../rt/libc.js";
-import { umask } from "../../rt/libc.js";
-import { stack_struct } from "../../rt/locals.js";
-import { stack_var } from "../../rt/locals.js";
-import { static_array } from "../../rt/locals.js";
-import { static_var } from "../../rt/locals.js";
+import {
+    EXIT_SUCCESS, SIGHUP, SIGINT, SIGQUIT, SIGXCPU, SIG_IGN, __isspace, atoi, chdir, chmod, exit,
+    free, getenv, getlogin, getpid, getpwnam, getpwuid, getuid, memset, perror, sigaction, signal,
+    strchr, strcmp, strcpy, strlen, strncmp, strncpy, strtoull, umask,
+} from "../../rt/libc.js";
+import { stack_struct, stack_var, static_array, static_var } from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
-import { addr_of } from "../../rt/struct.js";
-import { ptr_to } from "../../rt/struct.js";
-import { sizeof_member } from "../../rt/struct.js";
-import { early_init } from "../../src/allmain.js";
-import { init_sound_disp_gamewindows } from "../../src/allmain.js";
-import { moveloop } from "../../src/allmain.js";
-import { newgame } from "../../src/allmain.js";
+import { addr_of, ptr_to, sizeof_member } from "../../rt/struct.js";
+import { early_init, init_sound_disp_gamewindows, moveloop, newgame } from "../../src/allmain.js";
 import { getnow } from "../../src/calendar.js";
-import { config_error_add } from "../../src/cfgfiles.js";
-import { config_error_done } from "../../src/cfgfiles.js";
-import { config_error_init } from "../../src/cfgfiles.js";
+import { config_error_add, config_error_done, config_error_init } from "../../src/cfgfiles.js";
 import { hangup } from "../../src/cmd.js";
-import { flags } from "../../src/decl.js";
-import { ge } from "../../src/decl.js";
-import { gh } from "../../src/decl.js";
-import { gl } from "../../src/decl.js";
-import { gp } from "../../src/decl.js";
-import { gs } from "../../src/decl.js";
-import { iflags } from "../../src/decl.js";
-import { program_state } from "../../src/decl.js";
-import { svh } from "../../src/decl.js";
-import { svn } from "../../src/decl.js";
-import { svp } from "../../src/decl.js";
-import { u } from "../../src/decl.js";
+import {
+    flags, ge, gh, gl, gp, gs, iflags, program_state, svh, svn, svp, u,
+} from "../../src/decl.js";
 import { early_options } from "../../src/earlyarg.js";
-import { build_english_list } from "../../src/end.js";
-import { done1 } from "../../src/end.js";
-import { check_panic_save } from "../../src/files.js";
-import { check_recordfile } from "../../src/files.js";
-import { delete_levelfile } from "../../src/files.js";
-import { delete_savefile } from "../../src/files.js";
-import { fqname } from "../../src/files.js";
-import { nh_compress } from "../../src/files.js";
-import { restore_saved_game } from "../../src/files.js";
-import { eos } from "../../src/hacklib.js";
-import { strncmpi } from "../../src/hacklib.js";
+import { build_english_list, done1 } from "../../src/end.js";
+import {
+    check_panic_save, check_recordfile, delete_levelfile, delete_savefile, fqname, nh_compress,
+    restore_saved_game,
+} from "../../src/files.js";
+import { eos, strncmpi } from "../../src/hacklib.js";
 import { getmailstatus } from "../../src/mail.js";
-import { initoptions } from "../../src/options.js";
-import { nh_getenv } from "../../src/options.js";
-import { set_playmode } from "../../src/options.js";
-import { You } from "../../src/pline.js";
-import { pline } from "../../src/pline.js";
+import { initoptions, nh_getenv, set_playmode } from "../../src/options.js";
+import { You, pline } from "../../src/pline.js";
 import { dorecover } from "../../src/restore.js";
 import { rng_log_init } from "../../src/rnd.js";
-import { plnamesuffix } from "../../src/role.js";
-import { str2race } from "../../src/role.js";
-import { str2role } from "../../src/role.js";
-import { load_symset } from "../../src/symbols.js";
-import { switch_symbols } from "../../src/symbols.js";
+import { plnamesuffix, str2race, str2role } from "../../src/role.js";
+import { load_symset, switch_symbols } from "../../src/symbols.js";
 import { sysopt } from "../../src/sys.js";
 import { vision_init } from "../../src/vision.js";
 import { choose_windows } from "../../src/windows.js";
-import { ask_about_panic_save } from "../c2js/nhjs_host.js";
-import { error } from "../c2js/nhjs_host.js";
+import { ask_about_panic_save, error } from "../c2js/nhjs_host.js";
 import { getlock } from "../c2js/nhjs_tty_api.js";

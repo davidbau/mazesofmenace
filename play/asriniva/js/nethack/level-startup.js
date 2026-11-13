@@ -3,6 +3,7 @@
 import {enableSelections} from './selections.js';
 import abi from './level-abi.json' with {type:'json'};
 import {enableMkmap} from './mkmap.js';
+import {nativeSpatialFor} from './native/spatial-state.js';
 import {is_pool_or_lava,is_ice} from '../ported/dbridge.js';
 import * as stairs from '../ported/stairs.js';
 import * as region from '../ported/region.js';
@@ -42,7 +43,7 @@ export function enableLevelStartup(environment,layouts,creation){
  local.Strcpy=(out,input)=>services.strcpy(environment.address(out),typeof input==='string'?services.literal(input):environment.address(input));local.Strcat=(out,input)=>services.strcat(environment.address(out),typeof input==='string'?services.literal(input):environment.address(input));
  environment.register('bones',Object.fromEntries(Object.keys(bonesServices.public).filter(name=>!environment.hasFunction(name)).map(name=>[name,bones[name]])),env,{prepareArgs:bonesServices.prepareArgs});
  enableMkmap(environment,layouts);
- const water=creation.context(layouts.dbridge);water.IS_WATERWALL=t=>t===layouts.dbridge.WATER;water.Is_juiblex_level=lev=>services.on_level(lev,creation.environment.svd.dungeon_topology.d_juiblex_level);environment.register('level-water-terrain',{is_pool_or_lava,is_ice},water);
+ const water=creation.context(layouts.dbridge);water.IS_WATERWALL=t=>t===layouts.dbridge.WATER;water.Is_juiblex_level=lev=>services.on_level(lev,creation.environment.svd.dungeon_topology.d_juiblex_level);environment.register('level-water-terrain',{is_pool_or_lava:nativeSpatialFor(environment,layouts).terrain.is_pool_or_lava,is_ice:nativeSpatialFor(environment,layouts).terrain.is_ice},water);
  const {views,context}=creation,stair=context(layouts.stairs),record=(type,p)=>views.record(type,p);
  Object.assign(stair,{StairwaySize:ctypes.size('stairway'),stairway:p=>record('stairway',p),assign_level:(to,from)=>memory.memmove(environment.address(to),environment.address(from),ctypes.size('d_level')),levelCopy:from=>{const p=environment.transport.stackAlloc(ctypes.size('d_level'));memory.memmove(p,environment.address(from),ctypes.size('d_level'));return record('d_level',p);},Sprintf:(out,format,...args)=>services.sprintf(environment.address(out),typeof format==='string'?services.literal(format):environment.address(format),...(format.includes('%d')?[environment.transport.int(args[0])]:args.map(v=>typeof v==='string'?services.literal(v):environment.address(v)))),strsubst:(out,from,to)=>environment.resolve('strsubst')(environment.address(out),typeof from==='string'?services.literal(from):environment.address(from),typeof to==='string'?services.literal(to):environment.address(to))});
  for(const name of ['earth','air','fire','water'])Object.defineProperty(stair,name+'_level',{get:()=>creation.environment.svd.dungeon_topology['d_'+name+'_level']});

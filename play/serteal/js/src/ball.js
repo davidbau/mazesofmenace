@@ -6,22 +6,9 @@
 /* Ball & Chain
  * =============================================================*/
 
-// #include "hack.h"
-
-
-
-
-
-
-
 const bcrestriction = static_var("bcrestriction", int, 0);
 
-
-
-
-export function /* void */
-ballrelease(showmsg)
-{
+export function ballrelease(showmsg) { /* void */
     if (carried(uball) && !welded(uball)) {
         if (showmsg)
             pline(_("Startled, you drop the iron ball."));
@@ -39,16 +26,14 @@ ballrelease(showmsg)
 }
 
 /* ball&chain might hit hero when falling through a trap door */
-export function /* void */
-ballfall()
-{
+export function ballfall() { /* void */
     let gets_hit;
 
     if (!uball || (uball && carried(uball) && welded(uball)))
         return;
 
-    gets_hit = (((((uball.ox != u.ux) || (uball.oy != u.uy))
-                && ((uwep == uball) ? FALSE : boolean(rn2(5)))) ? 1 : 0));
+    gets_hit = (((uball.ox != u.ux) || (uball.oy != u.uy))
+                && ((uwep == uball) ? FALSE : boolean(rn2(5))) ? 1 : 0);
     ballrelease(TRUE);
     if (gets_hit) {
         let dmg = rn1(7, 25);
@@ -116,21 +101,19 @@ export const BCPOS_BALL = 2;
  *
  *  Should not be called while swallowed except on waterlevel.
  */
-function /* void */
-placebc_core()
-{
+function placebc_core() { /* void */
     if (!uchain || !uball) {
         impossible(_("Where are your ball and chain?"));
         return;
     }
 
-    void flooreffects(uchain, u.ux, u.uy, _("")); /* chain might rust */
+    flooreffects(uchain, u.ux, u.uy, _("")); /* chain might rust */
 
     if (carried(uball)) { /* the ball is carried */
         u.bc_order = BCPOS_DIFFER;
     } else {
         /* ball might rust -- already checked when carried */
-        void flooreffects(uball, u.ux, u.uy, _(""));
+        flooreffects(uball, u.ux, u.uy, _(""));
         place_object(uball, u.ux, u.uy);
         u.bc_order = BCPOS_CHAIN;
     }
@@ -143,9 +126,7 @@ placebc_core()
     bcrestriction[0] = 0;
 }
 
-function /* void */
-unplacebc_core()
-{
+function unplacebc_core() { /* void */
     if (u.uswallow) {
         if (Is_waterlevel(u.uz)) {
             /* we need to proceed with the removal from the floor
@@ -176,9 +157,7 @@ unplacebc_core()
     u.bc_felt = 0; /* feel nothing */
 }
 
-function /* boolean */
-check_restriction(restriction)
-{
+function check_restriction(restriction) { /* boolean */
     let ret = FALSE;
 
     if (!bcrestriction[0] || (restriction == override_restriction))
@@ -188,17 +167,8 @@ check_restriction(restriction)
     return ret;
 }
 
-
-export function /* void */
-placebc()
-{
+export function placebc() { /* void */
     if (!check_restriction(0)) {
-
-
-
-
-
-
         return;
     }
     if (uchain && uchain.where != OBJ_FREE) {
@@ -208,9 +178,7 @@ placebc()
     placebc_core();
 }
 
-export function /* void */
-unplacebc()
-{
+export function unplacebc() { /* void */
     if (bcrestriction[0]) {
         impossible(_("unplacebc denied, restriction in place"));
         return;
@@ -218,9 +186,7 @@ unplacebc()
     unplacebc_core();
 }
 
-export function /* int */
-unplacebc_and_covet_placebc()
-{
+export function unplacebc_and_covet_placebc() { /* int */
     let restriction = 0;
 
     if (bcrestriction[0]) {
@@ -232,18 +198,8 @@ unplacebc_and_covet_placebc()
     return restriction;
 }
 
-export function /* void */
-lift_covet_and_placebc(pin)
-{
+export function lift_covet_and_placebc(pin) { /* void */
     if (!check_restriction(pin)) {
-
-
-
-
-
-
-
-
         return;
     }
     if (uchain && uchain.where != OBJ_FREE) {
@@ -253,106 +209,13 @@ lift_covet_and_placebc(pin)
     placebc_core();
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifndef BREADCRUMBS): not in this build */
 
 /*
  *  Return the stacking of the hero's ball & chain.  This assumes that the
  *  hero is being punished.
  */
-function /* int */
-bc_order()
-{
+function bc_order() { /* int */
     let obj;
 
     if (uchain.ox != uball.ox || uchain.oy != uball.oy || carried(uball)
@@ -376,9 +239,7 @@ bc_order()
  *  The hero is either about to go blind or already blind and just punished.
  *  Set up the ball and chain variables so that the ball and chain are "felt".
  */
-export function /* void */
-set_bc(already_blind)
-{
+export function set_bc(already_blind) { /* void */
     let ball_on_floor = +!carried(uball);
 
     u.bc_order = bc_order(); /* get the order */
@@ -433,10 +294,8 @@ set_bc(already_blind)
  *
  *  Should not be called while swallowed.
  */
-export function /* void */
-move_bc(before, control, ballx, bally,
-        chainx, chainy)
-{
+export function move_bc(before, control, ballx, bally,
+        chainx, chainy) { /* void */
     if (Blind()) {
         /*
          *  The hero is blind.  Time to work hard.  The ball and chain that
@@ -508,7 +367,6 @@ move_bc(before, control, ballx, bally,
 
             u.bc_order = bc_order(); /* reset the order */
         }
-
     } else {
         /*
          *  The hero is not blind.  To make this work correctly, we need to
@@ -556,11 +414,9 @@ move_bc(before, control, ballx, bally,
 }
 
 /* return TRUE if the caller needs to place the ball and chain down again */
-export function /* boolean */
-drag_ball(x, y, bc_control,
+export function drag_ball(x, y, bc_control,
           ballx, bally, chainx, chainy,
-          cause_delay, allow_drag)
-{
+          cause_delay, allow_drag) { /* boolean */
     var t = null;
     var already_in_rock;
 
@@ -605,13 +461,6 @@ drag_ball(x, y, bc_control,
             return TRUE;
         }
 
-
-
-
-
-
-
-
     /*
      * Don't ever move the chain into solid rock.  If we have to, then
      * instead undo the move_bc() and jump to the drag ball code.  Note
@@ -619,13 +468,6 @@ drag_ball(x, y, bc_control,
      * appear, since unless we moved at least two squares there is no
      * possibility of the chain position being in solid rock.
      */
-
-
-
-
-
-
-
 
         if (IS_CHAIN_ROCK(u.ux, u.uy) || IS_CHAIN_ROCK(chainx[0], chainy[0])
             || IS_CHAIN_ROCK(uball.ox, uball.oy))
@@ -716,7 +558,7 @@ drag_ball(x, y, bc_control,
         /* ball is two spaces horizontal or vertical from player; move*/
         /* chain in-between *unless* current chain position is OK */
         case 4:
-            if ((((distmin(x, y, uchain.ox, uchain.oy) <= 1) && (distmin(uchain.ox, uchain.oy, uball.ox, uball.oy) <= 1))))
+            if (((distmin(x, y, uchain.ox, uchain.oy) <= 1) && (distmin(uchain.ox, uchain.oy, uball.ox, uball.oy) <= 1)))
                 break;
             chainx[0] = Math.trunc((x + uball.ox) / 2);
             chainy[0] = Math.trunc((y + uball.oy) / 2);
@@ -748,10 +590,10 @@ drag_ball(x, y, bc_control,
         case 1:
         case 0:
             /* do nothing if possible */
-            if ((((distmin(x, y, uchain.ox, uchain.oy) <= 1) && (distmin(uchain.ox, uchain.oy, uball.ox, uball.oy) <= 1))))
+            if (((distmin(x, y, uchain.ox, uchain.oy) <= 1) && (distmin(uchain.ox, uchain.oy, uball.ox, uball.oy) <= 1)))
                 break;
             /* otherwise try to drag chain to player's old position */
-            if ((((distmin(x, y, u.ux, u.uy) <= 1) && (distmin(u.ux, u.uy, uball.ox, uball.oy) <= 1)))) {
+            if (((distmin(x, y, u.ux, u.uy) <= 1) && (distmin(u.ux, u.uy, uball.ox, uball.oy) <= 1))) {
                 chainx[0] = u.ux;
                 chainy[0] = u.uy;
                 break;
@@ -767,10 +609,8 @@ drag_ball(x, y, bc_control,
             break;
         }
 
-
         return TRUE;
     }
-
  }
 
     if (near_capacity() > SLT_ENCUMBER && dist2(x, y, u.ux, u.uy) <= 2) {
@@ -803,10 +643,9 @@ drag_ball(x, y, bc_control,
                 tmp += omon_adj(victim, uball, TRUE);
 
                 if (tmp >= dieroll)
-                    void hmon(victim, uball, HMON_DRAGGED, dieroll);
+                    hmon(victim, uball, HMON_DRAGGED, dieroll);
                 else
                     miss(xname(uball), victim);
-
             } /* now check again in case mon died */
             if (!m_at(uchain.ox, uchain.oy)) {
                 u.ux = uchain.ox;
@@ -867,7 +706,8 @@ drag_ball(x, y, bc_control,
 
     chars[cause_delay] = TRUE;
     return TRUE;
-} export function IS_CHAIN_ROCK(x, y) { return (((IS_OBSTRUCTED(levl()[x][y].typ)           || (IS_DOOR(levl()[x][y].typ)           && (levl()[x][y].flags & (D_CLOSED | D_LOCKED)))) ? 1 : 0)); }
+}
+export function IS_CHAIN_ROCK(x, y) { return (IS_OBSTRUCTED(levl()[x][y].typ) || (IS_DOOR(levl()[x][y].typ) && (levl()[x][y].flags & (D_CLOSED | D_LOCKED))) ? 1 : 0); }
 
 /*
  *  drop_ball()
@@ -878,14 +718,12 @@ drag_ball(x, y, bc_control,
  *
  *  Should not be called while swallowed.
  */
-export function /* void */
-drop_ball(x, y)
-{
+export function drop_ball(x, y) { /* void */
     if (Blind()) {
         /* get the order */
         u.bc_order = bc_order();
         /* pick up glyph */
-        u.bglyph = (u.bc_order) ? u.cglyph : levl()[x][y].glyph;
+        u.bglyph = u.bc_order ? u.cglyph : levl()[x][y].glyph;
     }
 
     if (x != u.ux || y != u.uy) {
@@ -947,7 +785,7 @@ drop_ball(x, y)
                 levl()[uchain.ox][uchain.oy].glyph = u.cglyph;
             u.bc_felt = 0; /* feel nothing */
             /* pick up new glyph */
-            u.cglyph = (u.bc_order) ? u.bglyph : levl()[u.ux][u.uy].glyph;
+            u.cglyph = u.bc_order ? u.bglyph : levl()[u.ux][u.uy].glyph;
         }
         movobj(uchain, u.ux, u.uy); /* has a newsym */
         if (Blind()) {
@@ -961,9 +799,7 @@ drop_ball(x, y)
 }
 
 /* ball&chain cause hero to randomly lose stuff from inventory */
-function /* void */
-litter()
-{
+function litter() { /* void */
     let otmp, nextobj = null;
     let capacity = weight_cap();
 
@@ -982,9 +818,7 @@ litter()
     }
 }
 
-export function /* void */
-drag_down()
-{
+export function drag_down() { /* void */
     let forward;
     let dragchance = 3;
 
@@ -1007,7 +841,7 @@ drag_down()
     if (forward) {
         if (rn2(6)) {
             pline_The(_("iron ball drags you downstairs!"));
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(6)) + 1)) / 2))) : (rnd(6)))),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(6)) + 1) / 2))) : (rnd(6))),
                    _("dragged downstairs by an iron ball"), NO_KILLER_PREFIX);
             litter();
         }
@@ -1015,14 +849,14 @@ drag_down()
         if (rn2(2)) {
              ;
             pline_The(_("iron ball smacks into you!"));
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(20)) + 1)) / 2))) : (rnd(20)))), _("iron ball collision"),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(20)) + 1) / 2))) : (rnd(20))), _("iron ball collision"),
                    KILLED_BY_AN);
             exercise(A_STR, FALSE);
             dragchance = uchar(dragchance - 2);
         }
         if (dragchance >= rnd(6)) {
             pline_The(_("iron ball drags you downstairs!"));
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(3)) + 1)) / 2))) : (rnd(3)))),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(3)) + 1) / 2))) : (rnd(3))),
                    _("dragged downstairs by an iron ball"), NO_KILLER_PREFIX);
             exercise(A_STR, FALSE);
             litter();
@@ -1030,9 +864,7 @@ drag_down()
     }
 }
 
-export function /* void */
-bc_sanity_check()
-{
+export function bc_sanity_check() { /* void */
     let otyp, freeball, freechain;
     let onam;
 
@@ -1050,10 +882,10 @@ bc_sanity_check()
     /* ball is free when swallowed, when changing levels or during air bubble
        management on Plane of Water (both of which start and end in between
        sanity checking cycles, so shouldn't be relevant), other times? */
-    freechain = (+(!uchain || uchain.where == OBJ_FREE));
-    freeball = (((!uball || uball.where == OBJ_FREE
+    freechain = +(!uchain || uchain.where == OBJ_FREE);
+    freeball = (!uball || uball.where == OBJ_FREE
                 /* lie to simplify the testing logic */
-                || (freechain && uball.where == OBJ_INVENT)) ? 1 : 0));
+                || (freechain && uball.where == OBJ_INVENT) ? 1 : 0);
     if (uball && (uball.otyp != HEAVY_IRON_BALL
                   || (uball.where != OBJ_FLOOR
                       && uball.where != OBJ_INVENT
@@ -1102,119 +934,52 @@ bc_sanity_check()
 }
 
 /*ball.c*/
+
 import { A_STR } from "./attrib.h.js";
 import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { HEAD } from "./hack.h.js";
-import { HMON_DRAGGED } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { override_restriction } from "./hack.h.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
+import { FALSE, TRUE, boolean } from "./global.h.js";
+import {
+    HEAD, HMON_DRAGGED, KILLED_BY, KILLED_BY_AN, LEG, NO_KILLER_PREFIX, SLT_ENCUMBER,
+    override_restriction,
+} from "./hack.h.js";
+import { Maybe_Half_Phys, rn1 } from "./hack.h.macros.js";
+import { OBJ_FLOOR, OBJ_FREE, OBJ_INVENT } from "./obj.h.js";
 import { carried } from "./obj.h.macros.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { IRON_CHAIN } from "./objects.h.js";
-import { LEFT_SIDE } from "./prop.h.js";
-import { RIGHT_SIDE } from "./prop.h.js";
-import { W_BALL } from "./prop.h.js";
-import { W_CHAIN } from "./prop.h.js";
-import { W_WEAPONS } from "./prop.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { BC_BALL } from "./you.h.js";
-import { BC_CHAIN } from "./you.h.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
+import { HEAVY_IRON_BALL, IRON_CHAIN } from "./objects.h.js";
+import { LEFT_SIDE, RIGHT_SIDE, W_BALL, W_CHAIN, W_WEAPONS } from "./prop.h.js";
+import { D_CLOSED, D_LOCKED, POOL } from "./rm.h.js";
+import { IS_DOOR, IS_OBSTRUCTED, MON_AT, levl, m_at } from "./rm.h.macros.js";
+import { is_hole, is_pit } from "./trap.h.macros.js";
+import {
+    BC_BALL, BC_CHAIN, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB,
+} from "./you.h.js";
 import { Luck } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
+import { Blind, Half_physical_damage, Levitation, Punished } from "./youprop.h.macros.js";
+import { char, int, sizeof_string, uchar } from "../rt/ctypes.js";
 import { chars } from "../rt/heap.js";
 import { abs } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { init_string, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { exercise } from "./attrib.js";
 import { is_pool } from "./dbridge.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gv } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { cls } from "./display.js";
-import { map_object } from "./display.js";
-import { newsym } from "./display.js";
-import { canletgo } from "./do.js";
-import { flooreffects } from "./do.js";
-import { set_wounded_legs } from "./do.js";
+import { flags, gi, gv, svl, u } from "./decl.js";
+import { cls, map_object, newsym } from "./display.js";
+import { canletgo, flooreffects, set_wounded_legs } from "./do.js";
 import { hliquid } from "./do_name.js";
 import { hard_helmet } from "./do_wear.js";
-import { hitfloor } from "./dothrow.js";
-import { omon_adj } from "./dothrow.js";
-import { losehp } from "./hack.js";
-import { movobj } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { weight_cap } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { distmin } from "./hacklib.js";
+import { hitfloor, omon_adj } from "./dothrow.js";
+import { losehp, movobj, near_capacity, nomul, spoteffects, weight_cap } from "./hack.js";
+import { dist2, distmin } from "./hacklib.js";
 import { freeinv } from "./invent.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { remove_object } from "./mkobj.js";
+import { obj_extract_self, place_object, remove_object } from "./mkobj.js";
 import { maybe_unhide_at } from "./mon.js";
-import { Yname2 } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { safe_typename } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
+import { Yname2, otense, safe_typename, xname, yname } from "./objnam.js";
 import { encumber_msg } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { You, You_feel, Your, impossible, pline, pline_The } from "./pline.js";
 import { body_part } from "./polyself.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { deltrap } from "./trap.js";
-import { fill_pit } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { t_at } from "./trap.js";
+import { rn2, rnd } from "./rnd.js";
+import { deltrap, fill_pit, reset_utrap, t_at } from "./trap.js";
 import { hmon } from "./uhitm.js";
-import { setuqwep } from "./wield.js";
-import { setuswapwep } from "./wield.js";
-import { setuwep } from "./wield.js";
-import { welded } from "./wield.js";
-import { find_mac } from "./worn.js";
-import { setnotworn } from "./worn.js";
+import { setuqwep, setuswapwep, setuwep, welded } from "./wield.js";
+import { find_mac, setnotworn } from "./worn.js";
 import { miss } from "./zap.js";

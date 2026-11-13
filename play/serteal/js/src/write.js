@@ -1,23 +1,14 @@
 /* NetHack 5.0	write.c	$NHDT-Date: 1702023275 2023/12/08 08:14:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.41 $ */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
- 
-
-
 /*
  * returns base cost of a scroll or a spellbook
  */
-function /* int */
-cost(otmp)
-{
+function cost(otmp) { /* int */
     if (otmp.oclass == SPBOOK_CLASS)
         return (10 * objects[otmp.otyp].oc_oc2);
 
     switch (otmp.otyp) {
-
     case SCR_MAIL:
         return 2;
 
@@ -57,9 +48,7 @@ cost(otmp)
 }
 
 /* getobj callback for object to write on */
-function /* int */
-write_ok(obj)
-{
+function write_ok(obj) { /* int */
     if (!obj || (obj.oclass != SCROLL_CLASS && obj.oclass != SPBOOK_CLASS))
         return GETOBJ_EXCLUDE;
 
@@ -70,9 +59,8 @@ write_ok(obj)
 }
 
 /* write -- applying a magic marker */
-export function /* int */
-dowrite(pen)
-{ const $frame = stack_frame(); try {
+export function dowrite(pen) { /* int */
+    const $frame = stack_frame(); try {
     var paper;
     var namebuf = init_list(stack_array(char, BUFSZ), []), nm, bp;
     var new_obj;
@@ -123,9 +111,9 @@ dowrite(pen)
     makeknown(SCR_BLANK_PAPER);
 
     /* what to write */
-    void sprintf(qbuf, _("What type of %s do you want to write?"), typeword);
+    sprintf(qbuf, _("What type of %s do you want to write?"), typeword);
     getlin(qbuf, namebuf);
-    void mungspaces(namebuf); /* remove any excess whitespace */
+    mungspaces(namebuf); /* remove any excess whitespace */
     if (chars[namebuf + 0] == ord('\x1b') || !chars[namebuf + 0])
         return ECMD_TIME;
     nm = namebuf;
@@ -138,7 +126,7 @@ dowrite(pen)
 
     if ((bp = strstri(nm, _(" armour"))) != 0) {
         memcpy(bp, _(" armor "), 7);
-        void mungspaces(bp + 1);        /* remove the extra space */
+        mungspaces(bp + 1);        /* remove the extra space */
     }
 
     deferred = real = 0; /* not any scroll or book */
@@ -247,7 +235,7 @@ dowrite(pen)
                        _("became literate by writing %s"), an(typeword));
 
     new_obj = mksobj(i, FALSE, FALSE);
-    new_obj.bknown = (((paper.bknown && pen.bknown) ? 1 : 0));
+    new_obj.bknown = (paper.bknown && pen.bknown ? 1 : 0);
 
     /* shk imposes a flat rate per use, not based on actual charges used */
     check_unpaid(pen);
@@ -327,10 +315,10 @@ dowrite(pen)
             update_inventory(); /* pen charges */
         } else {
             if (by_descr) {
-                void strcpy(namebuf, OBJ_DESCR(objects[new_obj.otyp]));
+                strcpy(namebuf, OBJ_DESCR(objects[new_obj.otyp]));
                 wipeout_text(namebuf, Math.trunc((6 + MAXULEV - u.ulevel) / 6), 0);
             } else
-                void sprintf(namebuf, _("%s was here!"), svp.plname);
+                sprintf(namebuf, _("%s was here!"), svp.plname);
             You(_("write \"%s\" and the scroll disappears."), namebuf);
             useup(paper);
         }
@@ -360,8 +348,8 @@ dowrite(pen)
         pline_The(_("spellbook warps strangely, then turns %s."),
                   new_book_description(new_obj.otyp, namebuf));
     }
-    new_obj.blessed = (+(curseval > 0));
-    new_obj.cursed = (+(curseval < 0));
+    new_obj.blessed = +(curseval > 0);
+    new_obj.cursed = +(curseval < 0);
 
     if (new_obj.otyp == SCR_MAIL)
         /* 0: delivered in-game via external event (or randomly for fake mail);
@@ -380,9 +368,10 @@ dowrite(pen)
     new_obj = hold_another_object(new_obj, _("Oops!  %s out of your grasp!"),
                                   The(aobjnam(new_obj, _("slip"))),
                                   0);
-    (void (new_obj)); /* try to avoid complaint about dead assignment */
+    (new_obj); /* try to avoid complaint about dead assignment */
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* most book descriptions refer to cover appearance, so we can issue a
    message for converting a plain book into one of those with something
@@ -391,18 +380,13 @@ dowrite(pen)
    looks funny, so we want to insert "into " prior to such descriptions;
    even that's rather iffy, indicating that such descriptions probably
    ought to be eliminated (especially "cloth"!) */
-function /* char * */
-new_book_description(booktype, outbuf)
-{
+function new_book_description(booktype, outbuf) { /* char * */
     /* subset of description strings from objects.c; if it grows
        much, we may need to add a new flag field to objects[] instead */
     let compositions = static_array("new_book_description.compositions", ptr_to(char), null, [
         _("parchment"),
         _("vellum"),
         _("cloth"),
-
-
-
 
         0
     ]);
@@ -413,116 +397,56 @@ new_book_description(booktype, outbuf)
         if (!strcmpi(descr, comp_p[0]))
             break;
 
-    void sprintf(outbuf, _("%s%s"), comp_p[0] ? _("into ") : _(""), descr);
+    sprintf(outbuf, _("%s%s"), comp_p[0] ? _("into ") : _(""), descr);
     return outbuf;
 }
 
 /*write.c*/
+
 import { A_WIS } from "./attrib.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { SCROLL_CLASS, SPBOOK_CLASS } from "./defsym.h.js";
+import { BUFSZ, FALSE, LL_CONDUCT, MAXULEV, QBUFSZ, TRUE } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_NOFLAGS } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { makeknown } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import {
+    ECMD_CANCEL, ECMD_OK, ECMD_TIME, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS,
+    GETOBJ_SUGGEST,
+} from "./hack.h.js";
+import { makeknown, rn1 } from "./hack.h.macros.js";
 import { nohands } from "./mondata.h.macros.js";
 import { PM_WIZARD } from "./monsters.h.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { SCR_AMNESIA } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_CHARGING } from "./objects.h.js";
-import { SCR_CONFUSE_MONSTER } from "./objects.h.js";
-import { SCR_CREATE_MONSTER } from "./objects.h.js";
-import { SCR_DESTROY_ARMOR } from "./objects.h.js";
-import { SCR_EARTH } from "./objects.h.js";
-import { SCR_ENCHANT_ARMOR } from "./objects.h.js";
-import { SCR_ENCHANT_WEAPON } from "./objects.h.js";
-import { SCR_FIRE } from "./objects.h.js";
-import { SCR_FOOD_DETECTION } from "./objects.h.js";
-import { SCR_GENOCIDE } from "./objects.h.js";
-import { SCR_GOLD_DETECTION } from "./objects.h.js";
-import { SCR_IDENTIFY } from "./objects.h.js";
-import { SCR_LIGHT } from "./objects.h.js";
-import { SCR_MAGIC_MAPPING } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SCR_PUNISHMENT } from "./objects.h.js";
-import { SCR_REMOVE_CURSE } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SCR_STINKING_CLOUD } from "./objects.h.js";
-import { SCR_TAMING } from "./objects.h.js";
-import { SCR_TELEPORTATION } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { spe_Fresh } from "./spell.h.js";
-import { spe_GoingStale } from "./spell.h.js";
-import { spe_Unknown } from "./spell.h.js";
+import { OBJ_DESCR, OBJ_NAME } from "./objclass.h.macros.js";
+import {
+    SCR_AMNESIA, SCR_BLANK_PAPER, SCR_CHARGING, SCR_CONFUSE_MONSTER, SCR_CREATE_MONSTER,
+    SCR_DESTROY_ARMOR, SCR_EARTH, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SCR_FIRE,
+    SCR_FOOD_DETECTION, SCR_GENOCIDE, SCR_GOLD_DETECTION, SCR_IDENTIFY, SCR_LIGHT,
+    SCR_MAGIC_MAPPING, SCR_MAIL, SCR_PUNISHMENT, SCR_REMOVE_CURSE, SCR_SCARE_MONSTER,
+    SCR_STINKING_CLOUD, SCR_TAMING, SCR_TELEPORTATION, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD,
+    SPE_NOVEL,
+} from "./objects.h.js";
+import { spe_Fresh, spe_GoingStale, spe_Unknown } from "./spell.h.js";
 import { Role_if } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { memcpy } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { Blind, Glib, Hallucination } from "./youprop.h.macros.js";
+import { char, ord } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { memcpy, sprintf, strcpy } from "../rt/libc.js";
+import { init_list, stack_array, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { ptr_to } from "../rt/struct.js";
 import { exercise } from "./attrib.js";
-import { gy } from "./decl.js";
-import { svb } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
+import { gy, svb, svp, u } from "./decl.js";
 import { dropx } from "./do.js";
 import { fingers_or_gloves } from "./do_wear.js";
 import { wipeout_text } from "./engrave.js";
-import { mungspaces } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { getobj } from "./invent.js";
-import { hold_another_object } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { bcsign } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
+import { mungspaces, strncmpi, strstri, upstart } from "./hacklib.js";
+import { getobj, hold_another_object, update_inventory, useup } from "./invent.js";
+import { bcsign, mksobj } from "./mkobj.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { an } from "./objnam.js";
-import { aobjnam } from "./objnam.js";
-import { ysimple_name } from "./objnam.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { check_unpaid } from "./shk.js";
-import { obfree } from "./shk.js";
+import { The, Tobjnam, an, aobjnam, ysimple_name } from "./objnam.js";
+import {
+    There, You, You_cant, Your, impossible, livelog_printf, pline, pline_The,
+} from "./pline.js";
+import { rn2, rnl } from "./rnd.js";
+import { check_unpaid, obfree } from "./shk.js";
 import { known_spell } from "./spell.js";
 import { getlin } from "./windows.js";

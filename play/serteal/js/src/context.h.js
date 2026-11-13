@@ -6,11 +6,7 @@
 /* If you change the context structure make sure you increment EDITLEVEL in */
 /* patchlevel.h if needed. */
 
-
-
-
 export const CONTEXTVERBSZ = 30;
-
 
     export const TIP_ENHANCE = 0; /* #enhance */
     export const TIP_SWIM = TIP_ENHANCE + 1; /* walking into water */
@@ -18,7 +14,6 @@ export const CONTEXTVERBSZ = 30;
     export const TIP_GETPOS = TIP_UNTRAP_MON + 1; /* getpos/farlook */
 
     export const NUM_TIPS = TIP_GETPOS + 1;
-
 
 /*
  * The context structure houses things that the game tracks
@@ -184,17 +179,7 @@ export const struct_context_info = struct("struct_context_info", {
     lifelist: "struct_lifelists",
     jingle: array_of(char, 5 + 1),
 });
-import { BUFSZ } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { BUFSZ, boolean, xint8 } from "./global.h.js";
+import { char, int, long, schar, short, ulong, unsigned } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

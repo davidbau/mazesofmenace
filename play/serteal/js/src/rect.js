@@ -2,12 +2,6 @@
 /* Copyright (c) 1990 by Jean-Christophe Collet                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
 /*
  * In this file, we will handle the various rectangle functions we
  * need for room generation.
@@ -25,12 +19,10 @@ const rect_cnt = static_var("rect_cnt", int);
  * new level to be build...
  */
 
-export function /* void */
-init_rect()
-{
+export function init_rect() { /* void */
     if (!rect[0]) {
         n_rects[0] = Math.trunc((COLNO * ROWNO) / 30);
-        rect[0] = view_of(struct_nhrect, addr_of(alloc(unsigned(unsigned(Math.imul(sizeof(struct_nhrect), unsigned(n_rects[0])))))));
+        rect[0] = view_of(struct_nhrect, addr_of(alloc(unsigned(Math.imul(sizeof(struct_nhrect), unsigned(n_rects[0]))))));
         if (!rect[0])
             panic(_("Could not alloc rect"));
     }
@@ -41,24 +33,19 @@ init_rect()
     ptr_add(rect[0], 0).hy = ROWNO - 1;
 }
 
-export function /* void */
-free_rect()
-{
+export function free_rect() { /* void */
     if (rect[0])
         free(addr_of(rect[0]));
     rect[0] = null;
     n_rects[0] = rect_cnt[0] = 0;
 }
 
-
 /*
  * Search Index of one precise NhRect.
  *
  */
 
-export function /* int */
-get_rect_ind(r)
-{
+export function get_rect_ind(r) { /* int */
     let rectp;
     let lx, ly, hx, hy;
     let i;
@@ -78,9 +65,7 @@ get_rect_ind(r)
  * Search a free rectangle that include the one given in arg
  */
 
-export function /* NhRect * */
-get_rect(r)
-{
+export function get_rect(r) { /* NhRect * */
     let rectp;
     let lx, ly, hx, hy;
     let i;
@@ -100,9 +85,7 @@ get_rect(r)
  * Get some random NhRect from the list.
  */
 
-export function /* NhRect * */
-rnd_rect()
-{
+export function rnd_rect() { /* NhRect * */
     return rect_cnt[0] > 0 ? ptr_add(rect[0], rn2(rect_cnt[0])) : null;
 }
 
@@ -112,9 +95,7 @@ rnd_rect()
  * otherwise returns FALSE
  */
 
-function /* boolean */
-intersect(r1, r2, r3)
-{
+function intersect(r1, r2, r3) { /* boolean */
     if (r2.lx > r1.hx || r2.ly > r1.hy || r2.hx < r1.lx
         || r2.hy < r1.ly)
         return FALSE;
@@ -130,9 +111,7 @@ intersect(r1, r2, r3)
 }
 
 /* Put the rectangle containing both r1 and r2 into r3 */
-export function /* void */
-rect_bounds(r1, r2, r3)
-{
+export function rect_bounds(r1, r2, r3) { /* void */
     r3.lx = min(r1.lx, r2.lx);
     r3.ly = min(r1.ly, r2.ly);
     r3.hx = max(r1.hx, r2.hx);
@@ -143,9 +122,7 @@ rect_bounds(r1, r2, r3)
  * Remove a rectangle from the list of free NhRect.
  */
 
-export function /* void */
-remove_rect(r)
-{
+export function remove_rect(r) { /* void */
     let ind;
 
     ind = get_rect_ind(r);
@@ -157,9 +134,7 @@ remove_rect(r)
  * Add a NhRect to the list.
  */
 
-export function /* void */
-add_rect(r)
-{
+export function add_rect(r) { /* void */
     if (rect_cnt[0] >= n_rects[0]) {
         impossible(_("n_rects may be too small."));
         return;
@@ -178,9 +153,8 @@ add_rect(r)
  * then remove it.
  */
 
-export function /* void */
-split_rects(r1, r2)
-{ const $frame = stack_frame(); try {
+export function split_rects(r1, r2) { /* void */
+    const $frame = stack_frame(); try {
     let r = stack_struct(struct_nhrect), old_r = stack_struct(struct_nhrect);
     let i;
 
@@ -214,30 +188,20 @@ split_rects(r1, r2)
         r.lx = r2.hx + 2;
         add_rect(r);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*rect.c*/
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
+
+import { COLNO, FALSE, ROWNO, TRUE } from "./global.h.js";
+import { max, min } from "./hack.h.macros.js";
 import { struct_nhrect } from "./rect.h.js";
-import { int } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { int, sizeof, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
 import { free } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { stack_struct, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, ptr_add, ptr_to, struct_assign, view_of } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { panic } from "./end.js";
 import { impossible } from "./pline.js";

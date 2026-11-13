@@ -11,62 +11,10 @@
 /* It's still not clear I've caught all the cases for H2344.  #undef this
  * to back out the changes. */
 
-
-// #include "hack.h"
-
-
-// #include "dlb.h"
-
 /* leave this undefined; it produces bad screen output with rxvt-unicode */
 /*#define DECgraphicsOptimization*/
 
-
-
-
-
-
-
-
-
-// #include "tcap.h"
-
-
-// #include "wintty.h"
-
-
-// #include <signal.h>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef DEF_PAGER: not in this build */
 
 /*
  * NetHack's core switches to a dummy windowing interface when it
@@ -77,40 +25,16 @@
  * that they return to the core instead attempting more terminal I/O.
  */
 
-
-
-
-
-
-
     /* morc=ESC - in case we bypass xwaitforspace() which sets that */
-
-
-
-
-
-
-
-
-
 
 /* Interface definition, for windows.c */
 export const tty_procs = static_struct("tty_procs", struct_window_procs, { name: _("tty"), wp_id: wp_tty,
     wincap: (0
 
-
-
-
-
-
-
-
-
      | WC_COLOR | WC_HILITE_PET | WC_INVERSE | WC_EIGHT_BIT_IN),
     wincap2: (0
 
      | WC2_SELECTSAVED
-
 
      | WC2_HILITE_STATUS | WC2_HITPOINTBAR | WC2_FLUSH_STATUS
      | WC2_RESET_STATUS
@@ -145,25 +69,6 @@ export const tty_procs = static_struct("tty_procs", struct_window_procs, { name:
     win_update_inventory: tty_update_inventory,
     win_ctrl_nhwindow: tty_ctrl_nhwindow });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 global_scalar("BASE_WINDOW", int);
 export const wins = static_array("wins", ptr_to(struct_WinDesc), MAXWIN);
 global_scalar("ttyDisplay", ptr_to(struct_DisplayDesc)); /* the tty display descriptor */
@@ -173,112 +78,26 @@ global_scalar("ttyDisplay", ptr_to(struct_DisplayDesc)); /* the tty display desc
 
 const erasing_tty_screen = static_var("erasing_tty_screen", int); /* volatile: SIGWINCH */
 
-
 const obuf = static_array("obuf", char, BUFSIZ); /* BUFSIZ is defined in stdio.h */
-
 
 const winpanicstr = init_string(static_array("winpanicstr", char, sizeof_string("Bad window Id %d (%s)")), _("Bad window Id %d (%s)"), true);
 
 export const defmorestr = init_string(static_array("defmorestr", char, sizeof_string("--More--")), _("--More--"), true);
 
-
-
-
-
-
-
 const clipping = static_var("clipping", schar, FALSE); /* clipping on? */
 const clipx = static_var("clipx", int, 0); const clipxmax = static_var("clipxmax", int, 0);
 const clipy = static_var("clipy", int, 0); const clipymax = static_var("clipymax", int, 0);
 
-
-
-
-
-
-
-
 global_scalar("GFlag", schar, FALSE);
 global_scalar("HE_resets_AS", schar); /* see termcap.c */
 
-
  /* __attribute__((noreturn)) */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const MAX_STATUS_ROWS = 3;
 export function StatusRows() { return ((iflags.wc2_statuslines <= 2) ? 2 : MAX_STATUS_ROWS); }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const calling_from_update_inventory = static_var("calling_from_update_inventory", schar, FALSE);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef TTY_PERM_INVENT: not in this build */
 
 /*
  * A string containing all the default commands -- to add to a list
@@ -291,106 +110,36 @@ const default_menu_cmds = static_array("default_menu_cmds", char, null, [
     MENU_INVERT_PAGE,   MENU_SEARCH,      0 /* null terminator */
 ]);
 
+/* #ifdef TTY_TILES_ESCCODES: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if defined(USER_SOUNDS) && defined(TTY_SOUND_ESCCODES): not in this build */
 
 /* clean up and quit */
-function /* void */
-bail(mesg)
-{
+function bail(mesg) { /* void */
     clearlocks();
     tty_exit_nhwindows(mesg);
     nh_terminate(EXIT_SUCCESS);
     /*NOTREACHED*/
 }
 
-
-
-
-
 const resize_mesg = static_var("resize_mesg", int, 0);
 
 /* signal handler is called with at least 1 arg */
 /*ARGUSED*/
-function /* void */
-winch_handler(sig_unused)
-{
-
-
-
-
-
-
-
-
-
-
+function winch_handler(sig_unused) { /* void */
     program_state.resize_pending++; /* resize_tty() will reset it */
     /* if nethack is waiting for input, which is the most likely scenario,
        we will go ahead and respond to the resize immediately; otherwise,
        tty_nhgetch() will do so the next time it's called */
     if (program_state.getting_char) {
         resize_tty();
-
-
-
-
-
-
     }
     return;
 }
 
 /* query the system for tty size (vis getwindowsz()), and adapt the game's
    windows to match */
-function /* void */
-resize_tty()
-{
+function resize_tty() { /* void */
     let oldLI = LI(), oldCO = CO(), mapx, mapy, oldtoplin, i;
     let map_active;
     let cw;
@@ -415,7 +164,7 @@ resize_tty()
 
     /* try to figure out where we'll want to leave the cursor */
     cw = (WIN_MAP != WIN_ERR) ? wins[WIN_MAP] : null;
-    map_active = (((cw && cw.active) ? 1 : 0));
+    map_active = (cw && cw.active ? 1 : 0);
     if (!map_active)
         mapx = 1, mapy = 0;
     else if (gg.getposx < 1)
@@ -438,8 +187,6 @@ resize_tty()
             if (i == BASE_WINDOW
                 || i == WIN_MAP /* docrt() updates it */
                 || i == WIN_STATUS /* docrt()+bot() updates it */
-
-
 
                 || i == WIN_MESSAGE) /* we fake it here */
                 continue;
@@ -466,11 +213,7 @@ resize_tty()
     return;
 }
 
-
-function /* void */
-newclipping(x, y)
-{
-
+function newclipping(x, y) { /* void */
     if (CO() < COLNO || LI() < 1 + ROWNO + iflags.wc2_statuslines) {
         setclipped(); /* sets clipping=TRUE */
         if (x)
@@ -480,16 +223,12 @@ newclipping(x, y)
         clipx[0] = clipy[0] = 0;
     }
 
-
-
     return;
 }
 
 /* destroy and recreate status window; extracted from winch_handler()
    and augmented for use by tty_preference_update() */
-function /* void */
-new_status_window()
-{
+function new_status_window() { /* void */
     if (WIN_STATUS != WIN_ERR) {
         /* in case it's shrinking, clear it before destroying so that
            dropped portion won't show anything that's now becoming stale */
@@ -503,13 +242,11 @@ new_status_window()
     tty_clear_nhwindow(WIN_STATUS); /* does some init, sets context.botlx */
 
     status_initialize(TRUE);
-
 }
 
 /*ARGSUSED*/
-export function /* void */
-tty_init_nhwindows(argcp, argv)
-{ const $frame = stack_frame(); try {
+export function tty_init_nhwindows(argcp, argv) { /* void */
+    const $frame = stack_frame(); try {
     let wid = stack_var(int), hgt = stack_var(int), i;
 
     /* options aren't processed yet so wc2_statuslines might be 0;
@@ -524,7 +261,7 @@ tty_init_nhwindows(argcp, argv)
      *    due to ordering of graphics settings
      */
 
-    setbuf((stdout), obuf);
+    setbuf(stdout, obuf);
 
     gettty();
 
@@ -553,9 +290,7 @@ tty_init_nhwindows(argcp, argv)
 
     ttyDisplay.lastwin = WIN_ERR;
 
-
-    void signal(SIGWINCH, winch_handler);
-
+    signal(SIGWINCH, winch_handler);
 
     tty_clear_nhwindow(BASE_WINDOW);
 
@@ -587,52 +322,27 @@ tty_init_nhwindows(argcp, argv)
     if ((tty_procs.wincap2 & WC2_STATUSLINES) != 0)
         set_wc2_option_mod_status(WC2_STATUSLINES,
 
-
-
                                       set_in_game);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-tty_preference_update(pref)
-{
-    let newstatuslines = (((!strcmp(pref, _("statuslines"))
-                              && iflags.window_inited) ? 1 : 0));
+export function tty_preference_update(pref) { /* void */
+    let newstatuslines = (!strcmp(pref, _("statuslines"))
+                              && iflags.window_inited ? 1 : 0);
 
     if (newstatuslines) {
         new_status_window();
         newclipping(u.ux, u.uy);
     }
 
-
-
-
     genl_preference_update(pref);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef TTY_PERM_INVENT: not in this build */
 
     return;
 }
 
-export function /* void */
-tty_player_selection()
-{
+export function tty_player_selection() { /* void */
     if (genl_player_setup(ttyDisplay.rows))
         return;
 
@@ -647,12 +357,9 @@ tty_player_selection()
  * Always called after init_nhwindows() and before
  * init_sound_disp_gamewindows().
  */
-export function /* void */
-tty_askname()
-{
+export function tty_askname() { /* void */
     let who_are_you = init_string(static_array("tty_askname.who_are_you", char, sizeof_string("Who are you? ")), _("Who are you? "), true);
     let c, ct, tryct = 0;
-
 
     if (iflags.wc2_selectsaved && !iflags.renameinprogress)
         switch (restore_menu(BASE_WINDOW)) {
@@ -666,7 +373,6 @@ tty_askname()
             return; /* svp.plname[] has been set */
         }
 
-
     tty_putstr(BASE_WINDOW, 0, _(""));
     do {
         if (++tryct > 1) {
@@ -678,7 +384,7 @@ tty_askname()
             tty_curs(BASE_WINDOW, 1, wins[BASE_WINDOW].cury), cl_end();
         }
         tty_putstr(BASE_WINDOW, 0, who_are_you);
-        tty_curs(BASE_WINDOW, (sizeof_string("Who are you? ")),
+        tty_curs(BASE_WINDOW, sizeof_string("Who are you? "),
                  wins[BASE_WINDOW].cury - 1);
         ct = 0;
         while ((c = tty_nhgetch()) != ord('\n')) {
@@ -691,29 +397,14 @@ tty_askname()
                 break;
             } /* continue outer loop */
 
-
-
-
             /* some people get confused when their erase char is not ^H */
             if (c == ord('\b') || c == ord('\x7f')) {
                 if (ct) {
                     ct--;
 
-
-
-
-
-
-
-
-
-
-
-
-                    void putchar(ord('\b'));
-                    void putchar(ord(' '));
-                    void putchar(ord('\b'));
-
+                    putchar(ord('\b'));
+                    putchar(ord(' '));
+                    putchar(ord('\b'));
 
                     /* Mirror the visible erase into the NOMUX shadow
                      * buffer. The \b/space/\b sequence emitted above
@@ -733,7 +424,6 @@ tty_askname()
                         ttyDisplay.curx--;
 
                     nomux_putch(ord(' '));
-
                 }
                 continue;
             }
@@ -746,25 +436,13 @@ tty_askname()
                     && !(c >= ord('0') && c <= ord('9') && ct > 0))
                     c = ord('_');
 
-            if (ct < (sizeof_member(svp, "plname")) - 1) {
-
-
-
-
-
-
-
-
-                void putchar(c);
-
+            if (ct < sizeof_member(svp, "plname") - 1) {
+                putchar(c);
 
                 nomux_putch(c);
                 ttyDisplay.curx++;
 
                 chars[svp.plname + (ct++)] = c;
-
-
-
             }
         }
         chars[svp.plname + ct] = 0;
@@ -778,18 +456,11 @@ tty_askname()
     iflags.renameallowed = TRUE;
 }
 
-export function /* void */
-tty_get_nh_event()
-{
+export function tty_get_nh_event() { /* void */
     return;
 }
 
-function /* void */
-getret()
-{
-
-
-
+function getret() { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     xputs(_("\n"));
     if (flags.standout)
@@ -804,35 +475,21 @@ getret()
     iflags.raw_printed = 0;
 }
 
-export function /* void */
-tty_suspend_nhwindows(str)
-{
+export function tty_suspend_nhwindows(str) { /* void */
     term_curs_set(1);
     settty(str); /* calls end_screen, perhaps raw_print */
     if (!str)
         tty_raw_print(_("")); /* calls fflush(stdout) */
 }
 
-export function /* void */
-tty_resume_nhwindows()
-{
+export function tty_resume_nhwindows() { /* void */
     gettty();
     setftty(); /* calls term_start_screen */
     term_curs_set(0);
     docrt();
 }
 
-
-
-
-
-
-
-
-
-export function /* void */
-tty_exit_nhwindows(str)
-{
+export function tty_exit_nhwindows(str) { /* void */
     let i;
 
     tty_suspend_nhwindows(str);
@@ -844,7 +501,6 @@ tty_exit_nhwindows(str)
         if (i == BASE_WINDOW)
             continue; /* handle wins[BASE_WINDOW] last */
         if (wins[i]) {
-
             free_window_info(wins[i], TRUE);
             free(addr_of(wins[i]));
 
@@ -863,16 +519,11 @@ tty_exit_nhwindows(str)
     free(addr_of(ttyDisplay));
     ttyDisplay = null;
 
-
     term_shutdown(); /* cleanup termcap/terminfo/whatever */
     iflags.window_inited = 0;
 }
 
-
-
-export function /* winid */
-tty_create_nhwindow(type)
-{
+export function tty_create_nhwindow(type) { /* winid */
     let newwin;
     let i, rowoffset;
     let newid;
@@ -921,16 +572,10 @@ tty_create_nhwindow(type)
         /* status window, 2 or 3 lines long, full width, bottom of screen */
         if (iflags.wc2_statuslines < 2
 
-
-
             || iflags.wc2_statuslines > 3)
             iflags.wc2_statuslines = 2;
         newwin.offx = 0;
         rowoffset = ttyDisplay.rows - iflags.wc2_statuslines;
-
-
-
-
 
             newwin.offy = min(rowoffset, ROWNO + 1);
         newwin.rows = newwin.maxrow = iflags.wc2_statuslines;
@@ -984,14 +629,10 @@ tty_create_nhwindow(type)
     return newid;
 }
 
-
-
-function /* void */
-erase_menu_or_text(
+function erase_menu_or_text(
     window,
     cw,
-    clear)
-{
+    clear) { /* void */
     if (cw.offx == 0) {
         if (cw.offy) {
             tty_curs(window, 1, 0);
@@ -1007,9 +648,7 @@ erase_menu_or_text(
     }
 }
 
-function /* void */
-free_window_info(cw, free_data)
-{
+function free_window_info(cw, free_data) { /* void */
     let i;
 
     if (cw.data) {
@@ -1054,9 +693,7 @@ free_window_info(cw, free_data)
     }
 }
 
-export function /* void */
-tty_clear_nhwindow(window)
-{
+export function tty_clear_nhwindow(window) { /* void */
     let i, j, m, n;
     let cw = null;
 
@@ -1115,15 +752,9 @@ tty_clear_nhwindow(window)
     case NHW_MENU:
     case NHW_TEXT:
 
-
-
         if (!erasing_tty_screen[0]) {
             if (cw.active)
                 erase_menu_or_text(window, cw, TRUE);
-
-
-
-
 
                 free_window_info(cw, FALSE);
         }
@@ -1134,15 +765,13 @@ tty_clear_nhwindow(window)
 }
 
 /* toggle a specific entry */
-function /* boolean */
-toggle_menu_curr(
+function toggle_menu_curr(
     window,
     curr,
     lineno,
     in_view,
     counting,
-    count)
-{
+    count) { /* boolean */
     if (curr.selected) {
         if (counting && count > 0) {
             curr.count = count;
@@ -1174,11 +803,9 @@ toggle_menu_curr(
     return FALSE;
 }
 
-function /* void */
-dmore(
+function dmore(
     cw,
-    s) /* valid responses */
-{
+    s) { /* void */ /* valid responses */
     let prompt = cw.morestr ? cw.morestr : defmorestr;
     let offset = (cw.type == NHW_TEXT) ? 1 : 2;
 
@@ -1200,12 +827,10 @@ dmore(
 
 /* change screen display for selection state of an item;
    not used or wanted for items that aren't shown by the current page */
-function /* void */
-set_item_state(
+function set_item_state(
     window,
     lineno,
-    item)
-{
+    item) { /* void */
     let ch = item.selected ? (item.count == -1 ? ord('+') : ord('#')) : ord('-');
 
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
@@ -1213,7 +838,7 @@ set_item_state(
     term_start_attr(item.attr);
     if (item.color != NO_COLOR)
         term_start_color(item.color);
-    void putchar(ch);
+    putchar(ch);
 
     nomux_putch(ch);
 
@@ -1224,12 +849,10 @@ set_item_state(
 }
 
 /* select all [ignores pending count, if any] */
-function /* void */
-set_all_on_page(
+function set_all_on_page(
     window,
     page_start,
-    page_end)
-{
+    page_end) { /* void */
     let curr;
     let n;
 
@@ -1244,12 +867,10 @@ set_all_on_page(
 }
 
 /* unselect all */
-function /* void */
-unset_all_on_page(
+function unset_all_on_page(
     window,
     page_start,
-    page_end)
-{
+    page_end) { /* void */
     let curr;
     let n;
 
@@ -1265,14 +886,12 @@ unset_all_on_page(
 }
 
 /* invert current page */
-function /* void */
-invert_all_on_page(
+function invert_all_on_page(
     window,
     page_start,
     page_end,
     acc,
-    count) /* pending count; -1L for non-group toggling */
-{
+    count) { /* void */ /* pending count; -1L for non-group toggling */
     let curr;
     let n;
 
@@ -1296,14 +915,12 @@ invert_all_on_page(
 }
 
 /* invert all entries that match given group accelerator (or all if zero) */
-function /* void */
-invert_all(
+function invert_all(
     window,
     page_start,
     page_end,
     acc,
-    count) /* pending count; -1L for non-group toggling */
-{
+    count) { /* void */ /* pending count; -1L for non-group toggling */
     let curr;
     let on_curr_page;
     let cw = wins[window];
@@ -1341,9 +958,7 @@ invert_all(
 }
 
 /* support menucolor in addition to caller-supplied attribute */
-function /* void */
-toggle_menu_attr(on, color, attr)
-{
+function toggle_menu_attr(on, color, attr) { /* void */
     if (on) {
         term_start_attr(attr);
         if (color != NO_COLOR)
@@ -1355,16 +970,15 @@ toggle_menu_attr(on, color, attr)
     }
 }
 
-function /* void */
-process_menu_window(window, cw)
-{ const $frame = stack_frame(); try { let $goto = null; var resp = stack_array(char, QBUFSZ), gacc = stack_array(char, QBUFSZ), gcnt = stack_array(int, 128), searchbuf = stack_array(char, BUFSZ + 2), tmpbuf = stack_array(char, BUFSZ);
+function process_menu_window(window, cw) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var resp = stack_array(char, QBUFSZ), gacc = stack_array(char, QBUFSZ), gcnt = stack_array(int, 128), searchbuf = stack_array(char, BUFSZ + 2), tmpbuf = stack_array(char, BUFSZ);
     var page_start, page_end, curr;
     var count;
     var n, attr_n, curr_page, page_lines, resp_len, previous_page_lines;
     var finished, counting, reset_count, show_obj_syms,
             only_if_no_headers = +((iflags.menuobjsyms & 4) != 0);
     var cp, rp, msave, morestr, really_morc;
-
 
     curr_page = page_lines = 0;
     page_start = page_end = null;
@@ -1382,7 +996,6 @@ process_menu_window(window, cw)
     chars[gacc + 0] = ord('\0');
     if (cw.how != PICK_NONE) {
         var i;
-
 
         for (i = 0; i < SIZE(gcnt); i++)
             gcnt[i] = 0;
@@ -1406,7 +1019,6 @@ process_menu_window(window, cw)
                     chars[rp++] = curr.gselector;
                     chars[rp] = ord('\0'); /* re-terminate for strchr() */
                 }
-
     }
     resp_len = 0; /* lint suppression */
 
@@ -1458,7 +1070,7 @@ process_menu_window(window, cw)
                     if (cw.offx)
                         cl_end();
 
-                    void putchar(ord(' '));
+                    putchar(ord(' '));
                     ++ttyDisplay.curx;
 
                     attr = curr.attr;
@@ -1488,9 +1100,6 @@ process_menu_window(window, cw)
 
                             (++ttyDisplay.curx) < ttyDisplay.cols;
 
-
-
-
                          cp++, n++) {
                         if (n == attr_n && (color != NO_COLOR
                                             || attr != ATR_NONE))
@@ -1501,9 +1110,8 @@ process_menu_window(window, cw)
 
                             { var svx = ttyDisplay.curx; ttyDisplay.curx--; nomux_putch(c); ttyDisplay.curx = svx; }
 
-
                             /* all selected: '*' vs count selected: '#' */
-                            void putchar(c);
+                            putchar(c);
                         } else if (n == 2 && curr.identifier.a_void != 0
                                    && show_obj_syms
                                    && curr.glyphinfo.glyph != NO_GLYPH) {
@@ -1512,16 +1120,15 @@ process_menu_window(window, cw)
                             /* tty_print_glyph could be used, but is overkill
                                and requires referencing the cursor location */
                             toggle_menu_attr(TRUE, gcolor, ATR_NONE);
-                            void putchar(curr.glyphinfo.ttychar);
+                            putchar(curr.glyphinfo.ttychar);
 
                             { var svx = ttyDisplay.curx; ttyDisplay.curx--; nomux_putch(curr.glyphinfo.ttychar); ttyDisplay.curx = svx; }
 
                             toggle_menu_attr(FALSE, gcolor, ATR_NONE);
                         } else {
-                            void putchar(chars[cp]);
+                            putchar(chars[cp]);
 
                             { var svx = ttyDisplay.curx; ttyDisplay.curx--; nomux_putch(chars[cp]); ttyDisplay.curx = svx; }
-
                         }
                     } /* for *cp */
                     if (n > attr_n && (color != NO_COLOR || attr != ATR_NONE))
@@ -1564,21 +1171,21 @@ process_menu_window(window, cw)
             }
             /* set extra chars.. */
             if (chars[gacc]) {
-                void strcat(resp, gacc);             /* group accelerators */
+                strcat(resp, gacc);             /* group accelerators */
                 if (cw.how == PICK_ONE)
                     resp_len = int(strlen(resp));
             }
-            void strcat(resp, _(" "));                  /* next page or end */
-            void strcat(resp, _("0123456789\x1b\n\r")); /* counts, quit */
-            void strcat(resp, gm.mapped_menu_cmds);
-            void strcat(resp, default_menu_cmds);
+            strcat(resp, _(" "));                  /* next page or end */
+            strcat(resp, _("0123456789\x1b\n\r")); /* counts, quit */
+            strcat(resp, gm.mapped_menu_cmds);
+            strcat(resp, default_menu_cmds);
 
             if (cw.npages > 1)
-                void sprintf(cw.morestr, _("(%d of %d)"), curr_page + 1, int(cw.npages));
+                sprintf(cw.morestr, _("(%d of %d)"), curr_page + 1, int(cw.npages));
             else if (msave)
-                void strcpy(cw.morestr, msave);
+                strcpy(cw.morestr, msave);
             else
-                void strcpy(cw.morestr, defmorestr)
+                strcpy(cw.morestr, defmorestr)
 ;
 
             tty_curs(window, 1, page_lines);
@@ -1748,7 +1355,7 @@ process_menu_window(window, cw)
                 tty_getlin(_("Search for:"), tmpbuf);
                 if (!chars[tmpbuf + 0] || chars[tmpbuf + 0] == ord('\x1b'))
                     break;
-                void sprintf(searchbuf, _("*%s*"), tmpbuf);
+                sprintf(searchbuf, _("*%s*"), tmpbuf);
 
                 for (curr = cw.mlist; curr; curr = curr.next) {
                     if (on_curr_page)
@@ -1799,26 +1406,23 @@ process_menu_window(window, cw)
                 }
             break;
         } break; }
-
     } /* while */
     cw.morestr = msave;
     free(morestr);
+    } finally { stack_pop($frame); }
+}
+export function GSELIDX(c) { return (c & 127); }
+export const MENU_EXPLICIT_CHOICE = 0x7f;
 
-} finally { stack_pop($frame); } } export function GSELIDX(c) { return ((c) & 127); } export const MENU_EXPLICIT_CHOICE = 0x7f;
-
-function /* void */
-process_text_window(window, cw)
-{
+function process_text_window(window, cw) { /* void */
     let i, n, attr;
     let linestart;
     let cp;
-
 
     if (cw.type == NHW_TEXT && !cw.offx) {
         /* c2js mirrors full-screen text-window backing clear. */
         nomux_clear_screen();
     }
-
 
     for (n = 0, i = 0; i < cw.maxrow; i++) {
         do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
@@ -1845,13 +1449,10 @@ process_text_window(window, cw)
 
         cl_end();
 
-
-
-
         if (cw.data[i]) {
             attr = chars[cw.data[i] + 0] - 1;
             if (cw.offx) {
-                void putchar(ord(' '));
+                putchar(ord(' '));
 
                 nomux_putch(ord(' '));
 
@@ -1862,9 +1463,6 @@ process_text_window(window, cw)
 
                  chars[cp] && (++ttyDisplay.curx) < ttyDisplay.cols;
                  cp++
-
-
-
 
                  ) {
                 /* message recall for msg_window:full/combination/reverse
@@ -1877,24 +1475,21 @@ process_text_window(window, cw)
                         g_putch(chars[cp]);
                         end_glyphout();
                     } else {
-                        void putchar(chars[cp]);
+                        putchar(chars[cp]);
 
                         { let svx = ttyDisplay.curx; ttyDisplay.curx--; nomux_putch(chars[cp]); ttyDisplay.curx = svx; }
-
                     }
                     linestart = FALSE;
                 } else {
-                    void putchar(chars[cp]);
+                    putchar(chars[cp]);
 
                     { let svx = ttyDisplay.curx; ttyDisplay.curx--; nomux_putch(chars[cp]); ttyDisplay.curx = svx; }
-
                 }
             }
             term_end_attr(attr);
         }
     }
     if (i == cw.maxrow) {
-
         if (cw.type == NHW_TEXT) {
             tty_curs(BASE_WINDOW, 1, ttyDisplay.cury + 1);
             cl_eos();
@@ -1910,11 +1505,9 @@ process_text_window(window, cw)
 }
 
 /*ARGSUSED*/
-export function /* void */
-tty_display_nhwindow(
+export function tty_display_nhwindow(
     window,
-    blocking) /* with ttys, all windows are blocking */
-{
+    blocking) { /* void */ /* with ttys, all windows are blocking */
     let cw = null;
     let s_maxcol;
 
@@ -1934,7 +1527,7 @@ tty_display_nhwindow(
             more();
             ttyDisplay.toplin = TOPLINE_NEED_MORE; /* more resets this */
             tty_clear_nhwindow(window);
-            void (((!!(ttyDisplay.toplin == TOPLINE_EMPTY)) || ((nhassert_failed(_("ttyDisplay->toplin == TOPLINE_EMPTY"), _(__FILE__), 0), 0))));
+            ((!!(ttyDisplay.toplin == TOPLINE_EMPTY)) || (nhassert_failed(_("ttyDisplay->toplin == TOPLINE_EMPTY"), _(__FILE__), 0), 0));
         } else
             ttyDisplay.toplin = TOPLINE_EMPTY;
         cw.curx = cw.cury = 0;
@@ -1952,7 +1545,7 @@ tty_display_nhwindow(
         /* FALLTHROUGH */;
         /*FALLTHRU*/
     case NHW_BASE:
-        void fflush((stdout));
+        fflush(stdout);
         break;
     case NHW_TEXT:
         cw.maxcol = ttyDisplay.cols; /* force full-screen mode */
@@ -1969,10 +1562,6 @@ tty_display_nhwindow(
                        : min(min(82, Math.trunc(ttyDisplay.cols / 2)),
                              ttyDisplay.cols - s_maxcol - 1);
 
-
-
-
-
         if (cw.offx < 0)
             cw.offx = 0;
         if (cw.type == NHW_MENU)
@@ -1982,9 +1571,6 @@ tty_display_nhwindow(
 
         if (cw.maxrow >= ttyDisplay.rows
             || !iflags.menu_overlay)
-
-
-
 
         {
             cw.offx = 0;
@@ -1997,7 +1583,6 @@ tty_display_nhwindow(
 
             /* c2js keeps NOMUX full-screen clears explicit. */
             nomux_clear_screen();
-
         } else {
             if (WIN_MESSAGE != WIN_ERR)
                 tty_clear_nhwindow(WIN_MESSAGE);
@@ -2012,9 +1597,7 @@ tty_display_nhwindow(
     cw.active = 1;
 }
 
-export function /* void */
-tty_dismiss_nhwindow(window)
-{
+export function tty_dismiss_nhwindow(window) { /* void */
     let cw = null;
 
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
@@ -2027,7 +1610,7 @@ tty_dismiss_nhwindow(window)
     case NHW_MESSAGE:
         if (ttyDisplay.toplin != TOPLINE_EMPTY)
             tty_display_nhwindow(WIN_MESSAGE, TRUE);
-        void (((!!(ttyDisplay.toplin == TOPLINE_EMPTY)) || ((nhassert_failed(_("ttyDisplay->toplin == TOPLINE_EMPTY"), _(__FILE__), 0), 0))));
+        ((!!(ttyDisplay.toplin == TOPLINE_EMPTY)) || (nhassert_failed(_("ttyDisplay->toplin == TOPLINE_EMPTY"), _(__FILE__), 0), 0));
         /* FALLTHROUGH */;
         /*FALLTHRU*/
     case NHW_STATUS:
@@ -2068,9 +1651,7 @@ tty_dismiss_nhwindow(window)
     cw.flags = 0;
 }
 
-export function /* void */
-tty_destroy_nhwindow(window)
-{
+export function tty_destroy_nhwindow(window) { /* void */
     let cw = null;
 
     if (window == WIN_ERR || (cw = wins[window]) == null) {
@@ -2086,26 +1667,19 @@ tty_destroy_nhwindow(window)
     if (cw.type == NHW_MAP)
         term_clear_screen();
 
-
-
-
     free_window_info(cw, TRUE);
     free(addr_of(cw));
     wins[window] = null; /* available for re-use */
 }
 
 /* when screen is cleared, reset stored data to spaces */
-export function /* void */
-erase_tty_screen()
-{
+export function erase_tty_screen() { /* void */
     let cw;
     let i;
 
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     if (erasing_tty_screen[0]++)
         return;
-
-
 
     /* update window data to reflect that each active window is all blanks */
     for (i = 0; i < MAXWIN; ++i) {
@@ -2117,11 +1691,9 @@ erase_tty_screen()
     erasing_tty_screen[0] = 0;
 }
 
-export function /* void */
-tty_curs(
+export function tty_curs(
     window,
-    x, y)  /* coordinates (and curx-x) must be signed */
-{
+    x, y) { /* void */ /* coordinates (and curx-x) must be signed */
     let cw = null;
     let cx = ttyDisplay.curx;
     let cy = ttyDisplay.cury;
@@ -2132,11 +1704,6 @@ tty_curs(
     ttyDisplay.lastwin = window;
 
      ;
-
-
-
-
-
 
     if (x < 1 || y < 0 || y >= cw.rows || x > cw.cols) {
         let s = _("[unknown type]");
@@ -2179,12 +1746,10 @@ tty_curs(
     x += cw.offx;
     y += cw.offy;
 
-
     if (clipping[0] && window == WIN_MAP) {
         x -= clipx[0];
         y -= clipy[0];
     }
-
 
     if (y == cy && x == cx)
         return;
@@ -2192,12 +1757,10 @@ tty_curs(
     if (cw.type == NHW_MAP)
         end_glyphout();
 
-
     if (!nh_ND() && (cx != x || x <= 3)) { /* Extremely primitive */
         cmov(x, y);                      /* bunker!wtm */
         return;
     }
-
 
     if ((cy -= y) < 0)
         cy = -cy;
@@ -2205,14 +1768,12 @@ tty_curs(
         cx = -cx;
     if (cy <= 3 && cx <= 3) {
         nocmov(x, y);
-
     } else if ((x <= 3 && cy <= 3) || (!nh_CM() && x < cx)) {
-        void putchar(ord('\r'));
+        putchar(ord('\r'));
         ttyDisplay.curx = 0;
         nocmov(x, y);
     } else if (!nh_CM()) {
         nocmov(x, y);
-
     } else
         cmov(x, y);
 
@@ -2220,47 +1781,9 @@ tty_curs(
     ttyDisplay.cury = y;
 }
 
+/* #ifndef STATUS_HILITES: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* const char * */
-compress_str(str)
-{
+function compress_str(str) { /* const char * */
     let cbuf = static_array("compress_str.cbuf", char, BUFSZ);
 
     /* compress out consecutive spaces if line is too long;
@@ -2278,7 +1801,7 @@ compress_str(str)
             if (was_space && c == ord(' '))
                 continue;
             chars[outstr++] = c;
-            was_space = (+(c == ord(' ')));
+            was_space = +(c == ord(' '));
         }
         if ((was_space && outstr > cbuf) || outstr == outend)
             --outstr; /* remove trailing space or make room for terminator */
@@ -2288,16 +1811,10 @@ compress_str(str)
     return str;
 }
 
-export function /* void */
-tty_putstr(window, attr, str)
-{
+export function tty_putstr(window, attr, str) { /* void */
     let cw = null;
     let ob;
     let i, n0;
-
-
-
-
 
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     /* Assume there's a real problem if the window is missing --
@@ -2313,8 +1830,6 @@ tty_putstr(window, attr, str)
         return;
     if (cw.type != NHW_MESSAGE
 
-
-
        )
         str = compress_str(str);
 
@@ -2326,7 +1841,6 @@ tty_putstr(window, attr, str)
     case NHW_MESSAGE: {
         let suppress_history = (attr & ATR_NOHISTORY),
             urgent_message = (attr & ATR_URGENT);
-
 
         /* if ^C occurs, player is prompted with "Really quit?" and that
            prompt is issued via tty_putstr(WIN_MESSAGE); if ^C happens
@@ -2366,44 +1880,13 @@ tty_putstr(window, attr, str)
         cw.flags &= ~WIN_NOSTOP; /* NOSTOP is a one-shot operation */
         break;
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifndef STATUS_HILITES: not in this build */
 
     case NHW_MAP:
         tty_curs(window, cw.curx + 1, cw.cury);
         term_start_attr(attr);
         while (chars[str] && ttyDisplay.curx < ttyDisplay.cols - 1) {
-            void putchar(chars[str]);
+            putchar(chars[str]);
 
             nomux_putch(chars[str]);
 
@@ -2423,7 +1906,7 @@ tty_putstr(window, attr, str)
                 cw.cury++;
                 tty_curs(window, cw.curx + 1, cw.cury);
             }
-            void putchar(chars[str]);
+            putchar(chars[str]);
 
             nomux_putch(chars[str]);
 
@@ -2439,8 +1922,6 @@ tty_putstr(window, attr, str)
 
         if (cw.type == NHW_TEXT
             && (cw.cury + cw.offy) == ttyDisplay.rows - 1)
-
-
 
         {
             /* not a menu, so save memory and output 1 page at a time */
@@ -2458,7 +1939,7 @@ tty_putstr(window, attr, str)
             let tmp;
 
             cw.rows += 12;
-            tmp = ref_to(ptr_to(char), addr_of(alloc(unsigned(unsigned(Math.imul(sizeof(ptr_to(char)), unsigned(cw.rows)))))));
+            tmp = ref_to(ptr_to(char), addr_of(alloc(unsigned(Math.imul(sizeof(ptr_to(char)), unsigned(cw.rows))))));
             for (i = 0; i < cw.maxrow; i++)
                 tmp[i] = cw.data[i];
             if (cw.data)
@@ -2473,7 +1954,7 @@ tty_putstr(window, attr, str)
         n0 = strlen(str) + 1;
         ob = cw.data[cw.cury] = addr_of(alloc(unsigned(unsigned(n0) + 1)));
         chars[ob++] = char((attr + 1)); /* avoid nuls, for convenience */
-        void strcpy(ob, str);
+        strcpy(ob, str);
 
         if (n0 > cw.maxcol)
             cw.maxcol = n0;
@@ -2493,43 +1974,11 @@ tty_putstr(window, attr, str)
     return;
 }
 
-export function /* void */
-tty_display_file(
+export function tty_display_file(
     fname,
-    complain)  /* whether to report problem if file can't be opened */
-{ const $frame = stack_frame(); try {
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    complain) { /* void */ /* whether to report problem if file can't be opened */
+    const $frame = stack_frame(); try {
+    /* #ifdef DEF_PAGER: not in this build */
 
     {
         let f;
@@ -2567,11 +2016,8 @@ tty_display_file(
                 if ((cr = strchr(buf, ord('\n'))) != 0)
                     chars[cr] = 0;
 
-
-
-
                 if (strchr(buf, ord('\t')) != 0)
-                    void tabexpand(buf);
+                    tabexpand(buf);
                 empty = FALSE;
                 tty_putstr(datawin, 0, buf);
                 if (wins[datawin].flags & WIN_CANCELLED)
@@ -2580,43 +2026,23 @@ tty_display_file(
             if (!empty)
                 tty_display_nhwindow(datawin, FALSE);
             tty_destroy_nhwindow(datawin);
-            void dlb_fclose(f);
+            dlb_fclose(f);
         }
     }
 
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-tty_start_menu(window, mbehavior)
-{
+export function tty_start_menu(window, mbehavior) { /* void */
     let cw = null;
 
     if (window == WIN_ERR || (cw = wins[window]) == null)
         panic(winpanicstr, window, _("tty_start_menu"));
 
+    /* #ifdef TTY_PERM_INVENT: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (mbehavior));
-
+    (mbehavior);
 
     tty_clear_nhwindow(window);
     return;
@@ -2627,8 +2053,7 @@ tty_start_menu(window, mbehavior)
  * Add a menu item to the beginning of the menu list.  This list is reversed
  * later.
  */
-export function /* void */
-tty_add_menu(
+export function tty_add_menu(
     window,
     glyphinfo,
 
@@ -2638,9 +2063,9 @@ tty_add_menu(
     attr,
     clr,
     str,
-    itemflags) /* itemflags such as MENU_ITEMFLAGS_SELECTED */
-{ const $frame = stack_frame(); try {
-    let preselected = (+((itemflags & MENU_ITEMFLAGS_SELECTED) != 0));
+    itemflags) { /* void */ /* itemflags such as MENU_ITEMFLAGS_SELECTED */
+    const $frame = stack_frame(); try {
+    let preselected = +((itemflags & MENU_ITEMFLAGS_SELECTED) != 0);
     let cw = null;
     let item;
     let newstr;
@@ -2655,13 +2080,6 @@ tty_add_menu(
         || cw.type != NHW_MENU)
         panic(winpanicstr, window, _("tty_add_menu"));
 
-
-
-
-
-
-
-
     cw.nitems++;
     if (identifier.a_void) {
         let len = int(strlen(str));
@@ -2671,8 +2089,8 @@ tty_add_menu(
             impossible(_("Menu item too long (%d)."), len);
             len = BUFSZ - 1;
         }
-        void sprintf(buf, _("%c - "), ch ? ch : ord('?'));
-        void strncpy(buf + 4, str, unsigned(len));
+        sprintf(buf, _("%c - "), ch ? ch : ord('?'));
+        strncpy(buf + 4, str, unsigned(len));
         chars[buf + (4 + len)] = ord('\0');
         newstr = buf;
     } else
@@ -2692,12 +2110,11 @@ tty_add_menu(
 
     item.next = cw.mlist;
     cw.mlist = item;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Invert the given list, can handle NULL as an input. */
-function /* tty_menu_item * */
-reverse(curr)
-{
+function reverse(curr) { /* tty_menu_item * */
     let next, head = null;
 
     while (curr) {
@@ -2717,11 +2134,10 @@ const tty_menu_promptstyle = static_struct("tty_menu_promptstyle", struct_color_
  * keyboard accelerators as needed.  Finally we decide on the width and
  * height of the window.
  */
-export function /* void */
-tty_end_menu(
+export function tty_end_menu(
     window,
-    prompt) /* prompt to for menu */
-{ const $frame = stack_frame(); try {
+    prompt) { /* void */ /* prompt to for menu */
+    const $frame = stack_frame(); try {
     let cw = null;
     let curr;
     let len;
@@ -2738,13 +2154,6 @@ tty_end_menu(
             return;
         panic(winpanicstr, window, _("tty_end_menu"));
     }
-
-
-
-
-
-
-
 
     /* Reverse the list so that items are in correct order. */
     cw.mlist = reverse(cw.mlist);
@@ -2814,7 +2223,7 @@ tty_end_menu(
     if (cw.npages > 1) {
         let buf = stack_array(char, QBUFSZ);
         /* produce the largest demo string */
-        void sprintf(buf, _("(%lld of %lld) "), cw.npages, cw.npages);
+        sprintf(buf, _("(%lld of %lld) "), cw.npages, cw.npages);
         len = short(strlen(buf));
         cw.morestr = dupstr(_(""));
     } else {
@@ -2841,11 +2250,10 @@ tty_end_menu(
         cw.maxrow = cw.rows = lmax + 1;
     else
         cw.maxrow = cw.rows = cw.nitems + 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-tty_select_menu(window, how, menu_list)
-{
+export function tty_select_menu(window, how, menu_list) { /* int */
     let cw = null;
     let curr;
     let mi;
@@ -2874,7 +2282,7 @@ tty_select_menu(window, how, menu_list)
     }
 
     if (n > 0) {
-        menu_list[0] = view_of(struct_mi, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(n), sizeof(struct_mi)))))));
+        menu_list[0] = view_of(struct_mi, addr_of(alloc(unsigned(Math.imul(unsigned(n), sizeof(struct_mi))))));
         for (mi = menu_list[0], curr = cw.mlist; curr; curr = curr.next)
             if (curr.selected) {
                 struct_assign(mi.item, curr.identifier);
@@ -2887,9 +2295,7 @@ tty_select_menu(window, how, menu_list)
 }
 
 /* special hack for treating top line --More-- as a one item menu */
-export function /* char */
-tty_message_menu(let_, how, mesg)
-{
+export function tty_message_menu(let_, how, mesg) { /* char */
     do { if (program_state.done_hup) return (ord('\x1b')); } while (0);
     /* "menu" without selection; use ordinary pline, no more() */
     if (how == PICK_NONE) {
@@ -2907,7 +2313,7 @@ tty_message_menu(let_, how, mesg)
         more();
         ttyDisplay.toplin = TOPLINE_NEED_MORE; /* more resets this */
         tty_clear_nhwindow(WIN_MESSAGE);
-        void (((!!(ttyDisplay.toplin == TOPLINE_EMPTY)) || ((nhassert_failed(_("ttyDisplay->toplin == TOPLINE_EMPTY"), _(__FILE__), 0), 0))));
+        ((!!(ttyDisplay.toplin == TOPLINE_EMPTY)) || (nhassert_failed(_("ttyDisplay->toplin == TOPLINE_EMPTY"), _(__FILE__), 0), 0));
     }
     /* normally <ESC> means skip further messages, but in this case
        it means cancel the current prompt; any other messages should
@@ -2918,59 +2324,17 @@ tty_message_menu(let_, how, mesg)
     return ((how == PICK_ONE && morc == let_) || morc == ord('\x1b')) ? morc : ord('\0');
 }
 
-export function /* win_request_info * */
-tty_ctrl_nhwindow(
+export function tty_ctrl_nhwindow(
     window,
     request,
-    wri)
-{
-
-
-
-
-
-
-
-
-
+    wri) { /* win_request_info * */
     if (!wri)
         return null;
 
     switch (request) {
     case set_mode:
     case request_settings:
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        /* #if defined(TTY_PERM_INVENT): not in this build */
 
         break;
     case set_menu_promptstyle:
@@ -2982,719 +2346,21 @@ tty_ctrl_nhwindow(
     return wri;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef TTY_PERM_INVENT: not in this build */
 
 /* update persistent inventory window */
-export function /* void */
-tty_update_inventory(arg)
-{
-
-
-
+export function tty_update_inventory(arg) { /* void */
     /* do nothing */
 
     return;
 }
 
-export function /* void */
-tty_mark_synch()
-{
+export function tty_mark_synch() { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
-    void fflush((stdout));
+    fflush(stdout);
 }
 
-export function /* void */
-tty_wait_synch()
-{
+export function tty_wait_synch() { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     /* we just need to make sure all windows are synch'd */
     if (WIN_MAP == WIN_ERR || !ttyDisplay || ttyDisplay.rawprint) {
@@ -3705,47 +2371,28 @@ tty_wait_synch()
         tty_display_nhwindow(WIN_MAP, FALSE);
         if (ttyDisplay.inmore) {
             addtopl(_("--More--"));
-            void fflush((stdout));
+            fflush(stdout);
         } else if (ttyDisplay.inread > program_state.gameover) {
             /* this can only happen if we were reading and got interrupted */
             ttyDisplay.toplin = TOPLINE_SPECIAL_PROMPT;
             /* do this twice; 1st time gets the Quit? message again */
-            void tty_doprev_message();
-            void tty_doprev_message();
+            tty_doprev_message();
+            tty_doprev_message();
             ttyDisplay.intr++;
-            void fflush((stdout));
+            fflush(stdout);
         }
     }
 }
 
-export function /* void */
-docorner(
+export function docorner(
     xmin, ymax,
-    ystart_between_menu_pages)
-{
+    ystart_between_menu_pages) { /* void */
     let y;
     let cw = wins[WIN_MAP];
     let ystart = 0;
 
-
-
-
-
-
-
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     if (ymax > LI())
         ymax = LI(); /* can happen if window gets smaller */
@@ -3758,29 +2405,11 @@ docorner(
         if (!ystart_between_menu_pages)
             cl_end();                   /* clear to end of line */
 
-
-
-
-
-
-
-
         if (y < cw.offy || y + clipy[0] > ROWNO)
             continue; /* only refresh board */
 
-
-
-
-
-
             row_refresh(xmin + clipx[0] - cw.offx, COLNO - 1,
                         y + clipy[0] - cw.offy);
-
-
-
-
-
-
     }
 
     end_glyphout();
@@ -3792,9 +2421,7 @@ docorner(
     }
 }
 
-export function /* void */
-end_glyphout()
-{
+export function end_glyphout() { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
 
     if (GFlag) {
@@ -3808,17 +2435,13 @@ end_glyphout()
     }
 }
 
-export function /* void */
-g_putch(in_ch)
-{
+export function g_putch(in_ch) { /* void */
     let ch = char(in_ch);
-
 
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
 
-
     if (SYMHANDLING(H_UTF8)) {
-        void putchar(ch);
+        putchar(ch);
     } else if (SYMHANDLING(H_IBM)
         /* for DECgraphics, lower-case letters with high bit set mean
            switch character set and render with high bit clear;
@@ -3826,38 +2449,22 @@ g_putch(in_ch)
         || (iflags.wc_eight_bit_input && (!SYMHANDLING(H_DEC)
                                      || (in_ch & 0x7f) < 0x60))) {
         /* IBM-compatible displays don't need other stuff */
-        void putchar(ch);
+        putchar(ch);
     } else if (ch & 0x80) {
         if (!GFlag || HE_resets_AS) {
             graph_on();
             GFlag = TRUE;
         }
-        void putchar((ch ^ 0x80)); /* Strip 8th bit */
+        putchar((ch ^ 0x80)); /* Strip 8th bit */
     } else {
         if (GFlag
-
-
-
-
-
-
-
 
             ) {
             graph_off();
             GFlag = FALSE;
         }
-        void putchar(ch);
+        putchar(ch);
     }
-
-
-
-
-
-
-
-
-
 
     /* Strip high bit for DEC graphics, matching putchar(ch ^ 0x80) */
     nomux_putch(uchar(((ch & 0x80) ? (ch ^ 0x80) : ch)));
@@ -3865,34 +2472,23 @@ g_putch(in_ch)
     return;
 }
 
-
-
-export function /* void */
-g_pututf8(utf8str)
-{
+export function g_pututf8(utf8str) { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     while (uchars[utf8str]) {
-        void putchar(uchars[utf8str]);
+        putchar(uchars[utf8str]);
         utf8str++;
     }
     return;
 }
 
-
-
-
-export function /* void */
-setclipped()
-{
+export function setclipped() { /* void */
     clipping[0] = TRUE;
     clipx[0] = clipy[0] = 0;
     clipxmax[0] = CO();
     clipymax[0] = LI() - 1 - iflags.wc2_statuslines;
 }
 
-export function /* void */
-tty_cliparound(x, y)
-{
+export function tty_cliparound(x, y) { /* void */
     let oldx = clipx[0], oldy = clipy[0];
 
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
@@ -3917,7 +2513,6 @@ tty_cliparound(x, y)
     }
 }
 
-
 /*
  *  tty_print_glyph
  *
@@ -3927,13 +2522,11 @@ tty_cliparound(x, y)
  *  position and glyph are always correct (checked there)!
  */
 
-export function /* void */
-tty_print_glyph(
+export function tty_print_glyph(
     window,
     x, y,
     glyphinfo,
-    bkglyphinfo)
-{
+    bkglyphinfo) { /* void */
     let inverse_on = FALSE, colordone = FALSE, glyphdone = FALSE;
     let petattr = FALSE;
     let ch;
@@ -3959,9 +2552,8 @@ tty_print_glyph(
 
       ;
 
-
     if (ul_hack() && ch == ord('_')) { /* non-destructive underscore */
-        void putchar(ord(' '));
+        putchar(ord(' '));
         backsp();
     }
 
@@ -4012,13 +2604,6 @@ tty_print_glyph(
         inverse_on = TRUE;
     }
 
-
-
-
-
-
-
-
     if (!glyphdone
         && (tty_procs.wincap2 & WC2_U_UTF8STR) && SYMHANDLING(H_UTF8)
             && glyphinfo.gm.u && glyphinfo.gm.u.utf8str) {
@@ -4052,33 +2637,9 @@ tty_print_glyph(
     ttyDisplay.curx++;   /* the real cursor moved too */
 }
 
+/* #ifdef NO_TERMS: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-tty_raw_print(str)
-{
+export function tty_raw_print(str) { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     if (ttyDisplay)
         ttyDisplay.rawprint++;
@@ -4086,19 +2647,13 @@ tty_raw_print(str)
         iflags.raw_printed++;
      ;
 
-
-
     puts(str);
-    void fflush((stdout));
-
+    fflush(stdout);
 
     nomux_raw_emit(str, 0);
-
 }
 
-export function /* void */
-tty_raw_print_bold(str)
-{
+export function tty_raw_print_bold(str) { /* void */
     do { if (program_state.done_hup) { morc = ord("\x1b"); return; } } while (0);
     if (ttyDisplay)
         ttyDisplay.rawprint++;
@@ -4107,25 +2662,17 @@ tty_raw_print_bold(str)
      ;
     term_start_raw_bold();
 
-
-
-    void fputs(str, (stdout));
+    fputs(str, stdout);
 
     term_end_raw_bold();
 
-
-
     puts(_(""));
-    void fflush((stdout));
-
+    fflush(stdout);
 
     nomux_raw_emit(str, 1);
-
 }
 
-export function /* int */
-tty_nhgetch()
-{
+export function tty_nhgetch() { /* int */
     let i;
 
     /* kludge alert: Some Unix variants return funny values if getc() is
@@ -4134,11 +2681,10 @@ tty_nhgetch()
      */
     let nestbuf;
 
-
     do { if (program_state.done_hup) return (ord('\x1b')); } while (0);
     ;
     term_curs_set(1);
-    void fflush((stdout));
+    fflush(stdout);
 
     nomux_capture_write_input_boundary();
 
@@ -4152,7 +2698,6 @@ tty_nhgetch()
     if (iflags.debug_fuzzer) {
         i = randomkey();
     } else {
-
         if (program_state.resize_pending)
             resize_tty();
 
@@ -4160,15 +2705,7 @@ tty_nhgetch()
 
         /* c2js always reads scripted tty input; stdin is not available. */
         i = tgetch();
-
-
-
-
-
-
-
-
-
+        /* #else (#ifdef NH_C2JS_TTY_CAPTURE): not in this build */
 
         program_state.getting_char--;
 
@@ -4177,7 +2714,6 @@ tty_nhgetch()
             tty_clear_nhwindow(WIN_MESSAGE);
             i = ord('\x1b');
         }
-
     }
     term_curs_set(0);
     if (!i)
@@ -4190,14 +2726,6 @@ tty_nhgetch()
     if (ttyDisplay && ttyDisplay.toplin == TOPLINE_NEED_MORE)
         ttyDisplay.toplin = TOPLINE_NON_EMPTY;
 
-
-
-
-
-
-
-
-
     return i;
 }
 
@@ -4207,66 +2735,29 @@ tty_nhgetch()
  * Since normal tty's don't have mice, just return a key.
  */
 /*ARGSUSED*/
-export function /* int #if defined(WIN32CON) tty_nh_poskey(coordxy *x, coordxy *y, int *mod) #else */
-
-
-
-tty_nh_poskey(x, y, mod)
-
-{
+export function tty_nh_poskey(x, y, mod) { /* int */
     let i;
 
     do { if (program_state.done_hup) return (ord('\x1b')); } while (0);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(WIN32CON): not in this build */
 
     i = tty_nhgetch();
 
     return i;
 }
 
-export function /* void */
-win_tty_init(dir)
-{
+export function win_tty_init(dir) { /* void */
     if (dir != WININIT)
         return;
     return;
 }
 
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-tty_putmixed(window, attr, str)
-{ const $frame = stack_frame(); try {
+export function tty_putmixed(window, attr, str) { /* void */
+    const $frame = stack_frame(); try {
     let cw;
     let buf = stack_array(char, BUFSZ);
 
     let utf8flag = stack_var(int, 0);
-
 
     if (window == WIN_ERR || (cw = wins[window]) == null) {
         tty_raw_print(str);
@@ -4285,7 +2776,8 @@ tty_putmixed(window, attr, str)
     tty_putstr(window, attr, buf);
     ttyDisplay.topl_utf8 = 0;
     ttyDisplay.mixed = 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * +------------------+
@@ -4346,18 +2838,10 @@ tty_putmixed(window, attr, str)
  * "side" of things, rather than the NetHack-core "side" of things.
  */
 
-
-
-
-
-
-
-
 const tty_colormasks = static_var("tty_colormasks", ptr_to(ulong));
 const tty_condition_bits = static_var("tty_condition_bits", long);
 const tty_status = static_array("tty_status", array_of(struct_tty_status_fields, MAXBLSTATS), 2); /* 2: NOW,BEFORE */
 const hpbar_percent = static_var("hpbar_percent", int); const hpbar_crit_hp = static_var("hpbar_crit_hp", int);
-
 
 const encvals = static_array("encvals", array_of(ptr_to(char), 6), 3, [
     [ _(""), _("Burdened"), _("Stressed"), _("Strained"), _("Overtaxed"), _("Overloaded") ],
@@ -4392,8 +2876,6 @@ const threelineorder = static_array("threelineorder", array_of(int, MAX_PER_ROW)
 ]);
 const fieldorder = static_var("fieldorder", ptr_to(array_of(int, MAX_PER_ROW)));
 
-
-
 const finalx = static_array("finalx", array_of(int, 2), 3);    /* [rows][NOW or BEFORE] */
 const windowdata_init = static_var("windowdata_init", schar, FALSE);
 const cond_shrinklvl = static_var("cond_shrinklvl", int, 0);
@@ -4413,22 +2895,12 @@ export const NO_RESET = FALSE;
  */
 const do_field_opt = static_var("do_field_opt", int, 1);
 
-
-
-
-
-
-
-
 /*
  *  tty_status_init()
  *      -- initialize the tty-specific data structures.
  *      -- call genl_status_init() to initialize the general data.
  */
-export function /* void */
-tty_status_init()
-{
-
+export function tty_status_init() { /* void */
     let i, num_rows;
 
     num_rows = StatusRows(); /* 2 or 3 */
@@ -4448,22 +2920,17 @@ tty_status_init()
     tty_condition_bits[0] = 0;
     hpbar_percent[0] = hpbar_crit_hp[0] = 0;
 
-
     /* let genl_status_init do most of the initialization */
     genl_status_init();
 }
 
-export function /* void */
-tty_status_enablefield(
+export function tty_status_enablefield(
     fieldidx,
     nm,
     fmt,
-    enable)
-{
+    enable) { /* void */
     genl_status_enablefield(fieldidx, nm, fmt, enable);
 }
-
-
 
 /*
  *  *_status_update()
@@ -4541,17 +3008,14 @@ tty_status_enablefield(
  *         See doc/window.txt for more details.
  */
 
-
-
-export function /* void */
-tty_status_update(
+export function tty_status_update(
     fldidx,
     ptr,
     chg,
     percent,
     color,
-    colormasks)
-{ const $frame = stack_frame(); try {
+    colormasks) { /* void */
+    const $frame = stack_frame(); try {
     let attrmask;
     let condptr = ref_to(long, ptr);
     let text = ptr;
@@ -4573,9 +3037,6 @@ tty_status_update(
     case BL_FLUSH:
         if (make_things_fit(reset_state) || truncation_expected[0]) {
             render_status();
-
-
-
         }
         return;
     case BL_CONDITION:
@@ -4603,7 +3064,7 @@ tty_status_update(
                             || fldidx == fieldorder[0][1][0]
                             || fldidx == fieldorder[0][2][0]))
             ++fmt; /* skip leading space for first field on line */
-        void sprintf(status_vals[fldidx], fmt, text);
+        sprintf(status_vals[fldidx], fmt, text);
         tty_status[NOW][fldidx].idx = fldidx;
         tty_status[NOW][fldidx].color = (color & 0x00FF);
         tty_status[NOW][fldidx].attr = term_attr_fixup(attrmask);
@@ -4669,13 +3130,11 @@ tty_status_update(
     }
     /* As of 3.6.2 we only render on BL_FLUSH (or BL_RESET) */
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* int */
-make_things_fit(force_update)
-{ const $frame = stack_frame(); try {
+function make_things_fit(force_update) { /* int */
+    const $frame = stack_frame(); try {
     let trycnt, fitting = 0, requirement;
     let rowsz = stack_array(int, MAX_STATUS_ROWS), num_rows, condrow, otheroptions = 0;
 
@@ -4728,7 +3187,8 @@ make_things_fit(force_update)
         }
     }
     return fitting;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This is the routine where we figure out where each field
@@ -4736,9 +3196,7 @@ make_things_fit(force_update)
  * must be updated because they need to change.
  * This is now done at an individual field case-by-case level.
  */
-function /* boolean */
-check_fields(forcefields, sz)
-{
+function check_fields(forcefields, sz) { /* boolean */
     let c, i, row, col, num_rows, idx;
     let valid = TRUE, matchprev, update_right;
 
@@ -4813,13 +3271,6 @@ check_fields(forcefields, sz)
                            'update_right' will be set and we won't get here */
                         if (chars[nb])
                             matchprev = FALSE;
-
-
-
-
-
-
-
                     }
                 }
             }
@@ -4835,66 +3286,12 @@ check_fields(forcefields, sz)
     return valid;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if (NH_DEVEL_STATUS != NH_STATUS_RELEASED): not in this build */
 
 /*
  * This is what places a field on the tty display.
  */
-function /* void */
-tty_putstatusfield(text, x, y)
-{
+function tty_putstatusfield(text, x, y) { /* void */
     let i, n, ncols, nrows, lth = 0;
     let cw = null;
 
@@ -4914,7 +3311,7 @@ tty_putstatusfield(text, x, y)
         for (i = 0; i < lth; ++i) {
             n = i + x;
             if (n < ncols && chars[text]) {
-                void putchar(chars[text]);
+                putchar(chars[text]);
 
                 nomux_putch(chars[text]);
 
@@ -4925,67 +3322,53 @@ tty_putstatusfield(text, x, y)
             }
         }
     }
-
-
-
-
-
-
-
-
 }
 
 /* caller must set cond_shrinklvl (0..2) before calling us */
-function /* void */
-set_condition_length()
-{
+function set_condition_length() { /* void */
     let mask;
     let c, lth = 0;
 
     if (tty_condition_bits[0]) {
         for (c = 0; c < SIZE(conditions); ++c) {
             mask = conditions[c].mask;
-            if ((and64(tty_condition_bits[0], mask)) == mask)
+            if (and64(tty_condition_bits[0], mask) == mask)
                 lth += 1 + int(strlen(conditions[c].text[cond_shrinklvl[0]]));
         }
     }
     tty_status[NOW][BL_CONDITION].lth = unsigned(lth);
 }
 
-function /* void */
-shrink_enc(lvl)
-{
+function shrink_enc(lvl) { /* void */
     /* shrink or restore the encumbrance word */
     if (lvl <= 2) {
         enc_shrinklvl[0] = lvl;
-        void sprintf(status_vals[BL_CAP], _(" %s"), encvals[lvl][enclev[0]]);
+        sprintf(status_vals[BL_CAP], _(" %s"), encvals[lvl][enclev[0]]);
     }
     tty_status[NOW][BL_CAP].lth = strlen(status_vals[BL_CAP]);
 }
 
-function /* void */
-shrink_dlvl(lvl)
-{ const $frame = stack_frame(); try {
+function shrink_dlvl(lvl) { /* void */
+    const $frame = stack_frame(); try {
     /* try changing Dlvl: to Dl: */
     let buf = stack_array(char, BUFSZ);
     let levval = strchr(status_vals[BL_LEVELDESC], ord(':'));
 
     if (levval) {
         dlvl_shrinklvl[0] = lvl;
-        void strcpy(buf, (lvl == 0) ? _("Dlvl") : _("Dl"));
-        void strcat(buf, levval);
-        void strcpy(status_vals[BL_LEVELDESC], buf);
+        strcpy(buf, (lvl == 0) ? _("Dlvl") : _("Dl"));
+        strcat(buf, levval);
+        strcpy(status_vals[BL_LEVELDESC], buf);
         tty_status[NOW][BL_LEVELDESC].lth = strlen(status_vals[BL_LEVELDESC]);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Ensure the underlying status window data start out
  * blank and null-terminated.
  */
-function /* boolean */
-check_windowdata()
-{
+function check_windowdata() { /* boolean */
     if (WIN_STATUS == WIN_ERR || wins[WIN_STATUS] == null) {
         paniclog(_("check_windowdata"), _(" null status window."));
         return FALSE;
@@ -5000,9 +3383,7 @@ check_windowdata()
  * Return what color this condition should
  * be displayed in based on user settings.
  */
-function /* int */
-condcolor(bm, bmarray)
-{
+function condcolor(bm, bmarray) { /* int */
     let i;
 
     if (bm && bmarray)
@@ -5013,9 +3394,7 @@ condcolor(bm, bmarray)
     return NO_COLOR;
 }
 
-function /* int */
-condattr(bm, bmarray)
-{
+function condattr(bm, bmarray) { /* int */
     let attr = 0;
     let i;
 
@@ -5048,45 +3427,42 @@ condattr(bm, bmarray)
     return attr;
 }
 
-export function Begin_Attr(m) { do {                                        
-        if (m) {                                
-            if ((m) & HL_BOLD)                  
-                term_start_attr(ATR_BOLD);      
-            if ((m) & HL_DIM)                   
-                term_start_attr(ATR_DIM);       
-            if ((m) & HL_ITALIC)                
-                term_start_attr(ATR_ITALIC);    
-            if ((m) & HL_ULINE)                 
-                term_start_attr(ATR_ULINE);     
-            if ((m) & HL_BLINK)                 
-                term_start_attr(ATR_BLINK);     
-            if ((m) & HL_INVERSE)               
-                term_start_attr(ATR_INVERSE);   
-        }                                       
+export function Begin_Attr(m) { do {
+        if (m) {
+            if (m & HL_BOLD)
+                term_start_attr(ATR_BOLD);
+            if (m & HL_DIM)
+                term_start_attr(ATR_DIM);
+            if (m & HL_ITALIC)
+                term_start_attr(ATR_ITALIC);
+            if (m & HL_ULINE)
+                term_start_attr(ATR_ULINE);
+            if (m & HL_BLINK)
+                term_start_attr(ATR_BLINK);
+            if (m & HL_INVERSE)
+                term_start_attr(ATR_INVERSE);
+        }
     } while (0) }
 
-
-export function End_Attr(m) { do {                                        
-        if (m) {                                
-            if ((m) & HL_INVERSE)               
-                term_end_attr(ATR_INVERSE);     
-            if ((m) & HL_BLINK)                 
-                term_end_attr(ATR_BLINK);       
-            if ((m) & HL_ULINE)                 
-                term_end_attr(ATR_ULINE);       
-            if ((m) & HL_ITALIC)                
-                term_end_attr(ATR_ITALIC);      
-            if ((m) & HL_DIM)                   
-                term_end_attr(ATR_DIM);         
-            if ((m) & HL_BOLD)                  
-                term_end_attr(ATR_BOLD);        
-        }                                       
+export function End_Attr(m) { do {
+        if (m) {
+            if (m & HL_INVERSE)
+                term_end_attr(ATR_INVERSE);
+            if (m & HL_BLINK)
+                term_end_attr(ATR_BLINK);
+            if (m & HL_ULINE)
+                term_end_attr(ATR_ULINE);
+            if (m & HL_ITALIC)
+                term_end_attr(ATR_ITALIC);
+            if (m & HL_DIM)
+                term_end_attr(ATR_DIM);
+            if (m & HL_BOLD)
+                term_end_attr(ATR_BOLD);
+        }
     } while (0) }
 
-
-function /* void */
-render_status()
-{ const $frame = stack_frame(); try {
+function render_status() { /* void */
+    const $frame = stack_frame(); try {
     let mask, bits;
     let i, x, y, idx, c, ci, row, tlth, num_rows,
         coloridx = 0, attrmask = 0;
@@ -5112,8 +3488,8 @@ render_status()
             tlth = int((tty_status[NOW][idx].lth)); /* valid for BL_CONDITION */
 
             if (tty_status[NOW][idx].redraw || !do_field_opt[0]) {
-                let hitpointbar = (((idx == BL_TITLE
-                                       && iflags.wc2_hitpointbar) ? 1 : 0));
+                let hitpointbar = (idx == BL_TITLE
+                                       && iflags.wc2_hitpointbar ? 1 : 0);
 
                 if (idx == BL_CONDITION) {
                     /*
@@ -5219,15 +3595,15 @@ render_status()
                     /* hitpointbar using hp percent calculation */
                     let bar_len, bar_pos = 0;
                     let bar = stack_array(char, 30 + 1), bar2 = 0, savedch = ord('\0');
-                    let twoparts = (+(hpbar_percent[0] < 100));
+                    let twoparts = +(hpbar_percent[0] < 100);
 
                     /* force exactly 30 characters, padded with spaces
                        if shorter or truncated if longer */
                     if (strlen(text) != 30) {
-                        void sprintf(bar, _("%-30.30s"), text);
-                        void strcpy(status_vals[BL_TITLE], bar);
+                        sprintf(bar, _("%-30.30s"), text);
+                        strcpy(status_vals[BL_TITLE], bar);
                     } else {
-                        void strcpy(bar, text);
+                        strcpy(bar, text);
                     }
                     if (hpbar_crit_hp[0])
                         repad_with_dashes(bar);
@@ -5357,318 +3733,95 @@ render_status()
         finalx[row][BEFORE] = finalx[row][NOW];
     } /* for row=... */
     return;
-} finally { stack_pop($frame); } }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*wintty.c*/
-import { BEFORE } from "../../src/botl.h.js";
-import { BL_AC } from "../../src/botl.h.js";
-import { BL_ALIGN } from "../../src/botl.h.js";
-import { BL_ARMOR } from "../../src/botl.h.js";
-import { BL_ATTCLR_MAX } from "../../src/botl.h.js";
-import { BL_CAP } from "../../src/botl.h.js";
-import { BL_CH } from "../../src/botl.h.js";
-import { BL_CO } from "../../src/botl.h.js";
-import { BL_CONDITION } from "../../src/botl.h.js";
-import { BL_DX } from "../../src/botl.h.js";
-import { BL_ENE } from "../../src/botl.h.js";
-import { BL_ENEMAX } from "../../src/botl.h.js";
-import { BL_EXP } from "../../src/botl.h.js";
-import { BL_FLUSH } from "../../src/botl.h.js";
-import { BL_GOLD } from "../../src/botl.h.js";
-import { BL_HD } from "../../src/botl.h.js";
-import { BL_HP } from "../../src/botl.h.js";
-import { BL_HPMAX } from "../../src/botl.h.js";
-import { BL_HUNGER } from "../../src/botl.h.js";
-import { BL_IN } from "../../src/botl.h.js";
-import { BL_LEVELDESC } from "../../src/botl.h.js";
-import { BL_RESET } from "../../src/botl.h.js";
-import { BL_SCORE } from "../../src/botl.h.js";
-import { BL_STR } from "../../src/botl.h.js";
-import { BL_TERRAIN } from "../../src/botl.h.js";
-import { BL_TIME } from "../../src/botl.h.js";
-import { BL_TITLE } from "../../src/botl.h.js";
-import { BL_VERS } from "../../src/botl.h.js";
-import { BL_WEAPON } from "../../src/botl.h.js";
-import { BL_WI } from "../../src/botl.h.js";
-import { BL_XP } from "../../src/botl.h.js";
-import { HL_ATTCLR_BLINK } from "../../src/botl.h.js";
-import { HL_ATTCLR_BOLD } from "../../src/botl.h.js";
-import { HL_ATTCLR_DIM } from "../../src/botl.h.js";
-import { HL_ATTCLR_INVERSE } from "../../src/botl.h.js";
-import { HL_ATTCLR_ITALIC } from "../../src/botl.h.js";
-import { HL_ATTCLR_ULINE } from "../../src/botl.h.js";
-import { HL_BLINK } from "../../src/botl.h.js";
-import { HL_BOLD } from "../../src/botl.h.js";
-import { HL_DIM } from "../../src/botl.h.js";
-import { HL_INVERSE } from "../../src/botl.h.js";
-import { HL_ITALIC } from "../../src/botl.h.js";
-import { HL_ULINE } from "../../src/botl.h.js";
-import { MAXBLSTATS } from "../../src/botl.h.js";
-import { NOW } from "../../src/botl.h.js";
-import { CLR_MAX } from "../../src/color.h.js";
-import { NH_BASIC_COLOR } from "../../src/color.h.js";
-import { NO_COLOR } from "../../src/color.h.js";
-import { struct_color_and_attr } from "../../src/color.h.js";
+
+import {
+    BEFORE, BL_AC, BL_ALIGN, BL_ARMOR, BL_ATTCLR_MAX, BL_CAP, BL_CH, BL_CO, BL_CONDITION, BL_DX,
+    BL_ENE, BL_ENEMAX, BL_EXP, BL_FLUSH, BL_GOLD, BL_HD, BL_HP, BL_HPMAX, BL_HUNGER, BL_IN,
+    BL_LEVELDESC, BL_RESET, BL_SCORE, BL_STR, BL_TERRAIN, BL_TIME, BL_TITLE, BL_VERS, BL_WEAPON,
+    BL_WI, BL_XP, HL_ATTCLR_BLINK, HL_ATTCLR_BOLD, HL_ATTCLR_DIM, HL_ATTCLR_INVERSE,
+    HL_ATTCLR_ITALIC, HL_ATTCLR_ULINE, HL_BLINK, HL_BOLD, HL_DIM, HL_INVERSE, HL_ITALIC, HL_ULINE,
+    MAXBLSTATS, NOW,
+} from "../../src/botl.h.js";
+import { CLR_MAX, NH_BASIC_COLOR, NO_COLOR, struct_color_and_attr } from "../../src/color.h.js";
 import { COLORVAL } from "../../src/color.h.macros.js";
-import { CO } from "../../src/decl.h.macros.js";
-import { LI } from "../../src/decl.h.macros.js";
+import { CO, LI } from "../../src/decl.h.macros.js";
 import { GOLD_SYM } from "../../src/defsym.h.js";
-import { MG_BW_ENGR } from "../../src/display.h.js";
-import { MG_BW_ICE } from "../../src/display.h.js";
-import { MG_BW_LAVA } from "../../src/display.h.js";
-import { MG_BW_SINK } from "../../src/display.h.js";
-import { MG_DETECT } from "../../src/display.h.js";
-import { MG_FEMALE } from "../../src/display.h.js";
-import { MG_OBJPILE } from "../../src/display.h.js";
-import { MG_PET } from "../../src/display.h.js";
-import { NO_GLYPH } from "../../src/display.h.js";
-import { docrtRefresh } from "../../src/display.h.js";
-import { dlb_fclose } from "../../src/dlb.h.macros.js";
-import { dlb_fgets } from "../../src/dlb.h.macros.js";
-import { dlb_fopen } from "../../src/dlb.h.macros.js";
+import {
+    MG_BW_ENGR, MG_BW_ICE, MG_BW_LAVA, MG_BW_SINK, MG_DETECT, MG_FEMALE, MG_OBJPILE, MG_PET,
+    NO_GLYPH, docrtRefresh,
+} from "../../src/display.h.js";
+import { dlb_fclose, dlb_fgets, dlb_fopen } from "../../src/dlb.h.macros.js";
 import { wizard } from "../../src/flag.h.macros.js";
-import { BUFSZ } from "../../src/global.h.js";
-import { COLNO } from "../../src/global.h.js";
-import { FALSE } from "../../src/global.h.js";
-import { MAX_MSG_HISTORY } from "../../src/global.h.js";
-import { QBUFSZ } from "../../src/global.h.js";
-import { ROWNO } from "../../src/global.h.js";
-import { TRUE } from "../../src/global.h.js";
-import { set_in_game } from "../../src/global.h.js";
-import { max } from "../../src/hack.h.macros.js";
-import { min } from "../../src/hack.h.macros.js";
+import {
+    BUFSZ, COLNO, FALSE, MAX_MSG_HISTORY, QBUFSZ, ROWNO, TRUE, set_in_game,
+} from "../../src/global.h.js";
+import { max, min } from "../../src/hack.h.macros.js";
 import { AppendLongDigit } from "../../src/integer.h.macros.js";
 import { debugpline4 } from "../../src/lint.h.macros.js";
-import { H_DEC } from "../../src/sym.h.js";
-import { H_IBM } from "../../src/sym.h.js";
-import { H_UTF8 } from "../../src/sym.h.js";
+import { H_DEC, H_IBM, H_UTF8 } from "../../src/sym.h.js";
 import { SYMHANDLING } from "../../src/sym.h.macros.js";
-import { nh_CD } from "../../src/tcap.h.macros.js";
-import { nh_CM } from "../../src/tcap.h.macros.js";
-import { nh_ND } from "../../src/tcap.h.macros.js";
-import { ul_hack } from "../../src/tcap.h.macros.js";
+import { nh_CD, nh_CM, nh_ND, ul_hack } from "../../src/tcap.h.macros.js";
 import { tgetch } from "../../src/unixconf.h.macros.js";
-import { WC2_DARKGRAY } from "../../src/winprocs.h.js";
-import { WC2_EXTRACOLORS } from "../../src/winprocs.h.js";
-import { WC2_EXTRASTATUS } from "../../src/winprocs.h.js";
-import { WC2_FLUSH_STATUS } from "../../src/winprocs.h.js";
-import { WC2_HILITE_STATUS } from "../../src/winprocs.h.js";
-import { WC2_HITPOINTBAR } from "../../src/winprocs.h.js";
-import { WC2_PETATTR } from "../../src/winprocs.h.js";
-import { WC2_RESET_STATUS } from "../../src/winprocs.h.js";
-import { WC2_SELECTSAVED } from "../../src/winprocs.h.js";
-import { WC2_STATUSLINES } from "../../src/winprocs.h.js";
-import { WC2_SUPPRESS_HIST } from "../../src/winprocs.h.js";
-import { WC2_URGENT_MESG } from "../../src/winprocs.h.js";
-import { WC2_U_UTF8STR } from "../../src/winprocs.h.js";
-import { WC_COLOR } from "../../src/winprocs.h.js";
-import { WC_EIGHT_BIT_IN } from "../../src/winprocs.h.js";
-import { WC_HILITE_PET } from "../../src/winprocs.h.js";
-import { WC_INVERSE } from "../../src/winprocs.h.js";
-import { WININIT } from "../../src/winprocs.h.js";
-import { struct_window_procs } from "../../src/winprocs.h.js";
-import { wp_tty } from "../../src/winprocs.h.js";
-import { MAXWIN } from "../../src/wintty.h.js";
-import { NHW_BASE } from "../../src/wintty.h.js";
-import { TOPLINE_EMPTY } from "../../src/wintty.h.js";
-import { TOPLINE_NEED_MORE } from "../../src/wintty.h.js";
-import { TOPLINE_NON_EMPTY } from "../../src/wintty.h.js";
-import { TOPLINE_SPECIAL_PROMPT } from "../../src/wintty.h.js";
-import { WIN_CANCELLED } from "../../src/wintty.h.js";
-import { WIN_NOSTOP } from "../../src/wintty.h.js";
-import { WIN_STOP } from "../../src/wintty.h.js";
-import { struct_DisplayDesc } from "../../src/wintty.h.js";
-import { struct_WinDesc } from "../../src/wintty.h.js";
-import { struct_tty_mi } from "../../src/wintty.h.js";
-import { struct_tty_status_fields } from "../../src/wintty.h.js";
-import { ATR_BLINK } from "../../src/wintype.h.js";
-import { ATR_BOLD } from "../../src/wintype.h.js";
-import { ATR_DIM } from "../../src/wintype.h.js";
-import { ATR_INVERSE } from "../../src/wintype.h.js";
-import { ATR_ITALIC } from "../../src/wintype.h.js";
-import { ATR_NOHISTORY } from "../../src/wintype.h.js";
-import { ATR_NONE } from "../../src/wintype.h.js";
-import { ATR_ULINE } from "../../src/wintype.h.js";
-import { ATR_URGENT } from "../../src/wintype.h.js";
-import { MENU_BEHAVE_PERMINV } from "../../src/wintype.h.js";
-import { MENU_FIRST_PAGE } from "../../src/wintype.h.js";
-import { MENU_INVERT_ALL } from "../../src/wintype.h.js";
-import { MENU_INVERT_PAGE } from "../../src/wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "../../src/wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "../../src/wintype.h.js";
-import { MENU_LAST_PAGE } from "../../src/wintype.h.js";
-import { MENU_NEXT_PAGE } from "../../src/wintype.h.js";
-import { MENU_PREVIOUS_PAGE } from "../../src/wintype.h.js";
-import { MENU_SEARCH } from "../../src/wintype.h.js";
-import { MENU_SELECT_ALL } from "../../src/wintype.h.js";
-import { MENU_SELECT_PAGE } from "../../src/wintype.h.js";
-import { MENU_UNSELECT_ALL } from "../../src/wintype.h.js";
-import { MENU_UNSELECT_PAGE } from "../../src/wintype.h.js";
-import { NHW_MAP } from "../../src/wintype.h.js";
-import { NHW_MENU } from "../../src/wintype.h.js";
-import { NHW_MESSAGE } from "../../src/wintype.h.js";
-import { NHW_PERMINVENT } from "../../src/wintype.h.js";
-import { NHW_STATUS } from "../../src/wintype.h.js";
-import { NHW_TEXT } from "../../src/wintype.h.js";
-import { PICK_ANY } from "../../src/wintype.h.js";
-import { PICK_NONE } from "../../src/wintype.h.js";
-import { PICK_ONE } from "../../src/wintype.h.js";
-import { WIN_ERR } from "../../src/wintype.h.js";
-import { request_settings } from "../../src/wintype.h.js";
-import { set_menu_promptstyle } from "../../src/wintype.h.js";
-import { set_mode } from "../../src/wintype.h.js";
-import { struct_any } from "../../src/wintype.h.js";
-import { struct_mi } from "../../src/wintype.h.js";
+import {
+    WC2_DARKGRAY, WC2_EXTRACOLORS, WC2_EXTRASTATUS, WC2_FLUSH_STATUS, WC2_HILITE_STATUS,
+    WC2_HITPOINTBAR, WC2_PETATTR, WC2_RESET_STATUS, WC2_SELECTSAVED, WC2_STATUSLINES,
+    WC2_SUPPRESS_HIST, WC2_URGENT_MESG, WC2_U_UTF8STR, WC_COLOR, WC_EIGHT_BIT_IN, WC_HILITE_PET,
+    WC_INVERSE, WININIT, struct_window_procs, wp_tty,
+} from "../../src/winprocs.h.js";
+import {
+    MAXWIN, NHW_BASE, TOPLINE_EMPTY, TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT,
+    WIN_CANCELLED, WIN_NOSTOP, WIN_STOP, struct_DisplayDesc, struct_WinDesc, struct_tty_mi,
+    struct_tty_status_fields,
+} from "../../src/wintty.h.js";
+import {
+    ATR_BLINK, ATR_BOLD, ATR_DIM, ATR_INVERSE, ATR_ITALIC, ATR_NOHISTORY, ATR_NONE, ATR_ULINE,
+    ATR_URGENT, MENU_BEHAVE_PERMINV, MENU_FIRST_PAGE, MENU_INVERT_ALL, MENU_INVERT_PAGE,
+    MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, MENU_LAST_PAGE, MENU_NEXT_PAGE,
+    MENU_PREVIOUS_PAGE, MENU_SEARCH, MENU_SELECT_ALL, MENU_SELECT_PAGE, MENU_UNSELECT_ALL,
+    MENU_UNSELECT_PAGE, NHW_MAP, NHW_MENU, NHW_MESSAGE, NHW_PERMINVENT, NHW_STATUS, NHW_TEXT,
+    PICK_ANY, PICK_NONE, PICK_ONE, WIN_ERR, request_settings, set_menu_promptstyle, set_mode,
+    struct_any, struct_mi,
+} from "../../src/wintype.h.js";
 import { SIZE } from "../../rt/cmacros.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { long } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { schar } from "../../rt/ctypes.js";
-import { short } from "../../rt/ctypes.js";
-import { sizeof } from "../../rt/ctypes.js";
-import { sizeof_string } from "../../rt/ctypes.js";
-import { uchar } from "../../rt/ctypes.js";
-import { ulong } from "../../rt/ctypes.js";
-import { unsigned } from "../../rt/ctypes.js";
+import {
+    char, int, long, ord, schar, short, sizeof, sizeof_string, uchar, ulong, unsigned,
+} from "../../rt/ctypes.js";
 import { global_scalar } from "../../rt/globals.js";
-import { chars } from "../../rt/heap.js";
-import { stack_frame } from "../../rt/heap.js";
-import { stack_pop } from "../../rt/heap.js";
-import { uchars } from "../../rt/heap.js";
-import { and64 } from "../../rt/int64.js";
-import { not64 } from "../../rt/int64.js";
-import { BUFSIZ } from "../../rt/libc.js";
-import { EOF } from "../../rt/libc.js";
-import { EXIT_SUCCESS } from "../../rt/libc.js";
-import { SIGWINCH } from "../../rt/libc.js";
-import { fflush } from "../../rt/libc.js";
-import { fputs } from "../../rt/libc.js";
-import { free } from "../../rt/libc.js";
-import { perror } from "../../rt/libc.js";
-import { putchar } from "../../rt/libc.js";
-import { puts } from "../../rt/libc.js";
-import { setbuf } from "../../rt/libc.js";
-import { signal } from "../../rt/libc.js";
-import { sprintf } from "../../rt/libc.js";
-import { stdout } from "../../rt/libc.js";
-import { strcat } from "../../rt/libc.js";
-import { strchr } from "../../rt/libc.js";
-import { strcmp } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { strlen } from "../../rt/libc.js";
-import { strncpy } from "../../rt/libc.js";
-import { init_list } from "../../rt/locals.js";
-import { init_string } from "../../rt/locals.js";
-import { stack_array } from "../../rt/locals.js";
-import { stack_struct } from "../../rt/locals.js";
-import { stack_var } from "../../rt/locals.js";
-import { static_array } from "../../rt/locals.js";
-import { static_struct } from "../../rt/locals.js";
-import { static_var } from "../../rt/locals.js";
+import { chars, stack_frame, stack_pop, uchars } from "../../rt/heap.js";
+import { and64, not64 } from "../../rt/int64.js";
+import {
+    BUFSIZ, EOF, EXIT_SUCCESS, SIGWINCH, fflush, fputs, free, perror, putchar, puts, setbuf, signal,
+    sprintf, stdout, strcat, strchr, strcmp, strcpy, strlen, strncpy,
+} from "../../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+    static_var,
+} from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
-import { addr_of } from "../../rt/struct.js";
-import { array_of } from "../../rt/struct.js";
-import { ptr_add } from "../../rt/struct.js";
-import { ptr_to } from "../../rt/struct.js";
-import { ref_to } from "../../rt/struct.js";
-import { sizeof_member } from "../../rt/struct.js";
-import { struct_assign } from "../../rt/struct.js";
-import { view_of } from "../../rt/struct.js";
-import { alloc } from "../../src/alloc.js";
-import { dupstr } from "../../src/alloc.js";
-import { bot } from "../../src/botl.js";
-import { cond_idx } from "../../src/botl.js";
-import { conditions } from "../../src/botl.js";
-import { repad_with_dashes } from "../../src/botl.js";
-import { stat_cap_indx } from "../../src/botl.js";
-import { status_initialize } from "../../src/botl.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_to, sizeof_member, struct_assign, view_of,
+} from "../../rt/struct.js";
+import { alloc, dupstr } from "../../src/alloc.js";
+import {
+    bot, cond_idx, conditions, repad_with_dashes, stat_cap_indx, status_initialize,
+} from "../../src/botl.js";
 import { randomkey } from "../../src/cmd.js";
-import { cg } from "../../src/decl.js";
-import { disp } from "../../src/decl.js";
-import { flags } from "../../src/decl.js";
-import { gg } from "../../src/decl.js";
-import { gm } from "../../src/decl.js";
-import { gt } from "../../src/decl.js";
-import { iflags } from "../../src/decl.js";
-import { program_state } from "../../src/decl.js";
-import { quitchars } from "../../src/decl.js";
-import { svp } from "../../src/decl.js";
-import { u } from "../../src/decl.js";
-import { docrt } from "../../src/display.js";
-import { docrt_flags } from "../../src/display.js";
-import { flush_screen } from "../../src/display.js";
-import { nul_glyphinfo } from "../../src/display.js";
-import { redraw_map } from "../../src/display.js";
-import { row_refresh } from "../../src/display.js";
-import { nh_terminate } from "../../src/end.js";
-import { panic } from "../../src/end.js";
-import { clearlocks } from "../../src/files.js";
-import { paniclog } from "../../src/files.js";
-import { eos } from "../../src/hacklib.js";
-import { tabexpand } from "../../src/hacklib.js";
+import {
+    cg, disp, flags, gg, gm, gt, iflags, program_state, quitchars, svp, u,
+} from "../../src/decl.js";
+import {
+    docrt, docrt_flags, flush_screen, nul_glyphinfo, redraw_map, row_refresh,
+} from "../../src/display.js";
+import { nh_terminate, panic } from "../../src/end.js";
+import { clearlocks, paniclog } from "../../src/files.js";
+import { eos, tabexpand } from "../../src/hacklib.js";
 import { free_pickinv_cache } from "../../src/invent.js";
-import { map_menu_cmd } from "../../src/options.js";
-import { set_wc2_option_mod_status } from "../../src/options.js";
-import { impossible } from "../../src/pline.js";
-import { nhassert_failed } from "../../src/pline.js";
-import { pline } from "../../src/pline.js";
+import { map_menu_cmd, set_wc2_option_mod_status } from "../../src/options.js";
+import { impossible, nhassert_failed, pline } from "../../src/pline.js";
 import { critically_low_hp } from "../../src/pray.js";
 import { restore_menu } from "../../src/restore.js";
 import { genl_outrip } from "../../src/rip.js";
@@ -5676,63 +3829,23 @@ import { genl_player_setup } from "../../src/role.js";
 import { pmatchi } from "../../src/strutil.js";
 import { mixed_to_utf8 } from "../../src/utf8map.js";
 import { copyright_banner_line } from "../../src/version.js";
-import { decode_mixed } from "../../src/windows.js";
-import { genl_can_suspend_yes } from "../../src/windows.js";
-import { genl_preference_update } from "../../src/windows.js";
-import { genl_status_enablefield } from "../../src/windows.js";
-import { genl_status_finish } from "../../src/windows.js";
-import { genl_status_init } from "../../src/windows.js";
-import { menuitem_invert_test } from "../../src/windows.js";
-import { status_activefields } from "../../src/windows.js";
-import { status_fieldfmt } from "../../src/windows.js";
-import { status_vals } from "../../src/windows.js";
-import { windowprocs } from "../../src/windows.js";
-import { gettty } from "../../sys/c2js/nhjs_tty_api.js";
-import { getwindowsz } from "../../sys/c2js/nhjs_tty_api.js";
-import { setftty } from "../../sys/c2js/nhjs_tty_api.js";
-import { settty } from "../../sys/c2js/nhjs_tty_api.js";
-import { tty_get_ext_cmd } from "./getline.js";
-import { tty_getlin } from "./getline.js";
-import { xwaitforspace } from "./getline.js";
-import { backsp } from "./termcap.js";
-import { cl_end } from "./termcap.js";
-import { cl_eos } from "./termcap.js";
-import { cmov } from "./termcap.js";
-import { graph_off } from "./termcap.js";
-import { graph_on } from "./termcap.js";
-import { home } from "./termcap.js";
-import { nocmov } from "./termcap.js";
-import { nomux_capture_write_input_boundary } from "./termcap.js";
-import { nomux_clear_screen } from "./termcap.js";
-import { nomux_putch } from "./termcap.js";
-import { nomux_raw_emit } from "./termcap.js";
-import { standoutbeg } from "./termcap.js";
-import { standoutend } from "./termcap.js";
-import { term_attr_fixup } from "./termcap.js";
-import { term_clear_screen } from "./termcap.js";
-import { term_curs_set } from "./termcap.js";
-import { term_end_attr } from "./termcap.js";
-import { term_end_color } from "./termcap.js";
-import { term_end_extracolor } from "./termcap.js";
-import { term_end_raw_bold } from "./termcap.js";
-import { term_shutdown } from "./termcap.js";
-import { term_start_attr } from "./termcap.js";
-import { term_start_bgcolor } from "./termcap.js";
-import { term_start_color } from "./termcap.js";
-import { term_start_extracolor } from "./termcap.js";
-import { term_start_raw_bold } from "./termcap.js";
-import { term_startup } from "./termcap.js";
-import { tty_delay_output } from "./termcap.js";
-import { tty_nhbell } from "./termcap.js";
-import { tty_number_pad } from "./termcap.js";
-import { xputs } from "./termcap.js";
-import { addtopl } from "./topl.js";
-import { more } from "./topl.js";
-import { remember_topl } from "./topl.js";
-import { show_topl } from "./topl.js";
-import { tty_doprev_message } from "./topl.js";
-import { tty_getmsghistory } from "./topl.js";
-import { tty_putmsghistory } from "./topl.js";
-import { tty_yn_function } from "./topl.js";
-import { update_topl } from "./topl.js";
+import {
+    decode_mixed, genl_can_suspend_yes, genl_preference_update, genl_status_enablefield,
+    genl_status_finish, genl_status_init, menuitem_invert_test, status_activefields,
+    status_fieldfmt, status_vals, windowprocs,
+} from "../../src/windows.js";
+import { gettty, getwindowsz, setftty, settty } from "../../sys/c2js/nhjs_tty_api.js";
+import { tty_get_ext_cmd, tty_getlin, xwaitforspace } from "./getline.js";
+import {
+    backsp, cl_end, cl_eos, cmov, graph_off, graph_on, home, nocmov,
+    nomux_capture_write_input_boundary, nomux_clear_screen, nomux_putch, nomux_raw_emit,
+    standoutbeg, standoutend, term_attr_fixup, term_clear_screen, term_curs_set, term_end_attr,
+    term_end_color, term_end_extracolor, term_end_raw_bold, term_shutdown, term_start_attr,
+    term_start_bgcolor, term_start_color, term_start_extracolor, term_start_raw_bold, term_startup,
+    tty_delay_output, tty_nhbell, tty_number_pad, xputs,
+} from "./termcap.js";
+import {
+    addtopl, more, remember_topl, show_topl, tty_doprev_message, tty_getmsghistory,
+    tty_putmsghistory, tty_yn_function, update_topl,
+} from "./topl.js";
 const __FILE__ = "../win/tty/wintty.c";

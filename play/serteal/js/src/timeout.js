@@ -3,26 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "nhjs_recorder_sizes.h" /* c2js recorder #stats sizes */
-
-
-
-
-
-
-
-
- 
-
-
-
-
-
-
-
-
-
 /* used by wizard mode #timeout and #wizintrinsic; order by 'interest'
    for timeout countdown, where most won't occur in normal play */
   const struct_propname = struct("struct_propname", {
@@ -114,9 +94,7 @@
     {  prop_num: 0, prop_name: 0 },
 ]);
 
-export function /* const char * */
-property_by_index(idx, propertynum)
-{
+export function property_by_index(idx, propertynum) { /* const char * */
     if (!IndexOkT(idx, propertynames))
         idx = SIZE(propertynames) - 1;
 
@@ -134,17 +112,16 @@ const stoned_texts = static_array("stoned_texts", ptr_to(char), null, [
     _("You are a statue.")                 /* 1 */
 ]);
 
-function /* void */
-stoned_dialogue()
-{ const $frame = stack_frame(); try {
+function stoned_dialogue() { /* void */
+    const $frame = stack_frame(); try {
     let i = (Stoned() & TIMEOUT);
 
     if (i > 0 && i <= SIZE(stoned_texts)) {
         let buf = stack_array(char, BUFSZ);
 
-        void strcpy(buf, stoned_texts[SIZE(stoned_texts) - i]);
+        strcpy(buf, stoned_texts[SIZE(stoned_texts) - i]);
         if (nolimbs(gy.youmonst.data) && strstri(buf, _("limbs")))
-            void strsubst(buf, _("limbs"), _("extremities"));
+            strsubst(buf, _("limbs"), _("extremities"));
         urgent_pline(_("%s"), buf);
     }
     switch (int(i)) {
@@ -183,7 +160,8 @@ stoned_dialogue()
         break;
     }
     exercise(A_DEX, FALSE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* hero is getting sicker and sicker prior to vomiting */
 const vomiting_texts = static_array("vomiting_texts", ptr_to(char), null, [
@@ -194,9 +172,8 @@ const vomiting_texts = static_array("vomiting_texts", ptr_to(char), null, [
     _("are about to vomit.")            /* 2 */
 ]);
 
-function /* void */
-vomiting_dialogue()
-{ const $frame = stack_frame(); try {
+function vomiting_dialogue() { /* void */
+    const $frame = stack_frame(); try {
     let txt = 0;
     let buf = stack_array(char, BUFSZ);
     let v = (Vomiting() & TIMEOUT);
@@ -263,11 +240,10 @@ vomiting_dialogue()
     if (txt)
         You1(txt);
     exercise(A_CON, FALSE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-sleep_dialogue()
-{
+function sleep_dialogue() { /* void */
     let i = (HSleepy() & TIMEOUT);
 
     if (i == 4)
@@ -292,9 +268,7 @@ const choke_texts2 = static_array("choke_texts2", ptr_to(char), null, [
     _("You suffocate.")
 ]);
 
-function /* void */
-choke_dialogue()
-{
+function choke_dialogue() { /* void */
     let i = (Strangled() & TIMEOUT);
 
     if (i > 0 && i <= SIZE(choke_texts)) {
@@ -320,41 +294,38 @@ const sickness_texts = static_array("sickness_texts", ptr_to(char), null, [
     _("You are at Death's door."),
 ]);
 
-function /* void */
-sickness_dialogue()
-{ const $frame = stack_frame(); try {
+function sickness_dialogue() { /* void */
+    const $frame = stack_frame(); try {
     let j = (Sick() & TIMEOUT), i = Math.trunc(j / 2);
 
     if (i > 0 && i <= SIZE(sickness_texts) && (j % 2) != 0) {
         let buf = stack_array(char, BUFSZ), pronounbuf = stack_array(char, 40);
 
-        void strcpy(buf, sickness_texts[SIZE(sickness_texts) - i]);
+        strcpy(buf, sickness_texts[SIZE(sickness_texts) - i]);
         /* change the message slightly for food poisoning */
         if ((u.usick_type & SICK_NONVOMITABLE) == 0)
-            void strsubst(buf, _("illness"), _("sickness"));
+            strsubst(buf, _("illness"), _("sickness"));
         if (Hallucination() && strstri(buf, _("Death's door"))) {
             /* youmonst: for Hallucination, mhe()'s mon argument isn't used */
-            void strcpy(pronounbuf, mhe(gy.youmonst));
-            void sprintf(eos(buf), _("  %s %s inviting you in."), upstart(pronounbuf), vtense(pronounbuf, _("are")))
-
+            strcpy(pronounbuf, mhe(gy.youmonst));
+            sprintf(eos(buf), _("  %s %s inviting you in."), upstart(pronounbuf), vtense(pronounbuf, _("are")))
 
 ;
         }
         urgent_pline(_("%s"), buf);
     }
     exercise(A_CON, FALSE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const levi_texts = static_array("levi_texts", ptr_to(char), null, [
     _("You float slightly lower."),
     _("You wobble unsteadily %s the %s.")
 ]);
 
-function /* void */
-levitation_dialogue()
-{
+function levitation_dialogue() { /* void */
     /* -1 because the last message comes via float_down() */
-    let i = (Math.trunc(((HLevitation() & TIMEOUT) - 1) / 2));
+    let i = Math.trunc(((HLevitation() & TIMEOUT) - 1) / 2);
 
     if (ELevitation())
         return;
@@ -367,8 +338,8 @@ levitation_dialogue()
         let s = levi_texts[SIZE(levi_texts) - i];
 
         if (strchr(s, ord('%'))) {
-            let danger = (((is_pool_or_lava(u.ux, u.uy)
-                              && !Is_waterlevel(u.uz)) ? 1 : 0));
+            let danger = (is_pool_or_lava(u.ux, u.uy)
+                              && !Is_waterlevel(u.uz) ? 1 : 0);
 
             urgent_pline(s, danger ? _("over") : _("in"),
                          danger ? surface(u.ux, u.uy) : _("air"));
@@ -386,9 +357,8 @@ const slime_texts = static_array("slime_texts", ptr_to(char), null, [
     _("You have become %s.")             /* 1 */
 ]);
 
-function /* void */
-slime_dialogue()
-{ const $frame = stack_frame(); try {
+function slime_dialogue() { /* void */
+    const $frame = stack_frame(); try {
     let t = (Slimed() & TIMEOUT), i = Math.trunc(t / 2);
 
     if (t == 1) {
@@ -405,9 +375,9 @@ slime_dialogue()
     if ((t % 2) != 0 && i >= 0 && i < SIZE(slime_texts)) {
         let buf = stack_array(char, BUFSZ);
 
-        void strcpy(buf, slime_texts[SIZE(slime_texts) - i - 1]);
+        strcpy(buf, slime_texts[SIZE(slime_texts) - i - 1]);
         if (nolimbs(gy.youmonst.data) && strstri(buf, _("limbs")))
-            void strsubst(buf, _("limbs"), _("extremities"));
+            strsubst(buf, _("limbs"), _("extremities"));
 
         if (strchr(buf, ord('%'))) {
             if (i == 4) {  /* "you are turning green" */
@@ -441,22 +411,18 @@ slime_dialogue()
         break;
     }
     exercise(A_DEX, FALSE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* void */
-burn_away_slime()
-{
+export function burn_away_slime() { /* void */
     if (Slimed()) {
         make_slimed(0, _("The slime that covers you is burned away!"));
     }
 }
 
 /* countdown timer for turning into green slime has run out; kill our hero */
-function /* void */
-slimed_to_death(kptr)
-{ const $frame = stack_frame(); try {
+function slimed_to_death(kptr) { /* void */
+    const $frame = stack_frame(); try {
     let save_mvflags;
 
     /* redundant: polymon() cures sliming when polying into green slime */
@@ -467,10 +433,10 @@ slimed_to_death(kptr)
     /* more sure killer reason is set up */
     if (kptr && chars[kptr.name + 0]) {
         svk.killer.format = kptr.format;
-        void strcpy(svk.killer.name, kptr.name);
+        strcpy(svk.killer.name, kptr.name);
     } else {
         svk.killer.format = NO_KILLER_PREFIX;
-        void strcpy(svk.killer.name, _("turned into green slime"));
+        strcpy(svk.killer.name, _("turned into green slime"));
     }
     dealloc_killer(kptr);
 
@@ -491,7 +457,7 @@ slimed_to_death(kptr)
     save_mvflags = svm.mvitals[PM_GREEN_SLIME].mvflags;
     svm.mvitals[PM_GREEN_SLIME].mvflags = save_mvflags & ~G_GENOD;
     /* become a green slime; also resets youmonst.m_ap_type+.mappearance */
-    void polymon(PM_GREEN_SLIME);
+    polymon(PM_GREEN_SLIME);
     svm.mvitals[PM_GREEN_SLIME].mvflags = save_mvflags;
     done_timeout(TURNED_SLIME, SLIMED);
 
@@ -501,10 +467,10 @@ slimed_to_death(kptr)
         let slimebuf = stack_array(char, BUFSZ);
 
         svk.killer.format = KILLED_BY;
-        void strcpy(svk.killer.name, _("slimicide"));
+        strcpy(svk.killer.name, _("slimicide"));
         /* vary the message depending upon whether life-save was due to
            amulet or due to declining to die in explore or wizard mode */
-        void strcpy(slimebuf, _("green slime has been genocided..."));
+        strcpy(slimebuf, _("green slime has been genocided..."));
         if (iflags.last_msg == PLNMSG_OK_DONT_DIE)
             /* follows "OK, so you don't die." and arg is second sentence */
             urgent_pline(_("Yes, you do.  %s"), upstart(slimebuf));
@@ -517,7 +483,8 @@ slimed_to_death(kptr)
            but green slimes are gone; just stay in current form */
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Intrinsic Passes_walls is temporary when your god is trying to fix
    all troubles and then TROUBLE_STUCK_IN_WALL calls safe_teleds() but
@@ -531,10 +498,8 @@ const phaze_texts = static_array("phaze_texts", ptr_to(char), null, [
     _("You are feeling rather flabby."),
 ]);
 
-function /* void */
-phaze_dialogue()
-{
-    let i = (Math.trunc((HPasses_walls() & TIMEOUT) / 2));
+function phaze_dialogue() { /* void */
+    let i = Math.trunc((HPasses_walls() & TIMEOUT) / 2);
 
     if (EPasses_walls() || (HPasses_walls() & ~TIMEOUT))
         return;
@@ -551,9 +516,7 @@ const region_texts = static_array("region_texts", ptr_to(char), null, [
     _("The air here seems foul."),
 ]);
 
-function /* void */
-region_dialogue()
-{
+function region_dialogue() { /* void */
     let no_need_to_breathe, in_poison_gas_cloud;
     let r = (HMagical_breathing() & TIMEOUT), i = Math.trunc(r / 2);
 
@@ -572,9 +535,7 @@ region_dialogue()
 /* when a status timeout is fatal, keep the status line indicator shown
    during end of game rundown (and potential dumplog);
    timeout has already counted down to 0 by the time we get here */
-function /* void */
-done_timeout(how, which)
-{
+function done_timeout(how, which) { /* void */
     let intrinsic_p = ref_of(u.uprops[which], "intrinsic");
 
     intrinsic_p[0] = or64(intrinsic_p[0], I_SPECIAL); /* affects final disclosure */
@@ -585,9 +546,7 @@ done_timeout(how, which)
     disp.botl = TRUE;
 }
 
-export function /* void */
-nh_timeout()
-{
+export function nh_timeout() { /* void */
     let upp;
     let kptr;
     let was_flying;
@@ -670,15 +629,15 @@ nh_timeout()
     was_flying = Flying();
     for (upp = u.uprops[0]; upp < ptr_add(u.uprops[0], SIZE(u.uprops)); upp = ptr_add(upp, 1))
         if ((upp.intrinsic & TIMEOUT) && !(--upp.intrinsic & TIMEOUT)) {
-            kptr = find_delayed_killer((ptr_diff(upp, u.uprops[0])));
+            kptr = find_delayed_killer(ptr_diff(upp, u.uprops[0]));
             switch (ptr_diff(upp, u.uprops[0])) {
             case STONED:
                 if (kptr && chars[kptr.name + 0]) {
                     svk.killer.format = kptr.format;
-                    void strcpy(svk.killer.name, kptr.name);
+                    strcpy(svk.killer.name, kptr.name);
                 } else {
                     svk.killer.format = NO_KILLER_PREFIX;
-                    void strcpy(svk.killer.name, _("killed by petrification"));
+                    strcpy(svk.killer.name, _("killed by petrification"));
                 }
                 dealloc_killer(kptr);
                 /* (unlike sliming, you aren't changing form here) */
@@ -704,7 +663,7 @@ nh_timeout()
                 urgent_pline(_("You die from your illness."));
                 if (kptr && chars[kptr.name + 0]) {
                     svk.killer.format = kptr.format;
-                    void strcpy(svk.killer.name, kptr.name);
+                    strcpy(svk.killer.name, kptr.name);
                 } else {
                     svk.killer.format = KILLED_BY_AN;
                     chars[svk.killer.name + 0] = 0; /* take the default */
@@ -716,7 +675,7 @@ nh_timeout()
                     if (type_is_pname(mons[m_idx])) {
                         svk.killer.format = KILLED_BY;
                     } else if (mons[m_idx].geno & G_UNIQ) {
-                        void strcpy(svk.killer.name, the(svk.killer.name));
+                        strcpy(svk.killer.name, the(svk.killer.name));
                         svk.killer.format = KILLED_BY;
                     }
                 }
@@ -778,7 +737,7 @@ nh_timeout()
                 break;
             case HALLUC:
                 set_itimeout(ref_of(u.uprops[HALLUC], "intrinsic"), 1);
-                void make_hallucinated(0, TRUE, 0);
+                make_hallucinated(0, TRUE, 0);
                 if (!Hallucination())
                     stop_occupation();
                 break;
@@ -801,7 +760,7 @@ nh_timeout()
                    assumes Levitation is handled before Flying */
                 if ((HFlying() & TIMEOUT) == 1)
                     set_itimeout(ref_of(u.uprops[FLYING], "intrinsic"), 0); /* bypass 'case FLYING' */
-                void float_down(I_SPECIAL | TIMEOUT, 0);
+                float_down(I_SPECIAL | TIMEOUT, 0);
                 break;
             case FLYING:
                 /* timed Flying is via #wizintrinsic only */
@@ -890,7 +849,7 @@ nh_timeout()
                 break;
             case STRANGLED:
                 svk.killer.format = KILLED_BY;
-                void strcpy(svk.killer.name, (u.uburied) ? _("suffocation") : _("strangulation"))
+                strcpy(svk.killer.name, u.uburied ? _("suffocation") : _("strangulation"))
 ;
                 done_timeout(DIED, STRANGLED);
                 /* must be declining to die in explore|wizard mode;
@@ -948,26 +907,11 @@ nh_timeout()
     run_timers();
 }
 
-export function /* void */
-fall_asleep(how_long, wakeup_msg)
-{
+export function fall_asleep(how_long, wakeup_msg) { /* void */
     stop_occupation();
     nomul(how_long);
     gm.multi_reason = _("sleeping");
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     /* early wakeup from combat won't be possible until next monster turn */
     u.usleep = svm.moves;
@@ -978,13 +922,11 @@ fall_asleep(how_long, wakeup_msg)
  *      when = Time to hatch, usually only passed if re-creating an
  *             existing hatch timer. Pass 0L for random hatch time.
  */
-export function /* void */
-attach_egg_hatch_timeout(egg, when)
-{
+export function attach_egg_hatch_timeout(egg, when) { /* void */
     let i;
 
     /* stop previous timer, if any */
-    void stop_timer(HATCH_EGG, obj_to_any(egg));
+    stop_timer(HATCH_EGG, obj_to_any(egg));
 
     /*
      * Decide if and when to hatch the egg.  The old hatch_it() code tried
@@ -1001,22 +943,19 @@ attach_egg_hatch_timeout(egg, when)
             }
     }
     if (when) {
-        void start_timer(when, TIMER_OBJECT, HATCH_EGG, obj_to_any(egg));
+        start_timer(when, TIMER_OBJECT, HATCH_EGG, obj_to_any(egg));
     }
 }
 
 /* prevent an egg from ever hatching */
-export function /* void */
-kill_egg(egg)
-{
+export function kill_egg(egg) { /* void */
     /* stop previous timer, if any */
-    void stop_timer(HATCH_EGG, obj_to_any(egg));
+    stop_timer(HATCH_EGG, obj_to_any(egg));
 }
 
 /* timer callback routine: hatch the given egg */
-export function /* void */
-hatch_egg(arg, timeout)
-{ const $frame = stack_frame(); try {
+export function hatch_egg(arg, timeout) { /* void */
+    const $frame = stack_frame(); try {
     let egg;
     let mon, mon2;
     let cc = stack_struct(struct_nhcoord);
@@ -1033,8 +972,8 @@ hatch_egg(arg, timeout)
     mon = mon2 = null;
     mnum = big_to_little(egg.corpsenm);
     /* The identity of one's father is learned, not innate */
-    yours = (((egg.spe || (!flags.female && carried(egg) && !rn2(2))) ? 1 : 0));
-    silent = (+(timeout != svm.moves)); /* hatched while away */
+    yours = (egg.spe || (!flags.female && carried(egg) && !rn2(2)) ? 1 : 0);
+    silent = +(timeout != svm.moves); /* hatched while away */
 
     /* only can hatch when in INVENT, FLOOR, MINVENT;
        get_obj_location() will fail for MIGRATING, also for CONTAINED
@@ -1068,37 +1007,17 @@ hatch_egg(arg, timeout)
             hatchcount -= i;
             egg.quan -= hatchcount;
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
     }
 
     if (mon) {
         let monnambuf = stack_array(char, BUFSZ), carriedby = stack_array(char, BUFSZ);
-        let siblings = (+(hatchcount > 1)), redraw = FALSE;
+        let siblings = +(hatchcount > 1), redraw = FALSE;
 
         if (cansee_hatchspot) {
             /* [bug?  m_monnam() yields accurate monster type
                regardless of hallucination] */
-            void sprintf(monnambuf, _("%s%s"), siblings ? _("some ") : _(""), siblings ? makeplural(m_monnam(mon)) : an(m_monnam(mon)))
+            sprintf(monnambuf, _("%s%s"), siblings ? _("some ") : _(""), siblings ? makeplural(m_monnam(mon)) : an(m_monnam(mon)))
 ;
             /* we don't learn the egg type here because learning
                an egg type requires either seeing the egg hatch
@@ -1142,21 +1061,18 @@ hatch_egg(arg, timeout)
                 mon2 = egg.v.v_ocarry;
                 if (canseemon(mon2)
                     && (!mon2.wormno || cansee(mon2.mx, mon2.my))) {
-                    void sprintf(carriedby, _("%s pack"), s_suffix(a_monnam(mon2)))
+                    sprintf(carriedby, _("%s pack"), s_suffix(a_monnam(mon2)))
 ;
                     knows_egg = TRUE;
                 } else if (is_pool(mon.mx, mon.my)) {
-                    void strcpy(carriedby, _("empty water"));
+                    strcpy(carriedby, _("empty water"));
                 } else {
-                    void strcpy(carriedby, _("thin air"));
+                    strcpy(carriedby, _("thin air"));
                 }
                 You_see(_("%s %s out of %s!"), monnambuf,
                         locomotion(mon.data, _("drop")), carriedby);
             }
             break;
-
-
-
 
         default:
             impossible(_("egg hatched where? (%d)"), egg.where);
@@ -1187,12 +1103,11 @@ hatch_egg(arg, timeout)
         if (redraw)
             newsym(x[0], y[0]);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Learn to recognize eggs of the given type. */
-export function /* void */
-learn_egg_type(mnum)
-{
+export function learn_egg_type(mnum) { /* void */
     /* baby monsters hatch from grown-up eggs */
     mnum = little_to_big(mnum);
     svm.mvitals[mnum].mvflags |= MV_KNOWS_EGG;
@@ -1201,27 +1116,24 @@ learn_egg_type(mnum)
 }
 
 /* Attach a fig_transform timeout to the given figurine. */
-export function /* void */
-attach_fig_transform_timeout(figurine)
-{
+export function attach_fig_transform_timeout(figurine) { /* void */
     let i;
 
     /* stop previous timer, if any */
-    void stop_timer(FIG_TRANSFORM, obj_to_any(figurine));
+    stop_timer(FIG_TRANSFORM, obj_to_any(figurine));
 
     /*
      * Decide when to transform the figurine.
      */
     i = rnd(9000) + 200;
     /* figurine will transform */
-    void start_timer(i, TIMER_OBJECT, FIG_TRANSFORM,
+    start_timer(i, TIMER_OBJECT, FIG_TRANSFORM,
                        obj_to_any(figurine));
 }
 
 /* give a fumble message */
-function /* void */
-slip_or_trip()
-{ const $frame = stack_frame(); try {
+function slip_or_trip() { /* void */
+    const $frame = stack_frame(); try {
     let otmp = vobj_at(u.ux, u.uy), otmp2, saddle;
     let what;
     let buf = stack_array(char, BUFSZ);
@@ -1256,7 +1168,7 @@ slip_or_trip()
         }
         if (!uarmf && otmp.otyp == CORPSE
             && touch_petrifies(mons[otmp.corpsenm]) && !Stone_resistance()) {
-            void sprintf(svk.killer.name, _("tripping over %s corpse"), an(mons[otmp.corpsenm].pmnames[NEUTRAL]))
+            sprintf(svk.killer.name, _("tripping over %s corpse"), an(mons[otmp.corpsenm].pmnames[NEUTRAL]))
 ;
             instapetrify(svk.killer.name);
         }
@@ -1339,12 +1251,11 @@ slip_or_trip()
             dismount_steed(DISMOUNT_FELL);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Print a lamp flicker message with tailer.  Only called if seen. */
-function /* void */
-see_lamp_flicker(obj, tailer)
-{
+function see_lamp_flicker(obj, tailer) { /* void */
     switch (obj.where) {
     case OBJ_INVENT:
     case OBJ_MINVENT:
@@ -1357,9 +1268,7 @@ see_lamp_flicker(obj, tailer)
 }
 
 /* Print a dimming message for brass lanterns.  Only called if seen. */
-function /* void */
-lantern_message(obj)
-{
+function lantern_message(obj) { /* void */
     /* from adventure */
     switch (obj.where) {
     case OBJ_INVENT:
@@ -1380,9 +1289,8 @@ lantern_message(obj)
  * Timeout callback for objects that are burning. E.g. lamps, candles.
  * See begin_burn() for meanings of obj->age and obj->spe.
  */
-export function /* void */
-burn_object(arg, timeout)
-{ const $frame = stack_frame(); try {
+export function burn_object(arg, timeout) { /* void */
+    const $frame = stack_frame(); try {
     let obj = arg.a_obj;
     let canseeit, many, menorah, need_newsym, need_invupdate, bytouch;
     let x = stack_var(coordxy), y = stack_var(coordxy);
@@ -1416,7 +1324,6 @@ burn_object(arg, timeout)
                 if (mtmp)
                     maybe_unhide_at(mtmp.mx, mtmp.my);
             }
-
         } else {
             obj.age -= how_long;
             begin_burn(obj, TRUE);
@@ -1428,7 +1335,7 @@ burn_object(arg, timeout)
     if (get_obj_location(obj, x, y, 0)) {
         canseeit = +(!Blind() && cansee(x[0], y[0]));
         /* set `whose[]' to be "Your " or "Fred's " or "The goblin's " */
-        void Shk_Your(whose, obj);
+        Shk_Your(whose, obj);
     } else {
         canseeit = FALSE;
     }
@@ -1436,7 +1343,7 @@ burn_object(arg, timeout)
        or candle so you'll be notified when it burns out even if blind at
        the time; brass lantern doesn't radiate sufficient heat for that
        (however, inventory formatting drops "(lit)" so player can tell) */
-    bytouch = (+(obj.where == OBJ_INVENT && obj.otyp != BRASS_LANTERN));
+    bytouch = +(obj.where == OBJ_INVENT && obj.otyp != BRASS_LANTERN);
     need_newsym = need_invupdate = FALSE;
 
     /* obj->age is the age remaining at this point.  */
@@ -1642,7 +1549,7 @@ burn_object(arg, timeout)
                 if (carried(obj)) {
                     useupall(obj);
                 } else {
-                    let onfloor = (+(obj.where == OBJ_FLOOR));
+                    let onfloor = +(obj.where == OBJ_FLOOR);
 
                     /* clear migrating obj's destination code
                        so obfree won't think this item is worn */
@@ -1678,7 +1585,8 @@ burn_object(arg, timeout)
         newsym(x[0], y[0]);
     if (need_invupdate)
         update_inventory();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Start a burn timeout on the given object. If not "already lit" then
@@ -1709,9 +1617,8 @@ burn_object(arg, timeout)
  *
  * This is a "silent" routine - it should not print anything out.
  */
-export function /* void */
-begin_burn(obj, already_lit)
-{ const $frame = stack_frame(); try {
+export function begin_burn(obj, already_lit) { /* void */
+    const $frame = stack_frame(); try {
     let radius = 3;
     let turns = 0;
     let do_timer = TRUE;
@@ -1795,15 +1702,14 @@ begin_burn(obj, already_lit)
         else
             impossible(_("begin_burn: can't get obj position"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Stop a burn timeout on the given object if timer attached.  Darken
  * light source.
  */
-export function /* void */
-end_burn(obj, timer_attached)
-{
+export function end_burn(obj, timer_attached) { /* void */
     if (!obj.lamplit) {
         impossible(_("end_burn: obj %s not lit"), xname(obj));
         return;
@@ -1825,9 +1731,7 @@ end_burn(obj, timer_attached)
 /*
  * Cleanup a burning object if timer stopped.
  */
-function /* void */
-cleanup_burn(arg, expire_time)
-{
+function cleanup_burn(arg, expire_time) { /* void */
     let obj = arg.a_obj;
 
     if (!obj.lamplit) {
@@ -1844,9 +1748,7 @@ cleanup_burn(arg, expire_time)
         update_inventory();
 }
 
-export function /* void */
-do_storms()
-{
+export function do_storms() { /* void */
     let nstrike;
     let x, y;
     let dirx, diry;
@@ -1951,26 +1853,12 @@ do_storms()
  *      Check whether object has a timer of type timer_type.
  */
 
-
-
-
-
-
-
-
-
-
 /* If defined, then include names when printing out the timer queue */
-
 
  const ttable = struct("ttable", {
     f: fnptr_t, cleanup: fnptr_t,
 
     name: ptr_to(char),
-
-
-
-
 });
 
 /*
@@ -1991,10 +1879,7 @@ const timeout_funcs = static_array("timeout_funcs", ttable, NUM_TIME_FUNCS, [
     /* currently no monster or global timers */
 ]);
 
-
-function /* const char * */
-kind_name(kind)
-{
+function kind_name(kind) { /* const char * */
     switch (kind) {
     case TIMER_NONE:
         impossible(_("no timer type"));
@@ -2011,9 +1896,8 @@ kind_name(kind)
     return _("unknown");
 }
 
-function /* void */
-print_queue(win, base)
-{ const $frame = stack_frame(); try {
+function print_queue(win, base) { /* void */
+    const $frame = stack_frame(); try {
     let curr;
     let buf = stack_array(char, BUFSZ);
 
@@ -2022,25 +1906,19 @@ print_queue(win, base)
     } else {
         putstr()(win, 0, _("timeout  id   kind   call"));
         for (curr = base; curr; curr = curr.next) {
-
-            void sprintf(buf, _(" %4lld   %4lld  %-6s %s(%s)"), curr.timeout, curr.tid, kind_name(curr.kind), timeout_funcs[curr.func_index].name, fmt_ptr(curr.arg.a_void))
-
+            sprintf(buf, _(" %4lld   %4lld  %-6s %s(%s)"), curr.timeout, curr.tid, kind_name(curr.kind), timeout_funcs[curr.func_index].name, fmt_ptr(curr.arg.a_void))
 
 ;
-
-
-
-
 
             putstr()(win, 0, buf);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #timeout command */
-export function /* int */
-wiz_timeout_queue()
-{ const $frame = stack_frame(); try {
+export function wiz_timeout_queue() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let buf = stack_array(char, BUFSZ);
     let propname;
@@ -2051,7 +1929,7 @@ wiz_timeout_queue()
     if (win == WIN_ERR)
         return ECMD_OK;
 
-    void sprintf(buf, _("Current time = %lld."), svm.moves);
+    sprintf(buf, _("Current time = %lld."), svm.moves);
     putstr()(win, 0, buf);
     putstr()(win, 0, _(""));
     putstr()(win, 0, _("Active timeout queue:"));
@@ -2092,7 +1970,7 @@ wiz_timeout_queue()
                    width of 4 digits should result in values lining up
                    almost all the time (if/when they don't, it won't
                    look nice but the information will still be accurate) */
-                void sprintf(buf, _(" %*s %4lld"), -longestlen, propname, (intrinsic & TIMEOUT))
+                sprintf(buf, _(" %*s %4lld"), -longestlen, propname, (intrinsic & TIMEOUT))
 ;
                 putstr()(win, 0, buf);
             }
@@ -2102,12 +1980,12 @@ wiz_timeout_queue()
         putstr()(win, 0, _(""));
         /* decremented when engulfer makes a move, so can last longer than
            the number of turns reported if engulfer is slow */
-        void sprintf(buf, _("Swallow countdown is %u."), u.uswldtim);
+        sprintf(buf, _("Swallow countdown is %u."), u.uswldtim);
         putstr()(win, 0, buf);
     }
     if (u.uinvault) {
         putstr()(win, 0, _(""));
-        void sprintf(buf, _("Vault counter is %d."), u.uinvault);
+        sprintf(buf, _("Vault counter is %d."), u.uinvault);
         putstr()(win, 0, buf);
     }
     if (any_visible_region()) {
@@ -2115,7 +1993,7 @@ wiz_timeout_queue()
     }
     if (svl.level.flags.stasis_until >= svm.moves) {
         putstr()(win, 0, _(""));
-        void sprintf(buf, _("Level is no-teleport for %lld %s."), svl.level.flags.stasis_until - svm.moves + 1, (svl.level.flags.stasis_until - svm.moves > 0)
+        sprintf(buf, _("Level is no-teleport for %lld %s."), svl.level.flags.stasis_until - svm.moves + 1, (svl.level.flags.stasis_until - svm.moves > 0)
                   ? _("turns") : _("more turn"))
 
 ;
@@ -2125,11 +2003,11 @@ wiz_timeout_queue()
     destroy_nhwindow()(win);
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-timer_sanity_check()
-{ const $frame = stack_frame(); try {
+export function timer_sanity_check() { /* void */
+    const $frame = stack_frame(); try {
     let curr;
     let t_id;
     let x = stack_var(coordxy), y = stack_var(coordxy);
@@ -2178,7 +2056,7 @@ timer_sanity_check()
         case TIMER_LEVEL: {
             let lwhere = curr.arg.a_long;
 
-            x[0] = coordxy(((shr64(lwhere, 16)) & 0xFFFF));
+            x[0] = coordxy((shr64(lwhere, 16) & 0xFFFF));
             y[0] = coordxy((lwhere & 0xFFFF));
             if (isok(x[0], y[0])) {
                 /* replicate isok() in order to convince static analysis
@@ -2213,15 +2091,14 @@ timer_sanity_check()
             break;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Pick off timeout elements from the global queue and call their functions.
  * Do this until their time is less than or equal to the move count.
  */
-export function /* void */
-run_timers()
-{
+export function run_timers() { /* void */
     let curr;
 
     /*
@@ -2234,9 +2111,9 @@ run_timers()
         gt.timer_base = curr.next;
 
         if (curr.kind == TIMER_OBJECT)
-            (curr.arg.a_obj).timed--;
+            curr.arg.a_obj.timed--;
         (timeout_funcs[curr.func_index].f)(curr.arg, curr.timeout);
-        void memset(addr_of(curr), 0, sizeof(struct_fe));
+        memset(addr_of(curr), 0, sizeof(struct_fe));
         free(addr_of(curr));
     }
 }
@@ -2244,13 +2121,12 @@ run_timers()
 /*
  * Start a timer.  Return TRUE if successful.
  */
-export function /* boolean */
-start_timer(
+export function start_timer(
     when,
     kind,
     func_index,
-    arg)
-{ const $frame = stack_frame(); try {
+    arg) { /* boolean */
+    const $frame = stack_frame(); try {
     let gnu, dup;
 
     if (kind <= TIMER_NONE || kind >= NUM_TIMER_KINDS
@@ -2266,17 +2142,14 @@ start_timer(
     if (dup) {
         let idbuf = stack_array(char, QBUFSZ);
 
-
-        void sprintf(idbuf, _("%s timer"), timeout_funcs[func_index].name);
-
-
+        sprintf(idbuf, _("%s timer"), timeout_funcs[func_index].name);
 
         impossible(_("Attempted to start duplicate %s, aborted."), idbuf);
         return FALSE;
     }
 
     gnu = view_of(struct_fe, addr_of(alloc(sizeof(struct_fe))));
-    void memset(addr_of(gnu), 0, sizeof(struct_fe));
+    memset(addr_of(gnu), 0, sizeof(struct_fe));
     gnu.next = null;
     gnu.tid = svt.timer_id++;
     gnu.timeout = svm.moves + when;
@@ -2287,18 +2160,17 @@ start_timer(
     insert_timer(gnu);
 
     if (kind == TIMER_OBJECT) /* increment object's timed count */
-        (arg.a_obj).timed++;
+        arg.a_obj.timed++;
 
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Remove the timer from the current list and free it up.  Return the time
  * remaining until it would have gone off, 0 if not found.
  */
-export function /* long long */
-stop_timer(func_index, arg)
-{
+export function stop_timer(func_index, arg) { /* long long */
     let cleanup_func;
     let doomed;
     let timeout;
@@ -2308,10 +2180,10 @@ stop_timer(func_index, arg)
     if (doomed) {
         timeout = doomed.timeout;
         if (doomed.kind == TIMER_OBJECT)
-            (arg.a_obj).timed--;
+            arg.a_obj.timed--;
         if ((cleanup_func = timeout_funcs[doomed.func_index].cleanup) != null)
-            (cleanup_func)(arg, timeout);
-        void memset(addr_of(doomed), 0, sizeof(struct_fe));
+            cleanup_func(arg, timeout);
+        memset(addr_of(doomed), 0, sizeof(struct_fe));
         free(addr_of(doomed));
         return (timeout - svm.moves);
     }
@@ -2321,9 +2193,7 @@ stop_timer(func_index, arg)
 /*
  * Find the timeout of specified timer; return 0 if none.
  */
-export function /* long long */
-peek_timer(type, arg)
-{
+export function peek_timer(type, arg) { /* long long */
     let curr;
 
     for (curr = gt.timer_base; curr; curr = curr.next) {
@@ -2336,9 +2206,7 @@ peek_timer(type, arg)
 /*
  * Move all object timers from src to dest, leaving src untimed.
  */
-export function /* void */
-obj_move_timers(src, dest)
-{
+export function obj_move_timers(src, dest) { /* void */
     let count;
     let curr;
 
@@ -2356,15 +2224,13 @@ obj_move_timers(src, dest)
 /*
  * Find all object timers and duplicate them for the new object "dest".
  */
-export function /* void */
-obj_split_timers(src, dest)
-{
+export function obj_split_timers(src, dest) { /* void */
     let curr, next_timer = null;
 
     for (curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next; /* things may be inserted */
         if (curr.kind == TIMER_OBJECT && curr.arg.a_obj == src) {
-            void start_timer(curr.timeout - svm.moves, TIMER_OBJECT,
+            start_timer(curr.timeout - svm.moves, TIMER_OBJECT,
                                curr.func_index, obj_to_any(dest));
         }
     }
@@ -2374,9 +2240,7 @@ obj_split_timers(src, dest)
  * Stop all timers attached to this object.  We can get away with this because
  * all object pointers are unique.
  */
-export function /* void */
-obj_stop_timers(obj)
-{
+export function obj_stop_timers(obj) { /* void */
     let cleanup_func;
     let curr, prev, next_timer = null;
 
@@ -2388,8 +2252,8 @@ obj_stop_timers(obj)
             else
                 gt.timer_base = curr.next;
             if ((cleanup_func = timeout_funcs[curr.func_index].cleanup) != null)
-                (cleanup_func)(curr.arg, curr.timeout);
-            void memset(addr_of(curr), 0, sizeof(struct_fe));
+                cleanup_func(curr.arg, curr.timeout);
+            memset(addr_of(curr), 0, sizeof(struct_fe));
             free(addr_of(curr));
         } else {
             prev = curr;
@@ -2401,9 +2265,7 @@ obj_stop_timers(obj)
 /*
  * Check whether object has a timer of type timer_type.
  */
-export function /* boolean */
-obj_has_timer(object, timer_type)
-{
+export function obj_has_timer(object, timer_type) { /* boolean */
     let timeout = peek_timer(timer_type, obj_to_any(object));
 
     return (+(timeout != 0));
@@ -2413,12 +2275,10 @@ obj_has_timer(object, timer_type)
  * Stop all timers of index func_index at this spot.
  *
  */
-export function /* void */
-spot_stop_timers(x, y, func_index)
-{
+export function spot_stop_timers(x, y, func_index) { /* void */
     let cleanup_func;
     let curr, prev, next_timer = null;
-    let where = (or64((shl64(x, 16)), (y)));
+    let where = or64(shl64(x, 16), y);
 
     for (prev = null, curr = gt.timer_base; curr; curr = next_timer) {
         next_timer = curr.next;
@@ -2429,8 +2289,8 @@ spot_stop_timers(x, y, func_index)
             else
                 gt.timer_base = curr.next;
             if ((cleanup_func = timeout_funcs[curr.func_index].cleanup) != null)
-                (cleanup_func)(curr.arg, curr.timeout);
-            void memset(addr_of(curr), 0, sizeof(struct_fe));
+                cleanup_func(curr.arg, curr.timeout);
+            memset(addr_of(curr), 0, sizeof(struct_fe));
             free(addr_of(curr));
         } else {
             prev = curr;
@@ -2442,11 +2302,9 @@ spot_stop_timers(x, y, func_index)
  * When is the spot timer of type func_index going to expire?
  * Returns 0L if no such timer.
  */
-export function /* long long */
-spot_time_expires(x, y, func_index)
-{
+export function spot_time_expires(x, y, func_index) { /* long long */
     let curr;
-    let where = (or64((shl64(x, 16)), (y)));
+    let where = or64(shl64(x, 16), y);
 
     for (curr = gt.timer_base; curr; curr = curr.next) {
         if (curr.kind == TIMER_LEVEL && curr.func_index == func_index
@@ -2456,17 +2314,13 @@ spot_time_expires(x, y, func_index)
     return 0;
 }
 
-export function /* long long */
-spot_time_left(x, y, func_index)
-{
+export function spot_time_left(x, y, func_index) { /* long long */
     let expires = spot_time_expires(x, y, func_index);
     return (expires > 0) ? expires - svm.moves : 0;
 }
 
 /* Insert timer into the global queue */
-function /* void */
-insert_timer(gnu)
-{
+function insert_timer(gnu) { /* void */
     let curr, prev;
 
     for (prev = null, curr = gt.timer_base; curr; prev = curr, curr = curr.next)
@@ -2480,12 +2334,10 @@ insert_timer(gnu)
         gt.timer_base = gnu;
 }
 
-function /* timer_element * */
-remove_timer(
+function remove_timer(
     base,
     func_index,
-    arg)
-{
+    arg) { /* timer_element * */
     let prev, curr;
 
     for (prev = null, curr = base[0]; curr; prev = curr, curr = curr.next)
@@ -2502,9 +2354,8 @@ remove_timer(
     return curr;
 }
 
-function /* void */
-write_timer(nhfp, timer)
-{ const $frame = stack_frame(); try {
+function write_timer(nhfp, timer) { /* void */
+    const $frame = stack_frame(); try {
     let arg_save = stack_struct(struct_any);
 
     struct_assign(arg_save, cg.zeroany);
@@ -2522,7 +2373,7 @@ write_timer(nhfp, timer)
             /* replace object pointer with id */
             arg_save.a_obj = timer.arg.a_obj;
             struct_assign(timer.arg, cg.zeroany);
-            timer.arg.a_uint = (arg_save.a_obj).o_id;
+            timer.arg.a_uint = arg_save.a_obj.o_id;
             timer.needs_fixup = 1;
             Sfo_fe(nhfp, timer, _("timer"));
             timer.arg.a_obj = arg_save.a_obj;
@@ -2537,7 +2388,7 @@ write_timer(nhfp, timer)
             /* replace monster pointer with id */
             arg_save.a_monst = timer.arg.a_monst;
             struct_assign(timer.arg, cg.zeroany);
-            timer.arg.a_uint = (arg_save.a_monst).m_id;
+            timer.arg.a_uint = arg_save.a_monst.m_id;
             timer.needs_fixup = 1;
             Sfo_fe(nhfp, timer, _("timer"));
             timer.arg.a_monst = arg_save.a_monst;
@@ -2549,17 +2400,14 @@ write_timer(nhfp, timer)
         panic(_("write_timer"));
         break;
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Return TRUE if the object will stay on the level when the level is
  * saved.
  */
-export function /* boolean */
-obj_is_local(obj)
-{
+export function obj_is_local(obj) { /* boolean */
     switch (obj.where) {
     case OBJ_INVENT:
     case OBJ_MIGRATING:
@@ -2581,9 +2429,7 @@ obj_is_local(obj)
  * Return TRUE if the given monster will stay on the level when the
  * level is saved.
  */
-function /* boolean */
-mon_is_local(mon)
-{
+function mon_is_local(mon) { /* boolean */
     let curr;
 
     for (curr = gm.migrating_mons; curr; curr = curr.nmon)
@@ -2600,9 +2446,7 @@ mon_is_local(mon)
  * Return TRUE if the timer is attached to something that will stay on the
  * level when the level is saved.
  */
-function /* boolean */
-timer_is_local(timer)
-{
+function timer_is_local(timer) { /* boolean */
     switch (timer.kind) {
     case TIMER_LEVEL:
         return TRUE;
@@ -2618,15 +2462,11 @@ timer_is_local(timer)
     return FALSE;
 }
 
-
-
 /*
  * Part of the save routine.  Count up the number of timers that would
  * be written.  If write_it is true, actually write the timer.
  */
-function /* int */
-maybe_write_timer(nhfp, range, write_it)
-{
+function maybe_write_timer(nhfp, range, write_it) { /* int */
     let count = 0;
     let curr;
 
@@ -2651,7 +2491,6 @@ maybe_write_timer(nhfp, range, write_it)
     return count;
 }
 
-
 /*
  * Save part of the timer list.  The parameter 'range' specifies either
  * global or level timers to save.  The timer ID is saved with the global
@@ -2665,9 +2504,8 @@ maybe_write_timer(nhfp, range, write_it)
  *      + timeouts that are level-specific (e.g. storms)
  *      + timeouts that stay with the level (obj & monst)
  */
-export function /* void */
-save_timers(nhfp, range)
-{ const $frame = stack_frame(); try {
+export function save_timers(nhfp, range) { /* void */
+    const $frame = stack_frame(); try {
     let curr, prev, next_timer = null;
     let count = stack_var(int);
 
@@ -2677,7 +2515,7 @@ save_timers(nhfp, range)
         }
         count[0] = maybe_write_timer(nhfp, range, FALSE);
         Sfo_int(nhfp, count, _("timer-timer_count"));
-        void maybe_write_timer(nhfp, range, TRUE);
+        maybe_write_timer(nhfp, range, TRUE);
     }
 
     if (release_data(nhfp)) {
@@ -2689,7 +2527,7 @@ save_timers(nhfp, range)
                     prev.next = curr.next;
                 else
                     gt.timer_base = curr.next;
-                void memset(addr_of(curr), 0, sizeof(struct_fe));
+                memset(addr_of(curr), 0, sizeof(struct_fe));
                 free(addr_of(curr));
                 /* prev stays the same */
             } else {
@@ -2697,19 +2535,18 @@ save_timers(nhfp, range)
             }
         }
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Pull in the structures from disk, but don't recalculate the object and
  * monster pointers.
  */
-export function /* void */
-restore_timers(nhfp, range, adjust)
-{ const $frame = stack_frame(); try {
+export function restore_timers(nhfp, range, adjust) { /* void */
+    const $frame = stack_frame(); try {
     let count = stack_var(int, 0);
     let curr;
-    let ghostly = (+(nhfp.ftype == NHF_BONESFILE)); /* from a ghost level */
+    let ghostly = +(nhfp.ftype == NHF_BONESFILE); /* from a ghost level */
 
     if (range == RANGE_GLOBAL) {
         sfi_ulong(nhfp, ref_of(svt, "timer_id"), _("timer-timer_id"));
@@ -2724,33 +2561,25 @@ restore_timers(nhfp, range, adjust)
             curr.timeout += adjust;
 
         insert_timer(curr);
-
     }
-} finally { stack_pop($frame); } }
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* to support '#stats' wizard-mode command */
-export function /* void */
-timer_stats(hdrfmt, hdrbuf, count, size)
-{
+export function timer_stats(hdrfmt, hdrbuf, count, size) { /* void */
     let te;
 
-    void sprintf(hdrbuf, hdrfmt, (NHJS_LP64_SIZEOF_timer_element));
+    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_timer_element);
     count[0] = size[0] = 0;
     for (te = gt.timer_base; te; te = te.next) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_timer_element);
+        size[0] += NHJS_LP64_SIZEOF_timer_element;
     }
 }
 
-
-
 /* reset all timers that are marked for resetting */
-export function /* void */
-relink_timers(ghostly)
-{ const $frame = stack_frame(); try {
+export function relink_timers(ghostly) { /* void */
+    const $frame = stack_frame(); try {
     let curr;
     let nid = stack_var(unsigned);
 
@@ -2772,441 +2601,143 @@ relink_timers(ghostly)
                 panic(_("relink_timers 2"));
         }
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*timeout.c*/
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
+
+import { A_CON, A_DEX, A_STR } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { NH_BLUE } from "./decl.h.macros.js";
-import { NH_GOLDEN } from "./decl.h.macros.js";
-import { NH_GREEN } from "./decl.h.macros.js";
-import { You_can_move_again } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
+import { NH_BLUE, NH_GOLDEN, NH_GREEN, You_can_move_again, something } from "./decl.h.macros.js";
 import { S_DRAGON } from "./defsym.h.js";
 import { vobj_at } from "./display.h.macros.js";
 import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { FULL_MOON } from "./flag.h.js";
-import { PLNMSG_OK_DONT_DIE } from "./flag.h.js";
-import { PLNMSG_ONE_ITEM_HERE } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { DISMOUNT_FELL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { FAINTING } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { GENOCIDED } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NECK } from "./hack.h.js";
-import { NHF_BONESFILE } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_MINVENT } from "./hack.h.js";
-import { POISONING } from "./hack.h.js";
-import { STONING } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { TURNED_SLIME } from "./hack.h.js";
-import { BZ_M_SPELL } from "./hack.h.macros.js";
-import { BZ_OFS_AD } from "./hack.h.macros.js";
-import { IndexOkT } from "./hack.h.macros.js";
-import { NODIAG } from "./hack.h.macros.js";
-import { You1 } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
+import { FULL_MOON, PLNMSG_OK_DONT_DIE, PLNMSG_ONE_ITEM_HERE } from "./flag.h.js";
+import { BUFSZ, COLNO, FALSE, QBUFSZ, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    ARTICLE_THE, DIED, DISMOUNT_FELL, ECMD_OK, FAINTING, FOOT, GENOCIDED, KILLED_BY, KILLED_BY_AN,
+    MM_NOMSG, NECK, NHF_BONESFILE, NO_KILLER_PREFIX, NO_MINVENT, POISONING, STONING,
+    SUPPRESS_SADDLE, TURNED_SLIME,
+} from "./hack.h.js";
+import {
+    BZ_M_SPELL, BZ_OFS_AD, IndexOkT, NODIAG, You1, pline1, release_data, rn1, update_file,
+} from "./hack.h.macros.js";
 import { AD_ELEC } from "./monattk.h.js";
-import { emits_light } from "./mondata.h.macros.js";
-import { is_silent } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
-import { G_EXTINCT } from "./monflag.h.js";
-import { G_GENOD } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { MV_KNOWS_EGG } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
+import {
+    emits_light, is_silent, is_were, nolimbs, touch_petrifies, type_is_pname,
+} from "./mondata.h.macros.js";
+import { G_EXTINCT, G_GENOD, G_UNIQ, MV_KNOWS_EGG, NEUTRAL } from "./monflag.h.js";
 import { M_AP_MONSTER } from "./monst.h.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
+import { LOW_PM, NON_PM, PM_ARCHEOLOGIST, PM_GREEN_SLIME } from "./monsters.h.js";
 import { NHJS_LP64_SIZEOF_timer_element } from "./nhjs_recorder_sizes.h.js";
-import { BURIED_TOO } from "./obj.h.js";
-import { CONTAINED_TOO } from "./obj.h.js";
-import { MAX_EGG_HATCH_TIME } from "./obj.h.js";
-import { OBJ_BURIED } from "./obj.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { OBJ_MIGRATING } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { Is_candle } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { BRASS_LANTERN } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { FEDORA } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { ACID_RES } from "./prop.h.js";
-import { ADORNED } from "./prop.h.js";
-import { AGGRAVATE_MONSTER } from "./prop.h.js";
-import { ANTIMAGIC } from "./prop.h.js";
-import { BLINDED } from "./prop.h.js";
-import { BLND_RES } from "./prop.h.js";
-import { CLAIRVOYANT } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { CONFLICT } from "./prop.h.js";
-import { CONFUSION } from "./prop.h.js";
-import { DEAF } from "./prop.h.js";
-import { DETECT_MONSTERS } from "./prop.h.js";
-import { DISINT_RES } from "./prop.h.js";
-import { DISPLACED } from "./prop.h.js";
-import { DRAIN_RES } from "./prop.h.js";
-import { ENERGY_REGENERATION } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FIXED_ABIL } from "./prop.h.js";
-import { FLYING } from "./prop.h.js";
-import { FREE_ACTION } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { FUMBLING } from "./prop.h.js";
-import { GLIB } from "./prop.h.js";
-import { HALF_PHDAM } from "./prop.h.js";
-import { HALF_SPDAM } from "./prop.h.js";
-import { HALLUC } from "./prop.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { HUNGER } from "./prop.h.js";
-import { INFRAVISION } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { INVULNERABLE } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { JUMPING } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { LIFESAVED } from "./prop.h.js";
-import { MAGICAL_BREATHING } from "./prop.h.js";
-import { PASSES_WALLS } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { POLYMORPH } from "./prop.h.js";
-import { POLYMORPH_CONTROL } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { PROT_FROM_SHAPE_CHANGERS } from "./prop.h.js";
-import { REFLECTING } from "./prop.h.js";
-import { REGENERATION } from "./prop.h.js";
-import { SEARCHING } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SICK } from "./prop.h.js";
-import { SICK_RES } from "./prop.h.js";
-import { SLEEPY } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { SLIMED } from "./prop.h.js";
-import { SLOW_DIGESTION } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { STONED } from "./prop.h.js";
-import { STONE_RES } from "./prop.h.js";
-import { STRANGLED } from "./prop.h.js";
-import { STUNNED } from "./prop.h.js";
-import { SWIMMING } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { TELEPORT } from "./prop.h.js";
-import { TELEPORT_CONTROL } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { UNCHANGING } from "./prop.h.js";
-import { VOMITING } from "./prop.h.js";
-import { WARNING } from "./prop.h.js";
-import { WARN_OF_MON } from "./prop.h.js";
-import { WARN_UNDEAD } from "./prop.h.js";
-import { WOUNDED_LEGS } from "./prop.h.js";
-import { WWALKING } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { CLOUD } from "./rm.h.js";
-import { DB_ICE } from "./rm.h.js";
-import { DB_UNDER } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { Sfi_fe } from "./savefile.h.macros.js";
-import { Sfo_fe } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
-import { BURN_OBJECT } from "./timeout.h.js";
-import { FIG_TRANSFORM } from "./timeout.h.js";
-import { HATCH_EGG } from "./timeout.h.js";
-import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { NUM_TIMER_KINDS } from "./timeout.h.js";
-import { NUM_TIME_FUNCS } from "./timeout.h.js";
-import { RANGE_GLOBAL } from "./timeout.h.js";
-import { RANGE_LEVEL } from "./timeout.h.js";
-import { TIMER_GLOBAL } from "./timeout.h.js";
-import { TIMER_LEVEL } from "./timeout.h.js";
-import { TIMER_MONSTER } from "./timeout.h.js";
-import { TIMER_NONE } from "./timeout.h.js";
-import { TIMER_OBJECT } from "./timeout.h.js";
-import { struct_fe } from "./timeout.h.js";
-import { LS_MONSTER } from "./vision.h.js";
-import { LS_OBJECT } from "./vision.h.js";
+import {
+    BURIED_TOO, CONTAINED_TOO, MAX_EGG_HATCH_TIME, OBJ_BURIED, OBJ_CONTAINED, OBJ_FLOOR, OBJ_INVENT,
+    OBJ_MIGRATING, OBJ_MINVENT,
+} from "./obj.h.js";
+import { Is_candle, carried } from "./obj.h.macros.js";
+import {
+    AMULET_OF_STRANGULATION, BRASS_LANTERN, CANDELABRUM_OF_INVOCATION, CORPSE, FEDORA, LUCKSTONE,
+    MAGIC_LAMP, OIL_LAMP, POT_OIL, ROCK, TALLOW_CANDLE, WAX_CANDLE,
+} from "./objects.h.js";
+import {
+    ACID_RES, ADORNED, AGGRAVATE_MONSTER, ANTIMAGIC, BLINDED, BLND_RES, CLAIRVOYANT, COLD_RES,
+    CONFLICT, CONFUSION, DEAF, DETECT_MONSTERS, DISINT_RES, DISPLACED, DRAIN_RES,
+    ENERGY_REGENERATION, FAST, FIRE_RES, FIXED_ABIL, FLYING, FREE_ACTION, FROMOUTSIDE, FUMBLING,
+    GLIB, HALF_PHDAM, HALF_SPDAM, HALLUC, HALLUC_RES, HUNGER, INFRAVISION, INVIS, INVULNERABLE,
+    I_SPECIAL, JUMPING, LEVITATION, LIFESAVED, MAGICAL_BREATHING, PASSES_WALLS, POISON_RES,
+    POLYMORPH, POLYMORPH_CONTROL, PROTECTION, PROT_FROM_SHAPE_CHANGERS, REFLECTING, REGENERATION,
+    SEARCHING, SEE_INVIS, SHOCK_RES, SICK, SICK_RES, SLEEPY, SLEEP_RES, SLIMED, SLOW_DIGESTION,
+    STEALTH, STONED, STONE_RES, STRANGLED, STUNNED, SWIMMING, TELEPAT, TELEPORT, TELEPORT_CONTROL,
+    TIMEOUT, UNCHANGING, VOMITING, WARNING, WARN_OF_MON, WARN_UNDEAD, WOUNDED_LEGS, WWALKING,
+    W_SADDLE,
+} from "./prop.h.js";
+import { CLOUD, DB_ICE, DB_UNDER, DRAWBRIDGE_DOWN } from "./rm.h.js";
+import { ACCESSIBLE, levl, m_at } from "./rm.h.macros.js";
+import { Sfi_fe, Sfo_fe, Sfo_int } from "./savefile.h.macros.js";
+import {
+    BURN_OBJECT, FIG_TRANSFORM, HATCH_EGG, MELT_ICE_AWAY, NUM_TIMER_KINDS, NUM_TIME_FUNCS,
+    RANGE_GLOBAL, RANGE_LEVEL, TIMER_GLOBAL, TIMER_LEVEL, TIMER_MONSTER, TIMER_NONE, TIMER_OBJECT,
+    struct_fe,
+} from "./timeout.h.js";
+import { LS_MONSTER, LS_OBJECT } from "./vision.h.js";
 import { cansee } from "./vision.h.macros.js";
 import { WT_NOISY_INV } from "./weight.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { SICK_ALL } from "./you.h.js";
-import { SICK_NONVOMITABLE } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { Acid_resistance } from "./youprop.h.macros.js";
-import { BInvis } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Displaced } from "./youprop.h.macros.js";
-import { EFumbling } from "./youprop.h.macros.js";
-import { ELevitation } from "./youprop.h.macros.js";
-import { EPasses_walls } from "./youprop.h.macros.js";
-import { Fast } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HDeaf } from "./youprop.h.macros.js";
-import { HFlying } from "./youprop.h.macros.js";
-import { HFumbling } from "./youprop.h.macros.js";
-import { HLevitation } from "./youprop.h.macros.js";
-import { HMagical_breathing } from "./youprop.h.macros.js";
-import { HPasses_walls } from "./youprop.h.macros.js";
-import { HSleepy } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Sleep_resistance } from "./youprop.h.macros.js";
-import { Sleepy } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Very_fast } from "./youprop.h.macros.js";
-import { Vomiting } from "./youprop.h.macros.js";
-import { Warn_of_mon } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
-import { Wwalking } from "./youprop.h.macros.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, putstr,
+} from "./winprocs.h.macros.js";
+import { NHW_MENU, WIN_ERR, struct_any } from "./wintype.h.js";
+import { SICK_ALL, SICK_NONVOMITABLE } from "./you.h.js";
+import { Role_if, Upolyd, mhe } from "./you.h.macros.js";
+import {
+    Acid_resistance, BInvis, Blind, Breathless, Confusion, Deaf, Displaced, EFumbling, ELevitation,
+    EPasses_walls, Fast, Fire_resistance, Flying, Fumbling, HConfusion, HDeaf, HFlying, HFumbling,
+    HLevitation, HMagical_breathing, HPasses_walls, HSleepy, HStun, Hallucination, Invis,
+    Levitation, Passes_walls, Poison_resistance, Protection_from_shape_changers, See_invisible,
+    Sick, Sleep_resistance, Sleepy, Slimed, Stone_resistance, Stoned, Strangled, Stunned, Unaware,
+    Unchanging, Very_fast, Vomiting, Warn_of_mon, Wounded_legs, Wwalking,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { shl64 } from "../rt/int64.js";
-import { shr64 } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64, shl64, shr64 } from "../rt/int64.js";
+import { assert, free, memset, sprintf, strchr, strcpy, strlen } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, fnptr_t, ptr_add, ptr_diff, ptr_to, ref_of, struct, struct_assign, view_of,
+} from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { alloc } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
+import { alloc, fmt_ptr } from "./alloc.js";
 import { fig_transform } from "./apply.js";
 import { artifact_light } from "./artifact.js";
-import { adjattrib } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { stone_luck } from "./attrib.js";
-import { confdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { is_ice } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gt } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svq } from "./decl.js";
-import { svt } from "./decl.js";
-import { u } from "./decl.js";
-import { rot_corpse } from "./dig.js";
-import { rot_organic } from "./dig.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { set_mimic_blocking } from "./display.js";
-import { heal_legs } from "./do.js";
-import { revive_mon } from "./do.js";
-import { zombify_mon } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { m_monnam } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { find_ac } from "./do_wear.js";
-import { toggle_displacement } from "./do_wear.js";
-import { wielding_corpse } from "./do_wear.js";
+import { adjattrib, exercise, stone_luck } from "./attrib.js";
+import { confdir, isok } from "./cmd.js";
+import { is_ice, is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    cg, disp, flags, gb, gm, gn, gt, gy, iflags, svc, svk, svl, svm, svq, svt, u,
+} from "./decl.js";
+import { rot_corpse, rot_organic } from "./dig.js";
+import { canseemon, newsym, see_monsters, set_mimic_blocking } from "./display.js";
+import { heal_legs, revive_mon, zombify_mon } from "./do.js";
+import { Monnam, a_monnam, hcolor, m_monnam, rndmonnam, x_monnam } from "./do_name.js";
+import { find_ac, toggle_displacement, wielding_corpse } from "./do_wear.js";
 import { tamedog } from "./dog.js";
 import { hurtle } from "./dothrow.js";
 import { surface } from "./dungeon.js";
-import { Popeye } from "./eat.js";
-import { eating_dangerous_corpse } from "./eat.js";
-import { morehungry } from "./eat.js";
-import { vomit } from "./eat.js";
-import { dealloc_killer } from "./end.js";
-import { done } from "./end.js";
-import { find_delayed_killer } from "./end.js";
-import { panic } from "./end.js";
-import { inv_weight } from "./hack.js";
-import { monst_to_any } from "./hack.js";
-import { nomul } from "./hack.js";
-import { obj_to_any } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { ing_suffix } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { carrying } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { useupall } from "./invent.js";
-import { arti_light_radius } from "./light.js";
-import { candle_light_range } from "./light.js";
-import { del_light_source } from "./light.js";
-import { new_light_source } from "./light.js";
+import { Popeye, eating_dangerous_corpse, morehungry, vomit } from "./eat.js";
+import { dealloc_killer, done, find_delayed_killer, panic } from "./end.js";
+import { inv_weight, monst_to_any, nomul, obj_to_any, spoteffects } from "./hack.js";
+import { eos, highc, ing_suffix, s_suffix, strstri, strsubst, upstart } from "./hacklib.js";
+import { carrying, sobj_at, update_inventory, useup, useupall } from "./invent.js";
+import {
+    arti_light_radius, candle_light_range, del_light_source, new_light_source,
+} from "./light.js";
 import { makemon } from "./makemon.js";
-import { container_weight } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { shrink_glob } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { hideunder } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { restartcham } from "./mon.js";
-import { wake_nearby } from "./mon.js";
-import { big_to_little } from "./mondata.js";
-import { cantvomit } from "./mondata.js";
-import { little_to_big } from "./mondata.js";
-import { locomotion } from "./mondata.js";
-import { name_to_mon } from "./mondata.js";
+import { container_weight, obj_extract_self, shrink_glob, weight } from "./mkobj.js";
+import { hideunder, maybe_unhide_at, restartcham, wake_nearby } from "./mon.js";
+import { big_to_little, cantvomit, little_to_big, locomotion, name_to_mon } from "./mondata.js";
 import { mons } from "./monst.js";
-import { Yname2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { the } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
+import { Yname2, an, doname, makeplural, the, vtense, xname } from "./objnam.js";
 import { deferred_decor } from "./pickup.js";
-import { Norep } from "./pline.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { urgent_pline } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { polymon } from "./polyself.js";
-import { rehumanize } from "./polyself.js";
-import { incr_itimeout } from "./potion.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_deaf } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stoned } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { make_vomiting } from "./potion.js";
-import { set_itimeout } from "./potion.js";
+import {
+    Norep, You, You_feel, You_hear, You_see, Your, impossible, pline, urgent_pline, verbalize,
+} from "./pline.js";
+import { body_part, polymon, rehumanize } from "./polyself.js";
+import {
+    incr_itimeout, make_blinded, make_confused, make_deaf, make_glib, make_hallucinated, make_sick,
+    make_slimed, make_stoned, make_stunned, make_vomiting, set_itimeout,
+} from "./potion.js";
 import { stuck_in_wall } from "./pray.js";
-import { any_visible_region } from "./region.js";
-import { region_danger } from "./region.js";
-import { visible_region_summary } from "./region.js";
+import { any_visible_region, region_danger, visible_region_summary } from "./region.js";
 import { lookup_id_mapping } from "./restore.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { sfi_int } from "./sfbase.js";
-import { sfi_ulong } from "./sfbase.js";
-import { sfo_ulong } from "./sfbase.js";
-import { Shk_Your } from "./shk.js";
-import { find_oid } from "./shk.js";
-import { obfree } from "./shk.js";
+import { d, rn2, rnd } from "./rnd.js";
+import { sfi_int, sfi_ulong, sfo_ulong } from "./sfbase.js";
+import { Shk_Your, find_oid, obfree } from "./shk.js";
 import { cry_sound } from "./sounds.js";
 import { dismount_steed } from "./steed.js";
 import { enexto } from "./teleport.js";
-import { float_down } from "./trap.js";
-import { instapetrify } from "./trap.js";
-import { unconscious } from "./trap.js";
+import { float_down, instapetrify, unconscious } from "./trap.js";
 import { you_unwere } from "./were.js";
 import { which_armor } from "./worn.js";
-import { buzz } from "./zap.js";
-import { get_obj_location } from "./zap.js";
-import { melt_ice_away } from "./zap.js";
+import { buzz, get_obj_location, melt_ice_away } from "./zap.js";

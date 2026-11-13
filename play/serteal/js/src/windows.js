@@ -2,218 +2,37 @@
 /* Copyright (c) D. Cohrs, 1993. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "dlb.h"
-
-// #include "wintty.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef WINCHAIN: not in this build */
 
 export const windowprocs = static_struct("windowprocs", struct_window_procs);
-
-
-
-
-
-
 
  const struct_win_choices = struct("struct_win_choices", {
     procs: ptr_to("struct_window_procs"),
     ini_routine: fnptr_t,
-
-
-
 }); const winchoices = static_array("winchoices", struct_win_choices, null, [
 
     { procs: tty_procs, ini_routine: win_tty_init },
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     {} /* must be last */
 ]);
 
+/* #ifdef WINCHAIN: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* boolean */
-genl_can_suspend_no()
-{
+export function genl_can_suspend_no() { /* boolean */
     return FALSE;
 }
 
-export function /* boolean */
-genl_can_suspend_yes()
-{
+export function genl_can_suspend_yes() { /* boolean */
     return TRUE;
 }
 
-function /* void */
-
-def_raw_print(s)
-{
+function def_raw_print(s) { /* void */
     puts(s);
     if (chars[s])
         iflags.raw_printed++;
 }
 
-function /* void */
-
-def_wait_synch()
-{
+function def_wait_synch() { /* void */
     /* Config file error handling routines
      * call wait_sync() without checking to
      * see if it actually has a value,
@@ -226,32 +45,23 @@ def_wait_synch()
      return;
 }
 
-
-export function /* boolean */
-check_tty_wincap(wincap)
-{
+export function check_tty_wincap(wincap) { /* boolean */
     let wc = win_choices_find(_("tty"));
 
     if (wc)
-        return (+((and64u(wc.procs.wincap, wincap)) == wincap));
+        return +(and64u(wc.procs.wincap, wincap) == wincap);
     return FALSE;
 }
 
-export function /* boolean */
-check_tty_wincap2(wincap2)
-{
+export function check_tty_wincap2(wincap2) { /* boolean */
     let wc = win_choices_find(_("tty"));
 
     if (wc)
-        return (+((and64u(wc.procs.wincap2, wincap2)) == wincap2));
+        return +(and64u(wc.procs.wincap2, wincap2) == wincap2);
     return FALSE;
 }
 
-
-
-function /* struct win_choices * */
-win_choices_find(s)
-{
+function win_choices_find(s) { /* struct win_choices * */
     let i;
 
     for (i = 0; winchoices[i].procs; i++) {
@@ -262,10 +72,8 @@ win_choices_find(s)
     return null;
 }
 
-
-export function /* void */
-choose_windows(s)
-{ const $frame = stack_frame(); try {
+export function choose_windows(s) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let tmps = 0;
 
@@ -278,7 +86,7 @@ choose_windows(s)
             struct_assign(windowprocs, winchoices[i].procs);
 
             if (gl.last_winchoice && gl.last_winchoice.ini_routine)
-                (gl.last_winchoice.ini_routine)(WININIT_UNDO);
+                gl.last_winchoice.ini_routine(WININIT_UNDO);
             if (winchoices[i].ini_routine)
                 (winchoices[i].ini_routine)(WININIT);
             gl.last_winchoice = winchoices[i];
@@ -303,11 +111,10 @@ choose_windows(s)
 
     if (strlen(s) >= WINDOW_TYPE_MAXLEN) {
         tmps = addr_of(alloc(WINDOW_TYPE_MAXLEN));
-        void strncpy(tmps, s, WINDOW_TYPE_MAXLEN - 1);
+        strncpy(tmps, s, WINDOW_TYPE_MAXLEN - 1);
         chars[tmps + (WINDOW_TYPE_MAXLEN - 1)] = ord('\0');
         s = tmps;
     }
-
 
     if (!winchoices[1].procs) {
         config_error_add(
@@ -323,7 +130,7 @@ choose_windows(s)
                 continue;
             if (ord('-') == chars[winchoices[i].procs.name + 0])
                 continue;
-            void sprintf(eos(buf), _("%s%s"), first ? _("") : _(", "), winchoices[i].procs.name)
+            sprintf(eos(buf), _("%s%s"), first ? _("") : _(", "), winchoices[i].procs.name)
 ;
             first = FALSE;
         }
@@ -335,131 +142,26 @@ choose_windows(s)
 
     if (windowprocs.win_raw_print == def_raw_print)
         nh_terminate(EXIT_SUCCESS);
-} finally { stack_pop($frame); } } export const WINDOW_TYPE_MAXLEN = 50;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    } finally { stack_pop($frame); }
+}
+export const WINDOW_TYPE_MAXLEN = 50;
+
+/* #ifdef WINCHAIN: not in this build */
 
 /*
  * tty_message_menu() provides a means to get feedback from the
  * --More-- prompt; other interfaces generally don't need that.
  */
 /*ARGSUSED*/
-export function /* char */
-genl_message_menu(let_,
+export function genl_message_menu(let_,
                   how,
-                  mesg)
-{
+                  mesg) { /* char */
     pline(_("%s"), mesg);
     return 0;
 }
 
 /*ARGSUSED*/
-export function /* void */
-genl_preference_update(pref)
-{
+export function genl_preference_update(pref) { /* void */
     /* window ports are expected to provide
        their own preference update routine
        for the preference capabilities that
@@ -468,9 +170,7 @@ genl_preference_update(pref)
     return;
 }
 
-export function /* char * */
-genl_getmsghistory(init)
-{
+export function genl_getmsghistory(init) { /* char * */
     /* window ports can provide
        their own getmsghistory() routine to
        preserve message history between games.
@@ -485,9 +185,7 @@ genl_getmsghistory(init)
     return 0;
 }
 
-export function /* void */
-genl_putmsghistory(msg, is_restoring)
-{
+export function genl_putmsghistory(msg, is_restoring) { /* void */
     /* window ports can provide
        their own putmsghistory() routine to
        load message history from a saved game.
@@ -514,50 +212,10 @@ genl_putmsghistory(msg, is_restoring)
     return;
 }
 
-
 /*
  * Dummy windowing scheme used to replace current one with no-ops
  * in order to avoid all terminal I/O after hangup/disconnect.
  */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const hup_procs = static_struct("hup_procs", struct_window_procs, { name: _("hup"), wp_id: wp_hup,
     has_color: [ FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE, FALSE,
@@ -593,33 +251,14 @@ const hup_procs = static_struct("hup_procs", struct_window_procs, { name: _("hup
     win_update_inventory: hup_void_fdecl_int,
     win_ctrl_nhwindow: hup_ctrl_nhwindow });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const previnterface_exit_nhwindows = static_var("previnterface_exit_nhwindows", fnptr_t, null);
 
 /* hangup has occurred; switch to no-op user interface */
-export function /* void */
-nhwindows_hangup()
-{
+export function nhwindows_hangup() { /* void */
     let previnterface_getmsghistory = null;
-
 
     /* command processor shouldn't look for 2nd char after seeing ESC */
     iflags.altmeta = FALSE;
-
 
     /* don't call exit_nhwindows() directly here; if a hangup occurs
        while interface code is executing, exit_nhwindows could knock
@@ -639,9 +278,7 @@ nhwindows_hangup()
         windowprocs.win_getmsghistory = previnterface_getmsghistory;
 }
 
-function /* void */
-hup_exit_nhwindows(lastgasp)
-{
+function hup_exit_nhwindows(lastgasp) { /* void */
     /* core has called exit_nhwindows(); call the previous interface's
        shutdown routine now; xxx_exit_nhwindows() needs to call other
        xxx_ routines directly rather than through windowprocs pointers */
@@ -653,65 +290,50 @@ hup_exit_nhwindows(lastgasp)
     iflags.window_inited = FALSE;
 }
 
-function /* int */
-hup_nhgetch()
-{
+function hup_nhgetch() { /* int */
     return ord('\x1b'); /* ESC */
 }
 
 /*ARGSUSED*/
-function /* char */
-hup_yn_function(
+function hup_yn_function(
     prompt,
     resp,
-    deflt)
-{
+    deflt) { /* char */
     if (!deflt)
         deflt = ord('\x1b');
     return deflt;
 }
 
 /*ARGSUSED*/
-function /* int */
-hup_nh_poskey(x, y, mod)
-{
+function hup_nh_poskey(x, y, mod) { /* int */
     return ord('\x1b');
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_getlin(prompt, outbuf)
-{
-    void strcpy(outbuf, _("\x1b"));
+function hup_getlin(prompt, outbuf) { /* void */
+    strcpy(outbuf, _("\x1b"));
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_init_nhwindows(argc_p, argv)
-{
+function hup_init_nhwindows(argc_p, argv) { /* void */
     iflags.window_inited = TRUE;
 }
 
 /*ARGUSED*/
-function /* winid */
-hup_create_nhwindow(type)
-{
+function hup_create_nhwindow(type) { /* winid */
     return WIN_ERR;
 }
 
 /*ARGSUSED*/
-function /* int */
-hup_select_menu(
+function hup_select_menu(
     window,
     how,
-    menu_list)
-{
+    menu_list) { /* int */
     return -1;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_add_menu(
+function hup_add_menu(
     window,
     glyphinfo,
     identifier,
@@ -720,104 +342,61 @@ hup_add_menu(
     attr,
     clr,
     txt,
-    itemflags)
-{
+    itemflags) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_end_menu(window, prompt)
-{
+function hup_end_menu(window, prompt) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_putstr(window, attr, text)
-{
+function hup_putstr(window, attr, text) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_print_glyph(
+function hup_print_glyph(
     window,
     x, y,
     glyphinfo,
-    bkglyphinfo)
-{
+    bkglyphinfo) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_outrip(tmpwin, how, when)
-{
+function hup_outrip(tmpwin, how, when) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_curs(window, x, y)
-{
+function hup_curs(window, x, y) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_display_nhwindow(window, blocking)
-{
+function hup_display_nhwindow(window, blocking) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-hup_display_file(fname, complain)
-{
+function hup_display_file(fname, complain) { /* void */
     return;
 }
 
-
 /*ARGSUSED*/
-function /* void */
-hup_cliparound(x, y)
-{
+function hup_cliparound(x, y) { /* void */
     return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef CHANGE_COLOR: not in this build */
 
 /*ARGSUSED*/
-function /* void */
-hup_status_update(
+function hup_status_update(
     idx, ptr,
     chg, pc,
-    color, colormasks)
-{
+    color, colormasks) { /* void */
     return;
 }
 
@@ -825,60 +404,43 @@ hup_status_update(
  * Non-specific stubs.
  */
 
-function /* int */
-hup_int_ndecl()
-{
+function hup_int_ndecl() { /* int */
     return -1;
 }
 
-function /* void */
-hup_void_ndecl()
-{
+function hup_void_ndecl() { /* void */
     return;
 }
 
 /*ARGUSED*/
-function /* void */
-hup_void_fdecl_int(arg)
-{
+function hup_void_fdecl_int(arg) { /* void */
     return;
 }
 
 /*ARGUSED*/
-function /* void */
-hup_void_fdecl_winid(window)
-{
+function hup_void_fdecl_winid(window) { /* void */
     return;
 }
 
 /*ARGUSED*/
-function /* void */
-hup_void_fdecl_winid_ulong(
+function hup_void_fdecl_winid_ulong(
     window,
-    mbehavior)
-{
+    mbehavior) { /* void */
     return;
 }
 
 /*ARGUSED*/
-function /* void */
-hup_void_fdecl_constchar_p(string)
-{
+function hup_void_fdecl_constchar_p(string) { /* void */
     return;
 }
 
 /*ARGUSED*/
-export function /* win_request_info * */
-hup_ctrl_nhwindow(
+export function hup_ctrl_nhwindow(
     window,
     request,
-    wri)
-{
+    wri) { /* win_request_info * */
     return null;
 }
-
-
-
 
 /****************************************************************************/
 /* genl backward compat stuff                                               */
@@ -889,9 +451,7 @@ export const status_fieldfmt = static_array("status_fieldfmt", ptr_to(char), MAX
 export const status_vals = static_array("status_vals", ptr_to(char), MAXBLSTATS);
 export const status_activefields = static_array("status_activefields", schar, MAXBLSTATS);
 
-export function /* void */
-genl_status_init()
-{
+export function genl_status_init() { /* void */
     let i;
 
     for (i = 0; i < MAXBLSTATS; ++i) {
@@ -905,9 +465,7 @@ genl_status_init()
     display_nhwindow()(WIN_STATUS, FALSE);
 }
 
-export function /* void */
-genl_status_finish()
-{
+export function genl_status_finish() { /* void */
     /* tear down routine */
     let i;
 
@@ -918,28 +476,23 @@ genl_status_finish()
     }
 }
 
-export function /* void */
-genl_status_enablefield(
+export function genl_status_enablefield(
     fieldidx,
     nm,
     fmt,
-    enable)
-{
+    enable) { /* void */
     status_fieldfmt[fieldidx] = fmt;
     status_fieldnm[fieldidx] = nm;
     chars[status_activefields + fieldidx] = enable;
 }
 
-
-
 /* call once for each field, then call with BL_FLUSH to output the result */
-export function /* void */
-genl_status_update(
+export function genl_status_update(
     idx,
     ptr,
     chg, percent,
-    color, colormasks)
-{ const $frame = stack_frame(); try {
+    color, colormasks) { /* void */
+    const $frame = stack_frame(); try {
     let newbot1 = stack_array(char, MAXCO), newbot2 = stack_array(char, MAXCO);
     let cond, condptr = ref_to(long, ptr);
     let i;
@@ -990,34 +543,34 @@ genl_status_update(
             nb = status_vals[idx];
             chars[nb] = ord('\0');
             if (cond & BL_MASK_STONE)
-                void strcpy(nb = eos(nb), _(" Stone"));
+                strcpy(nb = eos(nb), _(" Stone"));
             if (cond & BL_MASK_SLIME)
-                void strcpy(nb = eos(nb), _(" Slime"));
+                strcpy(nb = eos(nb), _(" Slime"));
             if (cond & BL_MASK_STRNGL)
-                void strcpy(nb = eos(nb), _(" Strngl"));
+                strcpy(nb = eos(nb), _(" Strngl"));
             if (cond & BL_MASK_FOODPOIS)
-                void strcpy(nb = eos(nb), _(" FoodPois"));
+                strcpy(nb = eos(nb), _(" FoodPois"));
             if (cond & BL_MASK_TERMILL)
-                void strcpy(nb = eos(nb), _(" TermIll"));
+                strcpy(nb = eos(nb), _(" TermIll"));
             if (cond & BL_MASK_BLIND)
-                void strcpy(nb = eos(nb), _(" Blind"));
+                strcpy(nb = eos(nb), _(" Blind"));
             if (cond & BL_MASK_DEAF)
-                void strcpy(nb = eos(nb), _(" Deaf"));
+                strcpy(nb = eos(nb), _(" Deaf"));
             if (cond & BL_MASK_STUN)
-                void strcpy(nb = eos(nb), _(" Stun"));
+                strcpy(nb = eos(nb), _(" Stun"));
             if (cond & BL_MASK_CONF)
-                void strcpy(nb = eos(nb), _(" Conf"));
+                strcpy(nb = eos(nb), _(" Conf"));
             if (cond & BL_MASK_HALLU)
-                void strcpy(nb = eos(nb), _(" Hallu"));
+                strcpy(nb = eos(nb), _(" Hallu"));
             if (cond & BL_MASK_LEV)
-                void strcpy(nb = eos(nb), _(" Lev"));
+                strcpy(nb = eos(nb), _(" Lev"));
             if (cond & BL_MASK_FLY)
-                void strcpy(nb = eos(nb), _(" Fly"));
+                strcpy(nb = eos(nb), _(" Fly"));
             if (cond & BL_MASK_RIDE)
-                void strcpy(nb = eos(nb), _(" Ride"));
+                strcpy(nb = eos(nb), _(" Ride"));
             break;
         default:
-            void sprintf(status_vals[idx], status_fieldfmt[idx] ? status_fieldfmt[idx] : _("%s"), text ? text : _(""))
+            sprintf(status_vals[idx], status_fieldfmt[idx] ? status_fieldfmt[idx] : _("%s"), text ? text : _(""))
 
 ;
             break;
@@ -1039,7 +592,7 @@ genl_status_update(
        negative (illegal) index, but this should be fine */
     for (i = 0; (idx1 = fieldorder[0][i]) != BL_FLUSH; ++i) {
         if (chars[status_activefields + idx1])
-            void strcpy(nb = eos(nb), status_vals[idx1]);
+            strcpy(nb = eos(nb), status_vals[idx1]);
     }
     /* if '$' is encoded, buffer length of \GXXXXNNNN is 9 greater than
        single char; we want to subtract that 9 when checking display length */
@@ -1062,13 +615,13 @@ genl_status_update(
                                will strip the unwanted leading spaces */
                 case BL_XP: case BL_HD:
                 case BL_TIME:
-                    void strcpy(nb = eos(nb), _(" "));
+                    strcpy(nb = eos(nb), _(" "));
                     break;
                 case BL_LEVELDESC:
                     /* leveldesc has no leading space, so if we've moved
                        it past the first position, provide one */
                     if (i != 0)
-                        void strcpy(nb = eos(nb), _(" "));
+                        strcpy(nb = eos(nb), _(" "));
                     break;
                 /*
                  * We want "  hunger encumbrance conditions"
@@ -1083,7 +636,7 @@ genl_status_update(
                     /* hunger==" " - keep it, end up with " ";
                        hunger!=" " - insert space and get "  hunger" */
                     if (strcmp(val, _(" ")))
-                        void strcpy(nb = eos(nb), _(" "));
+                        strcpy(nb = eos(nb), _(" "));
                     break;
                 case BL_CAP:
                     /* cap==" " - suppress it, retain "  hunger" or " ";
@@ -1094,7 +647,7 @@ genl_status_update(
                 default:
                     break;
                 }
-                void strcpy(nb = eos(nb), val); /* status_vals[idx2] */
+                strcpy(nb = eos(nb), val); /* status_vals[idx2] */
             } /* status_activefields[idx2] */
 
             if (idx2 == BL_CONDITION && pass < 4
@@ -1112,169 +665,28 @@ genl_status_update(
     putstr()(WIN_STATUS, 0, newbot1);
     curs()(WIN_STATUS, 1, 1);
     putmixed()(WIN_STATUS, 0, newbot2); /* putmixed() due to GOLD glyph */
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 const dumplog_windowprocs_backup = static_struct("dumplog_windowprocs_backup", struct_window_procs);
 const dumplog_file = static_var("dumplog_file", ptr_to("struct__IO_FILE"));
 
+/* #ifdef DUMPLOG: not in this build */
 
+export function dump_open_log(now) { /* void */
+    /* #ifdef DUMPLOG: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-dump_open_log(now)
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (now));
-
+    (now);
 }
 
-export function /* void */
-dump_close_log()
-{
+export function dump_close_log() { /* void */
     if (dumplog_file[0]) {
-        void fclose(dumplog_file[0]);
+        fclose(dumplog_file[0]);
         dumplog_file[0] = null;
     }
 }
 
-export function /* void */
-dump_forward_putstr(win, attr, str, no_forward)
-{
+export function dump_forward_putstr(win, attr, str, no_forward) { /* void */
     if (dumplog_file[0])
         fprintf(dumplog_file[0], _("%s\n"), str);
     if (!no_forward)
@@ -1282,50 +694,37 @@ dump_forward_putstr(win, attr, str, no_forward)
 }
 
 /*ARGSUSED*/
-function /* void */
-dump_putstr(win, attr, str)
-{
+function dump_putstr(win, attr, str) { /* void */
     if (dumplog_file[0])
         fprintf(dumplog_file[0], _("%s\n"), str);
 }
 
-function /* winid */
-dump_create_nhwindow(type)
-{
+function dump_create_nhwindow(type) { /* winid */
     return WIN_ERR;
 }
 
 /*ARGUSED*/
-function /* void */
-dump_clear_nhwindow(win)
-{
+function dump_clear_nhwindow(win) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-dump_display_nhwindow(win, p)
-{
+function dump_display_nhwindow(win, p) { /* void */
     return;
 }
 
 /*ARGUSED*/
-function /* void */
-dump_destroy_nhwindow(win)
-{
+function dump_destroy_nhwindow(win) { /* void */
     return;
 }
 
 /*ARGUSED*/
-function /* void */
-dump_start_menu(win, mbehavior)
-{
+function dump_start_menu(win, mbehavior) { /* void */
     return;
 }
 
 /*ARGSUSED*/
-function /* void */
-dump_add_menu(win,
+function dump_add_menu(win,
               glyphinfo,
               identifier,
               ch,
@@ -1333,8 +732,7 @@ dump_add_menu(win,
               attr,
               clr,
               str,
-              itemflags)
-{
+              itemflags) { /* void */
     if (dumplog_file[0]) {
         if (glyphinfo.glyph == NO_GLYPH)
             fprintf(dumplog_file[0], _(" %s\n"), str);
@@ -1344,9 +742,7 @@ dump_add_menu(win,
 }
 
 /*ARGSUSED*/
-function /* void */
-dump_end_menu(win, str)
-{
+function dump_end_menu(win, str) { /* void */
     if (dumplog_file[0]) {
         if (str)
             fprintf(dumplog_file[0], _("%s\n"), str);
@@ -1355,16 +751,12 @@ dump_end_menu(win, str)
     }
 }
 
-function /* int */
-dump_select_menu(win, how, item)
-{
+function dump_select_menu(win, how, item) { /* int */
     item[0] = null;
     return 0;
 }
 
-export function /* void */
-dump_redirect(onoff_flag)
-{
+export function dump_redirect(onoff_flag) { /* void */
     if (dumplog_file[0]) {
         if (onoff_flag) {
             windowprocs.win_create_nhwindow = dump_create_nhwindow;
@@ -1385,66 +777,48 @@ dump_redirect(onoff_flag)
     }
 }
 
-
-
-
-
-
-
-
-
-export function /* int */
-has_color(color)
-{
-    return (((iflags.wc_color && windowprocs.name
-            && (windowprocs.wincap & WC_COLOR) && chars[windowprocs.has_color + color]) ? 1 : 0)
-
-
-
-
+export function has_color(color) { /* int */
+    return ((iflags.wc_color && windowprocs.name
+            && (windowprocs.wincap & WC_COLOR) && chars[windowprocs.has_color + color] ? 1 : 0)
 
     );
 }
 
-export function /* int */
-glyph2ttychar(glyph)
-{ const $frame = stack_frame(); try {
+export function glyph2ttychar(glyph) { /* int */
+    const $frame = stack_frame(); try {
     let glyphinfo = stack_struct(struct_glyphinfo);
 
     map_glyphinfo(0, 0, glyph, 0, glyphinfo);
     return glyphinfo.ttychar;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-glyph2symidx(glyph)
-{ const $frame = stack_frame(); try {
+export function glyph2symidx(glyph) { /* int */
+    const $frame = stack_frame(); try {
     let glyphinfo = stack_struct(struct_glyphinfo);
 
     map_glyphinfo(0, 0, glyph, 0, glyphinfo);
     return glyphinfo.gm.sym.symidx;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* char * */
-encglyph(glyph)
-{
+export function encglyph(glyph) { /* char * */
     let encbuf = static_array("encglyph.encbuf", char, 20); /* 10+1 would suffice */
 
-    void sprintf(encbuf, _("\\G%04X%04X"), svc.context.rndencode, glyph);
+    sprintf(encbuf, _("\\G%04X%04X"), svc.context.rndencode, glyph);
     return encbuf;
 }
 
 /* hexdd[] is defined in decl.c */
 
-export function /* int */
-decode_glyph(str, glyph_ptr)
-{
+export function decode_glyph(str, glyph_ptr) { /* int */
     let rndchk = 0, dcount = 0, retval = 0;
     let dp;
 
     for (; chars[str] && ++dcount <= 4; ++str) {
         if ((dp = strchr(hexdd, chars[str])) != 0) {
             retval++;
-            rndchk = (rndchk * 16) + (Math.trunc((dp - hexdd) / 2));
+            rndchk = (rndchk * 16) + Math.trunc((dp - hexdd) / 2);
         } else
             break;
     }
@@ -1453,7 +827,7 @@ decode_glyph(str, glyph_ptr)
         for (; chars[str] && ++dcount <= 4; ++str) {
             if ((dp = strchr(hexdd, chars[str])) != 0) {
                 retval++;
-                glyph_ptr[0] = (glyph_ptr[0] * 16) + (Math.trunc((dp - hexdd) / 2));
+                glyph_ptr[0] = (glyph_ptr[0] * 16) + Math.trunc((dp - hexdd) / 2);
             } else
                 break;
         }
@@ -1462,9 +836,8 @@ decode_glyph(str, glyph_ptr)
     return 0;
 }
 
-export function /* char * */
-decode_mixed(buf, str)
-{ const $frame = stack_frame(); try {
+export function decode_mixed(buf, str) { /* char * */
+    const $frame = stack_frame(); try {
     let put = buf;
     let glyphinfo = struct_assign(stack_struct(struct_glyphinfo), nul_glyphinfo);
 
@@ -1509,8 +882,8 @@ decode_mixed(buf, str)
     }
     chars[put] = ord('\0');
     return buf;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This differs from putstr() because the str parameter can
@@ -1524,46 +897,44 @@ decode_mixed(buf, str)
  * putstr().
  */
 
-export function /* void */
-genl_putmixed(window, attr, str)
-{ const $frame = stack_frame(); try {
+export function genl_putmixed(window, attr, str) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     /* now send it to the normal putstr */
     putstr()(window, attr, decode_mixed(buf, str));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* possibly called to show usage info during command line processing when
    an interface hasn't yet been chosen and set up */
-export function /* void */
-genl_display_file(fname, complain)
-{ const $frame = stack_frame(); try {
+export function genl_display_file(fname, complain) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let f = dlb_fopen(fname, _("r"));
 
     if (!f) {
         if (complain) /* send complaint to stdout rather than to stderr */
-            fprintf((stdout), _("\nCannot open \"%s\".\n"), fname);
+            fprintf(stdout, _("\nCannot open \"%s\".\n"), fname);
     } else {
         /* straight copy to stdout, no pagination or other interaction */
         while (dlb_fgets(buf, BUFSZ, f)) {
-            if (fputs(buf, (stdout)) < 0)
+            if (fputs(buf, stdout) < 0)
                 break;
         }
-        void dlb_fclose(f);
+        dlb_fclose(f);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Window port helper function for menu invert routines to move the decision
  * logic into one place instead of 7 different window-port routines.
  */
-export function /* boolean */
-menuitem_invert_test(
+export function menuitem_invert_test(
     mode,
     itemflags,
-    is_selected)    /* current selection status of the item */
-{
+    is_selected) { /* boolean */ /* current selection status of the item */
     let skipinvert = +((itemflags & MENU_ITEMFLAGS_SKIPINVERT) != 0);
 
     if (!skipinvert) /* if not flagged SKIPINVERT, always pass test */
@@ -1596,9 +967,8 @@ menuitem_invert_test(
  * including the utf8 representation under ENHANCED_SYMBOLS,
  * will be stored in the glyph_info struct pointed to by gip.
  */
-export function /* const char * */
-mixed_to_glyphinfo(str, gip)
-{ const $frame = stack_frame(); try {
+export function mixed_to_glyphinfo(str, gip) { /* const char * */
+    const $frame = stack_frame(); try {
     let dcount, ggv = stack_var(int);
 
     if (!str || !gip)
@@ -1615,7 +985,8 @@ mixed_to_glyphinfo(str, gip)
         }
     }
     return str;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This is a somewhat generic menu for taking a list of NetHack style
@@ -1640,13 +1011,12 @@ mixed_to_glyphinfo(str, gip)
  *
  * Returns number selected.
  */
-export function /* int */
-choose_classes_menu(prompt,
+export function choose_classes_menu(prompt,
                     category,
                     way,
                     class_list,
-                    class_select)
-{ const $frame = stack_frame(); try {
+                    class_select) { /* int */
+    const $frame = stack_frame(); try {
     let pick_list = stack_var(ptr_to(struct_mi), null);
     let win;
     let any = stack_struct(struct_any);
@@ -1676,7 +1046,7 @@ choose_classes_menu(prompt,
             }
             text = def_monsyms[idx].explain;
             accelerator = chars[class_list];
-            void sprintf(buf, _("%s"), text);
+            sprintf(buf, _("%s"), text);
             break;
         case 1:
             idx = def_char_to_objclass(chars[class_list]);
@@ -1687,7 +1057,7 @@ choose_classes_menu(prompt,
             }
             text = def_oc_syms[idx].explain;
             accelerator = next_accelerator;
-            void sprintf(buf, _("%c  %s"), chars[class_list], text);
+            sprintf(buf, _("%c  %s"), chars[class_list], text);
             break;
         default:
             panic(_("choose_classes_menu: invalid category %d"), category);
@@ -1717,7 +1087,7 @@ choose_classes_menu(prompt,
         add_menu_str(win, _(""));
         struct_assign(any, cg.zeroany);
         any.a_int = ord(' ');
-        void sprintf(buf, _("%c  %s"), char(any.a_int), _("All classes of objects"));
+        sprintf(buf, _("%c  %s"), char(any.a_int), _("All classes of objects"));
         /* we won't preselect this even if the incoming list is empty;
            having it selected means that it would have to be explicitly
            de-selected in order to select anything else */
@@ -1758,31 +1128,31 @@ choose_classes_menu(prompt,
     }
     chars[class_select] = ord('\0');
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* enum and structs are defined in wintype.h */
 
 export const zerowri = static_struct("zerowri", struct_win_request_info_t, { tocore: { tocore_flags: 0, active: 0, use_update_inventory: 0, maxslot: 0, needrows: 0, needcols: 0, haverows: 0, havecols: 0 },
                              fromcore: { core_request: 0, invmode: 0, menu_promptstyle: { color: NO_COLOR, attr: ATR_NONE }}});
 
-export function /* void */
-adjust_menu_promptstyle(window, style)
-{ const $frame = stack_frame(); try {
+export function adjust_menu_promptstyle(window, style) { /* void */
+    const $frame = stack_frame(); try {
     let wri = struct_assign(stack_struct(struct_win_request_info_t), zerowri);
     wri.fromcore.menu_promptstyle.color = style.color;
     wri.fromcore.menu_promptstyle.attr = style.attr;
     /*  relay the style change to the window port */
-    void (ctrl_nhwindow()(window, set_menu_promptstyle, wri));
+    ctrl_nhwindow()(window, set_menu_promptstyle, wri);
     go.opt_need_promptstyle = FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  *   Common code point leading into the interface-specific
  *   add_menu() to allow single-spot adjustments to the parameters,
  *   such as those done by menu_colors.
  */
-export function /* void */
-add_menu(
+export function add_menu(
     window,
     glyphinfo,
 
@@ -1792,8 +1162,10 @@ add_menu(
     attr$,
     color$,
     str,
-    itemflags)     /* itemflags such as MENU_ITEMFLAGS_SELECTED */
-{ const $frame = stack_frame(); try { const attr = stack_var(int, attr$); const color = stack_var(int, color$);
+    itemflags) { /* void */ /* itemflags such as MENU_ITEMFLAGS_SELECTED */
+    const $frame = stack_frame(); try {
+    const attr = stack_var(int, attr$);
+    const color = stack_var(int, color$);
     if (!str) {
         /* if 'str' is Null, just return without adding any menu entry */
         debugpline0(_("add_menu(Null)"), __FILE__);
@@ -1802,19 +1174,19 @@ add_menu(
 
     if (iflags.use_menu_color) {
         if ((itemflags & MENU_ITEMFLAGS_SKIPMENUCOLORS) == 0)
-            void get_menu_coloring(str, color, attr);
+            get_menu_coloring(str, color, attr);
     }
     /* this is the only function that cared about this flag; remove it now */
     itemflags = unsigned(itemflags & unsigned(~MENU_ITEMFLAGS_SKIPMENUCOLORS));
 
-    (windowprocs.win_add_menu)(window, glyphinfo, identifier,
+    windowprocs.win_add_menu(window, glyphinfo, identifier,
                                 ch, gch, attr[0], color[0], str, itemflags);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* insert a non-selectable, possibly highlighted line of text into a menu */
-export function /* void */
-add_menu_heading(tmpwin, buf)
-{ const $frame = stack_frame(); try {
+export function add_menu_heading(tmpwin, buf) { /* void */
+    const $frame = stack_frame(); try {
     let any = struct_assign(stack_struct(struct_any), cg.zeroany);
     let attr = iflags.menu_headings.attr,
         color = iflags.menu_headings.color;
@@ -1825,21 +1197,20 @@ add_menu_heading(tmpwin, buf)
 
     add_menu(tmpwin, nul_glyphinfo, any, ord('\0'), ord('\0'), attr, color,
              buf, MENU_ITEMFLAGS_SKIPMENUCOLORS);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* insert a non-selectable, unhighlighted line of text into a menu */
-export function /* void */
-add_menu_str(tmpwin, buf)
-{ const $frame = stack_frame(); try {
+export function add_menu_str(tmpwin, buf) { /* void */
+    const $frame = stack_frame(); try {
     let any = struct_assign(stack_struct(struct_any), cg.zeroany);
 
     add_menu(tmpwin, nul_glyphinfo, any, ord('\0'), ord('\0'), ATR_NONE, NO_COLOR,
              buf, MENU_ITEMFLAGS_NONE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-get_menu_coloring(str, color, attr)
-{
+function get_menu_coloring(str, color, attr) { /* boolean */
     let tmpmc;
 
     if (iflags.use_menu_color)
@@ -1852,21 +1223,17 @@ get_menu_coloring(str, color, attr)
     return FALSE;
 }
 
-export function /* int */
-select_menu(window, how, menu_list)
-{
+export function select_menu(window, how, menu_list) { /* int */
     let reslt;
     let old_bot_disabled = gb.bot_disabled;
 
     gb.bot_disabled = TRUE;
-    reslt = (windowprocs.win_select_menu)(window, how, menu_list);
+    reslt = windowprocs.win_select_menu(window, how, menu_list);
     gb.bot_disabled = old_bot_disabled;
     return reslt;
 }
 
-export function /* void */
-getlin(query, bufp)
-{
+export function getlin(query, bufp) { /* void */
     let old_bot_disabled = gb.bot_disabled;
     let obufp = bufp;
     let got_cmdq = FALSE;
@@ -1896,164 +1263,63 @@ getlin(query, bufp)
 
     program_state.in_getlin = 1;
     gb.bot_disabled = TRUE;
-    (windowprocs.win_getlin)(query, bufp);
+    windowprocs.win_getlin(query, bufp);
     gb.bot_disabled = old_bot_disabled;
     program_state.in_getlin = 0;
 }
 /*windows.c*/
-import { BL_AC } from "./botl.h.js";
-import { BL_ALIGN } from "./botl.h.js";
-import { BL_CAP } from "./botl.h.js";
-import { BL_CH } from "./botl.h.js";
-import { BL_CO } from "./botl.h.js";
-import { BL_CONDITION } from "./botl.h.js";
-import { BL_DX } from "./botl.h.js";
-import { BL_ENE } from "./botl.h.js";
-import { BL_ENEMAX } from "./botl.h.js";
-import { BL_EXP } from "./botl.h.js";
-import { BL_FLUSH } from "./botl.h.js";
-import { BL_GOLD } from "./botl.h.js";
-import { BL_HD } from "./botl.h.js";
-import { BL_HP } from "./botl.h.js";
-import { BL_HPMAX } from "./botl.h.js";
-import { BL_HUNGER } from "./botl.h.js";
-import { BL_IN } from "./botl.h.js";
-import { BL_LEVELDESC } from "./botl.h.js";
-import { BL_MASK_BLIND } from "./botl.h.js";
-import { BL_MASK_CONF } from "./botl.h.js";
-import { BL_MASK_DEAF } from "./botl.h.js";
-import { BL_MASK_FLY } from "./botl.h.js";
-import { BL_MASK_FOODPOIS } from "./botl.h.js";
-import { BL_MASK_HALLU } from "./botl.h.js";
-import { BL_MASK_LEV } from "./botl.h.js";
-import { BL_MASK_RIDE } from "./botl.h.js";
-import { BL_MASK_SLIME } from "./botl.h.js";
-import { BL_MASK_STONE } from "./botl.h.js";
-import { BL_MASK_STRNGL } from "./botl.h.js";
-import { BL_MASK_STUN } from "./botl.h.js";
-import { BL_MASK_TERMILL } from "./botl.h.js";
-import { BL_RESET } from "./botl.h.js";
-import { BL_SCORE } from "./botl.h.js";
-import { BL_STR } from "./botl.h.js";
-import { BL_TIME } from "./botl.h.js";
-import { BL_TITLE } from "./botl.h.js";
-import { BL_WI } from "./botl.h.js";
-import { BL_XP } from "./botl.h.js";
-import { MAXBLSTATS } from "./botl.h.js";
-import { MAXCO } from "./botl.h.js";
+
+import {
+    BL_AC, BL_ALIGN, BL_CAP, BL_CH, BL_CO, BL_CONDITION, BL_DX, BL_ENE, BL_ENEMAX, BL_EXP, BL_FLUSH,
+    BL_GOLD, BL_HD, BL_HP, BL_HPMAX, BL_HUNGER, BL_IN, BL_LEVELDESC, BL_MASK_BLIND, BL_MASK_CONF,
+    BL_MASK_DEAF, BL_MASK_FLY, BL_MASK_FOODPOIS, BL_MASK_HALLU, BL_MASK_LEV, BL_MASK_RIDE,
+    BL_MASK_SLIME, BL_MASK_STONE, BL_MASK_STRNGL, BL_MASK_STUN, BL_MASK_TERMILL, BL_RESET, BL_SCORE,
+    BL_STR, BL_TIME, BL_TITLE, BL_WI, BL_XP, MAXBLSTATS, MAXCO,
+} from "./botl.h.js";
 import { NO_COLOR } from "./color.h.js";
 import { NO_GLYPH } from "./display.h.js";
-import { dlb_fclose } from "./dlb.h.macros.js";
-import { dlb_fgets } from "./dlb.h.macros.js";
-import { dlb_fopen } from "./dlb.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { dlb_fclose, dlb_fgets, dlb_fopen } from "./dlb.h.macros.js";
+import { BUFSZ, COLNO, FALSE, TRUE } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
 import { CMDQ_KEY } from "./hack.h.js";
 import { IndexOk } from "./hack.h.macros.js";
 import { debugpline0 } from "./lint.h.macros.js";
-import { WC2_FLUSH_STATUS } from "./winprocs.h.js";
-import { WC_COLOR } from "./winprocs.h.js";
-import { WININIT } from "./winprocs.h.js";
-import { WININIT_UNDO } from "./winprocs.h.js";
-import { struct_window_procs } from "./winprocs.h.js";
-import { wp_hup } from "./winprocs.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { ctrl_nhwindow } from "./winprocs.h.macros.js";
-import { curs } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putmixed } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPINVERT } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPMENUCOLORS } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_STATUS } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { set_menu_promptstyle } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_glyphinfo } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { struct_win_request_info_t } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { EXIT_FAILURE } from "../rt/libc.js";
-import { EXIT_SUCCESS } from "../rt/libc.js";
-import { fclose } from "../rt/libc.js";
-import { fprintf } from "../rt/libc.js";
-import { fputs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { puts } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { stdout } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strstr } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    WC2_FLUSH_STATUS, WC_COLOR, WININIT, WININIT_UNDO, struct_window_procs, wp_hup,
+} from "./winprocs.h.js";
+import {
+    create_nhwindow, ctrl_nhwindow, curs, destroy_nhwindow, display_nhwindow, end_menu, putmixed,
+    putstr, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+    MENU_ITEMFLAGS_SKIPINVERT, MENU_ITEMFLAGS_SKIPMENUCOLORS, NHW_MENU, NHW_STATUS, PICK_ANY,
+    PICK_ONE, WIN_ERR, set_menu_promptstyle, struct_any, struct_glyphinfo, struct_mi,
+    struct_win_request_info_t,
+} from "./wintype.h.js";
+import { char, int, long, ord, schar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { and64u, or64u } from "../rt/int64.js";
+import {
+    EXIT_FAILURE, EXIT_SUCCESS, fclose, fprintf, fputs, free, puts, sprintf, stdout, strchr, strcmp,
+    strcpy, strlen, strncpy, strstr,
+} from "../rt/libc.js";
+import {
+    stack_array, stack_struct, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import {
+    addr_of, array_of, fnptr_t, ptr_add, ptr_to, ref_to, struct, struct_assign,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { config_error_add } from "./cfgfiles.js";
 import { cmdq_pop } from "./cmd.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { hexdd } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { map_glyphinfo } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { def_char_to_monclass } from "./drawing.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_monsyms } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { nh_terminate } from "./end.js";
-import { panic } from "./end.js";
-import { eos } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { pline } from "./pline.js";
-import { raw_printf } from "./pline.js";
+import { cg, flags, gb, gl, gm, go, gs, hexdd, iflags, program_state, svc } from "./decl.js";
+import { map_glyphinfo, nul_glyphinfo } from "./display.js";
+import { def_char_to_monclass, def_char_to_objclass, def_monsyms, def_oc_syms } from "./drawing.js";
+import { nh_terminate, panic } from "./end.js";
+import { eos, mungspaces } from "./hacklib.js";
+import { pline, raw_printf } from "./pline.js";
 import { regex_match } from "../sys/share/posixregex.js";
-import { tty_procs } from "../win/tty/wintty.js";
-import { win_tty_init } from "../win/tty/wintty.js";
+import { tty_procs, win_tty_init } from "../win/tty/wintty.js";
 const __FILE__ = "windows.c";

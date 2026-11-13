@@ -3,47 +3,34 @@
 /*-Copyright (c) Robert Patrick Rankin, 2007. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-export function /* long long */
-newuexp(lev)
-{
+export function newuexp(lev) { /* long long */
     if (lev < 1) /* for newuexp(u.ulevel - 1) when u.ulevel is 1 */
         return 0;
     if (lev < 10)
-        return (10 * (shl64(1, lev)));
+        return (10 * shl64(1, lev));
     if (lev < 20)
-        return (10000 * (shl64(1, (lev - 10))));
-    return (10000000 * ((lev - 19)));
+        return (10000 * shl64(1, (lev - 10)));
+    return (10000000 * (lev - 19));
 }
 
-function /* int */
-enermod(en)
-{
+function enermod(en) { /* int */
     switch (Role_switch()) {
     case PM_CLERIC:
     case PM_WIZARD:
         return (2 * en);
     case PM_HEALER:
     case PM_KNIGHT:
-        return (Math.trunc((3 * en) / 2));
+        return Math.trunc((3 * en) / 2);
     case PM_BARBARIAN:
     case PM_VALKYRIE:
-        return (Math.trunc((3 * en) / 4));
+        return Math.trunc((3 * en) / 4);
     default:
         return en;
     }
 }
 
 /* calculate spell power/energy points for new level */
-export function /* int */
-newpw()
-{
+export function newpw() { /* int */
     let en = 0, enrnd, enfix;
 
     if (u.ulevel == 0) {
@@ -81,9 +68,7 @@ newpw()
 }
 
 /* return # of exp points for mtmp after nk killed */
-export function /* int */
-experience(mtmp, nk)
-{
+export function experience(mtmp, nk) { /* int */
     let ptr = mtmp.data;
     let i, tmp, tmp2;
 
@@ -95,7 +80,7 @@ experience(mtmp, nk)
 
     /*  For very fast monsters, give extra experience */
     if (ptr.mmove > NORMAL_SPEED)
-        tmp += (ptr.mmove > (Math.trunc(3 * NORMAL_SPEED / 2))) ? 5 : 3;
+        tmp += (ptr.mmove > Math.trunc(3 * NORMAL_SPEED / 2)) ? 5 : 3;
 
     /*  For each "special" attack type give extra experience */
     for (i = 0; i < NATTK; i++) {
@@ -134,11 +119,9 @@ experience(mtmp, nk)
     if (mtmp.m_lev > 8)
         tmp += 50;
 
-
     /* Mail daemons put up no fight. */
     if (mtmp.data == mons[PM_MAIL_DAEMON])
         tmp = 1;
-
 
     if (mtmp.mrevived || mtmp.mcloned) {
         /*
@@ -162,12 +145,10 @@ experience(mtmp, nk)
         }
     }
 
-    return (tmp);
+    return tmp;
 }
 
-export function /* void */
-more_experienced(exper, rexp)
-{
+export function more_experienced(exper, rexp) { /* void */
     let oldexp = u.uexp,
          oldrexp = u.urexp,
          newexp = oldexp + exper,
@@ -193,20 +174,14 @@ more_experienced(exper, rexp)
     /* newrexp will always differ from oldrexp unless they're LONG_MAX */
     if (newrexp != oldrexp) {
         u.urexp = newrexp;
-
-
-
-
     }
     if (u.urexp >= (Role_if(PM_WIZARD) ? 1000 : 2000))
         flags.beginner = FALSE;
 }
 
 /* e.g., hit by drain life attack */
-export function /* void */
-losexp(
-    drainer) /* cause of death, if drain should be fatal */
-{
+export function losexp(
+    drainer) { /* void */ /* cause of death, if drain should be fatal */
     let num, uhpmin, olduhpmax;
 
     /* override life-drain resistance when handling an explicit
@@ -233,7 +208,7 @@ losexp(
         if (drainer) {
             svk.killer.format = KILLED_BY;
             if (svk.killer.name != drainer)
-                void strcpy(svk.killer.name, drainer);
+                strcpy(svk.killer.name, drainer);
             done(DIED);
         }
         /* no drainer or lifesaved */
@@ -296,19 +271,13 @@ losexp(
  * After all, how much real experience does one get shooting a wand of death
  * at a dragon created with a wand of polymorph??
  */
-export function /* void */
-newexplevel()
-{
+export function newexplevel() { /* void */
     if (u.ulevel < MAXULEV && u.uexp >= newuexp(u.ulevel))
         pluslvl(TRUE);
 }
 
-export function /* void */
-pluslvl(
-    incr) /* True: incremental experience growth;
-                   * False: potion of gain level or wraith corpse
-                   *        or wizard mode #levelchange */
-{
+export function pluslvl(
+    incr) { /* void */ /* True: incremental experience growth; * False: potion of gain level or wraith corpse * or wizard mode #levelchange */
     let hpinc, eninc;
 
     if (!incr)
@@ -374,9 +343,7 @@ pluslvl(
 /* compute a random amount of experience points suitable for the hero's
    experience level:  base number of points needed to reach the current
    level plus a random portion of what it takes to get to the next level */
-export function /* long long */
-rndexp(gaining) /* gaining XP via potion vs setting XP for polyself */
-{
+export function rndexp(gaining) { /* long long */ /* gaining XP via potion vs setting XP for polyself */
     let minexp, maxexp, diff, factor, result;
 
     minexp = (u.ulevel == 1) ? 0 : newuexp(u.ulevel - 1);
@@ -400,73 +367,37 @@ rndexp(gaining) /* gaining XP via potion vs setting XP for polyself */
 }
 
 /*exper.c*/
+
 import { A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { S_EEL } from "./defsym.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { LL_MINORAC } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { DIED } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_DRLI } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { AD_SLIM } from "./monattk.h.js";
-import { AD_STON } from "./monattk.h.js";
-import { AD_WRAP } from "./monattk.h.js";
-import { AT_BUTT } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { AT_WEAP } from "./monattk.h.js";
+import { FALSE, LARGEST_INT, LL_MINORAC, MAXULEV, TRUE, xint16 } from "./global.h.js";
+import { DIED, KILLED_BY } from "./hack.h.js";
+import { max, rn1 } from "./hack.h.macros.js";
+import {
+    AD_BLND, AD_DRLI, AD_PHYS, AD_SLIM, AD_STON, AD_WRAP, AT_BUTT, AT_MAGC, AT_WEAP,
+} from "./monattk.h.js";
 import { extra_nasty } from "./mondata.h.macros.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MAIL_DAEMON } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { NATTK } from "./permonst.h.js";
-import { NORMAL_SPEED } from "./permonst.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
+import {
+    PM_BARBARIAN, PM_CLERIC, PM_HEALER, PM_KNIGHT, PM_MAIL_DAEMON, PM_VALKYRIE, PM_WIZARD,
+} from "./monsters.h.js";
+import { NATTK, NORMAL_SPEED } from "./permonst.h.js";
+import { Role_if, Role_switch, Upolyd } from "./you.h.macros.js";
 import { Amphibious } from "./youprop.h.macros.js";
 import { int } from "../rt/ctypes.js";
 import { shl64 } from "../rt/int64.js";
-import { LLONG_MAX } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
+import { LLONG_MAX, assert, strcmp, strcpy } from "../rt/libc.js";
 import { _ } from "../rt/strings.js";
-import { adjabil } from "./attrib.js";
-import { minuhpmax } from "./attrib.js";
-import { newhp } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
-import { exp_percent_changing } from "./botl.js";
-import { xlev_to_rank } from "./botl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { svk } from "./decl.js";
-import { u } from "./decl.js";
+import { adjabil, minuhpmax, newhp, setuhpmax } from "./attrib.js";
+import { exp_percent_changing, xlev_to_rank } from "./botl.js";
+import { disp, flags, gu, gy, svk, u } from "./decl.js";
 import { done } from "./end.js";
-import { achieve_rank } from "./insight.js";
-import { count_achievements } from "./insight.js";
-import { record_achievement } from "./insight.js";
+import { achieve_rank, count_achievements, record_achievement } from "./insight.js";
 import { monhp_per_lvl } from "./makemon.js";
 import { resists_drli } from "./mondata.js";
 import { mons } from "./monst.js";
-import { You_feel } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
+import { You_feel, livelog_printf, pline } from "./pline.js";
 import { rehumanize } from "./polyself.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { Goodbye } from "./role.js";
 import { find_mac } from "./worn.js";

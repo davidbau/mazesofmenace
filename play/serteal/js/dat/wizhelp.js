@@ -1,4 +1,4 @@
-export default `Debug-Mode Quick Reference:
+export default String.raw`Debug-Mode Quick Reference:
 
 ^E  ==  detect secret doors and traps nearby
 ^F  ==  map level; reveals traps and secret corridors but not secret doors

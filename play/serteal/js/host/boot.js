@@ -34,6 +34,55 @@ import { install_lua_api } from "./lua_api.js";
 import * as rtHeap from "../rt/heap.js";
 import * as rtFn from "../rt/fnptr.js";
 import { addr_of } from "../rt/struct.js";
+import { literal_text } from "../rt/strings.js";
+
+// A long long is a Number in the port, so LLONG_MAX (what atoll and sscanf saturate to, the
+// experience cap, ...) is held as 2^63; the C library would read that as LLONG_MIN.  For the
+// printf family, an argument >= 2^63 of a signed 64-bit conversion (%lld, %ld: long is 64-bit)
+// is passed as LLONG_MAX.  (Format parsing only when such an argument is present.)
+const FORMAT_ARG = { printf: 0, vprintf: 0, sprintf: 1, vsprintf: 1, fprintf: 1, vfprintf: 1, snprintf: 2, vsnprintf: 2 };
+const TWO_63 = 2 ** 63;
+function signedLongLongSlots(fmt) { // slot indices (as clib's printfSlots counts them)
+  const out = [];
+  let slot = 0;
+  for (let i = 0; i < fmt.length; i++) {
+    if (fmt[i] !== "%") continue;
+    i++;
+    if (fmt[i] === "%") continue;
+    while ("-+ #0'".includes(fmt[i])) i++;
+    if (fmt[i] === "*") { slot++; i++; } else while (fmt[i] >= "0" && fmt[i] <= "9") i++;
+    if (fmt[i] === ".") { i++; if (fmt[i] === "*") { slot++; i++; } else while (fmt[i] >= "0" && fmt[i] <= "9") i++; }
+    let len = "";
+    while (i < fmt.length && "hlLqjzt".includes(fmt[i])) len += fmt[i++];
+    const conv = fmt[i];
+    if (conv === "m") continue;
+    if ((conv === "d" || conv === "i") && (len === "l" || len === "ll" || len === "j" || len === "q")) out.push(slot);
+    slot++;
+  }
+  return out;
+}
+function clampLongLongs(name, args) {
+  const fi = FORMAT_ARG[name];
+  const variadic = name[0] !== "v";
+  if (variadic && !hasLongLongOverflow(args, fi + 1)) return args;
+  const values = variadic ? args.slice(fi + 1) : args[fi + 1] && typeof args[fi + 1].rest === "function" ? args[fi + 1].rest() : null;
+  if (!values || !values.some((v) => typeof v === "number" && v >= TWO_63)) return args;
+  const fmt = args[fi];
+  const text = typeof fmt === "string" ? fmt : cText(addrOf(fmt));
+  const fixed = values.slice();
+  for (const k of signedLongLongSlots(text)) if (typeof fixed[k] === "number" && fixed[k] >= TWO_63) fixed[k] = 9223372036854775807n;
+  return variadic ? [...args.slice(0, fi + 1), ...fixed] : [...args.slice(0, fi + 1), fixed, ...args.slice(fi + 2)];
+}
+function hasLongLongOverflow(args, from) {
+  for (let k = from; k < args.length; k++) if (typeof args[k] === "number" && args[k] >= TWO_63) return true;
+  return false;
+}
+function cText(p) {
+  const u = rtHeap.uchars;
+  let s = "";
+  for (let i = p; u[i]; i++) s += String.fromCharCode(u[i]);
+  return s;
+}
 
 function addrOf(v) {
   if (v === null || v === undefined) return 0;
@@ -158,6 +207,7 @@ export function createMachine(options = {}) {
   host.nhjs_js_boundary = (where) => game().boundary(where);
   host.nhjs_install_data_files = () => game().installData();
   const arg = (v) => {
+    if (typeof v === "number") return v;
     if (v === null || v === undefined) return 0;
     if (typeof v === "function") return fnIndex(v);
     if (typeof v === "boolean") return v ? 1 : 0;
@@ -169,8 +219,11 @@ export function createMachine(options = {}) {
   // clib.call (64-bit values, varargs laid out from the format string)
   const entries = new Map();
   const formats = new Map();
+  const literalFormats = new Map();
   // format-string parameter of the residue's variadic printf family (stdio.h)
   const PRINTF = { printf: 0, sprintf: 1, fprintf: 1, snprintf: 2 };
+  // variadic functions whose extra arguments are ints (no format string): lua_gc(L, what, ...)
+  const INT_VARARGS = new Set(["lua_gc"]);
   const entry = (name) => {
     let e = entries.get(name);
     if (e) return e;
@@ -185,9 +238,15 @@ export function createMachine(options = {}) {
       e = (args) => {
         for (let k = 0; k <= fi; k++) if (typeof args[k] === "string") return clib.call(name, ...args.map(arg));
         const fmtAddr = arg(args[fi]);
-        const text = clib.readString(fmtAddr);
-        let c = formats.get(text);
-        if (!c) formats.set(text, (c = printfSlots(text, true)));
+        // a string literal never changes: its layout is found by its text without reading memory
+        const literal = literal_text(fmtAddr);
+        let c = literal !== undefined ? literalFormats.get(literal) : undefined;
+        if (!c) {
+          const text = clib.readString(fmtAddr);
+          c = formats.get(text);
+          if (!c) formats.set(text, (c = printfSlots(text, true)));
+          if (literal !== undefined) literalFormats.set(literal, c);
+        }
         const rest = args.length > fi + 1 ? args.slice(fi + 1).map(arg) : [];
         if (rest.length < c.slots.length) return clib.call(name, ...args.map(arg));
         const fixed = new Array(fi + 1);
@@ -214,21 +273,55 @@ export function createMachine(options = {}) {
         const r = raw(...a);
         return unsigned ? r >>> 0 : r;
       };
+    } else if (INT_VARARGS.has(name) && sig && /^[piud]:[piud]*\.$/.test(sig)) {
+      // varargs without a format: each one an int, as clib.call lays them out
+      const raw = clib.fn[name];
+      const n = sig.length - 3;
+      e = (args) => {
+        const a = new Array(n + 1);
+        for (let k = 0; k < args.length; k++) {
+          const v = args[k];
+          if (typeof v === "string" || typeof v === "bigint") return clib.call(name, ...args.map(arg));
+          if (k < n) a[k] = arg(v);
+        }
+        for (let k = args.length; k < n; k++) a[k] = 0;
+        const rest = args.length > n ? args.slice(n).map(arg) : [];
+        const sp = clib.stackSave();
+        try {
+          a[n] = clib.vaList(rest.map(() => "i"), rest);
+          const r = raw(...a);
+          return sig[0] === "u" ? r >>> 0 : r;
+        } finally {
+          clib.stackRestore(sp);
+        }
+      };
     } else e = (args) => clib.call(name, ...args.map(arg));
     entries.set(name, e);
     return e;
   };
-  rtHeap.machine.libc = (name, args) => {
+  // per name, what emitted code calls (rt/heap.js libc_function looks each name up once): the
+  // entry, with the stack pointer 16-byte aligned for the C code
+  const bound = new Map();
+  const lookup = (name) => {
+    let f = bound.get(name);
+    if (f) return f;
     const e = entry(name);
-    const sp = clib.stackSave();
-    if (!(sp & 15)) return e(args);
-    clib.stackRestore(sp & -16);
-    try {
-      return e(args);
-    } finally {
-      clib.stackRestore(sp);
-    }
+    const clamp = FORMAT_ARG[name] !== undefined;
+    f = (args) => {
+      if (clamp) args = clampLongLongs(name, args);
+      const sp = clib.stackSave();
+      if (!(sp & 15)) return e(args);
+      clib.stackRestore(sp & -16);
+      try {
+        return e(args);
+      } finally {
+        clib.stackRestore(sp);
+      }
+    };
+    bound.set(name, f);
+    return f;
   };
+  rtHeap.machine.libc = Object.assign((name, args) => lookup(name)(args), { lookup });
   install_lua_api(clib, { addr: addrOf, fnIndex, fnFromIndex: (i) => rtFn.fn_from_index(i) });
 
   // ---- loading the game and starting games ------------------------------------------------

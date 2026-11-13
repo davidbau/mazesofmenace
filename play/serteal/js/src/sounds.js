@@ -2,33 +2,15 @@
 /*      Copyright (c) 1989 Janet Walz, Mike Threepoint */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
 /* this easily could be a macro, but it might overtax dumb compilers */
-function /* int */
-mon_in_room(mon, rmtyp)
-{
+function mon_in_room(mon, rmtyp) { /* int */
     let rno = levl()[mon.mx][mon.my].roomno;
     if (rno >= ROOMOFFSET)
         return +(elt(svr.rooms, rno - ROOMOFFSET).rtype == rmtyp);
     return FALSE;
 }
 
-
-function /* boolean */
-throne_mon_sound(mtmp)
-{
+function throne_mon_sound(mtmp) { /* boolean */
     if ((mtmp.msleeping || is_lord(mtmp.data)
          || is_prince(mtmp.data)) && !is_animal(mtmp.data)
         && mon_in_room(mtmp, COURT)) {
@@ -48,19 +30,14 @@ throne_mon_sound(mtmp)
             }
             You_hear1(throne_msg[which]);
         } else {
-            
             pline(throne_msg[2], uhis());
-            
         }
         return TRUE;
     }
     return FALSE;
 }
 
-
-function /* boolean */
-beehive_mon_sound(mtmp)
-{
+function beehive_mon_sound(mtmp) { /* boolean */
     if ((mtmp.data.mlet == S_ANT && is_flyer(mtmp.data))
         && mon_in_room(mtmp, BEEHIVE)) {
         let hallu = Hallucination() ? 1 : 0;
@@ -85,9 +62,7 @@ beehive_mon_sound(mtmp)
     return FALSE;
 }
 
-function /* boolean */
-morgue_mon_sound(mtmp)
-{
+function morgue_mon_sound(mtmp) { /* boolean */
     if ((is_undead(mtmp.data) || is_vampshifter(mtmp))
         && mon_in_room(mtmp, MORGUE)) {
         let hallu = Hallucination() ? 1 : 0;
@@ -111,9 +86,7 @@ morgue_mon_sound(mtmp)
     return FALSE;
 }
 
-function /* boolean */
-zoo_mon_sound(mtmp)
-{
+function zoo_mon_sound(mtmp) { /* boolean */
     if ((mtmp.msleeping || is_animal(mtmp.data))
         && mon_in_room(mtmp, ZOO)) {
         let hallu = Hallucination() ? 1 : 0, selection = rn2(2) + hallu;
@@ -127,9 +100,7 @@ zoo_mon_sound(mtmp)
     return FALSE;
 }
 
-function /* boolean */
-temple_priest_sound(mtmp)
-{
+function temple_priest_sound(mtmp) { /* boolean */
     if (mtmp.ispriest && inhistemple(mtmp)
         /* priest must be active */
         && !helpless(mtmp)
@@ -153,8 +124,8 @@ temple_priest_sound(mtmp)
         let trycount = 0,
             ax = EPRI(mtmp).shrpos.x,
             ay = EPRI(mtmp).shrpos.y;
-        let speechless = (+(mtmp.data.msound <= MS_ANIMAL)),
-            in_sight = ((canseemon(mtmp) || cansee(ax, ay)) ? 1 : 0);
+        let speechless = +(mtmp.data.msound <= MS_ANIMAL),
+            in_sight = (canseemon(mtmp) || cansee(ax, ay) ? 1 : 0);
 
         do {
             msg = temple_msg[rn2(SIZE(temple_msg) - 1 + hallu)];
@@ -167,9 +138,7 @@ temple_priest_sound(mtmp)
         while (!letter(chars[msg]))
             ++msg; /* skip control flags */
         if (strchr(msg, ord('%'))) {
-            
             You_hear(msg, halu_gname(EPRI(mtmp).shralign));
-            
         } else
             You_hear1(msg);
         return TRUE;
@@ -177,9 +146,7 @@ temple_priest_sound(mtmp)
     return FALSE;
 }
 
-function /* boolean */
-oracle_sound(mtmp)
-{
+function oracle_sound(mtmp) { /* boolean */
     if (mtmp.data != mons[PM_ORACLE])
         return FALSE;
 
@@ -198,9 +165,7 @@ oracle_sound(mtmp)
     return TRUE;
 }
 
-export function /* void */
-dosounds()
-{
+export function dosounds() { /* void */
     let sroom;
     let hallu, vx, vy;
     let mtmp;
@@ -295,9 +260,6 @@ dosounds()
                 continue;
             if (is_mercenary(mtmp.data)
 
-
-
-
                 && mon_in_room(mtmp, BARRACKS)
                 /* sleeping implies not-yet-disturbed (usually) */
                 && (mtmp.msleeping || ++count > 5)) {
@@ -347,9 +309,7 @@ const h_sounds = static_array("h_sounds", ptr_to(char), null, [
     _("twang"),  _("toot"),    _("gargle"), _("hoot"),    _("warble")
 ]);
 
-export function /* const char * */
-growl_sound(mtmp)
-{
+export function growl_sound(mtmp) { /* const char * */
     let ret;
 
     switch (mtmp.data.msound) {
@@ -398,9 +358,7 @@ growl_sound(mtmp)
 }
 
 /* the sounds of a seriously abused pet, including player attacking it */
-export function /* void */
-growl(mtmp)
-{
+export function growl(mtmp) { /* void */
     let growl_verb = 0;
 
     if (helpless(mtmp) || mtmp.data.msound == MS_SILENT)
@@ -423,9 +381,7 @@ growl(mtmp)
 }
 
 /* the sounds of mistreated pets */
-export function /* void */
-yelp(mtmp)
-{
+export function yelp(mtmp) { /* void */
     let yelp_verb = 0;
     let se = se_yelp;
 
@@ -470,14 +426,11 @@ yelp(mtmp)
         wake_nearto(mtmp.mx, mtmp.my, mtmp.data.mlevel * 12);
     }
 
-    (void (se));
-
+    (se);
 }
 
 /* the sounds of distressed pets */
-export function /* void */
-whimper(mtmp)
-{
+export function whimper(mtmp) { /* void */
     let whimper_verb = 0;
     let se = se_canine_whine;
     if (helpless(mtmp) || !mtmp.data.msound)
@@ -510,21 +463,18 @@ whimper(mtmp)
         wake_nearto(mtmp.mx, mtmp.my, mtmp.data.mlevel * 6);
     }
 
-    (void (se));
-
+    (se);
 }
 
 /* pet makes "I'm hungry" noises */
-export function /* void */
-beg(mtmp)
-{
+export function beg(mtmp) { /* void */
     if (helpless(mtmp)
         || !(carnivorous(mtmp.data) || herbivorous(mtmp.data)))
         return;
 
     /* presumably nearness and soundok checks have already been made */
     if (!is_silent(mtmp.data) && mtmp.data.msound <= MS_ANIMAL) {
-        void domonnoise(mtmp);
+        domonnoise(mtmp);
     } else if (mtmp.data.msound >= MS_HUMANOID) {
         if (!canspotmon(mtmp))
             map_invisible(mtmp.mx, mtmp.my);
@@ -542,9 +492,7 @@ beg(mtmp)
 }
 
 /* hero has attacked a peaceful monster within 'mon's view */
-export function /* const char * */
-maybe_gasp(mon)
-{
+export function maybe_gasp(mon) { /* const char * */
     let Exclam = static_array("maybe_gasp.Exclam", ptr_to(char), null, [
         _("Gasp!"), _("Uh-oh."), _("Oh my!"), _("What?"), _("Why?"),
     ]);
@@ -591,7 +539,7 @@ maybe_gasp(mon)
     case MS_VAMPIRE: /* vampire in its own form */
     case MS_WERE: /* lycanthrope in human form */
     case MS_SPELL: /* titan, barrow wight, Nazgul, nalfeshnee */
-        dogasp = (+(mptr.mlet == gy.youmonst.data.mlet));
+        dogasp = +(mptr.mlet == gy.youmonst.data.mlet);
         break;
     /* capable of speech but don't care if you attack peacefuls */
     case MS_BRIBE:
@@ -613,9 +561,7 @@ maybe_gasp(mon)
    [the old message when a carried egg hatches was
    "its cries sound like {mommy,daddy}"
    regardless of what type of sound--if any--the creature made] */
-export function /* const char * */
-cry_sound(mtmp)
-{
+export function cry_sound(mtmp) { /* const char * */
     let ret = 0;
     let ptr = mtmp.data;
 
@@ -655,9 +601,7 @@ cry_sound(mtmp)
 }
 
 /* return True if mon is a gecko or seems to look like one (hallucination) */
-function /* boolean */
-mon_is_gecko(mon)
-{
+function mon_is_gecko(mon) { /* boolean */
     let glyph;
 
     /* return True if it is actually a gecko */
@@ -673,11 +617,8 @@ mon_is_gecko(mon)
     return (+(glyph_to_mon(glyph) == PM_GECKO));
 }
 
-
-
-export function /* int */
-domonnoise(mtmp)
-{ const $frame = stack_frame(); try {
+export function domonnoise(mtmp) { /* int */
+    const $frame = stack_frame(); try {
     let verbuf = stack_array(char, BUFSZ);
     let pline_msg = 0,
         verbl_msg = 0,
@@ -736,7 +677,7 @@ domonnoise(mtmp)
         } else {
             /* approximation of GEICO's advertising slogan (it actually
                concludes with "save you 15% or more on car insurance.") */
-            void sprintf(verbuf, _("15 minutes could save you 15 %s."), currency(15))
+            sprintf(verbuf, _("15 minutes could save you 15 %s."), currency(15))
 ; /* "zorkmids" */
             verbl_msg = verbuf;
         }
@@ -745,25 +686,25 @@ domonnoise(mtmp)
         /* vampire messages are varied by tameness, peacefulness, and time of
            night */
         let isnight = night();
-        let kindred = (+(Upolyd() && (u.umonnum == PM_VAMPIRE
-                                      || u.umonnum == PM_VAMPIRE_LEADER)));
-        let nightchild = (+(Upolyd() && (u.umonnum == PM_WOLF
+        let kindred = +(Upolyd() && (u.umonnum == PM_VAMPIRE
+                                      || u.umonnum == PM_VAMPIRE_LEADER));
+        let nightchild = +(Upolyd() && (u.umonnum == PM_WOLF
                                          || u.umonnum == PM_WINTER_WOLF
-                                         || u.umonnum == PM_WINTER_WOLF_CUB)));
+                                         || u.umonnum == PM_WINTER_WOLF_CUB));
         let racenoun = (flags.female && gu.urace.individual.f)
                                ? gu.urace.individual.f
-                               : (gu.urace.individual.m)
+                               : gu.urace.individual.m
                                  ? gu.urace.individual.m
                                  : gu.urace.noun;
 
         if (mtmp.mtame) {
             if (kindred) {
-                void sprintf(verbuf, _("Good %s to you Master%s"), isnight ? _("evening") : _("day"), isnight ? _("!") : _(".  Why do we not rest?"))
+                sprintf(verbuf, _("Good %s to you Master%s"), isnight ? _("evening") : _("day"), isnight ? _("!") : _(".  Why do we not rest?"))
 
 ;
                 verbl_msg = verbuf;
             } else {
-                void sprintf(verbuf, _("%s%s"), nightchild ? _("Child of the night, ") : _(""), midnight()
+                sprintf(verbuf, _("%s%s"), nightchild ? _("Child of the night, ") : _(""), midnight()
                          ? _("I can stand this craving no longer!")
                          : isnight
                           ? _("I beg you, help me satisfy this growing craving!")
@@ -774,11 +715,11 @@ domonnoise(mtmp)
             }
         } else if (mtmp.mpeaceful) {
             if (kindred && isnight) {
-                void sprintf(verbuf, _("Good feeding %s!"), flags.female ? _("sister") : _("brother"))
+                sprintf(verbuf, _("Good feeding %s!"), flags.female ? _("sister") : _("brother"))
 ;
                 verbl_msg = verbuf;
             } else if (nightchild && isnight) {
-                void sprintf(verbuf, _("How nice to hear you, child of the night!"));
+                sprintf(verbuf, _("How nice to hear you, child of the night!"));
                 verbl_msg = verbuf;
             } else
                 verbl_msg = _("I only drink... potions.");
@@ -797,7 +738,7 @@ domonnoise(mtmp)
             } else if (gy.youmonst.data == mons[PM_SILVER_DRAGON]
                        || gy.youmonst.data == mons[PM_BABY_SILVER_DRAGON]) {
                 /* Silver dragons are silver in color, not made of silver */
-                void sprintf(verbuf, _("%s!  Your silver sheen" +" does not frighten me!"), (gy.youmonst.data == mons[PM_SILVER_DRAGON])
+                sprintf(verbuf, _("%s!  Your silver sheen" +" does not frighten me!"), (gy.youmonst.data == mons[PM_SILVER_DRAGON])
                             ? _("Fool")
                             : _("Young Fool"))
 
@@ -806,10 +747,10 @@ domonnoise(mtmp)
             } else {
                 vampindex = rn2(SIZE(vampmsg));
                 if (vampindex == 0) {
-                    void sprintf(verbuf, vampmsg[vampindex], body_part(BLOOD));
+                    sprintf(verbuf, vampmsg[vampindex], body_part(BLOOD));
                     verbl_msg = verbuf;
                 } else if (vampindex == 1) {
-                    void sprintf(verbuf, vampmsg[vampindex], Upolyd() ? an(pmname(mons[u.umonnum],
+                    sprintf(verbuf, vampmsg[vampindex], Upolyd() ? an(pmname(mons[u.umonnum],
                                                flags.female ? FEMALE : MALE))
                                    : an(racenoun))
 ;
@@ -825,8 +766,7 @@ domonnoise(mtmp)
             pline(_("%s throws back %s head and lets out a blood curdling %s!"),
                   Monnam(mtmp), mhis(mtmp),
                   (ptr == mons[PM_HUMAN_WERERAT]) ? _("shriek") : _("howl"));
-                
-                                                          
+
                         ;
             wake_nearto(mtmp.mx, mtmp.my, 11 * 11);
         } else {
@@ -926,7 +866,6 @@ domonnoise(mtmp)
         break;
     case MS_BELLOW:
         ;
-
 
         pline_msg = _("bellows!");
         break;
@@ -1109,7 +1048,7 @@ domonnoise(mtmp)
             if (ptr.mlet != S_NYMPH
                 && (could_seduce(mtmp, gy.youmonst, null)
                     == 1)) {
-                void doseduce(mtmp);
+                doseduce(mtmp);
                 break;
             }
             swval = ((poly_gender() != mtmp.female) ? rn2(3) : 0);
@@ -1140,7 +1079,7 @@ domonnoise(mtmp)
         break;
     case MS_BRIBE:
         if (mtmp.mpeaceful && !mtmp.mtame) {
-            void demon_talk(mtmp);
+            demon_talk(mtmp);
             break;
         }
         /* FALLTHROUGH */;
@@ -1193,24 +1132,23 @@ domonnoise(mtmp)
     case MS_RIDER: {
         let tribtitle;
         let book = null;
-        let ms_Death = (+(ptr == mons[PM_DEATH]));
+        let ms_Death = +(ptr == mons[PM_DEATH]);
 
         /* 3.6 tribute */
         if (ms_Death && !svc.context.tribute.Deathnotice
             && (book = u_have_novel()) != null) {
             if ((tribtitle = noveltitle(ref_of(book, "corpsenm"))) != 0) {
-                void sprintf(verbuf, _("Ah, so you have a copy of /%s/."), tribtitle);
+                sprintf(verbuf, _("Ah, so you have a copy of /%s/."), tribtitle);
                 /* no Death featured in these two, so exclude them */
-                if (strcmpi(tribtitle, _("Snuff"))
-                    && strcmpi(tribtitle, _("The Wee Free Men")))
-                    void strcat(verbuf, _("  I may have been misquoted there."));
+                if (strncmpi((tribtitle), _(("Snuff")), -1)
+                    && strncmpi((tribtitle), _(("The Wee Free Men")), -1))
+                    strcat(verbuf, _("  I may have been misquoted there."));
                 verbl_msg = verbuf;
             }
             svc.context.tribute.Deathnotice = 1;
         } else if (ms_Death && rn2(3) && Death_quote(verbuf, sizeof(array_of(char, BUFSZ)))) {
             verbl_msg = verbuf;
         /* end of tribute addition */
-
         } else if (ms_Death && !rn2(10)) {
             pline_msg = _("is busy reading a copy of Sandman #8.");
         } else
@@ -1239,23 +1177,18 @@ domonnoise(mtmp)
         }
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* #chat command */
-export function /* int */
-dotalk()
-{
+export function dotalk() { /* int */
     let result;
 
     result = dochat();
     return result;
 }
 
-function /* int */
-dochat()
-{
+function dochat() { /* int */
     let mtmp;
     let tx, ty;
     let otmp;
@@ -1409,9 +1342,7 @@ dochat()
 }
 
 /* is there a monster at <x,y> that can see the hero and react? */
-function /* struct monst * */
-responsive_mon_at(x, y)
-{
+function responsive_mon_at(x, y) { /* struct monst * */
     let mtmp = isok(x, y) ? m_at(x, y) : null;
 
     if (mtmp && (helpless(mtmp) /* immobilized monst */
@@ -1423,9 +1354,8 @@ responsive_mon_at(x, y)
 }
 
 /* player chose 'uarmh' for #tip (pickup.c); visual #chat, sort of... */
-export function /* int */
-tiphat()
-{ let $goto = null; var reaction = static_array("tiphat.reaction", ptr_to(char), 3, [ _("curses"), _("gestures rudely"), _("gestures offensively"), ]);
+export function tiphat() { /* int */
+    let $goto = null; var reaction = static_array("tiphat.reaction", ptr_to(char), 3, [ _("curses"), _("gestures rudely"), _("gestures offensively"), ]);
     var mtmp;
     var otmp;
     var x, y, range, glyph, vismon, unseen, statue, res;
@@ -1453,7 +1383,7 @@ tiphat()
             if (helpless(u.usteed))
                 pline(_("%s doesn't notice."), Monnam(u.usteed));
             else
-                void domonnoise(u.usteed);
+                domonnoise(u.usteed);
         } else if (u.dz) {
             pline(_("There's no one %s there."), (u.dz < 0) ? _("up") : _("down"));
         } else {
@@ -1473,12 +1403,12 @@ tiphat()
             break;
         }
         mtmp = m_at(x, y);
-        vismon = (((mtmp && canseemon(mtmp)) ? 1 : 0));
+        vismon = (mtmp && canseemon(mtmp) ? 1 : 0);
         glyph = glyph_at(x, y);
         unseen = glyph_is_invisible(glyph);
-        statue = (+(glyph_is_statue(glyph) /* mimic or hallucinatory statue */
+        statue = +(glyph_is_statue(glyph) /* mimic or hallucinatory statue */
                   || (!vismon && !unseen && (otmp = vobj_at(x, y)) != null
-                      && otmp.otyp == STATUE))); /* or actual statue */
+                      && otmp.otyp == STATUE)); /* or actual statue */
         if (vismon && (M_AP_TYPE(mtmp) == M_AP_FURNITURE
                        || M_AP_TYPE(mtmp) == M_AP_OBJECT))
             vismon = 0, mtmp = null;
@@ -1515,15 +1445,12 @@ tiphat()
                       mhis(mtmp), helm_simple_name(otmp));
             }
         } else if (!$goto && (vismon && humanoid(mtmp.data))) {
-            
-
-
             var which = !Deaf() ? rn2(3) : rn1(2, 1),
                 twice = (Deaf() || which > 0 || rn2(3)) ? 0 : rn1(2, 1);
 
             pline(_("%s %s%s%s at you..."), Monnam(mtmp), reaction[which],
                   twice ? _(" and ") : _(""), twice ? reaction[twice] : _(""));
-        } else if (!$goto && (((dist2(coordxy(((x))), coordxy(((y))), u.ux, u.uy) <= 2)) && !Deaf() && domonnoise(mtmp))) {
+        } else if (!$goto && ((dist2(coordxy((x)), coordxy((y)), u.ux, u.uy) <= 2) && !Deaf() && domonnoise(mtmp))) {
             if (!vismon)
                 map_invisible(x, y);
         } else if (!$goto && (vismon)) {
@@ -1536,205 +1463,11 @@ tiphat()
     return res;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef USER_SOUNDS: not in this build */
 
 export const soundprocs = static_struct("soundprocs", struct_sound_procs);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const nosound_procs = static_struct("nosound_procs", struct_sound_procs, { soundname: _("nosound"), soundlib_id: (soundlib_nosound) });
-
-
-
-
-
-
-
-
-
-
-
 
 /* The order of these array entries must match the
    order of the enum soundlib_ids in sndprocs.h */
@@ -1744,40 +1477,9 @@ const nosound_procs = static_struct("nosound_procs", struct_sound_procs, { sound
 }); const soundlib_choices = static_array("soundlib_choices", struct_sound_choices, null, [
     { sndprocs: nosound_procs },     /* default, built-in */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 ]);
 
-export function /* void */
-activate_chosen_soundlib()
-{
+export function activate_chosen_soundlib() { /* void */
     let idx = int(gc.chosen_soundlib);
 
     if (!IndexOk(idx, soundlib_choices))
@@ -1785,18 +1487,16 @@ activate_chosen_soundlib()
 
     if (ga.active_soundlib != soundlib_nosound || idx != soundlib_nosound) {
         if (soundprocs.sound_exit_nhsound)
-            (soundprocs.sound_exit_nhsound)(_("assigning a new sound library"));
+            soundprocs.sound_exit_nhsound(_("assigning a new sound library"));
     }
     struct_assign(soundprocs, soundlib_choices[idx].sndprocs);
     if (soundprocs.sound_init_nhsound)
-        (soundprocs.sound_init_nhsound)();
+        soundprocs.sound_init_nhsound();
     ga.active_soundlib = soundprocs.soundlib_id;
     gc.chosen_soundlib = ga.active_soundlib;
 }
 
-export function /* void */
-assign_soundlib(idx)
-{
+export function assign_soundlib(idx) { /* void */
     if (!IndexOk(idx, soundlib_choices))
         panic(_("assign_soundlib: invalid soundlib (%d)"), idx);
 
@@ -1804,65 +1504,11 @@ assign_soundlib(idx)
         = (soundlib_choices[idx].sndprocs.soundlib_id);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* copy up to maxlen-1 characters; 'dest' must be able to hold maxlen;
    treat comma as alternate end of 'src' */
-export function /* void */
-get_soundlib_name(dest, maxlen)
-{
+export function get_soundlib_name(dest, maxlen) { /* void */
     let count, idx;
     let src;
 
@@ -1879,9 +1525,7 @@ get_soundlib_name(dest, maxlen)
     chars[dest] = ord('\0');
 }
 
-export function /* enum soundlib_ids */
-soundlib_id_from_opt(op)
-{
+export function soundlib_id_from_opt(op) { /* enum soundlib_ids */
     let idx;
     let defproc = nosound_procs,
                        sp = null;
@@ -1901,192 +1545,15 @@ soundlib_id_from_opt(op)
  * and build procedures should reference them there.
  */
 
+/* #if 0: not in this build */
 
+/* #ifdef SND_SOUNDEFFECTS_AUTOMAP: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* char * */
-base_soundname_to_filename(
+export function base_soundname_to_filename(
     basename,
     buf,
     bufsz,
-    approach)
-{
+    approach) { /* char * */
     let suffix = init_string(static_array("base_soundname_to_filename.suffix", char, sizeof_string(".wav")), _(".wav"), true);
     let consumes = 0, baselen = 0, existinglen = 0;
     let cp = buf;
@@ -2119,19 +1586,7 @@ base_soundname_to_filename(
     if (!baselen || consumes > bufsz || existinglen >= bufsz)
         return 0;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     if (approach == sff_havedir_append_rest) {
         if (needslash) {
@@ -2140,7 +1595,7 @@ base_soundname_to_filename(
             chars[cp] = ord('\0');
             existinglen++;
         }
-        Snprintf(cp, unsigned(bufsz - (unsigned(existinglen + 1))), _("%s%s"), basename, suffix)
+        Snprintf(cp, unsigned(bufsz - unsigned(existinglen + 1)), _("%s%s"), basename, suffix)
 ;
     } else if (approach == sff_base_only) {
         Snprintf(buf, bufsz, _("%s"), basename);
@@ -2151,359 +1606,109 @@ base_soundname_to_filename(
     return buf;
 }
 
-
-
-
-
-
-
-export function /* void */
-set_voice(
+export function set_voice(
     mtmp,
     tone,
     volume,
-    moreinfo)
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    moreinfo) { /* void */
+/* #ifdef SND_SPEECH: not in this build */
 }
 
-export function /* void */
-sound_speak(text)
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function sound_speak(text) { /* void */
+/* #ifdef SND_SPEECH: not in this build */
 }
 
 /*sounds.c*/
+
 import { nothing_happens } from "./decl.h.macros.js";
-import { S_ANT } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { S_ANT, S_CENTAUR, S_EEL, S_NYMPH, WEAPON_CLASS } from "./defsym.h.js";
 import { GLYPH_MON_OFF } from "./display.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { glyph_is_statue } from "./display.h.macros.js";
-import { glyph_to_mon } from "./display.h.macros.js";
-import { vobj_at } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_oracle_level } from "./dungeon.h.macros.js";
-import { Is_sanctum } from "./dungeon.h.macros.js";
-import { FULL_MOON } from "./flag.h.js";
-import { PLNMSG_GROWL } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { BLOOD } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { HAIR } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { NECK } from "./hack.h.js";
-import { IndexOk } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { You_hear1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { verbalize1 } from "./hack.h.macros.js";
+import {
+    canspotmon, glyph_is_invisible, glyph_is_statue, glyph_to_mon, vobj_at,
+} from "./display.h.macros.js";
+import { In_endgame, Is_astralevel, Is_oracle_level, Is_sanctum } from "./dungeon.h.macros.js";
+import { FULL_MOON, PLNMSG_GROWL } from "./flag.h.js";
+import { BUFSZ, FALSE, TRUE, coordxy } from "./global.h.js";
+import { BLOOD, BOLT_LIM, ECMD_CANCEL, ECMD_OK, ECMD_TIME, HAIR, HEAD, NECK } from "./hack.h.js";
+import { IndexOk, ROLL_FROM, You_hear1, rn1, verbalize1 } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { has_emin } from "./mextra.h.macros.js";
-import { ANY_SHOP } from "./mkroom.h.js";
-import { BARRACKS } from "./mkroom.h.js";
-import { BEEHIVE } from "./mkroom.h.js";
-import { COURT } from "./mkroom.h.js";
-import { MORGUE } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { VAULT } from "./mkroom.h.js";
-import { ZOO } from "./mkroom.h.js";
+import { EDOG, EMIN, EPRI, has_emin } from "./mextra.h.macros.js";
+import { ANY_SHOP, BARRACKS, BEEHIVE, COURT, MORGUE, ROOMOFFSET, VAULT, ZOO } from "./mkroom.h.js";
 import { ROOM_INDEX } from "./mkroom.h.macros.js";
-import { carnivorous } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { herbivorous } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_dwarf } from "./mondata.h.macros.js";
-import { is_elf } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_gnome } from "./mondata.h.macros.js";
-import { is_lord } from "./mondata.h.macros.js";
-import { is_mercenary } from "./mondata.h.macros.js";
-import { is_mplayer } from "./mondata.h.macros.js";
-import { is_prince } from "./mondata.h.macros.js";
-import { is_silent } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { likes_magic } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { MS_ANIMAL } from "./monflag.h.js";
-import { MS_ARREST } from "./monflag.h.js";
-import { MS_BARK } from "./monflag.h.js";
-import { MS_BELLOW } from "./monflag.h.js";
-import { MS_BOAST } from "./monflag.h.js";
-import { MS_BONES } from "./monflag.h.js";
-import { MS_BRIBE } from "./monflag.h.js";
-import { MS_BURBLE } from "./monflag.h.js";
-import { MS_BUZZ } from "./monflag.h.js";
-import { MS_CHIRP } from "./monflag.h.js";
-import { MS_CUSS } from "./monflag.h.js";
-import { MS_DJINNI } from "./monflag.h.js";
-import { MS_GROAN } from "./monflag.h.js";
-import { MS_GROWL } from "./monflag.h.js";
-import { MS_GRUNT } from "./monflag.h.js";
-import { MS_GUARD } from "./monflag.h.js";
-import { MS_GUARDIAN } from "./monflag.h.js";
-import { MS_GURGLE } from "./monflag.h.js";
-import { MS_HISS } from "./monflag.h.js";
-import { MS_HUMANOID } from "./monflag.h.js";
-import { MS_IMITATE } from "./monflag.h.js";
-import { MS_LAUGH } from "./monflag.h.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MS_MEW } from "./monflag.h.js";
-import { MS_MOO } from "./monflag.h.js";
-import { MS_MUMBLE } from "./monflag.h.js";
-import { MS_NEIGH } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
-import { MS_NURSE } from "./monflag.h.js";
-import { MS_ORACLE } from "./monflag.h.js";
-import { MS_ORC } from "./monflag.h.js";
-import { MS_PRIEST } from "./monflag.h.js";
-import { MS_RIDER } from "./monflag.h.js";
-import { MS_ROAR } from "./monflag.h.js";
-import { MS_SEDUCE } from "./monflag.h.js";
-import { MS_SELL } from "./monflag.h.js";
-import { MS_SHRIEK } from "./monflag.h.js";
-import { MS_SILENT } from "./monflag.h.js";
-import { MS_SOLDIER } from "./monflag.h.js";
-import { MS_SPELL } from "./monflag.h.js";
-import { MS_SQAWK } from "./monflag.h.js";
-import { MS_SQEEK } from "./monflag.h.js";
-import { MS_TRUMPET } from "./monflag.h.js";
-import { MS_VAMPIRE } from "./monflag.h.js";
-import { MS_WAIL } from "./monflag.h.js";
-import { MS_WERE } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { STRAT_WAITMASK } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_lminion } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BABY_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_DEATH } from "./monsters.h.js";
-import { PM_DINGO } from "./monsters.h.js";
-import { PM_GECKO } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HOBBIT } from "./monsters.h.js";
-import { PM_HUMAN_WERERAT } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_ORACLE } from "./monsters.h.js";
-import { PM_PRISONER } from "./monsters.h.js";
-import { PM_RAVEN } from "./monsters.h.js";
-import { PM_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_VAMPIRE_LEADER } from "./monsters.h.js";
-import { PM_WATER_DEMON } from "./monsters.h.js";
-import { PM_WINTER_WOLF } from "./monsters.h.js";
-import { PM_WINTER_WOLF_CUB } from "./monsters.h.js";
-import { PM_WOLF } from "./monsters.h.js";
+import {
+    carnivorous, haseyes, herbivorous, humanoid, is_animal, is_dwarf, is_elf, is_flyer, is_gnome,
+    is_lord, is_mercenary, is_mplayer, is_prince, is_silent, is_undead, likes_magic, monsndx,
+    perceives,
+} from "./mondata.h.macros.js";
+import {
+    FEMALE, MALE, MS_ANIMAL, MS_ARREST, MS_BARK, MS_BELLOW, MS_BOAST, MS_BONES, MS_BRIBE, MS_BURBLE,
+    MS_BUZZ, MS_CHIRP, MS_CUSS, MS_DJINNI, MS_GROAN, MS_GROWL, MS_GRUNT, MS_GUARD, MS_GUARDIAN,
+    MS_GURGLE, MS_HISS, MS_HUMANOID, MS_IMITATE, MS_LAUGH, MS_LEADER, MS_MEW, MS_MOO, MS_MUMBLE,
+    MS_NEIGH, MS_NEMESIS, MS_NURSE, MS_ORACLE, MS_ORC, MS_PRIEST, MS_RIDER, MS_ROAR, MS_SEDUCE,
+    MS_SELL, MS_SHRIEK, MS_SILENT, MS_SOLDIER, MS_SPELL, MS_SQAWK, MS_SQEEK, MS_TRUMPET, MS_VAMPIRE,
+    MS_WAIL, MS_WERE,
+} from "./monflag.h.js";
+import { M_AP_FURNITURE, M_AP_OBJECT, STRAT_WAITMASK } from "./monst.h.js";
+import { DEADMONSTER, M_AP_TYPE, helpless, is_lminion, is_vampshifter } from "./monst.h.macros.js";
+import {
+    PM_ARCHEOLOGIST, PM_BABY_SILVER_DRAGON, PM_DEATH, PM_DINGO, PM_GECKO, PM_HEALER, PM_HOBBIT,
+    PM_HUMAN_WERERAT, PM_LONG_WORM, PM_ORACLE, PM_PRISONER, PM_RAVEN, PM_SILVER_DRAGON, PM_TOURIST,
+    PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_WATER_DEMON, PM_WINTER_WOLF, PM_WINTER_WOLF_CUB, PM_WOLF,
+} from "./monsters.h.js";
 import { is_weptool } from "./obj.h.macros.js";
 import { STATUE } from "./objects.h.js";
 import { W_ARMH } from "./prop.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { se_avian_screak } from "./seffects.h.js";
-import { se_canine_whine } from "./seffects.h.js";
-import { se_canine_yelp } from "./seffects.h.js";
-import { se_feline_yelp } from "./seffects.h.js";
-import { se_squeal } from "./seffects.h.js";
-import { se_wail } from "./seffects.h.js";
-import { se_yelp } from "./seffects.h.js";
-import { sff_base_only } from "./sndprocs.h.js";
-import { sff_havedir_append_rest } from "./sndprocs.h.js";
-import { soundlib_nosound } from "./sndprocs.h.js";
-import { struct_sound_procs } from "./sndprocs.h.js";
+import { IRONBARS, SDOOR } from "./rm.h.js";
+import { IS_WALL, fmon, levl, m_at } from "./rm.h.macros.js";
+import {
+    se_avian_screak, se_canine_whine, se_canine_yelp, se_feline_yelp, se_squeal, se_wail, se_yelp,
+} from "./seffects.h.js";
+import {
+    sff_base_only, sff_havedir_append_rest, soundlib_nosound, struct_sound_procs,
+} from "./sndprocs.h.js";
 import { SYSOPT_SEDUCE } from "./sys.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { Race_switch } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import { Race_switch, Role_if, Upolyd, mhis, uhis } from "./you.h.macros.js";
+import {
+    Blind, Conflict, Deaf, Hallucination, Invis, Strangled, Underwater,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { char, int, ord, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { and64u } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { sprintf, strcat, strchr, strcmp, strcpy, strlen } from "../rt/libc.js";
+import { init_string, stack_array, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { midnight } from "./calendar.js";
-import { night } from "./calendar.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gc } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svq } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { glyph_at } from "./display.js";
-import { map_invisible } from "./display.js";
-import { Monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { noveltitle } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
+import { array_of, elt, ptr_to, ref_of, struct, struct_assign } from "../rt/struct.js";
+import { midnight, night } from "./calendar.js";
+import { getdir, isok } from "./cmd.js";
+import { flags, ga, gc, gi, gm, gn, gu, gy, iflags, svc, svl, svm, svq, svr, u } from "./decl.js";
+import { canseemon, glyph_at, map_invisible } from "./display.js";
+import { Monnam, mon_nam, noveltitle, pmname, rndmonnam } from "./do_name.js";
 import { cursed } from "./do_wear.js";
 import { panic } from "./end.js";
 import { Death_quote } from "./files.js";
-import { money_cnt } from "./hack.js";
-import { nomul } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { letter } from "./hacklib.js";
-import { ucase } from "./hacklib.js";
-import { currency } from "./invent.js";
-import { g_at } from "./invent.js";
-import { u_have_novel } from "./invent.js";
-import { could_seduce } from "./mhitu.js";
-import { doseduce } from "./mhitu.js";
+import { money_cnt, nomul } from "./hack.js";
+import { dist2, letter, strncmpi, ucase } from "./hacklib.js";
+import { currency, g_at, u_have_novel } from "./invent.js";
+import { could_seduce, doseduce } from "./mhitu.js";
 import { demon_talk } from "./minion.js";
 import { search_special } from "./mkroom.js";
-import { genus } from "./mon.js";
-import { get_iter_mons } from "./mon.js";
-import { wake_nearto } from "./mon.js";
+import { genus, get_iter_mons, wake_nearto } from "./mon.js";
 import { same_race } from "./mondata.js";
 import { accessible } from "./monmove.js";
 import { mons } from "./monst.js";
 import { mplayer_talk } from "./mplayer.js";
-import { an } from "./objnam.js";
-import { helm_simple_name } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { poly_gender } from "./polyself.js";
+import { an, helm_simple_name, vtense } from "./objnam.js";
+import { You, You_cant, You_hear, Your, pline, pline_The, verbalize } from "./pline.js";
+import { body_part, poly_gender } from "./polyself.js";
 import { halu_gname } from "./pray.js";
-import { inhistemple } from "./priest.js";
-import { p_coaligned } from "./priest.js";
-import { priest_talk } from "./priest.js";
-import { temple_occupied } from "./priest.js";
+import { inhistemple, p_coaligned, priest_talk, temple_occupied } from "./priest.js";
 import { quest_chat } from "./quest.js";
 import { rn2 } from "./rnd.js";
 import { doconsult } from "./rumors.js";
-import { noisy_shop } from "./shk.js";
-import { price_quote } from "./shk.js";
-import { shk_chat } from "./shk.js";
-import { shop_object } from "./shk.js";
-import { tended_shop } from "./shk.js";
+import { noisy_shop, price_quote, shk_chat, shop_object, tended_shop } from "./shk.js";
 import { t_at } from "./trap.js";
-import { gd_sound } from "./vault.js";
-import { vault_occupied } from "./vault.js";
-import { aggravate } from "./wizard.js";
-import { cuss } from "./wizard.js";
+import { gd_sound, vault_occupied } from "./vault.js";
+import { aggravate, cuss } from "./wizard.js";
 import { which_armor } from "./worn.js";

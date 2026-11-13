@@ -3,37 +3,23 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
     const Before_you = 0;
 
     const With_you = 1;
     const After_you = 2;
     const Wiz_arrive = -1;
 
-
-export function /* void */
-newedog(mtmp)
-{
+export function newedog(mtmp) { /* void */
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EDOG(mtmp)) {
         ((mtmp).mextra.edog) = view_of(struct_edog, addr_of(alloc(sizeof(struct_edog))));
-        void memset(addr_of(EDOG(mtmp)), 0, sizeof(struct_edog));
+        memset(addr_of(EDOG(mtmp)), 0, sizeof(struct_edog));
         EDOG(mtmp).parentmid = mtmp.m_id;
     }
 }
 
-export function /* void */
-free_edog(mtmp)
-{
+export function free_edog(mtmp) { /* void */
     if (mtmp.mextra && EDOG(mtmp)) {
         free(addr_of(EDOG(mtmp)));
         ((mtmp).mextra.edog) = null;
@@ -41,9 +27,7 @@ free_edog(mtmp)
     mtmp.mtame = 0;
 }
 
-export function /* void */
-initedog(mtmp, everything)
-{
+export function initedog(mtmp, everything) { /* void */
     let edogp = EDOG(mtmp);
     let minhungry = svm.moves + 1000;
     let minimumtame = is_domestic(mtmp.data) ? 10 : 5;
@@ -87,9 +71,7 @@ initedog(mtmp, everything)
     u.uconduct.pets++;
 }
 
-function /* int */
-pet_type()
-{
+function pet_type() { /* int */
     if (gu.urole.petnum != NON_PM)
         return  gu.urole.petnum;
     else if (gp.preferred_pet == ord('c'))
@@ -100,9 +82,7 @@ pet_type()
         return  rn2(2) ? PM_KITTEN : PM_LITTLE_DOG;
 }
 
-function /* struct permonst * */
-pick_familiar_pm(otmp, quietly)
-{
+function pick_familiar_pm(otmp, quietly) { /* struct permonst * */
     let pm = null;
 
     if (otmp) { /* figurine; otherwise spell */
@@ -134,9 +114,7 @@ pick_familiar_pm(otmp, quietly)
     return pm;
 }
 
-export function /* struct monst * */
-make_familiar(otmp, x, y, quietly)
-{
+export function make_familiar(otmp, x, y, quietly) { /* struct monst * */
     let pm;
     let mtmp = null;
     let chance, trycnt = 100;
@@ -209,15 +187,13 @@ make_familiar(otmp, x, y, quietly)
     /* must wield weapon immediately since pets will otherwise drop it */
     if (mtmp.mtame && attacktype(mtmp.data, AT_WEAP)) {
         mtmp.weapon_check = NEED_HTH_WEAPON;
-        void mon_wield_item(mtmp);
+        mon_wield_item(mtmp);
     }
     return mtmp;
 }
 
 /* despite rather general name, used exclusively for hero's starting pet */
-export function /* struct monst * */
-makedog()
-{
+export function makedog() { /* struct monst * */
     let mtmp;
     let petname;
     let pettype;
@@ -225,7 +201,7 @@ makedog()
     if (gp.preferred_pet == ord('n')) {
         /* static init yields 0 (PM_GIANT_ANT); fix that up now */
         svc.context.startingpet_typ = NON_PM;
-        return (null);
+        return null;
     }
 
     pettype = svc.context.startingpet_typ = pet_type();
@@ -255,7 +231,7 @@ makedog()
     mtmp = makemon(mons[pettype], u.ux, u.uy, MM_EDOG | NO_MINVENT);
 
     if (!mtmp)
-        return (null); /* pets were genocided [how?] */
+        return null; /* pets were genocided [how?] */
 
     if (!svc.context.startingpet_mid) {
         svc.context.startingpet_mid = mtmp.m_id;
@@ -283,26 +259,20 @@ makedog()
     return  mtmp;
 }
 
-function /* void */
-set_mon_lastmove(mtmp)
-{
+function set_mon_lastmove(mtmp) { /* void */
     mtmp.mlstmv = svm.moves;
 }
 
 /* record `last move time' for all monsters prior to level save so that
    mon_arrive() can catch up for lost time when they're restored later */
-export function /* void */
-update_mlstmv()
-{
+export function update_mlstmv() { /* void */
     iter_mons(set_mon_lastmove);
 }
 
 /* note: always reset when used so doesn't need to be part of struct 'g' */
 const failed_arrivals = static_var("failed_arrivals", ptr_to(struct_monst), null);
 
-export function /* void */
-losedogs()
-{
+export function losedogs() { /* void */
     let mtmp, mprev;
     let dismissKops = 0, xyloc;
 
@@ -416,9 +386,8 @@ losedogs()
 }
 
 /* called from resurrect() in addition to losedogs() */
-export function /* void */
-mon_arrive(mtmp, when)
-{ const $frame = stack_frame(); try {
+export function mon_arrive(mtmp, when) { /* void */
+    const $frame = stack_frame(); try {
     let t;
     let xlocale, ylocale, xyloc, xyflags;
     let wander;
@@ -620,17 +589,14 @@ mon_arrive(mtmp, when)
             m_into_limbo(mtmp);
     }
     mtmp.mstate = and64(mtmp.mstate, ~MON_STILL_ARRIVING);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* heal monster for time spent elsewhere */
-export function /* void */
-mon_catchup_elapsed_time(
+export function mon_catchup_elapsed_time(
     mtmp,
-    nmv) /* number of moves */
-{
+    nmv) { /* void */ /* number of moves */
     let imv = 0; /* avoid zillions of casts and lint warnings */
-
-
 
     if (nmv < 0) { /* crash likely... */
         panic(_("catchup from future time?"));
@@ -725,9 +691,7 @@ mon_catchup_elapsed_time(
 
 /* bookkeeping when mtmp is about to leave the current level;
    common to keepdogs() and migrate_to_level() */
-function /* int */
-mon_leave(mtmp)
-{
+function mon_leave(mtmp) { /* int */
     let obj;
     let num_segs = 0; /* return value */
 
@@ -764,9 +728,7 @@ mon_leave(mtmp)
 
 /* when hero leaves a level, some monsters should be placed on the
    migrating_mons list instead of being stashed inside the level's file */
-function /* boolean */
-keep_mon_accessible(mon)
-{
+function keep_mon_accessible(mon) { /* boolean */
     /* the Wizard is kept accessible so that his harassment can fetch
        him instead of creating a new instance but also so that he can
        be put back at his current location if hero returns to his level */
@@ -785,10 +747,8 @@ keep_mon_accessible(mon)
 }
 
 /* called when you move to another level */
-export function /* void */
-keepdogs(
-    pets_only) /* true for ascension or final escape */
-{
+export function keepdogs(
+    pets_only) { /* void */ /* true for ascension or final escape */
     let mtmp, mtmp2;
 
     for (mtmp = fmon(); mtmp; mtmp = mtmp2) {
@@ -823,7 +783,7 @@ keepdogs(
             let stay_behind = FALSE;
 
             if (mtmp.mtrapped)
-                void mintrap(mtmp, NO_TRAP_FLAGS); /* try to escape */
+                mintrap(mtmp, NO_TRAP_FLAGS); /* try to escape */
             if (mtmp == u.usteed) {
                 /* make sure steed is eligible to accompany hero */
                 mtmp.mtrapped = 0;       /* escape trap */
@@ -883,13 +843,12 @@ keepdogs(
     }
 }
 
-export function /* void */
-migrate_to_level(
+export function migrate_to_level(
     mtmp,
     tolev,
     xyloc,
-    cc)   /* optional destination coordinates */
-{ const $frame = stack_frame(); try {
+    cc) { /* void */ /* optional destination coordinates */
+    const $frame = stack_frame(); try {
     let new_lev = stack_struct(struct_d_level);
     let xyflags;
     let mx = mtmp.mx, my = mtmp.my; /* <mx,my> needed below */
@@ -910,7 +869,7 @@ migrate_to_level(
     new_lev.dlevel = ledger_to_dlev(tolev);
     /* overload mtmp->[mx,my], mtmp->[mux,muy], and mtmp->mtrack[] as
        destination codes */
-    xyflags = (+(depth(new_lev) < depth(u.uz))); /* 1 => up */
+    xyflags = +(depth(new_lev) < depth(u.uz)); /* 1 => up */
     if (In_W_tower(mx, my, u.uz))
         xyflags |= 2;
     mtmp.wormno = unsigned(num_segs);
@@ -929,14 +888,14 @@ migrate_to_level(
        from local (monst->mx > 0) to global (mx==0, not on this level) */
     if (emits_light(mtmp.data))
         vision_recalc(0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* when entering the endgame, levels from the dungeon and its branches are
    discarded because they can't be reached again; do the same for monsters
    and objects scheduled to migrate to those levels */
-export function /* void */
-discard_migrations()
-{ const $frame = stack_frame(); try {
+export function discard_migrations() { /* void */
+    const $frame = stack_frame(); try {
     let mtmp, mprev;
     let otmp, oprev;
     let dest = stack_struct(struct_d_level);
@@ -987,13 +946,12 @@ discard_migrations()
             obfree(otmp, null); /* releases any contents too */
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns the quality of an item of food; the lower the better;
    fungi and ghouls will eat even tainted food */
-export function /* int */
-dogfood(mon, obj)
-{
+export function dogfood(mon, obj) { /* int */
     let mptr = mon.data, fptr;
     let carni = carnivorous(mptr), herbi = herbivorous(mptr),
             starving, mblind;
@@ -1012,7 +970,7 @@ dogfood(mon, obj)
                 : NON_PM;
         /* mons[NUMMONS] is a valid array entry, though not a valid monster;
          * predicate tests against it will fail */
-        fptr = mons[(ismnum(fx)) ? fx : NUMMONS];
+        fptr = mons[ismnum(fx) ? fx : NUMMONS];
 
         if (obj.otyp == CORPSE && is_rider(fptr))
             return TABU;
@@ -1032,10 +990,10 @@ dogfood(mon, obj)
             return obj.cursed ? UNDEF : APPORT;
 
         /* a starving pet will eat almost anything */
-        starving = (((mon.mtame && !mon.isminion
-                    && EDOG(mon).mhpmax_penalty) ? 1 : 0));
+        starving = (mon.mtame && !mon.isminion
+                    && EDOG(mon).mhpmax_penalty ? 1 : 0);
         /* even carnivores will eat carrots if they're temporarily blind */
-        mblind = (+(!mon.mcansee && haseyes(mon.data)));
+        mblind = +(!mon.mcansee && haseyes(mon.data));
 
         /* ghouls prefer old corpses and unhatchable eggs, yum!
            they'll eat fresh non-veggy corpses and hatchable eggs
@@ -1139,12 +1097,10 @@ dogfood(mon, obj)
  * With the separate mextra structure added in 3.6.x it always operates
  * on the original mtmp.  It now returns TRUE if the taming succeeded.
  */
-export function /* boolean */
-tamedog(
+export function tamedog(
     mtmp,
     obj,
-    givemsg)
-{
+    givemsg) { /* boolean */
     let blessed_scroll = FALSE;
 
     if (obj && (obj.oclass == SCROLL_CLASS || obj.oclass == SPBOOK_CLASS)) {
@@ -1199,8 +1155,8 @@ tamedog(
                     && EDOG(mtmp).hungrytime <= svm.moves))) {
             /* pet will "catch" and eat this thrown food */
             if (canseemon(mtmp)) {
-                let big_corpse = (+(obj.otyp == CORPSE && ismnum(obj.corpsenm)
-                     && mons[obj.corpsenm].msize > mtmp.data.msize));
+                let big_corpse = +(obj.otyp == CORPSE && ismnum(obj.corpsenm)
+                     && mons[obj.corpsenm].msize > mtmp.data.msize);
 
                 pline_mon(mtmp, _("%s catches %s%s"),
                           Monnam(mtmp), the(xname(obj)),
@@ -1209,7 +1165,7 @@ tamedog(
                 pline(_("%s."), Tobjnam(obj, _("stop")));
             /* dog_eat expects a floor object */
             place_object(obj, mtmp.mx, mtmp.my);
-            void dog_eat(mtmp, obj, mtmp.mx, mtmp.my, FALSE);
+            dog_eat(mtmp, obj, mtmp.mx, mtmp.my, FALSE);
             /* eating might have killed it, but that doesn't matter here;
                a non-null result suppresses "miss" message for thrown
                food and also implies that the object has been deleted */
@@ -1276,7 +1232,7 @@ tamedog(
         redraw_worm(mtmp);
     if (attacktype(mtmp.data, AT_WEAP)) {
         mtmp.weapon_check = NEED_HTH_WEAPON;
-        void mon_wield_item(mtmp);
+        mon_wield_item(mtmp);
     }
     return TRUE;
 }
@@ -1288,9 +1244,7 @@ tamedog(
  * If you abused the pet at all while alive, it revives untame.
  * If the pet wasn't abused and was very tame, it might revive tame.
  */
-export function /* void */
-wary_dog(mtmp, was_dead)
-{
+export function wary_dog(mtmp, was_dead) { /* void */
     let edog;
     let quietly = was_dead;
 
@@ -1358,9 +1312,7 @@ wary_dog(mtmp, was_dead)
     }
 }
 
-export function /* void */
-abuse_dog(mtmp)
-{
+export function abuse_dog(mtmp) { /* void */
     if (!mtmp.mtame)
         return;
 
@@ -1393,314 +1345,126 @@ abuse_dog(mtmp)
 }
 
 /*dog.c*/
+
 import { A_CHA } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_KOBOLD } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_ORC } from "./defsym.h.js";
-import { S_YETI } from "./defsym.h.js";
+import {
+    BALL_CLASS, CHAIN_CLASS, FOOD_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_DOG, S_FUNGUS,
+    S_KOBOLD, S_OGRE, S_ORC, S_YETI,
+} from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { MIGR_APPROX_XY } from "./dungeon.h.js";
-import { MIGR_EXACT_XY } from "./dungeon.h.js";
-import { MIGR_LADDER_DOWN } from "./dungeon.h.js";
-import { MIGR_LADDER_UP } from "./dungeon.h.js";
-import { MIGR_LEFTOVERS } from "./dungeon.h.js";
-import { MIGR_PORTAL } from "./dungeon.h.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { MIGR_SSTAIRS } from "./dungeon.h.js";
-import { MIGR_STAIRS_DOWN } from "./dungeon.h.js";
-import { MIGR_STAIRS_UP } from "./dungeon.h.js";
-import { MIGR_WITH_HERO } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_qstart } from "./dungeon.h.macros.js";
+import {
+    MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_LADDER_DOWN, MIGR_LADDER_UP, MIGR_LEFTOVERS, MIGR_PORTAL,
+    MIGR_RANDOM, MIGR_SSTAIRS, MIGR_STAIRS_DOWN, MIGR_STAIRS_UP, MIGR_WITH_HERO, struct_d_level,
+} from "./dungeon.h.js";
+import { In_endgame, Is_qstart } from "./dungeon.h.macros.js";
 import { FULL_MOON } from "./flag.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { MAXMONNO } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { CORPSTAT_FEMALE } from "./hack.h.js";
-import { CORPSTAT_GENDER } from "./hack.h.js";
-import { CORPSTAT_MALE } from "./hack.h.js";
-import { DF_ALL } from "./hack.h.js";
-import { DISMOUNT_GENERIC } from "./hack.h.js";
-import { DISMOUNT_THROWN } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { MM_EDOG } from "./hack.h.js";
-import { MM_FEMALE } from "./hack.h.js";
-import { MM_IGNOREWATER } from "./hack.h.js";
-import { MM_MALE } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NO_MINVENT } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { ACCFOOD } from "./mextra.h.js";
-import { APPORT } from "./mextra.h.js";
-import { CADAVER } from "./mextra.h.js";
-import { DOGFOOD } from "./mextra.h.js";
-import { MANFOOD } from "./mextra.h.js";
-import { POISON } from "./mextra.h.js";
-import { TABU } from "./mextra.h.js";
-import { UNDEF } from "./mextra.h.js";
-import { struct_edog } from "./mextra.h.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { EGD } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { has_edog } from "./mextra.h.macros.js";
+import {
+    COLNO, FALSE, LARGEST_INT, LL_CONDUCT, MAXMONNO, ROWNO, TRUE, xint16,
+} from "./global.h.js";
+import {
+    CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, DF_ALL, DISMOUNT_GENERIC, DISMOUNT_THROWN, EYE,
+    MM_EDOG, MM_FEMALE, MM_IGNOREWATER, MM_MALE, MM_NOMSG, NO_MINVENT, NO_TRAP_FLAGS, RLOC_NOMSG,
+} from "./hack.h.js";
+import { max, min, rn1 } from "./hack.h.macros.js";
+import {
+    ACCFOOD, APPORT, CADAVER, DOGFOOD, MANFOOD, POISON, TABU, UNDEF, struct_edog,
+} from "./mextra.h.js";
+import { EDOG, EGD, EPRI, ESHK, has_edog } from "./mextra.h.macros.js";
 import { ROOMOFFSET } from "./mkroom.h.js";
 import { AT_WEAP } from "./monattk.h.js";
-import { acidic } from "./mondata.h.macros.js";
-import { carnivorous } from "./mondata.h.macros.js";
-import { emits_light } from "./mondata.h.macros.js";
-import { flesh_petrifies } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { herbivorous } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_covetous } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_domestic } from "./mondata.h.macros.js";
-import { is_elf } from "./mondata.h.macros.js";
-import { is_human } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { likes_fire } from "./mondata.h.macros.js";
-import { metallivorous } from "./mondata.h.macros.js";
-import { poisonous } from "./mondata.h.macros.js";
-import { regenerates } from "./mondata.h.macros.js";
-import { slimeproof } from "./mondata.h.macros.js";
-import { vegan } from "./mondata.h.macros.js";
-import { G_EXTINCT } from "./monflag.h.js";
-import { M3_WANTSARTI } from "./monflag.h.js";
-import { MAX_NUM_WORMS } from "./monst.h.js";
-import { MON_LIMBO } from "./monst.h.js";
-import { MON_MIGRATING } from "./monst.h.js";
-import { MON_STILL_ARRIVING } from "./monst.h.js";
-import { NEED_HTH_WEAPON } from "./monst.h.js";
-import { STRAT_ARRIVE } from "./monst.h.js";
-import { STRAT_WAITFORU } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { resists_acid } from "./monst.h.macros.js";
-import { resists_poison } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GHOUL } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LIZARD } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_MEDUSA } from "./monsters.h.js";
-import { PM_PONY } from "./monsters.h.js";
-import { PM_PYROLISK } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_RUST_MONSTER } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
+import {
+    acidic, carnivorous, emits_light, flesh_petrifies, haseyes, herbivorous, humanoid, is_covetous,
+    is_demon, is_domestic, is_elf, is_human, is_rider, is_undead, likes_fire, metallivorous,
+    poisonous, regenerates, slimeproof, vegan,
+} from "./mondata.h.macros.js";
+import { G_EXTINCT, M3_WANTSARTI } from "./monflag.h.js";
+import {
+    MAX_NUM_WORMS, MON_LIMBO, MON_MIGRATING, MON_STILL_ARRIVING, NEED_HTH_WEAPON, STRAT_ARRIVE,
+    STRAT_WAITFORU, struct_monst,
+} from "./monst.h.js";
+import {
+    DEADMONSTER, helpless, is_vampshifter, ismnum, resists_acid, resists_poison, resists_ston,
+} from "./monst.h.macros.js";
+import {
+    NON_PM, NUMMONS, PM_BARBARIAN, PM_CAVE_DWELLER, PM_GELATINOUS_CUBE, PM_GHOUL, PM_KILLER_BEE,
+    PM_KITTEN, PM_LICHEN, PM_LITTLE_DOG, PM_LIZARD, PM_LONG_WORM, PM_MEDUSA, PM_PONY, PM_PYROLISK,
+    PM_QUEEN_BEE, PM_RANGER, PM_RUST_MONSTER, PM_SAMURAI,
+} from "./monsters.h.js";
 import { OBJ_FREE } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { polyfood } from "./obj.h.macros.js";
-import { stale_egg } from "./obj.h.macros.js";
+import { Has_contents, ONAME, has_oname, polyfood, stale_egg } from "./obj.h.macros.js";
 import { SILVER } from "./objclass.h.js";
-import { is_metallic } from "./objclass.h.macros.js";
-import { is_organic } from "./objclass.h.macros.js";
-import { is_rustprone } from "./objclass.h.macros.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { APPLE } from "./objects.h.js";
-import { BANANA } from "./objects.h.js";
-import { CARROT } from "./objects.h.js";
-import { CLOVE_OF_GARLIC } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ENORMOUS_MEATBALL } from "./objects.h.js";
-import { EXPENSIVE_CAMERA } from "./objects.h.js";
-import { GLOB_OF_GREEN_SLIME } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MEATBALL } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { MEAT_STICK } from "./objects.h.js";
-import { RIN_SLOW_DIGESTION } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPE_CREATE_FAMILIAR } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TRIPE_RATION } from "./objects.h.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
+import { is_metallic, is_organic, is_rustprone } from "./objclass.h.macros.js";
+import {
+    AMULET_OF_STRANGULATION, APPLE, BANANA, CARROT, CLOVE_OF_GARLIC, CORPSE, EGG, ENORMOUS_MEATBALL,
+    EXPENSIVE_CAMERA, GLOB_OF_GREEN_SLIME, LUMP_OF_ROYAL_JELLY, MEATBALL, MEAT_RING, MEAT_STICK,
+    RIN_SLOW_DIGESTION, SLIME_MOLD, SPE_CREATE_FAMILIAR, TIN, TRIPE_RATION,
+} from "./objects.h.js";
+import { MON_AT, fmon } from "./rm.h.macros.js";
 import { P_SKILL } from "./skills.h.macros.js";
 import { MAGIC_PORTAL } from "./trap.h.js";
 import { LS_MONSTER } from "./vision.h.js";
 import { cansee } from "./vision.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Aggravate_monster } from "./youprop.h.macros.js";
-import { Conflict } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { Role_if, Upolyd, uhis } from "./you.h.macros.js";
+import { Aggravate_monster, Conflict, Hallucination } from "./youprop.h.macros.js";
+import { int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64, or64u } from "../rt/int64.js";
+import { assert, free, memset } from "../rt/libc.js";
+import { stack_struct, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, elt, ptr_to, ref_of, view_of } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { m_unleash } from "./apply.js";
 import { night } from "./calendar.js";
 import { is_pool } from "./dbridge.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gf } from "./decl.js";
-import { gh } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gp } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svq } from "./decl.js";
-import { svr } from "./decl.js";
-import { svu } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { Monnam } from "./do_name.js";
-import { christen_monst } from "./do_name.js";
-import { mon_pmname } from "./do_name.js";
-import { dog_eat } from "./dogmove.js";
-import { finish_meating } from "./dogmove.js";
+import {
+    flags, gb, gc, gd, gf, gh, gm, gn, gp, gu, gy, iflags, program_state, svc, svl, svm, svq, svr,
+    svu, u,
+} from "./decl.js";
+import { canseemon, newsym } from "./display.js";
+import { Monnam, christen_monst, mon_pmname } from "./do_name.js";
+import { dog_eat, finish_meating } from "./dogmove.js";
 import { deliver_obj_to_mon } from "./dokick.js";
-import { In_W_tower } from "./dungeon.js";
-import { builds_up } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { ledger_to_dlev } from "./dungeon.js";
-import { ledger_to_dnum } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
+import {
+    In_W_tower, builds_up, depth, ledger_no, ledger_to_dlev, ledger_to_dnum, on_level,
+} from "./dungeon.js";
 import { panic } from "./end.js";
-import { in_rooms } from "./hack.js";
-import { monst_to_any } from "./hack.js";
+import { in_rooms, monst_to_any } from "./hack.js";
 import { s_suffix } from "./hacklib.js";
 import { carrying } from "./invent.js";
 import { del_light_source } from "./light.js";
-import { makemon } from "./makemon.js";
-import { mbirth_limit } from "./makemon.js";
-import { newmextra } from "./makemon.js";
-import { rndmonst_adj } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { makemon, mbirth_limit, newmextra, rndmonst_adj, set_malign } from "./makemon.js";
 import { expels } from "./mhitu.js";
 import { free_emin } from "./minion.js";
-import { discard_minvent } from "./mkobj.js";
-import { peek_at_iced_corpse_age } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
+import { discard_minvent, peek_at_iced_corpse_age, place_object } from "./mkobj.js";
 import { somexy } from "./mkroom.js";
-import { dealloc_monst } from "./mon.js";
-import { healmon } from "./mon.js";
-import { iter_mons } from "./mon.js";
-import { m_into_limbo } from "./mon.js";
-import { minliquid } from "./mon.js";
-import { mnearto } from "./mon.js";
-import { mnexto } from "./mon.js";
-import { monnear } from "./mon.js";
-import { relmon } from "./mon.js";
-import { restore_cham } from "./mon.js";
-import { see_monster_closeup } from "./mon.js";
-import { unstuck } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { levl_follower } from "./mondata.js";
-import { mon_hates_silver } from "./mondata.js";
-import { same_race } from "./mondata.js";
-import { sticks } from "./mondata.js";
-import { find_pmmonst } from "./monmove.js";
-import { mon_track_clear } from "./monmove.js";
+import {
+    dealloc_monst, healmon, iter_mons, m_into_limbo, minliquid, mnearto, mnexto, monnear, relmon,
+    restore_cham, see_monster_closeup, unstuck, wake_nearto,
+} from "./mon.js";
+import { attacktype, levl_follower, mon_hates_silver, same_race, sticks } from "./mondata.js";
+import { find_pmmonst, mon_track_clear } from "./monmove.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { an } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { pline_mon } from "./pline.js";
+import { Tobjnam, an, the, xname } from "./objnam.js";
+import { There, You, impossible, livelog_printf, pline, pline_The, pline_mon } from "./pline.js";
 import { body_part } from "./polyself.js";
 import { is_quest_artifact } from "./questpgr.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { make_happy_shk } from "./shk.js";
-import { make_happy_shoppers } from "./shk.js";
-import { obfree } from "./shk.js";
-import { picked_container } from "./shk.js";
-import { set_residency } from "./shk.js";
-import { growl } from "./sounds.js";
-import { yelp } from "./sounds.js";
+import { rn2, rnd } from "./rnd.js";
+import {
+    make_happy_shk, make_happy_shoppers, obfree, picked_container, set_residency,
+} from "./shk.js";
+import { growl, yelp } from "./sounds.js";
 import { spell_skilltype } from "./spell.js";
-import { stairway_find } from "./stairs.js";
-import { stairway_find_dir } from "./stairs.js";
-import { stairway_find_from } from "./stairs.js";
+import { stairway_find, stairway_find_dir, stairway_find_from } from "./stairs.js";
 import { mdrop_special_objs } from "./steal.js";
-import { dismount_steed } from "./steed.js";
-import { place_monster } from "./steed.js";
-import { put_saddle_on_mon } from "./steed.js";
-import { rloc } from "./teleport.js";
-import { rloc_to } from "./teleport.js";
+import { dismount_steed, place_monster, put_saddle_on_mon } from "./steed.js";
+import { rloc, rloc_to } from "./teleport.js";
 import { mintrap } from "./trap.js";
 import { vision_recalc } from "./vision.js";
 import { mon_wield_item } from "./weapon.js";
 import { mon_has_amulet } from "./wizard.js";
-import { count_wsegs } from "./worm.js";
-import { get_wormno } from "./worm.js";
-import { initworm } from "./worm.js";
-import { redraw_worm } from "./worm.js";
-import { wormgone } from "./worm.js";
+import { count_wsegs, get_wormno, initworm, redraw_worm, wormgone } from "./worm.js";
 import { obj_resists } from "./zap.js";

@@ -16,6 +16,16 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
         if(anonymous)type='@'+anonymous[1]+':'+anonymous[2]+':'+anonymous[3];
         canonicalTypes.set(input,type);return type;
     }
+    // C enum names retain their identity for fields; call boundaries use the
+    // compiler-measured integer representation, including unsigned enums.
+    function abiType(type){
+        type=canonical(type);
+        if(!type.startsWith('enum ')||type.includes('*')||type.includes('['))return type;
+        const layout=metadata.enums[type];if(!layout)throw new Error('Unmeasured C enum '+type);
+        const scalar={1:'char',2:'short',4:'int',8:'long'}[layout.size];
+        if(!scalar)throw new Error('Unsupported C enum width '+type+': '+layout.size);
+        return (layout.signed?(layout.size===1?'signed ':''):'unsigned ')+scalar;
+    }
     function recordName(type){let name=recordNames.get(type);if(name===undefined){name=canonical(type).replace(/^(struct|union) /,'');recordNames.set(type,name);}return name;}
     function recordDefinition(name){const result=metadata.records[name];if(!result)throw new Error('Unmeasured C record '+name);return result;}
     function record(type){const name=recordName(type);return{type:name,...recordDefinition(name)};}
@@ -83,5 +93,5 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
         if(field.bits!==undefined)return bitfields.set(Object.prototype.propertyIsEnumerable.call(definition,'type')?definition.type:name,key,at,value);
         return store(scalar,pos,value);
     }
-    return{canonical,record,isRecord,size,load,store,locate,fieldAddress,getField,setField};
+    return{canonical,abiType,record,isRecord,size,load,store,locate,fieldAddress,getField,setField};
 }

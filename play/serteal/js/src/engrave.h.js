@@ -3,17 +3,10 @@
 /*-Copyright (c) Kenneth Lorber, Kensington, Maryland, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
     export const actual_text = 0;
     export const remembered_text = actual_text + 1;
     export const pristine_text = remembered_text + 1;
     export const text_states = pristine_text + 1;
-
-
-
 
 export const DUST = 1; export const ENGRAVE = 2; export const BURN = 3; export const MARK = 4; export const ENGR_BLOOD = 5; export const HEADSTONE = 6; export const N_ENGRAVE = 6; export const struct_engr = struct("struct_engr", {
     nxt_engr: ptr_to("struct_engr"),
@@ -24,12 +17,6 @@ export const DUST = 1; export const ENGRAVE = 2; export const BURN = 3; export c
     engr_time: long, /* moment engraving was (will be) finished */
     engr_type: xint8,
 
-
-
-
-
-
-
     guardobjects: Bitfield(1), /* if engr_txt is "Elbereth", it is effective
                                 * against monsters when an object is present
                                 * even when hero isn't (so behaves similarly
@@ -39,12 +26,7 @@ export const DUST = 1; export const ENGRAVE = 2; export const BURN = 3; export c
     erevealed: Bitfield(1), /* refers to engraving map symbol: revealed */
     /* 4 free bits */
 });
-import { coordxy } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { coordxy, xint8 } from "./global.h.js";
+import { char, long, unsigned } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

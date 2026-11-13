@@ -5,37 +5,13 @@
 
 /* various code that was replicated in *main.c */
 
-// #include "hack.h"
-
-
-// #include <signal.h>
-
-
  /* c2js exposes moveloop_preamble */
-
 
  /* c2js exposes maybe_do_tutorial */
 
-
-
-
-
-
-
-
-
-
-
-
-
 /*ARGSUSED*/
-export function /* void */
-early_init(argc, argv)
-{
+export function early_init(argc, argv) { /* void */
     program_state_init();
-
-
-
 
     decl_globals_init();
     objects_globals_init();
@@ -44,14 +20,12 @@ early_init(argc, argv)
     runtime_info_init();
 }
 
-export function /* void */
-moveloop_preamble(resuming)
-{
+export function moveloop_preamble(resuming) { /* void */
     /* if a save file created in normal mode is now being restored in
        explore mode, treat it as normal restore followed by 'X' command
        to use up the save file and require confirmation for explore mode */
     if (resuming && iflags.deferred_X)
-        void enter_explore_mode();
+        enter_explore_mode();
 
     /* side-effects from the real world */
     flags.moonphase = unsigned(phase_of_the_moon());
@@ -72,7 +46,7 @@ moveloop_preamble(resuming)
         svc.context.rndencode = rnd(9000);
         set_wear(null); /* for side-effects of starting gear */
         reset_justpicked(gi.invent);
-        void pickup(1);      /* autopickup at initial location */
+        pickup(1);      /* autopickup at initial location */
         /* only matters if someday a character is able to start with
            clairvoyance (wizard with cornuthaum perhaps?); without this,
            first "random" occurrence would always kick in on turn 1 */
@@ -110,9 +84,7 @@ moveloop_preamble(resuming)
         update_inventory();
 }
 
-function /* void */
-u_calc_moveamt(wtcap)
-{
+function u_calc_moveamt(wtcap) { /* void */
     let moveamt = 0;
 
     /* calculate how much time passed. */
@@ -137,16 +109,16 @@ u_calc_moveamt(wtcap)
     case UNENCUMBERED:
         break;
     case SLT_ENCUMBER:
-        moveamt -= (Math.trunc(moveamt / 4));
+        moveamt -= Math.trunc(moveamt / 4);
         break;
     case MOD_ENCUMBER:
-        moveamt -= (Math.trunc(moveamt / 2));
+        moveamt -= Math.trunc(moveamt / 2);
         break;
     case HVY_ENCUMBER:
-        moveamt -= (Math.trunc((moveamt * 3) / 4));
+        moveamt -= Math.trunc((moveamt * 3) / 4);
         break;
     case EXT_ENCUMBER:
-        moveamt -= (Math.trunc((moveamt * 7) / 8));
+        moveamt -= Math.trunc((moveamt * 7) / 8);
         break;
     default:
         break;
@@ -158,38 +130,25 @@ u_calc_moveamt(wtcap)
 }
 
 /* small chance of generating a new random monster */
-function /* void */
-maybe_generate_rnd_mon()
-{
+function maybe_generate_rnd_mon() { /* void */
     if (!rn2(u.uevent.udemigod ? 25
-             : (depth(u.uz) > depth((svd.dungeon_topology.d_stronghold_level))) ? 50
+             : (depth(u.uz) > depth(svd.dungeon_topology.d_stronghold_level)) ? 50
              : 70))
-        void makemon(null, 0, 0, NO_MM_FLAGS);
+        makemon(null, 0, 0, NO_MM_FLAGS);
 }
-
-
-
 
 const mvl_wtcap = static_var("mvl_wtcap", int, 0);
 const mvl_change = static_var("mvl_change", int, 0);
 
-export function /* void */
-moveloop_core()
-{
+export function moveloop_core() { /* void */
     let monscanmove = FALSE;
 
-    
-
     nhjs_moveloop_boundary(); /* c2js snapshot point for interactive play */
-
-
 
     if (program_state.done_hup)
         end_of_input();
 
     get_nh_event()();
-
-
 
     if (iflags.pending_customizations)
         maybe_shuffle_customizations();
@@ -346,7 +305,7 @@ moveloop_core()
 
                 if (Searching() && !svl.level.flags.noautosearch
                     && gm.multi >= 0)
-                    void dosearch0(1);
+                    dosearch0(1);
                 if (Warning())
                     warnreveal();
                 if (gw.were_changes) {
@@ -407,7 +366,6 @@ moveloop_core()
            immediately if their own action encumbered them */
         encumber_msg();
 
-
         if (iflags.hilite_delta)
             status_eval_next_unhilite();
 
@@ -430,7 +388,7 @@ moveloop_core()
             sink_into_lava();
         /* when/if hero escapes from lava, he can't just stay there */
         else if (!u.umoved)
-            void pooleffects(FALSE);
+            pooleffects(FALSE);
 
         /* vision while buried or underwater is updated here */
         if (Underwater())
@@ -488,24 +446,12 @@ moveloop_core()
     svc.context.move = 1;
 
     if (gm.multi >= 0 && go.occupation) {
+            /* #if defined(MICRO) || defined(WIN32CON): not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-            if ((go.occupation)() == 0)
+            if (go.occupation() == 0)
 
                 go.occupation = null;
         if (
-
-
 
             monster_nearby()) {
             stop_occupation();
@@ -535,7 +481,6 @@ moveloop_core()
             rhack(gc.cmd_key);
         }
     } else if (gm.multi == 0) {
-
         ckmailstatus();
 
         rhack(0);
@@ -568,9 +513,7 @@ moveloop_core()
     }
 }
 
-export function /* void */
-maybe_do_tutorial()
-{
+export function maybe_do_tutorial() { /* void */
     let sp = find_level(_("tut-1"));
 
     if (!sp)
@@ -588,12 +531,7 @@ maybe_do_tutorial()
     }
 }
 
-export function /* void */
-moveloop(resuming)
-{
-
-    
-
+export function moveloop(resuming) { /* void */
     nhjs_moveloop_entry(resuming); /* c2js host drives the game loop */
 
     moveloop_preamble(resuming);
@@ -606,14 +544,12 @@ moveloop(resuming)
     }
 }
 
-function /* void */
-regen_pw(wtcap)
-{
+function regen_pw(wtcap) { /* void */
     if (u.uen < u.uenmax
         && ((wtcap < MOD_ENCUMBER
-             && (!(svm.moves % (Math.trunc((MAXULEV + 8 - u.ulevel)
+             && (!(svm.moves % Math.trunc((MAXULEV + 8 - u.ulevel)
                               * (Role_if(PM_WIZARD) ? 3 : 4)
-                              / 6))))) || Energy_regeneration())) {
+                              / 6)))) || Energy_regeneration())) {
         let upper = Math.trunc((ACURR(A_WIS) + ACURR(A_INT)) / 15) + 1;
 
         if (EMagical_breathing())
@@ -628,15 +564,13 @@ regen_pw(wtcap)
     }
 }
 
-export function U_CAN_REGEN() { return (((Regeneration() || (Sleepy() && u.usleep)) ? 1 : 0)); }
+export function U_CAN_REGEN() { return (Regeneration() || (Sleepy() && u.usleep) ? 1 : 0); }
 
 /* maybe recover some lost health (or lose some when an eel out of water) */
-function /* void */
-regen_hp(wtcap)
-{
+function regen_hp(wtcap) { /* void */
     let heal = 0;
     let reached_full = FALSE,
-            encumbrance_ok = (+(wtcap < MOD_ENCUMBER || !u.umoved));
+            encumbrance_ok = +(wtcap < MOD_ENCUMBER || !u.umoved);
 
     if (Upolyd()) {
         if (u.mh < 1) { /* shouldn't happen... */
@@ -656,7 +590,7 @@ regen_hp(wtcap)
         if (heal) {
             disp.botl = TRUE;
             u.mh += heal;
-            reached_full = (+(u.mh == u.mhmax));
+            reached_full = +(u.mh == u.mhmax);
         }
 
     /* !Upolyd */
@@ -679,7 +613,7 @@ regen_hp(wtcap)
                 if (u.uhp > u.uhpmax)
                     u.uhp = u.uhpmax;
                 /* stop voluntary multi-turn activity if now fully healed */
-                reached_full = (+(u.uhp == u.uhpmax));
+                reached_full = +(u.uhp == u.uhpmax);
             }
         }
     }
@@ -688,11 +622,7 @@ regen_hp(wtcap)
         interrupt_multi(_("You are in full health."));
 }
 
-
-
-export function /* void */
-stop_occupation()
-{
+export function stop_occupation() { /* void */
     if (go.occupation) {
         if (!maybe_finished_meal(TRUE))
             You(_("stop %s."), go.occtxt);
@@ -705,9 +635,7 @@ stop_occupation()
     cmdq_clear(CQ_CANNED);
 }
 
-export function /* void */
-init_sound_disp_gamewindows()
-{
+export function init_sound_disp_gamewindows() { /* void */
     let menu_behavior = MENU_BEHAVE_STANDARD;
 
     activate_chosen_soundlib();
@@ -718,13 +646,6 @@ init_sound_disp_gamewindows()
     } else {
           ;
     }
-
-
-
-
-
-
-
 
     WIN_MESSAGE = create_nhwindow()(NHW_MESSAGE);
     if (VIA_WINDOWPORT()) {
@@ -737,44 +658,21 @@ init_sound_disp_gamewindows()
     if (WIN_INVEN != WIN_ERR)
         adjust_menu_promptstyle(WIN_INVEN, iflags.menu_headings);
 
-
-
-
-
-
-
     /* in case of early quit where WIN_INVEN could be destroyed before
        ever having been used, use it here to pacify the Qt interface */
     start_menu()(WIN_INVEN, ulong(menu_behavior)), end_menu()(WIN_INVEN, 0);
-
-
-
-
-
-
-
-
-
 
     /*
      * The mac port is not DEPENDENT on the order of these
      * displays, but it looks a lot better this way...
      */
 
-
-
     display_nhwindow()(WIN_MESSAGE, FALSE);
     clear_glyph_buffer();
     display_nhwindow()(WIN_MAP, FALSE);
-
-
-
-
 }
 
-export function /* void */
-newgame()
-{
+export function newgame() { /* void */
     let i;
 
     /* make sure welcome messages are given before noticing monsters */
@@ -806,8 +704,7 @@ newgame()
     l_nhcore_init();  /* create a Lua state that lasts until end of game */
     reset_glyphmap(gm_newgame);
 
-    void signal(SIGINT, done1);
-
+    signal(SIGINT, done1);
 
     if (iflags.news)
         display_file()(_(NEWS), FALSE);
@@ -821,7 +718,7 @@ newgame()
 
     if (MON_AT(u.ux, u.uy))
         mnexto(m_at(u.ux, u.uy), RLOC_NOMSG);
-    void makedog();
+    makedog();
 
     u_init_inventory_attrs();
     docrt();
@@ -853,19 +750,18 @@ newgame()
     welcome(TRUE);
     notice_mon_on(); /* now we can notice monsters */
     if (a11y.glyph_updates)
-        void dolookaround();
+        dolookaround();
     else
         notice_all_mons(TRUE);
     return;
 }
 
 /* show "welcome [back] to NetHack" message at program startup */
-export function /* void */
-welcome(new_game) /* false => restoring an old game */
-{ const $frame = stack_frame(); try {
+export function welcome(new_game) { /* void */ /* false => restoring an old game */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let currentgend = Upolyd() ? u.mfemale : flags.female,
-            adrift = (+(u.ualign.type != chars[u.ualignbase + A_CURRENT]));
+            adrift = +(u.ualign.type != chars[u.ualignbase + A_CURRENT]);
 
     l_nhcore_call(new_game ? NHCORE_START_NEW_GAME : NHCORE_RESTORE_OLD_GAME);
 
@@ -889,9 +785,6 @@ welcome(new_game) /* false => restoring an old game */
      */
     chars[buf] = ord('\0');
 
-
-
-
     /*
      * 2026-04-24
      * GitHub issue https://github.com/NetHack/NetHack/issues/537
@@ -907,7 +800,7 @@ welcome(new_game) /* false => restoring an old game */
      *  message."
      */
     if (new_game || chars[u.ualignbase + A_ORIGINAL] != chars[u.ualignbase + A_CURRENT] || adrift)
-        void sprintf(eos(buf), _(" %s%s"), adrift ? _("adrift ") : _(""), adrift ? align_str(u.ualign.type)
+        sprintf(eos(buf), _(" %s%s"), adrift ? _("adrift ") : _(""), adrift ? align_str(u.ualign.type)
                        : align_str(chars[u.ualignbase + A_CURRENT]))
 
 ;
@@ -916,8 +809,8 @@ welcome(new_game) /* false => restoring an old game */
         && (new_game
             ? (gu.urole.allow & ROLE_GENDMASK) == (ROLE_MALE | ROLE_FEMALE)
             : currentgend != flags.initgend))
-        void sprintf(eos(buf), _(" %s"), genders[currentgend].adj);
-    void sprintf(eos(buf), _(" %s %s"), gu.urace.adj, (currentgend && gu.urole.name.f) ? gu.urole.name.f
+        sprintf(eos(buf), _(" %s"), genders[currentgend].adj);
+    sprintf(eos(buf), _(" %s %s"), gu.urace.adj, (currentgend && gu.urole.name.f) ? gu.urole.name.f
                                              : gu.urole.name.m)
 ;
 
@@ -936,55 +829,12 @@ welcome(new_game) /* false => restoring an old game */
         /* remind player of the level annotation, like in goto_level() */
         print_level_annotation();
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
+/* #ifdef POSITIONBAR: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-interrupt_multi(msg)
-{
+function interrupt_multi(msg) { /* void */
     if (gm.multi > 0 && !svc.context.travel && !svc.context.run) {
         nomul(0);
         if (flags.verbose && msg)
@@ -993,314 +843,142 @@ interrupt_multi(msg)
 }
 
 /* convert from time_t to number of seconds */
-export function /* long long */
-timet_to_seconds(ttim)
-{
+export function timet_to_seconds(ttim) { /* long long */
     /* for Unix-based and Posix-compliant systems, a cast to 'long' would
        suffice but the C Standard doesn't require time_t to be that simple */
     return timet_delta(ttim, 0);
 }
 
 /* calculate the difference in seconds between two time_t values */
-export function /* long long */
-timet_delta(etim, stim) /* end and start times */
-{
+export function timet_delta(etim, stim) { /* long long */ /* end and start times */
     /* difftime() is a STDC routine which returns the number of seconds
        between two time_t values as a 'double' */
     return long(difftime(etim, stim));
 }
 
 /*allmain.c*/
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+
+import { A_CON, A_DEX, A_INT, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { VIA_WINDOWPORT } from "./botl.h.macros.js";
 import { NEWS } from "./config.h.js";
 import { struct_tribute_info } from "./context.h.js";
 import { S_EEL } from "./defsym.h.js";
 import { gm_newgame } from "./display.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { FULL_MOON } from "./flag.h.js";
-import { NEW_MOON } from "./flag.h.js";
-import { RUN_TPORT } from "./flag.h.js";
-import { fuzzer_impossible_panic } from "./flag.h.js";
-import { notice_mon_off } from "./flag.h.macros.js";
-import { notice_mon_on } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_ACHIEVE } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { NHLpa_panic } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { In_endgame, Is_airlevel, Is_waterlevel } from "./dungeon.h.macros.js";
+import { FULL_MOON, NEW_MOON, RUN_TPORT, fuzzer_impossible_panic } from "./flag.h.js";
+import { notice_mon_off, notice_mon_on, wizard } from "./flag.h.macros.js";
+import { BUFSZ, COLNO, FALSE, LL_ACHIEVE, MAXULEV, NHLpa_panic, TRUE } from "./global.h.js";
 import { nhassert } from "./global.h.macros.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CQ_REPEAT } from "./hack.h.js";
-import { ESCAPED } from "./hack.h.js";
-import { EXT_ENCUMBER } from "./hack.h.js";
-import { HVY_ENCUMBER } from "./hack.h.js";
-import { MOD_ENCUMBER } from "./hack.h.js";
-import { NHCB_END_TURN } from "./hack.h.js";
-import { NHCORE_MOVELOOP_TURN } from "./hack.h.js";
-import { NHCORE_RESTORE_OLD_GAME } from "./hack.h.js";
-import { NHCORE_START_NEW_GAME } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { UNENCUMBERED } from "./hack.h.js";
+import {
+    CQ_CANNED, CQ_REPEAT, ESCAPED, EXT_ENCUMBER, HVY_ENCUMBER, MOD_ENCUMBER, NHCB_END_TURN,
+    NHCORE_MOVELOOP_TURN, NHCORE_RESTORE_OLD_GAME, NHCORE_START_NEW_GAME, NO_MM_FLAGS, POLY_NOFLAGS,
+    RLOC_NOMSG, SLT_ENCUMBER, UNENCUMBERED,
+} from "./hack.h.js";
 import { rn1 } from "./hack.h.macros.js";
 import { G_NOCORPSE } from "./monflag.h.js";
 import { ismnum } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import { LOW_PM, NON_PM, NUMMONS, PM_WIZARD } from "./monsters.h.js";
 import { NORMAL_SPEED } from "./permonst.h.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { cliparound } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { display_file } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { get_nh_event } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { NHW_MAP } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_MESSAGE } from "./wintype.h.js";
-import { NHW_STATUS } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { A_CURRENT } from "./you.h.js";
-import { A_ORIGINAL } from "./you.h.js";
-import { ROLE_FEMALE } from "./you.h.js";
-import { ROLE_GENDMASK } from "./you.h.js";
-import { ROLE_MALE } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { UTOTYPE_NONE } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { BClairvoyant } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Clairvoyant } from "./youprop.h.macros.js";
-import { EMagical_breathing } from "./youprop.h.macros.js";
-import { Energy_regeneration } from "./youprop.h.macros.js";
-import { Fast } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Polymorph } from "./youprop.h.macros.js";
-import { Regeneration } from "./youprop.h.macros.js";
-import { Searching } from "./youprop.h.macros.js";
-import { Sleepy } from "./youprop.h.macros.js";
-import { Teleportation } from "./youprop.h.macros.js";
-import { Unblind_telepat } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Very_fast } from "./youprop.h.macros.js";
-import { Warn_of_mon } from "./youprop.h.macros.js";
-import { Warning } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { MON_AT, fmon, m_at } from "./rm.h.macros.js";
+import {
+    cliparound, create_nhwindow, display_file, display_nhwindow, end_menu, get_nh_event, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    MENU_BEHAVE_STANDARD, NHW_MAP, NHW_MENU, NHW_MESSAGE, NHW_STATUS, WIN_ERR,
+} from "./wintype.h.js";
+import {
+    A_CURRENT, A_ORIGINAL, ROLE_FEMALE, ROLE_GENDMASK, ROLE_MALE, TT_LAVA, UTOTYPE_NONE,
+} from "./you.h.js";
+import { Role_if, Upolyd } from "./you.h.macros.js";
+import {
+    BClairvoyant, Blind, Breathless, Clairvoyant, EMagical_breathing, Energy_regeneration, Fast,
+    Glib, Half_physical_damage, Hallucination, Polymorph, Regeneration, Searching, Sleepy,
+    Teleportation, Unblind_telepat, Unchanging, Underwater, Very_fast, Warn_of_mon, Warning,
+} from "./youprop.h.macros.js";
+import { char, int, long, ord, sizeof, ulong, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { shl64 } from "../rt/int64.js";
-import { SIGINT } from "../rt/libc.js";
-import { difftime } from "../rt/libc.js";
-import { signal } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
-import { lua_getglobal } from "../rt/lua.js";
-import { lua_pushstring } from "../rt/lua.js";
-import { lua_settop } from "../rt/lua.js";
+import { SIGINT, difftime, signal, sprintf } from "../rt/libc.js";
+import { stack_array, static_var } from "../rt/locals.js";
+import { lua_getglobal, lua_pushstring, lua_settop } from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { record_or_opaque } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { check_leash } from "./apply.js";
-import { next_to_u } from "./apply.js";
-import { init_artifacts } from "./artifact.js";
-import { mkot_trap_warn } from "./artifact.js";
-import { change_luck } from "./attrib.js";
-import { exerchk } from "./attrib.js";
-import { bot } from "./botl.js";
-import { status_eval_next_unhilite } from "./botl.js";
-import { status_initialize } from "./botl.js";
-import { timebot } from "./botl.js";
-import { friday_13th } from "./calendar.js";
-import { getnow } from "./calendar.js";
-import { night } from "./calendar.js";
-import { phase_of_the_moon } from "./calendar.js";
-import { cmdq_clear } from "./cmd.js";
-import { dolookaround } from "./cmd.js";
-import { end_of_input } from "./cmd.js";
-import { enter_explore_mode } from "./cmd.js";
-import { rhack } from "./cmd.js";
+import { record_or_opaque, view_of } from "../rt/struct.js";
+import { check_leash, next_to_u } from "./apply.js";
+import { init_artifacts, mkot_trap_warn } from "./artifact.js";
+import { change_luck, exerchk } from "./attrib.js";
+import { bot, status_eval_next_unhilite, status_initialize, timebot } from "./botl.js";
+import { friday_13th, getnow, night, phase_of_the_moon } from "./calendar.js";
+import { cmdq_clear, dolookaround, end_of_input, enter_explore_mode, rhack } from "./cmd.js";
 import { is_pool } from "./dbridge.js";
-import { a11y } from "./decl.js";
-import { decl_globals_init } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gh } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { nhcb_counts } from "./decl.js";
-import { nhcb_name } from "./decl.js";
-import { program_state } from "./decl.js";
-import { program_state_init } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { urealtime } from "./decl.js";
-import { do_vicinity_map } from "./detect.js";
-import { dosearch0 } from "./detect.js";
-import { warnreveal } from "./detect.js";
-import { clear_glyph_buffer } from "./display.js";
-import { curs_on_u } from "./display.js";
-import { docrt } from "./display.js";
-import { flush_screen } from "./display.js";
-import { reset_glyphmap } from "./display.js";
-import { see_monsters } from "./display.js";
-import { see_objects } from "./display.js";
-import { see_traps } from "./display.js";
-import { swallowed } from "./display.js";
-import { under_ground } from "./display.js";
-import { under_water } from "./display.js";
-import { deferred_goto } from "./do.js";
-import { hellish_smoke_mesg } from "./do.js";
-import { save_currentstate } from "./do.js";
-import { schedule_goto } from "./do.js";
-import { find_ac } from "./do_wear.js";
-import { glibr } from "./do_wear.js";
-import { set_wear } from "./do_wear.js";
+import {
+    a11y, decl_globals_init, disp, flags, gc, gd, gh, gi, gl, gm, go, gu, gv, gw, gy, iflags,
+    nhcb_counts, nhcb_name, program_state, program_state_init, svc, svd, svl, svm, svp, u,
+    urealtime,
+} from "./decl.js";
+import { do_vicinity_map, dosearch0, warnreveal } from "./detect.js";
+import {
+    clear_glyph_buffer, curs_on_u, docrt, flush_screen, reset_glyphmap, see_monsters, see_objects,
+    see_traps, swallowed, under_ground, under_water,
+} from "./display.js";
+import { deferred_goto, hellish_smoke_mesg, save_currentstate, schedule_goto } from "./do.js";
+import { find_ac, glibr, set_wear } from "./do_wear.js";
 import { makedog } from "./dog.js";
 import { obj_delivery } from "./dokick.js";
-import { assign_level } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { find_level } from "./dungeon.js";
-import { init_dungeons } from "./dungeon.js";
-import { print_level_annotation } from "./dungeon.js";
-import { gethungry } from "./eat.js";
-import { maybe_finished_meal } from "./eat.js";
-import { reset_eat } from "./eat.js";
-import { done } from "./end.js";
-import { done1 } from "./end.js";
-import { read_engr_at } from "./engrave.js";
-import { u_wipe_engr } from "./engrave.js";
+import {
+    assign_level, depth, find_level, init_dungeons, print_level_annotation,
+} from "./dungeon.js";
+import { gethungry, maybe_finished_meal, reset_eat } from "./eat.js";
+import { done, done1 } from "./end.js";
+import { read_engr_at, u_wipe_engr } from "./engrave.js";
 import { read_wizkit } from "./files.js";
 import { maybe_shuffle_customizations } from "./glyphs.js";
-import { check_special_room } from "./hack.js";
-import { domove } from "./hack.js";
-import { end_running } from "./hack.js";
-import { lookaround } from "./hack.js";
-import { monster_nearby } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { notice_all_mons } from "./hack.js";
-import { overexert_hp } from "./hack.js";
-import { pooleffects } from "./hack.js";
-import { runmode_delay_output } from "./hack.js";
-import { unmul } from "./hack.js";
+import {
+    check_special_room, domove, end_running, lookaround, monster_nearby, near_capacity, nomul,
+    notice_all_mons, overexert_hp, pooleffects, runmode_delay_output, unmul,
+} from "./hack.js";
 import { eos } from "./hacklib.js";
 import { align_str } from "./insight.js";
-import { reroll_menu } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import { reroll_menu, update_inventory } from "./invent.js";
 import { ckmailstatus } from "./mail.js";
 import { makemon } from "./makemon.js";
 import { runtime_info_init } from "./mdlib.js";
 import { mklev } from "./mklev.js";
-import { fumaroles } from "./mkmaze.js";
-import { movebubbles } from "./mkmaze.js";
-import { clear_splitobjs } from "./mkobj.js";
-import { dobjsfree } from "./mkobj.js";
-import { mcalcdistress } from "./mon.js";
-import { mcalcmove } from "./mon.js";
-import { mnexto } from "./mon.js";
-import { movemon } from "./mon.js";
-import { see_nearby_monsters } from "./mon.js";
+import { fumaroles, movebubbles } from "./mkmaze.js";
+import { clear_splitobjs, dobjsfree } from "./mkobj.js";
+import { mcalcdistress, mcalcmove, mnexto, movemon, see_nearby_monsters } from "./mon.js";
 import { m_everyturn_effect } from "./monmove.js";
-import { mons } from "./monst.js";
-import { monst_globals_init } from "./monst.js";
-import { l_nhcore_call } from "./nhlua.js";
-import { l_nhcore_init } from "./nhlua.js";
-import { nhl_pcall_handle } from "./nhlua.js";
+import { mons, monst_globals_init } from "./monst.js";
+import { l_nhcore_call, l_nhcore_init, nhl_pcall_handle } from "./nhlua.js";
 import { init_objects } from "./o_init.js";
 import { objects_globals_init } from "./objects.js";
 import { ask_do_tutorial } from "./options.js";
-import { encumber_msg } from "./pickup.js";
-import { pickup } from "./pickup.js";
-import { reset_justpicked } from "./pickup.js";
-import { Norep } from "./pline.js";
-import { You } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { urgent_pline } from "./pline.js";
-import { polyself } from "./polyself.js";
-import { rehumanize } from "./polyself.js";
-import { set_uasmon } from "./polyself.js";
-import { udeadinside } from "./polyself.js";
-import { ugenocided } from "./polyself.js";
+import { encumber_msg, pickup, reset_justpicked } from "./pickup.js";
+import { Norep, You, livelog_printf, pline, urgent_pline } from "./pline.js";
+import { polyself, rehumanize, set_uasmon, udeadinside, ugenocided } from "./polyself.js";
 import { com_pager } from "./questpgr.js";
-import { any_visible_region } from "./region.js";
-import { run_regions } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { Hello } from "./role.js";
-import { genders } from "./role.js";
-import { role_init } from "./role.js";
+import { any_visible_region, run_regions } from "./region.js";
+import { rn2, rnd } from "./rnd.js";
+import { Hello, genders, role_init } from "./role.js";
 import { fix_shop_damage } from "./shk.js";
-import { activate_chosen_soundlib } from "./sounds.js";
-import { dosounds } from "./sounds.js";
+import { activate_chosen_soundlib, dosounds } from "./sounds.js";
 import { age_spells } from "./spell.js";
 import { u_on_upstairs } from "./stairs.js";
 import { sys_early_init } from "./sys.js";
 import { tele } from "./teleport.js";
-import { do_storms } from "./timeout.js";
-import { nh_timeout } from "./timeout.js";
-import { initrack } from "./track.js";
-import { settrack } from "./track.js";
+import { do_storms, nh_timeout } from "./timeout.js";
+import { initrack, settrack } from "./track.js";
 import { sink_into_lava } from "./trap.js";
-import { u_init_inventory_attrs } from "./u_init.js";
-import { u_init_misc } from "./u_init.js";
-import { u_init_skills_discoveries } from "./u_init.js";
+import { u_init_inventory_attrs, u_init_misc, u_init_skills_discoveries } from "./u_init.js";
 import { invault } from "./vault.js";
-import { vision_recalc } from "./vision.js";
-import { vision_reset } from "./vision.js";
+import { vision_recalc, vision_reset } from "./vision.js";
 import { you_were } from "./were.js";
 import { adjust_menu_promptstyle } from "./windows.js";
-import { amulet } from "./wizard.js";
-import { intervene } from "./wizard.js";
+import { amulet, intervene } from "./wizard.js";
 import { sanity_check } from "./wizcmds.js";
 import { clear_bypasses } from "./worn.js";
 import { makewish } from "./zap.js";
-import { nhjs_moveloop_boundary } from "../sys/c2js/nhjs_tty_api.js";
-import { nhjs_moveloop_entry } from "../sys/c2js/nhjs_tty_api.js";
+import { nhjs_moveloop_boundary, nhjs_moveloop_entry } from "../sys/c2js/nhjs_tty_api.js";
 import { get_nhuuid } from "../sys/unix/unixmain.js";
 const struct_lua_State = record_or_opaque("struct_lua_State");
 const __FILE__ = "allmain.c";

@@ -2,39 +2,29 @@
 /* Copyright (c) Kevin Hugo, 1998-1999. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /* Monsters that might be ridden */
 const steeds = static_array("steeds", char, null, [ S_QUADRUPED, S_UNICORN, S_ANGEL,
                                         S_CENTAUR,   S_DRAGON,  S_JABBERWOCK,
                                         ord('\0') ]);
 
-
-
-
 /* caller has decided that hero can't reach something while mounted */
-export function /* void */
-rider_cant_reach()
-{
+export function rider_cant_reach() { /* void */
     You(_("aren't skilled enough to reach from %s."), y_monnam(u.usteed));
 }
 
 /*** Putting the saddle on ***/
 
 /* Can this monster wear a saddle? */
-export function /* boolean */
-can_saddle(mtmp)
-{
+export function can_saddle(mtmp) { /* boolean */
     let ptr = mtmp.data;
 
-    return (((strchr(steeds, ptr.mlet) && (ptr.msize >= MZ_MEDIUM)
+    return (strchr(steeds, ptr.mlet) && (ptr.msize >= MZ_MEDIUM)
             && (!humanoid(ptr) || ptr.mlet == S_CENTAUR) && !amorphous(ptr)
-            && !noncorporeal(ptr) && !is_whirly(ptr) && !unsolid(ptr)) ? 1 : 0));
+            && !noncorporeal(ptr) && !is_whirly(ptr) && !unsolid(ptr) ? 1 : 0);
 }
 
-export function /* int */
-use_saddle(otmp)
-{ const $frame = stack_frame(); try {
+export function use_saddle(otmp) { /* int */
+    const $frame = stack_frame(); try {
     let mtmp;
     let ptr;
     let chance;
@@ -69,7 +59,7 @@ use_saddle(otmp)
 
         You(_("touch %s."), mon_nam(mtmp));
         if (!(poly_when_stoned(gy.youmonst.data) && polymon(PM_STONE_GOLEM))) {
-            void sprintf(kbuf, _("attempting to saddle %s"), an(pmname(mtmp.data, Mgender(mtmp))))
+            sprintf(kbuf, _("attempting to saddle %s"), an(pmname(mtmp.data, Mgender(mtmp))))
 ;
             instapetrify(kbuf);
         }
@@ -136,11 +126,10 @@ use_saddle(otmp)
     } else
         pline(_("%s resists!"), Monnam(mtmp));
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-put_saddle_on_mon(saddle, mtmp)
-{
+export function put_saddle_on_mon(saddle, mtmp) { /* void */
     if (!can_saddle(mtmp) || which_armor(mtmp, W_SADDLE)) {
         if (saddle)
             impossible(_("put_saddle_on_mon: saddle obj could get orphaned"));
@@ -165,18 +154,14 @@ put_saddle_on_mon(saddle, mtmp)
 /*** Riding the monster ***/
 
 /* Can we ride this monster?  Caller should also check can_saddle() */
-export function /* boolean */
-can_ride(mtmp)
-{
-    return (((mtmp.mtame && humanoid(gy.youmonst.data)
+export function can_ride(mtmp) { /* boolean */
+    return (mtmp.mtame && humanoid(gy.youmonst.data)
             && !verysmall(gy.youmonst.data) && !bigmonst(gy.youmonst.data)
-            && (!Underwater() || is_swimmer(mtmp.data))) ? 1 : 0));
+            && (!Underwater() || is_swimmer(mtmp.data)) ? 1 : 0);
 }
 
 /* the #ride command */
-export function /* int */
-doride()
-{
+export function doride() { /* int */
     let forcemount = FALSE;
 
     if (u.usteed) {
@@ -193,11 +178,10 @@ doride()
 }
 
 /* Start riding, with the given monster */
-export function /* boolean */
-mount_steed(
+export function mount_steed(
     mtmp,
-    force)      /* Quietly force this animal */
-{ const $frame = stack_frame(); try {
+    force) { /* boolean */ /* Quietly force this animal */
+    const $frame = stack_frame(); try {
     let otmp;
     let buf = stack_array(char, BUFSZ);
     let ptr;
@@ -205,13 +189,13 @@ mount_steed(
     /* Sanity checks */
     if (u.usteed) {
         You(_("are already riding %s."), mon_nam(u.usteed));
-        return (FALSE);
+        return FALSE;
     }
 
     /* Is the player in the right form? */
     if (Hallucination() && !force) {
         pline(_("Maybe you should find a designated driver."));
-        return (FALSE);
+        return FALSE;
     }
     /* While riding, Wounded_legs refers to the steed's
      * legs, not the hero's legs.
@@ -230,12 +214,12 @@ mount_steed(
         let qbuf = stack_array(char, QBUFSZ);
 
         legs_in_no_shape(_("riding"), FALSE);
-        void sprintf(qbuf, _("Heal your leg%s?"), ((HWounded_legs() & BOTH_SIDES) == BOTH_SIDES) ? _("s") : _(""))
+        sprintf(qbuf, _("Heal your leg%s?"), ((HWounded_legs() & BOTH_SIDES) == BOTH_SIDES) ? _("s") : _(""))
 ;
         if (force && wizard() && y_n(qbuf) == ord('y'))
             heal_legs(0);
         else
-            return (FALSE);
+            return FALSE;
     }
 
     if (Upolyd() && (!humanoid(gy.youmonst.data)
@@ -243,11 +227,11 @@ mount_steed(
                    || bigmonst(gy.youmonst.data)
                    || slithy(gy.youmonst.data))) {
         You(_("won't fit on a saddle."));
-        return (FALSE);
+        return FALSE;
     }
     if (!force && (near_capacity() > SLT_ENCUMBER)) {
         You_cant(_("do that while carrying so much stuff."));
-        return (FALSE);
+        return FALSE;
     }
 
     /* Can the player reach and see the monster? */
@@ -255,7 +239,7 @@ mount_steed(
                              || M_AP_TYPE(mtmp) == M_AP_FURNITURE
                              || M_AP_TYPE(mtmp) == M_AP_OBJECT))) {
         pline(_("I see nobody there."));
-        return (FALSE);
+        return FALSE;
     }
     if (mtmp.data == mons[PM_LONG_WORM]
         && (u.ux + u.dx != mtmp.mx || u.uy + u.dy != mtmp.my)) {
@@ -274,14 +258,14 @@ mount_steed(
             You(_("are unable to swing your %s over."), body_part(LEG));
         else
             You(_("are stuck here for now."));
-        return (FALSE);
+        return FALSE;
     }
 
     /* Is this a valid monster? */
     otmp = which_armor(mtmp, W_SADDLE);
     if (!otmp) {
         pline(_("%s is not saddled."), Monnam(mtmp));
-        return (FALSE);
+        return FALSE;
     }
 
     ptr = mtmp.data;
@@ -289,20 +273,20 @@ mount_steed(
         let kbuf = stack_array(char, BUFSZ);
 
         You(_("touch %s."), mon_nam(mtmp));
-        void sprintf(kbuf, _("attempting to ride %s"), an(pmname(mtmp.data, Mgender(mtmp))))
+        sprintf(kbuf, _("attempting to ride %s"), an(pmname(mtmp.data, Mgender(mtmp))))
 ;
         instapetrify(kbuf);
     }
     if (!mtmp.mtame || mtmp.isminion) {
         pline(_("I think %s would mind."), mon_nam(mtmp));
-        return (FALSE);
+        return FALSE;
     }
     if (mtmp.mtrapped) {
         let t = t_at(mtmp.mx, mtmp.my);
 
         You_cant(_("mount %s while %s's trapped in %s."), mon_nam(mtmp),
                  mhe(mtmp), an(trapname(t.ttyp, FALSE)));
-        return (FALSE);
+        return FALSE;
     }
 
     if (!force && !Role_if(PM_KNIGHT) && !(--mtmp.mtame)) {
@@ -312,12 +296,12 @@ mount_steed(
               mtmp.mleashed ? _(" and its leash comes off") : _(""));
         if (mtmp.mleashed)
             m_unleash(mtmp, FALSE);
-        return (FALSE);
+        return FALSE;
     }
     if (!force && Underwater() && !is_swimmer(ptr)) {
         You_cant(_("ride that creature while under %s."),
                  hliquid(_("water")));
-        return (FALSE);
+        return FALSE;
     }
     if (!can_saddle(mtmp) || !can_ride(mtmp)) {
         You_cant(_("ride such a creature."));
@@ -328,12 +312,12 @@ mount_steed(
     if (!force && !is_floater(ptr) && !is_flyer(ptr) && Levitation()
         && !Lev_at_will()) {
         You(_("cannot reach %s."), mon_nam(mtmp));
-        return (FALSE);
+        return FALSE;
     }
     if (!force && uarm && is_metallic(uarm) && greatest_erosion(uarm)) {
         Your(_("%s armor is too stiff to be able to mount %s."),
              uarm.oeroded ? _("rusty") : _("corroded"), mon_nam(mtmp));
-        return (FALSE);
+        return FALSE;
     }
     if (!force
         && (Confusion() || Fumbling() || Glib() || Wounded_legs() || otmp.cursed
@@ -345,14 +329,14 @@ mount_steed(
         }
         You(_("slip while trying to get on %s."), mon_nam(mtmp));
 
-        void sprintf(buf, _("slipped while mounting %s"), x_monnam(mtmp, ARTICLE_A, 0,
+        sprintf(buf, _("slipped while mounting %s"), x_monnam(mtmp, ARTICLE_A, 0,
                          SUPPRESS_IT | SUPPRESS_INVISIBLE
                              | SUPPRESS_HALLUCINATION,
                          TRUE))
 
 ;
-        losehp((((Half_physical_damage()) ? (Math.trunc(((((rn1(5, 10)) + 1)) / 2))) : (rn1(5, 10)))), buf, NO_KILLER_PREFIX);
-        return (FALSE);
+        losehp(((Half_physical_damage()) ? (Math.trunc((((rn1(5, 10)) + 1) / 2))) : (rn1(5, 10))), buf, NO_KILLER_PREFIX);
+        return FALSE;
     }
 
     /* Success */
@@ -380,12 +364,11 @@ mount_steed(
     teleds(mtmp.mx, mtmp.my, TELEDS_ALLOW_DRAG);
     disp.botl = TRUE;
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* You and your steed have moved */
-export function /* void */
-exercise_steed()
-{
+export function exercise_steed() { /* void */
     if (!u.usteed)
         return;
 
@@ -398,9 +381,8 @@ exercise_steed()
 }
 
 /* The player kicks or whips the steed */
-export function /* void */
-kick_steed()
-{ const $frame = stack_frame(); try {
+export function kick_steed() { /* void */
+    const $frame = stack_frame(); try {
     let He = stack_array(char, BUFSZ); /* monverbself() appends to the "He"/"She"/"It" value */
     if (!u.usteed)
         return;
@@ -410,7 +392,7 @@ kick_steed()
         /* We assume a message has just been output of the form
          * "You kick <steed>."
          */
-        void strcpy(He, mhe(u.usteed));
+        strcpy(He, mhe(u.usteed));
         chars[He] = highc(chars[He]);
         if ((u.usteed.mcanmove || u.usteed.mfrozen) && !rn2(2)) {
             if (u.usteed.mcanmove)
@@ -447,7 +429,8 @@ kick_steed()
     pline(_("%s gallops!"), Monnam(u.usteed));
     u.ugallop += rn1(20, 30);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Try to find a dismount point adjacent to the steed's location.
@@ -456,12 +439,11 @@ kick_steed()
  * room's walls, which is not what we want.
  * Adapted from mail daemon code.
  */
-function /* boolean */
-landing_spot(
+function landing_spot(
     spot,
     reason,
-    forceit)
-{ const $frame = stack_frame(); try {
+    forceit) { /* boolean */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord), try_ = stack_array(struct_nhcoord, 8); /* 8: the 8 spots adjacent to the hero's spot */
     let i, j, best_j, clockwise_j, counterclk_j,
         n, viable, distance, min_distance = -1;
@@ -469,7 +451,7 @@ landing_spot(
     let found, impaird, kn_trap, boulder;
     let t;
 
-    void memset(addr_of(try_[0]), 0, sizeof(array_of(struct_nhcoord, 8)));
+    memset(addr_of(try_[0]), 0, sizeof(array_of(struct_nhcoord, 8)));
     n = 0;
     j = xytodir(u.dx, u.dy);
     if (reason == DISMOUNT_KNOCKED && j != DIR_ERR) {
@@ -515,7 +497,7 @@ landing_spot(
      * Fallback to i==1 if nothing appropriate was found for i==0 and
      * to i==2 as last resort.
      */
-    impaird = (((Stunned() || Confusion() || Fumbling()) ? 1 : 0));
+    impaird = (Stunned() || Confusion() || Fumbling() ? 1 : 0);
     viable = 0;
     found = FALSE;
     for (i = (reason == DISMOUNT_BYCHOICE && !impaird) ? 0
@@ -542,10 +524,10 @@ landing_spot(
                     /* or equally good, maybe substitute this one */
                     || (distance == min_distance && !rn2(viable))) {
                     /* traps avoided on pass 0; boulders avoided on 0 and 1 */
-                    kn_trap = ((i == 0 && ((t = t_at(x, y)) != null && t.tseen
-                                         && t.ttyp != VIBRATING_SQUARE)) ? 1 : 0);
-                    boulder = ((i <= 1 && (sobj_at(BOULDER, x, y)
-                                         && !throws_rocks(gy.youmonst.data))) ? 1 : 0);
+                    kn_trap = (i == 0 && ((t = t_at(x, y)) != null && t.tseen
+                                         && t.ttyp != VIBRATING_SQUARE) ? 1 : 0);
+                    boulder = (i <= 1 && (sobj_at(BOULDER, x, y)
+                                         && !throws_rocks(gy.youmonst.data)) ? 1 : 0);
                     if (!kn_trap && !boulder) {
                         spot.x = x;
                         spot.y = y;
@@ -569,20 +551,20 @@ landing_spot(
         found = enexto(spot, u.ux, u.uy, gy.youmonst.data);
 
     return found;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Stop riding the current steed */
-export function /* void */
-dismount_steed(
-    reason) /* Player was thrown off etc. */
-{ const $frame = stack_frame(); try {
+export function dismount_steed(
+    reason) { /* void */ /* Player was thrown off etc. */
+    const $frame = stack_frame(); try {
     let mtmp;
     let otmp;
     let verb;
     let cc = stack_struct(struct_nhcoord), steedcc = stack_struct(struct_nhcoord);
     let save_utrap = u.utrap;
     let ulev, ufly,
-            repair_leg_damage = (+(Wounded_legs() != 0)),
+            repair_leg_damage = +(Wounded_legs() != 0),
             have_spot = landing_spot(cc, reason, 0);
 
     mtmp = u.usteed; /* make a copy of steed pointer */
@@ -609,7 +591,7 @@ dismount_steed(
         if (!have_spot)
             have_spot = landing_spot(cc, reason, 1);
         if (!ulev && !ufly) {
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rn1(10, 10)) + 1)) / 2))) : (rn1(10, 10)))), _("riding accident"),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rn1(10, 10)) + 1) / 2))) : (rn1(10, 10))), _("riding accident"),
                    KILLED_BY_AN);
             set_wounded_legs(BOTH_SIDES, int(HWounded_legs()) + rn1(5, 5));
             repair_leg_damage = FALSE;
@@ -695,7 +677,7 @@ dismount_steed(
                water or lava; try requesting a location for a flyer */
             && !enexto(steedcc, u.ux, u.uy, mons[PM_BAT]))
             /* still no spot; last resort is any spot within bounds */
-            void enexto(steedcc, u.ux, u.uy, mons[PM_GHOST]);
+            enexto(steedcc, u.ux, u.uy, mons[PM_GHOST]);
     }
 
     if (!DEADMONSTER(mtmp)) {
@@ -710,7 +692,7 @@ dismount_steed(
             if (enexto(cc, u.ux, u.uy, mtmp.data))
                 rloc_to(mtmp, cc.x, cc.y);
             else /* evidently no room nearby; move steed elsewhere */
-                void rloc(mtmp, RLOC_ERR | RLOC_NOMSG);
+                rloc(mtmp, RLOC_ERR | RLOC_NOMSG);
             return;
         }
 
@@ -769,7 +751,7 @@ dismount_steed(
 
                 /* Put your steed in your trap */
                 if (save_utrap)
-                    void mintrap(mtmp, NO_TRAP_FLAGS);
+                    mintrap(mtmp, NO_TRAP_FLAGS);
             }
 
         /* Couldn't move hero... try moving the steed. */
@@ -780,7 +762,6 @@ dismount_steed(
 
         /* Otherwise, steed goes bye-bye. */
         } else {
-
             if (reason == DISMOUNT_BYCHOICE) {
                 /* [un]#ride: hero gets credit/blame for killing steed */
                 killed(mtmp);
@@ -790,25 +771,14 @@ dismount_steed(
                    damage type is just "neither AD_DGST nor -AD_RBRE" */
                 monkilled(mtmp, _(""), -AD_PHYS);
             }
-
-
-
-
-
-
-
-
-
-
-
-
+        /* #else (#if 1): not in this build */
         }
     } /* !DEADMONST(mtmp) */
 
     /* usually return the hero to the surface */
     if (reason != DISMOUNT_ENGULFED && reason != DISMOUNT_BONES) {
         gi.in_steed_dismounting = TRUE;
-        void float_down(0, W_SADDLE);
+        float_down(0, W_SADDLE);
         gi.in_steed_dismounting = FALSE;
         disp.botl = TRUE;
         encumber_msg();
@@ -819,13 +789,12 @@ dismount_steed(
     if (uwep && is_pole(uwep))
         gu.unweapon = TRUE;
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* when attempting to saddle or mount a sleeping steed, try to wake it up
    (for the saddling case, it won't be u.usteed yet) */
-function /* void */
-maybewakesteed(steed)
-{
+function maybewakesteed(steed) { /* void */
     let frozen = steed.mfrozen;
     let wasimmobile = helpless(steed);
 
@@ -848,11 +817,10 @@ maybewakesteed(steed)
 }
 
 /* steed has taken on a new shape */
-export function /* void */
-poly_steed(
+export function poly_steed(
     steed,
-    oldshape)
-{ const $frame = stack_frame(); try {
+    oldshape) { /* void */
+    const $frame = stack_frame(); try {
     if (!can_saddle(steed) || !can_ride(steed)) {
         /* can't get here; newcham() -> mon_break_armor() -> m_lose_armor()
            removes saddle and/or forces hero to dismount, if applicable,
@@ -861,22 +829,21 @@ poly_steed(
     } else {
         let buf = stack_array(char, BUFSZ);
 
-        void strcpy(buf, x_monnam(steed, ARTICLE_YOUR, 0,
+        strcpy(buf, x_monnam(steed, ARTICLE_YOUR, 0,
                              SUPPRESS_SADDLE, FALSE));
         if (oldshape != steed.data)
-            void strsubst(buf, _("your "), _("your new "));
+            strsubst(buf, _("your "), _("your new "));
         You(_("adjust yourself in the saddle on %s."), buf);
 
         /* riding blocks stealth unless hero+steed fly */
         steed_vs_stealth();
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* decide whether hero's steed is able to move;
    doesn't check for holding traps--those affect the hero directly */
-export function /* boolean */
-stucksteed(checkfeeding)
-{
+export function stucksteed(checkfeeding) { /* boolean */
     let steed = u.usteed;
 
     if (steed) {
@@ -894,9 +861,8 @@ stucksteed(checkfeeding)
     return FALSE;
 }
 
-export function /* void */
-place_monster(mon, x, y)
-{ const $frame = stack_frame(); try {
+export function place_monster(mon, x, y) { /* void */
+    const $frame = stack_frame(); try {
     let othermon;
     let monnm, othnm;
     let buf = stack_array(char, QBUFSZ);
@@ -929,236 +895,94 @@ place_monster(mon, x, y)
     mon.mx = x, mon.my = y;
     svl.level.monsters[x][y] = mon;
     mon.mstate = MON_FLOOR;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*steed.c*/
-import { A_CHA } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+
+import { A_CHA, A_DEX, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { Never_mind } from "./decl.h.macros.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_JABBERWOCK } from "./defsym.h.js";
-import { S_QUADRUPED } from "./defsym.h.js";
-import { S_UNICORN } from "./defsym.h.js";
+import { S_ANGEL, S_CENTAUR, S_DRAGON, S_JABBERWOCK, S_QUADRUPED, S_UNICORN } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { ARTICLE_YOUR } from "./hack.h.js";
-import { DIR_ERR } from "./hack.h.js";
-import { DISMOUNT_BONES } from "./hack.h.js";
-import { DISMOUNT_BYCHOICE } from "./hack.h.js";
-import { DISMOUNT_ENGULFED } from "./hack.h.js";
-import { DISMOUNT_FELL } from "./hack.h.js";
-import { DISMOUNT_GENERIC } from "./hack.h.js";
-import { DISMOUNT_KNOCKED } from "./hack.h.js";
-import { DISMOUNT_POLY } from "./hack.h.js";
-import { DISMOUNT_THROWN } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { RLOC_ERR } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { SUPPRESS_HALLUCINATION } from "./hack.h.js";
-import { SUPPRESS_INVISIBLE } from "./hack.h.js";
-import { SUPPRESS_IT } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { TELEDS_ALLOW_DRAG } from "./hack.h.js";
-import { TEST_MOVE } from "./hack.h.js";
-import { DIR_LEFT } from "./hack.h.macros.js";
-import { DIR_RIGHT } from "./hack.h.macros.js";
-import { NODIAG } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import { BUFSZ, FALSE, MAXULEV, QBUFSZ, TRUE } from "./global.h.js";
+import {
+    ARTICLE_A, ARTICLE_YOUR, DIR_ERR, DISMOUNT_BONES, DISMOUNT_BYCHOICE, DISMOUNT_ENGULFED,
+    DISMOUNT_FELL, DISMOUNT_GENERIC, DISMOUNT_KNOCKED, DISMOUNT_POLY, DISMOUNT_THROWN, ECMD_CANCEL,
+    ECMD_OK, ECMD_TIME, KILLED_BY_AN, LEG, NO_KILLER_PREFIX, NO_TRAP_FLAGS, N_DIRS, RLOC_ERR,
+    RLOC_NOMSG, SLT_ENCUMBER, SUPPRESS_HALLUCINATION, SUPPRESS_INVISIBLE, SUPPRESS_IT,
+    SUPPRESS_SADDLE, TELEDS_ALLOW_DRAG, TEST_MOVE,
+} from "./hack.h.js";
+import { DIR_LEFT, DIR_RIGHT, NODIAG, distu, pline1, rn1, y_n } from "./hack.h.macros.js";
 import { showdebug } from "./lint.h.macros.js";
 import { has_mgivenname } from "./mextra.h.macros.js";
 import { AD_PHYS } from "./monattk.h.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { cant_drown } from "./mondata.h.macros.js";
-import { grounded } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { unsolid } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
+import {
+    amorphous, bigmonst, cant_drown, grounded, humanoid, is_floater, is_flyer, is_swimmer,
+    is_whirly, likes_lava, noncorporeal, slithy, throws_rocks, touch_petrifies, unsolid, verysmall,
+} from "./mondata.h.macros.js";
 import { MZ_MEDIUM } from "./monflag.h.js";
-import { MON_FLOOR } from "./monst.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_BAT } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { greatest_erosion } from "./obj.h.macros.js";
-import { is_pole } from "./obj.h.macros.js";
+import { MON_FLOOR, M_AP_FURNITURE, M_AP_OBJECT } from "./monst.h.js";
+import { DEADMONSTER, M_AP_TYPE, helpless } from "./monst.h.macros.js";
+import {
+    PM_AMOROUS_DEMON, PM_BAT, PM_GHOST, PM_KNIGHT, PM_LONG_WORM, PM_STONE_GOLEM,
+} from "./monsters.h.js";
+import { greatest_erosion, is_pole } from "./obj.h.macros.js";
 import { is_metallic } from "./objclass.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { BOTH_SIDES } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_EXPERT } from "./skills.h.js";
-import { P_ISRESTRICTED } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
-import { P_SKILLED } from "./skills.h.js";
-import { P_UNSKILLED } from "./skills.h.js";
+import { BOULDER, SADDLE } from "./objects.h.js";
+import { BOTH_SIDES, W_SADDLE } from "./prop.h.js";
+import { MON_AT, m_at, remove_monster } from "./rm.h.macros.js";
+import { P_BASIC, P_EXPERT, P_ISRESTRICTED, P_RIDING, P_SKILLED, P_UNSKILLED } from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
 import { VIBRATING_SQUARE } from "./trap.h.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { HWounded_legs } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Lev_at_will } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { Stealth } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { TT_BEARTRAP, TT_PIT, TT_WEB } from "./you.h.js";
+import { Role_if, Upolyd, mhe, u_at } from "./you.h.macros.js";
+import {
+    Blind, Blind_telepat, Confusion, Flying, Fumbling, Glib, HWounded_legs, Half_physical_damage,
+    Hallucination, Lev_at_will, Levitation, Punished, Stealth, Stone_resistance, Stunned,
+    Underwater, Wounded_legs,
+} from "./youprop.h.macros.js";
+import { char, int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { memset, sprintf, strchr, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, array_of, struct_assign } from "../rt/struct.js";
 import { m_unleash } from "./apply.js";
-import { adjalign } from "./attrib.js";
-import { exercise } from "./attrib.js";
+import { adjalign, exercise } from "./attrib.js";
 import { describe_level } from "./botl.js";
-import { directionname } from "./cmd.js";
-import { dirtocoord } from "./cmd.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { xytodir } from "./cmd.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { disp } from "./decl.js";
-import { gi } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
+import { directionname, dirtocoord, getdir, isok, xytodir } from "./cmd.js";
+import { is_lava, is_pool } from "./dbridge.js";
+import { disp, gi, gu, gv, gy, iflags, svl, u } from "./decl.js";
 import { newsym } from "./display.js";
-import { heal_legs } from "./do.js";
-import { legs_in_no_shape } from "./do.js";
-import { set_wounded_legs } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { YMonnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { minimal_monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { monverbself } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
+import { heal_legs, legs_in_no_shape, set_wounded_legs } from "./do.js";
+import {
+    Mgender, Monnam, YMonnam, a_monnam, hliquid, minimal_monnam, mon_nam, monverbself, pmname,
+    x_monnam, y_monnam,
+} from "./do_name.js";
 import { finish_meating } from "./dogmove.js";
 import { surface } from "./dungeon.js";
 import { panic } from "./end.js";
-import { losehp } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { test_move } from "./hack.js";
-import { u_locomotion } from "./hack.js";
-import { highc } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { freeinv } from "./invent.js";
-import { fully_identify_obj } from "./invent.js";
-import { sobj_at } from "./invent.js";
+import { losehp, near_capacity, test_move, u_locomotion } from "./hack.js";
+import { highc, strsubst } from "./hacklib.js";
+import { freeinv, fully_identify_obj, sobj_at } from "./invent.js";
 import { mksobj } from "./mkobj.js";
-import { killed } from "./mon.js";
-import { monkilled } from "./mon.js";
+import { killed, monkilled } from "./mon.js";
 import { poly_when_stoned } from "./mondata.js";
 import { accessible } from "./monmove.js";
 import { mons } from "./monst.js";
 import { objdescr_is } from "./o_init.js";
 import { an } from "./objnam.js";
-import { encumber_msg } from "./pickup.js";
-import { u_handsy } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { polymon } from "./polyself.js";
-import { steed_vs_stealth } from "./polyself.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { mpickobj } from "./steal.js";
-import { remove_worn_item } from "./steal.js";
-import { enexto } from "./teleport.js";
-import { rloc } from "./teleport.js";
-import { rloc_to } from "./teleport.js";
-import { teleds } from "./teleport.js";
-import { float_down } from "./trap.js";
-import { instapetrify } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { sokoban_guilt } from "./trap.js";
-import { t_at } from "./trap.js";
-import { trapname } from "./trap.js";
+import { encumber_msg, u_handsy } from "./pickup.js";
+import { You, You_cant, Your, impossible, pline } from "./pline.js";
+import { body_part, polymon, steed_vs_stealth } from "./polyself.js";
+import { rn2, rnd } from "./rnd.js";
+import { mpickobj, remove_worn_item } from "./steal.js";
+import { enexto, rloc, rloc_to, teleds } from "./teleport.js";
+import { float_down, instapetrify, mintrap, sokoban_guilt, t_at, trapname } from "./trap.js";
 import { use_skill } from "./weapon.js";
-import { update_mon_extrinsics } from "./worn.js";
-import { which_armor } from "./worn.js";
+import { update_mon_extrinsics, which_armor } from "./worn.js";
 const __FILE__ = "steed.c";

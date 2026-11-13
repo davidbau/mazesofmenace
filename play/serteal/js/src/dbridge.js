@@ -17,34 +17,13 @@
  * seems like an awful lot of effort for very little gain.)
  */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* boolean */
-is_waterwall(x, y)
-{
+export function is_waterwall(x, y) { /* boolean */
     if (isok(x, y) && IS_WATERWALL(levl()[x][y].typ))
         return TRUE;
     return FALSE;
 }
 
-export function /* boolean */
-is_pool(x, y)
-{
+export function is_pool(x, y) { /* boolean */
     let ltyp;
 
     if (!isok(x, y))
@@ -58,9 +37,7 @@ is_pool(x, y)
     return FALSE;
 }
 
-export function /* boolean */
-is_lava(x, y)
-{
+export function is_lava(x, y) { /* boolean */
     let ltyp;
 
     if (!isok(x, y))
@@ -73,18 +50,14 @@ is_lava(x, y)
     return FALSE;
 }
 
-export function /* boolean */
-is_pool_or_lava(x, y)
-{
+export function is_pool_or_lava(x, y) { /* boolean */
     if (is_pool(x, y) || is_lava(x, y))
         return TRUE;
     else
         return FALSE;
 }
 
-export function /* boolean */
-is_ice(x, y)
-{
+export function is_ice(x, y) { /* boolean */
     let ltyp;
 
     if (!isok(x, y))
@@ -96,9 +69,7 @@ is_ice(x, y)
     return FALSE;
 }
 
-export function /* boolean */
-is_moat(x, y)
-{
+export function is_moat(x, y) { /* boolean */
     let ltyp;
 
     if (!isok(x, y))
@@ -112,9 +83,7 @@ is_moat(x, y)
     return FALSE;
 }
 
-export function /* schar */
-db_under_typ(mask)
-{
+export function db_under_typ(mask) { /* schar */
     switch (mask & DB_UNDER) {
     case DB_ICE:
         return ICE;
@@ -133,9 +102,7 @@ db_under_typ(mask)
  *
  * Return value:  the direction of the drawbridge, or -1 if not valid
  */
-export function /* int */
-is_drawbridge_wall(x, y)
-{
+export function is_drawbridge_wall(x, y) { /* int */
     let lev;
 
     if (!isok(x, y))
@@ -166,9 +133,7 @@ is_drawbridge_wall(x, y)
  * drawbridge "wall" is UP in the location x, y
  * (instead of UP or DOWN, as with is_drawbridge_wall).
  */
-export function /* boolean */
-is_db_wall(x, y)
-{
+export function is_db_wall(x, y) { /* boolean */
     return (+(levl()[x][y].typ == DBWALL));
 }
 
@@ -176,9 +141,7 @@ is_db_wall(x, y)
  * Return true with x,y pointing to the drawbridge if x,y initially indicate
  * a drawbridge or drawbridge wall.
  */
-export function /* boolean */
-find_drawbridge(x, y)
-{
+export function find_drawbridge(x, y) { /* boolean */
     let dir;
 
     if (IS_DRAWBRIDGE(levl()[x[0]][y[0]].typ))
@@ -207,9 +170,7 @@ find_drawbridge(x, y)
 /*
  * Find the drawbridge wall associated with a drawbridge.
  */
-function /* void */
-get_wall_for_db(x, y)
-{
+function get_wall_for_db(x, y) { /* void */
     switch (levl()[x[0]][y[0]].flags & DB_DIR) {
     case DB_NORTH:
         (y[0])--;
@@ -231,9 +192,7 @@ get_wall_for_db(x, y)
  *     dir is the direction.
  *     flag must be put to TRUE if we want the drawbridge to be opened.
  */
-export function /* boolean */
-create_drawbridge(x, y, dir, flag)
-{
+export function create_drawbridge(x, y, dir, flag) { /* boolean */
     let x2, y2;
     let horiz;
     let lava = +(levl()[x][y].typ == LAVAPOOL); /* assume initialized map */
@@ -282,9 +241,7 @@ create_drawbridge(x, y, dir, flag)
     return  TRUE;
 }
 
-function /* struct entity * */
-e_at(x, y)
-{
+function e_at(x, y) { /* struct entity * */
     let entitycnt;
 
     for (entitycnt = 0; entitycnt < ENTITIES; entitycnt++)
@@ -294,15 +251,11 @@ e_at(x, y)
             break;
     debugpline1(_("entitycnt = %d"), entitycnt, __FILE__);
 
-
-
     return (entitycnt == ENTITIES) ? null
                                    : (go.occupants[entitycnt]);
 }
 
-function /* void */
-m_to_e(mtmp, x, y, etmp)
-{
+function m_to_e(mtmp, x, y, etmp) { /* void */
     etmp.emon = mtmp;
     if (mtmp) {
         etmp.ex = x;
@@ -317,28 +270,24 @@ m_to_e(mtmp, x, y, etmp)
     }
 }
 
-function /* void */
-u_to_e(etmp)
-{
+function u_to_e(etmp) { /* void */
     etmp.emon = gy.youmonst;
     etmp.ex = u.ux;
     etmp.ey = u.uy;
     etmp.edata = gy.youmonst.data;
 }
 
-function /* void */
-set_entity(
+function set_entity(
     x, y,
-    etmp)  /* pointer to occupants[0] or occupants[1] */
-{
+    etmp) { /* void */ /* pointer to occupants[0] or occupants[1] */
     if (u_at(x, y))
         u_to_e(etmp);
     else /* m_at() might yield Null; that's ok */
         m_to_e(m_at(x, y), x, y, etmp);
 }
 
-export function is_u(etmp) { return (+(etmp.emon == gy.youmonst)); }
-export function e_canseemon(etmp) { return (((is_u(etmp) || canseemon(etmp.emon)) ? 1 : 0)); }
+export function is_u(etmp) { return +(etmp.emon == gy.youmonst); }
+export function e_canseemon(etmp) { return (is_u(etmp) || canseemon(etmp.emon) ? 1 : 0); }
 
 /*
  * e_strg is a utility routine which is not actually in use anywhere, since
@@ -347,9 +296,7 @@ export function e_canseemon(etmp) { return (((is_u(etmp) || canseemon(etmp.emon)
 
 /* #define e_strg(etmp, func) (is_u(etmp) ? (char *) 0 : func(etmp->emon)) */
 
-function /* const char * */
-e_nam(etmp)
-{
+function e_nam(etmp) { /* const char * */
     return is_u(etmp) ? _("you") : mon_nam(etmp.emon);
 }
 
@@ -357,66 +304,61 @@ e_nam(etmp)
  * Generates capitalized entity name, makes 2nd -> 3rd person conversion on
  * verb, where necessary.
  */
-function /* const char * */
-E_phrase(etmp, verb)
-{
+function E_phrase(etmp, verb) { /* const char * */
     let wholebuf = static_array("E_phrase.wholebuf", char, 80);
 
-    void strcpy(wholebuf, is_u(etmp) ? _("You") : Monnam(etmp.emon));
+    strcpy(wholebuf, is_u(etmp) ? _("You") : Monnam(etmp.emon));
     if (!verb || !chars[verb])
         return wholebuf;
-    void strcat(wholebuf, _(" "));
+    strcat(wholebuf, _(" "));
     if (is_u(etmp))
-        void strcat(wholebuf, verb);
+        strcat(wholebuf, verb);
     else
-        void strcat(wholebuf, vtense(0, verb));
+        strcat(wholebuf, vtense(0, verb));
     return wholebuf;
 }
 
 /*
  * Simple-minded "can it be here?" routine
  */
-function /* boolean */
-e_survives_at(etmp, x, y)
-{
+function e_survives_at(etmp, x, y) { /* boolean */
     if (noncorporeal(etmp.edata))
         return TRUE;
     if (is_pool(x, y))
-        return ((((is_u(etmp) && (Wwalking() || Amphibious() || Breathless()
+        return ((is_u(etmp) && (Wwalking() || Amphibious() || Breathless()
                                           || Swimming() || Flying() || Levitation()))
                           || is_swimmer(etmp.edata)
                           || is_flyer(etmp.edata)
-                          || is_floater(etmp.edata)) ? 1 : 0));
+                          || is_floater(etmp.edata) ? 1 : 0);
     /* must force call to lava_effects in e_died if is_u */
     if (is_lava(x, y))
-        return ((((is_u(etmp) && (Levitation() || Flying()))
+        return ((is_u(etmp) && (Levitation() || Flying()))
                           || likes_lava(etmp.edata)
-                          || is_flyer(etmp.edata)) ? 1 : 0));
+                          || is_flyer(etmp.edata) ? 1 : 0);
     if (is_db_wall(x, y))
         return (is_u(etmp) ? Passes_walls()
                           : passes_walls(etmp.edata));
     return TRUE;
 }
 
-function /* void */
-e_died(
+function e_died(
     etmp,
-    xkill_flags, how)
-{ const $frame = stack_frame(); try {
+    xkill_flags, how) { /* void */
+    const $frame = stack_frame(); try {
     if (is_u(etmp)) {
         if (how == DROWNING) {
             chars[svk.killer.name + 0] = 0; /* drown() sets its own killer */
-            void drown();
+            drown();
         } else if (how == BURNING) {
             chars[svk.killer.name + 0] = 0; /* lava_effects() sets own killer */
-            void lava_effects();
+            lava_effects();
         } else {
             let xy = stack_struct(struct_nhcoord);
 
             /* use more specific killer if specified */
             if (!chars[svk.killer.name + 0]) {
                 svk.killer.format = KILLED_BY_AN;
-                void strcpy(svk.killer.name, _("falling drawbridge"));
+                strcpy(svk.killer.name, _("falling drawbridge"));
             }
             done(how);
             /* So, you didn't die */
@@ -438,7 +380,6 @@ e_died(
 
         chars[svk.killer.name + 0] = 0;
 /* fake "digested to death" damage-type suppresses corpse */
-
 
         /* if monsters are moving, one of them caused the destruction */
         if (svc.context.mon_moving)
@@ -474,27 +415,24 @@ e_died(
                 && etmp.emon == go.occupants[entitycnt].emon)
                 go.occupants[entitycnt].edata = null;
         }
-
-
     }
-} finally { stack_pop($frame); } } export function mk_message(dest) { return (((dest & XKILL_NOMSG) != 0) ? 0 : _("")); } export function mk_corpse(dest) { return (((dest & XKILL_NOCORPSE) != 0) ? AD_DGST : AD_PHYS); }
+    } finally { stack_pop($frame); }
+}
+export function mk_message(dest) { return (((dest & XKILL_NOMSG) != 0) ? 0 : _("")); }
+export function mk_corpse(dest) { return (((dest & XKILL_NOCORPSE) != 0) ? AD_DGST : AD_PHYS); }
 
 /*
  * These are never directly affected by a bridge or portcullis.
  */
-function /* boolean */
-automiss(etmp)
-{
-    return ((((is_u(etmp) ? Passes_walls() : passes_walls(etmp.edata))
-                      || noncorporeal(etmp.edata)) ? 1 : 0));
+function automiss(etmp) { /* boolean */
+    return ((is_u(etmp) ? Passes_walls() : passes_walls(etmp.edata))
+                      || noncorporeal(etmp.edata) ? 1 : 0);
 }
 
 /*
  * Does falling drawbridge or portcullis miss etmp?
  */
-function /* boolean */
-e_missed(etmp, chunks)
-{
+function e_missed(etmp, chunks) { /* boolean */
     let misses;
 
     if (chunks) {
@@ -527,9 +465,7 @@ e_missed(etmp, chunks)
 /*
  * Can etmp jump from death?
  */
-function /* boolean */
-e_jumps(etmp)
-{
+function e_jumps(etmp) { /* boolean */
     let tmp = 4; /* out of 10 */
 
     if (is_u(etmp) ? (Unaware() || Fumbling())
@@ -550,9 +486,8 @@ e_jumps(etmp)
     return (tmp >= rnd(10)) ? TRUE : FALSE;
 }
 
-function /* void */
-do_entity(etmp)
-{ const $frame = stack_frame(); try {
+function do_entity(etmp) { /* void */
+    const $frame = stack_frame(); try {
     let newx = stack_var(coordxy), newy = stack_var(coordxy), oldx, oldy;
     let at_portcullis;
     let must_jump = FALSE, relocates = FALSE, e_inview;
@@ -595,7 +530,7 @@ do_entity(etmp)
         if (crm.typ == DRAWBRIDGE_DOWN) {
             if (is_u(etmp)) {
                 svk.killer.format = NO_KILLER_PREFIX;
-                void strcpy(svk.killer.name, _("crushed to death underneath a drawbridge"))
+                strcpy(svk.killer.name, _("crushed to death underneath a drawbridge"))
 ;
             }
             pline(_("%s crushed underneath the drawbridge."),
@@ -629,7 +564,7 @@ do_entity(etmp)
             }
         } else { /* tries to jump off bridge to original square */
             relocates = +!e_jumps(etmp);
-            debugpline1(_("Jump %s!"), (relocates) ? _("fails") : _("succeeds"), __FILE__);
+            debugpline1(_("Jump %s!"), relocates ? _("fails") : _("succeeds"), __FILE__);
         }
     }
 
@@ -643,11 +578,11 @@ do_entity(etmp)
     debugpline0(_("Doing relocation."), __FILE__);
     newx[0] = oldx;
     newy[0] = oldy;
-    void find_drawbridge(newx, newy);
+    find_drawbridge(newx, newy);
     if ((newx[0] == oldx) && (newy[0] == oldy))
         get_wall_for_db(newx, newy);
     debugpline0(_("Checking new square for occupancy."), __FILE__);
-    if (relocates && (e_at(newx[0], newy[0]))) {
+    if (relocates && e_at(newx[0], newy[0])) {
         /*
          * Standoff problem: one or both entities must die, and/or
          * both switch places.  Avoid infinite recursion by checking
@@ -667,13 +602,9 @@ do_entity(etmp)
                 do_entity(other);
             do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("Checking existence of %s"), e_nam(etmp)); iflags.last_msg = save_plnmsg; } } while (0);
 
-
-
             if (e_at(oldx, oldy) != etmp) {
                 do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("%s moved or died in recursion somewhere"), E_phrase(etmp, _("have"))); iflags.last_msg = save_plnmsg; } } while (0)
 ;
-
-
 
                 return;
             }
@@ -695,12 +626,8 @@ do_entity(etmp)
     }
     do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("Final disposition of %s"), e_nam(etmp)); iflags.last_msg = save_plnmsg; } } while (0);
 
-
-
     if (is_db_wall(etmp.ex, etmp.ey)) {
         do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("%s in portcullis chamber"), E_phrase(etmp, _("are"))); iflags.last_msg = save_plnmsg; } } while (0);
-
-
 
         if (e_inview) {
             if (is_u(etmp)) {
@@ -715,7 +642,7 @@ do_entity(etmp)
         }
         if (!e_survives_at(etmp, etmp.ex, etmp.ey)) {
             svk.killer.format = KILLED_BY_AN;
-            void strcpy(svk.killer.name, _("closing drawbridge"));
+            strcpy(svk.killer.name, _("closing drawbridge"));
             e_died(etmp, XKILL_NOMSG, CRUSHING);
             return;
         }
@@ -748,7 +675,7 @@ do_entity(etmp)
                           lava ? hliquid(_("lava")) : _("moat"));
             }
         svk.killer.format = NO_KILLER_PREFIX;
-        void strcpy(svk.killer.name, _("fell from a drawbridge"));
+        strcpy(svk.killer.name, _("fell from a drawbridge"));
         e_died(etmp, /* CRUSHING is arbitrary */
                XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
                is_pool(etmp.ex, etmp.ey) ? DROWNING
@@ -756,12 +683,11 @@ do_entity(etmp)
                    : CRUSHING); /*no corpse*/
         return;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* clear stale reason for death and both 'entities' before returning */
-function /* void */
-nokiller()
-{
+function nokiller() { /* void */
     chars[svk.killer.name + 0] = ord('\0');
     svk.killer.format = 0;
     m_to_e(null, 0, 0, go.occupants[0]);
@@ -771,9 +697,8 @@ nokiller()
 /*
  * Close the drawbridge located at x,y
  */
-export function /* void */
-close_drawbridge(x, y)
-{ const $frame = stack_frame(); try {
+export function close_drawbridge(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let lev1, lev2;
     let t;
     let x2 = stack_var(coordxy), y2 = stack_var(coordxy);
@@ -817,8 +742,8 @@ close_drawbridge(x, y)
          ;
         You_hear(_("smashing and crushing."));
     }
-    void revive_nasty(x, y, 0);
-    void revive_nasty(x2[0], y2[0], 0);
+    revive_nasty(x, y, 0);
+    revive_nasty(x2[0], y2[0], 0);
     delallobj(x, y);
     delallobj(x2[0], y2[0]);
     if ((t = t_at(x, y)) != null)
@@ -831,14 +756,14 @@ close_drawbridge(x, y)
     newsym(x2[0], y2[0]);
     block_point(x2[0], y2[0]); /* vision */
     nokiller();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Open the drawbridge located at x,y
  */
-export function /* void */
-open_drawbridge(x, y)
-{ const $frame = stack_frame(); try {
+export function open_drawbridge(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let lev1, lev2;
     let t;
     let x2 = stack_var(coordxy), y2 = stack_var(coordxy);
@@ -865,7 +790,7 @@ open_drawbridge(x, y)
     do_entity((go.occupants[0]));          /* do set_entity after first */
     set_entity(x2[0], y2[0], (go.occupants[1])); /* do_entity for worm tails */
     do_entity((go.occupants[1]));
-    void revive_nasty(x, y, 0);
+    revive_nasty(x, y, 0);
     delallobj(x, y);
     if ((t = t_at(x, y)) != null)
         deltrap(t);
@@ -879,14 +804,14 @@ open_drawbridge(x, y)
     if (Is_stronghold(u.uz))
         u.uevent.uopened_dbridge = TRUE;
     nokiller();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Let's destroy the drawbridge located at x,y
  */
-export function /* void */
-destroy_drawbridge(x, y)
-{ const $frame = stack_frame(); try {
+export function destroy_drawbridge(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let lev1, lev2;
     let t;
     let otmp;
@@ -925,7 +850,7 @@ destroy_drawbridge(x, y)
         lev1.flags = 0;
         if ((otmp2 = sobj_at(BOULDER, x, y)) != null) {
             obj_extract_self(otmp2);
-            void flooreffects(otmp2, x, y, _("fall"));
+            flooreffects(otmp2, x, y, _("fall"));
         }
     } else {
         /* no moat beneath */
@@ -954,7 +879,7 @@ destroy_drawbridge(x, y)
                          FALSE);
         /* a force of 5 here would yield a radius of 2 for
            iron chain; anything less produces a radius of 1 */
-        void scatter(otmp.ox, otmp.oy, 1, MAY_HIT, otmp);
+        scatter(otmp.ox, otmp.oy, 1, MAY_HIT, otmp);
     }
     newsym(x, y);
     newsym(x2[0], y2[0]);
@@ -972,7 +897,7 @@ destroy_drawbridge(x, y)
                 pline(_("%s blown apart by flying debris."),
                       E_phrase(etmp2, _("are")));
             svk.killer.format = KILLED_BY_AN;
-            void strcpy(svk.killer.name, _("exploding drawbridge"));
+            strcpy(svk.killer.name, _("exploding drawbridge"));
             e_died(etmp2,
                    XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
                    CRUSHING); /*no corpse*/
@@ -987,7 +912,7 @@ destroy_drawbridge(x, y)
             if (is_u(etmp1))
                 spoteffects(FALSE);
             else
-                void minliquid(etmp1.emon);
+                minliquid(etmp1.emon);
         } else {
             if (e_inview) {
                 if (!is_u(etmp1) && Hallucination())
@@ -1005,7 +930,7 @@ destroy_drawbridge(x, y)
                 }
             }
             svk.killer.format = KILLED_BY_AN;
-            void strcpy(svk.killer.name, _("collapsing drawbridge"));
+            strcpy(svk.killer.name, _("collapsing drawbridge"));
             e_died(etmp1,
                    XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG),
                    CRUSHING); /*no corpse*/
@@ -1016,152 +941,67 @@ destroy_drawbridge(x, y)
     nokiller();
     if (Is_stronghold(u.uz))
         u.uevent.uheard_tune = 3; /* bridge is gone so tune is now useless */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*dbridge.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { Is_juiblex_level } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { BURNING } from "./hack.h.js";
-import { CRUSHING } from "./hack.h.js";
-import { DROWNING } from "./hack.h.js";
-import { ENTITIES } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MAY_HIT } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { TELEDS_NO_FLAGS } from "./hack.h.js";
-import { XKILL_GIVEMSG } from "./hack.h.js";
-import { XKILL_NOCONDUCT } from "./hack.h.js";
-import { XKILL_NOCORPSE } from "./hack.h.js";
-import { XKILL_NOMSG } from "./hack.h.js";
+import { Is_juiblex_level, Is_stronghold } from "./dungeon.h.macros.js";
+import { FALSE, TRUE, coordxy } from "./global.h.js";
+import {
+    BURNING, CRUSHING, DROWNING, ENTITIES, KILLED_BY_AN, MAY_HIT, NO_KILLER_PREFIX, TELEDS_NO_FLAGS,
+    XKILL_GIVEMSG, XKILL_NOCONDUCT, XKILL_NOCORPSE, XKILL_NOMSG,
+} from "./hack.h.js";
 import { distu } from "./hack.h.macros.js";
-import { debugpline0 } from "./lint.h.macros.js";
-import { debugpline1 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
-import { AD_DGST } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
+import { debugpline0, debugpline1, showdebug } from "./lint.h.macros.js";
+import { AD_DGST, AD_PHYS } from "./monattk.h.js";
+import {
+    is_floater, is_flyer, is_swimmer, likes_lava, noncorporeal, passes_walls,
+} from "./mondata.h.macros.js";
+import { DEADMONSTER, helpless } from "./monst.h.macros.js";
 import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { BOULDER } from "./objects.h.js";
-import { IRON_CHAIN } from "./objects.h.js";
-import { DBWALL } from "./rm.h.js";
-import { DB_DIR } from "./rm.h.js";
-import { DB_EAST } from "./rm.h.js";
-import { DB_ICE } from "./rm.h.js";
-import { DB_LAVA } from "./rm.h.js";
-import { DB_MOAT } from "./rm.h.js";
-import { DB_NORTH } from "./rm.h.js";
-import { DB_SOUTH } from "./rm.h.js";
-import { DB_UNDER } from "./rm.h.js";
-import { DB_WEST } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { ICED_MOAT } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { IS_DRAWBRIDGE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { IS_WATERWALL } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
+import { BOULDER, IRON_CHAIN } from "./objects.h.js";
+import {
+    DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR,
+    DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, ICED_MOAT, LAVAPOOL, LAVAWALL, MOAT, POOL, ROOM,
+    STONE, WATER, W_NONDIGGABLE,
+} from "./rm.h.js";
+import {
+    IS_DRAWBRIDGE, IS_WALL, IS_WATERWALL, OBJ_AT, levl, m_at, remove_monster,
+} from "./rm.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Amphibious } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Swimming } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Wwalking } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { strcat } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { mhe, u_at } from "./you.h.macros.js";
+import {
+    Amphibious, Breathless, Confusion, Deaf, Flying, Fumbling, Hallucination, Levitation,
+    Passes_walls, Stunned, Swimming, Unaware, Underwater, Wwalking,
+} from "./youprop.h.macros.js";
+import { char, ord, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { strcat, strcpy } from "../rt/libc.js";
+import { stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { elt } from "../rt/struct.js";
 import { isok } from "./cmd.js";
-import { go } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
+import { go, gy, iflags, svc, svk, u } from "./decl.js";
+import { canseemon, newsym } from "./display.js";
 import { flooreffects } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
+import { Monnam, hliquid, mon_nam } from "./do_name.js";
 import { done } from "./end.js";
 import { del_engr_at } from "./engrave.js";
 import { scatter } from "./explode.js";
-import { revive_nasty } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { delallobj } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { mksobj_at } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { minliquid } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { xkilled } from "./mon.js";
+import { revive_nasty, spoteffects } from "./hack.js";
+import { delallobj, sobj_at } from "./invent.js";
+import { mksobj_at, obj_extract_self } from "./mkobj.js";
+import { minliquid, monkilled, wake_nearto, xkilled } from "./mon.js";
 import { mons } from "./monst.js";
 import { vtense } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { You, You_hear, You_see, impossible, pline, pline_The } from "./pline.js";
 import { update_monster_region } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { place_monster } from "./steed.js";
-import { enexto } from "./teleport.js";
-import { teleds } from "./teleport.js";
-import { deltrap } from "./trap.js";
-import { drown } from "./trap.js";
-import { lava_effects } from "./trap.js";
-import { t_at } from "./trap.js";
-import { block_point } from "./vision.js";
-import { does_block } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { vision_recalc } from "./vision.js";
+import { enexto, teleds } from "./teleport.js";
+import { deltrap, drown, lava_effects, t_at } from "./trap.js";
+import { block_point, does_block, unblock_point, vision_recalc } from "./vision.js";
 const __FILE__ = "dbridge.c";

@@ -33,12 +33,6 @@
      DUMP_ENUMS_OBJCLASS_CLASSES, DUMP_ENUMS_OBJCLASS_SYMS)
 */
 
-
-
-
-
-
-
 /*
    PCHAR(idx, ch, sym, desc, clr)
        idx:     index used in enum
@@ -57,35 +51,17 @@
        clr:     color
 */
 
-
 /* sym.h */
-
-
 
 /* symbols.c */
 
-
-
 /* drawing.c */
-
-
 
 /* win/share/tilemap.c */
 
-
-
-
 /* allmain.c */
 
-
-
-
-
-
 /* PCHAR with extra arg */
-
-
-
 
     export const S_stone = 0;
     export const S_vwall = 1;
@@ -246,17 +222,6 @@
     export const S_expl_bc = 103;
     export const S_expl_br = 104; export const MAXPCHARS = S_expl_br + 1;
 
-
-
-
-
-
-
-
-
-
-
-
 /*
     MONSYM(idx, ch, sym desc)
         idx:     index used in enum
@@ -265,32 +230,15 @@
         desc:    description
 */
 
-
 /* sym.h */
 
-
-
 /* sym.h */
-
-
 
 /* symbols.c */
 
-
-
-
 /* drawing.c */
 
-
 /* allmain.c */
-
-
-
-
-
-
-
-
 
     export const S_ANT = 1; export const DEF_ANT = ord("a");
     export const S_BLOB = 2; export const DEF_BLOB = ord("b");
@@ -365,20 +313,6 @@
     export const S_WORM_TAIL = 59; export const DEF_WORM_TAIL = ord("~");
     export const S_MIMIC_DEF = 60; export const MAXMCLASSES = S_MIMIC_DEF + 1; export const DEF_MIMIC_DEF = ord("]");
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
     OBJCLASS(idx, ch, basename, sym, name, explain)
         idx:      index used in enum
@@ -401,67 +335,23 @@
         explain:  used in do_look()
 */
 
+/* objclass.h */
 
 /* objclass.h */
 
-
-
-
 /* objclass.h */
-
-
-
-
-/* objclass.h */
-
-
-
 
 /* symbols.c */
 
-
-
-
 /* drawing.c */
 
-
-
+/* allmain.c */
 
 /* allmain.c */
 
-
-
-
 /* allmain.c */
-
-
-
-
-/* allmain.c */
-
-
-
 
 /* OBJCLASS with extra arg */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     export const RANDOM_CLASS = 0; export const ILLOBJ_CLASS = 1; export const ILLOBJ_SYM = ord("]"); export const S_strange_obj = 1;
 
@@ -483,30 +373,6 @@
     export const CHAIN_CLASS = 16; export const CHAIN_SYM = ord("_"); export const S_chain = 16;
     export const VENOM_CLASS = 17; export const MAXOCLASSES = VENOM_CLASS + 1; export const VENOM_SYM = ord("."); export const S_venom = 17;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* end of defsym.h */
+
 import { ord } from "../rt/ctypes.js";

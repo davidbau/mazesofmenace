@@ -3,19 +3,9 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /* occupation callbacks */
 
-
-
-
-
-
-
-export function /* boolean */
-picking_lock(x, y)
-{
+export function picking_lock(x, y) { /* boolean */
     if (go.occupation == picklock) {
         x[0] = u.ux + u.dx;
         y[0] = u.uy + u.dy;
@@ -26,17 +16,13 @@ picking_lock(x, y)
     }
 }
 
-export function /* boolean */
-picking_at(x, y)
-{
+export function picking_at(x, y) { /* boolean */
     return (+(go.occupation == picklock
                       && gx.xlock.door == levl()[x][y]));
 }
 
 /* produce an occupation string appropriate for the current activity */
-function /* const char * */
-lock_action()
-{
+function lock_action() { /* const char * */
     /* "unlocking"+2 == "locking" */
     let actions = static_array("lock_action.actions", ptr_to(char), null, [
         _("unlocking the door"),   /* [0] */
@@ -64,35 +50,33 @@ lock_action()
 }
 
 /* try to open/close a lock */
-function /* int */
-picklock()
-{
+function picklock() { /* int */
     if (gx.xlock.box) {
         if (gx.xlock.box.where != OBJ_FLOOR
             || gx.xlock.box.ox != u.ux || gx.xlock.box.oy != u.uy) {
-            return ((gx.xlock.usedtime = 0)); /* you or it moved */
+            return (gx.xlock.usedtime = 0); /* you or it moved */
         }
     } else { /* door */
         if (gx.xlock.door != (levl()[u.ux + u.dx][u.uy + u.dy])) {
-            return ((gx.xlock.usedtime = 0)); /* you moved */
+            return (gx.xlock.usedtime = 0); /* you moved */
         }
         switch (gx.xlock.door.flags) {
         case D_NODOOR:
             pline(_("This doorway has no door."));
-            return ((gx.xlock.usedtime = 0));
+            return (gx.xlock.usedtime = 0);
         case D_ISOPEN:
             You(_("cannot lock an open door."));
-            return ((gx.xlock.usedtime = 0));
+            return (gx.xlock.usedtime = 0);
         case D_BROKEN:
             pline(_("This door is broken."));
-            return ((gx.xlock.usedtime = 0));
+            return (gx.xlock.usedtime = 0);
         }
     }
 
     if (gx.xlock.usedtime++ >= 50 || nohands(gy.youmonst.data)) {
         You(_("give up your attempt at %s."), lock_action());
         exercise(A_DEX, TRUE); /* even if you don't succeed */
-        return ((gx.xlock.usedtime = 0));
+        return (gx.xlock.usedtime = 0);
     }
 
     if (rn2(100) >= gx.xlock.chance)
@@ -132,7 +116,7 @@ picklock()
             You(_("stop %s."), lock_action());
             exercise(A_WIS, FALSE);
         }
-        return ((gx.xlock.usedtime = 0));
+        return (gx.xlock.usedtime = 0);
     }
 
     You(_("succeed in %s."), lock_action());
@@ -152,15 +136,13 @@ picklock()
         gx.xlock.box.olocked = +!gx.xlock.box.olocked;
         gx.xlock.box.lknown = 1;
         if (gx.xlock.box.otrapped)
-            void chest_trap(gx.xlock.box, FINGER, FALSE);
+            chest_trap(gx.xlock.box, FINGER, FALSE);
     }
     exercise(A_DEX, TRUE);
-    return ((gx.xlock.usedtime = 0));
+    return (gx.xlock.usedtime = 0);
 }
 
-export function /* void */
-breakchestlock(box, destroyit)
-{
+export function breakchestlock(box, destroyit) { /* void */
     if (!destroyit) { /* bill for the box but not for its contents */
         let hide_contents = box.cobj;
 
@@ -176,7 +158,7 @@ breakchestlock(box, destroyit)
                                  ? shop_keeper(chars[u.ushops])
                                  : null;
         let costly = (+(shkp != null)),
-                peaceful_shk = ((costly && shkp.mpeaceful) ? 1 : 0);
+                peaceful_shk = (costly && shkp.mpeaceful ? 1 : 0);
         let loss = 0;
 
         pline(_("In fact, you've totally destroyed %s."), the(xname(box)));
@@ -212,17 +194,15 @@ breakchestlock(box, destroyit)
 }
 
 /* try to force a locked chest */
-function /* int */
-forcelock()
-{
+function forcelock() { /* int */
     if ((gx.xlock.box.ox != u.ux) || (gx.xlock.box.oy != u.uy))
-        return ((gx.xlock.usedtime = 0)); /* you or it moved */
+        return (gx.xlock.usedtime = 0); /* you or it moved */
 
     if (gx.xlock.usedtime++ >= 50 || !uwep || nohands(gy.youmonst.data)) {
         You(_("give up your attempt to force the lock."));
         if (gx.xlock.usedtime >= 50) /* you made the effort */
-            exercise((gx.xlock.picktyp) ? A_DEX : A_STR, TRUE);
-        return ((gx.xlock.usedtime = 0));
+            exercise(gx.xlock.picktyp ? A_DEX : A_STR, TRUE);
+        return (gx.xlock.usedtime = 0);
     }
 
     if (gx.xlock.picktyp) { /* blade */
@@ -236,7 +216,7 @@ forcelock()
             useup(uwep);
             You(_("give up your attempt to force the lock."));
             exercise(A_DEX, TRUE);
-            return ((gx.xlock.usedtime = 0));
+            return (gx.xlock.usedtime = 0);
         }
     } else             /* blunt */
         wake_nearby(FALSE); /* due to hammering on the container */
@@ -255,9 +235,7 @@ forcelock()
     return 0;
 }
 
-export function /* void */
-reset_pick()
-{
+export function reset_pick() { /* void */
     gx.xlock.usedtime = gx.xlock.chance = gx.xlock.picktyp = 0;
     gx.xlock.magic_key = FALSE;
     gx.xlock.door = null;
@@ -265,9 +243,7 @@ reset_pick()
 }
 
 /* level change or object deletion; context may no longer be valid */
-export function /* void */
-maybe_reset_pick(container) /* passed from obfree() */
-{
+export function maybe_reset_pick(container) { /* void */ /* passed from obfree() */
     /*
      * If a specific container, only clear context if it is for that
      * particular container (which is being deleted).  Other stuff on
@@ -285,9 +261,7 @@ maybe_reset_pick(container) /* passed from obfree() */
 }
 
 /* pick a tool for autounlock */
-export function /* struct obj * */
-autokey(opening) /* True: key, pick, or card; False: key or pick */
-{
+export function autokey(opening) { /* struct obj * */ /* True: key, pick, or card; False: key or pick */
     let o, key, pick, card, akey, apick, acard;
 
     /* mundane item or regular artifact or own role's quest artifact */
@@ -343,8 +317,6 @@ autokey(opening) /* True: key, pick, or card; False: key or pick */
     return key ? key : pick ? pick : card ? card : null;
 }
 
-
-
 /* for doapply(); if player gives a direction or resumes an interrupted
    previous attempt then it usually costs hero a move even if nothing
    ultimately happens; when told "can't do that" before being asked for
@@ -354,20 +326,19 @@ export const PICKLOCK_DID_NOTHING = 0;
 export const PICKLOCK_DID_SOMETHING = 1;
 
 /* player is applying a key, lock pick, or credit card */
-export function /* int */
-pick_lock(
+export function pick_lock(
     pick,
     rx, ry,
 
-    container)  /* container, for autounlock */
-{ const $frame = stack_frame(); try {
+    container) { /* int */ /* container, for autounlock */
+    const $frame = stack_frame(); try {
     let dummypick = stack_struct(struct_obj);
     let picktyp, c, ch;
     let cc = stack_struct(struct_nhcoord);
     let door;
     let otmp;
     let qbuf = stack_array(char, QBUFSZ);
-    let autounlock = (+(rx != 0 || container != null));
+    let autounlock = +(rx != 0 || container != null);
 
     /* 'pick' might be Null [called by do_loot_cont() for AUTOUNLOCK_UNTRAP] */
     if (!pick) {
@@ -483,16 +454,16 @@ pick_lock(
                           && (flags.autounlock & AUTOUNLOCK_APPLY_KEY) != 0) {
                     c = ord('q');
                     if (pick != dummypick) {
-                        void sprintf(qbuf, _("Unlock it with %s?"), yname(pick));
+                        sprintf(qbuf, _("Unlock it with %s?"), yname(pick));
                         c = ynq(qbuf);
                     }
                     if (c != ord('y'))
                         return PICKLOCK_DID_NOTHING;
                 } else {
                     /* "There is <a box> here; <verb> <it|its lock>?" */
-                    void sprintf(qsfx, _(" here; %s %s?"), verb, it ? _("it") : _("its lock"))
+                    sprintf(qsfx, _(" here; %s %s?"), verb, it ? _("it") : _("its lock"))
 ;
-                    void safe_qbuf(qbuf, _("There is "), qsfx, otmp, doname,
+                    safe_qbuf(qbuf, _("There is "), qsfx, otmp, doname,
                                      ansimpleoname, _("a box"));
                     otmp.lknown = 1;
 
@@ -617,8 +588,7 @@ pick_lock(
                 return PICKLOCK_LEARNED_SOMETHING;
             }
 
-            void sprintf(qbuf, _("%s it%s%s?"), (door.flags & D_LOCKED) ? _("Unlock") : _("Lock"), autounlock ? _(" with ") : _(""), autounlock ? yname(pick) : _(""))
-
+            sprintf(qbuf, _("%s it%s%s?"), (door.flags & D_LOCKED) ? _("Unlock") : _("Lock"), autounlock ? _(" with ") : _(""), autounlock ? yname(pick) : _(""))
 
 ;
             c = ynq(qbuf);
@@ -653,12 +623,11 @@ pick_lock(
     gx.xlock.usedtime = 0;
     set_occupation(picklock, lock_action(), 0);
     return PICKLOCK_DID_SOMETHING;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* is hero wielding a weapon that can #force? */
-export function /* boolean */
-u_have_forceable_weapon()
-{
+export function u_have_forceable_weapon() { /* boolean */
     if (!uwep /* proper type test */
         || ((uwep.oclass == WEAPON_CLASS || is_weptool(uwep))
             ? (objects[uwep.otyp].oc_subtyp < P_DAGGER
@@ -669,12 +638,9 @@ u_have_forceable_weapon()
     return TRUE;
 }
 
-
-
 /* the #force command - try to force a chest with your weapon */
-export function /* int */
-doforce()
-{ const $frame = stack_frame(); try {
+export function doforce() { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let c, picktyp;
     let qbuf = stack_array(char, QBUFSZ);
@@ -689,7 +655,7 @@ doforce()
         return ECMD_OK;
     }
     if (!u_have_forceable_weapon()) {
-        let use_plural = ((uwep && uwep.quan > 1) ? 1 : 0);
+        let use_plural = (uwep && uwep.quan > 1 ? 1 : 0);
 
         You_cant(_("force anything %s weapon%s."),
                  !uwep ? _("when not wielding a")
@@ -726,7 +692,7 @@ doforce()
                 otmp.lknown = 1;
                 continue;
             }
-            void safe_qbuf(qbuf, _("There is "), _(" here; force its lock?"),
+            safe_qbuf(qbuf, _("There is "), _(" here; force its lock?"),
                              otmp, doname, ansimpleoname, _("a box"));
             otmp.lknown = 1;
 
@@ -753,11 +719,10 @@ doforce()
     else
         You(_("decide not to force the issue."));
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-stumble_on_door_mimic(x, y)
-{
+export function stumble_on_door_mimic(x, y) { /* boolean */
     let mtmp;
 
     if ((mtmp = m_at(x, y)) && is_door_mappear(mtmp)
@@ -769,16 +734,13 @@ stumble_on_door_mimic(x, y)
 }
 
 /* the #open command - try to open a door */
-export function /* int */
-doopen()
-{
+export function doopen() { /* int */
     return doopen_indir(0, 0);
 }
 
 /* try to open a door in direction u.dx/u.dy */
-export function /* int */
-doopen_indir(x, y)
-{ const $frame = stack_frame(); try {
+export function doopen_indir(x, y) { /* int */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
     let door;
     let portcullis;
@@ -826,7 +788,7 @@ doopen_indir(x, y)
         res = ECMD_TIME;
 
     door = levl()[cc.x][cc.y];
-    portcullis = (+(is_drawbridge_wall(cc.x, cc.y) >= 0));
+    portcullis = +(is_drawbridge_wall(cc.x, cc.y) >= 0);
     /* this used to be 'if (Blind)' but using a key skips that so we do too */
     {
         let oldglyph = door.glyph;
@@ -920,11 +882,11 @@ doopen_indir(x, y)
     }
 
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-obstructed(x, y, quietly)
-{ let $goto = null;
+function obstructed(x, y, quietly) { /* boolean */
+    let $goto = null;
     var mtmp = m_at(x, y);
 
     $goto_objhere: for (;;) { switch ($goto) { default: if (mtmp && M_AP_TYPE(mtmp) != M_AP_FURNITURE) {
@@ -953,9 +915,8 @@ obstructed(x, y, quietly)
 }
 
 /* the #close command - try to close a door */
-export function /* int */
-doclose()
-{ let $goto = null;
+export function doclose() { /* int */
+    let $goto = null;
     var x, y;
     var door;
     var portcullis;
@@ -993,7 +954,7 @@ doclose()
         res = ECMD_TIME;
 
     door = levl()[x][y];
-    portcullis = (+(is_drawbridge_wall(x, y) >= 0));
+    portcullis = +(is_drawbridge_wall(x, y) >= 0);
     if (Blind()) {
         var oldglyph = door.glyph;
         var oldlastseentyp = update_mapseen_for(x, y);
@@ -1052,9 +1013,7 @@ doclose()
 
 /* box obj was hit with spell or wand effect otmp;
    returns true if something happened */
-export function /* boolean */
-boxlock(obj, otmp) /* obj *is* a box */
-{
+export function boxlock(obj, otmp) { /* boolean */ /* obj *is* a box */
     let res = 0;
 
     switch (otmp.otyp) {
@@ -1099,16 +1058,14 @@ boxlock(obj, otmp) /* obj *is* a box */
 
 /* Door/secret door was hit with spell or wand effect otmp;
    returns true if something happened */
-export function /* boolean */
-doorlock(otmp, x, y)
-{
+export function doorlock(otmp, x, y) { /* boolean */
     let door = levl()[x][y];
     let res = TRUE;
     let loudness = 0;
     let msg = 0;
     let dustcloud = _("A cloud of dust");
     let quickly_dissipates = _("quickly dissipates");
-    let mysterywand = (+(otmp.oclass == WAND_CLASS && !otmp.dknown));
+    let mysterywand = +(otmp.oclass == WAND_CLASS && !otmp.dknown);
 
     if (door.typ == SDOOR) {
         switch (otmp.otyp) {
@@ -1213,7 +1170,7 @@ doorlock(otmp, x, y)
                 newsym(x, y);
                 seeit = mtmp ? canseemon(mtmp) : cansee(x, y);
                 if (mtmp) {
-                    void mb_trapped(mtmp, ((sawit || seeit) ? 1 : 0));
+                    mb_trapped(mtmp, (sawit || seeit ? 1 : 0));
                 } else {
                     /* for mtmp, mb_trapped() does is own wake_nearto() */
                     loudness = 40;
@@ -1272,9 +1229,7 @@ doorlock(otmp, x, y)
     return res;
 }
 
-function /* void */
-chest_shatter_msg(otmp)
-{
+function chest_shatter_msg(otmp) { /* void */
     let disposition;
     let thing;
     let save_HBlinded, save_BBlinded;
@@ -1318,223 +1273,91 @@ chest_shatter_msg(otmp)
 }
 
 /*lock.c*/
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { ACURRSTR } from "./attrib.h.macros.js";
+
+import { A_CON, A_DEX, A_STR, A_WIS } from "./attrib.h.js";
+import { ACURR, ACURRSTR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { Something } from "./decl.h.macros.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { POTION_CLASS, ROCK_CLASS, WAND_CLASS, WEAPON_CLASS } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
 import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { AUTOUNLOCK_APPLY_KEY } from "./flag.h.js";
-import { AUTOUNLOCK_KICK } from "./flag.h.js";
-import { AUTOUNLOCK_UNTRAP } from "./flag.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { COST_BRKLCK } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FINGER } from "./hack.h.js";
-import { SHOP_DOOR_COST } from "./hack.h.js";
-import { distu } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import { AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_KICK, AUTOUNLOCK_UNTRAP } from "./flag.h.js";
+import { FALSE, QBUFSZ, TRUE } from "./global.h.js";
+import {
+    COST_BRKLCK, CQ_CANNED, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FINGER, SHOP_DOOR_COST,
+} from "./hack.h.js";
+import { distu, pline1, y_n, ynq } from "./hack.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { breathless } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { is_door_mappear } from "./monst.h.macros.js";
-import { PM_ORACLE } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Is_box } from "./obj.h.macros.js";
-import { any_quest_artifact } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { greatest_erosion } from "./obj.h.macros.js";
-import { is_blade } from "./obj.h.macros.js";
-import { is_pick } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { FLESH } from "./objclass.h.js";
-import { GLASS } from "./objclass.h.js";
-import { PAPER } from "./objclass.h.js";
-import { VEGGY } from "./objclass.h.js";
-import { WAX } from "./objclass.h.js";
-import { WOOD } from "./objclass.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { SPE_FORCE_BOLT } from "./objects.h.js";
-import { SPE_KNOCK } from "./objects.h.js";
-import { SPE_POLYMORPH } from "./objects.h.js";
-import { SPE_WIZARD_LOCK } from "./objects.h.js";
-import { WAN_LOCKING } from "./objects.h.js";
-import { WAN_OPENING } from "./objects.h.js";
-import { WAN_POLYMORPH } from "./objects.h.js";
-import { WAN_STRIKING } from "./objects.h.js";
+import { breathless, haseyes, nohands, verysmall } from "./mondata.h.macros.js";
+import { M_AP_FURNITURE, M_AP_OBJECT } from "./monst.h.js";
+import { M_AP_TYPE, is_door_mappear } from "./monst.h.macros.js";
+import { PM_ORACLE, PM_ROGUE, PM_WIZARD } from "./monsters.h.js";
+import { OBJ_FLOOR, struct_obj } from "./obj.h.js";
+import {
+    Is_box, any_quest_artifact, carried, greatest_erosion, is_blade, is_pick, is_weptool,
+} from "./obj.h.macros.js";
+import { FLESH, GLASS, PAPER, VEGGY, WAX, WOOD } from "./objclass.h.js";
+import {
+    CHEST, CORPSE, CREDIT_CARD, ICE_BOX, LOCK_PICK, SKELETON_KEY, SPE_FORCE_BOLT, SPE_KNOCK,
+    SPE_POLYMORPH, SPE_WIZARD_LOCK, WAN_LOCKING, WAN_OPENING, WAN_POLYMORPH, WAN_STRIKING,
+} from "./objects.h.js";
 import { BLINDED } from "./prop.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { P_DAGGER } from "./skills.h.js";
-import { P_FLAIL } from "./skills.h.js";
-import { P_LANCE } from "./skills.h.js";
+import {
+    DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR,
+    D_TRAPPED, SDOOR,
+} from "./rm.h.js";
+import { IS_DOOR, OBJ_AT, levl, m_at } from "./rm.h.macros.js";
+import { P_DAGGER, P_FLAIL, P_LANCE } from "./skills.h.js";
 import { cansee } from "./vision.h.macros.js";
 import { TT_PIT } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { BBlinded } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { HBlinded } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { Role_if, u_at } from "./you.h.macros.js";
+import {
+    BBlinded, Blind, Confusion, Deaf, HBlinded, Levitation, Passes_walls,
+    Protection_from_shape_changers, Stunned, Unaware, Underwater,
+} from "./youprop.h.macros.js";
+import { char, ord, sizeof_string } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { sprintf, strcat } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { ptr_to, struct_assign } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { is_magic_key } from "./artifact.js";
-import { touch_artifact } from "./artifact.js";
+import { is_magic_key, touch_artifact } from "./artifact.js";
 import { exercise } from "./attrib.js";
-import { cmdq_add_dir } from "./cmd.js";
-import { cmdq_add_ec } from "./cmd.js";
-import { get_adjacent_loc } from "./cmd.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { set_occupation } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_db_wall } from "./dbridge.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { go } from "./decl.js";
-import { gv } from "./decl.js";
-import { gx } from "./decl.js";
-import { gy } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { ynqchars } from "./decl.js";
-import { canseemon } from "./display.js";
-import { feel_location } from "./display.js";
-import { feel_newsym } from "./display.js";
-import { map_invisible } from "./display.js";
-import { newsym } from "./display.js";
-import { Some_Monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
+import {
+    cmdq_add_dir, cmdq_add_ec, get_adjacent_loc, getdir, isok, set_occupation, yn_function,
+} from "./cmd.js";
+import { is_db_wall, is_drawbridge_wall, is_lava, is_pool } from "./dbridge.js";
+import { cg, flags, gi, go, gv, gx, gy, svc, svl, svm, u, ynqchars } from "./decl.js";
+import { canseemon, feel_location, feel_newsym, map_invisible, newsym } from "./display.js";
+import { Some_Monnam, hliquid, mon_nam } from "./do_name.js";
 import { dokick } from "./dokick.js";
 import { update_mapseen_for } from "./dungeon.js";
-import { can_reach_floor } from "./engrave.js";
-import { cant_reach_floor } from "./engrave.js";
+import { can_reach_floor, cant_reach_floor } from "./engrave.js";
 import { in_rooms } from "./hack.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { currency } from "./invent.js";
-import { delobj } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { useup } from "./invent.js";
-import { costly_alteration } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { start_corpse_timeout } from "./mkobj.js";
-import { wake_nearby } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { closed_door } from "./monmove.js";
-import { mb_trapped } from "./monmove.js";
+import { s_suffix, sgn } from "./hacklib.js";
+import { currency, delobj, stackobj, useup } from "./invent.js";
+import {
+    costly_alteration, obj_extract_self, place_object, start_corpse_timeout,
+} from "./mkobj.js";
+import { wake_nearby, wake_nearto } from "./mon.js";
+import { closed_door, mb_trapped } from "./monmove.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { An } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { safe_qbuf } from "./objnam.js";
-import { simple_typename } from "./objnam.js";
-import { singular } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { ysimple_name } from "./objnam.js";
-import { container_at } from "./pickup.js";
-import { doloot } from "./pickup.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { bottlename } from "./potion.js";
-import { potionbreathe } from "./potion.js";
+import {
+    An, an, ansimpleoname, doname, safe_qbuf, simple_typename, singular, the, xname, yname,
+    ysimple_name,
+} from "./objnam.js";
+import { container_at, doloot } from "./pickup.js";
+import {
+    There, You, You_cant, You_hear, impossible, pline, pline_The, set_msg_xy, verbalize,
+} from "./pline.js";
+import { bottlename, potionbreathe } from "./potion.js";
 import { is_quest_artifact } from "./questpgr.js";
-import { rn2 } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { add_damage } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { obfree } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { stolen_value } from "./shk.js";
+import { rn2, rnl } from "./rnd.js";
+import { add_damage, costly_spot, obfree, shop_keeper, stolen_value } from "./shk.js";
 import { maybe_absorb_item } from "./steal.js";
-import { b_trapped } from "./trap.js";
-import { chest_trap } from "./trap.js";
-import { could_untrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { untrap } from "./trap.js";
+import { b_trapped, chest_trap, could_untrap, t_at, untrap } from "./trap.js";
 import { stumble_onto_mimic } from "./uhitm.js";
-import { block_point } from "./vision.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { vision_recalc } from "./vision.js";
+import { block_point, recalc_block_point, unblock_point, vision_recalc } from "./vision.js";
 import { obj_resists } from "./zap.js";

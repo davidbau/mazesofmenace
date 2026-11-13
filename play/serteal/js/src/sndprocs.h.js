@@ -2,43 +2,9 @@
 /* Copyright (c) Michael Allison, 2022                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
     export const soundlib_nosound = 0;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     export const soundlib_notused = soundlib_nosound + 1;
-
 
 export const struct_sound_procs = struct("struct_sound_procs", {
     soundname: ptr_to(char),
@@ -67,23 +33,11 @@ export const struct_sound_voice = struct("struct_sound_voice", {
     nameid: ptr_to(char),
 });
 
-
-
-
-
-
 /*
  * Types of triggers
  */
 
-
-
-
-
-
                             /* 26 free bits */
-
-
 
 /* subset for NetHack */
 
@@ -95,81 +49,7 @@ export const struct_sound_voice = struct("struct_sound_voice", {
     export const ins_taiko_drum = 117; export const ins_melodic_tom = 118; export const ins_seashore = 123;
     export const ins_no_instrument = ins_seashore + 1;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /* accessibility */
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 Arguments for sound_achievement(schar arg1, schar arg2, int32_t aflags)
@@ -190,118 +70,22 @@ SoundAchievement(0, sa2_levelup, level);
 SoundAchievement(0, sa2_xpleveldown, level);
 */
 
-
-
-
-
-
-
 /* shortcut for conditional code in other files */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Player's perspective, not the hero's; no Deaf suppression */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Player's perspective, not the hero's; no Deaf suppression */
-
-
-
-
-
-
 
 /* sound_speak is in sound.c */
 
-
-
-
-
-
-
-
 /* set_voice is in sound.c */
 
-
-
-
-
 /*  void (*sound_achievement)(schar, schar, int32_t); */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     export const sff_default = 0; /* add dir prefix + '/' + sound + suffix */
     export const sff_base_only = sff_default + 1; /* base sound name only, no dir, no suffix */
     export const sff_havedir_append_rest = sff_base_only + 1; /* dir provided, append base sound name+suffix */
     export const sff_baseknown_add_rest = sff_havedir_append_rest + 1; /* base is already known, add dir and suffix */
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { char, int, ulong, unsigned } from "../rt/ctypes.js";
+import { fnptr_t, ptr_to, struct } from "../rt/struct.js";

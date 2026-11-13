@@ -3,79 +3,36 @@
 /*-Copyright (c) Pasi Kallinen, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "sp_lev.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* adjust a coordinate one step in the specified direction */
 
-
-
-
-
-
-
-
-
-
-
 /* used to determine if wall spines can join this location */
-function /* int */
-iswall(x, y)
-{
+function iswall(x, y) { /* int */
     let type;
 
     if (!isok(x, y))
         return 0;
     type = levl()[x][y].typ;
-    return (((IS_WALL(type) || IS_DOOR(type)
+    return (IS_WALL(type) || IS_DOOR(type)
             || type == LAVAWALL || type == WATER
-            || type == SDOOR || type == IRONBARS) ? 1 : 0));
+            || type == SDOOR || type == IRONBARS ? 1 : 0);
 }
 
 /* used to determine if wall spines can join this location */
-function /* int */
-iswall_or_stone(x, y)
-{
+function iswall_or_stone(x, y) { /* int */
     /* out of bounds = stone */
     if (!isok(x, y))
         return 1;
 
-    return (((levl()[x][y].typ == STONE || iswall(x, y)) ? 1 : 0));
+    return (levl()[x][y].typ == STONE || iswall(x, y) ? 1 : 0);
 }
 
 /* return TRUE if out of bounds, wall or rock */
-function /* boolean */
-is_solid(x, y)
-{
+function is_solid(x, y) { /* boolean */
     return (+(!isok(x, y) || IS_STWALL(levl()[x][y].typ)));
 }
 
 /* set map terrain type, handling lava lit, ice melt timers, etc */
-export function /* boolean */
-set_levltyp(x, y, newtyp)
-{
+export function set_levltyp(x, y, newtyp) { /* boolean */
     if (isok(x, y) && newtyp >= STONE && newtyp < MAX_TYPE) {
         let oldtyp = levl()[x][y].typ;
 
@@ -109,30 +66,16 @@ set_levltyp(x, y, newtyp)
 
             return TRUE;
         }
-
-
-
-
-
-
-
     }
     return FALSE;
 }
 
 /* set map terrain type and light state */
-export function /* boolean */
-set_levltyp_lit(x, y, typ, lit)
-{
+export function set_levltyp_lit(x, y, typ, lit) { /* boolean */
     let ret = set_levltyp(x, y, typ);
 
     if (ret && isok(x, y)) {
         if (lit != SET_LIT_NOCHANGE) {
-
-
-
-
-
             if (IS_LAVA(typ))
                 lit = 1;
             else if (lit == SET_LIT_RANDOM)
@@ -162,9 +105,7 @@ set_levltyp_lit(x, y, typ, lit)
  *              W x W           This would extend a spine from x down.
  *              . W W
  */
-function /* int */
-extend_spine(locale, wall_there, dx, dy)
-{
+function extend_spine(locale, wall_there, dx, dy) { /* int */
     let spine, nx, ny;
 
     nx = 1 + dx;
@@ -194,9 +135,7 @@ extend_spine(locale, wall_there, dx, dy)
 }
 
 /* Remove walls totally surrounded by stone */
-function /* void */
-wall_cleanup(x1, y1, x2, y2)
-{
+function wall_cleanup(x1, y1, x2, y2) { /* void */
     let type;
     let x, y;
     let lev;
@@ -225,9 +164,8 @@ wall_cleanup(x1, y1, x2, y2)
 }
 
 /* Correct wall types so they extend and connect to each other */
-export function /* void */
-fix_wall_spines(x1, y1, x2, y2)
-{ const $frame = stack_frame(); try {
+export function fix_wall_spines(x1, y1, x2, y2) { /* void */
+    const $frame = stack_frame(); try {
     let type;
     let x, y;
     let lev;
@@ -263,16 +201,16 @@ fix_wall_spines(x1, y1, x2, y2)
                                    gb.bughack.inarea.x2, gb.bughack.inarea.y2)
                        ? iswall
                        : iswall_or_stone;
-            locale[0][0] = (loc_f)(x - 1, y - 1);
-            locale[1][0] = (loc_f)(x, y - 1);
-            locale[2][0] = (loc_f)(x + 1, y - 1);
+            locale[0][0] = loc_f(x - 1, y - 1);
+            locale[1][0] = loc_f(x, y - 1);
+            locale[2][0] = loc_f(x + 1, y - 1);
 
-            locale[0][1] = (loc_f)(x - 1, y);
-            locale[2][1] = (loc_f)(x + 1, y);
+            locale[0][1] = loc_f(x - 1, y);
+            locale[2][1] = loc_f(x + 1, y);
 
-            locale[0][2] = (loc_f)(x - 1, y + 1);
-            locale[1][2] = (loc_f)(x, y + 1);
-            locale[2][2] = (loc_f)(x + 1, y + 1);
+            locale[0][2] = loc_f(x - 1, y + 1);
+            locale[1][2] = loc_f(x, y + 1);
+            locale[2][2] = loc_f(x + 1, y + 1);
 
             /* determine if wall should extend to each direction NSEW */
             bits = (extend_spine(locale, iswall(x, y - 1), 0, -1) << 3)
@@ -284,18 +222,15 @@ fix_wall_spines(x1, y1, x2, y2)
             if (bits)
                 lev.typ = spine_array[bits];
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-wallification(x1, y1, x2, y2)
-{
+export function wallification(x1, y1, x2, y2) { /* void */
     wall_cleanup(x1, y1, x2, y2);
     fix_wall_spines(x1, y1, x2, y2);
 }
 
-function /* boolean */
-okay(x, y, dir)
-{
+function okay(x, y, dir) { /* boolean */
     do { switch (dir) { case 0: --(y); break; case 1: (x)++; break; case 2: (y)++; break; case 3: --(x); break; default: panic(_("mz_move: bad direction %d"), dir); } } while (0);
     do { switch (dir) { case 0: --(y); break; case 1: (x)++; break; case 2: (y)++; break; case 3: --(x); break; default: panic(_("mz_move: bad direction %d"), dir); } } while (0);
     if (x < 3 || y < 3 || x > gx.x_maze_max || y > gy.y_maze_max
@@ -305,17 +240,13 @@ okay(x, y, dir)
 }
 
 /* find random starting point for maze generation */
-function /* void */
-maze0xy(cc)
-{
+function maze0xy(cc) { /* void */
     cc.x = 3 + 2 * rn2((gx.x_maze_max >> 1) - 1);
     cc.y = 3 + 2 * rn2((gy.y_maze_max >> 1) - 1);
     return;
 }
 
-export function /* boolean */
-is_exclusion_zone(type, x, y)
-{
+export function is_exclusion_zone(type, x, y) { /* boolean */
     let ez = sve.exclusion_zones;
 
     while (ez) {
@@ -324,7 +255,7 @@ is_exclusion_zone(type, x, y)
              || (type == LR_UPTELE
                  && (ez.zonetype == LR_UPTELE || ez.zonetype == LR_TELE))
              || type == ez.zonetype)
-            && ((((((x) >= (ez.lx)) && ((x) <= (ez.hx))) && ((y) >= (ez.ly))) && ((y) <= (ez.hy)))))
+            && (((((x) >= (ez.lx)) && ((x) <= (ez.hx))) && ((y) >= (ez.ly))) && ((y) <= (ez.hy))))
             return TRUE;
         ez = ez.next;
     }
@@ -337,28 +268,24 @@ is_exclusion_zone(type, x, y)
  *      pos is inside restricted region (nlx,nly,nhx,nhy) OR
  *      NOT (pos is corridor and a maze level OR pos is a room OR pos is air)
  */
-export function /* boolean */
-bad_location(
+export function bad_location(
     x, y,
-    nlx, nly, nhx, nhy)
-{
-    return (((occupied(x, y)
+    nlx, nly, nhx, nhy) { /* boolean */
+    return (occupied(x, y)
                       || within_bounded_area(x, y, nlx, nly, nhx, nhy)
                       || !((levl()[x][y].typ == CORR
                             && svl.level.flags.is_maze_lev)
                            || levl()[x][y].typ == ROOM
-                           || levl()[x][y].typ == AIR)) ? 1 : 0));
+                           || levl()[x][y].typ == AIR) ? 1 : 0);
 }
 
 /* pick a location in area (lx, ly, hx, hy) but not in (nlx, nly, nhx, nhy)
    and place something (based on rtype) in that region */
-export function /* void */
-place_lregion(
+export function place_lregion(
     lx, ly, hx, hy,
     nlx, nly, nhx, nhy,
     rtype,
-    lev)
-{
+    lev) { /* void */
     let trycnt;
     let oneshot;
     let x, y;
@@ -391,7 +318,7 @@ place_lregion(
 
     /* first a probabilistic approach */
 
-    oneshot = (+(lx == hx && ly == hy));
+    oneshot = +(lx == hx && ly == hy);
     for (trycnt = 0; trycnt < 200; trycnt++) {
         x = rn1((hx - lx) + 1, lx);
         y = rn1((hy - ly) + 1, ly);
@@ -409,14 +336,12 @@ place_lregion(
     impossible(_("Couldn't place lregion type %d!"), rtype);
 }
 
-function /* boolean */
-put_lregion_here(
+function put_lregion_here(
     x, y,
     nlx, nly, nhx, nhy,
     rtype,
     oneshot,
-    lev)
-{
+    lev) { /* boolean */
     let mtmp;
 
     if (bad_location(x, y, nlx, nly, nhx, nhy)
@@ -471,9 +396,7 @@ put_lregion_here(
 /* fix up Baalzebub's lair, which depicts a level-sized beetle;
    its legs are walls within solid rock--regular wallification
    classifies them as superfluous and gets rid of them */
-function /* void */
-baalz_fixup()
-{
+function baalz_fixup() { /* void */
     let mtmp;
     let x, y, lastx, lasty;
 
@@ -544,7 +467,7 @@ baalz_fixup()
         levl()[x][y].typ = (levl()[x][y].typ == TLWALL) ? BRCORNER : BLCORNER;
         levl()[x][y + 1].typ = HWALL;
         if ((mtmp = m_at(x, y)) != null) /* something at temporary pool... */
-            void rloc(mtmp, RLOC_ERR|RLOC_NOMSG);
+            rloc(mtmp, RLOC_ERR|RLOC_NOMSG);
     }
 
     x = gb.bughack.delarea.x2, y = gb.bughack.delarea.y2;
@@ -553,7 +476,7 @@ baalz_fixup()
         levl()[x][y].typ = (levl()[x][y].typ == TLWALL) ? TRCORNER : TLCORNER;
         levl()[x][y - 1].typ = HWALL;
         if ((mtmp = m_at(x, y)) != null) /* something at temporary pool... */
-            void rloc(mtmp, RLOC_ERR|RLOC_NOMSG);
+            rloc(mtmp, RLOC_ERR|RLOC_NOMSG);
     }
 
     /* reset bughack region; set low end to <COLNO,ROWNO> so that
@@ -566,12 +489,12 @@ baalz_fixup()
 }
 
 /* this is special stuff that the level compiler cannot (yet) handle */
-export function /* void */
-fixup_special()
-{ const $frame = stack_frame(); try { let $goto = null; var lev = stack_struct(struct_d_level);
+export function fixup_special() { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var lev = stack_struct(struct_d_level);
     var r = gl.lregions;
     var sp;
-    
+
     var x, y;
     var croom;
     var added_branch = FALSE;
@@ -688,7 +611,7 @@ fixup_special()
         svl.level.flags.graveyard = 1;
     } else if (Is_stronghold(u.uz)) {
         svl.level.flags.graveyard = 1;
-    } else if (on_level(u.uz, (svd.dungeon_topology.d_baalzebub_level))) {
+    } else if (on_level(u.uz, svd.dungeon_topology.d_baalzebub_level)) {
         /* custom wallify the "beetle" potion of the level */
         baalz_fixup();
     } else if (u.uz.dnum == mines_dnum() && gr.ransacked) {
@@ -701,21 +624,19 @@ fixup_special()
     if (gl.lregions)
         free(addr_of(gl.lregions)), gl.lregions = null;
     gn.num_lregions = 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-check_ransacked(s)
-{
+function check_ransacked(s) { /* void */
     /* this kludge only works as long as orctown is minetn-1 */
-    gr.ransacked = (+(u.uz.dnum == mines_dnum() && !strcmp(s, _("minetn-1"))));
+    gr.ransacked = +(u.uz.dnum == mines_dnum() && !strcmp(s, _("minetn-1")));
 }
 
 export const ORC_LEADER = 1;
 const orcfruit = static_array("orcfruit", ptr_to(char), null, [ _("paddle cactus"), _("dwarven root") ]);
 
-function /* void */
-migrate_orc(mtmp, mflags)
-{ const $frame = stack_frame(); try {
+function migrate_orc(mtmp, mflags) { /* void */
+    const $frame = stack_frame(); try {
     let nlev, max_depth, cur_depth;
     let dest = stack_struct(struct_d_level);
 
@@ -738,18 +659,17 @@ migrate_orc(mtmp, mflags)
             nlev++;
         if (nlev > max_depth)
             nlev = max_depth;
-        mtmp.migflags = (and64(mtmp.migflags, ~MIGR_LEFTOVERS));
+        mtmp.migflags = and64(mtmp.migflags, ~MIGR_LEFTOVERS);
     }
     get_level(dest, nlev);
     migrate_to_level(mtmp, ledger_no(dest), MIGR_RANDOM, null);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-shiny_orc_stuff(mtmp)
-{
+function shiny_orc_stuff(mtmp) { /* void */
     let gemprob, goldprob, otyp;
     let otmp;
-    let is_captain = (+(mtmp.data == mons[PM_ORC_CAPTAIN]));
+    let is_captain = +(mtmp.data == mons[PM_ORC_CAPTAIN]);
 
     /* probabilities */
     goldprob = is_captain ? 600 : 300;
@@ -776,15 +696,13 @@ shiny_orc_stuff(mtmp)
     }
 }
 
-function /* void */
-migr_booty_item(otyp, gang)
-{
+function migr_booty_item(otyp, gang) { /* void */
     let otmp;
 
     otmp = mksobj_migr_to_species(otyp, M2_ORC, TRUE, FALSE);
     if (otmp && gang) {
         new_oname(otmp, int(unsigned(Strlen(gang) + 1))); /* removes old name if present */
-        void strcpy(ONAME(otmp), gang);
+        strcpy(ONAME(otmp), gang);
         if (objects[otyp].oc_class == FOOD_CLASS) {
             if (otyp == SLIME_MOLD)
                 otmp.spe = fruitadd(ROLL_FROM(orcfruit),
@@ -795,9 +713,8 @@ migr_booty_item(otyp, gang)
     }
 }
 
-function /* void */
-stolen_booty()
-{ const $frame = stack_frame(); try {
+function stolen_booty() { /* void */
+    const $frame = stack_frame(); try {
     let gang, gang_name = stack_array(char, BUFSZ);
     let mtmp;
     let cnt, i, otyp;
@@ -886,23 +803,19 @@ stolen_booty()
         }
     }
     gr.ransacked = 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* boolean */
-maze_inbounds(x, y)
-{
-    return (((x >= 2 && y >= 2
+function maze_inbounds(x, y) { /* boolean */
+    return (x >= 2 && y >= 2
             && x < gx.x_maze_max && y < gy.y_maze_max
             /* isok() test is superfluous here (unless something has
                clobbered the static *_maze_max variables) */
-            && isok(x, y)) ? 1 : 0));
+            && isok(x, y) ? 1 : 0);
 }
 
-function /* void */
-maze_remove_deadends(typ)
-{ const $frame = stack_frame(); try {
+function maze_remove_deadends(typ) { /* void */
+    const $frame = stack_frame(); try {
     let dirok = stack_array(char, 4);
     let x, y, dir, idx, idx2, dx, dy, dx2, dy2;
 
@@ -941,14 +854,14 @@ maze_remove_deadends(typ)
                     levl()[dx][dy].typ = typ;
                 }
             }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Create a maze with specified corridor width and wall thickness
  * TODO: rewrite walkfrom so it works on temp space, not levl
  */
-export function /* void */
-create_maze(corrwid, wallthick, rmdeadends)
-{ const $frame = stack_frame(); try {
+export function create_maze(corrwid, wallthick, rmdeadends) { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let mm = stack_struct(struct_nhcoord);
     let tmp_xmax = gx.x_maze_max;
@@ -974,8 +887,8 @@ create_maze(corrwid, wallthick, rmdeadends)
         corrwid = 5;
 
     scale = corrwid + wallthick;
-    rdx = (Math.trunc(gx.x_maze_max / scale));
-    rdy = (Math.trunc(gy.y_maze_max / scale));
+    rdx = Math.trunc(gx.x_maze_max / scale);
+    rdy = Math.trunc(gy.y_maze_max / scale);
 
     if (svl.level.flags.corrmaze)
         for (x = 2; x < (rdx * 2); x++)
@@ -995,7 +908,7 @@ create_maze(corrwid, wallthick, rmdeadends)
     walkfrom(mm.x, mm.y, 0);
 
     if (rmdeadends)
-        maze_remove_deadends((svl.level.flags.corrmaze) ? CORR : ROOM);
+        maze_remove_deadends(svl.level.flags.corrmaze ? CORR : ROOM);
 
     /* restore bounds */
     gx.x_maze_max = tmp_xmax;
@@ -1034,20 +947,16 @@ create_maze(corrwid, wallthick, rmdeadends)
             rx += mx;
             x++;
         }
-
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-pick_vibrasquare_location()
-{
+export function pick_vibrasquare_location() { /* void */
     let x, y;
     let stway;
     let trycnt = 0;
     /* these are also defined in mklev.c and they may not be appropriate
        for mazes with corridors wider than 1 or for cavernous levels */
-
-
 
     /*
      * Pick a position where the stairs down to Moloch's Sanctum
@@ -1059,8 +968,6 @@ pick_vibrasquare_location()
      * We actually allow up to 2 squares around the usual edge of
      * the area to get truncated; see mkinvokearea(mklev.c).
      */
-
-
 
     let x_range = gx.x_maze_max - x_maze_min - 2 * INVPOS_X_MARGIN - 1,
         y_range = gy.y_maze_max - y_maze_min - 2 * INVPOS_Y_MARGIN - 1;
@@ -1085,47 +992,46 @@ pick_vibrasquare_location()
                  || !SPACE_POS(levl()[x][y].typ) || occupied(x, y)));
     svi.inv_pos.x = x;
     svi.inv_pos.y = y;
-
-
-
-
-
-} export const x_maze_min = 2; export const INVPOS_X_MARGIN = (6 - 2); export const y_maze_min = 2; export const INVPOS_Y_MARGIN = (5 - 2); export const INVPOS_DISTANCE = 11;
+}
+export const x_maze_min = 2;
+export const INVPOS_X_MARGIN = (6 - 2);
+export const y_maze_min = 2;
+export const INVPOS_Y_MARGIN = (5 - 2);
+export const INVPOS_DISTANCE = 11;
 
 /* add objects and monsters to random maze */
-function /* void */
-populate_maze()
-{ const $frame = stack_frame(); try {
+function populate_maze() { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let mm = stack_struct(struct_nhcoord);
 
     for (i = rn1(8, 11); i; i--) {
         mazexy(mm);
-        void mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y, TRUE);
+        mkobj_at(rn2(2) ? GEM_CLASS : RANDOM_CLASS, mm.x, mm.y, TRUE);
     }
     for (i = rn1(10, 2); i; i--) {
         mazexy(mm);
-        void mksobj_at(BOULDER, mm.x, mm.y, TRUE, FALSE);
+        mksobj_at(BOULDER, mm.x, mm.y, TRUE, FALSE);
     }
     for (i = rn2(3); i; i--) {
         mazexy(mm);
-        void makemon(mons[PM_MINOTAUR], mm.x, mm.y, NO_MM_FLAGS);
+        makemon(mons[PM_MINOTAUR], mm.x, mm.y, NO_MM_FLAGS);
     }
     for (i = rn1(5, 7); i; i--) {
         mazexy(mm);
-        void makemon(null, mm.x, mm.y, NO_MM_FLAGS);
+        makemon(null, mm.x, mm.y, NO_MM_FLAGS);
     }
     for (i = rn1(6, 7); i; i--) {
         mazexy(mm);
-        void mkgold(0, mm.x, mm.y);
+        mkgold(0, mm.x, mm.y);
     }
     for (i = rn1(6, 7); i; i--)
         mktrap(0, MKTRAP_MAZEFLAG, null, null);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-makemaz(s)
-{ const $frame = stack_frame(); try {
+export function makemaz(s) { /* void */
+    const $frame = stack_frame(); try {
     let protofile = stack_array(char, 20);
     let sp = Is_special(u.uz);
     let mm = stack_struct(struct_nhcoord);
@@ -1134,7 +1040,7 @@ makemaz(s)
         if (sp && sp.rndlevs)
             Snprintf(protofile, sizeof(array_of(char, 20)), _("%s-%d"), s, rnd(sp.rndlevs));
         else
-            void strcpy(protofile, s)
+            strcpy(protofile, s)
 ;
     } else if (chars[(svd.dungeons[u.uz.dnum].proto)]) {
         if (dunlevs_in_dungeon(u.uz) > 1) {
@@ -1143,18 +1049,15 @@ makemaz(s)
             else
                 Snprintf(protofile, sizeof(array_of(char, 20)), _("%s%d"), svd.dungeons[u.uz.dnum].proto, dunlev(u.uz))
 
-
-
 ;
         } else if (sp && sp.rndlevs) {
             Snprintf(protofile, sizeof(array_of(char, 20)), _("%s-%d"), svd.dungeons[u.uz.dnum].proto, rnd(sp.rndlevs))
 
 ;
         } else
-            void strcpy(protofile, svd.dungeons[u.uz.dnum].proto);
-
+            strcpy(protofile, svd.dungeons[u.uz.dnum].proto);
     } else
-        void strcpy(protofile, _(""));
+        strcpy(protofile, _(""));
 
     /* SPLEVTYPE format is "level-choice,level-choice"... */
     if (wizard() && chars[protofile] && sp && sp.rndlevs) {
@@ -1170,7 +1073,7 @@ makemaz(s)
 
                     /* use choice only if valid */
                     if (pick > 0 && pick <= sp.rndlevs)
-                        void sprintf(protofile + len, _("%d"), pick);
+                        sprintf(protofile + len, _("%d"), pick);
                     break;
                 } else {
                     ep = strchr(ep, ord(','));
@@ -1183,7 +1086,7 @@ makemaz(s)
 
     if (chars[protofile]) {
         check_ransacked(protofile);
-        void strcat(protofile, _(LEV_EXT));
+        strcat(protofile, _(LEV_EXT));
         gi.in_mk_themerooms = FALSE;
         if (load_special(protofile)) {
             /* some levels can end up with monsters
@@ -1220,64 +1123,13 @@ makemaz(s)
     place_branch(Is_branchlev(u.uz), 0, 0);
 
     populate_maze();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
+/* #ifdef MICRO: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-walkfrom(x, y, typ)
-{ const $frame = stack_frame(); try {
+export function walkfrom(x, y, typ) { /* void */
+    const $frame = stack_frame(); try {
     let q, a, dir;
     let dirs = stack_array(int, 4);
 
@@ -1307,14 +1159,12 @@ walkfrom(x, y, typ)
         do { switch (dir) { case 0: --(y); break; case 1: (x)++; break; case 2: (y)++; break; case 3: --(x); break; default: panic(_("mz_move: bad direction %d"), dir); } } while (0);
         walkfrom(x, y, typ);
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* find random point in generated corridors,
    so we don't create items in moats, bunkers, or walls */
-export function /* void */
-mazexy(cc)
-{
+export function mazexy(cc) { /* void */
     let x, y;
     let allowedtyp = (svl.level.flags.corrmaze ? CORR : ROOM);
     let cpt = 0;
@@ -1349,11 +1199,9 @@ mazexy(cc)
     return;
 }
 
-export function /* void */
-get_level_extends(
+export function get_level_extends(
     left, top,
-    right, bottom)
-{
+    right, bottom) { /* void */
     let x, y;
     let typ;
     let lev;
@@ -1437,9 +1285,8 @@ get_level_extends(
  * we can't bound unconditionally on one beyond the last line, because
  * that provides a window of abuse for wallified special levels
  */
-export function /* void */
-bound_digging()
-{ const $frame = stack_frame(); try {
+export function bound_digging() { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let xmin = stack_var(coordxy), xmax = stack_var(coordxy), ymin = stack_var(coordxy), ymax = stack_var(coordxy);
 
@@ -1458,11 +1305,10 @@ bound_digging()
                 if (y < ymin[0] || y > ymax[0] || x < xmin[0] || x > xmax[0])
                     levl()[x][y].flags |= W_NONPASSWALL;
             }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-mkportal(x, y, todnum, todlevel)
-{
+export function mkportal(x, y, todnum, todlevel) { /* void */
     /* a portal "trap" must be matched by a
        portal in the destination dungeon/dlevel */
     let ttmp = maketrap(x, y, MAGIC_PORTAL);
@@ -1480,9 +1326,7 @@ mkportal(x, y, todnum, todlevel)
 
 /* augment the Plane of Fire; called from goto_level() when arriving and
    moveloop_core() when on the level */
-export function /* void */
-fumaroles()
-{
+export function fumaroles() { /* void */
     let n, nmax = rn2(3);
     let sizemin = 5;
     let snd = FALSE, loud = FALSE;
@@ -1529,15 +1373,9 @@ export function gbymax() { return (svy.ymax - 1); }
 /* the bubble hero is in */
 const hero_bubble = static_var("hero_bubble", ptr_to(struct_bubble), null);
 
-
-
-
-
 /* augment the Planes of Water (for bubbles) and Air (for clouds); called
    from goto_level() when arriving and moveloop_core() when on the level */
-export function /* void */
-movebubbles()
-{
+export function movebubbles() { /* void */
     let water_pos = static_struct("movebubbles.water_pos", struct_rm, {
         glyph: cmap_b_to_glyph(S_water), typ: WATER, seenv: 0, flags: 0, horizontal: 0, lit: 0, waslit: 0, roomno: 0, edge: 0, candig: 0
     }), air_pos = static_struct("movebubbles.air_pos", struct_rm, {
@@ -1685,9 +1523,7 @@ movebubbles()
 }
 
 /* when moving in water, possibly (1 in 3) alter the intended destination */
-export function /* void */
-water_friction()
-{
+export function water_friction() { /* void */
     let x, y, dx, dy;
     let eff = FALSE;
 
@@ -1719,9 +1555,8 @@ water_friction()
         pline(_("Water turbulence affects your movements."));
 }
 
-export function /* void */
-save_waterlevel(nhfp)
-{ const $frame = stack_frame(); try {
+export function save_waterlevel(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let b;
 
     if (!svb.bbubbles)
@@ -1742,20 +1577,14 @@ save_waterlevel(nhfp)
     }
     if (release_data(nhfp))
         unsetup_waterlevel();
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* restoring air bubbles on Plane of Water or clouds on Plane of Air */
-export function /* void */
-restore_waterlevel(nhfp)
-{ const $frame = stack_frame(); try {
+export function restore_waterlevel(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let b = null, btmp;
     let i, n = stack_var(int, 0);
-
-
-
-
-
 
     sfi_int(nhfp, n, _("waterlevel-bubble_count"));
     sfi_int(nhfp, ref_of(svx, "xmin"), _("waterlevel-xmin"));
@@ -1775,7 +1604,6 @@ restore_waterlevel(nhfp)
         }
 
         mv_bubble(b, 0, 0, TRUE);
-
     }
 
     ge.ebubbles = b;
@@ -1794,13 +1622,10 @@ restore_waterlevel(nhfp)
                      : _("air bubbles or clouds"));
         program_state.something_worth_saving = 1;
     }
+    } finally { stack_pop($frame); }
+}
 
-} finally { stack_pop($frame); } }
-
-
-function /* void */
-set_wportal()
-{
+function set_wportal() { /* void */
     /* there better be only one magic portal on water level... */
     for (gw.wportal = gf.ftrap; gw.wportal; gw.wportal = gw.wportal.ntrap)
         if (gw.wportal.ttyp == MAGIC_PORTAL)
@@ -1808,9 +1633,7 @@ set_wportal()
     impossible(_("set_wportal(): no portal!"));
 }
 
-function /* void */
-setup_waterlevel()
-{
+function setup_waterlevel() { /* void */
     let typ, glyph;
     let x, y, xskip, yskip;
 
@@ -1856,9 +1679,7 @@ setup_waterlevel()
             mk_bubble(x, y, rn2(7));
 }
 
-function /* void */
-unsetup_waterlevel()
-{
+function unsetup_waterlevel() { /* void */
     let b, bb;
 
     /* free bubbles */
@@ -1869,9 +1690,7 @@ unsetup_waterlevel()
     svb.bbubbles = ge.ebubbles = null;
 }
 
-function /* void */
-mk_bubble(x, y, n)
-{
+function mk_bubble(x, y, n) { /* void */
     /*
      * These bit masks make visually pleasing bubbles on a normal aspect
      * 25x80 terminal, which naturally results in them being mathematically
@@ -1909,7 +1728,7 @@ mk_bubble(x, y, n)
     b.dx = 1 - rn2(3);
     b.dy = 1 - rn2(3);
     /* y dimension is the length of bitmap data - see bmask above */
-    void memcpy(b.bm, (bmask[n]),
+    memcpy(b.bm, (bmask[n]),
                   (uchars[bmask[n] + 1] + 2) * sizeof(uchar));
     b.cons = null;
     if (!svb.bbubbles)
@@ -1925,9 +1744,7 @@ mk_bubble(x, y, n)
 }
 
 /* maybe change the movement direction of the bubble hero is in */
-export function /* void */
-maybe_adjust_hero_bubble()
-{
+export function maybe_adjust_hero_bubble() { /* void */
     if (!Is_waterlevel(u.uz))
         return;
 
@@ -1948,9 +1765,7 @@ maybe_adjust_hero_bubble()
  * in the immediate neighborhood of one, he/she may get sucked inside.
  * This property also makes leaving a bubble slightly difficult.
  */
-function /* void */
-mv_bubble(b, dx, dy, ini)
-{
+function mv_bubble(b, dx, dy, ini) { /* void */
     let i, j, colli = 0;
     let x, y;
     let cons, ctemp;
@@ -2106,310 +1921,118 @@ mv_bubble(b, dx, dy, ini)
     }
 }
 
-
 /*mkmaze.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { S_air } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
-import { cmap_b_to_glyph } from "./display.h.macros.js";
-import { cmap_to_glyph } from "./display.h.macros.js";
-import { LR_BRANCH } from "./dungeon.h.js";
-import { LR_DOWNSTAIR } from "./dungeon.h.js";
-import { LR_DOWNTELE } from "./dungeon.h.js";
-import { LR_PORTAL } from "./dungeon.h.js";
-import { LR_TELE } from "./dungeon.h.js";
-import { LR_UPSTAIR } from "./dungeon.h.js";
-import { LR_UPTELE } from "./dungeon.h.js";
-import { MIGR_LEFTOVERS } from "./dungeon.h.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_earthlevel } from "./dungeon.h.macros.js";
-import { Is_firelevel } from "./dungeon.h.macros.js";
-import { Is_medusa_level } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { within_bounded_area } from "./dungeon.h.macros.js";
+import {
+    FOOD_CLASS, GEM_CLASS, RANDOM_CLASS, RING_CLASS, S_air, S_cloud, S_water,
+} from "./defsym.h.js";
+import { cmap_b_to_glyph, cmap_to_glyph } from "./display.h.macros.js";
+import {
+    LR_BRANCH, LR_DOWNSTAIR, LR_DOWNTELE, LR_PORTAL, LR_TELE, LR_UPSTAIR, LR_UPTELE, MIGR_LEFTOVERS,
+    MIGR_RANDOM, struct_d_level,
+} from "./dungeon.h.js";
+import {
+    Is_airlevel, Is_earthlevel, Is_firelevel, Is_medusa_level, Is_stronghold, Is_waterlevel,
+    within_bounded_area,
+} from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LEV_EXT } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
+import { BUFSZ, COLNO, FALSE, LEV_EXT, ROWNO, TRUE, coordxy } from "./global.h.js";
 import { Strlen } from "./global.h.macros.js";
-import { CONS_HERO } from "./hack.h.js";
-import { CONS_MON } from "./hack.h.js";
-import { CONS_OBJ } from "./hack.h.js";
-import { CONS_TRAP } from "./hack.h.js";
-import { CORPSTAT_NONE } from "./hack.h.js";
-import { MAX_BMASK } from "./hack.h.js";
-import { MKTRAP_MAZEFLAG } from "./hack.h.js";
-import { MM_NONAME } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { RLOC_ERR } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { struct_bubble } from "./hack.h.js";
-import { struct_container } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { mines_dnum } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
+import {
+    CONS_HERO, CONS_MON, CONS_OBJ, CONS_TRAP, CORPSTAT_NONE, MAX_BMASK, MKTRAP_MAZEFLAG, MM_NONAME,
+    NO_MM_FLAGS, RLOC_ERR, RLOC_NOMSG, struct_bubble, struct_container,
+} from "./hack.h.js";
+import {
+    ROLL_FROM, distu, max, min, mines_dnum, release_data, rn1, update_file,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { debugpline2 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
+import { debugpline2, showdebug } from "./lint.h.macros.js";
 import { has_mgivenname } from "./mextra.h.macros.js";
-import { is_orc } from "./mondata.h.macros.js";
-import { pm_resistance } from "./mondata.h.macros.js";
-import { M2_ORC } from "./monflag.h.js";
-import { MR_STONE } from "./monflag.h.js";
-import { MON_BUBBLEMOVE } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
+import { is_orc, pm_resistance } from "./mondata.h.macros.js";
+import { M2_ORC, MR_STONE } from "./monflag.h.js";
+import { MON_BUBBLEMOVE, struct_monst } from "./monst.h.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_ORC_CAPTAIN } from "./monsters.h.js";
-import { PM_ORC_SHAMAN } from "./monsters.h.js";
+import { PM_CLERIC, PM_MINOTAUR, PM_ORC, PM_ORC_CAPTAIN, PM_ORC_SHAMAN } from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
 import { ONAME } from "./obj.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { C_RATION } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { GAUNTLETS_OF_DEXTERITY } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { K_RATION } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SILVER_SABER } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TRIPE_RATION } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
+import {
+    BOULDER, CORPSE, C_RATION, EGG, GAUNTLETS_OF_DEXTERITY, GOLD_PIECE, K_RATION, LEATHER_GLOVES,
+    LEMBAS_WAFER, LONG_SWORD, ROCK, SILVER_SABER, SKELETON_KEY, SLIME_MOLD, STATUE, STRANGE_OBJECT,
+    TALLOW_CANDLE, TIN, TRIPE_RATION, WAX_CANDLE,
+} from "./objects.h.js";
 import { clear_heros_fault } from "./region.h.macros.js";
-import { AIR } from "./rm.h.js";
-import { BLCORNER } from "./rm.h.js";
-import { BRCORNER } from "./rm.h.js";
-import { CLOUD } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { CROSSWALL } from "./rm.h.js";
-import { DBWALL } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { MAX_TYPE } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SET_LIT_NOCHANGE } from "./rm.h.js";
-import { SET_LIT_RANDOM } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { TDWALL } from "./rm.h.js";
-import { TLCORNER } from "./rm.h.js";
-import { TLWALL } from "./rm.h.js";
-import { TRCORNER } from "./rm.h.js";
-import { TRWALL } from "./rm.h.js";
-import { TUWALL } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { W_NONPASSWALL } from "./rm.h.js";
-import { struct_rm } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { CAN_OVERWRITE_TERRAIN } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_LAVA } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { SPACE_POS } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { Sfi_bubble } from "./savefile.h.macros.js";
-import { Sfo_bubble } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
+import {
+    AIR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, HWALL, ICE, IRONBARS, LAVAPOOL,
+    LAVAWALL, MAX_TYPE, POOL, ROOM, SDOOR, SET_LIT_NOCHANGE, SET_LIT_RANDOM, STONE, TDWALL,
+    TLCORNER, TLWALL, TRCORNER, TRWALL, TUWALL, VWALL, WATER, W_NONDIGGABLE, W_NONPASSWALL,
+    struct_rm,
+} from "./rm.h.js";
+import {
+    ACCESSIBLE, CAN_OVERWRITE_TERRAIN, IS_DOOR, IS_FOUNTAIN, IS_LAVA, IS_SINK, IS_STWALL, IS_WALL,
+    MON_AT, OBJ_AT, SPACE_POS, fmon, levl, m_at, remove_monster,
+} from "./rm.h.macros.js";
+import { Sfi_bubble, Sfo_bubble, Sfo_int } from "./savefile.h.macros.js";
 import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { MAGIC_PORTAL } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { struct_trap } from "./trap.h.js";
+import { MAGIC_PORTAL, VIBRATING_SQUARE, struct_trap } from "./trap.h.js";
 import { undestroyable_trap } from "./trap.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { Swimming } from "./youprop.h.macros.js";
+import { Role_if, u_at } from "./you.h.macros.js";
+import { Deaf, Punished, Swimming } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { atoi } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, schar, short, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { and64, or64 } from "../rt/int64.js";
+import {
+    abs, atoi, free, getenv, memcpy, sprintf, strcat, strchr, strcmp, strcpy, strncmp, strrchr,
+} from "../rt/libc.js";
+import {
+    stack_array, stack_struct, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, struct_assign, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
-import { lift_covet_and_placebc } from "./ball.js";
-import { unplacebc_and_covet_placebc } from "./ball.js";
+import { lift_covet_and_placebc, unplacebc_and_covet_placebc } from "./ball.js";
 import { isok } from "./cmd.js";
-import { is_ice } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { gb } from "./decl.js";
-import { ge } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gn } from "./decl.js";
-import { gr } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gw } from "./decl.js";
-import { gx } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svb } from "./decl.js";
-import { svd } from "./decl.js";
-import { sve } from "./decl.js";
-import { svi } from "./decl.js";
-import { svl } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { svu } from "./decl.js";
-import { svx } from "./decl.js";
-import { svy } from "./decl.js";
-import { u } from "./decl.js";
+import { is_ice, is_pool } from "./dbridge.js";
+import {
+    gb, ge, gf, gi, gl, gn, gr, gu, gv, gw, gx, gy, iflags, program_state, svb, svd, sve, svi, svl,
+    svn, svr, svu, svx, svy, u,
+} from "./decl.js";
 import { newsym } from "./display.js";
-import { christen_monst } from "./do_name.js";
-import { christen_orc } from "./do_name.js";
-import { new_oname } from "./do_name.js";
-import { rndorcname } from "./do_name.js";
+import { christen_monst, christen_orc, new_oname, rndorcname } from "./do_name.js";
 import { migrate_to_level } from "./dog.js";
-import { In_quest } from "./dungeon.js";
-import { Invocation_lev } from "./dungeon.js";
-import { Is_branchlev } from "./dungeon.js";
-import { Is_special } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlev } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { find_level } from "./dungeon.js";
-import { get_level } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { u_on_newpos } from "./dungeon.js";
+import {
+    In_quest, Invocation_lev, Is_branchlev, Is_special, depth, dunlev, dunlevs_in_dungeon,
+    find_level, get_level, ledger_no, on_level, u_on_newpos,
+} from "./dungeon.js";
 import { panic } from "./end.js";
-import { distmin } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
+import { distmin, sgn, upstart } from "./hacklib.js";
 import { stackobj } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { count_level_features } from "./mklev.js";
-import { mkstairs } from "./mklev.js";
-import { mktrap } from "./mklev.js";
-import { occupied } from "./mklev.js";
-import { place_branch } from "./mklev.js";
-import { add_to_minv } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { mk_tt_object } from "./mkobj.js";
-import { mkcorpstat } from "./mkobj.js";
-import { mkgold } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mkobj_at } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { mksobj_migr_to_species } from "./mkobj.js";
-import { obj_ice_effects } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { remove_object } from "./mkobj.js";
-import { rndmonnum } from "./mkobj.js";
-import { set_corpsenm } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { somex } from "./mkroom.js";
-import { somey } from "./mkroom.js";
-import { dmonsfree } from "./mon.js";
-import { elemental_clog } from "./mon.js";
-import { m_into_limbo } from "./mon.js";
-import { mnearto } from "./mon.js";
-import { mnexto } from "./mon.js";
+import { makemon, set_malign } from "./makemon.js";
+import { count_level_features, mkstairs, mktrap, occupied, place_branch } from "./mklev.js";
+import {
+    add_to_minv, dealloc_obj, mk_tt_object, mkcorpstat, mkgold, mkobj, mkobj_at, mksobj, mksobj_at,
+    mksobj_migr_to_species, obj_ice_effects, place_object, remove_object, rndmonnum, set_corpsenm,
+    weight,
+} from "./mkobj.js";
+import { somex, somey } from "./mkroom.js";
+import { dmonsfree, elemental_clog, m_into_limbo, mnearto, mnexto } from "./mon.js";
 import { poly_when_stoned } from "./mondata.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
 import { shiny_obj } from "./objnam.js";
 import { fruitadd } from "./options.js";
-import { Norep } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
+import { Norep, impossible, pline } from "./pline.js";
 import { create_gas_cloud } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { sfi_int } from "./sfbase.js";
 import { load_special } from "./sp_lev.js";
 import { stairway_find_dir } from "./stairs.js";
-import { goodpos } from "./teleport.js";
-import { rloc } from "./teleport.js";
+import { goodpos, rloc } from "./teleport.js";
 import { spot_stop_timers } from "./timeout.js";
-import { deltrap } from "./trap.js";
-import { maketrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { block_point } from "./vision.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { vision_recalc } from "./vision.js";
+import { deltrap, maketrap, t_at } from "./trap.js";
+import { block_point, recalc_block_point, unblock_point, vision_recalc } from "./vision.js";
 import { remove_worm } from "./worm.js";
 const __FILE__ = "mkmaze.c";

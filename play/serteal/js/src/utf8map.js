@@ -2,21 +2,11 @@
 /* Copyright (c) Michael Allison, 2021. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
         /* symbols.c */
 
 /* hexdd[] is defined in decl.c */
 
-export function /* int */
-unicode_val(cp)
-{
+export function unicode_val(cp) { /* int */
     let dp;
     let cval = 0, dcount;
 
@@ -26,16 +16,14 @@ unicode_val(cp)
             && chars[cp + 1] == ord('+') && chars[cp + 2] && (dp = strchr(hexdd, chars[cp + 2])) != 0) {
             cp += 2; /* move past the 'U' and '+' */
             do {
-                cval = (cval * 16) + (Math.trunc((dp - hexdd) / 2));
+                cval = (cval * 16) + Math.trunc((dp - hexdd) / 2);
             } while (chars[++cp] && (dp = strchr(hexdd, chars[cp])) != 0 && ++dcount < 7);
         }
     }
     return cval;
 }
 
-export function /* int */
-set_map_u(gmap, utf32ch, utf8str)
-{
+export function set_map_u(gmap, utf32ch, utf8str) { /* int */
     let tmpgm = gmap;
 
     if (!tmpgm || !utf32ch)
@@ -55,9 +43,7 @@ set_map_u(gmap, utf32ch, utf8str)
     return 1;
 }
 
-export function /* void */
-free_all_glyphmap_u()
-{
+export function free_all_glyphmap_u() { /* void */
     let glyph;
     let x, y;
 
@@ -82,9 +68,8 @@ free_all_glyphmap_u()
 /* helper routine if a window port wants to embed any UTF-8 sequences
    for the glyph representation in the string in place of the \GNNNNNNNN
    reference */
-export function /* char * */
-mixed_to_utf8(buf, bufsz, str, retflags)
-{ const $frame = stack_frame(); try {
+export function mixed_to_utf8(buf, bufsz, str, retflags) { /* char * */
+    const $frame = stack_frame(); try {
     let put = buf;
     let glyphinfo = struct_assign(stack_struct(struct_glyphinfo), nul_glyphinfo);
 
@@ -142,20 +127,18 @@ mixed_to_utf8(buf, bufsz, str, retflags)
     }
     chars[put] = ord('\0');
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-add_custom_urep_entry(
+export function add_custom_urep_entry(
     customization_name,
     glyphidx,
     utf32ch,
     utf8str,
-    which_set)
-{
+    which_set) { /* int */
     let gdc = gs.sym_customizations[which_set][custom_ureps];
 
     let details, newdetails = null;
-
 
     if (!gdc.details) {
         gdc.customization_name = dupstr(customization_name);
@@ -206,52 +189,25 @@ add_custom_urep_entry(
     return 1;
 }
 
-
-export function /* void */
-reset_customsymbols()
-{
-
+export function reset_customsymbols() { /* void */
     free_all_glyphmap_u();
     apply_customizations(unsigned(gc.currentgraphics), do_custom_symbols);
-
 }
 
 /* utf8map.c */
+
 import { MAX_GLYPH } from "./display.h.js";
-import { COLNO } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { custom_ureps } from "./sym.h.js";
-import { do_custom_symbols } from "./sym.h.js";
-import { struct_customization_detail } from "./sym.h.js";
-import { struct_glyphinfo } from "./wintype.h.js";
-import { struct_unicode_representation } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
+import { COLNO, ROWNO } from "./global.h.js";
+import { custom_ureps, do_custom_symbols, struct_customization_detail } from "./sym.h.js";
+import { struct_glyphinfo, struct_unicode_representation } from "./wintype.h.js";
+import { char, int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { free, strchr, strcpy } from "../rt/libc.js";
+import { stack_struct, stack_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { gc } from "./decl.js";
-import { gg } from "./decl.js";
-import { gs } from "./decl.js";
-import { hexdd } from "./decl.js";
-import { glyphmap } from "./display.js";
-import { map_glyphinfo } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { apply_customizations } from "./glyphs.js";
-import { find_matching_customization } from "./glyphs.js";
+import { addr_of, struct_assign, view_of } from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
+import { gc, gg, gs, hexdd } from "./decl.js";
+import { glyphmap, map_glyphinfo, nul_glyphinfo } from "./display.js";
+import { apply_customizations, find_matching_customization } from "./glyphs.js";
 import { decode_glyph } from "./windows.js";

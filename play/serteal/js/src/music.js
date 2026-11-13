@@ -26,24 +26,8 @@
  *                      called here chasms.
  */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* wake up monster, possibly scare it */
-function /* void */
-awaken_scare(mtmp, scary)
-{
+function awaken_scare(mtmp, scary) { /* void */
     mtmp.msleeping = 0;
     mtmp.mcanmove = 1;
     mtmp.mfrozen = 0;
@@ -63,9 +47,7 @@ awaken_scare(mtmp, scary)
  * Wake every monster in range...
  */
 
-function /* void */
-awaken_monsters(distance)
-{
+function awaken_monsters(distance) { /* void */
     let mtmp;
     let distm;
 
@@ -73,7 +55,7 @@ awaken_monsters(distance)
         if (DEADMONSTER(mtmp))
             continue;
         if ((distm = mdistu(mtmp)) < distance)
-            awaken_scare(mtmp, (+(distm < Math.trunc(distance / 3))));
+            awaken_scare(mtmp, +(distm < Math.trunc(distance / 3)));
     }
 }
 
@@ -81,9 +63,7 @@ awaken_monsters(distance)
  * Make monsters fall asleep.  Note that they may resist the spell.
  */
 
-function /* void */
-put_monsters_to_sleep(distance)
-{
+function put_monsters_to_sleep(distance) { /* void */
     let mtmp;
 
     for (mtmp = fmon(); mtmp; mtmp = mtmp.nmon) {
@@ -101,9 +81,7 @@ put_monsters_to_sleep(distance)
  * Charm snakes in range.  Note that the snakes are NOT tamed.
  */
 
-function /* void */
-charm_snakes(distance)
-{
+function charm_snakes(distance) { /* void */
     let mtmp;
     let could_see_mon, was_peaceful;
 
@@ -135,9 +113,7 @@ charm_snakes(distance)
  * Calm nymphs in range.
  */
 
-function /* void */
-calm_nymphs(distance)
-{
+function calm_nymphs(distance) { /* void */
     let mtmp;
 
     for (mtmp = fmon(); mtmp; mtmp = mtmp.nmon) {
@@ -158,9 +134,7 @@ calm_nymphs(distance)
 }
 
 /* Awake soldiers anywhere the level (and any nearby monster). */
-export function /* void */
-awaken_soldiers(bugler)
-{
+export function awaken_soldiers(bugler) { /* void */
     let mtmp;
     let distance, distm;
 
@@ -186,15 +160,13 @@ awaken_soldiers(bugler)
                                  ? mdistu(mtmp)
                                  : dist2(bugler.mx, bugler.my, mtmp.mx,
                                          mtmp.my))) < distance) {
-            awaken_scare(mtmp, (+(distm < Math.trunc(distance / 3))));
+            awaken_scare(mtmp, +(distm < Math.trunc(distance / 3)));
         }
     }
 }
 
 /* Charm monsters in range.  Note that they may resist the spell. */
-function /* void */
-charm_monsters(distance)
-{
+function charm_monsters(distance) { /* void */
     let mtmp, mtmp2;
 
     if (u.uswallow)
@@ -211,15 +183,13 @@ charm_monsters(distance)
                one; do that even if mtmp resists in order to behave the same
                as a non-cursed scroll of taming or spell of charm monster */
             if (!resist(mtmp, TOOL_CLASS, 0, NOTELL) || mtmp.isshk)
-                void tamedog(mtmp, null, TRUE);
+                tamedog(mtmp, null, TRUE);
         }
     }
 }
 
 /* Try to make a pit. */
-function /* void */
-do_pit(x, y, tu_pit)
-{
+function do_pit(x, y, tu_pit) { /* void */
     let mtmp;
     let otmp;
     let chasm;
@@ -238,7 +208,7 @@ do_pit(x, y, tu_pit)
         if (mtmp)
             mtmp.mtrapped = 0;
         obj_extract_self(otmp);
-        void flooreffects(otmp, x, y, _(""));
+        flooreffects(otmp, x, y, _(""));
         return;
     }
 
@@ -311,18 +281,17 @@ do_pit(x, y, tu_pit)
                not in it even if there was */
             You(_("fall into a chasm!"));
             set_utrap(unsigned(rn1(6, 2)), TT_PIT);
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(6)) + 1)) / 2))) : (rnd(6)))),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(6)) + 1) / 2))) : (rnd(6))),
                    _("fell into a chasm"), NO_KILLER_PREFIX);
             selftouch(_("Falling, you"));
         } else if (u.utrap && u.utraptype == TT_PIT) {
-            let keepfooting = (((!(Fumbling() && rn2(5))
-                     && (!(rnl(Role_if(PM_ARCHEOLOGIST) ? 3 : 9))
-                         || ((ACURR(A_DEX) > 7) && rn2(5)))) ? 1 : 0));
-
+            let keepfooting = (!(Fumbling() && rn2(5))
+                     && (!rnl(Role_if(PM_ARCHEOLOGIST) ? 3 : 9)
+                         || ((ACURR(A_DEX) > 7) && rn2(5))) ? 1 : 0);
 
             You(_("are jostled around violently!"));
             set_utrap(unsigned(rn1(6, 2)), TT_PIT);
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(keepfooting ? 2 : 4)) + 1)) / 2))) : (rnd(keepfooting ? 2 : 4)))),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(keepfooting ? 2 : 4)) + 1) / 2))) : (rnd(keepfooting ? 2 : 4))),
                    _("hurt in a chasm"), NO_KILLER_PREFIX);
             if (keepfooting)
                 exercise(A_DEX, TRUE);
@@ -340,9 +309,7 @@ do_pit(x, y, tu_pit)
 /* Generate earthquake :-) of desired force.
  * That is:  create random chasms (pits).
  */
-function /* void */
-do_earthquake(force)
-{
+function do_earthquake(force) { /* void */
     let into_a_chasm = init_string(static_array("do_earthquake.into_a_chasm", char, sizeof_string(" into a chasm")), _(" into a chasm"), true);
     let x, y;
     let mtmp;
@@ -474,9 +441,7 @@ do_earthquake(force)
         }
 }
 
-function /* const char * */
-generic_lvl_desc()
-{
+function generic_lvl_desc() { /* const char * */
     if (Is_astralevel(u.uz))
         return _("astral plane");
     else if (In_endgame(u.uz))
@@ -499,9 +464,8 @@ const beats = static_array("beats", ptr_to(char), null, [
 /*
  * The player is trying to extract something from his/her instrument.
  */
-function /* int */
-do_improvisation(instr)
-{ const $frame = stack_frame(); try {
+function do_improvisation(instr) { /* int */
+    const $frame = stack_frame(); try {
     let damage, mode, do_spec = +!(Stunned() || Confusion());
     let itmp = stack_struct(struct_obj);
     let mundane = FALSE, same_old_song = stack_var(boolean, FALSE);
@@ -519,10 +483,6 @@ do_improvisation(instr)
             itmp.otyp -= 1;
             mundane = TRUE;
         }
-
-
-
-
 
     mode = PLAY_NORMAL;
     if (Stunned())
@@ -579,10 +539,6 @@ do_improvisation(instr)
         break;
     }
 
-
-
-
-
     improvisation[0] = improvised_notes(addr_of(same_old_song));
 
     switch (itmp.otyp) { /* note: itmp.otyp might differ from instr->otyp */
@@ -597,7 +553,7 @@ do_improvisation(instr)
         exercise(A_DEX, TRUE);
         break;
     case WOODEN_FLUTE: /* May charm snakes */
-        do_spec &= (+(rn2(ACURR(A_DEX)) + u.ulevel > 25));
+        do_spec &= +(rn2(ACURR(A_DEX)) + u.ulevel > 25);
         if (!Deaf())
             pline(_("%s%s."), Tobjnam(instr, do_spec ? _("trill") : _("toot")),
                   same_old_song[0] ? _(" a familiar tune") : _(""));
@@ -619,7 +575,7 @@ do_improvisation(instr)
             if ((damage = zapyourself(instr, TRUE)) != 0) {
                 let buf = stack_array(char, BUFSZ);
 
-                void sprintf(buf, _("using a magical horn on %sself"), uhim());
+                sprintf(buf, _("using a magical horn on %sself"), uhim());
                   ;
                 losehp(damage, buf, KILLED_BY); /* fire or frost damage */
             }
@@ -670,12 +626,12 @@ do_improvisation(instr)
         exercise(A_DEX, TRUE);
         break;
     case WOODEN_HARP: /* May calm Nymph */
-        do_spec &= (+(rn2(ACURR(A_DEX)) + u.ulevel > 25));
+        do_spec &= +(rn2(ACURR(A_DEX)) + u.ulevel > 25);
         if (!Deaf())
             pline(_("%s %s."), Yname2(instr),
                   (do_spec && same_old_song[0])
                   ? _("produces a familiar, lilting melody")
-                  : (do_spec) ? _("produces a lilting melody")
+                  : do_spec ? _("produces a lilting melody")
                     : (same_old_song[0]) ? _("twangs a familiar tune")
                       : _("twangs"));
         else
@@ -725,13 +681,16 @@ do_improvisation(instr)
         impossible(_("What a weird instrument (%d)!"), instr.otyp);
         return 0;
     }
-    (void (improvisation[0]));
+    (improvisation[0]);
     return 2; /* That takes time */
-} finally { stack_pop($frame); } } export const PLAY_NORMAL = 0x00; export const PLAY_STUNNED = 0x01; export const PLAY_CONFUSED = 0x02; export const PLAY_HALLU = 0x04;
+    } finally { stack_pop($frame); }
+}
+export const PLAY_NORMAL = 0x00;
+export const PLAY_STUNNED = 0x01;
+export const PLAY_CONFUSED = 0x02;
+export const PLAY_HALLU = 0x04;
 
-function /* char * */
-improvised_notes(same_as_last_time)
-{
+function improvised_notes(same_as_last_time) { /* char * */
     let notes = static_array("improvised_notes.notes", char, 7, [ ord('A'), ord('B'), ord('C'), ord('D'), ord('E'), ord('F'), ord('G') ]);
     /* target buffer has to be in svc.context, otherwise saving game
      * between improvised recitals would not be able to maintain
@@ -755,9 +714,8 @@ improvised_notes(same_as_last_time)
 /*
  * So you want music...
  */
-export function /* int */
-do_play_instrument(instr)
-{ const $frame = stack_frame(); try {
+export function do_play_instrument(instr) { /* int */
+    const $frame = stack_frame(); try {
     var buf = init_list(stack_array(char, BUFSZ), []), c = ord('y');
     var s;
     var x = stack_var(coordxy), y = stack_var(coordxy);
@@ -788,10 +746,10 @@ do_play_instrument(instr)
     if (c == ord('q')) {
         break nevermind;
     } else if (c == ord('y')) {
-        void strcpy(buf, svt.tune);
+        strcpy(buf, svt.tune);
     } else {
         getlin(_("What tune are you playing? [5 notes, A-G]"), buf);
-        void mungspaces(buf);
+        mungspaces(buf);
         if (chars[buf] == ord('\x1b'))
             break nevermind;;
 
@@ -806,7 +764,6 @@ do_play_instrument(instr)
     You(!Deaf() ? _("extract a strange sound from %s!")
               : _("can feel %s emitting vibrations."), the(xname(instr)));
       ;
-
 
     /* Check if there was the Stronghold drawbridge near
      * and if the tune conforms to what we're waiting for.
@@ -892,279 +849,111 @@ do_play_instrument(instr)
         }
     }
     return ECMD_TIME;
-
  }
     pline1(Never_mind());
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* enum instruments */
-obj_to_instr(obj) {
+export function obj_to_instr(obj) { /* enum instruments */
     let ret_instr = ins_no_instrument;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(SND_LIB_INTEGRATED): not in this build */
 
     return ret_instr;
 }
 /*music.c*/
-import { AM_MASK } from "./align.h.js";
-import { AM_SANCTUM } from "./align.h.js";
+
+import { AM_MASK, AM_SANCTUM } from "./align.h.js";
 import { Amask2align } from "./align.h.macros.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+import { A_DEX, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { Never_mind } from "./decl.h.macros.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { In_sokoban } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_sanctum } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { NOTELL } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { XKILL_NOMSG } from "./hack.h.js";
-import { BZ_OFS_AD } from "./hack.h.macros.js";
-import { BZ_U_WAND } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import { S_NYMPH, S_SNAKE, TOOL_CLASS } from "./defsym.h.js";
+import {
+    In_endgame, In_sokoban, Is_astralevel, Is_sanctum, Is_stronghold,
+} from "./dungeon.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, boolean, coordxy } from "./global.h.js";
+import {
+    ARTICLE_THE, ECMD_OK, ECMD_TIME, KILLED_BY, NOTELL, NO_KILLER_PREFIX, SUPPRESS_SADDLE,
+    XKILL_NOMSG,
+} from "./hack.h.js";
+import {
+    BZ_OFS_AD, BZ_U_WAND, ROLL_FROM, makeknown, max, mdistu, min, pline1, plur, rn1, ynq,
+} from "./hack.h.macros.js";
 import { has_mgivenname } from "./mextra.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { ceiling_hider } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_clinger } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_mercenary } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { unique_corpstat } from "./mondata.h.macros.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { STRAT_WAITMASK } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_GUARD } from "./monsters.h.js";
+import { AD_COLD, AD_FIRE } from "./monattk.h.js";
+import {
+    ceiling_hider, humanoid, is_clinger, is_flyer, is_mercenary, mindless, nolimbs, slithy,
+    unique_corpstat,
+} from "./mondata.h.macros.js";
+import { M_AP_MONSTER, M_AP_NOTHING, STRAT_WAITMASK } from "./monst.h.js";
+import { DEADMONSTER, M_AP_TYPE } from "./monst.h.macros.js";
+import { PM_ARCHEOLOGIST, PM_GUARD } from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
-import { BOULDER } from "./objects.h.js";
-import { BUGLE } from "./objects.h.js";
-import { DRUM_OF_EARTHQUAKE } from "./objects.h.js";
-import { FIRE_HORN } from "./objects.h.js";
-import { FROST_HORN } from "./objects.h.js";
-import { LEATHER_DRUM } from "./objects.h.js";
-import { MAGIC_FLUTE } from "./objects.h.js";
-import { MAGIC_HARP } from "./objects.h.js";
-import { TOOLED_HORN } from "./objects.h.js";
-import { WOODEN_FLUTE } from "./objects.h.js";
-import { WOODEN_HARP } from "./objects.h.js";
+import {
+    BOULDER, BUGLE, DRUM_OF_EARTHQUAKE, FIRE_HORN, FROST_HORN, LEATHER_DRUM, MAGIC_FLUTE,
+    MAGIC_HARP, TOOLED_HORN, WOODEN_FLUTE, WOODEN_HARP,
+} from "./objects.h.js";
 import { DEAF } from "./prop.h.js";
-import { ALTAR } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { GRAVE } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SINK } from "./rm.h.js";
-import { THRONE } from "./rm.h.js";
-import { IS_DRAWBRIDGE } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
+import {
+    ALTAR, CORR, DOOR, DRAWBRIDGE_DOWN, D_NODOOR, FOUNTAIN, GRAVE, ROOM, SCORR, SDOOR, SINK, THRONE,
+} from "./rm.h.js";
+import { IS_DRAWBRIDGE, fmon, levl, m_at } from "./rm.h.macros.js";
 import { ins_no_instrument } from "./sndprocs.h.js";
 import { PIT } from "./trap.h.js";
 import { is_pit } from "./trap.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
-import { ACH_TUNE } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhim } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { ACH_TUNE, TT_BURIEDBALL, TT_PIT } from "./you.h.js";
+import { Role_if, Upolyd, u_at, uhim } from "./you.h.macros.js";
+import {
+    Blind, Confusion, Deaf, Flying, Fumbling, Half_physical_damage, Hallucination, Levitation,
+    Stunned, Unchanging, Underwater,
+} from "./youprop.h.macros.js";
+import { char, int, ord, schar, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { and64u } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { sprintf, strcmp, strcpy, strlen } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, array_of, ptr_to, ref_of, sizeof_member, struct_assign } from "../rt/struct.js";
 import { exercise } from "./attrib.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { close_drawbridge } from "./dbridge.js";
-import { find_drawbridge } from "./dbridge.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { open_drawbridge } from "./dbridge.js";
-import { disp } from "./decl.js";
-import { gc } from "./decl.js";
-import { gy } from "./decl.js";
-import { svc } from "./decl.js";
-import { svt } from "./decl.js";
-import { u } from "./decl.js";
+import { getdir, isok } from "./cmd.js";
+import {
+    close_drawbridge, find_drawbridge, is_drawbridge_wall, open_drawbridge,
+} from "./dbridge.js";
+import { disp, gc, gy, svc, svt, u } from "./decl.js";
 import { cvt_sdoor_to_door } from "./detect.js";
-import { fillholetyp } from "./dig.js";
-import { liquid_flow } from "./dig.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
+import { fillholetyp, liquid_flow } from "./dig.js";
+import { canseemon, newsym } from "./display.js";
 import { flooreffects } from "./do.js";
-import { Amonnam } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
+import { Amonnam, Monnam, a_monnam, mon_nam, x_monnam } from "./do_name.js";
 import { tamedog } from "./dog.js";
 import { In_V_tower } from "./dungeon.js";
-import { in_rooms } from "./hack.js";
-import { losehp } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { align_str } from "./insight.js";
-import { record_achievement } from "./insight.js";
-import { consume_obj_charge } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { sleep_monst } from "./mhitm.js";
-import { slept_monst } from "./mhitm.js";
+import { in_rooms, losehp } from "./hack.js";
+import { dist2, highc, mungspaces } from "./hacklib.js";
+import { align_str, record_achievement } from "./insight.js";
+import { consume_obj_charge, sobj_at } from "./invent.js";
+import { sleep_monst, slept_monst } from "./mhitm.js";
 import { set_levltyp } from "./mkmaze.js";
 import { obj_extract_self } from "./mkobj.js";
-import { seemimic } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { xkilled } from "./mon.js";
+import { seemimic, wakeup, xkilled } from "./mon.js";
 import { can_blow } from "./mondata.js";
-import { monflee } from "./monmove.js";
-import { onscary } from "./monmove.js";
+import { monflee, onscary } from "./monmove.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { the } from "./objnam.js";
-import { thesimpleoname } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { Norep } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { Tobjnam, Yname2, an, the, thesimpleoname, xname, yname } from "./objnam.js";
+import {
+    Norep, You, You_cant, You_feel, You_hear, Your, impossible, pline, pline_The,
+} from "./pline.js";
 import { incr_itimeout } from "./potion.js";
-import { altarmask_at } from "./pray.js";
-import { desecrate_altar } from "./pray.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
+import { altarmask_at, desecrate_altar } from "./pray.js";
+import { d, rn2, rnd, rnl } from "./rnd.js";
 import { add_damage } from "./shk.js";
-import { maketrap } from "./trap.js";
-import { mselftouch } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { selftouch } from "./trap.js";
-import { set_utrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
+import { maketrap, mselftouch, reset_utrap, selftouch, set_utrap, t_at } from "./trap.js";
+import { recalc_block_point, unblock_point } from "./vision.js";
 import { getlin } from "./windows.js";
-import { flash_str } from "./zap.js";
-import { resist } from "./zap.js";
-import { ubuzz } from "./zap.js";
-import { zapyourself } from "./zap.js";
+import { flash_str, resist, ubuzz, zapyourself } from "./zap.js";

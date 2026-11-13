@@ -21,11 +21,30 @@ export const machine = {
   findLiteral: null, // optional: address of an existing NUL-terminated copy of a string, or 0
   malloc: null,     // (size) -> address
   free: null,
-  libc: null,       // (name, args) -> the residue's C library function (printf family, stdio, ...)
+  libc: null,       // (name, args) -> the residue's C library function (printf family, stdio, ...);
+                    // optional libc.lookup(name) -> (args) -> the same call, for one name
   longjmp: null,    // optional: (envAddr, value): unwind as C code in the same memory does (rt/setjmp.js)
   catch_longjmp: null, // optional: (exception, envAddr) -> setjmp value if it is such a longjmp to env
   libc_data: null,  // (name) -> address of a residue data object (stdout...); else machine.symbol
 };
+
+/**
+ * The function emitted code calls for the host's C library function `name` (rt/libc.js,
+ * rt/lua.js, rt/port.js): machine.libc.lookup(name) when the host has it, looked up on the first
+ * call and again whenever machine.libc is replaced; otherwise each call goes to machine.libc.
+ */
+export function libc_function(name) {
+  let libc = null, f = null;
+  const call = function (...args) {
+    if (libc !== machine.libc) {
+      libc = machine.libc;
+      f = typeof libc.lookup === "function" ? libc.lookup(name) : (a) => libc(name, a);
+    }
+    return f(args);
+  };
+  Object.defineProperty(call, "name", { value: name });
+  return call;
+}
 
 let ownSP = 0;
 let stableBuffer = null;

@@ -3,10 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "func_tab.h"
-
-
 /*
  * Some systems may have getchar() return EOF for various reasons, and
  * we should not quit before seeing at least NR_OF_EOFS consecutive EOFs.
@@ -14,144 +10,11 @@
 
 export const NR_OF_EOFS = 20;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+              /* #ifdef DUMB: not in this build */
 
               /* c2js recorder bugreport command */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 const timed_occ_fn = static_var("timed_occ_fn", fnptr_t);
-
-
 
 const readchar_queue = static_var("readchar_queue", ptr_to(char), _(""));
 
@@ -163,17 +26,13 @@ export const unavailcmd = init_string(static_array("unavailcmd", char, sizeof_st
 const cmdnotavail = init_string(static_array("cmdnotavail", char, sizeof_string("'%s' command not available.")), _("'%s' command not available."), true);
 
 /* the #prevmsg command */
-function /* int */
-doprev_message()
-{
-    void (nh_doprev_message()());
+function doprev_message() { /* int */
+    nh_doprev_message()();
     return ECMD_OK;
 }
 
 /* Count down by decrementing multi */
-function /* int */
-timed_occupation()
-{
+function timed_occupation() { /* int */
     (timed_occ_fn[0])();
     if (gm.multi > 0)
         gm.multi--;
@@ -194,9 +53,7 @@ timed_occupation()
  *                      Picking Locks / Forcing Chests.
  *                      Setting traps.
  */
-export function /* void */
-reset_occupations()
-{
+export function reset_occupations() { /* void */
     reset_remarm();
     reset_pick();
     reset_trapset();
@@ -205,9 +62,7 @@ reset_occupations()
 /* If a time is given, use it to timeout this function, otherwise the
  * function times out by its own means.
  */
-export function /* void */
-set_occupation(fn, txt, xtime)
-{
+export function set_occupation(fn, txt, xtime) { /* void */
     if (xtime) {
         go.occupation = timed_occupation;
         timed_occ_fn[0] = fn;
@@ -253,9 +108,7 @@ cmdq_print(int q)
 */
 
 /* add extended command function to the command queue */
-export function /* void */
-cmdq_add_ec(q, fn)
-{
+export function cmdq_add_ec(q, fn) { /* void */
     let tmp = view_of(struct__cmd_queue, addr_of(alloc(sizeof(struct__cmd_queue))));
     let cq = gc.command_queue[q];
 
@@ -273,9 +126,7 @@ cmdq_add_ec(q, fn)
 }
 
 /* add a key to the command queue */
-export function /* void */
-cmdq_add_key(q, key)
-{
+export function cmdq_add_key(q, key) { /* void */
     let tmp = view_of(struct__cmd_queue, addr_of(alloc(sizeof(struct__cmd_queue))));
     let cq = gc.command_queue[q];
 
@@ -293,9 +144,7 @@ cmdq_add_key(q, key)
 }
 
 /* add a direction to the command queue */
-export function /* void */
-cmdq_add_dir(q, dx, dy, dz)
-{
+export function cmdq_add_dir(q, dx, dy, dz) { /* void */
     let tmp = view_of(struct__cmd_queue, addr_of(alloc(sizeof(struct__cmd_queue))));
     let cq = gc.command_queue[q];
 
@@ -315,9 +164,7 @@ cmdq_add_dir(q, dx, dy, dz)
 }
 
 /* add placeholder to the command queue, allows user input there */
-export function /* void */
-cmdq_add_userinput(q)
-{
+export function cmdq_add_userinput(q) { /* void */
     let tmp = view_of(struct__cmd_queue, addr_of(alloc(sizeof(struct__cmd_queue))));
     let cq = gc.command_queue[q];
 
@@ -334,9 +181,7 @@ cmdq_add_userinput(q)
 }
 
 /* add integer to the command queue */
-export function /* void */
-cmdq_add_int(q, val)
-{
+export function cmdq_add_int(q, val) { /* void */
     let tmp = view_of(struct__cmd_queue, addr_of(alloc(sizeof(struct__cmd_queue))));
     let cq = gc.command_queue[q];
 
@@ -354,9 +199,7 @@ cmdq_add_int(q, val)
 }
 
 /* shift the last entry in command queue to first */
-export function /* void */
-cmdq_shift(q)
-{
+export function cmdq_shift(q) { /* void */
     let tmp = null;
     let cq = gc.command_queue[q];
 
@@ -372,9 +215,7 @@ cmdq_shift(q)
     }
 }
 
-export function /* struct _cmd_queue * */
-cmdq_reverse(head)
-{
+export function cmdq_reverse(head) { /* struct _cmd_queue * */
     let prev = null, curr = head, next;
 
     while (curr) {
@@ -386,9 +227,7 @@ cmdq_reverse(head)
     return prev;
 }
 
-export function /* struct _cmd_queue * */
-cmdq_copy(q)
-{
+export function cmdq_copy(q) { /* struct _cmd_queue * */
     let tmp = null;
     let cq = gc.command_queue[q];
 
@@ -409,10 +248,8 @@ cmdq_copy(q)
 /* pop off the topmost command from the command queue.
  * caller is responsible for freeing the returned _cmd_queue.
  */
-export function /* struct _cmd_queue * */
-cmdq_pop()
-{
-    let q = (gi.in_doagain) ? CQ_REPEAT : CQ_CANNED;
+export function cmdq_pop() { /* struct _cmd_queue * */
+    let q = gi.in_doagain ? CQ_REPEAT : CQ_CANNED;
     let tmp = gc.command_queue[q];
 
     if (tmp) {
@@ -423,16 +260,12 @@ cmdq_pop()
 }
 
 /* get the top entry without popping it */
-export function /* struct _cmd_queue * */
-cmdq_peek(q)
-{
+export function cmdq_peek(q) { /* struct _cmd_queue * */
     return gc.command_queue[q];
 }
 
 /* clear all commands from the command queue */
-export function /* void */
-cmdq_clear(q)
-{
+export function cmdq_clear(q) { /* void */
     let tmp = gc.command_queue[q];
     let tmp2;
 
@@ -444,9 +277,7 @@ cmdq_clear(q)
     gc.command_queue[q] = null;
 }
 
-export function /* char */
-pgetchar() /* courtesy of aeb@cwi.nl */
-{
+export function pgetchar() { /* char */ /* courtesy of aeb@cwi.nl */
     let ch = ord('\0');
 
     if (iflags.debug_fuzzer)
@@ -456,15 +287,11 @@ pgetchar() /* courtesy of aeb@cwi.nl */
 }
 
 /* '#' or whatever has been bound to doextcmd() in its place */
-export function /* char */
-extcmd_initiator()
-{
+export function extcmd_initiator() { /* char */
     return gc.Cmd.extcmd_char;
 }
 
-function /* boolean */
-can_do_extcmd(extcmd)
-{
+function can_do_extcmd(extcmd) { /* boolean */
     let ecflags = int(extcmd.flags);
 
     if (gl.luacore && nhcb_counts[NHCB_CMD_BEFORE]) {
@@ -492,9 +319,7 @@ can_do_extcmd(extcmd)
 }
 
 /* here after # - now read a full-word command */
-export function /* int */
-doextcmd()
-{
+export function doextcmd() { /* int */
     let idx, retval;
     let func;
 
@@ -516,18 +341,17 @@ doextcmd()
         /* tell rhack() what command is actually executing */
         ge.ext_tlist = extcmdlist[idx];
 
-        retval = (func)();
+        retval = func();
     } while (func == doextlist);
 
     return retval;
 }
 
 /* format extended command flags for display */
-function /* char * */
-doc_extcmd_flagstr(
+function doc_extcmd_flagstr(
     menuwin,
-    efp) /* if Null, add a footnote to the menu */
-{ const $frame = stack_frame(); try {
+    efp) { /* char * */ /* if Null, add a footnote to the menu */
+    const $frame = stack_frame(); try {
     let Abuf = static_array("doc_extcmd_flagstr.Abuf", char, 10); /* 5 would suffice: {'[','m','A',']','\0'} */
 
     /* note: tag shown for menu prefix is 'm' even if m-prefix action
@@ -536,7 +360,7 @@ doc_extcmd_flagstr(
         let qbuf = stack_array(char, QBUFSZ);
 
         add_menu_str(menuwin, _("[A] Command autocompletes"));
-        void sprintf(qbuf, _("[m] Command accepts '%s' prefix"), visctrl(cmd_from_func(do_reqmenu)))
+        sprintf(qbuf, _("[m] Command accepts '%s' prefix"), visctrl(cmd_from_func(do_reqmenu)))
 ;
         add_menu_str(menuwin, qbuf);
         return 0;
@@ -557,13 +381,13 @@ doc_extcmd_flagstr(
         chars[p] = ord('\0');
         return Abuf;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* here after #? - now list all full-word commands and provide
    some navigation capability through the long list */
-export function /* int */
-doextlist()
-{ const $frame = stack_frame(); try {
+export function doextlist() { /* int */
+    const $frame = stack_frame(); try {
     let efp = null;
     let buf = stack_array(char, BUFSZ), searchbuf = stack_array(char, BUFSZ), descbuf = stack_array(char, BUFSZ), promptbuf = stack_array(char, QBUFSZ);
     let cmd_desc;
@@ -587,7 +411,7 @@ doextlist()
         add_menu_str(menuwin, _("Extended Commands List"));
         add_menu_str(menuwin, _(""));
 
-        void sprintf(buf, _("Switch to %s commands that don't autocomplete"), menumode ? _("including") : _("excluding"))
+        sprintf(buf, _("Switch to %s commands that don't autocomplete"), menumode ? _("including") : _("excluding"))
 ;
         any.a_int = 1;
         add_menu(menuwin, nul_glyphinfo, any, ord('a'), 0, ATR_NONE, clr, buf,
@@ -604,9 +428,9 @@ doextlist()
                      clr, _("Search extended commands"),
                      MENU_ITEMFLAGS_NONE);
         } else {
-            void strcpy(buf, _("Switch back from search"));
+            strcpy(buf, _("Switch back from search"));
             if (unsigned(unsigned(strlen(buf) + strlen(searchbuf)) + strlen(_(" (\"\")"))) < QBUFSZ)
-                void sprintf(eos(buf), _(" (\"%s\")"), searchbuf);
+                sprintf(eos(buf), _(" (\"%s\")"), searchbuf);
             any.a_int = 3;
             /* specifying ':' as a group accelerator here is mostly a
                statement of intent (we'd like to accept it as a synonym but
@@ -673,13 +497,13 @@ doextlist()
                    heading with no subordinate entries on the search
                    results menu. */
                 if (!menushown[pass]) {
-                    void strcpy(buf, headings[pass]);
+                    strcpy(buf, headings[pass]);
                     add_menu_heading(menuwin, buf);
                     menushown[pass] = 1;
                 }
                 /* longest ef_txt at present is "wizrumorcheck" (13 chars);
                    2nd field will be "    " or " [A]" or " [m]" or "[mA]" */
-                void sprintf(buf, _(" %-14s %4s %s"), efp.ef_txt, doc_extcmd_flagstr(menuwin, efp), cmd_desc)
+                sprintf(buf, _(" %-14s %4s %s"), efp.ef_txt, doc_extcmd_flagstr(menuwin, efp), cmd_desc)
 ;
                 add_menu_str(menuwin, buf);
                 ++n;
@@ -690,7 +514,7 @@ doextlist()
         if (chars[searchbuf] && !n)
             add_menu_str(menuwin, _("no matches"));
         else
-            void doc_extcmd_flagstr(menuwin, null);
+            doc_extcmd_flagstr(menuwin, null);
 
         end_menu()(menuwin, 0);
         n = select_menu(menuwin, PICK_ONE, selected);
@@ -721,10 +545,10 @@ doextlist()
             chars[searchbuf + 0] = ord('\0');
         }
         if (search) {
-            void strcpy(promptbuf, _("Extended command list search phrase"));
-            void strcat(promptbuf, _("?"));
+            strcpy(promptbuf, _("Extended command list search phrase"));
+            strcat(promptbuf, _("?"));
             getlin(promptbuf, searchbuf);
-            void mungspaces(searchbuf);
+            mungspaces(searchbuf);
             if (chars[searchbuf + 0] == ord('\x1b'))
                 chars[searchbuf + 0] = ord('\0');
             if (chars[searchbuf])
@@ -734,12 +558,10 @@ doextlist()
     }
     destroy_nhwindow()(menuwin);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 export const MAX_EXT_CMD = 200;
-
-
 
 /*
  * This is currently used only by the tty interface and is
@@ -751,9 +573,8 @@ export const MAX_EXT_CMD = 200;
  *
  * Here after # - now show pick-list of possible commands.
  */
-export function /* int */
-extcmd_via_menu()
-{ const $frame = stack_frame(); try {
+export function extcmd_via_menu() { /* int */
+    const $frame = stack_frame(); try {
     let efp;
     let pick_list = stack_var(ptr_to(struct_mi), null);
     let win;
@@ -785,11 +606,6 @@ extcmd_via_menu()
                 if ((len = int(strlen(efp.ef_desc))) > biggest)
                     biggest = len;
                 if (++i > MAX_EXT_CMD) {
-
-
-
-
-
                     iflags.extmenu = FALSE;
                     return -1;
                 }
@@ -799,19 +615,19 @@ extcmd_via_menu()
         nchoices = i;
         /* if we're down to one, we have our selection so get out of here */
         if (nchoices  <= 1) {
-            ret = (nchoices == 1) ? (ptr_diff(choices[0], extcmdlist[0])) : -1;
+            ret = (nchoices == 1) ? ptr_diff(choices[0], extcmdlist[0]) : -1;
             break;
         }
 
         /* otherwise... */
         win = create_nhwindow()(NHW_MENU);
         start_menu()(win, MENU_BEHAVE_STANDARD);
-        void sprintf(fmtstr, _("%%-%ds"), biggest + 15);
+        sprintf(fmtstr, _("%%-%ds"), biggest + 15);
         chars[prompt + 0] = ord('\0');
         wastoolong = FALSE; /* True => had to wrap due to line width
                              * ('w' in wizard mode) */
         /* -3: two line menu header, 1 line menu footer (for prompt) */
-        one_per_line = (+(nchoices < ROWNO - 3));
+        one_per_line = +(nchoices < ROWNO - 3);
         prevaccelerator = 0;
         acount = 0;
         for (i = 0; choices[i]; ++i) {
@@ -827,7 +643,7 @@ extcmd_via_menu()
                         >= min(sizeof(array_of(char, QBUFSZ)), COLNO - 6)))) {
                 if (acount) {
                     /* flush extended cmds for that letter already in buf */
-                    void sprintf(buf, fmtstr, prompt);
+                    sprintf(buf, fmtstr, prompt);
                     any.a_char = prevaccelerator;
                     add_menu(win, nul_glyphinfo, any, any.a_char,
                              0, ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
@@ -838,20 +654,20 @@ extcmd_via_menu()
             }
             prevaccelerator = accelerator;
             if (!acount || one_per_line) {
-                void sprintf(prompt, _("%s%s [%s]"), wastoolong ? _("or ") : _(""), choices[i].ef_txt, choices[i].ef_desc)
+                sprintf(prompt, _("%s%s [%s]"), wastoolong ? _("or ") : _(""), choices[i].ef_txt, choices[i].ef_desc)
 ;
             } else if (acount == 1) {
-                void sprintf(prompt, _("%s%s or %s"), wastoolong ? _("or ") : _(""), choices[i - 1].ef_txt, choices[i].ef_txt)
+                sprintf(prompt, _("%s%s or %s"), wastoolong ? _("or ") : _(""), choices[i - 1].ef_txt, choices[i].ef_txt)
 ;
             } else {
-                void strcat(prompt, _(" or "));
-                void strcat(prompt, choices[i].ef_txt);
+                strcat(prompt, _(" or "));
+                strcat(prompt, choices[i].ef_txt);
             }
             ++acount;
         }
         if (acount) {
             /* flush buf */
-            void sprintf(buf, fmtstr, prompt);
+            sprintf(buf, fmtstr, prompt);
             any.a_char = prevaccelerator;
             add_menu(win, nul_glyphinfo, any, any.a_char, 0,
                      ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
@@ -863,9 +679,6 @@ extcmd_via_menu()
         if (n == 1) {
             if (matchlevel > (QBUFSZ - 2)) {
                 free(addr_of(pick_list[0]));
-
-
-
 
                 ret = -1;
             } else {
@@ -882,18 +695,13 @@ extcmd_via_menu()
         }
     }
     return ret;
-} finally { stack_pop($frame); } }
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* #monster command - use special monster ability while polymorphed */
-export function /* int */
-domonability()
-{
+export function domonability() { /* int */
     let uptr = gy.youmonst.data;
-    let might_hide = (+(is_hider(uptr) || hides_under(uptr)));
+    let might_hide = +(is_hider(uptr) || hides_under(uptr));
     let c = ord('\0');
 
     if (might_hide && webmaker(uptr)) {
@@ -925,7 +733,7 @@ domonability()
         } else if (is_pool(u.ux, u.uy)) {
             /* is_pool: might be wearing water walking boots or amulet of
                magical breathing */
-            void split_mon(gy.youmonst, null);
+            split_mon(gy.youmonst, null);
         } else {
             There(_("is no fountain here."));
         }
@@ -941,7 +749,7 @@ domonability()
     } else if (is_vampire(uptr) || is_vampshifter(gy.youmonst)) {
         return dopoly();
     } else if (u.usteed && can_breathe(u.usteed.data)) {
-        void pet_ranged_attk(u.usteed, TRUE);
+        pet_ranged_attk(u.usteed, TRUE);
         return ECMD_TIME;
     } else if (Upolyd()) {
         pline(_("Any special ability you may have is purely reflexive."));
@@ -951,9 +759,7 @@ domonability()
     return ECMD_OK;
 }
 
-export function /* int */
-enter_explore_mode()
-{
+export function enter_explore_mode() { /* int */
     if (discover()) {
         You(_("are already in explore mode."));
     } else {
@@ -985,9 +791,7 @@ enter_explore_mode()
     return ECMD_OK;
 }
 
-export function /* void */
-makemap_prepost(pre, wiztower)
-{
+export function makemap_prepost(pre, wiztower) { /* void */
     let tmpnhfp;
     let mtmp;
 
@@ -1018,7 +822,7 @@ makemap_prepost(pre, wiztower)
         maybe_reset_pick(null);
         /* reset interrupted digging if it was taking place on this level */
         if (on_level(svc.context.digging.level, u.uz))
-            void memset(addr_of(svc.context.digging), 0,
+            memset(addr_of(svc.context.digging), 0,
                           sizeof(struct_dig_info));
         /* reset cached targets */
         iflags.travelcc.x = iflags.travelcc.y = 0; /* travel destination */
@@ -1026,8 +830,8 @@ makemap_prepost(pre, wiztower)
         /* escape from trap */
         reset_utrap(FALSE);
         check_special_room(TRUE); /* room exit */
-        void memset(addr_of(svd.dndest), 0, sizeof(struct_dest_area));
-        void memset(addr_of(svu.updest), 0, sizeof(struct_dest_area));
+        memset(addr_of(svd.dndest), 0, sizeof(struct_dest_area));
+        memset(addr_of(svu.updest), 0, sizeof(struct_dest_area));
         u.ustuck = null;
         u.uswallow = u.uswldtim = 0;
         set_uinwater(0); /* u.uinwater = 0 */
@@ -1065,7 +869,6 @@ makemap_prepost(pre, wiztower)
         check_special_room(FALSE); /* room entry */
 
         save_currentstate();
-
     }
 }
 
@@ -1088,18 +891,15 @@ export const levltyp = static_array("levltyp", ptr_to(char), MAX_TYPE + 2, [
     _("")
 ]);
 
-export function /* const char * */
-levltyp_to_name(typ)
-{
+export function levltyp_to_name(typ) { /* const char * */
     if (typ >= 0 && typ < MAX_TYPE)
         return levltyp[typ];
     return 0;
 }
 
 /* #terrain command -- show known map, inspired by crawl's '|' command */
-function /* int */
-doterrain()
-{ const $frame = stack_frame(); try {
+function doterrain() { /* int */
+    const $frame = stack_frame(); try {
     let men;
     let sel = stack_var(ptr_to(struct_mi));
     let any = stack_struct(struct_any);
@@ -1191,12 +991,12 @@ doterrain()
         break;
     }
     return ECMD_OK; /* no time elapses */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* has hero seen all locations in selection? */
-function /* boolean */
-u_have_seen_whole_selection(sel)
-{ const $frame = stack_frame(); try {
+function u_have_seen_whole_selection(sel) { /* boolean */
+    const $frame = stack_frame(); try {
     let x, y;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -1209,12 +1009,12 @@ u_have_seen_whole_selection(sel)
                 return FALSE;
 
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* has hero seen all location of the rectangular outline in the selection */
-function /* boolean */
-u_have_seen_bounds_selection(sel)
-{ const $frame = stack_frame(); try {
+function u_have_seen_bounds_selection(sel) { /* boolean */
+    const $frame = stack_frame(); try {
     let x, y;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -1242,12 +1042,12 @@ u_have_seen_bounds_selection(sel)
     }
 
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* can hero currently see all locations in the selection */
-function /* boolean */
-u_can_see_whole_selection(sel)
-{ const $frame = stack_frame(); try {
+function u_can_see_whole_selection(sel) { /* boolean */
+    const $frame = stack_frame(); try {
     let x, y;
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -1259,12 +1059,11 @@ u_can_see_whole_selection(sel)
                 return FALSE;
 
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* selection_floofill callback to get all locations in a room */
-function /* int */
-dolookaround_floodfill_findroom(x, y)
-{
+function dolookaround_floodfill_findroom(x, y) { /* int */
     let typ = levl()[x][y].typ;
 
     if (IS_STWALL(typ) || IS_DOOR(typ) || IS_TREE(typ)
@@ -1275,9 +1074,8 @@ dolookaround_floodfill_findroom(x, y)
 }
 
 /* describe the room at x,y */
-function /* void */
-lookaround_known_room(x, y)
-{ const $frame = stack_frame(); try {
+function lookaround_known_room(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let sel = selection_new();
     let rmno = chars[u.urooms + 0] - ROOMOFFSET;
     let qbuf = stack_array(char, QBUFSZ);
@@ -1293,7 +1091,7 @@ lookaround_known_room(x, y)
 
         You(_("%s %s %s."),
             u_at(x, y) && u_in && u_can_see_whole_selection(sel) ? _("are in")
-            : (u_at(x, y)) ? _("remember this as") : _("remember that as"),
+            : u_at(x, y) ? _("remember this as") : _("remember that as"),
             an(selection_size_description(sel, qbuf)),
             rmno >= 0 ? _("room") : _("area"));
     } else if (u_have_seen_bounds_selection(sel)) {
@@ -1306,12 +1104,12 @@ lookaround_known_room(x, y)
             u_at(x, y) ? _("this") : _("that"));
     }
     selection_free(sel, TRUE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #lookaround - describe what the hero can see, in text */
-export function /* int */
-dolookaround()
-{ const $frame = stack_frame(); try {
+export function dolookaround() { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let tmp_getloc_filter = iflags.getloc_filter;
     let tmp_accessiblemsg = a11y.accessiblemsg;
@@ -1344,11 +1142,11 @@ dolookaround()
     for (y = 0; y < ROWNO; y++)
         for (x = 1; x < COLNO; x++) {
             let glyph, mapsym;
-            let iscorr = (((corr_next2u
+            let iscorr = (corr_next2u
                               && (glyph = glyph_at(x, y)) >= 0
                               && glyph_is_cmap(glyph)
                               && ((mapsym = glyph_to_cmap(glyph)) == S_corr
-                                   || mapsym == S_litcorr)) ? 1 : 0));
+                                   || mapsym == S_litcorr) ? 1 : 0);
 
             if (!u_at(x, y)
                 && (gather_locs_interesting(x, y, GLOC_INTERESTING)
@@ -1369,15 +1167,14 @@ dolookaround()
     a11y.accessiblemsg = tmp_accessiblemsg;
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #toggle extended command
 
    BIND=':toggle(price_quotes)
    BIND=@:toggle(autopickup) */
-export function /* int */
-dotoggleoption()
-{
+export function dotoggleoption() { /* int */
     if (gc.cmd_bind && gc.cmd_bind.param) {
         return toggle_bool_option(gc.cmd_bind.param);
     } else {
@@ -1386,9 +1183,7 @@ dotoggleoption()
     }
 }
 
-export function /* void */
-set_move_cmd(dir, run)
-{
+export function set_move_cmd(dir, run) { /* void */
     u.dz = chars[zdir + dir];
     u.dx = chars[xdir + dir];
     u.dy = chars[ydir + dir];
@@ -1403,180 +1198,130 @@ set_move_cmd(dir, run)
 }
 
 /* move or attack */
-export function /* int */
-do_move_west()
-{
+export function do_move_west() { /* int */
     set_move_cmd(DIR_W, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_northwest()
-{
+export function do_move_northwest() { /* int */
     set_move_cmd(DIR_NW, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_north()
-{
+export function do_move_north() { /* int */
     set_move_cmd(DIR_N, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_northeast()
-{
+export function do_move_northeast() { /* int */
     set_move_cmd(DIR_NE, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_east()
-{
+export function do_move_east() { /* int */
     set_move_cmd(DIR_E, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_southeast()
-{
+export function do_move_southeast() { /* int */
     set_move_cmd(DIR_SE, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_south()
-{
+export function do_move_south() { /* int */
     set_move_cmd(DIR_S, 0);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_move_southwest()
-{
+export function do_move_southwest() { /* int */
     set_move_cmd(DIR_SW, 0);
     return ECMD_TIME;
 }
 
 /* rush */
-export function /* int */
-do_rush_west()
-{
+export function do_rush_west() { /* int */
     set_move_cmd(DIR_W, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_northwest()
-{
+export function do_rush_northwest() { /* int */
     set_move_cmd(DIR_NW, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_north()
-{
+export function do_rush_north() { /* int */
     set_move_cmd(DIR_N, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_northeast()
-{
+export function do_rush_northeast() { /* int */
     set_move_cmd(DIR_NE, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_east()
-{
+export function do_rush_east() { /* int */
     set_move_cmd(DIR_E, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_southeast()
-{
+export function do_rush_southeast() { /* int */
     set_move_cmd(DIR_SE, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_south()
-{
+export function do_rush_south() { /* int */
     set_move_cmd(DIR_S, 3);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_rush_southwest()
-{
+export function do_rush_southwest() { /* int */
     set_move_cmd(DIR_SW, 3);
     return ECMD_TIME;
 }
 
 /* run */
-export function /* int */
-do_run_west()
-{
+export function do_run_west() { /* int */
     set_move_cmd(DIR_W, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_northwest()
-{
+export function do_run_northwest() { /* int */
     set_move_cmd(DIR_NW, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_north()
-{
+export function do_run_north() { /* int */
     set_move_cmd(DIR_N, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_northeast()
-{
+export function do_run_northeast() { /* int */
     set_move_cmd(DIR_NE, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_east()
-{
+export function do_run_east() { /* int */
     set_move_cmd(DIR_E, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_southeast()
-{
+export function do_run_southeast() { /* int */
     set_move_cmd(DIR_SE, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_south()
-{
+export function do_run_south() { /* int */
     set_move_cmd(DIR_S, 1);
     return ECMD_TIME;
 }
 
-export function /* int */
-do_run_southwest()
-{
+export function do_run_southwest() { /* int */
     set_move_cmd(DIR_SW, 1);
     return ECMD_TIME;
 }
 
 /* #reqmenu, prefix command to modify some others */
-export function /* int */
-do_reqmenu()
-{
+export function do_reqmenu() { /* int */
     if (iflags.menu_requested) {
         Norep(_("Double %s prefix, canceled."),
               visctrl(cmd_from_func(do_reqmenu)));
@@ -1589,9 +1334,7 @@ do_reqmenu()
 }
 
 /* #rush */
-export function /* int */
-do_rush()
-{
+export function do_rush() { /* int */
     if ((gd.domove_attempting & DOMOVE_RUSH)) {
         Norep(_("Double rush prefix, canceled."));
         svc.context.run = 0;
@@ -1605,9 +1348,7 @@ do_rush()
 }
 
 /* #run */
-export function /* int */
-do_run()
-{
+export function do_run() { /* int */
     if ((gd.domove_attempting & DOMOVE_RUSH)) {
         Norep(_("Double run prefix, canceled."));
         svc.context.run = 0;
@@ -1621,9 +1362,7 @@ do_run()
 }
 
 /* #fight */
-export function /* int */
-do_fight()
-{
+export function do_fight() { /* int */
     if (svc.context.forcefight) {
         Norep(_("Double fight prefix, canceled."));
         svc.context.forcefight = 0;
@@ -1637,9 +1376,7 @@ do_fight()
 }
 
 /* #repeat */
-export function /* int */
-do_repeat()
-{
+export function do_repeat() { /* int */
     let res = ECMD_OK;
 
     if (!gi.in_doagain) {
@@ -1768,8 +1505,6 @@ export const extcmdlist = static_array("extcmdlist", struct_ext_func_tab, null, 
 
               ef_desc: _("show migrating monsters and migrate N random ones"),
 
-
-
               ef_funct: wiz_migrate_mons, flags: IFBURIED | AUTOCOMPLETE | WIZMODECMD, f_text: 0 },
     { key: uchar(M(ord('m'))), ef_txt: _("monster"), ef_desc: _("use monster's special ability"),
               ef_funct: domonability, flags: IFBURIED | AUTOCOMPLETE, f_text: 0 },
@@ -1864,8 +1599,6 @@ export const extcmdlist = static_array("extcmdlist", struct_ext_func_tab, null, 
               ef_desc: _("leave game to enter a sub-shell ('exit' to come back)"),
               ef_funct: dosh_core, flags: (IFBURIED | GENERALCMD | NOFUZZERCMD
 
-
-
                         ), f_text: 0 },
     /* $ is like ),=,&c but is not included with *, so not called "seegold" */
     { key: GOLD_SYM, ef_txt: _("showgold"), ef_desc: _("show gold, possibly shop credit or debt"),
@@ -1880,8 +1613,6 @@ export const extcmdlist = static_array("extcmdlist", struct_ext_func_tab, null, 
               ef_funct: wiz_show_stats, flags: IFBURIED | AUTOCOMPLETE | WIZMODECMD, f_text: 0 },
     { key: C(ord('z')), ef_txt: _("suspend"), ef_desc: _("push game to background ('fg' to come back)"),
               ef_funct: dosuspend_core, flags: (IFBURIED | GENERALCMD | NOFUZZERCMD
-
-
 
                                ), f_text: 0 },
     { key: ord('x'),    ef_txt: _("swap"), ef_desc: _("swap wielded and secondary weapons"),
@@ -2100,18 +1831,14 @@ const move_funcs = static_array("move_funcs", array_of(fnptr_t, N_MOVEMODES), N_
 const extcmdlist_length = static_var("extcmdlist_length", int, SIZE(extcmdlist) - 1);
 
 /* get entry i in the extended commands list. for windowport use. */
-export function /* struct ext_func_tab * */
-extcmds_getentry(i)
-{
+export function extcmds_getentry(i) { /* struct ext_func_tab * */
     if (i < 0 || i > extcmdlist_length[0])
         return null;
     return extcmdlist[i];
 }
 
 /* get the command bound to a key */
-function /* struct Cmd_bind * */
-cmdbind_get(key)
-{
+function cmdbind_get(key) { /* struct Cmd_bind * */
     let bind = gc.Cmd.cmdbinds;
 
     if (!key)
@@ -2125,9 +1852,7 @@ cmdbind_get(key)
     return bind;
 }
 
-function /* void */
-cmdbind_add(key, extcmd, user)
-{
+function cmdbind_add(key, extcmd, user) { /* void */
     let bind = cmdbind_get(key);
 
     if (!key)
@@ -2157,9 +1882,7 @@ cmdbind_add(key, extcmd, user)
     }
 }
 
-function /* void */
-cmdbind_remove(key)
-{
+function cmdbind_remove(key) { /* void */
     let bind = gc.Cmd.cmdbinds;
     let prev = null;
 
@@ -2179,9 +1902,7 @@ cmdbind_remove(key)
     }
 }
 
-export function /* void */
-cmdbind_freeall()
-{
+export function cmdbind_freeall() { /* void */
     let next;
 
     while (gc.Cmd.cmdbinds) {
@@ -2194,9 +1915,7 @@ cmdbind_freeall()
 }
 
 /* swap key bindings for key1 and key2. both bindings must exist. */
-function /* void */
-cmdbind_swapkeys(key1, key2)
-{
+function cmdbind_swapkeys(key1, key2) { /* void */
     let bind1 = cmdbind_get(key1);
     let bind2 = cmdbind_get(key2);
 
@@ -2207,14 +1926,13 @@ cmdbind_swapkeys(key1, key2)
 }
 
 /* return number of extended commands bound to a non-default key */
-export function /* int */
-count_bind_keys()
-{ const $frame = stack_frame(); try {
+export function count_bind_keys() { /* int */
+    const $frame = stack_frame(); try {
     let bind = gc.Cmd.cmdbinds;
     let i, nbinds = 0;
     let keys = stack_array(uchar, 256);
 
-    void memset(keys, 0, sizeof(uchar) * 256);
+    memset(keys, 0, sizeof(uchar) * 256);
 
     /* commands bound to different key */
     while (bind) {
@@ -2231,12 +1949,12 @@ count_bind_keys()
             nbinds++;
 
     return nbinds;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* show changed key bindings in text, or if sbuf is non-null, append to it */
-export function /* void */
-get_changed_key_binds(sbuf)
-{ const $frame = stack_frame(); try {
+export function get_changed_key_binds(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let win = WIN_ERR;
     let i;
     let buf = stack_array(char, BUFSZ);
@@ -2244,7 +1962,7 @@ get_changed_key_binds(sbuf)
     let bind = gc.Cmd.cmdbinds;
     let keys = stack_array(uchar, 256);
 
-    void memset(keys, 0, sizeof(uchar) * 256);
+    memset(keys, 0, sizeof(uchar) * 256);
 
     if (!sbuf)
         win = create_nhwindow()(NHW_TEXT);
@@ -2254,12 +1972,9 @@ get_changed_key_binds(sbuf)
         uchars[keys + bind.key] = 1;
         if (bind.userbind && bind.cmd && bind.cmd.key != bind.key) {
             if ((bind.cmd.flags & CMD_PARAM) != 0)
-                void sprintf(buf, _("BIND=%s:%s(%s)%s"), key2txt(bind.key, buf2), bind.cmd.ef_txt, bind.param, sbuf ? _("\n") : _(""));
+                sprintf(buf, _("BIND=%s:%s(%s)%s"), key2txt(bind.key, buf2), bind.cmd.ef_txt, bind.param, sbuf ? _("\n") : _(""));
             else
-                void sprintf(buf, _("BIND=%s:%s%s"), key2txt(bind.key, buf2), bind.cmd.ef_txt, sbuf ? _("\n") : _(""))
-
-
-
+                sprintf(buf, _("BIND=%s:%s%s"), key2txt(bind.key, buf2), bind.cmd.ef_txt, sbuf ? _("\n") : _(""))
 
 ;
             if (sbuf)
@@ -2275,7 +1990,7 @@ get_changed_key_binds(sbuf)
         let ec = extcmdlist[i];
 
         if (ec.key && !uchars[keys + ec.key]) {
-            void sprintf(buf, _("BIND=%s:nothing%s"), key2txt(ec.key, buf2), sbuf ? _("\n") : _(""))
+            sprintf(buf, _("BIND=%s:nothing%s"), key2txt(ec.key, buf2), sbuf ? _("\n") : _(""))
 ;
             if (sbuf)
                 strbuf_append(sbuf, buf);
@@ -2287,12 +2002,12 @@ get_changed_key_binds(sbuf)
         display_nhwindow()(win, TRUE);
         destroy_nhwindow()(win);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* interactive key binding */
-function /* void */
-handler_rebind_keys_add(keyfirst)
-{ const $frame = stack_frame(); try {
+function handler_rebind_keys_add(keyfirst) { /* void */
+    const $frame = stack_frame(); try {
     var ec;
     var win;
     var any = stack_struct(struct_any);
@@ -2319,10 +2034,10 @@ handler_rebind_keys_add(keyfirst)
         var bind = cmdbind_get(key);
 
         if (bind && bind.cmd) {
-            void sprintf(buf, _("Key '%s' is currently bound to \"%s\"."), key2txt(key, buf2), bind.cmd.ef_txt)
+            sprintf(buf, _("Key '%s' is currently bound to \"%s\"."), key2txt(key, buf2), bind.cmd.ef_txt)
 ;
         } else {
-            void sprintf(buf, _("Key '%s' is not bound to anything."), key2txt(key, buf2))
+            sprintf(buf, _("Key '%s' is not bound to anything."), key2txt(key, buf2))
 ;
         }
         add_menu_str(win, buf);
@@ -2343,14 +2058,14 @@ handler_rebind_keys_add(keyfirst)
             continue;
 
         any.a_int = (i + 1);
-        void sprintf(buf, _("%s: %s"), ec.ef_txt, ec.ef_desc);
+        sprintf(buf, _("%s: %s"), ec.ef_txt, ec.ef_desc);
         add_menu(win, nul_glyphinfo, any, ord('\0'), 0, ATR_NONE, clr, buf,
              MENU_ITEMFLAGS_NONE);
     }
     if (key)
-        void sprintf(buf, _("Bind '%s' to what command?"), key2txt(key, buf2));
+        sprintf(buf, _("Bind '%s' to what command?"), key2txt(key, buf2));
     else
-        void sprintf(buf, _("Bind what command?"));
+        sprintf(buf, _("Bind what command?"));
     end_menu()(win, buf);
     npick = select_menu(win, PICK_ONE, picks);
     destroy_nhwindow()(win);
@@ -2365,13 +2080,12 @@ handler_rebind_keys_add(keyfirst)
         chars[cmdstr + 0] = ord('\xff');
         chars[cmdstr + 1] = ord('\0');
 
-
         i = picks[0].item.a_int;
         free(addr_of(picks[0]));
 
         bindit: { if (i == -1) {
             ec = null;
-            void strcat(cmdstr, _("nothing"));
+            strcat(cmdstr, _("nothing"));
             break bindit;
         } else {
             ec = extcmdlist[i-1];
@@ -2381,13 +2095,13 @@ handler_rebind_keys_add(keyfirst)
                 var querybuf = stack_array(char, BUFSZ);
 
                 chars[parambuf + 0] = ord('\0');
-                void sprintf(querybuf, _("Command %s requires a parameter:"), ec.ef_txt);
+                sprintf(querybuf, _("Command %s requires a parameter:"), ec.ef_txt);
                 getlin(querybuf, parambuf);
-                void mungspaces(parambuf);
+                mungspaces(parambuf);
                 Snprintf(cmdstr, BUFSZ-1, _("%s(%s)"), ec.ef_txt, parambuf);
                 chars[cmdstr + (BUFSZ-1)] = ord('\0');
             } else {
-                void strcat(cmdstr, ec.ef_txt);
+                strcat(cmdstr, ec.ef_txt);
             }
         }
  }
@@ -2413,11 +2127,11 @@ handler_rebind_keys_add(keyfirst)
             pline(_("Key binding failed?!"));
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-handler_rebind_keys()
-{ const $frame = stack_frame(); try {
+export function handler_rebind_keys() { /* void */
+    const $frame = stack_frame(); try {
     var win;
     var any = stack_struct(struct_any);
     var i, npick;
@@ -2448,17 +2162,17 @@ handler_rebind_keys()
         free(addr_of(picks[0]));
 
         if (i == 1 || i == 2) {
-            handler_rebind_keys_add((+(i == 1)));
+            handler_rebind_keys_add(+(i == 1));
         } else if (i == 3) {
             get_changed_key_binds(null);
         }
         continue redo_rebind;
     } break; }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-handler_change_autocompletions()
-{ const $frame = stack_frame(); try {
+export function handler_change_autocompletions() { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let any = stack_struct(struct_any);
     let i, n;
@@ -2480,7 +2194,7 @@ handler_change_autocompletions()
             continue;
 
         any.a_int = (i + 1);
-        void sprintf(buf, _("%c %s: %s"), (ec.flags & AUTOCOMP_ADJ) ? ord('*') : ord(' '), ec.ef_txt, ec.ef_desc)
+        sprintf(buf, _("%c %s: %s"), (ec.flags & AUTOCOMP_ADJ) ? ord('*') : ord(' '), ec.ef_txt, ec.ef_desc)
 
 ;
         add_menu(win, nul_glyphinfo, any, ord('\0'), 0, ATR_NONE, clr, buf,
@@ -2504,7 +2218,7 @@ handler_change_autocompletions()
             if (strlen(ec.ef_txt) < 2)
                 continue;
 
-            void sprintf(buf, _("%s"), ec.ef_txt);
+            sprintf(buf, _("%s"), ec.ef_txt);
 
             for (j = 0; j < n; ++j) {
                 if (ec == elt(extcmdlist, (ptr_add(picks[0], j).item.a_int - 1))) {
@@ -2523,16 +2237,15 @@ handler_change_autocompletions()
     }
 
     destroy_nhwindow()(win);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* find extended command entries matching findstr.
    if findstr is NULL, returns all available entries.
    returns: number of matching extended commands,
             and the entry indexes in matchlist.
    for windowport use. */
-export function /* int */
-extcmds_match(findstr, ecmflags, matchlist)
-{
+export function extcmds_match(findstr, ecmflags, matchlist) { /* int */
     let retmatchlist = static_array("extcmds_match.retmatchlist", int, SIZE(extcmdlist), []);
     let i, mi = 0;
     let fslen = int(findstr ? Strlen(findstr) : 0);
@@ -2568,9 +2281,7 @@ extcmds_match(findstr, ecmflags, matchlist)
     return mi;
 }
 
-export function /* const char * */
-key2extcmddesc(key)
-{
+export function key2extcmddesc(key) { /* const char * */
     let key2cmdbuf = static_array("key2extcmddesc.key2cmdbuf", char, QBUFSZ);
     let txt;
     let k, i, j;
@@ -2582,19 +2293,19 @@ key2extcmddesc(key)
        that match !number_pad movement (like 'j' for "jump") */
     chars[key2cmdbuf + 0] = ord('\0');
     if (movecmd(k = key, MV_WALK))
-        void strcpy(key2cmdbuf, _("move")); /* "move or attack"? */
+        strcpy(key2cmdbuf, _("move")); /* "move or attack"? */
     else if (movecmd(k = key, MV_RUSH))
-        void strcpy(key2cmdbuf, _("rush"));
+        strcpy(key2cmdbuf, _("rush"));
     else if (movecmd(k = key, MV_RUN))
-        void strcpy(key2cmdbuf, _("run"));
+        strcpy(key2cmdbuf, _("run"));
     if (digit(char(key)) || (gc.Cmd.num_pad && digit(unmeta(key)))) {
         chars[key2cmdbuf + 0] = ord('\0');
         if (!gc.Cmd.num_pad)
-            void strcpy(key2cmdbuf, _("start of, or continuation of, a count"));
+            strcpy(key2cmdbuf, _("start of, or continuation of, a count"));
         else if (key == ord('5') || key == M_5)
-            void sprintf(key2cmdbuf, _("%s prefix"), (+!!gc.Cmd.pcHack_compat ^ (+(key == M_5))) ? _("run") : _("rush"));
+            sprintf(key2cmdbuf, _("%s prefix"), (+!!gc.Cmd.pcHack_compat ^ +(key == M_5)) ? _("run") : _("rush"));
         else if (key == ord('0') || (gc.Cmd.pcHack_compat && key == M_0))
-            void strcpy(key2cmdbuf, _("synonym for 'i'"))
+            strcpy(key2cmdbuf, _("synonym for 'i'"))
 ;
         if (chars[key2cmdbuf])
             return key2cmdbuf;
@@ -2611,13 +2322,13 @@ key2extcmddesc(key)
     if ((cmdbind = cmdbind_get(key)) != null
         && cmdbind.cmd
         && (txt = cmdbind.cmd.ef_txt) != 0) {
-        void sprintf(key2cmdbuf, _("%s (#%s)"), cmdbind.cmd.ef_desc, txt);
+        sprintf(key2cmdbuf, _("%s (#%s)"), cmdbind.cmd.ef_desc, txt);
 
         /* special case: for reqmenu prefix (normally 'm'), replace
            "prefix: request menu or modify command (#reqmenu)"
            with two-line "movement prefix:...\nnon-movement prefix:..." */
-        if (!strncmpi(key2cmdbuf, _("prefix:"), 7) && !strcmpi(txt, _("reqmenu")))
-            void strsubst(key2cmdbuf, _("prefix:"),
+        if (!strncmpi(key2cmdbuf, _("prefix:"), 7) && !strncmpi((txt), _(("reqmenu")), -1))
+            strsubst(key2cmdbuf, _("prefix:"),
                      /* relies on implicit concatenation of literal strings */
                             _("movement prefix:" +
                             " move without autopickup and without attacking" +
@@ -2631,9 +2342,7 @@ key2extcmddesc(key)
     return 0;
 }
 
-export function /* boolean */
-bind_mousebtn(btn, command)
-{
+export function bind_mousebtn(btn, command) { /* boolean */
     let extcmd;
 
     if (btn < 1 || btn > NUM_MOUSE_BUTTONS) {
@@ -2644,7 +2353,7 @@ bind_mousebtn(btn, command)
     btn--;
 
     /* special case: "nothing" is reserved for unbinding */
-    if (!strcmpi(command, _("nothing"))) {
+    if (!strncmpi((command), _(("nothing")), -1)) {
         gc.Cmd.mousebtn[btn] = null;
         return TRUE;
     }
@@ -2656,28 +2365,19 @@ bind_mousebtn(btn, command)
             continue;
         gc.Cmd.mousebtn[btn] = extcmd;
 
-
-
-
-
-
-
-
         return TRUE;
     }
 
     return FALSE;
 }
 
-export function /* boolean */
-bind_key(key, command, user)
-{
+export function bind_key(key, command, user) { /* boolean */
     let extcmd;
     let len;
     let buf, p = 0, lastp = 0;
 
     /* special case: "nothing" is reserved for unbinding */
-    if (!strcmpi(command, _("nothing"))) {
+    if (!strncmpi((command), _(("nothing")), -1)) {
         cmdbind_remove(key);
         return TRUE;
     }
@@ -2685,7 +2385,7 @@ bind_key(key, command, user)
     /* copy command to buf for modification */
     len = unsigned(strlen(command) + 1);
     buf = addr_of(alloc(unsigned(len)));
-    void strncpy(buf, command, unsigned(len));
+    strncpy(buf, command, unsigned(len));
 
     /* does buf have a parameter in parenthesis? */
     if ((p = strchr(buf, ord('('))) != 0
@@ -2709,26 +2409,18 @@ bind_key(key, command, user)
                 config_error_add(_("'%s' requires a parameter"), buf);
             } else {
                 let bind = cmdbind_get(key);
-                let maxlen = int(unsigned(((((30) < (strlen(p))) ? (30) : (strlen(p)))) + 1));
+                let maxlen = int(unsigned((((30) < (strlen(p))) ? (30) : (strlen(p))) + 1));
 
                 if (maxlen <= 1) {
                     config_error_add(_("Required parameter cannot be empty"));
                 } else {
                     bind.param = addr_of(alloc(unsigned(maxlen)));
-                    void strncpy(bind.param, p, unsigned(maxlen));
+                    strncpy(bind.param, p, unsigned(maxlen));
                     chars[bind.param + (maxlen-1)] = ord('\0');
                 }
             }
         } else if (p && strlen(p) > 0)
             config_error_add(_("'%s' does not take a parameter"), buf);
-
-
-
-
-
-
-
-
 
         free(buf);
         return TRUE;
@@ -2739,9 +2431,7 @@ bind_key(key, command, user)
 }
 
 /* bind key by ext cmd function */
-function /* boolean */
-bind_key_fn(key, fn)
-{
+function bind_key_fn(key, fn) { /* boolean */
     let extcmd;
 
     for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = ptr_add(extcmd, 1)) {
@@ -2757,45 +2447,37 @@ bind_key_fn(key, fn)
 }
 
 /* initialize all keyboard commands */
-function /* void */
-commands_init()
-{
+function commands_init() { /* void */
     let extcmd;
 
     for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = ptr_add(extcmd, 1))
         if (extcmd.key)
             cmdbind_add(extcmd.key, extcmd, FALSE);
 
-    void bind_mousebtn(1, _("therecmdmenu"));
-    void bind_mousebtn(2, _("clicklook"));
+    bind_mousebtn(1, _("therecmdmenu"));
+    bind_mousebtn(2, _("clicklook"));
 
     /* number_pad */
-    void bind_key(C(ord('l')), _("redraw"), FALSE);
-    void bind_key(ord('h'),    _("help"), FALSE);
-    void bind_key(ord('j'),    _("jump"), FALSE);
-    void bind_key(ord('k'),    _("kick"), FALSE);
-    void bind_key(ord('l'),    _("loot"), FALSE);
-    void bind_key(C(ord('n')), _("annotate"), FALSE);
-    void bind_key(ord('N'),    _("name"), FALSE);
-    void bind_key(ord('u'),    _("untrap"), FALSE);
-    void bind_key(ord('5'),    _("run"), FALSE);
-    void bind_key(uchar(M(ord('5'))), _("rush"), FALSE);
-    void bind_key(ord('-'),    _("fight"), FALSE);
+    bind_key(C(ord('l')), _("redraw"), FALSE);
+    bind_key(ord('h'),    _("help"), FALSE);
+    bind_key(ord('j'),    _("jump"), FALSE);
+    bind_key(ord('k'),    _("kick"), FALSE);
+    bind_key(ord('l'),    _("loot"), FALSE);
+    bind_key(C(ord('n')), _("annotate"), FALSE);
+    bind_key(ord('N'),    _("name"), FALSE);
+    bind_key(ord('u'),    _("untrap"), FALSE);
+    bind_key(ord('5'),    _("run"), FALSE);
+    bind_key(uchar(M(ord('5'))), _("rush"), FALSE);
+    bind_key(ord('-'),    _("fight"), FALSE);
 
     /* alt keys: */
-    void bind_key(uchar(M(ord('O'))), _("overview"), FALSE);
-    void bind_key(uchar(M(ord('2'))), _("twoweapon"), FALSE);
-    void bind_key(uchar(M(ord('N'))), _("name"), FALSE);
-
-
-
-
+    bind_key(uchar(M(ord('O'))), _("overview"), FALSE);
+    bind_key(uchar(M(ord('2'))), _("twoweapon"), FALSE);
+    bind_key(uchar(M(ord('N'))), _("name"), FALSE);
 }
 
-function /* boolean */
-keylist_func_has_key(extcmd,
-                     skip_keys_used) /* boolean keys_used[256] */
-{
+function keylist_func_has_key(extcmd,
+                     skip_keys_used) { /* boolean */ /* boolean keys_used[256] */
     let i;
     let bind;
 
@@ -2809,11 +2491,10 @@ keylist_func_has_key(extcmd,
     return FALSE;
 }
 
-function /* int */
-keylist_putcmds(datawin, docount,
+function keylist_putcmds(datawin, docount,
                 incl_flags, excl_flags,
-                keys_used) /* boolean keys_used[256] */
-{ const $frame = stack_frame(); try {
+                keys_used) { /* int */ /* boolean keys_used[256] */
+    const $frame = stack_frame(); try {
     let extcmd;
     let i;
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, QBUFSZ);
@@ -2839,10 +2520,9 @@ keylist_putcmds(datawin, docount,
                 continue;
             }
             if ((bind.cmd.flags & CMD_PARAM) != 0)
-                void sprintf(buf, _("%-7s %-13s %s \"%s\""), key2txt(key, buf2), bind.cmd.ef_txt, bind.cmd.ef_desc, bind.param);
+                sprintf(buf, _("%-7s %-13s %s \"%s\""), key2txt(key, buf2), bind.cmd.ef_txt, bind.cmd.ef_desc, bind.param);
             else
-                void sprintf(buf, _("%-7s %-13s %s"), key2txt(key, buf2), bind.cmd.ef_txt, bind.cmd.ef_desc)
-
+                sprintf(buf, _("%-7s %-13s %s"), key2txt(key, buf2), bind.cmd.ef_txt, bind.cmd.ef_desc)
 
 ;
             putstr()(datawin, 0, buf);
@@ -2867,16 +2547,16 @@ keylist_putcmds(datawin, docount,
             continue;
         }
         /* '#'+20 for one column here == 7+' '+13 for two columns above */
-        void sprintf(buf, _("#%-20s %s"), extcmd.ef_txt, extcmd.ef_desc);
+        sprintf(buf, _("#%-20s %s"), extcmd.ef_txt, extcmd.ef_desc);
         putstr()(datawin, 0, buf);
     }
     return count;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* list all keys and their bindings, like dat/hh but dynamic */
-export function /* void */
-dokeylist()
-{ const $frame = stack_frame(); try {
+export function dokeylist() { /* void */
+    const $frame = stack_frame(); try {
     let extcmd;
     let datawin;
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ);
@@ -2884,9 +2564,8 @@ dokeylist()
     let spkey_gap, keys_used = stack_array(schar, 256), mov_seen = stack_array(schar, 256);
     let i, j, pfx_seen = stack_array(int, 256);
 
-    void memset(keys_used, 0, sizeof(array_of(schar, 256)));
-    void memset(addr_of(pfx_seen), 0, sizeof(array_of(int, 256)));
-
+    memset(keys_used, 0, sizeof(array_of(schar, 256)));
+    memset(addr_of(pfx_seen), 0, sizeof(array_of(int, 256)));
 
     /* this is actually ambiguous; tty raw mode will override SIGINT;
        when enabled, treat it like a movement command since assigning
@@ -2894,9 +2573,8 @@ dokeylist()
     key = C(ord('c'));
     chars[keys_used + key] = TRUE;
 
-
     /* movement keys have been flagged in keys_used[]; clone them */
-    void memcpy(mov_seen, keys_used,
+    memcpy(mov_seen, keys_used,
                   sizeof(array_of(schar, 256)));
 
     spkey_gap = FALSE;
@@ -2914,11 +2592,11 @@ dokeylist()
 
     datawin = create_nhwindow()(NHW_TEXT);
     putstr()(datawin, 0, _(""));
-    void sprintf(buf, _("%7s %s"), _(""), _("    Full Current Key Bindings List"));
+    sprintf(buf, _("%7s %s"), _(""), _("    Full Current Key Bindings List"));
     putstr()(datawin, 0, buf);
     for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = ptr_add(extcmd, 1))
         if (spkey_gap || !keylist_func_has_key(extcmd, keys_used)) {
-            void sprintf(buf, _("%7s %s"), _(""), _("(also commands with no key assignment)"))
+            sprintf(buf, _("%7s %s"), _(""), _("(also commands with no key assignment)"))
 ;
             putstr()(datawin, 0, buf);
             break;
@@ -2933,18 +2611,18 @@ dokeylist()
         putstr()(datawin, 0, _(""));
         putstr()(datawin, 0,
      _("Ctrl+<direction> will run in specified direction until something very"));
-        void sprintf(buf, _("%7s %s"), _(""), _("interesting is seen."));
+        sprintf(buf, _("%7s %s"), _(""), _("interesting is seen."));
         putstr()(datawin, 0, buf);
-        void strcpy(buf, _("Shift")); /* append the rest below */
+        strcpy(buf, _("Shift")); /* append the rest below */
     } else {
         /* num_pad */
         putstr()(datawin, 0, _(""));
-        void strcpy(buf, _("Meta")); /* append the rest next */
+        strcpy(buf, _("Meta")); /* append the rest next */
     }
-    void strcat(buf, _("+<direction> will run in specified direction until you encounter"))
+    strcat(buf, _("+<direction> will run in specified direction until you encounter"))
 ;
     putstr()(datawin, 0, buf);
-    void sprintf(buf, _("%7s %s"), _(""), _("an obstacle."));
+    sprintf(buf, _("%7s %s"), _(""), _("an obstacle."));
     putstr()(datawin, 0, buf);
 
     putstr()(datawin, 0, _(""));
@@ -2956,7 +2634,7 @@ dokeylist()
         key = uchar((chars[gc.Cmd.spkeys + j]));
         if (key && !chars[mov_seen + key]
             && (pfx_seen[key] == j)) {
-            void sprintf(buf, _("%-7s %s"), key2txt(key, buf2), misc_keys[i].desc);
+            sprintf(buf, _("%-7s %s"), key2txt(key, buf2), misc_keys[i].desc);
             putstr()(datawin, 0, buf);
         }
     }
@@ -2964,13 +2642,9 @@ dokeylist()
     key = C(ord('c'));
 
     /* last of the special keys */
-    void sprintf(buf, _("%-7s"), key2txt(key, buf2));
+    sprintf(buf, _("%-7s"), key2txt(key, buf2));
 
-
-
-
-
-    void strcat(buf, _(" interrupt: break out of NetHack (SIGINT)"));
+    strcat(buf, _(" interrupt: break out of NetHack (SIGINT)"));
     putstr()(datawin, 0, buf);
     /* keyless special key commands, if any */
     if (spkey_gap) {
@@ -2980,7 +2654,7 @@ dokeylist()
             j = misc_keys[i].nhkf;
             key = uchar((chars[gc.Cmd.spkeys + j]));
             if (!key || (pfx_seen[key] != j)) {
-                void sprintf(buf2, _("[%s]"), spkey_name(j));
+                sprintf(buf2, _("[%s]"), spkey_name(j));
                 /* lines up with the other unassigned commands which use
                    "#%-20s ", but not with the other special keys */
                 Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%-21s %s"), buf2, misc_keys[i].desc)
@@ -2990,22 +2664,20 @@ dokeylist()
         }
     }
 
-
-
     putstr()(datawin, 0, _(""));
     show_menu_controls(datawin, TRUE);
 
     if (keylist_putcmds(datawin, TRUE, GENERALCMD, IGNORECMD, keys_used)) {
         putstr()(datawin, 0, _(""));
         putstr()(datawin, 0, _("General commands:"));
-        void keylist_putcmds(datawin, FALSE, GENERALCMD,
+        keylist_putcmds(datawin, FALSE, GENERALCMD,
                                IGNORECMD, keys_used);
     }
 
     if (keylist_putcmds(datawin, TRUE, 0, GENERALCMD | IGNORECMD, keys_used)) {
         putstr()(datawin, 0, _(""));
         putstr()(datawin, 0, _("Game commands:"));
-        void keylist_putcmds(datawin, FALSE, 0,
+        keylist_putcmds(datawin, FALSE, 0,
                                GENERALCMD | IGNORECMD,
                                keys_used);
     }
@@ -3014,18 +2686,17 @@ dokeylist()
                                   WIZMODECMD, INTERNALCMD, keys_used)) {
         putstr()(datawin, 0, _(""));
         putstr()(datawin, 0, _("Debug mode commands:"));
-        void keylist_putcmds(datawin, FALSE,
+        keylist_putcmds(datawin, FALSE,
                                WIZMODECMD, INTERNALCMD, keys_used);
     }
 
     display_nhwindow()(datawin, FALSE);
     destroy_nhwindow()(datawin);
+    } finally { stack_pop($frame); }
+}
+export const IGNORECMD = (WIZMODECMD | INTERNALCMD | MOVEMENTCMD);
 
-} finally { stack_pop($frame); } } export const IGNORECMD = (WIZMODECMD | INTERNALCMD | MOVEMENTCMD);
-
-export function /* const struct ext_func_tab * */
-ext_func_tab_from_func(fn)
-{
+export function ext_func_tab_from_func(fn) { /* const struct ext_func_tab * */
     let extcmd;
 
     for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = ptr_add(extcmd, 1))
@@ -3036,16 +2707,12 @@ ext_func_tab_from_func(fn)
 }
 
 /* returns the key bound to a movement command for given DIR_ and MV_ mode */
-export function /* char */
-cmd_from_dir(dir, mode)
-{
+export function cmd_from_dir(dir, mode) { /* char */
     return cmd_from_func(move_funcs[dir][mode]);
 }
 
 /* return the key bound to extended command */
-export function /* char */
-cmd_from_func(fn)
-{
+export function cmd_from_func(fn) { /* char */
     let i;
     let ret = ord('\0');
     let bind;
@@ -3078,9 +2745,7 @@ cmd_from_func(fn)
 
 /* return visual interpretation of the key bound to extended command,
    or the ext cmd name if not bound to any key. */
-export function /* char * */
-cmd_from_ecname(ecname)
-{
+export function cmd_from_ecname(ecname) { /* char * */
     let cmdnamebuf = static_array("cmd_from_ecname.cmdnamebuf", char, QBUFSZ);
     let extcmd;
 
@@ -3089,9 +2754,9 @@ cmd_from_ecname(ecname)
             let key = cmd_from_func(extcmd.ef_funct);
 
             if (key)
-                void sprintf(cmdnamebuf, _("%s"), visctrl(key));
+                sprintf(cmdnamebuf, _("%s"), visctrl(key));
             else
-                void sprintf(cmdnamebuf, _("#%s"), ecname);
+                sprintf(cmdnamebuf, _("#%s"), ecname);
             return cmdnamebuf;
         }
 
@@ -3099,9 +2764,7 @@ cmd_from_ecname(ecname)
     return cmdnamebuf;
 }
 
-export function /* const char * */
-ecname_from_fn(fn)
-{
+export function ecname_from_fn(fn) { /* const char * */
     let extcmd, cmdptr = null;
 
     for (extcmd = extcmdlist[0]; extcmd.ef_txt; extcmd = ptr_add(extcmd, 1))
@@ -3113,12 +2776,10 @@ ecname_from_fn(fn)
 }
 
 /* return extended command name (without leading '#') for command (*fn)() */
-export function /* const char * */
-cmdname_from_func(
+export function cmdname_from_func(
     fn,
     outbuf,
-    fullname) /* False: just enough to disambiguate */
-{
+    fullname) { /* const char * */ /* False: just enough to disambiguate */
     let extcmd, cmdptr = null;
     let res = 0;
 
@@ -3201,9 +2862,7 @@ cmdname_from_func(
     { nhkf: NHKF_GETPOS_MENU,      key: ord('!'), name: _("getpos.menu") }
 ]);
 
-export function /* boolean */
-bind_specialkey(key, command)
-{
+export function bind_specialkey(key, command) { /* boolean */
     let i;
 
     for (i = 0; i < SIZE(spkeys_binds); i++) {
@@ -3215,9 +2874,7 @@ bind_specialkey(key, command)
     return FALSE;
 }
 
-function /* const char * */
-spkey_name(nhkf)
-{
+function spkey_name(nhkf) { /* const char * */
     let name = 0;
     let i;
 
@@ -3232,28 +2889,23 @@ spkey_name(nhkf)
 
 /* returns the text for a one-byte encoding;
  * must be shorter than a tab for proper formatting */
-export function /* char * */
-key2txt(c, txt) /* sufficiently long buffer */
-{
+export function key2txt(c, txt) { /* char * */ /* sufficiently long buffer */
     /* should probably switch to "SPC", "ESC", "RET"
        since nethack's documentation uses ESC for <escape> */
     if (c == ord(' '))
-        void sprintf(txt, _("<space>"));
+        sprintf(txt, _("<space>"));
     else if (c == ord('\x1b'))
-        void sprintf(txt, _("<esc>")); /* "<escape>" won't fit */
+        sprintf(txt, _("<esc>")); /* "<escape>" won't fit */
     else if (c == ord('\n'))
-        void sprintf(txt, _("<enter>")); /* "<return>" won't fit */
+        sprintf(txt, _("<enter>")); /* "<return>" won't fit */
     else if (c == ord('\x7f'))
-        void sprintf(txt, _("<del>")); /* "<delete>" won't fit */
+        sprintf(txt, _("<del>")); /* "<delete>" won't fit */
     else
-        void strcpy(txt, visctrl(char(c)));
+        strcpy(txt, visctrl(char(c)));
     return txt;
 }
 
-
-export function /* void */
-parseautocomplete(autocomplete, condition)
-{
+export function parseautocomplete(autocomplete, condition) { /* void */
     let efp;
     let autoc;
 
@@ -3303,25 +2955,23 @@ parseautocomplete(autocomplete, condition)
 }
 
 /* add changed autocompletions to the string buffer in config file format */
-export function /* void */
-all_options_autocomplete(sbuf)
-{ const $frame = stack_frame(); try {
+export function all_options_autocomplete(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let efp;
     let buf = stack_array(char, BUFSZ);
 
     for (efp = extcmdlist[0]; efp.ef_txt; efp = ptr_add(efp, 1))
         if ((efp.flags & AUTOCOMP_ADJ) != 0) {
-            void sprintf(buf, _("AUTOCOMPLETE=%s%s\n"), (efp.flags & AUTOCOMPLETE) ? _("") : _("!"), efp.ef_txt)
+            sprintf(buf, _("AUTOCOMPLETE=%s%s\n"), (efp.flags & AUTOCOMPLETE) ? _("") : _("!"), efp.ef_txt)
 
 ;
             strbuf_append(sbuf, buf);
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return the number of changed autocompletions */
-export function /* int */
-count_autocompletions()
-{
+export function count_autocompletions() { /* int */
     let efp;
     let n = 0;
 
@@ -3333,9 +2983,7 @@ count_autocompletions()
 }
 
 /* save&clear the mouse button actions, or restore the saved ones */
-export function /* void */
-lock_mouse_buttons(savebtns)
-{
+export function lock_mouse_buttons(savebtns) { /* void */
     let mousebtn = static_array("lock_mouse_buttons.mousebtn", ptr_to(struct_ext_func_tab), NUM_MOUSE_BUTTONS, [ null ]);
     let i;
 
@@ -3351,9 +2999,7 @@ lock_mouse_buttons(savebtns)
 }
 
 /* called at startup and after number_pad is twiddled */
-export function /* void */
-reset_commands(initial)
-{
+export function reset_commands(initial) { /* void */
     let sdir = init_string(static_array("reset_commands.sdir", char, sizeof_string("hykulnjb><")), _("hykulnjb><"), true),
                       sdir_swap_yz = init_string(static_array("reset_commands.sdir_swap_yz", char, sizeof_string("hzkulnjb><")), _("hzkulnjb><"), true),
                       ndir = init_string(static_array("reset_commands.ndir", char, sizeof_string("47896321><")), _("47896321><"), true),
@@ -3411,11 +3057,6 @@ reset_commands(initial)
             ++updated;
             /* pcHack_compat has been toggled */
 
-
-
-
-
-
             /* FIXME: NHKF_DOINV2 ought to be implemented instead of this */
             c = M(ord('0')) & 0xff;
             if (gc.Cmd.pcHack_compat)
@@ -3471,14 +3112,14 @@ reset_commands(initial)
 
     /* bind the new keys to movement commands */
     for (i = 0; i < N_DIRS; i++) {
-        void bind_key_fn(uchar(chars[gc.Cmd.dirchars + i]), move_funcs[i][MV_WALK]);
+        bind_key_fn(uchar(chars[gc.Cmd.dirchars + i]), move_funcs[i][MV_WALK]);
         if (!gc.Cmd.num_pad) {
-            void bind_key_fn(uchar(highc(chars[gc.Cmd.dirchars + i])),
+            bind_key_fn(uchar(highc(chars[gc.Cmd.dirchars + i])),
                                move_funcs[i][MV_RUN]);
-            void bind_key_fn(C(chars[gc.Cmd.dirchars + i]), move_funcs[i][MV_RUSH]);
+            bind_key_fn(C(chars[gc.Cmd.dirchars + i]), move_funcs[i][MV_RUSH]);
         } else {
             /* M(number) works when altmeta is on */
-            void bind_key_fn(uchar(M(chars[gc.Cmd.dirchars + i])), move_funcs[i][MV_RUN]);
+            bind_key_fn(uchar(M(chars[gc.Cmd.dirchars + i])), move_funcs[i][MV_RUN]);
             /* can't bind highc() or C() of digits. just use the 5 prefix. */
         }
     }
@@ -3490,9 +3131,7 @@ reset_commands(initial)
    from initoptions_init() which takes place before key bindings have been
    processed, and by initoptions_finish() after key bindings so that we
    can remember anything bound to <space> in 'unrestonspace' */
-export function /* void */
-update_rest_on_space()
-{
+export function update_rest_on_space() { /* void */
     /* cloned from extcmdlist['.'], then slightly modified to be distinct;
        donull is all that's needed for it to operate; command name and
        description get shown by help menu's "Info on what a given key does"
@@ -3516,17 +3155,13 @@ update_rest_on_space()
 /* commands which accept 'm' prefix to request menu operation or other
    alternate behavior; it's also overloaded for move-without-autopickup;
    there is no overlap between the two groups of commands */
-function /* boolean */
-accept_menu_prefix(ec)
-{
-    return (((ec && ((ec.flags & CMD_M_PREFIX) != 0)) ? 1 : 0));
+function accept_menu_prefix(ec) { /* boolean */
+    return (ec && ((ec.flags & CMD_M_PREFIX) != 0) ? 1 : 0);
 }
 
 /* choose a random character, biased towards movement commands, primarily
    for debug-fuzzer testing */
-export function /* char */
-randomkey()
-{
+export function randomkey() { /* char */
     let i = static_var("randomkey.i", unsigned, 0);
     let last_c = static_var("randomkey.last_c", char, ord('\0'));
     let c;
@@ -3588,9 +3223,7 @@ randomkey()
     return c;
 }
 
-export function /* void */
-random_response(buf, sz)
-{
+export function random_response(buf, sz) { /* void */
     let c;
     let count = 0;
 
@@ -3608,15 +3241,11 @@ random_response(buf, sz)
     chars[buf + count] = ord('\0');
 }
 
-export function /* int */
-rnd_extcmd_idx()
-{
+export function rnd_extcmd_idx() { /* int */
     return rn2(extcmdlist_length[0] + 1) - 1;
 }
 
-function /* void */
-reset_cmd_vars(reset_cmdq)
-{
+function reset_cmd_vars(reset_cmdq) { /* void */
     svc.context.run = 0;
     svc.context.nopick = svc.context.forcefight = FALSE;
     svc.context.move = svc.context.mv = FALSE;
@@ -3634,10 +3263,10 @@ reset_cmd_vars(reset_cmdq)
     }
 }
 
-export function /* void */
-rhack(key)
-{ const $frame = stack_frame(); try { let $goto = null; var cq = stack_struct(struct__cmd_queue);
-    var bad_command, firsttime = (+(key == 0));
+export function rhack(key) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var cq = stack_struct(struct__cmd_queue);
+    var bad_command, firsttime = +(key == 0);
     var cmdq = null;
     var cmdq_ec = null, prefix_seen = null;
     var was_m_prefix = FALSE;
@@ -3722,8 +3351,8 @@ rhack(key)
                           tlist.ef_txt, which);
                 } else {
                     var ch = tlist.key;
-                    var up = (+(ch == ord('<') || tlist.ef_funct == doup)),
-                            down = (+(ch == ord('>') || tlist.ef_funct == dodown));
+                    var up = +(ch == ord('<') || tlist.ef_funct == doup),
+                            down = +(ch == ord('>') || tlist.ef_funct == dodown);
 
                     pline(
                 _("The '%s' prefix should be followed by a movement command%s."),
@@ -3735,7 +3364,7 @@ rhack(key)
             } else {
                 /* we discard 'const' because some compilers seem to have
                    trouble with the pointer passed to set_occupation() */
-                func = (tlist).ef_funct;
+                func = tlist.ef_funct;
                 if (tlist.f_text && !go.occupation && gm.multi)
                     set_occupation(func, tlist.f_text, gm.multi);
                 ge.ext_tlist = null;
@@ -3744,7 +3373,7 @@ rhack(key)
                     if (!prefix_seen)
                         cmdq_clear(CQ_REPEAT);
                     cmdq_add_ec(CQ_REPEAT,
-                                (tlist).ef_funct);
+                                tlist.ef_funct);
                 } else {
                     if (func == doextcmd) {
                         cmdq_clear(CQ_REPEAT);
@@ -3756,7 +3385,7 @@ rhack(key)
                 if ((tlist.flags & CMD_INSANE) != 0)
                     iflags.sanity_no_check = iflags.sanity_check;
 
-                res = (func)(); /* perform the command */
+                res = func(); /* perform the command */
                 /* if 'func' is doextcmd(), 'tlist' is for Cmd.commands['#']
                    rather than for the command that doextcmd() just ran;
                    doextcmd() notifies us what that was via ext_tlist;
@@ -3765,7 +3394,7 @@ rhack(key)
                     tlist = ge.ext_tlist, ge.ext_tlist = null;
                     /* Add the command post-execution */
                     cmdq_add_ec(CQ_REPEAT,
-                                (tlist).ef_funct);
+                                tlist.ef_funct);
                     /* shift the command to first */
                     cmdq_shift(CQ_REPEAT);
                 }
@@ -3851,12 +3480,11 @@ rhack(key)
     svc.context.move = FALSE;
     gm.multi = 0;
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* convert an x,y pair into a direction code */
-export function /* int */
-xytodir(x, y)
-{
+export function xytodir(x, y) { /* int */
     let dd;
 
     for (dd = 0; dd < N_DIRS; dd++)
@@ -3866,9 +3494,7 @@ xytodir(x, y)
 }
 
 /* convert a direction code into an x,y pair */
-export function /* void */
-dirtocoord(cc, dd)
-{
+export function dirtocoord(cc, dd) { /* void */
     if (dd > DIR_ERR && dd < N_DIRS_Z) {
         cc.x = chars[xdir + dd];
         cc.y = chars[ydir + dd];
@@ -3876,9 +3502,7 @@ dirtocoord(cc, dd)
 }
 
 /* also sets u.dz, but returns false for <> */
-export function /* int */
-movecmd(sym, mode)
-{
+export function movecmd(sym, mode) { /* int */
     let d = DIR_ERR;
     let bind = cmdbind_get(uchar(sym));
 
@@ -3909,23 +3533,19 @@ movecmd(sym, mode)
 }
 
 /* grid bug handling */
-export function /* int */
-dxdy_moveok()
-{
+export function dxdy_moveok() { /* int */
     if (u.dx && u.dy && NODIAG(u.umonnum))
         u.dx = u.dy = 0;
-    return ((u.dx || u.dy) ? 1 : 0);
+    return (u.dx || u.dy ? 1 : 0);
 }
 
 /* decide whether character (user input keystroke) requests screen repaint */
-export function /* boolean */
-redraw_cmd(c)
-{
+export function redraw_cmd(c) { /* boolean */
     let uc = uchar(c);
     let bind = cmdbind_get(uc);
 
-    return (((bind && bind.cmd
-                      && bind.cmd.ef_funct == doredraw) ? 1 : 0));
+    return (bind && bind.cmd
+                      && bind.cmd.ef_funct == doredraw ? 1 : 0);
 }
 
 /*
@@ -3938,13 +3558,11 @@ redraw_cmd(c)
  *
  * Returns non-zero if coordinates in cc are valid.
  */
-export function /* int */
-get_adjacent_loc(
+export function get_adjacent_loc(
     prompt,
     emsg,
     x, y,
-    cc)
-{
+    cc) { /* int */
     let new_x, new_y;
     if (!getdir(prompt)) {
         pline1(Never_mind());
@@ -3965,9 +3583,9 @@ get_adjacent_loc(
 
 /* prompt for a direction (specified via movement keystroke) and return it
    in u.dx, u.dy, and u.dz; function return value is 1 for ok, 0 otherwise */
-export function /* int */
-getdir(s)
-{ const $frame = stack_frame(); try { let $goto = null; var qbuf = stack_array(char, QBUFSZ), cc = stack_struct(struct_nhcoord);
+export function getdir(s) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var qbuf = stack_array(char, QBUFSZ), cc = stack_struct(struct_nhcoord);
     var dirsym;
     var is_mov;
     var cmdq = cmdq_pop();
@@ -4033,8 +3651,6 @@ getdir(s)
         || dirsym == chars[gc.Cmd.spkeys + NHKF_GETDIR_SELF2]) {
         u.dx = u.dy = u.dz = 0;
     } else if (dirsym == chars[gc.Cmd.spkeys + NHKF_GETDIR_MOUSE]) {
-        
-        
         var pos, mod;
 
         /*
@@ -4055,10 +3671,7 @@ getdir(s)
          * locations relative to each other so ruin the memory aid of
          * "," being left of ".".)
          */
-        void sprintf(qbuf, _("desired location, then type '%s' for left click, '%s' for right"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_Q]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]))
-
-
-
+        sprintf(qbuf, _("desired location, then type '%s' for left click, '%s' for right"), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK_Q]), visctrl(chars[gc.Cmd.spkeys + NHKF_GETPOS_PICK]))
 
 ; /* '.' */
         cc.x = u.ux, cc.y = u.uy; /* starting cursor location for getpos() */
@@ -4102,12 +3715,12 @@ getdir(s)
         }
         if (iflags.getdir_click)
             iflags.getdir_click = mod;
-        return (+(pos >= 0));
+        return +(pos >= 0);
     } else if (!(is_mov = movecmd(dirsym, MV_ANY)) && !u.dz) {
         var did_help = FALSE, help_requested;
 
         if (!strchr(quitchars, dirsym)) {
-            help_requested = (+(dirsym == chars[gc.Cmd.spkeys + NHKF_GETDIR_HELP]));
+            help_requested = +(dirsym == chars[gc.Cmd.spkeys + NHKF_GETDIR_HELP]);
             if (help_requested || iflags.cmdassist) {
                 did_help = help_dir((s && chars[s] == ord('^')) ? dirsym : ord('\0'),
                                     uchar(chars[gc.Cmd.spkeys + NHKF_ESC]),
@@ -4127,63 +3740,59 @@ getdir(s)
     if (!u.dz)
         confdir(FALSE);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-show_direction_keys(
+function show_direction_keys(
     win,
     centerchar,
-    nodiag)
-{ const $frame = stack_frame(); try {
+    nodiag) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     if (!centerchar)
         centerchar = ord(' ');
 
     if (nodiag) {
-        void sprintf(buf, _("             %s   "), visctrl(cmd_from_func(do_move_north)))
+        sprintf(buf, _("             %s   "), visctrl(cmd_from_func(do_move_north)))
 ;
         putstr()(win, 0, buf);
         putstr()(win, 0, _("             |   "));
-        void sprintf(buf, _("          %s- %c -%s"), visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)))
-
+        sprintf(buf, _("          %s- %c -%s"), visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)))
 
 ;
         putstr()(win, 0, buf);
         putstr()(win, 0, _("             |   "));
-        void sprintf(buf, _("             %s   "), visctrl(cmd_from_func(do_move_south)))
+        sprintf(buf, _("             %s   "), visctrl(cmd_from_func(do_move_south)))
 ;
         putstr()(win, 0, buf);
     } else {
-        void sprintf(buf, _("          %s  %s  %s"), visctrl(cmd_from_func(do_move_northwest)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_northeast)))
-
+        sprintf(buf, _("          %s  %s  %s"), visctrl(cmd_from_func(do_move_northwest)), visctrl(cmd_from_func(do_move_north)), visctrl(cmd_from_func(do_move_northeast)))
 
 ;
         putstr()(win, 0, buf);
         putstr()(win, 0, _("           \\ | / "));
-        void sprintf(buf, _("          %s- %c -%s"), visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)))
-
+        sprintf(buf, _("          %s- %c -%s"), visctrl(cmd_from_func(do_move_west)), centerchar, visctrl(cmd_from_func(do_move_east)))
 
 ;
         putstr()(win, 0, buf);
         putstr()(win, 0, _("           / | \\ "));
-        void sprintf(buf, _("          %s  %s  %s"), visctrl(cmd_from_func(do_move_southwest)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_southeast)))
-
+        sprintf(buf, _("          %s  %s  %s"), visctrl(cmd_from_func(do_move_southwest)), visctrl(cmd_from_func(do_move_south)), visctrl(cmd_from_func(do_move_southeast)))
 
 ;
         putstr()(win, 0, buf);
     };
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* explain choices if player has asked for getdir() help or has given
    an invalid direction after a prefix key ('F', 'g', 'm', &c), which
    might be bogus but could be up, down, or self when not applicable */
-function /* boolean */
-help_dir(
+function help_dir(
     sym,
     spkey,
-    msg)
-{ const $frame = stack_frame(); try {
+    msg) { /* boolean */
+    const $frame = stack_frame(); try {
     let wiz_only_list = init_string(static_array("help_dir.wiz_only_list", char, sizeof_string("EFGIVW")), _("EFGIVW"), true);
     let ctrl;
     let win;
@@ -4193,7 +3802,7 @@ help_dir(
 
     /* NHKF_ESC indicates that player asked for help at getdir prompt */
     /* viawindow = (spkey == gc.Cmd.spkeys[NHKF_ESC] || iflags.cmdassist); */
-    prefixhandling = (+(spkey != chars[gc.Cmd.spkeys + NHKF_ESC]));
+    prefixhandling = +(spkey != chars[gc.Cmd.spkeys + NHKF_ESC]);
     /*
      * Handling for prefix keys that don't want special directions.
      * Delivered via pline if 'cmdassist' is off, or instead of the
@@ -4203,39 +3812,9 @@ help_dir(
     /* how = " at"; */ /* for "<action> at yourself"; not used for up/down */
 
     chars[buf + 0] = ord('\0');
+    /* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (prefixhandling));
-
+    (prefixhandling);
 
     win = create_nhwindow()(NHW_TEXT);
     if (!win)
@@ -4246,7 +3825,7 @@ help_dir(
         putstr()(win, 0, buf);
         putstr()(win, 0, _(""));
     } else if (msg) {
-        void sprintf(buf, _("cmdassist: %s"), msg);
+        sprintf(buf, _("cmdassist: %s"), msg);
         putstr()(win, 0, buf);
         putstr()(win, 0, _(""));
     }
@@ -4257,7 +3836,7 @@ help_dir(
         ctrl = (sym - ord('A')) + 1; /* 0-27 (note: 28-31 aren't applicable) */
         if ((explain = dowhatdoes_core(ctrl, buf2)) != 0
             && (!strchr(wiz_only_list, sym) || wizard())) {
-            void sprintf(buf, _("Are you trying to use ^%c%s?"), sym, strchr(wiz_only_list, sym) ? _("")
+            sprintf(buf, _("Are you trying to use ^%c%s?"), sym, strchr(wiz_only_list, sym) ? _("")
                         : _(" as specified in the Guidebook"))
 ;
             putstr()(win, 0, buf);
@@ -4266,13 +3845,13 @@ help_dir(
             putstr()(win, 0, _(""));
             putstr()(win, 0,
                   _("To use that command, hold down the <Ctrl> key as a shift"));
-            void sprintf(buf, _("and press the <%c> key."), sym);
+            sprintf(buf, _("and press the <%c> key."), sym);
             putstr()(win, 0, buf);
             putstr()(win, 0, _(""));
         }
     }
 
-    void sprintf(buf, _("Valid direction keys%s%s%s are:"), prefixhandling ? _(" to ") : _(""), prefixhandling ? dothat : _(""), NODIAG(u.umonnum) ? _(" in your current form") : _(""))
+    sprintf(buf, _("Valid direction keys%s%s%s are:"), prefixhandling ? _(" to ") : _(""), prefixhandling ? dothat : _(""), NODIAG(u.umonnum) ? _(" in your current form") : _(""))
 
 ;
     putstr()(win, 0, buf);
@@ -4289,7 +3868,7 @@ help_dir(
         if (!prefixhandling) {
             let selfi = gc.Cmd.num_pad ? NHKF_GETDIR_SELF2 : NHKF_GETDIR_SELF;
 
-            void sprintf(buf, _("       %4s  direct at yourself"), visctrl(chars[gc.Cmd.spkeys + selfi]))
+            sprintf(buf, _("       %4s  direct at yourself"), visctrl(chars[gc.Cmd.spkeys + selfi]))
 ;
             putstr()(win, 0, buf);
         }
@@ -4304,14 +3883,13 @@ help_dir(
     display_nhwindow()(win, FALSE);
     destroy_nhwindow()(win);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* if hero is impaired, pick random movement direction */
-export function /* void */
-confdir(force_impairment)
-{
+export function confdir(force_impairment) { /* void */
     if (force_impairment || u_maybe_impaired()) {
-        let kmax = NODIAG(u.umonnum) ? (Math.trunc(N_DIRS / 2)) : N_DIRS,
+        let kmax = NODIAG(u.umonnum) ? Math.trunc(N_DIRS / 2) : N_DIRS,
             k = (chars[dirs_ord + rn2(kmax)]);
 
         u.dx = chars[xdir + k];
@@ -4320,9 +3898,7 @@ confdir(force_impairment)
     return;
 }
 
-export function /* const char * */
-directionname(dir)
-{
+export function directionname(dir) { /* const char * */
     let dirnames = static_array("directionname.dirnames", ptr_to(char), N_DIRS_Z, [
         _("west"),      _("northwest"), _("north"),     _("northeast"), _("east"),
         _("southeast"), _("south"),     _("southwest"), _("down"),      _("up"),
@@ -4333,26 +3909,20 @@ directionname(dir)
     return dirnames[dir];
 }
 
-export function /* int */
-isok(x, y)
-{
+export function isok(x, y) { /* int */
     /* x corresponds to curx, so x==1 is the first column. Ach. %% */
     return +(x >= 1 && x <= COLNO - 1 && y >= 0 && y <= ROWNO - 1);
 }
 
 /* #herecmdmenu command */
-function /* int */
-doherecmdmenu()
-{
+function doherecmdmenu() { /* int */
     let ch = here_cmd_menu();
 
     return (ch && ch != ord('\x1b')) ? ECMD_TIME : ECMD_OK;
 }
 
 /* #therecmdmenu command, a way to test there_cmd_menu without mouse */
-function /* int */
-dotherecmdmenu()
-{
+function dotherecmdmenu() { /* int */
     let ch;
     let dir, click;
     let x = gc.clicklook_cc.x;
@@ -4427,10 +3997,8 @@ dotherecmdmenu()
     const MCMD_THROW_OBJ = MCMD_CAST_SPELL + 1;
     const MCMD_TRAVEL = MCMD_THROW_OBJ + 1;
 
-
-function /* void */
-mcmd_addmenu(win, act, txt)
-{ const $frame = stack_frame(); try {
+function mcmd_addmenu(win, act, txt) { /* void */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
     let clr = NO_COLOR;
 
@@ -4439,12 +4007,12 @@ mcmd_addmenu(win, act, txt)
     any.a_int = act;
     add_menu(win, nul_glyphinfo, any, ord('\0'), 0, ATR_NONE, clr, txt,
              MENU_ITEMFLAGS_NONE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* command menu entries when targeting self */
-function /* int */
-there_cmd_menu_self(win, x, y, act)
-{ const $frame = stack_frame(); try {
+function there_cmd_menu_self(win, x, y, act) { /* int */
+    const $frame = stack_frame(); try {
     let K = 0;
     let buf = stack_array(char, BUFSZ);
     let typ = levl()[x][y].typ;
@@ -4455,7 +4023,7 @@ there_cmd_menu_self(win, x, y, act)
         return K;
 
     if ((IS_FOUNTAIN(typ) || IS_SINK(typ)) && can_reach_floor(FALSE)) {
-        void sprintf(buf, _("Drink from the %s"), defsyms[IS_FOUNTAIN(typ) ? S_fountain : S_sink].explanation)
+        sprintf(buf, _("Drink from the %s"), defsyms[IS_FOUNTAIN(typ) ? S_fountain : S_sink].explanation)
 ;
         mcmd_addmenu(win, MCMD_QUAFF, buf), ++K;
     }
@@ -4467,49 +4035,40 @@ there_cmd_menu_self(win, x, y, act)
         mcmd_addmenu(win, MCMD_OFFER, _("Sacrifice something on the altar")), ++K;
 
     if (stway && stway.up) {
-        void sprintf(buf, _("Go up the %s"), stway.isladder ? _("ladder") : _("stairs"))
+        sprintf(buf, _("Go up the %s"), stway.isladder ? _("ladder") : _("stairs"))
 ;
         mcmd_addmenu(win, MCMD_UP, buf), ++K;
     }
     if (stway && !stway.up) {
-        void sprintf(buf, _("Go down the %s"), stway.isladder ? _("ladder") : _("stairs"))
+        sprintf(buf, _("Go down the %s"), stway.isladder ? _("ladder") : _("stairs"))
 ;
         mcmd_addmenu(win, MCMD_DOWN, buf), ++K;
     }
     if (u.usteed) { /* another movement choice */
-        void sprintf(buf, _("Dismount %s"), x_monnam(u.usteed, ARTICLE_THE, 0,
+        sprintf(buf, _("Dismount %s"), x_monnam(u.usteed, ARTICLE_THE, 0,
                          SUPPRESS_SADDLE, FALSE))
 ;
         mcmd_addmenu(win, MCMD_DISMOUNT, buf), ++K;
     }
 
-
-
-
-
-
-
-
-
     if (OBJ_AT(x, y)) {
         let otmp = svl.level.objects[x][y];
 
-        void sprintf(buf, _("Pick up %s"), otmp.v.v_nexthere ? _("items") : doname(otmp));
+        sprintf(buf, _("Pick up %s"), otmp.v.v_nexthere ? _("items") : doname(otmp));
         mcmd_addmenu(win, MCMD_PICKUP, buf), ++K;
 
         if (Is_container(otmp)) {
-            void sprintf(buf, _("Loot %s"), doname(otmp));
+            sprintf(buf, _("Loot %s"), doname(otmp));
             mcmd_addmenu(win, MCMD_LOOT, buf), ++K;
 
-            void sprintf(buf, _("Tip %s"), doname(otmp));
+            sprintf(buf, _("Tip %s"), doname(otmp));
             mcmd_addmenu(win, MCMD_TIP, buf), ++K;
         }
         if (otmp.oclass == FOOD_CLASS) {
-            void sprintf(buf, _("Eat %s"), doname(otmp));
+            sprintf(buf, _("Eat %s"), doname(otmp));
             mcmd_addmenu(win, MCMD_EAT, buf), ++K;
         }
     }
-
 
     if (gi.invent) {
         mcmd_addmenu(win, MCMD_INVENTORY, _("Inventory")), ++K;
@@ -4528,16 +4087,16 @@ there_cmd_menu_self(win, x, y, act)
                          _("Attempt to disarm trap")), ++K;
     }
     return K;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* add entries to there_cmd_menu, when x,y is next to hero */
-function /* int */
-there_cmd_menu_next2u(
+function there_cmd_menu_next2u(
     win,
     x, y,
     mod,
-    act)
-{ const $frame = stack_frame(); try {
+    act) { /* int */
+    const $frame = stack_frame(); try {
     let K = 0;
     let buf = stack_array(char, BUFSZ);
     let typ = levl()[x][y].typ;
@@ -4555,10 +4114,10 @@ there_cmd_menu_next2u(
             mcmd_addmenu(win, MCMD_OPEN_DOOR, _("Open the door")), ++K;
             /* unfortunately there's no lknown flag for doors to
                remember the locked/unlocked state */
-            key_or_pick = (((carrying(SKELETON_KEY) || carrying(LOCK_PICK)) ? 1 : 0));
-            card = (+(carrying(CREDIT_CARD) != null));
+            key_or_pick = (carrying(SKELETON_KEY) || carrying(LOCK_PICK) ? 1 : 0);
+            card = +(carrying(CREDIT_CARD) != null);
             if (key_or_pick || card) {
-                void sprintf(buf, _("%sunlock the door"), key_or_pick ? _("lock or ") : _(""))
+                sprintf(buf, _("%sunlock the door"), key_or_pick ? _("lock or ") : _(""))
 ;
                 mcmd_addmenu(win, MCMD_LOCK_DOOR, upstart(buf)), ++K;
             }
@@ -4595,25 +4154,25 @@ there_cmd_menu_next2u(
                               SUPPRESS_SADDLE, FALSE);
 
         if (!u.usteed) {
-            void sprintf(buf, _("Ride %s"), mnam);
+            sprintf(buf, _("Ride %s"), mnam);
             mcmd_addmenu(win, MCMD_RIDE, buf), ++K;
         }
-        void sprintf(buf, _("Remove saddle from %s"), mnam);
+        sprintf(buf, _("Remove saddle from %s"), mnam);
         mcmd_addmenu(win, MCMD_REMOVE_SADDLE, buf), ++K;
     }
     if (mtmp && can_saddle(mtmp) && !which_armor(mtmp, W_SADDLE)
         && carrying(SADDLE)) {
-        void sprintf(buf, _("Put saddle on %s"), mon_nam(mtmp));
+        sprintf(buf, _("Put saddle on %s"), mon_nam(mtmp));
         mcmd_addmenu(win, MCMD_APPLY_SADDLE, buf), ++K;
     }
     if (mtmp && (mtmp.mpeaceful || mtmp.mtame)) {
-        void sprintf(buf, _("Talk to %s"), mon_nam(mtmp));
+        sprintf(buf, _("Talk to %s"), mon_nam(mtmp));
         mcmd_addmenu(win, MCMD_TALK, buf), ++K;
 
-        void sprintf(buf, _("Swap places with %s"), mon_nam(mtmp));
+        sprintf(buf, _("Swap places with %s"), mon_nam(mtmp));
         mcmd_addmenu(win, MCMD_MOVE_DIR, buf), ++K;
 
-        void sprintf(buf, _("%s %s"), !has_mgivenname(mtmp) ? _("Name") : _("Rename"), mon_nam(mtmp))
+        sprintf(buf, _("%s %s"), !has_mgivenname(mtmp) ? _("Name") : _("Rename"), mon_nam(mtmp))
 
 ;
         mcmd_addmenu(win, MCMD_NAME, buf), ++K;
@@ -4621,7 +4180,7 @@ there_cmd_menu_next2u(
 
     if ((mtmp && !(mtmp.mpeaceful || mtmp.mtame))
         || glyph_is_invisible(glyph_at(x, y))) {
-        void sprintf(buf, _("Attack %s"), mtmp ? mon_nam(mtmp) : _("unseen creature"));
+        sprintf(buf, _("Attack %s"), mtmp ? mon_nam(mtmp) : _("unseen creature"));
         mcmd_addmenu(win, MCMD_ATTACK_NEXT2U, buf), ++K;
         /* attacking overrides any other automatic action */
         act[0] = MCMD_ATTACK_NEXT2U;
@@ -4629,11 +4188,10 @@ there_cmd_menu_next2u(
         /* "Move %s", direction - handled below */
     }
     return K;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-there_cmd_menu_far(win, x, y, mod)
-{
+function there_cmd_menu_far(win, x, y, mod) { /* int */
     let K = 0;
 
     if (mod == CLICK_1) {
@@ -4646,13 +4204,11 @@ there_cmd_menu_far(win, x, y, mod)
     return K;
 }
 
-function /* int */
-there_cmd_menu_common(
+function there_cmd_menu_common(
     win,
     x, y,
     mod,
-    act)
-{
+    act) { /* int */
     let K = 0;
 
     if (mod == CLICK_1 || mod == CLICK_2) { /* ignore iflags.clicklook here */
@@ -4665,11 +4221,9 @@ there_cmd_menu_common(
 }
 
 /* queue up command(s) to perform #therecmdmenu action */
-function /* void */
-act_on_act(
+function act_on_act(
     act,
-    dx, dy) /* delta to adjacent spot (farther sometimes) */
-{
+    dx, dy) { /* void */ /* delta to adjacent spot (farther sometimes) */
     let otmp;
     let dir;
 
@@ -4850,9 +4404,8 @@ act_on_act(
 
 /* offer choice of actions to perform at adjacent location <x,y>;
    a few choices can be farther away */
-function /* char */
-there_cmd_menu(x, y, mod)
-{ const $frame = stack_frame(); try {
+function there_cmd_menu(x, y, mod) { /* char */
+    const $frame = stack_frame(); try {
     let win;
     let ch = ord('\0');
     let npick = 0, K = 0;
@@ -4904,18 +4457,15 @@ there_cmd_menu(x, y, mod)
         return ord('\0');
     }
     return ch;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* char */
-here_cmd_menu()
-{
+function here_cmd_menu() { /* char */
     there_cmd_menu(u.ux, u.uy, CLICK_1);
     return ord('\0');
 }
 
-export function /* void */
-click_to_cmd(x, y, mod)
-{
+export function click_to_cmd(x, y, mod) { /* void */
     gc.clicklook_cc.x = x;
     gc.clicklook_cc.y = y;
 
@@ -4923,9 +4473,7 @@ click_to_cmd(x, y, mod)
         cmdq_add_ec(CQ_CANNED, gc.Cmd.mousebtn[mod-1].ef_funct);
 }
 
-function /* int */
-domouseaction()
-{
+function domouseaction() { /* int */
     let x, y;
     let o;
     let dir;
@@ -5017,14 +4565,13 @@ domouseaction()
 }
 
 /* gather typed digits into a number in *count; return the next non-digit */
-export function /* char */
-get_count(
+export function get_count(
     allowchars,
     inkey,
     maxcount,
     count,
-    gc_flags)   /* control flags: GC_SAVEHIST, GC_ECHOFIRST */
-{ const $frame = stack_frame(); try {
+    gc_flags) { /* char */ /* control flags: GC_SAVEHIST, GC_ECHOFIRST */
+    const $frame = stack_frame(); try {
     let qbuf = stack_array(char, QBUFSZ);
     let key, save_input_state = program_state.input_state;
     let cnt = 0, first = inkey ? (inkey - ord('0')) : 0;
@@ -5032,13 +4579,11 @@ get_count(
 
             historicmsg = +((gc_flags & GC_SAVEHIST) != 0),
 
-
             conditionalmsg = +((gc_flags & GC_CONDHIST) != 0),
 
             echoalways = +((gc_flags & GC_ECHOFIRST) != 0);
     /* this should be done in port code so that we have erase_char
        and kill_char available; we can at least fake erase_char */
-
 
     count[0] = 0;
     for (;;) {
@@ -5062,7 +4607,7 @@ get_count(
             else if (maxcount > 0 && cnt > maxcount)
                 cnt = maxcount;
             /* if we've backed up to nothing, then typed 0, show that 0 */
-            showzero = (+(key == ord('0')));
+            showzero = +(key == ord('0'));
         } else if (key == ord('\b') || key == STANDBY_erase_char) {
             if (!cnt && !echoalways)
                 break;
@@ -5081,9 +4626,9 @@ get_count(
         if (cnt > 9 || backspaced || echoalways) {
             clear_nhwindow()(WIN_MESSAGE);
             if (backspaced && !cnt && !showzero) {
-                void sprintf(qbuf, _("Count: "));
+                sprintf(qbuf, _("Count: "));
             } else {
-                void sprintf(qbuf, _("Count: %lld"), cnt);
+                sprintf(qbuf, _("Count: %lld"), cnt);
                 backspaced = FALSE;
             }
             custompline(SUPPRESS_HISTORY, _("%s"), qbuf);
@@ -5092,20 +4637,20 @@ get_count(
     }
 
     if (historicmsg || (conditionalmsg && count[0] != first)) {
-        void sprintf(qbuf, _("Count: %lld "), count[0]);
-        void key2txt(uchar(key), eos(qbuf));
+        sprintf(qbuf, _("Count: %lld "), count[0]);
+        key2txt(uchar(key), eos(qbuf));
         putmsghistory()(qbuf, FALSE);
     }
 
     return key;
-} finally { stack_pop($frame); } } export const STANDBY_erase_char = ord('\x7f');
+    } finally { stack_pop($frame); }
+}
+export const STANDBY_erase_char = ord('\x7f');
 
 /* main command input routine when not repeating and not executing canned
    commands; input comes via get_count() which collects repeat count if one
    is present and returns next non-digit to us */
-function /* int */
-parse()
-{
+function parse() { /* int */
     let foo;
     let bind;
 
@@ -5161,16 +4706,12 @@ parse()
     return gc.cmd_key;
 }
 
-
 /* some very old systems, or descendents of such systems, expect signal
    handlers to have return type `int', but they don't actually inspect
    the return value so we should be safe using `void' unconditionally */
 /*ARGUSED*/
-export function /* void */
-hangup(
-    sig_unused)   /* called as signal() handler, so sent
-                              * at least one arg */
-{
+export function hangup(
+    sig_unused) { /* void */ /* called as signal() handler, so sent * at least one arg */
     if (program_state.exiting)
         program_state.in_moveloop = 0;
     nhwindows_hangup();
@@ -5190,27 +4731,14 @@ hangup(
     end_of_input();
 }
 
-export function /* void */
-end_of_input()
-{
-
-
-
-
-
-
-
-
+export function end_of_input() { /* void */
     if (In_tutorial(u.uz))
         program_state.something_worth_saving = 0; /* don't save in tutorial */
 
-
-
-
         if (program_state.something_worth_saving)
-            void dosave0();
+            dosave0();
     if (soundprocs.sound_exit_nhsound)
-        (soundprocs.sound_exit_nhsound)(_("end_of_input"));
+        soundprocs.sound_exit_nhsound(_("end_of_input"));
     if (iflags.window_inited)
         exit_nhwindows()(0);
     clearlocks();
@@ -5219,10 +4747,7 @@ end_of_input()
     return;
 }
 
-
-function /* char */
-readchar_core(x, y, mod)
-{
+function readchar_core(x, y, mod) { /* char */
     var sym;
 
     readchar_done: { if (iflags.debug_fuzzer) {
@@ -5236,7 +4761,6 @@ readchar_core(x, y, mod)
     else
         sym = nh_poskey()(x, y, mod);
 
-
     if (sym == EOF) {
         var cnt = NR_OF_EOFS;
         /*
@@ -5245,18 +4769,15 @@ readchar_core(x, y, mod)
          * and we must see several before we quit.
          */
         do {
-            clearerr((stdin)); /* omit if clearerr is undefined */
+            clearerr(stdin); /* omit if clearerr is undefined */
             sym = pgetchar();
         } while (--cnt && sym == EOF);
     }
 
-
     if (sym == EOF) {
-
         hangup(0); /* call end_of_input() or set program_state.done_hup */
 
         sym = ord('\x1b');
-
     } else if (sym == ord('\x1b') && iflags.altmeta
                && program_state.input_state != otherInp) {
         /* iflags.altmeta: treat two character ``ESC c'' as single `M-c' but
@@ -5268,13 +4789,11 @@ readchar_core(x, y, mod)
             sym = ord('\x1b');
         else if (sym != ord('\x1b'))
             sym |= 0o200; /* force 8th bit on */
-
     } else if (sym == 0) {
         /* click event */
         gc.clicklook_cc.x = gc.clicklook_cc.y = -1;
         click_to_cmd(x[0], y[0], mod[0]);
     }
-
  }
     /* next readchar() will be for an ordinary char unless parse()
        sets this back to non-zero */
@@ -5283,21 +4802,19 @@ readchar_core(x, y, mod)
 }
 
 /* get a character */
-export function /* char */
-readchar()
-{ const $frame = stack_frame(); try {
+export function readchar() { /* char */
+    const $frame = stack_frame(); try {
     let ch;
     let x = stack_var(coordxy, u.ux), y = stack_var(coordxy, u.uy);
     let mod = stack_var(int, 0);
 
     ch = readchar_core(x, y, mod);
     return ch;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* used by getpos() to accept mouse input as well as keyboard input */
-export function /* char */
-readchar_poskey(x, y, mod)
-{
+export function readchar_poskey(x, y, mod) { /* char */
     let ch;
 
     program_state.input_state = getposInp;
@@ -5306,9 +4823,8 @@ readchar_poskey(x, y, mod)
 }
 
 /* '_' command, #travel, via keyboard rather than mouse click */
-function /* int */
-dotravel()
-{ const $frame = stack_frame(); try {
+function dotravel() { /* int */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
 
     /*
@@ -5352,12 +4868,11 @@ dotravel()
     iflags.travelcc.y = u.ty = cc.y;
 
     return dotravel_target();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #retravel, travel to iflags.travelcc, which must be set */
-function /* int */
-dotravel_target()
-{
+function dotravel_target() { /* int */
     if (!isok(iflags.travelcc.x, iflags.travelcc.y)) {
         /* assume <0,0>, the value assigned when travel reaches destination */
         pline(_("No travel destination set."));
@@ -5388,9 +4903,7 @@ dotravel_target()
 }
 
 /* mouse click look command */
-function /* int */
-doclicklook()
-{
+function doclicklook() { /* int */
     if (!isok(gc.clicklook_cc.x, gc.clicklook_cc.y))
         return ECMD_OK;
 
@@ -5401,17 +4914,14 @@ doclicklook()
 }
 
 /* can we use menu entries to respond to a query? */
-function /* boolean */
-yn_menuable_resp(resp)
-{
-    return ((iflags.query_menu && iflags.window_inited
+function yn_menuable_resp(resp) { /* boolean */
+    return (iflags.query_menu && iflags.window_inited
         && (resp == ynchars || resp == ynqchars || resp == ynaqchars
-            || resp == rightleftchars || resp == hidespinchars)) ? 1 : 0);
+            || resp == rightleftchars || resp == hidespinchars) ? 1 : 0);
 }
 
-function /* void */
-yn_func_menu_opt(win, key, text, def)
-{ const $frame = stack_frame(); try {
+function yn_func_menu_opt(win, key, text, def) { /* void */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
 
     struct_assign(any, cg.zeroany);
@@ -5420,19 +4930,18 @@ yn_func_menu_opt(win, key, text, def)
              ATR_NONE, NO_COLOR, text,
              (def == key) ? MENU_ITEMFLAGS_SELECTED
                           : MENU_ITEMFLAGS_NONE);
-
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* use a menu to ask a specific response to a query.
    returns TRUE if the menu was shown to the user.
    puts the response char into res. */
-function /* boolean */
-yn_function_menu(
+function yn_function_menu(
     query,
     resp,
     def,
-    res)
-{ const $frame = stack_frame(); try {
+    res) { /* boolean */
+    const $frame = stack_frame(); try {
     if (yn_menuable_resp(resp)) {
         let win = create_nhwindow()(NHW_MENU);
         let sel = stack_var(ptr_to(struct_mi));
@@ -5471,27 +4980,22 @@ yn_function_menu(
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  *   Parameter validator for generic yes/no function to prevent
  *   the core from sending too long a prompt string to the
  *   window port causing a buffer overflow there.
  */
-export function /* char */
-yn_function(
+export function yn_function(
     query,
     resp,
     def,
-    addcmdq)
-{ const $frame = stack_frame(); try {
+    addcmdq) { /* char */
+    const $frame = stack_frame(); try {
     let res = stack_var(char, ord('\x1b')), qbuf = stack_array(char, QBUFSZ);
     let cq = stack_struct(struct__cmd_queue), cmdq;
-
-
-
-
-
 
     iflags.last_msg = PLNMSG_UNKNOWN; /* most recent pline is clobbered */
 
@@ -5499,8 +5003,8 @@ yn_function(
     if (strlen(query) >= QBUFSZ) {
         /* caller shouldn't have passed anything this long */
         paniclog(_("Query truncated: "), query);
-        void strncpy(qbuf, query, QBUFSZ - 1 - 3);
-        void strcpy(qbuf + (QBUFSZ - 1 - 3), _("..."));
+        strncpy(qbuf, query, QBUFSZ - 1 - 3);
+        strcpy(qbuf + (QBUFSZ - 1 - 3), _("..."));
         query = qbuf;
     }
 
@@ -5538,30 +5042,15 @@ yn_function(
                 res[0] = def; /* might be '\0' */
             }
         }
-
     } else {
-
-
-
-
-
-
         if (!yn_function_menu(query, resp, def, addr_of(res))) {
-            res[0] = (windowprocs.win_yn_function)(query, resp, def);
+            res[0] = windowprocs.win_yn_function(query, resp, def);
         }
     }
     if (addcmdq)
         cmdq_add_key(CQ_REPEAT, res[0]);
 
-
-
-
-
-
-
-
-
-
+    /* #ifdef DUMPLOG_CORE: not in this build */
 
     /* should not happen but cq.key has been observed to not obey 'resp';
        it is most likely caused by saving a keystroke that was just used
@@ -5591,16 +5080,16 @@ yn_function(
     /* in case we're called via getdir() which sets input_state */
     program_state.input_state = otherInp;
     return res[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for paranoid_confirm:quit,die,attack,&c prompting; allows yes, n|no,
    or q|quit; result is one of 'y' or 'n' or 'q'; ESC yields 'q' */
-export function /* char */
-paranoid_ynq(
+export function paranoid_ynq(
     be_paranoid,
     prompt,
-    accept_q)
-{ const $frame = stack_frame(); try {
+    accept_q) { /* char */
+    const $frame = stack_frame(); try {
     let c = ord('n'); /* default result */
 
     /* when paranoid, player must respond with "yes" rather than just 'y'
@@ -5625,29 +5114,29 @@ paranoid_ynq(
            (except we won't loop if response is ESC; it means no) */
         do {
             /* make sure we won't overflow a QBUFSZ sized buffer */
-            k = int((unsigned(unsigned(strlen(promptprefix) + 1) + strlen(responsetype))));
+            k = int(unsigned(unsigned(strlen(promptprefix) + 1) + strlen(responsetype)));
             if (int(strlen(pbuf)) + k > QBUFSZ - 1) {
                 /* chop off some at the end */
-                void strcpy(pbuf + (QBUFSZ - 1) - k - 4, _("...?")); /* -4: "...?" */
+                strcpy(pbuf + (QBUFSZ - 1) - k - 4, _("...?")); /* -4: "...?" */
             }
 
             Snprintf(qbuf, sizeof(array_of(char, QBUFSZ)), _("%s%s %s"), promptprefix, pbuf, responsetype)
 ;
             chars[ans] = ord('\0');
             getlin(qbuf, ans);
-            void mungspaces(ans);
-            if (!strcmpi(ans, _("yes"))) {
+            mungspaces(ans);
+            if (!strncmpi((ans), _(("yes")), -1)) {
                 c = ord('y');
                 break;
             }
-            if (!strcmpi(ans, _("quit")) || chars[ans] == ord('\x1b')) {
+            if (!strncmpi((ans), _(("quit")), -1) || chars[ans] == ord('\x1b')) {
                 c = ord('q');
                 break;
             }
             /* we don't bother adding "or \"Quit\"" for the accept_q case */
             promptprefix = _("\"Yes\" or \"No\": ");
             /* for empty input, return value c will already be 'n' */
-        } while (ParanoidConfirm() && strcmpi(ans, _("no")) && --trylimit);
+        } while (ParanoidConfirm() && strncmpi((ans), _(("no")), -1) && --trylimit);
     } else if (accept_q) {
         /* 'y', 'n', or 'q' */
         c = yn_function(prompt, ynqchars, ord('n'), FALSE);
@@ -5658,23 +5147,19 @@ paranoid_ynq(
     if (c != ord('y') && (c != ord('q') || !accept_q))
         c = ord('n');
     return c;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for paranoid_confirm:quit,die,attack,&c prompting; allows yes or n|no;
    result is True for yes; n|no and ESC yield False */
-export function /* boolean */
-paranoid_query(be_paranoid, prompt)
-{
-    return (+(paranoid_ynq(be_paranoid, prompt, FALSE) == ord('y')));
+export function paranoid_query(be_paranoid, prompt) { /* boolean */
+    return +(paranoid_ynq(be_paranoid, prompt, FALSE) == ord('y'));
 }
 
 /* ^Z command, #suspend */
-function /* int */
-dosuspend_core()
-{
-
+function dosuspend_core() { /* int */
     /* Does current window system support suspend? */
-    if ((windowprocs.win_can_suspend)()) {
+    if (windowprocs.win_can_suspend()) {
         let now = getnow();
 
         urealtime.realtime += timet_delta(now, urealtime.start_timing);
@@ -5689,10 +5174,7 @@ dosuspend_core()
 }
 
 /* '!' command, #shell */
-function /* int */
-dosh_core()
-{
-
+function dosh_core() { /* int */
     let now = getnow();
 
     urealtime.realtime += timet_delta(now, urealtime.start_timing);
@@ -5701,609 +5183,231 @@ dosh_core()
     dosh();
     urealtime.start_timing = getnow();
 
-
-
     return ECMD_OK;
 }
 
-function /* int */
-dummyfunction()
-{
+function dummyfunction() { /* int */
     return ECMD_CANCEL;
 }
 
 /*cmd.c*/
+
 import { NO_COLOR } from "./color.h.js";
 import { struct_dig_info } from "./context.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { DOMOVE_RUSH } from "./decl.h.js";
-import { DOMOVE_WALK } from "./decl.h.js";
+import { DOMOVE_RUSH, DOMOVE_WALK } from "./decl.h.js";
 import { Never_mind } from "./decl.h.macros.js";
-import { AMULET_SYM } from "./defsym.h.js";
-import { ARMOR_SYM } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GOLD_SYM } from "./defsym.h.js";
-import { RING_SYM } from "./defsym.h.js";
-import { SPBOOK_SYM } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_corr } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_litcorr } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { TOOL_SYM } from "./defsym.h.js";
-import { WEAPON_SYM } from "./defsym.h.js";
-import { GLYPH_UNEXPLORED } from "./display.h.js";
-import { docrtRefresh } from "./display.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { hero_glyph } from "./display.h.macros.js";
-import { objnum_to_glyph } from "./display.h.macros.js";
-import { vobj_at } from "./display.h.macros.js";
+import {
+    AMULET_SYM, ARMOR_SYM, FOOD_CLASS, GOLD_SYM, RING_SYM, SPBOOK_SYM, S_NYMPH, S_corr, S_fountain,
+    S_litcorr, S_sink, TOOL_SYM, WEAPON_SYM,
+} from "./defsym.h.js";
+import { GLYPH_UNEXPLORED, docrtRefresh } from "./display.h.js";
+import {
+    canspotmon, glyph_is_cmap, glyph_is_invisible, hero_glyph, objnum_to_glyph, vobj_at,
+} from "./display.h.macros.js";
 import { struct_dest_area } from "./dungeon.h.js";
-import { In_tutorial } from "./dungeon.h.macros.js";
-import { Is_mineend_level } from "./dungeon.h.macros.js";
-import { Is_sokoend_level } from "./dungeon.h.macros.js";
-import { GFILTER_VIEW } from "./flag.h.js";
-import { GLOC_INTERESTING } from "./flag.h.js";
-import { PLNMSG_UNKNOWN } from "./flag.h.js";
-import { TER_FULL } from "./flag.h.js";
-import { TER_MAP } from "./flag.h.js";
-import { TER_OBJ } from "./flag.h.js";
-import { TER_TRP } from "./flag.h.js";
-import { fuzzer_impossible_continue } from "./flag.h.js";
-import { ParanoidConfirm } from "./flag.h.macros.js";
-import { ParanoidQuit } from "./flag.h.macros.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { AUTOCOMPLETE } from "./func_tab.h.js";
-import { AUTOCOMP_ADJ } from "./func_tab.h.js";
-import { CMD_INSANE } from "./func_tab.h.js";
-import { CMD_MOVE_PREFIXES } from "./func_tab.h.js";
-import { CMD_M_PREFIX } from "./func_tab.h.js";
-import { CMD_NOT_AVAILABLE } from "./func_tab.h.js";
-import { CMD_PARAM } from "./func_tab.h.js";
-import { CMD_gGF_PREFIX } from "./func_tab.h.js";
-import { ECM_EXACTMATCH } from "./func_tab.h.js";
-import { ECM_IGNOREAC } from "./func_tab.h.js";
-import { ECM_NO1CHARCMD } from "./func_tab.h.js";
-import { GENERALCMD } from "./func_tab.h.js";
-import { IFBURIED } from "./func_tab.h.js";
-import { INTERNALCMD } from "./func_tab.h.js";
-import { MOUSECMD } from "./func_tab.h.js";
-import { MOVEMENTCMD } from "./func_tab.h.js";
-import { NOFUZZERCMD } from "./func_tab.h.js";
-import { PREFIXCMD } from "./func_tab.h.js";
-import { WIZMODECMD } from "./func_tab.h.js";
-import { struct_Cmd_bind } from "./func_tab.h.js";
-import { struct_ext_func_tab } from "./func_tab.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { NHLpa_panic } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { C } from "./global.h.macros.js";
-import { M } from "./global.h.macros.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { unmeta } from "./global.h.macros.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { CMDQ_DIR } from "./hack.h.js";
-import { CMDQ_EXTCMD } from "./hack.h.js";
-import { CMDQ_INT } from "./hack.h.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CMDQ_USER_INPUT } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CQ_REPEAT } from "./hack.h.js";
-import { DIR_DOWN } from "./hack.h.js";
-import { DIR_E } from "./hack.h.js";
-import { DIR_ERR } from "./hack.h.js";
-import { DIR_N } from "./hack.h.js";
-import { DIR_NE } from "./hack.h.js";
-import { DIR_NW } from "./hack.h.js";
-import { DIR_S } from "./hack.h.js";
-import { DIR_SE } from "./hack.h.js";
-import { DIR_SW } from "./hack.h.js";
-import { DIR_UP } from "./hack.h.js";
-import { DIR_W } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { GC_CONDHIST } from "./hack.h.js";
-import { GC_ECHOFIRST } from "./hack.h.js";
-import { GC_NOFLAGS } from "./hack.h.js";
-import { GC_SAVEHIST } from "./hack.h.js";
-import { MV_ANY } from "./hack.h.js";
-import { MV_RUN } from "./hack.h.js";
-import { MV_RUSH } from "./hack.h.js";
-import { MV_WALK } from "./hack.h.js";
-import { NHCB_CMD_BEFORE } from "./hack.h.js";
-import { NHKF_COUNT } from "./hack.h.js";
-import { NHKF_ESC } from "./hack.h.js";
-import { NHKF_GETDIR_HELP } from "./hack.h.js";
-import { NHKF_GETDIR_MOUSE } from "./hack.h.js";
-import { NHKF_GETDIR_SELF } from "./hack.h.js";
-import { NHKF_GETDIR_SELF2 } from "./hack.h.js";
-import { NHKF_GETPOS_AUTODESC } from "./hack.h.js";
-import { NHKF_GETPOS_DOOR_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_DOOR_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_HELP } from "./hack.h.js";
-import { NHKF_GETPOS_INTERESTING_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_INTERESTING_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_LIMITVIEW } from "./hack.h.js";
-import { NHKF_GETPOS_MENU } from "./hack.h.js";
-import { NHKF_GETPOS_MON_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_MON_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_MOVESKIP } from "./hack.h.js";
-import { NHKF_GETPOS_OBJ_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_OBJ_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_PICK } from "./hack.h.js";
-import { NHKF_GETPOS_PICK_O } from "./hack.h.js";
-import { NHKF_GETPOS_PICK_Q } from "./hack.h.js";
-import { NHKF_GETPOS_PICK_V } from "./hack.h.js";
-import { NHKF_GETPOS_SELF } from "./hack.h.js";
-import { NHKF_GETPOS_SHOWVALID } from "./hack.h.js";
-import { NHKF_GETPOS_UNEX_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_UNEX_PREV } from "./hack.h.js";
-import { NHKF_GETPOS_VALID_NEXT } from "./hack.h.js";
-import { NHKF_GETPOS_VALID_PREV } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { N_DIRS_Z } from "./hack.h.js";
-import { N_MOVEMODES } from "./hack.h.js";
-import { SUPPRESS_HISTORY } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { TEST_MOVE } from "./hack.h.js";
-import { commandInp } from "./hack.h.js";
-import { getdirInp } from "./hack.h.js";
-import { getposInp } from "./hack.h.js";
-import { otherInp } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
-import { NODIAG } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import { In_tutorial, Is_mineend_level, Is_sokoend_level } from "./dungeon.h.macros.js";
+import {
+    GFILTER_VIEW, GLOC_INTERESTING, PLNMSG_UNKNOWN, TER_FULL, TER_MAP, TER_OBJ, TER_TRP,
+    fuzzer_impossible_continue,
+} from "./flag.h.js";
+import { ParanoidConfirm, ParanoidQuit, discover, wizard } from "./flag.h.macros.js";
+import {
+    AUTOCOMPLETE, AUTOCOMP_ADJ, CMD_INSANE, CMD_MOVE_PREFIXES, CMD_M_PREFIX, CMD_NOT_AVAILABLE,
+    CMD_PARAM, CMD_gGF_PREFIX, ECM_EXACTMATCH, ECM_IGNOREAC, ECM_NO1CHARCMD, GENERALCMD, IFBURIED,
+    INTERNALCMD, MOUSECMD, MOVEMENTCMD, NOFUZZERCMD, PREFIXCMD, WIZMODECMD, struct_Cmd_bind,
+    struct_ext_func_tab,
+} from "./func_tab.h.js";
+import {
+    BUFSZ, COLNO, FALSE, LARGEST_INT, NHLpa_panic, QBUFSZ, ROWNO, TRUE, boolean, coordxy,
+} from "./global.h.js";
+import { C, M, Strlen, strcmpi, unmeta } from "./global.h.macros.js";
+import {
+    ARTICLE_THE, CMDQ_DIR, CMDQ_EXTCMD, CMDQ_INT, CMDQ_KEY, CMDQ_USER_INPUT, CQ_CANNED, CQ_REPEAT,
+    DIR_DOWN, DIR_E, DIR_ERR, DIR_N, DIR_NE, DIR_NW, DIR_S, DIR_SE, DIR_SW, DIR_UP, DIR_W,
+    ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, GC_CONDHIST, GC_ECHOFIRST, GC_NOFLAGS, GC_SAVEHIST,
+    MV_ANY, MV_RUN, MV_RUSH, MV_WALK, NHCB_CMD_BEFORE, NHKF_COUNT, NHKF_ESC, NHKF_GETDIR_HELP,
+    NHKF_GETDIR_MOUSE, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2, NHKF_GETPOS_AUTODESC,
+    NHKF_GETPOS_DOOR_NEXT, NHKF_GETPOS_DOOR_PREV, NHKF_GETPOS_HELP, NHKF_GETPOS_INTERESTING_NEXT,
+    NHKF_GETPOS_INTERESTING_PREV, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MENU, NHKF_GETPOS_MON_NEXT,
+    NHKF_GETPOS_MON_PREV, NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_OBJ_NEXT, NHKF_GETPOS_OBJ_PREV,
+    NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SELF,
+    NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_UNEX_NEXT, NHKF_GETPOS_UNEX_PREV, NHKF_GETPOS_VALID_NEXT,
+    NHKF_GETPOS_VALID_PREV, N_DIRS, N_DIRS_Z, N_MOVEMODES, SUPPRESS_HISTORY, SUPPRESS_SADDLE,
+    TEST_MOVE, commandInp, getdirInp, getposInp, otherInp, struct__cmd_queue,
+} from "./hack.h.js";
+import { NODIAG, max, min, pline1, rn1 } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { AppendLongDigit } from "./integer.h.macros.js";
 import { debugpline2 } from "./lint.h.macros.js";
 import { has_mgivenname } from "./mextra.h.macros.js";
 import { ROOMOFFSET } from "./mkroom.h.js";
-import { AT_GAZE } from "./monattk.h.js";
-import { AT_SPIT } from "./monattk.h.js";
-import { can_breathe } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_hider } from "./mondata.h.macros.js";
-import { is_mind_flayer } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { is_vampire } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { webmaker } from "./mondata.h.macros.js";
+import { AT_GAZE, AT_SPIT } from "./monattk.h.js";
+import {
+    can_breathe, hides_under, is_hider, is_mind_flayer, is_unicorn, is_vampire, is_were, webmaker,
+} from "./mondata.h.macros.js";
 import { MS_SHRIEK } from "./monflag.h.js";
 import { is_vampshifter } from "./monst.h.macros.js";
 import { PM_GREMLIN } from "./monsters.h.js";
 import { Is_container } from "./obj.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
+import { BOULDER, CREDIT_CARD, LOCK_PICK, SADDLE, SKELETON_KEY } from "./objects.h.js";
 import { W_SADDLE } from "./prop.h.js";
 import { struct_nhrect } from "./rect.h.js";
-import { CORR } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { MAX_TYPE } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { IS_WATERWALL } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
+import {
+    CORR, DRAWBRIDGE_UP, D_CLOSED, D_ISOPEN, D_LOCKED, IRONBARS, LAVAWALL, MAX_TYPE, SCORR, SDOOR,
+} from "./rm.h.js";
+import {
+    IS_ALTAR, IS_DOOR, IS_FOUNTAIN, IS_ROOM, IS_SINK, IS_STWALL, IS_THRONE, IS_TREE, IS_WATERWALL,
+    OBJ_AT, levl, m_at,
+} from "./rm.h.macros.js";
 import { VIBRATING_SQUARE } from "./trap.h.js";
 import { cansee } from "./vision.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { exit_nhwindows } from "./winprocs.h.macros.js";
-import { get_ext_cmd } from "./winprocs.h.macros.js";
-import { mark_synch } from "./winprocs.h.macros.js";
-import { nh_doprev_message } from "./winprocs.h.macros.js";
-import { nh_poskey } from "./winprocs.h.macros.js";
-import { nhbell } from "./winprocs.h.macros.js";
-import { nhgetch } from "./winprocs.h.macros.js";
-import { putmsghistory } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { CLICK_1 } from "./wintype.h.js";
-import { CLICK_2 } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { NUM_MOUSE_BUTTONS } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { ACH_MINE_PRIZE } from "./you.h.js";
-import { ACH_SOKO_PRIZE } from "./you.h.js";
-import { Upolyd } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
+import {
+    clear_nhwindow, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, exit_nhwindows,
+    get_ext_cmd, mark_synch, nh_doprev_message, nh_poskey, nhbell, nhgetch, putmsghistory, putstr,
+    start_menu, wait_synch,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, CLICK_1, CLICK_2, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+    NHW_MENU, NHW_TEXT, NUM_MOUSE_BUTTONS, PICK_ANY, PICK_ONE, WIN_ERR, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { ACH_MINE_PRIZE, ACH_SOKO_PRIZE } from "./you.h.js";
+import { Upolyd, next2u, u_at } from "./you.h.macros.js";
 import { Punished } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
+import { char, int, ord, schar, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
-import { EOF } from "../rt/libc.js";
-import { EXIT_SUCCESS } from "../rt/libc.js";
-import { abs } from "../rt/libc.js";
-import { clearerr } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { stdin } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
-import { lua_getglobal } from "../rt/lua.js";
-import { lua_pushstring } from "../rt/lua.js";
-import { lua_settop } from "../rt/lua.js";
-import { lua_toboolean } from "../rt/lua.js";
+import {
+    EOF, EXIT_SUCCESS, abs, clearerr, free, memcpy, memset, sprintf, stdin, strcat, strchr, strcmp,
+    strcpy, strlen, strncmp, strncpy, strrchr,
+} from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
+import { lua_getglobal, lua_pushstring, lua_settop, lua_toboolean } from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { record_or_opaque } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { struct_copy } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, fnptr_t, ptr_add, ptr_diff, ptr_to, record_or_opaque, ref_of, struct,
+    struct_assign, struct_copy, view_of,
+} from "../rt/struct.js";
 import { timet_delta } from "./allmain.js";
 import { alloc } from "./alloc.js";
-import { doapply } from "./apply.js";
-import { dojump } from "./apply.js";
-import { dorub } from "./apply.js";
-import { reset_trapset } from "./apply.js";
-import { use_unicorn_horn } from "./apply.js";
+import { doapply, dojump, dorub, reset_trapset, use_unicorn_horn } from "./apply.js";
 import { doinvoke } from "./artifact.js";
-import { ballrelease } from "./ball.js";
-import { placebc } from "./ball.js";
-import { unplacebc } from "./ball.js";
+import { ballrelease, placebc, unplacebc } from "./ball.js";
 import { getnow } from "./calendar.js";
-import { config_error_add } from "./cfgfiles.js";
-import { do_write_config_file } from "./cfgfiles.js";
+import { config_error_add, do_write_config_file } from "./cfgfiles.js";
 import { is_pool } from "./dbridge.js";
-import { a11y } from "./decl.js";
-import { cg } from "./decl.js";
-import { dirs_ord } from "./decl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { ge } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gt } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { hidespinchars } from "./decl.js";
-import { iflags } from "./decl.js";
-import { nhcb_counts } from "./decl.js";
-import { nhcb_name } from "./decl.js";
-import { program_state } from "./decl.js";
-import { quitchars } from "./decl.js";
-import { rightleftchars } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svu } from "./decl.js";
-import { u } from "./decl.js";
-import { urealtime } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
-import { ynaqchars } from "./decl.js";
-import { ynchars } from "./decl.js";
-import { ynqchars } from "./decl.js";
-import { zdir } from "./decl.js";
-import { dosearch } from "./detect.js";
-import { reveal_terrain } from "./detect.js";
+import {
+    a11y, cg, dirs_ord, flags, gc, gd, ge, gi, gk, gl, gm, go, gt, gv, gy, hidespinchars, iflags,
+    nhcb_counts, nhcb_name, program_state, quitchars, rightleftchars, svc, svd, svl, svu, u,
+    urealtime, xdir, ydir, ynaqchars, ynchars, ynqchars, zdir,
+} from "./decl.js";
+import { dosearch, reveal_terrain } from "./detect.js";
 import { wiz_debug_cmd_bury } from "./dig.js";
-import { cls } from "./display.js";
-import { docrt } from "./display.js";
-import { docrt_flags } from "./display.js";
-import { doredraw } from "./display.js";
-import { flush_screen } from "./display.js";
-import { glyph_at } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { doddrop } from "./do.js";
-import { dodown } from "./do.js";
-import { dodrop } from "./do.js";
-import { donull } from "./do.js";
-import { doup } from "./do.js";
-import { dowipe } from "./do.js";
-import { save_currentstate } from "./do.js";
-import { u_collide_m } from "./do.js";
-import { docallcmd } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { doddoremarm } from "./do_wear.js";
-import { doputon } from "./do_wear.js";
-import { doremring } from "./do_wear.js";
-import { dotakeoff } from "./do_wear.js";
-import { dowear } from "./do_wear.js";
-import { ia_dotakeoff } from "./do_wear.js";
-import { remarm_swapwep } from "./do_wear.js";
-import { reset_remarm } from "./do_wear.js";
+import {
+    cls, docrt, docrt_flags, doredraw, flush_screen, glyph_at, nul_glyphinfo,
+} from "./display.js";
+import {
+    doddrop, dodown, dodrop, donull, doup, dowipe, save_currentstate, u_collide_m,
+} from "./do.js";
+import { docallcmd, mon_nam, x_monnam } from "./do_name.js";
+import {
+    doddoremarm, doputon, doremring, dotakeoff, dowear, ia_dotakeoff, remarm_swapwep, reset_remarm,
+} from "./do_wear.js";
 import { losedogs } from "./dog.js";
 import { pet_ranged_attk } from "./dogmove.js";
 import { dokick } from "./dokick.js";
-import { dofire } from "./dothrow.js";
-import { dothrow } from "./dothrow.js";
+import { dofire, dothrow } from "./dothrow.js";
 import { defsyms } from "./drawing.js";
-import { donamelevel } from "./dungeon.js";
-import { dooverview } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { recalc_mapseen } from "./dungeon.js";
-import { rm_mapseen } from "./dungeon.js";
-import { u_on_rndspot } from "./dungeon.js";
+import {
+    donamelevel, dooverview, ledger_no, on_level, recalc_mapseen, rm_mapseen, u_on_rndspot,
+} from "./dungeon.js";
 import { doeat } from "./eat.js";
-import { done2 } from "./end.js";
-import { nh_terminate } from "./end.js";
-import { can_reach_floor } from "./engrave.js";
-import { doengrave } from "./engrave.js";
-import { clearlocks } from "./files.js";
-import { close_nhfile } from "./files.js";
-import { get_freeing_nhfile } from "./files.js";
-import { paniclog } from "./files.js";
+import { done2, nh_terminate } from "./end.js";
+import { can_reach_floor, doengrave } from "./engrave.js";
+import { clearlocks, close_nhfile, get_freeing_nhfile, paniclog } from "./files.js";
 import { dryup } from "./fountain.js";
-import { auto_describe } from "./getpos.js";
-import { gather_locs_interesting } from "./getpos.js";
-import { getpos } from "./getpos.js";
-import { getpos_menu } from "./getpos.js";
+import { auto_describe, gather_locs_interesting, getpos, getpos_menu } from "./getpos.js";
 import { glyph_to_cmap } from "./glyphs.js";
-import { check_special_room } from "./hack.js";
-import { domove } from "./hack.js";
-import { dopickup } from "./hack.js";
-import { set_uinwater } from "./hack.js";
-import { test_move } from "./hack.js";
-import { u_maybe_impaired } from "./hack.js";
-import { copynchars } from "./hacklib.js";
-import { digit } from "./hacklib.js";
-import { dist2 } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { letter } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { trimspaces } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { visctrl } from "./hacklib.js";
-import { do_gamelog } from "./insight.js";
-import { doattributes } from "./insight.js";
-import { doborn } from "./insight.js";
-import { doconduct } from "./insight.js";
-import { dogenocided } from "./insight.js";
-import { dovanquished } from "./insight.js";
-import { remove_achievement } from "./insight.js";
-import { adjust_split } from "./invent.js";
-import { carrying } from "./invent.js";
-import { ddoinv } from "./invent.js";
-import { dolook } from "./invent.js";
-import { doorganize } from "./invent.js";
-import { doperminv } from "./invent.js";
-import { dopramulet } from "./invent.js";
-import { doprarm } from "./invent.js";
-import { doprgold } from "./invent.js";
-import { doprinuse } from "./invent.js";
-import { doprring } from "./invent.js";
-import { doprtool } from "./invent.js";
-import { doprwep } from "./invent.js";
-import { dotypeinv } from "./invent.js";
+import {
+    check_special_room, domove, dopickup, set_uinwater, test_move, u_maybe_impaired,
+} from "./hack.js";
+import {
+    copynchars, digit, dist2, eos, highc, letter, mungspaces, sgn, strncmpi, strstri, strsubst,
+    trimspaces, upstart, visctrl,
+} from "./hacklib.js";
+import {
+    do_gamelog, doattributes, doborn, doconduct, dogenocided, dovanquished, remove_achievement,
+} from "./insight.js";
+import {
+    adjust_split, carrying, ddoinv, dolook, doorganize, doperminv, dopramulet, doprarm, doprgold,
+    doprinuse, doprring, doprtool, doprwep, dotypeinv,
+} from "./invent.js";
 import { wiz_light_sources } from "./light.js";
-import { doclose } from "./lock.js";
-import { doforce } from "./lock.js";
-import { doopen } from "./lock.js";
-import { maybe_reset_pick } from "./lock.js";
-import { reset_pick } from "./lock.js";
+import { doclose, doforce, doopen, maybe_reset_pick, reset_pick } from "./lock.js";
 import { dobjsfree } from "./mkobj.js";
-import { dmonsfree } from "./mon.js";
-import { kill_genocided_monsters } from "./mon.js";
+import { dmonsfree, kill_genocided_monsters } from "./mon.js";
 import { attacktype } from "./mondata.js";
 import { linedup } from "./mthrowu.js";
 import { nhl_pcall_handle } from "./nhlua.js";
-import { doclassdisco } from "./o_init.js";
-import { dodiscovered } from "./o_init.js";
-import { an } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { doset } from "./options.js";
-import { doset_simple } from "./options.js";
-import { dotogglepickup } from "./options.js";
-import { show_menu_controls } from "./options.js";
-import { toggle_bool_option } from "./options.js";
-import { do_screen_description } from "./pager.js";
-import { dohelp } from "./pager.js";
-import { dohistory } from "./pager.js";
-import { doidtrap } from "./pager.js";
-import { doquickwhatis } from "./pager.js";
-import { dowhatdoes } from "./pager.js";
-import { dowhatdoes_core } from "./pager.js";
-import { dowhatis } from "./pager.js";
-import { doloot } from "./pickup.js";
-import { dotip } from "./pickup.js";
-import { Norep } from "./pline.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { custompline } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_xy } from "./pline.js";
-import { raw_printf } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { dobreathe } from "./polyself.js";
-import { dogaze } from "./polyself.js";
-import { dohide } from "./polyself.js";
-import { domindblast } from "./polyself.js";
-import { dopoly } from "./polyself.js";
-import { doremove } from "./polyself.js";
-import { dospinweb } from "./polyself.js";
-import { dospit } from "./polyself.js";
-import { dosummon } from "./polyself.js";
-import { dip_into } from "./potion.js";
-import { dodip } from "./potion.js";
-import { dodrink } from "./potion.js";
-import { split_mon } from "./potion.js";
-import { dopray } from "./pray.js";
-import { dosacrifice } from "./pray.js";
-import { doturn } from "./pray.js";
+import { doclassdisco, dodiscovered } from "./o_init.js";
+import { an, doname } from "./objnam.js";
+import {
+    doset, doset_simple, dotogglepickup, show_menu_controls, toggle_bool_option,
+} from "./options.js";
+import {
+    do_screen_description, dohelp, dohistory, doidtrap, doquickwhatis, dowhatdoes, dowhatdoes_core,
+    dowhatis,
+} from "./pager.js";
+import { doloot, dotip } from "./pickup.js";
+import {
+    Norep, There, You, You_cant, custompline, impossible, pline, pline_xy, raw_printf, set_msg_xy,
+} from "./pline.js";
+import {
+    dobreathe, dogaze, dohide, domindblast, dopoly, doremove, dospinweb, dospit, dosummon,
+} from "./polyself.js";
+import { dip_into, dodip, dodrink, split_mon } from "./potion.js";
+import { dopray, dosacrifice, doturn } from "./pray.js";
 import { deliver_splev_message } from "./questpgr.js";
 import { doread } from "./read.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { dosave } from "./save.js";
-import { dosave0 } from "./save.js";
-import { savelev } from "./save.js";
-import { selection_floodfill } from "./selvar.js";
-import { selection_free } from "./selvar.js";
-import { selection_getbounds } from "./selvar.js";
-import { selection_getpoint } from "./selvar.js";
-import { selection_new } from "./selvar.js";
-import { selection_size_description } from "./selvar.js";
-import { set_selection_floodfillchk } from "./selvar.js";
+import { rn2, rnd } from "./rnd.js";
+import { dosave, dosave0, savelev } from "./save.js";
+import {
+    selection_floodfill, selection_free, selection_getbounds, selection_getpoint, selection_new,
+    selection_size_description, set_selection_floodfillchk,
+} from "./selvar.js";
 import { dopay } from "./shk.js";
 import { dosit } from "./sit.js";
-import { dotalk } from "./sounds.js";
-import { soundprocs } from "./sounds.js";
-import { docast } from "./spell.js";
-import { dovspell } from "./spell.js";
-import { dowizcast } from "./spell.js";
-import { num_spells } from "./spell.js";
-import { On_stairs_dn } from "./stairs.js";
-import { On_stairs_up } from "./stairs.js";
-import { stairway_at } from "./stairs.js";
-import { can_saddle } from "./steed.js";
-import { doride } from "./steed.js";
-import { pmatchi } from "./strutil.js";
-import { strbuf_append } from "./strutil.js";
+import { dotalk, soundprocs } from "./sounds.js";
+import { docast, dovspell, dowizcast, num_spells } from "./spell.js";
+import { On_stairs_dn, On_stairs_up, stairway_at } from "./stairs.js";
+import { can_saddle, doride } from "./steed.js";
+import { pmatchi, strbuf_append } from "./strutil.js";
 import { dotelecmd } from "./teleport.js";
 import { wiz_timeout_queue } from "./timeout.js";
 import { initrack } from "./track.js";
-import { dountrap } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { doextversion } from "./version.js";
-import { doversion } from "./version.js";
+import { dountrap, reset_utrap, t_at } from "./trap.js";
+import { doextversion, doversion } from "./version.js";
 import { vision_reset } from "./vision.js";
 import { enhance_weapon_skill } from "./weapon.js";
-import { doswapweapon } from "./wield.js";
-import { dotwoweapon } from "./wield.js";
-import { dowield } from "./wield.js";
-import { dowieldquiver } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { getlin } from "./windows.js";
-import { nhwindows_hangup } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { windowprocs } from "./windows.js";
+import { doswapweapon, dotwoweapon, dowield, dowieldquiver } from "./wield.js";
+import {
+    add_menu, add_menu_heading, add_menu_str, getlin, nhwindows_hangup, select_menu, windowprocs,
+} from "./windows.js";
 import { aggravate } from "./wizard.js";
-import { makemap_remove_mons } from "./wizcmds.js";
-import { wiz_custom } from "./wizcmds.js";
-import { wiz_detect } from "./wizcmds.js";
-import { wiz_display_macros } from "./wizcmds.js";
-import { wiz_flip_level } from "./wizcmds.js";
-import { wiz_fuzzer } from "./wizcmds.js";
-import { wiz_genesis } from "./wizcmds.js";
-import { wiz_identify } from "./wizcmds.js";
-import { wiz_intrinsic } from "./wizcmds.js";
-import { wiz_kill } from "./wizcmds.js";
-import { wiz_level_change } from "./wizcmds.js";
-import { wiz_level_tele } from "./wizcmds.js";
-import { wiz_levltyp_legend } from "./wizcmds.js";
-import { wiz_load_lua } from "./wizcmds.js";
-import { wiz_load_splua } from "./wizcmds.js";
-import { wiz_makemap } from "./wizcmds.js";
-import { wiz_map } from "./wizcmds.js";
-import { wiz_map_levltyp } from "./wizcmds.js";
-import { wiz_migrate_mons } from "./wizcmds.js";
-import { wiz_mon_diff } from "./wizcmds.js";
-import { wiz_objprobs } from "./wizcmds.js";
-import { wiz_panic } from "./wizcmds.js";
-import { wiz_polyself } from "./wizcmds.js";
-import { wiz_rumor_check } from "./wizcmds.js";
-import { wiz_show_nhuuid } from "./wizcmds.js";
-import { wiz_show_seenv } from "./wizcmds.js";
-import { wiz_show_stats } from "./wizcmds.js";
-import { wiz_show_vision } from "./wizcmds.js";
-import { wiz_show_wmodes } from "./wizcmds.js";
-import { wiz_smell } from "./wizcmds.js";
-import { wiz_telekinesis } from "./wizcmds.js";
-import { wiz_where } from "./wizcmds.js";
-import { wiz_wish } from "./wizcmds.js";
+import {
+    makemap_remove_mons, wiz_custom, wiz_detect, wiz_display_macros, wiz_flip_level, wiz_fuzzer,
+    wiz_genesis, wiz_identify, wiz_intrinsic, wiz_kill, wiz_level_change, wiz_level_tele,
+    wiz_levltyp_legend, wiz_load_lua, wiz_load_splua, wiz_makemap, wiz_map, wiz_map_levltyp,
+    wiz_migrate_mons, wiz_mon_diff, wiz_objprobs, wiz_panic, wiz_polyself, wiz_rumor_check,
+    wiz_show_nhuuid, wiz_show_seenv, wiz_show_stats, wiz_show_vision, wiz_show_wmodes, wiz_smell,
+    wiz_telekinesis, wiz_where, wiz_wish,
+} from "./wizcmds.js";
 import { which_armor } from "./worn.js";
 import { dozap } from "./zap.js";
-import { dobugreport } from "../sys/c2js/nhjs_host.js";
-import { dosh } from "../sys/c2js/nhjs_host.js";
-import { dosuspend } from "../sys/c2js/nhjs_host.js";
+import { dobugreport, dosh, dosuspend } from "../sys/c2js/nhjs_host.js";
 import { authorize_explore_mode } from "../sys/unix/unixmain.js";
 const struct_lua_State = record_or_opaque("struct_lua_State");
 const __FILE__ = "cmd.c";

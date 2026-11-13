@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack medusa medusa-2.lua	$NHDT-Date: 1652196027 2022/05/10 15:20:27 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1990, 1991 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack medusa medusa-2.lua	$NHDT-Date: 1652196027 2022/05/10 15:20:27 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1990, 1991 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport")
 
@@ -29,30 +29,30 @@ des.map([[
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 }}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}}
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,74,19),"lit")
+-- Dungeon Description
+des.region(selection.area(00,00,74,19),"lit")
 des.region(selection.area(02,03,05,16),"unlit")
-` + "\n" + // -- fixup_special hack: the first room defined on a Medusa level gets some
-"\n" + // -- leaderboard statues; setting the region as irregular makes it a room
-`des.region({ region={61,03, 72,16}, lit=0, type="ordinary",irregular = 1 })
+-- fixup_special hack: the first room defined on a Medusa level gets some
+-- leaderboard statues; setting the region as irregular makes it a room
+des.region({ region={61,03, 72,16}, lit=0, type="ordinary",irregular = 1 })
 des.region(selection.area(71,08,72,11),"unlit")
-` + "\n" + // -- make the downstairs area a real room to control arriving monsters
-`des.region({ region={67,08,69,11}, lit=1, type="ordinary", arrival_room=true })
-` + "\n" + // -- Teleport: down to up stairs island, up to Medusa's island
-`des.teleport_region({ region = {02,03,05,16}, dir="down" })
+-- make the downstairs area a real room to control arriving monsters
+des.region({ region={67,08,69,11}, lit=1, type="ordinary", arrival_room=true })
+-- Teleport: down to up stairs island, up to Medusa's island
+des.teleport_region({ region = {02,03,05,16}, dir="down" })
 des.teleport_region({ region = {61,03,72,16}, dir="up" })
-` + "\n" + // -- Stairs
-`des.stair("up", 04,09)
+-- Stairs
+des.stair("up", 04,09)
 des.stair("down", 68,10)
-` + "\n" + // -- Doors
-`des.door("locked", 71,07)
-` + "\n" + // -- Branch, not allowed on Medusa's island.
-`des.levregion({ type="branch", region = {01,00,79,20}, exclude = {59,01,73,17} })
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(01,02,06,17))
+-- Doors
+des.door("locked", 71,07)
+-- Branch, not allowed on Medusa's island.
+des.levregion({ type="branch", region = {01,00,79,20}, exclude = {59,01,73,17} })
+-- Non diggable walls
+des.non_diggable(selection.area(01,02,06,17))
 des.non_diggable(selection.area(60,02,73,17))
-` + "\n" + // -- Objects
-`des.object({ id = "statue", x=68,y=10,buc="uncursed",
+-- Objects
+des.object({ id = "statue", x=68,y=10,buc="uncursed",
                       montype="knight", historic=1, male=1,name="Perseus",
                       contents = function()
                          if percent(25) then
@@ -86,14 +86,14 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Traps
-`des.trap("magic",03,12)
+-- Traps
+des.trap("magic",03,12)
 des.trap()
 des.trap()
 des.trap()
 des.trap()
-` + "\n" + // -- Monsters.
-`des.monster({ id="Medusa",x=68,y=10,asleep=1 })
+-- Monsters.
+des.monster({ id="Medusa",x=68,y=10,asleep=1 })
 des.monster("gremlin",02,14)
 des.monster("titan",02,05)
 des.monster("electric eel",10,13)

@@ -2,9 +2,6 @@
 /* Copyright (c) 1989 by Jean-Christophe Collet                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* wall directions */
 export const W_RANDOM = -1;
 export const W_NORTH = 1;
@@ -19,21 +16,6 @@ export const MAP_Y_LIM = 21;
 
 /* Per level flags */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* different level layout initializers */
 
     export const LVLINIT_NONE = 0;
@@ -43,7 +25,6 @@ export const MAP_Y_LIM = 21;
     export const LVLINIT_MINES = LVLINIT_MAZE + 1;
     export const LVLINIT_ROGUE = LVLINIT_MINES + 1;
     export const LVLINIT_SWAMP = LVLINIT_ROGUE + 1;
-
 
 /* max. nested depth of subrooms */
 export const MAX_NESTED_ROOMS = 5;
@@ -55,9 +36,6 @@ export const SP_OBJ_CONTENT = 0x1;
 export const SP_OBJ_CONTAINER = 0x2;
 
 /* SPO_FILTER types */
-
-
-
 
 /* gradient filter types */
 export const SEL_GRADIENT_RADIAL = 0;
@@ -79,11 +57,6 @@ export const NO_INVENT = 0;
 export const CUSTOM_INVENT = 0x01;
 export const DEFAULT_INVENT = 0x02;
 
-
-
-
-
-
 export const struct_sp_coder = struct("struct_sp_coder", {
     premapped: int,
     solidify: boolean,
@@ -100,7 +73,6 @@ export const struct_sp_coder = struct("struct_sp_coder", {
 /*
  * Structures manipulated by the special levels loader & compiler
  */
-
 
 export const getloc_flags_t = unsigned;
 export const unpacked_coord = struct("unpacked_coord", {
@@ -204,16 +176,8 @@ export const struct_mapfragment = struct("struct_mapfragment", {
     wid: int, hei: int,
     data: ptr_to(char),
 });
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
+
+import { boolean, coordxy, xint16 } from "./global.h.js";
 import { mmflags_nht } from "./hack.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, int, long, schar, short, unsigned } from "../rt/ctypes.js";
+import { array_of, ptr_to, struct } from "../rt/struct.js";

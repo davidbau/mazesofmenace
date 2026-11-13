@@ -2,37 +2,16 @@
 /* Copyright (c) Izchak Miller, Mike Stephenson, Steve Linhart, 1989. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-export function is_bigfoot(x) { return (+((x) == mons[PM_SASQUATCH])); }
-export function martial() { return (((martial_bonus() || is_bigfoot(gy.youmonst.data) 
-     || (uarmf && uarmf.otyp == KICKING_BOOTS)) ? 1 : 0)); }
-
+export function is_bigfoot(x) { return +(x == mons[PM_SASQUATCH]); }
+export function martial() { return (martial_bonus() || is_bigfoot(gy.youmonst.data)
+     || (uarmf && uarmf.otyp == KICKING_BOOTS) ? 1 : 0); }
 
 /* gk.kickedobj (decl.c) tracks a kicked object until placed or destroyed */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const kick_passes_thru = init_string(static_array("kick_passes_thru", char, sizeof_string("kick passes harmlessly through")), _("kick passes harmlessly through"), true);
 
 /* kicking damage when not poly'd into a form with a kick attack */
-function /* void */
-kickdmg(mon, clumsy)
-{
+function kickdmg(mon, clumsy) { /* void */
     let mdx, mdy;
     let dmg = Math.trunc((ACURRSTR() + ACURR(A_DEX) + ACURR(A_CON)) / 15);
     let specialdmg, kick_skill = P_NONE;
@@ -113,7 +92,7 @@ kickdmg(mon, clumsy)
         }
     }
 
-    void passive(mon, uarmf, TRUE, +!DEADMONSTER(mon), AT_KICK, FALSE);
+    passive(mon, uarmf, TRUE, +!DEADMONSTER(mon), AT_KICK, FALSE);
     if (DEADMONSTER(mon) && !trapkilled)
         killed(mon);
 
@@ -122,9 +101,7 @@ kickdmg(mon, clumsy)
         use_skill(kick_skill, 1);
 }
 
-function /* boolean */
-maybe_kick_monster(mon, x, y)
-{
+function maybe_kick_monster(mon, x, y) { /* boolean */
     if (mon) {
         let save_forcefight = svc.context.forcefight;
 
@@ -142,9 +119,8 @@ maybe_kick_monster(mon, x, y)
     return (+(mon != null));
 }
 
-function /* void */
-kick_monster(mon, x, y)
-{ const $frame = stack_frame(); try {
+function kick_monster(mon, x, y) { /* void */
+    const $frame = stack_frame(); try {
     var clumsy = FALSE;
     var i, j;
 
@@ -155,7 +131,7 @@ kick_monster(mon, x, y)
         && !is_flyer(mon.data)) {
         pline(_("Floating in the air, you miss wildly!"));
         exercise(A_DEX, FALSE);
-        void passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
+        passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
         return;
     }
 
@@ -210,13 +186,13 @@ kick_monster(mon, x, y)
             } else if (tmp > kickdieroll) {
                 You(_("kick %s."), mon_nam(mon));
                 sum = damageum(mon, uattk, specialdmg);
-                void passive(mon, uarmf, (+(sum != M_ATTK_MISS)),
+                passive(mon, uarmf, +(sum != M_ATTK_MISS),
                                +!(sum & M_ATTK_DEF_DIED), AT_KICK, FALSE);
                 if ((sum & M_ATTK_DEF_DIED))
                     break; /* Defender died */
             } else {
-                missum(mon, uattk, (+(tmp + armorpenalty[0] > kickdieroll)));
-                void passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
+                missum(mon, uattk, +(tmp + armorpenalty[0] > kickdieroll));
+                passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
             }
         }
         return;
@@ -238,7 +214,7 @@ kick_monster(mon, x, y)
             if (martial())
                 break doit;;
             Your(_("clumsy kick does no damage."));
-            void passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
+            passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
             return;
         }
         if (i < Math.trunc(j / 10))
@@ -262,12 +238,12 @@ kick_monster(mon, x, y)
         if (!nohands(mon.data) && !rn2(martial() ? 5 : 3)) {
             pline(_("%s blocks your %skick."), Monnam(mon),
                   clumsy ? _("clumsy ") : _(""));
-            void passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
+            passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
             return;
         } else {
             maybe_mnexto(mon);
             if (mon.mx != x || mon.my != y) {
-                void unmap_invisible(x, y);
+                unmap_invisible(x, y);
                 pline(_("%s %s, %s evading your %skick."), Monnam(mon),
                       (can_teleport(mon.data) && !noteleport_level(mon))
                           ? _("teleports")
@@ -279,21 +255,20 @@ kick_monster(mon, x, y)
                                                             ? _("slides")
                                                             : _("jumps"),
                       clumsy ? _("easily") : _("nimbly"), clumsy ? _("clumsy ") : _(""));
-                void passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
+                passive(mon, uarmf, FALSE, 1, AT_KICK, FALSE);
                 return;
             }
         }
     }
     kickdmg(mon, clumsy);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  *  Return TRUE if caught (the gold taken care of), FALSE otherwise.
  *  The gold object is *not* attached to the fobj chain!
  */
-export function /* boolean */
-ghitm(mtmp, gold)
-{
+export function ghitm(mtmp, gold) { /* boolean */
     let msg_given = FALSE;
 
     if (!likes_gold(mtmp.data) && !mtmp.isshk && !mtmp.ispriest
@@ -320,7 +295,7 @@ ghitm(mtmp, gold)
         if (cansee(mtmp.mx, mtmp.my))
             pline(_("%s %scatches the gold."), Monnam(mtmp),
                   was_sleeping ? _("awakens and ") : _(""));
-        void mpickobj(mtmp, gold);
+        mpickobj(mtmp, gold);
         gold = null; /* obj has been freed */
         if (mtmp.isshk) {
             let robbed = ESHK(mtmp).robbed;
@@ -408,12 +383,10 @@ ghitm(mtmp, gold)
 
 /* container is kicked, dropped, thrown or otherwise impacted by player.
  * Assumes container is on floor.  Checks contents for possible damage. */
-export function /* void */
-container_impact_dmg(
+export function container_impact_dmg(
     obj,
     x,
-    y) /* before the impact, not after */
-{
+    y) { /* void */ /* before the impact, not after */
     let shkp;
     let otmp, otmp2;
     let loss = 0;
@@ -423,12 +396,12 @@ container_impact_dmg(
     if (!Is_container(obj) || !Has_contents(obj) || Is_mbag(obj))
         return;
 
-    costly = ((((shkp = shop_keeper(chars[in_rooms(x, y, SHOPBASE)]))
-              && costly_spot(x, y)) ? 1 : 0));
-    insider = (((chars[u.ushops] && inside_shop(u.ux, u.uy)
-               && chars[in_rooms(x, y, SHOPBASE)] == chars[u.ushops]) ? 1 : 0));
+    costly = ((shkp = shop_keeper(chars[in_rooms(x, y, SHOPBASE)]))
+              && costly_spot(x, y) ? 1 : 0);
+    insider = (chars[u.ushops] && inside_shop(u.ux, u.uy)
+               && chars[in_rooms(x, y, SHOPBASE)] == chars[u.ushops] ? 1 : 0);
     /* if dropped or thrown, shop ownership flags are set on this obj */
-    frominv = (+(obj != gk.kickedobj));
+    frominv = +(obj != gk.kickedobj);
 
     for (otmp = obj.cobj; otmp; otmp = otmp2) {
         let result = 0;
@@ -485,9 +458,7 @@ container_impact_dmg(
 }
 
 /* jacket around really_kick_object */
-function /* int */
-kick_object(x, y, kickobjnam)
-{
+function kick_object(x, y, kickobjnam) { /* int */
     let res = 0;
 
     chars[kickobjnam] = ord('\0');
@@ -495,7 +466,7 @@ kick_object(x, y, kickobjnam)
     gk.kickedobj = svl.level.objects[x][y];
     if (gk.kickedobj) {
         /* formatted object name matters iff res==0 */
-        void strcpy(kickobjnam, killer_xname(gk.kickedobj));
+        strcpy(kickobjnam, killer_xname(gk.kickedobj));
         /* kick object; if fatal, done() will clean up kickedobj */
         res = really_kick_object(x, y);
         gk.kickedobj = null;
@@ -504,9 +475,7 @@ kick_object(x, y, kickobjnam)
 }
 
 /* guts of kick_object */
-function /* int */
-really_kick_object(x, y)
-{
+function really_kick_object(x, y) { /* int */
     let range;
     let mon, shkp = null;
     let trap;
@@ -549,13 +518,13 @@ really_kick_object(x, y)
             ; /* hero has been transformed but kick continues */
         } else {
             /* normalize body shape here; foot, not body_part(FOOT) */
-            void sprintf(svk.killer.name, _("kicking %s barefoot"), killer_xname(gk.kickedobj))
+            sprintf(svk.killer.name, _("kicking %s barefoot"), killer_xname(gk.kickedobj))
 ;
             instapetrify(svk.killer.name);
         }
     }
 
-    isgold = (+(gk.kickedobj.oclass == COIN_CLASS));
+    isgold = +(gk.kickedobj.oclass == COIN_CLASS);
     {
         let k_owt = int(gk.kickedobj.owt);
 
@@ -572,7 +541,7 @@ really_kick_object(x, y)
 
         /* range < 2 means the object will not move
            (maybe dexterity should also figure here) */
-        range = Math.trunc((ACURRSTR()) / 2) - Math.trunc(k_owt / 40);
+        range = Math.trunc(ACURRSTR() / 2) - Math.trunc(k_owt / 40);
     }
 
     if (martial())
@@ -605,8 +574,8 @@ really_kick_object(x, y)
        was set but that optimization could result in no_charge staying set
        for objects kicked out of the shop */
     shkp = find_objowner(gk.kickedobj, x, y);
-    costly = (((shkp && (costly_spot(x, y) || (costly_adjacent(shkp, x, y)
-                                             && gk.kickedobj.unpaid))) ? 1 : 0));
+    costly = (shkp && (costly_spot(x, y) || (costly_adjacent(shkp, x, y)
+                                             && gk.kickedobj.unpaid)) ? 1 : 0);
     /* 5.0: give feedback about the item being kicked; some follow-on
        messages refer to "it" */
     Norep(_("You kick %s."),
@@ -621,7 +590,7 @@ really_kick_object(x, y)
                 pline(_("%s %sn't come loose."),
                       The(distant_name(gk.kickedobj, xname)),
                       otense(gk.kickedobj, _("do")));
-            return (((!rn2(3) || martial()) ? 1 : 0));
+            return (!rn2(3) || martial() ? 1 : 0);
         }
         if (Blind())
             pline(_("It comes loose."));
@@ -658,7 +627,7 @@ really_kick_object(x, y)
                 You(_("break open the lock!"));
                 breakchestlock(gk.kickedobj, FALSE);
                 if (otrp)
-                    void chest_trap(gk.kickedobj, LEG, FALSE);
+                    chest_trap(gk.kickedobj, LEG, FALSE);
                 return 1;
             }
         } else {
@@ -666,7 +635,7 @@ really_kick_object(x, y)
                 pline_The(_("lid slams open, then falls shut."));
                 gk.kickedobj.lknown = 1;
                 if (otrp)
-                    void chest_trap(gk.kickedobj, LEG, FALSE);
+                    chest_trap(gk.kickedobj, LEG, FALSE);
                 return 1;
             }
         }
@@ -686,7 +655,7 @@ really_kick_object(x, y)
     if (range < 2) {
         if (!Is_box(gk.kickedobj))
             pline(_("Thump!"));
-        return (((!rn2(3) || martial()) ? 1 : 0));
+        return (!rn2(3) || martial() ? 1 : 0);
     }
 
     if (gk.kickedobj.quan > 1) {
@@ -702,14 +671,14 @@ really_kick_object(x, y)
                 if (!Deaf())
                     pline1(_("Thwwpingg!"));
                 You(_("%s!"), ROLL_FROM(flyingcoinmsg));
-                void scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT,
+                scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT,
                                gk.kickedobj);
                 newsym(x, y);
                 return 1;
             }
             if (gk.kickedobj.quan > 300) {
                 pline(_("Thump!"));
-                return (((!rn2(3) || martial()) ? 1 : 0));
+                return (!rn2(3) || martial() ? 1 : 0);
             }
         }
     }
@@ -718,20 +687,10 @@ really_kick_object(x, y)
         pline(_("Whee!  %s %s across the %s."), Doname2(gk.kickedobj),
               otense(gk.kickedobj, _("slide")), surface(x, y));
 
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     obj_extract_self(gk.kickedobj);
-    void snuff_candle(gk.kickedobj);
+    snuff_candle(gk.kickedobj);
     newsym(x, y);
     mon = bhit(u.dx, u.dy, range, KICKED_WEAPON,
                null,
@@ -743,7 +702,7 @@ really_kick_object(x, y)
         if (mon.isshk && gk.kickedobj.where == OBJ_MINVENT
             && gk.kickedobj.v.v_ocarry == mon)
             return 1; /* alert shk caught it */
-        gn.notonhead = (+(mon.mx != gb.bhitpos.x || mon.my != gb.bhitpos.y));
+        gn.notonhead = +(mon.mx != gb.bhitpos.x || mon.my != gb.bhitpos.y);
         if (isgold ? ghitm(mon, gk.kickedobj)      /* caught? */
                    : thitmonst(mon, gk.kickedobj)) /* hit && used up? */
             return 1;
@@ -763,7 +722,7 @@ really_kick_object(x, y)
         if (isgold)
             costly_gold(x, y, gk.kickedobj.quan, FALSE);
         else
-            void stolen_value(gk.kickedobj, x, y, shkp.mpeaceful,
+            stolen_value(gk.kickedobj, x, y, shkp.mpeaceful,
                                 FALSE);
         costly = FALSE; /* already billed */
     }
@@ -790,9 +749,7 @@ really_kick_object(x, y)
 }
 
 /* cause of death if kicking kills kicker */
-function /* char * */
-kickstr(buf, kickobjnam)
-{
+function kickstr(buf, kickobjnam) { /* char * */
     let what;
 
     if (chars[kickobjnam])
@@ -830,27 +787,23 @@ kickstr(buf, kickobjnam)
     return strcat(strcpy(buf, _("kicking ")), what);
 }
 
-function /* boolean */
-watchman_thief_arrest(mtmp)
-{
+function watchman_thief_arrest(mtmp) { /* boolean */
     if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my)
         && mtmp.mpeaceful) {
         mon_yells(mtmp, _("Halt, thief!  You're under arrest!"));
-        void angry_guards(FALSE);
+        angry_guards(FALSE);
         return TRUE;
     }
     return FALSE;
 }
 
-function /* boolean */
-watchman_door_damage(mtmp, x, y)
-{
+function watchman_door_damage(mtmp, x, y) { /* boolean */
     if (is_watch(mtmp.data) && mtmp.mpeaceful
         && couldsee(mtmp.mx, mtmp.my)) {
         if (levl()[x][y].flags & D_WARNED) {
             mon_yells(mtmp,
                       _("Halt, vandal!  You're under arrest!"));
-            void angry_guards(FALSE);
+            angry_guards(FALSE);
         } else {
             mon_yells(mtmp, _("Hey, stop damaging that door!"));
             levl()[x][y].flags |= D_WARNED;
@@ -860,9 +813,7 @@ watchman_door_damage(mtmp, x, y)
     return FALSE;
 }
 
-function /* void */
-kick_dumb(x, y)
-{
+function kick_dumb(x, y) { /* void */
     exercise(A_DEX, FALSE);
     if (martial() || ACURR(A_DEX) >= 16 || rn2(3)) {
         You(_("kick at empty space."));
@@ -877,9 +828,10 @@ kick_dumb(x, y)
         hurtle(-u.dx, -u.dy, 1, TRUE);
 }
 
-function /* void */
-kick_ouch(x$, y$, kickobjnam)
-{ const $frame = stack_frame(); try { const x = stack_var(short, x$); const y = stack_var(short, y$);
+function kick_ouch(x$, y$, kickobjnam) { /* void */
+    const $frame = stack_frame(); try {
+    const x = stack_var(short, x$);
+    const y = stack_var(short, y$);
     let dmg;
     let buf = stack_array(char, BUFSZ);
 
@@ -892,7 +844,7 @@ kick_ouch(x$, y$, kickobjnam)
         if (is_drawbridge_wall(x[0], y[0]) >= 0) {
             pline_The(_("drawbridge is unaffected."));
             /* update maploc to refer to the drawbridge */
-            void find_drawbridge(x, y);
+            find_drawbridge(x, y);
             gm.maploc = levl()[x[0]][y[0]];
         }
         wake_nearto(x[0], y[0], 5 * 5);
@@ -903,12 +855,11 @@ kick_ouch(x$, y$, kickobjnam)
     losehp(Maybe_Half_Phys(dmg), kickstr(buf, kickobjnam), KILLED_BY);
     if (Is_airlevel(u.uz) || Levitation())
         hurtle(-u.dx, -u.dy, rn1(2, 4), TRUE); /* assume it's heavy */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* kick a door */
-function /* void */
-kick_door(x, y, avrg_attrib)
-{
+function kick_door(x, y, avrg_attrib) { /* void */
     let doorbuster;
 
     if (gm.maploc.flags == D_ISOPEN || gm.maploc.flags == D_BROKEN
@@ -955,7 +906,7 @@ kick_door(x, y, avrg_attrib)
             pay_for_damage(_("break"), FALSE);
         }
         if (in_town(x, y))
-            void get_iter_mons(watchman_thief_arrest);
+            get_iter_mons(watchman_thief_arrest);
     } else {
         if (Blind())
             feel_location(x, y); /* we know we hit it */
@@ -965,14 +916,13 @@ kick_door(x, y, avrg_attrib)
            hear; we've kept the extra 'm's and one of the extra '!'s */
         pline(_("%s!!"), (Deaf() || !rn2(3)) ? _("Thwack") : _("Whammm"));
         if (in_town(x, y))
-            void get_iter_mons_xy(watchman_door_damage, x, y);
+            get_iter_mons_xy(watchman_door_damage, x, y);
     }
 }
 
 /* kick non-door terrain */
-function /* int */
-kick_nondoor(x, y, avrg_attrib)
-{ const $frame = stack_frame(); try {
+function kick_nondoor(x, y, avrg_attrib) { /* int */
+    const $frame = stack_frame(); try {
     if (gm.maploc.typ == SDOOR) {
         if (!Levitation() && rn2(30) < avrg_attrib) {
             cvt_sdoor_to_door(gm.maploc); /* ->typ = DOOR */
@@ -1022,7 +972,7 @@ kick_nondoor(x, y, avrg_attrib)
         if ((Luck() < 0 || gm.maploc.flags) && !rn2(3)) {
             gm.maploc.flags = 0; /* don't leave loose ends.. */
             gm.maploc.typ = ROOM;
-            void mkgold(rnd(200), x, y);
+            mkgold(rnd(200), x, y);
              ;
             if (Blind())
                 pline(_("CRASH!  You destroy it."));
@@ -1033,12 +983,12 @@ kick_nondoor(x, y, avrg_attrib)
             exercise(A_DEX, TRUE);
             return ECMD_TIME;
         } else if (Luck() > 0 && !rn2(3) && !gm.maploc.flags) {
-            void mkgold(rn1(201, 300), x, y);
+            mkgold(rn1(201, 300), x, y);
             i = Luck() + 1;
             if (i > 6)
                 i = 6;
             while (i--)
-                void mksobj_at(
+                mksobj_at(
                        rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), x, y,
                        FALSE, TRUE);
             if (Blind())
@@ -1116,7 +1066,7 @@ kick_nondoor(x, y, avrg_attrib)
             gm.maploc.typ = ROOM;
             gm.maploc.flags = 0; /* clear 'flags' */
             gm.maploc.horizontal = 0; /* clear 'horizontal' */
-            void mksobj_at(ROCK, x, y, TRUE, FALSE);
+            mksobj_at(ROCK, x, y, TRUE, FALSE);
             del_engr_at(x, y);
             if (Blind()) {
                 /* [feel this happen if Deaf?] */
@@ -1216,7 +1166,7 @@ kick_nondoor(x, y, avrg_attrib)
                 pline(_("A %s ooze gushes up from the drain!"),
                       hcolor(NH_BLACK()));
             }
-            void makemon(mons[PM_BLACK_PUDDING], x, y, MM_NOMSG);
+            makemon(mons[PM_BLACK_PUDDING], x, y, MM_NOMSG);
             exercise(A_DEX, TRUE);
             newsym(x, y);
             gm.maploc.flags |= S_LPUDDING;
@@ -1250,12 +1200,12 @@ kick_nondoor(x, y, avrg_attrib)
     }
     kick_dumb(x, y);
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #kick command */
-export function /* int */
-dokick()
-{ const $frame = stack_frame(); try {
+export function dokick() { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let avrg_attrib;
     let glyph, oldglyph = -1;
@@ -1440,8 +1390,8 @@ dokick()
         }
         return ECMD_TIME;
     }
-    void unmap_invisible(x, y);
-    if ((((is_pool(x, y) || gm.maploc.typ == LAVAWALL) ? 1 : 0)) ^ +!!u.uinwater) {
+    unmap_invisible(x, y);
+    if ((is_pool(x, y) || gm.maploc.typ == LAVAWALL ? 1 : 0) ^ +!!u.uinwater) {
         /* objects normally can't be removed from water by kicking */
         You(_("splash some %s around."),
             hliquid(is_pool(x, y) ? _("water") : _("lava")));
@@ -1467,11 +1417,10 @@ dokick()
     else
         return kick_nondoor(x, y, avrg_attrib);
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-drop_to(cc, loc, x, y)
-{
+function drop_to(cc, loc, x, y) { /* void */
     let stway = stairway_at(x, y);
 
     /* cover all the MIGR_xxx choices generated by down_gate() */
@@ -1507,12 +1456,11 @@ drop_to(cc, loc, x, y)
 }
 
 /* player or missile impacts location, causing objects to fall down */
-export function /* void */
-impact_drop(
+export function impact_drop(
     missile,
     x, y,
-    dlev)          /* if !0 send to dlev near player */
-{ const $frame = stack_frame(); try {
+    dlev) { /* void */ /* if !0 send to dlev near player */
+    const $frame = stack_frame(); try {
     let toloc;
     let obj, obj2;
     let shkp;
@@ -1554,7 +1502,7 @@ impact_drop(
         }
     }
 
-    isrock = (((missile && missile.otyp == ROCK) ? 1 : 0));
+    isrock = (missile && missile.otyp == ROCK ? 1 : 0);
     oct = dct = 0;
     for (obj = svl.level.objects[x][y]; obj; obj = obj2) {
         obj2 = obj.v.v_nexthere;
@@ -1572,9 +1520,9 @@ impact_drop(
 
         if (costly) {
             price += stolen_value(obj, x, y,
-                                  (((costly_spot(u.ux, u.uy)
+                                  (costly_spot(u.ux, u.uy)
                                    && strchr(u.urooms,
-                                            chars[in_rooms(x, y, SHOPBASE)])) ? 1 : 0)),
+                                            chars[in_rooms(x, y, SHOPBASE)]) ? 1 : 0),
                                   TRUE);
             /* set obj->no_charge to 0 */
             if (Has_contents(obj))
@@ -1612,7 +1560,7 @@ impact_drop(
             You(_("removed %lld %s worth of goods!"), price, currency(price));
             if (cansee(shkp.mx, shkp.my)) {
                 if (chars[ESHK(shkp).customer + 0] == 0)
-                    void strncpy(ESHK(shkp).customer, svp.plname, PL_NSIZ);
+                    strncpy(ESHK(shkp).customer, svp.plname, PL_NSIZ);
                 if (angry)
                     pline(_("%s is infuriated!"), Shknam(shkp));
                 else
@@ -1620,7 +1568,7 @@ impact_drop(
             } else
                 You_hear(_("a scream, \"Thief!\""));
             hot_pursuit(shkp);
-            void angry_guards(FALSE);
+            angry_guards(FALSE);
             return;
         }
         if (ESHK(shkp).debit > debit) {
@@ -1629,15 +1577,15 @@ impact_drop(
                 currency(amt));
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* NOTE: ship_object assumes otmp was FREED from fobj or invent.
  * <x,y> is the point of drop.  otmp is _not_ an <x,y> resident:
  * otmp is either a kicked, dropped, or thrown object.
  */
-export function /* boolean */
-ship_object(otmp, x, y, shop_floor_obj)
-{ const $frame = stack_frame(); try {
+export function ship_object(otmp, x, y, shop_floor_obj) { /* boolean */
+    const $frame = stack_frame(); try {
     let toloc;
     let ox, oy;
     let cc = stack_struct(struct_nhcoord);
@@ -1656,8 +1604,8 @@ ship_object(otmp, x, y, shop_floor_obj)
 
     /* objects other than attached iron ball always fall down ladder,
        but have a chance of staying otherwise */
-    nodrop = (((otmp == uball) || (otmp == uchain)
-             || (toloc != MIGR_LADDER_UP && rn2(3))) ? 1 : 0);
+    nodrop = ((otmp == uball) || (otmp == uchain)
+             || (toloc != MIGR_LADDER_UP && rn2(3)) ? 1 : 0);
 
     container = Has_contents(otmp);
     unpaid = is_unpaid(otmp);
@@ -1694,14 +1642,14 @@ ship_object(otmp, x, y, shop_floor_obj)
 
     if (unpaid || shop_floor_obj) {
         if (unpaid) {
-            void stolen_value(otmp, u.ux, u.uy, TRUE, FALSE);
+            stolen_value(otmp, u.ux, u.uy, TRUE, FALSE);
         } else {
             ox = otmp.ox;
             oy = otmp.oy;
-            void stolen_value(
+            stolen_value(
                 otmp, ox, oy,
-                (((costly_spot(u.ux, u.uy)
-                 && strchr(u.urooms, chars[in_rooms(ox, oy, SHOPBASE)])) ? 1 : 0)),
+                (costly_spot(u.ux, u.uy)
+                 && strchr(u.urooms, chars[in_rooms(ox, oy, SHOPBASE)]) ? 1 : 0),
                 FALSE);
         }
         /* set otmp->no_charge to 0 */
@@ -1763,11 +1711,11 @@ ship_object(otmp, x, y, shop_floor_obj)
         newsym(x, y);
     }
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-obj_delivery(near_hero)
-{ const $frame = stack_frame(); try {
+export function obj_delivery(near_hero) { /* void */
+    const $frame = stack_frame(); try {
     let otmp, otmp2;
     let nx = 0, ny = 0;
     let where;
@@ -1789,7 +1737,7 @@ obj_delivery(near_hero)
         noscatter = +((where & MIGR_WITH_HERO) != 0);
         where &= ~(MIGR_NOBREAK | MIGR_NOSCATTER);
 
-        if (+!near_hero ^ (+(where == MIGR_WITH_HERO)))
+        if (+!near_hero ^ +(where == MIGR_WITH_HERO))
             continue;
 
         obj_extract_self(otmp);
@@ -1835,7 +1783,7 @@ obj_delivery(near_hero)
             }
             stackobj(otmp);
             if (!noscatter)
-                void scatter(nx, ny, rnd(2), 0, otmp);
+                scatter(nx, ny, rnd(2), 0, otmp);
             else
                 newsym(nx, ny);
         } else { /* random location */
@@ -1848,11 +1796,10 @@ obj_delivery(near_hero)
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-deliver_obj_to_mon(mtmp, cnt, deliverflags)
-{
+export function deliver_obj_to_mon(mtmp, cnt, deliverflags) { /* void */
     let otmp, otmp2;
     let where, maxobj = 1;
     let at_crime_scene = In_mines(u.uz);
@@ -1863,9 +1810,6 @@ deliver_obj_to_mon(mtmp, cnt, deliverflags)
         maxobj = 0;
     else
         maxobj = 1;
-
-
-
 
     cnt = 0;
     for (otmp = gm.migrating_objs; otmp; otmp = otmp2) {
@@ -1896,18 +1840,18 @@ deliver_obj_to_mon(mtmp, cnt, deliverflags)
             otmp.corpsenm = NON_PM;
             otmp.omigr_from_dnum = 0;
             otmp.omigr_from_dlevel = 0;
-            void add_to_minv(mtmp, otmp);
+            add_to_minv(mtmp, otmp);
             cnt++;
             if (maxobj && cnt >= maxobj)
                 break;
             /* getting here implies DF_ALL */
         }
     }
-} export const DELIVER_PM = (M2_UNDEAD | M2_WERE | M2_HUMAN | M2_ELF | M2_DWARF                      | M2_GNOME | M2_ORC | M2_DEMON | M2_GIANT);
+}
+export const DELIVER_PM = (M2_UNDEAD | M2_WERE | M2_HUMAN | M2_ELF | M2_DWARF | M2_GNOME | M2_ORC | M2_DEMON | M2_GIANT);
 
-function /* void */
-otransit_msg(otmp, nodrop, chainthere, num)
-{ const $frame = stack_frame(); try {
+function otransit_msg(otmp, nodrop, chainthere, num) { /* void */
+    const $frame = stack_frame(); try {
     let optr = 0, obuf = stack_array(char, BUFSZ), xbuf = stack_array(char, BUFSZ);
 
     if (otmp.otyp == CORPSE) {
@@ -1917,37 +1861,36 @@ otransit_msg(otmp, nodrop, chainthere, num)
     } else {
         optr = Tobjnam(otmp, 0);
     }
-    void strcpy(obuf, optr);
+    strcpy(obuf, optr);
 
     if (num || chainthere) {
         /* As of 3.6.2: use a separate buffer for the suffix to avoid risk of
            overrunning obuf[] (let pline() handle truncation if necessary) */
         if (num) { /* means: other objects are impacted */
-            void sprintf(xbuf, _(" %s %s object%s"), otense(otmp, _("hit")), (num == 1) ? _("another") : _("other"), (num > 1) ? _("s") : _(""))
+            sprintf(xbuf, _(" %s %s object%s"), otense(otmp, _("hit")), (num == 1) ? _("another") : _("other"), (num > 1) ? _("s") : _(""))
 ;
         } else { /* chain-only msg */
-            void sprintf(xbuf, _(" %s your chain"), otense(otmp, _("rattle")));
+            sprintf(xbuf, _(" %s your chain"), otense(otmp, _("rattle")));
         }
         if (nodrop)
-            void sprintf(eos(xbuf), _("."));
+            sprintf(eos(xbuf), _("."));
         else
-            void sprintf(eos(xbuf), _(" and %s %s."), otense(otmp, _("fall")), gg.gate_str)
+            sprintf(eos(xbuf), _(" and %s %s."), otense(otmp, _("fall")), gg.gate_str)
 ;
         pline(_("%s%s"), obuf, xbuf);
     } else if (!nodrop)
         pline(_("%s %s %s."), obuf, otense(otmp, _("fall")), gg.gate_str);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* migration destination for objects which fall down to next level */
-export function /* schar */
-down_gate(x, y)
-{
+export function down_gate(x, y) { /* schar */
     let ttmp;
     let stway = stairway_at(x, y);
 
     gg.gate_str = 0;
     /* this matches the player restriction in goto_level() */
-    if (on_level(u.uz, (svd.dungeon_topology.d_qstart_level)) && !ok_to_quest()) {
+    if (on_level(u.uz, svd.dungeon_topology.d_qstart_level) && !ok_to_quest()) {
         return MIGR_NOWHERE;
     }
     if (stway && !stway.up && !stway.isladder) {
@@ -1969,425 +1912,151 @@ down_gate(x, y)
 }
 
 /*dokick.c*/
+
 import { A_LAWFUL } from "./align.h.js";
 import { ART_MJOLLNIR } from "./artilist.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { ACURRSTR } from "./attrib.h.macros.js";
+import { A_CHA, A_CON, A_DEX, A_STR, A_WIS } from "./attrib.h.js";
+import { ACURR, ACURRSTR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { Something } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_LIZARD } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { MIGR_LADDER_UP } from "./dungeon.h.js";
-import { MIGR_NOBREAK } from "./dungeon.h.js";
-import { MIGR_NOSCATTER } from "./dungeon.h.js";
-import { MIGR_NOWHERE } from "./dungeon.h.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { MIGR_SSTAIRS } from "./dungeon.h.js";
-import { MIGR_STAIRS_UP } from "./dungeon.h.js";
-import { MIGR_TO_SPECIES } from "./dungeon.h.js";
-import { MIGR_WITH_HERO } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { CXN_PFX_THE } from "./hack.h.js";
-import { DF_ALL } from "./hack.h.js";
-import { DF_RANDOM } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { KICKED_WEAPON } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { MAY_HIT } from "./hack.h.js";
-import { MM_ANGRY } from "./hack.h.js";
-import { MM_FEMALE } from "./hack.h.js";
-import { MM_MALE } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { SHOP_DOOR_COST } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { VIS_EFFECTS } from "./hack.h.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { valley_level } from "./hack.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { has_mgivenname } from "./mextra.h.macros.js";
+import { NH_BLACK, Something, something } from "./decl.h.macros.js";
+import { COIN_CLASS, GEM_CLASS, S_EEL, S_LIZARD } from "./defsym.h.js";
+import { canspotmon, glyph_is_invisible } from "./display.h.macros.js";
+import {
+    MIGR_LADDER_UP, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_NOWHERE, MIGR_RANDOM, MIGR_SSTAIRS,
+    MIGR_STAIRS_UP, MIGR_TO_SPECIES, MIGR_WITH_HERO, struct_d_level,
+} from "./dungeon.h.js";
+import { In_endgame, Is_airlevel, Is_stronghold, Is_waterlevel } from "./dungeon.h.macros.js";
+import { BUFSZ, FALSE, PL_NSIZ, TRUE } from "./global.h.js";
+import {
+    CXN_PFX_THE, DF_ALL, DF_RANDOM, ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, FOOT, KICKED_WEAPON,
+    KILLED_BY, LEG, MAY_HIT, MM_ANGRY, MM_FEMALE, MM_MALE, MM_NOMSG, NO_TRAP_FLAGS, SHOP_DOOR_COST,
+    SLT_ENCUMBER, VIS_EFFECTS,
+} from "./hack.h.js";
+import { Maybe_Half_Phys, ROLL_FROM, min, pline1, rn1, valley_level } from "./hack.h.macros.js";
+import { ESHK, has_mgivenname } from "./mextra.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AT_KICK } from "./monattk.h.js";
-import { M_ATTK_DEF_DIED } from "./monattk.h.js";
-import { M_ATTK_MISS } from "./monattk.h.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_giant } from "./mondata.h.macros.js";
-import { is_mercenary } from "./mondata.h.macros.js";
-import { is_watch } from "./mondata.h.macros.js";
-import { likes_gold } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { thick_skinned } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { G_GONE } from "./monflag.h.js";
-import { M2_DEMON } from "./monflag.h.js";
-import { M2_DWARF } from "./monflag.h.js";
-import { M2_ELF } from "./monflag.h.js";
-import { M2_GIANT } from "./monflag.h.js";
-import { M2_GNOME } from "./monflag.h.js";
-import { M2_HUMAN } from "./monflag.h.js";
-import { M2_ORC } from "./monflag.h.js";
-import { M2_UNDEAD } from "./monflag.h.js";
-import { M2_WERE } from "./monflag.h.js";
+import { AT_KICK, M_ATTK_DEF_DIED, M_ATTK_MISS } from "./monattk.h.js";
+import {
+    bigmonst, can_teleport, digests, haseyes, is_floater, is_flyer, is_giant, is_mercenary,
+    is_watch, likes_gold, nohands, nolimbs, slithy, thick_skinned, touch_petrifies, verysmall,
+} from "./mondata.h.macros.js";
+import {
+    G_GONE, M2_DEMON, M2_DWARF, M2_ELF, M2_GIANT, M2_GNOME, M2_HUMAN, M2_ORC, M2_UNDEAD, M2_WERE,
+} from "./monflag.h.js";
 import { M_AP_MONSTER } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BLACK_PUDDING } from "./monsters.h.js";
-import { PM_CAPTAIN } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_LIEUTENANT } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_SASQUATCH } from "./monsters.h.js";
-import { PM_SERGEANT } from "./monsters.h.js";
-import { PM_SHADE } from "./monsters.h.js";
-import { PM_SOLDIER } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { ER_NOTHING } from "./obj.h.js";
-import { OBJ_MIGRATING } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_box } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { Is_mbag } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
+import { DEADMONSTER, M_AP_TYPE, engulfing_u, ismnum } from "./monst.h.macros.js";
+import {
+    NON_PM, PM_AMOROUS_DEMON, PM_ARCHEOLOGIST, PM_BLACK_PUDDING, PM_CAPTAIN, PM_KILLER_BEE,
+    PM_LIEUTENANT, PM_SAMURAI, PM_SASQUATCH, PM_SERGEANT, PM_SHADE, PM_SOLDIER, PM_STONE_GOLEM,
+} from "./monsters.h.js";
+import { ER_NOTHING, OBJ_MIGRATING, OBJ_MINVENT } from "./obj.h.js";
+import {
+    Has_contents, Is_box, Is_container, Is_mbag, ONAME, has_oname, is_plural,
+} from "./obj.h.macros.js";
 import { GLASS } from "./objclass.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { DILITHIUM_CRYSTAL } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { EXPENSIVE_CAMERA } from "./objects.h.js";
-import { KICKING_BOOTS } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { MIRROR } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
+import {
+    BOULDER, CORPSE, DILITHIUM_CRYSTAL, EGG, EXPENSIVE_CAMERA, KICKING_BOOTS, LUCKSTONE, MIRROR,
+    ROCK,
+} from "./objects.h.js";
 import { NATTK } from "./permonst.h.js";
-import { RIGHT_SIDE } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { CORR } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { D_WARNED } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { LA_DOWN } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { S_LDWASHER } from "./rm.h.js";
-import { S_LPUDDING } from "./rm.h.js";
-import { TREE_LOOTED } from "./rm.h.js";
-import { TREE_SWARM } from "./rm.h.js";
-import { T_LOOTED } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_DRAWBRIDGE } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_SOFT } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { ZAP_POS } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { P_MARTIAL_ARTS } from "./skills.h.js";
-import { P_NONE } from "./skills.h.js";
+import { RIGHT_SIDE, W_ARMF } from "./prop.h.js";
+import {
+    CORR, D_BROKEN, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, D_WARNED, IRONBARS, LADDER, LAVAWALL,
+    LA_DOWN, ROOM, SCORR, SDOOR, STAIRS, S_LDWASHER, S_LPUDDING, TREE_LOOTED, TREE_SWARM, T_LOOTED,
+} from "./rm.h.js";
+import {
+    IS_ALTAR, IS_DOOR, IS_DRAWBRIDGE, IS_FOUNTAIN, IS_GRAVE, IS_OBSTRUCTED, IS_SINK, IS_SOFT,
+    IS_STWALL, IS_THRONE, IS_TREE, OBJ_AT, ZAP_POS, levl, m_at, remove_monster,
+} from "./rm.h.macros.js";
+import { P_MARTIAL_ARTS, P_NONE } from "./skills.h.js";
 import { martial_bonus } from "./skills.h.macros.js";
-import { STATUE_TRAP } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { Trap_Killed_Mon } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
+import { STATUE_TRAP, TRAPDOOR, Trap_Killed_Mon, WEB } from "./trap.h.js";
+import { is_hole, is_pit } from "./trap.h.macros.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
-import { Luck } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { TT_BEARTRAP, TT_PIT, TT_WEB } from "./you.h.js";
+import { Luck, Role_if, Upolyd, mhis } from "./you.h.macros.js";
+import {
+    Blind, Deaf, Fumbling, Hallucination, Levitation, Passes_walls, Stone_resistance, Wounded_legs,
+} from "./youprop.h.macros.js";
+import { char, int, ord, schar, short, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { sprintf, strcat, strchr, strcpy, strncpy } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
+import { ptr_to, ref_of } from "../rt/struct.js";
 import { snuff_candle } from "./apply.js";
 import { is_art } from "./artifact.js";
-import { adjalign } from "./attrib.js";
-import { change_luck } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { find_drawbridge } from "./dbridge.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { is_ice } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gy } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { ynchars } from "./decl.js";
-import { cvt_sdoor_to_door } from "./detect.js";
-import { find_trap } from "./detect.js";
-import { canseemon } from "./display.js";
-import { feel_location } from "./display.js";
-import { feel_newsym } from "./display.js";
-import { glyph_at } from "./display.js";
-import { map_invisible } from "./display.js";
-import { newsym } from "./display.js";
-import { show_glyph } from "./display.js";
-import { unmap_invisible } from "./display.js";
-import { flooreffects } from "./do.js";
-import { legs_in_no_shape } from "./do.js";
-import { set_wounded_legs } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { christen_orc } from "./do_name.js";
-import { free_oname } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
+import { adjalign, change_luck, exercise } from "./attrib.js";
+import { getdir, isok, yn_function } from "./cmd.js";
+import { find_drawbridge, is_drawbridge_wall, is_ice, is_pool } from "./dbridge.js";
+import {
+    flags, gb, gg, gi, gk, gm, gn, gy, svc, svd, svk, svl, svm, svp, u, ynchars,
+} from "./decl.js";
+import { cvt_sdoor_to_door, find_trap } from "./detect.js";
+import {
+    canseemon, feel_location, feel_newsym, glyph_at, map_invisible, newsym, show_glyph,
+    unmap_invisible,
+} from "./display.js";
+import { flooreffects, legs_in_no_shape, set_wounded_legs } from "./do.js";
+import { Monnam, a_monnam, christen_orc, free_oname, hcolor, hliquid, mon_nam } from "./do_name.js";
 import { abuse_dog } from "./dog.js";
 import { finish_meating } from "./dogmove.js";
-import { breaks } from "./dothrow.js";
-import { breaktest } from "./dothrow.js";
-import { hero_breaks } from "./dothrow.js";
-import { hurtle } from "./dothrow.js";
-import { thitmonst } from "./dothrow.js";
-import { In_mines } from "./dungeon.js";
-import { Is_botlevel } from "./dungeon.js";
-import { dunlev } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { del_engr_at } from "./engrave.js";
-import { disturb_grave } from "./engrave.js";
-import { u_wipe_engr } from "./engrave.js";
+import { breaks, breaktest, hero_breaks, hurtle, thitmonst } from "./dothrow.js";
+import { In_mines, Is_botlevel, dunlev, dunlevs_in_dungeon, on_level, surface } from "./dungeon.js";
+import { del_engr_at, disturb_grave, u_wipe_engr } from "./engrave.js";
 import { scatter } from "./explode.js";
 import { sink_backs_up } from "./fountain.js";
-import { impact_disturbs_zombies } from "./hack.js";
-import { in_rooms } from "./hack.js";
-import { in_town } from "./hack.js";
-import { inv_weight } from "./hack.js";
-import { losehp } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { overexertion } from "./hack.js";
-import { weight_cap } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { currency } from "./invent.js";
-import { delobj } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { useup } from "./invent.js";
+import {
+    impact_disturbs_zombies, in_rooms, in_town, inv_weight, losehp, money_cnt, near_capacity,
+    overexertion, weight_cap,
+} from "./hack.js";
+import { eos, sgn, upstart } from "./hacklib.js";
+import { currency, delobj, sobj_at, stackobj, useup } from "./invent.js";
 import { breakchestlock } from "./lock.js";
 import { makemon } from "./makemon.js";
-import { add_to_migration } from "./mkobj.js";
-import { add_to_minv } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { mkgold } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { rnd_treefruit_at } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { angry_guards } from "./mon.js";
-import { get_iter_mons } from "./mon.js";
-import { get_iter_mons_xy } from "./mon.js";
-import { killed } from "./mon.js";
-import { maybe_mnexto } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { seemimic } from "./mon.js";
-import { setmangry } from "./mon.js";
-import { wake_nearby } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { poly_when_stoned } from "./mondata.js";
-import { closed_door } from "./monmove.js";
-import { mon_yells } from "./monmove.js";
-import { monflee } from "./monmove.js";
-import { set_apparxy } from "./monmove.js";
+import {
+    add_to_migration, add_to_minv, dealloc_obj, mkgold, mksobj, mksobj_at, obj_extract_self,
+    place_object, rnd_treefruit_at, splitobj, weight,
+} from "./mkobj.js";
+import {
+    angry_guards, get_iter_mons, get_iter_mons_xy, killed, maybe_mnexto, maybe_unhide_at, seemimic,
+    setmangry, wake_nearby, wake_nearto, wakeup,
+} from "./mon.js";
+import { attacktype, poly_when_stoned } from "./mondata.js";
+import { closed_door, mon_yells, monflee, set_apparxy } from "./monmove.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { An } from "./objnam.js";
-import { Doname2 } from "./objnam.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { rnd_class } from "./objnam.js";
-import { singular } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { Norep } from "./pline.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { poly_gender } from "./polyself.js";
-import { polymon } from "./polyself.js";
+import {
+    An, Doname2, The, Tobjnam, corpse_xname, distant_name, doname, killer_xname, makeplural, otense,
+    rnd_class, singular, xname,
+} from "./objnam.js";
+import {
+    Norep, There, You, You_cant, You_hear, Your, pline, pline_The, verbalize,
+} from "./pline.js";
+import { body_part, poly_gender, polymon } from "./polyself.js";
 import { altar_wrath } from "./pray.js";
 import { ok_to_quest } from "./quest.js";
 import { m_in_out_region } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { add_damage } from "./shk.js";
-import { addtobill } from "./shk.js";
-import { contained_gold } from "./shk.js";
-import { costly_adjacent } from "./shk.js";
-import { costly_gold } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { donate_gold } from "./shk.js";
-import { find_objowner } from "./shk.js";
-import { hot_pursuit } from "./shk.js";
-import { inside_shop } from "./shk.js";
-import { is_unpaid } from "./shk.js";
-import { make_angry_shk } from "./shk.js";
-import { make_happy_shk } from "./shk.js";
-import { obfree } from "./shk.js";
-import { pay_for_damage } from "./shk.js";
-import { picked_container } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { subfrombill } from "./shk.js";
-import { Shknam } from "./shknam.js";
-import { shkname } from "./shknam.js";
-import { stairway_at } from "./stairs.js";
-import { stairway_find_from } from "./stairs.js";
-import { mpickobj } from "./steal.js";
-import { remove_worn_item } from "./steal.js";
-import { kick_steed } from "./steed.js";
-import { place_monster } from "./steed.js";
-import { enexto } from "./teleport.js";
-import { goodpos } from "./teleport.js";
-import { noteleport_level } from "./teleport.js";
-import { rloco } from "./teleport.js";
-import { activate_statue_trap } from "./trap.js";
-import { b_trapped } from "./trap.js";
-import { chest_trap } from "./trap.js";
-import { fall_through } from "./trap.js";
-import { instapetrify } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { water_damage } from "./trap.js";
-import { attack_checks } from "./uhitm.js";
-import { check_caitiff } from "./uhitm.js";
-import { damageum } from "./uhitm.js";
-import { find_roll_to_hit } from "./uhitm.js";
-import { missum } from "./uhitm.js";
-import { mon_maybe_unparalyze } from "./uhitm.js";
-import { passive } from "./uhitm.js";
+import { rn2, rnd, rnl } from "./rnd.js";
+import {
+    add_damage, addtobill, contained_gold, costly_adjacent, costly_gold, costly_spot, donate_gold,
+    find_objowner, hot_pursuit, inside_shop, is_unpaid, make_angry_shk, make_happy_shk, obfree,
+    pay_for_damage, picked_container, shop_keeper, stolen_value, subfrombill,
+} from "./shk.js";
+import { Shknam, shkname } from "./shknam.js";
+import { stairway_at, stairway_find_from } from "./stairs.js";
+import { mpickobj, remove_worn_item } from "./steal.js";
+import { kick_steed, place_monster } from "./steed.js";
+import { enexto, goodpos, noteleport_level, rloco } from "./teleport.js";
+import {
+    activate_statue_trap, b_trapped, chest_trap, fall_through, instapetrify, mintrap, t_at,
+    water_damage,
+} from "./trap.js";
+import {
+    attack_checks, check_caitiff, damageum, find_roll_to_hit, missum, mon_maybe_unparalyze, passive,
+} from "./uhitm.js";
 import { hidden_gold } from "./vault.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { special_dmgval } from "./weapon.js";
-import { use_skill } from "./weapon.js";
-import { bhit } from "./zap.js";
-import { miss } from "./zap.js";
-import { obj_resists } from "./zap.js";
+import { recalc_block_point, unblock_point } from "./vision.js";
+import { special_dmgval, use_skill } from "./weapon.js";
+import { bhit, miss, obj_resists } from "./zap.js";

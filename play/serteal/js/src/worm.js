@@ -3,11 +3,8 @@
 /*-Copyright (c) Robert Patrick Rankin, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "nhjs_recorder_sizes.h" /* c2js recorder #stats sizes */
-
 export function newseg() { return view_of(struct_wseg, addr_of(alloc(sizeof(struct_wseg)))); }
-export function dealloc_seg(wseg) { return free(addr_of((wseg))); }
+export function dealloc_seg(wseg) { return free(addr_of(wseg)); }
 
 /* worm segment structure */
 const struct_wseg = struct("struct_wseg", {
@@ -15,15 +12,7 @@ const struct_wseg = struct("struct_wseg", {
     wx: coordxy, wy: coordxy,
 });
 
-
- 
-
-
-
-
-
  /* may return NULL */
-
 
 /*  Description of long worm implementation.
  *
@@ -79,7 +68,6 @@ const wheads = static_array("wheads", ptr_to(struct_wseg), MAX_NUM_WORMS, []);
 const wtails = static_array("wtails", ptr_to(struct_wseg), MAX_NUM_WORMS, []);
 const wgrowtime = static_array("wgrowtime", long, MAX_NUM_WORMS, []);
 
-
 /*
  *  get_wormno()
  *
@@ -93,9 +81,7 @@ const wgrowtime = static_array("wgrowtime", long, MAX_NUM_WORMS, []);
  *
  *  Implementation is left to the interested hacker.
  */
-export function /* int */
-get_wormno()
-{
+export function get_wormno() { /* int */
     let new_wormno = 1;
 
     while (new_wormno < MAX_NUM_WORMS) {
@@ -117,9 +103,7 @@ get_wormno()
  *  If the worm has no tail (ie get_wormno() fails) then this function
  *  need not be called.
  */
-export function /* void */
-initworm(worm, wseg_count)
-{
+export function initworm(worm, wseg_count) { /* void */
     let seg, new_tail = create_worm_tail(wseg_count);
     let wnum = worm.wormno;
 
@@ -143,9 +127,7 @@ initworm(worm, wseg_count)
  *  Get rid of all worm segments on and following the given pointer curr.
  *  The display may or may not need to be updated as we free the segments.
  */
-function /* void */
-toss_wsegs(curr, display_update)
-{
+function toss_wsegs(curr, display_update) { /* void */
     let nxtseg;
 
     while (curr) {
@@ -172,9 +154,7 @@ toss_wsegs(curr, display_update)
  *
  *  Remove the tail segment of the worm (the starting segment of the list).
  */
-function /* void */
-shrink_worm(wnum) /* worm number */
-{
+function shrink_worm(wnum) { /* void */ /* worm number */
     let seg;
 
     if (wtails[wnum] == wheads[wnum])
@@ -193,9 +173,7 @@ shrink_worm(wnum) /* worm number */
  *
  *  Move the worm.  Maybe grow.
  */
-export function /* void */
-worm_move(worm)
-{
+export function worm_move(worm) { /* void */
     let seg, new_seg; /* new segment */
     let wnum = worm.wormno;    /* worm number */
 
@@ -225,11 +203,6 @@ worm_move(worm)
             wgrowtime[wnum] = svm.moves + rnd(5);
         } else {
             let mmove = mcalcmove(worm, FALSE),
-
-
-
-
-
 
                 incr = rn1(10, 2); /* 2..12; after adjusting for long worn
                                     * speed of 3, effective value is 8..48 */
@@ -285,9 +258,7 @@ worm_move(worm)
  *
  *  The worm doesn't move, so it should shrink.
  */
-export function /* void */
-worm_nomove(worm)
-{
+export function worm_nomove(worm) { /* void */
     shrink_worm(worm.wormno); /* shrink */
 
     if (worm.mhp > count_wsegs(worm)) {
@@ -305,9 +276,7 @@ worm_nomove(worm)
  *
  *  Should only be called when mon->wormno is non-zero.
  */
-export function /* void */
-wormgone(worm)
-{
+export function wormgone(worm) { /* void */
     let wnum = worm.wormno;
 
     if (!wnum) /* note: continuing with wnum==0 runs to completion */
@@ -341,9 +310,7 @@ wormgone(worm)
  *  Returns 1 if the worm dies (poly'd hero with passive counter-attack)
  *  or 0 if it doesn't.
  */
-export function /* int */
-wormhitu(worm)
-{
+export function wormhitu(worm) { /* int */
     let wnum = worm.wormno;
     let seg;
 
@@ -370,10 +337,8 @@ wormhitu(worm)
  *  there is a chance that the worm will be cut in half, and a chance
  *  that both halves will survive.
  */
-export function /* void */
-cutworm(worm, x, y,
-        cuttier) /* hit is by wielded blade or axe or by thrown axe */
-{
+export function cutworm(worm, x, y,
+        cuttier) { /* void */ /* hit is by wielded blade or axe or by thrown axe */
     let curr, new_tail;
     let new_worm;
     let wnum = worm.wormno;
@@ -484,9 +449,7 @@ cutworm(worm, x, y,
  *  from see_monster() in display.c or when a monster goes minvis.  It
  *  is located here for modularity.
  */
-export function /* void */
-see_wsegs(worm)
-{
+export function see_wsegs(worm) { /* void */
     let curr = wtails[worm.wormno];
 
     while (curr != wheads[worm.wormno]) {
@@ -500,9 +463,7 @@ see_wsegs(worm)
  *
  *  Display all of the segments of the given worm for detection.
  */
-export function /* void */
-detect_wsegs(worm, use_detection_glyph)
-{
+export function detect_wsegs(worm, use_detection_glyph) { /* void */
     let num;
     let curr = wtails[worm.wormno];
     let what_tail = what_mon(PM_LONG_WORM_TAIL, newsym_rn2);
@@ -525,9 +486,8 @@ detect_wsegs(worm, use_detection_glyph)
  *  Save the worm information for later use.  The count is the number
  *  of segments, including the dummy.  Called from save.c.
  */
-export function /* void */
-save_worm(nhfp)
-{ const $frame = stack_frame(); try {
+export function save_worm(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let count = stack_var(int);
     let curr, temp;
@@ -566,17 +526,16 @@ save_worm(nhfp)
             wgrowtime[i] = 0;
         }
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  *  rest_worm()
  *
  *  Restore the worm information from the save file.  Called from restore.c
  */
-export function /* void */
-rest_worm(nhfp)
-{ const $frame = stack_frame(); try {
+export function rest_worm(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let i, j;
     let count = stack_var(int, 0);
     let curr, temp;
@@ -601,8 +560,8 @@ rest_worm(nhfp)
     for (i = 0; i < MAX_NUM_WORMS; ++i) {
         sfi_long(nhfp, wgrowtime.subarray(i), _("worm-wgrowtime"));
     }
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  *  place_wsegs()
@@ -612,9 +571,7 @@ rest_worm(nhfp)
  *  If oldworm is not NULL, assumes the oldworm segments are on map
  *  in the same location as worm segments
  */
-export function /* void */
-place_wsegs(worm, oldworm)
-{
+export function place_wsegs(worm, oldworm) { /* void */
     let curr = wtails[worm.wormno];
 
     while (curr != wheads[worm.wormno]) {
@@ -636,9 +593,7 @@ place_wsegs(worm, oldworm)
 }
 
 /* called from mon_sanity_check(mon.c) */
-export function /* void */
-sanity_check_worm(worm)
-{
+export function sanity_check_worm(worm) { /* void */
     let curr;
     let wnum, x, y;
 
@@ -679,28 +634,8 @@ sanity_check_worm(worm)
 }
 
 /* called from mon_sanity_check(mon.c) */
-export function /* void */
-wormno_sanity_check()
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function wormno_sanity_check() { /* void */
+/* #ifdef EXTRA_SANITY_CHECKS: not in this build */
 }
 
 /*
@@ -711,9 +646,7 @@ wormno_sanity_check()
  *  It does not get rid of (dealloc) the worm tail structures, and it does
  *  not remove the mon from the fmon chain.
  */
-export function /* void */
-remove_worm(worm)
-{
+export function remove_worm(worm) { /* void */
     let curr = wtails[worm.wormno];
 
     while (curr) {
@@ -735,9 +668,8 @@ remove_worm(worm)
  *  x, and y are most likely the worm->mx, and worm->my, but don't *need* to
  *  be, if somehow the head is disjoint from the tail.
  */
-export function /* void */
-place_worm_tail_randomly(worm, x, y)
-{ const $frame = stack_frame(); try {
+export function place_worm_tail_randomly(worm, x, y) { /* void */
+    const $frame = stack_frame(); try {
     let wnum = worm.wormno;
     let curr = wtails[wnum];
     let new_tail;
@@ -790,52 +722,20 @@ place_worm_tail_randomly(worm, x, y)
             curr = null;
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* for size_monst(cmd.c) to support #stats */
-export function /* int */
-size_wseg(worm)
-{
-    return int((unsigned(Math.imul(unsigned(count_wsegs(worm)), (NHJS_LP64_SIZEOF_struct_wseg)))));
+export function size_wseg(worm) { /* int */
+    return int(unsigned(Math.imul(unsigned(count_wsegs(worm)), NHJS_LP64_SIZEOF_struct_wseg)));
 }
 
 /*  count_wsegs()
  *  returns the number of segments that a worm has.
  */
-export function /* int */
-count_wsegs(mtmp)
-{
+export function count_wsegs(mtmp) { /* int */
     let i = 0;
     let curr;
 
@@ -849,9 +749,7 @@ count_wsegs(mtmp)
 /*  create_worm_tail()
  *  will create a worm tail chain of (num_segs + 1) and return pointer to it.
  */
-function /* struct wseg * */
-create_worm_tail(num_segs)
-{
+function create_worm_tail(num_segs) { /* struct wseg * */
     let i = 0;
     let new_tail, curr;
 
@@ -880,9 +778,7 @@ create_worm_tail(num_segs)
  *  invisibility and telepathy (which should only show the head anyway).
  *  Mostly used in the canseemon() macro.
  */
-export function /* boolean */
-worm_known(worm)
-{
+export function worm_known(worm) { /* boolean */
     let curr = wtails[worm.wormno];
 
     while (curr) {
@@ -895,9 +791,7 @@ worm_known(worm)
 
 /* would moving from <x1,y1> to <x2,y2> involve passing between two
    consecutive segments of the same worm? */
-export function /* boolean */
-worm_cross(x1, y1, x2, y2)
-{
+export function worm_cross(x1, y1, x2, y2) { /* boolean */
     let worm;
     let curr, wnxt;
 
@@ -943,9 +837,7 @@ worm_cross(x1, y1, x2, y2)
 }
 
 /* construct an index number for a worm tail segment */
-export function /* int */
-wseg_at(worm, x, y)
-{
+export function wseg_at(worm, x, y) { /* int */
     let res = 0;
 
     if (worm && worm.wormno && m_at(x, y) == worm) {
@@ -965,9 +857,7 @@ wseg_at(worm, x, y)
     return res;
 }
 
-export function /* void */
-flip_worm_segs_vertical(worm, miny, maxy)
-{
+export function flip_worm_segs_vertical(worm, miny, maxy) { /* void */
     let curr = wtails[worm.wormno];
 
     while (curr) {
@@ -976,9 +866,7 @@ flip_worm_segs_vertical(worm, miny, maxy)
     }
 }
 
-export function /* void */
-flip_worm_segs_horizontal(worm, minx, maxx)
-{
+export function flip_worm_segs_horizontal(worm, minx, maxx) { /* void */
     let curr = wtails[worm.wormno];
 
     while (curr) {
@@ -987,9 +875,7 @@ flip_worm_segs_horizontal(worm, minx, maxx)
     }
 }
 
-export function /* void */
-redraw_worm(worm)
-{
+export function redraw_worm(worm) { /* void */
     let curr = wtails[worm.wormno];
 
     while (curr) {
@@ -998,78 +884,39 @@ redraw_worm(worm)
     }
 }
 
-
 /*worm.c*/
-import { canspotmon } from "./display.h.macros.js";
-import { detected_monnum_to_glyph } from "./display.h.macros.js";
-import { monnum_to_glyph } from "./display.h.macros.js";
-import { newsym_rn2 } from "./display.h.macros.js";
-import { petnum_to_glyph } from "./display.h.macros.js";
-import { what_mon } from "./display.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { MHPMAX } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { distu } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
+
+import {
+    canspotmon, detected_monnum_to_glyph, monnum_to_glyph, newsym_rn2, petnum_to_glyph, what_mon,
+} from "./display.h.macros.js";
+import { FALSE, MHPMAX, TRUE, coordxy } from "./global.h.js";
+import { distu, max, release_data, rn1, update_file } from "./hack.h.macros.js";
 import { has_mcorpsenm } from "./mextra.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
+import { FEMALE, MALE } from "./monflag.h.js";
 import { MAX_NUM_WORMS } from "./monst.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
+import { NON_PM, PM_LONG_WORM, PM_LONG_WORM_TAIL } from "./monsters.h.js";
 import { NHJS_LP64_SIZEOF_struct_wseg } from "./nhjs_recorder_sizes.h.js";
 import { NORMAL_SPEED } from "./permonst.h.js";
-import { m_at } from "./rm.h.macros.js";
-import { place_worm_seg } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { Sfi_coordxy } from "./savefile.h.macros.js";
-import { Sfo_coordxy } from "./savefile.h.macros.js";
-import { Sfo_int } from "./savefile.h.macros.js";
+import { m_at, place_worm_seg, remove_monster } from "./rm.h.macros.js";
+import { Sfi_coordxy, Sfo_coordxy, Sfo_int } from "./savefile.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { int, long, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
 import { free } from "../rt/libc.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
+import { addr_of, ptr_to, ref_of, struct, view_of } from "../rt/struct.js";
+import { alloc, fmt_ptr } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { newsym } from "./display.js";
-import { show_glyph } from "./display.js";
-import { Monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { distmin } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
+import { svc, svl, svm } from "./decl.js";
+import { newsym, show_glyph } from "./display.js";
+import { Monnam, mon_nam } from "./do_name.js";
+import { distmin, s_suffix } from "./hacklib.js";
 import { clone_mon } from "./makemon.js";
 import { mattacku } from "./mhitu.js";
 import { mcalcmove } from "./mon.js";
 import { mons } from "./monst.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { sfi_int } from "./sfbase.js";
-import { sfi_long } from "./sfbase.js";
-import { sfo_long } from "./sfbase.js";
+import { You, impossible, pline } from "./pline.js";
+import { d, rn2, rnd } from "./rnd.js";
+import { sfi_int, sfi_long, sfo_long } from "./sfbase.js";
 import { rnd_nextto_goodpos } from "./trap.js";

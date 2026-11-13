@@ -343,7 +343,7 @@ export async function money2mon(monster, amount, state = game) {
         paid = await splitobj(gold, payment, { state });
     else if (gold.owornmask)
         remove_worn_item(gold, false, state);
-    freeinv(paid, { state });
+    await freeinv(paid, { state });
     add_to_minv(monster, paid, { state });
     state.disp ??= {};
     state.disp.botl = true;
@@ -370,7 +370,7 @@ export async function money2u(monster, amount, state = game) {
     let paid = gold;
     if (gold.quan > payment)
         paid = await splitobj(gold, payment, { state });
-    obj_extract_self(paid, { state });
+    await obj_extract_self(paid, { state });
 
     if (!merge_choice(state.invent, paid, state)
         && inv_cnt(false, state) >= INVLET_BASIC) {
@@ -943,7 +943,7 @@ function cad(altusage, state = game) {
         result = 'thing';
         break;
     }
-    return altusage ? `"${result[0].toUpperCase()}${result.slice(1)}!  `
+    return altusage ? `"${upstart(result)}!  `
         : result;
 }
 
@@ -2044,7 +2044,7 @@ async function shk_names_obj(shkp, obj, fmt, amount, arg, state, env) {
         discover_object(obj.otyp, true, true, true, state);
     }
     const name = paydoname(obj, state);
-    const subject = unknown ? `${name[0].toUpperCase()}${name.slice(1)}; you` : 'You';
+    const subject = unknown ? `${upstart(name)}; you` : 'You';
     const args = [unknown ? obj.quan > 1 ? 'them' : 'it' : name,
         amount, plur(amount), arg];
     const text = fmt.replace(/%ld|%s/gu, () => String(args.shift()));
@@ -3686,7 +3686,7 @@ async function litter_scatter(litter, x, y, shkp, state = game, env = {}) {
     while (state.level.objects[x][y]) {
         const object = state.level.objects[x][y];
         if (object.otyp === BOULDER || object.otyp === ROCK) {
-            obj_extract_self(object, { ...env, state });
+            await obj_extract_self(object, { ...env, state });
             obfree(object, null, { ...env, state });
             continue;
         }

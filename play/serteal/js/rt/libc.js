@@ -5,7 +5,7 @@
 // *residue*: compiled C (musl) that never changes, vendored as js/vendor/clib-lua.js. Emitted
 // code just calls `sprintf(...)`.
 
-import { uchars, chars, u32, on_attach, machine, stack_alloc, memcpy as rawcpy, memmove as rawmove, memset as rawset, memcmp as rawcmp } from "./heap.js";
+import { uchars, chars, u32, on_attach, machine, libc_function, stack_alloc, memcpy as rawcpy, memmove as rawmove, memset as rawset, memcmp as rawcmp } from "./heap.js";
 import { view, record_or_opaque, addr } from "./struct.js";
 import { fn_sentinel } from "./fnptr.js";
 import { literal_text, js_string } from "./strings.js";
@@ -16,9 +16,9 @@ import { literal_text, js_string } from "./strings.js";
  * result points to, so the caller gets a view either way (as for every struct pointer in JS).
  */
 function residue(name, ret) {
-  const f = ret
-    ? function (...args) { const r = machine.libc(name, args); return typeof r === "number" ? view(record_or_opaque(ret), r) : r; }
-    : function (...args) { return machine.libc(name, args); };
+  const c = libc_function(name);
+  if (!ret) return c;
+  const f = function (...args) { const r = c(...args); return typeof r === "number" ? view(record_or_opaque(ret), r) : r; };
   Object.defineProperty(f, "name", { value: name });
   return f;
 }
@@ -92,12 +92,34 @@ export function toupper(c) { return islower(c) ? c - 32 : c; }
 // ---- <stdlib.h> ---------------------------------------------------------------------------
 export function abs(x) { return x < 0 ? -x | 0 : x; }
 export function labs(x) { return x < 0 ? -x : x; }
-export function atoi(s) {
-  let i = 0, sign = 1, v = 0;
+// atoi and atoll as macOS defines them: (int)strtol(s, NULL, 10) and strtoll(s, NULL, 10), so a
+// value beyond the 64-bit range saturates (atoi: LONG_MAX -> -1, LONG_MIN -> 0 after the cast)
+// instead of wrapping; within it, atoi keeps the low 32 bits.  ("99999999999999999999 arrows"
+// is a wish for -1 arrows on macOS.)
+function decimalRun(s) { // -> [index of the first digit, index after the digits, negative]
+  let i = 0, neg = false;
   while (isspace(uchars[s + i])) i++;
-  if (uchars[s + i] === 45) { sign = -1; i++; } else if (uchars[s + i] === 43) i++;
-  while (isdigit(uchars[s + i])) { v = (v * 10 + uchars[s + i] - 48) | 0; i++; }
-  return (sign * v) | 0;
+  if (uchars[s + i] === 45) { neg = true; i++; } else if (uchars[s + i] === 43) i++;
+  const start = i;
+  while (isdigit(uchars[s + i])) i++;
+  return [start, i, neg];
+}
+function bigDecimal(s, start, end) { let b = 0n; for (let k = start; k < end; k++) b = b * 10n + BigInt(uchars[s + k] - 48); return b; }
+const LLONG_MAX_N = 9223372036854775807n;
+export function atoi(s) {
+  const [start, end, neg] = decimalRun(s);
+  let v = 0;
+  for (let k = start; k < end; k++) v = (v * 10 + uchars[s + k] - 48) | 0;
+  if (end - start >= 19 && bigDecimal(s, start, end) > (neg ? LLONG_MAX_N + 1n : LLONG_MAX_N)) return neg ? 0 : -1;
+  return neg ? -v | 0 : v;
+}
+/** atoll -> a Number (long long, exact below 2^53) */
+export function atoll(s) {
+  const [start, end, neg] = decimalRun(s);
+  if (end - start < 16) { let v = 0; for (let k = start; k < end; k++) v = v * 10 + uchars[s + k] - 48; return neg && v ? -v : v; }
+  let b = bigDecimal(s, start, end);
+  if (neg) b = -b;
+  return Number(b > LLONG_MAX_N ? LLONG_MAX_N : b < -LLONG_MAX_N - 1n ? -LLONG_MAX_N - 1n : b);
 }
 
 // ---- residue: formatted output, stdio, allocation, sorting, environment -------------------
@@ -108,10 +130,11 @@ const residue_fprintf = residue("fprintf");
 // Simple formats in JS. NetHack formats most of its text (and two lines per RNG call for the
 // RNG log) with plain %d/%s/%c; parsing and formatting those through the residue's vfprintf
 // costs more than the game logic around them. A format qualifies when every conversion is
-// %d %i %u %c %s or %% with no flags, width, precision or length; anything else, and any
+// %d %i %u %c %s %p or %% with no flags, width, precision or length; anything else, and any
 // argument that is not a plain number (or a NULL %s), goes to the residue unchanged. Output
-// is byte for byte musl's for these conversions.
-const D = 1, U = 2, C = 3, S = 4;
+// is byte for byte musl's for these conversions, which is also Darwin's, except %p: here it
+// is Darwin's ("0x" and the hex digits, "0x0" for NULL; musl prints NULL as "0").
+const D = 1, U = 2, C = 3, S = 4, P = 5;
 const plans = new Map();      // format text -> plan, or null (not simple)
 // A literal's address is reused by another text when the host rolls the runtime back to an
 // earlier state (rt_state_restore: a new game from the pristine image), so the plan is looked up
@@ -130,7 +153,7 @@ function makePlan(t) {
     if (ch !== "%") { lit += ch; continue; }
     const k = t[++i];
     if (k === "%") { lit += "%"; continue; }
-    const code = k === "d" || k === "i" ? D : k === "u" ? U : k === "c" ? C : k === "s" ? S : 0;
+    const code = k === "d" || k === "i" ? D : k === "u" ? U : k === "c" ? C : k === "s" ? S : k === "p" ? P : 0;
     if (!code) return null;
     if (lit) { out.push(lit); lit = ""; }
     out.push(code);
@@ -155,6 +178,7 @@ function formatJS(plan, args, k) {
     if (piece === D) r += (v | 0);
     else if (piece === U) r += (v >>> 0);
     else if (piece === C) r += String.fromCharCode(v & 255);
+    else if (piece === P) r += "0x" + (v >>> 0).toString(16);
     else {
       if (v === 0) return false; // "(null)": the residue's business
       let j = v;
@@ -182,9 +206,9 @@ export function sprintf(buf, fmt, ...args) {
   return residue_sprintf(buf, fmt, ...args);
 }
 export function snprintf(buf, n, fmt, ...args) {
-  if (typeof buf === "number" && typeof fmt === "number" && typeof n === "number" && buf && n > 0) {
+  if (typeof buf === "number" && typeof fmt === "number" && typeof n === "number" && buf && n >= 0) {
     const p = planFor(fmt);
-    if (p && formatJS(p, args, 0) && !overlaps(buf, Math.min(tmp.length, n - 1))) { putJS(buf, n); return tmp.length; }
+    if (p && formatJS(p, args, 0) && (n === 0 || !overlaps(buf, Math.min(tmp.length, n - 1)))) { if (n > 0) putJS(buf, n); return tmp.length; }
   }
   return residue_snprintf(buf, n, fmt, ...args);
 }
@@ -212,7 +236,6 @@ export const qsort = residue("qsort");
 export const strtol = residue("strtol");
 export const strtoul = residue("strtoul");
 export const atol = residue("atol");
-export const atoll = residue("atoll");
 export const time = residue("time");
 export const exit = residue("exit");
 export const __assert_fail = residue("__assert_fail");

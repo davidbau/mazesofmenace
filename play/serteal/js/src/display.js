@@ -121,34 +121,8 @@
  *      horizontal - Indicates whether the wall or door is horizontal or
  *                vertical.
  */
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*#define WA_VERBOSE*/ /* give (x,y) locations for all "bad" spots */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export function _glyph_at(x, y) { return gg.gbuf[y][x].glyphinfo.glyph; }
 
@@ -162,58 +136,36 @@ export function _glyph_at(x, y) { return gg.gbuf[y][x].glyphinfo.glyph; }
  *
  *      They're still implemented as macros within this file.
  */
-export function /* int */
-tp_sensemon(mon)
-{
+export function tp_sensemon(mon) { /* int */
     return _tp_sensemon(mon);
 }
 
-
-export function /* int */
-sensemon(mon)
-{
+export function sensemon(mon) { /* int */
     return _sensemon(mon);
 }
 
-
-export function /* int */
-mon_warning(mon)
-{
+export function mon_warning(mon) { /* int */
     return _mon_warning(mon);
 }
 
-
-export function /* int */
-mon_visible(mon)
-{
+export function mon_visible(mon) { /* int */
     return _mon_visible(mon);
 }
 
-
-export function /* int */
-see_with_infrared(mon)
-{
+export function see_with_infrared(mon) { /* int */
     return _see_with_infrared(mon);
 }
 
-
-export function /* int */
-canseemon(mon)
-{
+export function canseemon(mon) { /* int */
     return _canseemon(mon);
 }
 
-
-export function /* int */
-knowninvisible(mon)
-{
+export function knowninvisible(mon) { /* int */
     return _knowninvisible(mon);
 }
 /* #define knowninvisible() isn't useful here */
 
-export function /* int */
-is_safemon(mon)
-{
+export function is_safemon(mon) { /* int */
     return _is_safemon(mon);
 }
 /* #define is_safemon() isn't useful here */
@@ -229,9 +181,7 @@ is_safemon(mon)
  * This function is similar to map_background (see below) except we pay
  * attention to and correct unexplored, lit ROOM and CORR spots.
  */
-export function /* void */
-magic_map_background(x, y, show)
-{
+export function magic_map_background(x, y, show) { /* void */
     let glyph = back_to_glyph(x, y); /* assumes hero can see x,y */
     let lev = levl()[x][y];
 
@@ -275,9 +225,7 @@ magic_map_background(x, y, show)
  * Make the real background part of our map.  This routine assumes that
  * the hero can physically see the location.  Update the screen if directed.
  */
-export function /* void */
-map_background(x, y, show)
-{
+export function map_background(x, y, show) { /* void */
     let glyph = back_to_glyph(x, y);
 
     if (svl.level.flags.hero_memory)
@@ -292,9 +240,7 @@ map_background(x, y, show)
  * Map the trap and print it out if directed.  This routine assumes that the
  * hero can physically see the location.
  */
-export function /* void */
-map_trap(trap, show)
-{
+export function map_trap(trap, show) { /* void */
     let x = trap.tx, y = trap.ty;
     let glyph = trap_to_glyph(trap);
 
@@ -309,9 +255,7 @@ map_trap(trap, show)
  *
  * Map the engraving and print it out if directed.
  */
-export function /* void */
-map_engraving(ep, show)
-{
+export function map_engraving(ep, show) { /* void */
     let x = ep.engr_x, y = ep.engr_y;
     let glyph = engraving_to_glyph(ep);
 
@@ -329,9 +273,7 @@ map_engraving(ep, show)
  * [Note: feel_location() -> map_location() -> map_object() contradicts
  * the claim here that the hero can see obj's <ox,oy>.]
  */
-export function /* void */
-map_object(obj, show)
-{
+export function map_object(obj, show) { /* void */
     let x = obj.ox, y = obj.oy;
     let glyph = obj_to_glyph(obj, newsym_rn2);
 
@@ -374,9 +316,7 @@ map_object(obj, show)
  * this and display the square's actual contents, use unmap_object() followed
  * by newsym() if necessary.
  */
-export function /* void */
-map_invisible(x, y)
-{
+export function map_invisible(x, y) { /* void */
     if (x != u.ux || y != u.uy) { /* don't display I at hero's location */
         if (svl.level.flags.hero_memory)
             levl()[x][y].glyph = GLYPH_INVISIBLE;
@@ -384,9 +324,7 @@ map_invisible(x, y)
     }
 }
 
-export function /* boolean */
-unmap_invisible(x, y)
-{
+export function unmap_invisible(x, y) { /* boolean */
     if (isok(x,y) && glyph_is_invisible(levl()[x][y].glyph)) {
         unmap_object(x, y);
         newsym(x, y);
@@ -394,7 +332,6 @@ unmap_invisible(x, y)
     }
     return FALSE;
 }
-
 
 /*
  * unmap_object()
@@ -405,9 +342,7 @@ unmap_invisible(x, y)
  * screen update is imminent anyway; if this is used to get rid of an
  * invisible monster notation, we might have to call newsym().
  */
-export function /* void */
-unmap_object(x, y)
-{
+export function unmap_object(x, y) { /* void */
     let trap;
     let ep;
 
@@ -445,42 +380,37 @@ unmap_object(x, y)
  *
  * Internal to display.c, this is a #define for speed.
  */
-export function _map_location(x, y, show) { do {                                                                
-        let obj;                                                
-        let trap;                                              
-        let ml_ep;                                             
-        let _ml_reg;                                              
-                                                                        
-        if ((obj = vobj_at(x, y)) && !covers_objects(x, y)) {           
-            map_object(obj, show);                                      
-        } else if ((trap = t_at(x, y))                                  
-                    && trap.tseen && !covers_traps(x, y)) {            
-            map_trap(trap, show);                                       
-        } else if (spot_shows_engravings(x, y)                          
-                 && (ml_ep = engr_at(x, y)) != null                        
-                 && ml_ep.erevealed                                    
-                 && !covers_traps(x, y)) {                              
-            map_engraving(ml_ep, show);                                 
-        } else {                                                        
-            map_background(x, y, show);                                 
-        }                                                               
-                                                                        
-        update_lastseentyp(x, y);                                       
-        if (show && !Blind() && (_ml_reg = visible_region_at(x, y)) != null) 
-            show_region(_ml_reg, x, y);                                 
+export function _map_location(x, y, show) { do {
+        let obj;
+        let trap;
+        let ml_ep;
+        let _ml_reg;
+
+        if ((obj = vobj_at(x, y)) && !covers_objects(x, y)) {
+            map_object(obj, show);
+        } else if ((trap = t_at(x, y))
+                    && trap.tseen && !covers_traps(x, y)) {
+            map_trap(trap, show);
+        } else if (spot_shows_engravings(x, y)
+                 && (ml_ep = engr_at(x, y)) != null
+                 && ml_ep.erevealed
+                 && !covers_traps(x, y)) {
+            map_engraving(ml_ep, show);
+        } else {
+            map_background(x, y, show);
+        }
+
+        update_lastseentyp(x, y);
+        if (show && !Blind() && (_ml_reg = visible_region_at(x, y)) != null)
+            show_region(_ml_reg, x, y);
     } while (0) }
 
-
-export function /* void */
-map_location(x, y, show)
-{
+export function map_location(x, y, show) { /* void */
     _map_location(x, y, show);
 }
 
 /* display something on monster layer; may need to fixup object layer */
-function /* void */
-show_mon_or_warn(x, y, monglyph)
-{
+function show_mon_or_warn(x, y, monglyph) { /* void */
     let o;
 
     /* "remembered, unseen monster" is tracked by object layer so if we're
@@ -498,7 +428,6 @@ show_mon_or_warn(x, y, monglyph)
 export const DETECTED = 2;
 export const PHYSICALLY_SEEN = 1;
 
-
 /*
  * display_monster()
  *
@@ -510,17 +439,16 @@ export const PHYSICALLY_SEEN = 1;
  * a worm tail.
  *
  */
-function /* void */
-display_monster(
+function display_monster(
     x, y,
     mon,
     sightflags,
 
-    worm_tail)      /* mon is actually a worm tail */
-{ const $frame = stack_frame(); try {
-    let mon_mimic = (+(M_AP_TYPE(mon) != M_AP_NOTHING));
-    let sensed = (((mon_mimic && (Protection_from_shape_changers()
-                                || (((((!u.uswallow || ((mon) == u.ustuck))) && ((!Underwater() || (((mdistu(mon) <= 2) && is_pool((mon).mx, (mon).my)))))) && (((Detect_monsters() || (((!mindless(mon.data)) && ((((Blind() && Blind_telepat())) || ((Unblind_telepat() && ((mdistu(mon) <= u.unblind_telepat_range))))))))) || MATCH_WARN_OF_MON(mon))))))) ? 1 : 0)),
+    worm_tail) { /* void */ /* mon is actually a worm tail */
+    const $frame = stack_frame(); try {
+    let mon_mimic = +(M_AP_TYPE(mon) != M_AP_NOTHING);
+    let sensed = (mon_mimic && (Protection_from_shape_changers()
+                                || (((!u.uswallow || ((mon) == u.ustuck)) && (!Underwater() || ((mdistu(mon) <= 2) && is_pool((mon).mx, (mon).my)))) && ((Detect_monsters() || ((!mindless(mon.data)) && ((Blind() && Blind_telepat()) || (Unblind_telepat() && (mdistu(mon) <= u.unblind_telepat_range))))) || MATCH_WARN_OF_MON(mon)))) ? 1 : 0),
         mgendercode = mon.female ? FEMALE : MALE;
 
     /*
@@ -576,7 +504,7 @@ display_monster(
         }
 
         case M_AP_MONSTER: {
-            let mndx = ((Hallucination() ? random_monster(rn2_on_display_rng) : int(mon.mappearance)));
+            let mndx = (Hallucination() ? random_monster(rn2_on_display_rng) : int(mon.mappearance));
 
             show_glyph(x, y, monnum_to_glyph(mndx, mgendercode));
             break;
@@ -619,7 +547,8 @@ display_monster(
         show_mon_or_warn(x, y, num);
         mon.meverseen = 1;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * display_warning()
@@ -630,13 +559,11 @@ display_monster(
  *
  * Do not call for worm tails.
  */
-function /* void */
-display_warning(mon)
-{
+function display_warning(mon) { /* void */
     let x = mon.mx, y = mon.my;
     let glyph;
 
-    if (((((Warning() && !(mon).mpeaceful) && ((mdistu(mon) < 100))) && ((((Math.trunc(((mon).m_lev / 4)))) >= svc.context.warnlevel))))) {
+    if ((((Warning() && !(mon).mpeaceful) && (mdistu(mon) < 100)) && ((Math.trunc(((mon).m_lev / 4))) >= svc.context.warnlevel))) {
         let wl = Hallucination() ? rn2_on_display_rng(WARNCOUNT - 1) + 1
                                : warning_of(mon);
 
@@ -650,13 +577,11 @@ display_warning(mon)
     show_mon_or_warn(x, y, glyph);
 }
 
-export function /* int */
-warning_of(mon)
-{
+export function warning_of(mon) { /* int */
     let wl = 0, tmp = 0;
 
-    if (((((Warning() && !(mon).mpeaceful) && ((mdistu(mon) < 100))) && ((((Math.trunc(((mon).m_lev / 4)))) >= svc.context.warnlevel))))) {
-        tmp = (Math.trunc(mon.m_lev / 4));    /* match display.h */
+    if ((((Warning() && !(mon).mpeaceful) && (mdistu(mon) < 100)) && ((Math.trunc(((mon).m_lev / 4))) >= svc.context.warnlevel))) {
+        tmp = Math.trunc(mon.m_lev / 4);    /* match display.h */
         wl = (tmp > WARNCOUNT - 1) ? WARNCOUNT - 1 : tmp;
     }
     return wl;
@@ -664,11 +589,9 @@ warning_of(mon)
 
 /* used by newsym() to decide whether to show a monster or a visible gas
    cloud region when both are at the same spot; caller deals with region */
-function /* boolean */
-mon_overrides_region(
+function mon_overrides_region(
     mon,
-    mx, my) /* won't match mon->mx,my if long worm's tail */
-{
+    mx, my) { /* boolean */ /* won't match mon->mx,my if long worm's tail */
     let r;
 
     /* this is redundant because newsym() doesn't call us when swallowed */
@@ -678,7 +601,7 @@ mon_overrides_region(
     if (mon) {
         /* when not a worm tail, show mon if sensed rather than seen */
         if (mx == mon.mx && my == mon.my
-            && ((((((!u.uswallow || ((mon) == u.ustuck))) && ((!Underwater() || (((mdistu(mon) <= 2) && is_pool((mon).mx, (mon).my)))))) && (((Detect_monsters() || (((!mindless(mon.data)) && ((((Blind() && Blind_telepat())) || ((Unblind_telepat() && ((mdistu(mon) <= u.unblind_telepat_range))))))))) || MATCH_WARN_OF_MON(mon))))) || ((((Warning() && !(mon).mpeaceful) && ((mdistu(mon) < 100))) && ((((Math.trunc(((mon).m_lev / 4)))) >= svc.context.warnlevel))))))
+            && ((((!u.uswallow || ((mon) == u.ustuck)) && (!Underwater() || ((mdistu(mon) <= 2) && is_pool((mon).mx, (mon).my)))) && ((Detect_monsters() || ((!mindless(mon.data)) && ((Blind() && Blind_telepat()) || (Unblind_telepat() && (mdistu(mon) <= u.unblind_telepat_range))))) || MATCH_WARN_OF_MON(mon))) || (((Warning() && !(mon).mpeaceful) && (mdistu(mon) < 100)) && ((Math.trunc(((mon).m_lev / 4))) >= svc.context.warnlevel))))
             return TRUE;
 
         /* even if worm tail;
@@ -699,21 +622,13 @@ mon_overrides_region(
     return glyph_is_invisible(levl()[mx][my].glyph) ? TRUE : FALSE;
 }
 
-
-export function _suppress_map_output() { return (((gi.in_mklev || program_state.saving || program_state.restoring     
-     || program_state.done_hup) ? 1 : 0)); }
-
-
-
-
-
+export function _suppress_map_output() { return (gi.in_mklev || program_state.saving || program_state.restoring
+     || program_state.done_hup ? 1 : 0); }
 
 /* map or status window might not be ready for output during level creation
    or game restoration (something like u.usteed which affects display of
    the hero and also a status condition might not be set up yet) */
-export function /* boolean */
-suppress_map_output()
-{
+export function suppress_map_output() { /* boolean */
     return _suppress_map_output();
 }
 
@@ -722,15 +637,12 @@ suppress_map_output()
  *
  * When hero knows what happened to location, even when blind.
  */
-export function /* void */
-feel_newsym(x, y)
-{
+export function feel_newsym(x, y) { /* void */
     if (Blind())
         feel_location(x, y);
     else
         newsym(x, y);
 }
-
 
 /*
  * feel_location()
@@ -742,9 +654,7 @@ feel_newsym(x, y)
  * invisible monster has appeared, this will _not_ be discovered since
  * searching only finds one monster per turn so we must check that separately.
  */
-export function /* void */
-feel_location(x, y)
-{
+export function feel_location(x, y) { /* void */
     let lev;
     let boulder;
     let mon;
@@ -900,12 +810,12 @@ feel_location(x, y)
             show_glyph(x, y, lev.glyph = cmap_to_glyph(S_corr));
     }
     /* draw monster on top if we can sense it */
-    if (!u_at(x, y) && (mon = m_at(x, y)) != null && (((((!u.uswallow || ((mon) == u.ustuck))) && ((!Underwater() || (((mdistu(mon) <= 2) && is_pool((mon).mx, (mon).my)))))) && (((Detect_monsters() || (((!mindless(mon.data)) && ((((Blind() && Blind_telepat())) || ((Unblind_telepat() && ((mdistu(mon) <= u.unblind_telepat_range))))))))) || MATCH_WARN_OF_MON(mon))))))
+    if (!u_at(x, y) && (mon = m_at(x, y)) != null && (((!u.uswallow || ((mon) == u.ustuck)) && (!Underwater() || ((mdistu(mon) <= 2) && is_pool((mon).mx, (mon).my)))) && ((Detect_monsters() || ((!mindless(mon.data)) && ((Blind() && Blind_telepat()) || (Unblind_telepat() && (mdistu(mon) <= u.unblind_telepat_range))))) || MATCH_WARN_OF_MON(mon))))
         display_monster(x, y, mon,
-                        ((((!mindless(mon.data)) && ((((Blind() && Blind_telepat())) || ((Unblind_telepat() && ((mdistu(mon) <= u.unblind_telepat_range)))))))) || MATCH_WARN_OF_MON(mon))
+                        (((!mindless(mon.data)) && ((Blind() && Blind_telepat()) || (Unblind_telepat() && (mdistu(mon) <= u.unblind_telepat_range)))) || MATCH_WARN_OF_MON(mon))
                             ? PHYSICALLY_SEEN
                             : DETECTED,
-                        ((((mon) && ((((x != (mon).mx)) || ((y != (mon).my))))) ? 1 : 0)));
+                        (((mon) && ((x != (mon).mx) || (y != (mon).my))) ? 1 : 0));
 }
 
 /*
@@ -913,9 +823,8 @@ feel_location(x, y)
  *
  * Possibly put a new glyph at the given location.
  */
-export function /* void */
-newsym(x, y)
-{ let $goto = null;
+export function newsym(x, y) { /* void */
+    let $goto = null;
     var lev;
     var ep;
     var mon;
@@ -931,14 +840,14 @@ newsym(x, y)
 
         errfunc = (x < 0 || y < 0 || x > COLNO - 1 || y > ROWNO - 1) ? panic
                   : impossible; /* misuse of column 0 is less severe */
-        (errfunc)(_("newsym: attempting screen update for <%d,%d>"), x, y);
+        errfunc(_("newsym: attempting screen update for <%d,%d>"), x, y);
         return;
     }
 
     /* only permit updating the hero when swallowed */
     if (u.uswallow) {
         if (u_at(x, y))
-            show_glyph(u.ux, u.uy, ((((u.usteed && ((((!u.usteed.minvis || See_invisible())) && !u.usteed.mundetected)))) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((((U_AP_TYPE() == M_AP_NOTHING)) ? hero_glyph() : (((U_AP_TYPE() == M_AP_FURNITURE)) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : (((U_AP_TYPE() == M_AP_OBJECT)) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))))));
+            show_glyph(u.ux, u.uy, ((u.usteed && ((!u.usteed.minvis || See_invisible()) && !u.usteed.mundetected)) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((U_AP_TYPE() == M_AP_NOTHING) ? hero_glyph() : ((U_AP_TYPE() == M_AP_FURNITURE) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : ((U_AP_TYPE() == M_AP_OBJECT) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))));
         return;
     }
     if (Underwater() && !Is_waterlevel(u.uz)) {
@@ -964,10 +873,10 @@ newsym(x, y)
          * Perhaps ALL areas should revert to their "unlit" look when
          * out of sight.
          */
-        lev.waslit = (+(lev.lit != 0)); /* remember lit condition */
+        lev.waslit = +(lev.lit != 0); /* remember lit condition */
 
         mon = m_at(x, y);
-        worm_tail = ((((mon) && ((((x != (mon).mx)) || ((y != (mon).my))))) ? 1 : 0));
+        worm_tail = (((mon) && ((x != (mon).mx) || (y != (mon).my))) ? 1 : 0);
 
         if ((ep = engr_at(x, y)) != null)
             ep.erevealed = 1; /* even when covered by objects or a monster */
@@ -1006,13 +915,13 @@ newsym(x, y)
                hero can't see him/herself, then show self if appropriate */
             _map_location(x, y, +!see_self);
             if (see_self)
-                show_glyph(u.ux, u.uy, ((((u.usteed && ((((!u.usteed.minvis || See_invisible())) && !u.usteed.mundetected)))) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((((U_AP_TYPE() == M_AP_NOTHING)) ? hero_glyph() : (((U_AP_TYPE() == M_AP_FURNITURE)) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : (((U_AP_TYPE() == M_AP_OBJECT)) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))))));
+                show_glyph(u.ux, u.uy, ((u.usteed && ((!u.usteed.minvis || See_invisible()) && !u.usteed.mundetected)) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((U_AP_TYPE() == M_AP_NOTHING) ? hero_glyph() : ((U_AP_TYPE() == M_AP_FURNITURE) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : ((U_AP_TYPE() == M_AP_OBJECT) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))));
         } else {
             var show = FALSE;
 
-            see_it = ((mon && (((((!mon.minvis || See_invisible())) && !mon.mundetected))
-                             || (!worm_tail && ((((!mindless(mon.data)) && ((((Blind() && Blind_telepat())) || ((Unblind_telepat() && ((mdistu(mon) <= u.unblind_telepat_range))))))))
-                                                || MATCH_WARN_OF_MON(mon))))) ? 1 : 0);
+            see_it = (mon && (((!mon.minvis || See_invisible()) && !mon.mundetected)
+                             || (!worm_tail && (((!mindless(mon.data)) && ((Blind() && Blind_telepat()) || (Unblind_telepat() && (mdistu(mon) <= u.unblind_telepat_range))))
+                                                || MATCH_WARN_OF_MON(mon)))) ? 1 : 0);
             if (mon && (see_it || (!worm_tail && Detect_monsters()))) {
                 if (mon.mtrapped) {
                     var trap = t_at(x, y);
@@ -1027,7 +936,7 @@ newsym(x, y)
                 display_monster(x, y, mon,
                                 see_it ? PHYSICALLY_SEEN : DETECTED,
                                 worm_tail);
-            } else if (mon && ((((Warning() && !(mon).mpeaceful) && ((mdistu(mon) < 100))) && ((((Math.trunc(((mon).m_lev / 4)))) >= svc.context.warnlevel)))) && !worm_tail) {
+            } else if (mon && (((Warning() && !(mon).mpeaceful) && (mdistu(mon) < 100)) && ((Math.trunc(((mon).m_lev / 4))) >= svc.context.warnlevel)) && !worm_tail) {
                 display_warning(mon);
             } else if (glyph_is_invisible(lev.glyph)) {
                 map_invisible(x, y);
@@ -1042,17 +951,17 @@ newsym(x, y)
             feel_location(u.ux, u.uy); /* forces an update */
 
             if (canspotself())
-                show_glyph(u.ux, u.uy, ((((u.usteed && ((((!u.usteed.minvis || See_invisible())) && !u.usteed.mundetected)))) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((((U_AP_TYPE() == M_AP_NOTHING)) ? hero_glyph() : (((U_AP_TYPE() == M_AP_FURNITURE)) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : (((U_AP_TYPE() == M_AP_OBJECT)) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))))));
+                show_glyph(u.ux, u.uy, ((u.usteed && ((!u.usteed.minvis || See_invisible()) && !u.usteed.mundetected)) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((U_AP_TYPE() == M_AP_NOTHING) ? hero_glyph() : ((U_AP_TYPE() == M_AP_FURNITURE) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : ((U_AP_TYPE() == M_AP_OBJECT) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))));
         } else if (!$goto && ((mon = m_at(x, y)) != null
-                   && ((see_it = ((((((!mindless(mon.data)) && ((((Blind() && Blind_telepat())) || ((Unblind_telepat() && ((mdistu(mon) <= u.unblind_telepat_range)))))))) || MATCH_WARN_OF_MON(mon)
-                                  || (((((!Blind() && Infravision()) && infravisible(mon.data)) && couldsee(mon.mx, mon.my)))
-                                      && ((((!mon.minvis || See_invisible())) && !mon.mundetected)))) ? 1 : 0))) != 0
-                       || (Detect_monsters() && !(((mon) && ((((x != (mon).mx)) || ((y != (mon).my)))))))))) {
+                   && ((see_it = (((!mindless(mon.data)) && ((Blind() && Blind_telepat()) || (Unblind_telepat() && (mdistu(mon) <= u.unblind_telepat_range)))) || MATCH_WARN_OF_MON(mon)
+                                  || ((((!Blind() && Infravision()) && infravisible(mon.data)) && couldsee(mon.mx, mon.my))
+                                      && ((!mon.minvis || See_invisible()) && !mon.mundetected)) ? 1 : 0)) != 0
+                       || (Detect_monsters() && !((mon) && ((x != (mon).mx) || (y != (mon).my))))))) {
             /* Seen or sensed monsters are printed every time.
                This also gets rid of any invisibility glyph. */
             display_monster(x, y, mon, see_it ? 0 : DETECTED,
-                            (((mon) && ((((x != (mon).mx)) || ((y != (mon).my)))))) ? TRUE : FALSE);
-        } else if (!$goto && (mon && ((((Warning() && !(mon).mpeaceful) && ((mdistu(mon) < 100))) && ((((Math.trunc(((mon).m_lev / 4)))) >= svc.context.warnlevel)))) && !(((mon) && ((((x != (mon).mx)) || ((y != (mon).my)))))))) {
+                            ((mon) && ((x != (mon).mx) || (y != (mon).my))) ? TRUE : FALSE);
+        } else if (!$goto && (mon && (((Warning() && !(mon).mpeaceful) && (mdistu(mon) < 100)) && ((Math.trunc(((mon).m_lev / 4))) >= svc.context.warnlevel)) && !((mon) && ((x != (mon).mx) || (y != (mon).my))))) {
             display_warning(mon);
 
         /*
@@ -1098,17 +1007,13 @@ newsym(x, y)
     }
 }
 
-
-
 /*
  * shieldeff()
  *
  * Put magic shield pyrotechnics at the given location.  This *could* be
  * pulled into a platform dependent routine for fancier graphics if desired.
  */
-export function /* void */
-shieldeff(x, y)
-{
+export function shieldeff(x, y) { /* void */
     let i;
 
     if (!flags.sparkle)
@@ -1123,9 +1028,7 @@ shieldeff(x, y)
     }
 }
 
-function /* int */
-tether_glyph(x, y)
-{
+function tether_glyph(x, y) { /* int */
     let tdx, tdy;
     tdx = u.ux - x;
     tdy = u.uy - y;
@@ -1170,9 +1073,7 @@ export const TMP_AT_MAX_GLYPHS = (COLNO * 2);
     prev: ptr_to("struct_tmp_glyph"),
 }); const tgfirst = static_struct("tgfirst", struct_tmp_glyph);
 
-export function /* void */
-tmp_at(x, y)
-{
+export function tmp_at(x, y) { /* void */
     let tglyph = static_var("tmp_at.tglyph", ptr_to(struct_tmp_glyph), null);
     let tmp;
 
@@ -1301,14 +1202,13 @@ tmp_at(x, y)
  * Briefly flash between the passed glyph and the glyph that's
  * meant to be at the location.
  */
-export function /* void */
-flash_glyph_at(x, y, tg, rpt)
-{ const $frame = stack_frame(); try {
+export function flash_glyph_at(x, y, tg, rpt) { /* void */
+    const $frame = stack_frame(); try {
     let i, glyph = stack_array(int, 2);
 
     rpt *= 2; /* two loop iterations per 'count' */
     glyph[0] = tg;
-    glyph[1] = (svl.level.flags.hero_memory) ? levl()[x][y].glyph
+    glyph[1] = svl.level.flags.hero_memory ? levl()[x][y].glyph
                                              : back_to_glyph(x, y);
     /* even iteration count (guaranteed) ends with glyph[1] showing;
        caller might want to override that, but no newsym() calls here
@@ -1318,7 +1218,8 @@ flash_glyph_at(x, y, tg, rpt)
         flush_screen(1);
         nh_delay_output()();
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * swallowed()
@@ -1328,9 +1229,7 @@ flash_glyph_at(x, y, tg, rpt)
  * directly.  This method works because both vision and display check for
  * being swallowed.
  */
-export function /* void */
-swallowed(first)
-{
+export function swallowed(first) { /* void */
     let lastx = static_var("swallowed.lastx", short), lasty = static_var("swallowed.lasty", short); /* last swallowed position */
     let swallower, left_ok, rght_ok;
 
@@ -1366,7 +1265,7 @@ swallowed(first)
 
     if (left_ok)
         show_glyph(u.ux - 1, u.uy, swallow_to_glyph(swallower, S_sw_ml));
-    show_glyph(u.ux, u.uy, ((((u.usteed && ((((!u.usteed.minvis || See_invisible())) && !u.usteed.mundetected)))) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((((U_AP_TYPE() == M_AP_NOTHING)) ? hero_glyph() : (((U_AP_TYPE() == M_AP_FURNITURE)) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : (((U_AP_TYPE() == M_AP_OBJECT)) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))))));
+    show_glyph(u.ux, u.uy, ((u.usteed && ((!u.usteed.minvis || See_invisible()) && !u.usteed.mundetected)) ? ridden_mon_to_glyph(u.usteed, rn2_on_display_rng) : ((U_AP_TYPE() == M_AP_NOTHING) ? hero_glyph() : ((U_AP_TYPE() == M_AP_FURNITURE) ? cmap_to_glyph(int(gy.youmonst.mappearance)) : ((U_AP_TYPE() == M_AP_OBJECT) ? objnum_to_glyph(int(gy.youmonst.mappearance)) : monnum_to_glyph(int(gy.youmonst.mappearance), Ugender()))))));
     if (rght_ok)
         show_glyph(u.ux + 1, u.uy, swallow_to_glyph(swallower, S_sw_mr));
 
@@ -1391,9 +1290,7 @@ swallowed(first)
  * Similar to swallowed() in operation.  Shows hero when underwater
  * except when in water level.  Special routines exist for that.
  */
-export function /* void */
-under_water(mode)
-{
+export function under_water(mode) { /* void */
     let lastx = static_var("under_water.lastx", short), lasty = static_var("under_water.lasty", short);
     let dela = static_var("under_water.dela", schar);
     let x, y;
@@ -1441,9 +1338,7 @@ under_water(mode)
  *
  *      Very restricted display.  You can only see yourself.
  */
-export function /* void */
-under_ground(mode)
-{
+export function under_ground(mode) { /* void */
     let dela = static_var("under_ground.dela", schar);
 
     /* swallowing has a higher precedence than under ground */
@@ -1483,9 +1378,7 @@ under_ground(mode)
  *      + losing telepathy while blind [xkilled() in mon.c, attrcurse() in
  *        sit.c]
  */
-export function /* void */
-see_monsters()
-{
+export function see_monsters() { /* void */
     let mon;
     let new_warn_obj_cnt = 0;
 
@@ -1528,9 +1421,7 @@ see_monsters()
         newsym(u.ux, u.uy);
 }
 
-function /* void */
-mimic_light_blocking(mtmp)
-{
+function mimic_light_blocking(mtmp) { /* void */
     if (mtmp.minvis && is_lightblocker_mappear(mtmp)) {
         if (See_invisible())
             block_point(mtmp.mx, mtmp.my);
@@ -1544,9 +1435,7 @@ mimic_light_blocking(mtmp)
  * invisible or not.  Should be called only when the state of See_invisible
  * changes.
  */
-export function /* void */
-set_mimic_blocking()
-{
+export function set_mimic_blocking() { /* void */
     iter_mons(mimic_light_blocking);
 }
 
@@ -1554,9 +1443,7 @@ set_mimic_blocking()
  * Loop through all of the object *locations* and update them.  Called when
  *      + hallucinating.
  */
-export function /* void */
-see_objects()
-{
+export function see_objects() { /* void */
     let obj;
 
     for (obj = fobj(); obj; obj = obj.nobj)
@@ -1572,9 +1459,7 @@ see_objects()
 
 /* mark the top object of nearby stacks as having been seen, and if
    that object was being displayed as generic, redisplay it as specific */
-export function /* void */
-see_nearby_objects()
-{
+export function see_nearby_objects() { /* void */
     let obj;
     let glyph;
     let ix, iy, x = u.ux, y = u.uy;
@@ -1607,9 +1492,7 @@ see_nearby_objects()
 /*
  * Update hallucinated traps.
  */
-export function /* void */
-see_traps()
-{
+export function see_traps() { /* void */
     let trap;
     let glyph;
 
@@ -1630,25 +1513,12 @@ const no_ginfo = static_struct("no_ginfo", struct_glyphinfo, {
     color256idx: 0, tileidx: 0
 
       , u: null
-
     }
 });
-
 
 /* Note that the 'glyph' argument is not used in the expansion
  * of this !UNBUFFERED_GLYPHINFO (default) variation, but is
  * a requirement for the UNBUFFERED_GLYPHINFO variation */
-
-
-
-
-
-
-
-
-
-
-
 
 /* glyph, ttychar, framecolor, { glyphflags, { sym.symidx }, nhcolor,
                      tileidx, 0} */
@@ -1661,13 +1531,8 @@ export const nul_glyphinfo = static_struct("nul_glyphinfo", struct_glyphinfo, {
               color256idx: 0, tileidx: 0
 
                , u: null
-
         }
 });
-
-
-
-
 
 export const glyphmap = static_array("glyphmap", struct_glyph_map_entry, MAX_GLYPH, [
     { glyphflags: 0, sym: { color: NO_COLOR, symidx: 0 },
@@ -1675,39 +1540,29 @@ export const glyphmap = static_array("glyphmap", struct_glyph_map_entry, MAX_GLY
       color256idx: 0, tileidx: 0
 
        , u: null
-
     }
 ]);
-
 
 /*
  * Put the cursor on the hero.  Flush all accumulated glyphs before doing it.
  */
-export function /* void */
-curs_on_u()
-{
+export function curs_on_u() { /* void */
     flush_screen(1); /* Flush waiting glyphs & put cursor on hero */
 }
 
 /* the #redraw command */
-export function /* int */
-doredraw()
-{
+export function doredraw() { /* int */
     docrt();
     return ECMD_OK;
 }
 
 /* the main refresh-the-screen routine */
-export function /* void */
-docrt()
-{
+export function docrt() { /* void */
     docrt_flags(docrtRecalc);
 }
 
 /* docrt() with finer control */
-export function /* void */
-docrt_flags(refresh_flags)
-{
+export function docrt_flags(refresh_flags) { /* void */
     var x, y;
     var lev;
     var maponly = +((refresh_flags & docrtMapOnly) != 0),
@@ -1759,7 +1614,6 @@ docrt_flags(refresh_flags)
 
     /* overlay with monsters */
     see_monsters();
-
  }
 
     if (!maponly) {
@@ -1774,9 +1628,8 @@ docrt_flags(refresh_flags)
 
 /* for panning beyond a clipped region; resend the current map data to
    the interface rather than use docrt()'s regeneration of that data */
-export function /* void */
-redraw_map(cursor_on_u)
-{ const $frame = stack_frame(); try {
+export function redraw_map(cursor_on_u) { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let glyph;
     let bkglyphinfo = struct_assign(stack_struct(struct_glyphinfo), nul_glyphinfo);
@@ -1803,20 +1656,18 @@ redraw_map(cursor_on_u)
             get_bkglyph_and_framecolor(x, y, ref_of(bkglyphinfo, "glyph"),
                                        ref_of(bkglyphinfo, "framecolor"));
             print_glyph()(WIN_MAP, x, y,
-                        ((((((((x) < 0) || ((y) < 0)) || ((x) >= COLNO)) || ((y) >= ROWNO))) ? no_ginfo : gg.gbuf[(y)][(x)].glyphinfo)), bkglyphinfo);
+                        ((((((x) < 0) || ((y) < 0)) || ((x) >= COLNO)) || ((y) >= ROWNO)) ? no_ginfo : gg.gbuf[(y)][(x)].glyphinfo), bkglyphinfo);
         }
     flush_screen(cursor_on_u);
 
-    (void (glyph));
-
-} finally { stack_pop($frame); } }
+    (glyph);
+    } finally { stack_pop($frame); }
+}
 
 /*
  * =======================================================
  */
-export function /* void */
-reglyph_darkroom()
-{
+export function reglyph_darkroom() { /* void */
     let x, y;
 
     for (x = 1; x < COLNO; x++)
@@ -1859,9 +1710,7 @@ reglyph_darkroom()
 /* FIXME: This is a dirty hack, because newsym() doesn't distinguish
  * between object piles and single objects, it doesn't mark the location
  * for update. */
-export function /* void */
-newsym_force(x, y)
-{
+export function newsym_force(x, y) { /* void */
     newsym(x, y);
     gg.gbuf[y][x].gnew = 1;
     if (gg.gbuf_start[y] > x)
@@ -1873,10 +1722,8 @@ newsym_force(x, y)
 /*
  * Store the glyph in the 3rd screen for later flushing.
  */
-export function /* void */
-show_glyph(x, y, glyph)
-{ const $frame = stack_frame(); try {
-
+export function show_glyph(x, y, glyph) { /* void */
+    const $frame = stack_frame(); try {
     let glyphinfo = stack_struct(struct_glyphinfo);
 
     let show_glyph_change = FALSE;
@@ -1906,86 +1753,86 @@ show_glyph(x, y, glyph)
         if (glyph < 0 || glyph >= MAX_GLYPH) {
             /* invalid location and also invalid glyph */
             text = _("invalid");
-        } else if ((int(offset = (glyph - GLYPH_NOTHING_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
             text = _("nothing");
-        } else if ((int(offset = (glyph - GLYPH_UNEXPLORED_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
             text = _("unexplored");
-        } else if ((int(offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF)) >= 0) {
             text = _("statue of a female monster at top of a pile");
-        } else if ((int(offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF)) >= 0) {
             text = _("statue of a male monster at top of a pile");
-        } else if ((int(offset = (glyph - GLYPH_BODY_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_BODY_PILETOP_OFF)) >= 0) {
             text = _("body at top of a pile");
-        } else if ((int(offset = (glyph - GLYPH_OBJ_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_OBJ_PILETOP_OFF)) >= 0) {
             text = (glyph_is_piletop_generic_obj(glyph)
                     ? _("generic object at top of a pile")
                     : _("object at top of a pile"));
-        } else if ((int(offset = (glyph - GLYPH_STATUE_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_FEM_OFF)) >= 0) {
             text = _("statue of female monster");
-        } else if ((int(offset = (glyph - GLYPH_STATUE_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_MALE_OFF)) >= 0) {
             text = _("statue of male monster");
-        } else if ((int(offset = (glyph - GLYPH_WARNING_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_WARNING_OFF)) >= 0) {
             /* warn flash */
             text = _("warning explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF)) >= 0) {
             text = _("frosty explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_FIERY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_FIERY_OFF)) >= 0) {
             text = _("fiery explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF)) >= 0) {
             text = _("magical explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_WET_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_WET_OFF)) >= 0) {
             text = _("wet explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF)) >= 0) {
             text = _("muddy explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF)) >= 0) {
             text = _("noxious explosion");
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_DARK_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_DARK_OFF)) >= 0) {
             text = _("dark explosion");
-        } else if ((int(offset = (glyph - GLYPH_SWALLOW_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_SWALLOW_OFF)) >= 0) {
             text = _("swallow");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_C_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_C_OFF)) >= 0) {
             text = _("cmap C");
-        } else if ((int(offset = (glyph - GLYPH_ZAP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_ZAP_OFF)) >= 0) {
             text = _("zap");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_B_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_B_OFF)) >= 0) {
             text = _("cmap B");
-        } else if ((int(offset = (glyph - GLYPH_ALTAR_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_ALTAR_OFF)) >= 0) {
             text = _("altar");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_A_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_A_OFF)) >= 0) {
             text = _("cmap A");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_SOKO_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_SOKO_OFF)) >= 0) {
             text = _("sokoban dungeon walls");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_KNOX_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_KNOX_OFF)) >= 0) {
             text = _("knox dungeon walls");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_GEH_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_GEH_OFF)) >= 0) {
             text = _("gehennom dungeon walls");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_MINES_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_MINES_OFF)) >= 0) {
             text = _("gnomish mines dungeon walls");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_MAIN_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_MAIN_OFF)) >= 0) {
             text = _("main dungeon walls");
-        } else if ((int(offset = (glyph - GLYPH_CMAP_STONE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_STONE_OFF)) >= 0) {
             text = _("stone");
-        } else if ((int(offset = (glyph - GLYPH_OBJ_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_OBJ_OFF)) >= 0) {
             text = (glyph_is_normal_generic_obj(glyph)
                     ? _("generic object")
                     : _("object"));
-        } else if ((int(offset = (glyph - GLYPH_RIDDEN_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_RIDDEN_FEM_OFF)) >= 0) {
             text = _("ridden female monster");
-        } else if ((int(offset = (glyph - GLYPH_RIDDEN_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_RIDDEN_MALE_OFF)) >= 0) {
             text = _("ridden male monster");
-        } else if ((int(offset = (glyph - GLYPH_BODY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_BODY_OFF)) >= 0) {
             text = _("body");
-        } else if ((int(offset = (glyph - GLYPH_DETECT_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_DETECT_FEM_OFF)) >= 0) {
             text = _("detected female monster");
-        } else if ((int(offset = (glyph - GLYPH_DETECT_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_DETECT_MALE_OFF)) >= 0) {
             text = _("detected male monster");
-        } else if ((int(offset = (glyph - GLYPH_INVIS_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_INVIS_OFF)) >= 0) {
             text = _("invisible monster");
-        } else if ((int(offset = (glyph - GLYPH_PET_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_PET_FEM_OFF)) >= 0) {
             text = _("female pet");
-        } else if ((int(offset = (glyph - GLYPH_PET_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_PET_MALE_OFF)) >= 0) {
             text = _("male pet");
-        } else if ((int(offset = (glyph - GLYPH_MON_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_MON_FEM_OFF)) >= 0) {
             text = _("female monster");
         } else if ((offset = (glyph - GLYPH_MON_MALE_OFF)) >= 0) {
             text = _("male monster");
@@ -2005,7 +1852,6 @@ show_glyph(x, y, glyph)
        buffer size */
     map_glyphinfo(x, y, glyph, 0, glyphinfo);
 
-
     oldglyph = gg.gbuf[y][x].glyphinfo.glyph;
 
     if (a11y.glyph_updates && !a11y.mon_notices_blocked
@@ -2019,7 +1865,7 @@ show_glyph(x, y, glyph)
              || is_cmap_furniture(c))
             && !is_cmap_wall(c) && !is_cmap_room(c)) {
             if ((a11y.mon_notices && glyph_is_monster(glyph))
-                || (glyph_is_monster(oldglyph))
+                || glyph_is_monster(oldglyph)
                 || u_at(x, y)) {
                 ; /* nothing */
             } else {
@@ -2069,21 +1915,21 @@ show_glyph(x, y, glyph)
         pline_xy(x, y, _("%s."), firstmatch[0]);
         a11y.accessiblemsg = tmp_accessiblemsg;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Reset the changed glyph borders so that none of the 3rd screen has
  * changed.
  */
-export function reset_glyph_bbox() { {                                     
-        let i;                            
-                                          
-        for (i = 0; i < ROWNO; i++) {     
-            gg.gbuf_start[i] = COLNO - 1; 
-            gg.gbuf_stop[i] = 0;          
-        }                                 
-    } }
+export function reset_glyph_bbox() { {
+        let i;
 
+        for (i = 0; i < ROWNO; i++) {
+            gg.gbuf_start[i] = COLNO - 1;
+            gg.gbuf_stop[i] = 0;
+        }
+    } }
 
 const nul_gbuf = static_struct("nul_gbuf", gbuf_entry, {
     gnew: 0,                                 /* gnew */
@@ -2095,7 +1941,6 @@ const nul_gbuf = static_struct("nul_gbuf", gbuf_entry, {
           color256idx: 0, tileidx: 0
 
             , u: null
-
         }
     }
 });
@@ -2103,19 +1948,10 @@ const nul_gbuf = static_struct("nul_gbuf", gbuf_entry, {
 /*
  * Turn the 3rd screen into UNEXPLORED that needs to be refreshed.
  */
-export function /* void */
-clear_glyph_buffer()
-{
+export function clear_glyph_buffer() { /* void */
     let x, y;
     let gptr = ptr_add(gg.gbuf[0][0], 0);
     let giptr = gptr.glyphinfo;
-
-
-
-
-
-
-
 
     nul_gbuf.gnew = (giptr.ttychar != nul_gbuf.glyphinfo.ttychar
                      || giptr.gm.sym.color != nul_gbuf.glyphinfo.gm.sym.color
@@ -2124,11 +1960,6 @@ clear_glyph_buffer()
                      || giptr.gm.customcolor
                         != nul_gbuf.glyphinfo.gm.customcolor
                      || giptr.gm.tileidx != nul_gbuf.glyphinfo.gm.tileidx)
-
-
-
-
-
 
                          ? 1 : 0;
     for (y = 0; y < ROWNO; y++) {
@@ -2143,9 +1974,8 @@ clear_glyph_buffer()
 
 /* used by tty after menu or text popup has temporarily overwritten the map
    and it has been erased so shows spaces, not necessarily S_unexplored */
-export function /* void */
-row_refresh(start, stop, y)
-{ const $frame = stack_frame(); try {
+export function row_refresh(start, stop, y) { /* void */
+    const $frame = stack_frame(); try {
     let x;
     let glyph;
     let force;
@@ -2153,23 +1983,11 @@ row_refresh(start, stop, y)
     let bkglyphinfo = struct_assign(stack_struct(struct_glyphinfo), nul_glyphinfo);
     let giptr = gptr.glyphinfo;
 
-
-
-
-
-
-
-
     force = (giptr.ttychar != nul_gbuf.glyphinfo.ttychar
                  || giptr.gm.sym.color != nul_gbuf.glyphinfo.gm.sym.color
                  || giptr.gm.glyphflags != nul_gbuf.glyphinfo.gm.glyphflags
                  || giptr.gm.customcolor != nul_gbuf.glyphinfo.gm.customcolor
                  || giptr.gm.tileidx != nul_gbuf.glyphinfo.gm.tileidx)
-
-
-
-
-
 
                  ? 1 : 0;
     for (x = start; x <= stop; x++) {
@@ -2180,14 +1998,13 @@ row_refresh(start, stop, y)
         if (force || glyph != GLYPH_UNEXPLORED
             || bkglyphinfo.framecolor != NO_COLOR) {
             print_glyph()(WIN_MAP, x, y,
-                        ((((((((x) < 0) || ((y) < 0)) || ((x) >= COLNO)) || ((y) >= ROWNO))) ? no_ginfo : gg.gbuf[(y)][(x)].glyphinfo)), bkglyphinfo);
+                        ((((((x) < 0) || ((y) < 0)) || ((x) >= COLNO)) || ((y) >= ROWNO)) ? no_ginfo : gg.gbuf[(y)][(x)].glyphinfo), bkglyphinfo);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-cls()
-{
+export function cls() { /* void */
     let in_cls = static_var("cls.in_cls", schar, 0);
 
     if (in_cls[0])
@@ -2204,9 +2021,8 @@ cls()
 /*
  * Synch the third screen with the display.
  */
-export function /* void */
-flush_screen(cursor_on_u)
-{ const $frame = stack_frame(); try {
+export function flush_screen(cursor_on_u) { /* void */
+    const $frame = stack_frame(); try {
     /* Prevent infinite loops on errors:
      *      flush_screen->print_glyph->impossible->pline->flush_screen
      */
@@ -2231,7 +2047,6 @@ flush_screen(cursor_on_u)
     if (program_state.done_hup)
         return;
 
-
     /* get this done now, before we place the cursor on the hero */
     if (disp.botl || disp.botlx)
         bot();
@@ -2250,7 +2065,7 @@ flush_screen(cursor_on_u)
                 /* map_glyphinfo() won't touch framecolor */
                 map_glyphinfo(x, y, bkglyph[0], 0, bkglyphinfo);
                 print_glyph()(WIN_MAP, x, y,
-                            ((((((((x) < 0) || ((y) < 0)) || ((x) >= COLNO)) || ((y) >= ROWNO))) ? no_ginfo : gg.gbuf[(y)][(x)].glyphinfo)),
+                            ((((((x) < 0) || ((y) < 0)) || ((x) >= COLNO)) || ((y) >= ROWNO)) ? no_ginfo : gg.gbuf[(y)][(x)].glyphinfo),
                             bkglyphinfo);
                 gptr.gnew = 0;
             }
@@ -2264,7 +2079,8 @@ flush_screen(cursor_on_u)
 
     display_nhwindow()(WIN_MAP, FALSE);
     flushing[0] = 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* ======================================================================== */
 
@@ -2283,9 +2099,7 @@ flush_screen(cursor_on_u)
  * were up or down.  I didn't want to check the upstairs and dnstairs
  * variables.
  */
-export function /* int */
-back_to_glyph(x, y)
-{
+export function back_to_glyph(x, y) { /* int */
     let idx, bypass_glyph = NO_GLYPH;
     let ptr = (levl()[x][y]);
     let sway;
@@ -2326,9 +2140,9 @@ back_to_glyph(x, y)
             if (ptr.flags & D_BROKEN)
                 idx = S_ndoor;
             else if (ptr.flags & D_ISOPEN)
-                idx = (ptr.horizontal) ? S_hodoor : S_vodoor;
+                idx = ptr.horizontal ? S_hodoor : S_vodoor;
             else /* else is closed */
-                idx = (ptr.horizontal) ? S_hcdoor : S_vcdoor;
+                idx = ptr.horizontal ? S_hcdoor : S_vcdoor;
         } else
             idx = S_ndoor;
         break;
@@ -2391,7 +2205,7 @@ back_to_glyph(x, y)
         idx = S_water;
         break;
     case DBWALL:
-        idx = (ptr.horizontal) ? S_hcdbridge : S_vcdbridge;
+        idx = ptr.horizontal ? S_hcdbridge : S_vcdbridge;
         break;
     case DRAWBRIDGE_UP:
         switch (ptr.flags & DB_UNDER) {
@@ -2415,7 +2229,7 @@ back_to_glyph(x, y)
         }
         break;
     case DRAWBRIDGE_DOWN:
-        idx = (ptr.horizontal) ? S_hodbridge : S_vodbridge;
+        idx = ptr.horizontal ? S_hodbridge : S_vodbridge;
         break;
     default:
         impossible(_("back_to_glyph:  unknown level type [ = %d ]"), ptr.typ);
@@ -2433,9 +2247,7 @@ back_to_glyph(x, y)
  * If you don't want a patchwork monster while hallucinating, decide on
  * a random monster in swallowed() and don't use what_mon() here.
  */
-function /* int */
-swallow_to_glyph(mnum, loc)
-{
+function swallow_to_glyph(mnum, loc) { /* int */
     let m_3 = what_mon(mnum, rn2_on_display_rng) << 3;
 
     if (loc < S_sw_tl || S_sw_br < loc) {
@@ -2457,16 +2269,14 @@ swallow_to_glyph(mnum, loc)
  *      \  S_lslant     ( 1, 1) or (-1,-1)
  *      /  S_rslant     (-1, 1) or ( 1,-1)
  */
-export function /* int */
-zapdir_to_glyph(dx, dy, beam_type)
-{
+export function zapdir_to_glyph(dx, dy, beam_type) { /* int */
     if (beam_type >= NUM_ZAP) {
         impossible(_("zapdir_to_glyph:  illegal beam type"));
         beam_type = 0;
     }
     dx = (dx == dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0;
 
-    return (((beam_type << 2) | dx)) + GLYPH_ZAP_OFF;
+    return ((beam_type << 2) | dx) + GLYPH_ZAP_OFF;
 }
 
 /*
@@ -2474,22 +2284,11 @@ zapdir_to_glyph(dx, dy, beam_type)
  * the location.  This isn't necessarily the same as the glyph in the levl
  * structure, so we must check the "third screen".
  */
-export function /* int */
-glyph_at(x, y)
-{
+export function glyph_at(x, y) { /* int */
     if (x < 0 || y < 0 || x >= COLNO || y >= ROWNO)
         return cmap_to_glyph(S_room); /* XXX */
     return gg.gbuf[y][x].glyphinfo.glyph; /* _glyph_at(x,y) */
 }
-
-
-
-
-
-
-
-
-
 
 /*
  * Get the glyph for the background so that it can potentially
@@ -2503,12 +2302,10 @@ glyph_at(x, y)
  *
  */
 
-function /* void */
-get_bkglyph_and_framecolor(
+function get_bkglyph_and_framecolor(
     x, y,
     bkglyph,
-    framecolor)
-{
+    framecolor) { /* void */
     let idx, tmp_bkglyph = GLYPH_UNEXPLORED;
     let lev = levl()[x][y];
 
@@ -2565,12 +2362,6 @@ get_bkglyph_and_framecolor(
     }
     bkglyph[0] = tmp_bkglyph;
 
-
-
-
-
-
-
     if (iflags.bgcolors
         && gw.wsettings.map_frame_color != NO_COLOR && mapxy_valid(x, y))
         framecolor[0] = gw.wsettings.map_frame_color;
@@ -2578,34 +2369,26 @@ get_bkglyph_and_framecolor(
         framecolor[0] = NO_COLOR;
 }
 
-
-
-
-
-export function HAS_ROGUE_IBM_GRAPHICS() { return (+(gc.currentgraphics == ROGUESET && SYMHANDLING(H_IBM))); }
-
-
+export function HAS_ROGUE_IBM_GRAPHICS() { return +(gc.currentgraphics == ROGUESET && SYMHANDLING(H_IBM)); }
 
 /* masks for per-level variances kept in gg.glyphmap_perlevel_flags */
 export const GMAP_SET = 0x0001;
 export const GMAP_ROGUELEVEL = 0x0002;
 
-export function /* void */
-map_glyphinfo(
+export function map_glyphinfo(
     x, y,
     glyph,
     mgflags,
-    glyphinfo)
-{
+    glyphinfo) { /* void */
     let offset;
-    let is_you = (+(u_at(x, y)
+    let is_you = +(u_at(x, y)
                       /* verify hero or steed (not something underneath
                          when hero is invisible without see invisible,
                          or a temporary display effect like an explosion);
                          this is only approximate, because hero might be
                          mimicking an object (after eating mimic corpse or
                          if polyd into mimic) or furniture (only if polyd) */
-                      && glyph_is_monster(glyph)));
+                      && glyph_is_monster(glyph));
     let gmap = glyphmap[glyph];
 
     struct_assign(glyphinfo.gm, gmap); /* glyphflags, sym.symidx, sym.color, tileidx */
@@ -2680,24 +2463,7 @@ export const wallcolors = static_array("wallcolors", int, sokoban_walls + 1, [
     /* CLR_GRAY, CLR_BROWN, CLR_RED, CLR_GRAY, CLR_BRIGHT_BLUE, */
 ]);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-cmap_to_roguecolor(cmap)
-{
+function cmap_to_roguecolor(cmap) { /* int */
     let color = NO_COLOR;
 
     if (gs.symset[gc.currentgraphics].nocolor)
@@ -2735,17 +2501,15 @@ cmap_to_roguecolor(cmap)
 
 */
 
-export function /* void */
-reset_glyphmap(trigger)
-{
+export function reset_glyphmap(trigger) { /* void */
     let glyph;
     let offset;
     let color = NO_COLOR;
 
     /* condense multiple tests in macro version down to single */
     let has_rogue_ibm_graphics = HAS_ROGUE_IBM_GRAPHICS(),
-            has_rogue_color = (((has_rogue_ibm_graphics
-                               && gs.symset[gc.currentgraphics].nocolor == 0) ? 1 : 0));
+            has_rogue_color = (has_rogue_ibm_graphics
+                               && gs.symset[gc.currentgraphics].nocolor == 0 ? 1 : 0);
     if (trigger == gm_levelchange)
         gg.glyphmap_perlevel_flags = 0;
 
@@ -2771,36 +2535,36 @@ reset_glyphmap(trigger)
          *  Warning:  For speed, this makes an assumption on the order of
          *            offsets.  The order is set in display.h.
          */
-        if ((int(offset = (glyph - GLYPH_NOTHING_OFF))) >= 0) {
+        if (int(offset = (glyph - GLYPH_NOTHING_OFF)) >= 0) {
             gmap.sym.symidx = SYM_NOTHING + SYM_OFF_X;
             color = NO_COLOR;
             gmap.glyphflags |= MG_NOTHING;
-        } else if ((int(offset = (glyph - GLYPH_UNEXPLORED_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_UNEXPLORED_OFF)) >= 0) {
             gmap.sym.symidx = SYM_UNEXPLORED + SYM_OFF_X;
             color = NO_COLOR;
             gmap.glyphflags |= MG_UNEXPL;
-        } else if ((int(offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_FEM_PILETOP_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = CLR_RED;
             else
                 color = (iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR);
             gmap.glyphflags |= (MG_STATUE | MG_FEMALE | MG_OBJPILE);
-        } else if ((int(offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_MALE_PILETOP_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = CLR_RED;
             else
                 color = (iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR);
             gmap.glyphflags |= (MG_STATUE | MG_MALE | MG_OBJPILE);
-        } else if ((int(offset = (glyph - GLYPH_BODY_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_BODY_PILETOP_OFF)) >= 0) {
             gmap.sym.symidx = objects[CORPSE].oc_class + SYM_OFF_O;
             if (has_rogue_color)
                 color = CLR_RED;
             else
                 color = (iflags.wc_color ? mons[offset].mcolor : NO_COLOR);
             gmap.glyphflags |= (MG_CORPSE | MG_OBJPILE);
-        } else if ((int(offset = (glyph - GLYPH_OBJ_PILETOP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_OBJ_PILETOP_OFF)) >= 0) {
             gmap.sym.symidx = objects[offset].oc_class + SYM_OFF_O;
             if (offset == BOULDER)
                 gmap.sym.symidx = SYM_BOULDER + SYM_OFF_X;
@@ -2819,69 +2583,69 @@ reset_glyphmap(trigger)
             } else
                 color = (iflags.wc_color ? objects[offset].oc_color : NO_COLOR);
             gmap.glyphflags |= MG_OBJPILE;
-        } else if ((int(offset = (glyph - GLYPH_STATUE_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_FEM_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = CLR_RED;
             else
                 color = (iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR);
             gmap.glyphflags |= (MG_STATUE | MG_FEMALE);
-        } else if ((int(offset = (glyph - GLYPH_STATUE_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_STATUE_MALE_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = CLR_RED;
             else
                 color = (iflags.wc_color ? objects[STATUE].oc_color : NO_COLOR);
             gmap.glyphflags |= (MG_STATUE | MG_MALE);
-        } else if ((int(offset = (glyph - GLYPH_WARNING_OFF)))
+        } else if (int(offset = (glyph - GLYPH_WARNING_OFF))
                    >= 0) { /* warn flash */
             gmap.sym.symidx = offset + SYM_OFF_W;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = (iflags.wc_color ? def_warnsyms[offset].color : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_FROSTY_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_frosty] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_FIERY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_FIERY_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_fiery] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_MAGICAL_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_magical] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_WET_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_WET_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_wet] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_MUDDY_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_muddy] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_NOXIOUS_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_noxious] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_EXPLODE_DARK_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_EXPLODE_DARK_OFF)) >= 0) {
             gmap.sym.symidx = S_expl_tl + offset + SYM_OFF_P;
             color = (iflags.wc_color ? explodecolors[expl_dark] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_SWALLOW_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_SWALLOW_OFF)) >= 0) {
             /* see swallow_to_glyph() in display.c */
             gmap.sym.symidx = (S_sw_tl + (offset & 0x7)) + SYM_OFF_P;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = (iflags.wc_color ? mons[offset >> 3].mcolor : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_C_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_C_OFF)) >= 0) {
             gmap.sym.symidx = S_digbeam + offset + SYM_OFF_P;
             if (has_rogue_color)
                 color = cmap_to_roguecolor(S_digbeam + offset);
             else
                 color = (iflags.wc_color ? defsyms[S_digbeam + offset].color : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_ZAP_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_ZAP_OFF)) >= 0) {
             /* see zapdir_to_glyph() in display.c */
             gmap.sym.symidx = (S_vbeam + (offset & 0x3)) + SYM_OFF_P;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = (iflags.wc_color ? zapcolors[(offset >> 2)] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_B_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_B_OFF)) >= 0) {
             let cmap = S_grave + offset;
             let sym = uchars[gs.showsyms + (cmap + SYM_OFF_P)];
 
@@ -2915,14 +2679,14 @@ reset_glyphmap(trigger)
             } else if (has_rogue_color) {
                 color = cmap_to_roguecolor(cmap);
             }
-        } else if ((int(offset = (glyph - GLYPH_ALTAR_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_ALTAR_OFF)) >= 0) {
             /* unaligned, chaotic, neutral, lawful, other altar */
             gmap.sym.symidx = S_altar + SYM_OFF_P;
             if (has_rogue_color)
                 color = cmap_to_roguecolor(S_altar);
             else
                 color = (iflags.wc_color ? altarcolors[offset] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_A_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_A_OFF)) >= 0) {
             let sym, cmap = S_ndoor + offset;
 
             gmap.sym.symidx = cmap + SYM_OFF_P;
@@ -2944,28 +2708,28 @@ reset_glyphmap(trigger)
                            || sym == uchars[gs.showsyms + (S_litcorr + SYM_OFF_P)])) {
                 gmap.glyphflags |= MG_BW_ENGR;
             }
-        } else if ((int(offset = (glyph - GLYPH_CMAP_SOKO_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_SOKO_OFF)) >= 0) {
             gmap.sym.symidx = S_vwall + offset + SYM_OFF_P;
             color = (iflags.wc_color ? wallcolors[sokoban_walls] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_KNOX_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_KNOX_OFF)) >= 0) {
             gmap.sym.symidx = S_vwall + offset + SYM_OFF_P;
             color = (iflags.wc_color ? wallcolors[knox_walls] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_GEH_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_GEH_OFF)) >= 0) {
             gmap.sym.symidx = S_vwall + offset + SYM_OFF_P;
             color = (iflags.wc_color ? wallcolors[gehennom_walls] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_MINES_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_MINES_OFF)) >= 0) {
             gmap.sym.symidx = S_vwall + offset + SYM_OFF_P;
             color = (iflags.wc_color ? wallcolors[mines_walls] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_MAIN_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_MAIN_OFF)) >= 0) {
             gmap.sym.symidx = S_vwall + offset + SYM_OFF_P;
             if (has_rogue_color)
                 color = cmap_to_roguecolor(S_vwall + offset);
             else
                 color = (iflags.wc_color ? wallcolors[main_walls] : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_CMAP_STONE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_CMAP_STONE_OFF)) >= 0) {
             gmap.sym.symidx = SYM_OFF_P;
             color = (iflags.wc_color ? defsyms[S_stone].color : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_OBJ_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_OBJ_OFF)) >= 0) {
             gmap.sym.symidx = objects[offset].oc_class + SYM_OFF_O;
             if (offset == BOULDER)
                 gmap.sym.symidx = SYM_BOULDER + SYM_OFF_X;
@@ -2983,7 +2747,7 @@ reset_glyphmap(trigger)
                 }
             } else
                 color = (iflags.wc_color ? objects[offset].oc_color : NO_COLOR);
-        } else if ((int(offset = (glyph - GLYPH_RIDDEN_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_RIDDEN_FEM_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 /* This currently implies that the hero is here -- monsters */
@@ -2994,21 +2758,21 @@ reset_glyphmap(trigger)
             else
                 color = (iflags.wc_color ? mons[offset].mcolor : NO_COLOR);
             gmap.glyphflags |= (MG_RIDDEN | MG_FEMALE);
-        } else if ((int(offset = (glyph - GLYPH_RIDDEN_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_RIDDEN_MALE_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = (iflags.wc_color ? mons[offset].mcolor : NO_COLOR);
             gmap.glyphflags |= (MG_RIDDEN | MG_MALE);
-        } else if ((int(offset = (glyph - GLYPH_BODY_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_BODY_OFF)) >= 0) {
             gmap.sym.symidx = objects[CORPSE].oc_class + SYM_OFF_O;
             if (has_rogue_color)
                 color = CLR_RED;
             else
                 color = (iflags.wc_color ? mons[offset].mcolor : NO_COLOR);
             gmap.glyphflags |= MG_CORPSE;
-        } else if ((int(offset = (glyph - GLYPH_DETECT_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_DETECT_FEM_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = NO_COLOR;
@@ -3017,7 +2781,7 @@ reset_glyphmap(trigger)
             /* Disabled for now; anyone want to get reverse video to work? */
             /* is_reverse = TRUE; */
             gmap.glyphflags |= (MG_DETECT | MG_FEMALE);
-        } else if ((int(offset = (glyph - GLYPH_DETECT_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_DETECT_MALE_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = NO_COLOR;
@@ -3026,28 +2790,28 @@ reset_glyphmap(trigger)
             /* Disabled for now; anyone want to get reverse video to work? */
             /* is_reverse = TRUE; */
             gmap.glyphflags |= (MG_DETECT | MG_MALE);
-        } else if ((int(offset = (glyph - GLYPH_INVIS_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_INVIS_OFF)) >= 0) {
             gmap.sym.symidx = SYM_INVISIBLE + SYM_OFF_X;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = NO_COLOR;
             gmap.glyphflags |= MG_INVIS;
-        } else if ((int(offset = (glyph - GLYPH_PET_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_PET_FEM_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = (iflags.wc_color ? mons[offset].mcolor : NO_COLOR);
             gmap.glyphflags |= (MG_PET | MG_FEMALE);
-        } else if ((int(offset = (glyph - GLYPH_PET_MALE_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_PET_MALE_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color)
                 color = NO_COLOR;
             else
                 color = (iflags.wc_color ? mons[offset].mcolor : NO_COLOR);
             gmap.glyphflags |= (MG_PET | MG_MALE);
-        } else if ((int(offset = (glyph - GLYPH_MON_FEM_OFF))) >= 0) {
+        } else if (int(offset = (glyph - GLYPH_MON_FEM_OFF)) >= 0) {
             gmap.sym.symidx = mons[offset].mlet + SYM_OFF_M;
             if (has_rogue_color) {
                 color = NO_COLOR;
@@ -3088,37 +2852,7 @@ reset_glyphmap(trigger)
 /* ------------------------------------------------------------------------ */
 /* Wall Angle ------------------------------------------------------------- */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef WA_VERBOSE: not in this build */
 
 /*
  * Return 'which' if position is implies an unfinished exterior.  Return
@@ -3126,9 +2860,7 @@ reset_glyphmap(trigger)
  *
  * Things that are ambiguous: lava
  */
-function /* int */
-check_pos(x, y, which)
-{
+function check_pos(x, y, which) { /* int */
     let type;
 
     if (!isok(x, y))
@@ -3142,39 +2874,22 @@ check_pos(x, y, which)
 
 /* Return TRUE if more than one is non-zero. */
 /*ARGSUSED*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef WA_VERBOSE: not in this build */
 
 /* Return the wall mode for a T wall. */
-function /* int */
-set_twall(
-
-
+function set_twall(
 
           x0, y0,
 
           x1, y1,
           x2, y2,
-          x3, y3)
-{
+          x3, y3) { /* int */
     let wmode, is_1, is_2, is_3;
 
     is_1 = check_pos(x1, y1, WM_T_LONG);
     is_2 = check_pos(x2, y2, WM_T_BL);
     is_3 = check_pos(x3, y3, WM_T_BR);
-    if (((((((is_1) && (((is_2) | (is_3))))) || (((is_2) && (((is_1) | (is_3)))))) || (((is_3) && (((is_1) | (is_2)))))))) {
+    if (((((is_1) && ((is_2) | (is_3))) || ((is_2) && ((is_1) | (is_3)))) || ((is_3) && ((is_1) | (is_2))))) {
         wmode = 0;
     } else {
         wmode = is_1 + is_2 + is_3;
@@ -3183,9 +2898,7 @@ set_twall(
 }
 
 /* Return wall mode for a horizontal or vertical wall. */
-function /* int */
-set_wall(x, y, horiz)
-{
+function set_wall(x, y, horiz) { /* int */
     let wmode, is_1, is_2;
 
     if (horiz) {
@@ -3195,7 +2908,7 @@ set_wall(x, y, horiz)
         is_1 = check_pos(x - 1, y, WM_W_LEFT);
         is_2 = check_pos(x + 1, y, WM_W_RIGHT);
     }
-    if (((((((is_1) && (((is_2) | (0))))) || (((is_2) && (((is_1) | (0)))))) || (((0) && (((is_1) | (is_2)))))))) {
+    if (((((is_1) && ((is_2) | (0))) || ((is_2) && ((is_1) | (0)))) || ((0) && ((is_1) | (is_2))))) {
         wmode = 0;
     } else {
         wmode = is_1 + is_2;
@@ -3204,13 +2917,11 @@ set_wall(x, y, horiz)
 }
 
 /* Return a wall mode for a corner wall. (x4,y4) is the "inner" position. */
-function /* int */
-set_corn(
+function set_corn(
     x1, y1,
     x2, y2,
     x3, y3,
-    x4, y4)
-{
+    x4, y4) { /* int */
     let wmode, is_1, is_2, is_3, is_4;
 
     is_1 = check_pos(x1, y1, 1);
@@ -3236,9 +2947,7 @@ set_corn(
 }
 
 /* Return mode for a crosswall. */
-function /* int */
-set_crosswall(x, y)
-{
+function set_crosswall(x, y) { /* int */
     let wmode, is_1, is_2, is_3, is_4;
 
     is_1 = check_pos(x - 1, y - 1, 1);
@@ -3253,9 +2962,6 @@ set_crosswall(x, y)
         } else if (is_2 && is_4 && (is_1 + is_3 == 0)) {
             wmode = WM_X_BLTR;
         } else {
-
-
-
             wmode = 0;
         }
     } else if (is_1)
@@ -3272,9 +2978,7 @@ set_crosswall(x, y)
 
 /* called for every <x,y> by set_wall_state() and for specific <x,y> during
    vault wall repair */
-export function /* void */
-xy_set_wall_state(x, y)
-{
+export function xy_set_wall_state(x, y) { /* void */
     let wmode;
     let lev = levl()[x][y];
 
@@ -3326,31 +3030,14 @@ xy_set_wall_state(x, y)
 }
 
 /* Called from mklev.  Scan the level and set the wall modes. */
-export function /* void */
-set_wall_state()
-{
+export function set_wall_state() { /* void */
     let x, y;
-
-
-
-
-
 
     for (x = 0; x < COLNO; x++)
         for (y = 0; y < ROWNO; y++)
             xy_set_wall_state(x, y);
 
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef WA_VERBOSE: not in this build */
 }
 
 /* ------------------------------------------------------------------------ */
@@ -3362,31 +3049,24 @@ export const seenv_matrix = static_array("seenv_matrix", array_of(uchar, 3), 3, 
 ]);
 
 /* negative: -1, zero: 0, positive +1; same as sgn() function (hacklib.c) */
-export function sign(z) { return ((z) < 0 ? -1 : (+((z) != 0))); }
+export function sign(z) { return (z < 0 ? -1 : +(z != 0)); }
 
 /* Set the seen vector of lev as if seen from (x0,y0) to (x,y). */
-function /* void */
-set_seenv(
+function set_seenv(
     lev,
     x0, y0,
-    x, y)   /*  to  */
-{
+    x, y) { /* void */ /* to */
     let dx = x - x0, dy = y0 - y;
 
     lev.seenv |= uchars[seenv_matrix[sign(dy) + 1] + (sign(dx) + 1)];
 }
 
-
-
 /* Called by blackout(vault.c) when vault guard removes temporary corridor,
    turning spot <x0,y0> back into stone; <x1,y1> is an adjacent spot. */
-export function /* void */
-unset_seenv(
+export function unset_seenv(
     lev,
     x0, y0,
-    x1, y1) /*  to; abs(x1-x0)==1 && abs(y0-y1)==1 */
-
-{
+    x1, y1) { /* void */ /* to; abs(x1-x0)==1 && abs(y0-y1)==1 */
     let dx = x1 - x0, dy = y0 - y1;
 
     lev.seenv &= ~uchars[seenv_matrix[dy + 1] + (dx + 1)];
@@ -3449,9 +3129,7 @@ const cross_matrix = static_array("cross_matrix", array_of(int, 6), 4, [
 ]);
 
 /* Print out a T wall warning and all interesting info. */
-function /* void */
-t_warn(lev)
-{
+function t_warn(lev) { /* void */
     let warn_str = init_string(static_array("t_warn.warn_str", char, sizeof_string("wall_angle: %s: case %d: seenv = 0x%x")), _("wall_angle: %s: case %d: seenv = 0x%x"), true);
     let wname;
 
@@ -3509,26 +3187,24 @@ t_warn(lev)
  * draw diagrams.  See rm.h for more details on the wall modes and
  * seen vector (SV).
  */
-function /* int */
-wall_angle(lev)
-{ let $goto = null;
+function wall_angle(lev) { /* int */
+    let $goto = null;
     var seenv = lev.seenv & 0xff;
     var row;
     var col, idx;
 
-
     $goto_do_twall: for (;;) { switch ($goto || (lev.typ)) {
     case TUWALL:
         row = wall_matrix[T_u];
-        seenv = (unsigned(seenv >>> 4 | unsigned(seenv << 4))) & 0xff; /* rotate to tdwall */
+        seenv = unsigned(seenv >>> 4 | unsigned(seenv << 4)) & 0xff; /* rotate to tdwall */
         { $goto = "do_twall"; continue $goto_do_twall; }
     case TLWALL:
         row = wall_matrix[T_l];
-        seenv = (unsigned(seenv >>> 2 | unsigned(seenv << 6))) & 0xff; /* rotate to tdwall */
+        seenv = unsigned(seenv >>> 2 | unsigned(seenv << 6)) & 0xff; /* rotate to tdwall */
         { $goto = "do_twall"; continue $goto_do_twall; }
     case TRWALL:
         row = wall_matrix[T_r];
-        seenv = (unsigned(seenv >>> 6 | unsigned(seenv << 2))) & 0xff; /* rotate to tdwall */
+        seenv = unsigned(seenv >>> 6 | unsigned(seenv << 2)) & 0xff; /* rotate to tdwall */
         { $goto = "do_twall"; continue $goto_do_twall; }
     case TDWALL:
         row = wall_matrix[T_d];
@@ -3644,35 +3320,17 @@ wall_angle(lev)
         }
         break;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     case TLCORNER:
-        switch (((lev).flags & WM_MASK)) { case 0: idx = S_tlcorn; break; case WM_C_OUTER: idx = ((seenv & ((SV3 | SV4 | SV5))) ? S_tlcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV4))) ? S_tlcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("tlcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
+        switch (((lev).flags & WM_MASK)) { case 0: idx = S_tlcorn; break; case WM_C_OUTER: idx = ((seenv & (SV3 | SV4 | SV5)) ? S_tlcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV4))) ? S_tlcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("tlcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
         break;
     case TRCORNER:
-        switch (((lev).flags & WM_MASK)) { case 0: idx = S_trcorn; break; case WM_C_OUTER: idx = ((seenv & ((SV5 | SV6 | SV7))) ? S_trcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV6))) ? S_trcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("trcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
+        switch (((lev).flags & WM_MASK)) { case 0: idx = S_trcorn; break; case WM_C_OUTER: idx = ((seenv & (SV5 | SV6 | SV7)) ? S_trcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV6))) ? S_trcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("trcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
         break;
     case BLCORNER:
-        switch (((lev).flags & WM_MASK)) { case 0: idx = S_blcorn; break; case WM_C_OUTER: idx = ((seenv & ((SV1 | SV2 | SV3))) ? S_blcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV2))) ? S_blcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("blcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
+        switch (((lev).flags & WM_MASK)) { case 0: idx = S_blcorn; break; case WM_C_OUTER: idx = ((seenv & (SV1 | SV2 | SV3)) ? S_blcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV2))) ? S_blcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("blcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
         break;
     case BRCORNER:
-        switch (((lev).flags & WM_MASK)) { case 0: idx = S_brcorn; break; case WM_C_OUTER: idx = ((seenv & ((SV7 | SV0 | SV1))) ? S_brcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV0))) ? S_brcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("brcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
+        switch (((lev).flags & WM_MASK)) { case 0: idx = S_brcorn; break; case WM_C_OUTER: idx = ((seenv & (SV7 | SV0 | SV1)) ? S_brcorn : S_stone); break; case WM_C_INNER: idx = ((seenv & unsigned(~(SV0))) ? S_brcorn : S_stone); break; default: impossible(_("wall_angle: unknown %s mode %d"), _("brcorn"), ((lev).flags & WM_MASK)); idx = S_stone; break; };
         break;
 
     case CROSSWALL:
@@ -3704,15 +3362,15 @@ wall_angle(lev)
 
         case WM_X_TL:
             row = cross_matrix[C_tl];
-            seenv = (unsigned(seenv >>> 4 | unsigned(seenv << 4))) & 0xff;
+            seenv = unsigned(seenv >>> 4 | unsigned(seenv << 4)) & 0xff;
             { $goto = "do_crwall"; continue $goto_do_crwall; }
         case WM_X_TR:
             row = cross_matrix[C_tr];
-            seenv = (unsigned(seenv >>> 6 | unsigned(seenv << 2))) & 0xff;
+            seenv = unsigned(seenv >>> 6 | unsigned(seenv << 2)) & 0xff;
             { $goto = "do_crwall"; continue $goto_do_crwall; }
         case WM_X_BL:
             row = cross_matrix[C_bl];
-            seenv = (unsigned(seenv >>> 2 | unsigned(seenv << 6))) & 0xff;
+            seenv = unsigned(seenv >>> 2 | unsigned(seenv << 6)) & 0xff;
             { $goto = "do_crwall"; continue $goto_do_crwall; }
         case WM_X_BR:
             row = cross_matrix[C_br];
@@ -3784,7 +3442,8 @@ wall_angle(lev)
         idx = S_stone;
     } break; }
     return idx;
-} export function only(sv, bits) { return (((((sv) & (bits)) && !((sv) & unsigned(~(bits)))) ? 1 : 0)); }
+}
+export function only(sv, bits) { return ((sv & bits) && !(sv & unsigned(~bits)) ? 1 : 0); }
 
 /*
  * c++ 20 has problems with some of the display.h macros because
@@ -3793,9 +3452,7 @@ wall_angle(lev)
  * Create function versions of some of the macros used in some
  * NetHack c++ source files (Qt) for use there.
  */
-export function /* int */
-fn_cmap_to_glyph(cmap)
-{
+export function fn_cmap_to_glyph(cmap) { /* int */
     return cmap_to_glyph(cmap);
 }
 
@@ -3803,510 +3460,147 @@ fn_cmap_to_glyph(cmap)
    end of the source code seen by the compiler (there are lots of other
    macros defined above...) */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*display.c*/
-import { CLR_BRIGHT_BLUE } from "./color.h.js";
-import { CLR_BROWN } from "./color.h.js";
-import { CLR_GRAY } from "./color.h.js";
-import { CLR_GREEN } from "./color.h.js";
-import { CLR_MAGENTA } from "./color.h.js";
-import { CLR_RED } from "./color.h.js";
-import { CLR_WHITE } from "./color.h.js";
-import { CLR_YELLOW } from "./color.h.js";
-import { HI_DOMESTIC } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
+
+import {
+    CLR_BRIGHT_BLUE, CLR_BROWN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_RED, CLR_WHITE, CLR_YELLOW,
+    HI_DOMESTIC, NO_COLOR,
+} from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { S_air } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_arrow_trap } from "./defsym.h.js";
-import { S_bars } from "./defsym.h.js";
-import { S_blcorn } from "./defsym.h.js";
-import { S_brcorn } from "./defsym.h.js";
-import { S_brdnladder } from "./defsym.h.js";
-import { S_brdnstair } from "./defsym.h.js";
-import { S_brupladder } from "./defsym.h.js";
-import { S_brupstair } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_corr } from "./defsym.h.js";
-import { S_crwall } from "./defsym.h.js";
-import { S_darkroom } from "./defsym.h.js";
-import { S_digbeam } from "./defsym.h.js";
-import { S_dnladder } from "./defsym.h.js";
-import { S_dnstair } from "./defsym.h.js";
-import { S_engrcorr } from "./defsym.h.js";
-import { S_expl_tl } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_hcdbridge } from "./defsym.h.js";
-import { S_hcdoor } from "./defsym.h.js";
-import { S_hodbridge } from "./defsym.h.js";
-import { S_hodoor } from "./defsym.h.js";
-import { S_hwall } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_lava } from "./defsym.h.js";
-import { S_lavawall } from "./defsym.h.js";
-import { S_litcorr } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_polymorph_trap } from "./defsym.h.js";
-import { S_pool } from "./defsym.h.js";
-import { S_room } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_sw_bc } from "./defsym.h.js";
-import { S_sw_bl } from "./defsym.h.js";
-import { S_sw_br } from "./defsym.h.js";
-import { S_sw_ml } from "./defsym.h.js";
-import { S_sw_mr } from "./defsym.h.js";
-import { S_sw_tc } from "./defsym.h.js";
-import { S_sw_tl } from "./defsym.h.js";
-import { S_sw_tr } from "./defsym.h.js";
-import { S_tdwall } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
-import { S_tlcorn } from "./defsym.h.js";
-import { S_tlwall } from "./defsym.h.js";
-import { S_trcorn } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
-import { S_trwall } from "./defsym.h.js";
-import { S_tuwall } from "./defsym.h.js";
-import { S_upladder } from "./defsym.h.js";
-import { S_upstair } from "./defsym.h.js";
-import { S_vbeam } from "./defsym.h.js";
-import { S_vcdbridge } from "./defsym.h.js";
-import { S_vcdoor } from "./defsym.h.js";
-import { S_vodbridge } from "./defsym.h.js";
-import { S_vodoor } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
-import { BACKTRACK } from "./display.h.js";
-import { DISP_ALL } from "./display.h.js";
-import { DISP_ALWAYS } from "./display.h.js";
-import { DISP_BEAM } from "./display.h.js";
-import { DISP_CHANGE } from "./display.h.js";
-import { DISP_END } from "./display.h.js";
-import { DISP_FLASH } from "./display.h.js";
-import { DISP_FREEMEM } from "./display.h.js";
-import { DISP_TETHER } from "./display.h.js";
-import { EXPL_MAX } from "./display.h.js";
-import { GLYPH_ALTAR_OFF } from "./display.h.js";
-import { GLYPH_BODY_OFF } from "./display.h.js";
-import { GLYPH_BODY_PILETOP_OFF } from "./display.h.js";
-import { GLYPH_CMAP_A_OFF } from "./display.h.js";
-import { GLYPH_CMAP_B_OFF } from "./display.h.js";
-import { GLYPH_CMAP_C_OFF } from "./display.h.js";
-import { GLYPH_CMAP_GEH_OFF } from "./display.h.js";
-import { GLYPH_CMAP_KNOX_OFF } from "./display.h.js";
-import { GLYPH_CMAP_MAIN_OFF } from "./display.h.js";
-import { GLYPH_CMAP_MINES_OFF } from "./display.h.js";
-import { GLYPH_CMAP_SOKO_OFF } from "./display.h.js";
-import { GLYPH_CMAP_STONE_OFF } from "./display.h.js";
-import { GLYPH_DETECT_FEM_OFF } from "./display.h.js";
-import { GLYPH_DETECT_MALE_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_DARK_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_FIERY_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_FROSTY_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_MAGICAL_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_MUDDY_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_NOXIOUS_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_WET_OFF } from "./display.h.js";
-import { GLYPH_INVISIBLE } from "./display.h.js";
-import { GLYPH_INVIS_OFF } from "./display.h.js";
-import { GLYPH_MON_FEM_OFF } from "./display.h.js";
-import { GLYPH_MON_MALE_OFF } from "./display.h.js";
-import { GLYPH_NOTHING } from "./display.h.js";
-import { GLYPH_NOTHING_OFF } from "./display.h.js";
-import { GLYPH_OBJ_OFF } from "./display.h.js";
-import { GLYPH_OBJ_PILETOP_OFF } from "./display.h.js";
-import { GLYPH_PET_FEM_OFF } from "./display.h.js";
-import { GLYPH_PET_MALE_OFF } from "./display.h.js";
-import { GLYPH_RIDDEN_FEM_OFF } from "./display.h.js";
-import { GLYPH_RIDDEN_MALE_OFF } from "./display.h.js";
-import { GLYPH_STATUE_FEM_OFF } from "./display.h.js";
-import { GLYPH_STATUE_FEM_PILETOP_OFF } from "./display.h.js";
-import { GLYPH_STATUE_MALE_OFF } from "./display.h.js";
-import { GLYPH_STATUE_MALE_PILETOP_OFF } from "./display.h.js";
-import { GLYPH_SWALLOW_OFF } from "./display.h.js";
-import { GLYPH_UNEXPLORED } from "./display.h.js";
-import { GLYPH_UNEXPLORED_OFF } from "./display.h.js";
-import { GLYPH_WARNING_OFF } from "./display.h.js";
-import { GLYPH_ZAP_OFF } from "./display.h.js";
-import { MAX_GLYPH } from "./display.h.js";
-import { MG_BADXY } from "./display.h.js";
-import { MG_BW_ENGR } from "./display.h.js";
-import { MG_BW_ICE } from "./display.h.js";
-import { MG_BW_LAVA } from "./display.h.js";
-import { MG_BW_SINK } from "./display.h.js";
-import { MG_CORPSE } from "./display.h.js";
-import { MG_DETECT } from "./display.h.js";
-import { MG_FEMALE } from "./display.h.js";
-import { MG_FLAG_NOOVERRIDE } from "./display.h.js";
-import { MG_HERO } from "./display.h.js";
-import { MG_INVIS } from "./display.h.js";
-import { MG_MALE } from "./display.h.js";
-import { MG_NOTHING } from "./display.h.js";
-import { MG_OBJPILE } from "./display.h.js";
-import { MG_PET } from "./display.h.js";
-import { MG_RIDDEN } from "./display.h.js";
-import { MG_STATUE } from "./display.h.js";
-import { MG_UNEXPL } from "./display.h.js";
-import { NO_GLYPH } from "./display.h.js";
-import { NUM_ZAP } from "./display.h.js";
-import { SHIELD_COUNT } from "./display.h.js";
-import { altar_color_chaotic } from "./display.h.js";
-import { altar_color_lawful } from "./display.h.js";
-import { altar_color_neutral } from "./display.h.js";
-import { altar_color_other } from "./display.h.js";
-import { altar_color_unaligned } from "./display.h.js";
-import { docrtMapOnly } from "./display.h.js";
-import { docrtNocls } from "./display.h.js";
-import { docrtRecalc } from "./display.h.js";
-import { docrtRefresh } from "./display.h.js";
-import { expl_dark } from "./display.h.js";
-import { expl_fiery } from "./display.h.js";
-import { expl_frosty } from "./display.h.js";
-import { expl_magical } from "./display.h.js";
-import { expl_muddy } from "./display.h.js";
-import { expl_noxious } from "./display.h.js";
-import { expl_wet } from "./display.h.js";
-import { explode_color_dark } from "./display.h.js";
-import { explode_color_fiery } from "./display.h.js";
-import { explode_color_frosty } from "./display.h.js";
-import { explode_color_magical } from "./display.h.js";
-import { explode_color_muddy } from "./display.h.js";
-import { explode_color_noxious } from "./display.h.js";
-import { explode_color_wet } from "./display.h.js";
-import { gbuf_entry } from "./display.h.js";
-import { gehennom_walls } from "./display.h.js";
-import { gm_levelchange } from "./display.h.js";
-import { knox_walls } from "./display.h.js";
-import { main_walls } from "./display.h.js";
-import { mines_walls } from "./display.h.js";
-import { sokoban_walls } from "./display.h.js";
-import { zap_color_acid } from "./display.h.js";
-import { zap_color_death } from "./display.h.js";
-import { zap_color_fire } from "./display.h.js";
-import { zap_color_frost } from "./display.h.js";
-import { zap_color_lightning } from "./display.h.js";
-import { zap_color_missile } from "./display.h.js";
-import { zap_color_poison_gas } from "./display.h.js";
-import { zap_color_sleep } from "./display.h.js";
-import { _canseemon } from "./display.h.macros.js";
-import { _is_safemon } from "./display.h.macros.js";
-import { _knowninvisible } from "./display.h.macros.js";
-import { _mon_visible } from "./display.h.macros.js";
-import { _mon_warning } from "./display.h.macros.js";
-import { _see_with_infrared } from "./display.h.macros.js";
-import { _sensemon } from "./display.h.macros.js";
-import { _tp_sensemon } from "./display.h.macros.js";
-import { altar_to_glyph } from "./display.h.macros.js";
-import { canspotself } from "./display.h.macros.js";
-import { cmap_to_glyph } from "./display.h.macros.js";
-import { covers_objects } from "./display.h.macros.js";
-import { covers_traps } from "./display.h.macros.js";
-import { detected_mon_to_glyph } from "./display.h.macros.js";
-import { detected_monnum_to_glyph } from "./display.h.macros.js";
-import { engraving_to_glyph } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_generic_object } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { glyph_is_monster } from "./display.h.macros.js";
-import { glyph_is_normal_generic_obj } from "./display.h.macros.js";
-import { glyph_is_nothing } from "./display.h.macros.js";
-import { glyph_is_pet } from "./display.h.macros.js";
-import { glyph_is_piletop_generic_obj } from "./display.h.macros.js";
-import { glyph_is_trap } from "./display.h.macros.js";
-import { glyph_is_unexplored } from "./display.h.macros.js";
-import { glyph_to_mon } from "./display.h.macros.js";
-import { hero_glyph } from "./display.h.macros.js";
-import { mon_to_glyph } from "./display.h.macros.js";
-import { monnum_to_glyph } from "./display.h.macros.js";
-import { newsym_rn2 } from "./display.h.macros.js";
-import { obj_to_glyph } from "./display.h.macros.js";
-import { objnum_to_glyph } from "./display.h.macros.js";
-import { pet_to_glyph } from "./display.h.macros.js";
-import { petnum_to_glyph } from "./display.h.macros.js";
-import { random_monster } from "./display.h.macros.js";
-import { random_obj_to_glyph } from "./display.h.macros.js";
-import { ridden_mon_to_glyph } from "./display.h.macros.js";
-import { trap_to_glyph } from "./display.h.macros.js";
-import { vobj_at } from "./display.h.macros.js";
-import { warning_to_glyph } from "./display.h.macros.js";
-import { what_mon } from "./display.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import {
+    COIN_CLASS, FOOD_CLASS, S_air, S_altar, S_arrow_trap, S_bars, S_blcorn, S_brcorn, S_brdnladder,
+    S_brdnstair, S_brupladder, S_brupstair, S_cloud, S_corr, S_crwall, S_darkroom, S_digbeam,
+    S_dnladder, S_dnstair, S_engrcorr, S_expl_tl, S_fountain, S_grave, S_hcdbridge, S_hcdoor,
+    S_hodbridge, S_hodoor, S_hwall, S_ice, S_lava, S_lavawall, S_litcorr, S_ndoor, S_polymorph_trap,
+    S_pool, S_room, S_sink, S_stone, S_sw_bc, S_sw_bl, S_sw_br, S_sw_ml, S_sw_mr, S_sw_tc, S_sw_tl,
+    S_sw_tr, S_tdwall, S_throne, S_tlcorn, S_tlwall, S_trcorn, S_tree, S_trwall, S_tuwall,
+    S_upladder, S_upstair, S_vbeam, S_vcdbridge, S_vcdoor, S_vodbridge, S_vodoor, S_vwall, S_water,
+} from "./defsym.h.js";
+import {
+    BACKTRACK, DISP_ALL, DISP_ALWAYS, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_FREEMEM,
+    DISP_TETHER, EXPL_MAX, GLYPH_ALTAR_OFF, GLYPH_BODY_OFF, GLYPH_BODY_PILETOP_OFF,
+    GLYPH_CMAP_A_OFF, GLYPH_CMAP_B_OFF, GLYPH_CMAP_C_OFF, GLYPH_CMAP_GEH_OFF, GLYPH_CMAP_KNOX_OFF,
+    GLYPH_CMAP_MAIN_OFF, GLYPH_CMAP_MINES_OFF, GLYPH_CMAP_SOKO_OFF, GLYPH_CMAP_STONE_OFF,
+    GLYPH_DETECT_FEM_OFF, GLYPH_DETECT_MALE_OFF, GLYPH_EXPLODE_DARK_OFF, GLYPH_EXPLODE_FIERY_OFF,
+    GLYPH_EXPLODE_FROSTY_OFF, GLYPH_EXPLODE_MAGICAL_OFF, GLYPH_EXPLODE_MUDDY_OFF,
+    GLYPH_EXPLODE_NOXIOUS_OFF, GLYPH_EXPLODE_WET_OFF, GLYPH_INVISIBLE, GLYPH_INVIS_OFF,
+    GLYPH_MON_FEM_OFF, GLYPH_MON_MALE_OFF, GLYPH_NOTHING, GLYPH_NOTHING_OFF, GLYPH_OBJ_OFF,
+    GLYPH_OBJ_PILETOP_OFF, GLYPH_PET_FEM_OFF, GLYPH_PET_MALE_OFF, GLYPH_RIDDEN_FEM_OFF,
+    GLYPH_RIDDEN_MALE_OFF, GLYPH_STATUE_FEM_OFF, GLYPH_STATUE_FEM_PILETOP_OFF,
+    GLYPH_STATUE_MALE_OFF, GLYPH_STATUE_MALE_PILETOP_OFF, GLYPH_SWALLOW_OFF, GLYPH_UNEXPLORED,
+    GLYPH_UNEXPLORED_OFF, GLYPH_WARNING_OFF, GLYPH_ZAP_OFF, MAX_GLYPH, MG_BADXY, MG_BW_ENGR,
+    MG_BW_ICE, MG_BW_LAVA, MG_BW_SINK, MG_CORPSE, MG_DETECT, MG_FEMALE, MG_FLAG_NOOVERRIDE, MG_HERO,
+    MG_INVIS, MG_MALE, MG_NOTHING, MG_OBJPILE, MG_PET, MG_RIDDEN, MG_STATUE, MG_UNEXPL, NO_GLYPH,
+    NUM_ZAP, SHIELD_COUNT, altar_color_chaotic, altar_color_lawful, altar_color_neutral,
+    altar_color_other, altar_color_unaligned, docrtMapOnly, docrtNocls, docrtRecalc, docrtRefresh,
+    expl_dark, expl_fiery, expl_frosty, expl_magical, expl_muddy, expl_noxious, expl_wet,
+    explode_color_dark, explode_color_fiery, explode_color_frosty, explode_color_magical,
+    explode_color_muddy, explode_color_noxious, explode_color_wet, gbuf_entry, gehennom_walls,
+    gm_levelchange, knox_walls, main_walls, mines_walls, sokoban_walls, zap_color_acid,
+    zap_color_death, zap_color_fire, zap_color_frost, zap_color_lightning, zap_color_missile,
+    zap_color_poison_gas, zap_color_sleep,
+} from "./display.h.js";
+import {
+    _canseemon, _is_safemon, _knowninvisible, _mon_visible, _mon_warning, _see_with_infrared,
+    _sensemon, _tp_sensemon, altar_to_glyph, canspotself, cmap_to_glyph, covers_objects,
+    covers_traps, detected_mon_to_glyph, detected_monnum_to_glyph, engraving_to_glyph,
+    glyph_is_cmap, glyph_is_generic_object, glyph_is_invisible, glyph_is_monster,
+    glyph_is_normal_generic_obj, glyph_is_nothing, glyph_is_pet, glyph_is_piletop_generic_obj,
+    glyph_is_trap, glyph_is_unexplored, glyph_to_mon, hero_glyph, mon_to_glyph, monnum_to_glyph,
+    newsym_rn2, obj_to_glyph, objnum_to_glyph, pet_to_glyph, petnum_to_glyph, random_monster,
+    random_obj_to_glyph, ridden_mon_to_glyph, trap_to_glyph, vobj_at, warning_to_glyph, what_mon,
+} from "./display.h.macros.js";
+import { Is_rogue_level, Is_waterlevel } from "./dungeon.h.macros.js";
 import { spot_shows_engravings } from "./engrave.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { SYM_OFF_M } from "./hack.h.js";
-import { SYM_OFF_O } from "./hack.h.js";
-import { SYM_OFF_P } from "./hack.h.js";
-import { SYM_OFF_W } from "./hack.h.js";
-import { SYM_OFF_X } from "./hack.h.js";
-import { MATCH_WARN_OF_MON } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { MCORPSENM } from "./mextra.h.macros.js";
-import { has_mcorpsenm } from "./mextra.h.macros.js";
-import { infravisible } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { MON_STILL_ARRIVING } from "./monst.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { is_lightblocker_mappear } from "./monst.h.macros.js";
-import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { PM_TENGU } from "./monsters.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { AIR } from "./rm.h.js";
-import { ALTAR } from "./rm.h.js";
-import { BLCORNER } from "./rm.h.js";
-import { BRCORNER } from "./rm.h.js";
-import { CLOUD } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { CROSSWALL } from "./rm.h.js";
-import { DBWALL } from "./rm.h.js";
-import { DB_FLOOR } from "./rm.h.js";
-import { DB_ICE } from "./rm.h.js";
-import { DB_LAVA } from "./rm.h.js";
-import { DB_MOAT } from "./rm.h.js";
-import { DB_UNDER } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { GRAVE } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { LA_DOWN } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SINK } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { SV0 } from "./rm.h.js";
-import { SV1 } from "./rm.h.js";
-import { SV2 } from "./rm.h.js";
-import { SV3 } from "./rm.h.js";
-import { SV4 } from "./rm.h.js";
-import { SV5 } from "./rm.h.js";
-import { SV6 } from "./rm.h.js";
-import { SV7 } from "./rm.h.js";
-import { SVALL } from "./rm.h.js";
-import { TDWALL } from "./rm.h.js";
-import { THRONE } from "./rm.h.js";
-import { TLCORNER } from "./rm.h.js";
-import { TLWALL } from "./rm.h.js";
-import { TRCORNER } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { TRWALL } from "./rm.h.js";
-import { TUWALL } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { WM_C_INNER } from "./rm.h.js";
-import { WM_C_OUTER } from "./rm.h.js";
-import { WM_MASK } from "./rm.h.js";
-import { WM_T_BL } from "./rm.h.js";
-import { WM_T_BR } from "./rm.h.js";
-import { WM_T_LONG } from "./rm.h.js";
-import { WM_W_BOTTOM } from "./rm.h.js";
-import { WM_W_LEFT } from "./rm.h.js";
-import { WM_W_RIGHT } from "./rm.h.js";
-import { WM_W_TOP } from "./rm.h.js";
-import { WM_X_BL } from "./rm.h.js";
-import { WM_X_BLTR } from "./rm.h.js";
-import { WM_X_BR } from "./rm.h.js";
-import { WM_X_TL } from "./rm.h.js";
-import { WM_X_TLBR } from "./rm.h.js";
-import { WM_X_TR } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_POOL } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_SDOOR } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { H_IBM } from "./sym.h.js";
-import { ROGUESET } from "./sym.h.js";
-import { SYM_BOULDER } from "./sym.h.js";
-import { SYM_HERO_OVERRIDE } from "./sym.h.js";
-import { SYM_INVISIBLE } from "./sym.h.js";
-import { SYM_NOTHING } from "./sym.h.js";
-import { SYM_PET_OVERRIDE } from "./sym.h.js";
-import { SYM_UNEXPLORED } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
-import { DARKROOMSYM } from "./sym.h.macros.js";
-import { SYMHANDLING } from "./sym.h.macros.js";
-import { is_cmap_furniture } from "./sym.h.macros.js";
-import { is_cmap_room } from "./sym.h.macros.js";
-import { is_cmap_wall } from "./sym.h.macros.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE } from "./global.h.js";
+import { ECMD_OK, SYM_OFF_M, SYM_OFF_O, SYM_OFF_P, SYM_OFF_W, SYM_OFF_X } from "./hack.h.js";
+import { MATCH_WARN_OF_MON, distu, mdistu } from "./hack.h.macros.js";
+import { MCORPSENM, has_mcorpsenm } from "./mextra.h.macros.js";
+import { infravisible, mindless, monsndx } from "./mondata.h.macros.js";
+import { FEMALE, MALE } from "./monflag.h.js";
+import {
+    MON_STILL_ARRIVING, M_AP_FURNITURE, M_AP_MONSTER, M_AP_NOTHING, M_AP_OBJECT,
+} from "./monst.h.js";
+import { DEADMONSTER, M_AP_TYPE, U_AP_TYPE, is_lightblocker_mappear } from "./monst.h.macros.js";
+import { PM_LONG_WORM_TAIL, PM_TENGU } from "./monsters.h.js";
+import { OBJ_FLOOR, struct_obj } from "./obj.h.js";
+import { BOULDER, CORPSE, STATUE } from "./objects.h.js";
+import {
+    AIR, ALTAR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, DB_FLOOR, DB_ICE, DB_LAVA,
+    DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED,
+    FOUNTAIN, GRAVE, HWALL, ICE, IRONBARS, LADDER, LAVAPOOL, LAVAWALL, LA_DOWN, MOAT, POOL, ROOM,
+    SCORR, SDOOR, SINK, STAIRS, STONE, SV0, SV1, SV2, SV3, SV4, SV5, SV6, SV7, SVALL, TDWALL,
+    THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER, WM_C_INNER, WM_C_OUTER,
+    WM_MASK, WM_T_BL, WM_T_BR, WM_T_LONG, WM_W_BOTTOM, WM_W_LEFT, WM_W_RIGHT, WM_W_TOP, WM_X_BL,
+    WM_X_BLTR, WM_X_BR, WM_X_TL, WM_X_TLBR, WM_X_TR,
+} from "./rm.h.js";
+import {
+    ACCESSIBLE, IS_DOOR, IS_OBSTRUCTED, IS_POOL, IS_ROOM, IS_SDOOR, IS_STWALL, fmon, fobj, levl,
+    m_at,
+} from "./rm.h.macros.js";
+import {
+    H_IBM, ROGUESET, SYM_BOULDER, SYM_HERO_OVERRIDE, SYM_INVISIBLE, SYM_NOTHING, SYM_PET_OVERRIDE,
+    SYM_UNEXPLORED, WARNCOUNT,
+} from "./sym.h.js";
+import {
+    DARKROOMSYM, SYMHANDLING, is_cmap_furniture, is_cmap_room, is_cmap_wall,
+} from "./sym.h.macros.js";
+import { BEAR_TRAP, NO_TRAP, WEB } from "./trap.h.js";
 import { is_pit } from "./trap.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { curs } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
-import { print_glyph } from "./winprocs.h.macros.js";
-import { struct_glyph_map_entry } from "./wintype.h.js";
-import { struct_glyphinfo } from "./wintype.h.js";
-import { BC_BALL } from "./you.h.js";
-import { BC_CHAIN } from "./you.h.js";
-import { Ugender } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { Detect_monsters } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Infravision } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Unblind_telepat } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Warn_of_mon } from "./youprop.h.macros.js";
-import { Warning } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import {
+    clear_nhwindow, curs, display_nhwindow, nh_delay_output, print_glyph,
+} from "./winprocs.h.macros.js";
+import { struct_glyph_map_entry, struct_glyphinfo } from "./wintype.h.js";
+import { BC_BALL, BC_CHAIN } from "./you.h.js";
+import { Ugender, Upolyd, next2u, u_at } from "./you.h.macros.js";
+import {
+    Blind, Blind_telepat, Detect_monsters, Hallucination, Infravision,
+    Protection_from_shape_changers, Punished, See_invisible, Unblind_telepat, Underwater,
+    Warn_of_mon, Warning,
+} from "./youprop.h.macros.js";
+import {
+    char, int, ord, schar, short, sizeof, sizeof_string, uchar, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
 import { free } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { struct_copy } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, ptr_add, ptr_to, ref_of, struct, struct_assign, struct_copy, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { Sting_effects } from "./artifact.js";
-import { bot } from "./botl.js";
-import { timebot } from "./botl.js";
+import { bot, timebot } from "./botl.js";
 import { isok } from "./cmd.js";
-import { is_ice } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { a11y } from "./decl.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gf } from "./decl.js";
-import { gg } from "./decl.js";
-import { gi } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { shield_static } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { def_warnsyms } from "./drawing.js";
-import { defsyms } from "./drawing.js";
-import { on_level } from "./dungeon.js";
-import { update_lastseentyp } from "./dungeon.js";
+import { is_ice, is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    a11y, cg, disp, flags, gc, gd, gf, gg, gi, go, gs, gw, gy, iflags, program_state, shield_static,
+    svc, svl, svm, u,
+} from "./decl.js";
+import { def_warnsyms, defsyms } from "./drawing.js";
+import { on_level, update_lastseentyp } from "./dungeon.js";
 import { panic } from "./end.js";
-import { can_reach_floor } from "./engrave.js";
-import { engr_at } from "./engrave.js";
-import { engr_can_be_felt } from "./engrave.js";
+import { can_reach_floor, engr_at, engr_can_be_felt } from "./engrave.js";
 import { mapxy_valid } from "./getpos.js";
 import { glyph_to_cmap } from "./glyphs.js";
 import { sgn } from "./hacklib.js";
-import { sobj_at } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import { sobj_at, update_inventory } from "./invent.js";
 import { cmap_to_type } from "./mkroom.js";
 import { iter_mons } from "./mon.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
 import { do_screen_description } from "./pager.js";
-import { impossible } from "./pline.js";
-import { pline_xy } from "./pline.js";
-import { show_region } from "./region.js";
-import { visible_region_at } from "./region.js";
+import { impossible, pline_xy } from "./pline.js";
+import { show_region, visible_region_at } from "./region.js";
 import { rn2_on_display_rng } from "./rnd.js";
-import { known_branch_stairs } from "./stairs.js";
-import { stairway_at } from "./stairs.js";
+import { known_branch_stairs, stairway_at } from "./stairs.js";
 import { sysopt } from "./sys.js";
 import { t_at } from "./trap.js";
-import { block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { vision_recalc } from "./vision.js";
+import { block_point, unblock_point, vision_recalc } from "./vision.js";
 import { has_color } from "./windows.js";
 import { see_wsegs } from "./worm.js";

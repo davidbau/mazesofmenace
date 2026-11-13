@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/display.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 import {installDirectDisplayFields} from './display-direct.js';
@@ -29,6 +31,8 @@ export function createDisplayEnvironment(services){
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of display.displayStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 function displayState(services){
@@ -46,8 +50,8 @@ export function callDisplay(services,name,...args){
  const state=displayState(services),previous=state.services;
  state.services=services;
  try{
-  const fn=display[name];if(typeof fn!=='function')throw Error('Unknown original DISPLAY function '+name);
+  const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original DISPLAY function '+name);
   const stackFrame=services.stackSave();
-  try{return withCEnvironment(state.env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+  try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
  }finally{state.services=previous;}
 }

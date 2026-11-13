@@ -1,3 +1,5 @@
+import {createNativeTermcap} from '../native/termcap.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -21,7 +23,7 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
 
     const arrayTypes=new WeakMap(),recordTypes=new Map();
 
-    const view=CAdapter.createPrototypeDescriptorFactory({address:pointerValue,cache,recordTypes,layout,errorPrefix:"Unknown TERMCAP record field "},(name,at)=>{const prototype={},ki=names.indexOf(name);
+    const legacyView=CAdapter.createPrototypeDescriptorFactory({address:pointerValue,cache,recordTypes,layout,errorPrefix:"Unknown TERMCAP record field "},(name,at)=>{const prototype={},ki=names.indexOf(name);
             for(const [i,f]of schemas[name].fields.entries()){
                 if(name==='nomux_cell'){
                     // The connected C module supplies the byte offset. Every
@@ -33,6 +35,15 @@ export function createTermcapEnvironment(services,layout,namespace=core) {
                 }else Object.defineProperty(prototype,f.name,{get(){return decode(f.d,services.read(ki,this.address,i));},set(v){services.write(ki,this.address,i,raw(v));}});
             }
 applyPrototypeAliases(name,prototype,'termcap');return prototype;});
+    const view=(name,value)=>{
+        const owner=services.nativeOwner,ctype=schemas[name]?.ctype;
+        if(owner?.nativeRecords&&name!=='nomux_cell'&&ctype&&services.nativeTypes?.isRecord(ctype)){
+            const record=owner.nativeRecords.record(ctype,addr(value));
+            if(record&&!Object.hasOwn(record,'kind'))Object.defineProperty(record,'kind',{value:name});
+            return record;
+        }
+        return legacyView(name,value);
+    };
     const env=Object.assign(Object.create(services),layout,{view,
         callLocal:(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);},
         addressOf:(o,f)=>addr(services.address(names.indexOf(o.kind),o.address,schemas[o.kind].fields.findIndex(x=>x.name===f))),
@@ -139,13 +150,13 @@ export function callTermcap(services,layout,name,...args){
     if(typeof core[name]!=='function')throw Error('Unknown TERMCAP source entry '+name);
     let layouts=environments.get(services.moduleKey);if(!layouts){layouts=new WeakMap();environments.set(services.moduleKey,layouts);}
     let entry=layouts.get(layout);const fresh=!entry;
-    if(fresh){entry={services,env:null};const scoped=new Proxy({}, {get:(_,key)=>Reflect.get(entry.services,key),has:(_,key)=>Reflect.has(entry.services,key)});entry.env=createTermcapEnvironment(scoped,layout,core);}
+    if(fresh){entry={services,env:null,native:null};const scoped=new Proxy({}, {get:(_,key)=>Reflect.get(entry.services,key),has:(_,key)=>Reflect.has(entry.services,key)}),namespace={...core};entry.env=createTermcapEnvironment(scoped,layout,namespace);if(services.nativeOwner){installNativeIntegerCasts(entry.env);entry.native=createNativeTermcap(entry.env);Object.assign(namespace,entry.native);}}
     const previous=entry.services;entry.services=services;const saved=services.stackSave();
     try{
         const env=entry.env;if(!env.state.initialized)core.initializeTermcapData(env);
         if(fresh)layouts.set(layout,entry);
         if(name==='term_startup')args=args.map(p=>env.scalarPointer('int',p));
         if(name==='nomux_get_cursor')args=args.map(p=>env.scalarPointer('int',p));
-        const result=withCEnvironment(env,()=>core[name](...args));return typeof result==='string'?services.literal(result):result?.address??result;
+        const result=entry.native?entry.native[name](...args):withCEnvironment(env,()=>core[name](...args));return typeof result==='string'?services.literal(result):result?.address??result;
     }finally{try{services.stackRestore(saved);}finally{entry.services=previous;}}
 }

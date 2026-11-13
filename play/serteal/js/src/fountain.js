@@ -4,22 +4,9 @@
 
 /* Code for drinking from fountains. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
 /* used when trying to dip in or drink from fountain or sink or pool while
    levitating above it, or when trying to move downwards in that state */
-export function /* void */
-floating_above(what)
-{
+export function floating_above(what) { /* void */
     let umsg = _("are floating high above the %s.");
 
     if (u.utrap && (u.utraptype == TT_INFLOOR || u.utraptype == TT_LAVA)) {
@@ -31,12 +18,8 @@ floating_above(what)
     You(umsg, what);
 }
 
-
-
 /* Fountain of snakes! */
-function /* void */
-dowatersnakes()
-{
+function dowatersnakes() { /* void */
     let num = rn1(5, 2);
     let mtmp;
 
@@ -52,7 +35,7 @@ dowatersnakes()
             if ((mtmp = makemon(mons[PM_WATER_MOCCASIN], u.ux, u.uy,
                                 MM_NOMSG)) != null
                 && t_at(mtmp.mx, mtmp.my))
-                void mintrap(mtmp, NO_TRAP_FLAGS);
+                mintrap(mtmp, NO_TRAP_FLAGS);
     } else {
          ;
         pline_The(_("fountain bubbles furiously for a moment, then calms."));
@@ -60,9 +43,8 @@ dowatersnakes()
 }
 
 /* Water demon */
-function /* void */
-dowaterdemon()
-{ const $frame = stack_frame(); try {
+function dowaterdemon() { /* void */
+    const $frame = stack_frame(); try {
     let mtmp = stack_var(ptr_to(struct_monst));
 
     if (!(svm.mvitals[PM_WATER_DEMON].mvflags & G_GONE)) {
@@ -81,18 +63,17 @@ dowaterdemon()
                 /* give a wish and discard the monster (mtmp set to null) */
                 mongrantswish(mtmp);
             } else if (t_at(mtmp[0].mx, mtmp[0].my))
-                void mintrap(mtmp[0], NO_TRAP_FLAGS);
+                mintrap(mtmp[0], NO_TRAP_FLAGS);
         }
     } else {
          ;
         pline_The(_("fountain bubbles furiously for a moment, then calms."));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Water Nymph */
-function /* void */
-dowaternymph()
-{
+function dowaternymph() { /* void */
     let mtmp;
 
     if (!(svm.mvitals[PM_WATER_NYMPH].mvflags & G_GONE)
@@ -104,7 +85,7 @@ dowaternymph()
             You_hear(_("a seductive voice."));
         mtmp.msleeping = 0;
         if (t_at(mtmp.mx, mtmp.my))
-            void mintrap(mtmp, NO_TRAP_FLAGS);
+            mintrap(mtmp, NO_TRAP_FLAGS);
     } else if (!Blind()) {
          ;
          ;
@@ -116,9 +97,8 @@ dowaternymph()
 }
 
 /* Gushing forth along LOS from (u.ux, u.uy) */
-export function /* void */
-dogushforth(drinking)
-{ const $frame = stack_frame(); try {
+export function dogushforth(drinking) { /* void */
+    const $frame = stack_frame(); try {
     let madepool = stack_var(int, 0);
 
     do_clear_area(u.ux, u.uy, 7, gush, addr_of(madepool));
@@ -128,17 +108,16 @@ dogushforth(drinking)
         else
             pline(_("Water sprays all over you."));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-gush(x, y, poolcnt)
-{
+function gush(x, y, poolcnt) { /* void */
     let mtmp;
     let ttmp;
 
     if (((x + y) % 2) || u_at(x, y)
-        || (rn2(1 + distmin(u.ux, u.uy, x, y))) || (levl()[x][y].typ != ROOM)
-        || (sobj_at(BOULDER, x, y)) || nexttodoor(x, y))
+        || rn2(1 + distmin(u.ux, u.uy, x, y)) || (levl()[x][y].typ != ROOM)
+        || sobj_at(BOULDER, x, y) || nexttodoor(x, y))
         return;
 
     if ((ttmp = t_at(x, y)) != null && !delfloortrap(ttmp))
@@ -155,29 +134,25 @@ gush(x, y, poolcnt)
     water_damage_chain(svl.level.objects[x][y], TRUE);
 
     if ((mtmp = m_at(x, y)) != null)
-        void minliquid(mtmp);
+        minliquid(mtmp);
     else
         newsym(x, y);
 }
 
 /* Find a gem in the sparkling waters. */
-function /* void */
-dofindgem()
-{
+function dofindgem() { /* void */
     if (!Blind())
         You(_("spot a gem in the sparkling waters!"));
     else
         You_feel(_("a gem here!"));
-    void mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), u.ux, u.uy,
+    mksobj_at(rnd_class(DILITHIUM_CRYSTAL, LUCKSTONE - 1), u.ux, u.uy,
                      FALSE, FALSE);
     levl()[u.ux][u.uy].flags |= F_LOOTED;
     newsym(u.ux, u.uy);
     exercise(A_WIS, TRUE); /* a discovery! */
 }
 
-function /* boolean */
-watchman_warn_fountain(mtmp)
-{
+function watchman_warn_fountain(mtmp) { /* boolean */
     if (is_watch(mtmp.data) && couldsee(mtmp.mx, mtmp.my)
         && mtmp.mpeaceful) {
         if (!Deaf()) {
@@ -197,9 +172,7 @@ watchman_warn_fountain(mtmp)
     return FALSE;
 }
 
-export function /* void */
-dryup(x, y, isyou)
-{
+export function dryup(x, y, isyou) { /* void */
     if (IS_FOUNTAIN(levl()[x][y].typ)
         && (!rn2(3) || FOUNTAIN_IS_WARNED(x, y))) {
         if (isyou && in_town(x, y) && !FOUNTAIN_IS_WARNED(x, y)) {
@@ -234,16 +207,14 @@ dryup(x, y, isyou)
            or felt if the hero is blind. */
         newsym(x, y);
         if (isyou && in_town(x, y))
-            void angry_guards(FALSE);
+            angry_guards(FALSE);
     }
 }
 
 /* quaff from a fountain when standing on its location */
-export function /* void */
-drinkfountain()
-{
+export function drinkfountain() { /* void */
     /* What happens when you drink from a fountain? */
-    let mgkftn = (+(levl()[u.ux][u.uy].horizontal == 1));
+    let mgkftn = +(levl()[u.ux][u.uy].horizontal == 1);
     let fate = rnd(30);
 
     if (Levitation()) {
@@ -252,7 +223,7 @@ drinkfountain()
     }
 
     if (mgkftn && u.uluck >= 0 && fate >= 10) {
-        let i, ii, littleluck = (+(u.uluck < 4));
+        let i, ii, littleluck = +(u.uluck < 4);
 
         pline(_("Wow!  This makes you feel great!"));
         /* blessed restore ability */
@@ -390,11 +361,9 @@ drinkfountain()
 }
 
 /* dip an object into a fountain when standing on its location */
-export function /* void */
-dipfountain(obj)
-{
+export function dipfountain(obj) { /* void */
     let er = ER_NOTHING;
-    let is_hands = (+(obj == hands_obj));
+    let is_hands = +(obj == hands_obj);
 
     if (Levitation()) {
         floating_above(_("fountain"));
@@ -443,7 +412,7 @@ dipfountain(obj)
         levl()[u.ux][u.uy].flags = 0;
         newsym(u.ux, u.uy);
         if (in_town(u.ux, u.uy))
-            void angry_guards(FALSE);
+            angry_guards(FALSE);
         return;
     } else if (is_hands || obj == uarmg) {
         er = wash_hands();
@@ -535,7 +504,7 @@ dipfountain(obj)
         if (FOUNTAIN_IS_LOOTED(u.ux, u.uy))
             break;
         levl()[u.ux][u.uy].flags |= F_LOOTED;
-        void mkgold((rnd((dunlevs_in_dungeon(u.uz) - dunlev(u.uz)
+        mkgold((rnd((dunlevs_in_dungeon(u.uz) - dunlev(u.uz)
                                    + 1) * 2) + 5),
                       u.ux, u.uy);
         if (!Blind())
@@ -554,9 +523,7 @@ dipfountain(obj)
 }
 
 /* dipping '-' in fountain, pool, or sink */
-export function /* int */
-wash_hands()
-{
+export function wash_hands() { /* int */
     let hands = makeplural(body_part(HAND));
     let res = ER_NOTHING;
     let was_glib = +!!Glib();
@@ -577,9 +544,7 @@ wash_hands()
 }
 
 /* convert a sink into a fountain */
-export function /* void */
-breaksink(x, y)
-{
+export function breaksink(x, y) { /* void */
     if (cansee(x, y) || u_at(x, y))
         pline_The(_("pipes break!  Water spurts out!"));
     /* updates level.flags.nsinks and level.flags.nfountains */
@@ -591,9 +556,7 @@ breaksink(x, y)
 }
 
 /* quaff from a sink while standing on its location */
-export function /* void */
-drinksink()
-{
+export function drinksink() { /* void */
     let otmp;
     let mtmp;
 
@@ -645,13 +608,13 @@ drinksink()
             observe_object(otmp);
         otmp.quan++;       /* Avoid panic upon useup() */
         otmp.corpsenm = 1; /* kludge for docall() */
-        void dopotion(otmp);
+        dopotion(otmp);
         obfree(otmp, null);
         break;
     case 5:
         if (!(levl()[u.ux][u.uy].flags & S_LRING)) {
             You(_("find a ring in the sink!"));
-            void mkobj_at(RING_CLASS, u.ux, u.uy, TRUE);
+            mkobj_at(RING_CLASS, u.ux, u.uy, TRUE);
             levl()[u.ux][u.uy].flags |= S_LRING;
             exercise(A_WIS, TRUE);
             newsym(u.ux, u.uy);
@@ -674,7 +637,7 @@ drinksink()
         break;
     case 9:
         pline(_("Gaggg... this tastes like sewage!  You vomit."));
-        morehungry(((rn2(30 - ACURR(A_CON)) + (11))));
+        morehungry((rn2(30 - ACURR(A_CON)) + (11)));
         vomit();
         break;
     case 10:
@@ -712,12 +675,10 @@ drinksink()
 }
 
 /* for #dip(potion.c) when standing on a sink */
-export function /* void */
-dipsink(obj)
-{
+export function dipsink(obj) { /* void */
     let try_call = FALSE,
             not_looted_yet = +((levl()[u.ux][u.uy].flags & S_LRING) == 0),
-            is_hands = (((obj == hands_obj || (uarmg && obj == uarmg)) ? 1 : 0));
+            is_hands = (obj == hands_obj || (uarmg && obj == uarmg) ? 1 : 0);
 
     if (!rn2(not_looted_yet ? 25 : 15)) {
         /* can't rely on using sink for unlimited scroll blanking; however,
@@ -727,7 +688,7 @@ dipsink(obj)
             Your(_("%s are still slippery."), fingers_or_gloves(TRUE));
         return;
     } else if (is_hands) {
-        void wash_hands();
+        wash_hands();
         return;
     } else if (obj.oclass != POTION_CLASS) {
         You(_("hold %s under the tap."), the(xname(obj)));
@@ -801,246 +762,116 @@ dipsink(obj)
 }
 
 /* find a ring in a sink */
-export function /* void */
-sink_backs_up(x, y)
-{ const $frame = stack_frame(); try {
+export function sink_backs_up(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     if (!Blind())
-        void strcpy(buf, _("Muddy waste pops up from the drain"));
+        strcpy(buf, _("Muddy waste pops up from the drain"));
     else if (!Deaf())
-        void strcpy(buf, _("You hear a sloshing sound")); /* Deaf-aware */
+        strcpy(buf, _("You hear a sloshing sound")); /* Deaf-aware */
     else
-        void sprintf(buf, _("Something splashes you in the %s"), body_part(FACE));
+        sprintf(buf, _("Something splashes you in the %s"), body_part(FACE));
     pline(_("%s%s."), !Deaf() ? _("Flupp!  ") : _(""), buf);
 
     if (!(levl()[x][y].flags & S_LRING)) { /* once per sink */
         if (!Blind())
             You_see(_("a ring shining in its midst."));
-        void mkobj_at(RING_CLASS, x, y, TRUE);
+        mkobj_at(RING_CLASS, x, y, TRUE);
         newsym(x, y);
         exercise(A_DEX, TRUE);
         exercise(A_WIS, TRUE); /* a discovery! */
         levl()[x][y].flags |= S_LRING;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*fountain.c*/
+
 import { A_LAWFUL } from "./align.h.js";
 import { ART_EXCALIBUR } from "./artilist.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_MAX } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { AMAX } from "./attrib.h.macros.js";
-import { nothing_seems_to_happen } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
+import { A_CON, A_DEX, A_MAX, A_WIS } from "./attrib.h.js";
+import { ABASE, ACURR, AMAX } from "./attrib.h.macros.js";
+import { nothing_seems_to_happen, something } from "./decl.h.macros.js";
+import { COIN_CLASS, POTION_CLASS, RING_CLASS, S_cloud } from "./defsym.h.js";
+import { canspotmon, glyph_is_cmap } from "./display.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_ARTIFACT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ARM } from "./hack.h.js";
-import { ENL_GAMEINPROGRESS } from "./hack.h.js";
-import { FACE } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MAGICENLIGHTENMENT } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { ONAME_KNOW_ARTI } from "./hack.h.js";
-import { ONAME_VIA_DIP } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { breathless } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { is_watch } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
+import { BUFSZ, FALSE, LL_ARTIFACT, TRUE } from "./global.h.js";
+import {
+    ARM, ENL_GAMEINPROGRESS, FACE, HAND, HEAD, KILLED_BY, KILLED_BY_AN, MAGICENLIGHTENMENT,
+    MM_NOMSG, NO_TRAP_FLAGS, ONAME_KNOW_ARTI, ONAME_VIA_DIP, POLY_NOFLAGS,
+} from "./hack.h.js";
+import { min, pline1, rn1, y_n } from "./hack.h.macros.js";
+import { breathless, haseyes, is_watch, nolimbs } from "./mondata.h.macros.js";
 import { G_GONE } from "./monflag.h.js";
-import { M_SEEN_FIRE } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
+import { M_SEEN_FIRE, struct_monst } from "./monst.h.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_SEWER_RAT } from "./monsters.h.js";
-import { PM_WATER_DEMON } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WATER_MOCCASIN } from "./monsters.h.js";
-import { PM_WATER_NYMPH } from "./monsters.h.js";
-import { ER_DESTROYED } from "./obj.h.js";
-import { ER_GREASED } from "./obj.h.js";
-import { ER_NOTHING } from "./obj.h.js";
+import {
+    PM_KNIGHT, PM_SEWER_RAT, PM_WATER_DEMON, PM_WATER_ELEMENTAL, PM_WATER_MOCCASIN, PM_WATER_NYMPH,
+} from "./monsters.h.js";
+import { ER_DESTROYED, ER_GREASED, ER_NOTHING } from "./obj.h.js";
 import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { BOULDER } from "./objects.h.js";
-import { DILITHIUM_CRYSTAL } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { POT_ACID } from "./objects.h.js";
-import { POT_FRUIT_JUICE } from "./objects.h.js";
-import { POT_GAIN_ENERGY } from "./objects.h.js";
-import { POT_GAIN_LEVEL } from "./objects.h.js";
-import { POT_LEVITATION } from "./objects.h.js";
-import { POT_MONSTER_DETECTION } from "./objects.h.js";
-import { POT_OBJECT_DETECTION } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_POLYMORPH } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { F_LOOTED } from "./rm.h.js";
-import { F_WARNED } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { S_LRING } from "./rm.h.js";
-import { FOUNTAIN_IS_LOOTED } from "./rm.h.macros.js";
-import { FOUNTAIN_IS_WARNED } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
+import {
+    BOULDER, DILITHIUM_CRYSTAL, LONG_SWORD, LUCKSTONE, POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY,
+    POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL,
+    POT_POLYMORPH, POT_WATER,
+} from "./objects.h.js";
+import { FROMOUTSIDE, SEE_INVIS } from "./prop.h.js";
+import { FOUNTAIN, F_LOOTED, F_WARNED, POOL, ROOM, S_LRING } from "./rm.h.js";
+import {
+    FOUNTAIN_IS_LOOTED, FOUNTAIN_IS_WARNED, IS_FOUNTAIN, fmon, levl, m_at,
+} from "./rm.h.macros.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhim } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invisible } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { TT_INFLOOR, TT_LAVA } from "./you.h.js";
+import { Role_if, mhe, mhis, u_at, uhim } from "./you.h.macros.js";
+import {
+    Blind, Deaf, Fire_resistance, Glib, Hallucination, Invisible, Levitation, Poison_resistance,
+    Unchanging,
+} from "./youprop.h.macros.js";
+import { char, int, ord, sizeof_string } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { sprintf, strcpy } from "../rt/libc.js";
+import { init_string, stack_array, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { artiname } from "./artifact.js";
-import { discover_artifact } from "./artifact.js";
-import { exist_artifact } from "./artifact.js";
-import { adjattrib } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { poison_strdmg } from "./attrib.js";
-import { disp } from "./decl.js";
-import { gi } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
+import { addr_of, ptr_to, ref_to } from "../rt/struct.js";
+import { artiname, discover_artifact, exist_artifact } from "./artifact.js";
+import { adjattrib, exercise, poison_strdmg } from "./attrib.js";
+import { disp, gi, gy, hands_obj, svl, svm, u } from "./decl.js";
 import { monster_detect } from "./detect.js";
-import { glyph_at } from "./display.js";
-import { newsym } from "./display.js";
-import { polymorph_sink } from "./do.js";
-import { trycall } from "./do.js";
-import { Amonnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
+import { glyph_at, newsym } from "./display.js";
+import { polymorph_sink, trycall } from "./do.js";
+import { Amonnam, a_monnam, hcolor, hliquid, oname, rndmonnam } from "./do_name.js";
 import { fingers_or_gloves } from "./do_wear.js";
-import { dunlev } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { level_difficulty } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { morehungry } from "./eat.js";
-import { newuhs } from "./eat.js";
-import { vomit } from "./eat.js";
+import { dunlev, dunlevs_in_dungeon, level_difficulty, surface } from "./dungeon.js";
+import { morehungry, newuhs, vomit } from "./eat.js";
 import { del_engr_at } from "./engrave.js";
-import { more_experienced } from "./exper.js";
-import { newexplevel } from "./exper.js";
+import { more_experienced, newexplevel } from "./exper.js";
 import { glyph_to_cmap } from "./glyphs.js";
-import { in_town } from "./hack.js";
-import { losehp } from "./hack.js";
-import { money_cnt } from "./hack.js";
+import { in_town, losehp, money_cnt } from "./hack.js";
 import { distmin } from "./hacklib.js";
 import { enlightenment } from "./insight.js";
-import { delobj } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
+import { delobj, sobj_at, update_inventory, useup } from "./invent.js";
 import { makemon } from "./makemon.js";
 import { set_levltyp } from "./mkmaze.js";
-import { bless } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { mkgold } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mkobj_at } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
+import { bless, curse, mkgold, mkobj, mkobj_at, mksobj_at, uncurse } from "./mkobj.js";
 import { nexttodoor } from "./mkroom.js";
-import { angry_guards } from "./mon.js";
-import { get_iter_mons } from "./mon.js";
-import { minliquid } from "./mon.js";
-import { monstseesu } from "./mondata.js";
-import { monstunseesu } from "./mondata.js";
+import { angry_guards, get_iter_mons, minliquid } from "./mon.js";
+import { monstseesu, monstunseesu } from "./mondata.js";
 import { monflee } from "./monmove.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { fruitname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { rnd_class } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { mbodypart } from "./polyself.js";
-import { polyself } from "./polyself.js";
-import { dopotion } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { mongrantswish } from "./potion.js";
-import { potionbreathe } from "./potion.js";
+import { fruitname, makeplural, rnd_class, the, xname } from "./objnam.js";
+import {
+    You, You_feel, You_hear, You_see, Your, livelog_printf, pline, pline_The, verbalize,
+} from "./pline.js";
+import { body_part, mbodypart, polyself } from "./polyself.js";
+import { dopotion, make_glib, mongrantswish, potionbreathe } from "./potion.js";
 import { create_gas_cloud } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { obfree } from "./shk.js";
 import { somegold } from "./steal.js";
-import { delfloortrap } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { water_damage } from "./trap.js";
-import { water_damage_chain } from "./trap.js";
+import { delfloortrap, mintrap, t_at, water_damage, water_damage_chain } from "./trap.js";
 import { do_clear_area } from "./vision.js";

@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Archeologist Arc-goal.lua	$NHDT-Date: 1652195998 2022/05/10 15:19:58 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Archeologist Arc-goal.lua	$NHDT-Date: 1652195998 2022/05/10 15:19:58 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel");
 
@@ -29,8 +29,8 @@ des.map([[
                                   ---------                                 
                                                                             
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,75,19), "lit")
+-- Dungeon Description
+des.region(selection.area(00,00,75,19), "lit")
 des.region(selection.area(35,02,36,03), "unlit")
 des.region(selection.area(40,02,41,03), "unlit")
 des.region(selection.area(24,04,24,06), "unlit")
@@ -54,14 +54,14 @@ des.region(selection.area(40,13,41,14), "unlit")
 des.region(selection.area(40,16,41,17), "unlit")
 des.region({ region={43,13, 50,15}, lit=0, type="temple", filled=2 })
 des.region(selection.area(52,13,52,15), "unlit")
-` + "\n" + // -- Stairs
-`des.stair("up", 38,10)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,75,19))
-` + "\n" + // -- The altar of Huhetotl.  Unattended.
-`des.altar({ x=50,y=14,align="chaos",type="altar" })
-` + "\n" + // -- Objects
-`des.object({ id = "crystal ball", x=50, y=14,buc="blessed",spe=5,name="The Orb of Detection" })
+-- Stairs
+des.stair("up", 38,10)
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,75,19))
+-- The altar of Huhetotl.  Unattended.
+des.altar({ x=50,y=14,align="chaos",type="altar" })
+-- Objects
+des.object({ id = "crystal ball", x=50, y=14,buc="blessed",spe=5,name="The Orb of Detection" })
 des.object()
 des.object()
 des.object()
@@ -76,16 +76,16 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-`des.trap()
+-- Random traps
+des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap("rolling boulder",46,14)
-` + "\n" + // -- Random monsters.
-`des.monster("Minion of Huhetotl", 50, 14)
+-- Random monsters.
+des.monster("Minion of Huhetotl", 50, 14)
 des.monster("S")
 des.monster("S")
 des.monster("S")

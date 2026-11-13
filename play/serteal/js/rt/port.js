@@ -4,14 +4,10 @@
 // and the data-file installer; each forwards to the host (machine.libc(name, args)), which
 // implements them in js/host (host/boot.js).
 
-import { machine } from "./heap.js";
+import { libc_function } from "./heap.js";
 export { longjmp } from "./setjmp.js";
 
-function port(name) {
-  const f = function (...args) { return machine.libc(name, args); };
-  Object.defineProperty(f, "name", { value: name });
-  return f;
-}
+function port(name) { return libc_function(name); }
 
 // installs the game data files (js/dat) into the file system
 export const nhjs_install_data_files = port("nhjs_install_data_files");

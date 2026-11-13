@@ -5,17 +5,6 @@
 
 /* shknam.c -- initialize a shop */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
 export const VEGETARIAN_CLASS = (MAXOCLASSES + 1);
 
 /*
@@ -122,28 +111,6 @@ const shktools = static_array("shktools", ptr_to(char), null, [
     _("Rewuorb"), _("Rellenk"), _("Yad"), _("Cire Htims"), _("Y-crad"), _("Nenilukah"),
     _("Corsh"), _("Aned"), _("Dark Eery"), _("Niknar"), _("Lapu"), _("Lechaim"),
     _("Rebrol-nek"), _("AlliWar Wickson"), _("Oguhmk"), _("Telloc Cyaj"),
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     0
 ]);
@@ -353,32 +320,11 @@ export const shtypes = static_array("shtypes", struct_shclass, null, [
       shknms: null }
 ]);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* decide whether an object or object type is considered vegetarian;
    for types, items which might go either way are assumed to be veggy */
-function /* boolean */
-veggy_item(obj, otyp)
-{
+function veggy_item(obj, otyp) { /* boolean */
     let corpsenm;
     let oclass;
 
@@ -404,14 +350,13 @@ veggy_item(obj, otyp)
     return FALSE;
 }
 
-function /* int */
-shkveg()
-{ const $frame = stack_frame(); try {
+function shkveg() { /* int */
+    const $frame = stack_frame(); try {
     let i, j, maxprob, prob;
     let oclass = FOOD_CLASS;
     let ok = stack_array(int, NUM_OBJECTS);
 
-    void memset(addr_of(ok), 0, sizeof(array_of(int, NUM_OBJECTS))); /* lint suppression */
+    memset(addr_of(ok), 0, sizeof(array_of(int, NUM_OBJECTS))); /* lint suppression */
     j = maxprob = 0;
     for (i = svb.bases[oclass]; i < NUM_OBJECTS; ++i) {
         if (objects[i].oc_class != oclass)
@@ -436,12 +381,11 @@ shkveg()
     if (objects[i].oc_class != oclass || !OBJ_NAME(objects[i]))
         panic(_("shkveg probtype error, oclass=%d i=%d"), oclass, i);
     return i;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* make a random item for health food store */
-function /* void */
-mkveggy_at(sx, sy)
-{
+function mkveggy_at(sx, sy) { /* void */
     let obj = mksobj_at(shkveg(), sx, sy, TRUE, TRUE);
 
     if (obj && obj.otyp == TIN)
@@ -450,9 +394,7 @@ mkveggy_at(sx, sy)
 }
 
 /* make an object of the appropriate type for a shop square */
-function /* void */
-mkshobj_at(shp, sx, sy, mkspecl)
-{
+function mkshobj_at(shp, sx, sy, mkspecl) { /* void */
     let mtmp;
     let ptr;
     let atype;
@@ -472,20 +414,18 @@ mkshobj_at(shp, sx, sy, mkspecl)
         && (mtmp = makemon(ptr, sx, sy, NO_MM_FLAGS)) != null) {
         /* nothing */
     } else {
-        atype = get_shop_item((ptr_diff(shp, shtypes[0])));
+        atype = get_shop_item(ptr_diff(shp, shtypes[0]));
         if (atype == VEGETARIAN_CLASS)
             mkveggy_at(sx, sy);
         else if (atype < 0)
-            void mksobj_at(-atype, sx, sy, TRUE, TRUE);
+            mksobj_at(-atype, sx, sy, TRUE, TRUE);
         else
-            void mkobj_at(atype, sx, sy, TRUE);
+            mkobj_at(atype, sx, sy, TRUE);
     }
 }
 
 /* extract a shopkeeper name for the given shop type */
-function /* void */
-nameshk(shk, nlp)
-{
+function nameshk(shk, nlp) { /* void */
     let i, trycnt, names_avail;
     let shname = 0;
     let mtmp;
@@ -502,7 +442,7 @@ nameshk(shk, nlp)
            and restore support which would be necessary for randomization;
            try not to make too many assumptions about time_t's internals;
            use ledger_no rather than depth to keep minetown distinct. */
-        let nseed = int((Math.trunc(ubirthday / 257)));
+        let nseed = int(Math.trunc(ubirthday / 257));
 
         name_wanted += ledger_no(u.uz) + (nseed % 13) - (nseed % 5);
         if (name_wanted < 0)
@@ -549,25 +489,21 @@ nameshk(shk, nlp)
                 break; /* new name */
         }
     }
-    void strncpy(ESHK(shk).shknam, shname, PL_NSIZ);
+    strncpy(ESHK(shk).shknam, shname, PL_NSIZ);
     chars[ESHK(shk).shknam + (PL_NSIZ - 1)] = 0;
 }
 
-export function /* void */
-neweshk(mtmp)
-{
+export function neweshk(mtmp) { /* void */
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!ESHK(mtmp))
         ((mtmp).mextra.eshk) = view_of(struct_eshk, addr_of(alloc(sizeof(struct_eshk))));
-    void memset(addr_of(ESHK(mtmp)), 0, sizeof(struct_eshk));
+    memset(addr_of(ESHK(mtmp)), 0, sizeof(struct_eshk));
     ESHK(mtmp).parentmid = mtmp.m_id;
     ESHK(mtmp).bill_p = null;
 }
 
-export function /* void */
-free_eshk(mtmp)
-{
+export function free_eshk(mtmp) { /* void */
     if (mtmp.mextra && ESHK(mtmp)) {
         free(addr_of(ESHK(mtmp)));
         ((mtmp).mextra.eshk) = null;
@@ -578,9 +514,7 @@ free_eshk(mtmp)
 /* find a door in room sroom which is good for shop entrance.
    returns -1 if no good door found, or the svd.doors index
    and the door coordinates in sx, sy */
-function /* int */
-good_shopdoor(sroom, sx, sy)
-{
+function good_shopdoor(sroom, sx, sy) { /* int */
     let i;
 
     for (i = 0; i < sroom.doorct; i++) {
@@ -591,7 +525,7 @@ good_shopdoor(sroom, sx, sy)
 
         /* check that the shopkeeper placement is sane */
         if (sroom.irregular) {
-            let rmno = int(((ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET));
+            let rmno = int((ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET));
 
             if (isok(sx[0] - 1, sy[0]) && !levl()[sx[0] - 1][sy[0]].edge
                 && (levl()[sx[0] - 1][sy[0]].roomno) == rmno)
@@ -624,9 +558,8 @@ good_shopdoor(sroom, sx, sy)
 }
 
 /* create a new shopkeeper in the given room */
-function /* int */
-shkinit(shp, sroom)
-{ const $frame = stack_frame(); try {
+function shkinit(shp, sroom) { /* int */
+    const $frame = stack_frame(); try {
     let sh;
     let sx = stack_var(coordxy), sy = stack_var(coordxy);
     let shk;
@@ -635,7 +568,6 @@ shkinit(shp, sroom)
     /* place the shopkeeper in the given room */
     sh = good_shopdoor(sroom, sx, sy);
     if (sh < 0) {
-
         /* Said to happen sometimes, but I have never seen it. */
         /* Supposedly fixed by fdoor change in mklev.c */
         if (wizard()) {
@@ -657,7 +589,7 @@ shkinit(shp, sroom)
     }
 
     if (MON_AT(sx[0], sy[0]))
-        void rloc(m_at(sx[0], sy[0]), RLOC_NOMSG); /* insurance */
+        rloc(m_at(sx[0], sy[0]), RLOC_NOMSG); /* insurance */
 
     /* now initialize the shopkeeper monster structure */
     if (!(shk = makemon(mons[PM_SHOPKEEPER], sx[0], sy[0], MM_ESHK)))
@@ -667,7 +599,7 @@ shkinit(shp, sroom)
     set_malign(shk);
     shk.msleeping = 0;
     mon_learns_traps(shk, ALL_TRAPS); /* we know all the traps already */
-    eshkp.shoproom = schar(((ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET));
+    eshkp.shoproom = schar((ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET));
     sroom.resident = shk;
     eshkp.shoptype = sroom.rtype;
     assign_level(eshkp.shoplevel, u.uz);
@@ -681,19 +613,18 @@ shkinit(shp, sroom)
     chars[eshkp.customer + 0] = ord('\0');
     mkmonmoney(shk, 1000 + 30 * rnd(100)); /* initial capital */
     if ((addr_of(shp.shknms) == addr_of(shkrings)))
-        void mongets(shk, TOUCHSTONE);
+        mongets(shk, TOUCHSTONE);
     if ((addr_of(shp.shknms) == addr_of(shktools)) || (addr_of(shp.shknms) == addr_of(shkwands)) ||
         ((addr_of(shp.shknms) == addr_of(shkrings)) && rn2(2)) ||
         ((addr_of(shp.shknms) == addr_of(shkgeneral)) && rn2(5)))
-        void mongets(shk, SCR_CHARGING);
+        mongets(shk, SCR_CHARGING);
     nameshk(shk, shp.shknms);
 
     return sh;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-stock_room_goodpos(sroom, rmno, sh, sx, sy)
-{
+function stock_room_goodpos(sroom, rmno, sh, sx, sy) { /* boolean */
     if (sroom.irregular) {
         if (levl()[sx][sy].edge
             || (levl()[sx][sy].roomno) != rmno
@@ -714,9 +645,8 @@ stock_room_goodpos(sroom, rmno, sh, sx, sy)
 }
 
 /* stock a newly-created room with objects */
-export function /* void */
-stock_room(shp_indx, sroom)
-{ const $frame = stack_frame(); try {
+export function stock_room(shp_indx, sroom) { /* void */
+    const $frame = stack_frame(); try {
     /*
      * Someday soon we'll dispatch on the shdist field of shclass to do
      * different placements in this routine. Currently it only supports
@@ -726,7 +656,7 @@ stock_room(shp_indx, sroom)
     let sx, sy, sh;
     let stockcount = 0, specialspot = 0;
     let buf = stack_array(char, BUFSZ);
-    let rmno = int(((ptr_diff(sroom, svr.rooms[0])) + ROOMOFFSET));
+    let rmno = int((ptr_diff(sroom, svr.rooms[0]) + ROOMOFFSET));
     let shp = shtypes[shp_indx];
 
     /* first, try to place a shopkeeper in the room */
@@ -758,7 +688,7 @@ stock_room(shp_indx, sroom)
             n--;
         else if (inside_shop(sx, sy - 1))
             n++;
-        void sprintf(buf, _("Closed for inventory"));
+        sprintf(buf, _("Closed for inventory"));
         make_engr_at(m, n, buf, 0, 0, DUST);
         if (levl()[m][n].typ != CORR && levl()[m][n].typ != ROOM)
             levl()[m][n].typ = (Is_special(u.uz)
@@ -783,7 +713,7 @@ stock_room(shp_indx, sroom)
             if (stock_room_goodpos(sroom, rmno, sh, sx,sy)) {
                 stockcount++;
                 mkshobj_at(shp, sx, sy,
-                           ((((stockcount) && (stockcount == specialspot)) ? 1 : 0)));
+                           (stockcount && (stockcount == specialspot) ? 1 : 0));
             }
 
     /*
@@ -792,18 +722,17 @@ stock_room(shp_indx, sroom)
      */
 
     /* Hack for Orcus's level: it's a ghost town, get rid of shopkeepers */
-    if (on_level(u.uz, (svd.dungeon_topology.d_orcus_level))) {
+    if (on_level(u.uz, svd.dungeon_topology.d_orcus_level)) {
         let mtmp = shop_keeper(rmno);
         mongone(mtmp);
     }
 
     svl.level.flags.has_shop = TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* does shkp's shop stock this item type? */
-export function /* boolean */
-saleable(shkp, obj)
-{
+export function saleable(shkp, obj) { /* boolean */
     let i, shp_indx = ESHK(shkp).shoptype - SHOPBASE;
     let shp = shtypes[shp_indx];
 
@@ -825,9 +754,7 @@ saleable(shkp, obj)
 
 /* positive value: class; negative value: specific object type.
    can also return non-existing object class (eg. VEGETARIAN_CLASS) */
-export function /* int */
-get_shop_item(type)
-{
+export function get_shop_item(type) { /* int */
     let shp = ptr_add(shtypes[0], type);
     let i, j;
 
@@ -839,9 +766,7 @@ get_shop_item(type)
 }
 
 /* version of shkname() for beginning of sentence */
-export function /* char * */
-Shknam(mtmp)
-{
+export function Shknam(mtmp) { /* char * */
     let nam = shkname(mtmp);
 
     /* 'nam[]' is almost certainly already capitalized, but be sure */
@@ -852,9 +777,7 @@ Shknam(mtmp)
 /* shopkeeper's name, without any visibility constraint; if hallucinating,
    will yield some other shopkeeper's name (not necessarily one residing
    in the current game's dungeon, or who keeps same type of shop) */
-export function /* char * */
-shkname(mtmp)
-{
+export function shkname(mtmp) { /* char * */
     let nam;
     let save_isshk = mtmp.isshk;
 
@@ -891,22 +814,18 @@ shkname(mtmp)
         /* strip prefix if present */
         if (!letter(chars[shknm]))
             ++shknm;
-        void strcpy(nam, shknm);
+        strcpy(nam, shknm);
     }
     return nam;
 }
 
-export function /* boolean */
-shkname_is_pname(mtmp)
-{
+export function shkname_is_pname(mtmp) { /* boolean */
     let shknm = ESHK(mtmp).shknam;
 
     return (+(chars[shknm] == ord('-') || chars[shknm] == ord('+') || chars[shknm] == ord('=')));
 }
 
-export function /* boolean */
-is_izchak(shkp, override_hallucination)
-{
+export function is_izchak(shkp, override_hallucination) { /* boolean */
     let shknm;
 
     if (Hallucination() && !override_hallucination)
@@ -923,161 +842,63 @@ is_izchak(shkp, override_hallucination)
     return (+!strcmp(shknm, _("Izchak")));
 }
 
-
-
 /*shknam.c*/
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+
+import {
+    AMULET_CLASS, ARMOR_CLASS, FOOD_CLASS, GEM_CLASS, MAXOCLASSES, POTION_CLASS, RANDOM_CLASS,
+    RING_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_MIMIC, TOOL_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { DUST } from "./engrave.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { HEALTHY_TIN } from "./hack.h.js";
-import { MM_ESHK } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
+import { BUFSZ, FALSE, PL_NSIZ, TRUE, coordxy } from "./global.h.js";
+import { HEALTHY_TIN, MM_ESHK, NO_MM_FLAGS, RLOC_NOMSG } from "./hack.h.js";
 import { struct_eshk } from "./mextra.h.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { has_eshk } from "./mextra.h.macros.js";
-import { D_SHOP } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { SHOPBASE } from "./mkroom.h.js";
-import { struct_shclass } from "./mkroom.h.js";
+import { ESHK, has_eshk } from "./mextra.h.macros.js";
+import { D_SHOP, ROOMOFFSET, SHOPBASE, struct_shclass } from "./mkroom.h.js";
 import { vegetarian } from "./mondata.h.macros.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_SHOPKEEPER } from "./monsters.h.js";
+import { DEADMONSTER, ismnum } from "./monst.h.macros.js";
+import { NON_PM, PM_LICHEN, PM_SHOPKEEPER } from "./monsters.h.js";
 import { VEGGY } from "./objclass.h.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { BRASS_LANTERN } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ELVEN_CLOAK } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { POT_BOOZE } from "./objects.h.js";
-import { POT_FRUIT_JUICE } from "./objects.h.js";
-import { POT_FULL_HEALING } from "./objects.h.js";
-import { POT_HEALING } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { SCR_CHARGING } from "./objects.h.js";
-import { SCR_FOOD_DETECTION } from "./objects.h.js";
-import { SCR_LIGHT } from "./objects.h.js";
-import { SPE_LIGHT } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TOUCHSTONE } from "./objects.h.js";
-import { WAN_LIGHT } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { CORR } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
+import {
+    BRASS_LANTERN, CORPSE, EGG, ELVEN_CLOAK, ICE_BOX, LEATHER_GLOVES, LUMP_OF_ROYAL_JELLY,
+    MAGIC_LAMP, NUM_OBJECTS, OIL_LAMP, POT_BOOZE, POT_FRUIT_JUICE, POT_FULL_HEALING, POT_HEALING,
+    POT_OIL, POT_WATER, SCR_CHARGING, SCR_FOOD_DETECTION, SCR_LIGHT, SPE_LIGHT, SPE_NOVEL,
+    TALLOW_CANDLE, TIN, TOUCHSTONE, WAN_LIGHT, WAX_CANDLE,
+} from "./objects.h.js";
+import { CORR, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, ROOM, SDOOR } from "./rm.h.js";
+import { IS_ROOM, MON_AT, fmon, levl, m_at } from "./rm.h.macros.js";
 import { ALL_TRAPS } from "./trap.h.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
 import { Hallucination } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, schar, sizeof } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { assert, free, memset, sprintf, strcmp, strcpy, strncpy } from "../rt/libc.js";
+import { stack_array, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, ptr_add, ptr_diff, ptr_to, struct_assign, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { gd } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svb } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
+import { gd, program_state, svb, svc, svd, svl, svr, u } from "./decl.js";
 import { cvt_sdoor_to_door } from "./detect.js";
 import { newsym } from "./display.js";
 import { noit_mon_nam } from "./do_name.js";
-import { In_mines } from "./dungeon.js";
-import { Is_special } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
+import { In_mines, Is_special, assign_level, depth, ledger_no, on_level } from "./dungeon.js";
 import { set_tin_variety } from "./eat.js";
 import { panic } from "./end.js";
 import { make_engr_at } from "./engrave.js";
-import { in_rooms } from "./hack.js";
-import { in_town } from "./hack.js";
-import { distmin } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { letter } from "./hacklib.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
-import { mkmonmoney } from "./makemon.js";
-import { mongets } from "./makemon.js";
-import { newmextra } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { mkobj_at } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
+import { in_rooms, in_town } from "./hack.js";
+import { distmin, highc, letter } from "./hacklib.js";
+import { makemon, mkclass, mkmonmoney, mongets, newmextra, set_malign } from "./makemon.js";
+import { mkobj_at, mksobj_at } from "./mkobj.js";
 import { mongone } from "./mon.js";
 import { mon_learns_traps } from "./mondata.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { inside_shop } from "./shk.js";
-import { shop_keeper } from "./shk.js";
+import { impossible, pline } from "./pline.js";
+import { rn2, rnd } from "./rnd.js";
+import { inside_shop, shop_keeper } from "./shk.js";
 import { rloc } from "./teleport.js";

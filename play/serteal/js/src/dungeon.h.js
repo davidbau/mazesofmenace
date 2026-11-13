@@ -3,15 +3,10 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const struct_d_level = struct("struct_d_level", { /* basic dungeon level element */
     dnum: xint16, /* dungeon number */
     dlevel: xint16, /* level number */
 });
-
-
 
 export const struct_d_flags = struct("struct_d_flags", { /* dungeon/level type flags */
     town: Bitfield(1), /* is this a town? (levels only) */
@@ -41,7 +36,6 @@ export const struct_s_level = struct("struct_s_level", { /* special dungeon leve
     export const LR_UPTELE = LR_TELE + 1;
     export const LR_DOWNTELE = LR_UPTELE + 1;
     export const LR_MONGEN = LR_DOWNTELE + 1;
-
 
 export const struct_dest_area = struct("struct_dest_area", { /* non-stairway level change identifier */
     lx: coordxy, ly: coordxy, /* "lower" left corner (near [0,0]) */
@@ -94,55 +88,6 @@ export const BR_NO_END1 = 1;
 export const BR_NO_END2 = 2;
 
 export const BR_PORTAL = 3;
-
-/* A particular dungeon contains num_dunlevs d_levels with dlevel 1..
- * num_dunlevs.  Ledger_start and depth_start are bases that are added
- * to the dlevel of a particular d_level to get the effective ledger_no
- * and depth for that d_level.
- *
- * Ledger_no is a bookkeeping number that gives a unique identifier for a
- * particular d_level (for level.?? files, e.g.).
- *
- * Depth corresponds to the number of floors below the surface.
- */
-
-/* These both can't be zero, or dungeon_topology isn't init'd / restored */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* monster and object migration codes */
 
@@ -256,15 +201,7 @@ export const struct_mapseen = struct("struct_mapseen", {
     /* dead heroes; might not have graves or ghosts */
     final_resting_place: ptr_to("struct_cemetery"), /* same as level.bonesinfo */
 });
-import { MAXNROFROOMS } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { MAXNROFROOMS, boolean, coordxy, xint16 } from "./global.h.js";
+import { char, int, uchar, unsigned } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

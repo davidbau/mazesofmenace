@@ -3,16 +3,11 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* #define obj obj_nh *//* uncomment for SCO UNIX, which has a conflicting
                           * typedef for "obj" in <sys/types.h> */
 
 /* start with incomplete types in case these aren't defined yet;
    basic pointers to them don't need to know their details */
-
-
 
 export const struct_vptrs = union("struct_vptrs", {
     v_nexthere: ptr_to("struct_obj"), /* floor location lists */
@@ -36,17 +31,12 @@ export const SPE_LIM = 99; export const OBJ_FREE = 0; export const OBJ_FLOOR = 1
     nobj: ptr_to("struct_obj"),
     v: "struct_vptrs",
 
-
-
-
     cobj: ptr_to("struct_obj"), /* contents list for containers */
     o_id: unsigned,
     ox: coordxy, oy: coordxy,
     otyp: short, /* object class number */
     owt: unsigned,
     quan: long, /* number of items */
-
-
 
     spe: schar, /* quality of weapon, weptool, armor, or some rings (+ or -);
                 * number of charges for wand or charged tool ( >= -1 );
@@ -72,15 +62,6 @@ export const SPE_LIM = 99; export const OBJ_FREE = 0; export const OBJ_FLOOR = 1
     oartifact: char, /* artifact array index */
 
     where: xint8, /* where the object thinks it is */
-
-
-
-
-
-
-
-
-
 
     /* note: OBJ_xxx values are used in obj_state_names[] in mkobj.c
        so adding, removing, or renumbering these needs to change that too */
@@ -124,19 +105,12 @@ export const SPE_LIM = 99; export const OBJ_FREE = 0; export const OBJ_FLOOR = 1
     oeroded: Bitfield(2), /* rusted/burnt weapon/armor */
     oeroded2: Bitfield(2), /* corroded/rotted weapon/armor */
 
-
-
-
-
-
-
     oerodeproof: Bitfield(1), /* erodeproof weapon/armor */
     olocked: Bitfield(1), /* object is locked */
     obroken: Bitfield(1), /* lock has been broken */
 
     otrapped: Bitfield(1), /* container is trapped */
 /* or accidental tripped rolling boulder trap */
-
 
     globby: Bitfield(1), /* combines with like types on adjacent squares */
     greased: Bitfield(1), /* covered with grease */
@@ -156,17 +130,9 @@ export const SPE_LIM = 99; export const OBJ_FREE = 0; export const OBJ_FLOOR = 1
 
     /* 6 free bits */
 
-
     corpsenm: int, /* type of corpse is mons[corpsenm] */
 
-
-
-
-
-
-
     usecount: int, /* overloaded for various things that tally */
-
 
     oeaten: unsigned, /* nutrition left in food, if partly eaten */
     age: long, /* creation date */
@@ -182,269 +148,10 @@ export const SPE_LIM = 99; export const OBJ_FREE = 0; export const OBJ_FLOOR = 1
     oextra: ptr_to("struct_oextra"), /* pointer to oextra struct */
 });
 
-
-
-/***
- **     oextra referencing and testing macros
- */
-
-
-
-
-
-
-
-
-
-
-
-/* Weapons and weapon-tools */
-/* KMH -- now based on skill categories.  Formerly:
- *      #define is_sword(otmp)  (otmp->oclass == WEAPON_CLASS && \
- *                       objects[otmp->otyp].oc_wepcat == WEP_SWORD)
- *      #define is_blade(otmp)  (otmp->oclass == WEAPON_CLASS && \
- *                       (objects[otmp->otyp].oc_wepcat == WEP_BLADE || \
- *                        objects[otmp->otyp].oc_wepcat == WEP_SWORD))
- *      #define is_weptool(o)   ((o)->oclass == TOOL_CLASS && \
- *                       objects[(o)->otyp].oc_weptool)
- *      #define is_multigen(otyp) (otyp <= SHURIKEN)
- *      #define is_poisonable(otyp) (otyp <= BEC_DE_CORBIN)
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Snickersnee is not a polearm, but can hit from distance */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-        /* towel is not a weptool:  spe isn't an enchantment, cursed towel
-           doesn't weld to hand, and twoweapon won't work with one */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* 'is_quest_artifact()' only applies to the current role's artifact */
-
-/* 'missile' aspect is up to the caller and does not imply is_missile();
-   rings might be launched as missiles when being scattered by an explosion */
-
-
-
-
-
-/* Armor */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Eggs and other food */
 export const MAX_EGG_HATCH_TIME = 200;
 
-
-
-    /* note: sometimes eggs and tins have special corpsenm values that
-       shouldn't be used as an index into mons[]                       */
-
-
-
-
-
-
-
-
-
-
-/* Containers */
-
-
-
-
-
-
-
-
-
-/* usually waterproof; random chance to be subjected to leakage if cursed;
-   excludes statues, which aren't vulnerable to water even when cursed */
-
-
-
-/* dragon gear */
-
-
-
-
-
-
-
-
-
-
-
-
-/* Elven gear */
-
-
-
-
-
-
-/* Orcish gear */
-
-
-
-
-
-/* Dwarvish gear */
-
-
-
-
-
-/* Gnomish gear */
-
-
-/* Light sources */
-
-
 export const MAX_OIL_IN_FLASK = 400;
-
-/* age field of this is relative age rather than absolute; does not include
-   magic lamp */
-
-
-
-
-
-/* object can be ignited; magic lamp used to excluded here too but all
-   usage of this macro ended up testing
-     (ignitable(obj) || obj->otyp == MAGIC_LAMP)
-   so include it; brass lantern can be lit but not by fire */
-
-
-
-
-
-
-
-/* things that can be read */
-
-
-
-
-
-
-
-/* special stones */
-
-
-
-
-/* misc helpers, simple enough to be macros */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* achievement tracking; 3.6.x did this differently */
-
-
-
-/* is_art() is now a function in artifact.c */
-/* #define is_art(o,art) ((o) && (o)->oartifact == (art)) */
-
-
-
-/* mummy wrappings are more versatile sizewise than other cloaks */
-
-
-
-
 
 /* Flags for get_obj_location(). */
 export const CONTAINED_TOO = 0x1;
@@ -486,8 +193,6 @@ export const LOST_STOLEN = 3;
 export const LOST_EXPLODING = 4;
 
 /* tracking how a name got acquired by an object in named_how field */
-
-
 
 /*
  *  Notes for adding new oextra structures:
@@ -533,16 +238,7 @@ export const LOST_EXPLODING = 4;
  *      11. Adjust saveobj() in src/save.c to deal with your
  *          struct or data during a save.
  */
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { union } from "../rt/struct.js";
+
+import { coordxy, xint16, xint8 } from "./global.h.js";
+import { char, int, long, schar, short, unsigned } from "../rt/ctypes.js";
+import { Bitfield, ptr_to, struct, union } from "../rt/struct.js";

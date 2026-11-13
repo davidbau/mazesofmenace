@@ -1,34 +1,34 @@
-export default "\n" + // -- NetHack quest.lua	$NHDT-Date: 1726894904 2024/09/21 05:01:44 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.10 $
-"\n" + // -- Copyright (c) 2021 by Pasi Kallinen
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // -- TODO:
-"\n" + // --  - output = "verbalize"
-"\n" + // --  - export the quest string replacements to lua, instead of %H etc
-"\n" + // --  - allow checking if hero is carrying item (see comments for %Cp Arc 00042)
-"\n" + // --  - fold quest_portal, quest_portal_again, quest_portal_demand into one
-"\n" + // --  - write tests to check questtext validity?
-"\n" + // --  - qt_pager hack(?): if (qt_msg->delivery == 'p' && strcmp(windowprocs.name, "X11"))
-`
+export default `-- NetHack quest.lua	$NHDT-Date: 1726894904 2024/09/21 05:01:44 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.10 $
+-- Copyright (c) 2021 by Pasi Kallinen
+-- NetHack may be freely redistributed.  See license for details.
+-- TODO:
+--  - output = "verbalize"
+--  - export the quest string replacements to lua, instead of %H etc
+--  - allow checking if hero is carrying item (see comments for %Cp Arc 00042)
+--  - fold quest_portal, quest_portal_again, quest_portal_demand into one
+--  - write tests to check questtext validity?
+--  - qt_pager hack(?): if (qt_msg->delivery == 'p' && strcmp(windowprocs.name, "X11"))
 
 
 
-` + "\n" + // -- text = "something"
-"\n" + // -- Text is shown to the user.
-`
-` + "\n" + // -- synopsis = "something"
-"\n" + // -- Synopsis is inserted into the message history.
-"\n" + // --
-"\n" + // -- output = "pline" | "menu" | "text"
-"\n" + // -- The output can be manually set by using output = "menu"
-"\n" + // -- Valid values for output are "pline", "text", and "menu, defaulting to
-"\n" + // -- pline, unless the text contains newlines, or is too long to fit a message buffer,
-"\n" + // -- then will be shown as a text window instead.
-`
+
+-- text = "something"
+-- Text is shown to the user.
+
+-- synopsis = "something"
+-- Synopsis is inserted into the message history.
+--
+-- output = "pline" | "menu" | "text"
+-- The output can be manually set by using output = "menu"
+-- Valid values for output are "pline", "text", and "menu, defaulting to
+-- pline, unless the text contains newlines, or is too long to fit a message buffer,
+-- then will be shown as a text window instead.
+
 
 
 questtext = {
-` + "\n" + // -- If a role doesn't have a specific message, try a fallback
-`   msg_fallbacks = {
+   -- If a role doesn't have a specific message, try a fallback
+   msg_fallbacks = {
       goal_alt = "goal_next"
    },
    common = {
@@ -153,8 +153,8 @@ to recover the Amulet for your deity, or die in the
 attempt.  Your hour of destiny has come.  For the sake
 of us all:  Go bravely with %d!]],
       },
-` + "\n" + // -- starting with 'pauper' option set, last paragraph differs from normal legacy
-`      pauper_legacy = {
+-- starting with 'pauper' option set, last paragraph differs from normal legacy
+      pauper_legacy = {
          synopsis = "[%dC has chosen you to recover the Amulet of Yendor for %dI.]",
          output = "menu",
          text = [[It is written in the Book of %d:

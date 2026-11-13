@@ -2,13 +2,11 @@
 /*      Copyright (c) M. Stephenson 1988                          */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /* spellmenu arguments; 0..n-1 used as svs.spl_book[] index when swapping */
 export const SPELLMENU_DUMP = (-3);
 export const SPELLMENU_CAST = (-2);
 export const SPELLMENU_VIEW = (-1);
-export const SPELLMENU_SORT = (MAXSPELL);
+export const SPELLMENU_SORT = MAXSPELL;
 
 /* spell retention period, in turns; at 10% of this value, player becomes
    eligible to reread the spellbook and regain 100% retention (the threshold
@@ -19,41 +17,11 @@ export const KEEN = 20000;
    initialization; spell memory is decremented at the end of each turn,
    including the turn on which the spellbook is read; without the extra
    increment, the hero used to get cheated out of 1 turn of retention */
-export function incrnknow(spell, x) { return (svs.spl_book[spell].sp_know = KEEN + (x)); }
+export function incrnknow(spell, x) { return (svs.spl_book[spell].sp_know = KEEN + x); }
 
 export function spellev(spell) { return svs.spl_book[spell].sp_lev; }
 export function spellname(spell) { return OBJ_NAME(objects[spellid(spell)]); }
-export function spellet(spell) { return (char(((spell < 26) ? (ord('a') + spell) : (ord('A') + spell - 26)))); }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function spellet(spell) { return char(((spell < 26) ? (ord('a') + spell) : (ord('A') + spell - 26))); }
 
 /* The roles[] table lists the role-specific values for tuning
  * percent_success().
@@ -111,9 +79,7 @@ export const uarmfbon = 2;
 const explodes = init_string(static_array("explodes", char, sizeof_string("radiates explosive energy")), _("radiates explosive energy"), true);
 
 /* convert a letter into a number in the range 0..51, or -1 if not a letter */
-function /* int */
-spell_let_to_idx(ilet)
-{
+function spell_let_to_idx(ilet) { /* int */
     let indx;
 
     indx = ilet - ord('a');
@@ -126,9 +92,7 @@ spell_let_to_idx(ilet)
 }
 
 /* TRUE: book should be destroyed by caller */
-function /* boolean */
-cursed_book(bp)
-{
+function cursed_book(bp) { /* boolean */
     let was_in_use;
     let lev = objects[bp.otyp].oc_oc2;
     let dmg = 0;
@@ -185,9 +149,7 @@ cursed_book(bp)
 }
 
 /* study while confused: returns TRUE if the book is destroyed */
-function /* boolean */
-confused_book(spellbook)
-{
+function confused_book(spellbook) { /* boolean */
     let gone = FALSE;
 
     if (!rn2(3) && spellbook.otyp != SPE_BOOK_OF_THE_DEAD) {
@@ -207,9 +169,7 @@ confused_book(spellbook)
 }
 
 /* pacify or tame an undead monster */
-function /* void */
-deadbook_pacify_undead(mtmp)
-{
+function deadbook_pacify_undead(mtmp) { /* void */
     if ((is_undead(mtmp.data) || is_vampshifter(mtmp))
         && cansee(mtmp.mx, mtmp.my)) {
         mtmp.mpeaceful = TRUE;
@@ -219,7 +179,7 @@ deadbook_pacify_undead(mtmp)
                 if (mtmp.mtame < 20)
                     mtmp.mtame++;
             } else
-                void tamedog(mtmp, null, TRUE);
+                tamedog(mtmp, null, TRUE);
         else
             monflee(mtmp, 0, FALSE, TRUE);
     }
@@ -227,11 +187,10 @@ deadbook_pacify_undead(mtmp)
 
 /* special effects for the Book of the Dead; reading it while blind is
    allowed so that needs to be taken into account too */
-function /* void */
-deadbook(book2)
-{ const $frame = stack_frame(); try { let $goto = null; var mm = stack_struct(struct_nhcoord);
+function deadbook(book2) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var mm = stack_struct(struct_nhcoord);
     var mtmp;
-    
 
     You(_("turn the pages of the Book of the Dead..."));
     makeknown(SPE_BOOK_OF_THE_DEAD);
@@ -316,7 +275,7 @@ deadbook(book2)
             set_malign(mtmp);
         }
         /* next handle the affect on things you're carrying */
-        void unturn_dead(gy.youmonst);
+        unturn_dead(gy.youmonst);
         /* last place some monsters around you */
         mm.x = u.ux;
         mm.y = u.uy;
@@ -336,12 +295,11 @@ deadbook(book2)
         }
     } } break; }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 'book' has just become cursed; if we're reading it, interrupt */
-export function /* void */
-book_cursed(book)
-{
+export function book_cursed(book) { /* void */
     if (book.cursed && gm.multi >= 0
         && go.occupation == learn && svc.context.spbook.book == book) {
         pline(_("%s shut!"), Tobjnam(book, _("slam")));
@@ -350,11 +308,8 @@ book_cursed(book)
     }
 }
 
-
-
-function /* int */
-learn()
-{ const $frame = stack_frame(); try {
+function learn() { /* int */
+    const $frame = stack_frame(); try {
     let i;
     let booktype;
     let splname = stack_array(char, BUFSZ);
@@ -366,7 +321,7 @@ learn()
         && ublindf.otyp == LENSES && rn2(2))
         svc.context.spbook.delay++;
     if (Confusion()) { /* became confused while learning */
-        void confused_book(book);
+        confused_book(book);
         svc.context.spbook.book = null; /* no longer studying */
         svc.context.spbook.o_id = 0;
         nomul(svc.context.spbook.delay); /* remaining delay is uninterrupted */
@@ -387,7 +342,7 @@ learn()
         return 0;
     }
 
-    void sprintf(splname, objects[booktype].oc_name_known ? _("\"%s\"") : _("the \"%s\" spell"), OBJ_NAME(objects[booktype]))
+    sprintf(splname, objects[booktype].oc_name_known ? _("\"%s\"") : _("the \"%s\" spell"), OBJ_NAME(objects[booktype]))
 
 ;
     for (i = 0; i < MAXSPELL; i++)
@@ -460,15 +415,13 @@ learn()
     svc.context.spbook.book = null;
     svc.context.spbook.o_id = 0;
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* int */
-study_book(spellbook)
-{ const $frame = stack_frame(); try {
+export function study_book(spellbook) { /* int */
+    const $frame = stack_frame(); try {
     let booktype = spellbook.otyp, i;
-    let confused = (+(Confusion() != 0));
+    let confused = +(Confusion() != 0);
     let too_hard = FALSE;
 
     /* attempting to read dull book may make hero fall asleep */
@@ -587,7 +540,7 @@ study_book(spellbook)
                 if (Role_if(PM_WIZARD) && read_ability < 20 && !confused) {
                     let qbuf = stack_array(char, QBUFSZ);
 
-                    void sprintf(qbuf, _("This spellbook is %sdifficult to comprehend.  Continue?"), (read_ability < 12 ? _("very ") : _("")))
+                    sprintf(qbuf, _("This spellbook is %sdifficult to comprehend.  Continue?"), (read_ability < 12 ? _("very ") : _("")))
 
 ;
                     if (y_n(qbuf) != ord('y')) {
@@ -638,13 +591,12 @@ study_book(spellbook)
         svc.context.spbook.o_id = svc.context.spbook.book.o_id;
     set_occupation(learn, _("studying"), 0);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* a spellbook has been destroyed or the character has changed levels;
    the stored address for the current book is no longer valid */
-export function /* void */
-book_disappears(obj)
-{
+export function book_disappears(obj) { /* void */
     if (obj == svc.context.spbook.book) {
         svc.context.spbook.book = null;
         svc.context.spbook.o_id = 0;
@@ -654,9 +606,7 @@ book_disappears(obj)
 /* renaming an object usually results in it having a different address;
    so the sequence start reading, get interrupted, name the book, resume
    reading would read the "new" book from scratch */
-export function /* void */
-book_substitution(old_obj, new_obj)
-{
+export function book_substitution(old_obj, new_obj) { /* void */
     if (old_obj == svc.context.spbook.book) {
         svc.context.spbook.book = new_obj;
         if (svc.context.spbook.book)
@@ -665,9 +615,7 @@ book_substitution(old_obj, new_obj)
 }
 
 /* called from moveloop() */
-export function /* void */
-age_spells()
-{
+export function age_spells() { /* void */
     let i;
     /*
      * The time relative to the hero (a pass through move
@@ -683,9 +631,7 @@ age_spells()
 
 /* return True if spellcasting is inhibited;
    only covers a small subset of reasons why casting won't work */
-function /* boolean */
-rejectcasting()
-{
+function rejectcasting() { /* boolean */
     /* rejections which take place before selecting a particular spell */
     if (Stunned()) {
         You(_("are too impaired to cast a spell."));
@@ -711,9 +657,8 @@ rejectcasting()
  * Return TRUE if a spell was picked, with the spell index in the return
  * parameter.  Otherwise return FALSE.
  */
-function /* boolean */
-getspell(spell_no)
-{ const $frame = stack_frame(); try {
+function getspell(spell_no) { /* boolean */
+    const $frame = stack_frame(); try {
     let nspells, idx, retry_limit;
     let ilet, lets = stack_array(char, BUFSZ), qbuf = stack_array(char, QBUFSZ);
     let cq = stack_struct(struct__cmd_queue), cmdq;
@@ -743,14 +688,14 @@ getspell(spell_no)
     if (flags.menu_style == MENU_TRADITIONAL) {
         /* if we get here, we know there is at least 1 known spell */
         if (nspells == 1)
-            void strcpy(lets, _("a"));
+            strcpy(lets, _("a"));
         else if (nspells < 27)
-            void sprintf(lets, _("a-%c"), ord('a') + nspells - 1);
+            sprintf(lets, _("a-%c"), ord('a') + nspells - 1);
         else if (nspells == 27)
-            void strcpy(lets, _("a-zA"));
+            strcpy(lets, _("a-zA"));
         /* this assumes that there are at most 52 spells... */
         else
-            void sprintf(lets, _("a-zA-%c"), ord('A') + nspells - 27);
+            sprintf(lets, _("a-zA-%c"), ord('A') + nspells - 27);
 
         Snprintf(qbuf, sizeof(array_of(char, QBUFSZ)), _("Cast which spell? [%s *?]"), lets);
         for (retry_limit = 0; ; ++retry_limit) {
@@ -780,12 +725,12 @@ getspell(spell_no)
     }
     return dospellmenu(_("Choose which spell to cast"), SPELLMENU_CAST,
                        spell_no);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #wizcast - cast any spell even without knowing it */
-export function /* int */
-dowizcast()
-{ const $frame = stack_frame(); try {
+export function dowizcast() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let selected = stack_var(ptr_to(struct_mi));
     let any = stack_struct(struct_any);
@@ -812,13 +757,12 @@ dowizcast()
         return spelleffects(i, FALSE, TRUE);
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* the #cast command -- cast a spell */
-export function /* int */
-docast()
-{ const $frame = stack_frame(); try {
+export function docast() { /* int */
+    const $frame = stack_frame(); try {
     let spell_no = stack_var(int);
 
     if (getspell(spell_no)) {
@@ -826,11 +770,10 @@ docast()
         return spelleffects(svs.spl_book[spell_no[0]].sp_id, FALSE, FALSE);
     }
     return ECMD_FAIL;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* const char * */
-spelltypemnemonic(skill)
-{
+function spelltypemnemonic(skill) { /* const char * */
     switch (skill) {
     case P_ATTACK_SPELL:
         return _("attack");
@@ -852,17 +795,13 @@ spelltypemnemonic(skill)
     }
 }
 
-export function /* int */
-spell_skilltype(booktype)
-{
+export function spell_skilltype(booktype) { /* int */
     return objects[booktype].oc_subtyp;
 }
 
 /* Wizards learn what spellbooks look like based on their skill in the
    spell's school */
-export function /* void */
-skill_based_spellbook_id()
-{
+export function skill_based_spellbook_id() { /* void */
     if (!Role_if(PM_WIZARD))
         return;
 
@@ -905,7 +844,6 @@ skill_based_spellbook_id()
     }
 }
 
-
 /* Limit the total area chain lightning can cover; this is both for
    technical reasons (making it possible to limit the size of arrays
    here and in the display code) and for gameplay balance reasons;
@@ -916,18 +854,14 @@ export const CHAIN_LIGHTNING_LIMIT = 100;
    doesn't have enough power), it only covers open space; this also
    means that it can't hit monsters inside walls, which makes sense as
    they would be earthed */
-export function CHAIN_LIGHTNING_TYP(typ) { return (+(SPACE_POS(typ) || (typ) == POOL || (typ) == MOAT /* not WATER */   
-     || (typ) == DRAWBRIDGE_UP || (typ) == LAVAPOOL)); }
+export function CHAIN_LIGHTNING_TYP(typ) { return +(SPACE_POS(typ) || typ == POOL || typ == MOAT /* not WATER */
+     || typ == DRAWBRIDGE_UP || typ == LAVAPOOL); }
 
-export function CHAIN_LIGHTNING_POS(x, y) { return (((isok(x, y) && (CHAIN_LIGHTNING_TYP(levl()[x][y].typ)                 
-                    || (IS_DOOR(levl()[x][y].typ)                         
-                        && !(levl()[x][y].flags & (D_CLOSED | D_LOCKED))))) ? 1 : 0)); }
-
+export function CHAIN_LIGHTNING_POS(x, y) { return (isok(x, y) && (CHAIN_LIGHTNING_TYP(levl()[x][y].typ)
+                    || (IS_DOOR(levl()[x][y].typ)
+                        && !(levl()[x][y].flags & (D_CLOSED | D_LOCKED)))) ? 1 : 0); }
 
 const struct_chain_lightning_zap = struct("struct_chain_lightning_zap", {
-
-
-
     dir: uchar,
 
     x: coordxy, y: coordxy,
@@ -948,11 +882,9 @@ const struct_chain_lightning_queue = struct("struct_chain_lightning_queue", {
 
    zap is passed by value, so the move-forward doesn't change the passed
    argument. */
-function /* void */
-propagate_chain_lightning(
+function propagate_chain_lightning(
     clq,
-    zap)
-{
+    zap) { /* void */
     let mon;
 
     zap.x += chars[xdir + zap.dir];
@@ -999,9 +931,8 @@ propagate_chain_lightning(
     tmp_at(zap.x, zap.y);
 }
 
-function /* void */
-cast_chain_lightning()
-{ const $frame = stack_frame(); try {
+function cast_chain_lightning() { /* void */
+    const $frame = stack_frame(); try {
     let clq = init_list(stack_struct(struct_chain_lightning_queue), {
         q: [{dir: 0}], head: 0, tail: 0, displayed_beam: Hallucination() ? rn2_on_display_rng(6) : (AD_ELEC - 1)
     });
@@ -1036,8 +967,8 @@ cast_chain_lightning()
                 let unused = stack_var(ptr_to(struct_obj), null); /* AD_ELEC can't destroy armor */
                 let dmg;
 
-                gn.notonhead = (+(mon.mx != gb.bhitpos.x
-                                || mon.my != gb.bhitpos.y));
+                gn.notonhead = +(mon.mx != gb.bhitpos.x
+                                || mon.my != gb.bhitpos.y);
                 dmg = zhitm(mon, BZ_U_SPELL(AD_ELEC - 1), 2, unused);
 
                 if (dmg) {
@@ -1097,12 +1028,10 @@ cast_chain_lightning()
     nh_delay_output()();
 
     tmp_at(DISP_END, 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* void */
-cast_protection()
-{
+function cast_protection() { /* void */
     let l = u.ulevel, loglev = 0,
         gain, natac = u.uac + u.uspellprot;
     /* note: u.uspellprot is subtracted when find_ac() factors it into u.uac,
@@ -1177,9 +1106,7 @@ cast_protection()
 }
 
 /* attempting to cast a forgotten spell will cause disorientation */
-function /* void */
-spell_backfire(spell)
-{
+function spell_backfire(spell) { /* void */
     let duration = ((spellev(spell) + 1) * 3),
          old_stun = (HStun() & TIMEOUT), old_conf = (HConfusion() & TIMEOUT);
 
@@ -1216,11 +1143,9 @@ spell_backfire(spell)
     return;
 }
 
-function /* boolean */
-spelleffects_check(spell, res, energy)
-{
+function spelleffects_check(spell, res, energy) { /* boolean */
     let chance;
-    let confused = (+(Confusion() != 0));
+    let confused = +(Confusion() != 0);
 
     energy[0] = 0;
 
@@ -1381,9 +1306,8 @@ spelleffects_check(spell, res, energy)
 
 /* hero casts a spell of type spell_otyp, eg. SPE_SLEEP.
    hero must know the spell (unless force is TRUE). */
-export function /* int */
-spelleffects(spell_otyp, atme, force)
-{ const $frame = stack_frame(); try {
+export function spelleffects(spell_otyp, atme, force) { /* int */
+    const $frame = stack_frame(); try {
     let spell = force ? spell_otyp : spell_idx(spell_otyp);
     let energy = stack_var(int, 0), damage, n;
     let otyp, skill, role_skill, res = stack_var(int, ECMD_OK);
@@ -1427,7 +1351,7 @@ spelleffects(spell_otyp, atme, force)
                     if (!u.dx && !u.dy && !u.dz) {
                         if ((damage = zapyourself(pseudo, TRUE)) != 0) {
                             let buf = stack_array(char, BUFSZ);
-                            void sprintf(buf, _("zapped %sself with a spell"), uhim())
+                            sprintf(buf, _("zapped %sself with a spell"), uhim())
 ;
                             losehp(damage, buf, NO_KILLER_PREFIX);
                         }
@@ -1501,7 +1425,7 @@ spelleffects(spell_otyp, atme, force)
                 if ((damage = zapyourself(pseudo, TRUE)) != 0) {
                     let buf = stack_array(char, BUFSZ);
 
-                    void sprintf(buf, _("zapped %sself with a spell"), uhim());
+                    sprintf(buf, _("zapped %sself with a spell"), uhim());
                     if (physical_damage)
                         damage = Maybe_Half_Phys(damage);
                     losehp(damage, buf, NO_KILLER_PREFIX);
@@ -1527,7 +1451,7 @@ spelleffects(spell_otyp, atme, force)
     /*FALLTHRU*/
     case SPE_MAGIC_MAPPING:
     case SPE_CREATE_MONSTER:
-        void seffects(pseudo);
+        seffects(pseudo);
         break;
 
     /* these are all duplicates of potion effects */
@@ -1542,7 +1466,7 @@ spelleffects(spell_otyp, atme, force)
         /* FALLTHROUGH */;
     /*FALLTHRU*/
     case SPE_INVISIBILITY:
-        void peffects(pseudo);
+        peffects(pseudo);
         break;
     /* end of potion-like spells */
 
@@ -1567,7 +1491,7 @@ spelleffects(spell_otyp, atme, force)
         break;
     }
     case SPE_CREATE_FAMILIAR:
-        void make_familiar(null, u.ux, u.uy, FALSE);
+        make_familiar(null, u.ux, u.uy, FALSE);
         break;
     case SPE_CLAIRVOYANCE:
         if (!BClairvoyant()) {
@@ -1600,12 +1524,11 @@ spelleffects(spell_otyp, atme, force)
 
     obfree(pseudo, null); /* now, get rid of it */
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*ARGSUSED*/
-function /* boolean */
-spell_aim_step(arg, x, y)
-{
+function spell_aim_step(arg, x, y) { /* boolean */
     if (!isok(x,y))
         return FALSE;
     if (!ZAP_POS(levl()[x][y].typ)
@@ -1615,17 +1538,13 @@ spell_aim_step(arg, x, y)
 }
 
 /* not quite the same as throwspell limits, but close enough */
-function /* boolean */
-can_center_spell_location(x, y)
-{
+function can_center_spell_location(x, y) { /* boolean */
     if (distmin(u.ux, u.uy, x, y) > 10)
         return FALSE;
-    return (((isok(x, y) && cansee(x, y) && !(IS_STWALL(levl()[x][y].typ))) ? 1 : 0));
+    return (isok(x, y) && cansee(x, y) && !IS_STWALL(levl()[x][y].typ) ? 1 : 0);
 }
 
-function /* void */
-display_spell_target_positions(on_off)
-{
+function display_spell_target_positions(on_off) { /* void */
     let x, y, dx, dy;
     let dist = 10;
 
@@ -1651,9 +1570,8 @@ display_spell_target_positions(on_off)
 }
 
 /* Choose location where spell takes effect. */
-function /* int */
-throwspell()
-{ const $frame = stack_frame(); try {
+function throwspell() { /* int */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord), uc = stack_struct(struct_nhcoord);
     let mtmp;
 
@@ -1699,24 +1617,18 @@ throwspell()
     u.dx = cc.x;
     u.dy = cc.y;
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* add/hide/remove/unhide teleport-away on behalf of dotelecmd() to give
    more control to behavior of ^T when used in wizard mode */
-export function /* int */
-tport_spell(what)
-{
+export function tport_spell(what) { /* int */
     const struct_tport_hideaway = struct("tport_spell.struct_tport_hideaway", {
         savespell: "struct_spell",
         tport_indx: int,
     }); let save_tport = static_struct("tport_spell.save_tport", struct_tport_hideaway);
     let i;
 /* also defined in teleport.c */
-
-
-
-
-
 
     for (i = 0; i < MAXSPELL; i++)
         if (spellid(i) == SPE_TELEPORT_AWAY || spellid(i) == NO_SPELL)
@@ -1754,14 +1666,17 @@ tport_spell(what)
         }
     }
     return NOOP_SPELL;
-} export const HIDE_SPELL = 1; export const REMOVESPELL = 4; export const UNHIDESPELL = 3; export const ADD_SPELL = 2; export const NOOP_SPELL = 0;
+}
+export const HIDE_SPELL = 1;
+export const REMOVESPELL = 4;
+export const UNHIDESPELL = 3;
+export const ADD_SPELL = 2;
+export const NOOP_SPELL = 0;
 
 /* forget a random selection of known spells due to amnesia;
    they used to be lost entirely, as if never learned, but now we
    just set the memory retention to zero so that they can't be cast */
-export function /* void */
-losespells()
-{
+export function losespells() { /* void */
     let n, nzap, i;
 
     /* in case reading has been interrupted earlier, discard context */
@@ -1815,9 +1730,6 @@ losespells()
             /* lose access to spell [i] */
             svs.spl_book[i].sp_know = 0;
 
-
-
-
             /* and abuse wisdom */
             exercise(A_WIS, FALSE);
             /* there's now one less spell slated to be forgotten */
@@ -1851,7 +1763,6 @@ losespells()
 
     const NUM_SPELL_SORTBY = SORTRETAINORDER + 1;
 
-
 const spl_sortchoices = static_array("spl_sortchoices", ptr_to(char), NUM_SPELL_SORTBY, [
     _("by casting letter"),
     _("alphabetically"),
@@ -1866,9 +1777,7 @@ const spl_sortchoices = static_array("spl_sortchoices", ptr_to(char), NUM_SPELL_
 ]);
 
 /* qsort callback routine */
-function /* int QSORTCALLBACK */
-spell_cmp(vptr1, vptr2)
-{
+function spell_cmp(vptr1, vptr2) { /* int QSORTCALLBACK */
     /*
      * gather up all of the possible parameters except spell name
      * in advance, even though some might not be needed:
@@ -1914,7 +1823,7 @@ spell_cmp(vptr1, vptr2)
     case SORTBY_CURRENT:
     default:
         return (vptr1 < vptr2) ? -1
-                               : (+(vptr1 > vptr2)); /* keep current order */
+                               : +(vptr1 > vptr2); /* keep current order */
     }
     /* tie-breaker for most sorts--alphabetical by spell name */
     return strcmpi(OBJ_NAME(objects[otyp1]), OBJ_NAME(objects[otyp2]));
@@ -1923,15 +1832,11 @@ spell_cmp(vptr1, vptr2)
 /* sort the index used for display order of the "view known spells"
    list (sortmode == SORTBY_xxx), or sort the spellbook itself to make
    the current display order stick (sortmode == SORTRETAINORDER) */
-function /* void */
-sortspells()
-{ const $frame = stack_frame(); try {
+function sortspells() { /* void */
+    const $frame = stack_frame(); try {
     let i;
 
     let n;
-
-
-
 
     if (gs.spl_sortmode == SORTBY_CURRENT)
         return;
@@ -1969,12 +1874,12 @@ sortspells()
     qsort(addr_of(gs.spl_orderindx), n,
           sizeof(int), spell_cmp);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called if the [sort spells] entry in the view spells menu gets chosen */
-function /* boolean */
-spellsortmenu()
-{ const $frame = stack_frame(); try {
+function spellsortmenu() { /* boolean */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let selected = stack_var(ptr_to(struct_mi));
     let any = stack_struct(struct_any);
@@ -2014,12 +1919,12 @@ spellsortmenu()
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #showspells command -- view known spells */
-export function /* int */
-dovspell()
-{ const $frame = stack_frame(); try {
+export function dovspell() { /* int */
+    const $frame = stack_frame(); try {
     let qbuf = stack_array(char, QBUFSZ);
     let splnum = stack_var(int), othnum = stack_var(int);
     let spl_tmp = stack_struct(struct_spell);
@@ -2033,7 +1938,7 @@ dovspell()
                 if (spellsortmenu())
                     sortspells();
             } else {
-                void sprintf(qbuf, _("Reordering spells; swap '%c' with"), spellet(splnum[0]))
+                sprintf(qbuf, _("Reordering spells; swap '%c' with"), spellet(splnum[0]))
 ;
                 if (!dospellmenu(qbuf, splnum[0], othnum))
                     break;
@@ -2050,34 +1955,32 @@ dovspell()
     }
     gs.spl_sortmode = SORTBY_LETTER; /* 0 */
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* lists spells for endgame dumplog purposes */
-export function /* void */
-show_spells()
-{ const $frame = stack_frame(); try {
+export function show_spells() { /* void */
+    const $frame = stack_frame(); try {
     let unused = stack_var(int, SPELLMENU_DUMP);
     if (spellid(0) == NO_SPELL) {
         pline(_("You didn't know any spells."));
         pline(_("%s"), _(""));
     } else {
         pline(_("Spells:"));
-        (void (dospellmenu(_(""), SPELLMENU_DUMP, unused)));
+        dospellmenu(_(""), SPELLMENU_DUMP, unused);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* shows menu of known spells, with options to sort them.
    return FALSE on cancel, TRUE otherwise.
    spell_no is set to the internal spl_book index, if any selected */
-function /* boolean */
-dospellmenu(
+function dospellmenu(
     prompt,
     splaction,
 
-    spell_no)
-{ const $frame = stack_frame(); try {
+    spell_no) { /* boolean */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let i, n, how, splnum;
     let buf = stack_array(char, BUFSZ), retentionbuf = stack_array(char, 24), sep;
@@ -2100,29 +2003,27 @@ dospellmenu(
      * need to be subtracted.
      */
     if (!iflags.menu_tab_sep) {
-        void sprintf(buf, _("%s%-20s Level %-12s Fail Retention"), splaction == SPELLMENU_DUMP ? _("") : _("    "), _("Name"), _("Category"))
-
+        sprintf(buf, _("%s%-20s Level %-12s Fail Retention"), splaction == SPELLMENU_DUMP ? _("") : _("    "), _("Name"), _("Category"))
 
 ;
         fmt = _("%-20s  %2d   %-12s %3d%% %9s");
         sep = ord(' ');
     } else {
-        void sprintf(buf, _("Name\tLevel\tCategory\tFail\tRetention"));
+        sprintf(buf, _("Name\tLevel\tCategory\tFail\tRetention"));
         fmt = _("%s\t%-d\t%s\t%-d%%\t%s");
         sep = ord('\t');
     }
     if (wizard())
-        void sprintf(eos(buf), _("%c%6s"), sep, _("turns"));
+        sprintf(eos(buf), _("%c%6s"), sep, _("turns"));
 
     add_menu_heading(tmpwin, buf);
     for (i = 0; i < MAXSPELL && spellid(i) != NO_SPELL; i++) {
         splnum = !gs.spl_orderindx ? i : gs.spl_orderindx[i];
-        void sprintf(buf, fmt, spellname(splnum), spellev(splnum), spelltypemnemonic(spell_skilltype(spellid(splnum))), 100 - percent_success(splnum), spellretention(splnum, retentionbuf))
-
+        sprintf(buf, fmt, spellname(splnum), spellev(splnum), spelltypemnemonic(spell_skilltype(spellid(splnum))), 100 - percent_success(splnum), spellretention(splnum, retentionbuf))
 
 ;
         if (wizard())
-            void sprintf(eos(buf), _("%c%6d"), sep, spellknow(i));
+            sprintf(eos(buf), _("%c%6d"), sep, spellknow(i));
 
         any.a_int = splnum + 1; /* must be non-zero */
         add_menu(tmpwin, nul_glyphinfo, any, spellet(splnum), 0,
@@ -2165,13 +2066,10 @@ dospellmenu(
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* int */
-percent_success(spell)
-{
+function percent_success(spell) { /* int */
     /* Intrinsic and learned ability are combined to calculate
      * the probability of player's success at casting a given spell.
      */
@@ -2179,8 +2077,8 @@ percent_success(spell)
     let difficulty;
     let skill, skilltype = spell_skilltype(spellid(spell));
     /* Knights don't get metal armor penalty for clerical spells */
-    let paladin_bonus = (+(Role_if(PM_KNIGHT)
-                             && skilltype == P_CLERIC_SPELL));
+    let paladin_bonus = +(Role_if(PM_KNIGHT)
+                             && skilltype == P_CLERIC_SPELL);
 
     /* Calculate intrinsic ability (splcaster) */
 
@@ -2237,7 +2135,7 @@ percent_success(spell)
     skill = P_SKILL(skilltype);
     skill = max(skill, P_UNSKILLED) - 1; /* unskilled => 0 */
     difficulty =
-        (spellev(spell) - 1) * 4 - ((skill * 6) + (Math.trunc(u.ulevel / 3)) + 1);
+        (spellev(spell) - 1) * 4 - ((skill * 6) + Math.trunc(u.ulevel / 3) + 1);
 
     if (difficulty > 0) {
         /* Player is too low level or unskilled. */
@@ -2291,9 +2189,7 @@ percent_success(spell)
     return chance;
 }
 
-function /* char * */
-spellretention(idx, outbuf)
-{
+function spellretention(idx, outbuf) { /* char * */
     let turnsleft, percent, accuracy;
     let skill;
 
@@ -2304,10 +2200,10 @@ spellretention(idx, outbuf)
 
     if (turnsleft < 1) {
         /* spell has expired; hero can't successfully cast it anymore */
-        void strcpy(outbuf, _("(gone)"));
+        strcpy(outbuf, _("(gone)"));
     } else if (turnsleft >= KEEN) {
         /* full retention, first turn or immediately after reading book */
-        void strcpy(outbuf, _("100%"));
+        strcpy(outbuf, _("100%"));
     } else {
         /*
          * Retention is displayed as a range of percentages of
@@ -2323,22 +2219,20 @@ spellretention(idx, outbuf)
          * (N-1)%+1 through N%; so 1% is "greater than 0, at most 200".
          * KEEN is a multiple of 100; KEEN/100 loses no precision.
          */
-        percent = Math.trunc((turnsleft - 1) / (Math.trunc(KEEN / 100))) + 1;
+        percent = Math.trunc((turnsleft - 1) / Math.trunc(KEEN / 100)) + 1;
         accuracy = (skill == P_EXPERT) ? 2
                    : (skill == P_SKILLED) ? 5
                      : (skill == P_BASIC) ? 10
                        : 25;
         /* round up to the high end of this range */
         percent = accuracy * (Math.trunc((percent - 1) / accuracy) + 1);
-        void sprintf(outbuf, _("%lld%%-%lld%%"), percent - accuracy + 1, percent);
+        sprintf(outbuf, _("%lld%%-%lld%%"), percent - accuracy + 1, percent);
     }
     return outbuf;
 }
 
 /* Learn a spell during creation of the initial inventory */
-export function /* void */
-initialspell(obj)
-{
+export function initialspell(obj) { /* void */
     let i, otyp = obj.otyp;
 
     for (i = 0; i < MAXSPELL; i++)
@@ -2359,9 +2253,7 @@ initialspell(obj)
 }
 
 /* returns one of spe_Unknown, spe_Fresh, spe_GoingStale, spe_Forgotten */
-export function /* int */
-known_spell(otyp)
-{
+export function known_spell(otyp) { /* int */
     let i, k;
 
     for (i = 0; (i < MAXSPELL) && (spellid(i) != NO_SPELL); i++)
@@ -2375,9 +2267,7 @@ known_spell(otyp)
 }
 
 /* return index for spell otyp, or UNKNOWN_SPELL if not found */
-export function /* int */
-spell_idx(otyp)
-{
+export function spell_idx(otyp) { /* int */
     let i;
 
     for (i = 0; (i < MAXSPELL) && (spellid(i) != NO_SPELL); i++)
@@ -2387,9 +2277,7 @@ spell_idx(otyp)
 }
 
 /* learn or refresh spell otyp, if feasible; return casting letter or '\0' */
-export function /* char */
-force_learn_spell(otyp)
-{
+export function force_learn_spell(otyp) { /* char */
     let i;
 
     if (otyp == SPE_BLANK_PAPER || otyp == SPE_BOOK_OF_THE_DEAD
@@ -2413,9 +2301,7 @@ force_learn_spell(otyp)
 }
 
 /* number of spells hero knows */
-export function /* int */
-num_spells()
-{
+export function num_spells() { /* int */
     let i;
 
     for (i = 0; i < MAXSPELL; i++)
@@ -2425,373 +2311,144 @@ num_spells()
 }
 
 /*spell.c*/
-import { A_INT } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+
+import { A_INT, A_STR, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { NH_GOLDEN } from "./decl.h.macros.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { nothing_happens } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_goodpos } from "./defsym.h.js";
-import { DISP_BEAM } from "./display.h.js";
-import { DISP_CHANGE } from "./display.h.js";
-import { DISP_END } from "./display.h.js";
-import { EXPL_FIERY } from "./display.h.js";
-import { EXPL_FROSTY } from "./display.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { cmap_to_glyph } from "./display.h.macros.js";
+import { NH_GOLDEN, Never_mind, nothing_happens, something } from "./decl.h.macros.js";
+import { SPBOOK_CLASS, S_goodpos } from "./defsym.h.js";
+import { DISP_BEAM, DISP_CHANGE, DISP_END, EXPL_FIERY, EXPL_FROSTY } from "./display.h.js";
+import { canspotmon, cmap_to_glyph } from "./display.h.macros.js";
 import { Is_waterlevel } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
+import { BUFSZ, FALSE, LL_CONDUCT, QBUFSZ, TRUE, coordxy } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CQ_REPEAT } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { FACE } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MENU_TRADITIONAL } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_MINVENT } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { SPINE } from "./hack.h.js";
-import { XKILL_GIVEMSG } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
-import { BZ_U_SPELL } from "./hack.h.macros.js";
-import { DIR_LEFT } from "./hack.h.macros.js";
-import { DIR_RIGHT2 } from "./hack.h.macros.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { qsort } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import {
+    CMDQ_KEY, CQ_REPEAT, ECMD_FAIL, ECMD_OK, ECMD_TIME, EYE, FACE, HEAD, KILLED_BY_AN,
+    MENU_TRADITIONAL, NO_KILLER_PREFIX, NO_MINVENT, N_DIRS, SPINE, XKILL_GIVEMSG, struct__cmd_queue,
+} from "./hack.h.js";
+import {
+    BZ_U_SPELL, DIR_LEFT, DIR_RIGHT2, Maybe_Half_Phys, makeknown, max, mdistu, min, pline1, qsort,
+    rn1, y_n,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { AD_ELEC } from "./monattk.h.js";
-import { enfolds } from "./mondata.h.macros.js";
-import { eyecount } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { resists_elec } from "./monst.h.macros.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MASTER_LICH } from "./monsters.h.js";
-import { PM_NALFESHNEE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { EF_GREASE } from "./obj.h.js";
-import { EF_VERBOSE } from "./obj.h.js";
-import { ERODE_CORRODE } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { MAXSPELL } from "./objclass.h.js";
-import { NODIR } from "./objclass.h.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { is_metallic } from "./objclass.h.macros.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CORNUTHAUM } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { QUARTERSTAFF } from "./objects.h.js";
-import { ROBE } from "./objects.h.js";
-import { SMALL_SHIELD } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_CANCELLATION } from "./objects.h.js";
-import { SPE_CAUSE_FEAR } from "./objects.h.js";
-import { SPE_CHAIN_LIGHTNING } from "./objects.h.js";
-import { SPE_CHARM_MONSTER } from "./objects.h.js";
-import { SPE_CLAIRVOYANCE } from "./objects.h.js";
-import { SPE_CONE_OF_COLD } from "./objects.h.js";
-import { SPE_CONFUSE_MONSTER } from "./objects.h.js";
-import { SPE_CREATE_FAMILIAR } from "./objects.h.js";
-import { SPE_CREATE_MONSTER } from "./objects.h.js";
-import { SPE_CURE_BLINDNESS } from "./objects.h.js";
-import { SPE_CURE_SICKNESS } from "./objects.h.js";
-import { SPE_DETECT_FOOD } from "./objects.h.js";
-import { SPE_DETECT_MONSTERS } from "./objects.h.js";
-import { SPE_DETECT_TREASURE } from "./objects.h.js";
-import { SPE_DETECT_UNSEEN } from "./objects.h.js";
-import { SPE_DIG } from "./objects.h.js";
-import { SPE_DRAIN_LIFE } from "./objects.h.js";
-import { SPE_EXTRA_HEALING } from "./objects.h.js";
-import { SPE_FINGER_OF_DEATH } from "./objects.h.js";
-import { SPE_FIREBALL } from "./objects.h.js";
-import { SPE_FORCE_BOLT } from "./objects.h.js";
-import { SPE_HASTE_SELF } from "./objects.h.js";
-import { SPE_HEALING } from "./objects.h.js";
-import { SPE_IDENTIFY } from "./objects.h.js";
-import { SPE_INVISIBILITY } from "./objects.h.js";
-import { SPE_JUMPING } from "./objects.h.js";
-import { SPE_KNOCK } from "./objects.h.js";
-import { SPE_LEVITATION } from "./objects.h.js";
-import { SPE_LIGHT } from "./objects.h.js";
-import { SPE_MAGIC_MAPPING } from "./objects.h.js";
-import { SPE_MAGIC_MISSILE } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { SPE_POLYMORPH } from "./objects.h.js";
-import { SPE_PROTECTION } from "./objects.h.js";
-import { SPE_REMOVE_CURSE } from "./objects.h.js";
-import { SPE_RESTORE_ABILITY } from "./objects.h.js";
-import { SPE_SLEEP } from "./objects.h.js";
-import { SPE_SLOW_MONSTER } from "./objects.h.js";
-import { SPE_STONE_TO_FLESH } from "./objects.h.js";
-import { SPE_TELEPORT_AWAY } from "./objects.h.js";
-import { SPE_TURN_UNDEAD } from "./objects.h.js";
-import { SPE_WIZARD_LOCK } from "./objects.h.js";
+import { enfolds, eyecount, is_animal, is_undead, is_whirly } from "./mondata.h.macros.js";
+import { DEADMONSTER, is_vampshifter, resists_elec } from "./monst.h.macros.js";
+import { PM_FOG_CLOUD, PM_KNIGHT, PM_MASTER_LICH, PM_NALFESHNEE, PM_WIZARD } from "./monsters.h.js";
+import { EF_GREASE, EF_VERBOSE, ERODE_CORRODE, struct_obj } from "./obj.h.js";
+import { MAXSPELL, NODIR } from "./objclass.h.js";
+import { OBJ_NAME, is_metallic } from "./objclass.h.macros.js";
+import {
+    BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORNUTHAUM, LENSES, QUARTERSTAFF, ROBE,
+    SMALL_SHIELD, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_CANCELLATION, SPE_CAUSE_FEAR,
+    SPE_CHAIN_LIGHTNING, SPE_CHARM_MONSTER, SPE_CLAIRVOYANCE, SPE_CONE_OF_COLD, SPE_CONFUSE_MONSTER,
+    SPE_CREATE_FAMILIAR, SPE_CREATE_MONSTER, SPE_CURE_BLINDNESS, SPE_CURE_SICKNESS, SPE_DETECT_FOOD,
+    SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_DETECT_UNSEEN, SPE_DIG, SPE_DRAIN_LIFE,
+    SPE_EXTRA_HEALING, SPE_FINGER_OF_DEATH, SPE_FIREBALL, SPE_FORCE_BOLT, SPE_HASTE_SELF,
+    SPE_HEALING, SPE_IDENTIFY, SPE_INVISIBILITY, SPE_JUMPING, SPE_KNOCK, SPE_LEVITATION, SPE_LIGHT,
+    SPE_MAGIC_MAPPING, SPE_MAGIC_MISSILE, SPE_NOVEL, SPE_POLYMORPH, SPE_PROTECTION,
+    SPE_REMOVE_CURSE, SPE_RESTORE_ABILITY, SPE_SLEEP, SPE_SLOW_MONSTER, SPE_STONE_TO_FLESH,
+    SPE_TELEPORT_AWAY, SPE_TURN_UNDEAD, SPE_WIZARD_LOCK,
+} from "./objects.h.js";
 import { TIMEOUT } from "./prop.h.js";
-import { CLOUD } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { SPACE_POS } from "./rm.h.macros.js";
-import { ZAP_POS } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { P_ATTACK_SPELL } from "./skills.h.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_CLERIC_SPELL } from "./skills.h.js";
-import { P_DIVINATION_SPELL } from "./skills.h.js";
-import { P_ENCHANTMENT_SPELL } from "./skills.h.js";
-import { P_ESCAPE_SPELL } from "./skills.h.js";
-import { P_EXPERT } from "./skills.h.js";
-import { P_GRAND_MASTER } from "./skills.h.js";
-import { P_HEALING_SPELL } from "./skills.h.js";
-import { P_MASTER } from "./skills.h.js";
-import { P_MATTER_SPELL } from "./skills.h.js";
-import { P_NONE } from "./skills.h.js";
-import { P_SKILLED } from "./skills.h.js";
-import { P_UNSKILLED } from "./skills.h.js";
+import {
+    CLOUD, DRAWBRIDGE_UP, D_CLOSED, D_ISOPEN, D_LOCKED, LAVAPOOL, MOAT, POOL,
+} from "./rm.h.js";
+import { IS_DOOR, IS_STWALL, IS_TREE, SPACE_POS, ZAP_POS, levl, m_at } from "./rm.h.macros.js";
+import {
+    P_ATTACK_SPELL, P_BASIC, P_CLERIC_SPELL, P_DIVINATION_SPELL, P_ENCHANTMENT_SPELL,
+    P_ESCAPE_SPELL, P_EXPERT, P_GRAND_MASTER, P_HEALING_SPELL, P_MASTER, P_MATTER_SPELL, P_NONE,
+    P_SKILLED, P_UNSKILLED,
+} from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
-import { MAX_SPELL_STUDY } from "./spell.h.js";
-import { NO_SPELL } from "./spell.h.js";
-import { UNKNOWN_SPELL } from "./spell.h.js";
-import { spe_Forgotten } from "./spell.h.js";
-import { spe_Fresh } from "./spell.h.js";
-import { spe_GoingStale } from "./spell.h.js";
-import { spe_Unknown } from "./spell.h.js";
-import { struct_spell } from "./spell.h.js";
-import { SPELL_LEV_PW } from "./spell.h.macros.js";
-import { decrnknow } from "./spell.h.macros.js";
-import { spellid } from "./spell.h.macros.js";
-import { spellknow } from "./spell.h.macros.js";
+import {
+    MAX_SPELL_STUDY, NO_SPELL, UNKNOWN_SPELL, spe_Forgotten, spe_Fresh, spe_GoingStale, spe_Unknown,
+    struct_spell,
+} from "./spell.h.js";
+import { SPELL_LEV_PW, decrnknow, spellid, spellknow } from "./spell.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { ACH_INVK } from "./you.h.js";
-import { ACH_NOVL } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhim } from "./you.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { BClairvoyant } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Sleep_resistance } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
+import {
+    clear_nhwindow, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, nh_delay_output,
+    start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, NHW_MENU,
+    PICK_NONE, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { ACH_INVK, ACH_NOVL } from "./you.h.js";
+import { Role_if, u_at, uhim } from "./you.h.macros.js";
+import {
+    Antimagic, BClairvoyant, Blind, BlindedTimeout, Confusion, HConfusion, HStun, Hallucination,
+    Poison_resistance, Sick, Sleep_resistance, Slimed, Stunned,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { char, int, ord, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { free, sprintf, strchr, strcpy } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { struct_copy } from "../rt/struct.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, ref_to, struct, struct_assign, struct_copy,
+} from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
 import { alloc } from "./alloc.js";
 import { jump } from "./apply.js";
-import { acurr } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { poison_strdmg } from "./attrib.js";
-import { cmdq_add_key } from "./cmd.js";
-import { cmdq_pop } from "./cmd.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { set_occupation } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { quitchars } from "./decl.js";
-import { svb } from "./decl.js";
-import { svc } from "./decl.js";
-import { svm } from "./decl.js";
-import { svs } from "./decl.js";
-import { u } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
+import { acurr, exercise, poison_strdmg } from "./attrib.js";
+import { cmdq_add_key, cmdq_pop, getdir, isok, set_occupation, yn_function } from "./cmd.js";
+import {
+    cg, disp, flags, gb, gi, gm, gn, go, gs, gu, gy, iflags, quitchars, svb, svc, svm, svs, u, xdir,
+    ydir,
+} from "./decl.js";
 import { do_vicinity_map } from "./detect.js";
-import { canseemon } from "./display.js";
-import { map_invisible } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { shieldeff } from "./display.js";
-import { tmp_at } from "./display.js";
-import { zapdir_to_glyph } from "./display.js";
+import {
+    canseemon, map_invisible, nul_glyphinfo, shieldeff, tmp_at, zapdir_to_glyph,
+} from "./display.js";
 import { trycall } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { noveltitle } from "./do_name.js";
+import { Monnam, hcolor, hliquid, mon_nam, noveltitle } from "./do_name.js";
 import { find_ac } from "./do_wear.js";
-import { make_familiar } from "./dog.js";
-import { tamedog } from "./dog.js";
+import { make_familiar, tamedog } from "./dog.js";
 import { walk_path } from "./dothrow.js";
 import { morehungry } from "./eat.js";
 import { freehand } from "./engrave.js";
-import { more_experienced } from "./exper.js";
-import { newexplevel } from "./exper.js";
+import { more_experienced, newexplevel } from "./exper.js";
 import { explode } from "./explode.js";
 import { read_tribute } from "./files.js";
-import { getpos } from "./getpos.js";
-import { getpos_sethilite } from "./getpos.js";
-import { check_capacity } from "./hack.js";
-import { invocation_pos } from "./hack.js";
-import { losehp } from "./hack.js";
-import { nomul } from "./hack.js";
-import { distmin } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { isqrt } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
+import { getpos, getpos_sethilite } from "./getpos.js";
+import { check_capacity, invocation_pos, losehp, nomul } from "./hack.js";
+import { distmin, eos, isqrt, sgn } from "./hacklib.js";
 import { record_achievement } from "./insight.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { update_inventory, useup } from "./invent.js";
+import { makemon, set_malign } from "./makemon.js";
 import { mkinvokearea } from "./mklev.js";
-import { mksobj } from "./mkobj.js";
-import { set_bknown } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import { mksobj, set_bknown, weight } from "./mkobj.js";
 import { mkundead } from "./mkroom.js";
-import { iter_mons } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { xkilled } from "./mon.js";
-import { can_chant } from "./mondata.js";
-import { defended } from "./mondata.js";
+import { iter_mons, wakeup, xkilled } from "./mon.js";
+import { can_chant, defended } from "./mondata.js";
 import { monflee } from "./monmove.js";
 import { mons } from "./monst.js";
-import { discover_object } from "./o_init.js";
-import { objdescr_is } from "./o_init.js";
-import { observe_object } from "./o_init.js";
+import { discover_object, objdescr_is, observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { Tobjnam, an, makeplural } from "./objnam.js";
+import {
+    You, You_feel, You_hear, Your, impossible, livelog_printf, pline, pline_The,
+} from "./pline.js";
 import { body_part } from "./polyself.js";
-import { healup } from "./potion.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { peffects } from "./potion.js";
+import {
+    healup, make_blinded, make_confused, make_slimed, make_stunned, peffects,
+} from "./potion.js";
 import { seffects } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { check_unpaid } from "./shk.js";
-import { obfree } from "./shk.js";
-import { rndcurse } from "./sit.js";
-import { take_gold } from "./sit.js";
+import { d, rn2, rn2_on_display_rng, rnd, rnl } from "./rnd.js";
+import { check_unpaid, obfree } from "./shk.js";
+import { rndcurse, take_gold } from "./sit.js";
 import { On_stairs } from "./stairs.js";
 import { tele } from "./teleport.js";
 import { fall_asleep } from "./timeout.js";
 import { erode_obj } from "./trap.js";
 import { use_skill } from "./weapon.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { add_menu, add_menu_heading, add_menu_str, select_menu } from "./windows.js";
 import { aggravate } from "./wizard.js";
-import { exclam } from "./zap.js";
-import { spell_damage_bonus } from "./zap.js";
-import { unturn_dead } from "./zap.js";
-import { weffects } from "./zap.js";
-import { zapyourself } from "./zap.js";
-import { zhitm } from "./zap.js";
+import { exclam, spell_damage_bonus, unturn_dead, weffects, zapyourself, zhitm } from "./zap.js";

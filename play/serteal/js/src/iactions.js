@@ -3,14 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2026. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
     const IA_NONE = 0;
     const IA_UNWIELD = IA_NONE + 1;
     const IA_APPLY_OBJ = IA_UNWIELD + 1;
@@ -40,28 +32,22 @@
     const IA_ZAP_OBJ = IA_TWOWEAPON + 1;
     const IA_WHATIS_OBJ = IA_ZAP_OBJ + 1;
 
-
 /* construct text for the menu entries for IA_NAME_OBJ and IA_NAME_OTYP */
-function /* boolean */
-item_naming_classification(
+function item_naming_classification(
     obj,
     onamebuf,
-    ocallbuf)
-{
+    ocallbuf) { /* boolean */
     let Name = init_string(static_array("item_naming_classification.Name", char, sizeof_string("Name")), _("Name"), true),
         Rename = init_string(static_array("item_naming_classification.Rename", char, sizeof_string("Rename or un-name")), _("Rename or un-name"), true),
         Call = init_string(static_array("item_naming_classification.Call", char, sizeof_string("Call")), _("Call"), true),
 
-
         Recall = init_string(static_array("item_naming_classification.Recall", char, sizeof_string("Re-call or un-call")), _("Re-call or un-call"), true);
-
 
     chars[onamebuf + 0] = chars[ocallbuf + 0] = ord('\0');
     if (name_ok(obj) == GETOBJ_SUGGEST) {
-        void sprintf(onamebuf, _("%s %s %s"), (!has_oname(obj) || !chars[ONAME(obj)]) ? Name : Rename, the_unique_obj(obj) ? _("the")
+        sprintf(onamebuf, _("%s %s %s"), (!has_oname(obj) || !chars[ONAME(obj)]) ? Name : Rename, the_unique_obj(obj) ? _("the")
                 : !is_plural(obj) ? _("this specific")
                   : _("this stack of"), simpleonames(obj))
-
 
 ;
     }
@@ -73,7 +59,7 @@ item_naming_classification(
             callname = the(callname);
         else if (!is_plural(obj))
             callname = makeplural(callname);
-        void sprintf(ocallbuf, _("%s the type for %s"), (!objects[obj.otyp].oc_uname
+        sprintf(ocallbuf, _("%s the type for %s"), (!objects[obj.otyp].oc_uname
                  || !chars[objects[obj.otyp].oc_uname]) ? Call : Recall, callname)
 
 ;
@@ -82,20 +68,18 @@ item_naming_classification(
 }
 
 /* construct text for the menu entries for IA_READ_OBJ */
-function /* int */
-item_reading_classification(obj, outbuf)
-{
+function item_reading_classification(obj, outbuf) { /* int */
     let otyp = obj.otyp, res = IA_READ_OBJ;
 
     chars[outbuf] = ord('\0');
     if (otyp == FORTUNE_COOKIE) {
-        void strcpy(outbuf, _("Read the message inside this cookie"));
+        strcpy(outbuf, _("Read the message inside this cookie"));
     } else if (otyp == T_SHIRT) {
-        void strcpy(outbuf, _("Read the slogan on the shirt"));
+        strcpy(outbuf, _("Read the slogan on the shirt"));
     } else if (otyp == ALCHEMY_SMOCK) {
-        void strcpy(outbuf, _("Read the slogan on the apron"));
+        strcpy(outbuf, _("Read the slogan on the apron"));
     } else if (otyp == HAWAIIAN_SHIRT) {
-        void strcpy(outbuf, _("Look at the pattern on the shirt"));
+        strcpy(outbuf, _("Look at the pattern on the shirt"));
     } else if (obj.oclass == SCROLL_CLASS) {
         let magic = ((obj.dknown
 
@@ -105,15 +89,15 @@ item_reading_classification(obj, outbuf)
                                   || !objects[otyp].oc_name_known))
                              ? _(" to activate its magic") : _(""));
 
-        void sprintf(outbuf, _("Read this scroll%s"), magic);
+        sprintf(outbuf, _("Read this scroll%s"), magic);
     } else if (obj.oclass == SPBOOK_CLASS) {
-        let novel = (+(otyp == SPE_NOVEL)),
-                blank = (((otyp == SPE_BLANK_PAPER
-                         && objects[otyp].oc_name_known) ? 1 : 0)),
-                tome = (((otyp == SPE_BOOK_OF_THE_DEAD
-                        && objects[otyp].oc_name_known) ? 1 : 0));
+        let novel = +(otyp == SPE_NOVEL),
+                blank = (otyp == SPE_BLANK_PAPER
+                         && objects[otyp].oc_name_known ? 1 : 0),
+                tome = (otyp == SPE_BOOK_OF_THE_DEAD
+                        && objects[otyp].oc_name_known ? 1 : 0);
 
-        void sprintf(outbuf, _("%s this %s"), (novel || blank) ? _("Read") : tome ? _("Examine") : _("Study"), novel ? simpleonames(obj) /* "novel" or "paperback book" */
+        sprintf(outbuf, _("%s this %s"), (novel || blank) ? _("Read") : tome ? _("Examine") : _("Study"), novel ? simpleonames(obj) /* "novel" or "paperback book" */
                       : tome ? _("tome") : _("spellbook"))
 
 ;
@@ -123,9 +107,8 @@ item_reading_classification(obj, outbuf)
     return res;
 }
 
-function /* void */
-ia_addmenu(win, act, let_, txt)
-{ const $frame = stack_frame(); try {
+function ia_addmenu(win, act, let_, txt) { /* void */
+    const $frame = stack_frame(); try {
     let any = stack_struct(struct_any);
     let clr = NO_COLOR;
 
@@ -133,12 +116,11 @@ ia_addmenu(win, act, let_, txt)
     any.a_int = act;
     add_menu(win, nul_glyphinfo, any, let_, 0,
              ATR_NONE, clr, txt, MENU_ITEMFLAGS_NONE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* set up a command to execute on a specific item next */
-function /* void */
-itemactions_pushkeys(otmp, act)
-{
+function itemactions_pushkeys(otmp, act) { /* void */
     switch (act) {
     default:
         impossible(_("Unknown item action %d"), act);
@@ -274,9 +256,8 @@ itemactions_pushkeys(otmp, act)
 }
 
 /* Show menu of possible actions hero could do with item otmp */
-export function /* int */
-itemactions(otmp)
-{ const $frame = stack_frame(); try {
+export function itemactions(otmp) { /* int */
+    const $frame = stack_frame(); try {
     let n, act = IA_NONE;
     let win;
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ);
@@ -300,7 +281,7 @@ itemactions(otmp)
          * TODO: if uwep is ammo, tell player that to shoot instead of toss,
          *       the corresponding launcher must be wielded;
          */
-        void sprintf(buf, _("%s '%c' to %s %s %s"), verb, HANDS_SYM, action, which, is_plural(otmp) ? makeplural(what) : what)
+        sprintf(buf, _("%s '%c' to %s %s %s"), verb, HANDS_SYM, action, which, is_plural(otmp) ? makeplural(what) : what)
 
 ;
         ia_addmenu(win, IA_UNWIELD, ord('-'), buf);
@@ -347,7 +328,7 @@ itemactions(otmp)
     else if (otmp.otyp == BELL || otmp.otyp == BELL_OF_OPENING)
         ia_addmenu(win, IA_APPLY_OBJ, ord('a'), _("Ring the bell"));
     else if (otmp.otyp == CANDELABRUM_OF_INVOCATION) {
-        void sprintf(buf, _("%s the candelabrum"), light);
+        sprintf(buf, _("%s the candelabrum"), light);
         ia_addmenu(win, IA_APPLY_OBJ, ord('a'), buf);
     } else if (otmp.otyp == WAX_CANDLE || otmp.otyp == TALLOW_CANDLE) {
         let multiple = (otmp.quan == 1) ? FALSE : TRUE;
@@ -355,22 +336,22 @@ itemactions(otmp)
         let o = carrying(CANDELABRUM_OF_INVOCATION);
 
         if (o && o.spe < 7)
-            void sprintf(buf, _("Attach %s to your candelabrum, or %s %s"), s, !otmp.lamplit ? _("light") : _("extinguish"), multiple ? _("them") : _("it"));
+            sprintf(buf, _("Attach %s to your candelabrum, or %s %s"), s, !otmp.lamplit ? _("light") : _("extinguish"), multiple ? _("them") : _("it"));
         else
-            void sprintf(buf, _("%s %s %s"), light, s, simpleonames(otmp))
+            sprintf(buf, _("%s %s %s"), light, s, simpleonames(otmp))
 
 ;
         ia_addmenu(win, IA_APPLY_OBJ, ord('a'), buf);
     } else if (otmp.otyp == OIL_LAMP || otmp.otyp == MAGIC_LAMP
                || otmp.otyp == BRASS_LANTERN) {
-        void sprintf(buf, _("%s this light source"), light);
+        sprintf(buf, _("%s this light source"), light);
         ia_addmenu(win, IA_APPLY_OBJ, ord('a'), buf);
     } else if (otmp.otyp == POT_OIL && objects[otmp.otyp].oc_name_known) {
-        void sprintf(buf, _("%s this oil"), light);
+        sprintf(buf, _("%s this oil"), light);
         ia_addmenu(win, IA_APPLY_OBJ, ord('a'), buf);
     } else if (otmp.oclass == POTION_CLASS) {
         /* FIXME? this should probably be moved to 'D' rather than be 'a' */
-        void sprintf(buf, _("Dip something into %s potion%s"), is_plural(otmp) ? _("one of these") : _("this"), plur(otmp.quan))
+        sprintf(buf, _("Dip something into %s potion%s"), is_plural(otmp) ? _("one of these") : _("this"), plur(otmp.quan))
 ;
         ia_addmenu(win, IA_DIP_OBJ, ord('a'), buf);
     } else if (otmp.otyp == EXPENSIVE_CAMERA)
@@ -411,19 +392,19 @@ itemactions(otmp)
        always have a takeoff/remove choice so we don't have to worry
        about the menu maybe being empty when 'd' is suppressed */
     if (!already_worn) {
-        void sprintf(buf, _("Drop this %s"), (otmp.quan > 1) ? _("stack") : _("item"));
+        sprintf(buf, _("Drop this %s"), (otmp.quan > 1) ? _("stack") : _("item"));
         ia_addmenu(win, IA_DROP_OBJ, ord('d'), buf);
     }
 
     /* e: eat item */
     if (otmp.otyp == TIN) {
-        void sprintf(buf, _("Open %s%s and eat the contents"), (otmp.quan > 1) ? _("one of these tins") : _("this tin"), (otmp.otyp == TIN && uwep && uwep.otyp == TIN_OPENER)
+        sprintf(buf, _("Open %s%s and eat the contents"), (otmp.quan > 1) ? _("one of these tins") : _("this tin"), (otmp.otyp == TIN && uwep && uwep.otyp == TIN_OPENER)
                 ? _(" with your tin opener") : _(""))
 
 ;
         ia_addmenu(win, IA_EAT_OBJ, ord('e'), buf);
     } else if (is_edible(otmp)) {
-        void sprintf(buf, _("Eat %s"), (otmp.quan > 1) ? _("one of these") : _("this"));
+        sprintf(buf, _("Eat %s"), (otmp.quan > 1) ? _("one of these") : _("this"));
         ia_addmenu(win, IA_EAT_OBJ, ord('e'), buf);
     }
 
@@ -436,10 +417,9 @@ itemactions(otmp)
                    _("Scribble graffiti on the floor"));
     } else if (otmp.oclass == WEAPON_CLASS || otmp.oclass == WAND_CLASS
              || otmp.oclass == GEM_CLASS || otmp.oclass == RING_CLASS) {
-        void sprintf(buf, _("%s on the %s with %s"), (is_blade(otmp) || otmp.oclass == WAND_CLASS
+        sprintf(buf, _("%s on the %s with %s"), (is_blade(otmp) || otmp.oclass == WAND_CLASS
                  || ((otmp.oclass == GEM_CLASS || otmp.oclass == RING_CLASS)
                      && objects[otmp.otyp].oc_tough)) ? _("Engrave") : _("Write"), surface(u.ux, u.uy), (otmp.quan > 1) ? _("one of these items") : _("this item"))
-
 
 ;
         ia_addmenu(win, IA_ENGRAVE_OBJ, ord('E'), buf);
@@ -450,11 +430,11 @@ itemactions(otmp)
         let shoot = ammo_and_launcher(otmp, uwep);
 
         /* FIXME: see the multi-shot FIXME about "one of" for 't: throw' */
-        void sprintf(buf, _("%s %s"), shoot ? _("Shoot") : _("Throw"), (otmp.quan > 1) ? _("one of these") : _("this"))
+        sprintf(buf, _("%s %s"), shoot ? _("Shoot") : _("Throw"), (otmp.quan > 1) ? _("one of these") : _("this"))
 ;
         if (shoot) {
             assert(uwep != null);
-            void sprintf(eos(buf), _(" with your wielded %s"), simpleonames(uwep));
+            sprintf(eos(buf), _(" with your wielded %s"), simpleonames(uwep));
         }
         ia_addmenu(win, IA_FIRE_OBJ, ord('f'), buf);
     }
@@ -488,7 +468,7 @@ itemactions(otmp)
            flagged 'unpaid') holding shop owned items */
         && (mtmp = shop_keeper(chars[in_rooms(u.ux, u.uy, SHOPBASE)])) != null
         && inhishop(mtmp)) {
-        void sprintf(buf, _("Buy this unpaid %s"), (otmp.quan > 1) ? _("stack") : _("item"))
+        sprintf(buf, _("Buy this unpaid %s"), (otmp.quan > 1) ? _("stack") : _("item"))
 ;
         ia_addmenu(win, IA_BUY_OBJ, ord('p'), buf);
     }
@@ -502,22 +482,22 @@ itemactions(otmp)
            item actions can be used to learn commands */
         chars[buf] = ord('\0');
         if (otmp.oclass == AMULET_CLASS) {
-            void strcpy(buf, !uamul ? _("Put this amulet on")
+            strcpy(buf, !uamul ? _("Put this amulet on")
                                : _("[already wearing an amulet]"));
         } else if (otmp.oclass == RING_CLASS || otmp.otyp == MEAT_RING) {
             if (!uleft || !uright)
-                void strcpy(buf, _("Put this ring on"));
+                strcpy(buf, _("Put this ring on"));
             else
-                void sprintf(buf, _("[both ring %s in use]"), makeplural(body_part(FINGER)))
+                sprintf(buf, _("[both ring %s in use]"), makeplural(body_part(FINGER)))
 ;
         } else if (otmp.otyp == BLINDFOLD || otmp.otyp == TOWEL
                    || otmp.otyp == LENSES) {
             if (ublindf)
-                void strcpy(buf, _("[already wearing eyewear]"));
+                strcpy(buf, _("[already wearing eyewear]"));
             else if (otmp.otyp == LENSES)
-                void strcpy(buf, _("Put these lenses on"));
+                strcpy(buf, _("Put these lenses on"));
             else
-                void sprintf(buf, _("Put this on%s"), (otmp.otyp == TOWEL) ? _(" to blindfold yourself") : _(""))
+                sprintf(buf, _("Put this on%s"), (otmp.otyp == TOWEL) ? _(" to blindfold yourself") : _(""))
 ;
         }
         if (chars[buf])
@@ -526,7 +506,7 @@ itemactions(otmp)
 
     /* q: drink item */
     if (otmp.oclass == POTION_CLASS) {
-        void sprintf(buf, _("Quaff (drink) %s"), (otmp.quan > 1) ? _("one of these potions") : _("this potion"))
+        sprintf(buf, _("Quaff (drink) %s"), (otmp.quan > 1) ? _("one of these potions") : _("this potion"))
 ;
         ia_addmenu(win, IA_QUAFF_OBJ, ord('q'), buf);
     }
@@ -534,7 +514,7 @@ itemactions(otmp)
     /* Q: quiver throwable item */
     if ((otmp.oclass == GEM_CLASS || otmp.oclass == WEAPON_CLASS)
         && otmp != uquiver) {
-        void sprintf(buf, _("Quiver this %s for easy %s with \'f\'ire"), (otmp.quan > 1) ? _("stack") : _("item"), ammo_and_launcher(otmp, uwep) ? _("shooting") : _("throwing"))
+        sprintf(buf, _("Quiver this %s for easy %s with \'f\'ire"), (otmp.quan > 1) ? _("stack") : _("item"), ammo_and_launcher(otmp, uwep) ? _("shooting") : _("throwing"))
 
 ;
         ia_addmenu(win, IA_QUIVER_OBJ, ord('Q'), buf);
@@ -546,7 +526,7 @@ itemactions(otmp)
 
     /* R: remove accessory or rub item */
     if (otmp.owornmask & W_ACCESSORY) {
-        void sprintf(buf, _("Remove this %s"), (otmp.owornmask & W_AMUL) ? _("amulet")
+        sprintf(buf, _("Remove this %s"), (otmp.owornmask & W_AMUL) ? _("amulet")
                 : (otmp.owornmask & W_RING) ? _("ring")
                   : (otmp.owornmask & W_TOOL) ? _("eyewear")
                     : _("accessory"))
@@ -555,7 +535,7 @@ itemactions(otmp)
     }
     if (otmp.otyp == OIL_LAMP || otmp.otyp == MAGIC_LAMP
         || otmp.otyp == BRASS_LANTERN) {
-        void sprintf(buf, _("Rub this %s"), simpleonames(otmp));
+        sprintf(buf, _("Rub this %s"), simpleonames(otmp));
         ia_addmenu(win, IA_RUB_OBJ, ord('R'), buf);
     } else if (otmp.oclass == GEM_CLASS && is_graystone(otmp))
         ia_addmenu(win, IA_RUB_OBJ, ord('R'), _("Rub something on this stone"));
@@ -572,15 +552,11 @@ itemactions(otmp)
          *  volley count and that could randomly yield 1 here and 2..N
          *  while throwing or vice versa.
          */
-        void sprintf(buf, _("%s %s%s"), shoot ? _("Shoot") : _("Throw"), (otmp.quan == 1) ? _("this item")
+        sprintf(buf, _("%s %s%s"), shoot ? _("Shoot") : _("Throw"), (otmp.quan == 1) ? _("this item")
                 : (otmp.otyp == GOLD_PIECE) ? _("them")
                   : _("one of these"), (otmp == uquiver && (otmp.otyp != GOLD_PIECE
                                      || otmp.quan == 1))
                 ? _(" (same as 'f')") : _(""))
-
-
-
-
 
 ;
         ia_addmenu(win, IA_THROW_OBJ, ord('t'), buf);
@@ -609,7 +585,7 @@ itemactions(otmp)
         ; /* either already wielded or can't wield anything; skip 'w' */
     } else if (otmp.oclass == WEAPON_CLASS || is_weptool(otmp)
                || is_wet_towel(otmp) || otmp.otyp == HEAVY_IRON_BALL) {
-        void sprintf(buf, _("Wield this %s as your weapon"), (otmp.quan > 1) ? _("stack") : _("item"))
+        sprintf(buf, _("Wield this %s as your weapon"), (otmp.quan > 1) ? _("stack") : _("item"))
 ;
         ia_addmenu(win, IA_WIELD_OBJ, ord('w'), buf);
     } else if (otmp.otyp == TIN_OPENER) {
@@ -619,10 +595,7 @@ itemactions(otmp)
         /* originally this was using "hold this item in your hands" but
            there's no concept of "holding an item", plus it unwields
            whatever item you already have wielded so use "wield this item" */
-        void sprintf(buf, _("Wield this %s in your %s"), (otmp.quan > 1) ? _("stack") : _("item"), makeplural(body_part(HAND)))
-
-
-
+        sprintf(buf, _("Wield this %s in your %s"), (otmp.quan > 1) ? _("stack") : _("item"), makeplural(body_part(HAND)))
 
 ;
         ia_addmenu(win, IA_WIELD_OBJ, ord('w'), buf);
@@ -640,9 +613,9 @@ itemactions(otmp)
             let o = wearmask_to_obj(Wmask);
 
             if (!o)
-                void strcpy(buf, _("Wear this armor"));
+                strcpy(buf, _("Wear this armor"));
             else
-                void sprintf(buf, _("[already wearing %s]"), an(armor_simple_name(o)));
+                sprintf(buf, _("[already wearing %s]"), an(armor_simple_name(o)));
 
             ia_addmenu(win, IA_WEAR_OBJ, ord('W'), buf);
         }
@@ -664,11 +637,6 @@ itemactions(otmp)
        but we screen out most reasons for rejection before offering it as a
        choice */
 
-
-
-
-
-
     /* X: Toggle two-weapon mode on or off */
     if ((otmp == uwep || otmp == uswapwep)
         /* if already two-weaponing, no special checks needed to toggle off */
@@ -677,11 +645,9 @@ itemactions(otmp)
             || (could_twoweap(gy.youmonst.data) && !uarms
                 && uwep && MAYBETWOWEAPON(uwep)
                 && uswapwep && MAYBETWOWEAPON(uswapwep)))) {
-        void sprintf(buf, _("Toggle two-weapon combat %s"), u.twoweap ? _("off") : _("on"));
+        sprintf(buf, _("Toggle two-weapon combat %s"), u.twoweap ? _("off") : _("on"));
         ia_addmenu(win, IA_TWOWEAPON, ord('X'), buf);
     }
-
-
 
     /* z: Zap wand */
     if (otmp.oclass == WAND_CLASS)
@@ -690,12 +656,12 @@ itemactions(otmp)
 
     /* ?: Look up an item in the game's database */
     if (ia_checkfile(otmp)) {
-        void sprintf(buf, _("Look up information about %s"), (otmp.quan > 1) ? _("these") : _("this"))
+        sprintf(buf, _("Look up information about %s"), (otmp.quan > 1) ? _("these") : _("this"))
 ;
         ia_addmenu(win, IA_WHATIS_OBJ, ord('/'), buf);
     }
 
-    void sprintf(buf, _("Do what with %s?"), the(cxname(otmp)));
+    sprintf(buf, _("Do what with %s?"), the(cxname(otmp)));
     end_menu()(win, buf);
 
     n = select_menu(win, PICK_ONE, selected);
@@ -711,198 +677,77 @@ itemactions(otmp)
     /* finish the 'i' command:  no time elapses and cancelling without
        selecting an action doesn't matter */
     return ECMD_OK;
-} finally { stack_pop($frame); } } export function MAYBETWOWEAPON(obj) { return ((((((obj).oclass == WEAPON_CLASS)                                  ? !(is_launcher(obj) || is_ammo(obj) || is_missile(obj))         : is_weptool(obj))                                              && !bimanual(obj)) ? 1 : 0)); }
+    } finally { stack_pop($frame); }
+}
+export function MAYBETWOWEAPON(obj) { return (((obj.oclass == WEAPON_CLASS) ? !(is_launcher(obj) || is_ammo(obj) || is_missile(obj)) : is_weptool(obj)) && !bimanual(obj) ? 1 : 0); }
 
 /*iactions.c*/
+
 import { NO_COLOR } from "./color.h.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { FINGER } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HANDS_SYM } from "./hack.h.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, COIN_CLASS, GEM_CLASS, POTION_CLASS, RING_CLASS, SCROLL_CLASS,
+    SPBOOK_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { BUFSZ, FALSE, TRUE } from "./global.h.js";
+import { CQ_CANNED, ECMD_OK, FINGER, GETOBJ_SUGGEST, HAND, HANDS_SYM } from "./hack.h.js";
 import { plur } from "./hack.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { cantwield } from "./mondata.h.macros.js";
-import { could_twoweap } from "./mondata.h.macros.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { ammo_and_launcher } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_ammo } from "./obj.h.macros.js";
-import { is_blade } from "./obj.h.macros.js";
-import { is_graystone } from "./obj.h.macros.js";
-import { is_launcher } from "./obj.h.macros.js";
-import { is_missile } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { is_wet_towel } from "./obj.h.macros.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BEARTRAP } from "./objects.h.js";
-import { BELL } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { BRASS_LANTERN } from "./objects.h.js";
-import { BULLWHIP } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CAN_OF_GREASE } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { CRYSTAL_BALL } from "./objects.h.js";
-import { DRUM_OF_EARTHQUAKE } from "./objects.h.js";
-import { DWARVISH_MATTOCK } from "./objects.h.js";
-import { EUCALYPTUS_LEAF } from "./objects.h.js";
-import { EXPENSIVE_CAMERA } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { FORTUNE_COOKIE } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { GRAPPLING_HOOK } from "./objects.h.js";
-import { HAWAIIAN_SHIRT } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { HORN_OF_PLENTY } from "./objects.h.js";
-import { LAND_MINE } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { LOCK_PICK } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { MAGIC_WHISTLE } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { MIRROR } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { SADDLE } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { STETHOSCOPE } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TINNING_KIT } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TIN_WHISTLE } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { T_SHIRT } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { WOODEN_FLUTE } from "./objects.h.js";
-import { W_ACCESSORY } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_RING } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { cantwield, could_twoweap } from "./mondata.h.macros.js";
+import {
+    Has_contents, Is_container, ONAME, ammo_and_launcher, bimanual, has_oname, is_ammo, is_blade,
+    is_graystone, is_launcher, is_missile, is_plural, is_weptool, is_wet_towel,
+} from "./obj.h.macros.js";
+import {
+    ALCHEMY_SMOCK, AMULET_OF_YENDOR, BAG_OF_TRICKS, BEARTRAP, BELL, BELL_OF_OPENING, BLINDFOLD,
+    BRASS_LANTERN, BULLWHIP, CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CORPSE, CREAM_PIE,
+    CREDIT_CARD, CRYSTAL_BALL, DRUM_OF_EARTHQUAKE, DWARVISH_MATTOCK, EUCALYPTUS_LEAF,
+    EXPENSIVE_CAMERA, FAKE_AMULET_OF_YENDOR, FIGURINE, FORTUNE_COOKIE, GOLD_PIECE, GRAPPLING_HOOK,
+    HAWAIIAN_SHIRT, HEAVY_IRON_BALL, HORN_OF_PLENTY, LAND_MINE, LEASH, LENSES, LOCK_PICK,
+    MAGIC_LAMP, MAGIC_MARKER, MAGIC_WHISTLE, MEAT_RING, MIRROR, OIL_LAMP, PICK_AXE, POT_OIL, SADDLE,
+    SCR_BLANK_PAPER, SCR_MAIL, SKELETON_KEY, SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL,
+    STETHOSCOPE, TALLOW_CANDLE, TIN, TINNING_KIT, TIN_OPENER, TIN_WHISTLE, TOWEL, T_SHIRT,
+    UNICORN_HORN, WAX_CANDLE, WOODEN_FLUTE,
+} from "./objects.h.js";
+import { W_ACCESSORY, W_AMUL, W_ARMOR, W_RING, W_TOOL } from "./prop.h.js";
+import { IS_ALTAR, levl } from "./rm.h.macros.js";
+import { create_nhwindow, destroy_nhwindow, end_menu, start_menu } from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { char, ord, sizeof_string } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { assert, free, sprintf, strcpy } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { doapply } from "./apply.js";
-import { dorub } from "./apply.js";
+import { addr_of, ptr_add, ptr_to, struct_assign } from "../rt/struct.js";
+import { doapply, dorub } from "./apply.js";
 import { doinvoke } from "./artifact.js";
-import { cmdq_add_ec } from "./cmd.js";
-import { cmdq_add_key } from "./cmd.js";
-import { do_reqmenu } from "./cmd.js";
-import { cg } from "./decl.js";
-import { gy } from "./decl.js";
-import { u } from "./decl.js";
+import { cmdq_add_ec, cmdq_add_key, do_reqmenu } from "./cmd.js";
+import { cg, gy, u } from "./decl.js";
 import { nul_glyphinfo } from "./display.js";
-import { dodrop } from "./do.js";
-import { donull } from "./do.js";
-import { call_ok } from "./do_name.js";
-import { docallcmd } from "./do_name.js";
-import { name_ok } from "./do_name.js";
-import { dowear } from "./do_wear.js";
-import { ia_dotakeoff } from "./do_wear.js";
-import { remarm_swapwep } from "./do_wear.js";
-import { dofire } from "./dothrow.js";
-import { dothrow } from "./dothrow.js";
+import { dodrop, donull } from "./do.js";
+import { call_ok, docallcmd, name_ok } from "./do_name.js";
+import { dowear, ia_dotakeoff, remarm_swapwep } from "./do_wear.js";
+import { dofire, dothrow } from "./dothrow.js";
 import { surface } from "./dungeon.js";
-import { doeat } from "./eat.js";
-import { is_edible } from "./eat.js";
+import { doeat, is_edible } from "./eat.js";
 import { doengrave } from "./engrave.js";
 import { in_rooms } from "./hack.js";
 import { eos } from "./hacklib.js";
-import { adjust_split } from "./invent.js";
-import { carrying } from "./invent.js";
-import { check_invent_gold } from "./invent.js";
-import { doorganize } from "./invent.js";
+import { adjust_split, carrying, check_invent_gold, doorganize } from "./invent.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { armor_simple_name } from "./objnam.js";
-import { cxname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { the } from "./objnam.js";
-import { the_unique_obj } from "./objnam.js";
-import { dowhatis } from "./pager.js";
-import { ia_checkfile } from "./pager.js";
+import {
+    an, armor_simple_name, cxname, makeplural, simpleonames, the, the_unique_obj,
+} from "./objnam.js";
+import { dowhatis, ia_checkfile } from "./pager.js";
 import { dotip } from "./pickup.js";
 import { impossible } from "./pline.js";
 import { body_part } from "./polyself.js";
-import { dip_into } from "./potion.js";
-import { dodrink } from "./potion.js";
+import { dip_into, dodrink } from "./potion.js";
 import { dosacrifice } from "./pray.js";
 import { doread } from "./read.js";
-import { dopay } from "./shk.js";
-import { inhishop } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { doswapweapon } from "./wield.js";
-import { dotwoweapon } from "./wield.js";
-import { dowield } from "./wield.js";
-import { dowieldquiver } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { armcat_to_wornmask } from "./worn.js";
-import { wearmask_to_obj } from "./worn.js";
+import { dopay, inhishop, shop_keeper } from "./shk.js";
+import { doswapweapon, dotwoweapon, dowield, dowieldquiver } from "./wield.js";
+import { add_menu, select_menu } from "./windows.js";
+import { armcat_to_wornmask, wearmask_to_obj } from "./worn.js";
 import { dozap } from "./zap.js";

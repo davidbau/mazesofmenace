@@ -23,7 +23,7 @@ export function enableSaveLifecycle(environment,layouts){
  const zeroNames=Object.keys(abi.zeroStorage),zeros=zeroNames.map(name=>environment.allocateGlobal('save.'+name,abi.zeroStorage[name]));
  const code=t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':/\b(float|double)\b/.test(t)?'d':ctypes.size(t)===8?'j':'i';};
  function windowCall(name,...args){
-  const row=abi.schemas.window_procs.fields.find(f=>f.name===name),m=row?.ctype.match(/^(.+?)\s*\(\*\)\s*\((.*)\)$/);
+  const row=ctypes.record('struct window_procs').fields[name],m=row?.ctype.replace(new RegExp('\\s+'+name+'$'),'').match(/^(.+?)\s*\(\*\)\s*\((.*)\)$/);
   if(!m)throw new Error('Unknown SAVE window callback '+name);
   const signature=[m[1],...m[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')].map(code).join('');
   const f=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),name);

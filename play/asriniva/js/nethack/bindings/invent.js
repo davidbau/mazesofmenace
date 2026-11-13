@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/invent.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for INVENT JS bodies.
@@ -35,6 +37,8 @@ export function createInventEnvironment(services){
  env.initialize=initialize;
  for(const row of invent.inventStaticInitializers(env)){const at=env.staticAddress(row.name);services.heap().fill(0,at,at+row.size);if(row.values!==null)initialize(at,row.type,row.values);}
 
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callInvent(services,name,...args){
@@ -48,8 +52,8 @@ export function callInvent(services,name,...args){
  const previous=state.services;
  state.services=services;
  try{
-  const fn=invent[name];if(typeof fn!=='function')throw Error('Unknown original INVENT function '+name);
+  const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original INVENT function '+name);
   const stackFrame=services.stackSave();
-  try{return withCEnvironment(state.env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+  try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
  }finally{state.services=previous;}
 }

@@ -3,48 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* used to indicate whether quaff or dip has skipped an opportunity to
    use a fountain or such, in order to vary the feedback if hero lacks
    any potions [reinitialized every time it's used so does not need to
@@ -52,9 +10,7 @@
 const drink_ok_extra = static_var("drink_ok_extra", int, 0);
 
 /* force `val' to be within valid range for intrinsic timeout value */
-function /* long long */
-itimeout(val)
-{
+function itimeout(val) { /* long long */
     if (val >= TIMEOUT)
         val = TIMEOUT;
     else if (val < 1)
@@ -64,30 +20,22 @@ itimeout(val)
 }
 
 /* increment `old' by `incr' and force result to be valid intrinsic timeout */
-function /* long long */
-itimeout_incr(old, incr)
-{
+function itimeout_incr(old, incr) { /* long long */
     return itimeout((old & TIMEOUT) + incr);
 }
 
 /* set the timeout field of intrinsic `which' */
-export function /* void */
-set_itimeout(which, val)
-{
+export function set_itimeout(which, val) { /* void */
     which[0] = and64(which[0], ~TIMEOUT);
     which[0] = or64(which[0], itimeout(val));
 }
 
 /* increment the timeout field of intrinsic `which' */
-export function /* void */
-incr_itimeout(which, incr)
-{
+export function incr_itimeout(which, incr) { /* void */
     set_itimeout(which, itimeout_incr(which[0], incr));
 }
 
-export function /* void */
-make_confused(xtime, talk)
-{
+export function make_confused(xtime, talk) { /* void */
     let old = HConfusion();
 
     if (Unaware())
@@ -103,9 +51,7 @@ make_confused(xtime, talk)
     set_itimeout(ref_of(u.uprops[CONFUSION], "intrinsic"), xtime);
 }
 
-export function /* void */
-make_stunned(xtime, talk)
-{
+export function make_stunned(xtime, talk) { /* void */
     let old = HStun();
 
     if (Unaware())
@@ -133,18 +79,12 @@ make_stunned(xtime, talk)
 /* Sick is overloaded with both fatal illness and food poisoning (via
    u.usick_type bit mask), but delayed killer can only support one or
    the other at a time.  They should become separate intrinsics.... */
-export function /* void */
-make_sick(xtime,
+export function make_sick(xtime,
           cause,
           talk,
-          type)
-{
+          type) { /* void */
     let kptr;
     let old = Sick();
-
-
-
-
 
     if (xtime > 0) {
         if (Sick_resistance())
@@ -191,17 +131,11 @@ make_sick(xtime,
         dealloc_killer(kptr);
 }
 
-export function /* void */
-make_slimed(xtime, msg)
-{
+export function make_slimed(xtime, msg) { /* void */
     let old = Slimed();
 
-
-
-
-
     set_itimeout(ref_of(u.uprops[SLIMED], "intrinsic"), xtime);
-    if ((+(xtime != 0)) ^ (+(old != 0))) {
+    if (+(xtime != 0) ^ +(old != 0)) {
         disp.botl = TRUE;
         if (msg)
             pline(_("%s"), msg);
@@ -218,17 +152,11 @@ make_slimed(xtime, msg)
 }
 
 /* start or stop petrification */
-export function /* void */
-make_stoned(xtime, msg, killedby, killername)
-{
+export function make_stoned(xtime, msg, killedby, killername) { /* void */
     let old = Stoned();
 
-
-
-
-
     set_itimeout(ref_of(u.uprops[STONED], "intrinsic"), xtime);
-    if ((+(xtime != 0)) ^ (+(old != 0))) {
+    if (+(xtime != 0) ^ +(old != 0)) {
         disp.botl = TRUE;
         if (msg)
             pline(_("%s"), msg);
@@ -239,9 +167,7 @@ make_stoned(xtime, msg, killedby, killername)
         delayed_killer(STONED, killedby, killername);
 }
 
-export function /* void */
-make_vomiting(xtime, talk)
-{
+export function make_vomiting(xtime, talk) { /* void */
     let old = Vomiting();
 
     if (Unaware())
@@ -257,9 +183,7 @@ make_vomiting(xtime, talk)
 const vismsg = init_string(static_array("vismsg", char, sizeof_string("vision seems to %s for a moment but is %s now.")), _("vision seems to %s for a moment but is %s now."), true);
 const eyemsg = init_string(static_array("eyemsg", char, sizeof_string("%s momentarily %s.")), _("%s momentarily %s."), true);
 
-export function /* void */
-make_blinded(xtime, talk)
-{
+export function make_blinded(xtime, talk) { /* void */
     let old = BlindedTimeout();
     let u_could_see, can_see_now;
     let eyes;
@@ -332,10 +256,8 @@ make_blinded(xtime, talk)
 
 /* blindness has just started or just ended--caller enforces that;
    called by Blindf_on(), Blindf_off(), and make_blinded() */
-export function /* void */
-toggle_blindness()
-{
-    let Stinging = (((uwep && (EWarn_of_mon() & W_WEP) != 0) ? 1 : 0));
+export function toggle_blindness() { /* void */
+    let Stinging = (uwep && (EWarn_of_mon() & W_WEP) != 0 ? 1 : 0);
 
     /* blindness has just been toggled */
     disp.botl = TRUE; /* status conditions need update */
@@ -363,14 +285,10 @@ toggle_blindness()
         learn_unseen_invent();
 }
 
-
-
-export function /* boolean */
-make_hallucinated(
+export function make_hallucinated(
     xtime,
     talk,
-    mask)    /* nonzero if resistance status should change by mask */
-{
+    mask) { /* boolean */ /* nonzero if resistance status should change by mask */
     let old = HHallucination();
     let changed = 0;
     let message, verb;
@@ -437,18 +355,14 @@ make_hallucinated(
     return changed;
 }
 
-
-
-export function /* void */
-make_deaf(xtime, talk)
-{
+export function make_deaf(xtime, talk) { /* void */
     let old = HDeaf();
 
     if (Unaware())
         talk = FALSE;
 
     set_itimeout(ref_of(u.uprops[DEAF], "intrinsic"), xtime);
-    if ((+(xtime != 0)) ^ (+(old != 0))) {
+    if (+(xtime != 0) ^ +(old != 0)) {
         disp.botl = TRUE;
         if (talk)
             You(old && !Deaf() ? _("can hear again.")
@@ -457,9 +371,7 @@ make_deaf(xtime, talk)
 }
 
 /* set or clear "slippery fingers" */
-export function /* void */
-make_glib(xtime)
-{
+export function make_glib(xtime) { /* void */
     disp.botl |= (+!Glib() ^ +!!xtime);
     set_itimeout(ref_of(u.uprops[GLIB], "intrinsic"), xtime);
     /* may change "(being worn)" to "(being worn; slippery)" or vice versa */
@@ -467,9 +379,7 @@ make_glib(xtime)
         update_inventory();
 }
 
-export function /* void */
-self_invis_message()
-{
+export function self_invis_message() { /* void */
     pline(_("%s %s."),
           Hallucination() ? _("Far out, man!  You")
                         : _("Gee!  All of a sudden, you"),
@@ -477,9 +387,7 @@ self_invis_message()
                         : _("can't see yourself"));
 }
 
-function /* void */
-ghost_from_bottle()
-{
+function ghost_from_bottle() { /* void */
     let mtmp = makemon(mons[PM_GHOST], u.ux, u.uy, MM_NOMSG);
 
     if (!mtmp) {
@@ -501,9 +409,7 @@ ghost_from_bottle()
 
 /* getobj callback for object to drink from, which also does double duty as
    the callback for dipping into (both just allow potions). */
-function /* int */
-drink_ok(obj)
-{
+function drink_ok(obj) { /* int */
     /* getobj()'s callback to test whether hands/self is a valid "item" to
        pick is used here to communicate the fact that player has already
        passed up an opportunity to perform the action (drink or dip) on a
@@ -522,9 +428,7 @@ drink_ok(obj)
 
 /* "Quaffing is like drinking, except you spill more." - Terry Pratchett */
 /* the #quaff command */
-export function /* int */
-dodrink()
-{
+export function dodrink() { /* int */
     let otmp;
 
     if (Strangled()) {
@@ -614,9 +518,7 @@ dodrink()
     return dopotion(otmp);
 }
 
-export function /* int */
-dopotion(otmp)
-{
+export function dopotion(otmp) { /* int */
     let retval;
 
     otmp.in_use = TRUE;
@@ -642,9 +544,7 @@ dopotion(otmp)
 
 /* potion or spell of restore ability; for spell, otmp is a temporary
    spellbook object that will be blessed if hero is skilled in healing */
-function /* void */
-peffect_restore_ability(otmp)
-{
+function peffect_restore_ability(otmp) { /* void */
     gp.potion_unkn++;
     if (otmp.cursed) {
         pline(_("Ulch!  This makes you feel mediocre!"));
@@ -692,16 +592,14 @@ peffect_restore_ability(otmp)
     }
 }
 
-function /* void */
-peffect_hallucination(otmp)
-{
+function peffect_hallucination(otmp) { /* void */
     if (Halluc_resistance()) {
         gp.potion_nothing++;
         return;
     } else if (Hallucination()) {
         gp.potion_nothing++;
     }
-    void make_hallucinated(itimeout_incr(HHallucination(),
+    make_hallucinated(itimeout_incr(HHallucination(),
                                            rn1(200, 600 - 300 * bcsign(otmp))),
                              TRUE, 0);
     if ((otmp.blessed && !rn2(3)) || (!otmp.cursed && !rn2(6))) {
@@ -713,9 +611,7 @@ peffect_hallucination(otmp)
     }
 }
 
-function /* void */
-peffect_water(otmp)
-{
+function peffect_water(otmp) { /* void */
     if (!otmp.blessed && !otmp.cursed) {
         pline(_("This tastes like %s."), hliquid(_("water")));
         u.uhunger += rnd(10);
@@ -735,7 +631,7 @@ peffect_water(otmp)
                     you_unwere(FALSE);
                 set_ulycn(NON_PM); /* cure lycanthropy */
             }
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((d(2, 6)) + 1)) / 2))) : (d(2, 6)))), _("potion of holy water"),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((d(2, 6)) + 1) / 2))) : (d(2, 6))), _("potion of holy water"),
                    KILLED_BY_AN);
         } else if (otmp.cursed) {
             You_feel(_("quite proud of yourself."));
@@ -756,7 +652,7 @@ peffect_water(otmp)
         } else {
             if (u.ualign.type == A_LAWFUL) {
                 pline(_("This burns like %s!"), hliquid(_("acid")));
-                losehp((((Half_physical_damage()) ? (Math.trunc(((((d(2, 6)) + 1)) / 2))) : (d(2, 6)))), _("potion of unholy water"),
+                losehp(((Half_physical_damage()) ? (Math.trunc((((d(2, 6)) + 1) / 2))) : (d(2, 6))), _("potion of unholy water"),
                        KILLED_BY_AN);
             } else
                 You_feel(_("full of dread."));
@@ -767,9 +663,7 @@ peffect_water(otmp)
     }
 }
 
-function /* void */
-peffect_booze(otmp)
-{
+function peffect_booze(otmp) { /* void */
     gp.potion_unkn++;
     pline(_("Ooph!  This tastes like %s%s!"),
           otmp.oeroded ? _("watered down ") : _(""),
@@ -791,26 +685,22 @@ peffect_booze(otmp)
     }
 }
 
-function /* void */
-peffect_enlightenment(otmp)
-{
+function peffect_enlightenment(otmp) { /* void */
     if (otmp.cursed) {
         gp.potion_unkn++;
         You(_("have an uneasy feeling..."));
         exercise(A_WIS, FALSE);
     } else {
         if (otmp.blessed) {
-            void adjattrib(A_INT, 1, FALSE);
-            void adjattrib(A_WIS, 1, FALSE);
+            adjattrib(A_INT, 1, FALSE);
+            adjattrib(A_WIS, 1, FALSE);
         }
         do_enlightenment_effect();
     }
 }
 
-function /* void */
-peffect_invisibility(otmp)
-{
-    let is_spell = (+(otmp.oclass == SPBOOK_CLASS));
+function peffect_invisibility(otmp) { /* void */
+    let is_spell = +(otmp.oclass == SPBOOK_CLASS);
 
     /* spell cannot penetrate mummy wrapping */
     if (is_spell && BInvis() && uarmc.otyp == MUMMY_WRAPPING) {
@@ -837,10 +727,8 @@ peffect_invisibility(otmp)
     }
 }
 
-function /* void */
-peffect_see_invisible(otmp)
-{
-    let msg = ((Invisible() && !Blind()) ? 1 : 0);
+function peffect_see_invisible(otmp) { /* void */
+    let msg = (Invisible() && !Blind() ? 1 : 0);
     let permchance = 10 - (HInvis() ? 3 : 0) - (HSee_invisible() ? 6 : 0);
 
     gp.potion_unkn++;
@@ -877,9 +765,7 @@ peffect_see_invisible(otmp)
     }
 }
 
-function /* void */
-peffect_paralysis(otmp)
-{
+function peffect_paralysis(otmp) { /* void */
     if (Free_action()) {
         You(_("stiffen momentarily."));
     } else {
@@ -890,16 +776,14 @@ peffect_paralysis(otmp)
         else
             Your(_("%s are frozen to the %s!"), makeplural(body_part(FOOT)),
                  surface(u.ux, u.uy));
-        nomul(-(rn1(10, 25 - 12 * bcsign(otmp))));
+        nomul(-rn1(10, 25 - 12 * bcsign(otmp)));
         gm.multi_reason = _("frozen by a potion");
         gn.nomovemsg = You_can_move_again();
         exercise(A_DEX, FALSE);
     }
 }
 
-function /* void */
-peffect_sleeping(otmp)
-{
+function peffect_sleeping(otmp) { /* void */
     if (Sleep_resistance() || Free_action()) {
         monstseesu(M_SEEN_SLEEP);
         You(_("yawn."));
@@ -910,9 +794,7 @@ peffect_sleeping(otmp)
     }
 }
 
-function /* int */
-peffect_monster_detection(otmp)
-{
+function peffect_monster_detection(otmp) { /* int */
     if (otmp.blessed) {
         let i, x, y;
 
@@ -951,18 +833,15 @@ peffect_monster_detection(otmp)
     return 0;
 }
 
-function /* int */
-peffect_object_detection(otmp)
-{
+function peffect_object_detection(otmp) { /* int */
     if (object_detect(otmp, 0))
         return 1; /* nothing detected */
     exercise(A_WIS, TRUE);
     return 0;
 }
 
-function /* void */
-peffect_sickness(otmp)
-{ const $frame = stack_frame(); try {
+function peffect_sickness(otmp) { /* void */
+    const $frame = stack_frame(); try {
     pline(_("Yecch!  This stuff tastes like poison."));
     if (otmp.blessed) {
         pline(_("(But in fact it was mildly stale %s.)"), fruitname(TRUE));
@@ -980,39 +859,38 @@ peffect_sickness(otmp)
             let contaminant = stack_array(char, BUFSZ);
             let typ = rn2(A_MAX);
 
-            void sprintf(contaminant, _("%s%s"), (Poison_resistance()) ? _("mildly ") : _(""), (otmp.corpsenm) ? _("contaminated tap water")
+            sprintf(contaminant, _("%s%s"), Poison_resistance() ? _("mildly ") : _(""), otmp.corpsenm ? _("contaminated tap water")
                     : _("contaminated potion"))
 
 ;
             if (!Fixed_abil()) {
                 poisontell(typ, FALSE);
-                void adjattrib(typ, Poison_resistance() ? -1 : -rn1(4, 3),
+                adjattrib(typ, Poison_resistance() ? -1 : -rn1(4, 3),
                                  1);
             }
             if (!Poison_resistance()) {
                 if (otmp.corpsenm)
-                    losehp(rnd(10) + 5 * +!!(otmp.cursed), contaminant,
+                    losehp(rnd(10) + 5 * +!!otmp.cursed, contaminant,
                            KILLED_BY);
                 else
-                    losehp(rnd(10) + 5 * +!!(otmp.cursed), contaminant,
+                    losehp(rnd(10) + 5 * +!!otmp.cursed, contaminant,
                            KILLED_BY_AN);
             } else {
                 /* rnd loss is so that unblessed poorer than blessed */
                 losehp(1 + rn2(2), contaminant,
-                       (otmp.corpsenm) ? KILLED_BY : KILLED_BY_AN);
+                       otmp.corpsenm ? KILLED_BY : KILLED_BY_AN);
             }
             exercise(A_CON, FALSE);
         }
     }
     if (Hallucination()) {
         You(_("are shocked back to your senses!"));
-        void make_hallucinated(0, FALSE, 0);
+        make_hallucinated(0, FALSE, 0);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-peffect_confusion(otmp)
-{
+function peffect_confusion(otmp) { /* void */
     if (!Confusion()) {
         if (Hallucination()) {
             pline(_("What a trippy feeling!"));
@@ -1026,9 +904,7 @@ peffect_confusion(otmp)
                   FALSE);
 }
 
-function /* void */
-peffect_gain_ability(otmp)
-{
+function peffect_gain_ability(otmp) { /* void */
     if (otmp.cursed) {
         pline(_("Ulch!  That potion tasted foul!"));
         gp.potion_unkn++;
@@ -1048,10 +924,8 @@ peffect_gain_ability(otmp)
     }
 }
 
-function /* void */
-peffect_speed(otmp)
-{
-    let is_speed = (+(otmp.otyp == POT_SPEED));
+function peffect_speed(otmp) { /* void */
+    let is_speed = +(otmp.otyp == POT_SPEED);
 
     /* skip when mounted; heal_legs() would heal steed's legs */
     if (is_speed && Wounded_legs() && !otmp.cursed && !u.usteed) {
@@ -1069,9 +943,7 @@ peffect_speed(otmp)
     }
 }
 
-function /* void */
-peffect_blindness(otmp)
-{
+function peffect_blindness(otmp) { /* void */
     if (Blind() || ((HBlinded() || EBlinded()) && BBlinded()))
         gp.potion_nothing++;
     make_blinded(itimeout_incr(BlindedTimeout(),
@@ -1079,11 +951,10 @@ peffect_blindness(otmp)
                  (+!Blind()));
 }
 
-function /* void */
-peffect_gain_level(otmp)
-{ const $frame = stack_frame(); try {
+function peffect_gain_level(otmp) { /* void */
+    const $frame = stack_frame(); try {
     if (otmp.cursed) {
-        let on_lvl_1 = (+(ledger_no(u.uz) == 1));
+        let on_lvl_1 = +(ledger_no(u.uz) == 1);
 
         gp.potion_unkn++;
         /* they went up a level */
@@ -1092,7 +963,7 @@ peffect_gain_level(otmp)
             let newlevel = stack_struct(struct_d_level);
 
             if (on_lvl_1) {
-                assign_level(newlevel, (svd.dungeon_topology.d_earth_level));
+                assign_level(newlevel, svd.dungeon_topology.d_earth_level);
             } else {
                 newlev = depth(u.uz) - 1;
                 get_level(newlevel, newlev);
@@ -1113,25 +984,22 @@ peffect_gain_level(otmp)
        middle of the new level instead of the low point */
     if (otmp.blessed)
         u.uexp = rndexp(TRUE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-peffect_healing(otmp)
-{
+function peffect_healing(otmp) { /* void */
     You_feel(_("better."));
     healup(8 + d(4 + 2 * bcsign(otmp), 4), !otmp.cursed ? 1 : 0,
            +!!otmp.blessed, +!otmp.cursed);
     exercise(A_CON, TRUE);
 }
 
-function /* void */
-peffect_extra_healing(otmp)
-{
+function peffect_extra_healing(otmp) { /* void */
     You_feel(_("much better."));
     healup(16 + d(4 + 2 * bcsign(otmp), 8),
            otmp.blessed ? 5 : !otmp.cursed ? 2 : 0, +!otmp.cursed,
            TRUE);
-    void make_hallucinated(0, TRUE, 0);
+    make_hallucinated(0, TRUE, 0);
     exercise(A_CON, TRUE);
     exercise(A_STR, TRUE);
     /* blessed potion also heals wounded legs unless riding (where leg
@@ -1140,9 +1008,7 @@ peffect_extra_healing(otmp)
         heal_legs(0);
 }
 
-function /* void */
-peffect_full_healing(otmp)
-{
+function peffect_full_healing(otmp) { /* void */
     You_feel(_("completely healed."));
     healup(400, 4 + 4 * bcsign(otmp), +!otmp.cursed, TRUE);
     /* Restore one lost level if blessed */
@@ -1152,7 +1018,7 @@ peffect_full_healing(otmp)
         u.ulevelmax -= 1;
         pluslvl(FALSE);
     }
-    void make_hallucinated(0, TRUE, 0);
+    make_hallucinated(0, TRUE, 0);
     exercise(A_STR, TRUE);
     exercise(A_CON, TRUE);
     /* blessed potion heals wounded legs even when riding (so heals steed's
@@ -1161,9 +1027,7 @@ peffect_full_healing(otmp)
         heal_legs(0);
 }
 
-function /* void */
-peffect_levitation(otmp)
-{
+function peffect_levitation(otmp) { /* void */
     /*
      * BLevitation will be set if levitation is blocked due to being
      * inside rock (currently or formerly in phazing xorn form, perhaps)
@@ -1192,7 +1056,7 @@ peffect_levitation(otmp)
         if (BLevitation()) {
             ; /* rising via levitation is blocked */
         } else if ((stway = stairway_at(u.ux, u.uy)) != null && stway.up) {
-            void doup();
+            doup();
             /* in case we're already Levitating, which would have
                resulted in incrementing 'nothing' */
             gp.potion_nothing = 0; /* not nothing after all */
@@ -1220,9 +1084,7 @@ peffect_levitation(otmp)
     float_vs_flight();
 }
 
-function /* void */
-peffect_gain_energy(otmp)
-{
+function peffect_gain_energy(otmp) { /* void */
     let num;
 
     if (otmp.cursed)
@@ -1256,9 +1118,7 @@ peffect_gain_energy(otmp)
     exercise(A_WIS, TRUE);
 }
 
-function /* void */
-peffect_oil(otmp)
-{
+function peffect_oil(otmp) { /* void */
     let good_for_you = FALSE, vulnerable;
 
     if (otmp.lamplit) {
@@ -1273,7 +1133,7 @@ peffect_oil(otmp)
              */
             You(_("burn your %s."), body_part(FACE));
             /* fire damage */
-            vulnerable = ((!Fire_resistance() || Cold_resistance()) ? 1 : 0);
+            vulnerable = (!Fire_resistance() || Cold_resistance() ? 1 : 0);
             losehp(d(vulnerable ? 4 : 2, 4),
                    _("quaffing a burning potion of oil"),
                    KILLED_BY);
@@ -1293,9 +1153,7 @@ peffect_oil(otmp)
     exercise(A_WIS, good_for_you);
 }
 
-function /* void */
-peffect_acid(otmp)
-{
+function peffect_acid(otmp) { /* void */
     if (Acid_resistance()) {
         /* Not necessarily a creature who _likes_ acid */
         pline(_("This tastes %s."), Hallucination() ? _("tangy") : _("sour"));
@@ -1314,9 +1172,7 @@ peffect_acid(otmp)
     gp.potion_unkn++; /* holy/unholy water can burn like acid too */
 }
 
-function /* void */
-peffect_polymorph(otmp)
-{
+function peffect_polymorph(otmp) { /* void */
     You_feel(_("a little %s."), Hallucination() ? _("normal") : _("strange"));
     if (!Unchanging()) {
         if (!otmp.blessed || (u.umonnum != u.umonster))
@@ -1324,14 +1180,12 @@ peffect_polymorph(otmp)
         else {
             polyself(POLY_CONTROLLED|POLY_LOW_CTRL);
             if (u.mtimedone && u.umonnum != u.umonster)
-                u.mtimedone = ((((u.mtimedone) < (rn2(15) + 10)) ? (u.mtimedone) : (rn2(15) + 10)));
+                u.mtimedone = (((u.mtimedone) < (rn2(15) + 10)) ? (u.mtimedone) : (rn2(15) + 10));
         }
     }
 }
 
-export function /* int */
-peffects(otmp)
-{
+export function peffects(otmp) { /* int */
     switch (otmp.otyp) {
     case POT_RESTORE_ABILITY:
     case SPE_RESTORE_ABILITY:
@@ -1424,9 +1278,7 @@ peffects(otmp)
     return -1;
 }
 
-export function /* void */
-healup(nhp, nxtra, curesick, cureblind)
-{
+export function healup(nhp, nxtra, curesick, cureblind) { /* void */
     if (nhp) {
         if (Upolyd()) {
             u.mh += nhp;
@@ -1457,9 +1309,7 @@ healup(nhp, nxtra, curesick, cureblind)
     return;
 }
 
-export function /* void */
-strange_feeling(obj, txt)
-{
+export function strange_feeling(obj, txt) { /* void */
     if (flags.beginner || !txt)
         You(_("have a %s feeling for a moment, then it passes."),
             Hallucination() ? _("normal") : _("strange"));
@@ -1484,9 +1334,7 @@ const hbottlenames = static_array("hbottlenames", ptr_to(char), null, [
     _("bowl"), _("ampoule")
 ]);
 
-export function /* const char * */
-bottlename()
-{
+export function bottlename() { /* const char * */
     if (Hallucination())
         return ROLL_FROM(hbottlenames);
     else
@@ -1494,16 +1342,13 @@ bottlename()
 }
 
 /* handle item dipped into water potion or steed saddle splashed by same */
-function /* boolean */
-H2Opotion_dip(
+function H2Opotion_dip(
     potion,
     targobj,
     useeit,
-    objphrase) /* "Your widget glows" or "Steed's saddle glows" */
-{
+    objphrase) { /* boolean */ /* "Your widget glows" or "Steed's saddle glows" */
     let func = null;
     let glowcolor = 0;
-
 
     let costchange = COST_none;
     let altfmt = FALSE, res = FALSE;
@@ -1580,24 +1425,22 @@ H2Opotion_dip(
                 costly_alteration(targobj, costchange);
         }
         /* finally, change curse/bless state */
-        (func)(targobj);
+        func(targobj);
         res = TRUE;
     }
     return res;
-
-
-} export const COST_none = (-1); export const COST_alter = (-2);
+}
+export const COST_none = (-1);
+export const COST_alter = (-2);
 
 /* used when blessed or cursed scroll of light interacts with artifact light;
    if the lit object (Sunsword or gold dragon scales/mail) doesn't resist,
    treat like dipping it in holy or unholy water (BUC change, glow message) */
-export function /* void */
-impact_arti_light(
+export function impact_arti_light(
     obj,
     worsen,
 
-    seeit)   /* True: give "<obj> glows <color>" message */
-{
+    seeit) { /* void */ /* True: give "<obj> glows <color>" message */
     let otmp;
 
     /* if already worst/best BUC it can be, or if it resists, do nothing */
@@ -1613,29 +1456,25 @@ impact_arti_light(
     H2Opotion_dip(otmp, obj, seeit, seeit ? Yobjnam2(obj, _("glow")) : _(""));
     dealloc_obj(otmp);
 
-
-
-
-
     return;
 }
 
 /* potion obj hits monster mon, which might be youmonst; obj always used up */
-export function /* void */
-potionhit(mon, obj, how)
-{ const $frame = stack_frame(); try { let $goto = null; var buf = stack_array(char, BUFSZ), buf = stack_array(char, BUFSZ), saddle_glows = stack_array(char, BUFSZ);
+export function potionhit(mon, obj, how) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var buf = stack_array(char, BUFSZ), buf = stack_array(char, BUFSZ), saddle_glows = stack_array(char, BUFSZ);
     var botlnam = bottlename();
-    var isyou = (+(mon == gy.youmonst));
+    var isyou = +(mon == gy.youmonst);
     var distance, tx, ty;
     var saddle = null;
-    var hit_saddle = FALSE, your_fault = (+(how <= POTHIT_HERO_THROW));
+    var hit_saddle = FALSE, your_fault = +(how <= POTHIT_HERO_THROW);
 
     if (isyou) {
         tx = u.ux, ty = u.uy;
         distance = 0;
         pline_The(_("%s crashes on your %s and breaks into shards."), botlnam,
                   body_part(HEAD));
-        losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(2)) + 1)) / 2))) : (rnd(2)))),
+        losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(2)) + 1) / 2))) : (rnd(2))),
                (how == POTHIT_OTHER_THROW) ? _("propelled potion") /* scatter */
                                            : _("thrown potion"),
                KILLED_BY_AN);
@@ -1655,18 +1494,17 @@ potionhit(mon, obj, how)
             pline(_("Crash!"));
         } else {
             var mnam = mon_nam(mon);
-            
 
             if (hit_saddle && saddle) {
-                void sprintf(buf, _("%s saddle"), s_suffix(x_monnam(mon, ARTICLE_THE, 0,
+                sprintf(buf, _("%s saddle"), s_suffix(x_monnam(mon, ARTICLE_THE, 0,
                                           (SUPPRESS_IT | SUPPRESS_SADDLE),
                                           FALSE)))
 ;
             } else if (has_head(mon.data)) {
-                void sprintf(buf, _("%s %s"), s_suffix(mnam), (gn.notonhead ? _("body") : _("head")))
+                sprintf(buf, _("%s %s"), s_suffix(mnam), (gn.notonhead ? _("body") : _("head")))
 ;
             } else {
-                void strcpy(buf, mnam);
+                strcpy(buf, mnam);
             }
              ;
             pline_The(_("%s crashes on %s and breaks into shards."), botlnam,
@@ -1706,11 +1544,11 @@ potionhit(mon, obj, how)
     } else if (hit_saddle && saddle) {
         var mnam;
         var affected = FALSE;
-        var useeit = ((!Blind() && canseemon(mon) && cansee(tx, ty)) ? 1 : 0);
+        var useeit = (!Blind() && canseemon(mon) && cansee(tx, ty) ? 1 : 0);
 
         mnam = x_monnam(mon, ARTICLE_THE, 0,
                         (SUPPRESS_IT | SUPPRESS_SADDLE), FALSE);
-        void sprintf(buf, _("%s"), upstart(s_suffix(mnam)));
+        sprintf(buf, _("%s"), upstart(s_suffix(mnam)));
 
         switch (obj.otyp) {
         case POT_WATER:
@@ -1784,7 +1622,7 @@ potionhit(mon, obj, how)
             var sawit = canspotmon(mon),
                     cursed_potion = obj.cursed ? TRUE : FALSE;
 
-            angermon = ((mon.minvis && cursed_potion) ? 1 : 0);
+            angermon = (mon.minvis && cursed_potion ? 1 : 0);
             mon_set_minvis(mon, cursed_potion);
             if (sawit && !canspotmon(mon)) {
                 if (cansee(mon.mx, mon.my))
@@ -1853,7 +1691,7 @@ potionhit(mon, obj, how)
                 }
             } else if (mon.data == mons[PM_GREMLIN]) {
                 angermon = FALSE;
-                void split_mon(mon, null);
+                split_mon(mon, null);
             } else if (mon.data == mons[PM_IRON_GOLEM]) {
                 if (canseemon(mon))
                     pline(_("%s rusts."), Monnam(mon));
@@ -1883,7 +1721,7 @@ potionhit(mon, obj, how)
             }
             break;
         case POT_POLYMORPH:
-            void bhitm(mon, obj);
+            bhitm(mon, obj);
             break;
         /*
         case POT_GAIN_LEVEL:
@@ -1921,16 +1759,15 @@ potionhit(mon, obj, how)
         else if (svc.context.mon_moving) /* obj thrown by monster */
             subfrombill(obj, shkp);
         else /* obj thrown by hero */
-            void stolen_value(obj, u.ux, u.uy, shkp.mpeaceful,
+            stolen_value(obj, u.ux, u.uy, shkp.mpeaceful,
                                 FALSE);
     }
     obfree(obj, null);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* vapors are inhaled or get in your eyes */
-export function /* void */
-potionbreathe(obj)
-{
+export function potionbreathe(obj) { /* void */
     let i, ii, isdone, kn = 0;
     let cureblind = FALSE;
     let already_in_use = obj.in_use;
@@ -1966,7 +1803,7 @@ potionbreathe(obj)
                 if (ABASE(i) < AMAX(i)) {
                     (chars[u.acurr.a + i])++;
                     /* only first found if not blessed */
-                    isdone = +!(obj.blessed);
+                    isdone = +!obj.blessed;
                     disp.botl = TRUE;
                 }
                 if (++i >= A_MAX)
@@ -2079,7 +1916,7 @@ potionbreathe(obj)
         break;
     case POT_WATER:
         if (u.umonnum == PM_GREMLIN) {
-            void split_mon(gy.youmonst, null);
+            split_mon(gy.youmonst, null);
         } else if (ismnum(u.ulycn)) {
             /* vapor from [un]holy water will trigger
                transformation but won't cure lycanthropy */
@@ -2118,9 +1955,7 @@ potionbreathe(obj)
 }
 
 /* returns the potion type when o1 is dipped in o2 */
-function /* short */
-mixtype(o1, o2)
-{
+function mixtype(o1, o2) { /* short */
     let o1typ = o1.otyp, o2typ = o2.otyp;
 
     /* cut down on the number of cases below */
@@ -2210,9 +2045,7 @@ mixtype(o1, o2)
 
 /* getobj callback for object to be dipped (not the thing being dipped into,
  * that uses drink_ok) */
-function /* int */
-dip_ok(obj)
-{
+function dip_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_DOWNPLAY;
 
@@ -2227,9 +2060,7 @@ dip_ok(obj)
 }
 
 /* getobj callback for object to be dipped when hero has slippery hands */
-function /* int */
-dip_hands_ok(obj)
-{
+function dip_hands_ok(obj) { /* int */
     if (!obj && (Glib() && can_reach_floor(FALSE)))
         return GETOBJ_SUGGEST;
 
@@ -2239,12 +2070,10 @@ dip_hands_ok(obj)
 /* call hold_another_object() to deal with a transformed potion; its weight
    won't have changed but it might require an extra slot that isn't available
    or it might merge into some other carried stack */
-function /* void */
-hold_potion(
+function hold_potion(
     potobj,
     drop_fmt, drop_arg,
-    hold_msg)
-{
+    hold_msg) { /* void */
     let cap = near_capacity(),
         save_pickup_burden = flags.pickup_burden;
 
@@ -2255,7 +2084,7 @@ hold_potion(
     obj_extract_self(potobj);
     /* re-insert into inventory, possibly merging with compatible stack */
     potobj = hold_another_object(potobj, drop_fmt, drop_arg, hold_msg);
-    (void (potobj));
+    (potobj);
     flags.pickup_burden = save_pickup_burden;
     update_inventory();
     return;
@@ -2263,9 +2092,8 @@ hold_potion(
 
 /* #dip command - get item to dip, then get potion to dip it into;
    precede with 'm' to bypass fountain, pool, or sink at hero's spot */
-export function /* int */
-dodip()
-{ const $frame = stack_frame(); try {
+export function dodip() { /* int */
+    const $frame = stack_frame(); try {
     let Dip_ = init_string(static_array("dodip.Dip_", char, sizeof_string("Dip ")), _("Dip "), true);
     let potion, obj;
     let qbuf = stack_array(char, QBUFSZ), obuf = stack_array(char, QBUFSZ);
@@ -2273,8 +2101,8 @@ dodip()
     let here = uchar(levl()[u.ux][u.uy].typ);
     let is_hands, at_pool = is_pool(u.ux, u.uy),
             at_fountain = IS_FOUNTAIN(here), at_sink = IS_SINK(here),
-            at_here = (((!iflags.menu_requested
-                       && (at_pool || at_fountain || at_sink)) ? 1 : 0));
+            at_here = (!iflags.menu_requested
+                       && (at_pool || at_fountain || at_sink) ? 1 : 0);
 
     obj = getobj(_("dip"), at_here ? dip_hands_ok : dip_ok, GETOBJ_PROMPT);
     if (!obj)
@@ -2282,7 +2110,7 @@ dodip()
     if (inaccessible_equipment(obj, _("dip"), FALSE))
         return ECMD_OK;
 
-    is_hands = (+(obj == hands_obj));
+    is_hands = +(obj == hands_obj);
     shortestname = (is_hands || is_plural(obj) || pair_of(obj)) ? _("them")
                                                                 : _("it");
     drink_ok_extra[0] = 0;
@@ -2298,7 +2126,7 @@ dodip()
     if (is_hands) {
         Snprintf(obuf, sizeof(array_of(char, QBUFSZ)), _("your %s"), makeplural(body_part(HAND)));
     } else {
-        void strcpy(obuf, short_oname(obj, doname, thesimpleoname,
+        strcpy(obuf, short_oname(obj, doname, thesimpleoname,
                                  /* 128 - (24 + 54 + 1) leaves 49 for
                                     <object> */
                                  QBUFSZ - sizeof_string("What do you want to dip\
@@ -2347,7 +2175,7 @@ dodip()
                 } else if (is_hands || obj == uarmg) {
                     if (!is_hands)
                         obj.pickup_prev = 0;
-                    void wash_hands();
+                    wash_hands();
                 } else {
                     obj.pickup_prev = 0;
                     if (obj.otyp == POT_ACID)
@@ -2369,15 +2197,15 @@ dodip()
     if (!potion)
         return ECMD_CANCEL;
     return potion_dip(obj, potion);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #altdip - #dip with "what to dip?" and "what to dip it into?" asked
    in the opposite order; ignores floor water; used for context-sensitive
    inventory item-action: the potion has already been selected and is in
    cmdq ready to answer the first getobj() prompt */
-export function /* int */
-dip_into()
-{ const $frame = stack_frame(); try {
+export function dip_into() { /* int */
+    const $frame = stack_frame(); try {
     let obj, potion;
     let qbuf = stack_array(char, QBUFSZ);
 
@@ -2402,20 +2230,17 @@ dip_into()
     if (inaccessible_equipment(obj, _("dip"), FALSE))
         return ECMD_OK;
     return potion_dip(obj, potion);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-poof(potion)
-{
+function poof(potion) { /* void */
     if (potion.dknown)
         trycall(potion);
     useup(potion);
 }
 
 /* do dipped potion(s) explode? */
-function /* boolean */
-dip_potion_explosion(obj, dmg)
-{
+function dip_potion_explosion(obj, dmg) { /* boolean */
     if (obj.cursed || obj.otyp == POT_ACID
         || (obj.otyp == POT_OIL && obj.lamplit)
         || !rn2((uarmc && uarmc.otyp == ALCHEMY_SMOCK) ? 30 : 10)) {
@@ -2438,9 +2263,8 @@ dip_potion_explosion(obj, dmg)
 }
 
 /* called by dodip() or dip_into() after obj and potion have been chosen */
-function /* int */
-potion_dip(obj, potion)
-{ const $frame = stack_frame(); try {
+function potion_dip(obj, potion) { /* int */
+    const $frame = stack_frame(); try {
     var singlepotion;
     var qbuf = stack_array(char, QBUFSZ);
     var mixture;
@@ -2458,7 +2282,7 @@ potion_dip(obj, potion)
     obj.pickup_prev = 0; /* no longer 'recently picked up' */
     potion.in_use = TRUE; /* assume it will be used up */
     if (potion.otyp == POT_WATER) {
-        var useeit = ((!Blind() || (obj == ublindf && Blindfolded_only())) ? 1 : 0);
+        var useeit = (!Blind() || (obj == ublindf && Blindfolded_only()) ? 1 : 0);
         var obj_glows = Yobjnam2(obj, _("glow"));
 
         if (H2Opotion_dip(potion, obj, useeit, obj_glows)) {
@@ -2507,8 +2331,8 @@ potion_dip(obj, potion)
         mixture = mixtype(obj, potion);
 
         magic = (mixture != STRANGE_OBJECT) ? objects[mixture].oc_magic
-            : (((objects[obj.otyp].oc_magic || objects[potion.otyp].oc_magic) ? 1 : 0));
-        void strcpy(qbuf, _("The")); /* assume full stack */
+            : (objects[obj.otyp].oc_magic || objects[potion.otyp].oc_magic ? 1 : 0);
+        strcpy(qbuf, _("The")); /* assume full stack */
         if (amt > (obj.oeroded ? 2 : magic ? 3 : 7)) {
             /* Trying to dip multiple potions will usually affect only a
                subset; pick an amount between 3 and 8, inclusive, for magic
@@ -2527,7 +2351,7 @@ potion_dip(obj, potion)
 
             if (amt < obj.quan) {
                 obj = splitobj(obj, amt);
-                void sprintf(qbuf, _("%lld of the"), obj.quan);
+                sprintf(qbuf, _("%lld of the"), obj.quan);
             }
         }
         /* [N of] the {obj(s)} mix(es) with [one of] {the potion}... */
@@ -2573,7 +2397,7 @@ potion_dip(obj, potion)
                 return ECMD_TIME;
             }
         }
-        obj.oeroded = (+(obj.otyp != POT_WATER));
+        obj.oeroded = +(obj.otyp != POT_WATER);
 
         if (obj.otyp == POT_WATER && !Hallucination()) {
             pline_The(_("mixture bubbles%s."), Blind() ? _("") : _(", then clears"));
@@ -2617,9 +2441,9 @@ potion_dip(obj, potion)
             var buf = stack_array(char, BUFSZ);
 
             if (potion.quan > 1)
-                void sprintf(buf, _("One of %s"), the(xname(potion)));
+                sprintf(buf, _("One of %s"), the(xname(potion)));
             else
-                void strcpy(buf, The(xname(potion)));
+                strcpy(buf, The(xname(potion)));
             pline(_("%s forms a coating on %s."), buf, the(xname(obj)));
             obj.otrapped = TRUE;
             poof(potion);
@@ -2734,7 +2558,7 @@ potion_dip(obj, potion)
         chars[oldbuf + 0] = ord('\0');
         if (potion.dknown) {
             old_dknown = TRUE;
-            void sprintf(oldbuf, _("%s "), hcolor(OBJ_DESCR(objects[potion.otyp])));
+            sprintf(oldbuf, _("%s "), hcolor(OBJ_DESCR(objects[potion.otyp])));
         }
         /* with multiple merged potions, split off one and
            just clear it */
@@ -2757,9 +2581,9 @@ potion_dip(obj, potion)
                 observe_object(singlepotion);
             chars[newbuf] = ord('\0');
             if (mixture == POT_WATER && singlepotion.dknown)
-                void sprintf(newbuf, _("clears"));
+                sprintf(newbuf, _("clears"));
             else if (!Blind())
-                void sprintf(newbuf, _("turns %s"), hcolor(OBJ_DESCR(objects[mixture])))
+                sprintf(newbuf, _("turns %s"), hcolor(OBJ_DESCR(objects[mixture])))
 ;
             if (chars[newbuf])
                 pline_The(_("%spotion%s %s."), oldbuf,
@@ -2789,12 +2613,11 @@ potion_dip(obj, potion)
 
     pline(_("Interesting..."));
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* *monp grants a wish and then leaves the game */
-export function /* void */
-mongrantswish(monp)
-{
+export function mongrantswish(monp) { /* void */
     let mon = monp[0];
     let mx = mon.mx, my = mon.my, glyph = glyph_at(mx, my);
 
@@ -2811,9 +2634,8 @@ mongrantswish(monp)
     tmp_at(DISP_END, 0);
 }
 
-export function /* void */
-djinni_from_bottle(obj)
-{ const $frame = stack_frame(); try {
+export function djinni_from_bottle(obj) { /* void */
+    const $frame = stack_frame(); try {
     let mtmp = stack_var(ptr_to(struct_monst));
     let chance;
 
@@ -2846,7 +2668,7 @@ djinni_from_bottle(obj)
         break;
     case 1:
         verbalize(_("Thank you for freeing me!"));
-        void tamedog(mtmp[0], null, FALSE);
+        tamedog(mtmp[0], null, FALSE);
         break;
     case 2:
         verbalize(_("You freed me!"));
@@ -2865,21 +2687,21 @@ djinni_from_bottle(obj)
         set_malign(mtmp[0]);
         break;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* clone a gremlin or mold (2nd arg non-null implies heat as the trigger);
    hit points are cut in half (odd HP stays with original) */
-export function /* struct monst * */
-split_mon(
+export function split_mon(
     mon,
-    mtmp) /* optional attacker whose heat triggered it */
-{ const $frame = stack_frame(); try {
+    mtmp) { /* struct monst * */ /* optional attacker whose heat triggered it */
+    const $frame = stack_frame(); try {
     let mtmp2;
     let reason = stack_array(char, BUFSZ);
 
     chars[reason + 0] = ord('\0');
     if (mtmp)
-        void sprintf(reason, _(" from %s heat"), (mtmp == gy.youmonst) ? the_your()[1]
+        sprintf(reason, _(" from %s heat"), (mtmp == gy.youmonst) ? the_your()[1]
                                     : s_suffix(mon_nam(mtmp)))
 ;
 
@@ -2912,12 +2734,11 @@ split_mon(
         }
     }
     return mtmp2;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Character becomes very fast temporarily. */
-export function /* void */
-speed_up(duration)
-{
+export function speed_up(duration) { /* void */
    if (!Very_fast())
        You(_("are suddenly moving %sfaster."), Fast() ? _("") : _("much "));
    else
@@ -2928,500 +2749,164 @@ speed_up(duration)
 }
 
 /*potion.c*/
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_MAX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { AEXE } from "./attrib.h.macros.js";
-import { AMAX } from "./attrib.h.macros.js";
-import { NH_AMBER } from "./decl.h.macros.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { NH_LIGHT_BLUE } from "./decl.h.macros.js";
-import { NH_ORANGE } from "./decl.h.macros.js";
-import { NH_RED } from "./decl.h.macros.js";
-import { Something } from "./decl.h.macros.js";
-import { You_can_move_again } from "./decl.h.macros.js";
-import { nothing_happens } from "./decl.h.macros.js";
-import { nothing_seems_to_happen } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { the_your } from "./decl.h.macros.js";
-import { vision_clears } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { DISP_ALWAYS } from "./display.h.js";
-import { DISP_END } from "./display.h.js";
-import { EXPL_FIERY } from "./display.h.js";
-import { GLYPH_INVISIBLE } from "./display.h.js";
+
+import { A_CHAOTIC, A_LAWFUL } from "./align.h.js";
+import { A_CON, A_DEX, A_INT, A_MAX, A_STR, A_WIS } from "./attrib.h.js";
+import { ABASE, ACURR, AEXE, AMAX } from "./attrib.h.macros.js";
+import {
+    NH_AMBER, NH_BLACK, NH_LIGHT_BLUE, NH_ORANGE, NH_RED, Something, You_can_move_again,
+    nothing_happens, nothing_seems_to_happen, something, the_your, vision_clears,
+} from "./decl.h.macros.js";
+import { COIN_CLASS, POTION_CLASS, SPBOOK_CLASS, WEAPON_CLASS } from "./defsym.h.js";
+import { DISP_ALWAYS, DISP_END, EXPL_FIERY, GLYPH_INVISIBLE } from "./display.h.js";
 import { canspotmon } from "./display.h.macros.js";
 import { struct_d_level } from "./dungeon.h.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import { Is_airlevel, Is_waterlevel } from "./dungeon.h.macros.js";
 import { PLNMSG_OBJ_GLOWS } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { COST_NUTRLZ } from "./hack.h.js";
-import { COST_UNBLSS } from "./hack.h.js";
-import { COST_UNCURS } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { ENL_GAMEINPROGRESS } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { FACE } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_INACCESS } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_NONINVENT } from "./hack.h.js";
-import { GETOBJ_NOFLAGS } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { MAGICENLIGHTENMENT } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { NOTELL } from "./hack.h.js";
-import { POLY_CONTROLLED } from "./hack.h.js";
-import { POLY_LOW_CTRL } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { SUPPRESS_IT } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { POTION_OCCUPANT_CHANCE } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { Your1 } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import { BUFSZ, COLNO, FALSE, LL_CONDUCT, QBUFSZ, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    ARTICLE_THE, BOLT_LIM, COST_NUTRLZ, COST_UNBLSS, COST_UNCURS, CQ_CANNED, ECMD_CANCEL, ECMD_FAIL,
+    ECMD_OK, ECMD_TIME, ENL_GAMEINPROGRESS, EYE, FACE, FOOT, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
+    GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_NOFLAGS, GETOBJ_PROMPT,
+    GETOBJ_SUGGEST, HAND, HEAD, KILLED_BY, KILLED_BY_AN, LEG, MAGICENLIGHTENMENT, MM_NOMSG, NOTELL,
+    POLY_CONTROLLED, POLY_LOW_CTRL, POLY_NOFLAGS, SUPPRESS_IT, SUPPRESS_SADDLE,
+} from "./hack.h.js";
+import {
+    Maybe_Half_Phys, POTION_OCCUPANT_CHANCE, ROLL_FROM, Your1, makeknown, max, min, pline1, rn1,
+    y_n,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_DISE } from "./monattk.h.js";
-import { AD_PEST } from "./monattk.h.js";
-import { breathless } from "./mondata.h.macros.js";
-import { eyecount } from "./mondata.h.macros.js";
-import { has_head } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { is_human } from "./mondata.h.macros.js";
-import { is_silent } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { likes_fire } from "./mondata.h.macros.js";
-import { G_GONE } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_SEEN_SLEEP } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { mon_perma_blind } from "./monst.h.macros.js";
-import { resists_acid } from "./monst.h.macros.js";
-import { resists_poison } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_DJINNI } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_IRON_GOLEM } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_PESTILENCE } from "./monsters.h.js";
-import { EF_GREASE } from "./obj.h.js";
-import { ERODE_CORRODE } from "./obj.h.js";
-import { ER_DESTROYED } from "./obj.h.js";
-import { ER_NOTHING } from "./obj.h.js";
-import { POTHIT_HERO_THROW } from "./obj.h.js";
-import { POTHIT_OTHER_THROW } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { carried } from "./obj.h.macros.js";
-import { is_ammo } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
-import { is_poisonable } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { pair_of } from "./obj.h.macros.js";
-import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { is_corrodeable } from "./objclass.h.macros.js";
-import { is_rustprone } from "./objclass.h.macros.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMETHYST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { MUMMY_WRAPPING } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { POT_ACID } from "./objects.h.js";
-import { POT_BLINDNESS } from "./objects.h.js";
-import { POT_BOOZE } from "./objects.h.js";
-import { POT_CONFUSION } from "./objects.h.js";
-import { POT_ENLIGHTENMENT } from "./objects.h.js";
-import { POT_EXTRA_HEALING } from "./objects.h.js";
-import { POT_FRUIT_JUICE } from "./objects.h.js";
-import { POT_FULL_HEALING } from "./objects.h.js";
-import { POT_GAIN_ABILITY } from "./objects.h.js";
-import { POT_GAIN_ENERGY } from "./objects.h.js";
-import { POT_GAIN_LEVEL } from "./objects.h.js";
-import { POT_HALLUCINATION } from "./objects.h.js";
-import { POT_HEALING } from "./objects.h.js";
-import { POT_INVISIBILITY } from "./objects.h.js";
-import { POT_LEVITATION } from "./objects.h.js";
-import { POT_MONSTER_DETECTION } from "./objects.h.js";
-import { POT_OBJECT_DETECTION } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_PARALYSIS } from "./objects.h.js";
-import { POT_POLYMORPH } from "./objects.h.js";
-import { POT_RESTORE_ABILITY } from "./objects.h.js";
-import { POT_SEE_INVISIBLE } from "./objects.h.js";
-import { POT_SICKNESS } from "./objects.h.js";
-import { POT_SLEEPING } from "./objects.h.js";
-import { POT_SPEED } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { SPE_DETECT_MONSTERS } from "./objects.h.js";
-import { SPE_DETECT_TREASURE } from "./objects.h.js";
-import { SPE_HASTE_SELF } from "./objects.h.js";
-import { SPE_INVISIBILITY } from "./objects.h.js";
-import { SPE_LEVITATION } from "./objects.h.js";
-import { SPE_RESTORE_ABILITY } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
-import { BLINDED } from "./prop.h.js";
-import { CONFUSION } from "./prop.h.js";
-import { DEAF } from "./prop.h.js";
-import { DETECT_MONSTERS } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { GLIB } from "./prop.h.js";
-import { HALLUC } from "./prop.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { SICK } from "./prop.h.js";
-import { SLIMED } from "./prop.h.js";
-import { STONED } from "./prop.h.js";
-import { STUNNED } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { VOMITING } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
+import { AD_ACID, AD_DISE, AD_PEST } from "./monattk.h.js";
+import {
+    breathless, eyecount, has_head, haseyes, is_human, is_silent, is_swimmer, is_were, likes_fire,
+} from "./mondata.h.macros.js";
+import { G_GONE, NEUTRAL } from "./monflag.h.js";
+import { M_AP_MONSTER, M_AP_NOTHING, M_SEEN_SLEEP, struct_monst } from "./monst.h.js";
+import {
+    DEADMONSTER, U_AP_TYPE, is_vampshifter, ismnum, mon_perma_blind, resists_acid, resists_poison,
+} from "./monst.h.macros.js";
+import {
+    NON_PM, PM_DJINNI, PM_GHOST, PM_GREEN_SLIME, PM_GREMLIN, PM_HEALER, PM_IRON_GOLEM, PM_LICHEN,
+    PM_PESTILENCE,
+} from "./monsters.h.js";
+import {
+    EF_GREASE, ERODE_CORRODE, ER_DESTROYED, ER_NOTHING, POTHIT_HERO_THROW, POTHIT_OTHER_THROW,
+    struct_obj,
+} from "./obj.h.js";
+import { carried, is_ammo, is_plural, is_poisonable, is_weptool, pair_of } from "./obj.h.macros.js";
+import { OBJ_DESCR, is_corrodeable, is_rustprone } from "./objclass.h.macros.js";
+import {
+    ALCHEMY_SMOCK, AMETHYST, CORPSE, MAGIC_LAMP, MUMMY_WRAPPING, OIL_LAMP, POT_ACID, POT_BLINDNESS,
+    POT_BOOZE, POT_CONFUSION, POT_ENLIGHTENMENT, POT_EXTRA_HEALING, POT_FRUIT_JUICE,
+    POT_FULL_HEALING, POT_GAIN_ABILITY, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_HALLUCINATION,
+    POT_HEALING, POT_INVISIBILITY, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION,
+    POT_OIL, POT_PARALYSIS, POT_POLYMORPH, POT_RESTORE_ABILITY, POT_SEE_INVISIBLE, POT_SICKNESS,
+    POT_SLEEPING, POT_SPEED, POT_WATER, SPE_DETECT_MONSTERS, SPE_DETECT_TREASURE, SPE_HASTE_SELF,
+    SPE_INVISIBILITY, SPE_LEVITATION, SPE_RESTORE_ABILITY, STRANGE_OBJECT, TOWEL, UNICORN_HORN,
+} from "./objects.h.js";
+import {
+    BLINDED, CONFUSION, DEAF, DETECT_MONSTERS, FAST, FROMOUTSIDE, GLIB, HALLUC, HALLUC_RES,
+    INTRINSIC, INVIS, I_SPECIAL, LEVITATION, SEE_INVIS, SICK, SLIMED, STONED, STUNNED, TIMEOUT,
+    VOMITING, W_SADDLE, W_WEP,
+} from "./prop.h.js";
+import { IS_FOUNTAIN, IS_SINK, MON_AT, levl } from "./rm.h.macros.js";
+import { P_BASIC, P_RIDING } from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
 import { SICK_ALL } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Acid_resistance } from "./youprop.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { BBlinded } from "./youprop.h.macros.js";
-import { BInvis } from "./youprop.h.macros.js";
-import { BLevitation } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Blindfolded } from "./youprop.h.macros.js";
-import { Blindfolded_only } from "./youprop.h.macros.js";
-import { Cold_resistance } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Detect_monsters } from "./youprop.h.macros.js";
-import { EBlinded } from "./youprop.h.macros.js";
-import { EHalluc_resistance } from "./youprop.h.macros.js";
-import { EWarn_of_mon } from "./youprop.h.macros.js";
-import { Fast } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Fixed_abil } from "./youprop.h.macros.js";
-import { Free_action } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { HBlinded } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HDeaf } from "./youprop.h.macros.js";
-import { HDetect_monsters } from "./youprop.h.macros.js";
-import { HFast } from "./youprop.h.macros.js";
-import { HHallucination } from "./youprop.h.macros.js";
-import { HInvis } from "./youprop.h.macros.js";
-import { HSee_invisible } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Half_gas_damage } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Halluc_resistance } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Infravision } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Invisible } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { PermaBlind } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Sick_resistance } from "./youprop.h.macros.js";
-import { Sleep_resistance } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Very_fast } from "./youprop.h.macros.js";
-import { Vomiting } from "./youprop.h.macros.js";
-import { Wounded_legs } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { not64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { Role_if, Upolyd, uhis } from "./you.h.macros.js";
+import {
+    Acid_resistance, Antimagic, BBlinded, BInvis, BLevitation, Blind, Blind_telepat, BlindedTimeout,
+    Blindfolded, Blindfolded_only, Cold_resistance, Confusion, Deaf, Detect_monsters, EBlinded,
+    EHalluc_resistance, EWarn_of_mon, Fast, Fire_resistance, Fixed_abil, Free_action, Glib,
+    HBlinded, HConfusion, HDeaf, HDetect_monsters, HFast, HHallucination, HInvis, HSee_invisible,
+    HStun, Half_gas_damage, Half_physical_damage, Halluc_resistance, Hallucination, Infravision,
+    Invis, Invisible, Levitation, PermaBlind, Poison_resistance, Protection_from_shape_changers,
+    Punished, See_invisible, Sick, Sick_resistance, Sleep_resistance, Slimed, Stoned, Strangled,
+    Unaware, Unchanging, Underwater, Very_fast, Vomiting, Wounded_legs,
+} from "./youprop.h.macros.js";
+import { char, int, ord, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, not64, or64 } from "../rt/int64.js";
+import { assert, sprintf, strcmp, strcpy } from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { array_of, ptr_to, ref_of, struct_assign } from "../rt/struct.js";
 import { unfixable_trouble_count } from "./apply.js";
-import { Sting_effects } from "./artifact.js";
-import { permapoisoned } from "./artifact.js";
-import { adjattrib } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { poisontell } from "./attrib.js";
+import { Sting_effects, permapoisoned } from "./artifact.js";
+import { adjattrib, exercise, poisontell } from "./attrib.js";
 import { set_bc } from "./ball.js";
 import { cmdq_peek } from "./cmd.js";
 import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gp } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { monster_detect } from "./detect.js";
-import { object_detect } from "./detect.js";
-import { canseemon } from "./display.js";
-import { glyph_at } from "./display.js";
-import { map_invisible } from "./display.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { see_objects } from "./display.js";
-import { see_traps } from "./display.js";
-import { set_mimic_blocking } from "./display.js";
-import { swallowed } from "./display.js";
-import { tmp_at } from "./display.js";
-import { unmap_object } from "./display.js";
-import { doup } from "./do.js";
-import { goto_level } from "./do.js";
-import { heal_legs } from "./do.js";
-import { trycall } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { docall } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { fingers_or_gloves } from "./do_wear.js";
-import { hard_helmet } from "./do_wear.js";
-import { inaccessible_equipment } from "./do_wear.js";
+import {
+    cg, disp, flags, gm, gn, gp, gv, gy, hands_obj, iflags, svc, svd, svm, u,
+} from "./decl.js";
+import { monster_detect, object_detect } from "./detect.js";
+import {
+    canseemon, glyph_at, map_invisible, newsym, see_monsters, see_objects, see_traps,
+    set_mimic_blocking, swallowed, tmp_at, unmap_object,
+} from "./display.js";
+import { doup, goto_level, heal_legs, trycall } from "./do.js";
+import {
+    Monnam, a_monnam, docall, hcolor, hliquid, mon_nam, rndmonnam, x_monnam,
+} from "./do_name.js";
+import { fingers_or_gloves, hard_helmet, inaccessible_equipment } from "./do_wear.js";
 import { tamedog } from "./dog.js";
-import { Can_rise_up } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { ceiling } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { get_level } from "./dungeon.js";
-import { has_ceiling } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { eatmupdate } from "./eat.js";
-import { fix_petrification } from "./eat.js";
-import { newuhs } from "./eat.js";
-import { dealloc_killer } from "./end.js";
-import { delayed_killer } from "./end.js";
-import { find_delayed_killer } from "./end.js";
+import {
+    Can_rise_up, assign_level, ceiling, depth, get_level, has_ceiling, ledger_no, on_level, surface,
+} from "./dungeon.js";
+import { eatmupdate, fix_petrification, newuhs } from "./eat.js";
+import { dealloc_killer, delayed_killer, find_delayed_killer } from "./end.js";
 import { can_reach_floor } from "./engrave.js";
-import { more_experienced } from "./exper.js";
-import { pluslvl } from "./exper.js";
-import { rndexp } from "./exper.js";
-import { explode } from "./explode.js";
-import { explode_oil } from "./explode.js";
-import { dipfountain } from "./fountain.js";
-import { dipsink } from "./fountain.js";
-import { drinkfountain } from "./fountain.js";
-import { drinksink } from "./fountain.js";
-import { floating_above } from "./fountain.js";
-import { wash_hands } from "./fountain.js";
-import { in_rooms } from "./hack.js";
-import { losehp } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
+import { more_experienced, pluslvl, rndexp } from "./exper.js";
+import { explode, explode_oil } from "./explode.js";
+import {
+    dipfountain, dipsink, drinkfountain, drinksink, floating_above, wash_hands,
+} from "./fountain.js";
+import { in_rooms, losehp, near_capacity, nomul, spoteffects } from "./hack.js";
+import { dist2, s_suffix, upstart } from "./hacklib.js";
 import { enlightenment } from "./insight.js";
-import { freeinv } from "./invent.js";
-import { getobj } from "./invent.js";
-import { hold_another_object } from "./invent.js";
-import { learn_unseen_invent } from "./invent.js";
-import { prinv } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { useupall } from "./invent.js";
-import { clone_mon } from "./makemon.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { paralyze_monst } from "./mhitm.js";
-import { sleep_monst } from "./mhitm.js";
-import { slept_monst } from "./mhitm.js";
+import {
+    freeinv, getobj, hold_another_object, learn_unseen_invent, prinv, update_inventory, useup,
+    useupall,
+} from "./invent.js";
+import { clone_mon, makemon, set_malign } from "./makemon.js";
+import { paralyze_monst, sleep_monst, slept_monst } from "./mhitm.js";
 import { cloneu } from "./mhitu.js";
-import { bcsign } from "./mkobj.js";
-import { bless } from "./mkobj.js";
-import { costly_alteration } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { fixup_oil } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { unbless } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
-import { healmon } from "./mon.js";
-import { killed } from "./mon.js";
-import { mongone } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { dmgtype } from "./mondata.js";
-import { mon_hates_blessings } from "./mondata.js";
-import { monstseesu } from "./mondata.js";
-import { monstunseesu } from "./mondata.js";
-import { stagger } from "./mondata.js";
+import {
+    bcsign, bless, costly_alteration, curse, dealloc_obj, fixup_oil, mkobj, mksobj,
+    obj_extract_self, splitobj, unbless, uncurse,
+} from "./mkobj.js";
+import { healmon, killed, mongone, monkilled, wake_nearto, wakeup } from "./mon.js";
+import { dmgtype, mon_hates_blessings, monstseesu, monstunseesu, stagger } from "./mondata.js";
 import { mons } from "./monst.js";
 import { mcureblindness } from "./muse.js";
-import { objdescr_is } from "./o_init.js";
-import { observe_object } from "./o_init.js";
+import { objdescr_is, observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { aobjnam } from "./objnam.js";
-import { cxname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { fruitname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { short_oname } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { the } from "./objnam.js";
-import { thesimpleoname } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
+import {
+    The, Tobjnam, Yname2, Yobjnam2, an, aobjnam, cxname, doname, fruitname, makeplural, otense,
+    short_oname, simpleonames, the, thesimpleoname, vtense, xname, yname,
+} from "./objnam.js";
 import { waterbody_name } from "./pager.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { float_vs_flight } from "./polyself.js";
-import { polyself } from "./polyself.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { alter_cost } from "./shk.js";
-import { check_unpaid } from "./shk.js";
-import { obfree } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { subfrombill } from "./shk.js";
+import {
+    You, You_feel, Your, impossible, livelog_printf, pline, pline_The, verbalize,
+} from "./pline.js";
+import { body_part, float_vs_flight, polyself } from "./polyself.js";
+import { d, rn2, rnd, rnl } from "./rnd.js";
+import { alter_cost, check_unpaid, obfree, shop_keeper, stolen_value, subfrombill } from "./shk.js";
 import { stairway_at } from "./stairs.js";
 import { remove_worn_item } from "./steal.js";
 import { rider_cant_reach } from "./steed.js";
-import { burn_away_slime } from "./timeout.js";
-import { fall_asleep } from "./timeout.js";
-import { erode_obj } from "./trap.js";
-import { fire_damage } from "./trap.js";
-import { float_up } from "./trap.js";
-import { water_damage } from "./trap.js";
+import { burn_away_slime, fall_asleep } from "./timeout.js";
+import { erode_obj, fire_damage, float_up, water_damage } from "./trap.js";
 import { vision_recalc } from "./vision.js";
-import { new_were } from "./were.js";
-import { set_ulycn } from "./were.js";
-import { you_unwere } from "./were.js";
-import { you_were } from "./were.js";
+import { new_were, set_ulycn, you_unwere, you_were } from "./were.js";
 import { aggravate } from "./wizard.js";
-import { mon_adjust_speed } from "./worn.js";
-import { mon_set_minvis } from "./worn.js";
-import { which_armor } from "./worn.js";
-import { bhitm } from "./zap.js";
-import { do_enlightenment_effect } from "./zap.js";
-import { makewish } from "./zap.js";
-import { obj_resists } from "./zap.js";
-import { obj_unpolyable } from "./zap.js";
-import { poly_obj } from "./zap.js";
-import { resist } from "./zap.js";
+import { mon_adjust_speed, mon_set_minvis, which_armor } from "./worn.js";
+import {
+    bhitm, do_enlightenment_effect, makewish, obj_resists, obj_unpolyable, poly_obj, resist,
+} from "./zap.js";

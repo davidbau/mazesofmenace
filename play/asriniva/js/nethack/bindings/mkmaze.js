@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/mkmaze.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for MKMAZE JS bodies.
@@ -25,11 +27,13 @@ export function createMkmazeEnvironment(services){
    else {const name=row.type.replace(/^(struct|union) /,''),fields=schema.schema[name].fields;if(row.values.length!==fields.length)throw Error('Review MKMAZE static initializer '+row.name);row.values.forEach((v,i)=>{env.field(at,name,fields[i].name).value=v;});}
   }else env.cell(at,row.type).value=row.values;
  }
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callMkmaze(services,name,...args){
  let env=states.get(services.moduleKey);if(!env){env=createMkmazeEnvironment(services);states.set(services.moduleKey,env);}
  Object.setPrototypeOf(env,services);
- const fn=mkmaze[name];if(typeof fn!=='function')throw Error('Unknown original MKMAZE function '+name);
- const stackFrame=services.stackSave();try{return withCEnvironment(env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+ const fn=env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original MKMAZE function '+name);
+ const stackFrame=services.stackSave();try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
 }

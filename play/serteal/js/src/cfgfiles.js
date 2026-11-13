@@ -3,171 +3,37 @@
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-// #include "hack.h"
-// #include "dlb.h"
-// #include <errno.h>
-
-
-
-// #include <fcntl.h>
-
-
 export const BIGBUFSZ = (5 * BUFSZ);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
  /* defined below (far below...) */
-
-
-
 
 /* next one is in extern.h; why here too? */
 
 const ignore_errors_on_unmatched = static_var("ignore_errors_on_unmatched", schar, FALSE);
 const ignore_statement_errors = static_var("ignore_statement_errors", schar, FALSE);
 
-
-
-
-
-
-
-
 /* ----------  BEGIN CONFIG FILE HANDLING ----------- */
 
 /* used for messaging. Also used in options.c */
 const default_configfile = static_var("default_configfile", ptr_to(char), _(".nethackrc"));
 
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef UNIX): not in this build */
 
 const configfile = static_array("configfile", char, BUFSZ);
 
-export function /* char * */
-get_configfile()
-{
+export function get_configfile() { /* char * */
     return configfile;
 }
 
-export function /* const char * */
-get_default_configfile()
-{
+export function get_default_configfile() { /* const char * */
     return default_configfile[0];
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef MSDOS: not in this build */
 
 /* #saveoptions - save config options into file */
-export function /* int */
-do_write_config_file()
-{ const $frame = stack_frame(); try {
+export function do_write_config_file() { /* int */
+    const $frame = stack_frame(); try {
     let fp;
     let tmp = stack_array(char, BUFSZ);
 
@@ -185,7 +51,7 @@ do_write_config_file()
         wait_synch()();
     }
 
-    void sprintf(tmp, _(overwrite_prompt), (BUFSZ - sizeof_string(overwrite_prompt) - 2), configfile)
+    sprintf(tmp, _(overwrite_prompt), (BUFSZ - sizeof_string(overwrite_prompt) - 2), configfile)
 ;
 
     if (!paranoid_query(TRUE, tmp))
@@ -207,26 +73,23 @@ do_write_config_file()
                   wrote, len);
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } } export const overwrite_prompt = "Overwrite config file %.*s?";
-
+    } finally { stack_pop($frame); }
+}
+export const overwrite_prompt = "Overwrite config file %.*s?";
 
 /* remember the name of the file we're accessing;
    if may be used in option reject messages */
-export function /* void */
-set_configfile_name(fname)
-{
-    void strncpy(configfile, fname, sizeof(array_of(char, BUFSZ)) - 1);
+export function set_configfile_name(fname) { /* void */
+    strncpy(configfile, fname, sizeof(array_of(char, BUFSZ)) - 1);
     chars[configfile + (sizeof(array_of(char, BUFSZ)) - 1)] = ord('\0');
 }
 
-function /* FILE * */
-fopen_config_file(filename, src)
-{ const $frame = stack_frame(); try {
+function fopen_config_file(filename, src) { /* FILE * */
+    const $frame = stack_frame(); try {
     let fp;
 
     let tmp_config = stack_array(char, BUFSZ);
     let envp;
-
 
     if (src == set_in_sysconf) {
         /* SYSCF_FILE; if we can't open it, caller will bail */
@@ -265,93 +128,30 @@ fopen_config_file(filename, src)
 
         if ((fp = fopen(configfile, _("r"))) != null) {
             return  fp;
-
         } else {
             /* access() above probably caught most problems for UNIX */
             raw_printf(_("Couldn't open requested config file %s (%d)."),
                        configfile, (__errno_location()[0]));
             wait_synch()();
-
         }
     }
     /* fall through to standard names */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if defined(MICRO) || defined(MACOS9) || defined(__BEOS__) || defined(WIN32): not in this build */
 
 /* constructed full path names don't need fqname() */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef VMS: not in this build */
 
     envp = nh_getenv(_("HOME"));
     if (!envp)
-        void strcpy(tmp_config, _(".nethackrc"));
+        strcpy(tmp_config, _(".nethackrc"));
     else
-        void sprintf(tmp_config, _("%s/%s"), envp, _(".nethackrc"));
+        sprintf(tmp_config, _("%s/%s"), envp, _(".nethackrc"));
 
     set_configfile_name(tmp_config);
     if ((fp = fopen(configfile, _("r"))) != null)
         return fp;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(__APPLE__): not in this build */
 
     if ((__errno_location()[0]) != ENOENT) {
         let details;
@@ -367,9 +167,9 @@ fopen_config_file(filename, src)
         wait_synch()();
     }
 
-
     return null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Retrieve a list of integers from buf into a uchar array.
@@ -377,13 +177,12 @@ fopen_config_file(filename, src)
  * NOTE: zeros are inserted unless modlist is TRUE, in which case the list
  *  location is unchanged.  Callers must handle zeros if modlist is FALSE.
  */
-function /* int */
-get_uchars(bufp,
+function get_uchars(bufp,
            list,
            modlist,
            size,
-           name) /* name of option for error message */
-{ let $goto = null;
+           name) { /* int */ /* name of option for error message */
+    let $goto = null;
     var num = 0;
     var count = 0;
     var havenum = FALSE;
@@ -436,33 +235,10 @@ get_uchars(bufp,
     /*NOTREACHED*/
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef NOCWD_ASSUMPTIONS: not in this build */
 
 /* Choose at random one of the sep separated parts from str. Mangles str. */
-function /* char * */
-choose_random_part(str, sep)
-{
+function choose_random_part(str, sep) { /* char * */
     let nsep = 1;
     let csep;
     let len = 0;
@@ -478,9 +254,6 @@ choose_random_part(str, sep)
     }
 
     csep = rn2(nsep);
-
-
-
 
     str = begin;
     while ((csep > 0) && chars[str]) {
@@ -503,9 +276,7 @@ choose_random_part(str, sep)
     return 0;
 }
 
-function /* void */
-free_config_sections()
-{
+function free_config_sections() { /* void */
     if (gc.config_section_chosen) {
         free(gc.config_section_chosen);
         gc.config_section_chosen = 0;
@@ -519,10 +290,8 @@ free_config_sections()
 /* check for " [ anything-except-bracket-or-empty ] # arbitrary-comment"
    with spaces optional; returns pointer to "anything-except..." (with
    trailing " ] #..." stripped) if ok, otherwise Null */
-function /* char * */
-is_config_section(
-    str) /* trailing spaces are stripped, ']' too iff result is good */
-{
+function is_config_section(
+    str) { /* char * */ /* trailing spaces are stripped, ']' too iff result is good */
     let a, c, z;
 
     /* remove any spaces at start and end; won't significantly interfere
@@ -548,9 +317,7 @@ is_config_section(
     return trimspaces(a);
 }
 
-function /* boolean */
-handle_config_section(buf)
-{
+function handle_config_section(buf) { /* boolean */
     let sect = is_config_section(buf);
 
     if (sect) {
@@ -584,9 +351,7 @@ handle_config_section(buf)
 export function match_varname(INP, NAM, LEN) { return match_optname(INP, NAM, LEN, TRUE); }
 
 /* find the '=' or ':' */
-function /* char * */
-find_optparam(buf)
-{
+function find_optparam(buf) { /* char * */
     let bufp, altp;
 
     bufp = strchr(buf, ord('='));
@@ -597,176 +362,93 @@ find_optparam(buf)
     return bufp;
 }
 
-
-
-function /* boolean */
-cnf_line_OPTIONS(origbuf)
-{
+function cnf_line_OPTIONS(origbuf) { /* boolean */
     let bufp = find_optparam(origbuf);
 
     ++bufp; /* skip '='; parseoptions() handles spaces */
     return parseoptions(bufp, TRUE, TRUE);
 }
 
-function /* boolean */
-cnf_line_AUTOPICKUP_EXCEPTION(bufp)
-{
+function cnf_line_AUTOPICKUP_EXCEPTION(bufp) { /* boolean */
     add_autopickup_exception(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_BINDINGS(bufp)
-{
+function cnf_line_BINDINGS(bufp) { /* boolean */
     return parsebindings(bufp);
 }
 
-function /* boolean */
-cnf_line_AUTOCOMPLETE(bufp)
-{
+function cnf_line_AUTOCOMPLETE(bufp) { /* boolean */
     parseautocomplete(bufp, TRUE);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_MSGTYPE(bufp)
-{
+function cnf_line_MSGTYPE(bufp) { /* boolean */
     return msgtype_parse_add(bufp);
 }
 
-function /* boolean */
-cnf_line_HACKDIR(bufp)
-{
-
-
-
-
-
-
-    (void (bufp));
-
+function cnf_line_HACKDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_LEVELDIR(bufp)
-{
-
-
-
-
-
-
-
-
-
-
-
-    (void (bufp));
-
+function cnf_line_LEVELDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_SAVEDIR(bufp)
-{
+function cnf_line_SAVEDIR(bufp) { /* boolean */
+    /* #ifdef MICRO: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (bufp));
-
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_BONESDIR(bufp)
-{
-
-
-
-    (void (bufp));
+function cnf_line_BONESDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_DATADIR(bufp)
-{
-
-
-
-    (void (bufp));
+function cnf_line_DATADIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_SCOREDIR(bufp)
-{
-
-
-
-    (void (bufp));
+function cnf_line_SCOREDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_LOCKDIR(bufp)
-{
-
-
-
-    (void (bufp));
+function cnf_line_LOCKDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_CONFIGDIR(bufp)
-{
-
-
-
-    (void (bufp));
+function cnf_line_CONFIGDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_TROUBLEDIR(bufp)
-{
-
-
-
-    (void (bufp));
+function cnf_line_TROUBLEDIR(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_NAME(bufp)
-{
-    void strncpy(svp.plname, bufp, PL_NSIZ - 1);
+function cnf_line_NAME(bufp) { /* boolean */
+    strncpy(svp.plname, bufp, PL_NSIZ - 1);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_ROLE(bufp)
-{
+function cnf_line_ROLE(bufp) { /* boolean */
     let len;
 
     if ((len = str2role(bufp)) >= 0)
@@ -774,26 +456,17 @@ cnf_line_ROLE(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_dogname(bufp)
-{
-    void strncpy(gd.dogname, bufp, PL_PSIZ - 1);
+function cnf_line_dogname(bufp) { /* boolean */
+    strncpy(gd.dogname, bufp, PL_PSIZ - 1);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_catname(bufp)
-{
-    void strncpy(gc.catname, bufp, PL_PSIZ - 1);
+function cnf_line_catname(bufp) { /* boolean */
+    strncpy(gc.catname, bufp, PL_PSIZ - 1);
     return TRUE;
 }
 
-
-
-
-function /* boolean */
-cnf_line_WIZARDS(bufp)
-{
+function cnf_line_WIZARDS(bufp) { /* boolean */
     if (sysopt.wizards)
         free(sysopt.wizards);
     sysopt.wizards = dupstr(bufp);
@@ -808,36 +481,28 @@ cnf_line_WIZARDS(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_SHELLERS(bufp)
-{
+function cnf_line_SHELLERS(bufp) { /* boolean */
     if (sysopt.shellers)
         free(sysopt.shellers);
     sysopt.shellers = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_MSGHANDLER(bufp)
-{
+function cnf_line_MSGHANDLER(bufp) { /* boolean */
     if (sysopt.msghandler)
         free(sysopt.msghandler);
     sysopt.msghandler = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_EXPLORERS(bufp)
-{
+function cnf_line_EXPLORERS(bufp) { /* boolean */
     if (sysopt.explorers)
         free(sysopt.explorers);
     sysopt.explorers = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_DEBUGFILES(bufp)
-{
+function cnf_line_DEBUGFILES(bufp) { /* boolean */
     /* might already have a vaule from getenv("DEBUGFILES");
        if so, ignore this value from SYSCF */
     if (!sysopt.env_dbgfl) {
@@ -848,31 +513,20 @@ cnf_line_DEBUGFILES(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_DUMPLOGFILE(bufp)
-{
-
-
-
-
-
-    (void (bufp));
+function cnf_line_DUMPLOGFILE(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_GENERICUSERS(bufp)
-{
+function cnf_line_GENERICUSERS(bufp) { /* boolean */
     if (sysopt.genericusers)
         free(sysopt.genericusers);
     sysopt.genericusers = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_BONES_POOLS(bufp)
-{
+function cnf_line_BONES_POOLS(bufp) { /* boolean */
     /* max value of 10 guarantees (N % bones.pools) will be one digit
        so we don't lose control of the length of bones file names */
     let n = atoi(bufp);
@@ -884,52 +538,39 @@ cnf_line_BONES_POOLS(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_SUPPORT(bufp)
-{
+function cnf_line_SUPPORT(bufp) { /* boolean */
     if (sysopt.support)
         free(sysopt.support);
     sysopt.support = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_RECOVER(bufp)
-{
+function cnf_line_RECOVER(bufp) { /* boolean */
     if (sysopt.recover)
         free(sysopt.recover);
     sysopt.recover = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_CHECK_SAVE_UID(bufp)
-{
+function cnf_line_CHECK_SAVE_UID(bufp) { /* boolean */
     let n = atoi(bufp);
 
     sysopt.check_save_uid = n;
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_CHECK_PLNAME(bufp)
-{
+function cnf_line_CHECK_PLNAME(bufp) { /* boolean */
     let n = atoi(bufp);
 
     sysopt.check_plname = n;
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_SEDUCE(bufp)
-{
+function cnf_line_SEDUCE(bufp) { /* boolean */
     let n = +!!atoi(bufp); /* XXX this could be tighter */
 
     let src = iflags.parse_config_file_src;
-    let in_sysconf = (+(src == set_in_sysconf));
-
-
-
+    let in_sysconf = +(src == set_in_sysconf);
 
     /* allow anyone to disable it but can only enable it in sysconf
        or as a no-op for the user when sysconf hasn't disabled it */
@@ -942,18 +583,14 @@ cnf_line_SEDUCE(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_HIDEUSAGE(bufp)
-{
+function cnf_line_HIDEUSAGE(bufp) { /* boolean */
     let n = +!!atoi(bufp);
 
     sysopt.hideusage = n;
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_MAXPLAYERS(bufp)
-{
+function cnf_line_MAXPLAYERS(bufp) { /* boolean */
     let n = atoi(bufp);
 
     /* XXX to get more than 25, need to rewrite all lock code */
@@ -965,9 +602,7 @@ cnf_line_MAXPLAYERS(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_PERSMAX(bufp)
-{
+function cnf_line_PERSMAX(bufp) { /* boolean */
     let n = atoi(bufp);
 
     if (n < 1) {
@@ -978,9 +613,7 @@ cnf_line_PERSMAX(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_PERS_IS_UID(bufp)
-{
+function cnf_line_PERS_IS_UID(bufp) { /* boolean */
     let n = atoi(bufp);
 
     if (n != 0 && n != 1) {
@@ -991,9 +624,7 @@ cnf_line_PERS_IS_UID(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_ENTRYMAX(bufp)
-{
+function cnf_line_ENTRYMAX(bufp) { /* boolean */
     let n = atoi(bufp);
 
     if (n < 10) {
@@ -1004,9 +635,7 @@ cnf_line_ENTRYMAX(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_POINTSMIN(bufp)
-{
+function cnf_line_POINTSMIN(bufp) { /* boolean */
     let n = atoi(bufp);
 
     if (n < 1) {
@@ -1017,9 +646,7 @@ cnf_line_POINTSMIN(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_MAX_STATUENAME_RANK(bufp)
-{
+function cnf_line_MAX_STATUENAME_RANK(bufp) { /* boolean */
     let n = atoi(bufp);
 
     if (n < 1) {
@@ -1031,9 +658,7 @@ cnf_line_MAX_STATUENAME_RANK(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_LIVELOG(bufp)
-{
+function cnf_line_LIVELOG(bufp) { /* boolean */
     /* using 0 for base accepts "dddd" as decimal provided that first 'd'
        isn't '0', "0xhhhh" as hexadecimal, and "0oooo" as octal; ignores
        any trailing junk, including '8' or '9' for leading '0' octal */
@@ -1048,78 +673,42 @@ cnf_line_LIVELOG(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_PANICTRACE_LIBC(bufp)
-{
+function cnf_line_PANICTRACE_LIBC(bufp) { /* boolean */
     let n = atoi(bufp);
-
-
-
-
-
-
 
     sysopt.panictrace_libc = n;
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_PANICTRACE_GDB(bufp)
-{
+function cnf_line_PANICTRACE_GDB(bufp) { /* boolean */
     let n = atoi(bufp);
-
-
-
-
-
-
 
     sysopt.panictrace_gdb = n;
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_GDBPATH(bufp)
-{
-
-
-
-
-
-
+function cnf_line_GDBPATH(bufp) { /* boolean */
     if (sysopt.gdbpath)
         free(sysopt.gdbpath);
     sysopt.gdbpath = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_GREPPATH(bufp)
-{
-
-
-
-
-
-
+function cnf_line_GREPPATH(bufp) { /* boolean */
     if (sysopt.greppath)
         free(sysopt.greppath);
     sysopt.greppath = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_CRASHREPORTURL(bufp)
-{
+function cnf_line_CRASHREPORTURL(bufp) { /* boolean */
     if (sysopt.crashreporturl)
         free(sysopt.crashreporturl);
     sysopt.crashreporturl = dupstr(bufp);
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_ACCESSIBILITY(bufp)
-{
+function cnf_line_ACCESSIBILITY(bufp) { /* boolean */
     let n = atoi(bufp);
 
     if (n < 0 || n > 1) {
@@ -1130,66 +719,40 @@ cnf_line_ACCESSIBILITY(bufp)
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_PORTABLE_DEVICE_PATHS(bufp)
-{
+function cnf_line_PORTABLE_DEVICE_PATHS(bufp) { /* boolean */
+    /* #ifdef WIN32: not in this build */
 
-
-
-
-
-
-
-
-
-
-    (void (bufp));
+    (bufp);
     config_error_add(_("PORTABLE_DEVICE_PATHS is not supported"));
 
     return TRUE;
 }
 
-
-
-
-function /* boolean */
-cnf_line_BOULDER(bufp)
-{
-    void get_uchars(bufp, go.ov_primary_syms + (SYM_BOULDER + SYM_OFF_X),
+function cnf_line_BOULDER(bufp) { /* boolean */
+    get_uchars(bufp, go.ov_primary_syms + (SYM_BOULDER + SYM_OFF_X),
                       TRUE, 1, _("BOULDER"));
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_MENUCOLOR(bufp)
-{
+function cnf_line_MENUCOLOR(bufp) { /* boolean */
     return add_menu_coloring(bufp);
 }
 
-function /* boolean */
-cnf_line_HILITE_STATUS(bufp)
-{
-
+function cnf_line_HILITE_STATUS(bufp) { /* boolean */
     return parse_status_hl1(bufp, TRUE);
-
-
-
-
 }
 
-function /* boolean */
-cnf_line_WARNINGS(bufp)
-{ const $frame = stack_frame(); try {
+function cnf_line_WARNINGS(bufp) { /* boolean */
+    const $frame = stack_frame(); try {
     let translate = stack_array(uchar, MAXPCHARS);
 
-    void get_uchars(bufp, translate, FALSE, WARNCOUNT, _("WARNINGS"));
+    get_uchars(bufp, translate, FALSE, WARNCOUNT, _("WARNINGS"));
     assign_warnings(translate);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-cnf_line_ROGUESYMBOLS(bufp)
-{
+function cnf_line_ROGUESYMBOLS(bufp) { /* boolean */
     if (parsesymbols(bufp, ROGUESET)) {
         switch_symbols(TRUE);
         return TRUE;
@@ -1198,9 +761,7 @@ cnf_line_ROGUESYMBOLS(bufp)
     return FALSE;
 }
 
-function /* boolean */
-cnf_line_SYMBOLS(bufp)
-{
+function cnf_line_SYMBOLS(bufp) { /* boolean */
     if (parsesymbols(bufp, PRIMARYSET)) {
         switch_symbols(TRUE);
         return TRUE;
@@ -1210,95 +771,42 @@ cnf_line_SYMBOLS(bufp)
     return FALSE;
 }
 
-function /* boolean */
-cnf_line_WIZKIT(bufp)
-{
-    void strncpy(gw.wizkit, bufp, WIZKIT_MAX - 1);
+function cnf_line_WIZKIT(bufp) { /* boolean */
+    strncpy(gw.wizkit, bufp, WIZKIT_MAX - 1);
     return TRUE;
 }
 
+/* #ifdef USER_SOUNDS: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* boolean */
-cnf_line_QT_TILEWIDTH(bufp)
-{
-
-
-
-
-
-
-    (void (bufp));
+function cnf_line_QT_TILEWIDTH(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_QT_TILEHEIGHT(bufp)
-{
-
-
-
-
-
-
-    (void (bufp));
+function cnf_line_QT_TILEHEIGHT(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_QT_FONTSIZE(bufp)
-{
-
-
-
-
-
-
-    (void (bufp));
+function cnf_line_QT_FONTSIZE(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
 
-function /* boolean */
-cnf_line_QT_COMPACT(bufp)
-{
-
-
-
-
-
-    (void (bufp));
+function cnf_line_QT_COMPACT(bufp) { /* boolean */
+    (bufp);
 
     return TRUE;
 }
-
-
-
 
 /* normal */
 
 /* normal, alias */
 
 /* sysconf only */
-
 
   const struct_match_config_line_stmt = struct("struct_match_config_line_stmt", {
     name: ptr_to(char),
@@ -1330,7 +838,6 @@ cnf_line_QT_COMPACT(bufp)
     { name: _("dogname"), len: 3, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_dogname },
     { name: _("catname"), len: 3, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_catname },
 
-
     { name: _("WIZARDS"), len: 7, syscnf_only: TRUE, origbuf: FALSE, fn: cnf_line_WIZARDS },
     { name: _("SHELLERS"), len: 8, syscnf_only: TRUE, origbuf: FALSE, fn: cnf_line_SHELLERS },
     { name: _("MSGHANDLER"), len: 9, syscnf_only: TRUE, origbuf: FALSE, fn: cnf_line_MSGHANDLER },
@@ -1360,7 +867,6 @@ cnf_line_QT_COMPACT(bufp)
     { name: _("ACCESSIBILITY"), len: 13, syscnf_only: TRUE, origbuf: FALSE, fn: cnf_line_ACCESSIBILITY },
     { name: _("PORTABLE_DEVICE_PATHS"), len: 8, syscnf_only: TRUE, origbuf: FALSE, fn: cnf_line_PORTABLE_DEVICE_PATHS },
 
-
     { name: _("BOULDER"), len: 3, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_BOULDER },
     { name: _("MENUCOLOR"), len: 9, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_MENUCOLOR },
     { name: _("HILITE_STATUS"), len: 6, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_HILITE_STATUS },
@@ -1369,9 +875,6 @@ cnf_line_QT_COMPACT(bufp)
     { name: _("SYMBOLS"), len: 4, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_SYMBOLS },
     { name: _("WIZKIT"), len: 6, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_WIZKIT },
 
-
-
-
     { name: _("QT_TILEWIDTH"), len: 12, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_QT_TILEWIDTH },
     { name: _("QT_TILEHEIGHT"), len: 13, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_QT_TILEHEIGHT },
     { name: _("QT_FONTSIZE"), len: 11, syscnf_only: FALSE, origbuf: FALSE, fn: cnf_line_QT_FONTSIZE },
@@ -1379,28 +882,19 @@ cnf_line_QT_COMPACT(bufp)
 
 ]);
 
-
-
-
-
 const disregarded_config_lines = static_array("disregarded_config_lines", schar, SIZE(config_line_stmt));
 
-export function /* boolean */
-parse_config_line(origbuf)
-{ const $frame = stack_frame(); try {
-
-
-
-
+export function parse_config_line(origbuf) { /* boolean */
+    const $frame = stack_frame(); try {
     let src = iflags.parse_config_file_src;
-    let in_sysconf = (+(src == set_in_sysconf));
+    let in_sysconf = +(src == set_in_sysconf);
 
     let bufp, buf = stack_array(char, 4 * BUFSZ);
     let i;
 
     while (chars[origbuf] == ord(' ') || chars[origbuf] == ord('\t')) /* skip leading whitespace */
         ++origbuf;                   /* (caller probably already did this) */
-    void strncpy(buf, origbuf, sizeof(array_of(char, 4 * BUFSZ)) - 1);
+    strncpy(buf, origbuf, sizeof(array_of(char, 4 * BUFSZ)) - 1);
     chars[buf + (sizeof(array_of(char, 4 * BUFSZ)) - 1)] = ord('\0'); /* strncpy not guaranteed to NUL terminate */
     /* convert any tab to space, condense consecutive spaces into one,
        remove leading and trailing spaces (exception: if there is nothing
@@ -1420,7 +914,6 @@ parse_config_line(origbuf)
         ++bufp;
 
     for (i = 0; i < SIZE(config_line_stmt); i++) {
-
         if (config_line_stmt[i].syscnf_only && !in_sysconf)
             continue;
 
@@ -1436,15 +929,8 @@ parse_config_line(origbuf)
     if (!ignore_errors_on_unmatched[0])
         config_error_add(_("Unknown config statement"));
     return FALSE;
-} finally { stack_pop($frame); } }
-
-
-
-
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 const struct__config_error_errmsg = struct("struct__config_error_errmsg", {
     line_num: int,
@@ -1466,11 +952,8 @@ const struct__config_error_frame = struct("struct__config_error_frame", {
 const config_error_data = static_var("config_error_data", ptr_to(struct__config_error_frame), null);
 const config_error_msg = static_var("config_error_msg", ptr_to(struct__config_error_errmsg), null);
 
-export function /* void */
-config_error_init(from_file, sourcename, secure)
-{
+export function config_error_init(from_file, sourcename, secure) { /* void */
     let tmp = view_of(struct__config_error_frame, addr_of(alloc(sizeof(struct__config_error_frame))));
-
 
     tmp.line_num = 0;
     tmp.num_errors = 0;
@@ -1479,7 +962,7 @@ config_error_init(from_file, sourcename, secure)
     tmp.secure = secure;
     chars[tmp.origline + 0] = ord('\0');
     if (sourcename && chars[sourcename + 0]) {
-        void strncpy(tmp.source, sourcename, sizeof_member(tmp, "source") - 1);
+        strncpy(tmp.source, sourcename, sizeof_member(tmp, "source") - 1);
         chars[tmp.source + (sizeof_member(tmp, "source") - 1)] = ord('\0');
     } else
         chars[tmp.source + 0] = ord('\0');
@@ -1489,9 +972,7 @@ config_error_init(from_file, sourcename, secure)
     program_state.config_error_ready = TRUE;
 }
 
-function /* boolean */
-config_error_nextline(line)
-{
+function config_error_nextline(line) { /* boolean */
     let ced = config_error_data[0];
 
     if (!ced)
@@ -1503,7 +984,7 @@ config_error_nextline(line)
     ced.line_num++;
     ced.origline_shown = FALSE;
     if (line && chars[line + 0]) {
-        void strncpy(ced.origline, line, sizeof_member(ced, "origline") - 1);
+        strncpy(ced.origline, line, sizeof_member(ced, "origline") - 1);
         chars[ced.origline + (sizeof_member(ced, "origline") - 1)] = ord('\0');
     } else
         chars[ced.origline + 0] = ord('\0');
@@ -1511,10 +992,7 @@ config_error_nextline(line)
     return TRUE;
 }
 
-
-export function /* int */
-l_get_config_errors(L)
-{
+export function l_get_config_errors(L) { /* int */
     let dat = config_error_msg[0];
     let tmp;
     let idx = 1;
@@ -1538,11 +1016,9 @@ l_get_config_errors(L)
     return 1;
 }
 
-
 /* varargs 'config_error_add()' moved to pline.c */
-export function /* void */
-config_erradd(buf)
-{ const $frame = stack_frame(); try {
+export function config_erradd(buf) { /* void */
+    const $frame = stack_frame(); try {
     let lineno = stack_array(char, QBUFSZ);
     let punct;
 
@@ -1566,7 +1042,6 @@ config_erradd(buf)
     if (iflags.in_lua) {
         let dat = view_of(struct__config_error_errmsg, addr_of(alloc(sizeof(struct__config_error_errmsg))));
 
-
         dat.next = config_error_msg[0];
         dat.line_num = config_error_data[0].line_num;
         dat.errormsg = dupstr(buf);
@@ -1580,17 +1055,16 @@ config_erradd(buf)
         config_error_data[0].origline_shown = TRUE;
     }
     if (config_error_data[0].line_num > 0 && !config_error_data[0].secure) {
-        void sprintf(lineno, _("Line %d: "), config_error_data[0].line_num);
+        sprintf(lineno, _("Line %d: "), config_error_data[0].line_num);
     } else
         chars[lineno + 0] = ord('\0');
 
     pline(_("%s %s%s%s"), config_error_data[0].secure ? _("Error:") : _(" *"),
           lineno, buf, punct);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-config_error_done()
-{
+export function config_error_done() { /* int */
     let n;
     let tmp = config_error_data[0];
 
@@ -1616,13 +1090,11 @@ config_error_done()
     }
     config_error_data[0] = tmp.next;
     free(addr_of(tmp));
-    program_state.config_error_ready = (+(config_error_data[0] != null));
+    program_state.config_error_ready = +(config_error_data[0] != null);
     return n;
 }
 
-export function /* boolean */
-read_config_file(filename, src)
-{
+export function read_config_file(filename, src) { /* boolean */
     let fp;
     let rv = TRUE;
 
@@ -1636,7 +1108,7 @@ read_config_file(filename, src)
     iflags.parse_config_file_src = src;
 
     rv = parse_conf_file(fp, parse_config_line);
-    void fclose(fp);
+    fclose(fp);
 
     free_config_sections();
 
@@ -1658,9 +1130,7 @@ const struct__cnf_parser_state = struct("struct__cnf_parser_state", {
 });
 
 /* Initialize config parser data */
-function /* void */
-cnf_parser_init(parser)
-{
+function cnf_parser_init(parser) { /* void */
     parser.rv = TRUE; /* assume successful parse */
     parser.ep = parser.buf = 0;
     parser.skip = FALSE;
@@ -1673,9 +1143,7 @@ cnf_parser_init(parser)
 }
 
 /* caller has finished with 'parser' (except for 'rv' so leave that intact) */
-function /* void */
-cnf_parser_done(parser)
-{
+function cnf_parser_done(parser) { /* void */
     parser.ep = 0; /* points into parser->inbuf, so becoming stale */
     if (parser.inbuf)
         free(parser.inbuf), parser.inbuf = 0;
@@ -1689,9 +1157,7 @@ cnf_parser_done(parser)
  *
  * Continued lines are merged together with one space in between.
  */
-function /* void */
-parse_conf_buf(p, proc)
-{
+function parse_conf_buf(p, proc) { /* void */
     p.cont = FALSE;
     p.pbreak = FALSE;
     p.ep = strchr(p.inbuf, ord('\n'));
@@ -1700,7 +1166,7 @@ parse_conf_buf(p, proc)
             p.skip = FALSE; /* found newline; next line is normal */
     } else {
         if (!p.ep) {  /* newline missing */
-            if (strlen(p.inbuf) < unsigned((unsigned(p.inbufsz - 2)))) {
+            if (strlen(p.inbuf) < unsigned(p.inbufsz - 2)) {
                 /* likely the last line of file is just
                    missing a newline; process it anyway  */
                 p.ep = eos(p.inbuf);
@@ -1718,7 +1184,7 @@ parse_conf_buf(p, proc)
             let oldline = FALSE;
 
             /* line continuation (trailing '\') */
-            p.morelines = (+(--p.ep >= p.inbuf && chars[p.ep] == ord('\\')));
+            p.morelines = +(--p.ep >= p.inbuf && chars[p.ep] == ord('\\'));
             if (p.morelines)
                 chars[p.ep] = ord('\0');
 
@@ -1754,7 +1220,7 @@ parse_conf_buf(p, proc)
                 tmpbuf = addr_of(alloc(unsigned(len)));
                 chars[tmpbuf] = ord('\0');
                 if (p.buf) {
-                    void strcat(strcpy(tmpbuf, p.buf), _(" "));
+                    strcat(strcpy(tmpbuf, p.buf), _(" "));
                     free(p.buf), p.buf = 0;
                 }
                 p.buf = strcat(tmpbuf, p.ep);
@@ -1798,7 +1264,7 @@ parse_conf_buf(p, proc)
                 return;
             }
 
-            if (!(proc)(p.buf))
+            if (!proc(p.buf))
                 p.rv = FALSE;
 
             free(p.buf), p.buf = 0;
@@ -1806,9 +1272,8 @@ parse_conf_buf(p, proc)
     }
 }
 
-export function /* boolean */
-parse_conf_str(str, proc)
-{ const $frame = stack_frame(); try {
+export function parse_conf_str(str, proc) { /* boolean */
+    const $frame = stack_frame(); try {
     let len;
     let parser = stack_struct(struct__cnf_parser_state);
 
@@ -1817,7 +1282,7 @@ parse_conf_str(str, proc)
     config_error_init(FALSE, _("parse_conf_str"), FALSE);
     while (str && chars[str]) {
         len = 0;
-        while (chars[str] && len < unsigned((unsigned(parser.inbufsz-1)))) {
+        while (chars[str] && len < unsigned(parser.inbufsz-1)) {
             chars[parser.inbuf + len] = chars[str];
             len++;
             str++;
@@ -1834,15 +1299,15 @@ parse_conf_str(str, proc)
     free_config_sections();
     config_error_done();
     return parser.rv;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* parse_conf_file
  *
  * Read from file fp, calling parse_conf_buf for each line.
  */
-export function /* boolean */
-parse_conf_file(fp, proc)
-{ const $frame = stack_frame(); try {
+export function parse_conf_file(fp, proc) { /* boolean */
+    const $frame = stack_frame(); try {
     let parser = stack_struct(struct__cnf_parser_state);
 
     cnf_parser_init(parser);
@@ -1857,13 +1322,10 @@ parse_conf_file(fp, proc)
 
     free_config_sections();
     return parser.rv;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* void */
-config_error_add(str, ...args)
-{
+export function config_error_add(str, ...args) { /* void */
     let the_args;
 
     the_args = va_start(args);
@@ -1871,28 +1333,21 @@ config_error_add(str, ...args)
     va_end(the_args);
 }
 
-function /* void */
-vconfig_error_add(str, the_args)
-{ const $frame = stack_frame(); try { /* start of vconf...() or of nested block in USE_OLDARG's conf...() */
+function vconfig_error_add(str, the_args) { /* void */
+    const $frame = stack_frame(); try { /* start of vconf...() or of nested block in USE_OLDARG's conf...() */
     let vlen = 0;
     let buf = stack_array(char, BIGBUFSZ); /* will be chopped down to BUFSZ-1 if longer */
 
     vlen = vsnprintf(buf, sizeof(array_of(char, BIGBUFSZ)), str, the_args);
 
-
-
-
-
-    (void (vlen));
+    (vlen);
 
     chars[buf + (BUFSZ - 1)] = ord('\0');
     config_erradd(buf);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* void */
-rcfile()
-{
+export function rcfile() { /* void */
     let opts = 0, xtraopts = 0;
     let envname, namesrc, nameval;
 
@@ -1941,13 +1396,13 @@ rcfile()
     }
 
     config_error_init(TRUE, nameval, nameval ? TRUE : FALSE);
-    void read_config_file(nameval, set_in_config);
+    read_config_file(nameval, set_in_config);
     config_error_done();
     if (xtraopts) {
         /* NETHACKOPTIONS is present and not a file name */
         go.opt_phase = environ_opt;
         config_error_init(FALSE, envname, FALSE);
-        void parseoptions(xtraopts, TRUE, FALSE);
+        parseoptions(xtraopts, TRUE, FALSE);
         config_error_done();
     }
 
@@ -1956,9 +1411,7 @@ rcfile()
     /*[end of nethackrc handling]*/
 }
 
-export function /* void */
-rcfile_interface_options()
-{
+export function rcfile_interface_options() { /* void */
     allopt_array_init();
     disregard_all_options();
     disregard_all_config_statements();
@@ -1975,66 +1428,43 @@ rcfile_interface_options()
     ignore_statement_errors[0] = FALSE;
 }
 
-export function /* void */
-heed_all_config_statements()
-{
+export function heed_all_config_statements() { /* void */
     let i;
 
     for (i = 0; i < (Math.trunc((sizeof(array_of(schar, SIZE(config_line_stmt))) / sizeof(schar)))); i++) {
         chars[disregarded_config_lines + i] = FALSE;
     }
 }
-export function /* void */
-disregard_all_config_statements()
-{
+export function disregard_all_config_statements() { /* void */
     let i;
 
     for (i = 0; i < (Math.trunc((sizeof(array_of(schar, SIZE(config_line_stmt))) / sizeof(schar)))); i++) {
         chars[disregarded_config_lines + i] = TRUE;
     }
 }
-export function /* void */
-heed_this_config_statement(statement_idx)
-{
+export function heed_this_config_statement(statement_idx) { /* void */
     if (statement_idx >= 0 && statement_idx < (Math.trunc((sizeof(array_of(schar, SIZE(config_line_stmt))) / sizeof(schar)))))
         chars[disregarded_config_lines + statement_idx] = FALSE;
 }
-export function /* void */
-disregard_this_config_statement(statement_idx)
-{
+export function disregard_this_config_statement(statement_idx) { /* void */
     if (statement_idx >= 0 && statement_idx < (Math.trunc((sizeof(array_of(schar, SIZE(config_line_stmt))) / sizeof(schar)))))
         chars[disregarded_config_lines + statement_idx] = TRUE;
 }
 
-export function /* void */
-clear_ignore_errors_on_unmatched()
-{
+export function clear_ignore_errors_on_unmatched() { /* void */
     ignore_errors_on_unmatched[0] = FALSE;
 }
-export function /* void */
-set_ignore_errors_on_unmatched()
-{
+export function set_ignore_errors_on_unmatched() { /* void */
     ignore_errors_on_unmatched[0] = TRUE;
 }
-export function /* boolean */
-config_unmatched_ignored()
-{
+export function config_unmatched_ignored() { /* boolean */
     if (ignore_errors_on_unmatched[0])
         return TRUE;
     return FALSE;
 }
 
-
-
-
-export function /* void */
-assure_syscf_file()
-{
+export function assure_syscf_file() { /* void */
     let fd;
-
-
-
-
 
     /*
      * All we really care about is the end result - can we read the file?
@@ -2046,13 +1476,7 @@ assure_syscf_file()
      * VMS overrides open() usage with a macro which requires it.
      */
 
-
-
-
     fd = open(_(SYSCF_FILE), O_RDONLY);
-
-
-
 
     if (fd >= 0) {
         /* readable */
@@ -2067,146 +1491,57 @@ assure_syscf_file()
     exit(EXIT_FAILURE);
 }
 
-
-
-
 /* ----------  END CONFIG FILE HANDLING ----------- */
 
 /*cfgfiles.c*/
+
 import { SYSCF_FILE } from "./config.h.js";
 import { MAXPCHARS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { PL_PSIZ } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { environ_opt } from "./global.h.js";
-import { rc_file_opt } from "./global.h.js";
-import { set_in_config } from "./global.h.js";
-import { set_in_sysconf } from "./global.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { SYM_OFF_X } from "./hack.h.js";
-import { SYSCONFPREFIX } from "./hack.h.js";
-import { WIZKIT_MAX } from "./hack.h.js";
-import { struct_strbuf } from "./hack.h.js";
-import { FEATURE_NOTICE_VER } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
+import {
+    BUFSZ, FALSE, PL_NSIZ, PL_PSIZ, QBUFSZ, TRUE, boolean, environ_opt, rc_file_opt, set_in_config,
+    set_in_sysconf,
+} from "./global.h.js";
+import { ECMD_OK, SYM_OFF_X, SYSCONFPREFIX, WIZKIT_MAX, struct_strbuf } from "./hack.h.js";
+import { FEATURE_NOTICE_VER, min, plur } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { debugpline0 } from "./lint.h.macros.js";
-import { debugpline1 } from "./lint.h.macros.js";
+import { debugpline0, debugpline1 } from "./lint.h.macros.js";
 import { lua_newtable } from "./lua.h.macros.js";
-import { opt_soundlib } from "./optlist.h.js";
-import { opt_windowtype } from "./optlist.h.js";
-import { PRIMARYSET } from "./sym.h.js";
-import { ROGUESET } from "./sym.h.js";
-import { SYM_BOULDER } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
+import { opt_soundlib, opt_windowtype } from "./optlist.h.js";
+import { PRIMARYSET, ROGUESET, SYM_BOULDER, WARNCOUNT } from "./sym.h.js";
 import { wait_synch } from "./winprocs.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { ENOENT } from "../rt/libc.js";
-import { EXIT_FAILURE } from "../rt/libc.js";
-import { O_RDONLY } from "../rt/libc.js";
-import { __errno_location } from "../rt/libc.js";
-import { access } from "../rt/libc.js";
-import { atoi } from "../rt/libc.js";
-import { close } from "../rt/libc.js";
-import { exit } from "../rt/libc.js";
-import { fclose } from "../rt/libc.js";
-import { fgets } from "../rt/libc.js";
-import { fopen } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { fwrite } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { open } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strerror } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strtoll } from "../rt/libc.js";
-import { vsnprintf } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
-import { lua_pushinteger } from "../rt/lua.js";
-import { lua_settable } from "../rt/lua.js";
+import { char, int, ord, schar, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import {
+    ENOENT, EXIT_FAILURE, O_RDONLY, __errno_location, access, atoi, close, exit, fclose, fgets,
+    fopen, free, fwrite, getenv, memset, open, sprintf, strcat, strchr, strcmp, strcpy, strerror,
+    strlen, strncmp, strncpy, strtoll, vsnprintf,
+} from "../rt/libc.js";
+import { stack_array, stack_struct, static_array, static_var } from "../rt/locals.js";
+import { lua_pushinteger, lua_settable } from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { va_end } from "../rt/varargs.js";
-import { va_start } from "../rt/varargs.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import {
+    addr_of, array_of, fnptr_t, ptr_to, sizeof_member, struct, view_of,
+} from "../rt/struct.js";
+import { va_end, va_start } from "../rt/varargs.js";
+import { alloc, dupstr } from "./alloc.js";
 import { parse_status_hl1 } from "./botl.js";
-import { paranoid_query } from "./cmd.js";
-import { parseautocomplete } from "./cmd.js";
+import { paranoid_query, parseautocomplete } from "./cmd.js";
 import { add_menu_coloring } from "./coloratt.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gw } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svp } from "./decl.js";
+import { flags, gc, gd, gn, go, gw, iflags, program_state, svp } from "./decl.js";
 import { build_english_list } from "./end.js";
-import { do_deferred_showpaths } from "./files.js";
-import { fqname } from "./files.js";
-import { c_eos } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { trimspaces } from "./hacklib.js";
-import { nhl_add_table_entry_int } from "./nhlua.js";
-import { nhl_add_table_entry_str } from "./nhlua.js";
-import { add_autopickup_exception } from "./options.js";
-import { all_options_strbuf } from "./options.js";
-import { allopt_array_init } from "./options.js";
-import { assign_warnings } from "./options.js";
-import { disregard_all_options } from "./options.js";
-import { disregard_this_option } from "./options.js";
-import { heed_all_options } from "./options.js";
-import { heed_this_option } from "./options.js";
-import { match_optname } from "./options.js";
-import { msgtype_parse_add } from "./options.js";
-import { nh_getenv } from "./options.js";
-import { parsebindings } from "./options.js";
-import { parseoptions } from "./options.js";
-import { reset_duplicate_opt_detection } from "./options.js";
-import { pline } from "./pline.js";
-import { raw_printf } from "./pline.js";
+import { do_deferred_showpaths, fqname } from "./files.js";
+import { c_eos, eos, mungspaces, trimspaces } from "./hacklib.js";
+import { nhl_add_table_entry_int, nhl_add_table_entry_str } from "./nhlua.js";
+import {
+    add_autopickup_exception, all_options_strbuf, allopt_array_init, assign_warnings,
+    disregard_all_options, disregard_this_option, heed_all_options, heed_this_option, match_optname,
+    msgtype_parse_add, nh_getenv, parsebindings, parseoptions, reset_duplicate_opt_detection,
+} from "./options.js";
+import { pline, raw_printf } from "./pline.js";
 import { rn2 } from "./rnd.js";
 import { str2role } from "./role.js";
-import { strbuf_empty } from "./strutil.js";
-import { strbuf_init } from "./strutil.js";
-import { parsesymbols } from "./symbols.js";
-import { switch_symbols } from "./symbols.js";
-import { sysopt } from "./sys.js";
-import { sysopt_seduce_set } from "./sys.js";
+import { strbuf_empty, strbuf_init } from "./strutil.js";
+import { parsesymbols, switch_symbols } from "./symbols.js";
+import { sysopt, sysopt_seduce_set } from "./sys.js";
 const __FILE__ = "cfgfiles.c";

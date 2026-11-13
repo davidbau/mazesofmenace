@@ -6,20 +6,12 @@
  * Support code for "rogue"-style level.
  */
 
-// #include "hack.h"
-
 export const XL_UP = 1;
 export const XL_DOWN = 2;
 export const XL_LEFT = 4;
 export const XL_RIGHT = 8;
 
-
-
-
-
-function /* void */
-roguejoin(x1, y1, x2, y2, horiz)
-{
+function roguejoin(x1, y1, x2, y2, horiz) { /* void */
     let x, y, middle;
 
     if (horiz) {
@@ -41,9 +33,7 @@ roguejoin(x1, y1, x2, y2, horiz)
     }
 }
 
-function /* void */
-roguecorr(x, y, dir)
-{
+function roguecorr(x, y, dir) { /* void */
     let fromx, fromy, tox, toy;
 
     if (dir == XL_DOWN) {
@@ -135,9 +125,8 @@ roguecorr(x, y, dir)
 }
 
 /* Modified walkfrom() from mkmaze.c */
-function /* void */
-miniwalk(x, y)
-{ const $frame = stack_frame(); try {
+function miniwalk(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let q, dir;
     let dirs = stack_array(int, 4);
 
@@ -186,12 +175,10 @@ miniwalk(x, y)
         }
         miniwalk(x, y);
     }
+    } finally { stack_pop($frame); }
+}
 
-} finally { stack_pop($frame); } }
-
-export function /* void */
-makeroguerooms()
-{
+export function makeroguerooms() { /* void */
     let x, y;
     /* Rogue levels are structured 3 by 3, with each section containing
      * a room or an intersection.  The minimum width is 2 each way.
@@ -209,7 +196,6 @@ makeroguerooms()
      * Room height may be 2-4 (2-5 on last row), length 2-23 (not
      * counting walls).
      */
-
 
     svn.nroom = 0;
     for (y = 0; y < 3; y++)
@@ -271,12 +257,9 @@ makeroguerooms()
             if (gr.r[x][y].doortable & XL_UP)
                 impossible(_("up end of %d, %d never connected?"), x, y);
         }
-
 }
 
-export function /* void */
-corr(x, y)
-{
+export function corr(x, y) { /* void */
     if (rn2(50)) {
         levl()[x][y].typ = CORR;
     } else {
@@ -284,9 +267,7 @@ corr(x, y)
     }
 }
 
-export function /* void */
-makerogueghost()
-{
+export function makerogueghost() { /* void */
     let ghost;
     let ghostobj;
     let croom;
@@ -301,7 +282,7 @@ makerogueghost()
         return;
     ghost.msleeping = 1;
     ghost = christen_monst(ghost, roguename());
-    (void (ghost));
+    (ghost);
 
     if (rn2(4)) {
         ghostobj = mksobj_at(FOOD_RATION, x, y, FALSE, FALSE);
@@ -353,49 +334,28 @@ makerogueghost()
 }
 
 /*extralev.c*/
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+
+import { FALSE, TRUE } from "./global.h.js";
 import { NO_MM_FLAGS } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
+import { max, min, rn1 } from "./hack.h.macros.js";
 import { OROOM } from "./mkroom.h.js";
 import { PM_GHOST } from "./monsters.h.js";
-import { ARROW } from "./objects.h.js";
-import { BOW } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { PLATE_MAIL } from "./objects.h.js";
-import { RING_MAIL } from "./objects.h.js";
-import { TWO_HANDED_SWORD } from "./objects.h.js";
-import { CORR } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { int } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import {
+    ARROW, BOW, FAKE_AMULET_OF_YENDOR, FOOD_RATION, MACE, PLATE_MAIL, RING_MAIL, TWO_HANDED_SWORD,
+} from "./objects.h.js";
+import { CORR, D_NODOOR, SCORR } from "./rm.h.js";
+import { IS_WALL, levl } from "./rm.h.macros.js";
+import { int, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
 import { stack_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { elt } from "../rt/struct.js";
-import { gr } from "./decl.js";
-import { gs } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { christen_monst } from "./do_name.js";
-import { roguename } from "./do_name.js";
+import { gr, gs, svn, svr } from "./decl.js";
+import { christen_monst, roguename } from "./do_name.js";
 import { makemon } from "./makemon.js";
-import { add_room } from "./mklev.js";
-import { dodoor } from "./mklev.js";
-import { curse } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { somex } from "./mkroom.js";
-import { somey } from "./mkroom.js";
+import { add_room, dodoor } from "./mklev.js";
+import { curse, mksobj_at, weight } from "./mkobj.js";
+import { somex, somey } from "./mkroom.js";
 import { mons } from "./monst.js";
 import { impossible } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";

@@ -3,35 +3,8 @@
 /*-Copyright (c) Pasi Kallinen, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
 /* leave this undefined; it produces bad screen output with rxvt-unicode */
 /*#define DECgraphicsOptimization*/
-
-// #include "wintty.h"
-// #include "tcap.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* (see tcap.h) -- nh_CM, nh_ND, nh_CD, nh_HI,nh_HE, nh_US,nh_UE, ul_hack */
 export const tc_lcl_data = static_struct("tc_lcl_data", struct_tc_lcl_data, { tc_CM: 0, tc_ND: 0, tc_CD: 0, tc_HI: 0, tc_HE: 0, tc_US: 0, tc_UE: 0, tc_ul_hack: FALSE });
@@ -46,111 +19,42 @@ const VS = static_var("VS", ptr_to(char)); const VE = static_var("VE", ptr_to(ch
 const ME = static_var("ME", ptr_to(char)); const MR = static_var("MR", ptr_to(char)); const MB = static_var("MB", ptr_to(char)); const MH = static_var("MH", ptr_to(char)); const MD = static_var("MD", ptr_to(char));
 const ZH = static_var("ZH", ptr_to(char)); const ZR = static_var("ZR", ptr_to(char));
 
-
 global_scalar("dynamic_HIHE", schar, FALSE);
 const SG = static_var("SG", int);
 const PC = static_var("PC", char, ord('\0'));
 const tbuf = static_array("tbuf", char, 512);
 
-
-
-
-
 export const hilites = static_array("hilites", ptr_to(char), CLR_MAX); /* terminal escapes for the various colors */
-
 
 const KS = static_var("KS", ptr_to(char), 0); const KE = static_var("KE", ptr_to(char), 0); /* keypad sequences */
 const nullstr = init_string(static_array("nullstr", char, sizeof_string("")), _(""), true);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* these don't need to be part of 'struct instance_globals g' */
 const tty_standout_on = static_array("tty_standout_on", char, 16); const tty_standout_off = static_array("tty_standout_off", char, 16);
 
-export function /* void */
-term_startup(wid, hgt)
-{ const $frame = stack_frame(); try {
-
+export function term_startup(wid, hgt) { /* void */
+    const $frame = stack_frame(); try {
     let term;
     let tptr;
     let tbufptr = stack_var(ptr_to(char)), pc;
     let i;
 
-
-
-
-
         term = getenv(_("TERM"));
-
-
-
-
 
     if (!term)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef TOS: not in this build */
 
     {
-
-
-
-
-
-
-
         HO[0] = nhStr(_("\x1b[H"));
         /*              nh_CD = nhStr("\033[J"); */
         CE[0] = nhStr(_("\x1b[K")); /* the ANSI termcap */
-
-
 
         tc_lcl_data.tc_CM = nhStr(_("\x1b[%i%d;%dH"));
 
         UP[0] = nhStr(_("\x1b[A"));
         tc_lcl_data.tc_ND = nhStr(_("\x1b[C"));
         XD[0] = nhStr(_("\x1b[B"));
-
-
 
         BC[0] = nhStr(_("\x1b[D"));
 
@@ -173,9 +77,6 @@ term_startup(wid, hgt)
         return;
     }
 
-
-
-
     tptr = addr_of(alloc(1024));
 
     tbufptr[0] = tbuf;
@@ -183,20 +84,16 @@ term_startup(wid, hgt)
         flags.null = FALSE; /* this should be a termcap flag */
     if (tgetent(tptr, term) < 1) {
         let buf = stack_array(char, BUFSZ);
-        void strncpy(buf, term,
-                       (BUFSZ - 1) - (sizeof_string("Unknown terminal type: .  ")));
+        strncpy(buf, term,
+                       (BUFSZ - 1) - sizeof_string("Unknown terminal type: .  "));
         chars[buf + (BUFSZ - 1)] = ord('\0');
         error(_("Unknown terminal type: %s."), term);
     }
-    if ((pc = (tgetstr(nhStr(_("pc")), tbufptr))) != 0)
+    if ((pc = tgetstr(nhStr(_("pc")), tbufptr)) != 0)
         PC[0] = chars[pc];
 
-    if (!(BC[0] = (tgetstr(nhStr(_("le")), tbufptr)))) { /* both termcap and terminfo use le */
-
-
-
-        if (!(BC[0] = (tgetstr(nhStr(_("bc")), tbufptr)))) { /* termcap also uses bc/bs */
-
+    if (!(BC[0] = tgetstr(nhStr(_("le")), tbufptr))) { /* both termcap and terminfo use le */
+        if (!(BC[0] = tgetstr(nhStr(_("bc")), tbufptr))) { /* termcap also uses bc/bs */
             if (!tgetflag(nhStr(_("bs"))))
                 error(_("Terminal must backspace."));
 
@@ -204,13 +101,9 @@ term_startup(wid, hgt)
             tbufptr[0] += 2;
             chars[BC[0]] = ord('\b');
         }
-
     }
 
-
-
-
-    HO[0] = (tgetstr(nhStr(_("ho")), tbufptr));
+    HO[0] = tgetstr(nhStr(_("ho")), tbufptr);
 
     /*
      * LI and CO are set in ioctl.c via a TIOCGWINSZ if available.  If
@@ -222,76 +115,62 @@ term_startup(wid, hgt)
         gt.tc_gbl_data.tc_CO = tgetnum(nhStr(_("co")));
     if (!LI())
         gt.tc_gbl_data.tc_LI = tgetnum(nhStr(_("li")));
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #else (#ifndef MICRO): not in this build */
 
     if (CO() < COLNO || LI() < ROWNO + 3)
         setclipped();
 
-    tc_lcl_data.tc_ND = (tgetstr(nhStr(_("nd")), tbufptr)); /* move cursor right 1 column */
+    tc_lcl_data.tc_ND = tgetstr(nhStr(_("nd")), tbufptr); /* move cursor right 1 column */
     if (tgetflag(nhStr(_("os")))) /* term can overstrike */
         error(_("NetHack can't have OS."));
     if (tgetflag(nhStr(_("ul")))) /* underline by overstrike w/ underscore */
         tc_lcl_data.tc_ul_hack = TRUE;
-    CE[0] = (tgetstr(nhStr(_("ce")), tbufptr)); /* clear line from cursor to eol */
-    UP[0] = (tgetstr(nhStr(_("up")), tbufptr)); /* move cursor up 1 line */
+    CE[0] = tgetstr(nhStr(_("ce")), tbufptr); /* clear line from cursor to eol */
+    UP[0] = tgetstr(nhStr(_("up")), tbufptr); /* move cursor up 1 line */
     /* It seems that xd is no longer supported, and we should use
        a linefeed instead; unfortunately this requires resetting
        CRMOD, and many output routines will have to be modified
        slightly. Let's leave that till the next release. */
-    XD[0] = (tgetstr(nhStr(_("xd")), tbufptr));
+    XD[0] = tgetstr(nhStr(_("xd")), tbufptr);
     /* not:             XD = Tgetstr("do"); */
-    if (!(tc_lcl_data.tc_CM = (tgetstr(nhStr(_("cm")), tbufptr)))) { /* cm: move cursor */
+    if (!(tc_lcl_data.tc_CM = tgetstr(nhStr(_("cm")), tbufptr))) { /* cm: move cursor */
         if (!UP[0] && !HO[0])
             error(_("NetHack needs CM or UP or HO."));
         tty_raw_print(_("Playing NetHack on terminals without CM is suspect."));
         tty_wait_synch();
     }
-    SO[0] = (tgetstr(nhStr(_("so")), tbufptr)); /* standout start */
-    SE[0] = (tgetstr(nhStr(_("se")), tbufptr)); /* standout end */
-    tc_lcl_data.tc_US = (tgetstr(nhStr(_("us")), tbufptr)); /* underline start */
-    tc_lcl_data.tc_UE = (tgetstr(nhStr(_("ue")), tbufptr)); /* underline end */
-    ZH[0] = (tgetstr(nhStr(_("ZH")), tbufptr)); /* italic start */
-    ZR[0] = (tgetstr(nhStr(_("ZR")), tbufptr)); /* italic end */
+    SO[0] = tgetstr(nhStr(_("so")), tbufptr); /* standout start */
+    SE[0] = tgetstr(nhStr(_("se")), tbufptr); /* standout end */
+    tc_lcl_data.tc_US = tgetstr(nhStr(_("us")), tbufptr); /* underline start */
+    tc_lcl_data.tc_UE = tgetstr(nhStr(_("ue")), tbufptr); /* underline end */
+    ZH[0] = tgetstr(nhStr(_("ZH")), tbufptr); /* italic start */
+    ZR[0] = tgetstr(nhStr(_("ZR")), tbufptr); /* italic end */
     SG[0] = tgetnum(nhStr(_("sg"))); /* -1: not fnd; else # of spaces left by so */
     if (!SO[0] || !SE[0] || (SG[0] > 0))
         SO[0] = SE[0] = tc_lcl_data.tc_US = tc_lcl_data.tc_UE = nullstr;
-    TI[0] = (tgetstr(nhStr(_("ti")), tbufptr)); /* nonconsequential cursor movement start */
-    TE[0] = (tgetstr(nhStr(_("te")), tbufptr)); /* nonconsequential cursor movement end */
+    TI[0] = tgetstr(nhStr(_("ti")), tbufptr); /* nonconsequential cursor movement start */
+    TE[0] = tgetstr(nhStr(_("te")), tbufptr); /* nonconsequential cursor movement end */
     VS[0] = VE[0] = nullstr;
 
-
-
-    KS[0] = (tgetstr(nhStr(_("ks")), tbufptr)); /* keypad start (special mode) */
-    KE[0] = (tgetstr(nhStr(_("ke")), tbufptr)); /* keypad end (ordinary mode [ie, digits]) */
-    MR[0] = (tgetstr(nhStr(_("mr")), tbufptr)); /* reverse */
-    MB[0] = (tgetstr(nhStr(_("mb")), tbufptr)); /* blink */
-    MD[0] = (tgetstr(nhStr(_("md")), tbufptr)); /* boldface */
+    KS[0] = tgetstr(nhStr(_("ks")), tbufptr); /* keypad start (special mode) */
+    KE[0] = tgetstr(nhStr(_("ke")), tbufptr); /* keypad end (ordinary mode [ie, digits]) */
+    MR[0] = tgetstr(nhStr(_("mr")), tbufptr); /* reverse */
+    MB[0] = tgetstr(nhStr(_("mb")), tbufptr); /* blink */
+    MD[0] = tgetstr(nhStr(_("md")), tbufptr); /* boldface */
     if (!SO[0])
         SO[0] = MD[0];
-    MH[0] = (tgetstr(nhStr(_("mh")), tbufptr)); /* dim */
-    ME[0] = (tgetstr(nhStr(_("me")), tbufptr)); /* turn off all attributes */
+    MH[0] = tgetstr(nhStr(_("mh")), tbufptr); /* dim */
+    ME[0] = tgetstr(nhStr(_("me")), tbufptr); /* turn off all attributes */
     if (!ME[0])
         ME[0] = SE[0] ? SE[0] : nullstr; /* default to SE value */
 
-    nh_VI[0] = (tgetstr(nhStr(_("vi")), tbufptr));
-    nh_VE[0] = (tgetstr(nhStr(_("ve")), tbufptr));
+    nh_VI[0] = tgetstr(nhStr(_("vi")), tbufptr);
+    nh_VE[0] = tgetstr(nhStr(_("ve")), tbufptr);
     /*nh_VS = Tgetstr(nhStr("vs"));*/
     if (!nh_VI[0] || !nh_VE[0] /*|| !nh_VS*/ )
         nh_VI[0] = nh_VE[0] = /*nh_VS =*/ 0;
 
-    nh_Ic[0] = (tgetstr(nhStr(_("Ic")), tbufptr));
+    nh_Ic[0] = tgetstr(nhStr(_("Ic")), tbufptr);
 
     /* Get rid of padding numbers for nh_HI and nh_HE.  Hope they
      * aren't really needed!!!  nh_HI and nh_HE are outputted to the
@@ -306,23 +185,18 @@ term_startup(wid, hgt)
     tc_lcl_data.tc_HE = dupstr(ME[0] + i);
     dynamic_HIHE = TRUE;
 
-    gt.tc_gbl_data.tc_AS = (tgetstr(nhStr(_("as")), tbufptr)); /* alt charset start */
-    gt.tc_gbl_data.tc_AE = (tgetstr(nhStr(_("ae")), tbufptr)); /* alt charset end */
-    tc_lcl_data.tc_CD = (tgetstr(nhStr(_("cd")), tbufptr)); /* clear lines from cursor and down */
-
-
-
-
-
+    gt.tc_gbl_data.tc_AS = tgetstr(nhStr(_("as")), tbufptr); /* alt charset start */
+    gt.tc_gbl_data.tc_AE = tgetstr(nhStr(_("ae")), tbufptr); /* alt charset end */
+    tc_lcl_data.tc_CD = tgetstr(nhStr(_("cd")), tbufptr); /* clear lines from cursor and down */
 
     init_hilite();
 
     wid[0] = CO();
     hgt[0] = LI();
     /* cl: clear screen, set cursor to upper left */
-    if (!(CL[0] = (tgetstr(nhStr(_("cl")), tbufptr)))) /* last thing set */
+    if (!(CL[0] = tgetstr(nhStr(_("cl")), tbufptr))) /* last thing set */
         error(_("NetHack needs CL."));
-    if ((tbufptr[0] - tbuf) > (sizeof(array_of(char, 512))))
+    if ((tbufptr[0] - tbuf) > sizeof(array_of(char, 512)))
         error(_("TERMCAP entry too big...\n"));
     free(tptr);
 
@@ -330,21 +204,19 @@ term_startup(wid, hgt)
        after exit_nhwindows(); if the sequences are too long, then bold
        won't work after that--it will be rendered as ordinary text */
     if (nh_HI() && strlen(nh_HI()) < sizeof(array_of(char, 16)))
-        void strcpy(tty_standout_on, nh_HI());
+        strcpy(tty_standout_on, nh_HI());
     if (nh_HE() && strlen(nh_HE()) < sizeof(array_of(char, 16)))
-        void strcpy(tty_standout_off, nh_HE());
-} finally { stack_pop($frame); } }
+        strcpy(tty_standout_off, nh_HE());
+    } finally { stack_pop($frame); }
+}
 
 /* note: at present, this routine is not part of the formal window interface
  */
 /* deallocate resources prior to final termination */
-export function /* void */
-term_shutdown()
-{
+export function term_shutdown() { /* void */
     /* we only attempt to clean up a few individual termcap variables */
 
     kill_hilite();
-
 
     if (dynamic_HIHE) {
         free(nh_HI()), tc_lcl_data.tc_HI = 0;
@@ -355,9 +227,7 @@ term_shutdown()
     return;
 }
 
-export function /* void */
-tty_number_pad(state)
-{
+export function tty_number_pad(state) { /* void */
     switch (state) {
     case -1: /* activate keypad mode (escape sequences) */
         if (KS[0] && chars[KS[0]])
@@ -373,9 +243,7 @@ tty_number_pad(state)
     }
 }
 
-
  /* defined in symbols.c */
-
 
 /*
    We call this routine whenever DECgraphics mode is enabled, even if it
@@ -384,9 +252,7 @@ tty_number_pad(state)
    call xputs() from the option setting or graphics assigning routines,
    so this is a convenient hook.
  */
-function /* void */
-tty_decgraphics_termcap_fixup()
-{
+function tty_decgraphics_termcap_fixup() { /* void */
     let ctrlN = init_string(static_array("tty_decgraphics_termcap_fixup.ctrlN", char, sizeof_string("\x0e")), _("\x0e"), true);
     let ctrlO = init_string(static_array("tty_decgraphics_termcap_fixup.ctrlO", char, sizeof_string("\x0f")), _("\x0f"), true);
     let appMode = init_string(static_array("tty_decgraphics_termcap_fixup.appMode", char, sizeof_string("\x1b=")), _("\x1b="), true);
@@ -414,28 +280,7 @@ tty_decgraphics_termcap_fixup()
         xputs(AE());
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if DECgraphicsOptimization: not in this build */
 
     /* if AE is still present in HE, set a flag so that glyph writing
        code will know that AS needs to be refreshed for consecutive
@@ -460,88 +305,32 @@ tty_decgraphics_termcap_fixup()
     if ((nh_HE() && strstr(nh_HE(), ae)) || (ME[0] && strstr(ME[0], ae)))
         HE_resets_AS = TRUE;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef DECgraphicsOptimization: not in this build */
 
     xputs(AE());
-
 }
-
-
-
-
 
  /* defined in symbols.c */
 
+/* #ifdef PC9800: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-term_start_screen()
-{
+export function term_start_screen() { /* void */
     xputs(TI[0]);
     xputs(VS[0]);
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef PC9800: not in this build */
 
     if (SYMHANDLING(H_DEC))
         tty_decgraphics_termcap_fixup();
     /* set up callback in case option is not set yet but toggled later */
     decgraphics_mode_callback = tty_decgraphics_termcap_fixup;
 
-
     utf8graphics_mode_callback = tty_utf8graphics_fixup;
-
 
     if (gc.Cmd.num_pad)
         tty_number_pad(1); /* make keypad send digits */
 }
 
-export function /* void */
-term_end_screen()
-{
+export function term_end_screen() { /* void */
     term_clear_screen();
     xputs(VE[0]);
     xputs(TE[0]);
@@ -555,9 +344,7 @@ term_end_screen()
    this define is moved and or xputc() is taken out of the ROOT overlay,
    then action must be taken in trampoli.[ch]. */
 
-export function /* void */
-nocmov(x, y)
-{
+export function nocmov(x, y) { /* void */
     if (ttyDisplay.cury > y) {
         if (UP[0]) {
             while (ttyDisplay.cury > y) { /* Go up. */
@@ -580,7 +367,7 @@ nocmov(x, y)
             cmov(x, y);
         } else {
             while (ttyDisplay.cury < y) {
-                void xputc(ord('\n'));
+                xputc(ord('\n'));
                 ttyDisplay.curx = 0;
                 ttyDisplay.cury++;
             }
@@ -604,18 +391,14 @@ nocmov(x, y)
     }
 }
 
-export function /* void */
-cmov(x, y)
-{
+export function cmov(x, y) { /* void */
     xputs(tgoto(nh_CM(), x, y));
     ttyDisplay.cury = y;
     ttyDisplay.curx = x;
 }
 
 /* See note above.  xputc() is a special function for overlays. */
-export function /* int */
-xputc(c) /* actually char, but explicitly specify its widened type */
-{
+export function xputc(c) { /* int */ /* actually char, but explicitly specify its widened type */
     /*
      * Note:  xputc() as a direct all to putchar() doesn't make any
      * sense _if_ putchar() is a function.  But if it is a macro, an
@@ -633,7 +416,6 @@ xputc(c) /* actually char, but explicitly specify its widened type */
      */
     return putchar(c);
 }
-
 
 /* In-band sync markers for screen recording.
  *
@@ -661,9 +443,7 @@ xputc(c) /* actually char, but explicitly specify its widened type */
  * When NOMUX_MARKERS is unset the emit is a no-op — the binary plays
  * normally with no extra stdout output. */
 
-function /* int */
-nomux_markers_enabled()
-{
+function nomux_markers_enabled() { /* int */
     let cached = static_var("nomux_markers_enabled.cached", int, -1);
     if (cached[0] < 0) {
         let ev = getenv(_("NOMUX_MARKERS"));
@@ -675,7 +455,6 @@ nomux_markers_enabled()
 const nomux_seq = static_var("nomux_seq", int, 0);
 global_scalar("nomux_anim_id", int, 0);
 
-
 /* the reference recorder's capture buffer, see nomux_ref_overflow_state() */
 export const NOMUX_REF_RAW_ACTIVE = 6144;
 export const NOMUX_REF_RAW_ROW = 6148;
@@ -683,22 +462,10 @@ export const NOMUX_REF_RAW_COL = 6152;
 export const NOMUX_REF_STDOUT_BUF = 6448;
 export const NOMUX_REF_STDOUT_BUFSIZ = 1024;
 
-
-
-
-
-
-
-
 /* Emit a single in-band marker carrying the current rendered screen.
  * KIND distinguishes input boundaries from animation frames. */
-function /* void */
-nomux_emit_marker(kind)
-{ const $frame = stack_frame(); try {
-
-    
-
-
+function nomux_emit_marker(kind) { /* void */
+    const $frame = stack_frame(); try {
     let scr = nomux_capture_screen();
     let cx = stack_var(int), cy = stack_var(int);
     let scr_len = scr ? strlen(scr) : 0;
@@ -718,20 +485,19 @@ nomux_emit_marker(kind)
         return;
 
     {
-        fprintf((stdout), _("\x1b]7777;KIND=%s;SEQ=%d;ANIM=%d;CX=%d;CY=%d;LEN=%zu\x07"),
+        fprintf(stdout, _("\x1b]7777;KIND=%s;SEQ=%d;ANIM=%d;CX=%d;CY=%d;LEN=%zu\x07"),
                 kind, nomux_seq[0], nomux_anim_id, cx[0], cy[0], scr_len);
         if (scr_len > 0)
-            fwrite(scr, 1, scr_len, (stdout));
-        fflush((stdout));
+            fwrite(scr, 1, scr_len, stdout);
+        fflush(stdout);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Called for intermediate animation frames: zap beams, hurtle/knockback
  * steps, thrown-object trajectories, etc.  Bumps the per-animation id
  * but NOT the input-boundary SEQ. */
-export function /* void */
-nomux_capture_write_screen()
-{
+export function nomux_capture_write_screen() { /* void */
     nomux_anim_id++;
     nomux_emit_marker(_("anim"));
 }
@@ -739,9 +505,7 @@ nomux_capture_write_screen()
 /* Called at every real input-wait boundary (tty_nhgetch, tty_nh_poskey)
  * and once at nh_terminate after topten — the points where one
  * authoritative frame should be captured per step.  Bumps SEQ. */
-export function /* void */
-nomux_capture_write_input_boundary()
-{
+export function nomux_capture_write_input_boundary() { /* void */
     nomux_seq[0]++;
     nomux_emit_marker(_("input"));
 }
@@ -752,7 +516,7 @@ const nomux_fg_cur = static_var("nomux_fg_cur", uchar, 7);
 const nomux_attr_cur = static_var("nomux_attr_cur", uchar, 0);
 const nomux_decgfx_cur = static_var("nomux_decgfx_cur", uchar, 0);
 
-export function /* void */ nomux_clear_screen() {
+export function nomux_clear_screen() { /* void */
     let r, c;
     for (r = 0; r < 24; r++)
         for (c = 0; c < 80; c++) {
@@ -762,7 +526,7 @@ export function /* void */ nomux_clear_screen() {
         }
 }
 
-export function /* void */ nomux_clear_to_eol(row, col) {
+export function nomux_clear_to_eol(row, col) { /* void */
     let c;
     if (row < 0 || row >= 24) return;
     for (c = (col < 0 ? 0 : col); c < 80; c++) {
@@ -782,7 +546,7 @@ export function /* void */ nomux_clear_to_eol(row, col) {
     }
 }
 
-export function /* void */ nomux_putch(ch) {
+export function nomux_putch(ch) { /* void */
     let row, col;
     if (!ttyDisplay || ch < 32) return;
     row = ttyDisplay.cury;
@@ -795,15 +559,15 @@ export function /* void */ nomux_putch(ch) {
     }
 }
 
-export function /* void */ nomux_set_attr(attr) {
+export function nomux_set_attr(attr) { /* void */
     switch (attr) {
     case ATR_INVERSE: nomux_attr_cur[0] |= 1; break;
     case ATR_BOLD:    nomux_attr_cur[0] |= 2; break;
     case ATR_ULINE:   nomux_attr_cur[0] |= 4; break;
     }
 }
-export function /* void */ nomux_end_attr() { nomux_attr_cur[0] = 0; }
-export function /* void */ nomux_set_fg(color) {
+export function nomux_end_attr() { /* void */ nomux_attr_cur[0] = 0; }
+export function nomux_set_fg(color) { /* void */
     /* Mirror C's wc2_darkgray remap: when that option is on,
      * hilites[CLR_BLACK] is wired to BRIGHT_BLACK so the terminal
      * receives [90m instead of [30m (plain black is invisible
@@ -814,16 +578,16 @@ export function /* void */ nomux_set_fg(color) {
         color = 8;  /* index 8 -> ANSI 90m (bright black / dark gray) */
     nomux_fg_cur[0] = (color < 0 || color >= 16) ? 7 : uchar(color);
 }
-export function /* void */ nomux_end_fg() { nomux_fg_cur[0] = 7; }
+export function nomux_end_fg() { /* void */ nomux_fg_cur[0] = 7; }
 
-function /* int */ nomux_sgr_fg(fg) {
+function nomux_sgr_fg(fg) { /* int */
     if (fg >= 0 && fg <= 7) return 30 + fg;
     if (fg >= 8 && fg <= 15) return 90 + (fg - 8);
     return 37;
 }
 
 const nomux_out = static_array("nomux_out", char, 24 * 80 * 32);
-export function /* char * */ nomux_capture_screen() {
+export function nomux_capture_screen() { /* char * */
     let p = nomux_out;
     let row, col, end, cur_fg, cur_attr;
     /* tmux capture-pane -e format:
@@ -902,7 +666,7 @@ const nomux_raw_active = static_var("nomux_raw_active", int, 0);
 const nomux_raw_row = static_var("nomux_raw_row", int, 0);
 const nomux_raw_col = static_var("nomux_raw_col", int, 0);
 
-export function /* void */ nomux_enter_raw_mode() {
+export function nomux_enter_raw_mode() { /* void */
     nomux_raw_active[0] = 1;
     nomux_raw_row[0] = 0;
     nomux_raw_col[0] = 0;
@@ -912,7 +676,7 @@ export function /* void */ nomux_enter_raw_mode() {
     nomux_clear_screen();
 }
 
-function /* void */ nomux_raw_putch(ch) {
+function nomux_raw_putch(ch) { /* void */
     if (ch == ord('\n')) {
         nomux_raw_row[0]++;
         nomux_raw_col[0] = 0;
@@ -943,7 +707,7 @@ function /* void */ nomux_raw_putch(ch) {
  * flush/separator calls (pline-flushers, tty_raw_print_bold("") visual
  * spacing) that the tmux capture path also discarded. Treating them as
  * content would shift end-of-game output (topten) down by a row. */
-export function /* void */ nomux_raw_emit(s, bold) {
+export function nomux_raw_emit(s, bold) { /* void */
     if (!nomux_raw_active[0]) {
         if (ttyDisplay && (!chars[s] || !nomux_markers_enabled()))
             return;  /* in-game flush, or no-marker mode → skip */
@@ -975,11 +739,11 @@ export function /* void */ nomux_raw_emit(s, bold) {
      * finished emitting. */
 }
 
-export function /* void */ nomux_raw_emit_eol() {
+export function nomux_raw_emit_eol() { /* void */
     if (nomux_raw_active[0]) nomux_raw_putch(ord('\n'));
 }
 
-export function /* void */ nomux_get_cursor(cx, cy) {
+export function nomux_get_cursor(cx, cy) { /* void */
     if (nomux_raw_active[0]) {
         cx[0] = nomux_raw_col[0];
         cy[0] = nomux_raw_row[0];
@@ -988,7 +752,6 @@ export function /* void */ nomux_get_cursor(cx, cy) {
     cx[0] = ttyDisplay ? ttyDisplay.curx : 0;
     cy[0] = ttyDisplay ? ttyDisplay.cury : 0;
 }
-
 
 /*
  * The reference recorder's capture buffer is 6,144 bytes
@@ -1007,9 +770,7 @@ export function /* void */ nomux_get_cursor(cx, cy) {
  * it, so a capture longer than 6,448 bytes carries them from that offset.
  * NHJS_UNBOUNDED_CAPTURE (interactive play) keeps the whole capture.
  */
-function /* int */
-nomux_ref_overflow_enabled()
-{
+function nomux_ref_overflow_enabled() { /* int */
     let cached = static_var("nomux_ref_overflow_enabled.cached", int, -1);
 
     if (cached[0] < 0) {
@@ -1020,9 +781,7 @@ nomux_ref_overflow_enabled()
     return cached[0];
 }
 
-function /* int */
-nomux_ref_overlay(value, offset, scr, len)
-{
+function nomux_ref_overlay(value, offset, scr, len) { /* int */
     let u = unsigned(value);
     let i;
 
@@ -1031,17 +790,15 @@ nomux_ref_overlay(value, offset, scr, len)
         let mask = unsigned(0xff << (8 * i));
 
         if (at < len)
-            u = unsigned((unsigned(u & unsigned(~mask)))
-                | (unsigned(uchar((chars[scr + at])) << (8 * i))));
+            u = unsigned(unsigned(u & unsigned(~mask))
+                | unsigned(uchar((chars[scr + at])) << (8 * i)));
         else if (at == len)
             u = unsigned(u & unsigned(~mask));
     }
     return int(u);
 }
 
-function /* void */
-nomux_ref_overflow_state(scr, len)
-{
+function nomux_ref_overflow_state(scr, len) { /* void */
     if (!nomux_ref_overflow_enabled())
         return;
     nomux_raw_active[0] = nomux_ref_overlay(nomux_raw_active[0],
@@ -1052,10 +809,9 @@ nomux_ref_overflow_state(scr, len)
                                       scr, len);
 }
 
-function /* void */
-nomux_ref_overflow_payload(scr, len, kind, cx,
-                           cy)
-{ const $frame = stack_frame(); try {
+function nomux_ref_overflow_payload(scr, len, kind, cx,
+                           cy) { /* void */
+    const $frame = stack_frame(); try {
     let hdr = stack_array(char, BUFSZ);
     let n, i, end;
 
@@ -1072,35 +828,25 @@ nomux_ref_overflow_payload(scr, len, kind, cx,
 
         chars[scr + i] = (k < n) ? chars[hdr + k] : chars[scr + unsigned(k - n)];
     }
-} finally { stack_pop($frame); } }
-
-
-
-export function /* void */
-xputs(s)
-{
-
-
-
-    tputs(s, 1, xputc);
-
+    } finally { stack_pop($frame); }
 }
 
-export function /* void */
-cl_end()
-{
+export function xputs(s) { /* void */
+    tputs(s, 1, xputc);
+}
+
+export function cl_end() { /* void */
     if (CE[0]) {
         xputs(CE[0]);
 
         nomux_clear_to_eol(ttyDisplay.cury, ttyDisplay.curx);
-
     } else { /* no-CE fix - free after Harold Rynes */
         let cx = ttyDisplay.curx + 1;
 
         /* this looks terrible, especially on a slow terminal
            but is better than nothing */
         while (cx < CO()) {
-            void xputc(ord(' '));
+            xputc(ord(' '));
             cx++;
         }
         tty_curs(BASE_WINDOW, ttyDisplay.curx + 1,
@@ -1108,9 +854,7 @@ cl_end()
     }
 }
 
-export function /* void */
-term_clear_screen()
-{
+export function term_clear_screen() { /* void */
     /* note: if CL is null, then termcap initialization failed,
      * so don't attempt screen-oriented I/O during final cleanup.
      */
@@ -1125,9 +869,7 @@ term_clear_screen()
     }
 }
 
-export function /* void */
-home()
-{
+export function home() { /* void */
     if (HO[0])
         xputs(HO[0]);
     else if (nh_CM())
@@ -1137,116 +879,50 @@ home()
     ttyDisplay.curx = ttyDisplay.cury = 0;
 }
 
-export function /* void */
-standoutbeg()
-{
+export function standoutbeg() { /* void */
     if (SO[0])
         xputs(SO[0]);
 }
 
-export function /* void */
-standoutend()
-{
+export function standoutend() { /* void */
     if (SE[0])
         xputs(SE[0]);
 }
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-backsp()
-{
+export function backsp() { /* void */
     xputs(BC[0]);
 }
 
-export function /* void */
-tty_nhbell()
-{
+export function tty_nhbell() { /* void */
     if (flags.silent)
         return;
-    void putchar(ord('\x07')); /* curx does not change */
-    void fflush((stdout));
+    putchar(ord('\x07')); /* curx does not change */
+    fflush(stdout);
 }
 
-
-export function /* void */
-graph_on()
-{
-
+export function graph_on() { /* void */
     nomux_decgfx_cur[0] = 1;
 
     if (AS())
         xputs(AS());
 }
 
-export function /* void */
-graph_off()
-{
-
+export function graph_off() { /* void */
     nomux_decgfx_cur[0] = 0;
 
     if (AE())
         xputs(AE());
 }
 
-
-
-
-
-
-
-
-
 const tmspc10 = static_array("tmspc10", short, null, [ /* from termcap */
                                  0, 2000, 1333, 909, 743, 666, 500, 333, 166,
                                  83, 55, 41, 20, 10, 5
 ]);
 
-
-
 /* delay 50 ms */
-export function /* void */
-tty_delay_output()
-{
-
-
-
+export function tty_delay_output() { /* void */
     let no_delay = static_var("tty_delay_output.no_delay", int, -1);
     let no_delay_env;
 
@@ -1254,10 +930,10 @@ tty_delay_output()
         no_delay_env = getenv(_("NETHACK_NO_DELAY"));
         if (!no_delay_env || !chars[no_delay_env])
             no_delay_env = getenv(_("WEBHACK_NO_DELAY"));
-        no_delay[0] = (((no_delay_env && chars[no_delay_env] && chars[no_delay_env] != ord('0')) ? 1 : 0));
+        no_delay[0] = (no_delay_env && chars[no_delay_env] && chars[no_delay_env] != ord('0') ? 1 : 0);
     }
     if (no_delay[0] || iflags.debug_fuzzer) {
-        void fflush((stdout));
+        fflush(stdout);
 
         /* Capture the current screen at this animation boundary.
            This lets the session recorder see intermediate display
@@ -1271,30 +947,14 @@ tty_delay_output()
         return;
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
     /* BUG: if the padding character is visible, as it is on the 5620
        then this looks terrible. */
     if (flags.null) {
         tputs(
 
-
-
               _("50"),
 
               1, xputc);
-
     } else if (ospeed > 0 && ospeed < SIZE(tmspc10) && nh_CM()) {
         /* delay by sending cm(here) an appropriate number of times */
         let cmlen = int(strlen(tgoto(nh_CM(), ttyDisplay.curx, ttyDisplay.cury)));
@@ -1306,24 +966,20 @@ tty_delay_output()
             i -= cmlen * tmspc10[ospeed];
         }
     }
-
 }
 
 /* must only be called with curx = 1 */
-export function /* void */
-cl_eos() /* free after Robert Viduya */
-{
+export function cl_eos() { /* void */ /* free after Robert Viduya */
     if (nh_CD()) {
         xputs(nh_CD());
 
         { let r; nomux_clear_to_eol(ttyDisplay.cury, ttyDisplay.curx); for (r = ttyDisplay.cury + 1; r < 24; r++) nomux_clear_to_eol(r, 0); }
-
     } else {
         let cy = ttyDisplay.cury + 1;
 
         while (cy <= LI() - 2) {
             cl_end();
-            void xputc(ord('\n'));
+            xputc(ord('\n'));
             cy++;
         }
         cl_end();
@@ -1332,259 +988,14 @@ cl_eos() /* free after Robert Viduya */
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if defined(UNIX) && defined(TERMINFO): not in this build */
 
 /* find the foreground and background colors set by nh_HI or nh_HE */
-function /* void */
-analyze_seq(str, fg, bg)
-{
+function analyze_seq(str, fg, bg) { /* void */
     let c, code;
     let len;
 
-
-
-
-
     fg[0] = bg[0] = NO_COLOR;
-
 
     c = (chars[str + 0] == ord('\x9b')) ? 1 : 2; /* index of char beyond esc prefix */
     len = int(unsigned(strlen(str) - 1));          /* length excluding attrib suffix */
@@ -1596,22 +1007,9 @@ analyze_seq(str, fg, bg)
         if ((code = atoi(str + c)) == 0) { /* reset */
             /* this also catches errors */
 
-
-
-
             fg[0] = bg[0] = NO_COLOR;
-
         } else if (code == 1) { /* bold */
             fg[0] |= BRIGHT;
-
-
-
-
-
-
-
-
-
         } else if (code == 7 || code == 27) { /* reverse */
             code = fg[0] & ~BRIGHT;
             fg[0] = bg[0] | (fg[0] & BRIGHT);
@@ -1627,64 +1025,21 @@ analyze_seq(str, fg, bg)
     }
 }
 
-
 /*
  * Sets up highlighting sequences, using ANSI escape sequences (highlight code
  * found in wintty.c).  The nh_HI and nh_HE sequences (usually from SO) are
  * scanned to find foreground and background colors.
  */
 
-function /* void */
-init_hilite()
-{ const $frame = stack_frame(); try {
+function init_hilite() { /* void */
+    const $frame = stack_frame(); try {
     let c;
 
     /* c2js recorder TERM=xterm-256color colors: the capture is drawn with
        the built-in ANSI codes, but NetHack saw terminfo's Co#256 */
     iflags.colorcount = 256;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef TOS: not in this build */
 
     let backg = stack_var(int), foreg = stack_var(int), hi_backg = stack_var(int), hi_foreg = stack_var(int);
 
@@ -1698,34 +1053,22 @@ init_hilite()
     for (c = 0; c < SIZE(hilites); c++)
         /* avoid invisibility */
         if ((backg[0] & ~BRIGHT) != c) {
-
-
-
-
             if (c == foreg[0]) {
                 hilites[c] = 0;
             } else if (c != hi_foreg[0] || backg[0] != hi_backg[0]) {
                 hilites[c] = addr_of(alloc(sizeof_string("\x1b[%d;3%d;4%dm")));
-                void sprintf(hilites[c], _("\x1b[%d"), +!!(c & BRIGHT));
+                sprintf(hilites[c], _("\x1b[%d"), +!!(c & BRIGHT));
                 if ((c | BRIGHT) != (foreg[0] | BRIGHT))
-                    void sprintf(eos(hilites[c]), _(";3%d"), c & ~BRIGHT);
+                    sprintf(eos(hilites[c]), _(";3%d"), c & ~BRIGHT);
                 if (backg[0] != CLR_BLACK)
-                    void sprintf(eos(hilites[c]), _(";4%d"), backg[0] & ~BRIGHT);
-                void strcat(hilites[c], _("m"));
+                    sprintf(eos(hilites[c]), _(";4%d"), backg[0] & ~BRIGHT);
+                strcat(hilites[c], _("m"));
             }
         }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-} finally { stack_pop($frame); } }
-
-function /* void */
-kill_hilite()
-{
-
+function kill_hilite() { /* void */
     let c;
 
     for (c = 0; c < Math.trunc(CLR_MAX / 2); c++) {
@@ -1740,88 +1083,11 @@ kill_hilite()
     return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if !defined(TERMLIB) && defined(ANSI_DEFAULT): not in this build */
 
 const nulstr = init_string(static_array("nulstr", char, sizeof_string("")), _(""), true);
 
-function /* char * */
-s_atr2str(n)
-{
+function s_atr2str(n) { /* char * */
     switch (n) {
     case ATR_ITALIC:
         /* if italic isn't available, fall through to underline */
@@ -1858,9 +1124,7 @@ s_atr2str(n)
     return nulstr;
 }
 
-function /* char * */
-e_atr2str(n)
-{
+function e_atr2str(n) { /* char * */
     switch (n) {
     case ATR_ITALIC:
         /* send ZR unless we didn't have ZH and substituted US */
@@ -1890,20 +1154,13 @@ e_atr2str(n)
 
 /* suppress nonfunctional highlights so render_status() might be able to
    optimize more; keep this in sync with s_atr2str() */
-export function /* int */
-term_attr_fixup(msk)
-{
+export function term_attr_fixup(msk) { /* int */
     /* underline is converted to bold if its start sequence isn't available */
     if ((msk & HL_ULINE) && (!nh_US() || !chars[nh_US()])) {
         msk |= HL_BOLD;
         msk &= ~HL_ULINE;
     }
     /* blink used to be converted to bold unconditionally; now depends on MB */
-
-
-
-
-
 
     /* c2js leaves blink as blink for NOMUX parity with the xterm recorder;
        NOMUX captures inverse/color but does not serialize blink itself. */
@@ -1915,14 +1172,11 @@ term_attr_fixup(msk)
     return msk;
 }
 
-export function /* void */
-term_start_attr(attr)
-{
+export function term_start_attr(attr) { /* void */
     if (attr) {
         let astr = s_atr2str(attr);
 
         if (astr && chars[astr]) {
-
             /* c2js mirrors emitted termcap state. */
             nomux_set_attr(attr);
 
@@ -1931,14 +1185,11 @@ term_start_attr(attr)
     }
 }
 
-export function /* void */
-term_end_attr(attr)
-{
+export function term_end_attr(attr) { /* void */
     if (attr) {
         let astr = e_atr2str(attr);
 
         if (astr && chars[astr]) {
-
             /* c2js mirrors emitted termcap state. */
             nomux_end_attr();
 
@@ -1949,9 +1200,7 @@ term_end_attr(attr)
 
 /* this is called 'start bold' but HI is derived from SO (standout) rather
    than from MD (start bold attribute) */
-export function /* void */
-term_start_raw_bold()
-{
+export function term_start_raw_bold() { /* void */
     let soOn = nh_HI() ? nh_HI() : tty_standout_on;
 
     if (chars[soOn])
@@ -1959,31 +1208,24 @@ term_start_raw_bold()
 }
 
 /* this is called 'end bold' but HE is derived from ME (end all attributes) */
-export function /* void */
-term_end_raw_bold()
-{
+export function term_end_raw_bold() { /* void */
     let soOff = nh_HE() ? nh_HE() : tty_standout_off;
 
     if (chars[soOff])
         xputs(soOff);
 }
 
-export function /* void */
-term_end_color()
-{
+export function term_end_color() { /* void */
     if (nh_HE() && chars[nh_HE()]) {
         xputs(nh_HE());
 
         /* c2js mirrors emitted termcap state. */
         nomux_end_fg();
         nomux_end_attr();
-
     }
 }
 
-export function /* void */
-term_start_color(color)
-{
+export function term_start_color(color) { /* void */
     if (color == NO_COLOR) {
         if (nh_HE() && chars[nh_HE()]) {
             xputs(nh_HE()); /* inline term_end_color() */
@@ -1991,10 +1233,8 @@ term_start_color(color)
             /* c2js mirrors emitted termcap state. */
             nomux_end_fg();
             nomux_end_attr();
-
         }
     } else if (color < CLR_MAX && hilites[color] && chars[hilites[color]]) {
-
         /* c2js mirrors emitted termcap state. */
         nomux_set_fg(color);
 
@@ -2002,18 +1242,16 @@ term_start_color(color)
     }
 }
 
-export function /* void */
-term_start_bgcolor(color)
-{ const $frame = stack_frame(); try {
+export function term_start_bgcolor(color) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = stack_array(char, 8);
-    void sprintf(tmp, _("\x1b[%dm"), ((color % 8) + 40));
+    sprintf(tmp, _("\x1b[%dm"), ((color % 8) + 40));
     xputs(tmp);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* hide or show cursor */
-export function /* void */
-term_curs_set(visibility)
-{
+export function term_curs_set(visibility) { /* void */
     let vis = static_var("term_curs_set.vis", int, -1);
 
     if (vis[0] == visibility)
@@ -2026,73 +1264,22 @@ term_curs_set(visibility)
     vis[0] = visibility;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef CHANGE_COLOR: not in this build */
 
 export const tcfmtstr = "\x1b[38;2;%lld;%lld;%lldm";
 
-
 export const tcfmtstr256 = "\x1b[38;5;%dm";
 
-
-
-
-
-
-
-
-
-function /* void */ emit24bit(mcolor)
-{
+function emit24bit(mcolor) { /* void */
     let tcolorbuf = static_array("emit24bit.tcolorbuf", char, QBUFSZ);
 
-    Snprintf(tcolorbuf, sizeof(array_of(char, QBUFSZ)), _(tcfmtstr), ((shr64(mcolor, 16)) & 0xFF), ((shr64(mcolor, 8)) & 0xFF), ((shr64(mcolor, 0)) & 0xFF))
-
+    Snprintf(tcolorbuf, sizeof(array_of(char, QBUFSZ)), _(tcfmtstr), (shr64(mcolor, 16) & 0xFF), (shr64(mcolor, 8) & 0xFF), (shr64(mcolor, 0) & 0xFF))
 
 ;  /* blue */
     xputs(tcolorbuf);
 }
 
-function /* void */ emit256(color256idx)
-{
+function emit256(color256idx) { /* void */
     let tcolorbuf = static_array("emit256.tcolorbuf", char, QBUFSZ);
 
     Snprintf(tcolorbuf, sizeof(array_of(char, QBUFSZ)), _(tcfmtstr256), color256idx)
@@ -2100,9 +1287,7 @@ function /* void */ emit256(color256idx)
     xputs(tcolorbuf);
 }
 
-export function /* void */
-term_start_extracolor(customcolor, color256idx)
-{
+export function term_start_extracolor(customcolor, color256idx) { /* void */
     /* color 0 has bit 0x1000000 set */
     let mcolor = (customcolor & 0xFFFFFF);
     if (iflags.colorcount == 256)
@@ -2111,111 +1296,46 @@ term_start_extracolor(customcolor, color256idx)
         emit24bit(mcolor);
 }
 
-export function /* void */
-term_end_extracolor()
-{
+export function term_end_extracolor() { /* void */
         xputs(_("\x1b[0m"));
 }
 
-
 /*termcap.c*/
-import { HL_BOLD } from "../../src/botl.h.js";
-import { HL_DIM } from "../../src/botl.h.js";
-import { HL_ULINE } from "../../src/botl.h.js";
-import { BRIGHT } from "../../src/color.h.js";
-import { CLR_BLACK } from "../../src/color.h.js";
-import { CLR_GRAY } from "../../src/color.h.js";
-import { CLR_MAX } from "../../src/color.h.js";
-import { NO_COLOR } from "../../src/color.h.js";
-import { AE } from "../../src/decl.h.macros.js";
-import { AS } from "../../src/decl.h.macros.js";
-import { CO } from "../../src/decl.h.macros.js";
-import { LI } from "../../src/decl.h.macros.js";
-import { BUFSZ } from "../../src/global.h.js";
-import { COLNO } from "../../src/global.h.js";
-import { FALSE } from "../../src/global.h.js";
-import { QBUFSZ } from "../../src/global.h.js";
-import { ROWNO } from "../../src/global.h.js";
-import { TRUE } from "../../src/global.h.js";
+
+import { HL_BOLD, HL_DIM, HL_ULINE } from "../../src/botl.h.js";
+import { BRIGHT, CLR_BLACK, CLR_GRAY, CLR_MAX, NO_COLOR } from "../../src/color.h.js";
+import { AE, AS, CO, LI } from "../../src/decl.h.macros.js";
+import { BUFSZ, COLNO, FALSE, QBUFSZ, ROWNO, TRUE } from "../../src/global.h.js";
 import { Snprintf } from "../../src/hacklib.h.macros.js";
 import { nhStr } from "../../src/lint.h.macros.js";
 import { H_DEC } from "../../src/sym.h.js";
 import { SYMHANDLING } from "../../src/sym.h.macros.js";
 import { struct_tc_lcl_data } from "../../src/tcap.h.js";
-import { nh_CD } from "../../src/tcap.h.macros.js";
-import { nh_CM } from "../../src/tcap.h.macros.js";
-import { nh_HE } from "../../src/tcap.h.macros.js";
-import { nh_HI } from "../../src/tcap.h.macros.js";
-import { nh_ND } from "../../src/tcap.h.macros.js";
-import { nh_UE } from "../../src/tcap.h.macros.js";
-import { nh_US } from "../../src/tcap.h.macros.js";
+import { nh_CD, nh_CM, nh_HE, nh_HI, nh_ND, nh_UE, nh_US } from "../../src/tcap.h.macros.js";
 import { nomux_cell } from "../../src/wintty.h.js";
-import { ATR_BLINK } from "../../src/wintype.h.js";
-import { ATR_BOLD } from "../../src/wintype.h.js";
-import { ATR_DIM } from "../../src/wintype.h.js";
-import { ATR_INVERSE } from "../../src/wintype.h.js";
-import { ATR_ITALIC } from "../../src/wintype.h.js";
-import { ATR_ULINE } from "../../src/wintype.h.js";
+import {
+    ATR_BLINK, ATR_BOLD, ATR_DIM, ATR_INVERSE, ATR_ITALIC, ATR_ULINE,
+} from "../../src/wintype.h.js";
 import { SIZE } from "../../rt/cmacros.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { schar } from "../../rt/ctypes.js";
-import { short } from "../../rt/ctypes.js";
-import { sizeof } from "../../rt/ctypes.js";
-import { sizeof_string } from "../../rt/ctypes.js";
-import { uchar } from "../../rt/ctypes.js";
-import { unsigned } from "../../rt/ctypes.js";
+import {
+    char, int, ord, schar, short, sizeof, sizeof_string, uchar, unsigned,
+} from "../../rt/ctypes.js";
 import { global_scalar } from "../../rt/globals.js";
-import { chars } from "../../rt/heap.js";
-import { stack_frame } from "../../rt/heap.js";
-import { stack_pop } from "../../rt/heap.js";
+import { chars, stack_frame, stack_pop } from "../../rt/heap.js";
 import { shr64 } from "../../rt/int64.js";
-import { atoi } from "../../rt/libc.js";
-import { fflush } from "../../rt/libc.js";
-import { fprintf } from "../../rt/libc.js";
-import { free } from "../../rt/libc.js";
-import { fwrite } from "../../rt/libc.js";
-import { getenv } from "../../rt/libc.js";
-import { putchar } from "../../rt/libc.js";
-import { snprintf } from "../../rt/libc.js";
-import { sprintf } from "../../rt/libc.js";
-import { stdout } from "../../rt/libc.js";
-import { strcat } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { strlen } from "../../rt/libc.js";
-import { strncmp } from "../../rt/libc.js";
-import { strncpy } from "../../rt/libc.js";
-import { strstr } from "../../rt/libc.js";
-import { init_string } from "../../rt/locals.js";
-import { stack_array } from "../../rt/locals.js";
-import { stack_var } from "../../rt/locals.js";
-import { static_array } from "../../rt/locals.js";
-import { static_struct } from "../../rt/locals.js";
-import { static_var } from "../../rt/locals.js";
+import {
+    atoi, fflush, fprintf, free, fwrite, getenv, putchar, snprintf, sprintf, stdout, strcat, strcpy,
+    strlen, strncmp, strncpy, strstr,
+} from "../../rt/libc.js";
+import {
+    init_string, stack_array, stack_var, static_array, static_struct, static_var,
+} from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
-import { addr_of } from "../../rt/struct.js";
-import { array_of } from "../../rt/struct.js";
-import { ptr_to } from "../../rt/struct.js";
-import { alloc } from "../../src/alloc.js";
-import { dupstr } from "../../src/alloc.js";
-import { flags } from "../../src/decl.js";
-import { gc } from "../../src/decl.js";
-import { gt } from "../../src/decl.js";
-import { iflags } from "../../src/decl.js";
-import { digit } from "../../src/hacklib.js";
-import { eos } from "../../src/hacklib.js";
+import { addr_of, array_of, ptr_to } from "../../rt/struct.js";
+import { alloc, dupstr } from "../../src/alloc.js";
+import { flags, gc, gt, iflags } from "../../src/decl.js";
+import { digit, eos } from "../../src/hacklib.js";
 import { error } from "../../sys/c2js/nhjs_host.js";
-import { nhjs_tty_capture_boundary } from "../../sys/c2js/nhjs_tty_api.js";
-import { tty_utf8graphics_fixup } from "../../sys/c2js/nhjs_tty_api.js";
-import { tgetent } from "../../sys/share/tclib.js";
-import { tgetflag } from "../../sys/share/tclib.js";
-import { tgetnum } from "../../sys/share/tclib.js";
-import { tgetstr } from "../../sys/share/tclib.js";
-import { tgoto } from "../../sys/share/tclib.js";
-import { tputs } from "../../sys/share/tclib.js";
-import { erase_tty_screen } from "./wintty.js";
-import { setclipped } from "./wintty.js";
-import { tty_curs } from "./wintty.js";
-import { tty_raw_print } from "./wintty.js";
-import { tty_wait_synch } from "./wintty.js";
+import { nhjs_tty_capture_boundary, tty_utf8graphics_fixup } from "../../sys/c2js/nhjs_tty_api.js";
+import { tgetent, tgetflag, tgetnum, tgetstr, tgoto, tputs } from "../../sys/share/tclib.js";
+import { erase_tty_screen, setclipped, tty_curs, tty_raw_print, tty_wait_synch } from "./wintty.js";

@@ -2,11 +2,7 @@
 /* Copyright 1994, Dean Luick                                     */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* generic timeout function */
-
 
 /* kind of timer */
 
@@ -16,7 +12,6 @@
     export const TIMER_OBJECT = 3; /* event follows an object [various] */
     export const TIMER_MONSTER = 4; /* event follows a monster [not used] */
     export const NUM_TIMER_KINDS = TIMER_MONSTER + 1; /* 5 */
-
 
 /* save/restore timer ranges */
 export const RANGE_LEVEL = 0;
@@ -47,17 +42,6 @@ export const RANGE_GLOBAL = 1;
 
     export const NUM_TIME_FUNCS = MELT_ICE_AWAY + 1;
 
-
-
-
-
-
-
-
-
-
-
-
 /* used in timeout.c */
 export const struct_fe = struct("struct_fe", {
     next: ptr_to("struct_fe"), /* next item in chain */
@@ -68,9 +52,6 @@ export const struct_fe = struct("struct_fe", {
     arg: "struct_any", /* pointer to timeout argument */
     needs_fixup: Bitfield(1), /* does arg need to be patched? */
 });
-import { long } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { long, short, ulong } from "../rt/ctypes.js";
+import { Bitfield, ptr_to, struct } from "../rt/struct.js";

@@ -2,43 +2,22 @@
 /*      Copyright (c) 2016 by Pasi Kallinen              */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * Default characters for monsters.
  */
 /* clang-format off */
 
-
-
-
-
 /* clang-format on */
-
-
-
-
-
 
     /* number of monster classes */
 
-
-
 /* Default characters for dungeon surroundings and furniture */
-
-
-
-
-
-
 
 /*
  * special symbol set handling types ( for invoking callbacks, etc.)
  * Must match the order of the known_handlers strings
  * in drawing.c
  */
-
 
     export const H_UNK = 0;
     export const H_IBM = 1;
@@ -48,13 +27,11 @@
                 * symsets by 'O' can skip it for !MAC_GRAPHICS_ENV */
     export const H_UTF8 = 5;
 
-
 export const struct_symdef = struct("struct_symdef", {
     sym: uchar,
     explanation: ptr_to(char),
     color: uchar,
 });
-
 
     export const SYM_INVALID = 0;
     export const SYM_CONTROL = 1; /* start/finish markers */
@@ -62,7 +39,6 @@ export const struct_symdef = struct("struct_symdef", {
     export const SYM_OC = 3; /* index into oc_syms   */
     export const SYM_MON = 4; /* index into monsyms   */
     export const SYM_OTH = 5; /* misc                 */
-
 
 export const struct_symparse = struct("struct_symparse", {
     range: unsigned,
@@ -93,20 +69,6 @@ export const MAXTCHARS = (TRAPNUM - 1);
 export const MAXECHARS = (S_expl_br - S_vbeam + 1);
 export const MAXEXPCHARS = 9;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* misc symbol definitions */
 
         export const SYM_NOTHING = 0;
@@ -117,23 +79,18 @@ export const MAXEXPCHARS = 9;
         export const SYM_HERO_OVERRIDE = 5;
         export const MAXOTHER = SYM_HERO_OVERRIDE + 1;
 
-
 /*
  * Graphics sets for display symbols
  */
-
 
         export const PRIMARYSET = 0; /* primary graphics set        */
         export const ROGUESET = 1; /* rogue graphics set          */
         export const NUM_GRAPHICS = ROGUESET + 1;
         export const UNICODESET = NUM_GRAPHICS;
 
-
-
        export const do_custom_none = 0;
        export const do_custom_colors = do_custom_none + 1;
        export const do_custom_symbols = do_custom_colors + 1;
-
 
 export const custom_none = 0; export const custom_symbols = custom_none + 1;
     export const custom_ureps = custom_symbols + 1; export const custom_nhcolor = custom_ureps + 1; export const custom_count = custom_nhcolor + 1;
@@ -160,7 +117,6 @@ export const struct_customization_detail = struct("struct_customization_detail",
     next: ptr_to("struct_customization_detail"),
 });
 
-
 /* one set per symset_name */
 export const struct_symset_customization = struct("struct_symset_customization", {
     customization_name: ptr_to(char),
@@ -172,17 +128,9 @@ export const struct_symset_customization = struct("struct_symset_customization",
 
 /* defaults */
 export const WARNCOUNT = 6;
-import { S_expl_br } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_vbeam } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
+
+import { S_expl_br, S_stone, S_vbeam, S_water } from "./defsym.h.js";
 import { uint32 } from "./integer.h.js";
 import { TRAPNUM } from "./trap.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { union } from "../rt/struct.js";
+import { char, int, uchar, unsigned } from "../rt/ctypes.js";
+import { Bitfield, ptr_to, struct, union } from "../rt/struct.js";

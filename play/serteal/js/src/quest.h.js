@@ -2,9 +2,6 @@
 /* Copyright (c) Mike Stephenson 1991.                            */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const struct_q_score = struct("struct_q_score", { /* Quest "scorecard" */
     first_start: Bitfield(1), /* only set the first time */
     met_leader: Bitfield(1), /* has met the leader */
@@ -44,6 +41,6 @@ export const MIN_QUEST_ALIGN = 20;
 /* note: align 20 matches "pious" as reported by enlightenment (cmd.c) */
 export const MIN_QUEST_LEVEL = 14;
 /* note: exp.lev. 14 is threshold level for 5th rank (class title, role.c) */
+
 import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { Bitfield, struct } from "../rt/struct.js";

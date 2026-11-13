@@ -1,4 +1,4 @@
-export default `
+export default String.raw`
 des.level_init({ style = "solidfill", fg = " " });
 des.level_flags("mazelevel", "noflip",
                 "nomongen", "nodeathdrops", "noautosearch");

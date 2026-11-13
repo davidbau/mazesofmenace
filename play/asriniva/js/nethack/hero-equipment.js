@@ -79,7 +79,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  wd.getobj=getobj;
  const signatures=new Map();
  function signature(name){if(!signatures.has(name)){const match=publicFunctions.functions[name].match(/^(.*?)\((.*)\)$/);if(!match)throw new Error('Unknown equipment prototype '+name);signatures.set(name,{result:match[1].trim(),parameters:match[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')});}return signatures.get(name);}
- function boundaryValue(type,value){const canonical=ctypes.canonical(type);if(canonical==='void')return undefined;if(canonical.includes('*'))return typeof value==='string'?services.literal(value):address(value);return canonical==='long'?transport.long(value):canonical==='unsigned long'?transport.ulong(value):canonical==='signed char'||canonical==='char'?transport.char(value):canonical==='unsigned char'?transport.uchar(value):canonical==='unsigned int'?transport.uint(value):transport.int(value);}
+ function boundaryValue(type,value){const canonical=ctypes.abiType(type);if(canonical==='void')return undefined;if(canonical.includes('*'))return typeof value==='string'?services.literal(value):address(value);return canonical==='long'?transport.long(value):canonical==='unsigned long'?transport.ulong(value):canonical==='signed char'||canonical==='char'?transport.char(value):canonical==='unsigned char'?transport.uchar(value):canonical==='unsigned int'?transport.uint(value):transport.int(value);}
  function registerTyped(owner,namespace,context){
   const wrappers=Object.fromEntries(Object.entries(owned(namespace)).map(([name,body])=>[name,(...args)=>boundaryValue(signature(name).result,body(...args))]));
   environment.register(owner,wrappers,context,{prepareArgs:(name,args)=>args.map((v,i)=>{

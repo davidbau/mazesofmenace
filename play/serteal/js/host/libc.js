@@ -5,7 +5,9 @@
 // residue does not have, or must not be used for:
 //
 //   qsort       macOS's qsort in JS (host/qsort.js): comparators are JS functions
+//   regcomp, regexec, regfree   macOS's regex dialect (host/regex.js) for REG_EXTENDED
 //   regerror    Darwin message texts (host/regerror.js); also as nhjs_regerror
+//   sscanf      the residue's, with macOS's saturation of %d / %lld numbers out of range
 //   creat       open(path, O_CREAT|O_WRONLY|O_TRUNC, mode), as musl defines it
 //   getlogin    getenv("LOGNAME") (musl)
 //   getpwuid, getpwnam   no password database: NULL, errno ENOENT (Emscripten)
@@ -26,6 +28,45 @@ import { qsort as jsQsort } from "./qsort.js";
 import { regerror as jsRegerror } from "./regerror.js";
 import { GameExit, GameAbort } from "./endgame.js";
 import { O, E } from "./vfs.js";
+import { compile as compileRegex, matches } from "./regex.js";
+
+// <regex.h> of the residue (musl): regcomp flags and regexec's no-match code
+const REG_EXTENDED = 1, REG_NOSUB = 8, REG_NOMATCH = 1;
+const REGEX_MARK = 0x5845_5243; // "CREX": a regex_t compiled by host/regex.js
+
+// sscanf formats whose conversions are all width-less %d, %lld (%lli) or %c
+const SIGNED_DECIMAL_SCANF = /^(?:[^%]|%%|%(?:lld|lli|d|c))*$/;
+const LLONG_MAX_TEXT = "9223372036854775807", LLONG_MIN_DIGITS = "9223372036854775808";
+/** The input bytes with every [+-]digits run beyond the long long range replaced by the limit
+ *  (same sign), or null when there is none. */
+function clampDecimalRuns(s) {
+  const out = [];
+  let changed = false;
+  const digit = (c) => c >= 48 && c <= 57;
+  for (let i = 0; i < s.length; ) {
+    const signed = s[i] === 45 || s[i] === 43;
+    const j = signed ? i + 1 : i;
+    if (j < s.length && digit(s[j])) {
+      let k = j;
+      while (k < s.length && digit(s[k])) k++;
+      let z = j;
+      while (z < k - 1 && s[z] === 48) z++;
+      const lim = s[i] === 45 ? LLONG_MIN_DIGITS : LLONG_MAX_TEXT;
+      const n = k - z;
+      const text = String.fromCharCode(...s.subarray(z, k));
+      if (n > 19 || (n === 19 && text > lim)) {
+        for (let q = i; q < j; q++) out.push(s[q]);
+        for (const ch of lim) out.push(ch.charCodeAt(0));
+        changed = true;
+      } else for (let q = i; q < k; q++) out.push(s[q]);
+      i = k;
+      continue;
+    }
+    out.push(s[i]);
+    i++;
+  }
+  return changed ? Uint8Array.from(out) : null;
+}
 
 export function createHostLibc(clib, opts = {}) {
   const signals = opts.signals ?? new Map();
@@ -37,9 +78,77 @@ export function createHostLibc(clib, opts = {}) {
     return -1;
   };
   const cstring = (p) => clib.readString(p);
+  const cbytes = (p) => {
+    const H = clib.HEAPU8;
+    let e = p;
+    while (H[e]) e++;
+    return H.slice(p, e);
+  };
+  const regexCache = new Map(); // pattern text -> compile() result
+  const compiled = (bytes) => {
+    const key = String.fromCharCode(...bytes);
+    let r = regexCache.get(key);
+    if (!r) regexCache.set(key, (r = compileRegex(bytes)));
+    return r;
+  };
   return {
     qsort(base, nel, width, cmp) {
       jsQsort(clib, base, nel, width, cmp);
+    },
+    // regcomp/regexec/regfree: macOS's regex dialect (host/regex.js) for the extended REs
+    // NetHack compiles; other flags (not used by the game) stay with the residue's musl.
+    // The regex_t (musl's layout, 32 bytes) holds re_nsub, a malloc'd copy of the pattern in
+    // __opaque and a marker in __padding[0]: all state is in the heap, so snapshots and game
+    // resets keep it; compiled patterns are cached by text.
+    regcomp(preg, pattern, cflags) {
+      if ((cflags & ~(REG_EXTENDED | REG_NOSUB)) || !(cflags & REG_EXTENDED)) return clib.call("regcomp", preg, pattern, cflags);
+      const H = clib.HEAPU32;
+      const bytes = cbytes(pattern);
+      const r = compiled(bytes);
+      if (r.err) {
+        H.fill(0, preg >> 2, (preg >> 2) + 3);
+        return r.err;
+      }
+      const copy = clib.fn.malloc(bytes.length + 1);
+      clib.HEAPU8.set(bytes, copy);
+      clib.HEAPU8[copy + bytes.length] = 0;
+      H[preg >> 2] = r.nsub;
+      H[(preg >> 2) + 1] = copy;
+      H[(preg >> 2) + 2] = REGEX_MARK;
+      return 0;
+    },
+    regexec(preg, string, nmatch, pmatch, eflags) {
+      const H = clib.HEAPU32;
+      if (H[(preg >> 2) + 2] !== REGEX_MARK) return clib.call("regexec", preg, string, nmatch, pmatch, eflags);
+      return matches(compiled(cbytes(H[(preg >> 2) + 1])).nfa, cbytes(string)) ? 0 : REG_NOMATCH;
+    },
+    regfree(preg) {
+      const H = clib.HEAPU32;
+      if (H[(preg >> 2) + 2] === REGEX_MARK) {
+        clib.fn.free(H[(preg >> 2) + 1]);
+        H.fill(0, preg >> 2, (preg >> 2) + 3);
+      } else if (H[(preg >> 2) + 1]) clib.call("regfree", preg);
+    },
+    // sscanf: macOS converts %d / %lld with strtoimax(), which saturates at LLONG_MIN/LLONG_MAX
+    // before the value is stored; musl wraps.  For the formats made of width-less %d %lld %c and
+    // literal text (bribe()'s "%lld", #levelchange's "%d%c", ...), an input number beyond the
+    // 64-bit range is replaced by the limit it saturates to; other formats go unchanged.
+    sscanf(str, fmt, ...ptrs) {
+      if (SIGNED_DECIMAL_SCANF.test(cstring(fmt))) {
+        const clamped = clampDecimalRuns(cbytes(str));
+        if (clamped) {
+          const sp = clib.stackSave();
+          try {
+            const copy = clib.stackAlloc(clamped.length + 1);
+            clib.HEAPU8.set(clamped, copy);
+            clib.HEAPU8[copy + clamped.length] = 0;
+            return clib.call("sscanf", copy, fmt, ...ptrs);
+          } finally {
+            clib.stackRestore(sp);
+          }
+        }
+      }
+      return clib.call("sscanf", str, fmt, ...ptrs);
     },
     regerror(errcode, preg, buf, size) {
       return jsRegerror(clib, errcode, preg, buf, size);

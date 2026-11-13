@@ -3,23 +3,8 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-// #include "wintty.h"
-// #include "func_tab.h"
-
 global_scalar("morc", char, 0); /* tell the outside world what char you chose */
 const suppress_history = static_var("suppress_history", schar);
-
-
-
-
 
  /* cmd.c */
 
@@ -32,19 +17,15 @@ const suppress_history = static_var("suppress_history", schar);
  * some text, it is removed and prompting continues as if from the start.
  * However, if there is no text yet (or anymore) then "\033" is returned.
  */
-export function /* void */
-tty_getlin(query, bufp)
-{
+export function tty_getlin(query, bufp) { /* void */
     suppress_history[0] = FALSE;
     hooked_tty_getlin(query, bufp, null);
 }
 
-function /* void */
-hooked_tty_getlin(
+function hooked_tty_getlin(
     query,
     bufp,
-    hook)
-{
+    hook) { /* void */
     let obufp = bufp;
     let c;
     let cw = wins[WIN_MESSAGE];
@@ -66,19 +47,12 @@ hooked_tty_getlin(
      */
     custompline(OVERRIDE_MSGTYPE | SUPPRESS_HISTORY, _("%s "), query);
 
-
-
-
-
-
-
     /* !EDIT_GETLIN: bufp is output only; init it to empty */
     chars[bufp] = ord('\0');
 
-
     for (;;) {
-        void fflush((stdout));
-        void strcat(strcat(strcpy(gt.toplines, query), _(" ")), obufp);
+        fflush(stdout);
+        strcat(strcat(strcpy(gt.toplines, query), _(" ")), obufp);
         term_curs_set(1);
         c = pgetchar();
         term_curs_set(0);
@@ -112,15 +86,15 @@ hooked_tty_getlin(
                 /* msg_window:single, or msg_window:combination while it's
                    behaving like msg_window:single */
                 if (!doprev)
-                    void tty_doprev_message(); /* need two initially */
-                void tty_doprev_message();
+                    tty_doprev_message(); /* need two initially */
+                tty_doprev_message();
                 ttyDisplay.inread = sav;
                 doprev = TRUE;
                 continue;
             } else {
                 /* msg_window:full or reverse, or msg_window:combination while
                    it's behaving like msg_window:full */
-                void tty_doprev_message();
+                tty_doprev_message();
                 ttyDisplay.inread = sav;
                 doprev = FALSE;
                 tty_clear_nhwindow(WIN_MESSAGE);
@@ -141,13 +115,9 @@ hooked_tty_getlin(
         }
         if (c == erase_char || c == ord('\b')) {
             if (bufp != obufp) {
-
                 let i;
 
-
                 bufp--;
-
-
 
                 putsyms(_("\b"));
                 for (i = bufp; chars[i]; ++i)
@@ -155,30 +125,22 @@ hooked_tty_getlin(
                 for (; i > bufp; --i)
                     putsyms(_("\b"));
                 chars[bufp] = 0;
-
             } else
                 tty_nhbell();
         } else if (c == ord('\n') || c == ord('\r')) {
-
-
-
             break;
         } else if (ord(' ') <= uchar(c) && c != ord('\x7f')
                    /* avoid isprint() - some people don't have it
                       ' ' is not always a printing char */
                    && (bufp - obufp < BUFSZ - 1 && bufp - obufp < COLNO)) {
-
             let i = eos(bufp);
-
 
             chars[bufp] = c;
             chars[bufp + 1] = 0;
             putsyms(bufp);
             bufp++;
-            if (hook && (hook)(obufp)) {
+            if (hook && hook(obufp)) {
                 putsyms(bufp);
-
-
 
                 /* pointer and cursor left where they were */
                 for (i = bufp; chars[i]; ++i)
@@ -191,22 +153,15 @@ hooked_tty_getlin(
                     putsyms(_(" "));
                 for (; s > bufp; --s)
                     putsyms(_("\b"));
-
             }
         } else if (c == kill_char || c == ord('\x7f')) { /* Robert Viduya */
             /* this test last - @ might be the kill_char */
-
-
-
-
-
 
             for (; chars[bufp]; ++bufp)
                 putsyms(_(" "));
             for (; bufp != obufp; --bufp)
                 putsyms(_("\b \b"));
             chars[bufp] = 0;
-
         } else
             tty_nhbell();
     }
@@ -218,17 +173,10 @@ hooked_tty_getlin(
         /* prevent next message from pushing current query+answer into
            tty message history */
         chars[gt.toplines] = ord('\0');
-
-
-
-
-
     }
 }
 
-export function /* void */
-xwaitforspace(s) /* chars allowed besides return */
-{
+export function xwaitforspace(s) { /* void */ /* chars allowed besides return */
     let c, x = ttyDisplay ? ttyDisplay.dismiss_more : ord('\n');
 
     morc = 0;
@@ -268,29 +216,28 @@ xwaitforspace(s) /* chars allowed besides return */
  *      + we don't change the characters that are already in base
  *      + base has enough room to hold our string
  */
-function /* boolean */
-ext_cmd_getlin_hook(base)
-{ const $frame = stack_frame(); try {
+function ext_cmd_getlin_hook(base) { /* boolean */
+    const $frame = stack_frame(); try {
     let ecmatches = stack_var(ptr_to(int));
     let nmatches = extcmds_match(base, ECM_NOFLAGS, ecmatches);
 
     if (nmatches == 1) {
         let ec = extcmds_getentry(ecmatches[0][0]);
 
-        void strcpy(base, ec.ef_txt);
+        strcpy(base, ec.ef_txt);
         return TRUE;
     }
 
     return FALSE; /* didn't match anything */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Read in an extended command, doing command line completion.  We
  * stop when we have found enough characters to make a unique command.
  */
-export function /* int */
-tty_get_ext_cmd()
-{ const $frame = stack_frame(); try {
+export function tty_get_ext_cmd() { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let nmatches;
     let ecmatches = stack_var(ptr_to(int), null);
@@ -311,7 +258,7 @@ tty_get_ext_cmd()
     chars[buf + 0] = ord('\0');
     hooked_tty_getlin(extcmd_char, buf,
                       !gi.in_doagain ? ext_cmd_getlin_hook : no_hook);
-    void mungspaces(buf);
+    mungspaces(buf);
 
     nmatches = (chars[buf + 0] == ord('\0') || chars[buf + 0] == ord('\x1b')) ? -1
               : extcmds_match(buf, ECM_IGNOREAC | ECM_EXACTMATCH, ecmatches);
@@ -323,66 +270,32 @@ tty_get_ext_cmd()
     }
 
     return ecmatches[0][0];
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*getline.c*/
-import { ECM_EXACTMATCH } from "../../src/func_tab.h.js";
-import { ECM_IGNOREAC } from "../../src/func_tab.h.js";
-import { ECM_NOFLAGS } from "../../src/func_tab.h.js";
-import { BUFSZ } from "../../src/global.h.js";
-import { COLNO } from "../../src/global.h.js";
-import { FALSE } from "../../src/global.h.js";
-import { TRUE } from "../../src/global.h.js";
+
+import { ECM_EXACTMATCH, ECM_IGNOREAC, ECM_NOFLAGS } from "../../src/func_tab.h.js";
+import { BUFSZ, COLNO, FALSE, TRUE } from "../../src/global.h.js";
 import { C } from "../../src/global.h.macros.js";
-import { OVERRIDE_MSGTYPE } from "../../src/hack.h.js";
-import { SUPPRESS_HISTORY } from "../../src/hack.h.js";
+import { OVERRIDE_MSGTYPE, SUPPRESS_HISTORY } from "../../src/hack.h.js";
 import { clear_nhwindow } from "../../src/winprocs.h.macros.js";
-import { TOPLINE_NEED_MORE } from "../../src/wintty.h.js";
-import { TOPLINE_NON_EMPTY } from "../../src/wintty.h.js";
-import { TOPLINE_SPECIAL_PROMPT } from "../../src/wintty.h.js";
-import { WIN_STOP } from "../../src/wintty.h.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { schar } from "../../rt/ctypes.js";
-import { uchar } from "../../rt/ctypes.js";
+import {
+    TOPLINE_NEED_MORE, TOPLINE_NON_EMPTY, TOPLINE_SPECIAL_PROMPT, WIN_STOP,
+} from "../../src/wintty.h.js";
+import { char, int, ord, schar, uchar } from "../../rt/ctypes.js";
 import { global_scalar } from "../../rt/globals.js";
-import { chars } from "../../rt/heap.js";
-import { stack_frame } from "../../rt/heap.js";
-import { stack_pop } from "../../rt/heap.js";
-import { EOF } from "../../rt/libc.js";
-import { fflush } from "../../rt/libc.js";
-import { stdout } from "../../rt/libc.js";
-import { strcat } from "../../rt/libc.js";
-import { strchr } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { stack_array } from "../../rt/locals.js";
-import { stack_var } from "../../rt/locals.js";
-import { static_var } from "../../rt/locals.js";
+import { chars, stack_frame, stack_pop } from "../../rt/heap.js";
+import { EOF, fflush, stdout, strcat, strchr, strcpy } from "../../rt/libc.js";
+import { stack_array, stack_var, static_var } from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
 import { ptr_to } from "../../rt/struct.js";
-import { extcmd_initiator } from "../../src/cmd.js";
-import { extcmd_via_menu } from "../../src/cmd.js";
-import { extcmds_getentry } from "../../src/cmd.js";
-import { extcmds_match } from "../../src/cmd.js";
-import { pgetchar } from "../../src/cmd.js";
-import { gi } from "../../src/decl.js";
-import { gt } from "../../src/decl.js";
-import { iflags } from "../../src/decl.js";
-import { program_state } from "../../src/decl.js";
-import { eos } from "../../src/hacklib.js";
-import { mungspaces } from "../../src/hacklib.js";
-import { visctrl } from "../../src/hacklib.js";
-import { custompline } from "../../src/pline.js";
-import { pline } from "../../src/pline.js";
-import { term_curs_set } from "./termcap.js";
-import { tty_nhbell } from "./termcap.js";
-import { addtopl } from "./topl.js";
-import { more } from "./topl.js";
-import { putsyms } from "./topl.js";
-import { tty_doprev_message } from "./topl.js";
-import { tty_clear_nhwindow } from "./wintty.js";
-import { tty_nhgetch } from "./wintty.js";
-import { wins } from "./wintty.js";
+import {
+    extcmd_initiator, extcmd_via_menu, extcmds_getentry, extcmds_match, pgetchar,
+} from "../../src/cmd.js";
+import { gi, gt, iflags, program_state } from "../../src/decl.js";
+import { eos, mungspaces, visctrl } from "../../src/hacklib.js";
+import { custompline, pline } from "../../src/pline.js";
+import { term_curs_set, tty_nhbell } from "./termcap.js";
+import { addtopl, more, putsyms, tty_doprev_message } from "./topl.js";
+import { tty_clear_nhwindow, tty_nhgetch, wins } from "./wintty.js";

@@ -3,10 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
 /*
  * Some include files are in a different place under SYSV
  *      BSD                SYSV
@@ -38,8 +34,6 @@
                        /* e.g. Suns sharing a playground through NFS */
 /* #define SUNOS4 *//* SunOS 4.x */
 
-
-
 /* #define CYGWIN32 *//* Unix on Win32 -- use with case sensitive defines */
 /* #define GENIX *//* Yet Another Unix Clone */
 /* #define HISX *//* Bull Unix for XPS Machines */
@@ -55,8 +49,6 @@
                         * particular, it should NOT be defined for the UNIXPC
                         * unless you remove the use of the shared library in
                         * the Makefile */
-
-
 
                     /* Define for many recent OS releases, including
                      * those with specific defines (since types are
@@ -103,7 +95,6 @@
  */
 /* #define PORT_HELP "Unixhelp" */
 
-
 /*
  * To enable the `timed_delay' option for using a timer rather than extra
  * screen output when pausing for display effect.  Requires that `msleep'
@@ -113,10 +104,6 @@
  * a fine-grained timer.
  */
 /* #define TIMED_DELAY *//* usleep() */
-
-
-
-
 
 /*
  * At start of game, if there are lock and level files for current
@@ -132,7 +119,6 @@
  * new game.  Does not attempt to rename and restore the panic save file.
  */
 
-
 /* #define AVOID_WIN_IOCTL *//* ensure USE_WIN_IOCTL remains undefined */
 
 /*
@@ -142,9 +128,6 @@
  * variable MAILREADER; otherwise an internal pager will be used.
  * A stat system call is done on the mailbox every MAILCKFREQ moves.
  */
-
-
-
 
 /* The Andrew Message System does mail a little differently from normal
  * UNIX.  Mail is deposited in the user's own directory in ~/Mailbox
@@ -165,32 +148,7 @@
 
 /* #define NO_MAILREADER *//* have mail daemon just tell player of mail */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const DEF_MAILREADER = "/usr/bin/mailx";
-
-
-
-
-
-
 
 /* If SIMPLE_MAIL is defined, the mail spool file format is
    "sender:message", one mail per line, and mails are
@@ -199,12 +157,8 @@ export const DEF_MAILREADER = "/usr/bin/mailx";
    has read the message. */
 /* #define SIMPLE_MAIL */
 
-
 /* How often mail spool file is checked for new messages, in turns */
 export const MAILCKFREQ = 50;
-
-
-
 
 /* If SERVER_ADMIN_MSG is defined and the file exists, players get
    a message from the user defined in the file.  The file format
@@ -213,16 +167,11 @@ export const MAILCKFREQ = 50;
 
 /* How often admin message file is checked for new messages, in turns */
 
-
-
-
 /*
  * Some terminals or terminal emulators send two character sequence "ESC c"
  * when Alt+c is pressed.  The altmeta run-time option allows the user to
  * request that "ESC c" be treated as M-c.
  */
-
-
 
 /* Some implementations of compress need a 'quiet' option.
  * If you've got one of these versions, put -q here.
@@ -231,39 +180,15 @@ export const MAILCKFREQ = 50;
  */
 /* #define COMPRESS_OPTIONS "-q" */
 
-
-
 export const FCMASK = 0o660;
-
 
 /* fcntl(2) is a POSIX-portable call for manipulating file descriptors.
  * Comment out the USE_FCNTL if for some reason you have a strange
  * OS/filesystem combination for which fcntl(2) does not work. */
 
-
-
-
 /*
  * The remainder of the file should not need to be changed.
  */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * BSD/ULTRIX systems are normally the only ones that can suspend processes.
@@ -277,32 +202,12 @@ export const FCMASK = 0o660;
  * various recent SYSV versions (with possibly tweaks to unixtty.c again).
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
  * Define SAFERHANGUP to delay hangup processing until the main command
  * loop. 'safer' because it avoids certain cheats and also avoids losing
  * objects being thrown when the hangup occurs.  All unix windowports
  * support SAFERHANGUP (couldn't define it here otherwise).
  */
-
-
-
-
-
 
 /* these might be needed for include/system.h;
    default comes from system's time.h */
@@ -315,110 +220,3 @@ export const FCMASK = 0o660;
 /* #define LOCALTIME_type long * */
 
 export const HLOCK = "perm";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Use the high quality random number routines. */
-/* the high quality random number routines */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Relevant for some systems:  some older versions
-   of curses (the run-time library optionally used by nethack's tty
-   interface in addition to its curses interface) supply 'has_colors()'
-   but corresponding <curses.h> doesn't declare it.  has_colors() is used
-   in unixtty.c by init_sco_cons() and init_linux_cons().  If the compiler
-   complains about has_colors() not being declared, try uncommenting
-   NEED_HAS_COLORS_DECL.  If the linker complains about has_colors not
-   being found, switch to ncurses() or update to newer version of curses. */
-/* #define NEED_HAS_COLORS_DECL */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
- * [ALI] We assume that SVR4 means we can safely include syscall.h
- * (although it's really a BSDism). This is certainly true for Solaris 2.5,
- * Solaris 7, Solaris 8 and Compaq Tru64 5.1
- * Later BSD systems will have the getresid system calls.
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
- * /dev/random is blocking on Linux, so there we default to /dev/urandom which
- * should still be good enough.
- * BSD systems usually have /dev/random that is supposed to be used.
- * OSX is based on NetBSD kernel and has both /dev/random and /dev/urandom.
- */

@@ -21,14 +21,8 @@ export async function runSegment(input) {
 }
 
 function renderLatestCapturedScreen(game, display) {
-  const screens = game.getScreens();
-  if (!screens.length) return;
-  const cursors = game.getCursors();
-  renderCapturedScreen(
-    display,
-    screens[screens.length - 1],
-    cursors[cursors.length - 1],
-  );
+  const shown = game.shownScreen();
+  if (shown) renderCapturedScreen(display, shown.screen, shown.cursor);
 }
 
 function attachInteractiveDisplay(game, display) {
@@ -41,11 +35,18 @@ export function initializeInteractiveGame(display, game) {
   attachInteractiveDisplay(game, display);
 }
 
-// One key from the browser or the playability check.  Returns false once
+// The keys typed but not read yet, in order (js/terminal.js's queue, read only).
+function queuedKeys(display) {
+  const queue = display?.terminal?._inputQueue;
+  return Array.isArray(queue) ? queue : [];
+}
+
+// One key from the browser or the playability check, with the keys already
+// typed after it (type-ahead, see host/game.js pushKey).  Returns false once
 // the game has ended.
 export function continueInteractiveGame(display, keyCode) {
   const game = display?._nhjsInteractive?.game;
-  if (!game || !game.pushKey(keyCode)) return false;
+  if (!game || !game.pushKey(keyCode, queuedKeys(display))) return false;
   renderLatestCapturedScreen(game, display);
   return true;
 }

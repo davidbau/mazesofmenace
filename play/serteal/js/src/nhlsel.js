@@ -2,61 +2,15 @@
 /*      Copyright (c) 2018 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "sp_lev.h"
-
-
-
-
-
 /* lua_CFunction prototypes */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* There doesn't seem to be a point in having a l_selection_add since it would
  * do the same thing as l_selection_or. The addition operator is mapped to
  * l_selection_or. */
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-export function /* struct selectionvar * */
-l_selection_check(L, index)
-{
+export function l_selection_check(L, index) { /* struct selectionvar * */
     let sel;
 
     luaL_checktype(L, index, LUA_TUSERDATA);
@@ -66,9 +20,7 @@ l_selection_check(L, index)
     return sel;
 }
 
-function /* int */
-l_selection_gc(L)
-{
+function l_selection_gc(L) { /* int */
     let sel = l_selection_check(L, 1);
 
     if (sel)
@@ -76,26 +28,12 @@ l_selection_gc(L)
     return 0;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* push a new selection into lua stack, return the selectionvar */
-function /* struct selectionvar * */
-l_selection_push_new(L)
-{
+function l_selection_push_new(L) { /* struct selectionvar * */
     let tmp = selection_new();
     let sel = view_of(struct_selectionvar, lua_newuserdata(L, sizeof(struct_selectionvar)));
-
 
     luaL_getmetatable(L, _("selection"));
     lua_setmetatable(L, -2);
@@ -108,11 +46,8 @@ l_selection_push_new(L)
 }
 
 /* push a copy of selectionvar tmp to lua stack */
-export function /* void */
-l_selection_push_copy(L, tmp)
-{
+export function l_selection_push_copy(L, tmp) { /* void */
     let sel = view_of(struct_selectionvar, lua_newuserdata(L, sizeof(struct_selectionvar)));
-
 
     luaL_getmetatable(L, _("selection"));
     lua_setmetatable(L, -2);
@@ -121,24 +56,19 @@ l_selection_push_copy(L, tmp)
     sel.map = dupstr(tmp.map);
 }
 
-
 /* local sel = selection.new(); */
-function /* int */
-l_selection_new(L)
-{
-    void l_selection_push_new(L);
+function l_selection_new(L) { /* int */
+    l_selection_push_new(L);
     return 1;
 }
 
 /* Replace the topmost selection in the stack with a clone of it. */
 /* local sel = selection.clone(sel); */
-function /* int */
-l_selection_clone(L)
-{
+function l_selection_clone(L) { /* int */
     let sel = l_selection_check(L, 1);
     let tmp;
 
-    void l_selection_new(L);
+    l_selection_new(L);
     tmp = l_selection_check(L, 2);
     if (tmp.map)
         free(tmp.map);
@@ -147,17 +77,14 @@ l_selection_clone(L)
     return 1;
 }
 
-
-
 /* selection.set(sel, x, y); */
 /* selection.set(sel, x, y, value); */
 /* local sel = selection.set(); */
 /* local sel = sel:set(); */
 /* local sel = selection.set(sel); */
 /* TODO: allow setting multiple coords at once: set({x1,y1},{x2,y2},...); */
-function /* int */
-l_selection_setpoint(L)
-{ const $frame = stack_frame(); try {
+function l_selection_setpoint(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = null;
     let x = stack_var(coordxy, -1), y = stack_var(coordxy, -1);
     let val = 1;
@@ -165,14 +92,14 @@ l_selection_setpoint(L)
     let crd = 0;
 
     if (argc == 0) {
-        void l_selection_new(L);
+        l_selection_new(L);
     } else if (argc == 1) {
         sel = l_selection_check(L, 1);
     } else if (argc == 2) {
         x[0] = coordxy(luaL_checkinteger(L, 1));
         y[0] = coordxy(luaL_checkinteger(L, 2));
         lua_pop(L, 2);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
     } else {
         sel = l_selection_check(L, 1);
@@ -196,12 +123,12 @@ l_selection_setpoint(L)
     selection_setpoint(x[0], y[0], sel, val);
     lua_settop(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local numpoints = selection.numpoints(sel); */
-function /* int */
-l_selection_numpoints(L)
-{ const $frame = stack_frame(); try {
+function l_selection_numpoints(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = l_selection_check(L, 1);
     let x, y;
     let ret = 0;
@@ -217,12 +144,12 @@ l_selection_numpoints(L)
     lua_settop(L, 0);
     lua_pushinteger(L, ret);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local value = selection.get(sel, x, y); */
-function /* int */
-l_selection_getpoint(L)
-{ const $frame = stack_frame(); try {
+function l_selection_getpoint(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = l_selection_check(L, 1);
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let ix = stack_var(lua_Integer), iy = stack_var(lua_Integer);
@@ -249,26 +176,23 @@ l_selection_getpoint(L)
     lua_settop(L, 0);
     lua_pushnumber(L, val);
     return 1;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.negate(sel); */
 /* local s = selection.negate(); */
 /* local s = sel:negate(); */
-function /* int */
-l_selection_not(L)
-{
+function l_selection_not(L) { /* int */
     let argc = lua_gettop(L);
     let sel, sel2;
 
     if (argc == 0) {
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
         selection_clear(sel, 1);
     } else {
-        void l_selection_check(L, 1);
-        void l_selection_clone(L);
+        l_selection_check(L, 1);
+        l_selection_clone(L);
         sel2 = l_selection_check(L, 2);
         selection_not(sel2);
         lua_remove(L, 1);
@@ -277,9 +201,8 @@ l_selection_not(L)
 }
 
 /* local sel = selection.area(4,5, 40,10) & selection.rect(7,8, 60,14); */
-function /* int */
-l_selection_and(L)
-{ const $frame = stack_frame(); try {
+function l_selection_and(L) { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
@@ -299,12 +222,12 @@ l_selection_and(L)
     lua_remove(L, 1);
     lua_remove(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local sel = selection.area(4,5, 40,10) | selection.rect(7,8, 60,14); */
-function /* int */
-l_selection_or(L)
-{ const $frame = stack_frame(); try {
+function l_selection_or(L) { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
@@ -325,12 +248,12 @@ l_selection_or(L)
     lua_remove(L, 1);
     lua_remove(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local sel = selection.area(4,5, 40,10) ~ selection.rect(7,8, 60,14); */
-function /* int */
-l_selection_xor(L)
-{ const $frame = stack_frame(); try {
+function l_selection_xor(L) { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
@@ -353,13 +276,13 @@ l_selection_xor(L)
     lua_remove(L, 1);
     lua_remove(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local sel = selection.area(10,10, 20,20) - selection.area(14,14, 17,17)
  *   - i.e. points that are in A but not in B */
-function /* int */
-l_selection_sub(L)
-{ const $frame = stack_frame(); try {
+function l_selection_sub(L) { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let sela = l_selection_check(L, 1);
     let selb = l_selection_check(L, 2);
@@ -382,12 +305,11 @@ l_selection_sub(L)
     lua_remove(L, 1);
     lua_remove(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.percentage(sel, 50); */
-function /* int */
-l_selection_filter_percent(L)
-{
+function l_selection_filter_percent(L) { /* int */
     let argc = lua_gettop(L);
     let sel = l_selection_check(L, 1);
     let p = int(luaL_checkinteger(L, 2));
@@ -403,9 +325,8 @@ l_selection_filter_percent(L)
 
 /* local pt = selection.rndcoord(sel); */
 /* local pt = selection.rndcoord(sel, 1); */
-function /* int */
-l_selection_rndcoord(L)
-{ const $frame = stack_frame(); try {
+function l_selection_rndcoord(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = l_selection_check(L, 1);
     let removeit = int(luaL_optinteger(L, 2, 0));
     let x = stack_var(coordxy, -1), y = stack_var(coordxy, -1);
@@ -425,12 +346,11 @@ l_selection_rndcoord(L)
     nhl_add_table_entry_int(L, _("x"), x[0]);
     nhl_add_table_entry_int(L, _("y"), y[0]);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.room(); */
-function /* int */
-l_selection_room(L)
-{
+function l_selection_room(L) { /* int */
     let sel;
     let argc = lua_gettop(L);
     let croom = null;
@@ -450,9 +370,8 @@ l_selection_room(L)
 }
 
 /* local rect = sel:bounds(); */
-function /* int */
-l_selection_getbounds(L)
-{ const $frame = stack_frame(); try {
+function l_selection_getbounds(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = l_selection_check(L, 1);
     let rect = struct_assign(stack_struct(struct_nhrect), cg.zeroNhRect);
 
@@ -464,7 +383,8 @@ l_selection_getbounds(L)
     nhl_add_table_entry_int(L, _("hx"), rect.hx);
     nhl_add_table_entry_int(L, _("hy"), rect.hy);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* internal function to get a selection and 4 integer values from lua stack.
    removes the integers from the stack.
@@ -472,14 +392,12 @@ l_selection_getbounds(L)
 */
 /* function(selection, x1,y1, x2,y2) */
 /* selection:function(x1,y1, x2,y2) */
-function /* boolean */
-params_sel_2coords(L, sel,
-                   x1, y1, x2, y2)
-{
+function params_sel_2coords(L, sel,
+                   x1, y1, x2, y2) { /* boolean */
     let argc = lua_gettop(L);
 
     if (argc == 4) {
-        void l_selection_new(L);
+        l_selection_new(L);
         x1[0] = coordxy(luaL_checkinteger(L, 1));
         y1[0] = coordxy(luaL_checkinteger(L, 2));
         x2[0] = coordxy(luaL_checkinteger(L, 3));
@@ -505,9 +423,8 @@ params_sel_2coords(L, sel,
 /* local s = selection.line(sel, x1,y1, x2,y2); */
 /* local s = selection.line(x1,y1, x2,y2); */
 /* s:line(x1,y1, x2,y2); */
-function /* int */
-l_selection_line(L)
-{ const $frame = stack_frame(); try {
+function l_selection_line(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = stack_var(ptr_to(struct_selectionvar), null);
     let x1 = stack_var(coordxy), y1 = stack_var(coordxy), x2 = stack_var(coordxy), y2 = stack_var(coordxy);
 
@@ -520,16 +437,16 @@ l_selection_line(L)
     get_location_coord(x2, y2, ANY_LOC, gc.coder ? gc.coder.croom : null,
                        SP_COORD_PACK(x2[0], y2[0]));
 
-    void l_selection_clone(L);
+    l_selection_clone(L);
     sel[0] = l_selection_check(L, 2);
     selection_do_line(x1[0],y1[0],x2[0],y2[0], sel[0]);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.rect(sel, x1,y1, x2,y2); */
-function /* int */
-l_selection_rect(L)
-{ const $frame = stack_frame(); try {
+function l_selection_rect(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = stack_var(ptr_to(struct_selectionvar), null);
     let x1 = stack_var(coordxy), y1 = stack_var(coordxy), x2 = stack_var(coordxy), y2 = stack_var(coordxy);
 
@@ -542,22 +459,22 @@ l_selection_rect(L)
     get_location_coord(x2, y2, ANY_LOC, gc.coder ? gc.coder.croom : null,
                        SP_COORD_PACK(x2[0], y2[0]));
 
-    void l_selection_clone(L);
+    l_selection_clone(L);
     sel[0] = l_selection_check(L, 2);
     selection_do_line(x1[0], y1[0], x2[0], y1[0], sel[0]);
     selection_do_line(x1[0], y1[0], x1[0], y2[0], sel[0]);
     selection_do_line(x2[0], y1[0], x2[0], y2[0], sel[0]);
     selection_do_line(x1[0], y2[0], x2[0], y2[0], sel[0]);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.fillrect(sel, x1,y1, x2,y2); */
 /* local s = selection.fillrect(x1,y1, x2,y2); */
 /* s:fillrect(x1,y1, x2,y2); */
 /* selection.area(x1,y1, x2,y2); */
-function /* int */
-l_selection_fillrect(L)
-{ const $frame = stack_frame(); try {
+function l_selection_fillrect(L) { /* int */
+    const $frame = stack_frame(); try {
     let sel = stack_var(ptr_to(struct_selectionvar), null);
     let y;
     let x1 = stack_var(coordxy), y1 = stack_var(coordxy), x2 = stack_var(coordxy), y2 = stack_var(coordxy);
@@ -571,7 +488,7 @@ l_selection_fillrect(L)
     get_location_coord(x2, y2, ANY_LOC, gc.coder ? gc.coder.croom : null,
                        SP_COORD_PACK(x2[0], y2[0]));
 
-    void l_selection_clone(L);
+    l_selection_clone(L);
     sel[0] = l_selection_check(L, 2);
     if (x1[0] == x2[0]) {
         for (y = y1[0]; y <= y2[0]; y++)
@@ -581,22 +498,22 @@ l_selection_fillrect(L)
             selection_do_line(x1[0], y, x2[0], y, sel[0]);
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.randline(sel, x1,y1, x2,y2, roughness); */
 /* local s = selection.randline(x1,y1, x2,y2, roughness); */
 /* TODO: selection.randline(x1,y1, x2,y2, roughness); */
 /* TODO: selection.randline({x1,y1}, {x2,y2}, roughness); */
-function /* int */
-l_selection_randline(L)
-{ const $frame = stack_frame(); try {
+function l_selection_randline(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let sel;
     let x1 = stack_var(coordxy, 0), y1 = stack_var(coordxy, 0), x2 = stack_var(coordxy, 0), y2 = stack_var(coordxy, 0);
     let roughness = 7;
 
     if (argc == 6) {
-        void l_selection_check(L, 1);
+        l_selection_check(L, 1);
         x1[0] = coordxy(luaL_checkinteger(L, 2));
         y1[0] = coordxy(luaL_checkinteger(L, 3));
         x2[0] = coordxy(luaL_checkinteger(L, 4));
@@ -610,8 +527,8 @@ l_selection_randline(L)
         y2[0] = coordxy(luaL_checkinteger(L, 4));
         roughness = int(luaL_checkinteger(L, 5));
         lua_pop(L, 5);
-        void l_selection_new(L);
-        void l_selection_check(L, 1);
+        l_selection_new(L);
+        l_selection_check(L, 1);
     }
 
     get_location_coord(x1, y1, ANY_LOC, gc.coder ? gc.coder.croom : null,
@@ -619,17 +536,16 @@ l_selection_randline(L)
     get_location_coord(x2, y2, ANY_LOC, gc.coder ? gc.coder.croom : null,
                        SP_COORD_PACK(x2[0], y2[0]));
 
-    void l_selection_clone(L);
+    l_selection_clone(L);
     sel = l_selection_check(L, 2);
     selection_do_randline(x1[0], y1[0], x2[0], y2[0], roughness, 12, sel);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.grow(sel); */
 /* local s = selection.grow(sel, "north"); */
-function /* int */
-l_selection_grow(L)
-{
+function l_selection_grow(L) { /* int */
     let growdirs = static_array("l_selection_grow.growdirs", ptr_to(char), null, [
         _("all"), _("random"), _("north"), _("west"), _("east"), _("south"), 0
     ]);
@@ -639,23 +555,20 @@ l_selection_grow(L)
     let sel;
     let dir, argc = lua_gettop(L);
 
-    void l_selection_check(L, 1);
+    l_selection_check(L, 1);
     dir = growdirs2i[luaL_checkoption(L, 2, _("all"), growdirs)];
 
     if (argc == 2)
         lua_pop(L, 1); /* get rid of growdir */
 
-    void l_selection_clone(L);
+    l_selection_clone(L);
     sel = l_selection_check(L, 2);
     selection_do_grow(sel, dir);
     return 1;
 }
 
-
 /* local s = selection.filter_mapchar(sel, mapchar, lit); */
-function /* int */
-l_selection_filter_mapchar(L)
-{
+function l_selection_filter_mapchar(L) { /* int */
     let argc = lua_gettop(L);
     let sel = l_selection_check(L, 1);
     let mapchr = dupstr(luaL_checkstring(L, 2));
@@ -678,9 +591,8 @@ l_selection_filter_mapchar(L)
 }
 
 /* local s = selection.match([[...]]); */
-function /* int */
-l_selection_match(L)
-{ const $frame = stack_frame(); try {
+function l_selection_match(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let sel = null;
     let mf = stack_var(ptr_to(struct_mapfragment), null);
@@ -690,7 +602,7 @@ l_selection_match(L)
         let err;
         let mapstr = dupstr(luaL_checkstring(L, 1));
         lua_pop(L, 1);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
 
         mf[0] = mapfrag_fromstr(mapstr);
@@ -700,7 +612,6 @@ l_selection_match(L)
             nhl_error(L, err);
             /*NOTREACHED*/
         }
-
     } else {
         nhl_error(L, _("wrong parameters"));
         /*NOTREACHED*/
@@ -717,14 +628,13 @@ l_selection_match(L)
     mapfrag_free(mf);
 
     return 1;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.floodfill(x,y); */
 /* local s = selection.floodfill(x,y, diagonals); */
-function /* int */
-l_selection_flood(L)
-{ const $frame = stack_frame(); try {
+function l_selection_flood(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let sel = null;
     let x = stack_var(coordxy, 0), y = stack_var(coordxy, 0);
@@ -736,7 +646,7 @@ l_selection_flood(L)
         if (argc == 3)
             diagonals = lua_toboolean(L, 3);
         lua_pop(L, argc);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
     } else {
         nhl_error(L, _("wrong parameters"));
@@ -751,16 +661,15 @@ l_selection_flood(L)
         selection_floodfill(sel, x[0], y[0], diagonals);
     }
     return 1;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.circle(x,y, radius); */
 /* local s = selection.circle(x, y, radius, filled); */
 /* local s = selection.circle(sel, x, y, radius); */
 /* local s = selection.circle(sel, x, y, radius, filled); */
-function /* int */
-l_selection_circle(L)
-{ const $frame = stack_frame(); try {
+function l_selection_circle(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let sel = null;
     let x = stack_var(coordxy, 0), y = stack_var(coordxy, 0);
@@ -771,7 +680,7 @@ l_selection_circle(L)
         y[0] = coordxy(luaL_checkinteger(L, 2));
         r = int(luaL_checkinteger(L, 3));
         lua_pop(L, 3);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
         filled = 0;
     } else if (argc == 4 && lua_type(L, 1) == LUA_TNUMBER) {
@@ -780,7 +689,7 @@ l_selection_circle(L)
         r = int(luaL_checkinteger(L, 3));
         filled = int(luaL_checkinteger(L, 4)); /* TODO: boolean*/
         lua_pop(L, 4);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
     } else if (argc == 4 || argc == 5) {
         sel = l_selection_check(L, 1);
@@ -800,15 +709,15 @@ l_selection_circle(L)
 
     lua_settop(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local s = selection.ellipse(x, y, radius1, radius2); */
 /* local s = selection.ellipse(x, y, radius1, radius2, filled); */
 /* local s = selection.ellipse(sel, x, y, radius1, radius2); */
 /* local s = selection.ellipse(sel, x, y, radius1, radius2, filled); */
-function /* int */
-l_selection_ellipse(L)
-{ const $frame = stack_frame(); try {
+function l_selection_ellipse(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let sel = null;
     let x = stack_var(coordxy, 0), y = stack_var(coordxy, 0);
@@ -820,7 +729,7 @@ l_selection_ellipse(L)
         r1 = int(luaL_checkinteger(L, 3));
         r2 = int(luaL_checkinteger(L, 4));
         lua_pop(L, 4);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
         filled = 0;
     } else if (argc == 5 && lua_type(L, 1) == LUA_TNUMBER) {
@@ -830,7 +739,7 @@ l_selection_ellipse(L)
         r2 = int(luaL_checkinteger(L, 4));
         filled = int(luaL_optinteger(L, 5, 0)); /* TODO: boolean */
         lua_pop(L, 5);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
     } else if (argc == 5 || argc == 6) {
         sel = l_selection_check(L, 1);
@@ -851,16 +760,16 @@ l_selection_ellipse(L)
 
     lua_settop(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Gradients are versatile enough, with so many independently optional
  * arguments, that it doesn't seem helpful to provide a non-table form with
  * non-obvious argument order. */
 /* selection.gradient({ type = "radial", x = 3, y = 5, x2 = 10, y2 = 12,
  *                      mindist = 4, maxdist = 10, limited = false });    */
-function /* int */
-l_selection_gradient(L)
-{ const $frame = stack_frame(); try {
+function l_selection_gradient(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let sel = null;
     /* if x2 and y2 aren't set, the gradient has a single center point of x,y;
@@ -893,7 +802,7 @@ l_selection_gradient(L)
         mindist = get_table_int_opt(L, _("mindist"), 0);
 
         lua_pop(L, 1);
-        void l_selection_new(L);
+        l_selection_new(L);
         sel = l_selection_check(L, 1);
     } else {
         nhl_error(L, _("selection.gradient requires table argument"));
@@ -912,18 +821,16 @@ l_selection_gradient(L)
     selection_do_gradient(sel, x[0], y[0], x2[0], y2[0], type, mindist, maxdist);
     lua_settop(L, 1);
     return 1;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* sel:iterate(function(x,y) ... end);
  * The x, y coordinates passed to the function are map- or room-relative
  * rather than absolute, unless there has been no previous map or room
  * defined.
  */
-function /* int */
-l_selection_iterate(L)
-{ const $frame = stack_frame(); try {
+function l_selection_iterate(L) { /* int */
+    const $frame = stack_frame(); try {
     var argc = lua_gettop(L);
     var sel = null;
     var x, y;
@@ -954,13 +861,13 @@ l_selection_iterate(L)
     }
  }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local txt = sel:describe_size(); */
 /* gives a textual description of the selection size */
-function /* int */
-l_selection_size_description(L)
-{ const $frame = stack_frame(); try {
+function l_selection_size_description(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -974,9 +881,8 @@ l_selection_size_description(L)
         /*NOTREACHED*/
     }
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 const l_selection_methods = static_array("l_selection_methods", struct_luaL_Reg, null, [
     { name: _("new"), func: l_selection_new },
@@ -1021,11 +927,9 @@ const l_selection_meta = static_array("l_selection_meta", struct_luaL_Reg, null,
     { name: 0, func: null }
 ]);
 
-export function /* int */
-l_selection_register(L)
-{
+export function l_selection_register(L) { /* int */
     /* Table of instance methods and static methods. */
-    (((luaL_checkversion(L), lua_createtable(L, 0, (Math.trunc((static_sizeof("l_selection_methods") / sizeof(struct_luaL_Reg))) - 1))), luaL_setfuncs(L, l_selection_methods[0], 0)));
+    ((luaL_checkversion(L), lua_createtable(L, 0, (Math.trunc((static_sizeof("l_selection_methods") / sizeof(struct_luaL_Reg))) - 1))), luaL_setfuncs(L, l_selection_methods[0], 0));
 
     /* metatable = { __name = "selection", __gc = l_selection_gc } */
     luaL_newmetatable(L, _("selection"));
@@ -1037,7 +941,7 @@ l_selection_register(L)
 
     /* Don't let lua code mess with the real metatable.
        Instead offer a fake one that only contains __gc. */
-    (((luaL_checkversion(L), lua_createtable(L, 0, (Math.trunc((static_sizeof("l_selection_meta") / sizeof(struct_luaL_Reg))) - 1))), luaL_setfuncs(L, l_selection_meta[0], 0)));
+    ((luaL_checkversion(L), lua_createtable(L, 0, (Math.trunc((static_sizeof("l_selection_meta") / sizeof(struct_luaL_Reg))) - 1))), luaL_setfuncs(L, l_selection_meta[0], 0));
     lua_setfield(L, -2, _("__metatable"));
 
     /* We don't need the metatable anymore. It's safe in the
@@ -1049,121 +953,52 @@ l_selection_register(L)
 
     return 0;
 }
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { NHLpa_impossible } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
+
+import { BUFSZ, FALSE, NHLpa_impossible, TRUE, coordxy } from "./global.h.js";
 import { struct_selectionvar } from "./hack.h.js";
 import { max } from "./hack.h.macros.js";
 import { struct_luaL_Reg } from "./lauxlib.h.js";
-import { luaL_checkstring } from "./lauxlib.h.macros.js";
-import { luaL_checkversion } from "./lauxlib.h.macros.js";
-import { luaL_getmetatable } from "./lauxlib.h.macros.js";
-import { LUA_GCCOLLECT } from "./lua.h.js";
-import { LUA_TFUNCTION } from "./lua.h.js";
-import { LUA_TNUMBER } from "./lua.h.js";
-import { LUA_TTABLE } from "./lua.h.js";
-import { LUA_TUSERDATA } from "./lua.h.js";
-import { lua_Integer } from "./lua.h.js";
-import { lua_newtable } from "./lua.h.macros.js";
-import { lua_newuserdata } from "./lua.h.macros.js";
-import { lua_pop } from "./lua.h.macros.js";
-import { lua_remove } from "./lua.h.macros.js";
+import { luaL_checkstring, luaL_checkversion, luaL_getmetatable } from "./lauxlib.h.macros.js";
+import {
+    LUA_GCCOLLECT, LUA_TFUNCTION, LUA_TNUMBER, LUA_TTABLE, LUA_TUSERDATA, lua_Integer,
+} from "./lua.h.js";
+import { lua_newtable, lua_newuserdata, lua_pop, lua_remove } from "./lua.h.macros.js";
 import { struct_nhrect } from "./rect.h.js";
 import { INVALID_TYPE } from "./rm.h.js";
 import { levl } from "./rm.h.macros.js";
-import { ANY_LOC } from "./sp_lev.h.js";
-import { SEL_GRADIENT_RADIAL } from "./sp_lev.h.js";
-import { SEL_GRADIENT_SQUARE } from "./sp_lev.h.js";
-import { W_ANY } from "./sp_lev.h.js";
-import { W_EAST } from "./sp_lev.h.js";
-import { W_NORTH } from "./sp_lev.h.js";
-import { W_RANDOM } from "./sp_lev.h.js";
-import { W_SOUTH } from "./sp_lev.h.js";
-import { W_WEST } from "./sp_lev.h.js";
-import { struct_mapfragment } from "./sp_lev.h.js";
-import { SP_COORD_PACK } from "./sp_lev.h.macros.js";
-import { SP_COORD_PACK_RANDOM } from "./sp_lev.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import {
+    ANY_LOC, SEL_GRADIENT_RADIAL, SEL_GRADIENT_SQUARE, W_ANY, W_EAST, W_NORTH, W_RANDOM, W_SOUTH,
+    W_WEST, struct_mapfragment,
+} from "./sp_lev.h.js";
+import { SP_COORD_PACK, SP_COORD_PACK_RANDOM } from "./sp_lev.h.macros.js";
+import { char, int, sizeof } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
 import { free } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_sizeof } from "../rt/locals.js";
-import { luaL_checkinteger } from "../rt/lua.js";
-import { luaL_checkoption } from "../rt/lua.js";
-import { luaL_checktype } from "../rt/lua.js";
-import { luaL_checkudata } from "../rt/lua.js";
-import { luaL_newmetatable } from "../rt/lua.js";
-import { luaL_optinteger } from "../rt/lua.js";
-import { luaL_setfuncs } from "../rt/lua.js";
-import { lua_createtable } from "../rt/lua.js";
-import { lua_gc } from "../rt/lua.js";
-import { lua_gettop } from "../rt/lua.js";
-import { lua_pushinteger } from "../rt/lua.js";
-import { lua_pushnumber } from "../rt/lua.js";
-import { lua_pushstring } from "../rt/lua.js";
-import { lua_pushvalue } from "../rt/lua.js";
-import { lua_setfield } from "../rt/lua.js";
-import { lua_setglobal } from "../rt/lua.js";
-import { lua_setmetatable } from "../rt/lua.js";
-import { lua_settop } from "../rt/lua.js";
-import { lua_toboolean } from "../rt/lua.js";
-import { lua_type } from "../rt/lua.js";
+import { stack_array, stack_struct, stack_var, static_array, static_sizeof } from "../rt/locals.js";
+import {
+    luaL_checkinteger, luaL_checkoption, luaL_checktype, luaL_checkudata, luaL_newmetatable,
+    luaL_optinteger, luaL_setfuncs, lua_createtable, lua_gc, lua_gettop, lua_pushinteger,
+    lua_pushnumber, lua_pushstring, lua_pushvalue, lua_setfield, lua_setglobal, lua_setmetatable,
+    lua_settop, lua_toboolean, lua_type,
+} from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { struct_copy } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { ptr_to, struct_assign, struct_copy, view_of } from "../rt/struct.js";
 import { dupstr } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { cg } from "./decl.js";
-import { gc } from "./decl.js";
-import { gx } from "./decl.js";
-import { gy } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { check_mapchr } from "./nhlua.js";
-import { get_table_int } from "./nhlua.js";
-import { get_table_int_opt } from "./nhlua.js";
-import { get_table_option } from "./nhlua.js";
-import { lcheck_param_table } from "./nhlua.js";
-import { nhl_add_table_entry_int } from "./nhlua.js";
-import { nhl_error } from "./nhlua.js";
-import { nhl_get_xy_params } from "./nhlua.js";
-import { nhl_pcall_handle } from "./nhlua.js";
+import { cg, gc, gx, gy, svn, svr } from "./decl.js";
+import {
+    check_mapchr, get_table_int, get_table_int_opt, get_table_option, lcheck_param_table,
+    nhl_add_table_entry_int, nhl_error, nhl_get_xy_params, nhl_pcall_handle,
+} from "./nhlua.js";
 import { rect_bounds } from "./rect.js";
-import { selection_clear } from "./selvar.js";
-import { selection_do_ellipse } from "./selvar.js";
-import { selection_do_gradient } from "./selvar.js";
-import { selection_do_grow } from "./selvar.js";
-import { selection_do_line } from "./selvar.js";
-import { selection_do_randline } from "./selvar.js";
-import { selection_filter_mapchar } from "./selvar.js";
-import { selection_filter_percent } from "./selvar.js";
-import { selection_floodfill } from "./selvar.js";
-import { selection_free } from "./selvar.js";
-import { selection_from_mkroom } from "./selvar.js";
-import { selection_getbounds } from "./selvar.js";
-import { selection_getpoint } from "./selvar.js";
-import { selection_new } from "./selvar.js";
-import { selection_not } from "./selvar.js";
-import { selection_recalc_bounds } from "./selvar.js";
-import { selection_rndcoord } from "./selvar.js";
-import { selection_setpoint } from "./selvar.js";
-import { selection_size_description } from "./selvar.js";
-import { cvt_to_abscoord } from "./sp_lev.js";
-import { cvt_to_relcoord } from "./sp_lev.js";
-import { get_location_coord } from "./sp_lev.js";
-import { mapfrag_error } from "./sp_lev.js";
-import { mapfrag_free } from "./sp_lev.js";
-import { mapfrag_fromstr } from "./sp_lev.js";
-import { mapfrag_match } from "./sp_lev.js";
-import { set_floodfillchk_match_under } from "./sp_lev.js";
-import { update_croom } from "./sp_lev.js";
+import {
+    selection_clear, selection_do_ellipse, selection_do_gradient, selection_do_grow,
+    selection_do_line, selection_do_randline, selection_filter_mapchar, selection_filter_percent,
+    selection_floodfill, selection_free, selection_from_mkroom, selection_getbounds,
+    selection_getpoint, selection_new, selection_not, selection_recalc_bounds, selection_rndcoord,
+    selection_setpoint, selection_size_description,
+} from "./selvar.js";
+import {
+    cvt_to_abscoord, cvt_to_relcoord, get_location_coord, mapfrag_error, mapfrag_free,
+    mapfrag_fromstr, mapfrag_match, set_floodfillchk_match_under, update_croom,
+} from "./sp_lev.js";

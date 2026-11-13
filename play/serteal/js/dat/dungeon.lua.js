@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack 3.6	dungeon dungeon.lua	$NHDT-Date: 1652196135 2022/05/10 15:22:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
-"\n" + // -- Copyright (c) 1990-95 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- The dungeon description file.
-`dungeon = {
+export default String.raw`-- NetHack 3.6	dungeon dungeon.lua	$NHDT-Date: 1652196135 2022/05/10 15:22:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.4 $
+-- Copyright (c) 1990-95 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- The dungeon description file.
+dungeon = {
    {
       name = "The Dungeons of Doom",
       bonetag = "D",
@@ -185,9 +185,9 @@ export default "\n" + // -- NetHack 3.6	dungeon dungeon.lua	$NHDT-Date: 16521961
          },
          {
             name = "minend",
-` + "\n" + // --          5.0.0: minend changed to no-bones to simplify achievement tracking
-"\n" + // --          bonetag = "E"
-`            base = -1,
+--          5.0.0: minend changed to no-bones to simplify achievement tracking
+--          bonetag = "E"
+            base = -1,
             nlevels = 3
          },
       }

@@ -3,11 +3,9 @@
 /*-Copyright (c) Kenneth Lorber, Kensington, Maryland, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const struct_nhcoord = struct("struct_nhcoord", {
     x: coordxy, y: coordxy,
 });
+
 import { coordxy } from "./global.h.js";
 import { struct } from "../rt/struct.js";

@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Tourist Tou-loca.lua	$NHDT-Date: 1652196015 2022/05/10 15:20:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991,92 by M. Stephenson, P. Winner
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Tourist Tou-loca.lua	$NHDT-Date: 1652196015 2022/05/10 15:20:15 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1991,92 by M. Stephenson, P. Winner
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "hardfloor")
 des.map([[
@@ -18,7 +18,7 @@ des.map([[
 |----|.....|-------------|...|--+--|.|....|.......|.|-----------+-------|..|
 |....+.....+.........S...|...........|....|-------|........................|
 |....|.....|.........|...|.|---------|....|.........|-------|.|----------|.|
-|....|.....|---------|---|.|......|..+....|-------|.|.......|.+......S.\\.|.|
+|....|.....|---------|---|.|......|..+....|-------|.|.......|.+......S.\.|.|
 |....|.....+.........S...|.|......|..|....|.......|.|.......|.|......|...|.|
 |-------|..|.........|---|.|+-------------------+-|.|.......+.|----------|.|
 |.......+..|---------|.........|.........|..........|.......|.|..........|.|
@@ -28,11 +28,11 @@ des.map([[
 |...........|........|.|.....|........................|.....|..............|
 ----------------------------------------------------------------------------
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(00,00,75,19), "lit")
+-- Dungeon Description
+des.region(selection.area(00,00,75,19), "lit")
 des.non_diggable(selection.area(00,00,75,19))
-` + "\n" + // --
-`des.region({ region={01,01, 04,05}, lit=0, type="morgue", filled=1 })
+--
+des.region({ region={01,01, 04,05}, lit=0, type="morgue", filled=1 })
 des.region({ region={15,03, 20,05}, lit=1, type="shop", filled=1 })
 des.region({ region={62,03, 71,04}, lit=1, type="shop", filled=1 })
 des.region({ region={01,17, 11,18}, lit=1, type="barracks", filled=1 })
@@ -40,8 +40,8 @@ des.region({ region={12,09, 20,10}, lit=1, type="barracks", filled=1 })
 des.region({ region={53,11, 59,14}, lit=1, type="zoo", filled=1 })
 des.region({ region={63,14, 72,16}, lit=1, type="barracks", filled=1 })
 des.region({ region={32,14, 40,16}, lit=1, type="temple", filled=1 })
-` + "\n" + // --
-`des.region({ region = {06,01,11,02}, type = "ordinary" })
+--
+des.region({ region = {06,01,11,02}, type = "ordinary" })
 des.region({ region = {24,01,29,02}, type = "ordinary" })
 des.region({ region = {31,01,36,02}, type = "ordinary" })
 des.region({ region = {42,01,45,03}, type = "ordinary" })
@@ -67,11 +67,11 @@ des.region({ region = {61,06,71,07}, type = "ordinary" })
 des.region({ region = {55,16,59,18}, type = "ordinary" })
 des.region({ region = {63,11,68,12}, type = "ordinary" })
 des.region({ region = {70,11,72,12}, type = "ordinary" })
-` + "\n" + // -- Stairs
-`des.stair("up", 10,04)
+-- Stairs
+des.stair("up", 10,04)
 des.stair("down", 73,05)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,75,19))
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,75,19))
 des.door("closed",05,05)
 des.door("closed",05,09)
 des.door("closed",08,14)
@@ -108,8 +108,7 @@ des.door("closed",60,13)
 des.door("closed",60,16)
 des.door("closed",73,16)
 
-` + "\n" + // -- Objects
-`des.object()
+-- Objects
 des.object()
 des.object()
 des.object()
@@ -123,17 +122,18 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Toilet paper
-`des.object("blank paper", 71, 12)
+des.object()
+-- Toilet paper
 des.object("blank paper", 71, 12)
-` + "\n" + // -- Random traps - must avoid the 2 shops
-`local validtraps = selection.area(00,00,75,19):filter_mapchar('.')
+des.object("blank paper", 71, 12)
+-- Random traps - must avoid the 2 shops
+local validtraps = selection.area(00,00,75,19):filter_mapchar('.')
 validtraps = validtraps - (selection.area(15,03,20,05) + selection.area(62,03,71,04))
 for i = 1,9 do
    des.trap(validtraps:rndcoord(1))
 end
-` + "\n" + // -- Random monsters.
-`des.monster("giant spider")
+-- Random monsters.
+des.monster("giant spider")
 des.monster("giant spider")
 des.monster("giant spider")
 des.monster("giant spider")

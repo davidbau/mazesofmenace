@@ -3,16 +3,8 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "artifact.h"
-
-
-
-
 /* take away the hero's money */
-export function /* void */
-take_gold()
-{
+export function take_gold() { /* void */
     let otmp, nobj;
     let lost_money = 0;
 
@@ -32,12 +24,9 @@ take_gold()
     }
 }
 
-
-
 /* maybe do something when hero sits on a throne */
-function /* void */
-throne_sit_effect()
-{ const $frame = stack_frame(); try {
+function throne_sit_effect() { /* void */
+    const $frame = stack_frame(); try {
     let tx = u.ux, ty = u.uy;
 
     let special_throne = +!!In_V_tower(u.uz);
@@ -67,15 +56,15 @@ throne_sit_effect()
 
         switch (effect) {
         case 1:
-            void adjattrib(rn2(A_MAX), -rn1(4, 3), FALSE);
+            adjattrib(rn2(A_MAX), -rn1(4, 3), FALSE);
             losehp(rnd(10), _("cursed throne"), KILLED_BY_AN);
             break;
         case 2:
-            void adjattrib(rn2(A_MAX), 1, FALSE);
+            adjattrib(rn2(A_MAX), 1, FALSE);
             break;
         case 3:
             pline(_("A%s electric shock shoots through your body!"),
-                  (Shock_resistance()) ? _("n") : _(" massive"));
+                  Shock_resistance() ? _("n") : _(" massive"));
             losehp(Shock_resistance() ? rnd(6) : rnd(30), _("electric chair"),
                    KILLED_BY_AN);
             exercise(A_CON, FALSE);
@@ -119,7 +108,7 @@ throne_sit_effect()
                 verbalize(_("Thine audience hath been summoned, %s!"),
                           flags.female ? _("Dame") : _("Sire"));
                 while (cnt--)
-                    void makemon(courtmon(), tx, ty, NO_MM_FLAGS);
+                    makemon(courtmon(), tx, ty, NO_MM_FLAGS);
                 break;
             }
         case 8:
@@ -231,11 +220,12 @@ throne_sit_effect()
         pline_The(_("throne %s in a puff of logic."),
                   cansee(tx, ty) ? _("vanishes") : _("has vanished"));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* special throne in Vlad's tower: effect is 1 to 13 inclusive */
-function /* void */
-special_throne_effect(effect) { const $frame = stack_frame(); try {
+function special_throne_effect(effect) { /* void */
+    const $frame = stack_frame(); try {
     let tx = u.ux, ty = u.uy;
 
     switch (effect) {
@@ -318,7 +308,7 @@ special_throne_effect(effect) { const $frame = stack_frame(); try {
         fake_spellbook.oclass = SPBOOK_CLASS;
         fake_spellbook.blessed = 1;
         u.uprops[CONFUSION].intrinsic = 1;
-        void seffects(fake_spellbook);
+        seffects(fake_spellbook);
         u.uprops[CONFUSION].intrinsic = save_confusion;
         break;
     }
@@ -351,12 +341,11 @@ special_throne_effect(effect) { const $frame = stack_frame(); try {
         break;
     }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* hero lays an egg */
-function /* int */
-lay_an_egg()
-{
+function lay_an_egg() { /* int */
     let uegg;
 
     if (!flags.female) {
@@ -396,10 +385,9 @@ lay_an_egg()
 }
 
 /* #sit command */
-export function /* int */
-dosit()
-{ let $goto = null; var sit_message = init_string(static_array("dosit.sit_message", char, sizeof_string("sit on the %s.")), _("sit on the %s."), true);
-    
+export function dosit() { /* int */
+    let $goto = null; var sit_message = init_string(static_array("dosit.sit_message", char, sizeof_string("sit on the %s.")), _("sit on the %s."), true);
+
     var trap = t_at(u.ux, u.uy);
     var typ = levl()[u.ux][u.uy].typ;
 
@@ -519,9 +507,9 @@ dosit()
             /* splitting--or failing to do so--protects gear from the water */
         } else {
             if (!rn2(10) && uarm)
-                void water_damage(uarm, _("armor"), TRUE);
+                water_damage(uarm, _("armor"), TRUE);
             if (!rn2(10) && uarmf && uarmf.otyp != WATER_WALKING_BOOTS)
-                void water_damage(uarm, _("armor"), TRUE);
+                water_damage(uarm, _("armor"), TRUE);
         }
     } else if (IS_SINK(typ)) {
         You(sit_message, defsyms[S_sink].explanation);
@@ -565,9 +553,7 @@ dosit()
 }
 
 /* curse a few inventory items at random! */
-export function /* void */
-rndcurse()
-{
+export function rndcurse() { /* void */
     let nobj = 0;
     let cnt, onum;
     let otmp;
@@ -640,9 +626,7 @@ rndcurse()
 /* remove a random INTRINSIC ability from hero.
    returns the intrinsic property which was removed,
    or 0 if nothing was removed. */
-export function /* int */
-attrcurse()
-{
+export function attrcurse() { /* int */
     let ret = 0;
 
     switch (rnd(11)) {
@@ -762,244 +746,100 @@ attrcurse()
 }
 
 /*sit.c*/
+
 import { SPFX_INTEL } from "./artifact.h.js";
 import { ART_MAGICBANE } from "./artilist.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_MAX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
+import { A_CON, A_MAX, A_STR, A_WIS } from "./attrib.h.js";
+import { NH_BLACK, Never_mind } from "./decl.h.macros.js";
+import {
+    COIN_CLASS, SPBOOK_CLASS, S_DRAGON, S_altar, S_grave, S_ice, S_sink, S_throne,
+} from "./defsym.h.js";
 import { struct_d_level } from "./dungeon.h.js";
 import { Is_waterlevel } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { VIASITTING } from "./hack.h.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { eggs_in_water } from "./mondata.h.macros.js";
-import { eyecount } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_hider } from "./mondata.h.macros.js";
-import { is_prince } from "./mondata.h.macros.js";
-import { is_vampire } from "./mondata.h.macros.js";
-import { lays_eggs } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { PM_ELECTRIC_EEL } from "./monsters.h.js";
-import { PM_GIANT_EEL } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_TRAPPER } from "./monsters.h.js";
+import { BUFSZ, FALSE, TRUE } from "./global.h.js";
+import {
+    ECMD_OK, ECMD_TIME, EYE, FOOT, HEAD, KILLED_BY, KILLED_BY_AN, NO_MM_FLAGS, POLY_NOFLAGS,
+    VIASITTING,
+} from "./hack.h.js";
+import { rn1, y_n } from "./hack.h.macros.js";
+import {
+    amorphous, eggs_in_water, eyecount, humanoid, is_hider, is_prince, is_vampire, lays_eggs,
+    likes_lava, slithy,
+} from "./mondata.h.macros.js";
+import { PM_ELECTRIC_EEL, PM_GIANT_EEL, PM_GREMLIN, PM_TRAPPER } from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
-import { Is_box } from "./obj.h.macros.js";
-import { u_wield_art } from "./obj.h.macros.js";
+import { Is_box, u_wield_art } from "./obj.h.macros.js";
 import { CLOTH } from "./objclass.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { SPE_REMOVE_CURSE } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { WATER_WALKING_BOOTS } from "./objects.h.js";
-import { AGGRAVATE_MONSTER } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { CONFUSION } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { TELEPORT } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { LADDER } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
+import {
+    CORPSE, CREAM_PIE, EGG, SPE_REMOVE_CURSE, TOWEL, WATER_WALKING_BOOTS,
+} from "./objects.h.js";
+import {
+    AGGRAVATE_MONSTER, COLD_RES, CONFUSION, FAST, FIRE_RES, FROMOUTSIDE, INTRINSIC, INVIS,
+    POISON_RES, PROTECTION, SEE_INVIS, STEALTH, TELEPAT, TELEPORT, TIMEOUT, W_SADDLE,
+} from "./prop.h.js";
+import { DRAWBRIDGE_DOWN, FOUNTAIN, LADDER, ROOM, STAIRS } from "./rm.h.js";
+import { IS_ALTAR, IS_GRAVE, IS_SINK, IS_THRONE, OBJ_AT, levl } from "./rm.h.macros.js";
 import { SPIKED_PIT } from "./trap.h.js";
 import { cansee } from "./vision.h.macros.js";
-import { SICK_ALL } from "./you.h.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
-import { UTOTYPE_NONE } from "./you.h.js";
-import { Luck } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { Acid_resistance } from "./youprop.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Cold_resistance } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Drain_resistance } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { HAggravate_monster } from "./youprop.h.macros.js";
-import { HCold_resistance } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HFast } from "./youprop.h.macros.js";
-import { HFire_resistance } from "./youprop.h.macros.js";
-import { HInvis } from "./youprop.h.macros.js";
-import { HPoison_resistance } from "./youprop.h.macros.js";
-import { HProtection } from "./youprop.h.macros.js";
-import { HSee_invisible } from "./youprop.h.macros.js";
-import { HStealth } from "./youprop.h.macros.js";
-import { HTelepat } from "./youprop.h.macros.js";
-import { HTeleportation } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Half_spell_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Shock_resistance } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
+import {
+    SICK_ALL, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, UTOTYPE_NONE,
+} from "./you.h.js";
+import { Luck, Upolyd, mhis } from "./you.h.macros.js";
+import {
+    Acid_resistance, Antimagic, Blind, Blind_telepat, BlindedTimeout, Cold_resistance, Deaf,
+    Drain_resistance, Fire_resistance, Flying, HAggravate_monster, HCold_resistance, HConfusion,
+    HFast, HFire_resistance, HInvis, HPoison_resistance, HProtection, HSee_invisible, HStealth,
+    HTelepat, HTeleportation, Half_physical_damage, Half_spell_damage, Hallucination, Levitation,
+    See_invisible, Shock_resistance, Slimed, Underwater,
+} from "./youprop.h.macros.js";
+import { char, ord, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64 } from "../rt/int64.js";
 import { atoi } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { init_string, stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { struct_assign } from "../rt/struct.js";
 import { spec_ability } from "./artifact.js";
-import { adjattrib } from "./attrib.js";
-import { change_luck } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { is_ice } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
+import { adjattrib, change_luck, exercise } from "./attrib.js";
+import { is_ice, is_lava, is_pool } from "./dbridge.js";
+import { cg, disp, flags, gi, gy, iflags, svd, svl, u } from "./decl.js";
 import { do_mapping } from "./detect.js";
-import { map_background } from "./display.js";
-import { newsym } from "./display.js";
-import { newsym_force } from "./display.js";
-import { see_monsters } from "./display.js";
-import { set_mimic_blocking } from "./display.js";
-import { shieldeff } from "./display.js";
-import { dropy } from "./do.js";
-import { heal_legs } from "./do.js";
-import { schedule_goto } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
+import {
+    map_background, newsym, newsym_force, see_monsters, set_mimic_blocking, shieldeff,
+} from "./display.js";
+import { dropy, heal_legs, schedule_goto } from "./do.js";
+import { Monnam, hcolor, hliquid, mon_nam } from "./do_name.js";
 import { defsyms } from "./drawing.js";
-import { In_V_tower } from "./dungeon.js";
-import { find_hell } from "./dungeon.js";
-import { surface } from "./dungeon.js";
+import { In_V_tower, find_hell, surface } from "./dungeon.js";
 import { morehungry } from "./eat.js";
 import { can_reach_floor } from "./engrave.js";
 import { losexp } from "./exper.js";
 import { dryup } from "./fountain.js";
-import { losehp } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { delobj } from "./invent.js";
-import { identify_pack } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useupf } from "./invent.js";
+import { losehp, money_cnt } from "./hack.js";
+import { delobj, identify_pack, stackobj, update_inventory, useupf } from "./invent.js";
 import { makemon } from "./makemon.js";
 import { msummon } from "./minion.js";
-import { curse } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { set_corpsenm } from "./mkobj.js";
-import { unbless } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import { curse, mksobj, set_corpsenm, unbless, weight } from "./mkobj.js";
 import { courtmon } from "./mkroom.js";
 import { egg_type_from_parent } from "./mon.js";
 import { sticks } from "./mondata.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { the } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { polyself } from "./polyself.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { split_mon } from "./potion.js";
+import { Tobjnam, Yobjnam2, makeplural, the, vtense, xname } from "./objnam.js";
+import {
+    There, You, You_cant, You_feel, Your, impossible, pline, pline_The, verbalize,
+} from "./pline.js";
+import { body_part, polyself } from "./polyself.js";
+import { make_blinded, make_confused, make_glib, make_sick, split_mon } from "./potion.js";
 import { altar_wrath } from "./pray.js";
-import { do_genocide } from "./read.js";
-import { seffects } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { do_genocide, seffects } from "./read.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { remove_worn_item } from "./steal.js";
 import { tele } from "./teleport.js";
 import { burn_away_slime } from "./timeout.js";
-import { dotrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { uescaped_shaft } from "./trap.js";
-import { uteetering_at_seen_pit } from "./trap.js";
-import { water_damage } from "./trap.js";
+import { dotrap, t_at, uescaped_shaft, uteetering_at_seen_pit, water_damage } from "./trap.js";
 import { getlin } from "./windows.js";
 import { aggravate } from "./wizard.js";
 import { which_armor } from "./worn.js";

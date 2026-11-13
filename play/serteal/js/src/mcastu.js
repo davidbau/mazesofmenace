@@ -3,24 +3,14 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
 const struct__mcast_data = struct("struct__mcast_data", {
     level: int,
     flags: int,
 });
 
-
 const mcast_data = static_array("mcast_data", struct__mcast_data, null, [
     ...mcast_data_records(),
 ]);
-
 
 /* spell lists for specific monster casters */
 /* the spells in the list should be in ascending level order */
@@ -35,33 +25,8 @@ const mon_wizard_spells = static_array("mon_wizard_spells", int, null, [
     MCAST_AGGRAVATION, MCAST_SUMMON_MONS, MCAST_CLONE_WIZ, MCAST_DEATH_TOUCH
 ]);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* feedback when frustrated monster couldn't cast a spell */
-function /* void */
-cursetxt(mtmp, undirected)
-{
+function cursetxt(mtmp, undirected) { /* void */
     if (canseemon(mtmp) && couldsee(mtmp.mx, mtmp.my)) {
         let point_msg; /* spellcasting monsters are impolite */
 
@@ -85,9 +50,7 @@ cursetxt(mtmp, undirected)
 }
 
 /* choose a spell for monster to cast */
-function /* int */
-choose_monster_spell(mtmp, adtyp)
-{
+function choose_monster_spell(mtmp, adtyp) { /* int */
     let list = null;
     let i, spellval, len = 0;
     let maxlev;
@@ -126,13 +89,11 @@ choose_monster_spell(mtmp, adtyp)
  * 1: successful spell
  * 0: unsuccessful spell
  */
-export function /* int */
-castmu(
+export function castmu(
     mtmp,
     mattk,
     thinks_it_foundyou,
-    foundyou)              /* knows hero's precise location */
-{
+    foundyou) { /* int */ /* knows hero's precise location */
     let dmg, ml = mtmp.m_lev;
     let ret;
     let spellnum = 0;
@@ -218,9 +179,9 @@ castmu(
                  canspotmon(mtmp) ? Monnam(mtmp) : _("Something"),
                  is_undirected_spell(spellnum) ? _("")
                  : (Invis() && !perceives(mtmp.data)
-                    && !((((mtmp.mux) == u.ux) && ((mtmp.muy) == u.uy))))
+                    && !(((mtmp.mux) == u.ux) && ((mtmp.muy) == u.uy)))
                    ? _(" at a spot near you")
-                   : (Displaced() && !((((mtmp.mux) == u.ux) && ((mtmp.muy) == u.uy))))
+                   : (Displaced() && !(((mtmp.mux) == u.ux) && ((mtmp.muy) == u.uy)))
                      ? _(" at your displaced image")
                      : _(" at you"));
     }
@@ -238,9 +199,9 @@ castmu(
             return M_ATTK_MISS;
         }
     } else if (mattk.damd)
-        dmg = d(((Math.trunc(ml / 2)) + mattk.damn), mattk.damd);
+        dmg = d((Math.trunc(ml / 2) + mattk.damn), mattk.damd);
     else
-        dmg = d(((Math.trunc(ml / 2)) + 1), 6);
+        dmg = d((Math.trunc(ml / 2) + 1), 6);
     if (Half_spell_damage())
         dmg = Math.trunc((dmg + 1) / 2);
 
@@ -304,9 +265,7 @@ castmu(
     return ret;
 }
 
-function /* int */
-m_cure_self(mtmp, dmg)
-{
+function m_cure_self(mtmp, dmg) { /* int */
     if (mtmp.mhp < mtmp.mhpmax) {
         if (canseemon(mtmp))
             pline_mon(mtmp, _("%s looks better."), Monnam(mtmp));
@@ -319,9 +278,8 @@ m_cure_self(mtmp, dmg)
 
 /* unlike the finger of death spell which behaves like a wand of death,
    this monster spell only attacks the hero */
-export function /* void */
-touch_of_death(mtmp)
-{ const $frame = stack_frame(); try {
+export function touch_of_death(mtmp) { /* void */
+    const $frame = stack_frame(); try {
     let kbuf = stack_array(char, BUFSZ);
     let dmg = 50 + d(8, 6);
     let drain = Math.trunc(dmg / 2);
@@ -329,14 +287,14 @@ touch_of_death(mtmp)
     /* if we get here, we know that hero isn't magic resistant and isn't
        poly'd into an undead or demon */
     You_feel(_("drained..."));
-    void death_inflicted_by(kbuf, _("the touch of death"), mtmp);
+    death_inflicted_by(kbuf, _("the touch of death"), mtmp);
 
     if (Upolyd()) {
         u.mh = 0;
         rehumanize(); /* fatal iff Unchanging */
     } else if (drain >= u.uhpmax) {
         svk.killer.format = KILLED_BY;
-        void strcpy(svk.killer.name, kbuf);
+        strcpy(svk.killer.name, kbuf);
         done(DIED);
     } else {
         /* HP manipulation similar to poisoned(attrib.c) */
@@ -351,19 +309,18 @@ touch_of_death(mtmp)
         losehp(dmg, kbuf, KILLED_BY);
     }
     chars[svk.killer.name + 0] = ord('\0'); /* not killed if we get here... */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* give a reason for death by some monster spells */
-export function /* char * */
-death_inflicted_by(
+export function death_inflicted_by(
     outbuf,
     deathreason,
-    mtmp)      /* monster who caused it */
-{
-    void strcpy(outbuf, deathreason);
+    mtmp) { /* char * */ /* monster who caused it */
+    strcpy(outbuf, deathreason);
     if (mtmp) {
         let mptr = mtmp.data,
-            champtr = (ismnum(mtmp.cham)) ? mons[mtmp.cham] : mptr;
+            champtr = ismnum(mtmp.cham) ? mons[mtmp.cham] : mptr;
         let realnm = pmname(champtr, Mgender(mtmp)),
             fakenm = pmname(mptr, Mgender(mtmp));
 
@@ -373,10 +330,10 @@ death_inflicted_by(
            can't cast spells */
         if (!type_is_pname(champtr) && !the_unique_pm(mptr))
             realnm = an(realnm);
-        void sprintf(eos(outbuf), _(" inflicted by %s%s"), the_unique_pm(mptr) ? _("the ") : _(""), realnm)
+        sprintf(eos(outbuf), _(" inflicted by %s%s"), the_unique_pm(mptr) ? _("the ") : _(""), realnm)
 ;
         if (champtr != mptr)
-            void sprintf(eos(outbuf), _(" imitating %s"), an(fakenm));
+            sprintf(eos(outbuf), _(" imitating %s"), an(fakenm));
     }
     return outbuf;
 }
@@ -385,9 +342,7 @@ death_inflicted_by(
  * Monster wizard and cleric spellcasting functions.
  */
 
-function /* void */
-mcast_death_touch(mtmp)
-{
+function mcast_death_touch(mtmp) { /* void */
     pline(_("Oh no, %s's using the touch of death!"), mhe(mtmp));
     if (nonliving(gy.youmonst.data) || is_demon(gy.youmonst.data)) {
         You(_("seem no deader than before."));
@@ -407,9 +362,7 @@ mcast_death_touch(mtmp)
     }
 }
 
-function /* void */
-mcast_clone_wiz(mtmp)
-{
+function mcast_clone_wiz(mtmp) { /* void */
     if (mtmp.iswiz && svc.context.no_of_wizards == 1) {
         pline(_("Double Trouble..."));
         clonewiz();
@@ -417,9 +370,7 @@ mcast_clone_wiz(mtmp)
         impossible(_("bad wizard cloning?"));
 }
 
-function /* void */
-mcast_summon_mons(mtmp)
-{
+function mcast_summon_mons(mtmp) { /* void */
     let count = nasty(mtmp);
 
     if (!count) {
@@ -428,7 +379,7 @@ mcast_summon_mons(mtmp)
            ;
         verbalize(_("Destroy the thief, my pet%s!"), plur(count));
     } else {
-        let one = (+(count == 1));
+        let one = +(count == 1);
         let mappear = one ? _("A monster appears")
                                   : _("Monsters appear");
 
@@ -446,9 +397,7 @@ mcast_summon_mons(mtmp)
     }
 }
 
-function /* void */
-mcast_destroy_armor()
-{
+function mcast_destroy_armor() { /* void */
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
@@ -462,9 +411,8 @@ mcast_destroy_armor()
     }
 }
 
-function /* void */
-mcast_weaken_you(mtmp, dmg)
-{ const $frame = stack_frame(); try {
+function mcast_weaken_you(mtmp, dmg) { /* void */
+    const $frame = stack_frame(); try {
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
@@ -484,11 +432,10 @@ mcast_weaken_you(mtmp, dmg)
         chars[svk.killer.name + 0] = ord('\0'); /* not killed if we get here... */
         monstunseesu(M_SEEN_MAGR);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mcast_disappear(mtmp)
-{
+function mcast_disappear(mtmp) { /* void */
     if (!mtmp.minvis && !mtmp.invis_blkd) {
         if (canseemon(mtmp))
             pline_mon(mtmp, _("%s suddenly %s!"), Monnam(mtmp),
@@ -500,9 +447,7 @@ mcast_disappear(mtmp)
         impossible(_("no reason for monster to cast disappear spell?"));
 }
 
-function /* void */
-mcast_stun_you(dmg)
-{
+function mcast_stun_you(dmg) { /* void */
     if (Antimagic() || Free_action()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
@@ -519,9 +464,7 @@ mcast_stun_you(dmg)
     }
 }
 
-function /* int */
-mcast_geyser(dmg)
-{
+function mcast_geyser(dmg) { /* int */
     /* this is physical damage (force not heat),
      * not magical damage or fire damage
      */
@@ -530,15 +473,10 @@ mcast_geyser(dmg)
     if (Half_physical_damage())
         dmg = Math.trunc((dmg + 1) / 2);
 
-
-
-
     return dmg;
 }
 
-function /* int */
-mcast_fire_pillar(mtmp, dmg)
-{
+function mcast_fire_pillar(mtmp, dmg) { /* int */
     let orig_dmg;
 
     pline(_("A pillar of fire strikes all around you!"));
@@ -553,18 +491,16 @@ mcast_fire_pillar(mtmp, dmg)
     if (Half_spell_damage())
         dmg = Math.trunc((dmg + 1) / 2);
     burn_away_slime();
-    void burnarmor(gy.youmonst);
+    burnarmor(gy.youmonst);
     /* item destruction dmg */
-    void destroy_items(gy.youmonst, AD_FIRE, orig_dmg);
+    destroy_items(gy.youmonst, AD_FIRE, orig_dmg);
     ignite_items(gi.invent);
     /* burn up flammable items on the floor, melt ice terrain */
     mon_spell_hits_spot(mtmp, AD_FIRE, u.ux, u.uy);
     return dmg;
 }
 
-function /* int */
-mcast_lightning(mtmp, dmg)
-{
+function mcast_lightning(mtmp, dmg) { /* int */
     let orig_dmg;
     let reflects;
 
@@ -586,20 +522,18 @@ mcast_lightning(mtmp, dmg)
     }
     if (Half_spell_damage())
         dmg = Math.trunc((dmg + 1) / 2);
-    void destroy_items(gy.youmonst, AD_ELEC, orig_dmg);
+    destroy_items(gy.youmonst, AD_ELEC, orig_dmg);
     /* lightning might destroy iron bars if hero is on such a spot;
        reflection protects terrain here [execution won't get here due
        to 'if (reflects) break' above] but hero resistance doesn't;
        do this before maybe blinding the hero via flashburn() */
     mon_spell_hits_spot(mtmp, AD_ELEC, u.ux, u.uy);
     /* blind hero; no effect if already blind */
-    void flashburn(rnd(100), TRUE);
+    flashburn(rnd(100), TRUE);
     return dmg;
 }
 
-function /* int */
-mcast_psi_bolt(dmg)
-{
+function mcast_psi_bolt(dmg) { /* int */
     /* prior to 3.4.0 Antimagic was setting the damage to 1--this
        made the spell virtually harmless to players with magic res. */
     if (Antimagic()) {
@@ -620,9 +554,7 @@ mcast_psi_bolt(dmg)
     return dmg;
 }
 
-function /* int */
-mcast_open_wounds(dmg)
-{
+function mcast_open_wounds(dmg) { /* int */
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
@@ -641,9 +573,8 @@ mcast_open_wounds(dmg)
     return dmg;
 }
 
-function /* void */
-mcast_insects(mtmp)
-{ const $frame = stack_frame(); try {
+function mcast_insects(mtmp) { /* void */
+    const $frame = stack_frame(); try {
     /* Try for insects, and if there are none
        left, go for (sticks to) snakes.  -3. */
     let pm = mkclass(S_ANT, 0);
@@ -672,7 +603,7 @@ mcast_insects(mtmp)
     newseen = monster_census(TRUE);
 
     /* not canspotmon() which includes unseen things sensed via warning */
-    seecaster = ((canseemon(mtmp) || tp_sensemon(mtmp) || Detect_monsters()) ? 1 : 0);
+    seecaster = (canseemon(mtmp) || tp_sensemon(mtmp) || Detect_monsters() ? 1 : 0);
     what = (let_ == S_SNAKE) ? _("snakes") : _("insects");
     if (Hallucination())
         what = makeplural(bogusmon(whatbuf, 0));
@@ -723,11 +654,10 @@ mcast_insects(mtmp)
         pline_mon(mtmp, fmt, Monnam(mtmp), what);
         ;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mcast_blind_you()
-{
+function mcast_blind_you() { /* void */
     /* note: resists_blnd() doesn't apply here */
     if (!Blinded()) {
         let num_eyes = eyecount(gy.youmonst.data);
@@ -742,9 +672,7 @@ mcast_blind_you()
         impossible(_("no reason for monster to cast blindness spell?"));
 }
 
-function /* int */
-mcast_paralyze(mtmp)
-{
+function mcast_paralyze(mtmp) { /* int */
     let dmg = 0;
 
     if (Antimagic() || Free_action()) {
@@ -767,9 +695,7 @@ mcast_paralyze(mtmp)
     return dmg;
 }
 
-function /* void */
-mcast_confuse_you(mtmp)
-{
+function mcast_confuse_you(mtmp) { /* void */
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
@@ -797,9 +723,7 @@ mcast_confuse_you(mtmp)
    If you modify either of these, be sure to change is_undirected_spell()
    and spell_would_be_useless().
  */
-function /* void */
-mcast_spell(mtmp, dmg, spellnum)
-{
+function mcast_spell(mtmp, dmg, spellnum) { /* void */
     if (dmg < 0) {
         impossible(_("monster cast spell (%d) with negative dmg (%d)?"),
                    spellnum, dmg);
@@ -896,18 +820,14 @@ mcast_spell(mtmp, dmg, spellnum)
         mdamageu(mtmp, dmg);
 }
 
-function /* boolean */
-is_undirected_spell(spellnum)
-{
+function is_undirected_spell(spellnum) { /* boolean */
     if ((mcast_data[spellnum].flags & MCF_INDIRECT) != 0)
         return TRUE;
     return FALSE;
 }
 
 /* Some spells are useless under some circumstances. */
-function /* boolean */
-spell_would_be_useless(mtmp, spellnum)
-{
+function spell_would_be_useless(mtmp, spellnum) { /* boolean */
     /* Some spells don't require the player to really be there and can be cast
      * by the monster when you're invisible, yet still shouldn't be cast when
      * the monster doesn't even think you're there.
@@ -985,9 +905,7 @@ spell_would_be_useless(mtmp, spellnum)
 }
 
 /* monster uses spell (ranged) */
-export function /* int */
-buzzmu(mtmp, mattk)
-{
+export function buzzmu(mtmp, mattk) { /* int */
     /* don't print constant stream of curse messages for 'normal'
        spellcasting monsters at range */
     if (!BZ_VALID_ADTYP(mattk.adtyp))
@@ -1012,200 +930,80 @@ buzzmu(mtmp, mattk)
 }
 
 /*mcastu.c*/
+
 import { A_DEX } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { vision_clears } from "./decl.h.macros.js";
-import { S_ANT } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
+import { S_ANT, S_SNAKE } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { DIED } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { MM_ANGRY } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { BZ_M_SPELL } from "./hack.h.macros.js";
-import { BZ_OFS_AD } from "./hack.h.macros.js";
-import { BZ_VALID_ADTYP } from "./hack.h.macros.js";
-import { Your1 } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
+import { BUFSZ, FALSE, QBUFSZ, TRUE } from "./global.h.js";
+import { DIED, EYE, HEAD, KILLED_BY, MM_ANGRY, MM_NOMSG } from "./hack.h.js";
+import { BZ_M_SPELL, BZ_OFS_AD, BZ_VALID_ADTYP, Your1, max, plur } from "./hack.h.macros.js";
 import { showdebug } from "./lint.h.macros.js";
-import { MCAST_AGGRAVATION } from "./mcastu.h.js";
-import { MCAST_BLIND_YOU } from "./mcastu.h.js";
-import { MCAST_CLONE_WIZ } from "./mcastu.h.js";
-import { MCAST_CONFUSE_YOU } from "./mcastu.h.js";
-import { MCAST_CURE_SELF } from "./mcastu.h.js";
-import { MCAST_CURSE_ITEMS } from "./mcastu.h.js";
-import { MCAST_DEATH_TOUCH } from "./mcastu.h.js";
-import { MCAST_DESTRY_ARMR } from "./mcastu.h.js";
-import { MCAST_DISAPPEAR } from "./mcastu.h.js";
-import { MCAST_FIRE_PILLAR } from "./mcastu.h.js";
-import { MCAST_GEYSER } from "./mcastu.h.js";
-import { MCAST_HASTE_SELF } from "./mcastu.h.js";
-import { MCAST_INSECTS } from "./mcastu.h.js";
-import { MCAST_LIGHTNING } from "./mcastu.h.js";
-import { MCAST_OPEN_WOUNDS } from "./mcastu.h.js";
-import { MCAST_PARALYZE } from "./mcastu.h.js";
-import { MCAST_PSI_BOLT } from "./mcastu.h.js";
-import { MCAST_STUN_YOU } from "./mcastu.h.js";
-import { MCAST_SUMMON_MONS } from "./mcastu.h.js";
-import { MCAST_WEAKEN_YOU } from "./mcastu.h.js";
-import { MCF_HOSTILE } from "./mcastu.h.js";
-import { MCF_INDIRECT } from "./mcastu.h.js";
-import { MCF_SIGHT } from "./mcastu.h.js";
-import { AD_CLRC } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_SPEL } from "./monattk.h.js";
-import { M_ATTK_HIT } from "./monattk.h.js";
-import { M_ATTK_MISS } from "./monattk.h.js";
-import { eyecount } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
-import { MFAST } from "./monst.h.js";
-import { M_SEEN_COLD } from "./monst.h.js";
-import { M_SEEN_ELEC } from "./monst.h.js";
-import { M_SEEN_FIRE } from "./monst.h.js";
-import { M_SEEN_MAGR } from "./monst.h.js";
-import { M_SEEN_REFL } from "./monst.h.js";
-import { is_obj_mappear } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { m_seenres } from "./monst.h.macros.js";
+import {
+    MCAST_AGGRAVATION, MCAST_BLIND_YOU, MCAST_CLONE_WIZ, MCAST_CONFUSE_YOU, MCAST_CURE_SELF,
+    MCAST_CURSE_ITEMS, MCAST_DEATH_TOUCH, MCAST_DESTRY_ARMR, MCAST_DISAPPEAR, MCAST_FIRE_PILLAR,
+    MCAST_GEYSER, MCAST_HASTE_SELF, MCAST_INSECTS, MCAST_LIGHTNING, MCAST_OPEN_WOUNDS,
+    MCAST_PARALYZE, MCAST_PSI_BOLT, MCAST_STUN_YOU, MCAST_SUMMON_MONS, MCAST_WEAKEN_YOU,
+    MCF_HOSTILE, MCF_INDIRECT, MCF_SIGHT,
+} from "./mcastu.h.js";
+import {
+    AD_CLRC, AD_COLD, AD_ELEC, AD_FIRE, AD_MAGM, AD_SPEL, M_ATTK_HIT, M_ATTK_MISS,
+} from "./monattk.h.js";
+import { eyecount, is_demon, nonliving, perceives, type_is_pname } from "./mondata.h.macros.js";
+import {
+    MFAST, M_SEEN_COLD, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_REFL,
+} from "./monst.h.js";
+import { is_obj_mappear, ismnum, m_seenres } from "./monst.h.macros.js";
 import { STRANGE_OBJECT } from "./objects.h.js";
 import { TIMEOUT } from "./prop.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blinded } from "./youprop.h.macros.js";
-import { Cold_resistance } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Detect_monsters } from "./youprop.h.macros.js";
-import { Displaced } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Free_action } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Half_spell_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Shock_resistance } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import { Upolyd, mhe } from "./you.h.macros.js";
+import {
+    Antimagic, Blind, Blinded, Cold_resistance, Confusion, Deaf, Detect_monsters, Displaced,
+    Fire_resistance, Free_action, HConfusion, HStun, Half_physical_damage, Half_spell_damage,
+    Hallucination, Invis, See_invisible, Shock_resistance, Stunned, Unaware,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { sprintf } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { sprintf, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { struct } from "../rt/struct.js";
-import { adjuhploss } from "./attrib.js";
-import { losestr } from "./attrib.js";
-import { minuhpmax } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
+import { adjuhploss, losestr, minuhpmax, setuhpmax } from "./attrib.js";
 import { is_waterwall } from "./dbridge.js";
-import { gb } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gt } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { map_invisible } from "./display.js";
-import { shieldeff } from "./display.js";
-import { tp_sensemon } from "./display.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { bogusmon } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { noit_Monnam } from "./do_name.js";
-import { pmname } from "./do_name.js";
+import { gb, gi, gm, gn, gt, gy, iflags, svc, svk, svm, u } from "./decl.js";
+import { canseemon, map_invisible, shieldeff, tp_sensemon } from "./display.js";
+import { Mgender, Monnam, bogusmon, mon_nam, noit_Monnam, pmname } from "./do_name.js";
 import { destroy_arm } from "./do_wear.js";
 import { done } from "./end.js";
-import { losehp } from "./hack.js";
-import { nomul } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
-import { set_malign } from "./makemon.js";
+import { losehp, nomul } from "./hack.js";
+import { eos, sgn, upstart } from "./hacklib.js";
+import { makemon, mkclass, set_malign } from "./makemon.js";
 import { mdamageu } from "./mhitu.js";
 import { monster_census } from "./minion.js";
 import { healmon } from "./mon.js";
-import { cvt_adtyp_to_mseenres } from "./mondata.js";
-import { monstseesu } from "./mondata.js";
-import { monstunseesu } from "./mondata.js";
+import { cvt_adtyp_to_mseenres, monstseesu, monstunseesu } from "./mondata.js";
 import { mons } from "./monst.js";
 import { lined_up } from "./mthrowu.js";
 import { ureflects } from "./muse.js";
-import { an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { the_unique_pm } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { Norep } from "./pline.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { pline_mon } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { rehumanize } from "./polyself.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { an, makeplural, makesingular, the_unique_pm, vtense } from "./objnam.js";
+import {
+    Norep, You, You_feel, You_hear, Your, impossible, pline, pline_The, pline_mon, set_msg_xy,
+    verbalize,
+} from "./pline.js";
+import { body_part, rehumanize } from "./polyself.js";
+import { make_blinded, make_confused, make_stunned } from "./potion.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { rndcurse } from "./sit.js";
 import { enexto } from "./teleport.js";
 import { burn_away_slime } from "./timeout.js";
-import { burnarmor } from "./trap.js";
-import { ignite_items } from "./trap.js";
-import { aggravate } from "./wizard.js";
-import { clonewiz } from "./wizard.js";
-import { has_aggravatables } from "./wizard.js";
-import { nasty } from "./wizard.js";
-import { mon_adjust_speed } from "./worn.js";
-import { mon_set_minvis } from "./worn.js";
-import { buzz } from "./zap.js";
-import { destroy_items } from "./zap.js";
-import { flash_str } from "./zap.js";
-import { flashburn } from "./zap.js";
-import { mon_spell_hits_spot } from "./zap.js";
+import { burnarmor, ignite_items } from "./trap.js";
+import { aggravate, clonewiz, has_aggravatables, nasty } from "./wizard.js";
+import { mon_adjust_speed, mon_set_minvis } from "./worn.js";
+import { buzz, destroy_items, flash_str, flashburn, mon_spell_hits_spot } from "./zap.js";
 const __FILE__ = "mcastu.c";
 
 // the records of mcast_data[] from mcastu.h, laid out like it

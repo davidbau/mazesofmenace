@@ -1,22 +1,22 @@
-export default "\n" + // -- NetHack mines minetn-6.lua	$NHDT-Date: 1652196031 2022/05/10 15:20:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.3 $
-"\n" + // --	Copyright (c) 1989-95 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991-95 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- "Bustling Town" by Kelly Bailey
-`
+export default String.raw`-- NetHack mines minetn-6.lua	$NHDT-Date: 1652196031 2022/05/10 15:20:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.3 $
+--	Copyright (c) 1989-95 by Jean-Christophe Collet
+--	Copyright (c) 1991-95 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- "Bustling Town" by Kelly Bailey
+
 des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "inaccessibles")
 
 des.level_init({ style="mines", fg=".", bg="-", smoothed=true, joined=true,lit=1,walled=true })
 
-` + "\n" + // -- Map extends the full height of the playable area in order to prevent any of
-"\n" + // -- the cavern fill from getting cut off by walls of the town buildings and
-"\n" + // -- creating inaccessible spaces. The inaccessibles flag does compensate for
-"\n" + // -- this, but it does so by doing things like creating backdoors into adjacent
-"\n" + // -- shops which we don't want.
-`des.map({ halign = "center", valign = "top", map = [[
+-- Map extends the full height of the playable area in order to prevent any of
+-- the cavern fill from getting cut off by walls of the town buildings and
+-- creating inaccessible spaces. The inaccessibles flag does compensate for
+-- this, but it does so by doing things like creating backdoors into adjacent
+-- shops which we don't want.
+des.map({ halign = "center", valign = "top", map = [[
 x--------xxxxxxxxxxx-------------------x
 x------xxxxxxxxxxxxxx-----------------xx
 .-----................----------------.x
@@ -41,9 +41,9 @@ xxxx-------xxxxxxxxxxxxxxx--------------
 
 des.region(selection.area(00,00,39,19),"lit")
 
-` + "\n" + // -- stairs can generate 1 column left or right inside the map,
-"\n" + // -- in case the randomly generated mines layout doesn't extend outside the map
-`des.levregion({ type="stair-up", region={01,03,21,19}, region_islev=1, exclude={1,0,39,18} })
+-- stairs can generate 1 column left or right inside the map,
+-- in case the randomly generated mines layout doesn't extend outside the map
+des.levregion({ type="stair-up", region={01,03,21,19}, region_islev=1, exclude={1,0,39,18} })
 des.levregion({ type="stair-down", region={60,03,75,19}, region_islev=1, exclude={0,0,38,18} })
 
 des.region(selection.area(13,7,14,8),"unlit")

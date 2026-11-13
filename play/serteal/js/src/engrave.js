@@ -3,9 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "nhjs_recorder_sizes.h" /* c2js recorder #stats sizes */
-
 /* doengrave() data */
 const struct__doengrave_ctx = struct("struct__doengrave_ctx", {
     dengr: boolean,
@@ -39,27 +36,16 @@ const struct__doengrave_ctx = struct("struct__doengrave_ctx", {
     len: unsigned,
 });
 
-
-
-
-
-
-
-
-
-
-export function /* char * */
-random_engraving(outbuf, pristine_copy)
-{
+export function random_engraving(outbuf, pristine_copy) { /* char * */
     let rumor;
 
     /* a random engraving may come from the "rumors" file,
        or from the "engrave" file (formerly in an array here) */
     if (!rn2(4) || !(rumor = getrumor(0, pristine_copy, TRUE)) || !chars[rumor])
-        void get_rnd_text(_(ENGRAVEFILE), pristine_copy, rn2, MD_PAD_RUMORS);
+        get_rnd_text(_(ENGRAVEFILE), pristine_copy, rn2, MD_PAD_RUMORS);
 
-    void strcpy(outbuf, pristine_copy);
-    wipeout_text(outbuf, int((Math.trunc(strlen(outbuf) / 4))), 0);
+    strcpy(outbuf, pristine_copy);
+    wipeout_text(outbuf, int(Math.trunc(strlen(outbuf) / 4)), 0);
     return outbuf;
 }
 
@@ -117,12 +103,10 @@ random_engraving(outbuf, pristine_copy)
                 { wipefrom: ord('8'), wipeto: _("3o") } ]);
 
 /* degrade some of the characters in a string */
-export function /* void */
-wipeout_text(
+export function wipeout_text(
     engr,
     cnt,
-    seed) /* for semi-controlled randomization */
-{
+    seed) { /* void */ /* for semi-controlled randomization */
     let s;
     let i, j, nxt, use_rubout;
     let lth = strlen(engr);
@@ -184,9 +168,7 @@ wipeout_text(
 }
 
 /* check whether hero can reach something at ground level */
-export function /* boolean */
-can_reach_floor(check_pit)
-{
+export function can_reach_floor(check_pit) { /* boolean */
     let t;
 
     if (u.uswallow
@@ -215,10 +197,8 @@ can_reach_floor(check_pit)
 }
 
 /* give a message after caller has determined that hero can't reach */
-export function /* void */
-cant_reach_floor(x, y, up,
-                 check_pit, wand_engraving)
-{
+export function cant_reach_floor(x, y, up,
+                 check_pit, wand_engraving) { /* void */
     pline(_("%s can't reach the %s."),
           wand_engraving
               ? _("The wand does nothing more, and the tip of the wand")
@@ -228,9 +208,7 @@ cant_reach_floor(x, y, up,
                                                       : surface(x, y));
 }
 
-export function /* struct engr * */
-engr_at(x, y)
-{
+export function engr_at(x, y) { /* struct engr * */
     let ep = head_engr;
 
     while (ep) {
@@ -248,9 +226,7 @@ engr_at(x, y)
  * If strict checking is requested, the word is only considered to be
  * present if it is intact and is the entire content of the engraving.
  */
-export function /* struct engr * */
-sengr_at(s, x, y, strict)
-{
+export function sengr_at(s, x, y, strict) { /* struct engr * */
     let ep = engr_at(x, y);
 
     if (ep && ep.engr_type != HEADSTONE && ep.engr_time <= svm.moves) {
@@ -261,16 +237,12 @@ sengr_at(s, x, y, strict)
     return null;
 }
 
-export function /* void */
-u_wipe_engr(cnt)
-{
+export function u_wipe_engr(cnt) { /* void */
     if (can_reach_floor(TRUE))
         wipe_engr_at(u.ux, u.uy, cnt, FALSE);
 }
 
-export function /* void */
-wipe_engr_at(x, y, cnt, magical)
-{
+export function wipe_engr_at(x, y, cnt, magical) { /* void */
     let ep = engr_at(x, y);
 
     /* Headstones and some specially marked engravings are indelible */
@@ -294,9 +266,7 @@ wipe_engr_at(x, y, cnt, magical)
  * Returns:
  *    non-zero if it can be felt
  */
-export function /* boolean */
-engr_can_be_felt(ep)
-{
+export function engr_can_be_felt(ep) { /* boolean */
     let canfeel = FALSE;
 
     switch (ep.engr_type) {
@@ -315,9 +285,8 @@ engr_can_be_felt(ep)
     return canfeel;
 }
 
-export function /* void */
-read_engr_at(x, y)
-{ const $frame = stack_frame(); try {
+export function read_engr_at(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let ep = engr_at(x, y);
     let eloc = surface(x, y);
     let sensed = 0;
@@ -379,7 +348,7 @@ read_engr_at(x, y)
                 off = (ep.engr_txt[actual_text] - engr_text_space(ep));
 
             if (elen > maxelen) {
-                void strncpy(buf, ep.engr_txt[actual_text], unsigned(maxelen));
+                strncpy(buf, ep.engr_txt[actual_text], unsigned(maxelen));
                 chars[buf + maxelen] = ord('\0');
                 et = buf;
                 elen = maxelen;
@@ -394,25 +363,24 @@ read_engr_at(x, y)
                      && strchr(_(".!?"), chars[et + (elen - 1)]))) {
                 endpunct = _(".");
             }
-            You(_("%s: \"%s\"%s"), (Blind()) ? _("feel the words") : _("read"), et,
+            You(_("%s: \"%s\"%s"), Blind() ? _("feel the words") : _("read"), et,
                 endpunct);
-            void strcpy(ep.engr_txt[remembered_text], ep.engr_txt[actual_text]);
+            strcpy(ep.engr_txt[remembered_text], ep.engr_txt[actual_text]);
             ep.eread = 1;
             ep.erevealed = 1;
             if (svc.context.run > 0)
                 nomul(0);
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-make_engr_at(
+export function make_engr_at(
     x, y,
     s,
     pristine_s,
     e_time,
-    e_type)
-{
+    e_type) { /* void */
     let i;
     let ep;
     let smem = unsigned(Strlen(s) + 1);
@@ -428,7 +396,7 @@ make_engr_at(
         del_engr(ep);
 
     ep = newengr(unsigned(Math.imul(smem, 3)));
-    void memset(addr_of(ep), 0, unsigned(unsigned((unsigned(Math.imul(smem, 3)))) + sizeof(struct_engr)));
+    memset(addr_of(ep), 0, unsigned(unsigned(Math.imul(smem, 3)) + sizeof(struct_engr)));
     ep.nxt_engr = head_engr;
     head_engr = ep;
     ep.engr_x = x;
@@ -437,9 +405,9 @@ make_engr_at(
     ep.engr_txt[remembered_text] = ep.engr_txt[actual_text] + smem;
     ep.engr_txt[pristine_text] = ep.engr_txt[remembered_text] + smem;
     for(i = 0; i < text_states; ++i)
-        void strcpy(ep.engr_txt[i], s);
+        strcpy(ep.engr_txt[i], s);
     if (havepristine)
-        void strcpy(ep.engr_txt[pristine_text], pristine_s);
+        strcpy(ep.engr_txt[pristine_text], pristine_s);
     if (!strcmp(s, _("Elbereth"))) {
         /* engraving "Elbereth":  if done when making a level, it creates
            an old-style Elbereth that deters monsters when any objects are
@@ -458,9 +426,7 @@ make_engr_at(
 }
 
 /* delete any engraving at location <x,y> */
-export function /* void */
-del_engr_at(x, y)
-{
+export function del_engr_at(x, y) { /* void */
     let ep = engr_at(x, y);
 
     if (ep)
@@ -470,17 +436,13 @@ del_engr_at(x, y)
 /*
  * freehand - returns true if player has a free hand
  */
-export function /* int */
-freehand()
-{
-    return (+(!uwep || !welded(uwep)
-            || (!bimanual(uwep) && (!uarms || !uarms.cursed))));
+export function freehand() { /* int */
+    return +(!uwep || !welded(uwep)
+            || (!bimanual(uwep) && (!uarms || !uarms.cursed)));
 }
 
 /* getobj callback for an object to engrave with */
-function /* int */
-stylus_ok(obj)
-{
+function stylus_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_SUGGEST;
 
@@ -500,9 +462,7 @@ stylus_ok(obj)
 }
 
 /* can hero engrave at all (at their location)? */
-function /* boolean */
-u_can_engrave()
-{
+function u_can_engrave() { /* boolean */
     let levtyp = SURFACE_AT(u.ux, u.uy);
 
     if (u.uswallow) {
@@ -542,9 +502,7 @@ u_can_engrave()
 }
 
 /* initialize the doengrave data */
-function /* void */
-doengrave_ctx_init(de)
-{
+function doengrave_ctx_init(de) { /* void */
     de.dengr = FALSE;
     de.doblind = FALSE;
     de.doknown = FALSE;
@@ -574,15 +532,13 @@ doengrave_ctx_init(de)
     if (is_demon(gy.youmonst.data) || is_vampire(gy.youmonst.data))
         de.type = ENGR_BLOOD;
 
-    de.jello = (((u.uswallow && !(is_animal(u.ustuck.data)
-                                 || is_whirly(u.ustuck.data))) ? 1 : 0));
+    de.jello = (u.uswallow && !(is_animal(u.ustuck.data)
+                                 || is_whirly(u.ustuck.data)) ? 1 : 0);
     de.frosted = is_ice(u.ux, u.uy);
 }
 
 /* special engraving effects for WAND objects */
-function /* void */
-doengrave_sfx_item_WAN(de)
-{
+function doengrave_sfx_item_WAN(de) { /* void */
     switch (de.otmp.otyp) {
         /* DUST wands */
     default:
@@ -601,18 +557,18 @@ doengrave_sfx_item_WAN(de)
          * previous engraving even if turning to dust.
          */
     case WAN_STRIKING:
-        void strcpy(de.post_engr_text, _("The wand unsuccessfully fights your attempt to write!"))
+        strcpy(de.post_engr_text, _("The wand unsuccessfully fights your attempt to write!"))
 ;
         break;
     case WAN_SLOW_MONSTER:
         if (!Blind()) {
-            void sprintf(de.post_engr_text, _("The bugs on the %s slow down!"), surface(u.ux, u.uy))
+            sprintf(de.post_engr_text, _("The bugs on the %s slow down!"), surface(u.ux, u.uy))
 ;
         }
         break;
     case WAN_SPEED_MONSTER:
         if (!Blind()) {
-            void sprintf(de.post_engr_text, _("The bugs on the %s speed up!"), surface(u.ux, u.uy))
+            sprintf(de.post_engr_text, _("The bugs on the %s speed up!"), surface(u.ux, u.uy))
 ;
         }
         break;
@@ -620,7 +576,7 @@ doengrave_sfx_item_WAN(de)
         if (de.oep) {
             if (!Blind()) {
                 de.type = 0; /* random */
-                void random_engraving(de.buf, de.ebuf);
+                random_engraving(de.buf, de.ebuf);
             } else {
                 /* keep the same type so that feels don't
                    change and only the text is altered,
@@ -643,7 +599,7 @@ doengrave_sfx_item_WAN(de)
     case WAN_MAGIC_MISSILE:
         de.ptext = TRUE;
         if (!Blind()) {
-            void sprintf(de.post_engr_text, _("The %s is riddled by bullet holes!"), surface(u.ux, u.uy))
+            sprintf(de.post_engr_text, _("The %s is riddled by bullet holes!"), surface(u.ux, u.uy))
 
 ;
         }
@@ -652,13 +608,13 @@ doengrave_sfx_item_WAN(de)
     case WAN_SLEEP:
     case WAN_DEATH:
         if (!Blind()) {
-            void sprintf(de.post_engr_text, _("The bugs on the %s stop moving!"), surface(u.ux, u.uy))
+            sprintf(de.post_engr_text, _("The bugs on the %s stop moving!"), surface(u.ux, u.uy))
 ;
         }
         break;
     case WAN_COLD:
         if (!Blind())
-            void strcpy(de.post_engr_text, _("A few ice cubes drop from the wand."))
+            strcpy(de.post_engr_text, _("A few ice cubes drop from the wand."))
 ;
         if (!de.oep || (de.oep.engr_type != BURN))
             break;
@@ -690,7 +646,7 @@ doengrave_sfx_item_WAN(de)
                 pline(_("This %s is a wand of digging!"), xname(de.otmp));
             de.doknown = TRUE;
         }
-        void strcpy(de.post_engr_text, (Blind() && !Deaf())
+        strcpy(de.post_engr_text, (Blind() && !Deaf())
                ? _("You hear drilling!")    /* Deaf-aware */
                : Blind()
                   ? _("You feel tremors.")
@@ -713,7 +669,7 @@ doengrave_sfx_item_WAN(de)
                 pline(_("This %s is a wand of fire!"), xname(de.otmp));
             de.doknown = TRUE;
         }
-        void strcpy(de.post_engr_text, Blind() ? _("You feel the wand heat up.")
+        strcpy(de.post_engr_text, Blind() ? _("You feel the wand heat up.")
                                          : _("Flames fly from the wand."));
         break;
     case WAN_LIGHTNING:
@@ -725,10 +681,10 @@ doengrave_sfx_item_WAN(de)
             de.doknown = TRUE;
         }
         if (!Blind()) {
-            void strcpy(de.post_engr_text, _("Lightning arcs from the wand."));
+            strcpy(de.post_engr_text, _("Lightning arcs from the wand."));
             de.doblind = TRUE;
         } else {
-            void strcpy(de.post_engr_text, !Deaf()
+            strcpy(de.post_engr_text, !Deaf()
                    ? _("You hear crackling!")     /* Deaf-aware */
                    : _("Your hair stands up!"));
         }
@@ -739,9 +695,7 @@ doengrave_sfx_item_WAN(de)
 }
 
 /* special engraving effects for all objects */
-function /* boolean */
-doengrave_sfx_item(de)
-{
+function doengrave_sfx_item(de) { /* boolean */
     switch (de.otmp.oclass) {
     default:
     case AMULET_CLASS:
@@ -893,9 +847,7 @@ doengrave_sfx_item(de)
 }
 
 /* which verb phrasing to use for engraving */
-function /* void */
-doengrave_ctx_verb(de)
-{
+function doengrave_ctx_verb(de) { /* void */
     switch (de.type) {
     default:
         de.everb = de.adding ? _("add to the weird writing on")
@@ -953,9 +905,7 @@ doengrave_ctx_verb(de)
  */
 
 /* the #engrave command */
-export function /* int */
-doengrave()
-{
+export function doengrave() { /* int */
     var sp;         /* Place holder for space count of engr text */
     var de;
     var retval;
@@ -982,7 +932,7 @@ doengrave()
     }
 
     if (de.otmp == hands_obj) {
-        void strcat(strcpy(de.fbuf, _("your ")), body_part(FINGERTIP));
+        strcat(strcpy(de.fbuf, _("your ")), body_part(FINGERTIP));
         de.writer = de.fbuf;
     } else {
         de.writer = yname(de.otmp);
@@ -1169,7 +1119,7 @@ doengrave()
     }
 
     de.eloc = surface(u.ux, u.uy);
-    de.adding = (((de.oep && !de.eow) ? 1 : 0));
+    de.adding = (de.oep && !de.eow ? 1 : 0);
     doengrave_ctx_verb(de);
 
     /* Tell adventurer what is going on */
@@ -1185,7 +1135,7 @@ doengrave()
             de.everb, de.eloc, body_part(FINGERTIP));
 
     /* Prompt for engraving! */
-    void sprintf(de.qbuf, _("What do you want to %s the %s here?"), de.everb, de.eloc)
+    sprintf(de.qbuf, _("What do you want to %s the %s here?"), de.everb, de.eloc)
 ;
     getlin(de.qbuf, de.ebuf);
     /* convert tabs to spaces and condense consecutive spaces to one */
@@ -1235,7 +1185,7 @@ doengrave()
         de.disprefresh = TRUE;
     }
 
-    void strcpy(svc.context.engraving.text, de.ebuf);
+    strcpy(svc.context.engraving.text, de.ebuf);
     svc.context.engraving.nextc = svc.context.engraving.text;
     svc.context.engraving.stylus = de.otmp;
     svc.context.engraving.type = de.type;
@@ -1264,21 +1214,20 @@ doengrave()
 }
 
 /* occupation callback for engraving some text */
-function /* int */
-engrave()
-{ const $frame = stack_frame(); try {
+function engrave() { /* int */
+    const $frame = stack_frame(); try {
     let oep;
     let buf = stack_array(char, BUFSZ); /* holds the post-this-action engr text, including
                       * anything already there */
     let finishverb; /* "You finish [foo]." */
     let stylus; /* shorthand for svc.context.engraving.stylus */
-    let firsttime = (+(svc.context.engraving.actionct == 0));
+    let firsttime = +(svc.context.engraving.actionct == 0);
     let rate = 10; /* # characters that can be engraved in this action */
     let truncate = FALSE;
-    let neweng = (+(svc.context.engraving.actionct == 0));
+    let neweng = +(svc.context.engraving.actionct == 0);
 
-    let carving = (+(svc.context.engraving.type == ENGRAVE
-                       || svc.context.engraving.type == HEADSTONE));
+    let carving = +(svc.context.engraving.type == ENGRAVE
+                       || svc.context.engraving.type == HEADSTONE);
     let dulling_wep, marker;
     let endc; /* points at character 1 beyond the last character to engrave
                  * this action */
@@ -1304,10 +1253,10 @@ engrave()
         }
     }
 
-    dulling_wep = (((carving && stylus && stylus.oclass == WEAPON_CLASS
-                   && (stylus.otyp != ATHAME || stylus.cursed)) ? 1 : 0));
-    marker = (((stylus && stylus.otyp == MAGIC_MARKER
-              && svc.context.engraving.type == MARK) ? 1 : 0));
+    dulling_wep = (carving && stylus && stylus.oclass == WEAPON_CLASS
+                   && (stylus.otyp != ATHAME || stylus.cursed) ? 1 : 0);
+    marker = (stylus && stylus.otyp == MAGIC_MARKER
+              && svc.context.engraving.type == MARK ? 1 : 0);
 
     svc.context.engraving.actionct++;
 
@@ -1385,7 +1334,7 @@ engrave()
             obj_extract_self(stylus);
             stylus = hold_another_object(stylus, _("You drop one %s!"),
                                          doname(stylus), (0));
-            (void (stylus));
+            (stylus);
         } else if (dulled && stylus.known) {
             /* reflect change in stylus->spe; not needed for splitstack
                since hold_another_object() does this */
@@ -1437,9 +1386,9 @@ engrave()
     chars[buf + 0] = ord('\0');
     oep = engr_at(u.ux, u.uy);
     if (oep) /* add to existing engraving */
-        void strcpy(buf, oep.engr_txt[actual_text]);
+        strcpy(buf, oep.engr_txt[actual_text]);
 
-    space_left = int((unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - strlen(buf)) - 1)));
+    space_left = int(unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - strlen(buf)) - 1));
     if (endc - svc.context.engraving.nextc > space_left) {
         You(_("run out of room to write."));
         endc = svc.context.engraving.nextc + space_left;
@@ -1457,7 +1406,7 @@ engrave()
         truncate = FALSE;
     }
 
-    void strncat(buf, svc.context.engraving.nextc,
+    strncat(buf, svc.context.engraving.nextc,
                    unsigned(min(space_left, endc - svc.context.engraving.nextc)));
     make_engr_at(u.ux, u.uy, buf, 0, svm.moves - gm.multi,
                  svc.context.engraving.type);
@@ -1491,13 +1440,12 @@ engrave()
     if (neweng)
         newsym(svc.context.engraving.pos.x, svc.context.engraving.pos.y);
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* while loading bones, clean up text which might accidentally
    or maliciously disrupt player's terminal when displayed */
-export function /* void */
-sanitize_engravings()
-{
+export function sanitize_engravings() { /* void */
     let ep;
 
     for (ep = head_engr; ep; ep = ep.nxt_engr) {
@@ -1506,9 +1454,7 @@ sanitize_engravings()
 }
 
 /* mark all engravings as not-discovered/not-read when saving bones */
-export function /* void */
-forget_engravings()
-{
+export function forget_engravings() { /* void */
     let ep;
 
     for (ep = head_engr; ep; ep = ep.nxt_engr) {
@@ -1521,9 +1467,7 @@ forget_engravings()
     }
 }
 
-export function /* void */
-engraving_sanity_check()
-{
+export function engraving_sanity_check() { /* void */
     let ep;
     let levtyp;
 
@@ -1548,9 +1492,8 @@ engraving_sanity_check()
     }
 }
 
-export function /* void */
-save_engravings(nhfp)
-{ const $frame = stack_frame(); try {
+export function save_engravings(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let ep, ep2;
     let no_more_engr = stack_var(unsigned, 0), engr_alloc = stack_var(unsigned);
     let szeach;
@@ -1578,12 +1521,11 @@ save_engravings(nhfp)
     }
     if (release_data(nhfp))
         head_engr = null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* void */
-rest_engravings(nhfp)
-{ const $frame = stack_frame(); try {
+export function rest_engravings(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let ep;
     let lth = stack_var(unsigned, 0);
     let szeach;
@@ -1617,34 +1559,26 @@ rest_engravings(nhfp)
          * to be able to move again */
         ep.engr_time = svm.moves;
     }
-} finally { stack_pop($frame); } }
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* to support '#stats' wizard-mode command */
-export function /* void */
-engr_stats(
+export function engr_stats(
     hdrfmt,
     hdrbuf,
     count,
-    size)
-{
+    size) { /* void */
     let ep;
 
-    void sprintf(hdrbuf, hdrfmt, (NHJS_LP64_SIZEOF_struct_engr));
+    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_struct_engr);
     count[0] = size[0] = 0;
     for (ep = head_engr; ep; ep = ep.nxt_engr) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_struct_engr) + ep.engr_alloc;
+        size[0] += NHJS_LP64_SIZEOF_struct_engr + ep.engr_alloc;
     }
 }
 
-
-
-export function /* void */
-del_engr(ep)
-{
+export function del_engr(ep) { /* void */
     if (ep == head_engr) {
         head_engr = ep.nxt_engr;
     } else {
@@ -1664,9 +1598,7 @@ del_engr(ep)
 }
 
 /* randomly relocate an engraving */
-export function /* void */
-rloc_engr(ep)
-{
+export function rloc_engr(ep) { /* void */
     let tx, ty, tryct = 200;
 
     do {
@@ -1684,9 +1616,8 @@ rloc_engr(ep)
 /* Create a headstone at the given location.
  * The caller is responsible for newsym(x, y).
  */
-export function /* void */
-make_grave(x, y, str)
-{ const $frame = stack_frame(); try {
+export function make_grave(x, y, str) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     /* Can we put a grave here? */
@@ -1701,12 +1632,11 @@ make_grave(x, y, str)
         str = get_rnd_text(_(EPITAPHFILE), buf, rn2, MD_PAD_RUMORS);
     make_engr_at(x, y, str, 0, 0, HEADSTONE);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called when kicking or engraving on a grave's headstone */
-export function /* void */
-disturb_grave(x, y)
-{
+export function disturb_grave(x, y) { /* void */
     let lev = levl()[x][y];
 
     if (!IS_GRAVE(lev.typ)) {
@@ -1716,22 +1646,18 @@ disturb_grave(x, y)
     } else {
         You(_("disturb the undead!"));
         lev.horizontal = 1;
-        void makemon(mons[PM_GHOUL], x, y, NO_MM_FLAGS);
+        makemon(mons[PM_GHOUL], x, y, NO_MM_FLAGS);
         exercise(A_WIS, FALSE);
     }
 }
 
-export function /* void */
-see_engraving(ep)
-{
+export function see_engraving(ep) { /* void */
     newsym(ep.engr_x, ep.engr_y);
 }
 
 /* like see_engravings() but overrides vision, but only for some types
    of engravings that can be felt  [this isn't actually used anywhere?] */
-export function /* void */
-feel_engraving(ep)
-{
+export function feel_engraving(ep) { /* void */
     if (engr_can_be_felt(ep)) {
         ep.eread = 1;
         ep.erevealed = 1;
@@ -1762,266 +1688,109 @@ const blind_writing = static_array("blind_writing", array_of(char, 21), null, [
      0x69, 0x76, 0x6b, 0x66, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00, 0x00],
 ]);
 
-function /* const char * */
-blengr()
-{
+function blengr() { /* const char * */
     return ROLL_FROM(blind_writing);
 }
 
 /*engrave.c*/
+
 import { ART_FIRE_BRAND } from "./artilist.h.js";
 import { A_WIS } from "./attrib.h.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { Something } from "./decl.h.macros.js";
-import { vision_clears } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { ILLOBJ_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { BURN } from "./engrave.h.js";
-import { DUST } from "./engrave.h.js";
-import { ENGRAVE } from "./engrave.h.js";
-import { ENGR_BLOOD } from "./engrave.h.js";
-import { HEADSTONE } from "./engrave.h.js";
-import { MARK } from "./engrave.h.js";
-import { N_ENGRAVE } from "./engrave.h.js";
-import { actual_text } from "./engrave.h.js";
-import { pristine_text } from "./engrave.h.js";
-import { remembered_text } from "./engrave.h.js";
-import { struct_engr } from "./engrave.h.js";
-import { text_states } from "./engrave.h.js";
-import { dealloc_engr } from "./engrave.h.macros.js";
-import { engr_text_space } from "./engrave.h.macros.js";
-import { newengr } from "./engrave.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { ENGRAVEFILE } from "./global.h.js";
-import { EPITAPHFILE } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { MD_PAD_RUMORS } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FINGERTIP } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { WAND_BACKFIRE_CHANCE } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { Your1 } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
+import { Never_mind, Something, vision_clears } from "./decl.h.macros.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS,
+    ILLOBJ_CLASS, POTION_CLASS, RANDOM_CLASS, RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+    TOOL_CLASS, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { Is_airlevel, Is_waterlevel } from "./dungeon.h.macros.js";
+import {
+    BURN, DUST, ENGRAVE, ENGR_BLOOD, HEADSTONE, MARK, N_ENGRAVE, actual_text, pristine_text,
+    remembered_text, struct_engr, text_states,
+} from "./engrave.h.js";
+import { dealloc_engr, engr_text_space, newengr } from "./engrave.h.macros.js";
+import {
+    BUFSZ, COLNO, ENGRAVEFILE, EPITAPHFILE, FALSE, LL_CONDUCT, MD_PAD_RUMORS, QBUFSZ, ROWNO, TRUE,
+    boolean, xint8,
+} from "./global.h.js";
+import { Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, FINGERTIP, GETOBJ_DOWNPLAY, GETOBJ_PROMPT,
+    GETOBJ_SUGGEST, HAND, NO_MM_FLAGS, WAND_BACKFIRE_CHANCE,
+} from "./hack.h.js";
+import {
+    ROLL_FROM, Your1, max, min, pline1, release_data, rn1, update_file,
+} from "./hack.h.macros.js";
 import { debugpline1 } from "./lint.h.macros.js";
 import { AT_HUGS } from "./monattk.h.js";
-import { cantwield } from "./mondata.h.macros.js";
-import { ceiling_hider } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_vampire } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
+import {
+    cantwield, ceiling_hider, is_animal, is_demon, is_vampire, is_whirly,
+} from "./mondata.h.macros.js";
 import { MZ_HUGE } from "./monflag.h.js";
 import { PM_GHOUL } from "./monsters.h.js";
 import { NHJS_LP64_SIZEOF_struct_engr } from "./nhjs_recorder_sizes.h.js";
-import { bimanual } from "./obj.h.macros.js";
-import { is_blade } from "./obj.h.macros.js";
-import { is_boots } from "./obj.h.macros.js";
-import { is_wet_towel } from "./obj.h.macros.js";
-import { ATHAME } from "./objects.h.js";
-import { MAGIC_MARKER } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { WAN_CANCELLATION } from "./objects.h.js";
-import { WAN_COLD } from "./objects.h.js";
-import { WAN_CREATE_MONSTER } from "./objects.h.js";
-import { WAN_DEATH } from "./objects.h.js";
-import { WAN_DIGGING } from "./objects.h.js";
-import { WAN_ENLIGHTENMENT } from "./objects.h.js";
-import { WAN_FIRE } from "./objects.h.js";
-import { WAN_LIGHT } from "./objects.h.js";
-import { WAN_LIGHTNING } from "./objects.h.js";
-import { WAN_LOCKING } from "./objects.h.js";
-import { WAN_MAGIC_MISSILE } from "./objects.h.js";
-import { WAN_MAKE_INVISIBLE } from "./objects.h.js";
-import { WAN_NOTHING } from "./objects.h.js";
-import { WAN_OPENING } from "./objects.h.js";
-import { WAN_POLYMORPH } from "./objects.h.js";
-import { WAN_PROBING } from "./objects.h.js";
-import { WAN_SECRET_DOOR_DETECTION } from "./objects.h.js";
-import { WAN_SLEEP } from "./objects.h.js";
-import { WAN_SLOW_MONSTER } from "./objects.h.js";
-import { WAN_SPEED_MONSTER } from "./objects.h.js";
-import { WAN_STASIS } from "./objects.h.js";
-import { WAN_STRIKING } from "./objects.h.js";
-import { WAN_TELEPORTATION } from "./objects.h.js";
-import { WAN_UNDEAD_TURNING } from "./objects.h.js";
-import { WAN_WISHING } from "./objects.h.js";
-import { CLOUD } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { GRAVE } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { ACCESSIBLE } from "./rm.h.macros.js";
-import { IS_AIR } from "./rm.h.macros.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { SURFACE_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfi_engr } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
-import { Sfo_engr } from "./savefile.h.macros.js";
-import { Sfo_unsigned } from "./savefile.h.macros.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
+import { bimanual, is_blade, is_boots, is_wet_towel } from "./obj.h.macros.js";
+import {
+    ATHAME, MAGIC_MARKER, TOWEL, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH,
+    WAN_DIGGING, WAN_ENLIGHTENMENT, WAN_FIRE, WAN_LIGHT, WAN_LIGHTNING, WAN_LOCKING,
+    WAN_MAGIC_MISSILE, WAN_MAKE_INVISIBLE, WAN_NOTHING, WAN_OPENING, WAN_POLYMORPH, WAN_PROBING,
+    WAN_SECRET_DOOR_DETECTION, WAN_SLEEP, WAN_SLOW_MONSTER, WAN_SPEED_MONSTER, WAN_STASIS,
+    WAN_STRIKING, WAN_TELEPORTATION, WAN_UNDEAD_TURNING, WAN_WISHING,
+} from "./objects.h.js";
+import { CLOUD, DRAWBRIDGE_DOWN, GRAVE, ROOM } from "./rm.h.js";
+import {
+    ACCESSIBLE, IS_AIR, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, SURFACE_AT, levl,
+} from "./rm.h.macros.js";
+import { Sfi_char, Sfi_engr, Sfo_char, Sfo_engr, Sfo_unsigned } from "./savefile.h.macros.js";
+import { P_BASIC, P_RIDING } from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
+import {
+    Blind, Confusion, Deaf, Flying, Hallucination, Levitation, Stunned,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncat } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    free, memset, sprintf, strcat, strchr, strcmp, strcpy, strlen, strncat, strncpy,
+} from "../rt/libc.js";
+import { stack_array, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, array_of, ptr_to, struct, view_of } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { is_art } from "./artifact.js";
 import { exercise } from "./attrib.js";
 import { sanitize_name } from "./bones.js";
-import { isok } from "./cmd.js";
-import { set_occupation } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_ice } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { ynqchars } from "./decl.js";
-import { map_engraving } from "./display.js";
-import { newsym } from "./display.js";
+import { isok, set_occupation, yn_function } from "./cmd.js";
+import { is_ice, is_lava, is_pool, is_pool_or_lava } from "./dbridge.js";
+import { flags, gi, gm, gn, gy, hands_obj, svc, svl, svm, u, ynqchars } from "./decl.js";
+import { map_engraving, newsym } from "./display.js";
 import { mon_nam } from "./do_name.js";
-import { ceiling } from "./dungeon.js";
-import { surface } from "./dungeon.js";
+import { ceiling, surface } from "./dungeon.js";
 import { more_experienced } from "./exper.js";
-import { check_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { mungspaces } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { xcrypt } from "./hacklib.js";
-import { getobj } from "./invent.js";
-import { hold_another_object } from "./invent.js";
-import { prinv } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
+import { check_capacity, nomul } from "./hack.js";
+import { mungspaces, strstri, xcrypt } from "./hacklib.js";
+import { getobj, hold_another_object, prinv, update_inventory, useup } from "./invent.js";
 import { makemon } from "./makemon.js";
 import { set_levltyp } from "./mkmaze.js";
-import { obj_extract_self } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { attacktype } from "./mondata.js";
-import { resists_blnd } from "./mondata.js";
-import { sticks } from "./mondata.js";
+import { obj_extract_self, splitobj } from "./mkobj.js";
+import { attacktype, resists_blnd, sticks } from "./mondata.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
+import { The, Tobjnam, Yname2, Yobjnam2, doname, otense, xname, yname } from "./objnam.js";
+import {
+    There, You, You_cant, You_see, Your, impossible, livelog_printf, pline, pline_The,
+} from "./pline.js";
 import { body_part } from "./polyself.js";
 import { make_blinded } from "./potion.js";
 import { altar_wrath } from "./pray.js";
 import { wand_explode } from "./read.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { get_rnd_text } from "./rumors.js";
-import { getrumor } from "./rumors.js";
+import { rn2, rnd } from "./rnd.js";
+import { get_rnd_text, getrumor } from "./rumors.js";
 import { sfi_unsigned } from "./sfbase.js";
 import { check_unpaid } from "./shk.js";
 import { goodpos } from "./teleport.js";
-import { t_at } from "./trap.js";
-import { uescaped_shaft } from "./trap.js";
-import { uteetering_at_seen_pit } from "./trap.js";
+import { t_at, uescaped_shaft, uteetering_at_seen_pit } from "./trap.js";
 import { dry_a_towel } from "./weapon.js";
 import { welded } from "./wield.js";
 import { getlin } from "./windows.js";
-import { learnwand } from "./zap.js";
-import { zapnodir } from "./zap.js";
-import { zappable } from "./zap.js";
+import { learnwand, zapnodir, zappable } from "./zap.js";
 const __FILE__ = "engrave.c";

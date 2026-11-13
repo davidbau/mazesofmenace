@@ -4,9 +4,9 @@
 // in the options does not compile.  The recorder ran on macOS, whose regex
 // comes from FreeBSD; the texts below are those of FreeBSD's
 // lib/libc/regex/regerror.c (BSD licence, Henry Spencer's regex package).
-// The error codes are those of the C library the port links (musl, TRE).
+// The error codes are Darwin's: 1-13 are also musl's, 14-18 only come from host/regex.js.
 
-// <regex.h> error codes of the linked C library (musl)
+// <regex.h> error codes (Darwin's; 1-13 have the same values in musl, the linked C library)
 export const REG_NOMATCH = 1;
 export const REG_BADPAT = 2;
 export const REG_ECOLLATE = 3;
@@ -20,6 +20,12 @@ export const REG_BADBR = 10;
 export const REG_ERANGE = 11;
 export const REG_ESPACE = 12;
 export const REG_BADRPT = 13;
+// codes only Darwin's <regex.h> has (host/regex.js returns REG_EMPTY and REG_BADMAX)
+export const REG_EMPTY = 14;
+export const REG_ASSERT = 15;
+export const REG_INVARG = 16;
+export const REG_ILLSEQ = 17;
+export const REG_BADMAX = 18;
 
 const MESSAGES = new Map([
   [REG_NOMATCH, "regexec() failed to match"],
@@ -35,6 +41,11 @@ const MESSAGES = new Map([
   [REG_ERANGE, "invalid character range"],
   [REG_ESPACE, "out of memory"],
   [REG_BADRPT, "repetition-operator operand invalid"],
+  [REG_EMPTY, "empty (sub)expression"],
+  [REG_ASSERT, "\"can't happen\" -- you found a bug"],
+  [REG_INVARG, "invalid argument to regex routine"],
+  [REG_ILLSEQ, "illegal byte sequence"],
+  [REG_BADMAX, "maximum repetition exceeds 255"],
 ]);
 
 /** The message for an error code. */

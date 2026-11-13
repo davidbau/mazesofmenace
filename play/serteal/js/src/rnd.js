@@ -7,8 +7,6 @@
    Internal calls (e.g. rnz calling rn2) inherit the outer caller's
    context because the macros don't fire inside rnd.c. */
 
-// #include "hack.h"
-
 /*
  * PRNG call logging infrastructure.
  * When NETHACK_RNGLOG is set, every rn2/rnd/rnl/d/rne/rnz call is logged
@@ -34,9 +32,7 @@ const rng_caller_file = static_var("rng_caller_file", ptr_to(char), 0);
 const rng_caller_line = static_var("rng_caller_line", int, 0);
 const rng_caller_func = static_var("rng_caller_func", ptr_to(char), 0);
 
-export function /* void */
-rng_log_init()
-{
+export function rng_log_init() { /* void */
     let logpath = getenv(_("NETHACK_RNGLOG"));
     let disp = getenv(_("NETHACK_RNGLOG_DISP"));
 
@@ -48,29 +44,21 @@ rng_log_init()
     rng_log_disp[0] = (disp && chars[disp] && chars[disp] != ord('0')) ? TRUE : FALSE;
 }
 
-export function /* boolean */
-rng_log_enabled()
-{
+export function rng_log_enabled() { /* boolean */
     return rng_logfile[0] ? TRUE : FALSE;
 }
 
-export function /* void */
-rng_log_set_caller(file, line, func)
-{
+export function rng_log_set_caller(file, line, func) { /* void */
     rng_caller_file[0] = file;
     rng_caller_line[0] = line;
     rng_caller_func[0] = func;
 }
 
-export function /* int */
-rng_log_get_call_count()
-{
+export function rng_log_get_call_count() { /* int */
     return rng_call_count[0];
 }
 
-function /* void */
-rng_log_write(func, args, result)
-{
+function rng_log_write(func, args, result) { /* void */
     if (!rng_logfile[0])
         return;
     rng_call_count[0]++;
@@ -92,17 +80,6 @@ rng_log_write(func, args, result)
     }
 }
 
-
-// #include "isaac64.h"
-
-
-
-
-
-
-
-
-
 const struct_rnglist_t = struct("struct_rnglist_t", {
     fn: fnptr_t,
     init: boolean,
@@ -116,9 +93,7 @@ const rnglist = static_array("rnglist", struct_rnglist_t, null, [
     { fn: rn2_on_display_rng, init: FALSE, rng_state: { n: 0 } },       /* DISP */
 ]);
 
-function /* int */
-whichrng(fn)
-{
+function whichrng(fn) { /* int */
     let i;
 
     for (i = 0; i < SIZE(rnglist); ++i)
@@ -127,9 +102,8 @@ whichrng(fn)
     return -1;
 }
 
-export function /* void */
-init_isaac64(seed, fn)
-{ const $frame = stack_frame(); try {
+export function init_isaac64(seed, fn) { /* void */
+    const $frame = stack_frame(); try {
     let new_rng_state = stack_array(uchar, sizeof(ulong));
     let i;
     let rngindx = whichrng(fn);
@@ -143,20 +117,17 @@ init_isaac64(seed, fn)
     }
     isaac64_init(rnglist[rngindx].rng_state, new_rng_state,
                  sizeof(ulong));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-RND(x)
-{
+function RND(x) { /* int */
     return int((isaac64_next_uint64(rnglist[CORE].rng_state) % u64(x)));
 }
 
 /* 0 <= rn2(x) < x, but on a different sequence from the "main" rn2;
    used in cases where the answer doesn't affect gameplay and we don't
    want to give users easy control over the main RNG sequence. */
-export function /* int */
-rn2_on_display_rng(x)
-{
+export function rn2_on_display_rng(x) { /* int */
     let result = int((isaac64_next_uint64(rnglist[DISP].rng_state) % u64(x)));
 
     if (rng_logfile[0] && rng_log_disp[0]) {
@@ -176,34 +147,12 @@ rn2_on_display_rng(x)
     return result;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef USE_ISAAC64): not in this build */
 
 /* 0 <= rn2(x) < x */
-export function /* int */
-rn2(x)
-{ const $frame = stack_frame(); try {
+export function rn2(x) { /* int */
+    const $frame = stack_frame(); try {
     let result;
-
-
-
-
-
 
     result = RND(x);
     if (rng_logfile[0]) {
@@ -212,23 +161,16 @@ rn2(x)
         rng_log_write(_("rn2"), buf, result);
     }
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 0 <= rnl(x) < x; sometimes subtracting Luck;
    good luck approaches 0, bad luck approaches (x-1) */
-export function /* int */
-rnl(x)
-{ const $frame = stack_frame(); try {
+export function rnl(x) { /* int */
+    const $frame = stack_frame(); try {
     let i, adjustment;
     /* Internal rn2 call inherits caller context from the rnl macro --
        no save/clear needed. */
-
-
-
-
-
-
-
 
     adjustment = Luck();
     if (x <= 15) {
@@ -263,18 +205,13 @@ rnl(x)
         rng_log_write(_("rnl"), buf, i);
     }
     return i;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 1 <= rnd(x) <= x */
-export function /* int */
-rnd(x)
-{ const $frame = stack_frame(); try {
+export function rnd(x) { /* int */
+    const $frame = stack_frame(); try {
     let result;
-
-
-
-
-
 
     result = RND(x) + 1;
     if (rng_logfile[0]) {
@@ -283,26 +220,18 @@ rnd(x)
         rng_log_write(_("rnd"), buf, result);
     }
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-rnd_on_display_rng(x)
-{
+export function rnd_on_display_rng(x) { /* int */
     return rn2_on_display_rng(x) + 1;
 }
 
 /* d(N,X) == NdX == dX+dX+...+dX N times; n <= d(n,x) <= (n*x) */
-export function /* int */
-d(n, x)
-{ const $frame = stack_frame(); try {
+export function d(n, x) { /* int */
+    const $frame = stack_frame(); try {
     let tmp = n;
     let orig_n = n;
-
-
-
-
-
-
 
     while (n--)
         tmp += RND(x);
@@ -312,12 +241,12 @@ d(n, x)
         rng_log_write(_("d"), buf, tmp);
     }
     return tmp; /* Alea iacta est. -- J.C. */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 1 <= rne(x) <= max(u.ulevel/3,5) */
-export function /* int */
-rne(x)
-{ const $frame = stack_frame(); try {
+export function rne(x) { /* int */
+    const $frame = stack_frame(); try {
     let tmp, utmp;
     /* Internal rn2 calls inherit caller context from the rne macro --
        no save/clear needed. */
@@ -341,12 +270,12 @@ rne(x)
      * which is clearer but less efficient and stands a vanishingly
      * small chance of overflowing tmp
      */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* rnz: everyone's favorite! */
-export function /* int */
-rnz(i)
-{ const $frame = stack_frame(); try {
+export function rnz(i) { /* int */
+    const $frame = stack_frame(); try {
     let x = i;
     let tmp = 1000;
     /* Internal rn2/rne calls inherit caller context from the rnz macro --
@@ -367,68 +296,32 @@ rnz(i)
         rng_log_write(_("rnz"), buf, int(x));
     }
     return int(x);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Sets the seed for the random number generator */
 
-
-function /* void */
-set_random(seed,
-           fn)
-{
+function set_random(seed,
+           fn) { /* void */
     init_isaac64(seed, fn);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef USE_ISAAC64): not in this build */
 
 /* An appropriate version of this must always be provided in
    port-specific code somewhere. It returns a number suitable
    as seed for the random number generator */
 
-
 /*
  * Initializes the random number generator.
  * Only call once.
  */
-export function /* void */
-init_random(fn)
-{
+export function init_random(fn) { /* void */
     set_random(sys_random_seed(), fn);
 }
 
 /* Reshuffles the random number generator. */
-export function /* void */
-reseed_random(fn)
-{
+export function reseed_random(fn) { /* void */
    /* only reseed if we are certain that the seed generation is unguessable
     * by the players. */
     if (has_strong_rngseed)
@@ -436,9 +329,7 @@ reseed_random(fn)
 }
 
 /* randomize the given list of numbers  0 <= i < count */
-export function /* void */
-shuffle_int_array(indices, count)
-{
+export function shuffle_int_array(indices, count) { /* void */
     let i, iswap, temp;
 
     for (i = count - 1; i > 0; i--) {
@@ -451,42 +342,19 @@ shuffle_int_array(indices, count)
 }
 
 /*rnd.c*/
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
+
+import { FALSE, TRUE, boolean } from "./global.h.js";
 import { Luck } from "./you.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
+import { char, int, ord, schar, sizeof, uchar, ulong } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
 import { u64 } from "../rt/int64.js";
-import { _IOLBF } from "../rt/libc.js";
-import { abs } from "../rt/libc.js";
-import { fopen } from "../rt/libc.js";
-import { fprintf } from "../rt/libc.js";
-import { fputc } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
-import { setvbuf } from "../rt/libc.js";
-import { snprintf } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { _IOLBF, abs, fopen, fprintf, fputc, getenv, setvbuf, snprintf } from "../rt/libc.js";
+import { stack_array, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { array_of, fnptr_t, ptr_to, struct } from "../rt/struct.js";
 import { u } from "./decl.js";
 import { panic } from "./end.js";
 import { sgn } from "./hacklib.js";
-import { isaac64_init } from "./isaac64.js";
-import { isaac64_next_uint64 } from "./isaac64.js";
+import { isaac64_init, isaac64_next_uint64 } from "./isaac64.js";
 import { sys_random_seed } from "../sys/unix/unixmain.js";

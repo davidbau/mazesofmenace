@@ -3,9 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * The dungeon presentation graphics code and data structures were rewritten
  * and generalized for NetHack's release 2 by Eric S. Raymond (eric@snark)
@@ -108,46 +105,6 @@
 
     export const INVALID_TYPE = 127;
 
-
-/*
- * Avoid using the level types in inequalities:
- * these types are subject to change.
- * Instead, use one of the macros below.
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* for surface checks when it's unknown whether a drawbridge is involved;
-   drawbridge_up is the spot in front of a closed drawbridge and not the
-   current surface at that spot; caveat: this evaluates its arguments more
-   than once and might make a function call */
-
-
-
-
-
 /*
  * The structure describing a coordinate position.
  * Before adding fields, remember that this will significantly affect
@@ -210,18 +167,8 @@ export const struct_rm = struct("struct_rm", {
  *      D_SECRET would not fit within struct rm's 5-bit 'flags' field.
  */
 
-
-
-
-
-
-
-
-
-
 /* candig is used for floor trap locations so is available for overload
    on walls, doors, secret doors, and furniture */
-
 
 /*
  * The 5 possible states of doors.
@@ -255,12 +202,6 @@ export const TREE_SWARM = 2;
  */
 export const F_LOOTED = 1;
 export const F_WARNED = 2;
-
-
-
-
-
-
 
 /*
  * doors are even worse :-) The special warning has a side effect
@@ -316,9 +257,6 @@ export const ICED_MOAT = 16;
 /* light states for terrain replacements, for set_levltyp_lit */
 export const SET_LIT_RANDOM = -1;
 export const SET_LIT_NOCHANGE = -2;
-
-
-
 
 /*
  * Add wall angle viewing by defining "modes" for each wall type.  Each
@@ -402,9 +340,6 @@ export const SVALL = (0xFF);
 /* horizontal applies to walls, doors (including sdoor); also to iron bars
    even though they don't have separate symbols for horizontal and vertical */
 
-
-
-
 export const struct_damage = struct("struct_damage", {
     next: ptr_to("struct_damage"),
     when: long, cost: long,
@@ -482,77 +417,6 @@ export const dlevel_t = struct("dlevel_t", {
     flags: "struct_levelflags",
 });
 
-/*
- * Macros for compatibility with old code. Someday these will go away.
- */
-
-
-
-
-/*
- * Convert a trap number into the defsym graphics array.
- * Convert a defsym number into a trap number.
- * Assumes that arrow trap will always be the first trap.
- */
-
-
-
-
-/*
- * Macros for encapsulation of level.monsters references.
- */
-
-/* these wouldn't allow buried monster and surface monster at same location */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* restricted movement, potential luck penalties */
-
-
-/*
- * These prototypes are in extern.h but some of the code which uses them
- * includes config.h instead of hack.h so doesn't see extern.h.
- */
-/* ### drawing.c ### */
-import { COLNO } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { COLNO, PL_NSIZ, ROWNO, boolean, coordxy } from "./global.h.js";
+import { char, int, long, schar, uchar } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

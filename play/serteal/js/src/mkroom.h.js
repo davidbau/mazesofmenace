@@ -3,9 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* mkroom.h - types and structures for room and shop initialization */
 
 export const struct_mkroom = struct("struct_mkroom", {
@@ -30,9 +27,6 @@ export const D_SHOP = 1; export const struct_shclass = struct("struct_shclass", 
     symb: char, /* this identifies the shop type */
     prob: int, /* the shop type probability in % */
     shdist: schar, /* object placement type */
-
-
-
 
         /* probability of an item type */
         /* item type: if >=0 a class, if < 0 a specific item */
@@ -76,10 +70,6 @@ export const D_SHOP = 1; export const struct_shclass = struct("struct_shclass", 
     export const FODDERSHOP = 24; /* health food store */
     export const CANDLESHOP = 25;
 
-
-
-
-
 /* Special type for search_special() */
 export const ANY_TYPE = (-1);
 export const ANY_SHOP = (-2);
@@ -90,16 +80,10 @@ export const SHARED_PLUS = 2;
 
 export const ROOMOFFSET = 3;
 
-
 /* Values for needfill */
 export const FILL_NONE = 0;
 export const FILL_NORMAL = 1;
-import { MAX_SUBROOMS } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { MAX_SUBROOMS, boolean, coordxy } from "./global.h.js";
+import { char, int, schar } from "../rt/ctypes.js";
+import { array_of, ptr_to, struct } from "../rt/struct.js";

@@ -3,14 +3,7 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
 /* clang-format off */
-
 
 export const SPFX_NOGEN = 0x00000001;
 export const SPFX_RESTR = 0x00000002;
@@ -76,7 +69,6 @@ export const struct_artifact = struct("struct_artifact", {
     export const SNOWSTORM = FIRESTORM + 1;
     export const BLINDING_RAY = SNOWSTORM + 1;
 
-
 /* artifact tracking; gift and wish imply found; it also gets set for items
    seen on the floor, in containers, and wielded or dropped by monsters */
 export const struct_arti_info = struct("struct_arti_info", {
@@ -92,14 +84,8 @@ export const struct_arti_info = struct("struct_arti_info", {
 });
 
 /* clang-format on */
+
 import { aligntyp } from "./align.h.js";
 import { LAST_PROP } from "./prop.h.js";
-import { char } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, long, schar, short, uchar, ulong } from "../rt/ctypes.js";
+import { Bitfield, ptr_to, struct } from "../rt/struct.js";

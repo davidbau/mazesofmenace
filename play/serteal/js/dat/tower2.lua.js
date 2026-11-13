@@ -1,8 +1,8 @@
-export default "\n" + // -- NetHack tower tower2.lua	$NHDT-Date: 1652196037 2022/05/10 15:20:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack tower tower2.lua	$NHDT-Date: 1652196037 2022/05/10 15:20:37 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport", "hardfloor", "solidify")
 des.map({ halign = "half-left", valign = "center", map = [[
@@ -18,8 +18,8 @@ des.map({ halign = "half-left", valign = "center", map = [[
   |.| |.| |.|  
   --- --- ---  
 ]] });
-` + "\n" + // -- Random places are the 10 niches
-`local place = { {03,01},{07,01},{11,01},{01,03},{13,03},
+-- Random places are the 10 niches
+local place = { {03,01},{07,01},{11,01},{01,03},{13,03},
 	   {01,07},{13,07},{03,09},{07,09},{11,09} }
 shuffle(place)
 
@@ -57,7 +57,7 @@ local spbooks = {
 shuffle(spbooks);
 des.object(spbooks[1],place[9])
 
-` + "\n" + // -- Walls in the tower are non diggable
-`des.non_diggable(selection.area(00,00,14,10))
+-- Walls in the tower are non diggable
+des.non_diggable(selection.area(00,00,14,10))
 
 `;

@@ -2,11 +2,6 @@
 /*      Copyright (C) 1990 by Ken Arromdee */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
 /* Note: Arrays are column first, while the screen is row first */
 const explosion = static_array("explosion", array_of(int, 3), 3, [
         [ S_expl_tl, S_expl_ml, S_expl_bl ],
@@ -20,14 +15,11 @@ const explosion = static_array("explosion", array_of(int, 3), 3, [
     const EXPL_HERO = 2;
     const EXPL_SKIP = 4;
 
-
 /* check if shield effects are needed for location affected by explosion */
-function /* int */
-explosionmask(
+function explosionmask(
     m,
     adtyp,
-    olet)       /* object class (only matters for AD_DISN) */
-{
+    olet) { /* int */ /* object class (only matters for AD_DISN) */
     let res = EXPL_NONE;
 
     if (m == gy.youmonst) {
@@ -69,7 +61,6 @@ explosionmask(
             impossible(_("explosion type %d?"), adtyp);
             break;
         }
-
     } else {
         /* 'm' is a monster */
         switch (adtyp) {
@@ -114,9 +105,7 @@ explosionmask(
     return res;
 }
 
-function /* void */
-engulfer_explosion_msg(adtyp, olet)
-{
+function engulfer_explosion_msg(adtyp, olet) { /* void */
     let adj = 0;
 
     if (digests(u.ustuck.data)) {
@@ -195,15 +184,14 @@ engulfer_explosion_msg(adtyp, olet)
  *      things beside the player. Care is taken within explode() to ensure
  *      that Half_physical_damage only affects the damage applied to the hero.
  */
-export function /* void */
-explode(
+export function explode(
     x, y,
 
     type,
     dam,
     olet,
-    expltype) /* explosion type: controls color of explosion glyphs */
-{ const $frame = stack_frame(); try {
+    expltype) { /* void */ /* explosion type: controls color of explosion glyphs */
+    const $frame = stack_frame(); try {
     let i, j, k, damu = dam;
     let starting = 1;
     let visible, any_shield;
@@ -218,7 +206,7 @@ explode(
     let grabxy = stack_struct(struct_nhcoord);
     let hallu_buf = stack_array(char, BUFSZ), killr_buf = stack_array(char, BUFSZ);
     let exploding_wand_typ = 0;
-    let you_exploding = (+(olet == MON_EXPLODE && type >= 0));
+    let you_exploding = +(olet == MON_EXPLODE && type >= 0);
     let didmsg = FALSE;
 
     if (olet == WAND_CLASS) { /* retributive strike */
@@ -269,7 +257,7 @@ explode(
     }
     /* if hero is engulfed and caused the explosion, only hero and
        engulfer will be affected */
-    inside_engulfer = (((u.uswallow && type >= 0) ? 1 : 0));
+    inside_engulfer = (u.uswallow && type >= 0 ? 1 : 0);
     /* held but not engulfed implies holder is reaching into second spot
        so might get hit by double damage */
     grabbed = grabbing = FALSE;
@@ -299,9 +287,9 @@ explode(
         /* when explode() is called recursively, svk.killer.name might change
            so retain a copy of the current value for this explosion */
         str = strcpy(killr_buf, svk.killer.name);
-        do_hallu = (((Hallucination()
+        do_hallu = (Hallucination()
                     && (strstri(str, _("'s explosion"))
-                        || strstri(str, _("s' explosion")))) ? 1 : 0));
+                        || strstri(str, _("s' explosion"))) ? 1 : 0);
     }
     if (type == PHYS_EXPL_TYPE) {
         /* currently only gas spores */
@@ -378,7 +366,7 @@ explode(
             if (mtmp && cansee(xx, yy) && !canspotmon(mtmp))
                 map_invisible(xx, yy);
             else if (!mtmp)
-                void unmap_invisible(xx, yy);
+                unmap_invisible(xx, yy);
             if (cansee(xx, yy))
                 visible = TRUE;
             if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) != 0)
@@ -429,7 +417,6 @@ explode(
                                    explosion_to_glyph(expltype,
                                                       explosion[i][j]));
                 }
-
         } else { /* delay a little bit. */
             nh_delay_output()();
             nh_delay_output()();
@@ -478,7 +465,7 @@ explode(
                 /* Affect the floor unless the player caused the explosion
                  * from inside their engulfer. */
                 if (!(u.uswallow && !svc.context.mon_moving))
-                    void zap_over_floor(xx, yy, type,
+                    zap_over_floor(xx, yy, type,
                                           addr_of(shopdamage), FALSE,
                                           exploding_wand_typ);
 
@@ -495,7 +482,7 @@ explode(
                        like "Barney" here in order to suppress "the" below,
                        so avoid any which begins with a capital letter) */
                     do {
-                        void sprintf(hallu_buf, _("%s explosion"), s_suffix(rndmonnam(0)))
+                        sprintf(hallu_buf, _("%s explosion"), s_suffix(rndmonnam(0)))
 ;
                     } while (chars[hallu_buf] != lowc(chars[hallu_buf]) && ++tryct < 20);
                     str = hallu_buf;
@@ -510,7 +497,7 @@ explode(
 
                 itemdmg = destroy_items(mtmp, adtyp, dam);
                 if (adtyp == AD_FIRE) {
-                    void burnarmor(mtmp);
+                    burnarmor(mtmp);
                     ignite_items(mtmp.minvent);
                 }
 
@@ -594,7 +581,7 @@ explode(
         if (flags.verbose && (type < 0 || olet != SCROLL_CLASS)) {
             if (do_hallu) { /* (see explanation above) */
                 do {
-                    void sprintf(hallu_buf, _("%s explosion"), s_suffix(rndmonnam(0)))
+                    sprintf(hallu_buf, _("%s explosion"), s_suffix(rndmonnam(0)))
 ;
                 } while (chars[hallu_buf] != lowc(chars[hallu_buf]));
                 str = hallu_buf;
@@ -611,10 +598,10 @@ explode(
         } else if (adtyp == AD_PHYS || adtyp == AD_ACID)
             damu = Maybe_Half_Phys(damu);
         if (adtyp == AD_FIRE) {
-            void burnarmor(gy.youmonst);
+            burnarmor(gy.youmonst);
             ignite_items(gi.invent);
         }
-        void destroy_items(gy.youmonst, adtyp, dam);
+        destroy_items(gy.youmonst, adtyp, dam);
 
         ugolemeffects(adtyp, damu);
         if (uhurt == 2) {
@@ -646,7 +633,7 @@ explode(
                     if (generic) /* explosion was unseen; str=="explosion", */
                         ; /* svk.killer.name=="gas spore's explosion". */
                     else if (str != svk.killer.name && str != hallu_buf)
-                        void strcpy(svk.killer.name, str);
+                        strcpy(svk.killer.name, str);
                     svk.killer.format = KILLED_BY_AN;
                 } else if (olet == TRAP_EXPLODE) {
                     svk.killer.format = NO_KILLER_PREFIX;
@@ -659,11 +646,11 @@ explode(
 
 ;
                 } else {
-                    svk.killer.format = (!strcmpi(str, _("tower of flame"))
-                                     || !strcmpi(str, _("fireball")))
+                    svk.killer.format = (!strncmpi((str), _(("tower of flame")), -1)
+                                     || !strncmpi((str), _(("fireball")), -1))
                                         ? KILLED_BY_AN
                                         : KILLED_BY;
-                    void strcpy(svk.killer.name, str);
+                    strcpy(svk.killer.name, str);
                 }
                 if (iflags.last_msg == PLNMSG_CAUGHT_IN_EXPLOSION
                     || iflags.last_msg == PLNMSG_TOWER_OF_FLAME) /*seffects()*/
@@ -693,7 +680,8 @@ explode(
     if (inside_engulfer)
         i = Math.trunc((i + 3) / 4);
     wake_nearto(x, y, i);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const struct_scatter_chain = struct("struct_scatter_chain", {
     next: ptr_to("struct_scatter_chain"),
@@ -717,13 +705,11 @@ const struct_scatter_chain = struct("struct_scatter_chain", {
  */
 
 /* returns number of scattered objects */
-export function /* long long */
-scatter(
+export function scatter(
     sx, sy,
     blastforce,
     scflags,
-    obj)         /* only scatter this obj */
-{
+    obj) { /* long long */ /* only scatter this obj */
     let otmp;
     let tmp;
     let farthest = 0;
@@ -741,15 +727,15 @@ scatter(
         impossible(_("scattered object <%d,%d> not at scatter site <%d,%d>"),
                    obj.ox, obj.oy, sx, sy);
 
-    shop_origin = ((((shkp = shop_keeper(chars[in_rooms(sx, sy, SHOPBASE)])) != null
-                && costly_spot(sx, sy)) ? 1 : 0));
+    shop_origin = ((shkp = shop_keeper(chars[in_rooms(sx, sy, SHOPBASE)])) != null
+                && costly_spot(sx, sy) ? 1 : 0);
     if (shop_origin)
         credit_report(shkp, 0, TRUE);   /* establish baseline, without msgs */
 
     while ((otmp = (individual_object ? obj
                                       : svl.level.objects[sx][sy])) != null) {
         if (otmp == uball || otmp == uchain) {
-            let waschain = (+(otmp == uchain));
+            let waschain = +(otmp == uchain);
 
              ;
             pline_The(_("chain shatters!"));
@@ -798,7 +784,7 @@ scatter(
                      ;
                     You_hear(_("stone crumbling."));
                 }
-                void break_statue(otmp);
+                break_statue(otmp);
                 place_object(otmp, sx, sy); /* put fragments on floor */
             }
             newsym(sx, sy); /* in case it's beyond radius of 'farthest' */
@@ -821,7 +807,7 @@ scatter(
             tmp = rn2(N_DIRS); /* get the direction */
             stmp.dx = chars[xdir + tmp];
             stmp.dy = chars[ydir + tmp];
-            tmp = int(unsigned(unsigned(blastforce) - (Math.trunc(otmp.owt / 40))));
+            tmp = int(unsigned(unsigned(blastforce) - Math.trunc(otmp.owt / 40)));
             if (tmp < 1)
                 tmp = 1;
             stmp.range = rnd(tmp); /* anywhere up to that determ. by wt */
@@ -906,7 +892,7 @@ scatter(
         if (stmp.obj) {
             if (x != sx || y != sy) {
                 total += stmp.obj.quan;
-                obj_left_shop = (((shop_origin && !costly_spot(x, y)) ? 1 : 0));
+                obj_left_shop = (shop_origin && !costly_spot(x, y) ? 1 : 0);
             }
             if (!flooreffects(stmp.obj, x, y, _("land"))) {
                 if (obj_left_shop
@@ -937,7 +923,7 @@ scatter(
     }
     newsym(sx, sy);
     if (u_at(sx, sy) && u.uundetected && hides_under(gy.youmonst.data))
-        void hideunder(gy.youmonst);
+        hideunder(gy.youmonst);
     if (((mtmp = m_at(sx, sy)) != null) && mtmp.mtrapped)
         mtmp.mtrapped = 0;
     maybe_unhide_at(sx, sy);
@@ -958,21 +944,18 @@ scatter(
  *
  * For now, just perform a "regular" explosion.
  */
-export function /* void */
-splatter_burning_oil(x, y, diluted_oil)
-{
+export function splatter_burning_oil(x, y, diluted_oil) { /* void */
     let dmg = d(diluted_oil ? 3 : 4, 4);
 
 /* ZT_SPELL(ZT_FIRE) = ZT_SPELL(AD_FIRE-1) = 10+(2-1) = 11 */
 
     explode(x, y, ZT_SPELL_O_FIRE, dmg, BURNING_OIL, EXPL_FIERY);
-} export const ZT_SPELL_O_FIRE = 11;
+}
+export const ZT_SPELL_O_FIRE = 11;
 
 /* lit potion of oil is exploding; extinguish it as a light source before
    possibly killing the hero and attempting to save bones */
-export function /* void */
-explode_oil(obj, x, y)
-{
+export function explode_oil(obj, x, y) { /* void */
     let diluted_oil = obj.oeroded;
 
     if (!obj.lamplit)
@@ -983,9 +966,7 @@ explode_oil(obj, x, y)
 }
 
 /* Convert a damage type into an explosion display type. */
-export function /* int */
-adtyp_to_expltype(adtyp)
-{
+export function adtyp_to_expltype(adtyp) { /* int */
     switch(adtyp) {
     case AD_ELEC:
         /* Electricity isn't magical, but there currently isn't an electric
@@ -1015,11 +996,9 @@ adtyp_to_expltype(adtyp)
  * or gas spore, not a yellow light or similar).
  * This is some common code between explmu() and explmm().
  */
-export function /* void */
-mon_explodes(
+export function mon_explodes(
     mon,
-    mattk)
-{
+    mattk) { /* void */
     let dmg;
     let type;
     if (mattk.damn) {
@@ -1055,7 +1034,7 @@ mon_explodes(
 
     /* This might end up killing you, too; you never know...
      * also, it is used in explode() messages */
-    void sprintf(svk.killer.name, _("%s explosion"), s_suffix(pmname(mon.data, Mgender(mon))))
+    sprintf(svk.killer.name, _("%s explosion"), s_suffix(pmname(mon.data, Mgender(mon))))
 ;
     svk.killer.format = KILLED_BY_AN;
 
@@ -1067,248 +1046,94 @@ mon_explodes(
 }
 
 /*explode.c*/
+
 import { A_STR } from "./attrib.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { S_expl_bc } from "./defsym.h.js";
-import { S_expl_bl } from "./defsym.h.js";
-import { S_expl_br } from "./defsym.h.js";
-import { S_expl_mc } from "./defsym.h.js";
-import { S_expl_ml } from "./defsym.h.js";
-import { S_expl_mr } from "./defsym.h.js";
-import { S_expl_tc } from "./defsym.h.js";
-import { S_expl_tl } from "./defsym.h.js";
-import { S_expl_tr } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { DISP_BEAM } from "./display.h.js";
-import { DISP_CHANGE } from "./display.h.js";
-import { DISP_END } from "./display.h.js";
-import { EXPL_FIERY } from "./display.h.js";
-import { EXPL_FROSTY } from "./display.h.js";
-import { EXPL_MAGICAL } from "./display.h.js";
-import { EXPL_NOXIOUS } from "./display.h.js";
-import { SHIELD_COUNT } from "./display.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { cmap_to_glyph } from "./display.h.macros.js";
-import { explosion_to_glyph } from "./display.h.macros.js";
-import { PLNMSG_CAUGHT_IN_EXPLOSION } from "./flag.h.js";
-import { PLNMSG_TOWER_OF_FLAME } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
-import { BURNING } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MAY_DESTROY } from "./hack.h.js";
-import { MAY_FRACTURE } from "./hack.h.js";
-import { MAY_HITMON } from "./hack.h.js";
-import { MAY_HITYOU } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { PHYS_EXPL_TYPE } from "./hack.h.js";
-import { VIS_EFFECTS } from "./hack.h.js";
-import { XKILL_GIVEMSG } from "./hack.h.js";
-import { XKILL_NOCONDUCT } from "./hack.h.js";
-import { XKILL_NOCORPSE } from "./hack.h.js";
-import { XKILL_NOMSG } from "./hack.h.js";
+import {
+    SCROLL_CLASS, S_expl_bc, S_expl_bl, S_expl_br, S_expl_mc, S_expl_ml, S_expl_mr, S_expl_tc,
+    S_expl_tl, S_expl_tr, WAND_CLASS,
+} from "./defsym.h.js";
+import {
+    DISP_BEAM, DISP_CHANGE, DISP_END, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, EXPL_NOXIOUS,
+    SHIELD_COUNT,
+} from "./display.h.js";
+import { canspotmon, cmap_to_glyph, explosion_to_glyph } from "./display.h.macros.js";
+import { PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME } from "./flag.h.js";
+import { BUFSZ, FALSE, LARGEST_INT, TRUE, boolean, coordxy } from "./global.h.js";
+import {
+    BURNING, DIED, KILLED_BY, KILLED_BY_AN, MAY_DESTROY, MAY_FRACTURE, MAY_HITMON, MAY_HITYOU,
+    NO_KILLER_PREFIX, N_DIRS, PHYS_EXPL_TYPE, VIS_EFFECTS, XKILL_GIVEMSG, XKILL_NOCONDUCT,
+    XKILL_NOCORPSE, XKILL_NOMSG,
+} from "./hack.h.js";
 import { Maybe_Half_Phys } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_DISE } from "./monattk.h.js";
-import { AD_DISN } from "./monattk.h.js";
-import { AD_DRCO } from "./monattk.h.js";
-import { AD_DRDX } from "./monattk.h.js";
-import { AD_DREN } from "./monattk.h.js";
-import { AD_DRST } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_ENCH } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_PEST } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { AD_RBRE } from "./monattk.h.js";
-import { AD_SPC2 } from "./monattk.h.js";
-import { AD_SPEL } from "./monattk.h.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { completelyburns } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { monstseesu_ad } from "./monst.h.macros.js";
-import { monstunseesu_ad } from "./monst.h.macros.js";
-import { resists_acid } from "./monst.h.macros.js";
-import { resists_cold } from "./monst.h.macros.js";
-import { resists_disint } from "./monst.h.macros.js";
-import { resists_elec } from "./monst.h.macros.js";
-import { resists_fire } from "./monst.h.macros.js";
-import { resists_poison } from "./monst.h.macros.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import {
+    AD_ACID, AD_COLD, AD_DISE, AD_DISN, AD_DRCO, AD_DRDX, AD_DREN, AD_DRST, AD_ELEC, AD_ENCH,
+    AD_FIRE, AD_MAGM, AD_PEST, AD_PHYS, AD_RBRE, AD_SPC2, AD_SPEL,
+} from "./monattk.h.js";
+import {
+    bigmonst, completelyburns, digests, hides_under, is_demon, nonliving,
+} from "./mondata.h.macros.js";
+import {
+    DEADMONSTER, engulfing_u, is_vampshifter, monstseesu_ad, monstunseesu_ad, resists_acid,
+    resists_cold, resists_disint, resists_elec, resists_fire, resists_poison,
+} from "./monst.h.macros.js";
+import { PM_CLERIC, PM_HEALER, PM_KNIGHT, PM_MONK, PM_WIZARD } from "./monsters.h.js";
 import { LOST_EXPLODING } from "./obj.h.js";
-import { BURNING_OIL } from "./objclass.h.js";
-import { GLASS } from "./objclass.h.js";
-import { MON_EXPLODE } from "./objclass.h.js";
-import { RAY } from "./objclass.h.js";
-import { TRAP_EXPLODE } from "./objclass.h.js";
-import { BOULDER } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { SCR_FIRE } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { WAN_DIGGING } from "./objects.h.js";
-import { WAN_MAGIC_MISSILE } from "./objects.h.js";
-import { WAN_SLEEP } from "./objects.h.js";
+import { BURNING_OIL, GLASS, MON_EXPLODE, RAY, TRAP_EXPLODE } from "./objclass.h.js";
+import {
+    BOULDER, EGG, GOLD_PIECE, POT_OIL, SCR_FIRE, STATUE, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP,
+} from "./objects.h.js";
 import { STONE } from "./rm.h.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { ZAP_POS } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
+import { IS_SINK, ZAP_POS, levl, m_at } from "./rm.h.macros.js";
 import { STATUE_TRAP } from "./trap.h.js";
 import { cansee } from "./vision.h.macros.js";
 import { nh_delay_output } from "./winprocs.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhim } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Acid_resistance } from "./youprop.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { Cold_resistance } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Disint_resistance } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invulnerable } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Shock_resistance } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { Role_switch, Upolyd, next2u, u_at, uhim, uhis } from "./you.h.macros.js";
+import {
+    Acid_resistance, Antimagic, Cold_resistance, Deaf, Disint_resistance, Fire_resistance,
+    Hallucination, Invulnerable, Poison_resistance, Shock_resistance,
+} from "./youprop.h.macros.js";
+import { char, int, ord, schar, short, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { abs, free, sprintf, strchr, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, array_of, ptr_to, ref_of, sizeof_member, struct, view_of } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
 import { alloc } from "./alloc.js";
 import { exercise } from "./attrib.js";
 import { isok } from "./cmd.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gt } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { shield_static } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
-import { curs_on_u } from "./display.js";
-import { map_invisible } from "./display.js";
-import { newsym } from "./display.js";
-import { show_glyph } from "./display.js";
-import { tmp_at } from "./display.js";
-import { unmap_invisible } from "./display.js";
+import {
+    disp, flags, gb, gi, gm, gt, gy, iflags, shield_static, svc, svk, svl, u, xdir, ydir,
+} from "./decl.js";
+import {
+    curs_on_u, map_invisible, newsym, show_glyph, tmp_at, unmap_invisible,
+} from "./display.js";
 import { flooreffects } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
+import { Mgender, Monnam, pmname, rndmonnam } from "./do_name.js";
 import { breaks } from "./dothrow.js";
 import { done } from "./end.js";
-import { in_rooms } from "./hack.js";
-import { nomul } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { sobj_at } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { golemeffects } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { mondead } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { seemimic } from "./mon.js";
-import { setmangry } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { xkilled } from "./mon.js";
-import { resists_magm } from "./mondata.js";
-import { sticks } from "./mondata.js";
+import { in_rooms, nomul } from "./hack.js";
+import { dist2, lowc, s_suffix, strncmpi, strstri } from "./hacklib.js";
+import { sobj_at, stackobj } from "./invent.js";
+import { obj_extract_self, place_object, splitobj } from "./mkobj.js";
+import {
+    golemeffects, hideunder, maybe_unhide_at, mondead, monkilled, seemimic, setmangry, wake_nearto,
+    xkilled,
+} from "./mon.js";
+import { resists_magm, sticks } from "./mondata.js";
 import { closed_door } from "./monmove.js";
-import { ohitmon } from "./mthrowu.js";
-import { thitu } from "./mthrowu.js";
+import { ohitmon, thitu } from "./mthrowu.js";
 import { objects } from "./objects.js";
 import { Tobjnam } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { rehumanize } from "./polyself.js";
-import { ugolemeffects } from "./polyself.js";
+import { You, You_hear, impossible, pline, pline_The } from "./pline.js";
+import { rehumanize, ugolemeffects } from "./polyself.js";
 import { unpunish } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { addtobill } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { credit_report } from "./shk.js";
-import { pay_for_damage } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { burn_away_slime } from "./timeout.js";
-import { end_burn } from "./timeout.js";
-import { burnarmor } from "./trap.js";
-import { deltrap } from "./trap.js";
-import { ignite_items } from "./trap.js";
-import { t_at } from "./trap.js";
+import { d, rn2, rnd } from "./rnd.js";
+import { addtobill, costly_spot, credit_report, pay_for_damage, shop_keeper } from "./shk.js";
+import { burn_away_slime, end_burn } from "./timeout.js";
+import { burnarmor, deltrap, ignite_items, t_at } from "./trap.js";
 import { dmgval } from "./weapon.js";
-import { break_statue } from "./zap.js";
-import { destroy_items } from "./zap.js";
-import { fracture_rock } from "./zap.js";
-import { resist } from "./zap.js";
-import { zap_over_floor } from "./zap.js";
+import { break_statue, destroy_items, fracture_rock, resist, zap_over_floor } from "./zap.js";

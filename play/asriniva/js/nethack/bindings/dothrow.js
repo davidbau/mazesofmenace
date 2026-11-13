@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/dothrow.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Native memory views, header ABI and per-Module backing for DOTHROW JS bodies.
@@ -25,11 +27,13 @@ export function createDothrowEnvironment(services){
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of dothrow.dothrowStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callDothrow(services,name,...args){
  let env=states.get(services.moduleKey);if(!env){env=createDothrowEnvironment(services);states.set(services.moduleKey,env);}
  Object.setPrototypeOf(env,services);
- const fn=dothrow[name];if(typeof fn!=='function')throw Error('Unknown original DOTHROW function '+name);
- const stackFrame=services.stackSave();try{return withCEnvironment(env,fn,...args)??0;}finally{services.stackRestore(stackFrame);}
+ const fn=env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original DOTHROW function '+name);
+ const stackFrame=services.stackSave();try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
 }

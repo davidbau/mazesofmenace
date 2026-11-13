@@ -3,13 +3,6 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
 /*
  *  Adding new mextra structures:
  *
@@ -168,7 +161,6 @@ export const struct_emin = struct("struct_emin", {
     export const UNDEF = 6;
     export const TABU = 7;
 
-
 export const struct_edog = struct("struct_edog", {
     parentmid: unsigned, /* make clobber-detection possible */
     droptime: long, /* moment dog dropped object */
@@ -214,21 +206,8 @@ export const struct_mextra = struct("struct_mextra", {
                     * obj->spe (fruit index) for one posing as a slime mold,
                     * or an alignment mask for one posing as an altar */
 });
+
 import { aligntyp } from "./align.h.js";
-import { COLNO } from "./global.h.js";
-import { PL_NSIZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { COLNO, PL_NSIZ, ROWNO, boolean, coordxy, xint8 } from "./global.h.js";
+import { char, int, long, schar, short, uchar, unsigned } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

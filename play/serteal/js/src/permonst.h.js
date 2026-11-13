@@ -3,14 +3,6 @@
 /*-Copyright (c) Kenneth Lorber, Kensington, Maryland, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
         /* "not a monster" */
         /* first monster in mons */
         /* leave statue instead of corpse;
@@ -23,7 +15,6 @@
         /* [normal] < ~ < [special] */
                 /* mons[SPECIAL_PM] through mons[NUMMONS-1], inclusive, are
                    never generated randomly and cannot be polymorphed into */
-
 
 /*     This structure covers all attack forms.
  *     aatyp is the gross attack type (eg. claw, bite, breath, ...)
@@ -46,12 +37,6 @@ export const struct_attack = struct("struct_attack", {
  */
 
 export const NATTK = 6;
-
-
-
-
-
-
 
 export const struct_permonst = struct("struct_permonst", {
     pmnames: array_of(ptr_to(char), NUM_MGENDERS),
@@ -81,15 +66,8 @@ export const NORMAL_SPEED = 12;
 
 /* the master list of
                                                     * monster types */
+
 import { aligntyp } from "./align.h.js";
 import { NUM_MGENDERS } from "./monflag.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, int, schar, uchar, ulong, unsigned, ushort } from "../rt/ctypes.js";
+import { array_of, ptr_to, struct } from "../rt/struct.js";

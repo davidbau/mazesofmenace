@@ -2,21 +2,26 @@
 import abi from './dogmove-abi.json' with{type:'json'};
 import * as source from '../ported/dogmove.js';
 import{createDogmoveEnvironment}from'./bindings/dogmove.js';
-import{withCEnvironment}from'../c-runtime/context.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativePetMovement} from './native/dogmove.js';
+import {installNativeDependency,createNativeAbiCaster} from './native/execution.js';
 export function enableDogmove(environment,layouts){
  const{services,memory,ctypes,transport,functions}=environment,L=layouts.dogmove,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v);
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review DOGMOVE ABI '+k);
- const resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n);
+ const nativeState=nativeStateFor(environment);
+ const resolve=n=>nativeState.functions.get(n)??(environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n));
  const local=Object.create(services),schemas=Object.values(abi.schemas),storage=[environment.allocateGlobal('dogmove.dummy',ctypes.size('struct obj')),environment.allocateGlobal('dogmove.nofetch',4)];
  const field=(k,p,i)=>{const row=schemas[k],f=row?.fields[i];if(!f)throw new Error('Unknown DOGMOVE field '+k+':'+i);return{row,f,at:ctypes.locate(row.ctype,address(p),f.name).at};};
- const scalar=(t,v)=>{t=ctypes.canonical(t);if(t.includes('*'))return text(v);if(t==='signed char'||t==='char')return transport.char(v);if(t==='unsigned char')return transport.uchar(v);if(t==='short')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int')return transport.uint(v);if(ctypes.size(t)===8)return t.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
+ const cast=createNativeAbiCaster(ctypes,transport,text),scalar=(t,v)=>cast(t)(v);
  for(const[name,target]of Object.entries(abi.calls)){
   const p=abi.dependencies[target];if(!p)throw new Error('Missing DOGMOVE dependency type '+target);const m=p.match(/^(.+?)\s*\((.*)\)$/),types=m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void');
-  local[name]=(...args)=>{const v=resolve(target)(...args.map((v,i)=>scalar(types[i],v)));return ctypes.canonical(m[1])==='void'?undefined:scalar(m[1],v);};
+  const arguments_=types.map(cast),result=cast(m[1]);
+  const legacy=(...args)=>result(resolve(target)(...args.map((v,i)=>arguments_[i](v))));
+  installNativeDependency(local,name,target,nativeState,legacy);
  }
- let context;
+ let context,native;
  const prepare=(name,args)=>args.map((v,i)=>{const t=abi.types[name]?.parameters[i]?.canonical;if(!t)throw new Error('Unknown DOGMOVE argument '+name+':'+i);const m=t.match(/^struct (\w+) \*$/);if(m)return context.view(m[1],address(v));if(name==='wantdoor'&&i===2)return address(v);return scalar(t,v);});
- const invoke=(name,args)=>transport.scoped(()=>withCEnvironment(context,()=>{const v=source[name](...prepare(name,args));return v?.address??v;}));
+ const invoke=(name,args)=>{const saved=nativeState.depth?undefined:transport.stackSave();nativeState.enter();try{const v=native[name](...prepare(name,args));return v?.address??v;}finally{try{nativeState.leave();}finally{if(saved!==undefined)transport.stackRestore(saved);}}};
  Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,
   global:i=>{if(i<abi.globals.length)return environment.requireGlobal(abi.globals[i].name);if(storage[i-abi.globals.length]===undefined)throw new Error('Unknown DOGMOVE storage '+i);return storage[i-abi.globals.length];},
   read:(k,p,i)=>{const{row,f,at}=field(k,p,i);return f.d.s||f.d.a?BigInt(at):BigInt(ctypes.getField(row.ctype,address(p),f.name,f.ctype));},
@@ -34,7 +39,9 @@ export function enableDogmove(environment,layouts){
   impossible:(fmt,...a)=>{if(!a.length)return resolve('impossible')(text('%s'),text(fmt));if(a.length===7)return resolve('impossible')(text(fmt),transport.int(a[0]),transport.int(a[1]),transport.long(a[2]),transport.long(a[3]),transport.int(a[4]),transport.uint(a[5]),transport.uint(a[6]));throw new Error('Review DOGMOVE impossible signature');},
  });
  for(const r of abi.globals)Object.defineProperty(local,r.name,{value:undefined,writable:true,configurable:true});
- context=createDogmoveEnvironment(local,L,source);
- environment.register('dogmove',Object.fromEntries(abi.public.map(n=>[n,(...args)=>invoke(n,args)])),local);
- return{context,services:local,storage,exports:abi.public,call:(name,...args)=>invoke(name,args),limitation:'Whole original DOGMOVE context and private storage connected; reached movement, eating, combat and world effects require real foreign owners and focused C acceptance.'};
+ local.nativeOwner=nativeState;local.nativeRecordLayouts=Object.fromEntries(schemas.map(row=>[row.ctype.replace(/^(struct |union )/,''),ctypes.record(row.ctype)]));
+ const namespace={...source};
+ context=createDogmoveEnvironment(local,L,namespace);native=createNativePetMovement(context);Object.assign(namespace,native);
+ environment.register('dogmove',Object.fromEntries(abi.public.map(n=>{let started=false;const call=(...args)=>{if(!started){environment.startModule('dogmove');started=true;}return invoke(n,args);};call.nativeState=nativeState;call.nativeDirect=true;nativeState.functions.set(n,call);return[n,call];})),local);
+ return{context,native,services:local,storage,exports:abi.public,call:(name,...args)=>invoke(name,args),limitation:'Native DOGMOVE uses canonical actors and original private storage; finite original-C and recording acceptance is reported separately.'};
 }

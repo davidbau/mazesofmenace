@@ -104,11 +104,29 @@ export class CaptureLog {
     return this.units + 1;
   }
 
-  getScreens() {
-    const limit = this.stepLimit();
+  /** How many of the screens so far are kept once `units` keys have been typed. */
+  keptScreens(units = this.units) {
+    const limit = units + 1;
     let n = this.screens.length;
     while (n > 0 && this.screenSteps[n - 1] >= limit) n--;
+    return n;
+  }
+
+  getScreens() {
+    const n = this.keptScreens();
     return n === this.screens.length ? this.screens : this.screens.slice(0, n);
+  }
+
+  /** What a player sees once `units` keys have been typed: the last kept screen, or null. */
+  shownAt(units = this.units) {
+    const n = this.keptScreens(units);
+    return n ? { screen: this.screens[n - 1], cursor: this.cursors[n - 1] } : null;
+  }
+
+  /** Forget every key after the first `units` (and their bytes, `bytes` in all). */
+  dropKeysAfter(units, bytes) {
+    this.keys.length = bytes;
+    this.units = units;
   }
 
   getCursors() {

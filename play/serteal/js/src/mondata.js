@@ -3,15 +3,12 @@
 /*-Copyright (c) Robert Patrick Rankin, 2011. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
 /*
  *      These routines provide basic data for any type of monster.
  */
 
 /* set up an individual monster's base type (initial creation, shapechange) */
-export function /* void */
-set_mon_data(mon, ptr)
-{
+export function set_mon_data(mon, ptr) { /* void */
     let new_speed, old_speed = mon.data ? mon.data.mmove : 0;
     let movement_p = (mon == gy.youmonst) ? ref_of(u, "umovement") : ref_of(mon, "movement");
 
@@ -38,9 +35,7 @@ set_mon_data(mon, ptr)
 }
 
 /* does monster-type have any attack for a specific type of damage? */
-export function /* struct attack * */
-attacktype_fordmg(ptr, atyp, dtyp)
-{
+export function attacktype_fordmg(ptr, atyp, dtyp) { /* struct attack * */
     let a;
 
     for (a = ptr_add(ptr.mattk[0], 0); a < ptr_add(ptr.mattk[0], NATTK); a = ptr_add(a, 1))
@@ -50,16 +45,12 @@ attacktype_fordmg(ptr, atyp, dtyp)
 }
 
 /* does monster-type have a particular type of attack */
-export function /* boolean */
-attacktype(ptr, atyp)
-{
+export function attacktype(ptr, atyp) { /* boolean */
     return attacktype_fordmg(ptr, atyp, AD_ANY) ? TRUE : FALSE;
 }
 
 /* returns True if monster doesn't attack, False if it does */
-export function /* boolean */
-noattacks(ptr)
-{
+export function noattacks(ptr) { /* boolean */
     let i;
     let mattk = ptr.mattk[0];
 
@@ -76,9 +67,7 @@ noattacks(ptr)
 }
 
 /* does monster-type transform into something else when petrified? */
-export function /* boolean */
-poly_when_stoned(ptr)
-{
+export function poly_when_stoned(ptr) { /* boolean */
     /* non-stone golems turn into stone golems unless latter is genocided */
     return (+(is_golem(ptr) && ptr != mons[PM_STONE_GOLEM]
                       && !(svm.mvitals[PM_STONE_GOLEM].mvflags & G_GENOD)));
@@ -87,12 +76,11 @@ poly_when_stoned(ptr)
 
 /* is 'mon' (possibly youmonst) protected against damage type 'adtype' via
    wielded weapon or worn dragon scales? [or by virtue of being a dragon?] */
-export function /* boolean */
-defended(mon, adtyp)
-{ const $frame = stack_frame(); try {
+export function defended(mon, adtyp) { /* boolean */
+    const $frame = stack_frame(); try {
     let o, otemp = stack_struct(struct_obj);
     let mndx;
-    let is_you = (+(mon == gy.youmonst));
+    let is_you = +(mon == gy.youmonst);
 
     /* is 'mon' wielding an artifact that protects against 'adtyp'? */
     o = is_you ? uwep : MON_WEP(mon);
@@ -121,16 +109,15 @@ defended(mon, adtyp)
         return TRUE;
 
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns True if monster resists particular elemental damage;
    handles 'carry' effects of artifacts as well as worn/wielded items */
-export function /* boolean */
-Resists_Elem(mon, propindx)
-{
+export function Resists_Elem(mon, propindx) { /* boolean */
     let o;
     let slotmask;
-    let is_you = (+(mon == gy.youmonst));
+    let is_you = +(mon == gy.youmonst);
     let u_resist = 0, damgtype = 0, rsstmask = 0;
 
     /*
@@ -151,8 +138,8 @@ Resists_Elem(mon, propindx)
     case STONE_RES:  /* 8 */
         damgtype = propindx + 1; /* valid for propindx 1..8, damgtype 2..9 */
         rsstmask = 1 << (propindx - 1); /* valid for propindx 1..8 */
-        u_resist = ((u.uprops[propindx].intrinsic
-                   || u.uprops[propindx].extrinsic) ? 1 : 0);
+        u_resist = (u.uprops[propindx].intrinsic
+                   || u.uprops[propindx].extrinsic ? 1 : 0);
         break;
 
     /* accept these, but we expect callers to use their routines directly */
@@ -197,9 +184,7 @@ Resists_Elem(mon, propindx)
 }
 
 /* returns True if monster is drain-life resistant */
-export function /* boolean */
-resists_drli(mon)
-{
+export function resists_drli(mon) { /* boolean */
     let ptr = mon.data;
 
     if (is_undead(ptr) || is_demon(ptr) || is_were(ptr)
@@ -211,11 +196,9 @@ resists_drli(mon)
 }
 
 /* True if monster is magic-missile (actually, general magic) resistant */
-export function /* boolean */
-resists_magm(mon)
-{
+export function resists_magm(mon) { /* boolean */
     let ptr = mon.data;
-    let is_you = (+(mon == gy.youmonst));
+    let is_you = +(mon == gy.youmonst);
     let slotmask;
     let o;
 
@@ -244,11 +227,9 @@ resists_magm(mon)
 }
 
 /* True if monster is resistant to light-induced blindness */
-export function /* boolean */
-resists_blnd(mon)
-{
+export function resists_blnd(mon) { /* boolean */
     let ptr = mon.data;
-    let is_you = (+(mon == gy.youmonst));
+    let is_you = +(mon == gy.youmonst);
 
     if (is_you ? (Blind() || Unaware())
                : (mon.mblinded || !mon.mcansee || !haseyes(ptr)
@@ -274,11 +255,9 @@ resists_blnd(mon)
 /* True iff monster is resistant to light-induced blindness due to worn
    or wielded magical equipment (used to decide whether to show sparkle
    animation when resisting) */
-export function /* boolean */
-resists_blnd_by_arti(mon)
-{
+export function resists_blnd_by_arti(mon) { /* boolean */
     let o;
-    let is_you = (+(mon == gy.youmonst));
+    let is_you = +(mon == gy.youmonst);
 
     o = is_you ? uwep : MON_WEP(mon);
     if (o && o.oartifact && defends(AD_BLND, o))
@@ -288,12 +267,6 @@ resists_blnd_by_arti(mon)
         if (defends_when_carried(AD_BLND, o))
             return TRUE;
 
-
-
-
-
-
-
     return FALSE;
 }
 
@@ -301,14 +274,12 @@ resists_blnd_by_arti(mon)
    note: may return True when mdef is blind (e.g. new cream-pie attack)
    magr can be NULL.
 */
-export function /* boolean */
-can_blnd(
+export function can_blnd(
     magr,
     mdef,
     aatyp,
-    obj) /* aatyp == AT_WEAP, AT_SPIT */
-{
-    let is_you = (+(mdef == gy.youmonst));
+    obj) { /* boolean */ /* aatyp == AT_WEAP, AT_SPIT */
+    let is_you = +(mdef == gy.youmonst);
     let check_visor = FALSE;
     let o;
 
@@ -398,9 +369,7 @@ can_blnd(
 }
 
 /* returns True if monster can attack at range */
-export function /* boolean */
-ranged_attk(ptr)
-{
+export function ranged_attk(ptr) { /* boolean */
     let i;
 
     for (i = 0; i < NATTK; i++)
@@ -408,8 +377,6 @@ ranged_attk(ptr)
             return TRUE;
     return FALSE;
 }
-
-
 
 /*
  * If adding a new monster, include a guestimate for difficulty,
@@ -419,14 +386,10 @@ ranged_attk(ptr)
  * modify the 'mstrength()' algorithm to generate the guessed one).
  */
 
-
-
 /* This routine is designed to return an integer value which represents
    an approximation of monster strength.  It uses a similar method of
    determination as "experience()" to arrive at the strength. */
-export function /* int */
-mstrength(ptr)
-{
+export function mstrength(ptr) { /* int */
     let i, tmp2, n, tmp = ptr.mlevel;
 
     if (tmp > 49) /* special fixed hp monster */
@@ -441,18 +404,18 @@ mstrength(ptr)
         n++;
 
     /* for higher ac values */
-    n += (+(ptr.ac < 4));
-    n += (+(ptr.ac < 0));
+    n += +(ptr.ac < 4);
+    n += +(ptr.ac < 0);
 
     /* for very fast monsters */
-    n += (+(ptr.mmove >= 18));
+    n += +(ptr.mmove >= 18);
 
     /* for each attack and "special" attack */
     for (i = 0; i < NATTK; i++) {
         tmp2 = ptr.mattk[i].aatyp;
-        n += (+(tmp2 > 0));
-        n += (+(tmp2 == AT_MAGC));
-        n += (((tmp2 == AT_WEAP && (ptr.mflags2 & M2_STRONG)) ? 1 : 0));
+        n += +(tmp2 > 0);
+        n += +(tmp2 == AT_MAGC);
+        n += (tmp2 == AT_WEAP && (ptr.mflags2 & M2_STRONG) ? 1 : 0);
         if (tmp2 == AT_EXPL) {
             let tmp3 = ptr.mattk[i].adtyp;
             /* {freezing,flaming,shocking} spheres are fairly weak but
@@ -470,8 +433,8 @@ mstrength(ptr)
             || (tmp2 == AD_DRDX) || (tmp2 == AD_DRCO) || (tmp2 == AD_WERE))
             n += 2;
         else if (strcmp(ptr.pmnames[NEUTRAL], _("grid bug")))
-            n += (+(tmp2 != AD_PHYS));
-        n += (+((ptr.mattk[i].damd * ptr.mattk[i].damn) > 23));
+            n += +(tmp2 != AD_PHYS);
+        n += +((ptr.mattk[i].damd * ptr.mattk[i].damn) > 23);
     }
 
     /* Leprechauns are a special case.  They have many hit dice so they can
@@ -491,15 +454,13 @@ mstrength(ptr)
     else if (n < 6)
         tmp += (Math.trunc(n / 3) + 1);
     else
-        tmp += (Math.trunc(n / 2));
+        tmp += Math.trunc(n / 2);
 
     return (tmp >= 0) ? tmp : 0;
 }
 
 /* returns True if monster can attack at range */
-function /* boolean */
-mstrength_ranged_attk(ptr)
-{
+function mstrength_ranged_attk(ptr) { /* boolean */
     let i, j;
     let atk_mask = (1 << AT_BREA) | (1 << AT_SPIT) | (1 << AT_GAZE);
 
@@ -511,61 +472,46 @@ mstrength_ranged_attk(ptr)
     return FALSE;
 }
 
-
 /* True if specific monster is especially affected by silver weapons */
-export function /* boolean */
-mon_hates_silver(mon)
-{
-    return (((is_vampshifter(mon) || hates_silver(mon.data)) ? 1 : 0));
+export function mon_hates_silver(mon) { /* boolean */
+    return (is_vampshifter(mon) || hates_silver(mon.data) ? 1 : 0);
 }
 
 /* True if monster-type is especially affected by silver weapons */
-export function /* boolean */
-hates_silver(ptr)
-{
+export function hates_silver(ptr) { /* boolean */
     return (+(is_were(ptr) || ptr.mlet == S_VAMPIRE || is_demon(ptr)
                       || ptr == mons[PM_SHADE]
                       || (ptr.mlet == S_IMP && ptr != mons[PM_TENGU])));
 }
 
 /* True if specific monster is especially affected by blessed objects */
-export function /* boolean */
-mon_hates_blessings(mon)
-{
-    return (((is_vampshifter(mon) || hates_blessings(mon.data)) ? 1 : 0));
+export function mon_hates_blessings(mon) { /* boolean */
+    return (is_vampshifter(mon) || hates_blessings(mon.data) ? 1 : 0);
 }
 
 /* True if monster-type is especially affected by blessed objects */
-export function /* boolean */
-hates_blessings(ptr)
-{
+export function hates_blessings(ptr) { /* boolean */
     return (+(is_undead(ptr) || is_demon(ptr)));
 }
 
 /* True if specific monster is especially affected by light-emitting weapons */
-export function /* boolean */
-mon_hates_light(mon)
-{
+export function mon_hates_light(mon) { /* boolean */
     return hates_light(mon.data);
 }
 
 /* True iff the type of monster pass through iron bars */
-export function /* boolean */
-passes_bars(mptr)
-{
-    return (((passes_walls(mptr) || amorphous(mptr) || unsolid(mptr)
+export function passes_bars(mptr) { /* boolean */
+    return (passes_walls(mptr) || amorphous(mptr) || unsolid(mptr)
                       || is_whirly(mptr) || verysmall(mptr)
                       /* rust monsters and some puddings can destroy bars */
                       || dmgtype(mptr, AD_RUST) || dmgtype(mptr, AD_CORR)
                       /* rock moles can eat bars */
                       || metallivorous(mptr)
-                      || (slithy(mptr) && !bigmonst(mptr))) ? 1 : 0));
+                      || (slithy(mptr) && !bigmonst(mptr)) ? 1 : 0);
 }
 
 /* returns True if monster can blow (whistle, etc) */
-export function /* boolean */
-can_blow(mtmp)
-{
+export function can_blow(mtmp) { /* boolean */
     if ((is_silent(mtmp.data) || mtmp.data.msound == MS_BUZZ)
         && (breathless(mtmp.data) || verysmall(mtmp.data)
             || !has_head(mtmp.data) || mtmp.data.mlet == S_EEL))
@@ -576,9 +522,7 @@ can_blow(mtmp)
 }
 
 /* for casting spells and reading scrolls while blind */
-export function /* boolean */
-can_chant(mtmp)
-{
+export function can_chant(mtmp) { /* boolean */
     if ((mtmp == gy.youmonst && Strangled())
         || is_silent(mtmp.data) || !has_head(mtmp.data)
         || mtmp.data.msound == MS_BUZZ || mtmp.data.msound == MS_BURBLE)
@@ -587,9 +531,7 @@ can_chant(mtmp)
 }
 
 /* True if mon is vulnerable to strangulation */
-export function /* boolean */
-can_be_strangled(mon)
-{
+export function can_be_strangled(mon) { /* boolean */
     let mamul;
     let nonbreathing, nobrainer;
 
@@ -611,34 +553,28 @@ can_be_strangled(mon)
         nobrainer = mindless(mon.data);
         /* monsters don't wear amulets of magical breathing,
            so second part doesn't achieve anything useful... */
-        nonbreathing = (+(breathless(mon.data)
+        nonbreathing = +(breathless(mon.data)
                         || ((mamul = which_armor(mon, W_AMUL)) != null
-                            && (mamul.otyp == AMULET_OF_MAGICAL_BREATHING))));
+                            && (mamul.otyp == AMULET_OF_MAGICAL_BREATHING)));
     }
     return (+(!nobrainer || !nonbreathing));
 }
 
 /* returns True if monster can track well */
-export function /* boolean */
-can_track(ptr)
-{
+export function can_track(ptr) { /* boolean */
     if (u_wield_art(ART_EXCALIBUR))
         return TRUE;
     return haseyes(ptr);
 }
 
 /* creature will slide out of armor */
-export function /* boolean */
-sliparm(ptr)
-{
+export function sliparm(ptr) { /* boolean */
     return (+(is_whirly(ptr) || ptr.msize <= MZ_SMALL
                       || noncorporeal(ptr)));
 }
 
 /* creature will break out of armor */
-export function /* boolean */
-breakarm(ptr)
-{
+export function breakarm(ptr) { /* boolean */
     if (sliparm(ptr))
         return FALSE;
 
@@ -650,18 +586,14 @@ breakarm(ptr)
 }
 
 /* creature sticks other creatures it hits */
-export function /* boolean */
-sticks(ptr)
-{
-    return (((dmgtype(ptr, AD_STCK)
+export function sticks(ptr) { /* boolean */
+    return (dmgtype(ptr, AD_STCK)
                       || (dmgtype(ptr, AD_WRAP) && !attacktype(ptr, AT_ENGL))
-                      || attacktype(ptr, AT_HUGS)) ? 1 : 0));
+                      || attacktype(ptr, AT_HUGS) ? 1 : 0);
 }
 
 /* some monster-types can't vomit */
-export function /* boolean */
-cantvomit(ptr)
-{
+export function cantvomit(ptr) { /* boolean */
     /* rats and mice are incapable of vomiting; likewise with horses;
        which other creatures have the same limitation? */
     if (ptr.mlet == S_RODENT && ptr != mons[PM_ROCK_MOLE]
@@ -674,9 +606,7 @@ cantvomit(ptr)
 }
 
 /* number of horns this type of monster has on its head */
-export function /* int */
-num_horns(ptr)
-{
+export function num_horns(ptr) { /* int */
     switch (monsndx(ptr)) {
     case PM_HORNED_DEVIL: /* ? "more than one" */
     case PM_MINOTAUR:
@@ -696,9 +626,7 @@ num_horns(ptr)
 
 /* does monster-type deal out a particular type of damage from a particular
    type of attack? */
-export function /* struct attack * */
-dmgtype_fromattack(ptr, dtyp, atyp)
-{
+export function dmgtype_fromattack(ptr, dtyp, atyp) { /* struct attack * */
     let a;
 
     for (a = ptr_add(ptr.mattk[0], 0); a < ptr_add(ptr.mattk[0], NATTK); a = ptr_add(a, 1))
@@ -708,17 +636,13 @@ dmgtype_fromattack(ptr, dtyp, atyp)
 }
 
 /* does monster-type deal out a particular type of damage from any attack */
-export function /* boolean */
-dmgtype(ptr, dtyp)
-{
+export function dmgtype(ptr, dtyp) { /* boolean */
     return dmgtype_fromattack(ptr, dtyp, AT_ANY) ? TRUE : FALSE;
 }
 
 /* returns the maximum damage a defender can do to the attacker via
    a passive defense */
-export function /* int */
-max_passive_dmg(mdef, magr)
-{
+export function max_passive_dmg(mdef, magr) { /* int */
     let i, dmg, multi2 = 0;
     let adtyp;
 
@@ -767,9 +691,7 @@ max_passive_dmg(mdef, magr)
 }
 
 /* determine whether two monster types are from the same species */
-export function /* boolean */
-same_race(pm1, pm2)
-{
+export function same_race(pm1, pm2) { /* boolean */
     let let1 = pm1.mlet, let2 = pm2.mlet;
 
     if (pm1 == pm2)
@@ -794,20 +716,20 @@ same_race(pm1, pm2)
         return is_mind_flayer(pm2);
     if (let1 == S_KOBOLD || pm1 == mons[PM_KOBOLD_ZOMBIE]
         || pm1 == mons[PM_KOBOLD_MUMMY])
-        return (+(let2 == S_KOBOLD || pm2 == mons[PM_KOBOLD_ZOMBIE]
-                || pm2 == mons[PM_KOBOLD_MUMMY]));
+        return +(let2 == S_KOBOLD || pm2 == mons[PM_KOBOLD_ZOMBIE]
+                || pm2 == mons[PM_KOBOLD_MUMMY]);
     if (let1 == S_OGRE)
-        return (+(let2 == S_OGRE));
+        return +(let2 == S_OGRE);
     if (let1 == S_NYMPH)
-        return (+(let2 == S_NYMPH));
+        return +(let2 == S_NYMPH);
     if (let1 == S_CENTAUR)
-        return (+(let2 == S_CENTAUR));
+        return +(let2 == S_CENTAUR);
     if (is_unicorn(pm1))
         return is_unicorn(pm2);
     if (let1 == S_DRAGON)
-        return (+(let2 == S_DRAGON));
+        return +(let2 == S_DRAGON);
     if (let1 == S_NAGA)
-        return (+(let2 == S_NAGA));
+        return +(let2 == S_NAGA);
     /* other critters get steadily messier */
     if (is_rider(pm1))
         return is_rider(pm2); /* debatable */
@@ -817,7 +739,7 @@ same_race(pm1, pm2)
     if (pm1 == mons[PM_TENGU] || pm2 == mons[PM_TENGU])
         return FALSE;
     if (let1 == S_IMP)
-        return (+(let2 == S_IMP));
+        return +(let2 == S_IMP);
     /* and minor demons (imps) don't match major demons */
     else if (let2 == S_IMP)
         return FALSE;
@@ -825,17 +747,17 @@ same_race(pm1, pm2)
         return is_demon(pm2);
     if (is_undead(pm1)) {
         if (let1 == S_ZOMBIE)
-            return (+(let2 == S_ZOMBIE));
+            return +(let2 == S_ZOMBIE);
         if (let1 == S_MUMMY)
-            return (+(let2 == S_MUMMY));
+            return +(let2 == S_MUMMY);
         if (let1 == S_VAMPIRE)
-            return (+(let2 == S_VAMPIRE));
+            return +(let2 == S_VAMPIRE);
         if (let1 == S_LICH)
-            return (+(let2 == S_LICH));
+            return +(let2 == S_LICH);
         if (let1 == S_WRAITH)
-            return (+(let2 == S_WRAITH));
+            return +(let2 == S_WRAITH);
         if (let1 == S_GHOST)
-            return (+(let2 == S_GHOST));
+            return +(let2 == S_GHOST);
     } else if (is_undead(pm2))
         return FALSE;
 
@@ -857,10 +779,10 @@ same_race(pm1, pm2)
     }
     /* not caught by little/big handling */
     if (pm1 == mons[PM_GARGOYLE] || pm1 == mons[PM_WINGED_GARGOYLE])
-        return (+(pm2 == mons[PM_GARGOYLE]
-                || pm2 == mons[PM_WINGED_GARGOYLE]));
+        return +(pm2 == mons[PM_GARGOYLE]
+                || pm2 == mons[PM_WINGED_GARGOYLE]);
     if (pm1 == mons[PM_KILLER_BEE] || pm1 == mons[PM_QUEEN_BEE])
-        return (+(pm2 == mons[PM_KILLER_BEE] || pm2 == mons[PM_QUEEN_BEE]));
+        return +(pm2 == mons[PM_KILLER_BEE] || pm2 == mons[PM_QUEEN_BEE]);
 
     if (is_longworm(pm1))
         return is_longworm(pm2); /* handles tail */
@@ -879,9 +801,7 @@ const struct_alt_spl = struct("struct_alt_spl", {
 
 /* figure out what type of monster a user-supplied string is specifying;
    ignore anything past the monster name */
-export function /* int */
-name_to_mon(in_str, gender_name_var)
-{
+export function name_to_mon(in_str, gender_name_var) { /* int */
     return name_to_monplus(in_str, null, gender_name_var);
 }
 
@@ -889,12 +809,11 @@ name_to_mon(in_str, gender_name_var)
    return a pointer to whatever is past the monster name--necessary if
    caller wants to strip off the name and it matches one of the alternate
    names rather the canonical mons[].mname */
-export function /* int */
-name_to_monplus(
+export function name_to_monplus(
     in_str,
     remainder_p,
-    gender_name_var)
-{ const $frame = stack_frame(); try {
+    gender_name_var) { /* int */
+    const $frame = stack_frame(); try {
     /* Be careful.  We must check the entire string in case it was
      * something such as "ettin zombie corpse".  The calling routine
      * doesn't know about the "corpse" until the monster name has
@@ -931,14 +850,14 @@ name_to_monplus(
     term = str + slen;
 
     if ((s = strstri(str, _("vortices"))) != 0)
-        void strcpy(s + 4, _("ex"));
+        strcpy(s + 4, _("ex"));
     /* be careful with "ies"; "priest", "zombies" */
-    else if (slen > 3 && !strcmpi(term - 3, _("ies"))
-             && (slen < 7 || strcmpi(term - 7, _("zombies"))))
-        void strcpy(term - 3, _("y"));
+    else if (slen > 3 && !strncmpi((term - 3), _(("ies")), -1)
+             && (slen < 7 || strncmpi((term - 7), _(("zombies")), -1)))
+        strcpy(term - 3, _("y"));
     /* luckily no monster names end in fe or ve with ves plurals */
-    else if (slen > 3 && !strcmpi(term - 3, _("ves")))
-        void strcpy(term - 3, _("f"));
+    else if (slen > 3 && !strncmpi((term - 3), _(("ves")), -1))
+        strcpy(term - 3, _("f"));
 
     slen = strlen(str); /* length possibly needs recomputing */
 
@@ -1053,13 +972,13 @@ name_to_monplus(
                 break; /* exact match */
             } else if (slen > m_i_len
                        && (chars[str + m_i_len] == ord(' ')
-                           || !strcmpi(str + m_i_len, _("s"))
+                           || !strncmpi((str + m_i_len), _(("s")), -1)
                            || !strncmpi(str + m_i_len, _("s "), 2)
-                           || !strcmpi(str + m_i_len, _("'"))
+                           || !strncmpi((str + m_i_len), _(("'")), -1)
                            || !strncmpi(str + m_i_len, _("' "), 2)
-                           || !strcmpi(str + m_i_len, _("'s"))
+                           || !strncmpi((str + m_i_len), _(("'s")), -1)
                            || !strncmpi(str + m_i_len, _("'s "), 3)
-                           || !strcmpi(str + m_i_len, _("es"))
+                           || !strncmpi((str + m_i_len), _(("es")), -1)
                            || !strncmpi(str + m_i_len, _("es "), 3))) {
                 mntmp = i;
                 len[0] = int(m_i_len);
@@ -1082,13 +1001,12 @@ name_to_monplus(
             gender_name_var[0] = matchgend;
     }
     return mntmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* monster class from user input; used for genocide and controlled polymorph;
    returns 0 rather than MAXMCLASSES if no match is found */
-export function /* int */
-name_to_monclass(in_str, mndx_p)
-{
+export function name_to_monclass(in_str, mndx_p) { /* int */
     /* Single letters are matched against def_monsyms[].sym; words
        or phrases are first matched against def_monsyms[].explain
        to check class description; if not found there, then against
@@ -1139,7 +1057,7 @@ name_to_monclass(in_str, mndx_p)
         return i;
     } else {
         /* multiple characters */
-        if (!strcmpi(in_str, _("long"))) /* not enough to match "long worm" */
+        if (!strncmpi((in_str), _(("long")), -1)) /* not enough to match "long worm" */
             return 0; /* avoid false whole-word match with "long worm tail" */
         in_str = makesingular(in_str);
         /* check for special cases */
@@ -1176,9 +1094,7 @@ name_to_monclass(in_str, mndx_p)
 }
 
 /* returns 3 values (0=male, 1=female, 2=none) */
-export function /* int */
-gender(mtmp)
-{
+export function gender(mtmp) { /* int */
     if (is_neuter(mtmp.data))
         return 2;
     return mtmp.female;
@@ -1187,12 +1103,9 @@ gender(mtmp)
 /* Like gender(), but unseen humanoids are "it" rather than "he" or "she"
    and lower animals and such are "it" even when seen; hallucination might
    yield "they".  This is the one we want to use when printing messages. */
-export function /* int */
-pronoun_gender(
+export function pronoun_gender(
     mtmp,
-    pg_flags) /* flags&1: 'no it' unless neuter,
-                        * flags&2: random if hallucinating */
-{
+    pg_flags) { /* int */ /* flags&1: 'no it' unless neuter, * flags&2: random if hallucinating */
     let override_vis = (pg_flags & PRONOUN_NO_IT) ? TRUE : FALSE,
             hallu_rand = (pg_flags & PRONOUN_HALLU) ? TRUE : FALSE;
 
@@ -1207,9 +1120,7 @@ pronoun_gender(
 }
 
 /* used for nearby monsters when you go to another level */
-export function /* boolean */
-levl_follower(mtmp)
-{
+export function levl_follower(mtmp) { /* boolean */
     if (mtmp == u.usteed)
         return TRUE;
 
@@ -1221,8 +1132,8 @@ levl_follower(mtmp)
         return TRUE;
     /* stalking types follow, but won't when fleeing unless you hold
        the Amulet */
-    return ((((mtmp.data.mflags2 & M2_STALK)
-                      && (!mtmp.mflee || u.uhave.amulet)) ? 1 : 0));
+    return ((mtmp.data.mflags2 & M2_STALK)
+                      && (!mtmp.mflee || u.uhave.amulet) ? 1 : 0);
 }
 
 const grownups = static_array("grownups", array_of(short, 2), null, [
@@ -1264,8 +1175,6 @@ const grownups = static_array("grownups", array_of(short, 2), null, [
     [ PM_BABY_GOLD_DRAGON, PM_GOLD_DRAGON ],
     [ PM_BABY_SILVER_DRAGON, PM_SILVER_DRAGON ],
 
-
-
     [ PM_BABY_RED_DRAGON, PM_RED_DRAGON ],
     [ PM_BABY_WHITE_DRAGON, PM_WHITE_DRAGON ],
     [ PM_BABY_ORANGE_DRAGON, PM_ORANGE_DRAGON ],
@@ -1299,9 +1208,7 @@ const grownups = static_array("grownups", array_of(short, 2), null, [
     [ NON_PM, NON_PM ]
 ]);
 
-export function /* int */
-little_to_big(montype)
-{
+export function little_to_big(montype) { /* int */
     let i;
 
     for (i = 0; grownups[i][0] >= LOW_PM; i++)
@@ -1312,9 +1219,7 @@ little_to_big(montype)
     return montype;
 }
 
-export function /* int */
-big_to_little(montype)
-{
+export function big_to_little(montype) { /* int */
     let i;
 
     for (i = 0; grownups[i][0] >= LOW_PM; i++)
@@ -1327,9 +1232,7 @@ big_to_little(montype)
 
 /* determine whether two permonst indices are part of the same progression;
    existence of progressions with more than one step makes it a bit tricky */
-export function /* boolean */
-big_little_match(montyp1, montyp2)
-{
+export function big_little_match(montyp1, montyp2) { /* boolean */
     let l, b;
 
     /* simplest case: both are same pm */
@@ -1355,30 +1258,22 @@ big_little_match(montyp1, montyp2)
  * Returns correct pointer for non-polymorphed and polymorphed
  * player.  It does not return a pointer to player role character.
  */
-export function /* const struct permonst * */
-raceptr(mtmp)
-{
+export function raceptr(mtmp) { /* const struct permonst * */
     if (mtmp == gy.youmonst && !Upolyd())
         return mons[gu.urace.mnum];
     return mtmp.data;
 }
-
 
 const levitate = static_array("levitate", ptr_to(char), null, [ _("float"), _("Float"), _("wobble"), _("Wobble") ]);
 const flys = static_array("flys", ptr_to(char), null, [ _("fly"), _("Fly"), _("flutter"), _("Flutter") ]);
 const flyl = static_array("flyl", ptr_to(char), null, [ _("fly"), _("Fly"), _("stagger"), _("Stagger") ]);
 const slither = static_array("slither", ptr_to(char), null, [ _("slither"), _("Slither"), _("falter"), _("Falter") ]);
 
-
-
-
 const ooze = static_array("ooze", ptr_to(char), null, [ _("ooze"), _("Ooze"), _("tremble"), _("Tremble") ]);
 const immobile = static_array("immobile", ptr_to(char), null, [ _("wiggle"), _("Wiggle"), _("pulsate"), _("Pulsate") ]);
 const crawl = static_array("crawl", ptr_to(char), null, [ _("crawl"), _("Crawl"), _("falter"), _("Falter") ]);
 
-export function /* const char * */
-locomotion(ptr, def)
-{
+export function locomotion(ptr, def) { /* const char * */
     let locoindx = (chars[def] != highc(chars[def])) ? 0 : 1;
 
     return (is_floater(ptr) ? levitate[locoindx]
@@ -1391,9 +1286,7 @@ locomotion(ptr, def)
                         : def);
 }
 
-export function /* const char * */
-stagger(ptr, def)
-{
+export function stagger(ptr, def) { /* const char * */
     let locoindx = (chars[def] != highc(chars[def])) ? 2 : 3;
 
     return (is_floater(ptr) ? levitate[locoindx]
@@ -1407,9 +1300,7 @@ stagger(ptr, def)
 }
 
 /* return phrase describing the effect of fire attack on a type of monster */
-export function /* const char * */
-on_fire(mptr, mattk)
-{
+export function on_fire(mptr, mattk) { /* const char * */
     let what;
 
     switch (monsndx(mptr)) {
@@ -1445,9 +1336,7 @@ on_fire(mptr, mattk)
 }
 
 /* similar to on_fire(); creature is summoned in a cloud of <something> */
-export function /* const char * */
-msummon_environ(mptr, cloud)
-{
+export function msummon_environ(mptr, cloud) { /* const char * */
     let what;
     let mndx = ((mptr.mlet == S_ANGEL) ? PM_ANGEL
                 : (mptr.mlet == S_LIGHT) ? PM_YELLOW_LIGHT
@@ -1503,9 +1392,7 @@ msummon_environ(mptr, cloud)
  * creatures sense smells other ways (feelers, forked-tongues, etc).
  * We're assuming all insects can smell at a distance too.
  */
-export function /* boolean */
-olfaction(mdat)
-{
+export function olfaction(mdat) { /* boolean */
     if (is_golem(mdat)
         || mdat.mlet == S_EYE /* spheres  */
         || mdat.mlet == S_JELLY || mdat.mlet == S_PUDDING
@@ -1518,9 +1405,7 @@ olfaction(mdat)
 }
 
 /* Convert attack damage type AD_foo to M_SEEN_bar */
-export function /* unsigned long long */
-cvt_adtyp_to_mseenres(adtyp)
-{
+export function cvt_adtyp_to_mseenres(adtyp) { /* unsigned long long */
     switch (adtyp) {
     case AD_MAGM: return M_SEEN_MAGR;
     case AD_FIRE: return M_SEEN_FIRE;
@@ -1536,9 +1421,7 @@ cvt_adtyp_to_mseenres(adtyp)
 }
 
 /* Convert property resistance to M_SEEN_bar */
-export function /* unsigned long long */
-cvt_prop_to_mseenres(prop)
-{
+export function cvt_prop_to_mseenres(prop) { /* unsigned long long */
     switch (prop) {
     case ANTIMAGIC: return M_SEEN_MAGR;
     case FIRE_RES: return M_SEEN_FIRE;
@@ -1554,9 +1437,7 @@ cvt_prop_to_mseenres(prop)
 }
 
 /* Monsters in line of sight remember hero resisting effect M_SEEN_foo */
-export function /* void */
-monstseesu(seenres)
-{
+export function monstseesu(seenres) { /* void */
     let mtmp;
 
     if (seenres == M_SEEN_NOTHING || u.uswallow)
@@ -1568,9 +1449,7 @@ monstseesu(seenres)
 }
 
 /* Monsters in line of sight forget hero resistance to M_SEEN_foo */
-export function /* void */
-monstunseesu(seenres)
-{
+export function monstunseesu(seenres) { /* void */
     let mtmp;
 
     if (seenres == M_SEEN_NOTHING || u.uswallow)
@@ -1582,9 +1461,7 @@ monstunseesu(seenres)
 }
 
 /* give monster mtmp the same intrinsics hero has */
-export function /* void */
-give_u_to_m_resistances(mtmp)
-{
+export function give_u_to_m_resistances(mtmp) { /* void */
     let intr;
 
     /* convert the hero's current set of intrinsics to their monster
@@ -1603,43 +1480,35 @@ give_u_to_m_resistances(mtmp)
    (through the magic of the ring, of course) to fight
    for them much more easily than low-CHA ones.
 */
-export function /* boolean */
-resist_conflict(mtmp)
-{
+export function resist_conflict(mtmp) { /* boolean */
     /* always a small chance at 19 */
-    let resist_chance = ((((19) < ((ACURR(A_CHA) - mtmp.m_lev + u.ulevel))) ? (19) : ((ACURR(A_CHA) - mtmp.m_lev + u.ulevel))));
+    let resist_chance = (((19) < (ACURR(A_CHA) - mtmp.m_lev + u.ulevel)) ? (19) : (ACURR(A_CHA) - mtmp.m_lev + u.ulevel));
 
-    return (+(rnd(20) > resist_chance));
+    return +(rnd(20) > resist_chance);
 }
 
 /* does monster mtmp know traps of type ttyp */
-export function /* boolean */
-mon_knows_traps(mtmp, ttyp)
-{
+export function mon_knows_traps(mtmp, ttyp) { /* boolean */
     if (ttyp == ALL_TRAPS)
-        return boolean((mtmp.mtrapseen));
+        return boolean(mtmp.mtrapseen);
     else if (ttyp == NO_TRAP)
-        return +!boolean((mtmp.mtrapseen));
+        return +!boolean(mtmp.mtrapseen);
     else
-        return (+((mtmp.mtrapseen & (shl64(1, (ttyp - 1)))) != 0));
+        return +((mtmp.mtrapseen & shl64(1, (ttyp - 1))) != 0);
 }
 
 /* monster mtmp learns all traps of type ttyp */
-export function /* void */
-mon_learns_traps(mtmp, ttyp)
-{
+export function mon_learns_traps(mtmp, ttyp) { /* void */
     if (ttyp == ALL_TRAPS)
         mtmp.mtrapseen = ~0;
     else if (ttyp == NO_TRAP)
         mtmp.mtrapseen = 0;
     else
-        mtmp.mtrapseen = or64(mtmp.mtrapseen, (shl64(1, (ttyp - 1))));
+        mtmp.mtrapseen = or64(mtmp.mtrapseen, shl64(1, (ttyp - 1)));
 }
 
 /* monsters see a trap trigger, and remember it */
-export function /* void */
-mons_see_trap(ttmp)
-{
+export function mons_see_trap(ttmp) { /* void */
     let mtmp;
     let tx = ttmp.tx, ty = ttmp.ty;
     let maxdist = levl()[tx][ty].lit ? 7*7 : 2;
@@ -1656,9 +1525,7 @@ mons_see_trap(ttmp)
     }
 }
 
-export function /* int */
-get_atkdam_type(adtyp)
-{
+export function get_atkdam_type(adtyp) { /* int */
     if (adtyp == AD_RBRE) {
         let rnd_breath_typ = static_array("get_atkdam_type.rnd_breath_typ", int, null, [
             AD_MAGM, AD_FIRE, AD_COLD, AD_SLEE,
@@ -1669,443 +1536,118 @@ get_atkdam_type(adtyp)
 }
 
 /*mondata.c*/
+
 import { ART_EXCALIBUR } from "./artilist.h.js";
 import { A_CHA } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { DEF_INVISIBLE } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_BLOB } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_EYE } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_GHOST } from "./defsym.h.js";
-import { S_IMP } from "./defsym.h.js";
-import { S_JELLY } from "./defsym.h.js";
-import { S_KOBOLD } from "./defsym.h.js";
-import { S_LICH } from "./defsym.h.js";
-import { S_LIGHT } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_MIMIC_DEF } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_NAGA } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_PUDDING } from "./defsym.h.js";
-import { S_RODENT } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_VORTEX } from "./defsym.h.js";
-import { S_WORM } from "./defsym.h.js";
-import { S_WORM_TAIL } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
-import { S_XAN } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_invisible } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import {
+    ARMOR_CLASS, DEF_INVISIBLE, MAXMCLASSES, S_ANGEL, S_BLOB, S_CENTAUR, S_DEMON, S_DRAGON, S_EEL,
+    S_ELEMENTAL, S_EYE, S_FUNGUS, S_GHOST, S_IMP, S_JELLY, S_KOBOLD, S_LICH, S_LIGHT, S_MIMIC,
+    S_MIMIC_DEF, S_MUMMY, S_NAGA, S_NYMPH, S_OGRE, S_PUDDING, S_RODENT, S_VAMPIRE, S_VORTEX, S_WORM,
+    S_WORM_TAIL, S_WRAITH, S_XAN, S_ZOMBIE, S_invisible, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
+import { BUFSZ, FALSE, TRUE, boolean } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
 import { ROLL_FROM } from "./hack.h.macros.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_ANY } from "./monattk.h.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_CORR } from "./monattk.h.js";
-import { AD_DCAY } from "./monattk.h.js";
-import { AD_DISN } from "./monattk.h.js";
-import { AD_DRCO } from "./monattk.h.js";
-import { AD_DRDX } from "./monattk.h.js";
-import { AD_DRLI } from "./monattk.h.js";
-import { AD_DRST } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { AD_RBRE } from "./monattk.h.js";
-import { AD_RUST } from "./monattk.h.js";
-import { AD_SLEE } from "./monattk.h.js";
-import { AD_STCK } from "./monattk.h.js";
-import { AD_STON } from "./monattk.h.js";
-import { AD_WERE } from "./monattk.h.js";
-import { AD_WRAP } from "./monattk.h.js";
-import { AT_ANY } from "./monattk.h.js";
-import { AT_BITE } from "./monattk.h.js";
-import { AT_BOOM } from "./monattk.h.js";
-import { AT_BREA } from "./monattk.h.js";
-import { AT_BUTT } from "./monattk.h.js";
-import { AT_CLAW } from "./monattk.h.js";
-import { AT_ENGL } from "./monattk.h.js";
-import { AT_EXPL } from "./monattk.h.js";
-import { AT_GAZE } from "./monattk.h.js";
-import { AT_HUGS } from "./monattk.h.js";
-import { AT_KICK } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { AT_NONE } from "./monattk.h.js";
-import { AT_SPIT } from "./monattk.h.js";
-import { AT_STNG } from "./monattk.h.js";
-import { AT_TENT } from "./monattk.h.js";
-import { AT_TUCH } from "./monattk.h.js";
-import { AT_WEAP } from "./monattk.h.js";
+import {
+    AD_ACID, AD_ANY, AD_BLND, AD_COLD, AD_CORR, AD_DCAY, AD_DISN, AD_DRCO, AD_DRDX, AD_DRLI,
+    AD_DRST, AD_ELEC, AD_FIRE, AD_MAGM, AD_PHYS, AD_RBRE, AD_RUST, AD_SLEE, AD_STCK, AD_STON,
+    AD_WERE, AD_WRAP, AT_ANY, AT_BITE, AT_BOOM, AT_BREA, AT_BUTT, AT_CLAW, AT_ENGL, AT_EXPL,
+    AT_GAZE, AT_HUGS, AT_KICK, AT_MAGC, AT_NONE, AT_SPIT, AT_STNG, AT_TENT, AT_TUCH, AT_WEAP,
+} from "./monattk.h.js";
 import { DISTANCE_ATTK_TYPE } from "./monattk.h.macros.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { breathless } from "./mondata.h.macros.js";
-import { completelyburns } from "./mondata.h.macros.js";
-import { completelyrots } from "./mondata.h.macros.js";
-import { completelyrusts } from "./mondata.h.macros.js";
-import { has_head } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { hates_light } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_dwarf } from "./mondata.h.macros.js";
-import { is_elf } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_giant } from "./mondata.h.macros.js";
-import { is_gnome } from "./mondata.h.macros.js";
-import { is_golem } from "./mondata.h.macros.js";
-import { is_human } from "./mondata.h.macros.js";
-import { is_longworm } from "./mondata.h.macros.js";
-import { is_mind_flayer } from "./mondata.h.macros.js";
-import { is_minion } from "./mondata.h.macros.js";
-import { is_neuter } from "./mondata.h.macros.js";
-import { is_orc } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { is_silent } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { metallivorous } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
-import { unsolid } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { G_GENOD } from "./monflag.h.js";
-import { G_LGROUP } from "./monflag.h.js";
-import { G_SGROUP } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { M2_STALK } from "./monflag.h.js";
-import { M2_STRONG } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { MS_BURBLE } from "./monflag.h.js";
-import { MS_BUZZ } from "./monflag.h.js";
-import { MZ_SMALL } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { NUM_MGENDERS } from "./monflag.h.js";
-import { M_SEEN_ACID } from "./monst.h.js";
-import { M_SEEN_COLD } from "./monst.h.js";
-import { M_SEEN_DISINT } from "./monst.h.js";
-import { M_SEEN_ELEC } from "./monst.h.js";
-import { M_SEEN_FIRE } from "./monst.h.js";
-import { M_SEEN_MAGR } from "./monst.h.js";
-import { M_SEEN_NOTHING } from "./monst.h.js";
-import { M_SEEN_POISON } from "./monst.h.js";
-import { M_SEEN_REFL } from "./monst.h.js";
-import { M_SEEN_SLEEP } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { m_clearseenres } from "./monst.h.macros.js";
-import { m_setseenres } from "./monst.h.macros.js";
-import { mon_perma_blind } from "./monst.h.macros.js";
-import { mon_resistancebits } from "./monst.h.macros.js";
-import { resists_acid } from "./monst.h.macros.js";
-import { resists_cold } from "./monst.h.macros.js";
-import { resists_elec } from "./monst.h.macros.js";
-import { resists_fire } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_ACOLYTE } from "./monsters.h.js";
-import { PM_AIR_ELEMENTAL } from "./monsters.h.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_ANGEL } from "./monsters.h.js";
-import { PM_APPRENTICE } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_ARCH_LICH } from "./monsters.h.js";
-import { PM_ASMODEUS } from "./monsters.h.js";
-import { PM_ATTENDANT } from "./monsters.h.js";
-import { PM_BABY_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BABY_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_CROCODILE } from "./monsters.h.js";
-import { PM_BABY_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_BABY_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_BABY_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_BABY_LONG_WORM } from "./monsters.h.js";
-import { PM_BABY_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_PURPLE_WORM } from "./monsters.h.js";
-import { PM_BABY_RED_DRAGON } from "./monsters.h.js";
-import { PM_BABY_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_BABY_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_BABY_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_BALROG } from "./monsters.h.js";
-import { PM_BALUCHITHERIUM } from "./monsters.h.js";
-import { PM_BAT } from "./monsters.h.js";
-import { PM_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BLACK_NAGA } from "./monsters.h.js";
-import { PM_BLACK_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_BLACK_UNICORN } from "./monsters.h.js";
-import { PM_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_CAPTAIN } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CAVE_SPIDER } from "./monsters.h.js";
-import { PM_CHICKATRICE } from "./monsters.h.js";
-import { PM_CLAY_GOLEM } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_CROCODILE } from "./monsters.h.js";
-import { PM_DEATH } from "./monsters.h.js";
-import { PM_DEMILICH } from "./monsters.h.js";
-import { PM_DJINNI } from "./monsters.h.js";
-import { PM_DOG } from "./monsters.h.js";
-import { PM_DUST_VORTEX } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_DWARF_LEADER } from "./monsters.h.js";
-import { PM_DWARF_RULER } from "./monsters.h.js";
-import { PM_EARTH_ELEMENTAL } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_ELF_NOBLE } from "./monsters.h.js";
-import { PM_ELVEN_MONARCH } from "./monsters.h.js";
-import { PM_ENERGY_VORTEX } from "./monsters.h.js";
-import { PM_ERINYS } from "./monsters.h.js";
-import { PM_FIRE_ELEMENTAL } from "./monsters.h.js";
-import { PM_FIRE_VORTEX } from "./monsters.h.js";
-import { PM_FLAMING_SPHERE } from "./monsters.h.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_FREEZING_SPHERE } from "./monsters.h.js";
-import { PM_GARGOYLE } from "./monsters.h.js";
-import { PM_GIANT_BAT } from "./monsters.h.js";
-import { PM_GIANT_MIMIC } from "./monsters.h.js";
-import { PM_GIANT_RAT } from "./monsters.h.js";
-import { PM_GIANT_SPIDER } from "./monsters.h.js";
-import { PM_GLASS_GOLEM } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_GNOME_LEADER } from "./monsters.h.js";
-import { PM_GNOME_RULER } from "./monsters.h.js";
-import { PM_GOLDEN_NAGA } from "./monsters.h.js";
-import { PM_GOLDEN_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_GOLD_GOLEM } from "./monsters.h.js";
-import { PM_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_GRAY_OOZE } from "./monsters.h.js";
-import { PM_GRAY_UNICORN } from "./monsters.h.js";
-import { PM_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_GREEN_ELF } from "./monsters.h.js";
-import { PM_GREY_ELF } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA } from "./monsters.h.js";
-import { PM_GUARDIAN_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_HELL_HOUND } from "./monsters.h.js";
-import { PM_HELL_HOUND_PUP } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
-import { PM_HILL_ORC } from "./monsters.h.js";
-import { PM_HOBBIT } from "./monsters.h.js";
-import { PM_HOMUNCULUS } from "./monsters.h.js";
-import { PM_HORNED_DEVIL } from "./monsters.h.js";
-import { PM_HORSE } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREJACKAL } from "./monsters.h.js";
-import { PM_HUMAN_WERERAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREWOLF } from "./monsters.h.js";
-import { PM_ICE_VORTEX } from "./monsters.h.js";
-import { PM_KEYSTONE_KOP } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_KI_RIN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_KOBOLD } from "./monsters.h.js";
-import { PM_KOBOLD_LEADER } from "./monsters.h.js";
-import { PM_KOBOLD_MUMMY } from "./monsters.h.js";
-import { PM_KOBOLD_ZOMBIE } from "./monsters.h.js";
-import { PM_KOP_KAPTAIN } from "./monsters.h.js";
-import { PM_KOP_LIEUTENANT } from "./monsters.h.js";
-import { PM_KOP_SERGEANT } from "./monsters.h.js";
-import { PM_LARGE_CAT } from "./monsters.h.js";
-import { PM_LARGE_DOG } from "./monsters.h.js";
-import { PM_LARGE_KOBOLD } from "./monsters.h.js";
-import { PM_LARGE_MIMIC } from "./monsters.h.js";
-import { PM_LEMURE } from "./monsters.h.js";
-import { PM_LICH } from "./monsters.h.js";
-import { PM_LIEUTENANT } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_LURKER_ABOVE } from "./monsters.h.js";
-import { PM_MANES } from "./monsters.h.js";
-import { PM_MARILITH } from "./monsters.h.js";
-import { PM_MASTER_ASSASSIN } from "./monsters.h.js";
-import { PM_MASTER_LICH } from "./monsters.h.js";
-import { PM_MASTER_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MASTER_OF_THIEVES } from "./monsters.h.js";
-import { PM_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MINOTAUR } from "./monsters.h.js";
-import { PM_MORDOR_ORC } from "./monsters.h.js";
-import { PM_MUMAK } from "./monsters.h.js";
-import { PM_OGRE } from "./monsters.h.js";
-import { PM_OGRE_LEADER } from "./monsters.h.js";
-import { PM_OGRE_TYRANT } from "./monsters.h.js";
-import { PM_OLOG_HAI } from "./monsters.h.js";
-import { PM_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_ORC_CAPTAIN } from "./monsters.h.js";
-import { PM_PAGE } from "./monsters.h.js";
-import { PM_PONY } from "./monsters.h.js";
-import { PM_PURPLE_WORM } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_RAVEN } from "./monsters.h.js";
-import { PM_RED_DRAGON } from "./monsters.h.js";
-import { PM_RED_NAGA } from "./monsters.h.js";
-import { PM_RED_NAGA_HATCHLING } from "./monsters.h.js";
-import { PM_ROCK_MOLE } from "./monsters.h.js";
-import { PM_SALAMANDER } from "./monsters.h.js";
-import { PM_SERGEANT } from "./monsters.h.js";
-import { PM_SEWER_RAT } from "./monsters.h.js";
-import { PM_SHADE } from "./monsters.h.js";
-import { PM_SHOCKING_SPHERE } from "./monsters.h.js";
-import { PM_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_SMALL_MIMIC } from "./monsters.h.js";
-import { PM_SOLDIER } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STEAM_VORTEX } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { PM_STUDENT } from "./monsters.h.js";
-import { PM_TENGU } from "./monsters.h.js";
-import { PM_URUK_HAI } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_VAMPIRE_LEADER } from "./monsters.h.js";
-import { PM_VIOLET_FUNGUS } from "./monsters.h.js";
-import { PM_WARHORSE } from "./monsters.h.js";
-import { PM_WATCHMAN } from "./monsters.h.js";
-import { PM_WATCH_CAPTAIN } from "./monsters.h.js";
-import { PM_WATER_DEMON } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WEREJACKAL } from "./monsters.h.js";
-import { PM_WERERAT } from "./monsters.h.js";
-import { PM_WEREWOLF } from "./monsters.h.js";
-import { PM_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_WHITE_UNICORN } from "./monsters.h.js";
-import { PM_WINGED_GARGOYLE } from "./monsters.h.js";
-import { PM_WINTER_WOLF } from "./monsters.h.js";
-import { PM_WINTER_WOLF_CUB } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WOODCHUCK } from "./monsters.h.js";
-import { PM_WOODLAND_ELF } from "./monsters.h.js";
-import { PM_WOOD_NYMPH } from "./monsters.h.js";
-import { PM_YELLOW_DRAGON } from "./monsters.h.js";
-import { PM_YELLOW_LIGHT } from "./monsters.h.js";
+import {
+    amorphous, bigmonst, breathless, completelyburns, completelyrots, completelyrusts, has_head,
+    haseyes, hates_light, humanoid, is_animal, is_demon, is_dwarf, is_elf, is_floater, is_flyer,
+    is_giant, is_gnome, is_golem, is_human, is_longworm, is_mind_flayer, is_minion, is_neuter,
+    is_orc, is_rider, is_silent, is_undead, is_unicorn, is_were, is_whirly, metallivorous, mindless,
+    monsndx, nolimbs, noncorporeal, passes_walls, slithy, type_is_pname, unsolid, verysmall,
+} from "./mondata.h.macros.js";
+import {
+    FEMALE, G_GENOD, G_LGROUP, G_SGROUP, G_UNIQ, M2_STALK, M2_STRONG, MALE, MS_BURBLE, MS_BUZZ,
+    MZ_SMALL, NEUTRAL, NUM_MGENDERS,
+} from "./monflag.h.js";
+import {
+    M_SEEN_ACID, M_SEEN_COLD, M_SEEN_DISINT, M_SEEN_ELEC, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_NOTHING,
+    M_SEEN_POISON, M_SEEN_REFL, M_SEEN_SLEEP,
+} from "./monst.h.js";
+import {
+    DEADMONSTER, MON_WEP, is_vampshifter, m_clearseenres, m_setseenres, mon_perma_blind,
+    mon_resistancebits, resists_acid, resists_cold, resists_elec, resists_fire,
+} from "./monst.h.macros.js";
+import {
+    LOW_PM, NON_PM, NUMMONS, PM_ACOLYTE, PM_AIR_ELEMENTAL, PM_ALIGNED_CLERIC, PM_AMOROUS_DEMON,
+    PM_ANGEL, PM_APPRENTICE, PM_ARCHEOLOGIST, PM_ARCH_LICH, PM_ASMODEUS, PM_ATTENDANT,
+    PM_BABY_BLACK_DRAGON, PM_BABY_BLUE_DRAGON, PM_BABY_CROCODILE, PM_BABY_GOLD_DRAGON,
+    PM_BABY_GRAY_DRAGON, PM_BABY_GREEN_DRAGON, PM_BABY_LONG_WORM, PM_BABY_ORANGE_DRAGON,
+    PM_BABY_PURPLE_WORM, PM_BABY_RED_DRAGON, PM_BABY_SILVER_DRAGON, PM_BABY_WHITE_DRAGON,
+    PM_BABY_YELLOW_DRAGON, PM_BALROG, PM_BALUCHITHERIUM, PM_BAT, PM_BLACK_DRAGON, PM_BLACK_NAGA,
+    PM_BLACK_NAGA_HATCHLING, PM_BLACK_UNICORN, PM_BLUE_DRAGON, PM_CAPTAIN, PM_CAVE_DWELLER,
+    PM_CAVE_SPIDER, PM_CHICKATRICE, PM_CLAY_GOLEM, PM_CLERIC, PM_COCKATRICE, PM_CROCODILE, PM_DEATH,
+    PM_DEMILICH, PM_DJINNI, PM_DOG, PM_DUST_VORTEX, PM_DWARF, PM_DWARF_LEADER, PM_DWARF_RULER,
+    PM_EARTH_ELEMENTAL, PM_ELF, PM_ELF_NOBLE, PM_ELVEN_MONARCH, PM_ENERGY_VORTEX, PM_ERINYS,
+    PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FOG_CLOUD, PM_FREEZING_SPHERE,
+    PM_GARGOYLE, PM_GIANT_BAT, PM_GIANT_MIMIC, PM_GIANT_RAT, PM_GIANT_SPIDER, PM_GLASS_GOLEM,
+    PM_GNOME, PM_GNOME_LEADER, PM_GNOME_RULER, PM_GOLDEN_NAGA, PM_GOLDEN_NAGA_HATCHLING,
+    PM_GOLD_DRAGON, PM_GOLD_GOLEM, PM_GRAY_DRAGON, PM_GRAY_OOZE, PM_GRAY_UNICORN, PM_GREEN_DRAGON,
+    PM_GREEN_ELF, PM_GREY_ELF, PM_GUARDIAN_NAGA, PM_GUARDIAN_NAGA_HATCHLING, PM_HEALER,
+    PM_HELL_HOUND, PM_HELL_HOUND_PUP, PM_HIGH_CLERIC, PM_HILL_ORC, PM_HOBBIT, PM_HOMUNCULUS,
+    PM_HORNED_DEVIL, PM_HORSE, PM_HOUSECAT, PM_HUMAN_WEREJACKAL, PM_HUMAN_WERERAT,
+    PM_HUMAN_WEREWOLF, PM_ICE_VORTEX, PM_KEYSTONE_KOP, PM_KILLER_BEE, PM_KITTEN, PM_KI_RIN,
+    PM_KNIGHT, PM_KOBOLD, PM_KOBOLD_LEADER, PM_KOBOLD_MUMMY, PM_KOBOLD_ZOMBIE, PM_KOP_KAPTAIN,
+    PM_KOP_LIEUTENANT, PM_KOP_SERGEANT, PM_LARGE_CAT, PM_LARGE_DOG, PM_LARGE_KOBOLD, PM_LARGE_MIMIC,
+    PM_LEMURE, PM_LICH, PM_LIEUTENANT, PM_LITTLE_DOG, PM_LONG_WORM, PM_LURKER_ABOVE, PM_MANES,
+    PM_MARILITH, PM_MASTER_ASSASSIN, PM_MASTER_LICH, PM_MASTER_MIND_FLAYER, PM_MASTER_OF_THIEVES,
+    PM_MIND_FLAYER, PM_MINOTAUR, PM_MORDOR_ORC, PM_MUMAK, PM_OGRE, PM_OGRE_LEADER, PM_OGRE_TYRANT,
+    PM_OLOG_HAI, PM_ORANGE_DRAGON, PM_ORC, PM_ORC_CAPTAIN, PM_PAGE, PM_PONY, PM_PURPLE_WORM,
+    PM_QUEEN_BEE, PM_RAVEN, PM_RED_DRAGON, PM_RED_NAGA, PM_RED_NAGA_HATCHLING, PM_ROCK_MOLE,
+    PM_SALAMANDER, PM_SERGEANT, PM_SEWER_RAT, PM_SHADE, PM_SHOCKING_SPHERE, PM_SILVER_DRAGON,
+    PM_SMALL_MIMIC, PM_SOLDIER, PM_STALKER, PM_STEAM_VORTEX, PM_STONE_GOLEM, PM_STUDENT, PM_TENGU,
+    PM_URUK_HAI, PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VIOLET_FUNGUS, PM_WARHORSE, PM_WATCHMAN,
+    PM_WATCH_CAPTAIN, PM_WATER_DEMON, PM_WATER_ELEMENTAL, PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF,
+    PM_WHITE_DRAGON, PM_WHITE_UNICORN, PM_WINGED_GARGOYLE, PM_WINTER_WOLF, PM_WINTER_WOLF_CUB,
+    PM_WIZARD, PM_WOODCHUCK, PM_WOODLAND_ELF, PM_WOOD_NYMPH, PM_YELLOW_DRAGON, PM_YELLOW_LIGHT,
+} from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
-import { Is_dragon_armor } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { u_wield_art } from "./obj.h.macros.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMULET_OF_MAGICAL_BREATHING } from "./objects.h.js";
-import { BLINDING_VENOM } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { GRAY_DRAGON_SCALES } from "./objects.h.js";
-import { POT_BLINDNESS } from "./objects.h.js";
+import { Is_dragon_armor, is_weptool, u_wield_art } from "./obj.h.macros.js";
+import {
+    ALCHEMY_SMOCK, AMULET_OF_MAGICAL_BREATHING, BLINDING_VENOM, CREAM_PIE, GRAY_DRAGON_SCALES,
+    POT_BLINDNESS,
+} from "./objects.h.js";
 import { NATTK } from "./permonst.h.js";
-import { ACID_RES } from "./prop.h.js";
-import { ANTIMAGIC } from "./prop.h.js";
-import { BLND_RES } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { DISINT_RES } from "./prop.h.js";
-import { DRAIN_RES } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { REFLECTING } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { STONE_RES } from "./prop.h.js";
-import { W_ACCESSORY } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
+import {
+    ACID_RES, ANTIMAGIC, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, FIRE_RES, INTRINSIC, POISON_RES,
+    REFLECTING, SHOCK_RES, SLEEP_RES, STONE_RES, W_ACCESSORY, W_AMUL, W_ARM, W_ARMC, W_ARMH,
+    W_ARMOR, W_SWAPWEP, W_WEP,
+} from "./prop.h.js";
 import { res_to_mr } from "./prop.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { ALL_TRAPS } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { m_cansee } from "./vision.h.macros.js";
-import { m_canseeu } from "./vision.h.macros.js";
-import { PRONOUN_HALLU } from "./you.h.js";
-import { PRONOUN_NO_IT } from "./you.h.js";
+import { fmon, levl } from "./rm.h.macros.js";
+import { ALL_TRAPS, NO_TRAP } from "./trap.h.js";
+import { m_cansee, m_canseeu } from "./vision.h.macros.js";
+import { PRONOUN_HALLU, PRONOUN_NO_IT } from "./you.h.js";
 import { Upolyd } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blindfolded } from "./youprop.h.macros.js";
-import { Blnd_resist } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { or64 } from "../rt/int64.js";
-import { shl64 } from "../rt/int64.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    Blind, Blindfolded, Blnd_resist, Breathless, Hallucination, Strangled, Unaware,
+} from "./youprop.h.macros.js";
+import { char, int, ord, short, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { or64, shl64 } from "../rt/int64.js";
+import { strcmp, strcpy, strlen, strncmp } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { defends } from "./artifact.js";
-import { defends_when_carried } from "./artifact.js";
+import { array_of, ptr_add, ptr_to, ref_of, struct, struct_assign } from "../rt/struct.js";
+import { defends, defends_when_carried } from "./artifact.js";
 import { title_to_mon } from "./botl.js";
-import { cg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { def_char_to_monclass } from "./drawing.js";
-import { def_monsyms } from "./drawing.js";
-import { dist2 } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
+import { cg, gi, gu, gy, svm, u } from "./decl.js";
+import { def_char_to_monclass, def_monsyms } from "./drawing.js";
+import { dist2, highc, strncmpi, strstri } from "./hacklib.js";
 import { mons } from "./monst.js";
 import { objdescr_is } from "./o_init.js";
 import { objects } from "./objects.js";
 import { makesingular } from "./objnam.js";
 import { impossible } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { is_fshk } from "./shk.js";
 import { mon_has_amulet } from "./wizard.js";
 import { which_armor } from "./worn.js";

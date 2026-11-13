@@ -2,9 +2,6 @@
 /* Copyright (c) Mike Stephenson, Izchak Miller  1991.            */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const aligntyp = schar; /* basic alignment type */
 
 export const struct_align = struct("struct_align", { /* alignment & record */
@@ -13,17 +10,11 @@ export const struct_align = struct("struct_align", { /* alignment & record */
     abuse: unsigned,
 });
 
-/* bounds for "record" -- respect initial alignments of 10 */
-
-
 export const A_NONE = (-128);
 
 export const A_CHAOTIC = (-1);
 export const A_NEUTRAL = 0;
 export const A_LAWFUL = 1;
-
-
-
 
 /* align masks */
 export const AM_NONE = 0x00;
@@ -43,21 +34,6 @@ export const AM_SPLEV_CO = 0x20;
 export const AM_SPLEV_NONCO = 0x40;
 export const AM_SPLEV_RANDOM = 0x80;
 
-
-
-
-
-
-
-
-
-
-/* Because clearly Nethack needs more ways to specify alignment...
-   Amask2msa(): 1, 2, 4 converted to 1, 2, 3 to fit within a width 2 bitfield;
-   Msa2amask(): 1, 2, 3 converted back to 1, 2, 4;
-   For Amask2msa(), 'x' might have the shrine bit set so strip that off. */
-
-
 export const MSA_NONE = 0;
 
 /* alignment change reasons for uchangealign(attrib.c) */
@@ -65,7 +41,6 @@ export const MSA_NONE = 0;
     export const A_CG_CONVERT = 0; /* permanently converted */
     export const A_CG_HELM_ON = 1; /* donned helm of opposite alignment */
     export const A_CG_HELM_OFF = 2; /* doffed helm of opposite alignment */
-import { int } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+
+import { int, schar, unsigned } from "../rt/ctypes.js";
 import { struct } from "../rt/struct.js";

@@ -5,9 +5,6 @@
 
 /* note for 3.1.0 and later: no longer manipulated by 'makedefs' */
 
-
-
-
 export const struct_vlaunchinfo = union("struct_vlaunchinfo", {
     v_launch_otyp: short, /* type of object to be triggered */
     v_launch2: "struct_nhcoord", /* secondary launch point (for boulders) */
@@ -32,14 +29,7 @@ export const struct_trap = struct("struct_trap", {
                             * easy to make a monster peaceful if you could
                             * set a trap for it and then untrap it. */
     vl: "struct_vlaunchinfo",
-
-
-
-
 });
-
-
-
 
 /* reasons for statue animation */
 export const ANIMATE_NORMAL = 0;
@@ -92,7 +82,6 @@ export const AS_MON_IS_UNIQUE = 2;
 
     export const TRAPNUM = 26;
 
-
 /* some trap-related function return results */
 
     export const Trap_Effect_Finished = 0;
@@ -101,30 +90,12 @@ export const AS_MON_IS_UNIQUE = 2;
     export const Trap_Killed_Mon = 2;
     export const Trap_Moved_Mon = 3; /* new location, or new level */
 
-
 /* return codes from immune_to_trap() */
 
     export const TRAP_NOT_IMMUNE = 0;
     export const TRAP_CLEARLY_IMMUNE = 1;
     export const TRAP_HIDDEN_IMMUNE = 2;
 
-
-
-
-
-
-
-
-
-
-
-
-
-/* "transportation" traps */
 import { coordxy } from "./global.h.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { union } from "../rt/struct.js";
+import { short, uchar } from "../rt/ctypes.js";
+import { Bitfield, ptr_to, struct, union } from "../rt/struct.js";

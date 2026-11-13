@@ -2,9 +2,6 @@
 /* Copyright (c) Kenneth Lorber, Kensington, Maryland, 2008. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const struct_sysopt_s = struct("struct_sysopt_s", {
     support: ptr_to(char), /* local support contact */
     recover: ptr_to(char), /* how to run recover - may be overridden by win port */
@@ -54,14 +51,10 @@ export const struct_sysopt_s = struct("struct_sysopt_s", {
 
     /* nethack config for a portable device */
 
-
     /* nethack's interactive help menu */
     hideusage: int, /* 0: include 'command-line usage' entry in help menu;
                          * 1: suppress it */
 });
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { char, int, long } from "../rt/ctypes.js";
+import { array_of, ptr_to, struct } from "../rt/struct.js";

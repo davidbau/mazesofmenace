@@ -55,7 +55,9 @@ export function createJsRuntime(options = {}) {
     });
     services.ptrbuf = Array.from({ length: 4 }, () => memory.malloc(32));
     if (!dateBuffer || services.ptrbuf.some(pointer => !pointer)) throw new RangeError('Insufficient runtime memory');
-    services.alloc = n => allocation.alloc(n);
+    // Native callers do not install a C context. This retained translated
+    // allocator owns its context instead of borrowing whichever game called it.
+    services.alloc = n => withCEnvironment(services, allocation.alloc, n);
     Object.assign(services, {
         NhregexSize: JS_RUNTIME_LAYOUTS.posixregex.size,
         BUFSZ: JS_RUNTIME_LAYOUTS.posixregex.bufferSize,

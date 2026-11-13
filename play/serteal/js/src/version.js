@@ -3,24 +3,9 @@
 /*-Copyright (c) Michael Allison, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-// #include "hack.h"
-// #include "dlb.h"
-
-
-
-
-
-
-
-
-
-
 /* fill buffer with short version (so caller can avoid including date.h)
  * buf cannot be NULL */
-export function /* char * */
-version_string(buf, bufsz)
-{
+export function version_string(buf, bufsz) { /* char * */
     Snprintf(buf, bufsz, _("%s"), ((nomakedefs.version_string && chars[nomakedefs.version_string + 0])
               ? nomakedefs.version_string
               /* in case we try to write a paniclog entry after releasing
@@ -31,48 +16,34 @@ version_string(buf, bufsz)
 }
 
 /* fill and return the given buffer with the long nethack version string */
-export function /* char * */
-getversionstring(buf, bufsz)
-{
-    void strcpy(buf, nomakedefs.version_id);
+export function getversionstring(buf, bufsz) { /* char * */
+    strcpy(buf, nomakedefs.version_id);
 
     {
         let c = 0;
 
-
-
         let p = eos(buf);
-        let dotoff = (+(p > buf && chars[p + (-1)] == ord('.')));
+        let dotoff = +(p > buf && chars[p + (-1)] == ord('.'));
 
         if (dotoff)
             --p;
-        void (strcpy(p, _(" (")));
-
-
-
-
-
+        strcpy(p, _(" ("));
 
         if (nomakedefs.git_sha)
-            Snprintf(eos(buf), unsigned((unsigned(bufsz - strlen(buf))) - 1), _("%s%s"), c++ ? _(",") : _(""), nomakedefs.git_sha)
+            Snprintf(eos(buf), unsigned(unsigned(bufsz - strlen(buf)) - 1), _("%s%s"), c++ ? _(",") : _(""), nomakedefs.git_sha)
 ;
 
-
-
-
-
-
         if (nomakedefs.git_prefix)
-            Snprintf(eos(buf), unsigned((unsigned(bufsz - strlen(buf))) - 1), _("%sprefix:%s"), c++ ? _(",") : _(""), nomakedefs.git_prefix)
+            Snprintf(eos(buf), unsigned(unsigned(bufsz - strlen(buf)) - 1), _("%sprefix:%s"), c++ ? _(",") : _(""), nomakedefs.git_prefix)
 
 ;
         if (c)
-            Snprintf(eos(buf), unsigned((unsigned(bufsz - strlen(buf))) - 1), _("%s"), _(")"));
+            Snprintf(eos(buf), unsigned(unsigned(bufsz - strlen(buf)) - 1), _("%s"), _(")"));
         else /* if nothing has been added, strip " (" back off */
             chars[p] = ord('\0')
 ;
         if (dotoff)
-            Snprintf(eos(buf), unsigned((unsigned(bufsz - strlen(buf))) - 1), _("%s"), _("."))
+            Snprintf(eos(buf), unsigned(unsigned(bufsz - strlen(buf)) - 1), _("%s"), _("."))
 ;
     }
     return buf;
@@ -85,20 +56,15 @@ getversionstring(buf, bufsz)
    after release--or if branch info is unavailable--it will be
      "<game name> <x.y.z version number>";
    game name or branch name or both can be requested via flags */
-export function /* char * */
-status_version(buf, bufsz, indent)
-{
+export function status_version(buf, bufsz, indent) { /* char * */
     let name = 0, altname = 0, indentation;
     let vflags = flags.versinfo;
-    let shownum = (+((vflags & VI_NUMBER) != 0)),
-            showname = (+((vflags & VI_NAME) != 0)),
-            showbranch = (+((vflags & VI_BRANCH) != 0));
+    let shownum = +((vflags & VI_NUMBER) != 0),
+            showname = +((vflags & VI_NAME) != 0),
+            showbranch = +((vflags & VI_BRANCH) != 0);
 
     /* game's name {variants should use own name, not "NetHack"} */
     if (showname) {
-
-
-
         name = nh_basename(gh.hname, FALSE); /* hname is from xxxmain.c */
 
         if (!name || !chars[name]) /* shouldn't happen */
@@ -106,7 +72,6 @@ status_version(buf, bufsz, indent)
     }
     /* git branch name, if available */
     if (showbranch) {
-
         altname = nomakedefs.git_branch;
 
         if (!altname || !chars[altname])
@@ -115,16 +80,7 @@ status_version(buf, bufsz, indent)
     if (showname && showbranch) {
         if (!strncmpi(name, altname, int(strlen(name))))
             showname = FALSE;
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
     } else if (!showname && !showbranch) {
         /* flags.versinfo could be set to only 'branch' but it might not
            be available */
@@ -152,9 +108,8 @@ status_version(buf, bufsz, indent)
 }
 
 /* the #versionshort command */
-export function /* int */
-doversion()
-{ const $frame = stack_frame(); try {
+export function doversion() { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     if (iflags.menu_requested)
@@ -162,12 +117,12 @@ doversion()
 
     pline(_("%s"), getversionstring(buf, sizeof(array_of(char, BUFSZ))));
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the '#version' command; also a choice for '?' */
-export function /* int */
-doextversion()
-{ const $frame = stack_frame(); try {
+export function doextversion() { /* int */
+    const $frame = stack_frame(); try {
     let rtcontext = stack_var(int, 0);
     let rtbuf;
     let f = null;
@@ -179,16 +134,12 @@ doextversion()
             prolog;
     /* lua_info[] moved to util/mdlib.c and rendered via do_runtime_info() */
 
-
     use_dlb = FALSE;
-
-
-
 
     /* instead of using ``display_file(OPTIONS_USED,TRUE)'' we handle
        the file manually so we can include dynamic version info */
 
-    void getversionstring(buf, sizeof(array_of(char, BUFSZ)));
+    getversionstring(buf, sizeof(array_of(char, BUFSZ)));
     /* if extra text (git info) is present, put it on separate line
        but don't wrap on (x86) */
     if (strlen(buf) >= COLNO)
@@ -207,7 +158,7 @@ doextversion()
         f = dlb_fopen(_(OPTIONS_USED), _("r"));
         if (!f) {
             putstr()(win, 0, _(""));
-            void sprintf(buf, _("[Configuration '%s' not available?]"), _(OPTIONS_USED));
+            sprintf(buf, _("[Configuration '%s' not available?]"), _(OPTIONS_USED));
             putstr()(win, 0, buf);
             done_dlb = TRUE;
         }
@@ -244,14 +195,14 @@ doextversion()
                 done_rt = TRUE;
                 continue;
             }
-            void strncpy(buf, rtbuf, BUFSZ - 1);
+            strncpy(buf, rtbuf, BUFSZ - 1);
             chars[buf + (BUFSZ - 1)] = ord('\0');
         } else {
             break;
         }
-        void strip_newline(buf);
+        strip_newline(buf);
         if (strchr(buf, ord('\t')) != 0)
-            void tabexpand(buf);
+            tabexpand(buf);
 
         if (chars[buf] && chars[buf] != ord(' ')) {
             /* found outdented header; insert a separator since we'll
@@ -270,15 +221,15 @@ doextversion()
             putstr()(win, 0, buf);
     }
     if (use_dlb)
-        void dlb_fclose(f);
+        dlb_fclose(f);
     display_nhwindow()(win, FALSE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-early_version_info(pastebuf)
-{ const $frame = stack_frame(); try {
+export function early_version_info(pastebuf) { /* void */
+    const $frame = stack_frame(); try {
     let buf1 = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ);
     let buf, tmp;
 
@@ -298,20 +249,10 @@ early_version_info(pastebuf)
     raw_printf(_("%s"), buf);
 
     if (pastebuf) {
-
-
-
-
-
-
-
-
         raw_printf(_("%s"), _("Paste buffer copy is not available.\n"));
-
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * makedefs should put the first token into dat/options; we'll substitute
@@ -335,9 +276,7 @@ early_version_info(pastebuf)
  * it depends which of several object files got linked into the
  * game image, so we insert those options here.
  */
-function /* void */
-insert_rtoption(buf)
-{
+function insert_rtoption(buf) { /* void */
     let i;
 
     if (!chars[gl.lua_ver + 0])
@@ -345,59 +284,30 @@ insert_rtoption(buf)
 
     for (i = 0; i < SIZE(rt_opts); ++i) {
         if (strstri(buf, rt_opts[i].token) && chars[rt_opts[i].value]) {
-            void strsubst(buf, rt_opts[i].token, rt_opts[i].value);
+            strsubst(buf, rt_opts[i].token, rt_opts[i].value);
         }
         /* we don't break out of the loop after a match; there might be
            other matches on the same line */
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* boolean */
-check_version(
+export function check_version(
     version_data,
     filename,
     complain,
-    utdflags)
-{
+    utdflags) { /* boolean */
     if (!filename) {
-
-
-
-
-
         complain = FALSE; /* 'complain' requires 'filename' for pline("%s") */
     }
     if ((version_data.feature_set & SFCTOOL_BIT) != 0) {
         gc.converted_savefile_loaded = TRUE;
-        version_data.feature_set = and64u(version_data.feature_set, ~(SFCTOOL_BIT));
+        version_data.feature_set = and64u(version_data.feature_set, ~SFCTOOL_BIT);
     }
     if (
-
-
-
 
         version_data.incarnation != nomakedefs.version_number
 
         ) {
-
         if (complain) {
             pline(_("Version mismatch for file \"%s\"."), filename);
             if (WIN_MESSAGE != WIN_ERR)
@@ -406,12 +316,11 @@ check_version(
 
         return FALSE;
     } else if (
-        (and64u(version_data.feature_set, not64u(nomakedefs.ignored_features)))
-            != (and64u(nomakedefs.version_features, not64u(nomakedefs.ignored_features)))
+        and64u(version_data.feature_set, not64u(nomakedefs.ignored_features))
+            != and64u(nomakedefs.version_features, not64u(nomakedefs.ignored_features))
         || ((utdflags & UTD_SKIP_SANITY1) == 0
              && version_data.entity_count != nomakedefs.version_sanity1)
         ) {
-
         if (complain) {
             pline(_("Configuration incompatibility for file \"%s\"."), filename);
             display_nhwindow()(WIN_MESSAGE, TRUE);
@@ -422,14 +331,8 @@ check_version(
     return TRUE;
 }
 
-
-
-
-
-
-export function /* unsigned long long */
-get_feature_notice_ver(str)
-{ const $frame = stack_frame(); try {
+export function get_feature_notice_ver(str) { /* unsigned long long */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let ver_maj, ver_min, patch;
     let istr = stack_array(ptr_to(char), 3);
@@ -456,32 +359,25 @@ get_feature_notice_ver(str)
     ver_maj = atoi(istr[0]);
     ver_min = atoi(istr[1]);
     patch = atoi(istr[2]);
-    return (or64u(or64u(or64u((shl64(ulong(ver_maj), 24)), (shl64(ulong(ver_min), 16))), (shl64(ulong(patch), 8))), (0)));
+    return or64u(or64u(or64u((shl64(ulong(ver_maj), 24)), (shl64(ulong(ver_min), 16))), (shl64(ulong(patch), 8))), (0));
     /* macro from hack.h */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* unsigned long long */
-get_current_feature_ver()
-{
+export function get_current_feature_ver() { /* unsigned long long */
     return FEATURE_NOTICE_VER(VERSION_MAJOR, VERSION_MINOR, PATCHLEVEL);
 }
 
 /*ARGUSED*/
-export function /* const char * */
-copyright_banner_line(indx)
-{
-
+export function copyright_banner_line(indx) { /* const char * */
     if (indx == 1)
         return _(COPYRIGHT_BANNER_A);
-
 
     if (indx == 2)
         return _(COPYRIGHT_BANNER_B);
 
-
     if (indx == 3)
         return nomakedefs.copyright_banner_c;
-
 
     if (indx == 4)
         return _(COPYRIGHT_BANNER_D);
@@ -490,27 +386,24 @@ copyright_banner_line(indx)
 }
 
 /* called by argcheck(allmain.c) from early_options(sys/xxx/xxxmain.c) */
-export function /* void */
-dump_version_info()
-{ const $frame = stack_frame(); try {
+export function dump_version_info() { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let hname = gh.hname ? gh.hname : _("nethack");
 
     if (strlen(hname) > 33)
         hname = eos(nhStr(hname)) - 33; /* discard const for eos() */
     runtime_info_init();
-    Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%-12.33s %08llx %08llx %08llx"), hname, nomakedefs.version_number, (and64u(nomakedefs.version_features, not64u(nomakedefs.ignored_features))), nomakedefs.version_sanity1)
-
-
+    Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%-12.33s %08llx %08llx %08llx"), hname, nomakedefs.version_number, and64u(nomakedefs.version_features, not64u(nomakedefs.ignored_features)), nomakedefs.version_sanity1)
 
 ;
     raw_print()(buf);
     release_runtime_info();
     return;
-} finally { stack_pop($frame); } }
-export function /* void */
-store_version(nhfp)
-{ const $frame = stack_frame(); try {
+    } finally { stack_pop($frame); }
+}
+export function store_version(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let version_data = init_list(stack_struct(struct_version_info), {
         incarnation: 0,
         feature_set: 0,
@@ -534,9 +427,8 @@ store_version(nhfp)
     if (nhfp.structlevel)
         bufon(nhfp.fd);
     return;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 const struct_critical_sizes_with_names = struct("struct_critical_sizes_with_names", {
     ucsize: uchar,
@@ -615,40 +507,9 @@ export const critical_sizes = static_array("critical_sizes", struct_critical_siz
     { ucsize: sizeof(struct_version_info), nm: _("struct version_info") },
     { ucsize: sizeof(struct_any), nm: _("anything") },
     /* struct you requires 2 bytes */
-    { ucsize: ((sizeof(struct_you) & 0x00FF)), nm: _("you_LO") },
+    { ucsize: (sizeof(struct_you) & 0x00FF), nm: _("you_LO") },
     { ucsize: ((sizeof(struct_you) & 0xFF00) >>> 8), nm: _("you_HI") },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef SF_INCLUDE_SUBSTRUCTS: not in this build */
 
     /* 10 for future expansion without changing array size */
     { ucsize: 0, nm: _("") },
@@ -665,22 +526,18 @@ export const critical_sizes = static_array("critical_sizes", struct_critical_siz
 
 export const cscbuf = static_array("cscbuf", uchar, SIZE(critical_sizes));
 
-export function /* int */
-get_critical_size_count()
-{
+export function get_critical_size_count() { /* int */
     return SIZE(critical_sizes);
 }
 
-
-export function /* void */
-store_critical_bytes(nhfp)
-{ const $frame = stack_frame(); try {
+export function store_critical_bytes(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let i, cnt;
     let indicate = stack_var(char, ord('u')), csc_count = stack_var(char, SIZE(critical_sizes));
     /* int cmc = 0; */
 
     if (nhfp.mode & WRITING) {
-        indicate[0] = (nhfp.structlevel) ? ord('h')
+        indicate[0] = nhfp.structlevel ? ord('h')
                                        : (nhfp.fnidx == exportascii)
                                          ? ord('a')
                                          : ord('?');
@@ -691,7 +548,8 @@ store_critical_bytes(nhfp)
             Sfo_uchar(nhfp, addr_of(ref_of(critical_sizes[i], "ucsize")), _("critical_sizes"));
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* this used to be based on file date and somewhat OS-dependent,
  *  but now examines the initial part of the file's contents.
@@ -709,12 +567,8 @@ store_critical_bytes(nhfp)
  *   SF_DM_IL32LLP64_ON_I32LP64      (8) Windows x64 savefile on Unix 64
  *   SF_DM_MISMATCH                  (9) some other mismatch
  */
-export function /* int */
-uptodate(nhfp, name, utdflags)
-{ const $frame = stack_frame(); try {
-
-
-
+export function uptodate(nhfp, name, utdflags) { /* int */
+    const $frame = stack_frame(); try {
     let vers_info = stack_struct(struct_version_info);
 
     let indicator = stack_var(char);
@@ -743,7 +597,8 @@ uptodate(nhfp, name, utdflags)
         return SF_OUTDATED;
     }
     return sfstatus;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * returns:
@@ -759,9 +614,8 @@ uptodate(nhfp, name, utdflags)
  *   SF_DM_IL32LLP64_ON_I32LP64      (8) Windows x64 savefile on Unix 64
  *   SF_DM_MISMATCH                  (9) some other mismatch
  */
-export function /* int */
-compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags)
-{ const $frame = stack_frame(); try {
+export function compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags) { /* int */
+    const $frame = stack_frame(); try {
     let active_csc_count = SIZE(critical_sizes),
          file_csc_count = stack_var(char);
     let i, cnt = active_csc_count,
@@ -820,7 +674,8 @@ compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags)
         }
     }
     return SF_UPTODATE; /* everything matched */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * returns:
@@ -836,14 +691,9 @@ compare_critical_bytes(nhfp, idx_1st_mismatch, utdflags)
  *   SF_DM_IL32LLP64_ON_I32LP64      (8) Windows x64 savefile on Unix 64
  *   SF_DM_MISMATCH                  (9) some other mismatch
  */
-export function /* int */
-validate(nhfp, name, without_waitsynch_perfile)
-{
+export function validate(nhfp, name, without_waitsynch_perfile) { /* int */
     let utdflags = 0;
     let validsf = 0;
-
-
-
 
     if (nhfp.structlevel)
         utdflags = or64u(utdflags, UTD_CHECKSIZES);
@@ -855,171 +705,78 @@ validate(nhfp, name, without_waitsynch_perfile)
     return validsf;
 }
 
-
 /*version.c*/
+
 import { struct_arti_info } from "./artifact.h.js";
 import { struct_context_info } from "./context.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { dlb_fclose } from "./dlb.h.macros.js";
-import { dlb_fgets } from "./dlb.h.macros.js";
-import { dlb_fopen } from "./dlb.h.macros.js";
-import { struct_branch } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { struct_dest_area } from "./dungeon.h.js";
-import { struct_dungeon } from "./dungeon.h.js";
-import { struct_linfo } from "./dungeon.h.js";
-import { struct_mapseen_feat } from "./dungeon.h.js";
-import { struct_mapseen_flags } from "./dungeon.h.js";
-import { struct_mapseen_rooms } from "./dungeon.h.js";
-import { struct_s_level } from "./dungeon.h.js";
+import { dlb_fclose, dlb_fgets, dlb_fopen } from "./dlb.h.macros.js";
+import {
+    struct_branch, struct_d_level, struct_dest_area, struct_dungeon, struct_linfo,
+    struct_mapseen_feat, struct_mapseen_flags, struct_mapseen_rooms, struct_s_level,
+} from "./dungeon.h.js";
 import { struct_engr } from "./engrave.h.js";
-import { VI_BRANCH } from "./flag.h.js";
-import { VI_NAME } from "./flag.h.js";
-import { VI_NUMBER } from "./flag.h.js";
-import { struct_flag } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { OPTIONS_USED } from "./global.h.js";
-import { SFCTOOL_BIT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { struct_version_info } from "./global.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { SF_CRITICAL_BYTE_COUNT_MISMATCH } from "./hack.h.js";
-import { SF_DM_I32LP64_ON_IL32LLP64 } from "./hack.h.js";
-import { SF_DM_I32LP64_ON_ILP32LL64 } from "./hack.h.js";
-import { SF_DM_IL32LLP64_ON_I32LP64 } from "./hack.h.js";
-import { SF_DM_IL32LLP64_ON_ILP32LL64 } from "./hack.h.js";
-import { SF_DM_ILP32LL64_ON_I32LP64 } from "./hack.h.js";
-import { SF_DM_ILP32LL64_ON_IL32LLP64 } from "./hack.h.js";
-import { SF_DM_MISMATCH } from "./hack.h.js";
-import { SF_OUTDATED } from "./hack.h.js";
-import { SF_UPTODATE } from "./hack.h.js";
-import { UTD_CHECKFIELDCOUNTS } from "./hack.h.js";
-import { UTD_CHECKSIZES } from "./hack.h.js";
-import { UTD_QUIETLY } from "./hack.h.js";
-import { UTD_SKIP_SANITY1 } from "./hack.h.js";
-import { UTD_WITHOUT_WAITSYNCH_PERFILE } from "./hack.h.js";
-import { WRITING } from "./hack.h.js";
-import { exportascii } from "./hack.h.js";
-import { struct_bubble } from "./hack.h.js";
-import { struct_dgn_topology } from "./hack.h.js";
-import { struct_gamelog_line } from "./hack.h.js";
-import { struct_kinfo } from "./hack.h.js";
-import { struct_ls_t } from "./hack.h.js";
-import { struct_mvitals } from "./hack.h.js";
+import { VI_BRANCH, VI_NAME, VI_NUMBER, struct_flag } from "./flag.h.js";
+import {
+    BUFSZ, COLNO, FALSE, OPTIONS_USED, SFCTOOL_BIT, TRUE, struct_version_info,
+} from "./global.h.js";
+import {
+    ECMD_OK, SF_CRITICAL_BYTE_COUNT_MISMATCH, SF_DM_I32LP64_ON_IL32LLP64,
+    SF_DM_I32LP64_ON_ILP32LL64, SF_DM_IL32LLP64_ON_I32LP64, SF_DM_IL32LLP64_ON_ILP32LL64,
+    SF_DM_ILP32LL64_ON_I32LP64, SF_DM_ILP32LL64_ON_IL32LLP64, SF_DM_MISMATCH, SF_OUTDATED,
+    SF_UPTODATE, UTD_CHECKFIELDCOUNTS, UTD_CHECKSIZES, UTD_QUIETLY, UTD_SKIP_SANITY1,
+    UTD_WITHOUT_WAITSYNCH_PERFILE, WRITING, exportascii, struct_bubble, struct_dgn_topology,
+    struct_gamelog_line, struct_kinfo, struct_ls_t, struct_mvitals,
+} from "./hack.h.js";
 import { FEATURE_NOTICE_VER } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { nhStr } from "./lint.h.macros.js";
-import { struct_ebones } from "./mextra.h.js";
-import { struct_edog } from "./mextra.h.js";
-import { struct_egd } from "./mextra.h.js";
-import { struct_emin } from "./mextra.h.js";
-import { struct_epri } from "./mextra.h.js";
-import { struct_eshk } from "./mextra.h.js";
-import { struct_mextra } from "./mextra.h.js";
+import {
+    struct_ebones, struct_edog, struct_egd, struct_emin, struct_epri, struct_eshk, struct_mextra,
+} from "./mextra.h.js";
 import { struct_mkroom } from "./mkroom.h.js";
 import { struct_monst } from "./monst.h.js";
-import { struct_obj } from "./obj.h.js";
-import { struct_oextra } from "./obj.h.js";
-import { struct_fruit } from "./objclass.h.js";
-import { struct_objclass } from "./objclass.h.js";
-import { COPYRIGHT_BANNER_A } from "./patchlevel.h.js";
-import { COPYRIGHT_BANNER_B } from "./patchlevel.h.js";
-import { COPYRIGHT_BANNER_D } from "./patchlevel.h.js";
-import { PATCHLEVEL } from "./patchlevel.h.js";
-import { VERSION_MAJOR } from "./patchlevel.h.js";
-import { VERSION_MINOR } from "./patchlevel.h.js";
+import { struct_obj, struct_oextra } from "./obj.h.js";
+import { struct_fruit, struct_objclass } from "./objclass.h.js";
+import {
+    COPYRIGHT_BANNER_A, COPYRIGHT_BANNER_B, COPYRIGHT_BANNER_D, PATCHLEVEL, VERSION_MAJOR,
+    VERSION_MINOR,
+} from "./patchlevel.h.js";
 import { struct_q_score } from "./quest.h.js";
 import { struct_nhrect } from "./rect.h.js";
-import { struct_cemetery } from "./rm.h.js";
-import { struct_damage } from "./rm.h.js";
-import { struct_levelflags } from "./rm.h.js";
-import { struct_rm } from "./rm.h.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfi_uchar } from "./savefile.h.macros.js";
-import { Sfi_version_info } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
-import { Sfo_uchar } from "./savefile.h.macros.js";
-import { Sfo_version_info } from "./savefile.h.macros.js";
+import { struct_cemetery, struct_damage, struct_levelflags, struct_rm } from "./rm.h.js";
+import {
+    Sfi_char, Sfi_uchar, Sfi_version_info, Sfo_char, Sfo_uchar, Sfo_version_info,
+} from "./savefile.h.macros.js";
 import { struct_spell } from "./spell.h.js";
 import { struct_stairway } from "./stairs.h.js";
 import { struct_fe } from "./timeout.h.js";
 import { struct_trap } from "./trap.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { raw_print } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, putstr, raw_print, wait_synch,
+} from "./winprocs.h.macros.js";
+import { NHW_TEXT, WIN_ERR, struct_any } from "./wintype.h.js";
 import { struct_you } from "./you.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { int64_t } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { uint64_t } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { and64u } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { shl64 } from "../rt/int64.js";
-import { atoi } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    char, int, int64_t, long, ord, schar, short, sizeof, uchar, uint64_t, ulong, unsigned, ushort,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { and64u, not64u, or64u, shl64 } from "../rt/int64.js";
+import { atoi, sprintf, strchr, strcmp, strcpy, strlen, strncpy, strrchr } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import { addr_of, array_of, ptr_to, ref_of, struct, void_t } from "../rt/struct.js";
 import { nomakedefs } from "./date.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gh } from "./decl.js";
-import { gl } from "./decl.js";
-import { iflags } from "./decl.js";
+import { flags, gc, gh, gl, iflags } from "./decl.js";
 import { nh_basename } from "./files.js";
-import { datamodel } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { strip_newline } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { tabexpand } from "./hacklib.js";
-import { what_datamodel_is_this } from "./hacklib.js";
-import { do_runtime_info } from "./mdlib.js";
-import { mdlib_version_string } from "./mdlib.js";
-import { release_runtime_info } from "./mdlib.js";
-import { runtime_info_init } from "./mdlib.js";
+import {
+    datamodel, eos, strip_newline, strncmpi, strstri, strsubst, tabexpand, what_datamodel_is_this,
+} from "./hacklib.js";
+import {
+    do_runtime_info, mdlib_version_string, release_runtime_info, runtime_info_init,
+} from "./mdlib.js";
 import { get_lua_version } from "./nhlua.js";
-import { pline } from "./pline.js";
-import { raw_printf } from "./pline.js";
-import { bufoff } from "./sfstruct.js";
-import { bufon } from "./sfstruct.js";
+import { pline, raw_printf } from "./pline.js";
+import { bufoff, bufon } from "./sfstruct.js";
 import { regex_id } from "../sys/share/posixregex.js";

@@ -3,48 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-// #include "hack.h"
-
-// #include "wintty.h"  /* for NOMUX_CAPTURE define + nomux_capture_write_input_boundary decl (#460) */
-
-
-
-
-
-
-
-
-// #include <signal.h>
-
-// #include "dlb.h"
-
-
-
-
-
-
-
-
-
- 
-
-
-
- 
-
-
-
-
-
-
-
-
-
-
-
-
 export function done_stopprint() { return program_state.stopprint; }
 
 /*
@@ -73,16 +31,12 @@ const Schroedingers_cat = static_var("Schroedingers_cat", schar, FALSE);
 
 /* called as signal() handler, so sent at least one arg */
 /*ARGSUSED*/
-export function /* void */
-done1(sig_unused)
-{
-
-    void signal(SIGINT, SIG_IGN);
+export function done1(sig_unused) { /* void */
+    signal(SIGINT, SIG_IGN);
 
     iflags.debug_fuzzer = fuzzer_off;
     if (flags.ignintr) {
-
-        void signal(SIGINT, done1);
+        signal(SIGINT, done1);
 
         clear_nhwindow()(WIN_MESSAGE);
         curs_on_u();
@@ -90,14 +44,12 @@ done1(sig_unused)
         if (gm.multi > 0)
             nomul(0);
     } else {
-        void done2();
+        done2();
     }
 }
 
 /* "#quit" command or keyboard interrupt */
-export function /* int */
-done2()
-{
+export function done2() { /* int */
     let abandon_tutorial = FALSE;
 
     if (In_tutorial(u.uz)
@@ -106,8 +58,7 @@ done2()
 
     if (abandon_tutorial || !paranoid_query(
             ParanoidQuit(), _("Really quit without saving?"))) {
-
-        void signal(SIGINT, done1);
+        signal(SIGINT, done1);
 
         clear_nhwindow()(WIN_MESSAGE);
         curs_on_u();
@@ -125,26 +76,16 @@ done2()
         return ECMD_OK;
     }
 
-
     if (wizard()) {
         let c;
 
-
-
-
-
-
-
-
         c = ynq(_("Dump core?"));
 
-
         if (c == ord('y')) {
-
-            void signal(SIGINT, done1);
+            signal(SIGINT, done1);
 
             if (soundprocs.sound_exit_nhsound)
-                (soundprocs.sound_exit_nhsound)(_("done2"));
+                soundprocs.sound_exit_nhsound(_("done2"));
 
             exit_nhwindows()(0);
             NH_abort(0);
@@ -156,28 +97,19 @@ done2()
     return ECMD_OK;
 }
 
-
 /* called as signal() handler, so sent at least 1 arg */
 /*ARGSUSED*/
-function /* void */
-done_intr(sig_unused)
-{
+function done_intr(sig_unused) { /* void */
     program_state.stopprint++;
-    void signal(SIGINT, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
 
-
-    void signal(SIGQUIT, SIG_IGN);
-
+    signal(SIGQUIT, SIG_IGN);
 
     return;
 }
 
-
 /* signal() handler */
-function /* void */
-done_hangup(sig)
-{
-
+function done_hangup(sig) { /* void */
     program_state.done_hup++;
 
     sethanguphandler(SIG_IGN);
@@ -185,21 +117,18 @@ done_hangup(sig)
     return;
 }
 
-
-
  /* one compiler warns if the format
                                      string is the result of a ? x : y */
 
-export function /* void */
-done_in_by(mtmp, how)
-{ const $frame = stack_frame(); try {
+export function done_in_by(mtmp, how) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let mptr = mtmp.data,
                     champtr = ismnum(mtmp.cham) ? mons[mtmp.cham]
                                                   : mptr;
-    let distorted = (((Hallucination() && canspotmon(mtmp)) ? 1 : 0)),
-            mimicker = (+(M_AP_TYPE(mtmp) == M_AP_MONSTER)),
-            imitator = (((mptr != champtr || mimicker) ? 1 : 0));
+    let distorted = (Hallucination() && canspotmon(mtmp) ? 1 : 0),
+            mimicker = +(M_AP_TYPE(mtmp) == M_AP_MONSTER),
+            imitator = (mptr != champtr || mimicker ? 1 : 0);
 
     You((how == STONING) ? _("turn to stone...") : _("die..."));
     mark_synch()(); /* flush buffered screen output */
@@ -210,24 +139,20 @@ done_in_by(mtmp, how)
     if ((mptr.geno & G_UNIQ) != 0 && !(imitator && !mimicker)
         && !(mptr == mons[PM_HIGH_CLERIC] && !mtmp.ispriest)) {
         if (!type_is_pname(mptr))
-            void strcat(buf, _("the "));
+            strcat(buf, _("the "));
         svk.killer.format = KILLED_BY;
     }
     /* _the_ <invisible> <distorted> ghost of Dudley */
 
-
-
-
     if (mptr == mons[PM_GHOST] && has_mgivenname(mtmp)) {
-
-        void strcat(buf, _("the "));
+        strcat(buf, _("the "));
         svk.killer.format = KILLED_BY;
     }
-    void monhealthdescr(mtmp, TRUE, eos(buf));
+    monhealthdescr(mtmp, TRUE, eos(buf));
     if (mtmp.minvis)
-        void strcat(buf, _("invisible "));
+        strcat(buf, _("invisible "));
     if (distorted)
-        void strcat(buf, _("hallucinogen-distorted "));
+        strcat(buf, _("hallucinogen-distorted "));
 
     if (imitator) {
         let shape = stack_array(char, BUFSZ);
@@ -250,47 +175,43 @@ done_in_by(mtmp, how)
            pname and the_unique should also have s_suffix() applied,
            but vampires don't take on any shapes which warrant that */
         if (alt || type_is_pname(mptr)) /* no article */
-            void strcpy(shape, fakenm);
+            strcpy(shape, fakenm);
         else if (the_unique_pm(mptr)) /* "the"; don't use the() here */
-            void sprintf(shape, _("the %s"), fakenm);
+            sprintf(shape, _("the %s"), fakenm);
         else /* "a"/"an" */
-            void strcpy(shape, an(fakenm));
+            strcpy(shape, an(fakenm));
         /* omit "called" to avoid excessive verbosity */
-        void sprintf(eos(buf), alt ? _("%s in %s form")
+        sprintf(eos(buf), alt ? _("%s in %s form")
                     : mimicker ? _("%s disguised as %s")
                                : _("%s imitating %s"), realnm, shape)
 
 ;
         mptr = mtmp.data; /* reset for mimicker case */
-
-
-
-
     } else if (mptr == mons[PM_GHOST]) {
-        void strcat(buf, _("ghost"));
+        strcat(buf, _("ghost"));
         if (has_mgivenname(mtmp))
-            void sprintf(eos(buf), _(" of %s"), MGIVENNAME(mtmp));
+            sprintf(eos(buf), _(" of %s"), MGIVENNAME(mtmp));
     } else if (mtmp.isshk) {
         let shknm = shkname(mtmp),
                    honorific = shkname_is_pname(mtmp) ? _("")
                                    : mtmp.female ? _("Ms. ") : _("Mr. ");
 
-        void sprintf(eos(buf), _("%s%s, the shopkeeper"), honorific, shknm);
+        sprintf(eos(buf), _("%s%s, the shopkeeper"), honorific, shknm);
         svk.killer.format = KILLED_BY;
     } else if (mtmp.ispriest || mtmp.isminion) {
         /* m_monnam() suppresses "the" prefix plus "invisible", and
            it overrides the effect of Hallucination on priestname() */
-        void strcat(buf, m_monnam(mtmp));
+        strcat(buf, m_monnam(mtmp));
     } else {
-        void strcat(buf, pmname(mptr, Mgender(mtmp)));
+        strcat(buf, pmname(mptr, Mgender(mtmp)));
         if (has_mgivenname(mtmp)) {
-            void sprintf(eos(buf), _(" %s %s"), has_ebones(mtmp) ? _("of") : _("called"), MGIVENNAME(mtmp))
+            sprintf(eos(buf), _(" %s %s"), has_ebones(mtmp) ? _("of") : _("called"), MGIVENNAME(mtmp))
 
 ;
         }
     }
 
-    void strcpy(svk.killer.name, buf);
+    strcpy(svk.killer.name, buf);
 
     /* might need to fix up multi_reason if 'mtmp' caused the reason */
     if (gm.multi_reason
@@ -350,9 +271,8 @@ done_in_by(mtmp, how)
 
     done(how);
     return;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* some special cases for overriding while-helpless reason */
   const struct___anon1 = struct("end.struct___anon1", {
@@ -371,9 +291,7 @@ done_in_by(mtmp, how)
 
 /* clear away while-helpless when the cause of death caused that
    helplessness (ie, "petrified by <foo> while getting stoned") */
-function /* void */
-fixup_death(how)
-{
+function fixup_death(how) { /* void */
     let i;
 
     if (gm.multi_reason) {
@@ -392,15 +310,9 @@ fixup_death(how)
     }
 }
 
-
-
-
-
-
-
 /*VARARGS1*/
- export function /* void */ panic(str, ...args) 
-{ const $frame = stack_frame(); try { let the_args; {
+ export function panic(str, ...args) { /* void */
+    const $frame = stack_frame(); try { let the_args; {
     let buf = stack_array(char, BUFSZ);
     the_args = va_start(args);
       ;
@@ -413,7 +325,7 @@ fixup_death(how)
         raw_print()(_("\r\nOops..."));
         wait_synch()(); /* make sure all pending output gets flushed */
         if (soundprocs.sound_exit_nhsound)
-            (soundprocs.sound_exit_nhsound)(_("panic"));
+            soundprocs.sound_exit_nhsound(_("panic"));
         exit_nhwindows()(0);
         iflags.window_inited = FALSE; /* they're gone; force raw_print()ing */
     }
@@ -423,13 +335,6 @@ fixup_death(how)
                   : !program_state.something_worth_saving
                         ? _("Program initialization has failed.")
                         : _("Suddenly, the dungeon collapses."));
-
-
-
-
-
-
-
 
     if (!wizard()) {
         let maybe_rebuild = !program_state.something_worth_saving
@@ -460,15 +365,9 @@ fixup_death(how)
         }
     }
 
-
-    void vsnprintf(buf, sizeof(array_of(char, BUFSZ)), str, the_args);
+    vsnprintf(buf, sizeof(array_of(char, BUFSZ)), str, the_args);
     raw_print()(buf);
     paniclog(_("panic"), buf);
-
-
-
-
-
 
     if (wizard())
 
@@ -476,14 +375,7 @@ fixup_death(how)
 
     va_end(the_args) } ; really_done(PANICKED); } finally { stack_pop($frame); } }
 
-
-
-
-
-
-function /* boolean */
-should_query_disclose_option(category, defquery)
-{
+function should_query_disclose_option(category, defquery) { /* boolean */
     let idx;
     let disclose;
     let dop;
@@ -523,119 +415,29 @@ should_query_disclose_option(category, defquery)
     return TRUE;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef DUMPLOG: not in this build */
 
 /*ARGSUSED*/
-function /* void */
-dump_everything(
+function dump_everything(
     how,
-    when) /* date+time at end of game */
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (how));
-    (void (when));
-
+    when) { /* void */ /* date+time at end of game */
+    /* #ifdef DUMPLOG: not in this build */
+
+    (how);
+    (when);
 }
 
-function /* void */
-disclose(how, taken)
-{ const $frame = stack_frame(); try {
+function disclose(how, taken) { /* void */
+    const $frame = stack_frame(); try {
     let c = ord('\0'), defquery = stack_var(char);
     let qbuf = stack_array(char, QBUFSZ);
     let ask = FALSE;
 
     if (gi.invent && !done_stopprint()) {
         if (taken)
-            void sprintf(qbuf, _("Do you want to see what you had when you %s?"), (how == QUIT) ? _("quit") : _("died"));
+            sprintf(qbuf, _("Do you want to see what you had when you %s?"), (how == QUIT) ? _("quit") : _("died"));
         else
-            void strcpy(qbuf, _("Do you want your possessions identified?"))
+            strcpy(qbuf, _("Do you want your possessions identified?"))
 ;
 
         ask = should_query_disclose_option(ord('i'), addr_of(defquery));
@@ -644,7 +446,7 @@ disclose(how, taken)
             /* caller has already ID'd everything; we pass 'want_reply=True'
                to force display_pickinv() to avoid using WIN_INVENT */
             iflags.force_invmenu = FALSE;
-            void display_inventory(0, TRUE);
+            display_inventory(0, TRUE);
             container_contents(gi.invent, TRUE, TRUE, FALSE);
         }
         if (c == ord('q'))
@@ -678,12 +480,7 @@ disclose(how, taken)
         if (should_query_disclose_option(ord('c'), addr_of(defquery))) {
             let acnt = count_achievements();
 
-            void sprintf(qbuf, _("Do you want to see your conduct%s?"), (acnt > 0) ? _(" and achievements") : _(""))
-
-
-
-
-
+            sprintf(qbuf, _("Do you want to see your conduct%s?"), (acnt > 0) ? _(" and achievements") : _(""))
 
 ;
             c = yn_function(qbuf, ynqchars, defquery[0], TRUE);
@@ -706,14 +503,13 @@ disclose(how, taken)
         if (c == ord('q'))
             program_state.stopprint++;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* try to get the player back in a viable state after being killed */
-function /* void */
-savelife(how)
-{
+function savelife(how) { /* void */
     let uhpmin;
-    let givehp = 50 + 10 * (Math.trunc(ACURR(A_CON) / 2));
+    let givehp = 50 + 10 * Math.trunc(ACURR(A_CON) / 2);
 
     /* life-drain/level-loss to experience level 0 kills without actually
        reducing ulevel below 1, but include this for bulletproofing */
@@ -768,9 +564,7 @@ savelife(how)
  * Get valuables from the given list.  Revised code: the list always remains
  * intact.
  */
-function /* void */
-get_valuables(list) /* inventory or container contents */
-{
+function get_valuables(list) { /* void */ /* inventory or container contents */
     let obj;
     let i;
 
@@ -803,11 +597,10 @@ get_valuables(list) /* inventory or container contents */
  *  Sort collected valuables, most frequent to least.  We could just
  *  as easily use qsort, but we don't care about efficiency here.
  */
-function /* void */
-sort_valuables(
+function sort_valuables(
     list,
-    size) /* max value is less than 20 */
-{ const $frame = stack_frame(); try {
+    size) { /* void */ /* max value is less than 20 */
+    const $frame = stack_frame(); try {
     let i, j;
     let ltmp = stack_struct(struct_valuable_data);
 
@@ -824,41 +617,13 @@ sort_valuables(
         struct_assign(ptr_add(list, j), ltmp);
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* deal with some objects which may be in an abnormal state at end of game */
-export function /* void */
-done_object_cleanup()
-{
+export function done_object_cleanup() { /* void */
     let ox, oy;
 
     /* might have been killed while using a disposable item, so make sure
@@ -912,12 +677,11 @@ done_object_cleanup()
 }
 
 /* called twice; first to calculate total, then to list relevant items */
-function /* void */
-artifact_score(
+function artifact_score(
     list,
     counting,
-    endwin)
-{ const $frame = stack_frame(); try {
+    endwin) { /* void */
+    const $frame = stack_frame(); try {
     let pbuf = stack_array(char, BUFSZ);
     let otmp;
     let value, points;
@@ -935,9 +699,8 @@ artifact_score(
                 /* not observe_object; dead characters don't observe */
                 otmp.known = otmp.dknown = otmp.bknown = otmp.rknown = 1;
                 /* assumes artifacts don't have quan > 1 */
-                void sprintf(pbuf, _("%s%s (worth %lld %s and %lld points)"), the_unique_obj(otmp) ? _("The ") : _(""), otmp.oartifact ? artiname(otmp.oartifact)
+                sprintf(pbuf, _("%s%s (worth %lld %s and %lld points)"), the_unique_obj(otmp) ? _("The ") : _(""), otmp.oartifact ? artiname(otmp.oartifact)
                                         : OBJ_NAME(objects[otmp.otyp]), value, currency(value), points)
-
 
 ;
                 putstr()(endwin, 0, pbuf);
@@ -946,13 +709,12 @@ artifact_score(
         if (Has_contents(otmp))
             artifact_score(otmp.cobj, counting, endwin);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* when dying while running the debug fuzzer, [almost] always keep going;
    True: forced survival; False: doomed unless wearing life-save amulet */
-function /* boolean */
-fuzzer_savelife(how)
-{
+function fuzzer_savelife(how) { /* boolean */
     /*
      * Some debugging code pulled out of done() to unclutter it.
      * 'done_seq' is maintained in done().
@@ -973,14 +735,14 @@ fuzzer_savelife(how)
             if (ismnum(u.ulycn) && !rn2(3)) {
                 potion = mksobj(POT_WATER, TRUE, FALSE);
                 bless(potion);
-                void peffects(potion);
+                peffects(potion);
                 obfree(potion, null);
                 ++remedies;
             }
             if (!remedies || rn2(3)) {
                 potion = mksobj(POT_RESTORE_ABILITY, TRUE, FALSE);
                 bless(potion);
-                void peffects(potion);
+                peffects(potion);
                 obfree(potion, null);
                 ++remedies;
             }
@@ -1025,9 +787,8 @@ fuzzer_savelife(how)
 }
 
 /* Be careful not to call panic from here! */
-export function /* void */
-done(how)
-{ const $frame = stack_frame(); try {
+export function done(how) { /* void */
+    const $frame = stack_frame(); try {
     let survive = FALSE;
 
     if (how == TRICKED) {
@@ -1074,7 +835,7 @@ done(how)
     if (!chars[svk.killer.name + 0] && (how == STARVING || how == BURNING))
         svk.killer.format = KILLED_BY;
     if (!chars[svk.killer.name + 0] || how >= PANICKED)
-        void strcpy(svk.killer.name, deaths[how]);
+        strcpy(svk.killer.name, deaths[how]);
 
     if (how < PANICKED) {
         u.umortality++;
@@ -1100,7 +861,7 @@ done(how)
         if (uamul)
             useup(uamul);
 
-        void adjattrib(A_CON, -1, TRUE);
+        adjattrib(A_CON, -1, TRUE);
         savelife(how);
         if (how == GENOCIDED) {
             pline(_("Unfortunately you are still genocided..."));
@@ -1133,12 +894,12 @@ done(how)
     }
     really_done(how);
     /*NOTREACHED*/
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* separated from done() in order to specify the __noreturn__ attribute */
-function /* void */
-really_done(how)
-{ const $frame = stack_frame(); try {
+function really_done(how) { /* void */
+    const $frame = stack_frame(); try {
     let taken;
     let pbuf = stack_array(char, BUFSZ);
     let endwin = WIN_ERR;
@@ -1199,16 +960,13 @@ really_done(how)
     if (have_windows)
         wait_synch()(); /* flush screen output */
 
-    void signal(SIGINT, done_intr);
+    signal(SIGINT, done_intr);
 
-
-    void signal(SIGQUIT, done_intr);
+    signal(SIGQUIT, done_intr);
 
     sethanguphandler(done_hangup);
 
-
-
-    bones_ok = (((how < GENOCIDED) && can_make_bones()) ? 1 : 0);
+    bones_ok = ((how < GENOCIDED) && can_make_bones() ? 1 : 0);
 
     if (bones_ok && launch_in_progress())
         force_launch_placement();
@@ -1233,7 +991,7 @@ really_done(how)
         if (u.uhp < 1) {
             how = DIED;
             u.umortality++; /* skipped above when how==QUIT */
-            void strcpy(svk.killer.name, _("quit while already on Charon's boat"));
+            strcpy(svk.killer.name, _("quit while already on Charon's boat"));
         }
     }
     if (how == ESCAPED || how == PANICKED)
@@ -1245,7 +1003,7 @@ really_done(how)
         let silently = done_stopprint() ? TRUE : FALSE;
 
         /* these affect score and/or bones, but avoid them during panic */
-        taken = paybill((how == ESCAPED) ? -1 : (+(how != QUIT)), silently);
+        taken = paybill((how == ESCAPED) ? -1 : +(how != QUIT), silently);
         paygd(silently);
         clearpriests();
     } else
@@ -1294,7 +1052,7 @@ really_done(how)
            excluded by active livelog */
         formatkiller(pbuf, sizeof(array_of(char, BUFSZ)), how, TRUE);
         if (!chars[pbuf])
-            void strcpy(pbuf, deaths[how]);
+            strcpy(pbuf, deaths[how]);
         livelog_printf(LL_DUMP, _("%s"), pbuf);
 
         dump_everything(how, endtime);
@@ -1321,8 +1079,8 @@ really_done(how)
             was_already_grave = IS_GRAVE(levl()[u.ux][u.uy].typ);
 
         corpse = mk_named_object(CORPSE, mons[mnum], u.ux, u.uy, svp.plname);
-        void sprintf(pbuf, _("%s, "), svp.plname);
-        formatkiller(eos(pbuf), unsigned(unsigned(sizeof(array_of(char, BUFSZ)) - Strlen(pbuf))), how, TRUE);
+        sprintf(pbuf, _("%s, "), svp.plname);
+        formatkiller(eos(pbuf), unsigned(sizeof(array_of(char, BUFSZ)) - Strlen(pbuf)), how, TRUE);
         make_grave(u.ux, u.uy, pbuf);
         if (IS_GRAVE(levl()[u.ux][u.uy].typ) && !was_already_grave)
             levl()[u.ux][u.uy].flags = 1; /* corpse isn't buried */
@@ -1353,7 +1111,7 @@ really_done(how)
                converting, then using helm-of-OA to switch back: *= 1.5 */
             tmp = (chars[u.ualignbase + A_CURRENT] == chars[u.ualignbase + A_ORIGINAL])
                       ? u.urexp
-                      : (Math.trunc(u.urexp / 2));
+                      : Math.trunc(u.urexp / 2);
             u.urexp = nowrap_add(u.urexp, tmp);
         }
     }
@@ -1405,27 +1163,19 @@ really_done(how)
     } else
         program_state.stopprint = 1; /* just avoid any more output */
 
-
-
-
-
-
-
-
-
-
+    /* #ifdef DUMPLOG: not in this build */
 
     if (u.uhave.amulet) {
-        void strcat(svk.killer.name, _(" (with the Amulet)"));
+        strcat(svk.killer.name, _(" (with the Amulet)"));
     } else if (how == ESCAPED) {
         if (Is_astralevel(u.uz)) /* offered Amulet to wrong deity */
-            void strcat(svk.killer.name, _(" (in celestial disgrace)"));
+            strcat(svk.killer.name, _(" (in celestial disgrace)"));
         else if (carrying(FAKE_AMULET_OF_YENDOR))
-            void strcat(svk.killer.name, _(" (with a fake Amulet)"));
+            strcat(svk.killer.name, _(" (with a fake Amulet)"));
         /* don't bother counting to see whether it should be plural */
     }
 
-    void sprintf(pbuf, _("%s %s the %s..."), Goodbye(), svp.plname, (how != ASCENDED)
+    sprintf(pbuf, _("%s %s the %s..."), Goodbye(), svp.plname, (how != ASCENDED)
                 ? ((flags.female && gu.urole.name.f)
                     ? gu.urole.name.f
                     : gu.urole.name.m)
@@ -1460,10 +1210,10 @@ really_done(how)
 
         uchars[gv.viz_array[0] + 0] |= IN_SIGHT; /* need visibility for naming */
         mtmp = gm.mydogs;
-        void strcpy(pbuf, _("You"));
+        strcpy(pbuf, _("You"));
         if (mtmp || Schroedingers_cat[0]) {
             while (mtmp) {
-                void sprintf(eos(pbuf), _(" and %s"), mon_nam(mtmp));
+                sprintf(eos(pbuf), _(" and %s"), mon_nam(mtmp));
                 if (mtmp.mtame)
                     u.urexp = nowrap_add(u.urexp, mtmp.mhp);
                 mtmp = mtmp.nmon;
@@ -1475,14 +1225,14 @@ really_done(how)
 
                 mhp = d(m_lev, 8);
                 u.urexp = nowrap_add(u.urexp, mhp);
-                void strcat(eos(pbuf), _(" and Schroedinger's cat"));
+                strcat(eos(pbuf), _(" and Schroedinger's cat"));
             }
             dump_forward_putstr(endwin, 0, pbuf, done_stopprint());
             chars[pbuf + 0] = ord('\0');
         } else {
-            void strcat(pbuf, _(" "));
+            strcat(pbuf, _(" "));
         }
-        void sprintf(eos(pbuf), _("%s with %lld point%s,"), (how == ASCENDED) ? _("went to your reward")
+        sprintf(eos(pbuf), _("%s with %lld point%s,"), (how == ASCENDED) ? _("went to your reward")
                                   : _("escaped from the dungeon"), u.urexp, plur(u.urexp))
 
 ;
@@ -1490,12 +1240,6 @@ really_done(how)
 
         if (!done_stopprint())
             artifact_score(gi.invent, FALSE, endwin); /* list artifacts */
-
-
-
-
-
-
 
         /* list valuables here */
         for (val = gv.valuables[0]; val.list; val = ptr_add(val, 1)) {
@@ -1516,24 +1260,23 @@ really_done(how)
                     if (has_oname(otmp))
                         free_oname(otmp);
                     otmp.quan = count;
-                    void sprintf(pbuf, _("%8lld %s (worth %lld %s),"), count, xname(otmp), count * (objects[typ].oc_cost), currency(2))
+                    sprintf(pbuf, _("%8lld %s (worth %lld %s),"), count, xname(otmp), count * (objects[typ].oc_cost), currency(2))
 
 ;
                     obfree(otmp, null);
                 } else {
-                    void sprintf(pbuf, _("%8lld worthless piece%s of colored glass,"), count, plur(count))
+                    sprintf(pbuf, _("%8lld worthless piece%s of colored glass,"), count, plur(count))
 ;
                 }
                 dump_forward_putstr(endwin, 0, pbuf, 0);
             }
         }
-
     } else {
         /* did not escape or ascend */
         if (u.uz.dnum == 0 && u.uz.dlevel <= 0) {
             /* level teleported out of the dungeon; `how' is DIED,
                due to falling or to "arriving at heaven prematurely" */
-            void sprintf(pbuf, _("You %s beyond the confines of the dungeon"), (u.uz.dlevel < 0) ? _("passed away") : ends[how])
+            sprintf(pbuf, _("You %s beyond the confines of the dungeon"), (u.uz.dlevel < 0) ? _("passed away") : ends[how])
 ;
         } else {
             /* more conventional demise */
@@ -1541,20 +1284,20 @@ really_done(how)
 
             if (Is_astralevel(u.uz))
                 where = _("The Astral Plane");
-            void sprintf(pbuf, _("You %s in %s"), ends[how], where);
+            sprintf(pbuf, _("You %s in %s"), ends[how], where);
             if (!In_endgame(u.uz) && !single_level_branch(u.uz))
-                void sprintf(eos(pbuf), _(" on dungeon level %d"), In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz))
+                sprintf(eos(pbuf), _(" on dungeon level %d"), In_quest(u.uz) ? dunlev(u.uz) : depth(u.uz))
 ;
         }
 
-        void sprintf(eos(pbuf), _(" with %lld point%s,"), u.urexp, plur(u.urexp));
+        sprintf(eos(pbuf), _(" with %lld point%s,"), u.urexp, plur(u.urexp));
         dump_forward_putstr(endwin, 0, pbuf, done_stopprint());
     }
 
-    void sprintf(pbuf, _("and %lld piece%s of gold, after %lld move%s."), umoney, plur(umoney), svm.moves, plur(svm.moves))
+    sprintf(pbuf, _("and %lld piece%s of gold, after %lld move%s."), umoney, plur(umoney), svm.moves, plur(svm.moves))
 ;
     dump_forward_putstr(endwin, 0, pbuf, done_stopprint());
-    void sprintf(pbuf, _("You were level %d with a maximum of %d hit point%s when you %s."), u.ulevel, u.uhpmax, plur(u.uhpmax), ends[how])
+    sprintf(pbuf, _("You were level %d with a maximum of %d hit point%s when you %s."), u.ulevel, u.uhpmax, plur(u.uhpmax), ends[how])
 
 ;
     dump_forward_putstr(endwin, 0, pbuf, done_stopprint());
@@ -1568,7 +1311,7 @@ really_done(how)
 
     /* shut down soundlib */
     if (soundprocs.sound_exit_nhsound)
-        (soundprocs.sound_exit_nhsound)(_("really_done"));
+        soundprocs.sound_exit_nhsound(_("really_done"));
 
     /*
      * "So when I die, the first thing I will see in Heaven is a score list?"
@@ -1597,16 +1340,16 @@ really_done(how)
         raw_print()(_(""));
     }
     nh_terminate(EXIT_SUCCESS);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* used for disclosure and for the ':' choice when looting a container */
-export function /* void */
-container_contents(
+export function container_contents(
     list,
     identified,
     all_containers,
-    reportempty)
-{ const $frame = stack_frame(); try {
+    reportempty) { /* void */
+    const $frame = stack_frame(); try {
     let box, obj;
     let buf = stack_array(char, BUFSZ);
     let cat, dumping = iflags.in_dumplog;
@@ -1634,7 +1377,7 @@ container_contents(
                    reports the box as containing "1 item" */
                 cat = SchroedingersBox(box);
 
-                void sprintf(buf, _("Contents of %s:"), the(xname(box)));
+                sprintf(buf, _("Contents of %s:"), the(xname(box)));
                 putstr()(tmpwin, 0, buf);
                 if (!dumping)
                     putstr()(tmpwin, 0, _(""));
@@ -1654,12 +1397,12 @@ container_contents(
                             if (Is_container(obj) || obj.otyp == STATUE)
                                 obj.cknown = obj.lknown = 1;
                         }
-                        void strcpy(buf + 2, doname_with_price(obj));
+                        strcpy(buf + 2, doname_with_price(obj));
                         putstr()(tmpwin, 0, buf);
                     }
                     unsortloot(sortedcobj);
                 } else if (cat) {
-                    void strcpy(buf + 2, _("Schroedinger's cat!"));
+                    strcpy(buf + 2, _("Schroedinger's cat!"));
                     putstr()(tmpwin, 0, buf);
                 }
                 if (dumping)
@@ -1677,14 +1420,12 @@ container_contents(
         if (!all_containers)
             break;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* should be called with either EXIT_SUCCESS or EXIT_FAILURE */
- export function /* void */
-nh_terminate(status)
-{
+ export function nh_terminate(status) { /* void */
     program_state.in_moveloop = 0; /* won't be returning to normal play */
-
 
     /* Issue #460: capture the final post-topten screen state once,
      * deterministically, before tearing down. nomux_raw_emit no longer
@@ -1696,10 +1437,7 @@ nh_terminate(status)
      * advance. See termcap.c nomux_raw_emit for the matching comment. */
     nomux_capture_write_input_boundary();
 
-
     l_nhcore_call(NHCORE_GAME_EXIT);
-
-
 
     /* don't bother to try to release memory if we're in panic mode, to
        avoid trouble in case that happens to be due to memory problems */
@@ -1709,44 +1447,31 @@ nh_terminate(status)
         l_nhcore_done();
     }
 
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef VMS: not in this build */
 
     program_state.exiting = 1;
     nethack_exit(status);
 }
 
 /* set a delayed killer, ensure non-delayed killer is cleared out */
-export function /* void */
-delayed_killer(id, format, killername)
-{
+export function delayed_killer(id, format, killername) { /* void */
     let k = find_delayed_killer(id);
 
     if (!k) {
         /* no match, add a new delayed killer to the list */
         k = view_of(struct_kinfo, addr_of(alloc(sizeof(struct_kinfo))));
-        void memset(addr_of(k), 0, sizeof(struct_kinfo));
+        memset(addr_of(k), 0, sizeof(struct_kinfo));
         k.id = id;
         k.next = svk.killer.next;
         svk.killer.next = k;
     }
 
     k.format = format;
-    void strcpy(k.name, killername ? killername : _(""));
+    strcpy(k.name, killername ? killername : _(""));
     chars[svk.killer.name + 0] = 0;
 }
 
-export function /* struct kinfo * */
-find_delayed_killer(id)
-{
+export function find_delayed_killer(id) { /* struct kinfo * */
     let k;
 
     for (k = svk.killer.next; k != null; k = k.next) {
@@ -1756,9 +1481,7 @@ find_delayed_killer(id)
     return k;
 }
 
-export function /* void */
-dealloc_killer(kptr)
-{
+export function dealloc_killer(kptr) { /* void */
     let prev = svk.killer, k;
 
     if (kptr == null)
@@ -1778,9 +1501,7 @@ dealloc_killer(kptr)
     }
 }
 
-export function /* void */
-save_killers(nhfp)
-{
+export function save_killers(nhfp) { /* void */
     let kptr;
 
     if (update_file(nhfp)) {
@@ -1797,10 +1518,7 @@ save_killers(nhfp)
     }
 }
 
-
-export function /* void */
-restore_killers(nhfp)
-{
+export function restore_killers(nhfp) { /* void */
     let kptr;
 
     for (kptr = svk.killer; kptr != null; kptr = kptr.next) {
@@ -1811,9 +1529,7 @@ restore_killers(nhfp)
     }
 }
 
-function /* int */
-wordcount(p)
-{
+function wordcount(p) { /* int */
     let words = 0;
 
     while (chars[p]) {
@@ -1827,9 +1543,7 @@ wordcount(p)
     return words;
 }
 
-function /* void */
-bel_copy1(inp, out)
-{
+function bel_copy1(inp, out) { /* void */
     let in_ = inp[0];
 
     out += strlen(out); /* eos() */
@@ -1841,9 +1555,8 @@ bel_copy1(inp, out)
     inp[0] = in_;
 }
 
-export function /* char * */
-build_english_list(in_)
-{ const $frame = stack_frame(); try {
+export function build_english_list(in_) { /* char * */
+    const $frame = stack_frame(); try {
     let out, p = stack_var(ptr_to(char), in_);
     let len = int(strlen(p[0])), words = wordcount(p[0]);
 
@@ -1865,20 +1578,21 @@ build_english_list(in_)
         if (words == 2) {
             /* "first or second" */
             bel_copy1(p, out);
-            void strcat(out, _(" "));
+            strcat(out, _(" "));
         } else {
             /* "first, second, or third */
             do {
                 bel_copy1(p, out);
-                void strcat(out, _(", "));
+                strcat(out, _(", "));
             } while (--words > 1);
         }
-        void strcat(out, _("or "));
+        strcat(out, _("or "));
         bel_copy1(p, out);
         break;
     }
     return out;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* What do we try to in what order?  Tradeoffs:
  * libc: +no external programs required
@@ -1893,34 +1607,7 @@ build_english_list(in_)
  * otherwise we just use stdout.  Requires libc for now.
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-NH_abort(why)
-{
-
-
-
-
+export function NH_abort(why) { /* void */
     let aborting = static_var("NH_abort.aborting", schar, FALSE);
 
     /* don't execute this code recursively if a second abort is requested
@@ -1929,387 +1616,148 @@ NH_abort(why)
         return;
     aborting[0] = TRUE;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef PANICTRACE: not in this build */
 
     abort();
-
 }
 
-
 /*end.c*/
+
 import { A_CON } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { WIZARD_NAME } from "./config.h.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
+import { AMULET_CLASS, GEM_CLASS, S_MUMMY, S_VAMPIRE, S_WRAITH } from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { In_tutorial } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
+import { In_endgame, In_tutorial, Is_astralevel } from "./dungeon.h.macros.js";
 import { nethack_exit } from "./extern.h.macros.js";
-import { DISCLOSE_NO_WITHOUT_PROMPT } from "./flag.h.js";
-import { DISCLOSE_PROMPT_DEFAULT_SPECIAL } from "./flag.h.js";
-import { DISCLOSE_PROMPT_DEFAULT_YES } from "./flag.h.js";
-import { DISCLOSE_SPECIAL_WITHOUT_PROMPT } from "./flag.h.js";
-import { DISCLOSE_YES_WITHOUT_PROMPT } from "./flag.h.js";
-import { NUM_DISCLOSURE_OPTIONS } from "./flag.h.js";
-import { PLNMSG_OK_DONT_DIE } from "./flag.h.js";
-import { fuzzer_off } from "./flag.h.js";
-import { ParanoidBones } from "./flag.h.macros.js";
-import { ParanoidDie } from "./flag.h.macros.js";
-import { ParanoidQuit } from "./flag.h.macros.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_DUMP } from "./global.h.js";
-import { LL_LIFESAVE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import {
+    DISCLOSE_NO_WITHOUT_PROMPT, DISCLOSE_PROMPT_DEFAULT_SPECIAL, DISCLOSE_PROMPT_DEFAULT_YES,
+    DISCLOSE_SPECIAL_WITHOUT_PROMPT, DISCLOSE_YES_WITHOUT_PROMPT, NUM_DISCLOSURE_OPTIONS,
+    PLNMSG_OK_DONT_DIE, fuzzer_off,
+} from "./flag.h.js";
+import { ParanoidBones, ParanoidDie, ParanoidQuit, discover, wizard } from "./flag.h.macros.js";
+import { BUFSZ, FALSE, LL_DUMP, LL_LIFESAVE, QBUFSZ, TRUE } from "./global.h.js";
 import { Strlen } from "./global.h.macros.js";
-import { ASCENDED } from "./hack.h.js";
-import { BASICENLIGHTENMENT } from "./hack.h.js";
-import { BURNING } from "./hack.h.js";
-import { CHOKING } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { DISSOLVED } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ENL_GAMEOVERALIVE } from "./hack.h.js";
-import { ENL_GAMEOVERDEAD } from "./hack.h.js";
-import { ESCAPED } from "./hack.h.js";
-import { GENOCIDED } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MAGICENLIGHTENMENT } from "./hack.h.js";
-import { NHCORE_GAME_EXIT } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { PANICKED } from "./hack.h.js";
-import { QUIT } from "./hack.h.js";
-import { SORTLOOT_LOOT } from "./hack.h.js";
-import { SORTLOOT_PACK } from "./hack.h.js";
-import { STARVING } from "./hack.h.js";
-import { STONING } from "./hack.h.js";
-import { TRICKED } from "./hack.h.js";
-import { TURNED_SLIME } from "./hack.h.js";
-import { override_restriction } from "./hack.h.js";
-import { struct_kinfo } from "./hack.h.js";
-import { struct_sortloot_item } from "./hack.h.js";
-import { struct_valuable_data } from "./hack.h.js";
-import { makeknown } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import {
+    ASCENDED, BASICENLIGHTENMENT, BURNING, CHOKING, CQ_CANNED, DIED, DISSOLVED, ECMD_OK,
+    ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, ESCAPED, GENOCIDED, KILLED_BY, KILLED_BY_AN,
+    MAGICENLIGHTENMENT, NHCORE_GAME_EXIT, NO_KILLER_PREFIX, PANICKED, QUIT, SORTLOOT_LOOT,
+    SORTLOOT_PACK, STARVING, STONING, TRICKED, TURNED_SLIME, override_restriction, struct_kinfo,
+    struct_sortloot_item, struct_valuable_data,
+} from "./hack.h.js";
+import { makeknown, min, plur, release_data, update_file, y_n, ynq } from "./hack.h.macros.js";
 import { nowrap_add } from "./integer.h.macros.js";
 import { showdebug } from "./lint.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
-import { has_ebones } from "./mextra.h.macros.js";
-import { has_mgivenname } from "./mextra.h.macros.js";
+import { MGIVENNAME, has_ebones, has_mgivenname } from "./mextra.h.macros.js";
 import { type_is_pname } from "./mondata.h.macros.js";
-import { G_GENOD } from "./monflag.h.js";
-import { G_NOCORPSE } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
+import { G_GENOD, G_NOCORPSE, G_UNIQ } from "./monflag.h.js";
 import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { LEAVESTATUE } from "./monsters.h.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_GHOUL } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
+import { M_AP_TYPE, is_vampshifter, ismnum } from "./monst.h.macros.js";
+import {
+    LEAVESTATUE, LOW_PM, NON_PM, PM_GHOST, PM_GHOUL, PM_GREEN_SLIME, PM_HIGH_CLERIC, PM_HOUSECAT,
+    PM_HUMAN, PM_TOURIST, PM_VAMPIRE, PM_WRAITH,
+} from "./monsters.h.js";
 import { OBJ_FREE } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { SchroedingersBox } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
+import { Has_contents, Is_container, SchroedingersBox, has_oname } from "./obj.h.macros.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { AMULET_OF_LIFE_SAVING } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FIRST_AMULET } from "./objects.h.js";
-import { FIRST_REAL_GEM } from "./objects.h.js";
-import { LAST_GLASS_GEM } from "./objects.h.js";
-import { LAST_REAL_GEM } from "./objects.h.js";
-import { POT_RESTORE_ABILITY } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { UNCHANGING } from "./prop.h.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_kinfo } from "./savefile.h.macros.js";
-import { Sfo_kinfo } from "./savefile.h.macros.js";
+import {
+    AMULET_OF_LIFE_SAVING, BAG_OF_TRICKS, BELL_OF_OPENING, CANDELABRUM_OF_INVOCATION, CORPSE,
+    FAKE_AMULET_OF_YENDOR, FIRST_AMULET, FIRST_REAL_GEM, LAST_GLASS_GEM, LAST_REAL_GEM,
+    POT_RESTORE_ABILITY, POT_WATER, SPE_BOOK_OF_THE_DEAD, STATUE,
+} from "./objects.h.js";
+import { TIMEOUT, UNCHANGING } from "./prop.h.js";
+import { IS_GRAVE, levl } from "./rm.h.macros.js";
+import { Sfi_kinfo, Sfo_kinfo } from "./savefile.h.macros.js";
 import { IN_SIGHT } from "./vision.h.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { exit_nhwindows } from "./winprocs.h.macros.js";
-import { mark_synch } from "./winprocs.h.macros.js";
-import { outrip } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { raw_print } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { ACH_BLND } from "./you.h.js";
-import { ACH_NUDE } from "./you.h.js";
-import { ACH_UWIN } from "./you.h.js";
-import { A_CURRENT } from "./you.h.js";
-import { A_ORIGINAL } from "./you.h.js";
-import { SICK_ALL } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { UTOTYPE_ATSTAIRS } from "./you.h.js";
-import { Race_if } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Ugender } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Lifesaved } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
+import {
+    clear_nhwindow, create_nhwindow, destroy_nhwindow, display_nhwindow, exit_nhwindows, mark_synch,
+    outrip, putstr, raw_print, wait_synch,
+} from "./winprocs.h.macros.js";
+import { NHW_MENU, NHW_TEXT, WIN_ERR } from "./wintype.h.js";
+import {
+    ACH_BLND, ACH_NUDE, ACH_UWIN, A_CURRENT, A_ORIGINAL, SICK_ALL, TT_LAVA, UTOTYPE_ATSTAIRS,
+} from "./you.h.js";
+import { Race_if, Role_if, Ugender, Upolyd } from "./you.h.macros.js";
+import { Blind, Hallucination, Lifesaved, Sick } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { EXIT_SUCCESS } from "../rt/libc.js";
-import { SIGINT } from "../rt/libc.js";
-import { SIGQUIT } from "../rt/libc.js";
-import { SIG_IGN } from "../rt/libc.js";
-import { __isspace } from "../rt/libc.js";
-import { abort } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { signal } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { vsnprintf } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, schar, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import {
+    EXIT_SUCCESS, SIGINT, SIGQUIT, SIG_IGN, __isspace, abort, free, memset, signal, sprintf, sscanf,
+    strcat, strchr, strcmp, strcpy, strlen, vsnprintf,
+} from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { va_end } from "../rt/varargs.js";
-import { va_start } from "../rt/varargs.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, sizeof_member, struct, struct_assign, view_of,
+} from "../rt/struct.js";
+import { va_end, va_start } from "../rt/varargs.js";
 import { timet_delta } from "./allmain.js";
 import { alloc } from "./alloc.js";
-import { arti_cost } from "./artifact.js";
-import { artiname } from "./artifact.js";
-import { adjattrib } from "./attrib.js";
-import { minuhpmax } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
+import { arti_cost, artiname } from "./artifact.js";
+import { adjattrib, minuhpmax, setuhpmax } from "./attrib.js";
 import { lift_covet_and_placebc } from "./ball.js";
-import { can_make_bones } from "./bones.js";
-import { savebones } from "./bones.js";
+import { can_make_bones, savebones } from "./bones.js";
 import { bot } from "./botl.js";
-import { getnow } from "./calendar.js";
-import { midnight } from "./calendar.js";
-import { night } from "./calendar.js";
-import { cmdq_add_ec } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { paranoid_query } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { disclosure_options } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gb } from "./decl.js";
-import { gd } from "./decl.js";
-import { gg } from "./decl.js";
-import { gh } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gt } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svk } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { urealtime } from "./decl.js";
-import { ynqchars } from "./decl.js";
+import { getnow, midnight, night } from "./calendar.js";
+import { cmdq_add_ec, isok, paranoid_query, yn_function } from "./cmd.js";
+import {
+    disclosure_options, disp, flags, ga, gb, gd, gg, gh, gi, gk, gm, gn, gt, gu, gv, gy, iflags,
+    program_state, svc, svd, svk, svm, svp, u, urealtime, ynqchars,
+} from "./decl.js";
 import { curs_on_u } from "./display.js";
 import { schedule_goto } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { free_oname } from "./do_name.js";
-import { m_monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { pmname } from "./do_name.js";
+import { Mgender, Monnam, free_oname, m_monnam, mon_nam, pmname } from "./do_name.js";
 import { keepdogs } from "./dog.js";
 import { endmultishot } from "./dothrow.js";
-import { In_quest } from "./dungeon.js";
-import { deepest_lev_reached } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlev } from "./dungeon.js";
-import { show_overview } from "./dungeon.js";
-import { single_level_branch } from "./dungeon.js";
+import {
+    In_quest, deepest_lev_reached, depth, dunlev, show_overview, single_level_branch,
+} from "./dungeon.js";
 import { init_uhunger } from "./eat.js";
 import { make_grave } from "./engrave.js";
-import { clearlocks } from "./files.js";
-import { paniclog } from "./files.js";
-import { set_error_savefile } from "./files.js";
-import { money_cnt } from "./hack.js";
-import { nomul } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { count_achievements } from "./insight.js";
-import { enlightenment } from "./insight.js";
-import { list_genocided } from "./insight.js";
-import { list_vanquished } from "./insight.js";
-import { record_achievement } from "./insight.js";
-import { show_conduct } from "./insight.js";
-import { carrying } from "./invent.js";
-import { currency } from "./invent.js";
-import { display_inventory } from "./invent.js";
-import { free_pickinv_cache } from "./invent.js";
-import { perm_invent_toggled } from "./invent.js";
-import { set_cknown_lknown } from "./invent.js";
-import { sortloot } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { unsortloot } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
+import { clearlocks, paniclog, set_error_savefile } from "./files.js";
+import { money_cnt, nomul } from "./hack.js";
+import { eos, strstri, upstart } from "./hacklib.js";
+import {
+    count_achievements, enlightenment, list_genocided, list_vanquished, record_achievement,
+    show_conduct,
+} from "./insight.js";
+import {
+    carrying, currency, display_inventory, free_pickinv_cache, perm_invent_toggled,
+    set_cknown_lknown, sortloot, stackobj, unsortloot, update_inventory, useup,
+} from "./invent.js";
 import { adj_lev } from "./makemon.js";
 import { expels } from "./mhitu.js";
-import { bless } from "./mkobj.js";
-import { mk_named_object } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { unstuck } from "./mon.js";
-import { zombie_maker } from "./mon.js";
+import { bless, mk_named_object, mksobj, place_object } from "./mkobj.js";
+import { unstuck, zombie_maker } from "./mon.js";
 import { sticks } from "./mondata.js";
 import { accessible } from "./monmove.js";
 import { mons } from "./monst.js";
-import { l_nhcore_call } from "./nhlua.js";
-import { l_nhcore_done } from "./nhlua.js";
+import { l_nhcore_call, l_nhcore_done } from "./nhlua.js";
 import { discover_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { doname_with_price } from "./objnam.js";
-import { the } from "./objnam.js";
-import { the_unique_obj } from "./objnam.js";
-import { the_unique_pm } from "./objnam.js";
-import { thesimpleoname } from "./objnam.js";
-import { xname } from "./objnam.js";
+import {
+    an, doname_with_price, the, the_unique_obj, the_unique_pm, thesimpleoname, xname,
+} from "./objnam.js";
 import { monhealthdescr } from "./pager.js";
 import { observe_quantum_cat } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { raw_printf } from "./pline.js";
-import { make_sick } from "./potion.js";
-import { peffects } from "./potion.js";
-import { set_itimeout } from "./potion.js";
+import {
+    You, You_feel, Your, impossible, livelog_printf, pline, pline_The, raw_printf,
+} from "./pline.js";
+import { make_sick, peffects, set_itimeout } from "./potion.js";
 import { clearpriests } from "./priest.js";
 import { inven_inuse } from "./restore.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
+import { d, rn2 } from "./rnd.js";
 import { Goodbye } from "./role.js";
-import { dosave0 } from "./save.js";
-import { freedynamicdata } from "./save.js";
-import { finish_paybill } from "./shk.js";
-import { obfree } from "./shk.js";
-import { paybill } from "./shk.js";
-import { shkname } from "./shknam.js";
-import { shkname_is_pname } from "./shknam.js";
+import { dosave0, freedynamicdata } from "./save.js";
+import { finish_paybill, obfree, paybill } from "./shk.js";
+import { shkname, shkname_is_pname } from "./shknam.js";
 import { soundprocs } from "./sounds.js";
 import { sysopt } from "./sys.js";
-import { formatkiller } from "./topten.js";
-import { topten } from "./topten.js";
-import { force_launch_placement } from "./trap.js";
-import { launch_in_progress } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { hidden_gold } from "./vault.js";
-import { paygd } from "./vault.js";
-import { dump_close_log } from "./windows.js";
-import { dump_forward_putstr } from "./windows.js";
-import { dump_open_log } from "./windows.js";
+import { formatkiller, topten } from "./topten.js";
+import { force_launch_placement, launch_in_progress, reset_utrap } from "./trap.js";
+import { hidden_gold, paygd } from "./vault.js";
+import { dump_close_log, dump_forward_putstr, dump_open_log } from "./windows.js";
 import { wiz_makemap } from "./wizcmds.js";
 import { sethanguphandler } from "../sys/unix/unixmain.js";
 import { nomux_capture_write_input_boundary } from "../win/tty/termcap.js";

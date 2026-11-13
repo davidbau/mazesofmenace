@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack bigroom bigrm-3.lua	$NHDT-Date: 1652196021 2022/05/10 15:20:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1990 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack bigroom bigrm-3.lua	$NHDT-Date: 1652196021 2022/05/10 15:20:21 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1990 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 des.level_flags("mazelevel", "noflip");
 
 des.map([[
@@ -27,23 +27,23 @@ des.map([[
 ---------------------------------------------------------------------------
 ]]);
 
-` + "\n" + // -- Dungeon Description
-`des.region(selection.area(01,01,73,16), "lit");
+-- Dungeon Description
+des.region(selection.area(01,01,73,16), "lit");
 
-` + "\n" + // -- replace some walls
-`if percent(66) then
+-- replace some walls
+if percent(66) then
    local sel = selection.match("[.w.]");
    local terrains = { "F", "T", "W", "Z" };
    local choice = terrains[math.random(1, #terrains)];
    des.terrain(sel, choice);
 end
 
-` + "\n" + // -- Stairs
-`des.stair("up");
+-- Stairs
+des.stair("up");
 des.stair("down");
 
-` + "\n" + // -- Non diggable walls
-`des.non_diggable();
+-- Non diggable walls
+des.non_diggable();
 
 for i = 1,15 do
    des.object();

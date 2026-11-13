@@ -2,19 +2,6 @@
 /*      Copyright (c) 2018 by Pasi Kallinen */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "dlb.h"
-
-
-
-
-
-
-
-
-// #include <setjmp.h>
-
-
 /*
 #- include <lua5.3/lua.h>
 #- include <lua5.3/lualib.h>
@@ -23,82 +10,7 @@
 
 /*  */
 
-
-
-
 /* lua_CFunction prototypes */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const nhcore_call_names = static_array("nhcore_call_names", ptr_to(char), NUM_NHCORE_CALLS, [
     _("start_new_game"),
@@ -110,7 +22,6 @@ const nhcore_call_names = static_array("nhcore_call_names", ptr_to(char), NUM_NH
     _("leave_tutorial"),
 ]);
 const nhcore_call_available = static_array("nhcore_call_available", schar, NUM_NHCORE_CALLS);
-
 
 /* internal structure that hangs off L->ud (but use lua_getallocf() )
  * Note that we use it for both memory use tracking and instruction counting.
@@ -125,22 +36,17 @@ const nhcore_call_available = static_array("nhcore_call_available", schar, NUM_N
     osteps: unsigned,
     perpcall: unsigned,
 
-
     statctr: unsigned,
     sid: int,
     name: ptr_to(char),
 
-
     jb: jmp_buf,
-
 });
-
 
 const luapat = static_var("luapat", ptr_to("struct_lua_State"));   /* instance for file pattern matching */
 
-export function /* void */
-l_nhcore_init()
-{ const $frame = stack_frame(); try {
+export function l_nhcore_init() { /* void */
+    const $frame = stack_frame(); try {
     let sbi = init_list(stack_struct(struct_nhl_sandbox_info), { flags: NHL_SB_SAFE, memlimit: 1 * 1024 * 1024, steps: 0,
                              perpcall: 1 * 1024 * 1024 });
 
@@ -155,11 +61,10 @@ l_nhcore_init()
         }
     } else
         impossible(_("l_nhcore_init failed"));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-l_nhcore_done()
-{
+export function l_nhcore_done() { /* void */
     if (gl.luacore) {
         nhl_done(view_of(struct_lua_State, gl.luacore));
         gl.luacore = 0;
@@ -167,9 +72,7 @@ l_nhcore_done()
     end_luapat();
 }
 
-export function /* void */
-l_nhcore_call(callidx)
-{
+export function l_nhcore_call(callidx) { /* void */
     let ltyp;
 
     if (callidx < 0 || callidx >= NUM_NHCORE_CALLS || !gl.luacore
@@ -195,37 +98,27 @@ l_nhcore_call(callidx)
     }
 }
 
-
-
- export function /* void */
-nhl_error(L, msg)
-{ const $frame = stack_frame(); try {
+ export function nhl_error(L, msg) { /* void */
+    const $frame = stack_frame(); try {
     let ar = stack_struct(struct_lua_Debug);
     let buf = stack_array(char, BUFSZ * 2);
 
     lua_getstack(L, 1, ar);
     lua_getinfo(L, _("lS"), ar);
-    void (sprintf(buf, _("%s (line %d "), msg, ar.currentline));
-    void (sprintf(eos(buf), _("%.*s)"), int(((unsigned(sizeof(array_of(char, BUFSZ * 2)) - (unsigned(strlen(buf) + sizeof_string(")"))))))), ar.short_src))
-
-
+    sprintf(buf, _("%s (line %d "), msg, ar.currentline);
+    sprintf(eos(buf), _("%.*s)"), int((unsigned(sizeof(array_of(char, BUFSZ * 2)) - unsigned(strlen(buf) + sizeof_string(")"))))), ar.short_src)
 
 ; /* (used to be 'ar.source' here) */
     lua_pushstring(L, buf);
 
-
-
-    void lua_error(L);
+    lua_error(L);
     /*NOTREACHED*/
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* Check that parameters are nothing but single table,
    or if no parameters given, put empty table there */
-export function /* void */
-lcheck_param_table(L)
-{
+export function lcheck_param_table(L) { /* void */
     let argc = lua_gettop(L);
 
     if (argc < 1)
@@ -237,11 +130,7 @@ lcheck_param_table(L)
     luaL_checktype(L, 1, LUA_TTABLE);
 }
 
-
-
-export function /* schar */
-get_table_mapchr(L, name)
-{
+export function get_table_mapchr(L, name) { /* schar */
     let ter;
     let typ;
 
@@ -254,9 +143,7 @@ get_table_mapchr(L, name)
     return typ;
 }
 
-export function /* schar */
-get_table_mapchr_opt(L, name, defval)
-{
+export function get_table_mapchr_opt(L, name, defval) { /* schar */
     let ter;
     let typ;
 
@@ -272,9 +159,7 @@ get_table_mapchr_opt(L, name, defval)
     return typ;
 }
 
-export function /* short */
-nhl_get_timertype(L, idx)
-{
+export function nhl_get_timertype(L, idx) { /* short */
     /* these are in the same order as enum timeout_types in timeout.h and
        ttable timeout_funcs[] in timeout.c, although not spelled the same */
     let timerstr = static_array("nhl_get_timertype.timerstr", ptr_to(char), NUM_TIME_FUNCS + 1, [
@@ -289,45 +174,35 @@ nhl_get_timertype(L, idx)
     return ret;
 }
 
-
-
-export function /* void */
-nhl_add_table_entry_int(L, name, value)
-{
+export function nhl_add_table_entry_int(L, name, value) { /* void */
     lua_pushstring(L, name);
     lua_pushinteger(L, value);
     lua_rawset(L, -3);
 }
 
-export function /* void */
-nhl_add_table_entry_char(L, name, value)
-{ const $frame = stack_frame(); try {
+export function nhl_add_table_entry_char(L, name, value) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, 2);
-    void sprintf(buf, _("%c"), value);
+    sprintf(buf, _("%c"), value);
     lua_pushstring(L, name);
     lua_pushstring(L, buf);
     lua_rawset(L, -3);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-nhl_add_table_entry_str(L, name, value)
-{
+export function nhl_add_table_entry_str(L, name, value) { /* void */
     lua_pushstring(L, name);
     lua_pushstring(L, value);
     lua_rawset(L, -3);
 }
-export function /* void */
-nhl_add_table_entry_bool(L, name, value)
-{
+export function nhl_add_table_entry_bool(L, name, value) { /* void */
     lua_pushstring(L, name);
     lua_pushboolean(L, value);
     lua_rawset(L, -3);
 }
 
-export function /* void */
-nhl_add_table_entry_region(L, name, x1,
-                           y1, x2, y2)
-{
+export function nhl_add_table_entry_region(L, name, x1,
+                           y1, x2, y2) { /* void */
     lua_pushstring(L, name);
     lua_newtable(L);
     nhl_add_table_entry_int(L, _("x1"), x1);
@@ -380,28 +255,22 @@ nhl_add_table_entry_region(L, name, x1,
                 { ch: ord('\0'), typ: STONE },
 ]);
 
-export function /* schar */
-splev_chr2typ(c)
-{
+export function splev_chr2typ(c) { /* schar */
     let i;
 
     for (i = 0; char2typ[i].ch; i++)
         if (c == char2typ[i].ch)
             return char2typ[i].typ;
-    return (INVALID_TYPE);
+    return INVALID_TYPE;
 }
 
-export function /* schar */
-check_mapchr(s)
-{
+export function check_mapchr(s) { /* schar */
     if (s && strlen(s) == 1)
         return splev_chr2typ(chars[s + 0]);
     return INVALID_TYPE;
 }
 
-function /* char */
-splev_typ2chr(typ)
-{
+function splev_typ2chr(typ) { /* char */
     let i;
 
     for (i = 0; char2typ[i].typ < MAX_TYPE; i++)
@@ -410,13 +279,10 @@ splev_typ2chr(typ)
     return ord('x');
 }
 
-
-
 /* local t = nh.gettrap(x,y); */
 /* local t = nh.gettrap({ x = 10, y = 10 }); */
-function /* int */
-nhl_gettrap(L)
-{ const $frame = stack_frame(); try {
+function nhl_gettrap(L) { /* int */
+    const $frame = stack_frame(); try {
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
     let x = stack_var(coordxy), y = stack_var(coordxy);
 
@@ -466,12 +332,12 @@ nhl_gettrap(L)
         nhl_error(L, _("Coordinates out of range"));
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* nh.deltrap(x,y); nh.deltrap({ x = 10, y = 15 }); */
-function /* int */
-nhl_deltrap(L)
-{ const $frame = stack_frame(); try {
+function nhl_deltrap(L) { /* int */
+    const $frame = stack_frame(); try {
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
     let x = stack_var(coordxy), y = stack_var(coordxy);
 
@@ -491,9 +357,8 @@ nhl_deltrap(L)
             deltrap(ttmp);
     }
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* get parameters (XX,YY) or ({ x = XX, y = YY }) or ({ XX, YY }),
    and set the x and y values.
@@ -504,9 +369,8 @@ nhl_deltrap(L)
    they want to interpret the values as absolute or as map-relative, and
    adjust accordingly.
  */
-export function /* boolean */
-nhl_get_xy_params(L, x, y)
-{ const $frame = stack_frame(); try {
+export function nhl_get_xy_params(L, x, y) { /* boolean */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
     let ret = FALSE;
 
@@ -522,15 +386,13 @@ nhl_get_xy_params(L, x, y)
         y[0] = ay[0];
     }
     return ret;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* local loc = nh.getmap(x,y); */
 /* local loc = nh.getmap({ x = 10, y = 35 }); */
-function /* int */
-nhl_getmap(L)
-{ const $frame = stack_frame(); try {
+function nhl_getmap(L) { /* int */
+    const $frame = stack_frame(); try {
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
     let x = stack_var(coordxy), y = stack_var(coordxy);
 
@@ -551,7 +413,7 @@ nhl_getmap(L)
         nhl_add_table_entry_int(L, _("typ"), levl()[x[0]][y[0]].typ);
         nhl_add_table_entry_str(L, _("typ_name"),
                                 levltyp_to_name(levl()[x[0]][y[0]].typ));
-        void sprintf(buf, _("%c"), splev_typ2chr(levl()[x[0]][y[0]].typ));
+        sprintf(buf, _("%c"), splev_typ2chr(levl()[x[0]][y[0]].typ));
         nhl_add_table_entry_str(L, _("mapchr"), buf);
         nhl_add_table_entry_int(L, _("seenv"), levl()[x[0]][y[0]].seenv);
         nhl_add_table_entry_bool(L, _("horizontal"), levl()[x[0]][y[0]].horizontal);
@@ -570,7 +432,7 @@ nhl_getmap(L)
 
         if (IS_DOOR(levl()[x[0]][y[0]].typ)) {
             nhl_add_table_entry_bool(L, _("nodoor"),
-                                     (+(levl()[x[0]][y[0]].flags == D_NODOOR)));
+                                     +(levl()[x[0]][y[0]].flags == D_NODOOR));
             nhl_add_table_entry_bool(L, _("broken"),
                                      (levl()[x[0]][y[0]].flags & D_BROKEN));
             nhl_add_table_entry_bool(L, _("isopen"),
@@ -615,12 +477,11 @@ nhl_getmap(L)
         nhl_error(L, _("Coordinates out of range"));
         return 0;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* impossible("Error!") */
-function /* int */
-nhl_impossible(L)
-{
+function nhl_impossible(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -632,9 +493,7 @@ nhl_impossible(L)
 
 /* pline("It hits!") */
 /* pline("It hits!", true) */
-function /* int */
-nhl_pline(L)
-{
+function nhl_pline(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1 || argc == 2) {
@@ -648,9 +507,7 @@ nhl_pline(L)
 }
 
 /* verbalize("Fool!") */
-function /* int */
-nhl_verbalize(L)
-{
+function nhl_verbalize(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -662,9 +519,7 @@ nhl_verbalize(L)
 }
 
 /* parse_config("OPTIONS=!color") */
-function /* int */
-nhl_parse_config(L)
-{
+function nhl_parse_config(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -676,9 +531,7 @@ nhl_parse_config(L)
 }
 
 /* local windowtype = get_config("windowtype"); */
-function /* int */
-nhl_get_config(L)
-{
+function nhl_get_config(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -693,9 +546,8 @@ nhl_get_config(L)
 /*
   str = getlin("What do you want to call this dungeon level?");
  */
-function /* int */
-nhl_getlin(L)
-{ const $frame = stack_frame(); try {
+function nhl_getlin(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -710,7 +562,8 @@ nhl_getlin(L)
     nhl_error(L, _("Wrong args"));
     /*NOTREACHED*/
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  selected = menu("prompt",default,pickX,{"a"="option a", "b"="option b",...})
@@ -719,9 +572,8 @@ nhl_getlin(L)
  selected = menu("prompt", default, pickX,
                  {{key:"a", text:"option a"},{key:"b", text:"option b"},... })
  */
-function /* int */
-nhl_menu(L)
-{ const $frame = stack_frame(); try {
+function nhl_menu(L) { /* int */
+    const $frame = stack_frame(); try {
     let pickX = static_array("nhl_menu.pickX", ptr_to(char), null, [ _("none"), _("one"), _("any") ]); /* PICK_x */
     let argc = lua_gettop(L);
     let prompt;
@@ -805,12 +657,12 @@ nhl_menu(L)
     }
 
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* text("foo\nbar\nbaz") */
-function /* int */
-nhl_text(L)
-{ const $frame = stack_frame(); try {
+function nhl_text(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc > 0) {
@@ -846,16 +698,15 @@ nhl_text(L)
         }
 
         end_menu()(tmpwin, 0);
-        void select_menu(tmpwin, PICK_NONE, picks);
+        select_menu(tmpwin, PICK_NONE, picks);
         destroy_nhwindow()(tmpwin);
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* makeplural("zorkmid") */
-function /* int */
-nhl_makeplural(L)
-{
+function nhl_makeplural(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -867,9 +718,7 @@ nhl_makeplural(L)
 }
 
 /* makesingular("zorkmids") */
-function /* int */
-nhl_makesingular(L)
-{
+function nhl_makesingular(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -881,9 +730,7 @@ nhl_makesingular(L)
 }
 
 /* s_suffix("foo") */
-function /* int */
-nhl_s_suffix(L)
-{
+function nhl_s_suffix(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -895,9 +742,7 @@ nhl_s_suffix(L)
 }
 
 /* ing_suffix("foo") */
-function /* int */
-nhl_ing_suffix(L)
-{
+function nhl_ing_suffix(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -909,9 +754,7 @@ nhl_ing_suffix(L)
 }
 
 /* an("foo") */
-function /* int */
-nhl_an(L)
-{
+function nhl_an(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1)
@@ -923,9 +766,7 @@ nhl_an(L)
 }
 
 /* rn2(10) */
-function /* boolean */
-nhl_lua_rnglog_ctx_enabled()
-{
+function nhl_lua_rnglog_ctx_enabled() { /* boolean */
     let enabled = static_var("nhl_lua_rnglog_ctx_enabled.enabled", int, -1);
     let env;
     let rnglog;
@@ -945,9 +786,8 @@ nhl_lua_rnglog_ctx_enabled()
     return enabled[0] ? TRUE : FALSE;
 }
 
-function /* void */
-nhl_rnglog_set_lua_caller(L, fallback)
-{ const $frame = stack_frame(); try {
+function nhl_rnglog_set_lua_caller(L, fallback) { /* void */
+    const $frame = stack_frame(); try {
     /* Static buffers are safe here because this helper is used
        synchronously for a single Lua->C->RNG call path and is not
        expected to be re-entrant. */
@@ -1064,18 +904,17 @@ nhl_rnglog_set_lua_caller(L, fallback)
         name = name1;
     }
     rng_log_set_caller(src, line, name);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* rn2(10) */
-function /* int */
-nhl_rn2(L)
-{
+function nhl_rn2(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
         let range = int(luaL_checkinteger(L, 1));
         nhl_rnglog_set_lua_caller(L, _("nh.rn2"));
-        lua_pushinteger(L, (rn2)(range));
+        lua_pushinteger(L, rn2(range));
     }
     else
         nhl_error(L, _("Wrong args"));
@@ -1085,20 +924,18 @@ nhl_rn2(L)
 
 /* random(10);  -- is the same as rn2(10); */
 /* random(5,8); -- same as 5 + rn2(8); */
-function /* int */
-nhl_random(L)
-{
+function nhl_random(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
         let range = int(luaL_checkinteger(L, 1));
         nhl_rnglog_set_lua_caller(L, _("nh.random"));
-        lua_pushinteger(L, (rn2)(range));
+        lua_pushinteger(L, rn2(range));
     } else if (argc == 2) {
         let base = int(luaL_checkinteger(L, 1));
         let range = int(luaL_checkinteger(L, 2));
         nhl_rnglog_set_lua_caller(L, _("nh.random"));
-        lua_pushinteger(L, base + (rn2)(range));
+        lua_pushinteger(L, base + rn2(range));
     }
     else
         nhl_error(L, _("Wrong args"));
@@ -1107,9 +944,7 @@ nhl_random(L)
 }
 
 /* level_difficulty() */
-function /* int */
-nhl_level_difficulty(L)
-{
+function nhl_level_difficulty(L) { /* int */
     let argc = lua_gettop(L);
     if (argc == 0) {
         lua_pushinteger(L, level_difficulty());
@@ -1120,9 +955,8 @@ nhl_level_difficulty(L)
 }
 
 /* local x = nh.is_genocided("vampire") */
-function /* int */
-nhl_is_genocided(L)
-{ const $frame = stack_frame(); try {
+function nhl_is_genocided(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -1137,15 +971,14 @@ nhl_is_genocided(L)
         nhl_error(L, _("Wrong args"));
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* local debug_themerm = nh.debug_themerm(isfill)
  * if isfill is false, returns value of env variable THEMERM
  * if isfill is true,  returns value of env variable THEMERMFILL
  * return nil if not in wizard mode or the variable isn't set */
-function /* int */
-nhl_get_debug_themerm_name(L)
-{
+function nhl_get_debug_themerm_name(L) { /* int */
     let argc = lua_gettop(L);
     if (argc == 1) {
         let dbg_themerm = 0;
@@ -1164,12 +997,8 @@ nhl_get_debug_themerm_name(L)
     return 1;
 }
 
-
-
 /* get mandatory integer value from table */
-export function /* int */
-get_table_int(L, name)
-{
+export function get_table_int(L, name) { /* int */
     let ret;
 
     lua_getfield(L, -1, name);
@@ -1179,9 +1008,7 @@ get_table_int(L, name)
 }
 
 /* get optional integer value from table */
-export function /* int */
-get_table_int_opt(L, name, defval)
-{
+export function get_table_int_opt(L, name, defval) { /* int */
     let ret = defval;
 
     lua_getfield(L, -1, name);
@@ -1192,9 +1019,7 @@ get_table_int_opt(L, name, defval)
     return ret;
 }
 
-export function /* char * */
-get_table_str(L, name)
-{
+export function get_table_str(L, name) { /* char * */
     let ret;
 
     lua_getfield(L, -1, name);
@@ -1205,9 +1030,7 @@ get_table_str(L, name)
 
 /* get optional string value from table.
    return value must be freed by caller. */
-export function /* char * */
-get_table_str_opt(L, name, defval)
-{
+export function get_table_str_opt(L, name, defval) { /* char * */
     let ret;
     let ltyp;
 
@@ -1229,9 +1052,7 @@ get_table_str_opt(L, name, defval)
     return 0;
 }
 
-export function /* int */
-get_table_boolean(L, name)
-{
+export function get_table_boolean(L, name) { /* int */
     let boolstr = static_array("get_table_boolean.boolstr", ptr_to(char), null, [
         _("true"), _("false"), _("yes"), _("no"), 0
     ]);
@@ -1257,9 +1078,7 @@ get_table_boolean(L, name)
     return ret;
 }
 
-export function /* int */
-get_table_boolean_opt(L, name, defval)
-{
+export function get_table_boolean_opt(L, name, defval) { /* int */
     let ret = defval;
 
     lua_getfield(L, -1, name);
@@ -1272,12 +1091,10 @@ get_table_boolean_opt(L, name, defval)
 }
 
 /* opts[] is a null-terminated list */
-export function /* int */
-get_table_option(L,
+export function get_table_option(L,
                  name,
                  defval,
-                 opts)
-{
+                 opts) { /* int */
     let ret;
 
     lua_getfield(L, -1, name);
@@ -1286,26 +1103,10 @@ get_table_option(L,
     return ret;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef DUMPLOG: not in this build */
 
 /* local dungeon_name = dnum_name(u.dnum); */
-function /* int */
-nhl_dnum_name(L)
-{
+function nhl_dnum_name(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -1323,9 +1124,7 @@ nhl_dnum_name(L)
 /* return gender-neutral monster type name by integer value,
    or empty string if outside LOW_PM - HIGH_PM range */
 /* local montypename = int_to_pmname(12); */
-function /* int */
-nhl_int_to_pm_name(L)
-{
+function nhl_int_to_pm_name(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -1342,9 +1141,8 @@ nhl_int_to_pm_name(L)
 
 /* convert integer to object type name and class */
 /* local oname,oclass = int_to_objname(25); */
-function /* int */
-nhl_int_to_obj_name(L)
-{ const $frame = stack_frame(); try {
+function nhl_int_to_obj_name(L) { /* int */
+    const $frame = stack_frame(); try {
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -1363,17 +1161,15 @@ nhl_int_to_obj_name(L)
     } else
         nhl_error(L, _("Expected an integer parameter"));
     return 2;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* because nhl_error() does not return */
 
 /* set or get variables which are saved and restored along with the game.
    nh.variable("test", 10);
    local ten = nh.variable("test"); */
-function /* int */
-nhl_variable(L)
-{
+function nhl_variable(L) { /* int */
     let argc = lua_gettop(L);
     let typ;
     let key;
@@ -1447,9 +1243,7 @@ nhl_variable(L)
 }
 
 /* return nh_lua_variable lua table as a string */
-export function /* char * */
-get_nh_lua_variables()
-{
+export function get_nh_lua_variables() { /* char * */
     let key = 0;
 
     if (!gl.luacore) {
@@ -1469,22 +1263,12 @@ get_nh_lua_variables()
     return key;
 }
 
-
-
-
-
-
-
-
-
 /* save nh_lua_variables table to file */
-export function /* void */
-save_luadata(nhfp)
-{ const $frame = stack_frame(); try {
+export function save_luadata(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let lua_data_len = stack_var(unsigned);
 
     let lua_data = get_nh_lua_variables(); /* note: '\0' terminated */
-
 
     if (!lua_data)
         lua_data = dupstr(emptystr);
@@ -1492,36 +1276,30 @@ save_luadata(nhfp)
     Sfo_unsigned(nhfp, lua_data_len, _("luadata-lua_data_len"));
     Sfo_char(nhfp, lua_data, _("luadata"), int(lua_data_len[0]));
     free(lua_data);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* restore nh_lua_variables table from file */
-export function /* void */
-restore_luadata(nhfp)
-{ const $frame = stack_frame(); try {
+export function restore_luadata(nhfp) { /* void */
+    const $frame = stack_frame(); try {
     let lua_data_len = stack_var(unsigned, 0);
 
     let lua_data;
 
-
     sfi_unsigned(nhfp, lua_data_len, _("luadata-lua_data_len"));
     lua_data = addr_of(alloc(lua_data_len[0]));
     Sfi_char(nhfp, lua_data, _("luadata"), int(lua_data_len[0]));
-
 
     if (!gl.luacore)
         l_nhcore_init();
     luaL_loadstring(view_of(struct_lua_State, gl.luacore), lua_data);
     free(lua_data);
     nhl_pcall_handle(view_of(struct_lua_State, gl.luacore), 0, 0, _("restore_luadata"), NHLpa_panic);
-
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* local stairs = stairways(); */
-function /* int */
-nhl_stairways(L)
-{
+function nhl_stairways(L) { /* int */
     let tmp = gs.stairs;
     let i = 1; /* lua arrays should start at 1 */
 
@@ -1550,9 +1328,8 @@ nhl_stairways(L)
 /*
   test( { x = 123, y = 456 } );
 */
-function /* int */
-nhl_test(L)
-{ const $frame = stack_frame(); try {
+function nhl_test(L) { /* int */
+    const $frame = stack_frame(); try {
     let x, y;
     let name, Player = init_string(stack_array(char, sizeof_string("Player")), _("Player"));
 
@@ -1570,13 +1347,12 @@ nhl_test(L)
     free(name);
 
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* push a key into command queue */
 /* nh.pushkey("i"); */
-function /* int */
-nhl_pushkey(L)
-{
+function nhl_pushkey(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -1593,9 +1369,7 @@ nhl_pushkey(L)
 
 /* do a turn of moveloop, or until gm.multi is done if param is true. */
 /* nh.doturn(); nh.doturn(true); */
-function /* int */
-nhl_doturn(L)
-{
+function nhl_doturn(L) { /* int */
     let argc = lua_gettop(L);
     let domulti = FALSE;
 
@@ -1613,9 +1387,7 @@ nhl_doturn(L)
 /* nh.debug_flags({ mongen = false,
                     hunger = false,
                     overwrite_stairs = true }); */
-function /* int */
-nhl_debug_flags(L)
-{
+function nhl_debug_flags(L) { /* int */
     let val;
 
     lcheck_param_table(L);
@@ -1659,9 +1431,7 @@ nhl_debug_flags(L)
 
 /* flip level */
 /* nh.flip_level(n); */
-function /* int */
-nhl_flip_level(L)
-{
+function nhl_flip_level(L) { /* int */
     let argc = lua_gettop(L);
     let flp = 0;
 
@@ -1673,14 +1443,11 @@ nhl_flip_level(L)
     return 0;
 }
 
-
-
 /* does location at x,y have timer? */
 /* local has_melttimer = nh.has_timer_at(x,y, "melt-ice"); */
 /* local has_melttimer = nh.has_timer_at({x=4,y=7}, "melt-ice"); */
-function /* int */
-nhl_timer_has_at(L)
-{ const $frame = stack_frame(); try {
+function nhl_timer_has_at(L) { /* int */
+    const $frame = stack_frame(); try {
     let ret = FALSE;
     let timertype = nhl_get_timertype(L, -1);
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
@@ -1700,18 +1467,18 @@ nhl_timer_has_at(L)
 
     if (isok(x[0], y[0])) {
         when = spot_time_expires(x[0], y[0], timertype);
-        ret = (+(when > 0));
+        ret = +(when > 0);
     }
     lua_pushboolean(L, ret);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* when does location at x,y timer trigger? */
 /* local melttime = nh.peek_timer_at(x,y, "melt-ice"); */
 /* local melttime = nh.peek_timer_at({x=5,y=6}, "melt-ice"); */
-function /* int */
-nhl_timer_peek_at(L)
-{ const $frame = stack_frame(); try {
+function nhl_timer_peek_at(L) { /* int */
+    const $frame = stack_frame(); try {
     let when = 0;
     let timertype = nhl_get_timertype(L, -1);
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
@@ -1732,14 +1499,14 @@ nhl_timer_peek_at(L)
         when = spot_time_expires(x[0], y[0], timertype);
     lua_pushinteger(L, when);
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* stop timer at location x,y */
 /* nh.stop_timer_at(x,y, "melt-ice"); */
 /* nh.stop_timer_at({x=6,y=8}, "melt-ice"); */
-function /* int */
-nhl_timer_stop_at(L)
-{ const $frame = stack_frame(); try {
+function nhl_timer_stop_at(L) { /* int */
+    const $frame = stack_frame(); try {
     let timertype = nhl_get_timertype(L, -1);
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
     let x = stack_var(coordxy), y = stack_var(coordxy);
@@ -1758,13 +1525,13 @@ nhl_timer_stop_at(L)
     if (timer_is_pos(timertype) && isok(x[0], y[0]))
         spot_stop_timers(x[0], y[0], timertype);
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* start timer at location x,y */
 /* nh.start_timer_at(x,y, "melt-ice", 10); */
-function /* int */
-nhl_timer_start_at(L)
-{ const $frame = stack_frame(); try {
+function nhl_timer_start_at(L) { /* int */
+    const $frame = stack_frame(); try {
     let timertype = nhl_get_timertype(L, -2);
     let when = lua_tointeger(L, -1);
     let lx = stack_var(lua_Integer), ly = stack_var(lua_Integer);
@@ -1782,21 +1549,20 @@ nhl_timer_start_at(L)
     cvt_to_abscoord(x, y);
 
     if (timer_is_pos(timertype) && isok(x[0], y[0])) {
-        let where = or64((shl64((x[0]), 16)), (y[0]));
+        let where = or64(shl64((x[0]), 16), (y[0]));
 
         spot_stop_timers(x[0], y[0], timertype);
-        void start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY,
+        start_timer(when, TIMER_LEVEL, MELT_ICE_AWAY,
                            long_to_any(where));
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns the visual interpretation of the key bound to an extended command,
    or the ext cmd name if not bound to any key */
 /* local helpkey = eckey("help"); */
-function /* int */
-nhl_get_cmd_key(L)
-{
+function nhl_get_cmd_key(L) { /* int */
     let argc = lua_gettop(L);
 
     if (argc == 1) {
@@ -1814,9 +1580,7 @@ nhl_get_cmd_key(L)
 /* callback("level_enter", "function_name"); */
 /* callback("level_enter", "function_name", true); */
 /* level_enter, level_leave, cmd_before */
-function /* int */
-nhl_callback(L)
-{
+function nhl_callback(L) { /* int */
     let argc = lua_gettop(L);
     let i;
     let rm;
@@ -1872,9 +1636,8 @@ nhl_callback(L)
  */
 /* gamestate(); -- save state */
 /* gamestate(true); -- restore state */
-function /* int */
-nhl_gamestate(L)
-{ const $frame = stack_frame(); try {
+function nhl_gamestate(L) { /* int */
+    const $frame = stack_frame(); try {
     let wornmask;
     let otmp;
     let argc = lua_gettop(L);
@@ -1904,12 +1667,12 @@ nhl_gamestate(L)
                 setworn(otmp, wornmask);
         }
         assert(gg.gmst_ubak != null);
-        void memcpy(addr_of(u), addr_of(gg.gmst_ubak), sizeof(struct_you));
+        memcpy(addr_of(u), addr_of(gg.gmst_ubak), sizeof(struct_you));
         assert(gg.gmst_disco != null);
-        void memcpy(addr_of(svd.disco), addr_of(gg.gmst_disco),
+        memcpy(addr_of(svd.disco), addr_of(gg.gmst_disco),
                       sizeof_member(svd, "disco"));
         assert(gg.gmst_mvitals != null);
-        void memcpy(addr_of(svm.mvitals), addr_of(gg.gmst_mvitals),
+        memcpy(addr_of(svm.mvitals), addr_of(gg.gmst_mvitals),
                       sizeof_member(svm, "mvitals"));
         /* clear user-given object type names */
         for (otyp = 0; otyp < NUM_OBJECTS; otyp++)
@@ -1922,7 +1685,7 @@ nhl_gamestate(L)
         init_uhunger();
         free_tutorial(); /* release gg.gmst_XYZ */
         gg.gmst_stored = FALSE;
-        void memcpy(addr_of(svs.spl_book[0]), addr_of(gg.gmst_spl_book[0]), sizeof_member(svs, "spl_book"));
+        memcpy(addr_of(svs.spl_book[0]), addr_of(gg.gmst_spl_book[0]), sizeof_member(svs, "spl_book"));
     } else if (!reststate && !gg.gmst_stored) {
         /* store game state */
         gg.gmst_moves = svm.moves;
@@ -1936,15 +1699,15 @@ nhl_gamestate(L)
         }
         gl.lastinvnr = 51; /* next inv letter to try to use will be 'a' */
         gg.gmst_ubak = ref_to(ptr_to(void_t), addr_of(alloc(sizeof(struct_you))));
-        void memcpy(addr_of(gg.gmst_ubak), addr_of(u), sizeof(struct_you));
+        memcpy(addr_of(gg.gmst_ubak), addr_of(u), sizeof(struct_you));
         gg.gmst_disco = ref_to(ptr_to(void_t), addr_of(alloc(sizeof_member(svd, "disco"))));
-        void memcpy(addr_of(gg.gmst_disco), addr_of(svd.disco),
+        memcpy(addr_of(gg.gmst_disco), addr_of(svd.disco),
                       sizeof_member(svd, "disco"));
         gg.gmst_mvitals = ref_to(ptr_to(void_t), addr_of(alloc(sizeof_member(svm, "mvitals"))));
-        void memcpy(addr_of(gg.gmst_mvitals), addr_of(svm.mvitals),
+        memcpy(addr_of(gg.gmst_mvitals), addr_of(svm.mvitals),
                       sizeof_member(svm, "mvitals"));
-        void memcpy(addr_of(gg.gmst_spl_book[0]), addr_of(svs.spl_book[0]), sizeof_member(svs, "spl_book"));
-        void memset(addr_of(svs.spl_book[0]), 0, sizeof_member(svs, "spl_book"));
+        memcpy(addr_of(gg.gmst_spl_book[0]), addr_of(svs.spl_book[0]), sizeof_member(svs, "spl_book"));
+        memset(addr_of(svs.spl_book[0]), 0, sizeof_member(svs, "spl_book"));
         gg.gmst_stored = TRUE;
     } else {
         impossible(_("nhl_gamestate: inconsistent state (%s vs %s)"),
@@ -1953,15 +1716,12 @@ nhl_gamestate(L)
     }
     update_inventory();
     return 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* free dynamic date allocated when entering tutorial;
    called when exiting tutorial normally or if player quits while in it */
-export function /* void */
-free_tutorial()
-{
+export function free_tutorial() { /* void */
     let otmp;
 
     /* for normal tutorial exit, gmst_invent will already be Null */
@@ -1987,9 +1747,7 @@ free_tutorial()
 }
 
 /* called from gotolevel(do.c) */
-export function /* void */
-tutorial(entering)
-{
+export function tutorial(entering) { /* void */
     l_nhcore_call(entering ? NHCORE_ENTER_TUTORIAL : NHCORE_LEAVE_TUTORIAL);
 
     if (!entering) { /* after leaving, can't go back */
@@ -2003,8 +1761,6 @@ const nhl_functions = static_array("nhlua.c/nhl_functions", struct_luaL_Reg, nul
     { name: _("test"), func: nhl_test },
 
     { name: _("getmap"), func: nhl_getmap },
-
-
 
     { name: _("gettrap"), func: nhl_gettrap },
     { name: _("deltrap"), func: nhl_deltrap },
@@ -2040,8 +1796,6 @@ const nhl_functions = static_array("nhlua.c/nhl_functions", struct_luaL_Reg, nul
     { name: _("get_config"), func: nhl_get_config },
     { name: _("get_config_errors"), func: l_get_config_errors },
 
-
-
     { name: _("dnum_name"), func: nhl_dnum_name },
     { name: _("int_to_pmname"), func: nhl_int_to_pm_name },
     { name: _("int_to_objname"), func: nhl_int_to_obj_name },
@@ -2066,17 +1820,13 @@ const nhl_functions = static_array("nhlua.c/nhl_functions", struct_luaL_Reg, nul
     { name: _("FIRST_OBJECT"), value: FIRST_OBJECT },
     { name: _("LAST_OBJECT"), value: NUM_OBJECTS-1 },
 
-
-
     { name: _("DLB"), value: 0 },
 
     { name: 0, value: 0 },
 ]);
 
 /* register and init the constants table */
-function /* void */
-init_nhc_data(L)
-{
+function init_nhc_data(L) { /* void */
     let i;
 
     lua_newtable(L);
@@ -2090,9 +1840,8 @@ init_nhc_data(L)
     lua_setglobal(L, _("nhc"));
 }
 
-function /* int */
-nhl_push_anything(L, anytype, src)
-{ const $frame = stack_frame(); try {
+function nhl_push_anything(L, anytype, src) { /* int */
+    const $frame = stack_frame(); try {
     let any = struct_assign(stack_struct(struct_any), cg.zeroany);
 
     switch (anytype) {
@@ -2110,13 +1859,10 @@ nhl_push_anything(L, anytype, src)
         break;
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-function /* int */
-nhl_meta_u_index(L)
-{
+function nhl_meta_u_index(L) { /* int */
     const struct___anon3 = struct("nhl_meta_u_index.struct___anon3", {
         name: ptr_to(char),
         ptr: ptr_to(void_t),
@@ -2181,19 +1927,13 @@ nhl_meta_u_index(L)
     return 0;
 }
 
-function /* int */
-nhl_meta_u_newindex(L)
-{
+function nhl_meta_u_newindex(L) { /* int */
     nhl_error(L, _("Cannot set u table values"));
     /*NOTREACHED*/
     return 0;
 }
 
-
-
-function /* int */
-nhl_u_clear_inventory(L)
-{
+function nhl_u_clear_inventory(L) { /* int */
     while (gi.invent)
         useupall(gi.invent);
     return 0;
@@ -2201,9 +1941,7 @@ nhl_u_clear_inventory(L)
 
 /* Put object into player's inventory */
 /* u.giveobj(obj.new("rock")); */
-function /* int */
-nhl_u_giveobj(L)
-{
+function nhl_u_giveobj(L) { /* int */
     return nhl_obj_u_giveobj(L);
 }
 
@@ -2213,9 +1951,7 @@ const nhl_u_functions = static_array("nhl_u_functions", struct_luaL_Reg, null, [
     { name: 0, func: null }
 ]);
 
-function /* void */
-init_u_data(L)
-{
+function init_u_data(L) { /* void */
     lua_newtable(L);
     luaL_setfuncs(L, nhl_u_functions[0], 0);
     lua_newtable(L);
@@ -2227,47 +1963,30 @@ init_u_data(L)
     lua_setglobal(L, _("u"));
 }
 
+/* #ifdef notyet: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* int */
-traceback_handler(L)
-{
+function traceback_handler(L) { /* int */
     luaL_traceback(L, L, lua_tostring(L, 1), 0);
     /* TODO: call impossible() if fuzzing? */
     return 1;
 }
 
-function /* uint32_t */
-nhl_getmeminuse(L)
-{
+function nhl_getmeminuse(L) { /* uint32_t */
     return unsigned(lua_gc(L, LUA_GCCOUNT) * 1024 + lua_gc(L, LUA_GCCOUNTB));
 }
 
 /* lua_pcall with our traceback handler and memory and instruction step
  * limiting.
  *  On error, traceback will be on top of stack */
-export function /* int */
-nhl_pcall(L, nargs, nresults, name)
-{ const $frame = stack_frame(); try { let $goto = null, $jv = 0, $jb = null; var nud = stack_var(ptr_to(struct_nhl_user_data));
-    
+export function nhl_pcall(L, nargs, nresults, name) { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null, $jv = 0, $jb = null; var nud = stack_var(ptr_to(struct_nhl_user_data));
+
     var rv;
 
     lua_pushcfunction(L, traceback_handler);
     lua_insert(L, 1);
-    void lua_getallocf(L, nud);
+    lua_getallocf(L, nud);
 
     if (nud[0] && name) {
         nud[0].name = name;
@@ -2286,11 +2005,9 @@ nhl_pcall(L, nargs, nresults, name)
         } $jv = 0; }
     }
 
-
     rv = lua_pcall(L, nargs, nresults, 1);
 
     lua_remove(L, 1); /* remove handler */
-
 
     if (nud[0] && nud[0].perpcall && gl.loglua) {
         var ic = unsigned(Math.imul(nud[0].statctr, NHL_SB_STEPSIZE)); // an approximation
@@ -2303,16 +2020,16 @@ nhl_pcall(L, nargs, nresults, name)
     }
 
     return rv; } break; } catch ($e) { $jv = setjmp_caught($e, $jb); $goto = "setjmp"; continue $goto_setjmp; } }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-nhl_pcall_handle(L, nargs, nresults, name,
-                 npa)
-{ const $frame = stack_frame(); try {
+export function nhl_pcall_handle(L, nargs, nresults, name,
+                 npa) { /* int */
+    const $frame = stack_frame(); try {
     let rv = nhl_pcall(L, nargs, nresults, name);
     if (rv) {
         let nud = stack_var(ptr_to(struct_nhl_user_data));
-        void lua_getallocf(L, nud);
+        lua_getallocf(L, nud);
         /* XXX can we get a lua stack trace as well? */
         switch (npa) {
         case NHLpa_panic:
@@ -2329,15 +2046,13 @@ nhl_pcall_handle(L, nargs, nresults, name,
         }
     }
     return rv;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* XXX impossible() should be swappable with pline/nothing/panic via flag */
 /* read lua code/data from a dlb module or an external file
    into a string buffer and feed that to lua */
-export function /* boolean */
-nhl_loadlua(L, fname)
-{
-
+export function nhl_loadlua(L, fname) { /* boolean */
     var ret = TRUE;
     var fh;
     var buf = 0, bufin, bufout, p, nl, altfname;
@@ -2348,7 +2063,7 @@ nhl_loadlua(L, fname)
     /* don't know whether 'fname' is inside a dlb container;
        if we did, we could choose between "nhdat(<fname>)" and "<fname>"
        but since we don't, compromise */
-    void sprintf(altfname, _("(%s)"), fname);
+    sprintf(altfname, _("(%s)"), fname);
     fh = dlb_fopen(fname, _(RDBMODE));
     give_up: { if (!fh) {
         impossible(_("nhl_loadlua: Error opening %s"), altfname);
@@ -2419,7 +2134,7 @@ nhl_loadlua(L, fname)
         }
     }
     chars[bufout] = ord('\0');
-    void dlb_fclose(fh);
+    dlb_fclose(fh);
 
     llret = luaL_loadbufferx(L, buf, strlen(buf), altfname, 0);
     if (llret != LUA_OK) {
@@ -2433,38 +2148,24 @@ nhl_loadlua(L, fname)
             break give_up;
         }
     }
-
  }
     if (altfname)
         free(altfname);
     if (buf)
         free(buf);
     return ret;
+}
+export const LOADCHUNKSIZE = shl64(1, 13);
 
-} export const LOADCHUNKSIZE = (shl64(1, 13));
-
-
-
-export function /* lua_State * */
-nhl_init(sbi)
-{
+export function nhl_init(sbi) { /* lua_State * */
     /* It would be nice to import EXPECTED from each build system. XXX */
     /* And it would be nice to do it only once, but it's cheap. */
-
-
-
-
-
-
-
-
 
     if (NHL_VERSION_EXPECTED != LUA_VERSION_RELEASE_NUM) {
         panic(
             _("sandbox doesn't know this Lua version: this=%d != expected=%d "),
             LUA_VERSION_RELEASE_NUM, NHL_VERSION_EXPECTED);
     }
-
 
     let L = nhlL_newstate(sbi, _("nhl_init"));
     if(!L) return null;
@@ -2474,17 +2175,6 @@ nhl_init(sbi)
     /* Turn this off in config.h to disable the sandbox. */
 
     nhlL_openlibs(L, sbi.flags);
-
-
-
-
-
-
-
-
-
-
-
 
     /* register nh -table, and functions for it */
     lua_newtable(L);
@@ -2514,16 +2204,14 @@ nhl_init(sbi)
     }
 
     return L;
-} export const NHL_VERSION_EXPECTED = 50408;
+}
+export const NHL_VERSION_EXPECTED = 50408;
 
-
-
-export function /* void */
-nhl_done(L)
-{ const $frame = stack_frame(); try {
+export function nhl_done(L) { /* void */
+    const $frame = stack_frame(); try {
     if (L) {
         let nud = stack_var(ptr_to(struct_nhl_user_data), null);
-        void lua_getallocf(L, nud);
+        lua_getallocf(L, nud);
         if (gl.loglua) {
             if (nud[0] && nud[0].osteps) {
                 let ic = unsigned(Math.imul(nud[0].statctr, NHL_SB_STEPSIZE)); // an approximation
@@ -2540,11 +2228,10 @@ nhl_done(L)
             nhl_alloc((0), addr_of(nud[0]), 0, 0); // free nud
     }
     iflags.in_lua = FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-load_lua(name, sbi)
-{
+export function load_lua(name, sbi) { /* boolean */
     var ret = TRUE;
     var L = nhl_init(sbi);
 
@@ -2557,18 +2244,14 @@ load_lua(name, sbi)
         ret = FALSE;
         break give_up;
     }
-
  }
     nhl_done(L);
 
     return ret;
 }
 
-
-
-export function /* const char * */
-get_lua_version()
-{ const $frame = stack_frame(); try {
+export function get_lua_version() { /* const char * */
+    const $frame = stack_frame(); try {
     let sbi = init_list(stack_struct(struct_nhl_sandbox_info), { flags: NHL_SB_VERSION, memlimit: 1 * 1024 * 1024, steps: 0,
                              perpcall: 1 * 1024 * 1024 });
 
@@ -2597,7 +2280,6 @@ get_lua_version()
 
                 else
                     vs = _(LUA_VERSION), len[0] = strlen(vs);
-
             }
             if (vs && len[0] < sizeof_member(gl, "lua_ver")) {
                 if (!strncmpi(vs, _("Lua"), 3)) {
@@ -2605,19 +2287,17 @@ get_lua_version()
                     if (chars[vs] == ord('-') || chars[vs] == ord(' '))
                         vs += 1;
                 }
-                void strcpy(gl.lua_ver, vs);
+                strcpy(gl.lua_ver, vs);
             }
         }
         nhl_done(L);
 
         if (sizeof_string(LUA_COPYRIGHT) <= sizeof_member(gl, "lua_copyright"))
-            void strcpy(gl.lua_copyright, _(LUA_COPYRIGHT));
-
+            strcpy(gl.lua_copyright, _(LUA_COPYRIGHT));
     }
     return gl.lua_ver;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /***
  *** SANDBOX / HARDENING CODE
@@ -2642,7 +2322,6 @@ get_lua_version()
  *  DATA    memory: rough number of bytes in use by the VM
  *          steps: rough number of steps by the VM(see NHL_SB_STEPSIZE)
  */
-
 
 const NEVER = 0; const IFFLAG = NEVER + 1; const EOT = IFFLAG + 1;
 const struct_e = struct("struct_e", {
@@ -2708,7 +2387,6 @@ const ct_base_unsafe = static_array("ct_base_unsafe", struct_e, null, [
    sort can take a lot of time and can't be caught by the step limit */
 /* no ct_utf8_ tables; all fns at same level of concern */
 
-
 /* possible ct_debug tables - likely to need changes */
 const ct_debug_debug = static_array("ct_debug_debug", struct_e, null, [
     { when: NEVER,  fnname: _("debug") },          /* uses normal I/O so needs re-write */
@@ -2754,13 +2432,7 @@ const ct_os_files = static_array("ct_os_files", struct_e, null, [
     { when: EOT, fnname: 0 }
 ]);
 
-
-
-
-
-function /* void */
-nhl_clearfromtable(L, flag, tndx, todo)
-{
+function nhl_clearfromtable(L, flag, tndx, todo) { /* void */
     while (todo.when != EOT) {
         lua_pushnil(L);
         /* if we load the library at all, NEVER items must be erased
@@ -2771,7 +2443,6 @@ nhl_clearfromtable(L, flag, tndx, todo)
         todo = ptr_add(todo, 1);
     }
 }
-
 
 /*
 XXX
@@ -2808,84 +2479,23 @@ return values from "call it":
  * 3. Create a Lua state just to do pattern matching.
  * We're going to do #3.
  */
+/* #ifdef notyet: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-end_luapat()
-{
+function end_luapat() { /* void */
     if (luapat[0]) {
         lua_close(luapat[0]);
         luapat[0] = null;
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef notyet: not in this build */
 
 /* put the table open uses to check its arguments on the top of the stack,
  * creating it if needed
  */
 export const HOOKTBLNAME = "org.nethack.nethack.sb.fs";
 
-
-
-
-
-export function /* void */
-nhl_pushhooked_open_table(L)
-{
+export function nhl_pushhooked_open_table(L) { /* void */
     let hot = lua_getfield(L, LUA_REGISTRYINDEX, _(HOOKTBLNAME));
 
     if (hot == LUA_TNONE) {
@@ -2895,110 +2505,9 @@ nhl_pushhooked_open_table(L)
     }
 }
 
+/* #ifdef notyet: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-nhlL_openlibs(L, lflags)
-{
+function nhlL_openlibs(L, lflags) { /* void */
     /* translate lflags from user-friendly to internal */
     if (NHL_SB_DEBUGGING & lflags) {
         lflags = unsigned(lflags | NHL_SB_DB_SAFE);
@@ -3016,38 +2525,7 @@ nhlL_openlibs(L, lflags)
     } else if (NHL_SB_VERSION) {
         lflags = unsigned(lflags | NHL_SB_BASE_BASE);
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef notyet: not in this build */
 
     if (lflags & NHL_SB_BASEMASK) {
         let baselib;
@@ -3057,11 +2535,11 @@ nhlL_openlibs(L, lflags)
         baselib = lua_gettop(L);
 
         /* ... and remove anything unsupported or not requested */
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_BASE_BASE)), baselib, ct_base_base[0]);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_BASE_ERROR)), baselib, ct_base_error[0]);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_BASE_META)), baselib, ct_base_meta[0]);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_BASE_GC)), baselib, ct_base_iffy[0]);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_BASE_UNSAFE)), baselib, ct_base_unsafe[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_BASE_BASE), baselib, ct_base_base[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_BASE_ERROR), baselib, ct_base_error[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_BASE_META), baselib, ct_base_meta[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_BASE_GC), baselib, ct_base_iffy[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_BASE_UNSAFE), baselib, ct_base_unsafe[0]);
 
         lua_pop(L, 1);
     }
@@ -3075,19 +2553,12 @@ nhlL_openlibs(L, lflags)
         lua_pop(L, 1);
     }
 
-
-
-
-
-
-
-
     if (lflags & NHL_SB_OSMASK) {
         let oslib;
         luaL_requiref(L, _(LUA_OSLIBNAME), luaopen_os, 1);
         oslib = lua_gettop(L);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_OS_TIME)), oslib, ct_os_time[0]);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_OS_FILES)), oslib, ct_os_files[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_OS_TIME), oslib, ct_os_time[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_OS_FILES), oslib, ct_os_files[0]);
         lua_pop(L, 1);
     }
 
@@ -3119,18 +2590,13 @@ nhlL_openlibs(L, lflags)
         let dblib;
         luaL_requiref(L, _(LUA_DBLIBNAME), luaopen_debug, 1);
         dblib = lua_gettop(L);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_DB_DB)), dblib, ct_debug_debug[0]);
-        nhl_clearfromtable(L, +!!((lflags & NHL_SB_DB_SAFE)), dblib, ct_debug_safe[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_DB_DB), dblib, ct_debug_debug[0]);
+        nhl_clearfromtable(L, +!!(lflags & NHL_SB_DB_SAFE), dblib, ct_debug_safe[0]);
         lua_pop(L, 1);
     }
 }
 
-
-
-
-function /* void * */
-nhl_alloc(ud, ptr, osize, nsize)
-{
+function nhl_alloc(ud, ptr, osize, nsize) { /* void * */
     let nud = view_of(struct_nhl_user_data, ud);
 
     if (nsize == 0) {
@@ -3149,11 +2615,7 @@ nhl_alloc(ud, ptr, osize, nsize)
     return addr_of(re_alloc(ref_to(long, ptr), nsize));
 }
 
-
-
-function /* int */
-nhl_panic(L)
-{
+function nhl_panic(L) { /* int */
     let msg = lua_tostring(L, -1);
 
     if (msg == (0))
@@ -3163,23 +2625,19 @@ nhl_panic(L)
     return 0; /* return to Lua to abort */
 }
 
-
-
 /* called when lua issues a warning message; the text of the message
    is passed to us in pieces across multiple function calls */
-function /* void */
-nhl_warn(
+function nhl_warn(
     userdata,
     msg_fragment,
-    to_be_continued) /* 0: last fragment; 1: more to come */
-{
+    to_be_continued) { /* void */ /* 0: last fragment; 1: more to come */
     let fraglen, buflen = strlen(gl.lua_warnbuf);
 
     if (msg_fragment && buflen < sizeof_member(gl, "lua_warnbuf") - 1) {
         fraglen = strlen(msg_fragment);
         if (unsigned(buflen + fraglen) > sizeof_member(gl, "lua_warnbuf") - 1)
             fraglen = unsigned(sizeof_member(gl, "lua_warnbuf") - 1 - buflen);
-        void strncat(gl.lua_warnbuf, msg_fragment, fraglen);
+        strncat(gl.lua_warnbuf, msg_fragment, fraglen);
     }
     if (!to_be_continued) {
         paniclog(_("[lua]"), gl.lua_warnbuf);
@@ -3187,25 +2645,21 @@ nhl_warn(
     }
 }
 
-
-function /* void */
-nhl_hookfn(L, ar)
-{ const $frame = stack_frame(); try {
+function nhl_hookfn(L, ar) { /* void */
+    const $frame = stack_frame(); try {
     let nud = stack_var(ptr_to(struct_nhl_user_data));
 
-    void lua_getallocf(L, nud);
+    lua_getallocf(L, nud);
 
     if (nud[0].steps <= NHL_SB_STEPSIZE)
         longjmp(nud[0].jb[0], 1);
 
     nud[0].steps -= NHL_SB_STEPSIZE;
     nud[0].statctr++;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* lua_State * */
-nhlL_newstate(sbi, name)
-{
+function nhlL_newstate(sbi, name) { /* lua_State * */
     let nud = null;
 
     if (sbi.memlimit || sbi.steps || sbi.perpcall) {
@@ -3228,8 +2682,6 @@ nhlL_newstate(sbi, name)
 
     let L = lua_newstate(nhl_alloc, addr_of(nud)
 
-
-
                                );
     if (!L)
         panic(_("NULL lua_newstate"));
@@ -3238,8 +2690,6 @@ nhlL_newstate(sbi, name)
     lua_atpanic(L, nhl_panic);
 
     lua_setwarnf(L, nhl_warn, addr_of(L));
-
-
 
     if (nud && (sbi.steps || sbi.perpcall)) {
         if (sbi.steps && sbi.perpcall)
@@ -3253,11 +2703,8 @@ nhlL_newstate(sbi, name)
         lua_sethook(L, nhl_hookfn, LUA_MASKCOUNT, NHL_SB_STEPSIZE);
     }
 
-
     return L;
 }
-
-
 
 /*
 (See end of comment for conclusion.)
@@ -3299,377 +2746,131 @@ XXX
 */
 
 /*nhlua.c*/
+
 import { AM_SHRINE } from "./align.h.js";
 import { NO_COLOR } from "./color.h.js";
 import { RDBMODE } from "./dlb.h.js";
-import { dlb_fclose } from "./dlb.h.macros.js";
-import { dlb_fopen } from "./dlb.h.macros.js";
-import { dlb_fread } from "./dlb.h.macros.js";
-import { dlb_fseek } from "./dlb.h.macros.js";
-import { dlb_ftell } from "./dlb.h.macros.js";
+import { dlb_fclose, dlb_fopen, dlb_fread, dlb_fseek, dlb_ftell } from "./dlb.h.macros.js";
 import { struct_d_level } from "./dungeon.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_DEBUG } from "./global.h.js";
-import { NHL_SB_ALL } from "./global.h.js";
-import { NHL_SB_BASEMASK } from "./global.h.js";
-import { NHL_SB_BASE_BASE } from "./global.h.js";
-import { NHL_SB_BASE_ERROR } from "./global.h.js";
-import { NHL_SB_BASE_GC } from "./global.h.js";
-import { NHL_SB_BASE_META } from "./global.h.js";
-import { NHL_SB_BASE_UNSAFE } from "./global.h.js";
-import { NHL_SB_COROUTINE } from "./global.h.js";
-import { NHL_SB_DBMASK } from "./global.h.js";
-import { NHL_SB_DB_DB } from "./global.h.js";
-import { NHL_SB_DB_SAFE } from "./global.h.js";
-import { NHL_SB_DEBUGGING } from "./global.h.js";
-import { NHL_SB_MATH } from "./global.h.js";
-import { NHL_SB_OSMASK } from "./global.h.js";
-import { NHL_SB_OS_FILES } from "./global.h.js";
-import { NHL_SB_OS_TIME } from "./global.h.js";
-import { NHL_SB_SAFE } from "./global.h.js";
-import { NHL_SB_STEPSIZE } from "./global.h.js";
-import { NHL_SB_STRING } from "./global.h.js";
-import { NHL_SB_TABLE } from "./global.h.js";
-import { NHL_SB_UTF8 } from "./global.h.js";
-import { NHL_SB_VERSION } from "./global.h.js";
-import { NHLpa_impossible } from "./global.h.js";
-import { NHLpa_panic } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { struct_nhl_sandbox_info } from "./global.h.js";
+import {
+    BUFSZ, COLNO, FALSE, LL_DEBUG, NHL_SB_ALL, NHL_SB_BASEMASK, NHL_SB_BASE_BASE, NHL_SB_BASE_ERROR,
+    NHL_SB_BASE_GC, NHL_SB_BASE_META, NHL_SB_BASE_UNSAFE, NHL_SB_COROUTINE, NHL_SB_DBMASK,
+    NHL_SB_DB_DB, NHL_SB_DB_SAFE, NHL_SB_DEBUGGING, NHL_SB_MATH, NHL_SB_OSMASK, NHL_SB_OS_FILES,
+    NHL_SB_OS_TIME, NHL_SB_SAFE, NHL_SB_STEPSIZE, NHL_SB_STRING, NHL_SB_TABLE, NHL_SB_UTF8,
+    NHL_SB_VERSION, NHLpa_impossible, NHLpa_panic, ROWNO, TRUE, boolean, coordxy,
+    struct_nhl_sandbox_info,
+} from "./global.h.js";
 import { Strlen } from "./global.h.macros.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { NHCORE_ENTER_TUTORIAL } from "./hack.h.js";
-import { NHCORE_LEAVE_TUTORIAL } from "./hack.h.js";
-import { NUM_NHCB } from "./hack.h.js";
-import { NUM_NHCORE_CALLS } from "./hack.h.js";
+import {
+    CQ_CANNED, NHCORE_ENTER_TUTORIAL, NHCORE_LEAVE_TUTORIAL, NUM_NHCB, NUM_NHCORE_CALLS,
+} from "./hack.h.js";
 import { min } from "./hack.h.macros.js";
-import { FITSint } from "./hacklib.h.macros.js";
-import { Snprintf } from "./hacklib.h.macros.js";
-import { LUA_GNAME } from "./lauxlib.h.js";
-import { struct_luaL_Reg } from "./lauxlib.h.js";
-import { luaL_checkstring } from "./lauxlib.h.macros.js";
-import { luaL_optstring } from "./lauxlib.h.macros.js";
+import { FITSint, Snprintf } from "./hacklib.h.macros.js";
+import { LUA_GNAME, struct_luaL_Reg } from "./lauxlib.h.js";
+import { luaL_checkstring, luaL_optstring } from "./lauxlib.h.macros.js";
 import { debugpline4 } from "./lint.h.macros.js";
-import { LUA_COPYRIGHT } from "./lua.h.js";
-import { LUA_GCCOUNT } from "./lua.h.js";
-import { LUA_GCCOUNTB } from "./lua.h.js";
-import { LUA_MASKCOUNT } from "./lua.h.js";
-import { LUA_MULTRET } from "./lua.h.js";
-import { LUA_OK } from "./lua.h.js";
-import { LUA_REGISTRYINDEX } from "./lua.h.js";
-import { LUA_RELEASE } from "./lua.h.js";
-import { LUA_TBOOLEAN } from "./lua.h.js";
-import { LUA_TFUNCTION } from "./lua.h.js";
-import { LUA_TNIL } from "./lua.h.js";
-import { LUA_TNONE } from "./lua.h.js";
-import { LUA_TNUMBER } from "./lua.h.js";
-import { LUA_TSTRING } from "./lua.h.js";
-import { LUA_TTABLE } from "./lua.h.js";
-import { LUA_VERSION } from "./lua.h.js";
-import { LUA_VERSION_RELEASE_NUM } from "./lua.h.js";
-import { lua_Integer } from "./lua.h.js";
-import { struct_lua_Debug } from "./lua.h.js";
-import { lua_call } from "./lua.h.macros.js";
-import { lua_insert } from "./lua.h.macros.js";
-import { lua_isnil } from "./lua.h.macros.js";
-import { lua_istable } from "./lua.h.macros.js";
-import { lua_newtable } from "./lua.h.macros.js";
-import { lua_pcall } from "./lua.h.macros.js";
-import { lua_pop } from "./lua.h.macros.js";
-import { lua_pushcfunction } from "./lua.h.macros.js";
-import { lua_remove } from "./lua.h.macros.js";
-import { lua_tointeger } from "./lua.h.macros.js";
-import { lua_tostring } from "./lua.h.macros.js";
-import { LUA_COLIBNAME } from "./lualib.h.js";
-import { LUA_DBLIBNAME } from "./lualib.h.js";
-import { LUA_MATHLIBNAME } from "./lualib.h.js";
-import { LUA_OSLIBNAME } from "./lualib.h.js";
-import { LUA_STRLIBNAME } from "./lualib.h.js";
-import { LUA_TABLIBNAME } from "./lualib.h.js";
-import { LUA_UTF8LIBNAME } from "./lualib.h.js";
-import { G_GENOD } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
+import {
+    LUA_COPYRIGHT, LUA_GCCOUNT, LUA_GCCOUNTB, LUA_MASKCOUNT, LUA_MULTRET, LUA_OK, LUA_REGISTRYINDEX,
+    LUA_RELEASE, LUA_TBOOLEAN, LUA_TFUNCTION, LUA_TNIL, LUA_TNONE, LUA_TNUMBER, LUA_TSTRING,
+    LUA_TTABLE, LUA_VERSION, LUA_VERSION_RELEASE_NUM, lua_Integer, struct_lua_Debug,
+} from "./lua.h.js";
+import {
+    lua_call, lua_insert, lua_isnil, lua_istable, lua_newtable, lua_pcall, lua_pop,
+    lua_pushcfunction, lua_remove, lua_tointeger, lua_tostring,
+} from "./lua.h.macros.js";
+import {
+    LUA_COLIBNAME, LUA_DBLIBNAME, LUA_MATHLIBNAME, LUA_OSLIBNAME, LUA_STRLIBNAME, LUA_TABLIBNAME,
+    LUA_UTF8LIBNAME,
+} from "./lualib.h.js";
+import { G_GENOD, NEUTRAL } from "./monflag.h.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
-import { HIGH_PM } from "./monsters.h.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
+import { HIGH_PM, LOW_PM, NON_PM, NUMMONS } from "./monsters.h.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { FIRST_OBJECT } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { AIR } from "./rm.h.js";
-import { BLCORNER } from "./rm.h.js";
-import { BRCORNER } from "./rm.h.js";
-import { CLOUD } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { CROSSWALL } from "./rm.h.js";
-import { DBWALL } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { F_LOOTED } from "./rm.h.js";
-import { F_WARNED } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { INVALID_TYPE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { MATCH_WALL } from "./rm.h.js";
-import { MAX_TYPE } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SINK } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { S_LDWASHER } from "./rm.h.js";
-import { S_LPUDDING } from "./rm.h.js";
-import { S_LRING } from "./rm.h.js";
-import { TDWALL } from "./rm.h.js";
-import { THRONE } from "./rm.h.js";
-import { TLCORNER } from "./rm.h.js";
-import { TLWALL } from "./rm.h.js";
-import { TRCORNER } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { TREE_LOOTED } from "./rm.h.js";
-import { TREE_SWARM } from "./rm.h.js";
-import { TRWALL } from "./rm.h.js";
-import { TUWALL } from "./rm.h.js";
-import { T_LOOTED } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
-import { Sfo_unsigned } from "./savefile.h.macros.js";
-import { MELT_ICE_AWAY } from "./timeout.h.js";
-import { NUM_TIME_FUNCS } from "./timeout.h.js";
-import { TIMER_LEVEL } from "./timeout.h.js";
+import { FIRST_OBJECT, NUM_OBJECTS } from "./objects.h.js";
+import {
+    AIR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, DOOR, D_BROKEN, D_CLOSED, D_ISOPEN,
+    D_LOCKED, D_NODOOR, D_TRAPPED, FOUNTAIN, F_LOOTED, F_WARNED, HWALL, ICE, INVALID_TYPE, IRONBARS,
+    LAVAPOOL, LAVAWALL, MATCH_WALL, MAX_TYPE, MOAT, POOL, ROOM, SCORR, SDOOR, SINK, STONE,
+    S_LDWASHER, S_LPUDDING, S_LRING, TDWALL, THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TREE_LOOTED,
+    TREE_SWARM, TRWALL, TUWALL, T_LOOTED, VWALL, WATER,
+} from "./rm.h.js";
+import { IS_ALTAR, IS_DOOR, IS_FOUNTAIN, IS_SINK, IS_THRONE, fmon, levl } from "./rm.h.macros.js";
+import { Sfi_char, Sfo_char, Sfo_unsigned } from "./savefile.h.macros.js";
+import { MELT_ICE_AWAY, NUM_TIME_FUNCS, TIMER_LEVEL } from "./timeout.h.js";
 import { timer_is_pos } from "./timeout.h.macros.js";
-import { PIT } from "./trap.h.js";
-import { ROLLING_BOULDER_TRAP } from "./trap.h.js";
-import { SPIKED_PIT } from "./trap.h.js";
-import { SQKY_BOARD } from "./trap.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ANY_INT } from "./wintype.h.js";
-import { ANY_SCHAR } from "./wintype.h.js";
-import { ANY_UCHAR } from "./wintype.h.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import { PIT, ROLLING_BOULDER_TRAP, SPIKED_PIT, SQKY_BOARD } from "./trap.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ANY_INT, ANY_SCHAR, ANY_UCHAR, ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE,
+    MENU_ITEMFLAGS_SELECTED, NHW_MENU, PICK_NONE, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { struct_you } from "./you.h.js";
 import { jmp_buf } from "../libc/records.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { i64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { shl64 } from "../rt/int64.js";
-import { SEEK_END } from "../rt/libc.js";
-import { SEEK_SET } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getenv } from "../rt/libc.js";
-import { longjmp } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncat } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strtoull } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
-import { luaL_checkinteger } from "../rt/lua.js";
-import { luaL_checkoption } from "../rt/lua.js";
-import { luaL_checktype } from "../rt/lua.js";
-import { luaL_loadbufferx } from "../rt/lua.js";
-import { luaL_loadstring } from "../rt/lua.js";
-import { luaL_requiref } from "../rt/lua.js";
-import { luaL_setfuncs } from "../rt/lua.js";
-import { luaL_traceback } from "../rt/lua.js";
-import { lua_atpanic } from "../rt/lua.js";
-import { lua_close } from "../rt/lua.js";
-import { lua_createtable } from "../rt/lua.js";
-import { lua_error } from "../rt/lua.js";
-import { lua_gc } from "../rt/lua.js";
-import { lua_getallocf } from "../rt/lua.js";
-import { lua_getfield } from "../rt/lua.js";
-import { lua_getglobal } from "../rt/lua.js";
-import { lua_getinfo } from "../rt/lua.js";
-import { lua_getstack } from "../rt/lua.js";
-import { lua_gettable } from "../rt/lua.js";
-import { lua_gettop } from "../rt/lua.js";
-import { lua_isstring } from "../rt/lua.js";
-import { lua_newstate } from "../rt/lua.js";
-import { lua_next } from "../rt/lua.js";
-import { lua_pushboolean } from "../rt/lua.js";
-import { lua_pushinteger } from "../rt/lua.js";
-import { lua_pushnil } from "../rt/lua.js";
-import { lua_pushstring } from "../rt/lua.js";
-import { lua_pushvalue } from "../rt/lua.js";
-import { lua_rawset } from "../rt/lua.js";
-import { lua_setfield } from "../rt/lua.js";
-import { lua_setglobal } from "../rt/lua.js";
-import { lua_sethook } from "../rt/lua.js";
-import { lua_setmetatable } from "../rt/lua.js";
-import { lua_settable } from "../rt/lua.js";
-import { lua_settop } from "../rt/lua.js";
-import { lua_setwarnf } from "../rt/lua.js";
-import { lua_toboolean } from "../rt/lua.js";
-import { lua_tolstring } from "../rt/lua.js";
-import { lua_type } from "../rt/lua.js";
-import { luaopen_base } from "../rt/lua.js";
-import { luaopen_coroutine } from "../rt/lua.js";
-import { luaopen_debug } from "../rt/lua.js";
-import { luaopen_math } from "../rt/lua.js";
-import { luaopen_os } from "../rt/lua.js";
-import { luaopen_string } from "../rt/lua.js";
-import { luaopen_table } from "../rt/lua.js";
-import { luaopen_utf8 } from "../rt/lua.js";
+import { char, int, long, ord, schar, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { i64, or64, shl64 } from "../rt/int64.js";
+import {
+    SEEK_END, SEEK_SET, assert, free, getenv, longjmp, memcpy, memset, sprintf, strchr, strcmp,
+    strcpy, strlen, strncat, strncmp, strtoull,
+} from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
+import {
+    luaL_checkinteger, luaL_checkoption, luaL_checktype, luaL_loadbufferx, luaL_loadstring,
+    luaL_requiref, luaL_setfuncs, luaL_traceback, lua_atpanic, lua_close, lua_createtable,
+    lua_error, lua_gc, lua_getallocf, lua_getfield, lua_getglobal, lua_getinfo, lua_getstack,
+    lua_gettable, lua_gettop, lua_isstring, lua_newstate, lua_next, lua_pushboolean,
+    lua_pushinteger, lua_pushnil, lua_pushstring, lua_pushvalue, lua_rawset, lua_setfield,
+    lua_setglobal, lua_sethook, lua_setmetatable, lua_settable, lua_settop, lua_setwarnf,
+    lua_toboolean, lua_tolstring, lua_type, luaopen_base, luaopen_coroutine, luaopen_debug,
+    luaopen_math, luaopen_os, luaopen_string, luaopen_table, luaopen_utf8,
+} from "../rt/lua.js";
 import { setjmp_caught } from "../rt/setjmp.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { record_or_opaque } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, record_or_opaque, ref_of, ref_to, sizeof_member, struct,
+    struct_assign, view_of, void_t,
+} from "../rt/struct.js";
 import { moveloop_core } from "./allmain.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { re_alloc } from "./alloc.js";
-import { l_get_config_errors } from "./cfgfiles.js";
-import { parse_conf_str } from "./cfgfiles.js";
-import { parse_config_line } from "./cfgfiles.js";
-import { cmd_from_ecname } from "./cmd.js";
-import { cmdq_add_key } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { levltyp_to_name } from "./cmd.js";
-import { cg } from "./decl.js";
-import { emptystr } from "./decl.js";
-import { gg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { iflags } from "./decl.js";
-import { nhcb_counts } from "./decl.js";
-import { nhcb_name } from "./decl.js";
-import { svd } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svs } from "./decl.js";
-import { u } from "./decl.js";
+import { alloc, dupstr, re_alloc } from "./alloc.js";
+import { l_get_config_errors, parse_conf_str, parse_config_line } from "./cfgfiles.js";
+import { cmd_from_ecname, cmdq_add_key, isok, levltyp_to_name } from "./cmd.js";
+import {
+    cg, emptystr, gg, gi, gl, gm, gs, gu, iflags, nhcb_counts, nhcb_name, svd, svm, svn, svs, u,
+} from "./decl.js";
 import { nul_glyphinfo } from "./display.js";
 import { def_oc_syms } from "./drawing.js";
-import { Invocation_lev } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { level_difficulty } from "./dungeon.js";
+import { Invocation_lev, depth, level_difficulty } from "./dungeon.js";
 import { init_uhunger } from "./eat.js";
 import { panic } from "./end.js";
 import { paniclog } from "./files.js";
 import { long_to_any } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { ing_suffix } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { addinv_nomerge } from "./invent.js";
-import { freeinv } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useupall } from "./invent.js";
+import { eos, ing_suffix, s_suffix, strncmpi } from "./hacklib.js";
+import { addinv_nomerge, freeinv, update_inventory, useupall } from "./invent.js";
 import { extract_nobj } from "./mkobj.js";
 import { mongone } from "./mon.js";
 import { name_to_mon } from "./mondata.js";
 import { mons } from "./monst.js";
-import { l_obj_register } from "./nhlobj.js";
-import { nhl_obj_u_giveobj } from "./nhlobj.js";
-import { nhl_push_obj } from "./nhlobj.js";
+import { l_obj_register, nhl_obj_u_giveobj, nhl_push_obj } from "./nhlobj.js";
 import { l_selection_register } from "./nhlsel.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { get_option_value } from "./options.js";
-import { nh_getenv } from "./options.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rng_log_set_caller } from "./rnd.js";
+import { an, makeplural, makesingular } from "./objnam.js";
+import { get_option_value, nh_getenv } from "./options.js";
+import { impossible, livelog_printf, pline, verbalize } from "./pline.js";
+import { rn2, rng_log_set_caller } from "./rnd.js";
 import { sfi_unsigned } from "./sfbase.js";
 import { obfree } from "./shk.js";
-import { cvt_to_abscoord } from "./sp_lev.js";
-import { flip_level } from "./sp_lev.js";
-import { get_coord } from "./sp_lev.js";
-import { get_trapname_bytype } from "./sp_lev.js";
-import { l_register_des } from "./sp_lev.js";
-import { nhl_abs_coord } from "./sp_lev.js";
-import { spot_stop_timers } from "./timeout.js";
-import { spot_time_expires } from "./timeout.js";
-import { start_timer } from "./timeout.js";
-import { deltrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { add_menu } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { setnotworn } from "./worn.js";
-import { setworn } from "./worn.js";
+import {
+    cvt_to_abscoord, flip_level, get_coord, get_trapname_bytype, l_register_des, nhl_abs_coord,
+} from "./sp_lev.js";
+import { spot_stop_timers, spot_time_expires, start_timer } from "./timeout.js";
+import { deltrap, t_at } from "./trap.js";
+import { add_menu, add_menu_str, getlin, select_menu } from "./windows.js";
+import { setnotworn, setworn } from "./worn.js";
 const struct_lua_State = record_or_opaque("struct_lua_State");
 const __FILE__ = "nhlua.c";

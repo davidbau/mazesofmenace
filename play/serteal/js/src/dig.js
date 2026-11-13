@@ -3,19 +3,6 @@
 /*-Copyright (c) Michael Allison, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
 /* Indices returned by dig_typ() */
 
     const DIGTYP_UNDIGGABLE = 0;
@@ -25,10 +12,7 @@
     const DIGTYP_DOOR = DIGTYP_BOULDER + 1;
     const DIGTYP_TREE = DIGTYP_DOOR + 1;
 
-
-function /* boolean */
-rm_waslit()
-{
+function rm_waslit() { /* boolean */
     let x, y;
 
     if (levl()[u.ux][u.uy].typ == ROOM && levl()[u.ux][u.uy].waslit)
@@ -44,9 +28,7 @@ rm_waslit()
  * boulders in the name of a nice effect.  Vision will get fixed up again
  * immediately after the effect is complete.
  */
-function /* void */
-mkcavepos(x, y, dist, waslit, rockit)
-{
+function mkcavepos(x, y, dist, waslit, rockit) { /* void */
     let lev;
 
     if (!isok(x, y))
@@ -62,7 +44,7 @@ mkcavepos(x, y, dist, waslit, rockit)
             return;                   /* don't cover the portal */
         if ((mtmp = m_at(x, y)) != null) /* make sure crucial monsters survive */
             if (!passes_walls(mtmp.data))
-                void rloc(mtmp, RLOC_NOMSG);
+                rloc(mtmp, RLOC_NOMSG);
     } else if (lev.typ == ROOM)
         return;
 
@@ -84,9 +66,7 @@ mkcavepos(x, y, dist, waslit, rockit)
     feel_newsym(x, y);
 }
 
-function /* void */
-mkcavearea(rockit)
-{
+function mkcavearea(rockit) { /* void */
     let dist;
     let xmin = u.ux, xmax = u.ux;
     let ymin = u.uy, ymax = u.uy;
@@ -137,12 +117,10 @@ mkcavearea(rockit)
 }
 
 /* called when attempting to break a statue or boulder with a pick */
-function /* boolean */
-pick_can_reach(pick, x, y)
-{
+function pick_can_reach(pick, x, y) { /* boolean */
     let t = t_at(x, y);
     /* tseen: pit only affects item positioning when it is known */
-    let target_in_pit = ((t && is_pit(t.ttyp) && t.tseen) ? 1 : 0);
+    let target_in_pit = (t && is_pit(t.ttyp) && t.tseen ? 1 : 0);
 
     /* if hero is in a pit, pick can only reach if the statue is too and
        the two pits are conjoined or the statue isn't and pick is two-handed;
@@ -165,9 +143,7 @@ pick_can_reach(pick, x, y)
 }
 
 /* When digging into location <x,y>, what are you actually digging into? */
-export function /* int */
-dig_typ(otmp, x, y)
-{
+export function dig_typ(otmp, x, y) { /* int */
     let ltyp;
 
     if (!isok(x, y) || !otmp || (!is_pick(otmp) && !is_axe(otmp)))
@@ -191,21 +167,17 @@ dig_typ(otmp, x, y)
                    : DIGTYP_UNDIGGABLE;
 }
 
-export function /* boolean */
-is_digging()
-{
+export function is_digging() { /* boolean */
     if (go.occupation == dig) {
         return TRUE;
     }
     return FALSE;
 }
 
-export function BY_YOU() { return (gy.youmonst); }
-export function BY_OBJECT() { return (null); }
+export function BY_YOU() { return gy.youmonst; }
+export function BY_OBJECT() { return null; }
 
-export function /* enum digcheck_result */
-dig_check(madeby, x, y)
-{
+export function dig_check(madeby, x, y) { /* enum digcheck_result */
     let ttmp = t_at(x, y);
 
     if (On_stairs(x, y)) {
@@ -251,12 +223,9 @@ dig_check(madeby, x, y)
     return DIGCHECK_PASSED;
 }
 
-export function /* void */
-digcheck_fail_message(digresult, madeby,
-                      x, y)
-{
+export function digcheck_fail_message(digresult, madeby,
+                      x, y) { /* void */
     let verb = (madeby == BY_YOU() && uwep && is_axe(uwep)) ? _("chop") : _("dig in");
-
 
     if (digresult < DIGCHECK_FAILED)
         return;
@@ -296,12 +265,11 @@ digcheck_fail_message(digresult, madeby,
     }
 }
 
-function /* int */
-dig()
-{ const $frame = stack_frame(); try {
+function dig() { /* int */
+    const $frame = stack_frame(); try {
     var lev;
     var dpx = svc.context.digging.pos.x, dpy = svc.context.digging.pos.y;
-    var ispick = ((uwep && is_pick(uwep)) ? 1 : 0);
+    var ispick = (uwep && is_pick(uwep) ? 1 : 0);
     var verb = (!uwep || is_pick(uwep)) ? _("dig into") : _("chop through");
     var dcresult = DIGCHECK_PASSED;
 
@@ -310,8 +278,8 @@ dig()
     /* or perhaps you teleported away */
     if (u.uswallow || !uwep || (!ispick && !is_axe(uwep))
         || !on_level(svc.context.digging.level, u.uz)
-        || ((svc.context.digging.down ? (dpx != u.ux || dpy != u.uy)
-                                  : !next2u(dpx, dpy))))
+        || (svc.context.digging.down ? (dpx != u.ux || dpy != u.uy)
+                                  : !next2u(dpx, dpy)))
         return 0;
 
     if (svc.context.digging.down) {
@@ -371,8 +339,8 @@ dig()
 
         if (svc.context.digging.effort > 250
             || (ttmp && ttmp.ttyp == HOLE)) {
-            void dighole(FALSE, FALSE, null);
-            void memset(addr_of(svc.context.digging), 0,
+            dighole(FALSE, FALSE, null);
+            memset(addr_of(svc.context.digging), 0,
                           sizeof(struct_dig_info));
             return 0; /* done with digging */
         }
@@ -386,7 +354,7 @@ dig()
                hero should have used #untrap first */
             dotrap(ttmp, FORCETRAP);
             /* restart completely from scratch if we resume digging */
-            void memset(addr_of(svc.context.digging), 0,
+            memset(addr_of(svc.context.digging), 0,
                           sizeof(struct_dig_info));
             return 0;
         } else if (ttmp && ttmp.ttyp == BEAR_TRAP && u.utrap) {
@@ -399,7 +367,7 @@ dig()
                 else if (uarmf)
                     dmg = Math.trunc((dmg + 1) / 2);
                 You(_("hit yourself in the %s."), body_part(FOOT));
-                void sprintf(kbuf, _("chopping off %s own %s"), uhis(), body_part(FOOT))
+                sprintf(kbuf, _("chopping off %s own %s"), uhis(), body_part(FOOT))
 ;
                 losehp(Maybe_Half_Phys(dmg), kbuf, KILLED_BY);
             } else {
@@ -478,7 +446,7 @@ dig()
                 digtxt = _("You cut down the tree.");
                 lev.typ = ROOM, lev.flags = 0;
                 if (!rn2(5))
-                    void rnd_treefruit_at(dpx, dpy);
+                    rnd_treefruit_at(dpx, dpy);
                 if (Race_if(PM_ELF) || Role_if(PM_RANGER))
                     adjalign(-1);
             } else {
@@ -505,7 +473,7 @@ dig()
             if (!(lev.flags & D_TRAPPED))
                 lev.flags = D_BROKEN;
         } else if (closed_door(dpx, dpy)) {
-            void sprintf(digbuf, _("You break through the door with your %s."), simpleonames(uwep))
+            sprintf(digbuf, _("You break through the door with your %s."), simpleonames(uwep))
 ;
             digtxt = digbuf;
             if (shopedge) {
@@ -565,11 +533,11 @@ dig()
         }
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-furniture_handled(x, y, madeby_u)
-{ const $frame = stack_frame(); try {
+function furniture_handled(x, y, madeby_u) { /* boolean */
+    const $frame = stack_frame(); try {
     let lev = levl()[x][y];
 
     if (IS_FOUNTAIN(lev.typ)) {
@@ -583,29 +551,25 @@ furniture_handled(x, y, madeby_u)
         let bx = stack_var(coordxy, x), by = stack_var(coordxy, y);
 
         /* if under the portcullis, the bridge is adjacent */
-        void find_drawbridge(bx, by);
+        find_drawbridge(bx, by);
         destroy_drawbridge(bx[0], by[0]);
     } else {
         return FALSE;
     }
     return TRUE;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* When will hole be finished? Very rough indication used by shopkeeper. */
-export function /* int */
-holetime()
-{
+export function holetime() { /* int */
     if (go.occupation != dig || !chars[u.ushops])
         return -1;
-    return (Math.trunc((250 - svc.context.digging.effort) / 20));
+    return Math.trunc((250 - svc.context.digging.effort) / 20);
 }
 
 /* Return typ of liquid to fill a hole with, or ROOM, if no liquid nearby */
-export function /* schar */
-fillholetyp(x, y,
-            fill_if_any) /* force filling if it exists at all */
-{
+export function fillholetyp(x, y,
+            fill_if_any) { /* schar */ /* force filling if it exists at all */
     let x1, y1;
     let lo_x = max(1, x - 1), hi_x = min(x + 1, COLNO - 1),
             lo_y = max(0, y - 1), hi_y = min(y + 1, ROWNO - 1);
@@ -636,19 +600,18 @@ fillholetyp(x, y,
         return ROOM;
 }
 
-export function /* void */
-digactualhole(x, y, madeby, ttyp)
-{ const $frame = stack_frame(); try {
+export function digactualhole(x, y, madeby, ttyp) { /* void */
+    const $frame = stack_frame(); try {
     let oldobjs, newobjs;
     let ttmp;
     let surface_type, tname, in_thru;
     let furniture = stack_array(char, BUFSZ);
     let lev = levl()[x][y];
     let mtmp = m_at(x, y); /* may be madeby */
-    let madeby_u = (+(madeby == BY_YOU())), madeby_obj = (+(madeby == BY_OBJECT())),
+    let madeby_u = +(madeby == BY_YOU()), madeby_obj = +(madeby == BY_OBJECT()),
 
-            heros_fault = (((madeby_u || madeby_obj) ? 1 : 0));
-    let shopdoor, at_u = u_at(x, y), wont_fall = ((Levitation() || Flying()) ? 1 : 0);
+            heros_fault = (madeby_u || madeby_obj ? 1 : 0);
+    let shopdoor, at_u = u_at(x, y), wont_fall = (Levitation() || Flying() ? 1 : 0);
     let old_typ, old_aligntyp = A_NONE;
 
     if (at_u && u.utrap) {
@@ -677,14 +640,14 @@ digactualhole(x, y, madeby, ttyp)
                          ? _("floor") : _("ground"));
         if (IS_ALTAR(lev.typ)) {
             old_aligntyp = Amask2align(levl()[x][y].flags & AM_MASK);
-            void strcpy(furniture, align_str(old_aligntyp));
-            void strcat(furniture, _(" "));
+            strcpy(furniture, align_str(old_aligntyp));
+            strcat(furniture, _(" "));
         }
-        void strcat(furniture, surface(x, y));
+        strcat(furniture, surface(x, y));
     } else {
         surface_type = surface(x, y);
     }
-    shopdoor = ((IS_DOOR(lev.typ) && chars[in_rooms(x, y, SHOPBASE)]) ? 1 : 0);
+    shopdoor = (IS_DOOR(lev.typ) && chars[in_rooms(x, y, SHOPBASE)] ? 1 : 0);
     oldobjs = svl.level.objects[x][y];
 
     ttmp = maketrap(x, y, ttyp);
@@ -741,14 +704,14 @@ digactualhole(x, y, madeby, ttyp)
             } else
                 reset_utrap(TRUE);
             if (oldobjs != newobjs) /* something unearthed */
-                void pickup(1);   /* detects pit */
+                pickup(1);   /* detects pit */
         } else if (mtmp) {
             if (is_flyer(mtmp.data) || is_floater(mtmp.data)) {
                 if (canseemon(mtmp))
                     pline(_("%s %s over the pit."), Monnam(mtmp),
-                          (is_flyer(mtmp.data)) ? _("flies") : _("floats"));
+                          is_flyer(mtmp.data) ? _("flies") : _("floats"));
             } else if (mtmp != madeby)
-                void mintrap(mtmp, NO_TRAP_FLAGS);
+                mintrap(mtmp, NO_TRAP_FLAGS);
         }
     } else { /* was TRAPDOOR now a HOLE*/
         if (at_u) {
@@ -772,7 +735,7 @@ digactualhole(x, y, madeby, ttyp)
                 if (newobjs)
                     impact_drop(null, x, y, 0);
                 if (oldobjs != newobjs)
-                    void pickup(1);
+                    pickup(1);
                 if (shopdoor && heros_fault)
                     pay_for_damage(_("ruin"), FALSE);
             } else {
@@ -810,7 +773,7 @@ digactualhole(x, y, madeby, ttyp)
                     let tolevel = stack_struct(struct_d_level);
 
                     if (Is_stronghold(u.uz)) {
-                        assign_level(tolevel, (svd.dungeon_topology.d_valley_level));
+                        assign_level(tolevel, svd.dungeon_topology.d_valley_level);
                     } else if (Is_botlevel(u.uz)) {
                         if (canseemon(mtmp))
                             pline(_("%s avoids the trap."), Monnam(mtmp));
@@ -826,21 +789,18 @@ digactualhole(x, y, madeby, ttyp)
             }
         }
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Called from dighole(); also from do_break_wand() in apply.c
  * and do_earthquake() in music.c.
  */
-export function /* void */
-liquid_flow(
+export function liquid_flow(
     x, y,
     typ,
     ttmp,
-    fillmsg)
-{
+    fillmsg) { /* void */
     let objchain;
     let mon;
     let u_spot = u_at(x, y);
@@ -856,7 +816,7 @@ liquid_flow(
     }
 
     if (ttmp)
-        void delfloortrap(ttmp); /* will untrap monster if one is here */
+        delfloortrap(ttmp); /* will untrap monster if one is here */
     /* if any objects were frozen here, they're released now */
     obj_ice_effects(x, y, TRUE);
     unearth_objs(x, y);
@@ -872,18 +832,15 @@ liquid_flow(
     }
     /* damage to the hero */
     if (u_spot) {
-        void pooleffects(FALSE);
+        pooleffects(FALSE);
     } else if ((mon = m_at(x, y)) != null) {
-        void minliquid(mon);
+        minliquid(mon);
     }
 }
 
-
-
 /* return TRUE if digging succeeded, FALSE otherwise */
-export function /* boolean */
-dighole(pit_only, by_magic, cc)
-{ const $frame = stack_frame(); try {
+export function dighole(pit_only, by_magic, cc) { /* boolean */
+    const $frame = stack_frame(); try {
     let ttmp;
     let lev;
     let boulder_here;
@@ -906,8 +863,8 @@ dighole(pit_only, by_magic, cc)
     lev = levl()[dig_x][dig_y];
     dig_check_result = dig_check(BY_YOU(), dig_x, dig_y);
     /* nohole = (!Can_dig_down(&u.uz) && !lev->candig); */
-    nohole = (+(dig_check_result == DIGCHECK_FAIL_CANTDIG
-                  || dig_check_result == DIGCHECK_FAIL_TOOHARD));
+    nohole = +(dig_check_result == DIGCHECK_FAIL_CANTDIG
+                  || dig_check_result == DIGCHECK_FAIL_TOOHARD);
     old_typ = lev.typ;
 
     if ((ttmp && (undestroyable_trap(ttmp.ttyp) || nohole))
@@ -923,7 +880,6 @@ dighole(pit_only, by_magic, cc)
         pline_The(_("%s sloshes furiously for a moment, then subsides."),
                   hliquid(is_lava(dig_x, dig_y) ? _("lava") : _("water")));
         wake_nearby(FALSE); /* splashing */
-
     } else if (old_typ == DRAWBRIDGE_DOWN
                || (is_drawbridge_wall(dig_x, dig_y) >= 0)) {
         /* drawbridge_down is the platform crossing the moat when the
@@ -934,11 +890,10 @@ dighole(pit_only, by_magic, cc)
         } else {
             let x = stack_var(coordxy, dig_x), y = stack_var(coordxy, dig_y);
             /* if under the portcullis, the bridge is adjacent */
-            void find_drawbridge(x, y);
+            find_drawbridge(x, y);
             destroy_drawbridge(x[0], y[0]);
             retval = TRUE;
         }
-
     } else if ((boulder_here = sobj_at(BOULDER, dig_x, dig_y)) != null) {
         if (ttmp && is_pit(ttmp.ttyp)
             && rn2(2)) {
@@ -953,7 +908,7 @@ dighole(pit_only, by_magic, cc)
              ;
             pline(_("KADOOM!  The boulder falls in!"));
             wake_nearby(FALSE);
-            void delfloortrap(ttmp);
+            delfloortrap(ttmp);
         }
         delobj(boulder_here);
     } else if (IS_GRAVE(old_typ)) {
@@ -984,10 +939,8 @@ dighole(pit_only, by_magic, cc)
     /* the following two are here for the wand of digging */
     } else if (IS_THRONE(old_typ)) {
         pline_The(_("throne is too hard to break apart."));
-
     } else if (IS_ALTAR(old_typ)) {
         pline_The(_("altar is too hard to break apart."));
-
     } else {
         typ = fillholetyp(dig_x, dig_y, FALSE);
 
@@ -1021,11 +974,10 @@ dighole(pit_only, by_magic, cc)
     }
     spot_checks(dig_x, dig_y, old_typ);
     return retval;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-dig_up_grave(cc)
-{
+function dig_up_grave(cc) { /* void */
     let otmp;
     let what_happens;
     let dig_x, dig_y;
@@ -1067,13 +1019,13 @@ dig_up_grave(cc)
         if (!Blind())
             pline(_("%s!"), Hallucination() ? _("Dude!  The living dead")
                                        : _("The grave's owner is very upset"));
-        void makemon(mkclass(S_ZOMBIE, 0), dig_x, dig_y, MM_NOMSG);
+        makemon(mkclass(S_ZOMBIE, 0), dig_x, dig_y, MM_NOMSG);
         break;
     case 3:
         if (!Blind())
             pline(_("%s!"), Hallucination() ? _("I want my mummy")
                                        : _("You've disturbed a tomb"));
-        void makemon(mkclass(S_MUMMY, 0), dig_x, dig_y, MM_NOMSG);
+        makemon(mkclass(S_MUMMY, 0), dig_x, dig_y, MM_NOMSG);
         break;
     default:
         /* No corpse */
@@ -1088,9 +1040,8 @@ dig_up_grave(cc)
     return;
 }
 
-export function /* int */
-use_pick_axe(obj)
-{ const $frame = stack_frame(); try {
+export function use_pick_axe(obj) { /* int */
+    const $frame = stack_frame(); try {
     let verb;
     let dsp, dirsyms = stack_array(char, 12), qbuf = stack_array(char, BUFSZ);
     let ispick;
@@ -1141,26 +1092,26 @@ use_pick_axe(obj)
                it shouldn't be a likely candidate when floating high
                above the floor; include up instead in that situation
                (as a silly candidate rather than a likely one...) */
-            if ((+(u.dz > 0)) ^ downok)
+            if (+(u.dz > 0) ^ downok)
                 continue;
         }
         /* include this direction */
         chars[dsp++] = dirch;
     }
     chars[dsp] = 0;
-    void sprintf(qbuf, _("In what direction do you want to %s? [%s]"), verb, dirsyms);
+    sprintf(qbuf, _("In what direction do you want to %s? [%s]"), verb, dirsyms);
     if (!getdir(qbuf))
         return (res|ECMD_CANCEL);
 
     return use_pick_axe2(obj);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* MRKR: use_pick_axe() is split in two to allow autodig to bypass */
 /*       the "In what direction do you want to dig?" query.        */
 /*       use_pick_axe2() uses the existing u.dx, u.dy and u.dz    */
-export function /* int */
-use_pick_axe2(obj)
-{ const $frame = stack_frame(); try {
+export function use_pick_axe2(obj) { /* int */
+    const $frame = stack_frame(); try {
     let rx, ry;
     let lev;
     let trap, trap_with_u;
@@ -1185,7 +1136,7 @@ use_pick_axe2(obj)
         if (dam <= 0)
             dam = 1;
         You(_("hit yourself with %s."), yname(uwep));
-        void sprintf(buf, _("%s own %s"), uhis(), OBJ_NAME(objects[obj.otyp]));
+        sprintf(buf, _("%s own %s"), uhis(), OBJ_NAME(objects[obj.otyp]));
         losehp(Maybe_Half_Phys(dam), buf, KILLED_BY);
         disp.botl = TRUE;
         return ECMD_TIME;
@@ -1225,7 +1176,7 @@ use_pick_axe2(obj)
                 pline(_("Splash!"));
             } else if (lev.typ == LAVAWALL) {
                 pline(_("Splash!"));
-                void fire_damage(uwep, FALSE, rx, ry);
+                fire_damage(uwep, FALSE, rx, ry);
             } else if (IS_TREE(lev.typ)) {
                 You(_("need an axe to cut down a tree."));
             } else if (IS_OBSTRUCTED(lev.typ)) {
@@ -1356,11 +1307,10 @@ use_pick_axe2(obj)
         set_occupation(dig, verbing, 0);
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-watchman_canseeu(mtmp)
-{
+function watchman_canseeu(mtmp) { /* boolean */
     if (is_watch(mtmp.data) && mtmp.mcansee && m_canseeu(mtmp)
         && mtmp.mpeaceful)
         return TRUE;
@@ -1373,9 +1323,7 @@ watchman_canseeu(mtmp)
  * If mtmp is assumed to be a watchman, a watchman is found if mtmp == 0
  * zap == TRUE if wand/spell of digging, FALSE otherwise (chewing)
  */
-export function /* void */
-watch_dig(mtmp, x, y, zap)
-{
+export function watch_dig(mtmp, x, y, zap) { /* void */
     let lev = levl()[x][y];
 
     if (in_town(x, y)
@@ -1388,7 +1336,7 @@ watch_dig(mtmp, x, y, zap)
                ;
             if (zap || svc.context.digging.warned) {
                 verbalize(_("Halt, vandal!  You're under arrest!"));
-                void angry_guards(+!!Deaf());
+                angry_guards(+!!Deaf());
             } else {
                 let str;
 
@@ -1410,9 +1358,7 @@ watch_dig(mtmp, x, y, zap)
 }
 
 /* Return TRUE if monster died, FALSE otherwise.  Called from m_move(). */
-export function /* boolean */
-mdig_tunnel(mtmp)
-{
+export function mdig_tunnel(mtmp) { /* boolean */
     let here;
     let sawit, seeit, trapped;
     let pile = rnd(12);
@@ -1433,7 +1379,7 @@ mdig_tunnel(mtmp)
         newsym(mtmp.mx, mtmp.my);
         if (trapped) {
             seeit = canseemon(mtmp);
-            if (mb_trapped(mtmp, ((sawit || seeit) ? 1 : 0))) { /* mtmp is killed */
+            if (mb_trapped(mtmp, (sawit || seeit ? 1 : 0))) { /* mtmp is killed */
                 newsym(mtmp.mx, mtmp.my);
                 return TRUE;
             }
@@ -1482,11 +1428,11 @@ mdig_tunnel(mtmp)
     } else if (IS_TREE(here.typ)) {
         here.typ = ROOM, here.flags = 0;
         if (pile && pile < 5)
-            void rnd_treefruit_at(mtmp.mx, mtmp.my);
+            rnd_treefruit_at(mtmp.mx, mtmp.my);
     } else {
         here.typ = CORR, here.flags = 0;
         if (pile && pile < 5)
-            void mksobj_at((pile == 1) ? BOULDER : ROCK, mtmp.mx, mtmp.my,
+            mksobj_at((pile == 1) ? BOULDER : ROCK, mtmp.mx, mtmp.my,
                              TRUE, FALSE);
     }
     newsym(mtmp.mx, mtmp.my);
@@ -1500,9 +1446,7 @@ export const STRIDENT = 4;
 
 /* draft refers to air currents, but can be a pun on "draft" as conscription
    for military service (probably not a good pun if it has to be explained) */
-export function /* void */
-draft_message(unexpected)
-{
+export function draft_message(unexpected) { /* void */
     /*
      * [Bug or TODO?  Have caller pass coordinates and use the travel
      * mechanism to determine whether there is a path between
@@ -1544,9 +1488,8 @@ draft_message(unexpected)
 }
 
 /* digging via wand zap or spell cast */
-export function /* void */
-zap_dig()
-{ const $frame = stack_frame(); try {
+export function zap_dig() { /* void */
+    const $frame = stack_frame(); try {
     let room;
     let mtmp;
     let otmp;
@@ -1597,13 +1540,13 @@ zap_dig()
                 losehp(Maybe_Half_Phys(dmg), _("falling rock"), KILLED_BY_AN);
                 otmp = mksobj_at(ROCK, u.ux, u.uy, FALSE, FALSE);
                 if (otmp) {
-                    void xname(otmp); /* set dknown, maybe bknown */
+                    xname(otmp); /* set dknown, maybe bknown */
                     stackobj(otmp);
                 }
                 newsym(u.ux, u.uy);
             } else {
                 watch_dig(null, u.ux, u.uy, TRUE);
-                void dighole(FALSE, TRUE, null);
+                dighole(FALSE, TRUE, null);
             }
         }
         return;
@@ -1611,7 +1554,7 @@ zap_dig()
 
     /* normal case: digging across the level */
     shopdoor = shopwall = FALSE;
-    maze_dig = ((svl.level.flags.is_maze_lev && !Is_earthlevel(u.uz)) ? 1 : 0);
+    maze_dig = (svl.level.flags.is_maze_lev && !Is_earthlevel(u.uz) ? 1 : 0);
     zx = u.ux + u.dx;
     zy = u.uy + u.dy;
     if (u.utrap && u.utraptype == TT_PIT
@@ -1635,7 +1578,7 @@ zap_dig()
             if (diridx != DIR_ERR
                 && !conjoined_pits(adjpit, trap_with_u, FALSE)) {
                 digdepth = 0; /* limited to the adjacent location only */
-                (void (digdepth));
+                (digdepth);
                 if (!(adjpit && is_pit(adjpit.ttyp))) {
                     let buf = stack_array(char, BUFSZ);
 
@@ -1751,7 +1694,8 @@ zap_dig()
     if (shopdoor || shopwall)
         pay_for_damage(shopdoor ? _("destroy") : _("dig into"), FALSE);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This checks what is on the surface above the
@@ -1759,13 +1703,10 @@ zap_dig()
  * you're zapping a wand of digging laterally while
  * down in the pit.
  */
-function /* int */
-adj_pit_checks(cc, msg)
-{
+function adj_pit_checks(cc, msg) { /* int */
     let ltyp;
     let room;
     let foundation_msg = _("The foundation is too hard to dig through from this angle.");
-
 
     if (!cc)
         return FALSE;
@@ -1781,36 +1722,30 @@ adj_pit_checks(cc, msg)
     } else if (closed_door(cc.x, cc.y) || room.typ == SDOOR) {
         /* We reject this here because dighole() isn't
            prepared to deal with this case */
-        void strcpy(msg, foundation_msg);
+        strcpy(msg, foundation_msg);
         return FALSE;
     } else if (IS_WALL(ltyp)) {
         /* if (room->wall_info & W_NONDIGGABLE) */
-        void strcpy(msg, foundation_msg);
+        strcpy(msg, foundation_msg);
         return FALSE;
     } else if (IS_TREE(ltyp)) { /* check trees before stone */
         /* if (room->wall_info & W_NONDIGGABLE) */
-        void strcpy(msg, _("The tree's roots glow then fade."));
+        strcpy(msg, _("The tree's roots glow then fade."));
         return FALSE;
     } else if (ltyp == STONE || ltyp == SCORR) {
         if (room.flags & W_NONDIGGABLE) {
-            void strcpy(msg, _("The rock glows then fades."));
+            strcpy(msg, _("The rock glows then fades."));
             return FALSE;
         }
     } else if (ltyp == IRONBARS) {
         /* "set of iron bars" */
-        void strcpy(msg, _("The bars go much deeper than your pit."));
+        strcpy(msg, _("The bars go much deeper than your pit."));
         return FALSE;
-
-
-
-
-
-
     } else if (IS_SINK(ltyp)) {
-        void strcpy(msg, _("A tangled mass of plumbing remains below the sink."));
+        strcpy(msg, _("A tangled mass of plumbing remains below the sink."));
         return FALSE;
     } else if (On_ladder(cc.x, cc.y)) {
-        void strcpy(msg, _("The ladder is unaffected."));
+        strcpy(msg, _("The ladder is unaffected."));
         return FALSE;
     } else {
         let supporting = 0;
@@ -1829,7 +1764,7 @@ adj_pit_checks(cc, msg)
             supporting = _("drawbridge");
 
         if (supporting) {
-            void sprintf(msg, _("The %s supporting structures remain intact."), s_suffix(supporting))
+            sprintf(msg, _("The %s supporting structures remain intact."), s_suffix(supporting))
 ;
             return FALSE;
         }
@@ -1840,9 +1775,8 @@ adj_pit_checks(cc, msg)
 /*
  * Ensure that all conjoined pits fill up.
  */
-function /* void */
-pit_flow(trap, filltyp)
-{ const $frame = stack_frame(); try {
+function pit_flow(trap, filltyp) { /* void */
+    const $frame = stack_frame(); try {
     /*
      * FIXME?
      *  liquid_flow() -> pooleffects() -> {drown(),lava_effects()}
@@ -1868,22 +1802,15 @@ pit_flow(trap, filltyp)
                 y = t.ty + chars[ydir + idx];
                 t2 = t_at(x, y);
 
-
-
-
-
-
-
                 /* recursion */
                 pit_flow(t2, filltyp);
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct obj * */
-buried_ball(cc)
-{
+export function buried_ball(cc) { /* struct obj * */
     let odist, bdist = COLNO;
     let otmp, ball = null;
 
@@ -1931,9 +1858,8 @@ buried_ball(cc)
     return ball;
 }
 
-export function /* void */
-buried_ball_to_punishment()
-{ const $frame = stack_frame(); try {
+export function buried_ball_to_punishment() { /* void */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
     let ball;
 
@@ -1942,21 +1868,17 @@ buried_ball_to_punishment()
     ball = buried_ball(cc);
     if (ball) {
         obj_extract_self(ball);
-
-
-
-
 
         punish(ball); /* use ball as flag for unearthed buried ball */
         reset_utrap(FALSE);
         del_engr_at(cc.x, cc.y);
         newsym(cc.x, cc.y);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-buried_ball_to_freedom()
-{ const $frame = stack_frame(); try {
+export function buried_ball_to_freedom() { /* void */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
     let ball;
 
@@ -1965,10 +1887,6 @@ buried_ball_to_freedom()
     ball = buried_ball(cc);
     if (ball) {
         obj_extract_self(ball);
-
-
-
-
 
         place_object(ball, cc.x, cc.y);
         stackobj(ball);
@@ -1976,13 +1894,12 @@ buried_ball_to_freedom()
         del_engr_at(cc.x, cc.y);
         newsym(cc.x, cc.y);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* move objects from fobj/nexthere lists to buriedobjlist, keeping position
    information */
-export function /* struct obj * */
-bury_an_obj(otmp, dealloced)
-{
+export function bury_an_obj(otmp, dealloced) { /* struct obj * */
     let otmp2;
     let under_ice;
 
@@ -2031,31 +1948,21 @@ bury_an_obj(otmp, dealloced)
         ; /* should cancel timer if under_ice */
     } else if ((under_ice ? (otmp.oclass == POTION_CLASS) : is_organic(otmp))
                && !obj_resists(otmp, 5, 95)) {
-        void start_timer((under_ice ? 0 : 250) + rnd(250),
+        start_timer((under_ice ? 0 : 250) + rnd(250),
                            TIMER_OBJECT, ROT_ORGANIC, obj_to_any(otmp));
-
-
-
-
-
-
-
-
     }
     add_to_buried(otmp);
     return  otmp2;
 }
 
-export function /* void */
-bury_objs(x, y)
-{
+export function bury_objs(x, y) { /* void */
     let otmp, otmp2;
     let shkp;
     let loss = 0;
     let costly;
 
-    costly = ((((shkp = shop_keeper(chars[in_rooms(x, y, SHOPBASE)]))
-              && costly_spot(x, y)) ? 1 : 0));
+    costly = ((shkp = shop_keeper(chars[in_rooms(x, y, SHOPBASE)]))
+              && costly_spot(x, y) ? 1 : 0);
 
     if (svl.level.objects[x][y] != null) {
         debugpline2(_("bury_objs: at <%d,%d>"), x, y, __FILE__);
@@ -2082,9 +1989,8 @@ bury_objs(x, y)
 
 /* move objects from buriedobjlist to fobj/nexthere lists; if caller
    converts terrain from ice to something, it should call obj_ice_effects() */
-export function /* void */
-unearth_objs(x, y)
-{ const $frame = stack_frame(); try {
+export function unearth_objs(x, y) { /* void */
+    const $frame = stack_frame(); try {
     let otmp, otmp2, bball;
     let cc = stack_struct(struct_nhcoord);
 
@@ -2101,7 +2007,7 @@ unearth_objs(x, y)
             } else {
                 obj_extract_self(otmp);
                 if (otmp.timed)
-                    void stop_timer(ROT_ORGANIC, obj_to_any(otmp));
+                    stop_timer(ROT_ORGANIC, obj_to_any(otmp));
                 place_object(otmp, x, y);
                 stackobj(otmp);
             }
@@ -2109,7 +2015,8 @@ unearth_objs(x, y)
     }
     del_engr_at(x, y);
     newsym(x, y);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * The organic material has rotted away while buried.  As an expansion,
@@ -2121,9 +2028,7 @@ unearth_objs(x, y)
  * away, any contents become newly buried objects.
  */
 /* ARGSUSED */
-export function /* void */
-rot_organic(arg, timeout)
-{
+export function rot_organic(arg, timeout) { /* void */
     let obj = arg.a_obj;
 
     while (Has_contents(obj)) {
@@ -2133,7 +2038,7 @@ rot_organic(arg, timeout)
         /* Everything which can be held in a container can also be
            buried, so bury_an_obj's use of obj_extract_self insures
            that Has_contents(obj) will eventually become false. */
-        void bury_an_obj(obj.cobj, 0);
+        bury_an_obj(obj.cobj, 0);
     }
     obj_extract_self(obj);
     obfree(obj, null);
@@ -2142,9 +2047,7 @@ rot_organic(arg, timeout)
 /*
  * Called when a corpse has rotted completely away.
  */
-export function /* void */
-rot_corpse(arg, timeout)
-{
+export function rot_corpse(arg, timeout) { /* void */
     let x = 0, y = 0;
     let obj = arg.a_obj;
     let on_floor = +(obj.where == OBJ_FLOOR),
@@ -2182,111 +2085,16 @@ rot_corpse(arg, timeout)
             mtmp.mundetected = 0;
         } else if (u_at(x, y)
                    && u.uundetected && hides_under(gy.youmonst.data))
-            void hideunder(gy.youmonst);
+            hideunder(gy.youmonst);
         newsym(x, y);
     } else if (in_invent)
         update_inventory();
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* the #wizbury command - bury everything at your loc and around */
-export function /* int */
-wiz_debug_cmd_bury()
-{
+export function wiz_debug_cmd_bury() { /* int */
     let otmp;
     let x, y, before = 0, after = 0, diff;
 
@@ -2319,429 +2127,159 @@ wiz_debug_cmd_bury()
     return ECMD_OK;
 }
 
-
-
-
 /* for 'onefile' testing, leave STRIDENT defined so that the other instance
    of it in pray.c will trigger a complaint if someone changes its value */
 /*#undef STRIDENT*/
 
 /*dig.c*/
-import { AM_MASK } from "./align.h.js";
-import { AM_SANCTUM } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
+
+import { AM_MASK, AM_SANCTUM, A_LAWFUL, A_NONE } from "./align.h.js";
 import { Amask2align } from "./align.h.macros.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_dig_info } from "./context.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_digbeam } from "./defsym.h.js";
-import { DISP_BEAM } from "./display.h.js";
-import { DISP_END } from "./display.h.js";
-import { EXPL_MAGICAL } from "./display.h.js";
+import { COIN_CLASS, POTION_CLASS, S_MUMMY, S_ZOMBIE, S_digbeam } from "./defsym.h.js";
+import { DISP_BEAM, DISP_END, EXPL_MAGICAL } from "./display.h.js";
 import { cmap_to_glyph } from "./display.h.macros.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_earthlevel } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CXN_NO_PFX } from "./hack.h.js";
-import { DIGCHECK_FAILED } from "./hack.h.js";
-import { DIGCHECK_FAIL_AIRLEVEL } from "./hack.h.js";
-import { DIGCHECK_FAIL_ALTAR } from "./hack.h.js";
-import { DIGCHECK_FAIL_BOULDER } from "./hack.h.js";
-import { DIGCHECK_FAIL_CANTDIG } from "./hack.h.js";
-import { DIGCHECK_FAIL_OBJ_POOL_OR_TRAP } from "./hack.h.js";
-import { DIGCHECK_FAIL_ONLADDER } from "./hack.h.js";
-import { DIGCHECK_FAIL_ONSTAIRS } from "./hack.h.js";
-import { DIGCHECK_FAIL_THRONE } from "./hack.h.js";
-import { DIGCHECK_FAIL_TOOHARD } from "./hack.h.js";
-import { DIGCHECK_FAIL_UNDESTROYABLETRAP } from "./hack.h.js";
-import { DIGCHECK_FAIL_WATERLEVEL } from "./hack.h.js";
-import { DIGCHECK_PASSED } from "./hack.h.js";
-import { DIGCHECK_PASSED_DESTROY_TRAP } from "./hack.h.js";
-import { DIGCHECK_PASSED_PITONLY } from "./hack.h.js";
-import { DIR_ERR } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { FORCEBUNGLE } from "./hack.h.js";
-import { FORCETRAP } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { MV_WALK } from "./hack.h.js";
-import { NO_PART } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { N_DIRS_Z } from "./hack.h.js";
-import { RLOC_NOMSG } from "./hack.h.js";
-import { SHOP_DOOR_COST } from "./hack.h.js";
-import { SHOP_PIT_COST } from "./hack.h.js";
-import { SHOP_WALL_COST } from "./hack.h.js";
-import { STOMACH } from "./hack.h.js";
-import { TAINT_AGE } from "./hack.h.js";
-import { DIR_180 } from "./hack.h.macros.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { SHOP_WALL_DMG } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { debugpline2 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
+import { MIGR_RANDOM, struct_d_level } from "./dungeon.h.js";
+import { Is_airlevel, Is_earthlevel, Is_stronghold, Is_waterlevel } from "./dungeon.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    CQ_CANNED, CXN_NO_PFX, DIGCHECK_FAILED, DIGCHECK_FAIL_AIRLEVEL, DIGCHECK_FAIL_ALTAR,
+    DIGCHECK_FAIL_BOULDER, DIGCHECK_FAIL_CANTDIG, DIGCHECK_FAIL_OBJ_POOL_OR_TRAP,
+    DIGCHECK_FAIL_ONLADDER, DIGCHECK_FAIL_ONSTAIRS, DIGCHECK_FAIL_THRONE, DIGCHECK_FAIL_TOOHARD,
+    DIGCHECK_FAIL_UNDESTROYABLETRAP, DIGCHECK_FAIL_WATERLEVEL, DIGCHECK_PASSED,
+    DIGCHECK_PASSED_DESTROY_TRAP, DIGCHECK_PASSED_PITONLY, DIR_ERR, ECMD_CANCEL, ECMD_OK, ECMD_TIME,
+    FOOT, FORCEBUNGLE, FORCETRAP, HEAD, KILLED_BY, KILLED_BY_AN, MM_NOMSG, MV_WALK, NO_PART,
+    NO_TRAP_FLAGS, N_DIRS, N_DIRS_Z, RLOC_NOMSG, SHOP_DOOR_COST, SHOP_PIT_COST, SHOP_WALL_COST,
+    STOMACH, TAINT_AGE,
+} from "./hack.h.js";
+import {
+    DIR_180, Maybe_Half_Phys, SHOP_WALL_DMG, max, min, pline1, plur, rn1,
+} from "./hack.h.macros.js";
+import { debugpline2, showdebug } from "./lint.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { digests } from "./mondata.h.macros.js";
-import { grounded } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_watch } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { unique_corpstat } from "./mondata.h.macros.js";
+import {
+    digests, grounded, hides_under, is_floater, is_flyer, is_watch, is_whirly, passes_walls,
+    unique_corpstat,
+} from "./mondata.h.macros.js";
 import { MZ_HUGE } from "./monflag.h.js";
 import { MON_WEP } from "./monst.h.macros.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_EARTH_ELEMENTAL } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_XORN } from "./monsters.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { OBJ_MIGRATING } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { greatest_erosion } from "./obj.h.macros.js";
-import { is_axe } from "./obj.h.macros.js";
-import { is_pick } from "./obj.h.macros.js";
+import {
+    PM_ARCHEOLOGIST, PM_DWARF, PM_EARTH_ELEMENTAL, PM_ELF, PM_RANGER, PM_SAMURAI, PM_XORN,
+} from "./monsters.h.js";
+import { OBJ_FLOOR, OBJ_INVENT, OBJ_MIGRATING, OBJ_MINVENT } from "./obj.h.js";
+import { Has_contents, bimanual, greatest_erosion, is_axe, is_pick } from "./obj.h.macros.js";
 import { TRAP_EXPLODE } from "./objclass.h.js";
-import { OBJ_NAME } from "./objclass.h.macros.js";
-import { is_organic } from "./objclass.h.macros.js";
-import { BEARTRAP } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { LAND_MINE } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
+import { OBJ_NAME, is_organic } from "./objclass.h.macros.js";
+import {
+    BEARTRAP, BOULDER, CORPSE, HEAVY_IRON_BALL, LAND_MINE, LEASH, POT_OIL, ROCK, STATUE,
+} from "./objects.h.js";
 import { RIGHT_SIDE } from "./prop.h.js";
-import { ALTAR } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { DBWALL } from "./rm.h.js";
-import { DB_LAVA } from "./rm.h.js";
-import { DB_MOAT } from "./rm.h.js";
-import { DB_UNDER } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { DRAWBRIDGE_UP } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { F_WARNED } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LAVAPOOL } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_FURNITURE } from "./rm.h.macros.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { IS_TREE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { IS_WATERWALL } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { ROT_ORGANIC } from "./timeout.h.js";
-import { TIMER_OBJECT } from "./timeout.h.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { HOLE } from "./trap.h.js";
-import { LANDMINE } from "./trap.h.js";
-import { PIT } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
-import { struct_trap } from "./trap.h.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_magical_trap } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { undestroyable_trap } from "./trap.h.macros.js";
-import { COULD_SEE } from "./vision.h.js";
-import { IN_SIGHT } from "./vision.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { m_canseeu } from "./vision.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
-import { Race_if } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    ALTAR, CORR, DBWALL, DB_LAVA, DB_MOAT, DB_UNDER, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_BROKEN,
+    D_NODOOR, D_TRAPPED, F_WARNED, IRONBARS, LAVAPOOL, LAVAWALL, MOAT, POOL, ROOM, SCORR, SDOOR,
+    STONE, W_NONDIGGABLE,
+} from "./rm.h.js";
+import {
+    IS_ALTAR, IS_DOOR, IS_FOUNTAIN, IS_FURNITURE, IS_GRAVE, IS_OBSTRUCTED, IS_ROOM, IS_SINK,
+    IS_STWALL, IS_THRONE, IS_TREE, IS_WALL, IS_WATERWALL, MON_AT, OBJ_AT, levl, m_at,
+} from "./rm.h.macros.js";
+import { ROT_ORGANIC, TIMER_OBJECT } from "./timeout.h.js";
+import { BEAR_TRAP, HOLE, LANDMINE, PIT, TRAPDOOR, WEB, struct_trap } from "./trap.h.js";
+import { is_hole, is_magical_trap, is_pit, undestroyable_trap } from "./trap.h.macros.js";
+import { COULD_SEE, IN_SIGHT } from "./vision.h.js";
+import { cansee, m_canseeu } from "./vision.h.macros.js";
+import { display_nhwindow, nh_delay_output } from "./winprocs.h.macros.js";
+import { TT_BURIEDBALL, TT_INFLOOR, TT_PIT, TT_WEB } from "./you.h.js";
+import { Race_if, Role_if, next2u, u_at, uhis } from "./you.h.macros.js";
+import {
+    Blind, Deaf, Flying, Fumbling, Hallucination, Levitation, Unaware, Underwater,
+} from "./youprop.h.macros.js";
+import { char, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { memset, sprintf, strcat, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, ptr_to, struct_assign } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { doapply } from "./apply.js";
-import { next_to_u } from "./apply.js";
-import { o_unleash } from "./apply.js";
-import { adjalign } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { cmd_from_dir } from "./cmd.js";
-import { cmdq_add_ec } from "./cmd.js";
-import { cmdq_add_key } from "./cmd.js";
-import { confdir } from "./cmd.js";
-import { dxdy_moveok } from "./cmd.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { movecmd } from "./cmd.js";
-import { set_occupation } from "./cmd.js";
-import { xytodir } from "./cmd.js";
-import { destroy_drawbridge } from "./dbridge.js";
-import { find_drawbridge } from "./dbridge.js";
-import { is_db_wall } from "./dbridge.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { is_ice } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_moat } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gd } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
+import { doapply, next_to_u, o_unleash } from "./apply.js";
+import { adjalign, exercise } from "./attrib.js";
+import {
+    cmd_from_dir, cmdq_add_ec, cmdq_add_key, confdir, dxdy_moveok, getdir, isok, movecmd,
+    set_occupation, xytodir,
+} from "./cmd.js";
+import {
+    destroy_drawbridge, find_drawbridge, is_db_wall, is_drawbridge_wall, is_ice, is_lava, is_moat,
+    is_pool, is_pool_or_lava,
+} from "./dbridge.js";
+import {
+    disp, flags, gd, gm, gn, go, gv, gy, iflags, svc, svd, svl, svm, u, xdir, ydir,
+} from "./decl.js";
 import { cvt_sdoor_to_door } from "./detect.js";
-import { canseemon } from "./display.js";
-import { feel_newsym } from "./display.js";
-import { flush_screen } from "./display.js";
-import { newsym } from "./display.js";
-import { tmp_at } from "./display.js";
-import { dropx } from "./do.js";
-import { goto_level } from "./do.js";
-import { set_wounded_legs } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
+import { canseemon, feel_newsym, flush_screen, newsym, tmp_at } from "./display.js";
+import { dropx, goto_level, set_wounded_legs } from "./do.js";
+import { Monnam, hliquid, mon_nam } from "./do_name.js";
 import { hard_helmet } from "./do_wear.js";
 import { migrate_to_level } from "./dog.js";
 import { impact_drop } from "./dokick.js";
-import { Can_dig_down } from "./dungeon.js";
-import { Is_botlevel } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { ceiling } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { get_level } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { can_reach_floor } from "./engrave.js";
-import { cant_reach_floor } from "./engrave.js";
-import { del_engr_at } from "./engrave.js";
-import { u_wipe_engr } from "./engrave.js";
+import {
+    Can_dig_down, Is_botlevel, assign_level, ceiling, depth, get_level, ledger_no, on_level,
+    surface,
+} from "./dungeon.js";
+import { can_reach_floor, cant_reach_floor, del_engr_at, u_wipe_engr } from "./engrave.js";
 import { explode } from "./explode.js";
-import { breaksink } from "./fountain.js";
-import { dogushforth } from "./fountain.js";
-import { dryup } from "./fountain.js";
-import { in_rooms } from "./hack.js";
-import { in_town } from "./hack.js";
-import { losehp } from "./hack.js";
-import { may_dig } from "./hack.js";
-import { nomul } from "./hack.js";
-import { obj_to_any } from "./hack.js";
-import { pooleffects } from "./hack.js";
-import { spot_checks } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { switch_terrain } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
+import { breaksink, dogushforth, dryup } from "./fountain.js";
+import {
+    in_rooms, in_town, losehp, may_dig, nomul, obj_to_any, pooleffects, spot_checks, spoteffects,
+    switch_terrain,
+} from "./hack.js";
+import { dist2, s_suffix, sgn } from "./hacklib.js";
 import { align_str } from "./insight.js";
-import { currency } from "./invent.js";
-import { delobj } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
+import { currency, delobj, sobj_at, stackobj, update_inventory } from "./invent.js";
+import { makemon, mkclass } from "./makemon.js";
 import { expels } from "./mhitu.js";
-import { add_to_buried } from "./mkobj.js";
-import { mk_tt_object } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { obj_ice_effects } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { rnd_treefruit_at } from "./mkobj.js";
-import { angry_guards } from "./mon.js";
-import { get_iter_mons } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
-import { minliquid } from "./mon.js";
-import { wake_nearby } from "./mon.js";
-import { closed_door } from "./monmove.js";
-import { mb_trapped } from "./monmove.js";
+import {
+    add_to_buried, mk_tt_object, mksobj_at, obj_extract_self, obj_ice_effects, place_object,
+    rnd_treefruit_at,
+} from "./mkobj.js";
+import {
+    angry_guards, get_iter_mons, hideunder, maybe_unhide_at, minliquid, wake_nearby,
+} from "./mon.js";
+import { closed_door, mb_trapped } from "./monmove.js";
 import { mons } from "./monst.js";
 import { objects } from "./objects.js";
-import { An } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { yobjnam } from "./objnam.js";
+import {
+    An, Yobjnam2, an, corpse_xname, otense, simpleonames, the, xname, yname, yobjnam,
+} from "./objnam.js";
 import { pickup } from "./pickup.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { mbodypart } from "./polyself.js";
-import { altar_wrath } from "./pray.js";
-import { altarmask_at } from "./pray.js";
-import { desecrate_altar } from "./pray.js";
+import {
+    There, You, You_cant, You_feel, You_hear, Your, impossible, pline, pline_The, verbalize,
+} from "./pline.js";
+import { body_part, mbodypart } from "./polyself.js";
+import { altar_wrath, altarmask_at, desecrate_altar } from "./pray.js";
 import { angry_priest } from "./priest.js";
-import { punish } from "./read.js";
-import { unpunish } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { add_damage } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { make_angry_shk } from "./shk.js";
-import { obfree } from "./shk.js";
-import { pay_for_damage } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { shopdig } from "./shk.js";
-import { stolen_value } from "./shk.js";
+import { punish, unpunish } from "./read.js";
+import { d, rn2, rnd, rnl } from "./rnd.js";
+import {
+    add_damage, costly_spot, make_angry_shk, obfree, pay_for_damage, shop_keeper, shopdig,
+    stolen_value,
+} from "./shk.js";
 import { shkname } from "./shknam.js";
-import { On_ladder } from "./stairs.js";
-import { On_stairs } from "./stairs.js";
-import { stairway_at } from "./stairs.js";
+import { On_ladder, On_stairs, stairway_at } from "./stairs.js";
 import { remove_worn_item } from "./steal.js";
-import { rloc } from "./teleport.js";
-import { teleport_pet } from "./teleport.js";
-import { end_burn } from "./timeout.js";
-import { start_timer } from "./timeout.js";
-import { stop_timer } from "./timeout.js";
-import { b_trapped } from "./trap.js";
-import { cnv_trap_obj } from "./trap.js";
-import { conjoined_pits } from "./trap.js";
-import { delfloortrap } from "./trap.js";
-import { deltrap } from "./trap.js";
-import { dotrap } from "./trap.js";
-import { feeltrap } from "./trap.js";
-import { fire_damage } from "./trap.js";
-import { fire_damage_chain } from "./trap.js";
-import { maketrap } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { seetrap } from "./trap.js";
-import { set_utrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { trapname } from "./trap.js";
-import { uescaped_shaft } from "./trap.js";
-import { uteetering_at_seen_pit } from "./trap.js";
-import { water_damage_chain } from "./trap.js";
+import { rloc, teleport_pet } from "./teleport.js";
+import { end_burn, start_timer, stop_timer } from "./timeout.js";
+import {
+    b_trapped, cnv_trap_obj, conjoined_pits, delfloortrap, deltrap, dotrap, feeltrap, fire_damage,
+    fire_damage_chain, maketrap, mintrap, reset_utrap, seetrap, set_utrap, t_at, trapname,
+    uescaped_shaft, uteetering_at_seen_pit, water_damage_chain,
+} from "./trap.js";
 import { do_attack } from "./uhitm.js";
-import { does_block } from "./vision.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
-import { abon } from "./weapon.js";
-import { dbon } from "./weapon.js";
-import { dmgval } from "./weapon.js";
-import { setmnotwielded } from "./weapon.js";
-import { welded } from "./wield.js";
-import { wield_tool } from "./wield.js";
+import { does_block, recalc_block_point, unblock_point } from "./vision.js";
+import { abon, dbon, dmgval, setmnotwielded } from "./weapon.js";
+import { welded, wield_tool } from "./wield.js";
 import { count_wsegs } from "./worm.js";
-import { break_statue } from "./zap.js";
-import { fracture_rock } from "./zap.js";
-import { obj_resists } from "./zap.js";
+import { break_statue, fracture_rock, obj_resists } from "./zap.js";
 const __FILE__ = "dig.c";

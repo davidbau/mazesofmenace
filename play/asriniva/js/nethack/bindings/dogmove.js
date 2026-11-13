@@ -1,3 +1,5 @@
+import {createNativeDescriptorViews} from '../native/descriptor-state.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -7,13 +9,14 @@ export function createDogmoveEnvironment(services,layout,namespace) {
     for(const [k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,charSigned:1,littleEndian:1,seenVSize:1}))
         if(layout[k]!==v)throw Error('Review changed DOGMOVE ABI: '+k);
     const addr=v=>Number(v?.address??v??0),raw=v=>BigInt.asUintN(64,BigInt(typeof v==='number'?Math.trunc(v):v?.address??v??0));
-    const memory=()=>CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
-    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:false,rows:false,coerceRecordSize:false,directIntegerReads:false,decodeCallback:v=>v?text=>services.sound(v,text):0});
+    const native=services.nativeOwner,memory=()=>native?.nativeArena?.view??CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
+    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:false,rows:false,coerceRecordSize:false,directIntegerReads:Boolean(native),pointerRead:native?(at=>native.nativeArena.pointer(at)):undefined,decodeCallback:v=>v?text=>services.sound(v,text):0});
 
 
 
 
-    const view=CAdapter.createDescriptorViewFactory({services,schemas,address:addr,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'dogmove')});
+    function legacyViews(){const view=CAdapter.createDescriptorViewFactory({services,schemas,address:addr,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'dogmove')});return view;}
+    const view=native?createNativeDescriptorViews({owner:native,schemas,stableInline:Boolean(native?.nativeArena),records:services.nativeRecordLayouts,memory,addr,raw,read,write,decode,decodedFunctions:true,decorate:(kind,result)=>applyRecordAliases(kind,result,'dogmove',true)}):legacyViews();
     const env=Object.assign(Object.create(services),layout,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,
         fieldPointer:(o,f)=>({get value(){return o[f];},set value(v){o[f]=v;}}),localPointer:(get,set)=>({get value(){return get();},set value(v){set(v);}}),
         pointerCell:(name,value)=>({get value(){return view(name,memory().getBigUint64(addr(value),true));},set value(v){memory().setBigUint64(addr(value),raw(v),true);}}),
@@ -22,7 +25,7 @@ export function createDogmoveEnvironment(services,layout,namespace) {
         loadChar:v=>memory().getInt8(addr(v)),storeChar:(v,b)=>memory().setInt8(addr(v),b),
     });
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==layout['width_'+name+'_'+f.name])throw Error('Review changed DOGMOVE field width: '+name+'.'+f.name);
-    CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr);
+    CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr,Boolean(native?.nativeArena));
     // All three original private data objects are scoped to this Module.
     env.dummy=view('obj',services.global(globals.length));
     env.nofetch=addr(services.global(globals.length+1));
@@ -87,5 +90,6 @@ export function createDogmoveEnvironment(services,layout,namespace) {
     env.glyph_is_fem_statue_piletop=glyph=>(((glyph) >= env.GLYPH_STATUE_FEM_PILETOP_OFF) && ((glyph) < (env.GLYPH_STATUE_FEM_PILETOP_OFF + env.NUMMONS)));
     env.doname=services.donamePointer();
     env.do_clear_area=(x,y,radius,callback,ref)=>{if(callback!==namespace.wantdoor||!ref?.reference||ref.type!=='int')throw Error('Unexpected original DOGMOVE callback/ref');const saved=services.stackSave(),at=addr(services.stackAlloc(4));memory().setInt32(at,env.int(ref.get()),true);try{return services.do_clear_area(x,y,radius,services.callbackPointer(),at);}finally{try{ref.set(memory().getInt32(at,true));}finally{services.stackRestore(saved);}}};
+    if(native){installNativeIntegerCasts(env);env.nativeState=native;}
     return env;
 }

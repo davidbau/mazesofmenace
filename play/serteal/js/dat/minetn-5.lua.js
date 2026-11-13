@@ -1,10 +1,10 @@
-export default "\n" + // -- NetHack mines minetn-5.lua	$NHDT-Date: 1652196031 2022/05/10 15:20:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.5 $
-"\n" + // --	Copyright (c) 1989-95 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1991-95 by M. Stephenson
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // -- "Grotto Town" by Kelly Bailey
-`
+export default String.raw`-- NetHack mines minetn-5.lua	$NHDT-Date: 1652196031 2022/05/10 15:20:31 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.5 $
+--	Copyright (c) 1989-95 by Jean-Christophe Collet
+--	Copyright (c) 1991-95 by M. Stephenson
+-- NetHack may be freely redistributed.  See license for details.
+--
+-- "Grotto Town" by Kelly Bailey
+
 des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel");
@@ -94,8 +94,8 @@ des.monster("dwarf")
 des.monster("dwarf")
 des.monster("dwarf")
 
-` + "\n" + // -- The shops
-`des.region({ region={25,17, 28,19}, lit=1, type="candle shop", filled=1 })
+-- The shops
+des.region({ region={25,17, 28,19}, lit=1, type="candle shop", filled=1 })
 des.door("closed",24,18)
 des.region({ region={59, 9, 67,10}, lit=1, type="shop", filled=1 })
 des.door("closed",66,08)
@@ -103,8 +103,8 @@ des.region({ region={57,13, 60,15}, lit=1, type="tool shop", filled=1 })
 des.door("closed",56,14)
 des.region({ region={05,09, 08,10}, lit=1, type=monkfoodshop(), filled=1 })
 des.door("closed",07,11)
-` + "\n" + // -- Gnome homes
-`des.door("closed",04,14)
+-- Gnome homes
+des.door("closed",04,14)
 des.door("locked",01,17)
 des.monster("gnomish wizard", 02, 19)
 des.door("locked",20,16)
@@ -131,8 +131,8 @@ des.object("chest", 73, 19)
 des.door("locked",50,06)
 des.object("(", 50, 03)
 des.object({ id = "statue", x=38, y=15, montype="gnome king", historic=1 })
-` + "\n" + // -- Temple
-`des.region({ region={29,02, 33,04}, lit=1, type="temple", filled=1 })
+-- Temple
+des.region({ region={29,02, 33,04}, lit=1, type="temple", filled=1 })
 des.door("closed",31,05)
 des.altar({ x=31,y=03, align=align[1], type="shrine" })
 `;

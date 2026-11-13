@@ -90,18 +90,5 @@ export const struct_tm = struct("struct_tm", {
     tm_gmtoff: int,
     tm_zone: ptr_to(char),
 });
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { union } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import { char, int, long, short, sizeof, uchar, ulong, unsigned, ushort } from "../rt/ctypes.js";
+import { array_of, fnptr_t, ptr_to, struct, union, void_t } from "../rt/struct.js";

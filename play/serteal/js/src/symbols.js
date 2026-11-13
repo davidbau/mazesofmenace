@@ -2,32 +2,12 @@
 /* Copyright (c) NetHack Development Team 2020.                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "tcap.h"
-
-
- 
-
       /* drawing.c */
-
 
 global_scalar("decgraphics_mode_callback", fnptr_t, null); /* set in term_start_screen() */
 
-
-
-
-
-
-
-
-
-
-
-
-
 global_scalar("utf8graphics_mode_callback", fnptr_t, null); /* set in term_start_screen and
                                                * found in unixtty,windtty,&c */
-
 
 /*
  * Explanations of the functions found below:
@@ -81,9 +61,7 @@ global_scalar("utf8graphics_mode_callback", fnptr_t, null); /* set in term_start
  *
  */
 
-export function /* void */
-init_symbols()
-{
+export function init_symbols() { /* void */
     init_ov_primary_symbols();
     init_ov_rogue_symbols();
     init_primary_symbols();
@@ -91,9 +69,7 @@ init_symbols()
     init_rogue_symbols();
 }
 
-export function /* void */
-init_showsyms()
-{
+export function init_showsyms() { /* void */
     let i;
 
     for (i = 0; i < MAXPCHARS; i++)
@@ -109,27 +85,21 @@ init_showsyms()
 }
 
 /* initialize defaults for the overrides to the rogue symset */
-export function /* void */
-init_ov_rogue_symbols()
-{
+export function init_ov_rogue_symbols() { /* void */
     let i;
 
     for (i = 0; i < SYM_MAX; i++)
         uchars[go.ov_rogue_syms + i] = 0;
 }
 /* initialize defaults for the overrides to the primary symset */
-export function /* void */
-init_ov_primary_symbols()
-{
+export function init_ov_primary_symbols() { /* void */
     let i;
 
     for (i = 0; i < SYM_MAX; i++)
         uchars[go.ov_primary_syms + i] = 0;
 }
 
-export function /* nhsym */
-get_othersym(idx, which_set)
-{
+export function get_othersym(idx, which_set) { /* nhsym */
     let sym = 0;
     let oidx = idx + SYM_OFF_X;
 
@@ -151,21 +121,13 @@ get_othersym(idx, which_set)
             case SYM_INVISIBLE:
                 sym = DEF_INVISIBLE;
                 break;
-
-
-
-
-
-
         }
     }
     return sym;
 }
 
 /* initialize defaults for the primary symset */
-export function /* void */
-init_primary_symbols()
-{
+export function init_primary_symbols() { /* void */
     let i;
 
     for (i = 0; i < MAXPCHARS; i++)
@@ -183,9 +145,7 @@ init_primary_symbols()
 }
 
 /* initialize defaults for the rogue symset */
-export function /* void */
-init_rogue_symbols()
-{
+export function init_rogue_symbols() { /* void */
     let i;
 
     /* These are defaults that can get overwritten
@@ -213,9 +173,7 @@ init_rogue_symbols()
     gs.symset[ROGUESET].nocolor = 1;
 }
 
-export function /* void */
-assign_graphics(whichset)
-{
+export function assign_graphics(whichset) { /* void */
     let i;
 
     switch (whichset) {
@@ -226,10 +184,6 @@ assign_graphics(whichset)
             uchars[gs.showsyms + i] = uchars[go.ov_rogue_syms + i] ? uchars[go.ov_rogue_syms + i]
                                            : uchars[gr.rogue_syms + i];
 
-
-
-
-
         gc.currentgraphics = ROGUESET;
         break;
 
@@ -239,19 +193,13 @@ assign_graphics(whichset)
             uchars[gs.showsyms + i] = uchars[go.ov_primary_syms + i] ? uchars[go.ov_primary_syms + i]
                                              : uchars[gp.primary_syms + i];
 
-
-
-
-
         gc.currentgraphics = PRIMARYSET;
         break;
     }
     reset_glyphmap(gm_symchange);
 }
 
-export function /* void */
-switch_symbols(nondefault)
-{
+export function switch_symbols(nondefault) { /* void */
     let i;
 
     if (nondefault) {
@@ -259,69 +207,39 @@ switch_symbols(nondefault)
             uchars[gs.showsyms + i] = uchars[go.ov_primary_syms + i] ? uchars[go.ov_primary_syms + i]
                                                  : uchars[gp.primary_syms + i];
 
-
-
-
-
-
-
         /* curses doesn't assign any routine to dec..._callback but
            probably does the expected initialization under the hood
            for terminals capable of rendering DECgraphics */
         if (SYMHANDLING(H_DEC) && decgraphics_mode_callback)
-            (decgraphics_mode_callback)();
-
-
-
-
-
-
-
-
-
-
-
+            decgraphics_mode_callback();
 
         if (SYMHANDLING(H_UTF8) && utf8graphics_mode_callback)
-            (utf8graphics_mode_callback)();
-
+            utf8graphics_mode_callback();
     } else {
         init_primary_symbols();
         init_showsyms();
     }
 }
 
-export function /* void */
-update_ov_primary_symset(symp, val)
-{
+export function update_ov_primary_symset(symp, val) { /* void */
     uchars[go.ov_primary_syms + symp.idx] = uchar(val);
 }
 
-export function /* void */
-update_ov_rogue_symset(symp, val)
-{
+export function update_ov_rogue_symset(symp, val) { /* void */
     uchars[go.ov_rogue_syms + symp.idx] = uchar(val);
 }
 
-export function /* void */
-update_primary_symset(symp, val)
-{
+export function update_primary_symset(symp, val) { /* void */
     uchars[gp.primary_syms + symp.idx] = uchar(val);
 }
 
-export function /* void */
-update_rogue_symset(symp, val)
-{
+export function update_rogue_symset(symp, val) { /* void */
     uchars[gr.rogue_syms + symp.idx] = uchar(val);
 }
 
-export function /* void */
-clear_symsetentry(which_set, name_too)
-{
-
+export function clear_symsetentry(which_set, name_too) { /* void */
     let other_set = (which_set == PRIMARYSET) ? ROGUESET : PRIMARYSET;
     let old_handling = gs.symset[which_set].handling;
-
 
     if (gs.symset[which_set].desc)
         free((gs.symset[which_set].desc));
@@ -349,22 +267,15 @@ clear_symsetentry(which_set, name_too)
 }
 
 /* called from windmain.c */
-export function /* boolean */
-symset_is_compatible(
+export function symset_is_compatible(
     handling,
-    wincap2)
-{
-
-
+    wincap2) { /* boolean */
     if (handling == H_UTF8 && ((wincap2 & WC2_utf8_bits) != WC2_utf8_bits))
         return FALSE;
 
-
-
-
-
     return TRUE;
-} export const WC2_utf8_bits = (WC2_U_UTF8STR);
+}
+export const WC2_utf8_bits = WC2_U_UTF8STR;
 
 /*
  * If you are adding code somewhere to be able to recognize
@@ -412,12 +323,6 @@ export const loadsyms = static_array("loadsyms", struct_symparse, null, [
 
 ...loadsyms_records(),
 
-
-
-
-
-
-
     { range: SYM_OTH, idx: SYM_NOTHING + SYM_OFF_X, name: _("S_nothing") },
     { range: SYM_OTH, idx: SYM_UNEXPLORED + SYM_OFF_X, name: _("S_unexplored") },
     { range: SYM_OTH, idx: SYM_BOULDER + SYM_OFF_X, name: _("S_boulder") },
@@ -427,16 +332,13 @@ export const loadsyms = static_array("loadsyms", struct_symparse, null, [
     { range: SYM_INVALID, idx: 0, name: 0 } /* fence post */
 ]);
 
-export function /* boolean */
-proc_symset_line(buf)
-{
-    return +!(boolean(parse_sym_line(buf, gs.symset_which_set)));
+export function proc_symset_line(buf) { /* boolean */
+    return +!boolean(parse_sym_line(buf, gs.symset_which_set));
 }
 
 /* returns 0 on error */
-export function /* int */
-parse_sym_line(buf, which_set)
-{ const $frame = stack_frame(); try {
+export function parse_sym_line(buf, which_set) { /* int */
+    const $frame = stack_frame(); try {
     let val, i;
     let symp = null;
     let bufp, commentp, altp;
@@ -489,9 +391,6 @@ parse_sym_line(buf, which_set)
         }
 
         enhanced_unavailable = FALSE;
-
-
-
     }
     if (!symp && !is_glyph && !enhanced_unavailable) {
         config_error_add(_("Unknown sym keyword"));
@@ -593,12 +492,12 @@ parse_sym_line(buf, which_set)
             case 4: /* color:off */
                 if (gc.chosen_symset_start) {
                     if (bufp) {
-                        if (!strcmpi(bufp, _("true")) || !strcmpi(bufp, _("yes"))
-                            || !strcmpi(bufp, _("on")))
+                        if (!strncmpi((bufp), _(("true")), -1) || !strncmpi((bufp), _(("yes")), -1)
+                            || !strncmpi((bufp), _(("on")), -1))
                             gs.symset[which_set].nocolor = 0;
-                        else if (!strcmpi(bufp, _("false"))
-                                 || !strcmpi(bufp, _("no"))
-                                 || !strcmpi(bufp, _("off")))
+                        else if (!strncmpi((bufp), _(("false")), -1)
+                                 || !strncmpi((bufp), _(("no")), -1)
+                                 || !strncmpi((bufp), _(("off")), -1))
                             gs.symset[which_set].nocolor = 1;
                     }
                 }
@@ -635,27 +534,22 @@ parse_sym_line(buf, which_set)
                         update_rogue_symset(symp, val);
                     }
                 }
-
             } else {
                 if (gc.chosen_symset_start) {
-                    void glyphrep_to_custom_map_entries(buf, glyph);
+                    glyphrep_to_custom_map_entries(buf, glyph);
                 }
-
             }
         }
     } else if (gc.chosen_symset_start) {
         /* glyph, not symbol */
-        void glyphrep_to_custom_map_entries(buf, glyph);
+        glyphrep_to_custom_map_entries(buf, glyph);
     }
 
-
-
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-set_symhandling(handling, which_set)
-{
+export function set_symhandling(handling, which_set) { /* void */
     let i = 0;
 
     gs.symset[which_set].handling = H_UNK;
@@ -669,9 +563,7 @@ set_symhandling(handling, which_set)
 }
 
 /* bundle some common usage into one easy-to-use routine */
-export function /* int */
-load_symset(s, which_set)
-{
+export function load_symset(s, which_set) { /* int */
     clear_symsetentry(which_set, TRUE);
 
     if (gs.symset[which_set].name)
@@ -689,9 +581,7 @@ load_symset(s, which_set)
     return 1;
 }
 
-export function /* void */
-free_symsets()
-{
+export function free_symsets() { /* void */
     clear_symsetentry(PRIMARYSET, TRUE);
     clear_symsetentry(ROGUESET, TRUE);
 
@@ -708,9 +598,7 @@ const struct__savedsym = struct("struct__savedsym", {
 });
 global_scalar("saved_symbols", ptr_to(struct__savedsym), null);
 
-export function /* void */
-savedsym_free()
-{
+export function savedsym_free() { /* void */
     let tmp = saved_symbols, tmp2;
 
     while (tmp) {
@@ -722,9 +610,7 @@ savedsym_free()
     }
 }
 
-function /* struct _savedsym * */
-savedsym_find(name, which_set)
-{
+function savedsym_find(name, which_set) { /* struct _savedsym * */
     let tmp = saved_symbols;
 
     while (tmp) {
@@ -735,9 +621,7 @@ savedsym_find(name, which_set)
     return null;
 }
 
-function /* void */
-savedsym_add(name, val, which_set)
-{
+function savedsym_add(name, val, which_set) { /* void */
     let tmp = null;
 
     if ((tmp = savedsym_find(name, which_set)) != null) {
@@ -753,25 +637,24 @@ savedsym_add(name, val, which_set)
     }
 }
 
-export function /* void */
-savedsym_strbuf(sbuf)
-{ const $frame = stack_frame(); try {
+export function savedsym_strbuf(sbuf) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = saved_symbols;
     let buf = stack_array(char, BUFSZ);
 
     while (tmp) {
-        void sprintf(buf, _("%sSYMBOLS=%s:%s\n"), (tmp.which_set == ROGUESET) ? _("ROGUE") : _(""), tmp.name, tmp.val)
+        sprintf(buf, _("%sSYMBOLS=%s:%s\n"), (tmp.which_set == ROGUESET) ? _("ROGUE") : _(""), tmp.name, tmp.val)
 
 ;
         strbuf_append(sbuf, buf);
         tmp = tmp.next;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Parse the value of a SYMBOLS line from a config file */
-export function /* boolean */
-parsesymbols(opts, which_set)
-{ const $frame = stack_frame(); try {
+export function parsesymbols(opts, which_set) { /* boolean */
+    const $frame = stack_frame(); try {
     let val;
     let symname, strval, ch,
          first_unquoted_comma = 0, first_unquoted_colon = 0;
@@ -846,11 +729,10 @@ parsesymbols(opts, which_set)
     }
     savedsym_add(opts, strval, which_set);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* const struct symparse * */
-match_sym(buf)
-{
+export function match_sym(buf) { /* const struct symparse * */
     const struct_alternate_parse = struct("match_sym.struct_alternate_parse", {
         altnm: ptr_to(char),
         nm: ptr_to(char),
@@ -900,14 +782,11 @@ match_sym(buf)
     return null;
 }
 
-
-
 /*
  * this is called from options.c to do the symset work.
  */
-export function /* int */
-do_symset(rogueflag)
-{ const $frame = stack_frame(); try {
+export function do_symset(rogueflag) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let n;
@@ -943,10 +822,6 @@ do_symset(rogueflag)
             if (sl.handling == H_MAC)
                 continue;
 
-
-
-
-
             setcount++;
             /* find biggest name */
             thissize = sl.name ? int(strlen(sl.name)) : 0;
@@ -962,7 +837,7 @@ do_symset(rogueflag)
             return TRUE;
         }
 
-        void sprintf(fmtstr, _("%%-%ds %%s"), biggest + 2);
+        sprintf(fmtstr, _("%%-%ds %%s"), biggest + 2);
         tmpwin = create_nhwindow()(NHW_MENU);
         start_menu()(tmpwin, MENU_BEHAVE_STANDARD);
         struct_assign(any, cg.zeroany);
@@ -982,10 +857,6 @@ do_symset(rogueflag)
             if (sl.handling == H_MAC)
                 continue;
 
-
-
-
-
             if (sl.name) {
                 /* +2: sl->idx runs from 0 to N-1 for N symsets;
                    +1 because Defaults are implicitly in slot [0];
@@ -993,14 +864,14 @@ do_symset(rogueflag)
                 any.a_int = sl.idx + 2;
                 if (symset_name && !strcmpi(sl.name, symset_name))
                     defindx = any.a_int;
-                void sprintf(buf, fmtstr, sl.name, sl.desc ? sl.desc : _(""));
+                sprintf(buf, fmtstr, sl.name, sl.desc ? sl.desc : _(""));
                 add_menu(tmpwin, nul_glyphinfo, any, 0, 0,
                          ATR_NONE, clr, buf,
                          (any.a_int == defindx) ? MENU_ITEMFLAGS_SELECTED
                                                 : MENU_ITEMFLAGS_NONE);
             }
         }
-        void sprintf(buf, _("Select %ssymbol set:"), rogueflag ? _("rogue level ") : _(""))
+        sprintf(buf, _("Select %ssymbol set:"), rogueflag ? _("rogue level ") : _(""))
 ;
         end_menu()(tmpwin, buf);
         n = select_menu(tmpwin, PICK_ONE, symset_pick);
@@ -1096,323 +967,85 @@ do_symset(rogueflag)
                          (do_custom_symbols | do_custom_colors));
     preference_update()(_("symset"));
     return TRUE;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*symbols.c*/
+
 import { NO_COLOR } from "./color.h.js";
-import { DEF_INVISIBLE } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_ANT } from "./defsym.h.js";
-import { S_BAT } from "./defsym.h.js";
-import { S_BLOB } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_COCKATRICE } from "./defsym.h.js";
-import { S_DEMON } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_EYE } from "./defsym.h.js";
-import { S_FELINE } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_GHOST } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_GNOME } from "./defsym.h.js";
-import { S_GOLEM } from "./defsym.h.js";
-import { S_GREMLIN } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_HUMANOID } from "./defsym.h.js";
-import { S_IMP } from "./defsym.h.js";
-import { S_JABBERWOCK } from "./defsym.h.js";
-import { S_JELLY } from "./defsym.h.js";
-import { S_KOBOLD } from "./defsym.h.js";
-import { S_KOP } from "./defsym.h.js";
-import { S_LEPRECHAUN } from "./defsym.h.js";
-import { S_LICH } from "./defsym.h.js";
-import { S_LIGHT } from "./defsym.h.js";
-import { S_LIZARD } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_MIMIC_DEF } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_NAGA } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_ORC } from "./defsym.h.js";
-import { S_PIERCER } from "./defsym.h.js";
-import { S_PUDDING } from "./defsym.h.js";
-import { S_QUADRUPED } from "./defsym.h.js";
-import { S_QUANTMECH } from "./defsym.h.js";
-import { S_RODENT } from "./defsym.h.js";
-import { S_RUSTMONST } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
-import { S_SPIDER } from "./defsym.h.js";
-import { S_TRAPPER } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { S_UMBER } from "./defsym.h.js";
-import { S_UNICORN } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_VORTEX } from "./defsym.h.js";
-import { S_WORM } from "./defsym.h.js";
-import { S_WORM_TAIL } from "./defsym.h.js";
-import { S_WRAITH } from "./defsym.h.js";
-import { S_XAN } from "./defsym.h.js";
-import { S_XORN } from "./defsym.h.js";
-import { S_YETI } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
-import { S_ZRUTY } from "./defsym.h.js";
-import { S_air } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_amulet } from "./defsym.h.js";
-import { S_anti_magic_trap } from "./defsym.h.js";
-import { S_armor } from "./defsym.h.js";
-import { S_arrow_trap } from "./defsym.h.js";
-import { S_ball } from "./defsym.h.js";
-import { S_bars } from "./defsym.h.js";
-import { S_bear_trap } from "./defsym.h.js";
-import { S_blcorn } from "./defsym.h.js";
-import { S_book } from "./defsym.h.js";
-import { S_boomleft } from "./defsym.h.js";
-import { S_boomright } from "./defsym.h.js";
-import { S_brcorn } from "./defsym.h.js";
-import { S_brdnladder } from "./defsym.h.js";
-import { S_brdnstair } from "./defsym.h.js";
-import { S_brupladder } from "./defsym.h.js";
-import { S_brupstair } from "./defsym.h.js";
-import { S_chain } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_coin } from "./defsym.h.js";
-import { S_corr } from "./defsym.h.js";
-import { S_crwall } from "./defsym.h.js";
-import { S_darkroom } from "./defsym.h.js";
-import { S_dart_trap } from "./defsym.h.js";
-import { S_digbeam } from "./defsym.h.js";
-import { S_dnladder } from "./defsym.h.js";
-import { S_dnstair } from "./defsym.h.js";
-import { S_engrcorr } from "./defsym.h.js";
-import { S_engroom } from "./defsym.h.js";
-import { S_expl_bc } from "./defsym.h.js";
-import { S_expl_bl } from "./defsym.h.js";
-import { S_expl_br } from "./defsym.h.js";
-import { S_expl_mc } from "./defsym.h.js";
-import { S_expl_ml } from "./defsym.h.js";
-import { S_expl_mr } from "./defsym.h.js";
-import { S_expl_tc } from "./defsym.h.js";
-import { S_expl_tl } from "./defsym.h.js";
-import { S_expl_tr } from "./defsym.h.js";
-import { S_falling_rock_trap } from "./defsym.h.js";
-import { S_fire_trap } from "./defsym.h.js";
-import { S_flashbeam } from "./defsym.h.js";
-import { S_food } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_gem } from "./defsym.h.js";
-import { S_goodpos } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_hbeam } from "./defsym.h.js";
-import { S_hcdbridge } from "./defsym.h.js";
-import { S_hcdoor } from "./defsym.h.js";
-import { S_hodbridge } from "./defsym.h.js";
-import { S_hodoor } from "./defsym.h.js";
-import { S_hole } from "./defsym.h.js";
-import { S_hwall } from "./defsym.h.js";
-import { S_ice } from "./defsym.h.js";
-import { S_invisible } from "./defsym.h.js";
-import { S_land_mine } from "./defsym.h.js";
-import { S_lava } from "./defsym.h.js";
-import { S_lavawall } from "./defsym.h.js";
-import { S_level_teleporter } from "./defsym.h.js";
-import { S_litcorr } from "./defsym.h.js";
-import { S_lslant } from "./defsym.h.js";
-import { S_magic_portal } from "./defsym.h.js";
-import { S_magic_trap } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_pit } from "./defsym.h.js";
-import { S_poisoncloud } from "./defsym.h.js";
-import { S_polymorph_trap } from "./defsym.h.js";
-import { S_pool } from "./defsym.h.js";
-import { S_potion } from "./defsym.h.js";
-import { S_ring } from "./defsym.h.js";
-import { S_rock } from "./defsym.h.js";
-import { S_rolling_boulder_trap } from "./defsym.h.js";
-import { S_room } from "./defsym.h.js";
-import { S_rslant } from "./defsym.h.js";
-import { S_rust_trap } from "./defsym.h.js";
-import { S_scroll } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_sleeping_gas_trap } from "./defsym.h.js";
-import { S_spiked_pit } from "./defsym.h.js";
-import { S_squeaky_board } from "./defsym.h.js";
-import { S_ss1 } from "./defsym.h.js";
-import { S_ss2 } from "./defsym.h.js";
-import { S_ss3 } from "./defsym.h.js";
-import { S_ss4 } from "./defsym.h.js";
-import { S_statue_trap } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_strange_obj } from "./defsym.h.js";
-import { S_sw_bc } from "./defsym.h.js";
-import { S_sw_bl } from "./defsym.h.js";
-import { S_sw_br } from "./defsym.h.js";
-import { S_sw_ml } from "./defsym.h.js";
-import { S_sw_mr } from "./defsym.h.js";
-import { S_sw_tc } from "./defsym.h.js";
-import { S_sw_tl } from "./defsym.h.js";
-import { S_sw_tr } from "./defsym.h.js";
-import { S_tdwall } from "./defsym.h.js";
-import { S_teleportation_trap } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
-import { S_tlcorn } from "./defsym.h.js";
-import { S_tlwall } from "./defsym.h.js";
-import { S_tool } from "./defsym.h.js";
-import { S_trap_door } from "./defsym.h.js";
-import { S_trapped_chest } from "./defsym.h.js";
-import { S_trapped_door } from "./defsym.h.js";
-import { S_trcorn } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
-import { S_trwall } from "./defsym.h.js";
-import { S_tuwall } from "./defsym.h.js";
-import { S_upladder } from "./defsym.h.js";
-import { S_upstair } from "./defsym.h.js";
-import { S_vbeam } from "./defsym.h.js";
-import { S_vcdbridge } from "./defsym.h.js";
-import { S_vcdoor } from "./defsym.h.js";
-import { S_venom } from "./defsym.h.js";
-import { S_vibrating_square } from "./defsym.h.js";
-import { S_vodbridge } from "./defsym.h.js";
-import { S_vodoor } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { S_wand } from "./defsym.h.js";
-import { S_water } from "./defsym.h.js";
-import { S_weapon } from "./defsym.h.js";
-import { S_web } from "./defsym.h.js";
-import { NO_GLYPH } from "./display.h.js";
-import { gm_symchange } from "./display.h.js";
+import {
+    DEF_INVISIBLE, MAXMCLASSES, MAXOCLASSES, MAXPCHARS, ROCK_CLASS, S_ANGEL, S_ANT, S_BAT, S_BLOB,
+    S_CENTAUR, S_COCKATRICE, S_DEMON, S_DOG, S_DRAGON, S_EEL, S_ELEMENTAL, S_EYE, S_FELINE,
+    S_FUNGUS, S_GHOST, S_GIANT, S_GNOME, S_GOLEM, S_GREMLIN, S_HUMAN, S_HUMANOID, S_IMP,
+    S_JABBERWOCK, S_JELLY, S_KOBOLD, S_KOP, S_LEPRECHAUN, S_LICH, S_LIGHT, S_LIZARD, S_MIMIC,
+    S_MIMIC_DEF, S_MUMMY, S_NAGA, S_NYMPH, S_OGRE, S_ORC, S_PIERCER, S_PUDDING, S_QUADRUPED,
+    S_QUANTMECH, S_RODENT, S_RUSTMONST, S_SNAKE, S_SPIDER, S_TRAPPER, S_TROLL, S_UMBER, S_UNICORN,
+    S_VAMPIRE, S_VORTEX, S_WORM, S_WORM_TAIL, S_WRAITH, S_XAN, S_XORN, S_YETI, S_ZOMBIE, S_ZRUTY,
+    S_air, S_altar, S_amulet, S_anti_magic_trap, S_armor, S_arrow_trap, S_ball, S_bars, S_bear_trap,
+    S_blcorn, S_book, S_boomleft, S_boomright, S_brcorn, S_brdnladder, S_brdnstair, S_brupladder,
+    S_brupstair, S_chain, S_cloud, S_coin, S_corr, S_crwall, S_darkroom, S_dart_trap, S_digbeam,
+    S_dnladder, S_dnstair, S_engrcorr, S_engroom, S_expl_bc, S_expl_bl, S_expl_br, S_expl_mc,
+    S_expl_ml, S_expl_mr, S_expl_tc, S_expl_tl, S_expl_tr, S_falling_rock_trap, S_fire_trap,
+    S_flashbeam, S_food, S_fountain, S_gem, S_goodpos, S_grave, S_hbeam, S_hcdbridge, S_hcdoor,
+    S_hodbridge, S_hodoor, S_hole, S_hwall, S_ice, S_invisible, S_land_mine, S_lava, S_lavawall,
+    S_level_teleporter, S_litcorr, S_lslant, S_magic_portal, S_magic_trap, S_ndoor, S_pit,
+    S_poisoncloud, S_polymorph_trap, S_pool, S_potion, S_ring, S_rock, S_rolling_boulder_trap,
+    S_room, S_rslant, S_rust_trap, S_scroll, S_sink, S_sleeping_gas_trap, S_spiked_pit,
+    S_squeaky_board, S_ss1, S_ss2, S_ss3, S_ss4, S_statue_trap, S_stone, S_strange_obj, S_sw_bc,
+    S_sw_bl, S_sw_br, S_sw_ml, S_sw_mr, S_sw_tc, S_sw_tl, S_sw_tr, S_tdwall, S_teleportation_trap,
+    S_throne, S_tlcorn, S_tlwall, S_tool, S_trap_door, S_trapped_chest, S_trapped_door, S_trcorn,
+    S_tree, S_trwall, S_tuwall, S_upladder, S_upstair, S_vbeam, S_vcdbridge, S_vcdoor, S_venom,
+    S_vibrating_square, S_vodbridge, S_vodoor, S_vwall, S_wand, S_water, S_weapon, S_web,
+} from "./defsym.h.js";
+import { NO_GLYPH, gm_symchange } from "./display.h.js";
 import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { SYMBOLS } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
+import { BUFSZ, FALSE, SYMBOLS, TRUE, boolean } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { DEF_NOTHING } from "./hack.h.js";
-import { SYM_MAX } from "./hack.h.js";
-import { SYM_OFF_M } from "./hack.h.js";
-import { SYM_OFF_O } from "./hack.h.js";
-import { SYM_OFF_P } from "./hack.h.js";
-import { SYM_OFF_W } from "./hack.h.js";
-import { SYM_OFF_X } from "./hack.h.js";
+import {
+    DEF_NOTHING, SYM_MAX, SYM_OFF_M, SYM_OFF_O, SYM_OFF_P, SYM_OFF_W, SYM_OFF_X,
+} from "./hack.h.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { H_DEC } from "./sym.h.js";
-import { H_MAC } from "./sym.h.js";
-import { H_UNK } from "./sym.h.js";
-import { H_UTF8 } from "./sym.h.js";
-import { MAXOTHER } from "./sym.h.js";
-import { PRIMARYSET } from "./sym.h.js";
-import { ROGUESET } from "./sym.h.js";
-import { SYM_BOULDER } from "./sym.h.js";
-import { SYM_CONTROL } from "./sym.h.js";
-import { SYM_HERO_OVERRIDE } from "./sym.h.js";
-import { SYM_INVALID } from "./sym.h.js";
-import { SYM_INVISIBLE } from "./sym.h.js";
-import { SYM_MON } from "./sym.h.js";
-import { SYM_NOTHING } from "./sym.h.js";
-import { SYM_OC } from "./sym.h.js";
-import { SYM_OTH } from "./sym.h.js";
-import { SYM_PCHAR } from "./sym.h.js";
-import { SYM_PET_OVERRIDE } from "./sym.h.js";
-import { SYM_UNEXPLORED } from "./sym.h.js";
-import { WARNCOUNT } from "./sym.h.js";
-import { do_custom_colors } from "./sym.h.js";
-import { do_custom_symbols } from "./sym.h.js";
-import { struct_symparse } from "./sym.h.js";
-import { struct_symsetentry } from "./sym.h.js";
+import {
+    H_DEC, H_MAC, H_UNK, H_UTF8, MAXOTHER, PRIMARYSET, ROGUESET, SYM_BOULDER, SYM_CONTROL,
+    SYM_HERO_OVERRIDE, SYM_INVALID, SYM_INVISIBLE, SYM_MON, SYM_NOTHING, SYM_OC, SYM_OTH, SYM_PCHAR,
+    SYM_PET_OVERRIDE, SYM_UNEXPLORED, WARNCOUNT, do_custom_colors, do_custom_symbols,
+    struct_symparse, struct_symsetentry,
+} from "./sym.h.js";
 import { SYMHANDLING } from "./sym.h.macros.js";
 import { WC2_U_UTF8STR } from "./winprocs.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { preference_update } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, end_menu, preference_update, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, NHW_MENU,
+    PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+import { char, int, ord, sizeof, sizeof_string, uchar, unsigned } from "../rt/ctypes.js";
 import { global_scalar } from "../rt/globals.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { free, sprintf, strchr, strcmp, strlen, strrchr } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import {
+    addr_of, array_of, fnptr_t, ptr_add, ptr_to, struct, struct_assign, view_of,
+} from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { config_error_add } from "./cfgfiles.js";
-import { cg } from "./decl.js";
-import { gc } from "./decl.js";
-import { go } from "./decl.js";
-import { gp } from "./decl.js";
-import { gr } from "./decl.js";
-import { gs } from "./decl.js";
-import { u } from "./decl.js";
-import { nul_glyphinfo } from "./display.js";
-import { reset_glyphmap } from "./display.js";
-import { def_monsyms } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { def_r_oc_syms } from "./drawing.js";
-import { def_warnsyms } from "./drawing.js";
-import { defsyms } from "./drawing.js";
+import { cg, gc, go, gp, gr, gs, u } from "./decl.js";
+import { nul_glyphinfo, reset_glyphmap } from "./display.js";
+import { def_monsyms, def_oc_syms, def_r_oc_syms, def_warnsyms, defsyms } from "./drawing.js";
 import { read_sym_file } from "./files.js";
-import { apply_customizations } from "./glyphs.js";
-import { clear_all_glyphmap_colors } from "./glyphs.js";
-import { fill_glyphid_cache } from "./glyphs.js";
-import { free_glyphid_cache } from "./glyphs.js";
-import { glyphid_cache_status } from "./glyphs.js";
-import { glyphrep_to_custom_map_entries } from "./glyphs.js";
-import { match_glyph } from "./glyphs.js";
-import { purge_custom_entries } from "./glyphs.js";
-import { lowc } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
+import {
+    apply_customizations, clear_all_glyphmap_colors, fill_glyphid_cache, free_glyphid_cache,
+    glyphid_cache_status, glyphrep_to_custom_map_entries, match_glyph, purge_custom_entries,
+} from "./glyphs.js";
+import { lowc, mungspaces, strncmpi } from "./hacklib.js";
 import { sym_val } from "./options.js";
-import { There } from "./pline.js";
-import { pline } from "./pline.js";
+import { There, pline } from "./pline.js";
 import { strbuf_append } from "./strutil.js";
 import { free_all_glyphmap_u } from "./utf8map.js";
-import { add_menu } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { add_menu, select_menu } from "./windows.js";
 
 // the records of loadsyms[] from defsym.h, laid out like it
 function loadsyms_records() {
@@ -1470,11 +1103,7 @@ function loadsyms_records() {
     { range: SYM_PCHAR, idx: S_air, name: _("S_air") },
     { range: SYM_PCHAR, idx: S_cloud, name: _("S_cloud") },
 
-
     { range: SYM_PCHAR, idx: S_water, name: _("S_water") },
-
-
-
 
     { range: SYM_PCHAR, idx: S_arrow_trap, name: _("S_arrow_trap") },
     { range: SYM_PCHAR, idx: S_dart_trap, name: _("S_dart_trap") },
@@ -1502,12 +1131,6 @@ function loadsyms_records() {
     { range: SYM_PCHAR, idx: S_trapped_door, name: _("S_trapped_door") },
     { range: SYM_PCHAR, idx: S_trapped_chest, name: _("S_trapped_chest") },
 
-
-
-
-
-
-
     { range: SYM_PCHAR, idx: S_vbeam, name: _("S_vbeam") },
     { range: SYM_PCHAR, idx: S_hbeam, name: _("S_hbeam") },
     { range: SYM_PCHAR, idx: S_lslant, name: _("S_lslant") },
@@ -1524,20 +1147,7 @@ function loadsyms_records() {
     { range: SYM_PCHAR, idx: S_ss4, name: _("S_ss4") },
     { range: SYM_PCHAR, idx: S_poisoncloud, name: _("S_poisoncloud") },
 
-
     { range: SYM_PCHAR, idx: S_goodpos, name: _("S_goodpos") },
-
-
-
-
-
-
-
-
-
-
-
-
 
     { range: SYM_PCHAR, idx: S_sw_tl, name: _("S_sw_tl") },
     { range: SYM_PCHAR, idx: S_sw_tc, name: _("S_sw_tc") },
@@ -1548,15 +1158,6 @@ function loadsyms_records() {
     { range: SYM_PCHAR, idx: S_sw_bc, name: _("S_sw_bc") },
     { range: SYM_PCHAR, idx: S_sw_br, name: _("S_sw_br") },
 
-
-
-
-
-
-
-
-
-
     { range: SYM_PCHAR, idx: S_expl_tl, name: _("S_expl_tl") },
     { range: SYM_PCHAR, idx: S_expl_tc, name: _("S_expl_tc") },
     { range: SYM_PCHAR, idx: S_expl_tr, name: _("S_expl_tr") },
@@ -1566,223 +1167,6 @@ function loadsyms_records() {
     { range: SYM_PCHAR, idx: S_expl_bl, name: _("S_expl_bl") },
     { range: SYM_PCHAR, idx: S_expl_bc, name: _("S_expl_bc") },
     { range: SYM_PCHAR, idx: S_expl_br, name: _("S_expl_br") },
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     { range: SYM_OC, idx: (S_strange_obj + SYM_OFF_O), name: _("S_strange_obj") },
     { range: SYM_OC, idx: (S_weapon + SYM_OFF_O), name: _("S_weapon") },

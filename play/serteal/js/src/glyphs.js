@@ -2,15 +2,6 @@
 /* Copyright (c) Michael Allison, 2021. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
 const res_nothing = 0; const res_dump_glyphids = res_nothing + 1; const res_fill_cache = res_dump_glyphids + 1;
 const find_nothing = 0; const find_pm = find_nothing + 1; const find_oc = find_pm + 1; const find_cmap = find_oc + 1; const find_glyph = find_cmap + 1;
 const struct_find_struct = struct("struct_find_struct", {
@@ -36,29 +27,16 @@ const glyphid_cache_size = static_var("glyphid_cache_size", unsigned);
 const glyphcache_find = static_struct("glyphcache_find", struct_find_struct); const to_custom_symbol_find = static_struct("to_custom_symbol_find", struct_find_struct);
 const nonzero_black = static_var("nonzero_black", long, CLR_BLACK | NH_BASIC_COLOR);
 
-
-
-
-
-
-
-
-
-
-
-
 /* staticfn void purge_custom_entries(enum graphics_sets which_set); */
 
-function /* void */
-to_custom_symset_entry_callback(
+function to_custom_symset_entry_callback(
     glyph,
-    findwhat)
-{ const $frame = stack_frame(); try {
+    findwhat) { /* void */
+    const $frame = stack_frame(); try {
     let idx = gs.symset_which_set;
 
     let utf8str = init_list(stack_array(uchar, 6), [ 0, 0, 0, 0, 0, 0 ]);
     let uval = 0;
-
 
     if (findwhat.extraval)
         findwhat.extraval[0] = glyph;
@@ -101,18 +79,18 @@ to_custom_symset_entry_callback(
                                  " ignoring for now"));
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Return value:
  *               1 = success
  *               0 = failure
  */
-export function /* int */
-glyphrep_to_custom_map_entries(
+export function glyphrep_to_custom_map_entries(
     op,
-    glyphptr)
-{ const $frame = stack_frame(); try {
+    glyphptr) { /* int */
+    const $frame = stack_frame(); try {
     struct_assign(to_custom_symbol_find, zero_find);
     let buf = stack_array(char, BUFSZ), c_glyphid, c_unicode, c_colorval, cp;
     let reslt = 0;
@@ -121,7 +99,7 @@ glyphrep_to_custom_map_entries(
 
     if (!glyphid_cache[0])
         reslt = 1; /* for debugger use only; no cache available */
-    (void (reslt));
+    (reslt);
 
     Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%s"), op);
     c_unicode = c_colorval = 0;
@@ -178,11 +156,10 @@ glyphrep_to_custom_map_entries(
     to_custom_symbol_find.callback = to_custom_symset_entry_callback;
     reslt = glyph_find_core(c_glyphid, to_custom_symbol_find);
     return reslt;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* char * */
-fix_glyphname(str)
-{
+function fix_glyphname(str) { /* char * */
     let c;
 
     for (c = str; chars[c]; c++) {
@@ -196,9 +173,7 @@ fix_glyphname(str)
     return str;
 }
 
-export function /* int */
-glyph_to_cmap(glyph)
-{
+export function glyph_to_cmap(glyph) { /* int */
     if (glyph == GLYPH_CMAP_STONE_OFF)
         return S_stone;
     else if (glyph_is_cmap_main(glyph))
@@ -230,17 +205,15 @@ glyph_to_cmap(glyph)
                               * of trailing fencepost entry */
 }
 
-function /* int */
-glyph_find_core(
+function glyph_find_core(
     id,
-    findwhat)
-{
+    findwhat) { /* int */
     let glyph;
     let do_callback, end_find = FALSE;
 
     if (parse_id(id, findwhat)) {
         if (findwhat.findtype == find_glyph) {
-            (findwhat.callback)(findwhat.val, findwhat);
+            findwhat.callback(findwhat.val, findwhat);
         } else {
             for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
                 do_callback = FALSE;
@@ -272,7 +245,7 @@ glyph_find_core(
                     break;
                 }
                 if (do_callback)
-                    (findwhat.callback)(glyph, findwhat);
+                    findwhat.callback(glyph, findwhat);
                 if (end_find)
                     break;
             }
@@ -298,10 +271,7 @@ glyph_find_core(
  over with.
 */
 
-
-export function /* void */
-fill_glyphid_cache()
-{
+export function fill_glyphid_cache() { /* void */
     let reslt = 0;
 
     if (!glyphid_cache[0]) {
@@ -330,9 +300,7 @@ fill_glyphid_cache()
  * to traverse the entire table.
  */
 
-function /* void */
-init_glyph_cache()
-{
+function init_glyph_cache() { /* void */
     let glyph;
 
     /* Cache size of power of 2 not less than 2*MAX_GLYPH */
@@ -344,16 +312,14 @@ init_glyph_cache()
     }
 
     glyphid_cache[0] = view_of(struct_glyphid_cache_t, addr_of(alloc(
-                        unsigned(unsigned(Math.imul(glyphid_cache_size[0], sizeof(struct_glyphid_cache_t)))))));
+                        unsigned(Math.imul(glyphid_cache_size[0], sizeof(struct_glyphid_cache_t))))));
     for (glyph = 0; glyph < glyphid_cache_size[0]; ++glyph) {
         ptr_add(glyphid_cache[0], glyph).glyphnum = 0;
         ptr_add(glyphid_cache[0], glyph).id = 0;
     }
 }
 
-export function /* void */
-free_glyphid_cache()
-{
+export function free_glyphid_cache() { /* void */
     let idx;
 
     if (!glyphid_cache[0])
@@ -368,12 +334,10 @@ free_glyphid_cache()
     glyphid_cache[0] = null;
 }
 
-function /* void */
-add_glyph_to_cache(glyphnum, id)
-{
+function add_glyph_to_cache(glyphnum, id) { /* void */
     let hash = glyph_hash(id);
-    let hash1 = (unsigned(hash & (unsigned(glyphid_cache_size[0] - 1))));
-    let hash2 = (unsigned((unsigned((hash >>> glyphid_cache_lsize[0]) & (unsigned(glyphid_cache_size[0] - 1)))) | 1));
+    let hash1 = unsigned(hash & unsigned(glyphid_cache_size[0] - 1));
+    let hash2 = unsigned(unsigned((hash >>> glyphid_cache_lsize[0]) & unsigned(glyphid_cache_size[0] - 1)) | 1);
 
     let i = hash1;
 
@@ -385,18 +349,16 @@ add_glyph_to_cache(glyphnum, id)
             return;
         }
         /* For speed, assume that no ID occurs twice */
-        i = unsigned((unsigned(i + hash2)) & (unsigned(glyphid_cache_size[0] - 1)));
+        i = unsigned(unsigned(i + hash2) & unsigned(glyphid_cache_size[0] - 1));
     } while (i != hash1);
     /* This should never happen */
     panic(_("glyphid_cache full"));
 }
 
-function /* int */
-find_glyph_in_cache(id)
-{
+function find_glyph_in_cache(id) { /* int */
     let hash = glyph_hash(id);
-    let hash1 = (unsigned(hash & (unsigned(glyphid_cache_size[0] - 1))));
-    let hash2 = (unsigned((unsigned((hash >>> glyphid_cache_lsize[0]) & (unsigned(glyphid_cache_size[0] - 1)))) | 1));
+    let hash1 = unsigned(hash & unsigned(glyphid_cache_size[0] - 1));
+    let hash2 = unsigned(unsigned((hash >>> glyphid_cache_lsize[0]) & unsigned(glyphid_cache_size[0] - 1)) | 1);
 
     let i = hash1;
 
@@ -409,14 +371,12 @@ find_glyph_in_cache(id)
             /* Match found */
             return ptr_add(glyphid_cache[0], i).glyphnum;
         }
-        i = unsigned((unsigned(i + hash2)) & (unsigned(glyphid_cache_size[0] - 1)));
+        i = unsigned(unsigned(i + hash2) & unsigned(glyphid_cache_size[0] - 1));
     } while (i != hash1);
     return -1;
 }
 
-function /* char * */
-find_glyphid_in_cache_by_glyphnum(glyphnum)
-{
+function find_glyphid_in_cache_by_glyphnum(glyphnum) { /* char * */
     let idx;
 
     if (!glyphid_cache[0])
@@ -431,9 +391,7 @@ find_glyphid_in_cache_by_glyphnum(glyphnum)
     return 0;
 }
 
-function /* uint32 */
-glyph_hash(id)
-{
+function glyph_hash(id) { /* uint32 */
     let hash = 0;
     let i;
 
@@ -442,21 +400,18 @@ glyph_hash(id)
         if (ord('A') <= ch && ch <= ord('Z')) {
             ch += ord('a') - ord('A');
         }
-        hash = unsigned((unsigned(hash << 1)) | (hash >>> 31));
+        hash = unsigned(unsigned(hash << 1) | (hash >>> 31));
         hash = unsigned(hash ^ unsigned(ch));
     }
     return hash;
 }
 
-export function /* boolean */
-glyphid_cache_status()
-{
-    return (+(glyphid_cache[0] != null));
+export function glyphid_cache_status() { /* boolean */
+    return +(glyphid_cache[0] != null);
 }
 
-export function /* int */
-match_glyph(buf)
-{ const $frame = stack_frame(); try {
+export function match_glyph(buf) { /* int */
+    const $frame = stack_frame(); try {
     let workbuf = stack_array(char, BUFSZ);
 
     /* buf contains a G_ glyph reference, not an S_ symbol.
@@ -464,36 +419,31 @@ match_glyph(buf)
         Let's get a copy to work with. */
     Snprintf(workbuf, sizeof(array_of(char, BUFSZ)), _("%s"), buf); /* get a copy */
     return glyphrep(workbuf);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-glyphrep(op)
-{ const $frame = stack_frame(); try {
+export function glyphrep(op) { /* int */
+    const $frame = stack_frame(); try {
     let reslt = 0, glyph = stack_var(int, NO_GLYPH);
 
     if (!glyphid_cache[0])
         reslt = 1;      /* for debugger use only; no cache available */
-    (void (reslt));
+    (reslt);
     reslt = glyphrep_to_custom_map_entries(op, glyph);
     if (reslt)
         return 1;
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-add_custom_nhcolor_entry(
+export function add_custom_nhcolor_entry(
     customization_name,
     glyphidx,
     nhcolor,
-    which_set)
-{
+    which_set) { /* int */
     let gdc = gs.sym_customizations[which_set][custom_nhcolor];
 
     let details, newdetails = null;
-
-
-
-
 
     if (!gdc.details) {
         gdc.customization_name = dupstr(customization_name);
@@ -527,17 +477,15 @@ add_custom_nhcolor_entry(
     return 1;
 }
 
-export function /* void */
-apply_customizations(
+export function apply_customizations(
     which_set,
-    docustomize)
-{
+    docustomize) { /* void */
     let gmap;
     let details;
     let sc;
     let at_least_one = FALSE,
-            do_colors = (+((docustomize & do_custom_colors) != 0)),
-            do_symbols = (+((docustomize & do_custom_symbols) != 0));
+            do_colors = +((docustomize & do_custom_colors) != 0),
+            do_symbols = +((docustomize & do_custom_symbols) != 0);
     let custs;
 
     for (custs = 0; custs < custom_count; ++custs) {
@@ -548,12 +496,11 @@ apply_customizations(
                not to symset entries */
             details = sc.details;
             while (details) {
-
                 if (iflags.customsymbols && do_symbols) {
                     if (sc.custtype == custom_ureps) {
                         gmap = glyphmap[details.content.urep.glyphidx];
                         if (gs.symset[which_set].handling == H_UTF8)
-                            void set_map_u(gmap,
+                            set_map_u(gmap,
                                              details.content.urep.u.utf32ch,
                                              details.content.urep.u.utf8str);
                     }
@@ -562,7 +509,7 @@ apply_customizations(
                 if (iflags.customcolors && do_colors) {
                     if (sc.custtype == custom_nhcolor) {
                         gmap = glyphmap[details.content.ccolor.glyphidx];
-                        void set_map_customcolor(gmap,
+                        set_map_customcolor(gmap,
                                              details.content.ccolor.nhcolor);
                     }
                 }
@@ -577,74 +524,17 @@ apply_customizations(
  * so a red potion isn't displayed with a blue customization, and so on.
  */
 
-export function /* void */
-maybe_shuffle_customizations()
-{
+export function maybe_shuffle_customizations() { /* void */
     if (iflags.pending_customizations) {
         shuffle_customizations();
         iflags.pending_customizations = 0;
     }
 }
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-function /* void */
-shuffle_customizations()
-{ const $frame = stack_frame(); try {
+function shuffle_customizations() { /* void */
+    const $frame = stack_frame(); try {
     let offsets = static_array("shuffle_customizations.offsets", int, 2, [ GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF ]);
     let j;
 
@@ -676,7 +566,6 @@ shuffle_customizations()
              * each pointer points to a unique allocation.
              */
             if (duplicate[idx] >= 0) {
-
                 /* Current structure already appears in tmp_u */
                 let other = tmp_u[duplicate[idx]];
 
@@ -695,7 +584,6 @@ shuffle_customizations()
                             dupstr(other.utf8str);
                     }
                 }
-
             } else {
                 tmp_customcolor[i] = ptr_add(obj_glyphs, idx).customcolor;
                 tmp_color256idx[i] = ptr_add(obj_glyphs, idx).color256idx;
@@ -729,17 +617,14 @@ shuffle_customizations()
             ptr_add(obj_glyphs, i).color256idx = tmp_color256idx[i];
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-export function /* struct customization_detail * */
-find_matching_customization(
+export function find_matching_customization(
     customization_name,
     custtype,
-    which_set)
-{
+    which_set) { /* struct customization_detail * */
     let gdc = gs.sym_customizations[which_set][custtype];
-
 
     if ((gdc.custtype == custtype) && gdc.customization_name
         && (strcmp(customization_name, gdc.customization_name) == 0))
@@ -747,9 +632,7 @@ find_matching_customization(
     return null;
 }
 
-export function /* void */
-purge_all_custom_entries()
-{
+export function purge_all_custom_entries() { /* void */
     let i;
 
     for (i = 0; i < NUM_GRAPHICS + 1; ++i) {
@@ -757,9 +640,7 @@ purge_all_custom_entries()
     }
 }
 
-export function /* void */
-purge_custom_entries(which_set)
-{
+export function purge_custom_entries(which_set) { /* void */
     let custtype;
     let gdc;
     let details, next;
@@ -793,20 +674,18 @@ purge_custom_entries(which_set)
     }
 }
 
-export function /* void */
-dump_all_glyphids(fp)
-{ const $frame = stack_frame(); try {
+export function dump_all_glyphids(fp) { /* void */
+    const $frame = stack_frame(); try {
     let dump_glyphid_find = struct_assign(stack_struct(struct_find_struct), zero_find);
 
     dump_glyphid_find.findtype = find_nothing;
     dump_glyphid_find.reserved = addr_of(fp);
     dump_glyphid_find.restype = res_dump_glyphids;
-    void parse_id(0, dump_glyphid_find);
-} finally { stack_pop($frame); } }
+    parse_id(0, dump_glyphid_find);
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-wizcustom_glyphids(win)
-{
+export function wizcustom_glyphids(win) { /* void */
     let glyphnum;
     let id;
 
@@ -820,11 +699,10 @@ wizcustom_glyphids(win)
     }
 }
 
-function /* int */
-parse_id(
+function parse_id(
     id,
-    findwhat)
-{ const $frame = stack_frame(); try {
+    findwhat) { /* int */
+    const $frame = stack_frame(); try {
     let fp = null;
     let i = 0, j, mnum, glyph,
         pm_offset = 0, oc_offset = 0, cmap_offset = 0,
@@ -852,8 +730,8 @@ parse_id(
         }
     }
 
-    is_G = (((id && chars[id + 0] == ord('G') && chars[id + 1] == ord('_')) ? 1 : 0));
-    is_S = (((id && chars[id + 0] == ord('S') && chars[id + 1] == ord('_')) ? 1 : 0));
+    is_G = (id && chars[id + 0] == ord('G') && chars[id + 1] == ord('_') ? 1 : 0);
+    is_S = (id && chars[id + 0] == ord('S') && chars[id + 1] == ord('_') ? 1 : 0);
 
     if ((is_G && !glyphid_cache[0]) || filling_cache || dump_ids || is_S) {
         while (loadsyms[i].range) {
@@ -914,9 +792,9 @@ parse_id(
                     } else if (glyph_is_female_pet(glyph)) {
                         buf2 = _("pet_female_");
                     }
-                    void strcpy(buf[0], _("G_"));
-                    void strcat(buf[0], buf2);
-                    void strcat(buf[0], buf3);
+                    strcpy(buf[0], _("G_"));
+                    strcat(buf[0], buf2);
+                    strcat(buf[0], buf3);
                 } else if (glyph_is_body(glyph)) {
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
@@ -924,9 +802,9 @@ parse_id(
                            ? _("piletop_body_")
                            : _("body_");
                     buf3 = monsdump[glyph_to_body_corpsenm(glyph)].nm;
-                    void strcpy(buf[0], _("G_"));
-                    void strcat(buf[0], buf2);
-                    void strcat(buf[0], buf3);
+                    strcpy(buf[0], _("G_"));
+                    strcat(buf[0], buf2);
+                    strcat(buf[0], buf3);
                 } else if (glyph_is_statue(glyph)) {
                     /* buf2 will hold the distinguishing prefix */
                     /* buf3 will hold the base name */
@@ -940,9 +818,9 @@ parse_id(
                                  ? _("statue_of_male_")
                                  : _(""); /* shouldn't happen */
                     buf3 = monsdump[glyph_to_statue_corpsenm(glyph)].nm;
-                    void strcpy(buf[0], _("G_"));
-                    void strcat(buf[0], buf2);
-                    void strcat(buf[0], buf3);
+                    strcpy(buf[0], _("G_"));
+                    strcat(buf[0], buf2);
+                    strcat(buf[0], buf3);
                 } else if (glyph_is_object(glyph)) {
                     i = glyph_to_obj(glyph);
                     /* buf2 will hold the distinguishing prefix */
@@ -974,11 +852,11 @@ parse_id(
                                    : obj_descr[i].oc_name
                                      ? obj_descr[i].oc_name
                                      : obj_descr[i].oc_descr;
-                        void strcpy(buf[0], _("G_"));
+                        strcpy(buf[0], _("G_"));
                         if (glyph_is_normal_piletop_obj(glyph))
-                            void strcat(buf[0], _("piletop_"));
-                        void strcat(buf[0], buf2);
-                        void strcat(buf[0], buf3);
+                            strcat(buf[0], _("piletop_"));
+                        strcat(buf[0], buf2);
+                        strcat(buf[0], buf3);
                     }
                 } else if (glyph_is_cmap(glyph) || glyph_is_cmap_zap(glyph)
                            || glyph_is_swallow(glyph)
@@ -1057,10 +935,10 @@ parse_id(
                         j = glyph - GLYPH_SWALLOW_OFF;
                         cmap = glyph_to_swallow(glyph);
                         mnum = Math.trunc(j / ((S_sw_br - S_sw_tl) + 1));
-                        void strcpy(buf[3], _("swallow "));
-                        void strcat(buf[3], monsdump[mnum].nm);
-                        void strcat(buf[3], _(" "));
-                        void strcat(buf[3], swallow_texts[cmap]);
+                        strcpy(buf[3], _("swallow "));
+                        strcat(buf[3], monsdump[mnum].nm);
+                        strcat(buf[3], _(" "));
+                        strcat(buf[3], swallow_texts[cmap]);
                         buf3 = buf[3];
                         skip_base = TRUE;
                     } else if (glyph_is_explosion(glyph)) {
@@ -1091,16 +969,16 @@ parse_id(
                             buf3 = loadsyms[cmap + cmap_offset].name + 2;
                         }
                     }
-                    void strcpy(buf[0], _("G_"));
-                    void strcat(buf[0], buf2);
-                    void strcat(buf[0], buf3);
-                    void strcat(buf[0], buf4);
+                    strcpy(buf[0], _("G_"));
+                    strcat(buf[0], buf2);
+                    strcat(buf[0], buf3);
+                    strcat(buf[0], buf4);
                 } else if (glyph_is_invisible(glyph)) {
-                    void strcpy(buf[0], _("G_invisible"));
+                    strcpy(buf[0], _("G_invisible"));
                 } else if (glyph_is_nothing(glyph)) {
-                    void strcpy(buf[0], _("G_nothing"));
+                    strcpy(buf[0], _("G_nothing"));
                 } else if (glyph_is_unexplored(glyph)) {
-                    void strcpy(buf[0], _("G_unexplored"));
+                    strcpy(buf[0], _("G_unexplored"));
                 } else if (glyph_is_warning(glyph)) {
                     j = glyph - GLYPH_WARNING_OFF;
                     Snprintf(buf[0], sizeof(array_of(char, QBUFSZ)), _("G_%s%d"), _("warning"), j);
@@ -1110,7 +988,7 @@ parse_id(
                 if (!skip_this_one) {
                     fix_glyphname(buf[0]+2);
                     if (dump_ids) {
-                        void fprintf(fp, _("(%04d) %s\n"), glyph, buf[0]);
+                        fprintf(fp, _("(%04d) %s\n"), glyph, buf[0]);
                     } else if (filling_cache) {
                         add_glyph_to_cache(glyph, buf[0]);
                     } else if (id) {
@@ -1159,13 +1037,12 @@ parse_id(
     findwhat.val = 0;
     findwhat.loadsyms_offset = 0;
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* extern glyph_map glyphmap[MAX_GLYPH]; */
 
-export function /* void */
-clear_all_glyphmap_colors()
-{
+export function clear_all_glyphmap_colors() { /* void */
     let glyph;
 
     for (glyph = 0; glyph < MAX_GLYPH; ++glyph) {
@@ -1175,317 +1052,81 @@ clear_all_glyphmap_colors()
     }
 }
 
-export function /* void */
-reset_customcolors()
-{
+export function reset_customcolors() { /* void */
     clear_all_glyphmap_colors();
     apply_customizations(unsigned(gc.currentgraphics), do_custom_colors);
 }
 
 /* not used yet */
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef TEST_GLYPHNAMES: not in this build */
 
 /* glyphs.c */
-import { CLR_BLACK } from "./color.h.js";
-import { NH_BASIC_COLOR } from "./color.h.js";
-import { MAXPCHARS } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_digbeam } from "./defsym.h.js";
-import { S_expl_br } from "./defsym.h.js";
-import { S_expl_tl } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_sw_br } from "./defsym.h.js";
-import { S_sw_tl } from "./defsym.h.js";
-import { S_vbeam } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { GLYPH_ALTAR_OFF } from "./display.h.js";
-import { GLYPH_CMAP_A_OFF } from "./display.h.js";
-import { GLYPH_CMAP_B_OFF } from "./display.h.js";
-import { GLYPH_CMAP_C_OFF } from "./display.h.js";
-import { GLYPH_CMAP_GEH_OFF } from "./display.h.js";
-import { GLYPH_CMAP_KNOX_OFF } from "./display.h.js";
-import { GLYPH_CMAP_MAIN_OFF } from "./display.h.js";
-import { GLYPH_CMAP_MINES_OFF } from "./display.h.js";
-import { GLYPH_CMAP_OFF } from "./display.h.js";
-import { GLYPH_CMAP_SOKO_OFF } from "./display.h.js";
-import { GLYPH_CMAP_STONE_OFF } from "./display.h.js";
-import { GLYPH_EXPLODE_OFF } from "./display.h.js";
-import { GLYPH_OBJ_OFF } from "./display.h.js";
-import { GLYPH_OBJ_PILETOP_OFF } from "./display.h.js";
-import { GLYPH_SWALLOW_OFF } from "./display.h.js";
-import { GLYPH_WARNING_OFF } from "./display.h.js";
-import { GLYPH_ZAP_OFF } from "./display.h.js";
-import { MAX_GLYPH } from "./display.h.js";
-import { NO_GLYPH } from "./display.h.js";
-import { altar_other } from "./display.h.js";
-import { glyph_is_body } from "./display.h.macros.js";
-import { glyph_is_body_piletop } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_cmap_a } from "./display.h.macros.js";
-import { glyph_is_cmap_altar } from "./display.h.macros.js";
-import { glyph_is_cmap_b } from "./display.h.macros.js";
-import { glyph_is_cmap_c } from "./display.h.macros.js";
-import { glyph_is_cmap_gehennom } from "./display.h.macros.js";
-import { glyph_is_cmap_knox } from "./display.h.macros.js";
-import { glyph_is_cmap_main } from "./display.h.macros.js";
-import { glyph_is_cmap_mines } from "./display.h.macros.js";
-import { glyph_is_cmap_sokoban } from "./display.h.macros.js";
-import { glyph_is_cmap_zap } from "./display.h.macros.js";
-import { glyph_is_detected_female_monster } from "./display.h.macros.js";
-import { glyph_is_detected_male_monster } from "./display.h.macros.js";
-import { glyph_is_explosion } from "./display.h.macros.js";
-import { glyph_is_fem_statue } from "./display.h.macros.js";
-import { glyph_is_fem_statue_piletop } from "./display.h.macros.js";
-import { glyph_is_female_pet } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { glyph_is_male_pet } from "./display.h.macros.js";
-import { glyph_is_male_statue } from "./display.h.macros.js";
-import { glyph_is_male_statue_piletop } from "./display.h.macros.js";
-import { glyph_is_monster } from "./display.h.macros.js";
-import { glyph_is_normal_female_monster } from "./display.h.macros.js";
-import { glyph_is_normal_male_monster } from "./display.h.macros.js";
-import { glyph_is_normal_piletop_obj } from "./display.h.macros.js";
-import { glyph_is_nothing } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { glyph_is_ridden_female_monster } from "./display.h.macros.js";
-import { glyph_is_ridden_male_monster } from "./display.h.macros.js";
-import { glyph_is_statue } from "./display.h.macros.js";
-import { glyph_is_swallow } from "./display.h.macros.js";
-import { glyph_is_unexplored } from "./display.h.macros.js";
-import { glyph_is_warning } from "./display.h.macros.js";
-import { glyph_to_body_corpsenm } from "./display.h.macros.js";
-import { glyph_to_explosion } from "./display.h.macros.js";
-import { glyph_to_mon } from "./display.h.macros.js";
-import { glyph_to_obj } from "./display.h.macros.js";
-import { glyph_to_statue_corpsenm } from "./display.h.macros.js";
-import { glyph_to_swallow } from "./display.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+
+import { CLR_BLACK, NH_BASIC_COLOR } from "./color.h.js";
+import {
+    MAXPCHARS, S_altar, S_digbeam, S_expl_br, S_expl_tl, S_grave, S_ndoor, S_stone, S_sw_br,
+    S_sw_tl, S_vbeam, S_vwall,
+} from "./defsym.h.js";
+import {
+    GLYPH_ALTAR_OFF, GLYPH_CMAP_A_OFF, GLYPH_CMAP_B_OFF, GLYPH_CMAP_C_OFF, GLYPH_CMAP_GEH_OFF,
+    GLYPH_CMAP_KNOX_OFF, GLYPH_CMAP_MAIN_OFF, GLYPH_CMAP_MINES_OFF, GLYPH_CMAP_OFF,
+    GLYPH_CMAP_SOKO_OFF, GLYPH_CMAP_STONE_OFF, GLYPH_EXPLODE_OFF, GLYPH_OBJ_OFF,
+    GLYPH_OBJ_PILETOP_OFF, GLYPH_SWALLOW_OFF, GLYPH_WARNING_OFF, GLYPH_ZAP_OFF, MAX_GLYPH, NO_GLYPH,
+    altar_other,
+} from "./display.h.js";
+import {
+    glyph_is_body, glyph_is_body_piletop, glyph_is_cmap, glyph_is_cmap_a, glyph_is_cmap_altar,
+    glyph_is_cmap_b, glyph_is_cmap_c, glyph_is_cmap_gehennom, glyph_is_cmap_knox,
+    glyph_is_cmap_main, glyph_is_cmap_mines, glyph_is_cmap_sokoban, glyph_is_cmap_zap,
+    glyph_is_detected_female_monster, glyph_is_detected_male_monster, glyph_is_explosion,
+    glyph_is_fem_statue, glyph_is_fem_statue_piletop, glyph_is_female_pet, glyph_is_invisible,
+    glyph_is_male_pet, glyph_is_male_statue, glyph_is_male_statue_piletop, glyph_is_monster,
+    glyph_is_normal_female_monster, glyph_is_normal_male_monster, glyph_is_normal_piletop_obj,
+    glyph_is_nothing, glyph_is_object, glyph_is_ridden_female_monster, glyph_is_ridden_male_monster,
+    glyph_is_statue, glyph_is_swallow, glyph_is_unexplored, glyph_is_warning,
+    glyph_to_body_corpsenm, glyph_to_explosion, glyph_to_mon, glyph_to_obj,
+    glyph_to_statue_corpsenm, glyph_to_swallow,
+} from "./display.h.macros.js";
+import { BUFSZ, FALSE, QBUFSZ, TRUE } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { uint32 } from "./integer.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { LAND_MINE } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { POT_GAIN_ABILITY } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { RIN_ADORNMENT } from "./objects.h.js";
-import { RIN_PROTECTION_FROM_SHAPE_CHAN } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_ENCHANT_ARMOR } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SCR_STINKING_CLOUD } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_DIG } from "./objects.h.js";
-import { WAN_LIGHT } from "./objects.h.js";
-import { WAN_LIGHTNING } from "./objects.h.js";
-import { H_UTF8 } from "./sym.h.js";
-import { NUM_GRAPHICS } from "./sym.h.js";
-import { SYM_MON } from "./sym.h.js";
-import { SYM_OC } from "./sym.h.js";
-import { SYM_PCHAR } from "./sym.h.js";
-import { custom_count } from "./sym.h.js";
-import { custom_nhcolor } from "./sym.h.js";
-import { custom_none } from "./sym.h.js";
-import { custom_symbols } from "./sym.h.js";
-import { custom_ureps } from "./sym.h.js";
-import { do_custom_colors } from "./sym.h.js";
-import { do_custom_symbols } from "./sym.h.js";
-import { struct_customization_detail } from "./sym.h.js";
+import {
+    GOLD_PIECE, LAND_MINE, NUM_OBJECTS, POT_GAIN_ABILITY, POT_WATER, RIN_ADORNMENT,
+    RIN_PROTECTION_FROM_SHAPE_CHAN, SCR_BLANK_PAPER, SCR_ENCHANT_ARMOR, SCR_MAIL,
+    SCR_STINKING_CLOUD, SLIME_MOLD, SPE_BLANK_PAPER, SPE_DIG, WAN_LIGHT, WAN_LIGHTNING,
+} from "./objects.h.js";
+import {
+    H_UTF8, NUM_GRAPHICS, SYM_MON, SYM_OC, SYM_PCHAR, custom_count, custom_nhcolor, custom_none,
+    custom_symbols, custom_ureps, do_custom_colors, do_custom_symbols, struct_customization_detail,
+} from "./sym.h.js";
 import { struct_unicode_representation } from "./wintype.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { fprintf } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memchr } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, long, ord, sizeof, uchar, unsigned, ushort } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { assert, fprintf, free, memchr, strcat, strcmp, strcpy } from "../rt/libc.js";
+import {
+    init_list, stack_array, stack_struct, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { record_or_opaque } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import {
+    addr_of, array_of, fnptr_t, ptr_add, ptr_to, record_or_opaque, struct, struct_assign, view_of,
+    void_t,
+} from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { config_error_add } from "./cfgfiles.js";
-import { rgbstr_to_int32 } from "./coloratt.js";
-import { set_map_customcolor } from "./coloratt.js";
-import { gc } from "./decl.js";
-import { gs } from "./decl.js";
-import { iflags } from "./decl.js";
+import { rgbstr_to_int32, set_map_customcolor } from "./coloratt.js";
+import { gc, gs, iflags } from "./decl.js";
 import { glyphmap } from "./display.js";
 import { monsdump } from "./earlyarg.js";
 import { panic } from "./end.js";
 import { unicodeval_to_utf8str } from "./hacklib.js";
 import { mons } from "./monst.js";
-import { obj_descr } from "./objects.js";
-import { objects } from "./objects.js";
+import { obj_descr, objects } from "./objects.js";
 import { loadsyms } from "./symbols.js";
-import { add_custom_urep_entry } from "./utf8map.js";
-import { set_map_u } from "./utf8map.js";
-import { unicode_val } from "./utf8map.js";
+import { add_custom_urep_entry, set_map_u, unicode_val } from "./utf8map.js";
 import { wizcustom_callback } from "./wizcmds.js";
 const struct__IO_FILE = record_or_opaque("struct__IO_FILE");

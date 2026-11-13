@@ -8,7 +8,7 @@ export function enableMthrowu(environment,layouts){
  const {services,ctypes,memory,transport,functions}=environment,L=layouts.mthrowu,address=environment.address,text=v=>typeof v==='string'?services.literal(v):address(v),views=createRecordViews(environment);
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review MTHROWU ABI '+k);
  const resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n);
- const scalar=(t,v)=>{t=ctypes.canonical(t);if(t.includes('*'))return text(v);if(t==='void')return undefined;if(t==='char'||t==='signed char')return transport.char(v);if(t==='unsigned char')return transport.uchar(v);if(t==='short')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int')return transport.uint(v);if(ctypes.size(t)===8)return t.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
+ const scalar=(t,v)=>{t=ctypes.abiType(t);if(t.includes('*'))return text(v);if(t==='void')return undefined;if(t==='char'||t==='signed char')return transport.char(v);if(t==='unsigned char')return transport.uchar(v);if(t==='short')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int')return transport.uint(v);if(ctypes.size(t)===8)return t.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
  // MTHROWU delegates projectile durability to the original DOTHROW owner.
  if(!environment.hasFunction('should_mulch_missile')){
   if(Object.hasOwn(environment.status(),'dothrow'))environment.exposeAddressPort('dothrow',['should_mulch_missile']);

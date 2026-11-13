@@ -3,9 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "dlb.h"
-
 /*      [Note:  this comment is fairly old, but still accurate for 3.1;
  *       it's no longer accurate for 5.0 but may still be of interest.]
  * Rumors have been entirely rewritten to speed up the access.  This is
@@ -41,16 +38,6 @@
  * and placed there by 'makedefs'.
  */
 
-
-
-
-
-
-
-
-
-
-
 /* used by CapitalMon(); set up by init_CapMons(), released by free_CapMons();
    there's no need for these to be put into 'struct instance_globals g' */
 const CapMonstCnt = static_var("CapMonstCnt", unsigned, 0); const CapBogonCnt = static_var("CapBogonCnt", unsigned, 0);
@@ -63,9 +50,7 @@ const CapMons = static_var("CapMons", ptr_to(ptr_to(char)), null);
 
 /* makedefs pads short rumors, epitaphs, engravings, and hallucinatory
    monster names with trailing underscores; strip those off */
-function /* void */
-unpadline(line)
-{
+function unpadline(line) { /* void */
     let p = eos(line);
 
     /* remove newline if still present; caller should have stripped it */
@@ -79,18 +64,15 @@ unpadline(line)
     chars[p] = ord('\0');
 }
 
-
-
-function /* void */
-init_rumors(fp)
-{ const $frame = stack_frame(); try {
+function init_rumors(fp) { /* void */
+    const $frame = stack_frame(); try {
     let rumors_header = init_string(static_array("init_rumors.rumors_header", char, sizeof_string("%d,%lld,%llx;%d,%lld,%llx;0,0,%llx\n")), _("%d,%lld,%llx;%d,%lld,%llx;0,0,%llx\n"), true);
     let true_count = stack_var(int), false_count = stack_var(int); /* in file but not used here */
     let eof_offset = stack_var(ulong);
     let line = stack_array(char, BUFSZ);
 
-    void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp); /* skip "don't edit" comment */
-    void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp);
+    dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp); /* skip "don't edit" comment */
+    dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp);
     if (sscanf(line, rumors_header, true_count, ref_of(gt, "true_rumor_size"),
                ref_of(gt, "true_rumor_start"), false_count, ref_of(gf, "false_rumor_size"),
                ref_of(gf, "false_rumor_start"), eof_offset) == 7
@@ -102,23 +84,21 @@ init_rumors(fp)
         /* assert( gf.false_rumor_end == eof_offset ); */
     } else {
         gt.true_rumor_size = -1; /* init failed */
-        void dlb_fclose(fp);
+        dlb_fclose(fp);
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* exclude_cookie is a hack used because we sometimes want to get rumors in a
  * context where messages such as "You swallowed the fortune!" that refer to
  * cookies should not appear.  This has no effect for true rumors since none
  * of them contain such references anyway.
  */
-export function /* char * */
-getrumor(
+export function getrumor(
     truth,
     rumor_buf,
-    exclude_cookie)
-{ const $frame = stack_frame(); try {
+    exclude_cookie) { /* char * */
+    const $frame = stack_frame(); try {
     let rumors;
     let beginning, ending;
     let line = stack_array(char, BUFSZ);
@@ -139,7 +119,7 @@ getrumor(
             if (gt.true_rumor_size == 0) { /* if this is 1st outrumor() */
                 init_rumors(rumors);
                 if (gt.true_rumor_size < 0) { /* init failed */
-                    void sprintf(rumor_buf, _("Error reading \"%.80s\"."), _(RUMORFILE));
+                    sprintf(rumor_buf, _("Error reading \"%.80s\"."), _(RUMORFILE));
                     return rumor_buf;
                 }
             }
@@ -163,16 +143,16 @@ getrumor(
                 impossible(_("strange truth value for rumor"));
                 return strcpy(rumor_buf, _("Oops..."));
             }
-            void strcpy(rumor_buf, get_rnd_line(rumors, line, sizeof(array_of(char, BUFSZ)), rn2,
+            strcpy(rumor_buf, get_rnd_line(rumors, line, sizeof(array_of(char, BUFSZ)), rn2,
                                 beginning, ending, MD_PAD_RUMORS))
 ;
         } while (count++ < 50 && exclude_cookie
                  && !strncmp(rumor_buf, cookie_marker[0], unsigned(marklen)));
-        void dlb_fclose(rumors);
+        dlb_fclose(rumors);
         if (count >= 50)
             impossible(_("Can't find non-cookie rumor?"));
         else if (!gi.in_mklev) /* avoid exercising wisdom for graffiti */
-            exercise(A_WIS, (+(adjtruth > 0)));
+            exercise(A_WIS, +(adjtruth > 0));
     } else {
         couldnt_open_file(_(RUMORFILE));
         gt.true_rumor_size = -1; /* don't try to open it again */
@@ -188,13 +168,14 @@ getrumor(
         chars[dst] = ord('\0'); /* terminator wasn't copied */
     }
     return rumor_buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* test that the true/false rumor boundaries are valid and show the first
    two and very last epitaphs, engravings, and bogus monsters */
-export function /* void */
-rumor_check()
-{ const $frame = stack_frame(); try { let $goto = null; var tmpwin = stack_var(winid), line = stack_array(char, BUFSZ), xbuf = stack_array(char, BUFSZ), rumor_buf = stack_array(char, BUFSZ);
+export function rumor_check() { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var tmpwin = stack_var(winid), line = stack_array(char, BUFSZ), xbuf = stack_array(char, BUFSZ), rumor_buf = stack_array(char, BUFSZ);
     var rumors;
     tmpwin[0] = WIN_ERR;
     var endp;
@@ -216,15 +197,11 @@ rumor_check()
         /*
          * reveal the values.
          */
-        void sprintf(rumor_buf, _("T start=%06lld (%06llx), end=%06lld (%06llx), size=%06lld (%06llx)"), gt.true_rumor_start, gt.true_rumor_start, gt.true_rumor_end, ulong(gt.true_rumor_end), gt.true_rumor_size, ulong(gt.true_rumor_size))
-
-
+        sprintf(rumor_buf, _("T start=%06lld (%06llx), end=%06lld (%06llx), size=%06lld (%06llx)"), gt.true_rumor_start, gt.true_rumor_start, gt.true_rumor_end, ulong(gt.true_rumor_end), gt.true_rumor_size, ulong(gt.true_rumor_size))
 
 ;
         putstr()(tmpwin[0], 0, rumor_buf);
-        void sprintf(rumor_buf, _("F start=%06lld (%06llx), end=%06lld (%06llx), size=%06lld (%06llx)"), gf.false_rumor_start, gf.false_rumor_start, gf.false_rumor_end, ulong(gf.false_rumor_end), gf.false_rumor_size, ulong(gf.false_rumor_size))
-
-
+        sprintf(rumor_buf, _("F start=%06lld (%06llx), end=%06lld (%06llx), size=%06lld (%06llx)"), gf.false_rumor_start, gf.false_rumor_start, gf.false_rumor_end, ulong(gf.false_rumor_end), gf.false_rumor_size, ulong(gf.false_rumor_size))
 
 ;
         putstr()(tmpwin[0], 0, rumor_buf);
@@ -237,12 +214,12 @@ rumor_check()
          * the value read in rumors, and display it.
          */
         chars[rumor_buf + 0] = ord('\0');
-        void dlb_fseek(rumors, gt.true_rumor_start, SEEK_SET);
+        dlb_fseek(rumors, gt.true_rumor_start, SEEK_SET);
         ftell_rumor_start = dlb_ftell(rumors);
-        void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), rumors);
+        dlb_fgets(line, sizeof(array_of(char, BUFSZ)), rumors);
         if ((endp = strchr(line, ord('\n'))) != 0)
             chars[endp] = 0;
-        void sprintf(rumor_buf, _("T %06lld %s"), ftell_rumor_start, xcrypt(line, xbuf))
+        sprintf(rumor_buf, _("T %06lld %s"), ftell_rumor_start, xcrypt(line, xbuf))
 ;
         putstr()(tmpwin[0], 0, rumor_buf);
         /* find last true rumor */
@@ -251,16 +228,16 @@ rumor_check()
             continue;
         if ((endp = strchr(line, ord('\n'))) != 0)
             chars[endp] = 0;
-        void sprintf(rumor_buf, _("  %6s %s"), _(""), xcrypt(line, xbuf));
+        sprintf(rumor_buf, _("  %6s %s"), _(""), xcrypt(line, xbuf));
         putstr()(tmpwin[0], 0, rumor_buf);
 
         chars[rumor_buf + 0] = ord('\0');
-        void dlb_fseek(rumors, gf.false_rumor_start, SEEK_SET);
+        dlb_fseek(rumors, gf.false_rumor_start, SEEK_SET);
         ftell_rumor_start = dlb_ftell(rumors);
-        void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), rumors);
+        dlb_fgets(line, sizeof(array_of(char, BUFSZ)), rumors);
         if ((endp = strchr(line, ord('\n'))) != 0)
             chars[endp] = 0;
-        void sprintf(rumor_buf, _("F %06lld %s"), ftell_rumor_start, xcrypt(line, xbuf))
+        sprintf(rumor_buf, _("F %06lld %s"), ftell_rumor_start, xcrypt(line, xbuf))
 ;
         putstr()(tmpwin[0], 0, rumor_buf);
         /* find last false rumor */
@@ -269,10 +246,10 @@ rumor_check()
             continue;
         if ((endp = strchr(line, ord('\n'))) != 0)
             chars[endp] = 0;
-        void sprintf(rumor_buf, _("  %6s %s"), _(""), xcrypt(line, xbuf));
+        sprintf(rumor_buf, _("  %6s %s"), _(""), xcrypt(line, xbuf));
         putstr()(tmpwin[0], 0, rumor_buf);
 
-        void dlb_fclose(rumors);
+        dlb_fclose(rumors);
 
     /* if a previous attempt couldn't open file or rejected its contents,
        we didn't bother trying again this time */
@@ -299,17 +276,15 @@ rumor_check()
         display_nhwindow()(tmpwin[0], TRUE);
         destroy_nhwindow()(tmpwin[0]);
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* 5.0: augments rumors_check(); test 'engrave' or 'epitaph' or 'bogusmon' */
-function /* void */
-others_check(
+function others_check(
     ftype,
     fname,
-    winptr)     /* text window for output; created here if necessary */
-{ const $frame = stack_frame(); try {
+    winptr) { /* void */ /* text window for output; created here if necessary */
+    const $frame = stack_frame(); try {
     var errfmt = init_string(static_array("others_check.errfmt", char, sizeof_string("others_check(\"%s\"): %s")), _("others_check(\"%s\"): %s"), true);
     var fh;
     var line = stack_array(char, BUFSZ), xbuf = stack_array(char, BUFSZ), endp;
@@ -331,12 +306,12 @@ others_check(
         /* "don't edit" comment */
         chars[line] = ord('\0');
         if (!dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fh)) {
-            void sprintf(xbuf, errfmt, fname, _("error; can't read comment line"));
+            sprintf(xbuf, errfmt, fname, _("error; can't read comment line"));
             putstr()(tmpwin, 0, xbuf);
             break closeit;
         }
         if (chars[line] != ord('#')) {
-            void sprintf(xbuf, errfmt, fname, _("malformed; first line is not a comment line:"))
+            sprintf(xbuf, errfmt, fname, _("malformed; first line is not a comment line:"))
 ;
             putstr()(tmpwin, 0, xbuf);
             /* show the bad line; we don't know whether it has been
@@ -354,7 +329,7 @@ others_check(
            can only require a line to exist */
         chars[line] = ord('\0');
         if (!dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fh) || chars[line] == ord('\n')) {
-            void sprintf(xbuf, errfmt, fname, !chars[line] ? _("can't read first non-comment line")
+            sprintf(xbuf, errfmt, fname, !chars[line] ? _("can't read first non-comment line")
                            : _("first non-comment line is empty"))
 ;
             putstr()(tmpwin, 0, xbuf);
@@ -375,7 +350,7 @@ others_check(
                 ++entrycount;
                 if ((endp = strchr(line, ord('\n'))) != 0)
                     chars[endp] = 0;
-                void xcrypt(line, xbuf);
+                xcrypt(line, xbuf);
             }
             /* count will be 2 if the default entry and the first ordinary
                entry are the only ones present (if either of those were
@@ -396,18 +371,16 @@ others_check(
                 putstr()(tmpwin, 0, xbuf); /* already decrypted */
             }
         }
-
  }
-        void dlb_fclose(fh);
+        dlb_fclose(fh);
     } else {
         /* since this comes out via impossible(), it won't be integrated
            with the text window of values, but it shouldn't ever happen
            so we won't waste effort integrating it */
         couldnt_open_file(fname);
     }
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* load one randomly chosen line from a section of a file; undoes
    decryption and strips trailing underscore padding and final newline;
@@ -416,8 +389,7 @@ others_check(
    chosen; however, if padlength is 0, lines following long lines are
    more likely than average to be picked, and lines after short lines
    are less likely */
-function /* char * */
-get_rnd_line(
+function get_rnd_line(
     fh,
     buf,
     bufsiz,
@@ -425,15 +397,15 @@ get_rnd_line(
     startpos,
     endpos,
 
-    padlength) /* expected line length; 0 if no expectations */
-{ const $frame = stack_frame(); try {
+    padlength) { /* char * */ /* expected line length; 0 if no expectations */
+    const $frame = stack_frame(); try {
     let newl, xbufp, xbuf = stack_array(char, BUFSZ);
     let filechunksize, chunkoffset;
     let trylimit;
 
     chars[buf] = ord('\0');
     if (!endpos) {
-        void dlb_fseek(fh, 0, SEEK_END);
+        dlb_fseek(fh, 0, SEEK_END);
         endpos = dlb_ftell(fh);
     }
     filechunksize = endpos - startpos;
@@ -446,7 +418,7 @@ get_rnd_line(
     /* 'rumors' is about 3/4 of the way to the limit on a 16-bit config
        for the whole, roughly 3/8 of the way for either half; all active
        configurations these days are at least 32-bits anyway */
-    void (((!!(filechunksize <= INT_MAX)) || ((nhassert_failed(_("filechunksize <= INT_MAX"), _(__FILE__), 0), 0)))); /* essential for rn2() */
+    ((!!(filechunksize <= INT_MAX)) || (nhassert_failed(_("filechunksize <= INT_MAX"), _(__FILE__), 0), 0)); /* essential for rn2() */
 
     /*
      * Position randomly which will probably be in the middle of a line.
@@ -462,9 +434,9 @@ get_rnd_line(
      * them to normal length.  That yields even selection distribution.
      */
     for (trylimit = 10; trylimit > 0; --trylimit) {
-        chunkoffset = ((rng)(int(filechunksize)));
-        void dlb_fseek(fh, startpos + chunkoffset, SEEK_SET);
-        void dlb_fgets(buf, int(bufsiz), fh);
+        chunkoffset = rng(int(filechunksize));
+        dlb_fseek(fh, startpos + chunkoffset, SEEK_SET);
+        dlb_fgets(buf, int(bufsiz), fh);
         /* if padlength is 0, accept any position; when non-zero,
            padlength does not count the newline but strlen(buf) does */
         if (!padlength || strlen(buf) <= unsigned(padlength + 1))
@@ -476,32 +448,32 @@ get_rnd_line(
        first false rumor if fseek for a true one lands within the last one */
     if (dlb_ftell(fh) >= endpos || !dlb_fgets(buf, int(bufsiz), fh)) {
         /* assume failure is due to end-of-file; go back to start */
-        void dlb_fseek(fh, startpos, SEEK_SET);
-        void dlb_fgets(buf, int(bufsiz), fh);
+        dlb_fseek(fh, startpos, SEEK_SET);
+        dlb_fgets(buf, int(bufsiz), fh);
     }
     if ((newl = strchr(buf, ord('\n'))) != 0)
         chars[newl] = ord('\0');
     /* decrypt line; make sure that our intermediate buffer is big enough */
     xbufp = (strlen(buf) <= sizeof(array_of(char, BUFSZ)) - 1) ? xbuf + 0
             : addr_of(alloc(unsigned(strlen(buf) + 1)));
-    void strcpy(buf, xcrypt(buf, xbufp));
+    strcpy(buf, xcrypt(buf, xbufp));
     if (xbufp != xbuf + 0)
         free(xbufp);
     /* strip padding that makedefs adds to short lines */
     if (padlength)
         unpadline(buf);
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Gets a random line of text from file 'fname', and returns it.
    rng is the random number generator to use, and should act like rn2 does. */
-export function /* char * */
-get_rnd_text(
+export function get_rnd_text(
     fname,
     buf,
     rng,
-    padlength)
-{ const $frame = stack_frame(); try {
+    padlength) { /* char * */
+    const $frame = stack_frame(); try {
     let fh = dlb_fopen(fname, _("r"));
 
     chars[buf + 0] = ord('\0');
@@ -510,31 +482,31 @@ get_rnd_text(
         let line = stack_array(char, BUFSZ);
 
         /* skip "don't edit" comment */
-        void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fh);
+        dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fh);
         /* obtain current file position */
-        void dlb_fseek(fh, 0, SEEK_CUR);
+        dlb_fseek(fh, 0, SEEK_CUR);
         starttxt = dlb_ftell(fh);
 
         /* get a randomly chosen line; it comes back decrypted and unpadded */
-        void strcpy(buf, get_rnd_line(fh, line, sizeof(array_of(char, BUFSZ)), rng,
+        strcpy(buf, get_rnd_line(fh, line, sizeof(array_of(char, BUFSZ)), rng,
                                  starttxt, 0, padlength));
-        void dlb_fclose(fh);
+        dlb_fclose(fh);
     } else {
         couldnt_open_file(fname);
     }
     return buf;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-outrumor(
+export function outrumor(
     truth,
-    mechanism)
-{ const $frame = stack_frame(); try {
+    mechanism) { /* void */
+    const $frame = stack_frame(); try {
     let fortune_msg = init_string(static_array("outrumor.fortune_msg", char, sizeof_string("This cookie has a scrap of paper inside.")), _("This cookie has a scrap of paper inside."), true);
 
     let line;
     let buf = stack_array(char, BUFSZ);
-    let reading = (+(mechanism == BY_COOKIE || mechanism == BY_PAPER));
+    let reading = +(mechanism == BY_COOKIE || mechanism == BY_PAPER);
 
     if (reading) {
         /* deal with various things that prevent reading */
@@ -571,32 +543,31 @@ outrumor(
         break;
     }
     pline1(line);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-init_oracles(fp)
-{ const $frame = stack_frame(); try {
+function init_oracles(fp) { /* void */
+    const $frame = stack_frame(); try {
     let i;
     let line = stack_array(char, BUFSZ);
     let cnt = stack_var(int, 0);
 
     /* this assumes we're only called once */
-    void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp); /* skip "don't edit" comment*/
-    void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp);
+    dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp); /* skip "don't edit" comment*/
+    dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp);
     if (sscanf(line, _("%5d\n"), cnt) == 1 && cnt[0] > 0) {
         svo.oracle_cnt = unsigned((cnt[0]));
-        svo.oracle_loc = ref_to(ulong, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned((cnt[0])), sizeof(long)))))));
+        svo.oracle_loc = ref_to(ulong, addr_of(alloc(unsigned(Math.imul(unsigned((cnt[0])), sizeof(long))))));
         for (i = 0; i < cnt[0]; i++) {
-            void dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp);
-            void sscanf(line, _("%5llx\n"), svo.oracle_loc.subarray(i));
+            dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp);
+            sscanf(line, _("%5llx\n"), svo.oracle_loc.subarray(i));
         }
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-save_oracles(nhfp)
-{
+export function save_oracles(nhfp) { /* void */
     let i;
 
     if (update_file(nhfp)) {
@@ -618,16 +589,13 @@ save_oracles(nhfp)
     }
 }
 
-
-export function /* void */
-restore_oracles(nhfp)
-{
+export function restore_oracles(nhfp) { /* void */
     let i;
 
     sfi_unsigned(nhfp, ref_of(svo, "oracle_cnt"), _("oracle-oracle_cnt"));
     if (svo.oracle_cnt) {
         svo.oracle_loc =
-            ref_to(ulong, addr_of(alloc(unsigned(unsigned(Math.imul(svo.oracle_cnt, sizeof(ulong)))))));
+            ref_to(ulong, addr_of(alloc(unsigned(Math.imul(svo.oracle_cnt, sizeof(ulong))))));
         for (i = 0; unsigned(i) < svo.oracle_cnt; ++i) {
             sfi_ulong(nhfp, svo.oracle_loc.subarray(i), _("oracle-oracle_loc"));
         }
@@ -635,10 +603,8 @@ restore_oracles(nhfp)
     }
 }
 
-
-export function /* void */
-outoracle(special, delphi)
-{ const $frame = stack_frame(); try {
+export function outoracle(special, delphi) { /* void */
+    const $frame = stack_frame(); try {
     var tmpwin;
     var oracles;
     var oracle_idx;
@@ -663,7 +629,7 @@ outoracle(special, delphi)
         if (svo.oracle_cnt <= 1 && !special)
             break close_oracles;; /*(shouldn't happen)*/
         oracle_idx = special ? 0 : rnd(int(svo.oracle_cnt) - 1);
-        void dlb_fseek(oracles, (svo.oracle_loc[oracle_idx]), SEEK_SET);
+        dlb_fseek(oracles, (svo.oracle_loc[oracle_idx]), SEEK_SET);
         if (!special) /* move offset of very last one into this slot */
             svo.oracle_loc[oracle_idx] = svo.oracle_loc[--svo.oracle_cnt];
 
@@ -685,16 +651,16 @@ outoracle(special, delphi)
         display_nhwindow()(tmpwin, TRUE);
         destroy_nhwindow()(tmpwin);
  }
-        void dlb_fclose(oracles);
+        dlb_fclose(oracles);
     } else {
         couldnt_open_file(_(ORACLEFILE));
         go.oracle_flg = -1; /* don't try to open it again */
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-doconsult(oracl)
-{ const $frame = stack_frame(); try {
+export function doconsult(oracl) { /* int */
+    const $frame = stack_frame(); try {
     let umoney;
     let u_pay, minor_cost = 50, major_cost = 500 + 50 * u.ulevel;
     let add_xpts;
@@ -714,7 +680,7 @@ doconsult(oracl)
         return ECMD_OK;
     }
 
-    void sprintf(qbuf, _("\"Wilt thou settle for a minor consultation?\" (%d %s)"), minor_cost, currency(minor_cost))
+    sprintf(qbuf, _("\"Wilt thou settle for a minor consultation?\" (%d %s)"), minor_cost, currency(minor_cost))
 ;
     switch (ynq(qbuf)) {
     default:
@@ -731,7 +697,7 @@ doconsult(oracl)
         if (umoney <= minor_cost /* don't even ask */
             || (svo.oracle_cnt == 1 || go.oracle_flg < 0))
             return ECMD_OK;
-        void sprintf(qbuf, _("\"Then dost thou desire a major one?\" (%d %s)"), major_cost, currency(major_cost))
+        sprintf(qbuf, _("\"Then dost thou desire a major one?\" (%d %s)"), major_cost, currency(major_cost))
 ;
         if (y_n(qbuf) != ord('y'))
             return ECMD_OK;
@@ -764,11 +730,10 @@ doconsult(oracl)
         newexplevel();
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-couldnt_open_file(filename)
-{
+function couldnt_open_file(filename) { /* void */
     let save_something = program_state.something_worth_saving;
 
     /* most likely the file is missing, so suppress impossible()'s
@@ -787,11 +752,8 @@ couldnt_open_file(filename)
    this sets up a list of names rather than scan all of mons[] every time
    the decision is needed (resulting list currently contains 27 monster
    entries and 20 hallucination entries) */
-export function /* boolean */
-CapitalMon(
-    word) /* potential monster name; a name might be followed by
-                       * something like " corpse" */
-{
+export function CapitalMon(
+    word) { /* boolean */ /* potential monster name; a name might be followed by * something like " corpse" */
     let nam;
     let i, wln, nln;
 
@@ -825,9 +787,8 @@ CapitalMon(
    having a capitalized type name like Green-elf or Archon, plus unique
    monsters whose "name" is a title rather than a personal name, plus
    hallucinatory monster names that fall into either of those categories */
-function /* void */
-init_CapMons()
-{ const $frame = stack_frame(); try {
+function init_CapMons() { /* void */
+    const $frame = stack_frame(); try {
     let pass;
     let bogonfile = dlb_fopen(_(BOGUSMONFILE), _("r"));
 
@@ -868,9 +829,9 @@ init_CapMons()
             let hline = stack_array(char, BUFSZ), xbuf = stack_array(char, BUFSZ), endp, startp, code;
 
             /* rewind; effectively a no-op for pass 1; essential for pass 2 */
-            void dlb_fseek(bogonfile, 0, SEEK_SET);
+            dlb_fseek(bogonfile, 0, SEEK_SET);
             /* skip "don't edit" comment (first line of file) */
-            void dlb_fgets(hline, sizeof(array_of(char, BUFSZ)), bogonfile);
+            dlb_fgets(hline, sizeof(array_of(char, BUFSZ)), bogonfile);
 
             /* one monster name per line in rudimentary encrypted format;
                some are prefixed by a classification code to indicate
@@ -879,7 +840,7 @@ init_CapMons()
             while (dlb_fgets(hline, sizeof(array_of(char, BUFSZ)), bogonfile)) {
                 if ((endp = strchr(hline, ord('\n'))) != 0)
                     chars[endp] = ord('\0'); /* strip newline */
-                void xcrypt(hline, xbuf);
+                xcrypt(hline, xbuf);
                 unpadline(xbuf);
 
                 if (!chars[xbuf + 0] || !strchr(bogon_codes, chars[xbuf + 0]))
@@ -898,13 +859,13 @@ init_CapMons()
         /* finish the current pass */
         if (pass == 1) {
             CapMonSiz[0] = unsigned(unsigned(CapMonstCnt[0] + CapBogonCnt[0]) + 1); /* +1: terminator */
-            CapMons[0] = ref_to(ptr_to(char), addr_of(alloc(unsigned(unsigned(Math.imul(CapMonSiz[0], sizeof(ptr_to(char))))))));
+            CapMons[0] = ref_to(ptr_to(char), addr_of(alloc(unsigned(Math.imul(CapMonSiz[0], sizeof(ptr_to(char)))))));
         } else { /* pass == 2 */
             /* terminator; not strictly needed */
             CapMons[0][unsigned(CapMonSiz[0] - 1)] = 0;
 
             if (bogonfile)
-                void dlb_fclose(bogonfile), bogonfile = null;
+                dlb_fclose(bogonfile), bogonfile = null;
         }
     }
 
@@ -924,7 +885,7 @@ init_CapMons()
         putstr()(tmpwin, 0,
               _("Capitalized monster type names normally preceded by \"the\":"));
         for (i = 0; i < unsigned(CapMonSiz[0] - 1); ++i) {
-            void sprintf(buf, _("  %.77s"), CapMons[0][i]);
+            sprintf(buf, _("  %.77s"), CapMons[0][i]);
             putstr()(tmpwin, 0, buf);
         }
         display_nhwindow()(tmpwin, TRUE);
@@ -932,12 +893,11 @@ init_CapMons()
     }
 
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* release memory allocated for the list of capitalized monster type names */
-export function /* void */
-free_CapMons()
-{
+export function free_CapMons() { /* void */
     /* note: some elements of CapMons[] are string literals from
        mons[].pmnames[] and should not be freed, others are dynamically
        allocated copies of hallucinatory monster names and should be freed */
@@ -952,124 +912,50 @@ free_CapMons()
     CapMonSiz[0] = 0;
 }
 
-
 /*rumors.c*/
+
 import { A_WIS } from "./attrib.h.js";
-import { dlb_fclose } from "./dlb.h.macros.js";
-import { dlb_fgets } from "./dlb.h.macros.js";
-import { dlb_fopen } from "./dlb.h.macros.js";
-import { dlb_fseek } from "./dlb.h.macros.js";
-import { dlb_ftell } from "./dlb.h.macros.js";
+import { dlb_fclose, dlb_fgets, dlb_fopen, dlb_fseek, dlb_ftell } from "./dlb.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BOGUSMONFILE } from "./global.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { ENGRAVEFILE } from "./global.h.js";
-import { EPITAPHFILE } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MD_PAD_RUMORS } from "./global.h.js";
-import { ORACLEFILE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { RUMORFILE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { BY_COOKIE } from "./hack.h.js";
-import { BY_ORACLE } from "./hack.h.js";
-import { BY_PAPER } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { pline1 } from "./hack.h.macros.js";
-import { release_data } from "./hack.h.macros.js";
-import { update_file } from "./hack.h.macros.js";
-import { verbalize1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import {
+    BOGUSMONFILE, BUFSZ, COLNO, ENGRAVEFILE, EPITAPHFILE, FALSE, MD_PAD_RUMORS, ORACLEFILE, QBUFSZ,
+    RUMORFILE, TRUE,
+} from "./global.h.js";
+import { BY_COOKIE, BY_ORACLE, BY_PAPER, ECMD_OK, ECMD_TIME } from "./hack.h.js";
+import { pline1, release_data, update_file, verbalize1, y_n, ynq } from "./hack.h.macros.js";
 import { explicitdebug } from "./lint.h.macros.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { NUM_MGENDERS } from "./monflag.h.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
+import { G_UNIQ, MALE, NUM_MGENDERS } from "./monflag.h.js";
+import { LOW_PM, NUMMONS } from "./monsters.h.js";
 import { Sfo_unsigned } from "./savefile.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { winid } from "./wintype.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, putstr,
+} from "./winprocs.h.macros.js";
+import { NHW_TEXT, WIN_ERR, winid } from "./wintype.h.js";
 import { ACH_ORCL } from "./you.h.js";
 import { Blind } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { INT_MAX } from "../rt/libc.js";
-import { SEEK_CUR } from "../rt/libc.js";
-import { SEEK_END } from "../rt/libc.js";
-import { SEEK_SET } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, long, ord, sizeof, sizeof_string, ulong, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    INT_MAX, SEEK_CUR, SEEK_END, SEEK_SET, assert, free, sprintf, sscanf, strchr, strcmp, strcpy,
+    strlen, strncmp,
+} from "../rt/libc.js";
+import { init_string, stack_array, stack_var, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import { addr_of, array_of, ptr_to, ref_of, ref_to } from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { exercise } from "./attrib.js";
-import { disp } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { go } from "./decl.js";
-import { gt } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svo } from "./decl.js";
-import { u } from "./decl.js";
-import { Monnam } from "./do_name.js";
-import { bogon_codes } from "./do_name.js";
-import { bogon_is_pname } from "./do_name.js";
+import { disp, gf, gi, gm, go, gt, iflags, program_state, svo, u } from "./decl.js";
+import { Monnam, bogon_codes, bogon_is_pname } from "./do_name.js";
 import { is_fainted } from "./eat.js";
-import { more_experienced } from "./exper.js";
-import { newexplevel } from "./exper.js";
+import { more_experienced, newexplevel } from "./exper.js";
 import { money_cnt } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { xcrypt } from "./hacklib.js";
+import { eos, lowc, xcrypt } from "./hacklib.js";
 import { record_achievement } from "./insight.js";
 import { currency } from "./invent.js";
 import { mons } from "./monst.js";
 import { the_unique_pm } from "./objnam.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { nhassert_failed } from "./pline.js";
-import { pline } from "./pline.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { sfi_ulong } from "./sfbase.js";
-import { sfi_unsigned } from "./sfbase.js";
-import { sfo_ulong } from "./sfbase.js";
+import { There, You, impossible, nhassert_failed, pline } from "./pline.js";
+import { rn2, rnd } from "./rnd.js";
+import { sfi_ulong, sfi_unsigned, sfo_ulong } from "./sfbase.js";
 import { money2mon } from "./shk.js";
 const __FILE__ = "rumors.c";

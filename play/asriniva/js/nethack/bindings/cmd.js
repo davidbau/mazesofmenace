@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/cmd.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Typed live-memory/callback ABI for original CMD JS bodies.
@@ -19,6 +21,7 @@ export function createCmdEnvironment(services,layout,namespace) {
     env.staticData=(owner,name,initializer)=>{const key=owner+'.'+name,index=schema.backings.findIndex(row=>row.name===key),row=schema.backings[index];if(index<0)throw Error('Review CMD local static '+key);const at=ptr(services.global(schema.globals.length+index));if(!initialized.has(key)){fill(at,row.type,initializer());initialized.add(key);}return at;};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review CMD varargs site');return services['var'+site](...args);};
     env.callProc=(fn,prototype,...args)=>{const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error("Review CMD callback prototype "+prototype);return services["call"+i](fn,...args);};
+    if(services.nativeOwner){env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);env.nativeNamespace=createNativeAddressNamespace(env);}
     return env;
 }
 // Runtime scope only: no source CMD algorithm or data.
@@ -41,7 +44,7 @@ export function callCmd(services,layout,namespace,name,...args){
   const stack=services.stackSave();
   try{
    const typed=args.map((v,i)=>{const t=schema.sourceParameters[name][i].canonical;return t==='long'?env.i64(v):t==='unsigned long'?env.u64(v):env.ptr(v);});
-   const result=withCEnvironment(env,namespace[name],...typed);
+   const result=env.nativeNamespace?env.nativeNamespace[name](...typed):withCEnvironment(env,namespace[name],...typed);
    return schema.sourceReturns[name].includes('*')?BigInt(result??0):result;
   }finally{services.stackRestore(stack);}
  }finally{state.services=previous;}

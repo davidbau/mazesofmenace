@@ -7,9 +7,6 @@
 /* patchlevel.h if needed.  Changing the instance_flags structure does     */
 /* not require incrementing EDITLEVEL.                                     */
 
-
-
-
 /*
  * Persistent flags that are saved and restored with the game.
  *
@@ -72,32 +69,14 @@ export const AUTOUNLOCK_UNTRAP = 1; export const AUTOUNLOCK_APPLY_KEY = 2; expor
     end_top: int, end_around: int, /* describe desired score list */
     autounlock: unsigned, /* locked door/chest action */
 
-
-
-
     moonphase: unsigned,
     suppress_alert: ulong,
 
-
     paranoia_bits: unsigned, /* alternate confirmation prompting */
-
-
-
-
-
-
-
-
-
-
-
-
 
     versinfo: unsigned, /* flag mask for 'showvers' option */
     /* mask bits for 'versinfo'; numeric order does not match display order
        which is "name branch number" */
-
-
 
     pickup_burden: int, /* maximum burden before prompt */
     pile_limit: int, /* controls feedback when walking over objects */
@@ -106,12 +85,6 @@ export const AUTOUNLOCK_UNTRAP = 1; export const AUTOUNLOCK_APPLY_KEY = 2; expor
     vanq_sortmode: uchar, /* [uint_8] order of vanquished monsters: 0..7 */
     inv_order: array_of(char, MAXOCLASSES),
     pickup_types: array_of(char, MAXOCLASSES),
-
-
-
-
-
-
 
     end_disclose: array_of(char, NUM_DISCLOSURE_OPTIONS + 1), /* disclose various
                                                       info upon exit */
@@ -180,37 +153,20 @@ export const GPCOORDS_COMPASS = ord('c');
 export const GPCOORDS_COMFULL = ord('f');
 export const GPCOORDS_SCREEN = ord('s');
 
-
     export const GFILTER_NONE = 0;
     export const GFILTER_VIEW = GFILTER_NONE + 1;
     export const GFILTER_AREA = GFILTER_VIEW + 1;
 
     export const NUM_GFILTER = GFILTER_AREA + 1;
 
-
-
-
-
-
-
-
-
-
-
 export const struct_debug_flags = struct("struct_debug_flags", {
     test: boolean,
 
     ttystatus: boolean,
-
-
-
-
 });
-
 
     export const wcolor_menu = 0; export const wcolor_message = wcolor_menu + 1; export const wcolor_status = wcolor_message + 1; export const wcolor_text = wcolor_status + 1;
     export const WC_COUNT = wcolor_text + 1;
-
 
 export const struct_windowcolors_struct = struct("struct_windowcolors_struct", {
     fg: ptr_to(char),
@@ -226,21 +182,9 @@ export const struct_accessibility_data = struct("struct_accessibility_data", {
     glyph_updates: boolean, /* msg when map glyphs change */
 });
 
-/* Use notice_mon_off() / notice_mon_on() to temporarily disable
-   noticing the monsters in the vision code - perhaps the game
-   needs to output some other messages in between.
-   Call notice_all_mons() afterwards to catch up. */
-
-
-
-
-
-
-
     export const fuzzer_off = 0;
     export const fuzzer_impossible_panic = fuzzer_off + 1;
     export const fuzzer_impossible_continue = fuzzer_impossible_panic + 1;
-
 
 /*
  * Stuff that really isn't option or platform related and does not
@@ -288,11 +232,6 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
     raw_printed: int, /* count of messages issued before window_inited */
     suppress_price: int, /* controls doname() for unpaid objects */
     terrainmode: unsigned, /* for getpos()'s autodescribe during #terrain */
-
-
-
-
-
 
     bgcolors: boolean, /* display background colors on a map position */
     getloc_moveskip: boolean,
@@ -382,14 +321,7 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
 
     /* use IBM or ST BIOS calls when appropriate */
 
-
     /* whether can use rawio (IOCTL call) */
-
-
-
-
-
-
 
     /* has a vga adapter */
     /* use the vga adapter */
@@ -397,13 +329,10 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
     /* use the VESA-capable VGA adapter */
     /* currently in graphics mode */
 
-
     /* mail is initialized */
     /* mail is awaiting display */
 
-
     /* output console codes for tile support in TTY */
-
 
     /* output console codes for sound support in TTY*/
 
@@ -477,10 +406,6 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
     wc2_windowborders: int, /* display borders on NetHack windows */
     wc2_petattr: int, /* text attributes for pet */
 
-
-
-
-
     /* copies of values in struct u, used during detection when the
        originals are temporarily cleared; kept here rather than
        locally so that they can be restored during a hangup save */
@@ -501,23 +426,6 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
 /*
  * Old, deprecated names
  */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* last_msg values
  * Usage:
@@ -542,7 +450,6 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
     export const PLNMSG_MON_TAKES_OFF_ITEM = PLNMSG_HIDE_UNDER + 1; /* thief (nymph, monkey) taking worn item */
     export const PLNMSG_enum = PLNMSG_MON_TAKES_OFF_ITEM + 1; /* 'none of the above' */
 
-
 /* runmode options */
 
     export const RUN_TPORT = 0; /* don't update display until movement stops */
@@ -550,47 +457,11 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
     export const RUN_STEP = RUN_LEAP + 1; /* update display every single step */
     export const RUN_CRAWL = RUN_STEP + 1; /* walk w/ extra delay after each update */
 
-
-/* paranoid confirmation prompting */
-/* any yes confirmations also require explicit no (or ESC) to reject */
-
-/* quit: yes vs y for "Really quit?" and "Enter explore mode?" */
-
-/* die: yes vs y for "Die?" (dying in explore mode or wizard mode) */
-
-/* hit: yes vs y for "Save bones?" in wizard mode */
-
-/* hit: yes vs y for "Really attack <the peaceful monster>?" */
-
-/* pray: ask "Really pray?" (accepts y answer, doesn't require yes),
-   taking over for the old prayconfirm boolean option */
-
-/* remove: remove ('R') and takeoff ('T') commands prompt for an inventory
-   item even when only one accessory or piece of armor is currently worn */
-
-/* breakwand: Applying a wand */
-
-/* werechange: accepting randomly timed werecreature change to transform
-   from human to creature or vice versa while having polymorph control */
-
-/* continue eating: prompt given _after_first_bite_ when eating something
-   while satiated */
-
-/* Prevent going into lava or water without explicitly forcing it */
-
-/* Prevent going onto/into known trap unless it is harmless */
-
-/* Require confirmation for choosing 'A' in class menu for menustyle:Full */
-
-
 /* command parsing, mainly dealing with number_pad handling;
    not saved and restored */
 
-
 /* forward declaration sufficient to declare pointers */
 /* from func_tab.h */
-
-
 
     export const GLOC_MONS = 0;
     export const GLOC_OBJS = GLOC_MONS + 1;
@@ -600,19 +471,8 @@ export const TER_MAP = 0x01; export const TER_TRP = 0x02; export const TER_OBJ =
     export const GLOC_VALID = GLOC_INTERESTING + 1;
 
     export const NUM_GLOCS = GLOC_VALID + 1;
+
 import { MAXOCLASSES } from "./defsym.h.js";
-import { boolean } from "./global.h.js";
-import { xint8 } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import { boolean, xint8 } from "./global.h.js";
+import { char, int, long, ord, schar, uchar, ulong, unsigned } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct, void_t } from "../rt/struct.js";

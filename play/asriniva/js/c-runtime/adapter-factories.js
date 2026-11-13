@@ -17,7 +17,11 @@ export function readPointerNumber(view,at){return Number(view().getBigUint64(at,
 
 export function createScalarEnvironment(services,layout,ptr){return Object.assign(Object.create(services),layout,{ptr,sizes:Object.fromEntries(Object.entries(layout).filter(([k])=>k.startsWith('size:')).map(([k,v])=>[k.slice(5),v]))});}
 
-export function installDescriptorGlobals(globals,env,services,read,write,addr){globals.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>read(g.d,addr(services.global(i))),set:v=>write(g.d,addr(services.global(i)),v)}));}
+export function installDescriptorGlobals(globals,env,services,read,write,addr,stableInline=false){globals.forEach((g,i)=>{
+ let ready=false,provider,projection;
+ const get=stableInline&&(g.d.s||g.d.a)?()=>{const current=services.global;if(!ready||current!==provider){const value=read(g.d,addr(current.call(services,i)));projection=value;provider=current;ready=true;}return projection;}:()=>read(g.d,addr(services.global(i)));
+ Object.defineProperty(env,g.name,{get,set:v=>write(g.d,addr(services.global(i)),v)});
+});}
 
 export function installAddressGlobals(globals,env,services,ptr){globals.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>ptr(services.global(i))}));}
 
@@ -79,12 +83,14 @@ export function createTypedRecordFactory({services,L,records,address,size,read,w
 }
 
 
-export function createDescriptorMemory({services,layout,addr,raw,memory,cache,view,pointerArrays=false,rows=false,coerceRecordSize=false,voidPointer='number',directIntegerReads=false,decodeCallback,rowDescriptor,arrays={}}){
+export function createDescriptorMemory({services,layout,addr,raw,memory,cache,view,pointerArrays=false,rows=false,coerceRecordSize=false,voidPointer='number',directIntegerReads=false,decodeCallback,rowDescriptor,beforeRead,beforeWrite,pointerRead,pointerWrite,arrays={}}){
  if(voidPointer!=='number'&&voidPointer!=='bigint'&&typeof voidPointer!=='function')throw new TypeError('Unknown C void-pointer representation');
  const width=d=>rows&&d.row?8:d.t?Number(d.t.slice(1))/8:d.p!==undefined||(pointerArrays&&d.q)||d.f?8:d.s?coerceRecordSize?Number(layout[d.s+'Size']):layout[d.s+'Size']:d.a.reduce((a,b)=>a*b,1)*width(d.e);
  const decode=(d,v)=>{if(pointerArrays&&d.q)return v?array({a:[0],e:d.q},addr(v)):0;if(d.p!==undefined)return d.p?view(d.p,v):typeof voidPointer==='function'?voidPointer(v):voidPointer==='bigint'?BigInt(v):Number(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return decodeCallback?decodeCallback(v):v;const bits=+d.t.slice(1);if((bits===8||bits===16||bits===32)&&typeof v==='number'&&Number.isInteger(v)){if(bits===32)return d.t[0]==='i'?v|0:v>>>0;return d.t[0]==='i'?v<<(32-bits)>>(32-bits):(v>>>0)&(2**bits-1);}const r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
- const read=(d,at)=>{if(rows&&d.row)return array(rowDescriptor?rowDescriptor(d.row):{a:[0],e:{t:d.row}},Number(memory().getBigUint64(at,true)));if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||(pointerArrays&&d.q)||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);if(directIntegerReads)return bits===64?decode(d,dv.getBigUint64(at,true)):dv[(d.t[0]==='i'?'getInt':'getUint')+bits](at,true);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
- const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||(pointerArrays&&d.q)||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
+ const readRaw=(d,at)=>{if(rows&&d.row)return array(rowDescriptor?rowDescriptor(d.row):{a:[0],e:{t:d.row}},Number(pointerRead?pointerRead(at):memory().getBigUint64(at,true)));if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||(pointerArrays&&d.q))return decode(d,pointerRead?pointerRead(at):dv.getBigUint64(at,true));if(d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);if(directIntegerReads)return bits===64?decode(d,dv.getBigUint64(at,true)):dv[(d.t[0]==='i'?'getInt':'getUint')+bits](at,true);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
+ const writeRaw=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||(pointerArrays&&d.q)){if(pointerWrite)pointerWrite(at,v);else dv.setBigUint64(at,raw(v),true);}else if(d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
+ const read=beforeRead?((d,at)=>{beforeRead(d,at);return readRaw(d,at);}):readRaw;
+ const write=beforeWrite?((d,at,v)=>{beforeWrite(d,at,v);return writeRaw(d,at,v);}):writeRaw;
  const childOf=d=>arrays.childOf?arrays.childOf(d):d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},keyOf=d=>arrays.keyOf?arrays.keyOf(d):JSON.stringify(d);
  function array(d,at){
   if(arrays.profile!==undefined&&arrays.profile!=='identity'&&arrays.profile!=='structural')throw new TypeError('Unknown C descriptor-array profile');

@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/pray.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Typed live-memory/callback ABI for original PRAY JS bodies.
@@ -16,5 +18,7 @@ export function createPrayEnvironment(services,layout,namespace) {
     env.functionPointer=name=>{const fn=services.functionPointers[name];if(!fn)throw Error('Review PRAY function pointer '+name);return ptr(fn());};
     env.callProc=(fn,prototype,...args)=>{if(prototype==='int (int)')return services.callRng(fn,...args);if(prototype==='void (winid, boolean)')return services.callWindow(fn,...args);throw Error('Review PRAY callback prototype '+prototype);};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review PRAY varargs site');return services['var'+site](...args);};
-    return env;
+    env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ env.nativeNamespace=createNativeAddressNamespace(env);
+ return env;
 }

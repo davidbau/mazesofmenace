@@ -3,67 +3,12 @@
 /*-Copyright (c) Robert Patrick Rankin, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 export const BIGBUFSZ = (5 * BUFSZ);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef DUMPLOG_CORE: not in this build */
 
 /* keeps windowprocs usage out of pline() */
-function /* void */
-putmesg(line)
-{
+function putmesg(line) { /* void */
     let attr = ATR_NONE;
 
     if (iflags.debug_prevent_pline)
@@ -80,29 +25,19 @@ putmesg(line)
 }
 
 /* set the direction where next message happens */
-export function /* void */
-set_msg_dir(dir)
-{
+export function set_msg_dir(dir) { /* void */
     dirtocoord(a11y.msg_loc, dir);
     a11y.msg_loc.x += u.ux;
     a11y.msg_loc.y += u.uy;
 }
 
 /* set the coordinate where next message happens */
-export function /* void */
-set_msg_xy(x, y)
-{
+export function set_msg_xy(x, y) { /* void */
     a11y.msg_loc.x = x;
     a11y.msg_loc.y = y;
 }
 
-
-
-
-
-export function /* void */
-pline(line, ...args)
-{
+export function pline(line, ...args) { /* void */
     let the_args;
 
     the_args = va_start(args);
@@ -110,9 +45,7 @@ pline(line, ...args)
     va_end(the_args);
 }
 
-export function /* void */
-pline_dir(dir, line, ...args)
-{
+export function pline_dir(dir, line, ...args) { /* void */
     let the_args;
 
     set_msg_dir(dir);
@@ -122,9 +55,7 @@ pline_dir(dir, line, ...args)
     va_end(the_args);
 }
 
-export function /* void */
-pline_xy(x, y, line, ...args)
-{
+export function pline_xy(x, y, line, ...args) { /* void */
     let the_args;
 
     set_msg_xy(x, y);
@@ -134,9 +65,7 @@ pline_xy(x, y, line, ...args)
     va_end(the_args);
 }
 
-export function /* void */
-pline_mon(mtmp, line, ...args)
-{
+export function pline_mon(mtmp, line, ...args) { /* void */
     let the_args;
 
     if (mtmp == gy.youmonst)
@@ -149,9 +78,8 @@ pline_mon(mtmp, line, ...args)
     va_end(the_args);
 }
 
-function /* void */
-vpline(line, the_args)
-{ const $frame = stack_frame(); try {
+function vpline(line, the_args) { /* void */
+    const $frame = stack_frame(); try {
     var in_pline = static_var("vpline.in_pline", int, 0);
     var pbuf = stack_array(char, BIGBUFSZ); /* will get chopped down to BUFSZ-1 if longer */
     var ln;
@@ -180,10 +108,10 @@ vpline(line, the_args)
         dirstr = coord_desc(a11y_mesgxy.x, a11y_mesgxy.y, dirstrbuf,
                             ((iflags.getpos_coords == GPCOORDS_NONE)
                              ? GPCOORDS_COMFULL : iflags.getpos_coords));
-        tmp = addr_of(alloc(unsigned(unsigned(unsigned(strlen(line) + sizeof_string(": ")) + strlen(dirstr)))));
-        void strcpy(tmp, dirstr);
-        void strcat(tmp, _(": "));
-        void strcat(tmp, line);
+        tmp = addr_of(alloc(unsigned(unsigned(strlen(line) + sizeof_string(": ")) + strlen(dirstr))));
+        strcpy(tmp, dirstr);
+        strcat(tmp, _(": "));
+        strcat(tmp, line);
         vpline(tmp, the_args);
         free(tmp);
         return;
@@ -214,7 +142,7 @@ vpline(line, the_args)
            3 chars: "___ extremely long text" -> "___ extremely l...ext"
            (this may be suboptimal if overflow is less than 3) */
         if (line != pbuf) /* no '%' was present or format was just "%s" */
-            void strncpy(pbuf, line, BUFSZ - 1); /* caveat: unterminated */
+            strncpy(pbuf, line, BUFSZ - 1); /* caveat: unterminated */
         chars[pbuf + (BUFSZ - 1 - 6)] = chars[pbuf + (BUFSZ - 1 - 5)] = chars[pbuf + (BUFSZ - 1 - 4)] = ord('.');
         /* avoid strncpy; buffers could overlap if excess is small */
         chars[pbuf + (BUFSZ - 1 - 3)] = chars[line + (ln - 3)];
@@ -224,14 +152,6 @@ vpline(line, the_args)
         line = pbuf;
     }
     msgtyp = MSGTYP_NORMAL;
-
-
-
-
-
-
-
-
 
     /* use raw_print() if we're called too early (or perhaps too late
        during shutdown) or if we're being called recursively (probably
@@ -246,9 +166,6 @@ vpline(line, the_args)
     no_repeat = (gp.pline_flags & PLINE_NOREPEAT) ? TRUE : FALSE;
     if ((gp.pline_flags & OVERRIDE_MSGTYPE) == 0) {
         msgtyp = msgtype_type(line, no_repeat);
-
-
-
 
         if ((gp.pline_flags & URGENT_MESSAGE) == 0
             && (msgtyp == MSGTYP_NOSHOW
@@ -279,25 +196,19 @@ vpline(line, the_args)
 
     /* this gets cleared after every pline message */
     iflags.last_msg = PLNMSG_UNKNOWN;
-    void strncpy(gp.prevmsg, line, BUFSZ), chars[gp.prevmsg + (BUFSZ - 1)] = ord('\0');
+    strncpy(gp.prevmsg, line, BUFSZ), chars[gp.prevmsg + (BUFSZ - 1)] = ord('\0');
     if (msgtyp == MSGTYP_STOP)
         display_nhwindow()(WIN_MESSAGE, TRUE); /* --more-- */
  }
 
-
-
-
     --in_pline[0];
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* pline() variant which can override MSGTYPE handling or suppress
    message history (tty interface uses pline() to issue prompts and
    they shouldn't be blockable via MSGTYPE=hide) */
-export function /* void */
-custompline(pflags, line, ...args)
-{
+export function custompline(pflags, line, ...args) { /* void */
     let the_args;
 
     the_args = va_start(args);
@@ -311,9 +222,7 @@ custompline(pflags, line, ...args)
    until next input request, tell the interface that it should override that
    and re-enable them; equivalent to custompline(URGENT_MESSAGE, line, ...)
    but slightly simpler to use */
-export function /* void */
-urgent_pline(line, ...args)
-{
+export function urgent_pline(line, ...args) { /* void */
     let the_args;
 
     the_args = va_start(args);
@@ -323,9 +232,7 @@ urgent_pline(line, ...args)
     va_end(the_args);
 }
 
-export function /* void */
-Norep(line, ...args)
-{
+export function Norep(line, ...args) { /* void */
     let the_args;
 
     the_args = va_start(args);
@@ -335,9 +242,7 @@ Norep(line, ...args)
     va_end(the_args);
 }
 
-function /* char * */
-You_buf(siz)
-{
+function You_buf(siz) { /* char * */
     if (siz > gy.you_buf_siz) {
         if (gy.you_buf)
             free(gy.you_buf);
@@ -347,9 +252,7 @@ You_buf(siz)
     return gy.you_buf;
 }
 
-export function /* void */
-free_youbuf()
-{
+export function free_youbuf() { /* void */
     if (gy.you_buf)
         free(gy.you_buf), gy.you_buf = 0;
     gy.you_buf_siz = 0;
@@ -357,84 +260,65 @@ free_youbuf()
 
 /* `prefix' must be a string literal, not a pointer */
 
-
-
-
-
-
-export function /* void */
-You(line, ...args)
-{
+export function You(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
-    vpline(strcat(((void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You "))))))), _("You ")), tmp)), line), the_args);
+    vpline(strcat((strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You "))))))), _("You ")), tmp), line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-Your(line, ...args)
-{
+export function Your(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
-    vpline(strcat(((void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("Your "))))))), _("Your ")), tmp)), line), the_args);
+    vpline(strcat((strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("Your "))))))), _("Your ")), tmp), line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-You_feel(line, ...args)
-{
+export function You_feel(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
     if (Unaware())
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You dream that you feel "))))))), _("You dream that you feel "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You dream that you feel "))))))), _("You dream that you feel "));
     else
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You feel "))))))), _("You feel "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You feel "))))))), _("You feel "));
     vpline(strcat(tmp, line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-You_cant(line, ...args)
-{
+export function You_cant(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
-    vpline(strcat(((void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You can't "))))))), _("You can't ")), tmp)), line), the_args);
+    vpline(strcat((strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You can't "))))))), _("You can't ")), tmp), line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-pline_The(line, ...args)
-{
+export function pline_The(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
-    vpline(strcat(((void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("The "))))))), _("The ")), tmp)), line), the_args);
+    vpline(strcat((strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("The "))))))), _("The ")), tmp), line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-There(line, ...args)
-{
+export function There(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
-    vpline(strcat(((void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("There "))))))), _("There ")), tmp)), line), the_args);
+    vpline(strcat((strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("There "))))))), _("There ")), tmp), line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-You_hear(line, ...args)
-{
+export function You_hear(line, ...args) { /* void */
     let the_args;
     let tmp;
 
@@ -442,28 +326,26 @@ You_hear(line, ...args)
         return;
     the_args = va_start(args);
     if (Underwater())
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You barely hear "))))))), _("You barely hear "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You barely hear "))))))), _("You barely hear "));
     else if (Unaware())
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You dream that you hear "))))))), _("You dream that you hear "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You dream that you hear "))))))), _("You dream that you hear "));
     else
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You hear "))))))), _("You hear "));  /* Deaf-aware */
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You hear "))))))), _("You hear "));  /* Deaf-aware */
     vpline(strcat(tmp, line), the_args);
     va_end(the_args);
 }
 
-export function /* void */
-You_see(line, ...args)
-{
+export function You_see(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
     if (Unaware())
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You dream that you see "))))))), _("You dream that you see "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You dream that you see "))))))), _("You dream that you see "));
     else if (Blind()) /* caller should have caught this... */
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You sense "))))))), _("You sense "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You sense "))))))), _("You sense "));
     else
-        void strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You see "))))))), _("You see "));
+        strcpy((tmp = You_buf(int((unsigned((strlen(line) + sizeof_string("You see "))))))), _("You see "));
     vpline(strcat(tmp, line), the_args);
     va_end(the_args);
 }
@@ -472,28 +354,22 @@ You_see(line, ...args)
  * The caller is responsible for checking deafness.
  * Gods can speak directly to you in spite of deafness.
  */
-export function /* void */
-verbalize(line, ...args)
-{
+export function verbalize(line, ...args) { /* void */
     let the_args;
     let tmp;
 
     the_args = va_start(args);
     gp.pline_flags |= PLINE_VERBALIZE;
     tmp = You_buf(int(unsigned(unsigned(int(strlen(line))) + sizeof_string("\"\""))));
-    void strcpy(tmp, _("\""));
-    void strcat(tmp, line);
-    void strcat(tmp, _("\""));
+    strcpy(tmp, _("\""));
+    strcat(tmp, line);
+    strcat(tmp, _("\""));
     vpline(tmp, the_args);
     gp.pline_flags &= unsigned(~PLINE_VERBALIZE);
     va_end(the_args);
 }
 
-
-
-export function /* void */
-gamelog_add(glflags, gltime, str)
-{
+export function gamelog_add(glflags, gltime, str) { /* void */
     let tmp;
     let lst = gg.gamelog;
 
@@ -510,44 +386,24 @@ gamelog_add(glflags, gltime, str)
         lst.next = tmp;
 }
 
-export function /* void */
-livelog_printf(ll_type, line, ...args)
-{ const $frame = stack_frame(); try {
+export function livelog_printf(ll_type, line, ...args) { /* void */
+    const $frame = stack_frame(); try {
     let gamelogbuf = stack_array(char, BUFSZ * 2);
     let the_args;
 
     the_args = va_start(args);
-    void vsnprintf(gamelogbuf, sizeof(array_of(char, BUFSZ * 2)), line, the_args);
+    vsnprintf(gamelogbuf, sizeof(array_of(char, BUFSZ * 2)), line, the_args);
     va_end(the_args);
 
     gamelog_add(ll_type, svm.moves, gamelogbuf);
     strNsubst(gamelogbuf, _("\t"), _("_"), 0);
     livelog_add(ll_type, gamelogbuf);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
+/* #else (#ifdef CHRONICLE): not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-raw_printf(line, ...args)
-{
+export function raw_printf(line, ...args) { /* void */
     let the_args;
 
     the_args = va_start(args);
@@ -557,15 +413,12 @@ raw_printf(line, ...args)
         ge.early_raw_messages++;
 }
 
-
-
-function /* void */
-vraw_printf(line, the_args)
-{ const $frame = stack_frame(); try {
+function vraw_printf(line, the_args) { /* void */
+    const $frame = stack_frame(); try {
     let pbuf = stack_array(char, BIGBUFSZ); /* will be chopped down to BUFSZ-1 if longer */
 
     if (strchr(line, ord('%'))) {
-        void vsnprintf(pbuf, sizeof(array_of(char, BIGBUFSZ)), line, the_args);
+        vsnprintf(pbuf, sizeof(array_of(char, BIGBUFSZ)), line, the_args);
         line = pbuf;
     }
     if (int(strlen(line)) > BUFSZ - 1) {
@@ -578,11 +431,11 @@ vraw_printf(line, the_args)
     execplinehandler(line);
     if (!program_state.beyond_savefile_load)
         ge.early_raw_messages++;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-impossible(s, ...args)
-{ const $frame = stack_frame(); try {
+export function impossible(s, ...args) { /* void */
+    const $frame = stack_frame(); try {
     let the_args;
     let pbuf = stack_array(char, BIGBUFSZ); /* will be chopped down to BUFSZ-1 if longer */
     let pbuf2 = stack_array(char, BUFSZ);
@@ -592,7 +445,7 @@ impossible(s, ...args)
         panic(_("impossible called impossible"));
 
     program_state.in_impossible = 1;
-    void vsnprintf(pbuf, sizeof(array_of(char, BIGBUFSZ)), s, the_args);
+    vsnprintf(pbuf, sizeof(array_of(char, BIGBUFSZ)), s, the_args);
     va_end(the_args);
     chars[pbuf + (BUFSZ - 1)] = ord('\0'); /* sanity */
     paniclog(_("impossible"), pbuf);
@@ -609,38 +462,25 @@ impossible(s, ...args)
         return;
     }
 
-    void strcpy(pbuf2, _("Program in disorder!"));
+    strcpy(pbuf2, _("Program in disorder!"));
     if (program_state.something_worth_saving)
-        void strcat(pbuf2, _("  (Saving and reloading may fix this problem.)"));
+        strcat(pbuf2, _("  (Saving and reloading may fix this problem.)"));
     pline(_("%s"), pbuf2);
     pline(_("Please report these messages to %s."), _(DEVTEAM_EMAIL));
     if (sysopt.support) {
         pline(_("Alternatively, contact local support: %s"), sysopt.support);
     }
 
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef CRASHREPORT: not in this build */
 
     program_state.in_impossible = 0;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 const use_pline_handler = static_var("use_pline_handler", schar, TRUE);
 
-function /* void */
-execplinehandler(line)
-{ const $frame = stack_frame(); try {
-
+function execplinehandler(line) { /* void */
+    const $frame = stack_frame(); try {
     let f;
 
     let args = stack_array(ptr_to(char), 3);
@@ -648,17 +488,16 @@ execplinehandler(line)
     if (!use_pline_handler[0] || !sysopt.msghandler)
         return;
 
-
     f = fork();
     if (f == 0) { /* child */
         args[0] = sysopt.msghandler;
         args[1] = line;
         args[2] = 0;
-        void setgid(getgid());
-        void setuid(getuid());
-        void execv(args[0], args);
+        setgid(getgid());
+        setuid(getuid());
+        execv(args[0], args);
         perror(0);
-        void fprintf((stderr), _("Exec to message handler %s failed.\n"), sysopt.msghandler);
+        fprintf(stderr, _("Exec to message handler %s failed.\n"), sysopt.msghandler);
         nh_terminate(EXIT_FAILURE);
     } else if (f > 0) {
         let status = stack_var(int);
@@ -669,26 +508,12 @@ execplinehandler(line)
         use_pline_handler[0] = FALSE;
         pline(_("%s"), _("Fork to message handler failed."));
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-} finally { stack_pop($frame); } }
+    /* #elif defined(WIN32) (#if defined(UNIX) && (defined(POSIX_TYPES) || defined(__GNUC__))): not in this build */
+    } finally { stack_pop($frame); }
+}
 
 /* nhassert_failed is called when an nhassert's condition is false */
-export function /* void */
-nhassert_failed(expression, filepath, line)
-{
+export function nhassert_failed(expression, filepath, line) { /* void */
     let filename, p;
 
     /* Attempt to get filename from path.
@@ -699,120 +524,44 @@ nhassert_failed(expression, filepath, line)
         filename = p + 1;
     if ((p = strrchr(filename, ord('\\'))) != 0)
         filename = p + 1;
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef VMS: not in this build */
 
     impossible(_("nhassert(%s) failed in file '%s' at line %d"),
                expression, filename, line);
 }
 
 /*pline.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
-import { GPCOORDS_COMFULL } from "./flag.h.js";
-import { GPCOORDS_NONE } from "./flag.h.js";
-import { PLNMSG_UNKNOWN } from "./flag.h.js";
-import { fuzzer_impossible_panic } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { DEVTEAM_EMAIL } from "./hack.h.js";
-import { MSGTYP_NOREP } from "./hack.h.js";
-import { MSGTYP_NORMAL } from "./hack.h.js";
-import { MSGTYP_NOSHOW } from "./hack.h.js";
-import { MSGTYP_STOP } from "./hack.h.js";
-import { NO_CURS_ON_U } from "./hack.h.js";
-import { OVERRIDE_MSGTYPE } from "./hack.h.js";
-import { PLINE_NOREPEAT } from "./hack.h.js";
-import { PLINE_VERBALIZE } from "./hack.h.js";
-import { SUPPRESS_HISTORY } from "./hack.h.js";
-import { URGENT_MESSAGE } from "./hack.h.js";
-import { struct_gamelog_line } from "./hack.h.js";
-import { WC2_SUPPRESS_HIST } from "./winprocs.h.js";
-import { WC2_URGENT_MESG } from "./winprocs.h.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { raw_print } from "./winprocs.h.macros.js";
-import { ATR_NOHISTORY } from "./wintype.h.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { ATR_URGENT } from "./wintype.h.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { EXIT_FAILURE } from "../rt/libc.js";
-import { execv } from "../rt/libc.js";
-import { fork } from "../rt/libc.js";
-import { fprintf } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getgid } from "../rt/libc.js";
-import { getuid } from "../rt/libc.js";
-import { perror } from "../rt/libc.js";
-import { setgid } from "../rt/libc.js";
-import { setuid } from "../rt/libc.js";
-import { stderr } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { vsnprintf } from "../rt/libc.js";
-import { waitpid } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    GPCOORDS_COMFULL, GPCOORDS_NONE, PLNMSG_UNKNOWN, fuzzer_impossible_panic,
+} from "./flag.h.js";
+import { BUFSZ, FALSE, QBUFSZ, TRUE } from "./global.h.js";
+import {
+    DEVTEAM_EMAIL, MSGTYP_NOREP, MSGTYP_NORMAL, MSGTYP_NOSHOW, MSGTYP_STOP, NO_CURS_ON_U,
+    OVERRIDE_MSGTYPE, PLINE_NOREPEAT, PLINE_VERBALIZE, SUPPRESS_HISTORY, URGENT_MESSAGE,
+    struct_gamelog_line,
+} from "./hack.h.js";
+import { WC2_SUPPRESS_HIST, WC2_URGENT_MESG } from "./winprocs.h.js";
+import { display_nhwindow, putstr, raw_print } from "./winprocs.h.macros.js";
+import { ATR_NOHISTORY, ATR_NONE, ATR_URGENT } from "./wintype.h.js";
+import { Blind, Deaf, Unaware, Underwater } from "./youprop.h.macros.js";
+import { char, int, ord, schar, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    EXIT_FAILURE, execv, fork, fprintf, free, getgid, getuid, perror, setgid, setuid, stderr,
+    strcat, strchr, strcmp, strcpy, strlen, strncpy, strrchr, vsnprintf, waitpid,
+} from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { va_arg } from "../rt/varargs.js";
-import { va_end } from "../rt/varargs.js";
-import { va_start } from "../rt/varargs.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { dirtocoord } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { a11y } from "./decl.js";
-import { flags } from "./decl.js";
-import { ge } from "./decl.js";
-import { gg } from "./decl.js";
-import { gp } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
+import { addr_of, array_of, ptr_to, struct_assign, view_of } from "../rt/struct.js";
+import { va_arg, va_end, va_start } from "../rt/varargs.js";
+import { alloc, dupstr } from "./alloc.js";
+import { dirtocoord, isok } from "./cmd.js";
+import { a11y, flags, ge, gg, gp, gv, gy, iflags, program_state, svm, u } from "./decl.js";
 import { flush_screen } from "./display.js";
-import { nh_terminate } from "./end.js";
-import { panic } from "./end.js";
-import { livelog_add } from "./files.js";
-import { paniclog } from "./files.js";
+import { nh_terminate, panic } from "./end.js";
+import { livelog_add, paniclog } from "./files.js";
 import { coord_desc } from "./getpos.js";
 import { strNsubst } from "./hacklib.js";
 import { msgtype_type } from "./options.js";

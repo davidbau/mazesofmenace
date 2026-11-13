@@ -2,24 +2,13 @@
 /* Copyright (c) 1996 by Jean-Christophe Collet                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* generic callback function */
-
-
 
 /*
  * player_flags
  */
 export const REG_HERO_INSIDE = 0x01;
 export const REG_NOT_HEROS = 0x02;
-
-
-
-
-
-
 
 /*
  * Note: if you change the size/type of any of the fields below,
@@ -53,7 +42,6 @@ export const MONST_INC = 5; export const NhRegion = struct("NhRegion", {
     max_monst: short, /* Maximum number of monsters that can be
                             * listed without having to grow the array */
 
-
     /* Should probably do the same thing about objects */
 
     visible: boolean, /* Is the region visible? */
@@ -61,11 +49,7 @@ export const MONST_INC = 5; export const NhRegion = struct("NhRegion", {
     arg: "struct_any", /* Optional user argument (Ex: strength of
                             * force field, damage of a fire zone, ...*/
 });
+
 import { boolean } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, int, long, short, unsigned } from "../rt/ctypes.js";
+import { ptr_to, struct } from "../rt/struct.js";

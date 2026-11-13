@@ -1,10 +1,11 @@
 // host/game.js - one game, with the interface the judge and the browser use
 // (js/jsmain.js exports it as NethackGame):
 //
-//   const game = new ShipGame({ seed, datetime, nethackrc, moves, storage });
+//   const game = new ShipGame({ seed, datetime, nethackrc, moves, storage, rngLog });
 //   await game.start();              // runs the whole segment (or, interactive, up to the first key)
 //   game.getScreens(), getCursors(), getRngLog(), getAnimationFramesByStep()
-//   game.pushKey(code)               // interactive: one more key
+//   game.pushKey(code, queued)       // interactive: one more key (and the keys typed after it)
+//   game.shownScreen()               // interactive: what the player sees now
 //
 // One machine (host/boot.js) per process; every game starts from its
 // pristine state, so segments and successive browser games are independent.
@@ -46,6 +47,8 @@ export function shipMachine() {
 }
 
 const S_ARGV = ["nethack", "-u"];
+// type-ahead: boundaries are snapshotted only over the last keys of a run (see _atBoundary)
+const TYPE_AHEAD_SNAPSHOT_KEYS = 16;
 
 export class ShipGame {
   constructor(opts = {}) {
@@ -54,6 +57,7 @@ export class ShipGame {
     this._nethackrc = opts.nethackrc || "";
     this._storage = storageForInput(opts);
     this._interactive = !!opts.interactive;
+    this._keepRngLog = !!opts.rngLog;
     this._log = new CaptureLog(opts.moves || "");
     this._rngLog = [];
     this._stderr = [];
@@ -65,6 +69,14 @@ export class ShipGame {
     this._snapshot = null;
     this._vfs = null;
     this._finished = false;
+    // interactive: the snapshot was taken at a command boundary (not before main()), and it
+    // was just restored: the game is about to reach that boundary again
+    this._snapshotAtBoundary = false;
+    this._resuming = false;
+    // type-ahead (see pushKey): keys already run whose screens have not been shown yet
+    this._ahead = [];
+    this._shown = null;
+    this._watch = null;
   }
 
   async start() {
@@ -80,9 +92,12 @@ export class ShipGame {
     const clib = m.clib;
     const fileMode = 0o666 & ~vfs.umask; // as fopen(path, "wb") creates them
     m.current = {
-      key: (i) => log.key(i),
+      key: (i) => {
+        if (this._watch !== null && i >= this._watch.next) this._noteKeyRequest(i);
+        return log.key(i);
+      },
       capture: (anim, seq, animId, cx, cy, screen) => log.capture(anim, seq, animId, cx, cy, screen),
-      boundary: this._interactive ? () => this._takeSnapshot() : () => {},
+      boundary: this._interactive ? () => this._atBoundary() : () => {},
       installData: () => {
         for (const [path, data] of e.dataFiles()) vfs.writeFile(path, data, fileMode);
       },
@@ -113,6 +128,9 @@ export class ShipGame {
     // A player sees the whole screen: no reproduction of the reference
     // recorder's 6,144-byte capture buffer (win/tty/termcap.c).
     if (this._interactive) clib.call("setenv", "NHJS_UNBOUNDED_CAPTURE", "1", 1);
+    // Nor does a player need the RNG log (NETHACK_RNGLOG, one line per random number): a game
+    // shown on a display does not write it unless asked to (opts.rngLog).
+    if (this._pendingDisplay && !this._keepRngLog) clib.call("unsetenv", "NETHACK_RNGLOG");
     restorePersistentVfs(vfs, this._storage);
     for (const path of ["/sysconf", RNG_LOG_PATH]) this._persistSkip.add(path);
     for (const [path, node] of vfs.walk("/")) if (path.endsWith("/.nethackrc") && isFile(node.mode)) this._persistSkip.add(path);
@@ -138,12 +156,12 @@ export class ShipGame {
       this._takeSnapshot();
     }
     this._run();
-    if (!this._interactive) this._finishSegment();
+    if (!this._interactive || this._ended) this._finishSegment();
     const display = this._pendingDisplay;
     if (display) {
       display._nhjsInteractive = { game: this };
-      const screens = this.getScreens();
-      if (screens.length) renderCapturedScreen(display, screens[screens.length - 1], this.getCursors()[screens.length - 1]);
+      const shown = this.shownScreen();
+      if (shown) renderCapturedScreen(display, shown.screen, shown.cursor);
     }
   }
 
@@ -158,7 +176,21 @@ export class ShipGame {
     return [words.length, value];
   }
 
-  _takeSnapshot() {
+  _atBoundary() {
+    // a replay from the snapshot first reaches the very boundary it was taken at: same state
+    if (this._resuming) {
+      this._resuming = false;
+      return;
+    }
+    // type-ahead: a boundary with many typed keys still to go is passed by, a later one is kept
+    // (the snapshot only has to be at some boundary of the keys run: replay works from any)
+    const w = this._watch;
+    if (w !== null && w.ends.length - w.views.length > TYPE_AHEAD_SNAPSHOT_KEYS) return;
+    this._takeSnapshot(true);
+  }
+
+  _takeSnapshot(atBoundary = false) {
+    this._snapshotAtBoundary = atBoundary;
     const d = this._driver;
     const log = this._log;
     const extra = { log: { save: () => log.mark(), restore: (s) => log.rewind(s) } };
@@ -194,18 +226,74 @@ export class ShipGame {
     snapshotPersistentVfs(this._vfs, this._storage, this._persistSkip);
   }
 
-  /** Interactive input: one key code (a UTF-16 unit, as the browser terminal delivers it). */
-  pushKey(keyCode) {
+  /**
+   * Interactive input: one key code (a UTF-16 unit, as the browser terminal delivers it).
+   *
+   * A key rewinds the game to its last command boundary (host/snapshot.js) and runs it
+   * again with the key appended, so the keys of an unfinished command are processed again
+   * for every new one.  Type-ahead: when `queued` holds keys already typed after this one,
+   * the game runs once over all of them instead, and notes what the player would see after
+   * each key (the screen when the game asks for the byte after it, or when it ends).  The
+   * next pushKey calls, which bring those same keys, only show the noted screens in turn.
+   * Keys after the one that ends the game are not run.
+   */
+  pushKey(keyCode, queued = []) {
+    if (this._ahead.length) {
+      const next = this._ahead.shift();
+      if (next.code === keyCode) {
+        this._shown = this._ahead.length ? next : null;
+        return true;
+      }
+      // not the key that was queued (the queue was cleared): the keys run ahead stand
+      this._ahead.length = 0;
+      this._shown = null;
+    }
     if (!this._machine || this._ended) return false;
-    this._log.appendUnit(keyCode);
+    const log = this._log;
+    const firstUnit = log.units;
+    const keys = [keyCode, ...queued];
+    const ends = [];
+    for (const code of keys) {
+      log.appendUnit(code);
+      ends.push(log.keys.length);
+    }
+    const views = [];
+    if (ends.length > 1) this._watch = { next: ends[0], ends, views, firstUnit };
     this._snapshot.restore(this._machine);
+    this._resuming = this._snapshotAtBoundary;
     this._run();
-    if (this._ended) this._finishSegment();
+    this._resuming = false;
+    this._watch = null;
+    if (this._ended) {
+      // the key that ended the game is the last one run
+      log.dropKeysAfter(firstUnit + views.length + 1, ends[views.length]);
+      views.push(log.shownAt());
+      this._finishSegment();
+    }
+    if (views.length > 1) {
+      this._ahead = views.map((view, k) => ({ code: keys[k], view }));
+      this._shown = this._ahead.shift();
+    }
     return true;
   }
 
+  // type-ahead: the game asks for byte `index`, so the keys ending at or before it are done
+  _noteKeyRequest(index) {
+    const w = this._watch;
+    while (w.views.length < w.ends.length && index >= w.ends[w.views.length]) {
+      w.views.push(this._log.shownAt(w.firstUnit + w.views.length + 1));
+    }
+    w.next = w.views.length < w.ends.length ? w.ends[w.views.length] : Infinity;
+  }
+
+  /** What the player sees: { screen, cursor } of the last screen shown, or null. */
+  shownScreen() {
+    return this._shown ? this._shown.view : this._log.shownAt();
+  }
+
+  /** The game has ended (with type-ahead: by the keys shown so far; only the last key run can end it). */
   get ended() {
-    return this._ended;
+    return this._shown ? false : this._ended;
   }
   getScreens() {
     return this._log.getScreens();

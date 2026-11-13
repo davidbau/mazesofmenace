@@ -2,8 +2,6 @@
 /* Copyright (c) Dean Luick, with acknowledgements to Dave Cohrs, 1990. */
 /* NetHack may be freely redistributed.  See license for details.       */
 
-// #include "hack.h"
-
 /* Circles
  * ==================================================================*/
 
@@ -88,22 +86,12 @@ const right_ptrs = static_array("right_ptrs", array_of(short, COLNO), ROWNO);
 
 /* Forward declarations. */
 
-
-
-
-
-
-
-
-
 /* Macro definitions that I can't find anywhere. */
-export function sign(z) { return ((z) < 0 ? -1 : ((z) ? 1 : 0)); }
-export function v_abs(z) { return ((z) < 0 ? -(z) : (z)); }
+export function sign(z) { return (z < 0 ? -1 : (z ? 1 : 0)); }
+export function v_abs(z) { return (z < 0 ? -z : z); }
 
 /* expose viz_clear[][] for sanity checking */
-export function /* boolean */
-get_viz_clear(x, y)
-{
+export function get_viz_clear(x, y) { /* boolean */
     if (isok(x,y) && !chars[viz_clear[y] + x])
         return TRUE;
     return FALSE;
@@ -117,9 +105,7 @@ get_viz_clear(x, y)
  * This must be called before mklev() is called in newgame() [allmain.c],
  * or before a game restore.   Else we die a horrible death.
  */
-export function /* void */
-vision_init()
-{
+export function vision_init() { /* void */
     let i;
 
     /* Set up the pointers. */
@@ -135,7 +121,7 @@ vision_init()
     gv.viz_rmax = cs_rmax0;
 
     gv.vision_full_recalc = 0;
-    void memset(addr_of(could_see), 0, sizeof(array_of(array_of(array_of(uchar, COLNO), ROWNO), 2)));
+    memset(addr_of(could_see), 0, sizeof(array_of(array_of(array_of(uchar, COLNO), ROWNO), 2)));
 
     /* Initialize the vision algorithm (currently C). */
     view_init();
@@ -149,18 +135,14 @@ vision_init()
  * or 2 if an opaque region blocks sight.  [At present, the rest of the
  * code makes no distinction between 1 and 2, just between 0 and non-0.]
  */
-export function /* int */
-does_block(x, y, lev)
-{
+export function does_block(x, y, lev) { /* int */
     let obj;
     let mon;
-
 
     /* set DEBUGFILES=seethru in environment to see through bubbles */
     if (gs.seethru == 0) { /* init once */
         gs.seethru = (wizard() && explicitdebug(_("seethru"))) ? 1 : -1;
     }
-
 
     /* Features that block . . */
     if (IS_OBSTRUCTED(lev.typ) || lev.typ == TREE
@@ -168,15 +150,11 @@ does_block(x, y, lev)
             && (lev.flags & (D_CLOSED | D_LOCKED | D_TRAPPED))))
         return 1;
 
-
     if (gs.seethru != 1) {
-
     if (lev.typ == CLOUD || IS_WATERWALL(lev.typ) || lev.typ == LAVAWALL
         || (Underwater() && is_moat(x, y)))
         return 1;
-
     } /* gs.seethru */
-
 
     /* Boulders block light. */
     for (obj = svl.level.objects[x][y]; obj; obj = obj.v.v_nexthere)
@@ -188,15 +166,11 @@ does_block(x, y, lev)
         && is_lightblocker_mappear(mon))
         return 1;
 
-
     if (gs.seethru != 1) {
-
     /* Clouds (poisonous or not) block light. */
     if (visible_region_at(x, y))
         return 2;
-
     } /* gs.seethru */
-
 
     return 0;
 }
@@ -207,9 +181,7 @@ does_block(x, y, lev)
  * This must be called *after* the levl[][] structure is set with the new
  * level and the level monsters and objects are in place.
  */
-export function /* void */
-vision_reset()
-{
+export function vision_reset() { /* void */
     let y;
     let x, i, dig_left, block;
     let lev;
@@ -219,10 +191,10 @@ vision_reset()
     gv.viz_rmin = cs_rmin0;
     gv.viz_rmax = cs_rmax0;
 
-    void memset(addr_of(could_see), 0, sizeof(array_of(array_of(array_of(uchar, COLNO), ROWNO), 2)));
+    memset(addr_of(could_see), 0, sizeof(array_of(array_of(array_of(uchar, COLNO), ROWNO), 2)));
 
     /* Reset the pointers and clear so that we have a "full" dungeon. */
-    void memset(addr_of(viz_clear), 0, sizeof(array_of(array_of(char, COLNO), ROWNO)));
+    memset(addr_of(viz_clear), 0, sizeof(array_of(array_of(char, COLNO), ROWNO)));
 
     /* Dig the level */
     for (y = 0; y < ROWNO; y++) {
@@ -230,7 +202,7 @@ vision_reset()
         block = TRUE; /* location (0,y) is always stone; it's !isok() */
         lev = ptr_add(levl()[1][0], y);
         for (x = 1; x < COLNO; x++, lev = ptr_add(lev, ROWNO))
-            if (block != (((IS_OBSTRUCTED(lev.typ) || does_block(x, y, lev)) ? 1 : 0))) {
+            if (block != (IS_OBSTRUCTED(lev.typ) || does_block(x, y, lev) ? 1 : 0)) {
                 if (block) {
                     for (i = dig_left; i < x; i++) {
                         left_ptrs[y][i] = dig_left;
@@ -270,9 +242,7 @@ vision_reset()
  * Called from vision_recalc() and at least one light routine.  Get pointers
  * to the unused vision work area.
  */
-function /* void */
-get_unused_cs(rows, rmin, rmax)
-{
+function get_unused_cs(rows, rmin, rmax) { /* void */
     let row;
     let nrmin, nrmax;
 
@@ -290,7 +260,7 @@ get_unused_cs(rows, rmin, rmax)
     nrmin = rmin[0];
     nrmax = rmax[0];
 
-    void memset(((rows[0])[0]), 0,
+    memset(((rows[0])[0]), 0,
                   ROWNO * COLNO * sizeof(uchar)); /* see nothing */
     for (row = 0; row < ROWNO; row++) { /* set row min & max */
         (nrmin = ref_add(nrmin, 1), ref_add(nrmin, -1))[0] = COLNO - 1;
@@ -310,9 +280,7 @@ get_unused_cs(rows, rmin, rmax)
  * We set the in_sight bit here as well to escape a bug that shows up
  * due to the one-sided lit wall hack.
  */
-function /* void */
-rogue_vision(next, rmin, rmax)
-{
+function rogue_vision(next, rmin, rmax) { /* void */
     let rnum = levl()[u.ux][u.uy].roomno - ROOMOFFSET; /* no SHARED... */
     let start, stop, in_door, xhi, xlo, yhi, ylo;
     let zx, zy;
@@ -365,90 +333,7 @@ rogue_vision(next, rmin, rmax)
 
 /*#define EXTEND_SPINE*/ /* possibly better looking wall-angle */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef EXTEND_SPINE: not in this build */
 
 /*
  * new_angle()
@@ -458,9 +343,6 @@ rogue_vision(next, rmin, rmax)
  *
  * The other parameters are not used.
  */
-
-
-
 
 /*
  * vision_recalc()
@@ -508,9 +390,9 @@ rogue_vision(next, rmin, rmax)
  *      + Right after the hero is swallowed. [gulpmu()]
  *      + Just before bubbles are moved. [movebubbles()]
  */
-export function /* void */
-vision_recalc(control)
-{ const $frame = stack_frame(); try { let $goto = null; var colbump = static_array("vision_recalc.colbump", short, COLNO + 1), next_array = stack_var(ptr_to(ptr_to(uchar))), next_rmin = stack_var(ptr_to(short)), next_rmax = stack_var(ptr_to(short));
+export function vision_recalc(control) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var colbump = static_array("vision_recalc.colbump", short, COLNO + 1), next_array = stack_var(ptr_to(ptr_to(uchar))), next_rmin = stack_var(ptr_to(short)), next_rmax = stack_var(ptr_to(short));
      /* from display.c */
      /* cols to bump sv */
     var temp_array; /* points to the old vision array */
@@ -658,7 +540,6 @@ vision_recalc(control)
                     next_rmin[0][row] = min(start, next_rmin[0][row]);
                     next_rmax[0][row] = max(stop, next_rmax[0][row]);
                 }
-
             } else { /* range is 0 */
                 uchars[next_array[0][u.uy] + u.ux] |= IN_SIGHT;
                 levl()[u.ux][u.uy].seenv = SVALL;
@@ -751,7 +632,6 @@ vision_recalc(control)
                 /* Update pos if previously not in sight or new angle. */
                 if (!(uchars[old_row + col] & IN_SIGHT) || oldseenv != lev.seenv)
                     newsym(col, row);
-
             } else if (!$goto && ((uchars[next_row + col] & COULD_SEE)
                      && (lev.lit || (uchars[next_row + col] & TEMP_LIT)))) {
                 /*
@@ -782,7 +662,6 @@ vision_recalc(control)
                             newsym(col, row);
                     } else
                         { $goto = "not_in_sight"; continue $goto_not_in_sight; }; /* we don't see it */
-
                 } else {
                     uchars[next_row + col] |= IN_SIGHT; /* we see it */
 
@@ -835,11 +714,9 @@ vision_recalc(control)
                     newsym(col, row);
                 }
             } } break; }
-
         } /* end for col . . */
     }     /* end for row . .  */
     colbump[u.ux] = colbump[u.ux + 1] = 0;
-
  }
     /* This newsym() caused a crash delivering msg about failure to open
      * dungeon file init_dungeons() -> panic() -> done(11) ->
@@ -854,17 +731,15 @@ vision_recalc(control)
     gv.viz_rmax = next_rmax[0];
 
     notice_all_mons(TRUE);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * block_point()
  *
  * Make the location opaque to light.
  */
-export function /* void */
-block_point(x, y)
-{
-
+export function block_point(x, y) { /* void */
     /* set DEBUGFILES=seethru in environment to see through clouds & water */
     if (gs.seethru == 0) { /* init once */
         gs.seethru = (wizard() && explicitdebug(_("seethru"))) ? 1 : -1;
@@ -873,7 +748,6 @@ block_point(x, y)
         if (!does_block(x, y, levl()[x][y]))
             return;
     }
-
 
     fill_point(y, x);
 
@@ -895,9 +769,7 @@ block_point(x, y)
  *
  * Make the location transparent to light.
  */
-export function /* void */
-unblock_point(x, y)
-{
+export function unblock_point(x, y) { /* void */
     dig_point(y, x);
 
     /* recalc light sources here? */
@@ -907,9 +779,7 @@ unblock_point(x, y)
 }
 
 /* recalc if point should be blocked or unblocked */
-export function /* void */
-recalc_block_point(x, y)
-{
+export function recalc_block_point(x, y) { /* void */
     if (does_block(x, y, levl()[x][y]))
         block_point(x, y);
     else
@@ -963,9 +833,7 @@ recalc_block_point(x, y)
  *   This means that a right-edge (a blocked spot that has an open
  *   spot on its right) will point to itself.
  */
-function /* void */
-dig_point(row, col)
-{
+function dig_point(row, col) { /* void */
     let i;
 
     if (chars[viz_clear[row] + col])
@@ -985,7 +853,6 @@ dig_point(row, col)
                 left_ptrs[row][i] = 1;
         }
     } else if (col == (COLNO - 1)) { /* right edge */
-
         if (chars[viz_clear[row] + (COLNO - 2)]) {
             left_ptrs[row][COLNO - 1] = left_ptrs[row][COLNO - 2];
         } else {
@@ -1009,7 +876,6 @@ dig_point(row, col)
                 continue; /* catch non-end case */
             left_ptrs[row][i] = left_ptrs[row][col - 1];
         }
-
     } else if (chars[viz_clear[row] + (col - 1)]) {
         /* Left side clear, right side blocked. */
         for (i = col + 1; i <= right_ptrs[row][col + 1]; i++)
@@ -1021,7 +887,6 @@ dig_point(row, col)
             right_ptrs[row][i] = col + 1;
         }
         left_ptrs[row][col] = left_ptrs[row][col - 1];
-
     } else if (chars[viz_clear[row] + (col + 1)]) {
         /* Right side clear, left side blocked. */
         for (i = left_ptrs[row][col - 1]; i < col; i++)
@@ -1033,7 +898,6 @@ dig_point(row, col)
             left_ptrs[row][i] = col - 1;
         }
         right_ptrs[row][col] = right_ptrs[row][col + 1];
-
     } else {
         /* Both sides blocked */
         for (i = left_ptrs[row][col - 1]; i < col; i++)
@@ -1047,9 +911,7 @@ dig_point(row, col)
     }
 }
 
-function /* void */
-fill_point(row, col)
-{
+function fill_point(row, col) { /* void */
     let i;
 
     if (!chars[viz_clear[row] + col])
@@ -1090,7 +952,6 @@ fill_point(row, col)
 
         if (right_ptrs[row][col + 1] == COLNO - 1) /* catch the end case */
             left_ptrs[row][COLNO - 1] = col;
-
     } else if (chars[viz_clear[row] + (col - 1)]) {
         /* Left side clear, right side blocked. */
         for (i = col; i <= right_ptrs[row][col + 1]; i++)
@@ -1103,7 +964,6 @@ fill_point(row, col)
             right_ptrs[row][i] = col;
 
         right_ptrs[row][col] = right_ptrs[row][col + 1];
-
     } else if (chars[viz_clear[row] + (col + 1)]) {
         /* Right side clear, left side blocked. */
         for (i = left_ptrs[row][col - 1]; i <= col; i++)
@@ -1116,7 +976,6 @@ fill_point(row, col)
             left_ptrs[row][i] = col;
 
         left_ptrs[row][col] = left_ptrs[row][col - 1];
-
     } else {
         /* Both sides blocked */
         for (i = left_ptrs[row][col - 1]; i <= col; i++)
@@ -1160,24 +1019,11 @@ const varg = static_var("varg", ptr_to(void_t));
  * Compile with NDEBUG defined to suppress them.
  */
 export function is_clear(row, col) { return chars[viz_clear_rows[row] + col]; }
-export function good_row(z) { return (+((z) >= 0 && (z) < ROWNO)); }
-export function set_cs(rowp, col) { do {                                
-        assert(rowp != (0));           
-        uchars[rowp + col] = COULD_SEE;          
+export function good_row(z) { return +(z >= 0 && z < ROWNO); }
+export function set_cs(rowp, col) { do {
+        assert(rowp != (0));
+        uchars[rowp + col] = COULD_SEE;
     } while (0) }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * clear_path()         expanded into 4 macros/functions:
@@ -1197,7 +1043,6 @@ export function set_cs(rowp, col) { do {
  * Elements for Computer Graphics_, by David F. Rogers.  McGraw-Hill, 1985.
  */
 
-
 /*
  * When called, the result is in "result".
  * The first two arguments (srow,scol) are one end of the path.  The next
@@ -1210,397 +1055,19 @@ export function set_cs(rowp, col) { do {
  *  Quadrant I (step < 0).
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
  * Quadrant IV (step > 0).
  */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * Quadrant II (step < 0).
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*
  * Quadrant III (step > 0).
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef MACRO_CPATH): not in this build */
 
 /*
  * Use vision tables to determine if there is a clear path from
@@ -1609,9 +1076,7 @@ export function set_cs(rowp, col) { do {
  *      m_canseeu()
  *      do_light_sources()
  */
-export function /* boolean */
-clear_path(col1, row1, col2, row2)
-{
+export function clear_path(col1, row1, col2, row2) { /* boolean */
     var result;
 
     cleardone: { if (col1 < col2) {
@@ -1629,7 +1094,6 @@ clear_path(col1, row1, col2, row2)
             { var dx, dy; var k, err, x, y, dxs, dys; x = (col1); y = (row1); dx = (x - (col2)); dy = ((row2) - y); result = 0; dxs = (dx << 1); dys = (dy << 1); if ((dy > dx)) { err = (dxs - dy); for (k = (dy - 1); k; k--) { if ((err >= 0)) { x--; err -= dys; } y++; err += dxs; if (!is_clear(y, x)) break cleardone; } } else { err = (dys - dx); for (k = (dx - 1); k; k--) { if ((err >= 0)) { y++; err -= dxs; } x--; err += dys; if (!is_clear(y, x)) break cleardone; } } result = 1 };
         }
     }
-
  }
 
     return boolean(result);
@@ -1644,12 +1108,8 @@ clear_path(col1, row1, col2, row2)
  * Defines local to Algorithm C.
  */
 
-
-
 /* Initialize algorithm C (nothing). */
-function /* void */
-view_init()
-{
+function view_init() { /* void */
 }
 
 /*
@@ -1662,13 +1122,11 @@ view_init()
  *   right_mark  last (right side) visible spot on prev row
  *   limits      points at range limit for current row, or NULL
  */
-function /* void */
-right_side(
+function right_side(
     row,
     left,
     right_mark,
-    limits)
-{
+    limits) { /* void */
     var right;                  /* right limit of "could see" */
     var right_edge;             /* right edge of an opening */
     var nrow;                   /* new row (calculate once) */
@@ -1687,7 +1145,7 @@ right_side(
      * limit value is the start of a new circle radius (meaning we depend
      * on the structure of circle_data[]).
      */
-    deeper = +(good_row(nrow) && (!limits || (limits[0] >= (limits.subarray(1))[0])));
+    deeper = +(good_row(nrow) && (!limits || (limits[0] >= limits.subarray(1)[0])));
     if (!vis_func[0]) {
         rowp = cs_rows[0][row]; /* optimization */
         row_min = cs_left[0].subarray(row);
@@ -1854,13 +1312,11 @@ right_side(
  * This routine is the mirror image of right_side().  See right_side() for
  * extensive comments.
  */
-function /* void */
-left_side(
+function left_side(
     row,
     left_mark,
     right,
-    limits)
-{
+    limits) { /* void */
     var left, left_edge, nrow, deeper, result;
     var i;
     var rowp = 0;
@@ -1869,7 +1325,7 @@ left_side(
     var lim_min;
 
     nrow = row + step[0];
-    deeper = +(good_row(nrow) && (!limits || (limits[0] >= (limits.subarray(1))[0])));
+    deeper = +(good_row(nrow) && (!limits || (limits[0] >= limits.subarray(1)[0])));
     if (!vis_func[0]) {
         rowp = cs_rows[0][row];
         row_min = cs_left[0].subarray(row);
@@ -1998,15 +1454,13 @@ left_side(
  *   func           function to call on each spot
  *   arg            argument for func
  */
-function /* void */
-view_from(
+function view_from(
     srow, scol,
     loc_cs_rows,
     left_most, right_most,
     range,
     func,
-    arg)
-{
+    arg) { /* void */
     let i; /* loop counter */
     let rowp;    /* optimization for setting could_see */
     let nrow;       /* the next row */
@@ -2056,7 +1510,7 @@ view_from(
 
     if (func) {
         for (i = left; i <= right; i++)
-            (func)(i, srow, arg);
+            func(i, srow, arg);
     } else {
         /* Row pointer optimization. */
         rowp = cs_rows[0][srow];
@@ -2103,13 +1557,11 @@ view_from(
  * will call "func" when necessary.  If the hero is the center, use the
  * vision matrix and reduce extra work.
  */
-export function /* void */
-do_clear_area(
+export function do_clear_area(
     scol, srow,
     range,
     func,
-    arg)
-{
+    arg) { /* void */
     /* If not centered on hero, do the hard work of figuring the area */
     if (scol != u.ux || srow != u.uy) {
         view_from(srow, scol, null, null, null,
@@ -2122,35 +1574,33 @@ do_clear_area(
 
         /* vision doesn't pass through water or clouds, detection should
            [this probably ought to be an arg supplied by our caller...] */
-        override_vision = (((detecting(func)
-                           && (Is_waterlevel(u.uz) || Is_airlevel(u.uz))) ? 1 : 0));
+        override_vision = (detecting(func)
+                           && (Is_waterlevel(u.uz) || Is_airlevel(u.uz)) ? 1 : 0);
 
         if (range > MAX_RADIUS || range < 1)
             panic(_("do_clear_area:  illegal range %d"), range);
         if (gv.vision_full_recalc)
             vision_recalc(0); /* recalc vision if dirty */
         limits = circle_ptr(range);
-        if ((int(max_y = (srow + range))) >= ROWNO)
+        if (int(max_y = (srow + range)) >= ROWNO)
             max_y = ROWNO - 1;
-        if ((int(y = (srow - range))) < 0)
+        if (int(y = (srow - range)) < 0)
             y = 0;
         for (; y <= max_y; y++) {
             offset = limits[v_abs(y - srow)];
-            if ((int(min_x = (scol - offset))) < 1)
+            if (int(min_x = (scol - offset)) < 1)
                 min_x = 1;
-            if ((int(max_x = (scol + offset))) >= COLNO)
+            if (int(max_x = (scol + offset)) >= COLNO)
                 max_x = COLNO - 1;
             for (x = min_x; x <= max_x; x++)
                 if (couldsee(x, y) || override_vision)
-                    (func)(x, y, arg);
+                    func(x, y, arg);
         }
     }
 }
 
 /* bitmask indicating ways mon is seen; extracted from lookat(pager.c) */
-export function /* unsigned */
-howmonseen(mon)
-{
+export function howmonseen(mon) { /* unsigned */
     let useemon = boolean(canseemon(mon));
     let xraydist = (u.xray_range < 0) ? -1 : (u.xray_range * u.xray_range);
     let how_seen = 0; /* result */
@@ -2186,98 +1636,39 @@ howmonseen(mon)
 }
 
 /*vision.c*/
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+
+import { Is_airlevel, Is_rogue_level, Is_waterlevel } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { MATCH_WARN_OF_MON } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
+import { COLNO, FALSE, ROWNO, TRUE, boolean } from "./global.h.js";
+import { MATCH_WARN_OF_MON, max, mdistu, min } from "./hack.h.macros.js";
 import { explicitdebug } from "./lint.h.macros.js";
 import { ROOMOFFSET } from "./mkroom.h.js";
 import { is_lightblocker_mappear } from "./monst.h.macros.js";
 import { BOULDER } from "./objects.h.js";
-import { CLOUD } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { LAVAWALL } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SVALL } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { IS_WATERWALL } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { COULD_SEE } from "./vision.h.js";
-import { IN_SIGHT } from "./vision.h.js";
-import { MAX_RADIUS } from "./vision.h.js";
-import { MONSEEN_DETECT } from "./vision.h.js";
-import { MONSEEN_INFRAVIS } from "./vision.h.js";
-import { MONSEEN_NORMAL } from "./vision.h.js";
-import { MONSEEN_SEEINVIS } from "./vision.h.js";
-import { MONSEEN_TELEPAT } from "./vision.h.js";
-import { MONSEEN_WARNMON } from "./vision.h.js";
-import { MONSEEN_XRAYVIS } from "./vision.h.js";
-import { TEMP_LIT } from "./vision.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { circle_ptr } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
+import {
+    CLOUD, DOOR, D_CLOSED, D_LOCKED, D_TRAPPED, LAVAWALL, SDOOR, SVALL, TREE,
+} from "./rm.h.js";
+import { IS_DOOR, IS_OBSTRUCTED, IS_WALL, IS_WATERWALL, levl, m_at } from "./rm.h.macros.js";
+import {
+    COULD_SEE, IN_SIGHT, MAX_RADIUS, MONSEEN_DETECT, MONSEEN_INFRAVIS, MONSEEN_NORMAL,
+    MONSEEN_SEEINVIS, MONSEEN_TELEPAT, MONSEEN_WARNMON, MONSEEN_XRAYVIS, TEMP_LIT,
+} from "./vision.h.js";
+import { cansee, circle_ptr, couldsee } from "./vision.h.macros.js";
 import { TT_PIT } from "./you.h.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Detect_monsters } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { Blind, Detect_monsters, See_invisible, Underwater } from "./youprop.h.macros.js";
+import { char, int, short, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { assert, memset } from "../rt/libc.js";
+import { stack_var, static_array, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_add } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+import { addr_of, array_of, fnptr_t, ptr_add, ptr_to, ref_add, void_t } from "../rt/struct.js";
 import { isok } from "./cmd.js";
-import { is_moat } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { gi } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svl } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
+import { is_moat, is_pool } from "./dbridge.js";
+import { gi, gs, gv, iflags, program_state, svl, svr, u } from "./decl.js";
 import { detecting } from "./detect.js";
-import { canseemon } from "./display.js";
-import { mon_visible } from "./display.js";
-import { newsym } from "./display.js";
-import { see_with_infrared } from "./display.js";
-import { seenv_matrix } from "./display.js";
-import { tp_sensemon } from "./display.js";
+import {
+    canseemon, mon_visible, newsym, see_with_infrared, seenv_matrix, tp_sensemon,
+} from "./display.js";
 import { panic } from "./end.js";
 import { notice_all_mons } from "./hack.js";
 import { do_light_sources } from "./light.js";

@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack yendor fakewiz1.lua	$NHDT-Date: 1652196025 2022/05/10 15:20:25 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1989 by Jean-Christophe Collet
-"\n" + // --	Copyright (c) 1992 by M. Stephenson and Izchak Miller
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style="mazegrid", bg ="-" });
+export default String.raw`-- NetHack yendor fakewiz1.lua	$NHDT-Date: 1652196025 2022/05/10 15:20:25 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1989 by Jean-Christophe Collet
+--	Copyright (c) 1992 by M. Stephenson and Izchak Miller
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style="mazegrid", bg ="-" });
 
 des.level_flags("mazelevel");
 
@@ -32,8 +32,8 @@ local fakewiz1 = des.map({ halign = "center", valign = "center", map = [[
    des.monster("L",04,04)
    des.monster("vampire lord",03,04)
    des.monster("kraken",06,06)
-` + "\n" + // -- And to make things a little harder.
-`   des.trap("board",04,03)
+   -- And to make things a little harder.
+   des.trap("board",04,03)
    des.trap("board",04,05)
    des.trap("board",03,04)
    des.trap("board",05,04)

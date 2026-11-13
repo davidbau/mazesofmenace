@@ -8,15 +8,6 @@
  *      bonuses for any given weapon used, as well as weapons selection
  *      code for monsters.
  */
-// #include "hack.h"
-
-
-
-
-
-
-
-
 
 /* Categories whose names don't come from OBJ_NAME(objects[type])
  */
@@ -60,35 +51,30 @@ const barehands_or_martial = static_array("barehands_or_martial", ptr_to(char), 
     _("bare handed combat"), _("martial arts")
 ]);
 
-export function P_NAME(type) { return ((skill_names_indices[type] > 0)                    
-         ? OBJ_NAME(objects[skill_names_indices[type]]) 
-         : (type == P_BARE_HANDED_COMBAT)               
-               ? barehands_or_martial[martial_bonus()]  
+export function P_NAME(type) { return ((skill_names_indices[type] > 0)
+         ? OBJ_NAME(objects[skill_names_indices[type]])
+         : (type == P_BARE_HANDED_COMBAT)
+               ? barehands_or_martial[martial_bonus()]
                : odd_skill_names[-skill_names_indices[type]]); }
-
 
 /* targets that provide attacker with small to-hit bonus when using a spear */
 const kebabable = static_array("kebabable", char, null, [
     S_XORN, S_DRAGON, S_JABBERWOCK, S_NAGA, S_GIANT,  ord('\0')
 ]);
 
-function /* void */
-give_may_advance_msg(skill)
-{
+function give_may_advance_msg(skill) { /* void */
     You_feel(_("more confident in your %sskills."),
              (skill == P_NONE) ? _("")
                  : (skill <= P_LAST_WEAPON) ? _("weapon ")
                      : (skill <= P_LAST_SPELL) ? _("spell casting ")
                          : _("fighting "));
-    void handle_tip(TIP_ENHANCE);
+    handle_tip(TIP_ENHANCE);
 }
 
 /* weapon's skill category name for use as generalized description of weapon;
    mostly used to shorten "you drop your <weapon>" messages when slippery
    fingers or polymorph causes hero to involuntarily drop wielded weapon(s) */
-export function /* const char * */
-weapon_descr(obj)
-{
+export function weapon_descr(obj) { /* const char * */
     let skill = weapon_type(obj);
     let descr = P_NAME(skill);
 
@@ -145,12 +131,10 @@ weapon_descr(obj)
  *      hitval returns an integer representing the "to hit" bonuses
  *      of "otmp" against the monster.
  */
-export function /* int */
-hitval(otmp, mon)
-{
+export function hitval(otmp, mon) { /* int */
     let tmp = 0;
     let ptr = mon.data;
-    let Is_weapon = (+(otmp.oclass == WEAPON_CLASS || is_weptool(otmp)));
+    let Is_weapon = +(otmp.oclass == WEAPON_CLASS || is_weptool(otmp));
 
     if (Is_weapon)
         tmp += otmp.spe;
@@ -212,12 +196,10 @@ hitval(otmp, mon)
  *      dmgval returns an integer representing the damage bonuses
  *      of "otmp" against the monster.
  */
-export function /* int */
-dmgval(otmp, mon)
-{
+export function dmgval(otmp, mon) { /* int */
     let tmp = 0, otyp = otmp.otyp;
     let ptr = mon.data;
-    let Is_weapon = (+(otmp.oclass == WEAPON_CLASS || is_weptool(otmp)));
+    let Is_weapon = +(otmp.oclass == WEAPON_CLASS || is_weptool(otmp));
 
     if (otyp == CREAM_PIE)
         return 0;
@@ -357,15 +339,12 @@ dmgval(otmp, mon)
 
 /* check whether blessed and/or silver damage applies for *non-weapon* hit;
    return value is the amount of the extra damage */
-export function /* int */
-special_dmgval(
+export function special_dmgval(
     magr,
     mdef,
     armask,
 
-
-    silverhit_p)  /* output flag mask for silver bonus */
-{
+    silverhit_p) { /* int */ /* output flag mask for silver bonus */
     let obj;
     let left_ring = (armask & W_RINGL) ? TRUE : FALSE,
             right_ring = (armask & W_RINGR) ? TRUE : FALSE;
@@ -432,20 +411,19 @@ special_dmgval(
 
 /* give a "silver <item> sears <target>" message;
    not used for weapon hit, so we only handle rings */
-export function /* void */
-silver_sears(magr, mdef,
-             silverhit)
-{ const $frame = stack_frame(); try {
+export function silver_sears(magr, mdef,
+             silverhit) { /* void */
+    const $frame = stack_frame(); try {
     let rings = stack_array(char, 20); /* plenty of room for "rings" */
     let ltyp = ((uleft && (silverhit & W_RINGL) != 0)
                 ? uleft.otyp : STRANGE_OBJECT),
         rtyp = ((uright && (silverhit & W_RINGR) != 0)
                 ? uright.otyp : STRANGE_OBJECT);
     let both,
-        l_dknown = (((uleft && uleft.dknown) ? 1 : 0)),
-        r_dknown = (((uright && uright.dknown) ? 1 : 0)),
-        l_ag = (((objects[ltyp].oc_material == SILVER && l_dknown) ? 1 : 0)),
-        r_ag = (((objects[rtyp].oc_material == SILVER && r_dknown) ? 1 : 0));
+        l_dknown = (uleft && uleft.dknown ? 1 : 0),
+        r_dknown = (uright && uright.dknown ? 1 : 0),
+        l_ag = (objects[ltyp].oc_material == SILVER && l_dknown ? 1 : 0),
+        r_ag = (objects[rtyp].oc_material == SILVER && r_dknown ? 1 : 0);
 
     if ((silverhit & (W_RINGL | W_RINGR)) != 0) {
         /* plural if both the same type (so not multi_claw and both rings
@@ -454,8 +432,8 @@ silver_sears(magr, mdef,
            and both known; singular if multi_claw (where one of ltyp or
            rtyp will always be STRANGE_OBJECT) even if both rings are known
            silver [see hmonas(uhitm.c) for explanation of 'multi_claw'] */
-        both = ((((ltyp == rtyp && l_dknown == r_dknown) || (l_ag && r_ag)) ? 1 : 0));
-        void sprintf(rings, _("ring%s"), both ? _("s") : _(""));
+        both = ((ltyp == rtyp && l_dknown == r_dknown) || (l_ag && r_ag) ? 1 : 0);
+        sprintf(rings, _("ring%s"), both ? _("s") : _(""));
         Your(_("%s%s %s %s!"),
              (l_ag || r_ag) ? _("silver ")
              : both ? _("")
@@ -463,18 +441,10 @@ silver_sears(magr, mdef,
                  : _("right "),
              rings, vtense(rings, _("sear")), mon_nam(mdef));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-function /* struct obj * */
-oselect(mtmp, type)
-{
+function oselect(mtmp, type) { /* struct obj * */
     let otmp;
 
     for (otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
@@ -509,16 +479,14 @@ const pwep = static_array("pwep", int, null, [ HALBERD,       BARDICHE, SPETUM,
                                      BEC_DE_CORBIN, FAUCHARD, PARTISAN,
                                      LANCE ]);
 
-export const AKLYS_LIM = (Math.trunc(BOLT_LIM / 2));
+export const AKLYS_LIM = Math.trunc(BOLT_LIM / 2);
 /* throw-and-return weapons */
 const arwep = static_array("arwep", struct_throw_and_return_weapon, null, [
     /* { BOOMERANG, 5, 0 }, */
     { otyp: AKLYS, range: AKLYS_LIM * AKLYS_LIM, tethered: 1 },
 ]);
 
-export function /* const struct throw_and_return_weapon * */
-autoreturn_weapon(otmp)
-{
+export function autoreturn_weapon(otmp) { /* const struct throw_and_return_weapon * */
     let i;
 
     for (i = 0; i < SIZE(arwep); i++) {
@@ -529,9 +497,7 @@ autoreturn_weapon(otmp)
 }
 
 /* select a ranged weapon for the monster */
-export function /* struct obj * */
-select_rwep(mtmp)
-{
+export function select_rwep(mtmp) { /* struct obj * */
     let otmp;
     let mwep;
     let mweponly;
@@ -556,7 +522,7 @@ select_rwep(mtmp)
      */
     mwep = MON_WEP(mtmp);
     /* NO_WEAPON_WANTED means we already tried to wield and failed */
-    mweponly = (((mwelded(mwep) && mtmp.weapon_check == NO_WEAPON_WANTED) ? 1 : 0));
+    mweponly = (mwelded(mwep) && mtmp.weapon_check == NO_WEAPON_WANTED ? 1 : 0);
     if (dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 13
         && couldsee(mtmp.mx, mtmp.my)) {
         if (is_art(mwep, ART_SNICKERSNEE)) {
@@ -676,9 +642,7 @@ select_rwep(mtmp)
 }
 
 /* is 'obj' a type of weapon that any monster knows how to throw? */
-export function /* boolean */
-monmightthrowwep(obj)
-{
+export function monmightthrowwep(obj) { /* boolean */
     let idx;
 
     for (idx = 0; idx < SIZE(rwep); ++idx)
@@ -701,9 +665,7 @@ const hwep = static_array("hwep", short, null, [
 ]);
 
 /* select a hand to hand weapon for the monster */
-export function /* struct obj * */
-select_hwep(mtmp)
-{
+export function select_hwep(mtmp) { /* struct obj * */
     let otmp;
     let i;
     let strong = strongmonst(mtmp.data);
@@ -743,9 +705,7 @@ select_hwep(mtmp)
 /* Called after polymorphing a monster, robbing it, etc....  Monsters
  * otherwise never unwield stuff on their own.  Might print message.
  */
-export function /* void */
-possibly_unwield(mon, polyspot)
-{
+export function possibly_unwield(mon, polyspot) { /* void */
     let obj, mw_tmp;
 
     if (!(mw_tmp = MON_WEP(mon)))
@@ -797,9 +757,8 @@ possibly_unwield(mon, polyspot)
 /* Let a monster try to wield a weapon, based on mon->weapon_check.
  * Returns 1 if the monster took time to do it, 0 if it did not.
  */
-export function /* int */
-mon_wield_item(mon)
-{ const $frame = stack_frame(); try {
+export function mon_wield_item(mon) { /* int */
+    const $frame = stack_frame(); try {
     let obj;
     let exclaim = TRUE; /* assume mon is planning to attack */
 
@@ -811,7 +770,7 @@ mon_wield_item(mon)
         obj = select_hwep(mon);
         break;
     case NEED_RANGED_WEAPON:
-        void select_rwep(mon);
+        select_rwep(mon);
         obj = gp.propellor;
         break;
     case NEED_PICK_AXE:
@@ -865,7 +824,7 @@ mon_wield_item(mon)
 
                 if (bimanual(mw_tmp))
                     mon_hand = makeplural(mon_hand);
-                void sprintf(welded_buf, _("%s welded to %s %s"), otense(mw_tmp, _("are")), mhis(mon), mon_hand)
+                sprintf(welded_buf, _("%s welded to %s %s"), otense(mw_tmp, _("are")), mhis(mon), mon_hand)
 ;
 
                 if (obj.otyp == PICK_AXE) {
@@ -931,12 +890,11 @@ mon_wield_item(mon)
     }
     mon.weapon_check = NEED_WEAPON;
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* force monster to stop wielding current weapon, if any */
-export function /* void */
-mwepgone(mon)
-{
+export function mwepgone(mon) { /* void */
     let mwep = MON_WEP(mon);
 
     if (mwep) {
@@ -946,9 +904,7 @@ mwepgone(mon)
 }
 
 /* attack bonus for strength & dexterity */
-export function /* int */
-abon()
-{
+export function abon() { /* int */
     let sbon;
     let str = ACURR(A_STR), dex = ACURR(A_DEX);
 
@@ -989,9 +945,7 @@ abon()
 }
 
 /* damage bonus for strength */
-export function /* int */
-dbon()
-{
+export function dbon() { /* int */
     let str = ACURR(A_STR);
 
     if (Upolyd())
@@ -1016,9 +970,7 @@ dbon()
 }
 
 /* called when wet_a_towel() or dry_a_towel() is changing a towel's wetness */
-function /* void */
-finish_towel_change(obj, newspe)
-{
+function finish_towel_change(obj, newspe) { /* void */
     /* towel wetness is always between 0 (dry) and 7, inclusive */
     newspe = min(newspe, 7);
     obj.spe = max(newspe, 0);
@@ -1034,12 +986,10 @@ finish_towel_change(obj, newspe)
 }
 
 /* increase a towel's wetness */
-export function /* void */
-wet_a_towel(
+export function wet_a_towel(
     obj,
     amt,
-    verbose)
-{
+    verbose) { /* void */
     let newspe = (amt <= 0) ? obj.spe - amt : amt;
 
     /* new state is only reported if it's an increase */
@@ -1063,12 +1013,10 @@ wet_a_towel(
 }
 
 /* decrease a towel's wetness; unlike when wetting, 0 is not a no-op */
-export function /* void */
-dry_a_towel(
+export function dry_a_towel(
     obj,
     amt,
-    verbose)
-{
+    verbose) { /* void */
     let newspe = (amt < 0) ? obj.spe + amt : amt;
 
     /* new state is only reported if it's a decrease */
@@ -1088,9 +1036,7 @@ dry_a_towel(
 }
 
 /* copy the skill level name into the given buffer */
-export function /* char * */
-skill_level_name(skill, buf)
-{
+export function skill_level_name(skill, buf) { /* char * */
     let ptr;
 
     switch (P_SKILL(skill)) {
@@ -1117,20 +1063,16 @@ skill_level_name(skill, buf)
         ptr = _("Unknown");
         break;
     }
-    void strcpy(buf, ptr);
+    strcpy(buf, ptr);
     return buf;
 }
 
-export function /* const char * */
-skill_name(skill)
-{
+export function skill_name(skill) { /* const char * */
     return P_NAME(skill);
 }
 
 /* return the # of slots required to advance the skill */
-function /* int */
-slots_required(skill)
-{
+function slots_required(skill) { /* int */
     let tmp = P_SKILL(skill);
 
     /* The more difficult the training, the more slots it takes.
@@ -1152,9 +1094,7 @@ slots_required(skill)
 }
 
 /* return true if this skill can be advanced */
-export function /* boolean */
-can_advance(skill, speedy)
-{
+export function can_advance(skill, speedy) { /* boolean */
     if (P_RESTRICTED(skill)
         || P_SKILL(skill) >= (u.weapon_skills[skill].max_skill)
         || u.skills_advanced >= P_SKILL_LIMIT)
@@ -1169,9 +1109,7 @@ can_advance(skill, speedy)
 }
 
 /* return true if this skill could be advanced if more slots were available */
-function /* boolean */
-could_advance(skill)
-{
+function could_advance(skill) { /* boolean */
     if (P_RESTRICTED(skill)
         || P_SKILL(skill) >= (u.weapon_skills[skill].max_skill)
         || u.skills_advanced >= P_SKILL_LIMIT)
@@ -1183,9 +1121,7 @@ could_advance(skill)
 
 /* return true if this skill has reached its maximum and there's been enough
    practice to become eligible for the next step if that had been possible */
-function /* boolean */
-peaked_skill(skill)
-{
+function peaked_skill(skill) { /* boolean */
     if (P_RESTRICTED(skill))
         return FALSE;
 
@@ -1194,9 +1130,7 @@ peaked_skill(skill)
                           >= practice_needed_to_advance(P_SKILL(skill)))));
 }
 
-function /* void */
-skill_advance(skill)
-{
+function skill_advance(skill) { /* void */
     u.weapon_slots -= slots_required(skill);
     (u.weapon_skills[skill].skill)++;
     u.skill_record[u.skills_advanced++] = skill;
@@ -1225,9 +1159,8 @@ skill_advance(skill)
 
    if selectable is set, give selection letters for skills that can be
    advanced and leave room for them on skills that can't be advanced */
-export function /* void */
-add_skills_to_menu(win, selectable, speedy)
-{ const $frame = stack_frame(); try {
+export function add_skills_to_menu(win, selectable, speedy) { /* void */
+    const $frame = stack_frame(); try {
     let pass, i, len, longest;
     let any = stack_struct(struct_any);
     let buf = stack_array(char, BUFSZ), sklnambuf = stack_array(char, BUFSZ);
@@ -1273,16 +1206,12 @@ add_skills_to_menu(win, selectable, speedy)
                 prefix = _("  # ");
             else
                 prefix = _("    ");
-            void skill_level_name(i, sklnambuf);
+            skill_level_name(i, sklnambuf);
             if (wizard()) {
                 if (!iflags.menu_tab_sep)
                     Snprintf(buf, sizeof(array_of(char, BUFSZ)), _(" %s%-*s %-12s %5d(%4d)"), prefix, longest, P_NAME(i), sklnambuf, P_ADVANCE(i), practice_needed_to_advance(P_SKILL(i)));
                 else
                     Snprintf(buf, sizeof(array_of(char, BUFSZ)), _(" %s%s\t%s\t%5d(%4d)"), prefix, P_NAME(i), sklnambuf, P_ADVANCE(i), practice_needed_to_advance(P_SKILL(i)))
-
-
-
-
 
 ;
             } else {
@@ -1291,20 +1220,18 @@ add_skills_to_menu(win, selectable, speedy)
                 else
                     Snprintf(buf, sizeof(array_of(char, BUFSZ)), _(" %s%s\t[%s]"), prefix, P_NAME(i), sklnambuf)
 
-
-
 ;
             }
             any.a_int = selectable && can_advance(i, speedy) ? i + 1 : 0;
             add_menu(win, nul_glyphinfo, any, 0, 0,
                      ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Displays a skill list for dumplog purposes. */
-export function /* void */
-show_skills()
-{ const $frame = stack_frame(); try {
+export function show_skills() { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let selected = stack_var(ptr_to(struct_mi));
 
@@ -1313,9 +1240,10 @@ show_skills()
     start_menu()(win, MENU_BEHAVE_STANDARD);
     add_skills_to_menu(win, FALSE, FALSE);
     end_menu()(win, _(""));
-    (void (select_menu(win, PICK_NONE, selected)));
+    select_menu(win, PICK_NONE, selected);
     destroy_nhwindow()(win);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * The `#enhance' extended command.  What we _really_ would like is
@@ -1325,9 +1253,8 @@ show_skills()
  * to be able to update the menu since selecting one item could make
  * others unselectable.
  */
-export function /* int */
-enhance_weapon_skill()
-{ const $frame = stack_frame(); try {
+export function enhance_weapon_skill() { /* int */
+    const $frame = stack_frame(); try {
     let i, n, to_advance, eventually_advance, maxxed_cnt;
     let buf = stack_array(char, BUFSZ);
     let selected = stack_var(ptr_to(struct_mi));
@@ -1361,7 +1288,7 @@ enhance_weapon_skill()
            with "*" or "#" below */
         if (eventually_advance > 0 || maxxed_cnt > 0) {
             if (eventually_advance > 0) {
-                void sprintf(buf, _("(Skill%s flagged by \"*\" may be enhanced %s.)"), plur(eventually_advance), (u.ulevel < MAXULEV)
+                sprintf(buf, _("(Skill%s flagged by \"*\" may be enhanced %s.)"), plur(eventually_advance), (u.ulevel < MAXULEV)
                             ? _("when you're more experienced")
                             : _("if skill slots become available"))
 
@@ -1369,7 +1296,7 @@ enhance_weapon_skill()
                 add_menu_str(win, buf);
             }
             if (maxxed_cnt > 0) {
-                void sprintf(buf, _("(Skill%s flagged by \"#\" cannot be enhanced any further.)"), plur(maxxed_cnt))
+                sprintf(buf, _("(Skill%s flagged by \"#\" cannot be enhanced any further.)"), plur(maxxed_cnt))
 
 ;
                 add_menu_str(win, buf);
@@ -1380,10 +1307,10 @@ enhance_weapon_skill()
         add_skills_to_menu(
             win, +(to_advance + eventually_advance + maxxed_cnt > 0), speedy);
 
-        void strcpy(buf, (to_advance > 0) ? _("Pick a skill to advance:")
+        strcpy(buf, (to_advance > 0) ? _("Pick a skill to advance:")
                                      : _("Current skills:"));
         if (wizard() && !speedy)
-            void sprintf(eos(buf), _("  (%d slot%s available)"), u.weapon_slots, plur(u.weapon_slots))
+            sprintf(eos(buf), _("  (%d slot%s available)"), u.weapon_slots, plur(u.weapon_slots))
 ;
         end_menu()(win, buf);
         n = select_menu(win, to_advance ? PICK_ONE : PICK_NONE, selected);
@@ -1404,15 +1331,14 @@ enhance_weapon_skill()
         }
     } while (speedy && n > 0);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Change from restricted to unrestricted, allowing P_BASIC as max.  This
  * function may be called with with P_NONE.  Used in pray.c as well as below.
  */
-export function /* void */
-unrestrict_weapon_skill(skill)
-{
+export function unrestrict_weapon_skill(skill) { /* void */
     if (skill < P_NUM_SKILLS && P_RESTRICTED(skill)) {
         (u.weapon_skills[skill].skill) = P_UNSKILLED;
         (u.weapon_skills[skill].max_skill) = P_BASIC;
@@ -1420,9 +1346,7 @@ unrestrict_weapon_skill(skill)
     }
 }
 
-export function /* void */
-use_skill(skill, degree)
-{
+export function use_skill(skill, degree) { /* void */
     let advance_before;
 
     if (skill != P_NONE && !P_RESTRICTED(skill)) {
@@ -1433,9 +1357,7 @@ use_skill(skill, degree)
     }
 }
 
-export function /* void */
-add_weapon_skill(n) /* number of slots to gain; normally one */
-{
+export function add_weapon_skill(n) { /* void */ /* number of slots to gain; normally one */
     let i, before, after;
 
     for (i = 0, before = 0; i < P_NUM_SKILLS; i++)
@@ -1449,9 +1371,7 @@ add_weapon_skill(n) /* number of slots to gain; normally one */
         give_may_advance_msg(P_NONE);
 }
 
-export function /* void */
-lose_weapon_skill(n) /* number of slots to lose; normally one */
-{
+export function lose_weapon_skill(n) { /* void */ /* number of slots to lose; normally one */
     let skill;
 
     while (--n >= 0) {
@@ -1472,16 +1392,15 @@ lose_weapon_skill(n) /* number of slots to lose; normally one */
     }
 }
 
-export function /* void */
-drain_weapon_skill(n) /* number of skills to drain */
-{ const $frame = stack_frame(); try {
+export function drain_weapon_skill(n) { /* void */ /* number of skills to drain */
+    const $frame = stack_frame(); try {
     let skill;
     let i;
     let curradv;
     let prevadv;
     let tmpskills = stack_array(int, P_NUM_SKILLS);
 
-    void memset(addr_of(tmpskills), 0, sizeof(array_of(int, P_NUM_SKILLS)));
+    memset(addr_of(tmpskills), 0, sizeof(array_of(int, P_NUM_SKILLS)));
 
     while (--n >= 0) {
         if (u.skills_advanced) {
@@ -1511,11 +1430,10 @@ drain_weapon_skill(n) /* number of skills to drain */
             You(_("forget %syour training in %s."),
                 P_SKILL(skill) >= P_BASIC ? _("some of ") : _(""), P_NAME(skill));
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-weapon_type(obj)
-{
+export function weapon_type(obj) { /* int */
     /* KMH -- now uses the object table */
     let type;
 
@@ -1528,9 +1446,7 @@ weapon_type(obj)
     return (type < 0) ? -type : type;
 }
 
-export function /* int */
-uwep_skill_type()
-{
+export function uwep_skill_type() { /* int */
     if (u.twoweap)
         return P_TWO_WEAPON_COMBAT;
     return weapon_type(uwep);
@@ -1541,9 +1457,7 @@ uwep_skill_type()
  * weapon can be null, meaning bare-handed combat.
  * Treat restricted weapons as unskilled.
  */
-export function /* int */
-weapon_hit_bonus(weapon)
-{
+export function weapon_hit_bonus(weapon) { /* int */
     let type, wep_type, skill, bonus = 0;
     let bad_skill = init_string(static_array("weapon_hit_bonus.bad_skill", char, sizeof_string("weapon_hit_bonus: bad skill %d")), _("weapon_hit_bonus: bad skill %d"), true);
 
@@ -1640,9 +1554,7 @@ weapon_hit_bonus(weapon)
  * weapon can be null, meaning bare-handed combat.
  * Treat restricted weapons as unskilled.
  */
-export function /* int */
-weapon_dam_bonus(weapon)
-{
+export function weapon_dam_bonus(weapon) { /* int */
     let type, wep_type, skill, bonus = 0;
 
     wep_type = weapon_type(weapon);
@@ -1734,9 +1646,7 @@ weapon_dam_bonus(weapon)
  * hero is holding, finally reading the given array that sets
  * maximums.
  */
-export function /* void */
-skill_init(class_skill)
-{
+export function skill_init(class_skill) { /* void */
     let obj;
     let skmax, skill;
 
@@ -1810,9 +1720,7 @@ skill_init(class_skill)
         skill_based_spellbook_id();
 }
 
-export function /* void */
-setmnotwielded(mon, obj)
-{
+export function setmnotwielded(mon, obj) { /* void */
     if (!obj)
         return;
     if (artifact_light(obj) && obj.lamplit) {
@@ -1827,354 +1735,112 @@ setmnotwielded(mon, obj)
     obj.owornmask = and64(obj.owornmask, ~W_WEP);
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*weapon.c*/
+
 import { ART_SNICKERSNEE } from "./artilist.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { STR18 } from "./attrib.h.macros.js";
+import { A_DEX, A_STR } from "./attrib.h.js";
+import { ACURR, STR18 } from "./attrib.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
 import { TIP_ENHANCE } from "./context.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_JABBERWOCK } from "./defsym.h.js";
-import { S_KOP } from "./defsym.h.js";
-import { S_NAGA } from "./defsym.h.js";
-import { S_SNAKE } from "./defsym.h.js";
-import { S_XORN } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import {
+    BALL_CLASS, CHAIN_CLASS, GEM_CLASS, S_DRAGON, S_EEL, S_GIANT, S_JABBERWOCK, S_KOP, S_NAGA,
+    S_SNAKE, S_XORN, TOOL_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { BUFSZ, FALSE, MAXULEV, TRUE } from "./global.h.js";
 import { Strlen } from "./global.h.macros.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { struct_throw_and_return_weapon } from "./hack.h.js";
-import { max } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import { BOLT_LIM, ECMD_OK, HAND, struct_throw_and_return_weapon } from "./hack.h.js";
+import { max, mdistu, min, plur, y_n } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { AT_WEAP } from "./monattk.h.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { hates_light } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_giant } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { is_wooden } from "./mondata.h.macros.js";
-import { likes_gems } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { strongmonst } from "./mondata.h.macros.js";
-import { thick_skinned } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { NEED_AXE } from "./monst.h.js";
-import { NEED_HTH_WEAPON } from "./monst.h.js";
-import { NEED_PICK_AXE } from "./monst.h.js";
-import { NEED_PICK_OR_AXE } from "./monst.h.js";
-import { NEED_RANGED_WEAPON } from "./monst.h.js";
-import { NEED_WEAPON } from "./monst.h.js";
-import { NO_WEAPON_WANTED } from "./monst.h.js";
-import { MON_NOWEP } from "./monst.h.macros.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_BALROG } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_PONY } from "./monsters.h.js";
-import { PM_SHADE } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { bimanual } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { greatest_erosion } from "./obj.h.macros.js";
-import { is_ammo } from "./obj.h.macros.js";
-import { is_axe } from "./obj.h.macros.js";
-import { is_graystone } from "./obj.h.macros.js";
-import { is_pick } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
-import { is_spear } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { is_wet_towel } from "./obj.h.macros.js";
-import { mcarried } from "./obj.h.macros.js";
-import { LEATHER } from "./objclass.h.js";
-import { SILVER } from "./objclass.h.js";
+import {
+    bigmonst, hates_light, is_animal, is_giant, is_swimmer, is_wooden, likes_gems, mindless,
+    passes_walls, strongmonst, thick_skinned, throws_rocks, touch_petrifies,
+} from "./mondata.h.macros.js";
+import {
+    NEED_AXE, NEED_HTH_WEAPON, NEED_PICK_AXE, NEED_PICK_OR_AXE, NEED_RANGED_WEAPON, NEED_WEAPON,
+    NO_WEAPON_WANTED,
+} from "./monst.h.js";
+import { MON_NOWEP, MON_WEP, resists_ston } from "./monst.h.macros.js";
+import {
+    NON_PM, PM_BALROG, PM_CLERIC, PM_HEALER, PM_MONK, PM_PONY, PM_SHADE, PM_WIZARD,
+} from "./monsters.h.js";
+import {
+    bimanual, carried, greatest_erosion, is_ammo, is_axe, is_graystone, is_pick, is_plural,
+    is_spear, is_weptool, is_wet_towel, mcarried,
+} from "./obj.h.macros.js";
+import { LEATHER, SILVER } from "./objclass.h.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { ACID_VENOM } from "./objects.h.js";
-import { AKLYS } from "./objects.h.js";
-import { ARROW } from "./objects.h.js";
-import { ATHAME } from "./objects.h.js";
-import { AXE } from "./objects.h.js";
-import { BARDICHE } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { BEC_DE_CORBIN } from "./objects.h.js";
-import { BILL_GUISARME } from "./objects.h.js";
-import { BOOMERANG } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { BOW } from "./objects.h.js";
-import { BROADSWORD } from "./objects.h.js";
-import { BULLWHIP } from "./objects.h.js";
-import { CLUB } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { CROSSBOW } from "./objects.h.js";
-import { CROSSBOW_BOLT } from "./objects.h.js";
-import { CRYSKNIFE } from "./objects.h.js";
-import { DAGGER } from "./objects.h.js";
-import { DART } from "./objects.h.js";
-import { DWARVISH_MATTOCK } from "./objects.h.js";
-import { DWARVISH_SHORT_SWORD } from "./objects.h.js";
-import { DWARVISH_SPEAR } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ELVEN_ARROW } from "./objects.h.js";
-import { ELVEN_BOW } from "./objects.h.js";
-import { ELVEN_BROADSWORD } from "./objects.h.js";
-import { ELVEN_DAGGER } from "./objects.h.js";
-import { ELVEN_SHORT_SWORD } from "./objects.h.js";
-import { ELVEN_SPEAR } from "./objects.h.js";
-import { FAUCHARD } from "./objects.h.js";
-import { FLAIL } from "./objects.h.js";
-import { FLINT } from "./objects.h.js";
-import { GLAIVE } from "./objects.h.js";
-import { GRAPPLING_HOOK } from "./objects.h.js";
-import { GUISARME } from "./objects.h.js";
-import { HALBERD } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { IRON_CHAIN } from "./objects.h.js";
-import { JAVELIN } from "./objects.h.js";
-import { KATANA } from "./objects.h.js";
-import { KNIFE } from "./objects.h.js";
-import { LANCE } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { LUCERN_HAMMER } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { MORNING_STAR } from "./objects.h.js";
-import { ORCISH_ARROW } from "./objects.h.js";
-import { ORCISH_BOW } from "./objects.h.js";
-import { ORCISH_DAGGER } from "./objects.h.js";
-import { ORCISH_SHORT_SWORD } from "./objects.h.js";
-import { ORCISH_SPEAR } from "./objects.h.js";
-import { PARTISAN } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { QUARTERSTAFF } from "./objects.h.js";
-import { RANSEUR } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { RUBBER_HOSE } from "./objects.h.js";
-import { RUNESWORD } from "./objects.h.js";
-import { SCALPEL } from "./objects.h.js";
-import { SCIMITAR } from "./objects.h.js";
-import { SHORT_SWORD } from "./objects.h.js";
-import { SHURIKEN } from "./objects.h.js";
-import { SILVER_ARROW } from "./objects.h.js";
-import { SILVER_DAGGER } from "./objects.h.js";
-import { SILVER_MACE } from "./objects.h.js";
-import { SILVER_SABER } from "./objects.h.js";
-import { SILVER_SPEAR } from "./objects.h.js";
-import { SLING } from "./objects.h.js";
-import { SPEAR } from "./objects.h.js";
-import { SPETUM } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { TRIDENT } from "./objects.h.js";
-import { TSURUGI } from "./objects.h.js";
-import { TWO_HANDED_SWORD } from "./objects.h.js";
-import { UNICORN_HORN } from "./objects.h.js";
-import { VOULGE } from "./objects.h.js";
-import { WAR_HAMMER } from "./objects.h.js";
-import { WORM_TOOTH } from "./objects.h.js";
-import { YA } from "./objects.h.js";
-import { YUMI } from "./objects.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { W_RINGL } from "./prop.h.js";
-import { W_RINGR } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { P_ATTACK_SPELL } from "./skills.h.js";
-import { P_BARE_HANDED_COMBAT } from "./skills.h.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_BOW } from "./skills.h.js";
-import { P_CLERIC_SPELL } from "./skills.h.js";
-import { P_CROSSBOW } from "./skills.h.js";
-import { P_ENCHANTMENT_SPELL } from "./skills.h.js";
-import { P_EXPERT } from "./skills.h.js";
-import { P_FIRST_H_TO_H } from "./skills.h.js";
-import { P_FIRST_SPELL } from "./skills.h.js";
-import { P_FIRST_WEAPON } from "./skills.h.js";
-import { P_FLAIL } from "./skills.h.js";
-import { P_GRAND_MASTER } from "./skills.h.js";
-import { P_HEALING_SPELL } from "./skills.h.js";
-import { P_ISRESTRICTED } from "./skills.h.js";
-import { P_LAST_H_TO_H } from "./skills.h.js";
-import { P_LAST_SPELL } from "./skills.h.js";
-import { P_LAST_WEAPON } from "./skills.h.js";
-import { P_MASTER } from "./skills.h.js";
-import { P_NONE } from "./skills.h.js";
-import { P_NUM_SKILLS } from "./skills.h.js";
-import { P_PICK_AXE } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
-import { P_SKILLED } from "./skills.h.js";
-import { P_SKILL_LIMIT } from "./skills.h.js";
-import { P_SLING } from "./skills.h.js";
-import { P_TWO_WEAPON_COMBAT } from "./skills.h.js";
-import { P_UNSKILLED } from "./skills.h.js";
-import { P_ADVANCE } from "./skills.h.macros.js";
-import { P_RESTRICTED } from "./skills.h.macros.js";
-import { P_SKILL } from "./skills.h.macros.js";
-import { martial_bonus } from "./skills.h.macros.js";
-import { practice_needed_to_advance } from "./skills.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
+import {
+    ACID_VENOM, AKLYS, ARROW, ATHAME, AXE, BARDICHE, BATTLE_AXE, BEC_DE_CORBIN, BILL_GUISARME,
+    BOOMERANG, BOULDER, BOW, BROADSWORD, BULLWHIP, CLUB, CORPSE, CREAM_PIE, CROSSBOW, CROSSBOW_BOLT,
+    CRYSKNIFE, DAGGER, DART, DWARVISH_MATTOCK, DWARVISH_SHORT_SWORD, DWARVISH_SPEAR, EGG,
+    ELVEN_ARROW, ELVEN_BOW, ELVEN_BROADSWORD, ELVEN_DAGGER, ELVEN_SHORT_SWORD, ELVEN_SPEAR,
+    FAUCHARD, FLAIL, FLINT, GLAIVE, GRAPPLING_HOOK, GUISARME, HALBERD, HEAVY_IRON_BALL, IRON_CHAIN,
+    JAVELIN, KATANA, KNIFE, LANCE, LOADSTONE, LONG_SWORD, LUCERN_HAMMER, LUCKSTONE, MACE,
+    MORNING_STAR, ORCISH_ARROW, ORCISH_BOW, ORCISH_DAGGER, ORCISH_SHORT_SWORD, ORCISH_SPEAR,
+    PARTISAN, PICK_AXE, QUARTERSTAFF, RANSEUR, ROCK, RUBBER_HOSE, RUNESWORD, SCALPEL, SCIMITAR,
+    SHORT_SWORD, SHURIKEN, SILVER_ARROW, SILVER_DAGGER, SILVER_MACE, SILVER_SABER, SILVER_SPEAR,
+    SLING, SPEAR, SPETUM, STATUE, STRANGE_OBJECT, TIN, TIN_OPENER, TOWEL, TRIDENT, TSURUGI,
+    TWO_HANDED_SWORD, UNICORN_HORN, VOULGE, WAR_HAMMER, WORM_TOOTH, YA, YUMI,
+} from "./objects.h.js";
+import { W_ARM, W_ARMC, W_ARMG, W_ARMS, W_ARMU, W_RINGL, W_RINGR, W_WEP } from "./prop.h.js";
+import {
+    P_ATTACK_SPELL, P_BARE_HANDED_COMBAT, P_BASIC, P_BOW, P_CLERIC_SPELL, P_CROSSBOW,
+    P_ENCHANTMENT_SPELL, P_EXPERT, P_FIRST_H_TO_H, P_FIRST_SPELL, P_FIRST_WEAPON, P_FLAIL,
+    P_GRAND_MASTER, P_HEALING_SPELL, P_ISRESTRICTED, P_LAST_H_TO_H, P_LAST_SPELL, P_LAST_WEAPON,
+    P_MASTER, P_NONE, P_NUM_SKILLS, P_PICK_AXE, P_RIDING, P_SKILLED, P_SKILL_LIMIT, P_SLING,
+    P_TWO_WEAPON_COMBAT, P_UNSKILLED,
+} from "./skills.h.js";
+import {
+    P_ADVANCE, P_RESTRICTED, P_SKILL, martial_bonus, practice_needed_to_advance,
+} from "./skills.h.macros.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
 import { WT_IRON_BALL_INCR } from "./weight.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
+import { create_nhwindow, destroy_nhwindow, end_menu, start_menu } from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, PICK_NONE, PICK_ONE, struct_any,
+    struct_mi,
+} from "./wintype.h.js";
+import { Role_if, Upolyd, mhis } from "./you.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, short, sizeof, sizeof_string, ushort } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64, or64u } from "../rt/int64.js";
+import { free, memset, sprintf, strchr, strcpy } from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { artifact_light } from "./artifact.js";
-import { is_art } from "./artifact.js";
-import { shade_glare } from "./artifact.js";
-import { spec_abon } from "./artifact.js";
-import { spec_dbon } from "./artifact.js";
-import { touch_artifact } from "./artifact.js";
+import { addr_of, array_of, ptr_add, ptr_to, struct, struct_assign } from "../rt/struct.js";
+import {
+    artifact_light, is_art, shade_glare, spec_abon, spec_dbon, touch_artifact,
+} from "./artifact.js";
 import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { gi } from "./decl.js";
-import { gp } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { u } from "./decl.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
+import { cg, gi, gp, gu, gy, hands_obj, iflags, svc, u } from "./decl.js";
+import { canseemon, newsym, nul_glyphinfo } from "./display.js";
 import { flooreffects } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
+import { Monnam, mon_nam } from "./do_name.js";
 import { def_oc_syms } from "./drawing.js";
 import { panic } from "./end.js";
 import { handle_tip } from "./hack.js";
-import { dist2 } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { stackobj } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import { dist2, eos, s_suffix } from "./hacklib.js";
+import { stackobj, update_inventory } from "./invent.js";
 import { arti_light_description } from "./light.js";
 import { adj_lev } from "./makemon.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
+import { obj_extract_self, place_object } from "./mkobj.js";
 import { can_touch_safely } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { mon_hates_blessings } from "./mondata.js";
-import { mon_hates_silver } from "./mondata.js";
+import { attacktype, mon_hates_blessings, mon_hates_silver } from "./mondata.js";
 import { mons } from "./monst.js";
 import { m_carrying } from "./mthrowu.js";
 import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { the } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_mon } from "./pline.js";
+import {
+    The, Tobjnam, Yname2, Yobjnam2, distant_name, doname, makeplural, makesingular, otense, the,
+    vtense, xname,
+} from "./objnam.js";
+import { You, You_feel, Your, impossible, pline, pline_mon } from "./pline.js";
 import { mbodypart } from "./polyself.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { skill_based_spellbook_id } from "./spell.js";
-import { spell_skilltype } from "./spell.js";
-import { begin_burn } from "./timeout.js";
-import { end_burn } from "./timeout.js";
+import { d, rn2, rnd } from "./rnd.js";
+import { skill_based_spellbook_id, spell_skilltype } from "./spell.js";
+import { begin_burn, end_burn } from "./timeout.js";
 import { mwelded } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { bypass_obj } from "./worn.js";
-import { which_armor } from "./worn.js";
+import { add_menu, add_menu_heading, add_menu_str, select_menu } from "./windows.js";
+import { bypass_obj, which_armor } from "./worn.js";

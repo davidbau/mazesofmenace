@@ -8,39 +8,11 @@
  * command.
  */
 
-// #include "hack.h"
-// #include "artifact.h"
-
-
 /* for screen alert shown to player when secret door detection or ^E
    finds stuff; to use tmp_at() instead of flash_glyph_at(), define as 0;
    extra code for tmp_at() will be included and the flash_glyph_at()
    calls will execute but won't do anything */
 export const FOUND_FLASH_COUNT = 6;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
- 
-
-
-
-
-
-
-
-
-
 
 /* dummytrap: used when detecting traps finds a door or chest trap; the
    couple of fields that matter are always re-initialized during use so
@@ -66,10 +38,8 @@ export const ALL_CLASSES = (MAXOCLASSES + 1);
 
 /* bring hero out from underwater or underground or being engulfed;
    return True iff any change occurred */
-function /* boolean */
-unconstrain_map()
-{
-    let res = ((u.uinwater || u.uburied || u.uswallow) ? 1 : 0);
+function unconstrain_map() { /* boolean */
+    let res = (u.uinwater || u.uburied || u.uswallow ? 1 : 0);
 
     /* bring Underwater, buried, or swallowed hero to normal map;
        bypass set_uinwater() */
@@ -81,18 +51,14 @@ unconstrain_map()
 }
 
 /* put hero back underwater or underground or engulfed */
-function /* void */
-reconstrain_map()
-{
+function reconstrain_map() { /* void */
     /* if was in water and taken out, put back; bypass set_uinwater() */
     u.uinwater = iflags.save_uinwater, iflags.save_uinwater = 0;
     u.uburied  = iflags.save_uburied,  iflags.save_uburied  = 0;
     u.uswallow = iflags.save_uswallow, iflags.save_uswallow = 0;
 }
 
-function /* void */
-map_redisplay()
-{
+function map_redisplay() { /* void */
     reconstrain_map();
     docrt(); /* redraw the screen to remove unseen traps from the map */
     if (Underwater())
@@ -102,9 +68,8 @@ map_redisplay()
 }
 
 /* use getpos()'s 'autodescribe' to view whatever is currently shown on map */
-function /* void */
-browse_map(ter_typ, ter_explain)
-{ const $frame = stack_frame(); try {
+function browse_map(ter_typ, ter_explain) { /* void */
+    const $frame = stack_frame(); try {
     let dummy_pos = stack_struct(struct_nhcoord); /* don't care whether player actually picks a spot */
     let save_autodescribe;
 
@@ -112,15 +77,14 @@ browse_map(ter_typ, ter_explain)
     save_autodescribe = iflags.autodescribe;
     iflags.autodescribe = TRUE;
     iflags.terrainmode = ter_typ;
-    void getpos(dummy_pos, FALSE, ter_explain);
+    getpos(dummy_pos, FALSE, ter_explain);
     iflags.terrainmode = 0;
     iflags.autodescribe = save_autodescribe;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* extracted from monster_detection() so can be shared by do_vicinity_map() */
-function /* void */
-map_monst(mtmp, showtail)
-{
+function map_monst(mtmp, showtail) { /* void */
     let glyph = (monsym(mtmp.data) == ord(' '))
                 ? detected_mon_to_glyph(mtmp, newsym_rn2)
                 : mtmp.mtame
@@ -135,9 +99,7 @@ map_monst(mtmp, showtail)
 
 /* this is checking whether a trap symbol represents a trapped chest,
    not whether a trapped chest is actually present */
-export function /* boolean */
-trapped_chest_at(ttyp, x, y)
-{
+export function trapped_chest_at(ttyp, x, y) { /* boolean */
     let mtmp;
     let otmp;
 
@@ -178,9 +140,7 @@ trapped_chest_at(ttyp, x, y)
 
 /* this is checking whether a trap symbol represents a trapped door,
    not whether the door here is actually trapped */
-export function /* boolean */
-trapped_door_at(ttyp, x, y)
-{
+export function trapped_door_at(ttyp, x, y) { /* boolean */
     let lev;
 
     if (!glyph_is_trap(glyph_at(x, y)))
@@ -197,9 +157,7 @@ trapped_door_at(ttyp, x, y)
 }
 
 /* recursively search obj for an object in class oclass, return 1st found */
-export function /* struct obj * */
-o_in(obj, oclass)
-{
+export function o_in(obj, oclass) { /* struct obj * */
     let otmp;
     let temp;
 
@@ -225,9 +183,7 @@ o_in(obj, oclass)
 /* Recursively search obj for an object made of specified material.
  * Return first found.
  */
-export function /* struct obj * */
-o_material(obj, material)
-{
+export function o_material(obj, material) { /* struct obj * */
     let otmp;
     let temp;
 
@@ -245,9 +201,7 @@ o_material(obj, material)
     return null;
 }
 
-function /* void */
-observe_recursively(obj)
-{
+function observe_recursively(obj) { /* void */
     let otmp;
 
     observe_object(obj);
@@ -258,9 +212,7 @@ observe_recursively(obj)
 }
 
 /* Check whether the location has an outdated object displayed on it. */
-function /* boolean */
-check_map_spot(x, y, oclass, material)
-{
+function check_map_spot(x, y, oclass, material) { /* boolean */
     let glyph;
     let otmp;
     let mtmp;
@@ -314,9 +266,7 @@ check_map_spot(x, y, oclass, material)
  * reappear after the detection has completed.  Return true if noticeable
  * change occurs.
  */
-function /* boolean */
-clear_stale_map(oclass, material)
-{
+function clear_stale_map(oclass, material) { /* boolean */
     let zx, zy;
     let change_made = FALSE;
 
@@ -331,9 +281,8 @@ clear_stale_map(oclass, material)
 }
 
 /* look for gold, on the floor or in monsters' possession */
-export function /* int */
-gold_detect(sobj)
-{ const $frame = stack_frame(); try {
+export function gold_detect(sobj) { /* int */
+    const $frame = stack_frame(); try {
     var obj;
     var mtmp;
     var gold = stack_struct(struct_obj), temp = null;
@@ -387,17 +336,17 @@ gold_detect(sobj)
         var buf = stack_array(char, BUFSZ);
 
         if (gy.youmonst.data == mons[PM_GOLD_GOLEM])
-            void sprintf(buf, _("You feel like a million %s!"), currency(2));
+            sprintf(buf, _("You feel like a million %s!"), currency(2));
         else if (money_cnt(gi.invent) || hidden_gold(TRUE))
-            void strcpy(buf, _("You feel worried about your future financial situation."));
+            strcpy(buf, _("You feel worried about your future financial situation."));
         else if (steedgold)
-            void sprintf(buf, _("You feel interested in %s financial situation."), s_suffix(x_monnam(u.usteed,
+            sprintf(buf, _("You feel interested in %s financial situation."), s_suffix(x_monnam(u.usteed,
                                       u.usteed.mtame ? ARTICLE_YOUR
                                                       : ARTICLE_THE,
                                       0,
                                       SUPPRESS_SADDLE, FALSE)));
         else
-            void strcpy(buf, _("You feel materially poor."))
+            strcpy(buf, _("You feel materially poor."))
 
 ;
 
@@ -409,11 +358,10 @@ gold_detect(sobj)
         docrt();
     You(_("notice some gold between your %s."), makeplural(body_part(FOOT)));
     return 0;
-
  }
     cls();
 
-    void unconstrain_map();
+    unconstrain_map();
     /* Discover gold locations. */
     for (obj = fobj(); obj; obj = obj.nobj) {
         if (sobj.blessed && (temp = o_material(obj, GOLD)) != null) {
@@ -429,7 +377,7 @@ gold_detect(sobj)
             }
             map_object(temp, 1);
         }
-        if (temp && ((((temp.ox) == u.ux) && ((temp.oy) == u.uy))))
+        if (temp && (((temp.ox) == u.ux) && ((temp.oy) == u.uy)))
             ugold = TRUE;
     }
     for (mtmp = fmon(); mtmp; mtmp = mtmp.nmon) {
@@ -458,7 +406,7 @@ gold_detect(sobj)
                     break;
                 }
         }
-        if (temp && ((((temp.ox) == u.ux) && ((temp.oy) == u.uy))))
+        if (temp && (((temp.ox) == u.ux) && ((temp.oy) == u.uy)))
             ugold = TRUE;
     }
     if (!ugold) {
@@ -472,16 +420,16 @@ gold_detect(sobj)
 
     map_redisplay();
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns 1 if nothing was detected, 0 if something was detected */
-export function /* int */
-food_detect(sobj)
-{ const $frame = stack_frame(); try {
+export function food_detect(sobj) { /* int */
+    const $frame = stack_frame(); try {
     let obj;
     let mtmp;
     let ct = 0, ctu = 0;
-    let confused = (((Confusion() || (sobj && sobj.cursed)) ? 1 : 0)), stale;
+    let confused = (Confusion() || (sobj && sobj.cursed) ? 1 : 0), stale;
     let oclass = confused ? POTION_CLASS : FOOD_CLASS;
     let what = confused ? something() : _("food");
 
@@ -491,7 +439,7 @@ food_detect(sobj)
 
     for (obj = fobj(); obj; obj = obj.nobj)
         if (o_in(obj, oclass)) {
-            if (((((obj.ox) == u.ux) && ((obj.oy) == u.uy))))
+            if ((((obj.ox) == u.ux) && ((obj.oy) == u.uy)))
                 ctu++;
             else
                 ct++;
@@ -501,7 +449,7 @@ food_detect(sobj)
             continue;
         for (obj = mtmp.minvent; obj; obj = obj.nobj)
             if (o_in(obj, oclass)) {
-                if (((((mtmp.mx) == u.ux) && ((mtmp.my) == u.uy))))
+                if ((((mtmp.mx) == u.ux) && ((mtmp.my) == u.uy)))
                     ctu++; /* steed or an engulfer with inventory */
                 else
                     ct++;
@@ -510,7 +458,7 @@ food_detect(sobj)
     }
 
     if (!ct && !ctu) {
-        gk.known = ((stale && !confused) ? 1 : 0);
+        gk.known = (stale && !confused ? 1 : 0);
         if (stale) {
             docrt();
             You(_("sense a lack of %s nearby."), what);
@@ -522,7 +470,7 @@ food_detect(sobj)
         } else if (sobj) {
             let buf = stack_array(char, BUFSZ);
 
-            void sprintf(buf, _("Your %s twitches%s."), body_part(NOSE), (sobj.blessed && !u.uedibility)
+            sprintf(buf, _("Your %s twitches%s."), body_part(NOSE), (sobj.blessed && !u.uedibility)
                         ? _(" then starts to tingle")
                         : _(""))
 ;
@@ -551,7 +499,7 @@ food_detect(sobj)
 
         gk.known = TRUE;
         cls();
-        void unconstrain_map();
+        unconstrain_map();
         for (obj = fobj(); obj; obj = obj.nobj)
             if ((temp = o_in(obj, oclass)) != null) {
                 if (temp != obj) {
@@ -591,7 +539,8 @@ food_detect(sobj)
         map_redisplay();
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Used for scrolls, potions, spells, and crystal balls.  Returns:
@@ -599,16 +548,15 @@ food_detect(sobj)
  *      1 - nothing was detected
  *      0 - something was detected
  */
-export function /* int */
-object_detect(detector,
-              class_)            /* an object class, 0 for all */
-{ const $frame = stack_frame(); try {
+export function object_detect(detector,
+              class_) { /* int */ /* an object class, 0 for all */
+    const $frame = stack_frame(); try {
     let x, y;
     let stuff = stack_array(char, BUFSZ);
-    let is_cursed = (((detector && detector.cursed) ? 1 : 0));
-    let do_dknown = (((detector && (detector.oclass == POTION_CLASS
+    let is_cursed = (detector && detector.cursed ? 1 : 0);
+    let do_dknown = (detector && (detector.oclass == POTION_CLASS
                                   || detector.oclass == SPBOOK_CLASS)
-                     && detector.blessed) ? 1 : 0));
+                     && detector.blessed ? 1 : 0);
     let ct = 0, ctu = 0;
     let obj, otmp = null;
     let mtmp;
@@ -630,11 +578,11 @@ object_detect(detector,
         boulder = ROCK_CLASS;
 
     if (Hallucination() || (Confusion() && class_ == SCROLL_CLASS))
-        void strcpy(stuff, something());
+        strcpy(stuff, something());
     else
-        void strcpy(stuff, class_ ? def_oc_syms[class_].name : _("objects"));
+        strcpy(stuff, class_ ? def_oc_syms[class_].name : _("objects"));
     if (boulder && class_ != ROCK_CLASS)
-        void strcat(stuff, _(" and/or large stones"));
+        strcat(stuff, _(" and/or large stones"));
 
     if (do_dknown)
         for (obj = gi.invent; obj; obj = obj.nobj)
@@ -642,7 +590,7 @@ object_detect(detector,
 
     for (obj = fobj(); obj; obj = obj.nobj) {
         if ((!class_ && !boulder) || o_in(obj, class_) || o_in(obj, boulder)) {
-            if (((((obj.ox) == u.ux) && ((obj.oy) == u.uy))))
+            if ((((obj.ox) == u.ux) && ((obj.oy) == u.uy)))
                 ctu++;
             else
                 ct++;
@@ -653,7 +601,7 @@ object_detect(detector,
 
     for (obj = svl.level.buriedobjlist; obj; obj = obj.nobj) {
         if (!class_ || o_in(obj, class_)) {
-            if (((((obj.ox) == u.ux) && ((obj.oy) == u.uy))))
+            if ((((obj.ox) == u.ux) && ((obj.oy) == u.uy)))
                 ctu++;
             else
                 ct++;
@@ -695,7 +643,7 @@ object_detect(detector,
 
     cls();
 
-    void unconstrain_map();
+    unconstrain_map();
     /*
      *  Map all buried objects first.
      */
@@ -786,7 +734,8 @@ object_detect(detector,
 
     map_redisplay();
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Used by: crystal balls, potions, fountains
@@ -794,10 +743,8 @@ object_detect(detector,
  * Returns 1 if nothing was detected.
  * Returns 0 if something was detected.
  */
-export function /* int */
-monster_detect(otmp,
-               mclass)       /* monster class, 0 for all */
-{
+export function monster_detect(otmp,
+               mclass) { /* int */ /* monster class, 0 for all */
     let mtmp;
     let mcnt = 0;
 
@@ -861,9 +808,8 @@ monster_detect(otmp,
     return 0;
 }
 
-function /* void */
-sense_trap(trap, x, y, src_cursed)
-{ const $frame = stack_frame(); try {
+function sense_trap(trap, x, y, src_cursed) { /* void */
+    const $frame = stack_frame(); try {
     if (Hallucination() || src_cursed) {
         let obj = stack_struct(struct_obj); /* fake object */
 
@@ -894,7 +840,8 @@ sense_trap(trap, x, y, src_cursed)
         dummytrap.ttyp = BEAR_TRAP; /* some kind of trap */
         map_trap(dummytrap, 1);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 export const OTRAP_NONE = 0;
 export const OTRAP_HERE = 1;
@@ -903,13 +850,12 @@ export const OTRAP_THERE = 2;
 /* check a list of objects for chest traps; return 1 if found at <ux,uy>,
    2 if found at some other spot, 3 if both, 0 otherwise; optionally
    update the map to show where such traps were found */
-function /* int */
-detect_obj_traps(
+function detect_obj_traps(
     objlist,
     show_them,
     how,
-    ft) /* being called by findone() when non-Null */
-{ const $frame = stack_frame(); try {
+    ft) { /* int */ /* being called by findone() when non-Null */
+    const $frame = stack_frame(); try {
     let otmp;
     let x = stack_var(coordxy), y = stack_var(coordxy);
     let trapglyph, result = OTRAP_NONE;
@@ -950,11 +896,11 @@ detect_obj_traps(
             result |= detect_obj_traps(otmp.cobj, show_them, how, ft);
     }
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-display_trap_map(cursed_src)
-{ const $frame = stack_frame(); try {
+function display_trap_map(cursed_src) { /* void */
+    const $frame = stack_frame(); try {
     let mon;
     let ttmp;
     let door, glyph, ter_typ = TER_DETECT | (cursed_src ? TER_OBJ : TER_TRP);
@@ -962,18 +908,18 @@ display_trap_map(cursed_src)
 
     cls();
 
-    void unconstrain_map();
+    unconstrain_map();
     /* show chest traps first, first buried chests then floor chests, so
        that subsequent floor trap display will override if both types are
        present at the same location */
-    void detect_obj_traps(svl.level.buriedobjlist, TRUE, cursed_src, null);
-    void detect_obj_traps(fobj(), TRUE, cursed_src, null);
+    detect_obj_traps(svl.level.buriedobjlist, TRUE, cursed_src, null);
+    detect_obj_traps(fobj(), TRUE, cursed_src, null);
     for (mon = fmon(); mon; mon = mon.nmon) {
         if (DEADMONSTER(mon) || (mon.isgd && !mon.mx))
             continue;
-        void detect_obj_traps(mon.minvent, TRUE, cursed_src, null);
+        detect_obj_traps(mon.minvent, TRUE, cursed_src, null);
     }
-    void detect_obj_traps(gi.invent, TRUE, cursed_src, null);
+    detect_obj_traps(gi.invent, TRUE, cursed_src, null);
 
     for (ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap)
         sense_trap(ttmp, 0, 0, cursed_src);
@@ -1000,21 +946,21 @@ display_trap_map(cursed_src)
     browse_map(unsigned(ter_typ), cursed_src ? _("gold") : _("trap of interest"));
 
     map_redisplay();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the detections are pulled out so they can
  * also be used in the crystal ball routine
  * returns 1 if nothing was detected
  * returns 0 if something was detected
  */
-export function /* int */
-trap_detect(
-    sobj) /* Null if crystal ball, scroll if gold detection */
-{ const $frame = stack_frame(); try {
+export function trap_detect(
+    sobj) { /* int */ /* Null if crystal ball, scroll if gold detection */
+    const $frame = stack_frame(); try {
     let ttmp;
     let mon;
     let door, tr;
-    let cursed_src = ((sobj && sobj.cursed) ? 1 : 0);
+    let cursed_src = (sobj && sobj.cursed ? 1 : 0);
     let found = FALSE;
     let cc = stack_struct(struct_nhcoord);
 
@@ -1078,23 +1024,22 @@ trap_detect(
     if (!found) {
         let buf = stack_array(char, BUFSZ);
 
-        void sprintf(buf, _("Your %s stop itching."), makeplural(body_part(TOE)));
+        sprintf(buf, _("Your %s stop itching."), makeplural(body_part(TOE)));
         strange_feeling(sobj, buf);
         return 1;
     }
     /* traps exist, but only under me - no separate display required */
     Your(_("%s itch."), makeplural(body_part(TOE)));
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-furniture_detect()
-{
+function furniture_detect() { /* int */
     let mon;
     let x, y;
     let glyph, sym, found = 0, revealed = 0;
 
-    void unconstrain_map();
+    unconstrain_map();
 
     for (y = 0; y < ROWNO; ++y)
         for (x = 1; x < COLNO; ++x) {
@@ -1138,11 +1083,9 @@ furniture_detect()
    Wizard guarded the Amulet and was located on a random maze level, and you
    were expected to level teleport deep into Hell and hunt for him while
    working your way up; this isn't of much use anymore */
-export function /* const char * */
-level_distance(where)
-{
+export function level_distance(where) { /* const char * */
     let ll = depth(u.uz) - depth(where);
-    let indun = (+(u.uz.dnum == where.dnum));
+    let indun = +(u.uz.dnum == where.dnum);
     let res = _(""); /* always replaced by some other non-Null value */
 
     if (ll < 0) {
@@ -1196,19 +1139,18 @@ level_distance(where)
     what: ptr_to(char),
     where: ptr_to("struct_d_level"),
 }); const level_detects = static_array("level_detects", struct_crystalballlevels, null, [
-    { what: _("Delphi"), where: (svd.dungeon_topology.d_oracle_level) },
-    { what: _("Medusa's lair"), where: (svd.dungeon_topology.d_medusa_level) },
-    { what: _("a castle"), where: (svd.dungeon_topology.d_stronghold_level) },
-    { what: _("the Wizard of Yendor's tower"), where: (svd.dungeon_topology.d_wiz1_level) },
+    { what: _("Delphi"), where: svd.dungeon_topology.d_oracle_level },
+    { what: _("Medusa's lair"), where: svd.dungeon_topology.d_medusa_level },
+    { what: _("a castle"), where: svd.dungeon_topology.d_stronghold_level },
+    { what: _("the Wizard of Yendor's tower"), where: svd.dungeon_topology.d_wiz1_level },
 ]);
 
-export function /* void */
-use_crystal_ball(optr)
-{ let $goto = null;
+export function use_crystal_ball(optr) { /* void */
+    let $goto = null;
     var ch;
     var oops;
     var obj = optr[0];
-    var charged = (+(obj.spe > 0));
+    var charged = +(obj.spe > 0);
 
     if (Blind()) {
         pline(_("Too bad you can't see %s."), the(xname(obj)));
@@ -1239,7 +1181,7 @@ use_crystal_ball(optr)
             break;
         case 4:
             pline(_("%s your mind!"), Tobjnam(obj, _("zap")));
-            void make_hallucinated((HHallucination() & TIMEOUT) + impair,
+            make_hallucinated((HHallucination() & TIMEOUT) + impair,
                                      FALSE, 0);
             break;
         case 5:
@@ -1247,7 +1189,7 @@ use_crystal_ball(optr)
             useup(obj);
             optr[0] = obj = null; /* it's gone */
             /* physical damage cause by the shards and force */
-            losehp((((Half_physical_damage()) ? (Math.trunc(((((rnd(30)) + 1)) / 2))) : (rnd(30)))), _("exploding crystal ball"),
+            losehp(((Half_physical_damage()) ? (Math.trunc((((rnd(30)) + 1) / 2))) : (rnd(30))), _("exploding crystal ball"),
                    KILLED_BY_AN);
             break;
         }
@@ -1368,9 +1310,7 @@ use_crystal_ball(optr)
 }
 
 /* used by magic mapping, clairvoyance, and wand of probing */
-export function /* void */
-show_map_spot(x, y, cnf)
-{
+export function show_map_spot(x, y, cnf) { /* void */
     let lev;
     let t;
     let ep;
@@ -1418,9 +1358,7 @@ show_map_spot(x, y, cnf)
         room_discovered(lev.roomno - ROOMOFFSET);
 }
 
-export function /* void */
-do_mapping()
-{
+export function do_mapping() { /* void */
     let zx, zy;
     let unconstrained;
 
@@ -1444,10 +1382,8 @@ do_mapping()
 }
 
 /* clairvoyance */
-export function /* void */
-do_vicinity_map(
-    sobj) /* scroll--actually fake spellbook--object */
-{
+export function do_vicinity_map(
+    sobj) { /* void */ /* scroll--actually fake spellbook--object */
     let zx, zy;
     let mtmp;
     let otmp;
@@ -1456,9 +1392,7 @@ do_vicinity_map(
     let unconstrained, refresh = FALSE,
             mdetected = FALSE, odetected = FALSE,
 
-
-
-            extended = (((sobj && (sobj.blessed || Clairvoyant())) ? 1 : 0)),
+            extended = (sobj && (sobj.blessed || Clairvoyant()) ? 1 : 0),
             random_farsight = +!sobj;
     let newglyph, oldglyph,
         lo_y = ((u.uy - 5 < 0) ? 0 : u.uy - 5),
@@ -1585,9 +1519,7 @@ do_vicinity_map(
 }
 
 /* convert a secret door into a normal door; it might be trapped */
-export function /* void */
-cvt_sdoor_to_door(lev)
-{
+export function cvt_sdoor_to_door(lev) { /* void */
     let newmask = lev.flags & ~WM_MASK;
 
     if (Is_rogue_level(u.uz)) {
@@ -1606,9 +1538,7 @@ cvt_sdoor_to_door(lev)
 /* update the map for something which has just been found by wand of secret
    door detection or wizard mode ^E; will be called multiple times during a
    single operation if multiple things of interest are discovered */
-function /* void */
-foundone(zx, zy, glyph)
-{
+function foundone(zx, zy, glyph) { /* void */
     if (glyph_is_cmap(glyph) || glyph_is_unexplored(glyph))
         levl()[zx][zy].seenv = SVALL;
 
@@ -1621,23 +1551,12 @@ foundone(zx, zy, glyph)
         uchars[gv.viz_array[zy] + zx] = save_viz;
     }
 
-
-
-
-
-
-
-
-
-
-
+/* #if FOUND_FLASH_COUNT == 0: not in this build */
 }
 
 /* find something at one location; this should find all somethings there
    since it is used for magical detection rather than physical searching */
-function /* void */
-findone(zx, zy, whatfound)
-{
+function findone(zx, zy, whatfound) { /* void */
     let lev = levl()[zx][zy];
     let ttmp = t_at(zx, zy);
     let mtmp = m_at(zx, zy);
@@ -1685,12 +1604,12 @@ findone(zx, zy, whatfound)
         found_p.num_traps++;
     }
     /* trapped chests */
-    void detect_obj_traps(svl.level.buriedobjlist, TRUE, 0, found_p);
-    void detect_obj_traps(fobj(), TRUE, 0, found_p);
+    detect_obj_traps(svl.level.buriedobjlist, TRUE, 0, found_p);
+    detect_obj_traps(fobj(), TRUE, 0, found_p);
     if (mtmp)
-        void detect_obj_traps(mtmp.minvent, TRUE, 0, found_p);
+        detect_obj_traps(mtmp.minvent, TRUE, 0, found_p);
     if (u_at(zx, zy))
-        void detect_obj_traps(gi.invent, TRUE, 0, found_p);
+        detect_obj_traps(gi.invent, TRUE, 0, found_p);
 
     if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || M_AP_TYPE(mtmp))) {
         if (M_AP_TYPE(mtmp)) {
@@ -1725,9 +1644,10 @@ findone(zx, zy, whatfound)
     }
 }
 
-function /* void */
-openone(zx$, zy$, num)
-{ const $frame = stack_frame(); try { const zx = stack_var(short, zx$); const zy = stack_var(short, zy$);
+function openone(zx$, zy$, num) { /* void */
+    const $frame = stack_frame(); try {
+    const zx = stack_var(short, zx$);
+    const zy = stack_var(short, zy$);
     let ttmp;
     let otmp;
     let num_p = ref_to(int, num);
@@ -1785,12 +1705,12 @@ openone(zx$, zy$, num)
         open_drawbridge(zx[0], zy[0]);
         (num_p[0])++;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns number of things found */
-export function /* int */
-findit()
-{ const $frame = stack_frame(); try {
+export function findit() { /* int */
+    const $frame = stack_frame(); try {
     let num = 0, k;
     let buf = stack_array(char, BUFSZ);
     let found = stack_struct(struct_found_things);
@@ -1808,10 +1728,7 @@ findit()
     if (u.uswallow)
         return 0;
 
-
-
-
-    void memset(addr_of(found), 0, sizeof(struct_found_things));
+    memset(addr_of(found), 0, sizeof(struct_found_things));
     do_clear_area(u.ux, u.uy, BOLT_LIM, findone, addr_of(found));
     /* count that controls "reveal" punctuation; 0..4 */
     k = +!!found.num_sdoors + +!!found.num_scorrs + +!!found.num_traps
@@ -1820,45 +1737,40 @@ findit()
     chars[buf + 0] = ord('\0');
     if (found.num_sdoors) {
         if (found.num_sdoors > 1)
-            void sprintf(eos(buf), _("%d secret doors"), found.num_sdoors);
+            sprintf(eos(buf), _("%d secret doors"), found.num_sdoors);
         else
-            void strcat(buf, _("a secret door"));
+            strcat(buf, _("a secret door"));
         num += found.num_sdoors;
     }
     /* note: non-\0 *buf implies that at least one previous type is present */
     if (found.num_scorrs) {
         if (chars[buf]) /* "doors and corrs" or "doors, corrs ..." */
-            void strcat(buf, (k == 2) ? _(" and ") : _(", "));
+            strcat(buf, (k == 2) ? _(" and ") : _(", "));
         if (found.num_scorrs > 1)
-            void sprintf(eos(buf), _("%d secret corridors"), found.num_scorrs);
+            sprintf(eos(buf), _("%d secret corridors"), found.num_scorrs);
         else
-            void strcat(buf, _("a secret corridor"));
+            strcat(buf, _("a secret corridor"));
         num += found.num_scorrs;
     }
     if (found.num_traps) {
         if (chars[buf]) /* "doors, corrs, and traps" or "{doors|corrs} and traps"
                    * or "..., traps ..." */
-            void strcat(buf, (k == 3 && !found.num_mons) ? _(", and ")
+            strcat(buf, (k == 3 && !found.num_mons) ? _(", and ")
                         : (k == 2) ? _(" and ") : _(", "));
         if (found.num_traps > 1)
-            void sprintf(eos(buf), _("%d traps"), found.num_traps);
+            sprintf(eos(buf), _("%d traps"), found.num_traps);
         else
-            void strcat(buf, _("a trap"));
+            strcat(buf, _("a trap"));
         num += found.num_traps;
     }
 
-
-
-
-
-
     if (found.num_mons) {
         if (chars[buf])
-            void strcat(buf, (k > 2) ? _(", and ") : _(" and "));
+            strcat(buf, (k > 2) ? _(", and ") : _(" and "));
         if (found.num_mons > 1)
-            void sprintf(eos(buf), _("%d hidden monsters"), found.num_mons);
+            sprintf(eos(buf), _("%d hidden monsters"), found.num_mons);
         else
-            void strcat(buf, _("a hidden monster"));
+            strcat(buf, _("a hidden monster"));
         num += found.num_mons;
     }
     if (chars[buf])
@@ -1866,9 +1778,9 @@ findit()
 
     if (found.num_invis) {
         if (found.num_invis > 1)
-            void sprintf(buf, _("%d%s unseen monsters"), found.num_invis, found.num_kept_invis ? _(" other") : _(""));
+            sprintf(buf, _("%d%s unseen monsters"), found.num_invis, found.num_kept_invis ? _(" other") : _(""));
         else
-            void sprintf(buf, _("%s unseen monster"), found.num_kept_invis ? _("another") : _("an"))
+            sprintf(buf, _("%s unseen monster"), found.num_kept_invis ? _("another") : _("an"))
 
 ;
         You(_("detect %s!"), buf);
@@ -1887,20 +1799,13 @@ findit()
     if (!num)
         You(_("don't find anything."));
 
-
-
-
-
-
-
-
     return num;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns number of things found and opened */
-export function /* int */
-openit()
-{ const $frame = stack_frame(); try {
+export function openit() { /* int */
+    const $frame = stack_frame(); try {
     let num = stack_var(int, 0);
 
     if (u.uswallow) {
@@ -1910,11 +1815,6 @@ openit()
                 pline(_("Its mouth opens!"));
             else
                 pline(_("%s opens its mouth!"), Monnam(u.ustuck));
-
-
-
-
-
         }
         expels(u.ustuck, u.ustuck.data, TRUE);
         return -1;
@@ -1922,18 +1822,15 @@ openit()
 
     do_clear_area(u.ux, u.uy, BOLT_LIM, openone, addr_of(num));
     return num[0];
-} finally { stack_pop($frame); } }
-
-/* callback hack for overriding vision in do_clear_area() */
-export function /* boolean */
-detecting(func)
-{
-    return (+(func == findone || func == openone));
+    } finally { stack_pop($frame); }
 }
 
-export function /* void */
-find_trap(trap)
-{
+/* callback hack for overriding vision in do_clear_area() */
+export function detecting(func) { /* boolean */
+    return +(func == findone || func == openone);
+}
+
+export function find_trap(trap) { /* void */
     let cleared = FALSE;
 
     trap.tseen = 1;
@@ -1961,9 +1858,7 @@ find_trap(trap)
     }
 }
 
-function /* int */
-mfind0(mtmp, via_warning)
-{
+function mfind0(mtmp, via_warning) { /* int */
     let x = mtmp.mx, y = mtmp.my;
     let found_something = FALSE;
 
@@ -2012,9 +1907,7 @@ mfind0(mtmp, via_warning)
     return 0;
 }
 
-export function /* int */
-dosearch0(aflag) /* intrinsic autosearch vs explicit searching */
-{
+export function dosearch0(aflag) { /* int */ /* intrinsic autosearch vs explicit searching */
     let x, y;
     let trap;
     let mtmp;
@@ -2074,7 +1967,7 @@ dosearch0(aflag) /* intrinsic autosearch vs explicit searching */
                      * feel_location() already did it
                      */
                     if (!aflag && !mtmp && !Blind())
-                        void unmap_invisible(x, y);
+                        unmap_invisible(x, y);
 
                     if ((trap = t_at(x, y)) && !trap.tseen && !rnl(8)) {
                         nomul(0);
@@ -2093,9 +1986,7 @@ dosearch0(aflag) /* intrinsic autosearch vs explicit searching */
 }
 
 /* the #search command -- explicit searching */
-export function /* int */
-dosearch()
-{
+export function dosearch() { /* int */
     if (cmd_safety_prevention(_("Searching"), _("another search"),
                           _("You already found a monster."),
                           ref_of(ga, "already_found_flag")))
@@ -2103,9 +1994,7 @@ dosearch()
     return dosearch0(0) ? ECMD_TIME : ECMD_OK;
 }
 
-export function /* void */
-warnreveal()
-{
+export function warnreveal() { /* void */
     let x, y;
     let mtmp;
 
@@ -2115,14 +2004,12 @@ warnreveal()
                 continue;
             if ((mtmp = m_at(x, y)) != null
                 && warning_of(mtmp) && mtmp.mundetected)
-                void mfind0(mtmp, 1); /* via_warning */
+                mfind0(mtmp, 1); /* via_warning */
         }
 }
 
 /* skip premap detection of areas outside Sokoban map */
-function /* boolean */
-skip_premap_detect(x, y)
-{
+function skip_premap_detect(x, y) { /* boolean */
     if ((levl()[x][y].typ == STONE)
         && (levl()[x][y].flags & (W_NONDIGGABLE | W_NONPASSWALL)) != 0)
         return TRUE;
@@ -2130,9 +2017,7 @@ skip_premap_detect(x, y)
 }
 
 /* Pre-map (the sokoban) levels */
-export function /* void */
-premap_detect()
-{
+export function premap_detect() { /* void */
     let x, y;
     let ttmp;
     let obj;
@@ -2160,16 +2045,12 @@ premap_detect()
 
 /* used to see under visible gas/cloud regions; caller must declare cmaptmp */
 
-
-
-
-function /* int */
-reveal_terrain_getglyph(
+function reveal_terrain_getglyph(
     x, y,
     swallowed,
     default_glyph,
-    which_subset)
-{ const $frame = stack_frame(); try {
+    which_subset) { /* int */
+    const $frame = stack_frame(); try {
     let t;
     let mtmp;
     let glyph, levl_glyph;
@@ -2226,7 +2107,7 @@ reveal_terrain_getglyph(
             /* we either show both traps and visible regions (trap if both
                are present at the same spot) or neither traps nor regions */
             || (!keep_traps && (glyph_is_trap(glyph)
-                                || (reg && ((glyph_is_cmap(glyph) && ((((cmaptmp = glyph_to_cmap(glyph)) == S_cloud) || (cmaptmp == S_poisoncloud))))))))
+                                || (reg && (glyph_is_cmap(glyph) && (((cmaptmp = glyph_to_cmap(glyph)) == S_cloud) || (cmaptmp == S_poisoncloud))))))
             || (reg && was_mon)
             || glyph_is_invisible(glyph)) {
             if (!seenv) {
@@ -2237,7 +2118,7 @@ reveal_terrain_getglyph(
                    seen the corridor underneath it) */
                 glyph = !reg ? default_glyph : GLYPH_UNEXPLORED;
             } else if (keep_traps && reg
-                       && (((glyph_is_cmap(glyph) && ((((cmaptmp = glyph_to_cmap(glyph)) == S_cloud) || (cmaptmp == S_poisoncloud))))) || was_mon)) {
+                       && ((glyph_is_cmap(glyph) && (((cmaptmp = glyph_to_cmap(glyph)) == S_cloud) || (cmaptmp == S_poisoncloud))) || was_mon)) {
                 t = t_at(x, y);
                 /* we need reg->glyph here when there's a monster shown
                    at a region spot; the region glyph isn't the remembered
@@ -2253,7 +2134,7 @@ reveal_terrain_getglyph(
                    if we don't find one, we'll have to fake it */
                 if ((mtmp = m_at(x, y)) != null
                     && M_AP_TYPE(mtmp) == M_AP_FURNITURE) {
-                    glyph = int((((((mtmp.mappearance) == S_stone)) ? GLYPH_CMAP_STONE_OFF : ((((mtmp.mappearance) <= S_trwall)) ? (unsigned((unsigned(((mtmp.mappearance) - S_vwall)) + ((In_mines(u.uz) ? GLYPH_CMAP_MINES_OFF : (In_hell(u.uz) ? GLYPH_CMAP_GEH_OFF : (Is_knox(u.uz) ? GLYPH_CMAP_KNOX_OFF : (In_sokoban(u.uz) ? GLYPH_CMAP_SOKO_OFF : GLYPH_CMAP_MAIN_OFF)))))))) : ((((mtmp.mappearance) < S_altar)) ? (unsigned(((unsigned(((mtmp.mappearance) - S_ndoor))) + GLYPH_CMAP_A_OFF))) : ((((mtmp.mappearance) == S_altar)) ? altar_to_glyph(AM_NEUTRAL) : ((((mtmp.mappearance) < (S_arrow_trap + MAXTCHARS))) ? (unsigned(((unsigned(((mtmp.mappearance) - S_grave))) + GLYPH_CMAP_B_OFF))) : ((((mtmp.mappearance) <= S_goodpos)) ? (unsigned(((unsigned(((mtmp.mappearance) - S_digbeam))) + GLYPH_CMAP_C_OFF))) : NO_GLYPH))))))));
+                    glyph = int((((mtmp.mappearance) == S_stone) ? GLYPH_CMAP_STONE_OFF : (((mtmp.mappearance) <= S_trwall) ? (unsigned((unsigned(((mtmp.mappearance) - S_vwall)) + (In_mines(u.uz) ? GLYPH_CMAP_MINES_OFF : (In_hell(u.uz) ? GLYPH_CMAP_GEH_OFF : (Is_knox(u.uz) ? GLYPH_CMAP_KNOX_OFF : (In_sokoban(u.uz) ? GLYPH_CMAP_SOKO_OFF : GLYPH_CMAP_MAIN_OFF))))))) : (((mtmp.mappearance) < S_altar) ? (unsigned(((unsigned(((mtmp.mappearance) - S_ndoor))) + GLYPH_CMAP_A_OFF))) : (((mtmp.mappearance) == S_altar) ? altar_to_glyph(AM_NEUTRAL) : (((mtmp.mappearance) < (S_arrow_trap + MAXTCHARS)) ? (unsigned(((unsigned(((mtmp.mappearance) - S_grave))) + GLYPH_CMAP_B_OFF))) : (((mtmp.mappearance) <= S_goodpos) ? (unsigned(((unsigned(((mtmp.mappearance) - S_digbeam))) + GLYPH_CMAP_C_OFF))) : NO_GLYPH)))))));
                 } else {
                     let save_spot = stack_struct(struct_rm);
 
@@ -2285,77 +2166,17 @@ reveal_terrain_getglyph(
     else if (glyph == cmap_to_glyph(S_litcorr))
         glyph = cmap_to_glyph(S_corr);
     return glyph;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef DUMPLOG: not in this build */
 
 /* idea from crawl; show known portion of map without any monsters,
    objects, or traps occluding the view of the underlying terrain;
    in explore or wizard modes, can also display unexplored portion */
-export function /* void */
-reveal_terrain(
-    which_subset) /* TER_TRP | TER_OBJ | TER_MON | TER_FULL */
-{ const $frame = stack_frame(); try {
+export function reveal_terrain(
+    which_subset) { /* void */ /* TER_TRP | TER_OBJ | TER_MON | TER_FULL */
+    const $frame = stack_frame(); try {
     /* 'full' overrides impairment and implies no-traps, no-objs, no-mons */
     let full = +((which_subset & TER_FULL) != 0); /* show whole map */
 
@@ -2387,18 +2208,18 @@ reveal_terrain(
            cursor there, and after moving it anywhere '@' moves it back */
         flush_screen(1);
         if (full) {
-            void strcpy(buf, _("underlying terrain"));
+            strcpy(buf, _("underlying terrain"));
         } else {
-            void strcpy(buf, _("known terrain"));
+            strcpy(buf, _("known terrain"));
             if (keep_traps)
-                void sprintf(eos(buf), _("%s traps"), (keep_objs || keep_mons) ? _(",") : _(" and"))
+                sprintf(eos(buf), _("%s traps"), (keep_objs || keep_mons) ? _(",") : _(" and"))
 ;
             if (keep_objs)
-                void sprintf(eos(buf), _("%s%s objects"), (keep_traps || keep_mons) ? _(",") : _(""), keep_mons ? _("") : _(" and"))
+                sprintf(eos(buf), _("%s%s objects"), (keep_traps || keep_mons) ? _(",") : _(""), keep_mons ? _("") : _(" and"))
 
 ;
             if (keep_mons)
-                void sprintf(eos(buf), _("%s and monsters"), (keep_traps || keep_objs) ? _(",") : _(""))
+                sprintf(eos(buf), _("%s and monsters"), (keep_traps || keep_objs) ? _(",") : _(""))
 ;
         }
         pline(_("Showing %s only..."), buf);
@@ -2411,353 +2232,126 @@ reveal_terrain(
         map_redisplay();
     }
     return;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /*detect.c*/
+
 import { AM_NEUTRAL } from "./align.h.js";
 import { SPFX_SEARCH } from "./artifact.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+import { A_INT, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { vision_clears } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { DEF_MIMIC } from "./defsym.h.js";
-import { DEF_MIMIC_DEF } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { MAXMCLASSES } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_GHOST } from "./defsym.h.js";
-import { S_WORM_TAIL } from "./defsym.h.js";
-import { S_altar } from "./defsym.h.js";
-import { S_arrow_trap } from "./defsym.h.js";
-import { S_cloud } from "./defsym.h.js";
-import { S_corr } from "./defsym.h.js";
-import { S_darkroom } from "./defsym.h.js";
-import { S_digbeam } from "./defsym.h.js";
-import { S_goodpos } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_hcdoor } from "./defsym.h.js";
-import { S_litcorr } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_poisoncloud } from "./defsym.h.js";
-import { S_room } from "./defsym.h.js";
-import { S_stone } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
-import { S_trwall } from "./defsym.h.js";
-import { S_vcdoor } from "./defsym.h.js";
-import { S_vwall } from "./defsym.h.js";
-import { GLYPH_CMAP_A_OFF } from "./display.h.js";
-import { GLYPH_CMAP_B_OFF } from "./display.h.js";
-import { GLYPH_CMAP_C_OFF } from "./display.h.js";
-import { GLYPH_CMAP_GEH_OFF } from "./display.h.js";
-import { GLYPH_CMAP_KNOX_OFF } from "./display.h.js";
-import { GLYPH_CMAP_MAIN_OFF } from "./display.h.js";
-import { GLYPH_CMAP_MINES_OFF } from "./display.h.js";
-import { GLYPH_CMAP_SOKO_OFF } from "./display.h.js";
-import { GLYPH_CMAP_STONE_OFF } from "./display.h.js";
-import { GLYPH_INVISIBLE } from "./display.h.js";
-import { GLYPH_NOTHING } from "./display.h.js";
-import { GLYPH_UNEXPLORED } from "./display.h.js";
-import { NO_GLYPH } from "./display.h.js";
-import { altar_to_glyph } from "./display.h.macros.js";
-import { canspotmon } from "./display.h.macros.js";
-import { cmap_to_glyph } from "./display.h.macros.js";
-import { covers_objects } from "./display.h.macros.js";
-import { covers_traps } from "./display.h.macros.js";
-import { detected_mon_to_glyph } from "./display.h.macros.js";
-import { display_self } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { glyph_is_monster } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { glyph_is_swallow } from "./display.h.macros.js";
-import { glyph_is_trap } from "./display.h.macros.js";
-import { glyph_is_unexplored } from "./display.h.macros.js";
-import { glyph_is_warning } from "./display.h.macros.js";
-import { glyph_to_mon } from "./display.h.macros.js";
-import { glyph_to_obj } from "./display.h.macros.js";
-import { mon_to_glyph } from "./display.h.macros.js";
-import { newsym_rn2 } from "./display.h.macros.js";
-import { pet_to_glyph } from "./display.h.macros.js";
-import { random_monster } from "./display.h.macros.js";
-import { random_object } from "./display.h.macros.js";
-import { trap_to_glyph } from "./display.h.macros.js";
-import { In_sokoban } from "./dungeon.h.macros.js";
-import { Is_knox } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { TER_DETECT } from "./flag.h.js";
-import { TER_FULL } from "./flag.h.js";
-import { TER_MAP } from "./flag.h.js";
-import { TER_MON } from "./flag.h.js";
-import { TER_OBJ } from "./flag.h.js";
-import { TER_TRP } from "./flag.h.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { ARTICLE_YOUR } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { NOSE } from "./hack.h.js";
-import { NO_PART } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { SYM_OFF_X } from "./hack.h.js";
-import { TOE } from "./hack.h.js";
-import { Your1 } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { MCORPSENM } from "./mextra.h.macros.js";
-import { has_mcorpsenm } from "./mextra.h.macros.js";
+import { Never_mind, something, vision_clears } from "./decl.h.macros.js";
+import {
+    COIN_CLASS, DEF_MIMIC, DEF_MIMIC_DEF, FOOD_CLASS, MAXMCLASSES, MAXOCLASSES, POTION_CLASS,
+    ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS, S_EEL, S_GHOST, S_WORM_TAIL, S_altar, S_arrow_trap,
+    S_cloud, S_corr, S_darkroom, S_digbeam, S_goodpos, S_grave, S_hcdoor, S_litcorr, S_ndoor,
+    S_poisoncloud, S_room, S_stone, S_tree, S_trwall, S_vcdoor, S_vwall,
+} from "./defsym.h.js";
+import {
+    GLYPH_CMAP_A_OFF, GLYPH_CMAP_B_OFF, GLYPH_CMAP_C_OFF, GLYPH_CMAP_GEH_OFF, GLYPH_CMAP_KNOX_OFF,
+    GLYPH_CMAP_MAIN_OFF, GLYPH_CMAP_MINES_OFF, GLYPH_CMAP_SOKO_OFF, GLYPH_CMAP_STONE_OFF,
+    GLYPH_INVISIBLE, GLYPH_NOTHING, GLYPH_UNEXPLORED, NO_GLYPH,
+} from "./display.h.js";
+import {
+    altar_to_glyph, canspotmon, cmap_to_glyph, covers_objects, covers_traps, detected_mon_to_glyph,
+    display_self, glyph_is_cmap, glyph_is_invisible, glyph_is_monster, glyph_is_object,
+    glyph_is_swallow, glyph_is_trap, glyph_is_unexplored, glyph_is_warning, glyph_to_mon,
+    glyph_to_obj, mon_to_glyph, newsym_rn2, pet_to_glyph, random_monster, random_object,
+    trap_to_glyph,
+} from "./display.h.macros.js";
+import { In_sokoban, Is_knox, Is_rogue_level } from "./dungeon.h.macros.js";
+import { TER_DETECT, TER_FULL, TER_MAP, TER_MON, TER_OBJ, TER_TRP } from "./flag.h.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, boolean, coordxy } from "./global.h.js";
+import {
+    ARTICLE_THE, ARTICLE_YOUR, BOLT_LIM, ECMD_OK, ECMD_TIME, FOOT, KILLED_BY_AN, NOSE, NO_PART,
+    SUPPRESS_SADDLE, SYM_OFF_X, TOE,
+} from "./hack.h.js";
+import { Your1, distu, makeknown, pline1 } from "./hack.h.macros.js";
+import { MCORPSENM, has_mcorpsenm } from "./mextra.h.macros.js";
 import { ROOMOFFSET } from "./mkroom.h.js";
-import { digests } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_hider } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { monsym } from "./mondata.h.macros.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { PM_GOLD_GOLEM } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { PM_TENGU } from "./monsters.h.js";
-import { BURIED_TOO } from "./obj.h.js";
-import { CONTAINED_TOO } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_box } from "./obj.h.macros.js";
-import { SchroedingersBox } from "./obj.h.macros.js";
+import { digests, hides_under, is_hider, monsndx, monsym } from "./mondata.h.macros.js";
+import { M_AP_FURNITURE, M_AP_OBJECT } from "./monst.h.js";
+import { DEADMONSTER, M_AP_TYPE, helpless } from "./monst.h.macros.js";
+import { PM_GOLD_GOLEM, PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_TENGU } from "./monsters.h.js";
+import { BURIED_TOO, CONTAINED_TOO, struct_obj } from "./obj.h.js";
+import { Has_contents, Is_box, SchroedingersBox } from "./obj.h.macros.js";
 import { GOLD } from "./objclass.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CRYSTAL_BALL } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { DETECT_MONSTERS } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { CORR } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { SVALL } from "./rm.h.js";
-import { WM_MASK } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { W_NONPASSWALL } from "./rm.h.js";
-import { struct_rm } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FURNITURE } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { MAXTCHARS } from "./sym.h.js";
-import { SYM_BOULDER } from "./sym.h.js";
+import { BOULDER, CHEST, CRYSTAL_BALL, GOLD_PIECE, LARGE_BOX, LENSES } from "./objects.h.js";
+import { DETECT_MONSTERS, I_SPECIAL, TIMEOUT } from "./prop.h.js";
+import {
+    CORR, DOOR, D_BROKEN, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED, SCORR, SDOOR, STONE,
+    SVALL, WM_MASK, W_NONDIGGABLE, W_NONPASSWALL, struct_rm,
+} from "./rm.h.js";
+import { IS_DOOR, IS_FURNITURE, IS_WALL, OBJ_AT, fmon, fobj, levl, m_at } from "./rm.h.macros.js";
+import { MAXTCHARS, SYM_BOULDER } from "./sym.h.js";
 import { is_cmap_furniture } from "./sym.h.macros.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { STATUE_TRAP } from "./trap.h.js";
-import { TRAPPED_CHEST } from "./trap.h.js";
-import { TRAPPED_DOOR } from "./trap.h.js";
-import { struct_trap } from "./trap.h.js";
-import { COULD_SEE } from "./vision.h.js";
-import { IN_SIGHT } from "./vision.h.js";
+import { BEAR_TRAP, STATUE_TRAP, TRAPPED_CHEST, TRAPPED_DOOR, struct_trap } from "./trap.h.js";
+import { COULD_SEE, IN_SIGHT } from "./vision.h.js";
 import { cansee } from "./vision.h.macros.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
 import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Clairvoyant } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { EDetect_monsters } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HHallucination } from "./youprop.h.macros.js";
-import { Half_physical_damage } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
+import {
+    Blind, BlindedTimeout, Clairvoyant, Confusion, Deaf, EDetect_monsters, HConfusion,
+    HHallucination, Half_physical_damage, Hallucination, Stunned, Underwater,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { char, int, ord, short, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { and64, or64 } from "../rt/int64.js";
+import { memset, sprintf, strcat, strchr, strcpy } from "../rt/libc.js";
+import { stack_array, stack_struct, stack_var, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, ptr_add, ptr_to, ref_of, ref_to, struct, struct_assign, view_of,
+} from "../rt/struct.js";
 import { spec_ability } from "./artifact.js";
 import { exercise } from "./attrib.js";
-import { isok } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { find_drawbridge } from "./dbridge.js";
-import { open_drawbridge } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gd } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gk } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { quitchars } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { back_to_glyph } from "./display.js";
-import { cls } from "./display.js";
-import { docrt } from "./display.js";
-import { feel_location } from "./display.js";
-import { feel_newsym } from "./display.js";
-import { flash_glyph_at } from "./display.js";
-import { flush_screen } from "./display.js";
-import { glyph_at } from "./display.js";
-import { magic_map_background } from "./display.js";
-import { map_background } from "./display.js";
-import { map_engraving } from "./display.js";
-import { map_invisible } from "./display.js";
-import { map_object } from "./display.js";
-import { map_trap } from "./display.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { sensemon } from "./display.js";
-import { show_glyph } from "./display.js";
-import { under_ground } from "./display.js";
-import { under_water } from "./display.js";
-import { unmap_invisible } from "./display.js";
-import { unmap_object } from "./display.js";
-import { warning_of } from "./display.js";
-import { xy_set_wall_state } from "./display.js";
+import { isok, yn_function } from "./cmd.js";
+import { find_drawbridge, open_drawbridge } from "./dbridge.js";
+import {
+    cg, flags, ga, gd, gf, gi, gk, gm, gn, gs, gv, gy, iflags, quitchars, svd, svl, u,
+} from "./decl.js";
+import {
+    back_to_glyph, cls, docrt, feel_location, feel_newsym, flash_glyph_at, flush_screen, glyph_at,
+    magic_map_background, map_background, map_engraving, map_invisible, map_object, map_trap,
+    newsym, see_monsters, sensemon, show_glyph, under_ground, under_water, unmap_invisible,
+    unmap_object, warning_of, xy_set_wall_state,
+} from "./display.js";
 import { cmd_safety_prevention } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { a_monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
-import { def_char_is_furniture } from "./drawing.js";
-import { def_char_to_monclass } from "./drawing.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_monsyms } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { In_hell } from "./dungeon.js";
-import { In_mines } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { room_discovered } from "./dungeon.js";
+import { Monnam, a_monnam, hcolor, x_monnam, y_monnam } from "./do_name.js";
+import {
+    def_char_is_furniture, def_char_to_monclass, def_char_to_objclass, def_monsyms, def_oc_syms,
+} from "./drawing.js";
+import { In_hell, In_mines, depth, room_discovered } from "./dungeon.js";
 import { engr_at } from "./engrave.js";
 import { getpos } from "./getpos.js";
 import { glyph_to_cmap } from "./glyphs.js";
-import { losehp } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { nomul } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { consume_obj_charge } from "./invent.js";
-import { currency } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { useup } from "./invent.js";
+import { losehp, money_cnt, nomul } from "./hack.js";
+import { eos, s_suffix } from "./hacklib.js";
+import { consume_obj_charge, currency, sobj_at, useup } from "./invent.js";
 import { expels } from "./mhitu.js";
-import { seemimic } from "./mon.js";
-import { wake_nearto } from "./mon.js";
+import { seemimic, wake_nearto } from "./mon.js";
 import { resists_blnd } from "./mondata.js";
 import { closed_door } from "./monmove.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { Norep } from "./pline.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_see } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { set_msg_xy } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { poly_gender } from "./polyself.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { strange_feeling } from "./potion.js";
+import { Tobjnam, an, makeplural, the, xname } from "./objnam.js";
+import {
+    Norep, There, You, You_feel, You_see, Your, impossible, pline, pline_The, set_msg_xy,
+} from "./pline.js";
+import { body_part, poly_gender } from "./polyself.js";
+import { make_blinded, make_confused, make_hallucinated, strange_feeling } from "./potion.js";
 import { is_quest_artifact } from "./questpgr.js";
 import { visible_region_at } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
+import { rn2, rn2_on_display_rng, rnd, rnl } from "./rnd.js";
 import { findgold } from "./steal.js";
-import { activate_statue_trap } from "./trap.js";
-import { b_trapped } from "./trap.js";
-import { openfallingtrap } from "./trap.js";
-import { openholdingtrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { trapname } from "./trap.js";
+import {
+    activate_statue_trap, b_trapped, openfallingtrap, openholdingtrap, t_at, trapname,
+} from "./trap.js";
 import { hidden_gold } from "./vault.js";
-import { do_clear_area } from "./vision.js";
-import { recalc_block_point } from "./vision.js";
-import { unblock_point } from "./vision.js";
+import { do_clear_area, recalc_block_point, unblock_point } from "./vision.js";
 import { detect_wsegs } from "./worm.js";
 import { get_obj_location } from "./zap.js";

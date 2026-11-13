@@ -2,36 +2,11 @@
 /*-Copyright (c) Robert Patrick Rankin, 2024. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "nhjs_recorder_sizes.h" /* c2js recorder #stats sizes */
-// #include "func_tab.h"
-
                   /* cmd.c [27] */
           /* cmd.c */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* #wizwish command - wish for something */
-export function /* int */
-wiz_wish() /* Unlimited wishes for debug mode by Paul Polderman */
-{
+export function wiz_wish() { /* int */ /* Unlimited wishes for debug mode by Paul Polderman */
     if (wizard()) {
         let save_verbose = flags.verbose;
 
@@ -44,12 +19,8 @@ wiz_wish() /* Unlimited wishes for debug mode by Paul Polderman */
     return ECMD_OK;
 }
 
-
-
 /* #wizidentify command - reveal and optionally identify hero's inventory */
-export function /* int */
-wiz_identify()
-{
+export function wiz_identify() { /* int */
     if (wizard()) {
         iflags.override_ID = cmd_from_func(wiz_identify);
         /* command remapping might leave #wizidentify as the only way
@@ -59,20 +30,16 @@ wiz_identify()
            display_pickinv() and xname() see override_ID as nonzero */
         if (!iflags.override_ID)
             iflags.override_ID = C(ord('I'));
-        void display_inventory(0, FALSE);
+        display_inventory(0, FALSE);
         iflags.override_ID = 0;
     } else
         pline(unavailcmd, ecname_from_fn(wiz_identify));
     return ECMD_OK;
 }
 
-
-
 /* used when wiz_makemap() gets rid of monsters for the old incarnation of
    a level before creating a new incarnation of it */
-function /* void */
-makemap_unmakemon(mtmp, migratory)
-{
+function makemap_unmakemon(mtmp, migratory) { /* void */
     let ndx = monsndx(mtmp.data);
 
     /* uncreate any unique monster so that it is eligible to be remade
@@ -107,9 +74,7 @@ makemap_unmakemon(mtmp, migratory)
 
 /* get rid of the all the monsters on--or intimately involved with--current
    level; used when #wizmakemap destroys the level before replacing it */
-export function /* void */
-makemap_remove_mons()
-{
+export function makemap_remove_mons() { /* void */
     let mtmp, mprev;
 
     /* keep steed and other adjacent pets after releasing them
@@ -150,12 +115,8 @@ makemap_remove_mons()
     return;
 }
 
-
-
 /* #wizmakemap - discard current dungeon level and replace with a new one */
-export function /* int */
-wiz_makemap()
-{
+export function wiz_makemap() { /* int */
     if (wizard()) {
         let was_in_W_tower = In_W_tower(u.ux, u.uy, u.uz);
 
@@ -173,9 +134,7 @@ wiz_makemap()
 
 /* the #wizmap command - reveal the level map
    and any traps or engravings on it */
-export function /* int */
-wiz_map()
-{
+export function wiz_map() { /* int */
     if (wizard()) {
         let t;
         let ep;
@@ -200,14 +159,12 @@ wiz_map()
 }
 
 /* #wizgenesis - generate monster(s); a count prefix will be honored */
-export function /* int */
-wiz_genesis()
-{
+export function wiz_genesis() { /* int */
     if (wizard()) {
         let mongen_saved = iflags.debug_mongen;
 
         iflags.debug_mongen = FALSE;
-        void create_particular();
+        create_particular();
         iflags.debug_mongen = mongen_saved;
     } else
         pline(unavailcmd, ecname_from_fn(wiz_genesis));
@@ -215,34 +172,27 @@ wiz_genesis()
 }
 
 /* #wizwhere command - display dungeon layout */
-export function /* int */
-wiz_where()
-{
+export function wiz_where() { /* int */
     if (wizard())
-        void print_dungeon(FALSE, 0, null);
+        print_dungeon(FALSE, 0, null);
     else
         pline(unavailcmd, ecname_from_fn(wiz_where));
     return ECMD_OK;
 }
 
 /* the #wizdetect command - detect secret doors, traps, hidden monsters */
-export function /* int */
-wiz_detect()
-{
+export function wiz_detect() { /* int */
     if (wizard())
-        void findit();
+        findit();
     else
         pline(unavailcmd, ecname_from_fn(wiz_detect));
     return ECMD_OK;
 }
 
-
-
 /* the #wizkill command - pick targets and reduce them to 0HP;
    by default, the hero is credited/blamed; use 'm' prefix to avoid that */
-export function /* int */
-wiz_kill()
-{ const $frame = stack_frame(); try {
+export function wiz_kill() { /* int */
+    const $frame = stack_frame(); try {
     let mtmp;
     let cc = stack_struct(struct_nhcoord);
     let ans;
@@ -268,17 +218,17 @@ wiz_kill()
         mtmp = null;
         if (u_at(cc.x, cc.y)) {
             if (u.usteed) {
-                void sprintf(qbuf, _("Kill %.110s?"), mon_nam(u.usteed));
+                sprintf(qbuf, _("Kill %.110s?"), mon_nam(u.usteed));
                 if ((c = ynq(qbuf)) == ord('q'))
                     break;
                 if (c == ord('y'))
                     mtmp = u.usteed;
             }
             if (!mtmp) {
-                void sprintf(qbuf, _("%s?"), Role_if(PM_SAMURAI) ? _("Perform seppuku")
+                sprintf(qbuf, _("%s?"), Role_if(PM_SAMURAI) ? _("Perform seppuku")
                                                          : _("Commit suicide"));
                 if (paranoid_query(TRUE, qbuf)) {
-                    void sprintf(svk.killer.name, _("%s own player"), uhis());
+                    sprintf(svk.killer.name, _("%s own player"), uhis());
                     svk.killer.format = KILLED_BY;
                     done(DIED);
                 }
@@ -293,7 +243,7 @@ wiz_kill()
         /* whether there's an unseen monster here or not, player will know
            that there's no monster here after the kill or failed attempt;
            let hero know too */
-        void unmap_invisible(cc.x, cc.y);
+        unmap_invisible(cc.x, cc.y);
 
         if (mtmp) {
             /* we don't require that the monster be seen or sensed so
@@ -301,7 +251,7 @@ wiz_kill()
                isn't; note that if it triggers other kills, those might
                be referred to as "it" */
             let tame = +!!mtmp.mtame,
-                seen = (((canspotmon(mtmp) || (u.uswallow && mtmp == u.ustuck)) ? 1 : 0)),
+                seen = (canspotmon(mtmp) || (u.uswallow && mtmp == u.ustuck) ? 1 : 0),
                 flgs = (SUPPRESS_IT | SUPPRESS_HALLUCINATION
                         | ((tame && has_mgivenname(mtmp)) ? SUPPRESS_SADDLE
                            : 0)),
@@ -345,14 +295,12 @@ wiz_kill()
     dmonsfree();
     /* distinction between ECMD_CANCEL and ECMD_OK is unimportant here */
     return ECMD_OK; /* no time elapses */
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* the #wizloadlua command - load an arbitrary lua file */
-export function /* int */
-wiz_load_lua()
-{ const $frame = stack_frame(); try {
+export function wiz_load_lua() { /* int */
+    const $frame = stack_frame(); try {
     if (wizard()) {
         let buf = stack_array(char, BUFSZ);
             /* Large but not unlimited memory and CPU so random bits of
@@ -366,16 +314,16 @@ wiz_load_lua()
             return ECMD_CANCEL;
         if (!strchr(buf, ord('.')))
             strcat(buf, _(".lua"));
-        void load_lua(buf, sbi);
+        load_lua(buf, sbi);
     } else
         pline(unavailcmd, ecname_from_fn(wiz_load_lua));
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #wizloaddes command - load a special level lua file */
-export function /* int */
-wiz_load_splua()
-{ const $frame = stack_frame(); try {
+export function wiz_load_splua() { /* int */
+    const $frame = stack_frame(); try {
     if (wizard()) {
         let buf = stack_array(char, BUFSZ);
 
@@ -387,18 +335,16 @@ wiz_load_splua()
             strcat(buf, _(".lua"));
 
         lspo_reset_level(null);
-        void load_special(buf);
+        load_special(buf);
         lspo_finalize_level(null);
-
     } else
         pline(unavailcmd, ecname_from_fn(wiz_load_splua));
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #wizlevelport command - level teleport */
-export function /* int */
-wiz_level_tele()
-{
+export function wiz_level_tele() { /* int */
     if (wizard())
         level_tele();
     else
@@ -406,12 +352,8 @@ wiz_level_tele()
     return ECMD_OK;
 }
 
-
-
 /* #wizfliplevel - transpose the current level */
-export function /* int */
-wiz_flip_level()
-{
+export function wiz_flip_level() { /* int */
     let choices = init_string(static_array("wiz_flip_level.choices", char, sizeof_string("0123")), _("0123"), true),
         prmpt = init_string(static_array("wiz_flip_level.prmpt", char, sizeof_string("Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:")), _("Flip 0=randomly, 1=vertically, 2=horizontally, 3=both:"), true);
 
@@ -443,16 +385,15 @@ wiz_flip_level()
 }
 
 /* #levelchange command - adjust hero's experience level */
-export function /* int */
-wiz_level_change()
-{ const $frame = stack_frame(); try {
+export function wiz_level_change() { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), dummy = stack_var(char, ord('\0'));
     let newlevel = stack_var(int, 0);
     let ret;
 
     chars[buf + 0] = ord('\0'); /* in case EDIT_GETLIN is enabled */
     getlin(_("To what experience level do you want to be set?"), buf);
-    void mungspaces(buf);
+    mungspaces(buf);
     if (chars[buf + 0] == ord('\x1b') || chars[buf + 0] == ord('\0'))
         ret = 0;
     else
@@ -486,14 +427,12 @@ wiz_level_change()
     /* blessed full healing or restore ability won't fix any lost levels */
     u.ulevelmax = u.ulevel;
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* #wiztelekinesis */
-export function /* int */
-wiz_telekinesis()
-{ const $frame = stack_frame(); try {
+export function wiz_telekinesis() { /* int */
+    const $frame = stack_frame(); try {
     let ans = 0;
     let cc = stack_struct(struct_nhcoord);
     let mtmp = null;
@@ -523,17 +462,13 @@ wiz_telekinesis()
                 cc.x = u.ux, cc.y = u.uy;
             }
         }
-
     } while (u.utotype == UTOTYPE_NONE);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* #panic command - test program's panic handling */
-export function /* int */
-wiz_panic()
-{
+export function wiz_panic() { /* int */
     if (iflags.debug_fuzzer) {
         u.uhp = u.uhpmax = 1000;
         u.uen = u.uenmax = 1000;
@@ -546,9 +481,7 @@ wiz_panic()
 }
 
 /* #debugfuzzer command - fuzztest the program */
-export function /* int */
-wiz_fuzzer()
-{
+export function wiz_fuzzer() { /* int */
     if (flags.suppress_alert < FEATURE_NOTICE_VER(3,7,0)) {
         pline(_("The fuzz tester will make NetHack execute random keypresses."));
         There(_("is no conventional way out of this mode."));
@@ -565,17 +498,14 @@ wiz_fuzzer()
 }
 
 /* #polyself command - change hero's form */
-export function /* int */
-wiz_polyself()
-{
+export function wiz_polyself() { /* int */
     polyself(POLY_CONTROLLED);
     return ECMD_OK;
 }
 
 /* #seenv command */
-export function /* int */
-wiz_show_seenv()
-{ const $frame = stack_frame(); try {
+export function wiz_show_seenv() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let x, y, startx, stopx, curx;
     let v;
@@ -586,8 +516,8 @@ wiz_show_seenv()
      * Each seenv description takes up 2 characters, so center
      * the seenv display around the hero.
      */
-    startx = max(1, u.ux - (Math.trunc(COLNO / 4)));
-    stopx = min(startx + (Math.trunc(COLNO / 2)), COLNO);
+    startx = max(1, u.ux - Math.trunc(COLNO / 4));
+    stopx = min(startx + Math.trunc(COLNO / 2), COLNO);
     /* can't have a line exactly 80 chars long */
     if (stopx - startx == Math.trunc(COLNO / 2))
         startx++;
@@ -601,7 +531,7 @@ wiz_show_seenv()
                 if (v == 0)
                     chars[row + curx] = chars[row + (curx + 1)] = ord(' ');
                 else
-                    void sprintf(row + curx, _("%02x"), v);
+                    sprintf(row + curx, _("%02x"), v);
             }
         }
         /* remove trailing spaces */
@@ -615,19 +545,19 @@ wiz_show_seenv()
     display_nhwindow()(win, TRUE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #vision command */
-export function /* int */
-wiz_show_vision()
-{ const $frame = stack_frame(); try {
+export function wiz_show_vision() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let x, y;
     let v;
     let row = stack_array(char, COLNO + 1);
 
     win = create_nhwindow()(NHW_TEXT);
-    void sprintf(row, _("Flags: 0x%x could see, 0x%x in sight, 0x%x temp lit"), COULD_SEE, IN_SIGHT, TEMP_LIT)
+    sprintf(row, _("Flags: 0x%x could see, 0x%x in sight, 0x%x temp lit"), COULD_SEE, IN_SIGHT, TEMP_LIT)
 ;
     putstr()(win, 0, row);
     putstr()(win, 0, _(""));
@@ -651,17 +581,17 @@ wiz_show_vision()
     display_nhwindow()(win, TRUE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #wmode command */
-export function /* int */
-wiz_show_wmodes()
-{ const $frame = stack_frame(); try {
+export function wiz_show_wmodes() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let x, y;
     let row = stack_array(char, COLNO + 1);
     let lev;
-    let istty = (+(windowprocs.wp_id == wp_tty));
+    let istty = +(windowprocs.wp_id == wp_tty);
 
     win = create_nhwindow()(NHW_TEXT);
     if (istty)
@@ -687,12 +617,12 @@ wiz_show_wmodes()
     display_nhwindow()(win, TRUE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* wizard mode variant of #terrain; internal levl[][].typ values in base-36 */
-export function /* void */
-wiz_map_levltyp()
-{ const $frame = stack_frame(); try {
+export function wiz_map_levltyp() { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let x, y;
     let terrain;
@@ -728,92 +658,92 @@ wiz_map_levltyp()
         let dsc = stack_array(char, COLBUFSZ);
         let slev = Is_special(u.uz);
 
-        void sprintf(dsc, _("D:%d,L:%d"), u.uz.dnum, u.uz.dlevel);
+        sprintf(dsc, _("D:%d,L:%d"), u.uz.dnum, u.uz.dlevel);
         /* [dungeon branch features currently omitted] */
         /* special level features */
         if (slev) {
-            void sprintf(eos(dsc), _(" \"%s\""), slev.proto);
+            sprintf(eos(dsc), _(" \"%s\""), slev.proto);
             /* special level flags (note: dungeon.def doesn't set `maze'
                or `hell' for any specific levels so those never show up) */
             if (slev.flags.maze_like)
-                void strcat(dsc, _(" mazelike"));
+                strcat(dsc, _(" mazelike"));
             if (slev.flags.hellish)
-                void strcat(dsc, _(" hellish"));
+                strcat(dsc, _(" hellish"));
             if (slev.flags.town)
-                void strcat(dsc, _(" town"));
+                strcat(dsc, _(" town"));
             if (slev.flags.rogue_like)
-                void strcat(dsc, _(" roguelike"));
+                strcat(dsc, _(" roguelike"));
             /* alignment currently omitted to save space */
         }
         /* level features */
         if (svl.level.flags.nfountains)
-            void sprintf(eos(dsc), _(" %c:%d"), defsyms[S_fountain].sym, svl.level.flags.nfountains)
+            sprintf(eos(dsc), _(" %c:%d"), defsyms[S_fountain].sym, svl.level.flags.nfountains)
 ;
         if (svl.level.flags.nsinks)
-            void sprintf(eos(dsc), _(" %c:%d"), defsyms[S_sink].sym, svl.level.flags.nsinks)
+            sprintf(eos(dsc), _(" %c:%d"), defsyms[S_sink].sym, svl.level.flags.nsinks)
 ;
         if (svl.level.flags.has_vault)
-            void strcat(dsc, _(" vault"));
+            strcat(dsc, _(" vault"));
         if (svl.level.flags.has_shop)
-            void strcat(dsc, _(" shop"));
+            strcat(dsc, _(" shop"));
         if (svl.level.flags.has_temple)
-            void strcat(dsc, _(" temple"));
+            strcat(dsc, _(" temple"));
         if (svl.level.flags.has_court)
-            void strcat(dsc, _(" throne"));
+            strcat(dsc, _(" throne"));
         if (svl.level.flags.has_zoo)
-            void strcat(dsc, _(" zoo"));
+            strcat(dsc, _(" zoo"));
         if (svl.level.flags.has_morgue)
-            void strcat(dsc, _(" morgue"));
+            strcat(dsc, _(" morgue"));
         if (svl.level.flags.has_barracks)
-            void strcat(dsc, _(" barracks"));
+            strcat(dsc, _(" barracks"));
         if (svl.level.flags.has_beehive)
-            void strcat(dsc, _(" hive"));
+            strcat(dsc, _(" hive"));
         if (svl.level.flags.has_swamp)
-            void strcat(dsc, _(" swamp"));
+            strcat(dsc, _(" swamp"));
         /* level flags */
         if (svl.level.flags.noteleport)
-            void strcat(dsc, _(" noTport"));
+            strcat(dsc, _(" noTport"));
         if (svl.level.flags.hardfloor)
-            void strcat(dsc, _(" noDig"));
+            strcat(dsc, _(" noDig"));
         if (svl.level.flags.nommap)
-            void strcat(dsc, _(" noMMap"));
+            strcat(dsc, _(" noMMap"));
         if (!svl.level.flags.hero_memory)
-            void strcat(dsc, _(" noMem"));
+            strcat(dsc, _(" noMem"));
         if (svl.level.flags.shortsighted)
-            void strcat(dsc, _(" shortsight"));
+            strcat(dsc, _(" shortsight"));
         if (svl.level.flags.graveyard)
-            void strcat(dsc, _(" graveyard"));
+            strcat(dsc, _(" graveyard"));
         if (svl.level.flags.is_maze_lev)
-            void strcat(dsc, _(" maze"));
+            strcat(dsc, _(" maze"));
         if (svl.level.flags.is_cavernous_lev)
-            void strcat(dsc, _(" cave"));
+            strcat(dsc, _(" cave"));
         if (svl.level.flags.arboreal)
-            void strcat(dsc, _(" tree"));
+            strcat(dsc, _(" tree"));
         if (Sokoban())
-            void strcat(dsc, _(" sokoban-rules"));
+            strcat(dsc, _(" sokoban-rules"));
         /* non-flag info; probably should include dungeon branching
            checks (extra stairs and magic portals) here */
         if (Invocation_lev(u.uz))
-            void strcat(dsc, _(" invoke"));
+            strcat(dsc, _(" invoke"));
         if (On_W_tower_level(u.uz))
-            void strcat(dsc, _(" tower"));
+            strcat(dsc, _(" tower"));
         /* append a branch identifier for completeness' sake */
         if (u.uz.dnum == 0)
-            void strcat(dsc, _(" dungeon"));
+            strcat(dsc, _(" dungeon"));
         else if (u.uz.dnum == mines_dnum())
-            void strcat(dsc, _(" mines"));
+            strcat(dsc, _(" mines"));
         else if (In_sokoban(u.uz))
-            void strcat(dsc, _(" sokoban"));
+            strcat(dsc, _(" sokoban"));
         else if (u.uz.dnum == quest_dnum())
-            void strcat(dsc, _(" quest"));
+            strcat(dsc, _(" quest"));
         else if (Is_knox(u.uz))
-            void strcat(dsc, _(" ludios"));
+            strcat(dsc, _(" ludios"));
         else if (u.uz.dnum == 1)
-            void strcat(dsc, _(" gehennom"));
+            strcat(dsc, _(" gehennom"));
         else if (u.uz.dnum == tower_dnum())
-            void strcat(dsc, _(" vlad"));
+            strcat(dsc, _(" vlad"));
         else if (In_endgame(u.uz))
-            void strcat(dsc, _(" endgame"));
+            strcat(dsc, _(" endgame"));
         else {
             /* somebody's added a dungeon branch we're not expecting */
             let brname = svd.dungeons[u.uz.dnum].dname;
@@ -822,7 +752,7 @@ wiz_map_levltyp()
                 brname = _("unknown");
             if (!strncmpi(brname, _("the "), 4))
                 brname += 4;
-            void sprintf(eos(dsc), _(" %s"), brname);
+            sprintf(eos(dsc), _(" %s"), brname);
         }
         /* limit the line length to map width */
         if (strlen(dsc) >= COLNO)
@@ -833,14 +763,12 @@ wiz_map_levltyp()
     display_nhwindow()(win, TRUE);
     destroy_nhwindow()(win);
     return;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* explanation of base-36 output from wiz_map_levltyp() */
-export function /* void */
-wiz_levltyp_legend()
-{ const $frame = stack_frame(); try {
+export function wiz_levltyp_legend() { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let i, j, last, c;
     let dsc, fmt;
@@ -866,7 +794,7 @@ wiz_levltyp_legend()
                       : (j < 10) ? ord('0') + j
                          : (j < 36) ? ord('a') + j - 10
                             : ord('A') + j - 36;
-            void sprintf(eos(buf), fmt, c, dsc);
+            sprintf(eos(buf), fmt, c, dsc);
             if (j > i) {
                 putstr()(win, 0, buf);
                 chars[buf] = ord('\0');
@@ -875,16 +803,12 @@ wiz_levltyp_legend()
     display_nhwindow()(win, TRUE);
     destroy_nhwindow()(win);
     return;
-} finally { stack_pop($frame); } }
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* #wizsmell command - test usmellmon(). */
-export function /* int */
-wiz_smell()
-{ const $frame = stack_frame(); try {
+export function wiz_smell() { /* int */
+    const $frame = stack_frame(); try {
     let mtmp; /* monster being smelled */
     let mptr;
     let ans, glyph;
@@ -937,24 +861,18 @@ wiz_smell()
         }
     } while (TRUE);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 export const DEFAULT_TIMEOUT_INCR = 30;
 
 /* #wizinstrinsic command to set some intrinsics for testing */
-export function /* int */
-wiz_intrinsic()
-{ const $frame = stack_frame(); try { let $goto = null; var wizintrinsic = init_string(static_array("wiz_intrinsic.wizintrinsic", char, sizeof_string("#wizintrinsic")), _("#wizintrinsic"), true), fmt = init_string(static_array("wiz_intrinsic.fmt", char, sizeof_string("You are%s %s.")), _("You are%s %s."), true), any = stack_struct(struct_any), buf = stack_array(char, BUFSZ), p = stack_var(int), pick_list = stack_var(ptr_to(struct_mi));
+export function wiz_intrinsic() { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var wizintrinsic = init_string(static_array("wiz_intrinsic.wizintrinsic", char, sizeof_string("#wizintrinsic")), _("#wizintrinsic"), true), fmt = init_string(static_array("wiz_intrinsic.fmt", char, sizeof_string("You are%s %s.")), _("You are%s %s."), true), any = stack_struct(struct_any), buf = stack_array(char, BUFSZ), p = stack_var(int), pick_list = stack_var(ptr_to(struct_mi));
     if (wizard()) {
-        
-        
         var win;
-        
-        
+
         var i, j, n, amt, typ; p[0] = 0;
         var oldtimeout, newtimeout;
         var propname;
@@ -966,7 +884,7 @@ wiz_intrinsic()
         start_menu()(win, MENU_BEHAVE_STANDARD);
         if (iflags.cmdassist) {
             /* start menu with a subtitle */
-            void sprintf(buf, _("[Precede any selection with a count to increment by other than %d.]"), DEFAULT_TIMEOUT_INCR)
+            sprintf(buf, _("[Precede any selection with a count to increment by other than %d.]"), DEFAULT_TIMEOUT_INCR)
 
 ;
             add_menu_str(win, buf);
@@ -988,9 +906,9 @@ wiz_intrinsic()
             any.a_int = i + 1; /* +1: avoid 0 */
             oldtimeout = u.uprops[p[0]].intrinsic & TIMEOUT;
             if (oldtimeout)
-                void sprintf(buf, _("%-27s [%lli]"), propname, oldtimeout);
+                sprintf(buf, _("%-27s [%lli]"), propname, oldtimeout);
             else
-                void sprintf(buf, _("%s"), propname);
+                sprintf(buf, _("%s"), propname);
             add_menu(win, nul_glyphinfo, any, 0, 0, ATR_NONE, clr, buf,
                      MENU_ITEMFLAGS_NONE);
         }
@@ -1022,11 +940,6 @@ wiz_intrinsic()
                 make_blinded(newtimeout, TRUE);
                 break;
 
-
-
-
-
-
             case DEAF:
                 make_deaf(newtimeout, TRUE);
                 break;
@@ -1038,12 +951,12 @@ wiz_intrinsic()
                 make_sick(newtimeout, wizintrinsic, TRUE, typ);
                 break;
             case SLIMED:
-                void sprintf(buf, fmt, !Slimed() ? _("") : _(" still"), _("turning into slime"))
+                sprintf(buf, fmt, !Slimed() ? _("") : _(" still"), _("turning into slime"))
 ;
                 make_slimed(newtimeout, buf);
                 break;
             case STONED:
-                void sprintf(buf, fmt, !Stoned() ? _("") : _(" still"), _("turning into stone"))
+                sprintf(buf, fmt, !Stoned() ? _("") : _(" still"), _("turning into stone"))
 ;
                 make_stoned(newtimeout, buf, KILLED_BY, wizintrinsic);
                 break;
@@ -1051,7 +964,7 @@ wiz_intrinsic()
                 make_stunned(newtimeout, TRUE);
                 break;
             case VOMITING:
-                void sprintf(buf, fmt, !Vomiting() ? _("") : _(" still"), _("vomiting"));
+                sprintf(buf, fmt, !Vomiting() ? _("") : _(" still"), _("vomiting"));
                 make_vomiting(newtimeout, FALSE);
                 pline1(buf);
                 break;
@@ -1085,7 +998,7 @@ wiz_intrinsic()
                 rescham();
             if (p[0] == WWALKING || p[0] == LEVITATION || p[0] == FLYING) {
                 if (u.uinwater)
-                    void pooleffects(FALSE);
+                    pooleffects(FALSE);
             }
         }
         if (n >= 1)
@@ -1094,14 +1007,11 @@ wiz_intrinsic()
     } else
         pline(unavailcmd, ecname_from_fn(wiz_intrinsic));
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* #wizrumorcheck command - verify each rumor access */
-export function /* int */
-wiz_rumor_check()
-{
+export function wiz_rumor_check() { /* int */
     rumor_check();
     return ECMD_OK;
 }
@@ -1114,13 +1024,11 @@ const template = init_string(static_array("template", char, sizeof_string("%-27s
 const stats_hdr = init_string(static_array("stats_hdr", char, sizeof_string("                             count  bytes")), _("                             count  bytes"), true);
 const stats_sep = init_string(static_array("stats_sep", char, sizeof_string("---------------------------  ----- -------")), _("---------------------------  ----- -------"), true);
 
-function /* int */
-size_obj(otmp)
-{
-    let sz = (NHJS_LP64_SIZEOF_struct_obj);
+function size_obj(otmp) { /* int */
+    let sz = NHJS_LP64_SIZEOF_struct_obj;
 
     if (otmp.oextra) {
-        sz += (NHJS_LP64_SIZEOF_struct_oextra);
+        sz += NHJS_LP64_SIZEOF_struct_oextra;
         if (ONAME(otmp))
             sz += int(strlen(ONAME(otmp))) + 1;
         if (OMONST(otmp))
@@ -1132,10 +1040,8 @@ size_obj(otmp)
     return sz;
 }
 
-function /* void */
-count_obj(chain, total_count, total_size,
-          top, recurse)
-{
+function count_obj(chain, total_count, total_size,
+          top, recurse) { /* void */
     let count, size;
     let obj;
 
@@ -1153,14 +1059,13 @@ count_obj(chain, total_count, total_size,
 
   /* RESTORE_WARNING follows wiz_show_stats */
 
-function /* void */
-obj_chain(
+function obj_chain(
     win,
     src,
     chain,
     force,
-    total_count, total_size)
-{ const $frame = stack_frame(); try {
+    total_count, total_size) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let count = stack_var(long, 0), size = stack_var(long, 0);
 
@@ -1169,18 +1074,18 @@ obj_chain(
     if (count[0] || size[0] || force) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(buf, template, src, count[0], size[0]);
+        sprintf(buf, template, src, count[0], size[0]);
         putstr()(win, 0, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mon_invent_chain(
+function mon_invent_chain(
     win,
     src,
     chain,
-    total_count, total_size)
-{ const $frame = stack_frame(); try {
+    total_count, total_size) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let count = stack_var(long, 0), size = stack_var(long, 0);
     let mon;
@@ -1191,17 +1096,17 @@ mon_invent_chain(
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(buf, template, src, count[0], size[0]);
+        sprintf(buf, template, src, count[0], size[0]);
         putstr()(win, 0, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-contained_stats(
+function contained_stats(
     win,
     src,
-    total_count, total_size)
-{ const $frame = stack_frame(); try {
+    total_count, total_size) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let count = stack_var(long, 0), size = stack_var(long, 0);
     let mon;
@@ -1220,53 +1125,51 @@ contained_stats(
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(buf, template, src, count[0], size[0]);
+        sprintf(buf, template, src, count[0], size[0]);
         putstr()(win, 0, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-size_monst(mtmp, incl_wsegs)
-{
-    let sz = (NHJS_LP64_SIZEOF_struct_monst);
+function size_monst(mtmp, incl_wsegs) { /* int */
+    let sz = NHJS_LP64_SIZEOF_struct_monst;
 
     if (mtmp.wormno && incl_wsegs)
         sz += size_wseg(mtmp);
 
     if (mtmp.mextra) {
-        sz += (NHJS_LP64_SIZEOF_struct_mextra);
+        sz += NHJS_LP64_SIZEOF_struct_mextra;
         if (MGIVENNAME(mtmp))
             sz += int(strlen(MGIVENNAME(mtmp))) + 1;
         if (EGD(mtmp))
-            sz += (NHJS_LP64_SIZEOF_struct_egd);
+            sz += NHJS_LP64_SIZEOF_struct_egd;
         if (EPRI(mtmp))
-            sz += (NHJS_LP64_SIZEOF_struct_epri);
+            sz += NHJS_LP64_SIZEOF_struct_epri;
         if (ESHK(mtmp))
-            sz += (NHJS_LP64_SIZEOF_struct_eshk);
+            sz += NHJS_LP64_SIZEOF_struct_eshk;
         if (EMIN(mtmp))
-            sz += (NHJS_LP64_SIZEOF_struct_emin);
+            sz += NHJS_LP64_SIZEOF_struct_emin;
         if (EDOG(mtmp))
-            sz += (NHJS_LP64_SIZEOF_struct_edog);
+            sz += NHJS_LP64_SIZEOF_struct_edog;
         if (EBONES(mtmp))
-            sz += (NHJS_LP64_SIZEOF_struct_ebones);
+            sz += NHJS_LP64_SIZEOF_struct_ebones;
         /* mextra->mcorpsenm doesn't point to more memory */
     }
     return sz;
 }
 
-function /* void */
-mon_chain(
+function mon_chain(
     win,
     src,
     chain,
     force,
-    total_count, total_size)
-{ const $frame = stack_frame(); try {
+    total_count, total_size) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let count, size;
     let mon;
     /* mon->wormno means something different for migrating_mons and mydogs */
-    let incl_wsegs = +!strcmpi(src, _("fmon"));
+    let incl_wsegs = +!strncmpi((src), _(("fmon")), -1);
 
     count = size = 0;
     for (mon = chain; mon; mon = mon.nmon) {
@@ -1276,16 +1179,16 @@ mon_chain(
     if (count || size || force) {
         total_count[0] += count;
         total_size[0] += size;
-        void sprintf(buf, template, src, count, size);
+        sprintf(buf, template, src, count, size);
         putstr()(win, 0, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-misc_stats(
+function misc_stats(
     win,
-    total_count, total_size)
-{ const $frame = stack_frame(); try {
+    total_count, total_size) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), hdrbuf = stack_array(char, QBUFSZ);
     let count = stack_var(long), size = stack_var(long);
     let idx;
@@ -1300,19 +1203,19 @@ misc_stats(
     count[0] = size[0] = 0;
     for (tt = gf.ftrap; tt; tt = tt.ntrap) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_struct_trap);
+        size[0] += NHJS_LP64_SIZEOF_struct_trap;
     }
     total_count[0] += count[0];
     total_size[0] += size[0];
-    void sprintf(hdrbuf, _("traps, size %lld"), (NHJS_LP64_SIZEOF_struct_trap));
-    void sprintf(buf, template, hdrbuf, count[0], size[0]);
+    sprintf(hdrbuf, _("traps, size %lld"), NHJS_LP64_SIZEOF_struct_trap);
+    sprintf(buf, template, hdrbuf, count[0], size[0]);
     putstr()(win, 0, buf);
 
     count[0] = size[0] = 0;
     engr_stats(_("engravings, size %lld+text"), hdrbuf, count, size);
     total_count[0] += count[0];
     total_size[0] += size[0];
-    void sprintf(buf, template, hdrbuf, count[0], size[0]);
+    sprintf(buf, template, hdrbuf, count[0], size[0]);
     putstr()(win, 0, buf);
 
     count[0] = size[0] = 0;
@@ -1320,7 +1223,7 @@ misc_stats(
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
 
@@ -1329,21 +1232,21 @@ misc_stats(
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
 
     count[0] = size[0] = 0;
     for (sd = svl.level.damagelist; sd; sd = sd.next) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_struct_damage);
+        size[0] += NHJS_LP64_SIZEOF_struct_damage;
     }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(hdrbuf, _("shop damage, size %lld"), (NHJS_LP64_SIZEOF_struct_damage))
+        sprintf(hdrbuf, _("shop damage, size %lld"), NHJS_LP64_SIZEOF_struct_damage)
 ;
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
 
@@ -1352,35 +1255,35 @@ misc_stats(
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
 
     count[0] = size[0] = 0;
     for (k = svk.killer.next; k; k = k.next) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_struct_kinfo);
+        size[0] += NHJS_LP64_SIZEOF_struct_kinfo;
     }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(hdrbuf, _("delayed killer%s, size %lld"), plur(count[0]), (NHJS_LP64_SIZEOF_struct_kinfo))
+        sprintf(hdrbuf, _("delayed killer%s, size %lld"), plur(count[0]), NHJS_LP64_SIZEOF_struct_kinfo)
 ;
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
 
     count[0] = size[0] = 0;
     for (bi = svl.level.bonesinfo; bi; bi = bi.next) {
         ++count[0];
-        size[0] += (NHJS_LP64_SIZEOF_struct_cemetery);
+        size[0] += NHJS_LP64_SIZEOF_struct_cemetery;
     }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void sprintf(hdrbuf, _("bones history, size %lld"), (NHJS_LP64_SIZEOF_struct_cemetery))
+        sprintf(hdrbuf, _("bones history, size %lld"), NHJS_LP64_SIZEOF_struct_cemetery)
 ;
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
 
@@ -1388,20 +1291,19 @@ misc_stats(
     for (idx = 0; idx < NUM_OBJECTS; ++idx)
         if (objects[idx].oc_uname) {
             ++count[0];
-            size[0] += (unsigned(strlen(objects[idx].oc_uname) + 1));
+            size[0] += unsigned(strlen(objects[idx].oc_uname) + 1);
         }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        void strcpy(hdrbuf, _("object type names, text"));
-        void sprintf(buf, template, hdrbuf, count[0], size[0]);
+        strcpy(hdrbuf, _("object type names, text"));
+        sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-you_sanity_check()
-{
+function you_sanity_check() { /* void */
     let mtmp;
 
     if (u.uswallow && !u.ustuck) {
@@ -1438,12 +1340,10 @@ you_sanity_check()
     }
 
     check_wornmask_slots();
-    void check_invent_gold(_("invent"));
+    check_invent_gold(_("invent"));
 }
 
-function /* void */
-levl_sanity_check()
-{
+function levl_sanity_check() { /* void */
     let x, y;
 
     if (Underwater())
@@ -1457,9 +1357,7 @@ levl_sanity_check()
     }
 }
 
-export function /* void */
-sanity_check()
-{
+export function sanity_check() { /* void */
     if (iflags.sanity_no_check) {
         /* in case a recurring sanity_check warning occurs, we mustn't
            re-trigger it when ^P is used, otherwise msg_window:Single
@@ -1482,9 +1380,7 @@ sanity_check()
 }
 
 /* qsort() comparison routine for use in list_migrating_mons() */
-function /* int QSORTCALLBACK */
-migrsort_cmp(vptr1, vptr2)
-{
+function migrsort_cmp(vptr1, vptr2) { /* int QSORTCALLBACK */
     let m1 = ref_to(ptr_to(struct_monst), vptr1)[0],
                        m2 = ref_to(ptr_to(struct_monst), vptr2)[0];
     let d1 = m1.mux, l1 = m1.muy,
@@ -1498,15 +1394,14 @@ migrsort_cmp(vptr1, vptr2)
         return l1 - l2;
     /* same destination level:  use a tie-breaker to force stable sort;
        monst->m_id is unsigned so we need more than just simple subtraction */
-    return (m1.m_id < m2.m_id) ? -1 : (+(m1.m_id > m2.m_id));
+    return (m1.m_id < m2.m_id) ? -1 : +(m1.m_id > m2.m_id);
 }
 
 /* called by #migratemons; displays count of migrating monsters, optionally
    displays them as well */
-function /* void */
-list_migrating_mons(
-    nextlevl) /* default destination for wiz_migrate_mons() */
-{ const $frame = stack_frame(); try {
+function list_migrating_mons(
+    nextlevl) { /* void */ /* default destination for wiz_migrate_mons() */
+    const $frame = stack_frame(); try {
     let win = WIN_ERR;
     let showit = FALSE;
     let n;
@@ -1531,12 +1426,12 @@ list_migrating_mons(
       _("%d mon%s pending for current level, %d for next level, %d for others."),
               here, plur(here), nxtlv, other);
         chars[prmpt + 0] = chars[xtra + 0] = ord('\0');
-        void strkitten(here ? prmpt : xtra, ord('c'));
-        void strkitten(nxtlv ? prmpt : xtra, ord('n'));
-        void strkitten(other ? prmpt : xtra, ord('o'));
-        void strcat(prmpt, _("a q"));
+        strkitten(here ? prmpt : xtra, ord('c'));
+        strkitten(nxtlv ? prmpt : xtra, ord('n'));
+        strkitten(other ? prmpt : xtra, ord('o'));
+        strcat(prmpt, _("a q"));
         if (chars[xtra])
-            void sprintf(eos(prmpt), _("%c%s"), ord('\x1b'), xtra);
+            sprintf(eos(prmpt), _("%c%s"), ord('\x1b'), xtra);
         c = yn_function(_("List which?"), prmpt, ord('q'), TRUE);
         n = unsigned((c == ord('c')) ? here
             : (c == ord('n')) ? nxtlv
@@ -1549,13 +1444,13 @@ list_migrating_mons(
             case ord('c'):
             case ord('n'):
             case ord('o'):
-                void sprintf(buf, _("Monster%s migrating to %s:"), plur(n), (c == ord('c')) ? _("current level")
+                sprintf(buf, _("Monster%s migrating to %s:"), plur(n), (c == ord('c')) ? _("current level")
                         : (c == ord('n')) ? _("next level")
                           : _("'other' levels"))
 ;
                 break;
             default:
-                void strcpy(buf, _("All migrating monsters:"));
+                strcpy(buf, _("All migrating monsters:"));
                 break;
             }
             putstr()(win, 0, buf);
@@ -1564,18 +1459,18 @@ list_migrating_mons(
                where multiple destination levels might be present, sort by
                the destination; 'c' and 'n' don't need to be sorted but we
                do that anyway to get the same tie-breaker as 'o' and 'a' */
-            marray = ref_to(ptr_to(struct_monst), addr_of(alloc(unsigned(unsigned(Math.imul(unsigned((unsigned(n + 1))), sizeof(ptr_to(struct_monst))))))));
+            marray = ref_to(ptr_to(struct_monst), addr_of(alloc(unsigned(Math.imul(unsigned(n + 1), sizeof(ptr_to(struct_monst)))))));
             n = 0;
             for (mtmp = gm.migrating_mons; mtmp; mtmp = mtmp.nmon) {
                 if (c == ord('a'))
                     showit = TRUE;
                 else if (mtmp.mux == u.uz.dnum && mtmp.muy == u.uz.dlevel)
-                    showit = (+(c == ord('c')));
+                    showit = +(c == ord('c'));
                 else if (mtmp.mux == nextlevl.dnum
                          && mtmp.muy == nextlevl.dlevel)
-                    showit = (+(c == ord('n')));
+                    showit = +(c == ord('n'));
                 else
-                    showit = (+(c == ord('o')));
+                    showit = +(c == ord('o'));
 
                 if (showit)
                     marray[n++] = mtmp;
@@ -1585,18 +1480,18 @@ list_migrating_mons(
                 qsort(addr_of(marray), n, sizeof(ptr_to(struct_monst)),
                       migrsort_cmp); /* sort elements [0] through [n-1] */
             for (n = 0; (mtmp = marray[n]) != null; ++n) {
-                void sprintf(buf, _("  %s"), minimal_monnam(mtmp, FALSE));
+                sprintf(buf, _("  %s"), minimal_monnam(mtmp, FALSE));
                 /* minimal_monnam() appends map coordinates; strip that */
-                void strsubst(buf, _(" <0,0>"), _(""));
+                strsubst(buf, _(" <0,0>"), _(""));
                 if (has_mgivenname(mtmp)) /* if mtmp is named, include that */
-                    void sprintf(eos(buf), _(" named %s"), MGIVENNAME(mtmp));
+                    sprintf(eos(buf), _(" named %s"), MGIVENNAME(mtmp));
                 if (c == ord('o') || c == ord('a'))
-                    void sprintf(eos(buf), _(" to %d:%d"), mtmp.mux, mtmp.muy);
+                    sprintf(eos(buf), _(" to %d:%d"), mtmp.mux, mtmp.muy);
                 xyloc = mtmp.mtrack[0].x; /* (for legibility) */
                 if (xyloc == MIGR_EXACT_XY) {
                     x = mtmp.mtrack[1].x;
                     y = mtmp.mtrack[1].y;
-                    void sprintf(eos(buf), _(" at <%d,%d>"), x, y);
+                    sprintf(eos(buf), _(" at <%d,%d>"), x, y);
                 }
                 putstr()(win, 0, buf);
             }
@@ -1606,16 +1501,15 @@ list_migrating_mons(
         } else if (c != ord('q')) {
             pline(_("None."));
         }
-
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #stats command
  * Display memory usage of all monsters and objects on the level.
  */
-export function /* int */
-wiz_show_stats()
-{ const $frame = stack_frame(); try {
+export function wiz_show_stats() { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let win;
     let total_obj_size = stack_var(long), total_obj_count = stack_var(long),
@@ -1628,7 +1522,7 @@ wiz_show_stats()
 
     total_obj_count[0] = total_obj_size[0] = 0;
     putstr()(win, 0, stats_hdr);
-    void sprintf(buf, _("  Objects, base size %lld"), (NHJS_LP64_SIZEOF_struct_obj));
+    sprintf(buf, _("  Objects, base size %lld"), NHJS_LP64_SIZEOF_struct_obj);
     putstr()(win, 0, buf);
     obj_chain(win, _("invent"), gi.invent, TRUE,
               total_obj_count, total_obj_size);
@@ -1644,12 +1538,12 @@ wiz_show_stats()
                      total_obj_count, total_obj_size);
     contained_stats(win, _("contained"), total_obj_count, total_obj_size);
     putstr()(win, 0, stats_sep);
-    void sprintf(buf, template, _("  Obj total"), total_obj_count[0], total_obj_size[0]);
+    sprintf(buf, template, _("  Obj total"), total_obj_count[0], total_obj_size[0]);
     putstr()(win, 0, buf);
 
     total_mon_count[0] = total_mon_size[0] = 0;
     putstr()(win, 0, _(""));
-    void sprintf(buf, _("  Monsters, base size %lld"), (NHJS_LP64_SIZEOF_struct_monst));
+    sprintf(buf, _("  Monsters, base size %lld"), NHJS_LP64_SIZEOF_struct_monst);
     putstr()(win, 0, buf);
     mon_chain(win, _("fmon"), fmon(), TRUE, total_mon_count, total_mon_size);
     mon_chain(win, _("migrating"), gm.migrating_mons, FALSE,
@@ -1660,7 +1554,7 @@ wiz_show_stats()
         mon_chain(win, _("mydogs"), gm.mydogs, FALSE,
                   total_mon_count, total_mon_size);
     putstr()(win, 0, stats_sep);
-    void sprintf(buf, template, _("  Mon total"), total_mon_count[0], total_mon_size[0]);
+    sprintf(buf, template, _("  Mon total"), total_mon_count[0], total_mon_size[0]);
     putstr()(win, 0, buf);
 
     total_ovr_count[0] = total_ovr_size[0] = 0;
@@ -1668,7 +1562,7 @@ wiz_show_stats()
     putstr()(win, 0, _("  Overview"));
     overview_stats(win, template, total_ovr_count, total_ovr_size);
     putstr()(win, 0, stats_sep);
-    void sprintf(buf, template, _("  Over total"), total_ovr_count[0], total_ovr_size[0]);
+    sprintf(buf, template, _("  Over total"), total_ovr_count[0], total_ovr_size[0]);
     putstr()(win, 0, buf);
 
     total_misc_count[0] = total_misc_size[0] = 0;
@@ -1676,35 +1570,28 @@ wiz_show_stats()
     putstr()(win, 0, _("  Miscellaneous"));
     misc_stats(win, total_misc_count, total_misc_size);
     putstr()(win, 0, stats_sep);
-    void sprintf(buf, template, _("  Misc total"), total_misc_count[0], total_misc_size[0]);
+    sprintf(buf, template, _("  Misc total"), total_misc_count[0], total_misc_size[0]);
     putstr()(win, 0, buf);
 
     putstr()(win, 0, _(""));
     putstr()(win, 0, stats_sep);
-    void sprintf(buf, template, _("  Grand total"), (total_obj_count[0] + total_mon_count[0]
+    sprintf(buf, template, _("  Grand total"), (total_obj_count[0] + total_mon_count[0]
              + total_ovr_count[0] + total_misc_count[0]), (total_obj_size[0] + total_mon_size[0]
              + total_ovr_size[0] + total_misc_size[0]))
 
 ;
     putstr()(win, 0, buf);
 
-
-
-
-
     display_nhwindow()(win, FALSE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* the #wizdispmacros command
  * Verify that some display macros are returning sane values */
-export function /* int */
-wiz_display_macros()
-{ const $frame = stack_frame(); try {
+export function wiz_display_macros() { /* int */
+    const $frame = stack_frame(); try {
     let display_issues = init_string(static_array("wiz_display_macros.display_issues", char, sizeof_string("Display macro issues:")), _("Display macro issues:"), true);
     let buf = stack_array(char, BUFSZ);
     let win;
@@ -1720,7 +1607,7 @@ wiz_display_macros()
             if (test == no_glyph) {
                 if (!trouble++)
                     putstr()(win, 0, display_issues);
-                void sprintf(buf, _("glyph_is_cmap() / glyph_to_cmap(glyph=%d)" +
+                sprintf(buf, _("glyph_is_cmap() / glyph_to_cmap(glyph=%d)" +
                              " sync failure, returned NO_GLYPH (%d)"), glyph, test)
 ;
                  putstr()(win, 0, buf);
@@ -1729,7 +1616,7 @@ wiz_display_macros()
                 && !(test >= S_vbeam && test <= S_rslant)) {
                 if (!trouble++)
                     putstr()(win, 0, display_issues);
-                void sprintf(buf, _("glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d"), glyph, test)
+                sprintf(buf, _("glyph_is_cmap_zap(glyph=%d) returned non-zap cmap %d"), glyph, test)
 
 ;
                  putstr()(win, 0, buf);
@@ -1738,7 +1625,7 @@ wiz_display_macros()
             if (!IndexOk(test, defsyms)) {
                 if (!trouble++)
                     putstr()(win, 0, display_issues);
-                void sprintf(buf, _("glyph_to_cmap(glyph=%d) returns %d" +
+                sprintf(buf, _("glyph_to_cmap(glyph=%d) returns %d" +
                              " exceeds defsyms[%d] bounds (MAX_GLYPH = %d)"), glyph, test, SIZE(defsyms), max_glyph)
 ;
                 putstr()(win, 0, buf);
@@ -1751,7 +1638,7 @@ wiz_display_macros()
             if (test < 0 || test >= NUMMONS) {
                 if (!trouble++)
                     putstr()(win, 0, display_issues);
-                void sprintf(buf, _("glyph_to_mon(glyph=%d) returns %d" +
+                sprintf(buf, _("glyph_to_mon(glyph=%d) returns %d" +
                              " exceeds mons[%d] bounds"), glyph, test, NUMMONS)
 ;
                 putstr()(win, 0, buf);
@@ -1764,7 +1651,7 @@ wiz_display_macros()
             if (test < 0 || test > NUM_OBJECTS) {
                 if (!trouble++)
                     putstr()(win, 0, display_issues);
-                void sprintf(buf, _("glyph_to_obj(glyph=%d) returns %d" +
+                sprintf(buf, _("glyph_to_obj(glyph=%d) returns %d" +
                              " exceeds objects[%d] bounds"), glyph, test, NUM_OBJECTS)
 ;
                 putstr()(win, 0, buf);
@@ -1776,20 +1663,18 @@ wiz_display_macros()
     display_nhwindow()(win, FALSE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #wizshownhuuid command */
-export function /* int */
-wiz_show_nhuuid()
-{
+export function wiz_show_nhuuid() { /* int */
     pline(_("The NHUUID for this game is { %s }."), svn.nhuuid);
     return ECMD_OK;
 }
 
 /* the #wizmondiff command */
-export function /* int */
-wiz_mon_diff()
-{ const $frame = stack_frame(); try {
+export function wiz_mon_diff() { /* int */
+    const $frame = stack_frame(); try {
     let window_title = init_string(static_array("wiz_mon_diff.window_title", char, sizeof_string("Review of monster difficulty ratings" + " [index:level]:")), _("Review of monster difficulty ratings" +
                                        " [index:level]:"), true);
     let buf = stack_array(char, BUFSZ);
@@ -1816,7 +1701,6 @@ wiz_mon_diff()
                 mlev = 50;
             Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%-18s [%3d:%2d]: calculated: %2d, hardcoded: %2d (%+d)"), ptr.pmnames[NEUTRAL], cnt, mlev, mcalculated, mhardcoded, mdiff)
 
-
 ;
             putstr()(win, 0, buf);
         }
@@ -1826,12 +1710,12 @@ wiz_mon_diff()
     display_nhwindow()(win, FALSE);
     destroy_nhwindow()(win);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #wizobjprobs command */
-export function /* int */
-wiz_objprobs()
-{ const $frame = stack_frame(); try {
+export function wiz_objprobs() { /* int */
+    const $frame = stack_frame(); try {
     let win;
     let buf = stack_array(char, BUFSZ);
     let probsum = stack_array(int, MAXOCLASSES);
@@ -1857,8 +1741,6 @@ wiz_objprobs()
         Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%4d / %4d (%6.2f%%): %s"), objects[otyp].oc_prob, probsum[oclass], (objects[otyp].oc_prob) * 100. /
                  (probsum[oclass]), OBJ_NAME(objects[otyp]))
 
-
-
 ;
         putstr()(win, 0, buf);
     }
@@ -1866,14 +1748,12 @@ wiz_objprobs()
     destroy_nhwindow()(win);
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* #migratemons command */
-export function /* int */
-wiz_migrate_mons()
-{ const $frame = stack_frame(); try {
-
+export function wiz_migrate_mons() { /* int */
+    const $frame = stack_frame(); try {
     let mcount;
     let inbuf = stack_array(char, BUFSZ);
     let ptr;
@@ -1884,14 +1764,13 @@ wiz_migrate_mons()
     let tolevel = stack_struct(struct_d_level);
 
     if (Is_stronghold(u.uz))
-        assign_level(tolevel, (svd.dungeon_topology.d_valley_level));
+        assign_level(tolevel, svd.dungeon_topology.d_valley_level);
     else if (!Is_botlevel(u.uz))
         get_level(tolevel, depth(u.uz) + 1);
     else
         tolevel.dnum = 0, tolevel.dlevel = 0;
 
     list_migrating_mons(tolevel);
-
 
     chars[inbuf + 0] = chars[inbuf + 1] = ord('\0');
     if (tolevel.dnum || tolevel.dlevel)
@@ -1928,12 +1807,12 @@ wiz_migrate_mons()
     iflags.debug_mongen = mongen_saved;
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #wizcustom command to see glyphmap customizations */
-export function /* int */
-wiz_custom()
-{ const $frame = stack_frame(); try {
+export function wiz_custom() { /* int */
+    const $frame = stack_frame(); try {
          /* symbols.c */
 
     if (wizard()) {
@@ -1941,8 +1820,6 @@ wiz_custom()
         let win;
         let buf = stack_array(char, BUFSZ), bufa = stack_array(char, BUFSZ);
         let n;
-
-
 
         let pick_list = stack_var(ptr_to(struct_mi), null);
 
@@ -1954,25 +1831,21 @@ wiz_custom()
         add_menu_heading(win,
                          _("    glyph  glyph identifier                        " +
                          "     sym   clr customcolor unicode utf8"));
-        void sprintf(bufa, _("%s: colorcount=%lld %s"), wizcustom, iflags.colorcount, gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name
+        sprintf(bufa, _("%s: colorcount=%lld %s"), wizcustom, iflags.colorcount, gs.symset[PRIMARYSET].name ? gs.symset[PRIMARYSET].name
                                           : _("default"))
 
 ;
         if (gc.currentgraphics == PRIMARYSET && gs.symset[PRIMARYSET].name)
-            void strcat(bufa, _(", active"));
+            strcat(bufa, _(", active"));
         if (gs.symset[PRIMARYSET].handling) {
-            void sprintf(eos(bufa), _(", handler=%s"), known_handling[gs.symset[PRIMARYSET].handling])
+            sprintf(eos(bufa), _(", handler=%s"), known_handling[gs.symset[PRIMARYSET].handling])
 ;
         }
-        void sprintf(buf, _("%s"), bufa);
+        sprintf(buf, _("%s"), bufa);
         wizcustom_glyphids(win);
         end_menu()(win, bufa);
         n = select_menu(win, PICK_NONE, pick_list);
         destroy_nhwindow()(win);
-
-
-
-
 
         if (n >= 1)
             free(addr_of(pick_list[0]));
@@ -1982,12 +1855,11 @@ wiz_custom()
     } else
         pline(unavailcmd, ecname_from_fn(wiz_custom));
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-wizcustom_callback(win, glyphnum, id)
-{ const $frame = stack_frame(); try {
-    
+export function wizcustom_callback(win, glyphnum, id) { /* void */
+    const $frame = stack_frame(); try {
     let cgm;
     let clr = NO_COLOR;
     let buf = stack_array(char, BUFSZ), bufa = stack_array(char, BUFSZ), bufb = stack_array(char, BUFSZ), bufc = stack_array(char, BUFSZ), bufd = stack_array(char, BUFSZ),
@@ -2002,18 +1874,18 @@ wizcustom_callback(win, glyphnum, id)
             cgm.u ||
 
             cgm.customcolor != 0) {
-            void sprintf(bufa, _("[%04d] %-44s"), glyphnum, id);
-            void sprintf(bufb, _("'\\%03d' %02d"), uchars[gs.showsyms + cgm.sym.symidx], cgm.sym.color)
+            sprintf(bufa, _("[%04d] %-44s"), glyphnum, id);
+            sprintf(bufb, _("'\\%03d' %02d"), uchars[gs.showsyms + cgm.sym.symidx], cgm.sym.color)
 ;
-            void sprintf(bufc, _("%011llx"), cgm.customcolor);
+            sprintf(bufc, _("%011llx"), cgm.customcolor);
             chars[bufu + 0] = ord('\0');
 
             if (cgm.u && cgm.u.utf8str) {
-                void sprintf(bufu, _("U+%04llx"), cgm.u.utf32ch);
+                sprintf(bufu, _("U+%04llx"), cgm.u.utf32ch);
                 cp = cgm.u.utf8str;
                 while (uchars[cp]) {
-                    void sprintf(bufd, _(" <%d>"), (uchars[cp]));
-                    void strcat(bufu, bufd);
+                    sprintf(bufd, _(" <%d>"), (uchars[cp]));
+                    strcat(bufu, bufd);
                     cp++;
                 }
             }
@@ -2025,369 +1897,158 @@ wizcustom_callback(win, glyphnum, id)
         }
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*wizcmds.c*/
+
 import { NO_COLOR } from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
 import { Never_mind } from "./decl.h.macros.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_rslant } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_vbeam } from "./defsym.h.js";
-import { MAX_GLYPH } from "./display.h.js";
-import { NO_GLYPH } from "./display.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_cmap } from "./display.h.macros.js";
-import { glyph_is_cmap_zap } from "./display.h.macros.js";
-import { glyph_is_invisible } from "./display.h.macros.js";
-import { glyph_is_monster } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { glyph_to_mon } from "./display.h.macros.js";
-import { glyph_to_obj } from "./display.h.macros.js";
-import { MIGR_EXACT_XY } from "./dungeon.h.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { In_sokoban } from "./dungeon.h.macros.js";
-import { Is_knox } from "./dungeon.h.macros.js";
-import { Is_stronghold } from "./dungeon.h.macros.js";
-import { fuzzer_impossible_continue } from "./flag.h.js";
-import { fuzzer_impossible_panic } from "./flag.h.js";
-import { notice_mon_off } from "./flag.h.macros.js";
-import { notice_mon_on } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLBUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { NHL_SB_DEBUGGING } from "./global.h.js";
-import { NHL_SB_SAFE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { struct_nhl_sandbox_info } from "./global.h.js";
+import { MAXOCLASSES, S_fountain, S_rslant, S_sink, S_vbeam } from "./defsym.h.js";
+import { MAX_GLYPH, NO_GLYPH } from "./display.h.js";
+import {
+    canspotmon, glyph_is_cmap, glyph_is_cmap_zap, glyph_is_invisible, glyph_is_monster,
+    glyph_is_object, glyph_to_mon, glyph_to_obj,
+} from "./display.h.macros.js";
+import { MIGR_EXACT_XY, MIGR_RANDOM, struct_d_level } from "./dungeon.h.js";
+import { In_endgame, In_sokoban, Is_knox, Is_stronghold } from "./dungeon.h.macros.js";
+import { fuzzer_impossible_continue, fuzzer_impossible_panic } from "./flag.h.js";
+import { notice_mon_off, notice_mon_on, wizard } from "./flag.h.macros.js";
+import {
+    BUFSZ, COLBUFSZ, COLNO, FALSE, MAXULEV, NHL_SB_DEBUGGING, NHL_SB_SAFE, QBUFSZ, ROWNO, TRUE,
+    struct_nhl_sandbox_info,
+} from "./global.h.js";
 import { C } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ARM } from "./hack.h.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { ARTICLE_YOUR } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { POLY_CONTROLLED } from "./hack.h.js";
-import { SUPPRESS_HALLUCINATION } from "./hack.h.js";
-import { SUPPRESS_IT } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { XKILL_NOMSG } from "./hack.h.js";
-import { FEATURE_NOTICE_VER } from "./hack.h.macros.js";
-import { IndexOk } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { mines_dnum } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { qsort } from "./hack.h.macros.js";
-import { quest_dnum } from "./hack.h.macros.js";
-import { tower_dnum } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import {
+    ARM, ARTICLE_A, ARTICLE_THE, ARTICLE_YOUR, DIED, ECMD_CANCEL, ECMD_OK, KILLED_BY, MM_NOMSG,
+    POLY_CONTROLLED, SUPPRESS_HALLUCINATION, SUPPRESS_IT, SUPPRESS_SADDLE, XKILL_NOMSG,
+} from "./hack.h.js";
+import {
+    FEATURE_NOTICE_VER, IndexOk, max, min, mines_dnum, pline1, plur, qsort, quest_dnum, tower_dnum,
+    y_n, ynq,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { EBONES } from "./mextra.h.macros.js";
-import { EDOG } from "./mextra.h.macros.js";
-import { EGD } from "./mextra.h.macros.js";
-import { EMIN } from "./mextra.h.macros.js";
-import { EPRI } from "./mextra.h.macros.js";
-import { ESHK } from "./mextra.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
-import { has_mgivenname } from "./mextra.h.macros.js";
+import {
+    EBONES, EDOG, EGD, EMIN, EPRI, ESHK, MGIVENNAME, has_mgivenname,
+} from "./mextra.h.macros.js";
 import { AD_PHYS } from "./monattk.h.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { G_EXTINCT } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { MON_ENDGAME_MIGR } from "./monst.h.js";
-import { MON_LIMBO } from "./monst.h.js";
-import { MON_MIGRATING } from "./monst.h.js";
-import { MON_OFFMAP } from "./monst.h.js";
-import { struct_monst } from "./monst.h.js";
+import { monsndx, nonliving } from "./mondata.h.macros.js";
+import { G_EXTINCT, G_UNIQ, NEUTRAL } from "./monflag.h.js";
+import { MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, struct_monst } from "./monst.h.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_GRID_BUG } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { NHJS_LP64_SIZEOF_struct_cemetery } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_damage } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_ebones } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_edog } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_egd } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_emin } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_epri } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_eshk } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_kinfo } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_mextra } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_monst } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_obj } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_oextra } from "./nhjs_recorder_sizes.h.js";
-import { NHJS_LP64_SIZEOF_struct_trap } from "./nhjs_recorder_sizes.h.js";
-import { OMAILCMD } from "./obj.h.macros.js";
-import { OMONST } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
+import { NUMMONS, PM_GRID_BUG, PM_SAMURAI } from "./monsters.h.js";
+import {
+    NHJS_LP64_SIZEOF_struct_cemetery, NHJS_LP64_SIZEOF_struct_damage,
+    NHJS_LP64_SIZEOF_struct_ebones, NHJS_LP64_SIZEOF_struct_edog, NHJS_LP64_SIZEOF_struct_egd,
+    NHJS_LP64_SIZEOF_struct_emin, NHJS_LP64_SIZEOF_struct_epri, NHJS_LP64_SIZEOF_struct_eshk,
+    NHJS_LP64_SIZEOF_struct_kinfo, NHJS_LP64_SIZEOF_struct_mextra, NHJS_LP64_SIZEOF_struct_monst,
+    NHJS_LP64_SIZEOF_struct_obj, NHJS_LP64_SIZEOF_struct_oextra, NHJS_LP64_SIZEOF_struct_trap,
+} from "./nhjs_recorder_sizes.h.js";
+import { OMAILCMD, OMONST, ONAME } from "./obj.h.macros.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
-import { FIRST_OBJECT } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { BLINDED } from "./prop.h.js";
-import { CONFUSION } from "./prop.h.js";
-import { DEAF } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FLYING } from "./prop.h.js";
-import { GLIB } from "./prop.h.js";
-import { HALLUC } from "./prop.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { PROT_FROM_SHAPE_CHANGERS } from "./prop.h.js";
-import { SICK } from "./prop.h.js";
-import { SLIMED } from "./prop.h.js";
-import { STONED } from "./prop.h.js";
-import { STUNNED } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { VOMITING } from "./prop.h.js";
-import { WARN_OF_MON } from "./prop.h.js";
-import { WWALKING } from "./prop.h.js";
-import { CORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { WM_MASK } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_ROOM } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { Sokoban } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
+import { FIRST_OBJECT, NUM_OBJECTS } from "./objects.h.js";
+import {
+    BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, LEVITATION,
+    PROT_FROM_SHAPE_CHANGERS, SICK, SLIMED, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON,
+    WWALKING,
+} from "./prop.h.js";
+import { CORR, SDOOR, STONE, WM_MASK } from "./rm.h.js";
+import { IS_DOOR, IS_ROOM, IS_WALL, Sokoban, fmon, fobj, levl, m_at } from "./rm.h.macros.js";
 import { PRIMARYSET } from "./sym.h.js";
-import { COULD_SEE } from "./vision.h.js";
-import { IN_SIGHT } from "./vision.h.js";
-import { TEMP_LIT } from "./vision.h.js";
+import { COULD_SEE, IN_SIGHT, TEMP_LIT } from "./vision.h.js";
 import { wp_tty } from "./winprocs.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { SICK_NONVOMITABLE } from "./you.h.js";
-import { SICK_VOMITABLE } from "./you.h.js";
-import { UTOTYPE_NONE } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HHallucination } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Vomiting } from "./youprop.h.macros.js";
-import { Warn_of_mon } from "./youprop.h.macros.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, putstr, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, NHW_TEXT, PICK_ANY, PICK_NONE,
+    WIN_ERR, struct_any, struct_mi,
+} from "./wintype.h.js";
+import { SICK_NONVOMITABLE, SICK_VOMITABLE, UTOTYPE_NONE } from "./you.h.js";
+import { Role_if, Upolyd, next2u, u_at, uhis } from "./you.h.macros.js";
+import {
+    HConfusion, HHallucination, Slimed, Stoned, Underwater, Vomiting, Warn_of_mon,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { atoi } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, long, ord, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { and64, or64 } from "../rt/int64.js";
+import {
+    atoi, free, memset, sprintf, sscanf, strcat, strchr, strcmp, strcpy, strlen, strncmp,
+} from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, array_of, ptr_add, ptr_to, ref_of, ref_to, struct_assign } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { bc_sanity_check } from "./ball.js";
-import { cmd_from_func } from "./cmd.js";
-import { ecname_from_fn } from "./cmd.js";
-import { getdir } from "./cmd.js";
-import { levltyp } from "./cmd.js";
-import { makemap_prepost } from "./cmd.js";
-import { paranoid_query } from "./cmd.js";
-import { unavailcmd } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { u } from "./decl.js";
-import { do_mapping } from "./detect.js";
-import { findit } from "./detect.js";
-import { docrt } from "./display.js";
-import { glyph_at } from "./display.js";
-import { glyphmap } from "./display.js";
-import { map_engraving } from "./display.js";
-import { map_invisible } from "./display.js";
-import { map_trap } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { unmap_invisible } from "./display.js";
-import { minimal_monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { keepdogs } from "./dog.js";
-import { migrate_to_level } from "./dog.js";
-import { hurtle } from "./dothrow.js";
-import { mhurtle } from "./dothrow.js";
+import {
+    cmd_from_func, ecname_from_fn, getdir, levltyp, makemap_prepost, paranoid_query, unavailcmd,
+    yn_function,
+} from "./cmd.js";
+import {
+    cg, disp, flags, gb, gc, gf, gi, gm, gs, gv, gy, iflags, program_state, svc, svd, svk, svl, svm,
+    svn, u,
+} from "./decl.js";
+import { do_mapping, findit } from "./detect.js";
+import {
+    docrt, glyph_at, glyphmap, map_engraving, map_invisible, map_trap, nul_glyphinfo,
+    unmap_invisible,
+} from "./display.js";
+import { minimal_monnam, mon_nam, x_monnam } from "./do_name.js";
+import { keepdogs, migrate_to_level } from "./dog.js";
+import { hurtle, mhurtle } from "./dothrow.js";
 import { defsyms } from "./drawing.js";
-import { In_W_tower } from "./dungeon.js";
-import { Invocation_lev } from "./dungeon.js";
-import { Is_botlevel } from "./dungeon.js";
-import { Is_special } from "./dungeon.js";
-import { On_W_tower_level } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { get_level } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { overview_stats } from "./dungeon.js";
-import { print_dungeon } from "./dungeon.js";
-import { done } from "./end.js";
-import { panic } from "./end.js";
-import { engr_stats } from "./engrave.js";
-import { engraving_sanity_check } from "./engrave.js";
-import { losexp } from "./exper.js";
-import { pluslvl } from "./exper.js";
+import {
+    In_W_tower, Invocation_lev, Is_botlevel, Is_special, On_W_tower_level, assign_level, depth,
+    get_level, ledger_no, on_level, overview_stats, print_dungeon,
+} from "./dungeon.js";
+import { done, panic } from "./end.js";
+import { engr_stats, engraving_sanity_check } from "./engrave.js";
+import { losexp, pluslvl } from "./exper.js";
 import { getpos } from "./getpos.js";
-import { fill_glyphid_cache } from "./glyphs.js";
-import { free_glyphid_cache } from "./glyphs.js";
-import { glyph_to_cmap } from "./glyphs.js";
-import { glyphid_cache_status } from "./glyphs.js";
-import { wizcustom_glyphids } from "./glyphs.js";
-import { may_dig } from "./hack.js";
-import { pooleffects } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { check_invent_gold } from "./invent.js";
-import { display_inventory } from "./invent.js";
-import { light_sources_sanity_check } from "./light.js";
-import { light_stats } from "./light.js";
-import { makemon } from "./makemon.js";
-import { rndmonst } from "./makemon.js";
+import {
+    fill_glyphid_cache, free_glyphid_cache, glyph_to_cmap, glyphid_cache_status, wizcustom_glyphids,
+} from "./glyphs.js";
+import { may_dig, pooleffects } from "./hack.js";
+import { eos, mungspaces, strkitten, strncmpi, strsubst, upstart } from "./hacklib.js";
+import { check_invent_gold, display_inventory } from "./invent.js";
+import { light_sources_sanity_check, light_stats } from "./light.js";
+import { makemon, rndmonst } from "./makemon.js";
 import { mklev } from "./mklev.js";
 import { obj_sanity_check } from "./mkobj.js";
-import { dmonsfree } from "./mon.js";
-import { mon_sanity_check } from "./mon.js";
-import { mongone } from "./mon.js";
-import { monkilled } from "./mon.js";
-import { rescham } from "./mon.js";
-import { usmellmon } from "./mon.js";
-import { xkilled } from "./mon.js";
-import { mstrength } from "./mondata.js";
-import { olfaction } from "./mondata.js";
+import {
+    dmonsfree, mon_sanity_check, mongone, monkilled, rescham, usmellmon, xkilled,
+} from "./mon.js";
+import { mstrength, olfaction } from "./mondata.js";
 import { mons } from "./monst.js";
 import { load_lua } from "./nhlua.js";
 import { objects } from "./objects.js";
 import { encumber_msg } from "./pickup.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { float_vs_flight } from "./polyself.js";
-import { polyself } from "./polyself.js";
-import { incr_itimeout } from "./potion.js";
-import { make_blinded } from "./potion.js";
-import { make_deaf } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stoned } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { make_vomiting } from "./potion.js";
+import { There, You, impossible, pline } from "./pline.js";
+import { body_part, float_vs_flight, polyself } from "./polyself.js";
+import {
+    incr_itimeout, make_blinded, make_deaf, make_glib, make_hallucinated, make_sick, make_slimed,
+    make_stoned, make_stunned, make_vomiting,
+} from "./potion.js";
 import { create_particular } from "./read.js";
 import { region_stats } from "./region.js";
 import { rn2 } from "./rnd.js";
 import { rumor_check } from "./rumors.js";
 import { setpaid } from "./shk.js";
-import { flip_level } from "./sp_lev.js";
-import { flip_level_rnd } from "./sp_lev.js";
-import { load_special } from "./sp_lev.js";
-import { lspo_finalize_level } from "./sp_lev.js";
-import { lspo_reset_level } from "./sp_lev.js";
+import {
+    flip_level, flip_level_rnd, load_special, lspo_finalize_level, lspo_reset_level,
+} from "./sp_lev.js";
 import { known_handling } from "./symbols.js";
 import { level_tele } from "./teleport.js";
-import { property_by_index } from "./timeout.js";
-import { timer_sanity_check } from "./timeout.js";
-import { timer_stats } from "./timeout.js";
+import { property_by_index, timer_sanity_check, timer_stats } from "./timeout.js";
 import { trap_sanity_check } from "./trap.js";
-import { does_block } from "./vision.js";
-import { get_viz_clear } from "./vision.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { windowprocs } from "./windows.js";
+import { does_block, get_viz_clear } from "./vision.js";
+import {
+    add_menu, add_menu_heading, add_menu_str, getlin, select_menu, windowprocs,
+} from "./windows.js";
 import { size_wseg } from "./worm.js";
 import { check_wornmask_slots } from "./worn.js";
 import { makewish } from "./zap.js";

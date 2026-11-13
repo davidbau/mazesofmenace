@@ -262,7 +262,7 @@ import {
     sgn,
     s_suffix,
     upstart,
-    visctrl,
+    visctrl, lcase,
 } from './hacklib.js';
 import {
     can_reach_floor,
@@ -1153,7 +1153,7 @@ export async function unmul(msg_override, state = game, env = {}) {
     if (state.nomovemsg) {
         await message(state.nomovemsg, state, env);
         if (Upolyd(state.u)
-            && state.nomovemsg.toLowerCase().startsWith(
+            && lcase(state.nomovemsg).startsWith(
                 'you survived that ',
             )) {
             const form = an(pmname(
@@ -1878,7 +1878,7 @@ export async function still_chewing(x, y, state = game) {
     state.u.uhunger += rnd(20);
 
     if (boulder) {
-        delobj(boulder, { state });
+        await delobj(boulder, { state });
         await ttyPline('You eat the boulder.', state);
         boulder = sobj_at(BOULDER, x, y, state);
         if (IS_OBSTRUCTED(lev.typ) || closed_door(x, y, state) || boulder) {
@@ -2332,7 +2332,7 @@ async function moverock_core(sx, sy, state, env) {
             switch (ttmp.ttyp) {
             case LANDMINE:
                 if (random.rn2(10)) {
-                    obj_extract_self(otmp, objectEnv);
+                    await obj_extract_self(otmp, objectEnv);
                     place_object(otmp, rx, ry, objectEnv);
                     redraw(sx, sy, state);
                     await message(
@@ -2350,7 +2350,7 @@ async function moverock_core(sx, sy, state, env) {
                 break;
             case SPIKED_PIT:
             case PIT: {
-                obj_extract_self(otmp, objectEnv);
+                await obj_extract_self(otmp, objectEnv);
                 if (!Blind(state.u) && state.viz_array?.[ry])
                     state.viz_array[ry][rx] |= IN_SIGHT;
                 const { flooreffects } = await import('./do.js');
@@ -2399,7 +2399,7 @@ async function moverock_core(sx, sy, state, env) {
                 otmp.next_boulder = 0;
                 if (costly)
                     await stolen_value(otmp, rx, ry, !ttmp.tseen, false, state);
-                obj_extract_self(otmp, objectEnv);
+                await obj_extract_self(otmp, objectEnv);
                 add_to_migration(otmp, state);
                 const dest = {};
                 get_level(dest, newlev, state);
@@ -3680,7 +3680,7 @@ async function domove_fight_web(x, y, state) {
             const scndbuf = state.u.twoweap ? weapon_descr(state.uswapwep, state) : '';
             const onewep = !scndbuf || uwepbuf === scndbuf;
             let uwepstr;
-            if (['armor', 'food', 'venom'].includes(uwepbuf.toLowerCase())) {
+            if (['armor', 'food', 'venom'].includes(lcase(uwepbuf))) {
                 uwepstr = uwepbuf;
             } else if (uwep.quan === 1 && !(state.u.twoweap && onewep)) {
                 uwepstr = an(uwepbuf);

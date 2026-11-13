@@ -1,7 +1,9 @@
 // Original ALLMAIN turn policies retain the existing startup context/owner.
 import * as allmain from '../ported/allmain.js';
 import abi from './turn-loop-abi.json' with {type:'json'};
-import {createRecordViews} from './record-views.js';
+import {createNativeRecordViews} from './native/record-views.js';
+import {createNativeTurnLoop} from './native/turn-loop.js';
+import {nativeStateFor} from './native/state-bridge.js';
 
 // BEGIN GENERATED ALLMAIN HEADERS
 const heroHeaders=[
@@ -50,10 +52,10 @@ export function enableTurnLoop(environment,layouts,startup){
  if(!C)throw new Error('Turn loop requires the existing ALLMAIN startup context');
  if(layouts.allmain.pointerSize!==8||layouts.allmain.longSize!==8||layouts.allmain.timeSize!==8)
   throw new Error('Review changed ALLMAIN turn ABI');
- const {services,ctypes,memory,transport,functions}=environment,views=createRecordViews(environment);
+ const {services,ctypes,memory,transport,functions}=environment,views=createNativeRecordViews(environment),nativeState=nativeStateFor(environment);
  const text=value=>typeof value==='string'?services.literal(value):environment.address(value);
  C.Role_if=role=>Number(views.record('struct instance_globals_u',environment.requireGlobal('gu')).urole.mnum===transport.int(role));
- const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
+ const resolve=name=>nativeState.functions.get(name)??(typeof services[name]==='function'?services[name].nativeEntry??services[name]:environment.resolve(name));
  // ALLMAIN fields remain the actual DECL/role/window globals. Installing views
  // adds no initialization and never copies an existing owner's field values.
  for(const [name,sourceType]of Object.entries(abi.roots)){
@@ -92,10 +94,10 @@ export function enableTurnLoop(environment,layouts,startup){
  }
  // Keep already-installed explicit header/callback transports (for example,
  // game-windows' create_nhwindow macro) on this same shared context.
- for(const [name,row]of Object.entries(abi.dependencies))if(!Object.hasOwn(C,name))C[name]=(...args)=>{
-  const result=resolve(name)(...args.map((value,i)=>boundary(row.parameters[i],value)));
-  return boundary(row.result,result);
- };
+ for(const [name,row]of Object.entries(abi.dependencies))if(!Object.hasOwn(C,name)){
+  const call=(...args)=>{const selected=resolve(name);if(selected.nativeState===nativeState)return selected(...args);const result=nativeState.boundary(selected,...args.map((value,i)=>boundary(row.parameters[i],value)));return boundary(row.result,result);};
+  Object.defineProperty(C,name,{configurable:true,enumerable:true,get(){const selected=nativeState.functions.get(name);return selected?.nativeState===nativeState?selected:call;},set(value){Object.defineProperty(C,name,{value,writable:true,configurable:true,enumerable:true});}});
+ }
  const sourceCaller=(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('allmain.c'),transport.int(line),text(caller));};
  for(const kind of ['rn2','rnd'])C[kind]=(bound,line,caller)=>{sourceCaller(line,caller);return services[kind](transport.int(typeof bound==='function'?bound():bound));};
  C.rn1=(bounds,line,caller)=>{sourceCaller(line,caller);const pair=typeof bounds==='function'?bounds():bounds;return transport.int(services.rn2(transport.int(pair[0]))+transport.int(pair[1]));};
@@ -120,8 +122,10 @@ export function enableTurnLoop(environment,layouts,startup){
  // The caller needs a projected s_level, while the shared dungeon owner accepts
  // and returns C addresses. Its actual source find_level body remains the owner.
  C.find_level=name=>{const at=resolve('find_level')(text(name));return at?views.record('struct s_level',at):0;};
+ C.nativeTurn=fn=>{const saved=transport.stackSave();nativeState.enter();try{return fn();}finally{try{nativeState.leave();}finally{transport.stackRestore(saved);}}};
+ const native=createNativeTurnLoop(C);
  const entries=['moveloop_preamble','moveloop_core','moveloop','stop_occupation','timet_to_seconds','timet_delta'];
- const implementations=Object.fromEntries(entries.filter(name=>!environment.hasFunction(name)).map(name=>[name,(...args)=>{if(name==='moveloop_preamble'||name==='moveloop')args[0]=transport.char(args[0]);else if(name==='timet_to_seconds'||name==='timet_delta')args=args.map(transport.long);return allmain[name](...args);} ]));
+ const implementations=Object.fromEntries(entries.filter(name=>!environment.hasFunction(name)).map(name=>{let started=false;const invoke=(...args)=>{if(!started){environment.startModule('game-startup');started=true;}if(name==='moveloop_preamble'||name==='moveloop')args[0]=transport.char(args[0]);else if(name==='timet_to_seconds'||name==='timet_delta')args=args.map(transport.long);return name==='moveloop'?native[name](...args):C.nativeTurn(()=>native[name](...args));};invoke.nativeState=nativeState;invoke.nativeDirect=true;nativeState.functions.set(name,invoke);return [name,invoke];}));
  environment.extend('game-startup',implementations);
- return {environment:C,state:C.allmainState,entries:Object.keys(implementations),limitation:'Original turn entries share ALLMAIN startup state; gameplay dependencies and complete turns/recordings remain unaccepted.'};
+ return {environment:C,state:C.allmainState,entries:Object.keys(implementations),native,views,limitation:'Native ALLMAIN turns share startup state and canonical typed actors; finite recording acceptance is required separately.'};
 }

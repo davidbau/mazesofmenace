@@ -1,4 +1,5 @@
 // Original ENGRAVE policies on the shared head chain and saved occupation fields.
+import {nativeStateFor} from './native/state-bridge.js';
 import abi from './engrave-abi.json' with {type:'json'};
 import * as source from '../ported/engrave.js';
 import {createEngraveEnvironment} from './bindings/engrave.js';
@@ -9,7 +10,7 @@ export function enableEngrave(environment,layouts){
  const{services:S,ctypes,memory,transport}=environment,address=environment.address,L=layouts.engrave;
  for(const[k,v]of Object.entries(abi.layout))if(JSON.stringify(L[k])!==JSON.stringify(v))throw Error('Review ENGRAVE ABI '+k);
  const text=v=>typeof v==='string'?S.literal(v):address(v),resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof S[n]==='function'?S[n]:environment.resolve(n);
- const scalar=(t,v)=>{t=ctypes.canonical(t);if(t==='void')return undefined;if(t.includes('*'))return text(v);if(t==='long'||t==='cmdcount_nht')return transport.long(v);if(t==='unsigned long'||t==='size_t')return transport.ulong(v);if(t==='char'||t==='signed char'||t==='boolean'||t==='schar')return transport.char(v);if(t==='unsigned char'||t==='uchar')return transport.uchar(v);if(t==='short'||t==='coordxy'||t==='xint16')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int'||t==='unsigned')return transport.uint(v);return transport.int(v);};
+ const scalar=(t,v)=>{t=ctypes.abiType(t);if(t==='void')return undefined;if(t.includes('*'))return text(v);if(t==='long'||t==='cmdcount_nht')return transport.long(v);if(t==='unsigned long'||t==='size_t')return transport.ulong(v);if(t==='char'||t==='signed char'||t==='boolean'||t==='schar')return transport.char(v);if(t==='unsigned char'||t==='uchar')return transport.uchar(v);if(t==='short'||t==='coordxy'||t==='xint16')return transport.short(v);if(t==='unsigned short')return transport.ushort(v);if(t==='unsigned int'||t==='unsigned')return transport.uint(v);return transport.int(v);};
  const prototype=p=>{const m=p.match(/^(.+?)\s*\((.*)\)$/);if(!m)throw Error('Review ENGRAVE prototype '+p);return{ret:m[1],args:m[2].split(',').map(s=>s.trim()).filter(s=>s&&s!=='void')};};
  const packed=(type,p,key,value)=>{let at=address(p);const parts=key.split('.'),last=parts.pop();for(const k of parts){const f=ctypes.locate(type,at,k);type=f.field.record;at=f.at;}return value===undefined?ctypes.getField(type,at,last,'unsigned int'):ctypes.setField(type,at,last,'unsigned int',transport.uint(value));};
  const encodedSize=source.blind_writing.length*21,encoded=environment.allocateGlobal('engrave.encoded',encodedSize);
@@ -35,7 +36,7 @@ export function enableEngrave(environment,layouts){
  context=createEngraveEnvironment(local,L);
  function call(n,...args){const p=abi.public[n]??({stylus_ok:'int (struct obj *)',engrave:'int (void)'})[n];if(!p)throw Error('Unknown original ENGRAVE export '+n);const row=prototype(p);return transport.scoped(()=>{args=args.map((v,i)=>scalar(row.args[i],v));if(n==='stylus_ok')args[0]=context.object(args[0]);if(['engr_can_be_felt','del_engr','rloc_engr','see_engraving','feel_engraving'].includes(n))args[0]=context.engr(args[0]);if(['save_engravings','rest_engravings'].includes(n))args[0]=context.nhfile(args[0]);if(n==='engr_stats'){args[2]=context.longPointer(args[2]);args[3]=context.longPointer(args[3]);}const result=withCEnvironment(context,()=>source[n](...args));return scalar(row.ret,result?.address??result);});}
  const groups=['world-engravings','engraving-persistence'],forwarded=[];
- for(const group of groups){let entry;try{entry=environment.start(group);}catch(e){if(e.message==='Unresolved standalone module '+group)continue;throw e;}for(const n of Object.keys(abi.public))if(Object.hasOwn(entry.namespace,n)){entry.namespace[n]=(...args)=>call(n,...args);forwarded.push({name:n,group});}}
+ for(const group of groups){let entry;try{entry=environment.start(group);}catch(e){if(e.message==='Unresolved standalone module '+group)continue;throw e;}for(const n of Object.keys(abi.public))if(Object.hasOwn(entry.namespace,n)){if(entry.namespace[n].nativeDirect&&entry.namespace[n].nativeState===nativeStateFor(environment))continue;entry.namespace[n]=(...args)=>call(n,...args);forwarded.push({name:n,group});}}
  const names=Object.keys(abi.public).filter(n=>!environment.hasFunction(n));environment.register('engraving-public',Object.fromEntries(names.map(n=>[n,(...args)=>call(n,...args)])));
  const owner={context,services:local,call,exports:names,forwarded,limitations:'Full source public surface; only separately C-compared engraving/persistence paths accepted.'};owners.set(environment,owner);return owner;
 }

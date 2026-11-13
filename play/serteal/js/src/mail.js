@@ -3,19 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-// #include "mail.h"
-
-
-
 /*
  * Notify user when new mail has arrived.  Idea by Merlyn Leroy.
  *
@@ -40,89 +27,36 @@
  *                       random intervals.
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-// #include <sys/stat.h>
-// #include <pwd.h>
 /* DON'T trust all Unices to declare getpwuid() in <pwd.h> */
 
-
 /* DO trust all SVR4 to typedef uid_t in <sys/types.h> (probably to a long) */
-
-
-
-
-
-
 
 const omstat = static_struct("omstat", struct_stat); const nmstat = static_struct("nmstat", struct_stat);
 const mailbox = static_var("mailbox", ptr_to(char), 0);
 const laststattime = static_var("laststattime", long);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const MAILPATH = "/usr/mail/";
 
-
-export function /* void */
-free_maildata()
-{
+export function free_maildata() { /* void */
     if (mailbox[0])
         free((mailbox[0])), mailbox[0] = 0;
 }
 
-export function /* void */
-getmailstatus()
-{
+export function getmailstatus() { /* void */
     if (mailbox[0]) {
         ; /* no need to repeat the setup */
     } else if ((mailbox[0] = nh_getenv(_("MAIL"))) != 0) {
         mailbox[0] = dupstr(mailbox[0]);
-
     } else  {
-
-
-
-
-
-
-
-
-
-
-
+        /* #ifdef AMS: not in this build */
 
         let pw_name = getpwuid(getuid()).pw_name;
 
         /* note: 'sizeof "LITERAL"' includes +1 for terminating '\0' */
-        mailbox[0] = addr_of(alloc(unsigned((unsigned(strlen(pw_name)
-                                             + sizeof_string(MAILPATH))))));
-        void strcpy(mailbox[0], _(MAILPATH));
-        void strcat(mailbox[0], pw_name);
-
-
+        mailbox[0] = addr_of(alloc(unsigned(strlen(pw_name)
+                                             + sizeof_string(MAILPATH))));
+        strcpy(mailbox[0], _(MAILPATH));
+        strcat(mailbox[0], pw_name);
     }
 
     debugpline3(_("mailbox=%c%s%c"),
@@ -131,23 +65,16 @@ getmailstatus()
                 mailbox[0] ? ord('\"') : ord('>'), __FILE__);
 
     if (mailbox[0] && stat(mailbox[0], omstat)) {
-
-
-
-
         omstat.st_mtim.tv_sec = 0;
-
     }
 }
-
 
 /*
  * Pick coordinates for a starting position for the mail daemon.  Called
  * from newmail() and newphone().
  */
-function /* boolean */
-md_start(startp)
-{ const $frame = stack_frame(); try {
+function md_start(startp) { /* boolean */
+    const $frame = stack_frame(); try {
     var testcc = stack_struct(struct_nhcoord);     /* scratch coordinates */
     var row;          /* current row we are checking */
     var lax;          /* if TRUE, pick a position in sight. */
@@ -200,7 +127,6 @@ md_start(startp)
                     max_distance = dd;
                     startp.y = row;
                     startp.x = gv.viz_rmin[row];
-
                 } else if (enexto(testcc, gv.viz_rmin[row], row,
                                   null)
                            && !cansee(testcc.x, testcc.y)
@@ -215,7 +141,6 @@ md_start(startp)
                     max_distance = dd;
                     startp.y = row;
                     startp.x = gv.viz_rmax[row];
-
                 } else if (enexto(testcc, gv.viz_rmax[row], row,
                                   null)
                            && !cansee(testcc.x, testcc.y)
@@ -236,7 +161,8 @@ md_start(startp)
     } break; }
 
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Try to choose a stopping point as near as possible to the starting
@@ -244,10 +170,8 @@ md_start(startp)
  * enexto().  Use enexto() as a last resort because enexto() chooses
  * its point randomly, which is not what we want.
  */
-function /* boolean */
-md_stop(stopp,
-        startp) /* starting position (read only) */
-{
+function md_stop(stopp,
+        startp) { /* boolean */ /* starting position (read only) */
     let x, y, distance, min_distance = -1;
 
     for (x = u.ux - 1; x <= u.ux + 1; x++)
@@ -284,10 +208,8 @@ export function md_exclamations() { return (mail_text[rn2(3)]); }
  * FALSE if the md gets stuck in a position where there is a monster.  Return
  * TRUE otherwise.
  */
-function /* boolean */
-md_rush(md,
-        tx, ty) /* destination of mail daemon */
-{
+function md_rush(md,
+        tx, ty) { /* boolean */ /* destination of mail daemon */
     let mon;            /* displaced monster */
     let dx, dy;          /* direction counters */
     let fx = md.mx, fy = md.my; /* current location */
@@ -395,9 +317,8 @@ md_rush(md,
 
 /* Deliver a scroll of mail. */
 /*ARGSUSED*/
-function /* void */
-newmail(info)
-{ const $frame = stack_frame(); try {
+function newmail(info) { /* void */
+    const $frame = stack_frame(); try {
     var md;
     var start = stack_struct(struct_nhcoord), stop = stack_struct(struct_nhcoord);
     var message_seen = FALSE;
@@ -440,115 +361,23 @@ newmail(info)
         display_nhwindow()(WIN_MESSAGE, FALSE);
         obj = hold_another_object(obj, _("Oops!"), 0,
                                   0);
-        (void (obj));
+        (obj);
     }
-
  }
     /* zip back to starting location */
     if (!md_rush(md, start.x, start.y))
         md.mx = md.my = 0; /* for mongone, md is not on map */
     mongone(md);
-
  }
     /* deliver some classes of messages even if no daemon ever shows up */
     if (!message_seen && info.message_typ == MSG_OTHER)
         pline(_("Hark!  \"%s.\""), info.display_txt);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
+/* #if !defined(UNIX) && !defined(VMS): not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-ckmailstatus()
-{
+export function ckmailstatus() { /* void */
     ck_server_admin_msg();
 
     if (!mailbox[0] || u.uswallow || !flags.biff
@@ -560,20 +389,11 @@ ckmailstatus()
 
     laststattime[0] = svm.moves;
     if (stat(mailbox[0], nmstat)) {
-
-
-
-
         nmstat.st_mtim.tv_sec = 0;
-
     } else if (nmstat.st_mtim.tv_sec > omstat.st_mtim.tv_sec) {
         if (nmstat.st_size) {
             let deliver = static_struct("ckmailstatus.deliver", struct_mail_info, {
-
                 message_typ: MSG_MAIL, display_txt: _("I have some mail for you"),
-
-
-
 
                 object_nam: 0, response_cmd: 0
             });
@@ -583,133 +403,15 @@ ckmailstatus()
     }
 }
 
+/* #if defined(SIMPLE_MAIL) || defined(SERVER_ADMIN_MSG): not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-ck_server_admin_msg()
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function ck_server_admin_msg() { /* void */
+/* #ifdef SERVER_ADMIN_MSG: not in this build */
 }
 
 /*ARGSUSED*/
-export function /* void */
-readmail(otmp)
-{
-
+export function readmail(otmp) { /* void */
     let mr = 0;
-
-
-
-
-
 
     if (iflags.debug_fuzzer)
         return;
@@ -718,170 +420,57 @@ readmail(otmp)
         mr = _(DEF_MAILREADER);
 
     if (child(1)) {
-        void execl(mr, mr, 0);
+        execl(mr, mr, 0);
         nh_terminate(EXIT_FAILURE);
     }
-
-
-
-
-
 
     /* get new stat; not entirely correct: there is a small time
        window where we do not see new mail */
     getmailstatus();
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef VMS: not in this build */
 
 /*mail.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
 import { Never_mind } from "./decl.h.macros.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { ONAME_NO_FLAGS } from "./hack.h.js";
+import { FALSE, ROWNO, TRUE, coordxy } from "./global.h.js";
+import { NO_MM_FLAGS, ONAME_NO_FLAGS } from "./hack.h.js";
 import { debugpline3 } from "./lint.h.macros.js";
-import { MSG_MAIL } from "./mail.h.js";
-import { MSG_OTHER } from "./mail.h.js";
-import { struct_mail_info } from "./mail.h.js";
+import { MSG_MAIL, MSG_OTHER, struct_mail_info } from "./mail.h.js";
 import { PM_MAIL_DAEMON } from "./monsters.h.js";
 import { SCR_MAIL } from "./objects.h.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { place_worm_seg } from "./rm.h.macros.js";
-import { remove_monster } from "./rm.h.macros.js";
-import { DEF_MAILREADER } from "./unixconf.h.js";
-import { MAILCKFREQ } from "./unixconf.h.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
-import { m_next2u } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
+import { IS_STWALL, MON_AT, levl, m_at, place_worm_seg, remove_monster } from "./rm.h.macros.js";
+import { DEF_MAILREADER, MAILCKFREQ } from "./unixconf.h.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import { display_nhwindow, nh_delay_output } from "./winprocs.h.macros.js";
+import { m_next2u, u_at } from "./you.h.macros.js";
+import { Blind, Blind_telepat, Deaf } from "./youprop.h.macros.js";
 import { struct_stat } from "../libc/records.js";
-import { char } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { EXIT_FAILURE } from "../rt/libc.js";
-import { execl } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getpwuid } from "../rt/libc.js";
-import { getuid } from "../rt/libc.js";
-import { stat } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { stack_struct } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, long, ord, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    EXIT_FAILURE, execl, free, getpwuid, getuid, stat, strcat, strcpy, strlen,
+} from "../rt/libc.js";
+import { stack_struct, static_array, static_struct, static_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import { addr_of, ptr_to, struct_assign } from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { isok } from "./cmd.js";
-import { flags } from "./decl.js";
-import { gs } from "./decl.js";
-import { gv } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { flush_screen } from "./display.js";
-import { newsym } from "./display.js";
+import { flags, gs, gv, iflags, svm, svp, u } from "./decl.js";
+import { flush_screen, newsym } from "./display.js";
 import { oname } from "./do_name.js";
 import { nh_terminate } from "./end.js";
 import { dist2 } from "./hacklib.js";
 import { hold_another_object } from "./invent.js";
 import { makemon } from "./makemon.js";
-import { mksobj } from "./mkobj.js";
-import { new_omailcmd } from "./mkobj.js";
+import { mksobj, new_omailcmd } from "./mkobj.js";
 import { mongone } from "./mon.js";
 import { accessible } from "./monmove.js";
 import { mons } from "./monst.js";
 import { nh_getenv } from "./options.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { pline, verbalize } from "./pline.js";
 import { rn2 } from "./rnd.js";
 import { Hello } from "./role.js";
 import { place_monster } from "./steed.js";

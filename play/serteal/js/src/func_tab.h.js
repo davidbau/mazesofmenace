@@ -3,9 +3,6 @@
 /*-Copyright (c) Pasi Kallinen, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* extended command flags */
 export const IFBURIED = 0x0001;
 export const AUTOCOMPLETE = 0x0002;
@@ -46,10 +43,7 @@ export const struct_ext_func_tab = struct("struct_ext_func_tab", {
     flags: unsigned,
     f_text: ptr_to(char),
 });
+
 import { boolean } from "./global.h.js";
-import { char } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { char, uchar, unsigned } from "../rt/ctypes.js";
+import { fnptr_t, ptr_to, struct } from "../rt/struct.js";

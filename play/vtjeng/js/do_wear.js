@@ -1954,20 +1954,6 @@ async function toggle_stealth(obj, oldprop, on, state = game, rawEnv = {}) {
                 ? `and ${x_monnam(
                     steed,
                     ARTICLE_YOUR,
-    ALL_FINISHED,
-    ALL_TYPES,
-    ALL_TYPES_SELECTED,
-    BUCX_TYPES,
-    INVORDER_SORT,
-    MENU_TRADITIONAL,
-    MENU_COMBINATION,
-    MENU_FULL,
-    PICK_ANY,
-    SIGNAL_NOMENU,
-    UNPAID_TYPES,
-    USE_INVLET,
-    WORN_TYPES,
-
                     null,
                     SUPPRESS_SADDLE | SUPPRESS_HALLUCINATION,
                     false,
@@ -3774,13 +3760,13 @@ export async function armor_or_accessory_off(obj, state = game) {
         await ttyPline('You are not wearing that.', state);
         return ECMD_OK;
     }
-    if (obj === state.u?.uskin
+    if (obj === state.uskin
         || (obj === state.uarm && state.uarmc)
         || (obj === state.uarmu && (state.uarmc || state.uarm))) {
         let why = '';
         let what = '';
 
-        if (obj !== state.u?.uskin) {
+        if (obj !== state.uskin) {
             if (state.uarmc) what += cloak_simple_name(state.uarmc, state);
             if (obj === state.uarmu && state.uarm) {
                 if (state.uarmc) what += ' and ';

@@ -7,62 +7,16 @@
  *      Contains code for picking objects up, and container use.
  */
 
-// #include "hack.h"
-
 export const CONTAINED_SYM = ord('>');
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* define for query_objlist() and autopickup() */
-export function FOLLOW(curr, flags) { return (((flags) & BY_NEXTHERE) ? (curr).v.v_nexthere : (curr).nobj); }
+export function FOLLOW(curr, flags) { return ((flags & BY_NEXTHERE) ? curr.v.v_nexthere : curr.nobj); }
 
-
-export function GOLD_WT(n) { return (Math.trunc(((n) + 50) / 100)); }
+export function GOLD_WT(n) { return Math.trunc((n + 50) / 100); }
 /* if you can figure this out, give yourself a hearty pat on the back... */
-export function GOLD_CAPACITY(w, n) { return (((w) * -100) - ((n) + 50) - 1); }
+export function GOLD_CAPACITY(w, n) { return ((w * -100) - (n + 50) - 1); }
 
-export function Icebox() { return (+(gc.current_container.otyp == ICE_BOX)); }
-
+export function Icebox() { return +(gc.current_container.otyp == ICE_BOX); }
 
 const slightloadpfx = init_string(static_array("slightloadpfx", char, sizeof_string("You have a little trouble")), _("You have a little trouble"), true);
 const moderateloadpfx = init_string(static_array("moderateloadpfx", char, sizeof_string("You have trouble")), _("You have trouble"), true);
@@ -72,10 +26,8 @@ const overloadpfx = init_string(static_array("overloadpfx", char, sizeof_string(
 /* BUG: this lets you look at cockatrice corpses while blind without
    touching them */
 /* much simpler version of the look-here code; used by query_classes() */
-function /* void */
-simple_look(otmp,
-            here)     /* flag for type of obj list linkage */
-{
+function simple_look(otmp,
+            here) { /* void */ /* flag for type of obj list linkage */
     /* Neither of the first two cases is expected to happen, since
      * we're only called after multiple classes of objects have been
      * detected, hence multiple objects must be present.
@@ -97,10 +49,8 @@ simple_look(otmp,
     }
 }
 
-export function /* int */
-collect_obj_classes(ilets, otmp, here,
-                    filter, itemcount)
-{
+export function collect_obj_classes(ilets, otmp, here,
+                    filter, itemcount) { /* int */
     let iletct = 0;
     let c;
 
@@ -108,7 +58,7 @@ collect_obj_classes(ilets, otmp, here,
     chars[ilets + iletct] = ord('\0'); /* terminate ilets so that strchr() will work */
     while (otmp) {
         c = def_oc_syms[otmp.oclass].sym;
-        if (!strchr(ilets, c) && (!filter || (filter)(otmp)))
+        if (!strchr(ilets, c) && (!filter || filter(otmp)))
             chars[ilets + (iletct++)] = c, chars[ilets + iletct] = ord('\0');
         itemcount[0] += 1;
         otmp = here ? otmp.v.v_nexthere : otmp.nobj;
@@ -137,16 +87,15 @@ collect_obj_classes(ilets, otmp, here,
  * it was changed to enhance menu entry ordering ('A' stands out, but
  * some players complain that it is too easy to choose accidentally).
  */
-function /* boolean */
-query_classes(
+function query_classes(
     oclasses,
     one_at_a_time,
     everything,
     action,
     objs,
     here,
-    menu_on_demand) /* to tell caller that user picked 'm' */
-{ const $frame = stack_frame(); try {
+    menu_on_demand) { /* boolean */ /* to tell caller that user picked 'm' */
+    const $frame = stack_frame(); try {
     var ilets = stack_array(char, 36), inbuf = init_list(stack_array(char, BUFSZ), []); /* FIXME: hardcoded ilets[] length */
     var iletct, oclassct;
     var not_everything, filtered;
@@ -199,7 +148,7 @@ query_classes(
         chars[oclasses + (oclassct = 0)] = ord('\0');
         chars[one_at_a_time] = chars[everything] = FALSE;
         not_everything = filtered = FALSE;
-        void sprintf(qbuf, _("What kinds of thing do you want to %s? [%s]"), action, ilets)
+        sprintf(qbuf, _("What kinds of thing do you want to %s? [%s]"), action, ilets)
 ;
         getlin(qbuf, inbuf);
         if (chars[inbuf] == ord('\x1b'))
@@ -220,7 +169,7 @@ query_classes(
                     objs.v.v_ocontainer.cknown = 1;
                 continue ask_again;
             } else if (sym == ord('i')) {
-                void display_inventory(0, TRUE);
+                display_inventory(0, TRUE);
                 continue ask_again;
             } else if (sym == ord('m')) {
                 m_seen = TRUE;
@@ -259,7 +208,8 @@ query_classes(
         }
     }
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * tests:
@@ -269,9 +219,7 @@ query_classes(
  *  st_resists     does hero have stoning resistance?
  *  st_all         st_gloves | st_corpse | st_petrifies | st_resists
  */
-export function /* boolean */
-u_safe_from_fatal_corpse(obj, tests)
-{
+export function u_safe_from_fatal_corpse(obj, tests) { /* boolean */
     if (((tests & st_gloves) && uarmg)
         || ((tests & st_corpse) && obj.otyp != CORPSE)
         || ((tests & st_petrifies) && !touch_petrifies(mons[obj.corpsenm]))
@@ -281,9 +229,7 @@ u_safe_from_fatal_corpse(obj, tests)
 }
 
 /* check whether hero is bare-handedly touching a cockatrice corpse */
-function /* boolean */
-fatal_corpse_mistake(obj, remotely)
-{
+function fatal_corpse_mistake(obj, remotely) { /* boolean */
     if (u_safe_from_fatal_corpse(obj, st_all) || remotely)
         return FALSE;
 
@@ -299,23 +245,19 @@ fatal_corpse_mistake(obj, remotely)
 }
 
 /* attempting to manipulate a Rider's corpse triggers its revival */
-export function /* boolean */
-rider_corpse_revival(obj, remotely)
-{
+export function rider_corpse_revival(obj, remotely) { /* boolean */
     if (!obj || obj.otyp != CORPSE || !is_rider(mons[obj.corpsenm]))
         return FALSE;
 
     pline(_("At your %s, the corpse suddenly moves..."),
           remotely ? _("attempted acquisition") : _("touch"));
-    void revive_corpse(obj);
+    revive_corpse(obj);
     exercise(A_WIS, FALSE);
     return TRUE;
 }
 
 /* wand of probing zapped down; perhaps hero is levitating while blind */
-export function /* void */
-force_decor(via_probing)
-{
+export function force_decor(via_probing) { /* void */
     /* we don't want describe_decor() to defer feedback if hero is fumbling
        with 1 turn left until next slip_or_trip(), or for ice_descr() to
        omit thawing details if hero is probing when levitating while blind
@@ -328,30 +270,27 @@ force_decor(via_probing)
     /* force current terrain to be different from previous location, or
        uninteresting if previous location was actually inside solid stone */
     iflags.prev_decor = STONE;
-    void describe_decor();
+    describe_decor();
     gd.decor_fumble_override = gd.decor_levitate_override = FALSE;
     chars[svl.lastseentyp[u.ux] + u.uy] = levl()[u.ux][u.uy].typ;
 }
 
-export function /* void */
-deferred_decor(
-    setup) /* True: deferring, False: catching up */
-{
+export function deferred_decor(
+    setup) { /* void */ /* True: deferring, False: catching up */
     if (!flags.mention_decor) {
         iflags.defer_decor = FALSE;
     } else if (setup) {
         iflags.defer_decor = TRUE;
     } else {
-        void describe_decor();
+        describe_decor();
         iflags.defer_decor = FALSE;
     }
 }
 
 /* handle 'mention_decor' (when walking onto a dungeon feature such as
    stairs or altar, describe it even if it isn't covered up by an object) */
-function /* boolean */
-describe_decor()
-{ const $frame = stack_frame(); try {
+function describe_decor() { /* boolean */
+    const $frame = stack_frame(); try {
     let outbuf = stack_array(char, BUFSZ), fbuf = stack_array(char, QBUFSZ);
     let doorhere, waterhere, res = TRUE;
     let dfeature;
@@ -378,9 +317,9 @@ describe_decor()
 
     /* we don't mention "ordinary" doors but do mention broken ones (and
        closed ones, which will only happen for Passes_walls) */
-    doorhere = ((dfeature && (!strcmp(dfeature, _("open door"))
-                            || !strcmp(dfeature, _("doorway")))) ? 1 : 0);
-    waterhere = ((dfeature && !strcmp(dfeature, _("pool of water"))) ? 1 : 0);
+    doorhere = (dfeature && (!strcmp(dfeature, _("open door"))
+                            || !strcmp(dfeature, _("doorway"))) ? 1 : 0);
+    waterhere = (dfeature && !strcmp(dfeature, _("pool of water")) ? 1 : 0);
     if (doorhere || Underwater()
         || (ltyp == ICE && IS_POOL(iflags.prev_decor))) /* pooleffects() */
         dfeature = 0;
@@ -398,11 +337,11 @@ describe_decor()
             dfeature = an(dfeature);
 
         if (flags.verbose) {
-            void sprintf(outbuf, _("There is %s here."), dfeature);
+            sprintf(outbuf, _("There is %s here."), dfeature);
         } else {
             if (dfeature != fbuf)
-                void strcpy(fbuf, dfeature);
-            void sprintf(outbuf, _("%s."), upstart(fbuf));
+                strcpy(fbuf, dfeature);
+            sprintf(outbuf, _("%s."), upstart(fbuf));
         }
         if (ltyp == ICE && flags.mention_decor)
             Norep(_("%s"), outbuf);
@@ -423,12 +362,11 @@ describe_decor()
        describe_decor() by what has just occurred in this one when it's On */
     iflags.prev_decor = flags.mention_decor ? ltyp : STONE;
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* look at the objects at our location, unless there are too many of them */
-function /* void */
-check_here(picked_some)
-{
+function check_here(picked_some) { /* void */
     let obj;
     let ct = 0;
     let lhflags = picked_some ? LOOKHERE_PICKED_SOME : LOOKHERE_NOFLAGS;
@@ -449,31 +387,25 @@ check_here(picked_some)
         if (svc.context.run)
             nomul(0);
         flush_screen(1);
-        void look_here(ct, lhflags);
+        look_here(ct, lhflags);
     } else {
         read_engr_at(u.ux, u.uy);
     }
 }
 
 /* query_objlist callback: return TRUE if obj's count is >= reference value */
-function /* boolean */
-n_or_more(obj)
-{
+function n_or_more(obj) { /* boolean */
     if (obj == uchain)
         return FALSE;
     return (+(obj.quan >= gv.val_for_n_or_more));
 }
 
 /* check valid_menu_classes[] for an entry; also used by askchain() */
-export function /* boolean */
-menu_class_present(c)
-{
+export function menu_class_present(c) { /* boolean */
     return (c && strchr(gv.valid_menu_classes, c)) ? TRUE : FALSE;
 }
 
-export function /* void */
-add_valid_menu_class(c)
-{
+export function add_valid_menu_class(c) { /* void */
     let vmc_count = static_var("add_valid_menu_class.vmc_count", int, 0);
 
     if (c == 0) { /* reset */
@@ -505,23 +437,17 @@ add_valid_menu_class(c)
 }
 
 /* query_objlist callback: return TRUE if not uchain */
-function /* boolean */
-all_but_uchain(obj)
-{
+function all_but_uchain(obj) { /* boolean */
     return (+(obj != uchain));
 }
 
 /* query_objlist callback: return TRUE */
 /*ARGUSED*/
-export function /* boolean */
-allow_all(obj)
-{
+export function allow_all(obj) { /* boolean */
     return TRUE;
 }
 
-export function /* boolean */
-allow_category(obj)
-{
+export function allow_category(obj) { /* boolean */
     /* If no filters are active, nothing will match unless
        paranoid_confirm:A is set. */
     if (!gc.class_filter && !gs.shop_filter && !gb.bucx_filter
@@ -591,30 +517,15 @@ allow_category(obj)
     return TRUE;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* query_objlist callback: return TRUE if valid class and worn */
-export function /* boolean */
-is_worn_by_type(otmp)
-{
+export function is_worn_by_type(otmp) { /* boolean */
     return (is_worn(otmp) && allow_category(otmp)) ? TRUE : FALSE;
 }
 
 /* reset last-picked-up flags */
-export function /* void */
-reset_justpicked(olist)
-{
+export function reset_justpicked(olist) { /* void */
     let otmp;
     /*
      * TODO?  Possible enhancement: don't reset if hero is still at same
@@ -631,9 +542,7 @@ reset_justpicked(olist)
         otmp.pickup_prev = 0;
 }
 
-export function /* int */
-count_justpicked(olist)
-{
+export function count_justpicked(olist) { /* int */
     let otmp;
     let cnt = 0;
 
@@ -644,9 +553,7 @@ count_justpicked(olist)
     return cnt;
 }
 
-export function /* struct obj * */
-find_justpicked(olist)
-{
+export function find_justpicked(olist) { /* struct obj * */
     let otmp;
 
     for (otmp = olist; otmp; otmp = otmp.nobj)
@@ -668,9 +575,9 @@ find_justpicked(olist)
  * Returns 1 if tried to pick something up, whether
  * or not it succeeded.
  */
-export function /* int */
-pickup(what) /* should be a long */
-{ const $frame = stack_frame(); try { let $goto = null; var pick_list = stack_var(ptr_to(struct_mi)), qbuf = stack_array(char, QBUFSZ), all_of_a_type = stack_var(boolean), selective = stack_var(boolean), oclasses = stack_array(char, MAXOCLASSES + 10), via_menu = stack_var(int), qbuf = stack_array(char, BUFSZ);
+export function pickup(what) { /* int */ /* should be a long */
+    const $frame = stack_frame(); try {
+    let $goto = null; var pick_list = stack_var(ptr_to(struct_mi)), qbuf = stack_array(char, QBUFSZ), all_of_a_type = stack_var(boolean), selective = stack_var(boolean), oclasses = stack_array(char, MAXOCLASSES + 10), via_menu = stack_var(int), qbuf = stack_array(char, BUFSZ);
     var i, n, res, count, n_tried = 0, n_picked = 0;
     pick_list[0] = null;
     var autopickup = +(what > 0);
@@ -703,14 +610,14 @@ pickup(what) /* should be a long */
                            || (is_pool(u.ux, u.uy) && !Underwater())
                            || is_lava(u.ux, u.uy))) {
             if (flags.mention_decor)
-                void describe_decor();
+                describe_decor();
             read_engr_at(u.ux, u.uy);
             return 0;
         }
         /* no pickup if levitating & not on air or water level */
         t = t_at(u.ux, u.uy);
-        if (!can_reach_floor(((t && is_pit(t.ttyp)) ? 1 : 0))) {
-            void describe_decor(); /* even when !flags.mention_decor */
+        if (!can_reach_floor((t && is_pit(t.ttyp) ? 1 : 0))) {
+            describe_decor(); /* even when !flags.mention_decor */
             if ((gm.multi && !svc.context.run)
                 || (autopickup && !flags.pickup)
                 || (t && (uteetering_at_seen_pit(t) || uescaped_shaft(t))))
@@ -761,9 +668,7 @@ pickup(what) /* should be a long */
         switch ($goto) { default: traverse_how |= AUTOSELECT_SINGLE
                         | (flags.sortpack ? INVORDER_SORT : 0);
         if (count) { /* looking for N of something */
-            
-
-            void sprintf(qbuf, _("Pick %d of what?"), count);
+            sprintf(qbuf, _("Pick %d of what?"), count);
             gv.val_for_n_or_more = count; /* set up callback selector */
             n = query_objlist(qbuf, objchain_p, traverse_how,
                               pick_list, PICK_ONE, n_or_more);
@@ -789,7 +694,6 @@ pickup(what) /* should be a long */
         }
         if (pick_list[0])
             free(addr_of(pick_list[0]));
-
     } else {
         /* old style interface */
         var ct = 0;
@@ -815,7 +719,6 @@ pickup(what) /* should be a long */
             if (pickup_object(obj, lcount, FALSE) > 0)
                 n_picked++; /* picked something */
             break end_query;
-
         } else if (ct >= 2) {
             via_menu[0] = 0;
 
@@ -835,8 +738,8 @@ pickup(what) /* should be a long */
                 { $goto = "menu_pickup"; continue $goto_menu_pickup; }
             }
         }
-        bycat = (((menu_class_present(ord('B')) || menu_class_present(ord('U'))
-                 || menu_class_present(ord('C')) || menu_class_present(ord('X'))) ? 1 : 0));
+        bycat = (menu_class_present(ord('B')) || menu_class_present(ord('U'))
+                 || menu_class_present(ord('C')) || menu_class_present(ord('X')) ? 1 : 0);
 
         for (obj = objchain_p[0]; obj; obj = obj2) {
             obj2 = FOLLOW(obj, traverse_how);
@@ -847,9 +750,7 @@ pickup(what) /* should be a long */
 
             lcount = -1;
             if (!all_of_a_type[0]) {
-                
-
-                void safe_qbuf(qbuf, _("Pick up "), _("?"), obj, doname,
+                safe_qbuf(qbuf, _("Pick up "), _("?"), obj, doname,
                                  ansimpleoname, something());
                 switch ((obj.quan < 2) ? ynaq(qbuf) : ynNaq(qbuf)) {
                 case ord('q'):
@@ -893,7 +794,7 @@ pickup(what) /* should be a long */
 
     if (!u.uswallow) {
         if (hides_under(gy.youmonst.data))
-            void hideunder(gy.youmonst);
+            hideunder(gy.youmonst);
 
         /* position may need updating (invisible hero) */
         if (n_picked)
@@ -906,12 +807,11 @@ pickup(what) /* should be a long */
  case "pickupdone": $goto = null;
     gp.pickup_encumbrance = 0; } break; }
     add_valid_menu_class(0); /* reset */
-    return (+(n_tried > 0));
-} finally { stack_pop($frame); } }
+    return +(n_tried > 0);
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct autopickup_exception * */
-check_autopickup_exceptions(obj)
-{
+export function check_autopickup_exceptions(obj) { /* struct autopickup_exception * */
     /*
      *  Does the text description of this match an exception?
      */
@@ -926,9 +826,7 @@ check_autopickup_exceptions(obj)
     return ape;
 }
 
-export function /* boolean */
-autopick_testobj(otmp, calc_costly)
-{
+export function autopick_testobj(otmp, calc_costly) { /* boolean */
     let ape;
     let costly = static_var("autopick_testobj.costly", schar, FALSE);
     let otypes = flags.pickup_types;
@@ -936,8 +834,8 @@ autopick_testobj(otmp, calc_costly)
 
     /* calculate 'costly' just once for a given autopickup operation */
     if (calc_costly)
-        costly[0] = (((otmp.where == OBJ_FLOOR
-                  && costly_spot(otmp.ox, otmp.oy)) ? 1 : 0));
+        costly[0] = (otmp.where == OBJ_FLOOR
+                  && costly_spot(otmp.ox, otmp.oy) ? 1 : 0);
 
     /* first check: reject if an unpaid item in a shop */
     if (costly[0] && !otmp.no_charge)
@@ -954,7 +852,7 @@ autopick_testobj(otmp, calc_costly)
         return FALSE;
 
     /* check for pickup_types */
-    pickit = (((!chars[otypes] || strchr(otypes, otmp.oclass)) ? 1 : 0));
+    pickit = (!chars[otypes] || strchr(otypes, otmp.oclass) ? 1 : 0);
 
     /* check for autopickup exceptions */
     ape = check_autopickup_exceptions(otmp);
@@ -971,12 +869,10 @@ autopick_testobj(otmp, calc_costly)
  * picked is zero, the pickup list is left alone.  The caller of this
  * function must free the pickup list.
  */
-function /* int */
-autopick(
+function autopick(
     olist,
     follow,
-    pick_list) /* list of objects and counts to pick up */
-{
+    pick_list) { /* int */ /* list of objects and counts to pick up */
     let pi; /* pick item */
     let curr;
     let n;
@@ -990,7 +886,7 @@ autopick(
     }
 
     if (n) {
-        pick_list[0] = pi = view_of(struct_mi, addr_of(alloc(unsigned(unsigned(Math.imul(sizeof(struct_mi), unsigned(n)))))));
+        pick_list[0] = pi = view_of(struct_mi, addr_of(alloc(unsigned(Math.imul(sizeof(struct_mi), unsigned(n))))));
         for (n = 0, curr = olist; curr; curr = FOLLOW(curr, follow)) {
             if (autopick_testobj(curr, FALSE)) {
                 ptr_add(pi, n).item.a_obj = curr;
@@ -1021,14 +917,13 @@ autopick(
  *                          pick nothing.
  *      FEEL_COCKATRICE   - touch corpse.
  */
-export function /* int */
-query_objlist(qstr,
+export function query_objlist(qstr,
               olist_p,
               qflags,
               pick_list,
               how,
-              allow) /* allow function */
-{ const $frame = stack_frame(); try {
+              allow) { /* int */ /* allow function */
+    const $frame = stack_frame(); try {
     let i, n, tmpglyph;
     let win;
     let curr, last, fake_hero_object = stack_struct(struct_obj), olist = stack_var(ptr_to(struct_obj), olist_p[0]);
@@ -1049,14 +944,14 @@ query_objlist(qstr,
 
     /* count the number of items allowed */
     for (n = 0, last = null, curr = olist[0]; curr; curr = FOLLOW(curr, qflags))
-        if ((allow)(curr)) {
+        if (allow(curr)) {
             last = curr;
             n++;
         }
     /* can't depend upon 'engulfer' because that's used to indicate whether
        hero should be shown as an extra, fake item */
-    engulfer_minvent = (((olist[0] && olist[0].where == OBJ_MINVENT
-                        && ((u.uswallow && ((u.ustuck == (olist[0].v.v_ocarry)))))) ? 1 : 0));
+    engulfer_minvent = (olist[0] && olist[0].where == OBJ_MINVENT
+                        && (u.uswallow && (u.ustuck == (olist[0].v.v_ocarry))) ? 1 : 0);
     if (engulfer_minvent && n == 1 && olist[0].owornmask != 0) {
         qflags &= ~AUTOSELECT_SINGLE;
     }
@@ -1101,7 +996,7 @@ query_objlist(qstr,
      */
     pack = strcpy(packbuf, flags.inv_order);
     if (qflags & INCLUDE_VENOM)
-        void strkitten(pack, VENOM_CLASS); /* venom is not in inv_order */
+        strkitten(pack, VENOM_CLASS); /* venom is not in inv_order */
     first = TRUE;
     do {
         printed_type_name = FALSE;
@@ -1111,15 +1006,15 @@ query_objlist(qstr,
             if ((qflags & FEEL_COCKATRICE) && curr.otyp == CORPSE
                 && will_feel_cockatrice(curr, FALSE)) {
                 destroy_nhwindow()(win); /* stop the menu and revert */
-                void look_here(0, LOOKHERE_NOFLAGS);
+                look_here(0, LOOKHERE_NOFLAGS);
                 unsortloot(sortedolist);
                 return 0;
             }
-            if ((allow)(curr)) {
+            if (allow(curr)) {
                 /* if sorting, print type name (once only) */
                 if (sorted && !printed_type_name) {
-                    let with_oc_sym = (((how != PICK_NONE
-                                           && iflags.menu_head_objsym) ? 1 : 0));
+                    let with_oc_sym = (how != PICK_NONE
+                                           && iflags.menu_head_objsym ? 1 : 0);
 
                     struct_assign(any, cg.zeroany);
                     add_menu_heading(win,
@@ -1148,7 +1043,7 @@ query_objlist(qstr,
 
         struct_assign(any, cg.zeroany);
         if (sorted && n > 1) {
-            void sprintf(buf, _("%s Creatures"), digests(u.ustuck.data) ? _("Swallowed") : _("Engulfed"))
+            sprintf(buf, _("%s Creatures"), digests(u.ustuck.data) ? _("Swallowed") : _("Engulfed"))
 ;
             add_menu_heading(win, buf);
         }
@@ -1213,7 +1108,8 @@ query_objlist(qstr,
         n = (qflags & SIGNAL_ESCAPE) ? -2 : 0;
     }
     return n;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * For menustyle:Full.
@@ -1222,14 +1118,13 @@ query_objlist(qstr,
  *
  * If ParanoidAutoAll, requires confirmation when 'A' has been picked.
  */
-export function /* int */
-query_category(
+export function query_category(
     qstr,
     olist,
     qflags,
     pick_list,
-    how)               /* type of query */
-{ const $frame = stack_frame(); try {
+    how) { /* int */ /* type of query */
+    const $frame = stack_frame(); try {
     var n;
     var win;
     var curr;
@@ -1288,7 +1183,7 @@ query_category(
     /* no point in actually showing a menu for a single category */
     if (ccount == 1 && !do_unpaid && !do_usedup && num_buc_types <= 1) {
         for (curr = olist; curr; curr = FOLLOW(curr, qflags)) {
-            if (ofilter && !(ofilter)(curr))
+            if (ofilter && !ofilter(curr))
                 continue;
             break;
         }
@@ -1309,9 +1204,9 @@ query_category(
 
     pack = strcpy(packbuf, flags.inv_order);
     if ((qflags & INCLUDE_VENOM) != 0)
-        void strkitten(pack, VENOM_CLASS); /* venom is not in inv_order */
+        strkitten(pack, VENOM_CLASS); /* venom is not in inv_order */
 
-    show_a = (+((qflags & ALL_TYPES) != 0 && ccount > 1));
+    show_a = +((qflags & ALL_TYPES) != 0 && ccount > 1);
 
     if ((qflags & CHOOSE_ALL) != 0) {
         invlet = ord('A');
@@ -1351,7 +1246,7 @@ query_category(
         collected_type_name = FALSE;
         for (curr = olist; curr; curr = FOLLOW(curr, qflags)) {
             if (curr.oclass == chars[pack]) {
-                if (ofilter && !(ofilter)(curr))
+                if (ofilter && !ofilter(curr))
                     continue;
                 if (!collected_type_name) {
                     var oclass = curr.oclass;
@@ -1361,8 +1256,8 @@ query_category(
                     add_menu(win, nul_glyphinfo, any, invlet++,
                              (def_oc_syms[oclass].sym), ATR_NONE, clr,
                              let_to_name(chars[pack], FALSE,
-                                         (((how != PICK_NONE
-                                          && iflags.menu_head_objsym) ? 1 : 0))),
+                                         (how != PICK_NONE
+                                          && iflags.menu_head_objsym ? 1 : 0)),
                              MENU_ITEMFLAGS_NONE);
                     collected_type_name = TRUE;
                 }
@@ -1435,9 +1330,9 @@ query_category(
         var tmpbuf = stack_array(char, BUFSZ);
 
         if (num_justpicked == 1)
-            void sprintf(tmpbuf, _("Just picked up: %s"), doname(find_justpicked(olist)));
+            sprintf(tmpbuf, _("Just picked up: %s"), doname(find_justpicked(olist)));
         else
-            void strcpy(tmpbuf, _("Items you just picked up"))
+            strcpy(tmpbuf, _("Items you just picked up"))
 ;
         invlet = ord('P');
         struct_assign(any, cg.zeroany);
@@ -1505,11 +1400,10 @@ query_category(
     if (n < 0) /* closed menu with ESC */
         n = 0; /* callers don't expect -1 */
     return n;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-count_categories(olist, qflags)
-{
+function count_categories(olist, qflags) { /* int */
     let pack;
     let counted_category;
     let ccount = 0;
@@ -1540,9 +1434,7 @@ count_categories(olist, qflags)
  *  object is removed from it.  Use before and after weight amounts rather
  *  than trying to match the calculation used by weight() in mkobj.c.
  */
-function /* int */
-delta_cwt(container, obj)
-{
+function delta_cwt(container, obj) { /* int */
     let prev;
     let owt, nwt;
 
@@ -1566,14 +1458,13 @@ delta_cwt(container, obj)
 }
 
 /* could we carry `obj'? if not, could we carry some of it/them? */
-function /* long long */
-carry_count(obj,
+function carry_count(obj,
             container,
             count,
             telekinesis,
-            wt_before, wt_after)
-{ const $frame = stack_frame(); try {
-    let adjust_wt = ((container && carried(container)) ? 1 : 0),
+            wt_before, wt_after) { /* long long */
+    const $frame = stack_frame(); try {
+    let adjust_wt = (container && carried(container) ? 1 : 0),
             is_gold = +(obj.oclass == COIN_CLASS);
     let wt, iw, ow, oow;
     let qq, savequan, umoney;
@@ -1660,12 +1551,12 @@ carry_count(obj,
 
     if (qq < count) {
         /* some message will be given */
-        void strcpy(obj_nambuf, doname(obj));
+        strcpy(obj_nambuf, doname(obj));
         if (container) {
-            void sprintf(where, _("in %s"), the(xname(container)));
+            sprintf(where, _("in %s"), the(xname(container)));
             verb = _("carry");
         } else {
-            void strcpy(where, _("lying here"));
+            strcpy(where, _("lying here"));
             verb = telekinesis ? _("acquire") : _("lift");
         }
     } else {
@@ -1683,7 +1574,7 @@ carry_count(obj,
     }
 
     if (!container)
-        void strcpy(where, _("here")); /* slightly shorter form */
+        strcpy(where, _("here")); /* slightly shorter form */
     if (gi.invent || umoney) {
         prefx1 = _("you cannot ");
         prefx2 = _("");
@@ -1698,16 +1589,16 @@ carry_count(obj,
 
     /* *wt_after = iw; */
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* determine whether character is able and player is willing to carry `obj' */
-function /* int */
-lift_object(
+function lift_object(
     obj,
     container,
     cnt_p,
-    telekinesis)
-{ const $frame = stack_frame(); try {
+    telekinesis) { /* int */
+    const $frame = stack_frame(); try {
     let result, old_wt = stack_var(int), new_wt = stack_var(int), prev_encumbr, next_encumbr;
 
     if (obj.otyp == BOULDER && Sokoban()) {
@@ -1765,13 +1656,13 @@ lift_object(
                 let savequan = obj.quan;
 
                 obj.quan = cnt_p[0];
-                void sprintf(qbuf, _("%s %s "), (next_encumbr >= EXT_ENCUMBER) ? overloadpfx
+                sprintf(qbuf, _("%s %s "), (next_encumbr >= EXT_ENCUMBER) ? overloadpfx
                         : (next_encumbr >= HVY_ENCUMBER) ? nearloadpfx
                           : (next_encumbr >= MOD_ENCUMBER) ? moderateloadpfx
                             : slightloadpfx, !container ? _("lifting") : _("removing"))
 
 ;
-                void safe_qbuf(qbuf, qbuf, _(".  Continue?"), obj, doname,
+                safe_qbuf(qbuf, qbuf, _(".  Continue?"), obj, doname,
                                  ansimpleoname, something());
                 obj.quan = savequan;
                 switch (ynq(qbuf)) {
@@ -1792,19 +1683,20 @@ lift_object(
     if (obj.otyp == SCR_SCARE_MONSTER && result <= 0 && !container)
         obj.spe = 0;
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Pick up <count> of obj from the ground and add it to the hero's inventory.
  * Returns -1 if caller should break out of its loop, 0 if nothing picked
  * up, 1 if otherwise.
  */
-export function /* int */
-pickup_object(
+export function pickup_object(
     obj,
     count$,
-    telekinesis) /* not picking it up directly by hand */
-{ const $frame = stack_frame(); try { const count = stack_var(long, count$);
+    telekinesis) { /* int */ /* not picking it up directly by hand */
+    const $frame = stack_frame(); try {
+    const count = stack_var(long, count$);
     let res;
 
     if (obj.quan < count[0]) {
@@ -1820,7 +1712,7 @@ pickup_object(
     if (obj == uchain) { /* do not pick up attached chain */
         return 0;
     } else if (obj.where == OBJ_MINVENT && obj.owornmask != 0
-               && ((u.uswallow && ((u.ustuck == (obj.v.v_ocarry)))))) {
+               && (u.uswallow && (u.ustuck == (obj.v.v_ocarry)))) {
         You_cant(_("pick %s up."), ysimple_name(obj));
         return 0;
     } else if (obj.oartifact && !touch_artifact(obj, gy.youmonst)) {
@@ -1885,7 +1777,8 @@ pickup_object(
         fix_ghostly_obj(obj);
     gm.mrg_to_wielded = FALSE;
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Do the actual work of picking otmp from the floor or monster's interior
@@ -1893,18 +1786,17 @@ pickup_object(
  * pointer to the object where otmp ends up.  This may be different
  * from otmp because of merging.
  */
-export function /* struct obj * */
-pick_obj(otmp)
-{ const $frame = stack_frame(); try {
+export function pick_obj(otmp) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let result;
     let ox = stack_var(coordxy), oy = stack_var(coordxy);
     let robshop, fromfloor = +(otmp.where == OBJ_FLOOR);
 
     /* otmp is either on the floor or in an engulfer's inventory; for the
        latter, its <ox,oy> probably won't be set */
-    void get_obj_location(otmp, ox, oy, 0);
+    get_obj_location(otmp, ox, oy, 0);
 
-    robshop = (((!u.uswallow && otmp != uball && costly_spot(ox[0], oy[0])) ? 1 : 0));
+    robshop = (!u.uswallow && otmp != uball && costly_spot(ox[0], oy[0]) ? 1 : 0);
     obj_extract_self(otmp);
     if (fromfloor)
         newsym(ox[0], oy[0]);
@@ -1923,14 +1815,14 @@ pick_obj(otmp)
         /* addtobill cares about your location rather than the object's;
            usually they'll be the same, but not when using telekinesis
            (if ever implemented) or a grappling hook */
-        void strcpy(saveushops, u.ushops);
+        strcpy(saveushops, u.ushops);
         chars[fakeshop + 0] = chars[in_rooms(ox[0], oy[0], SHOPBASE)];
         chars[fakeshop + 1] = ord('\0');
-        void strcpy(u.ushops, fakeshop);
+        strcpy(u.ushops, fakeshop);
         /* sets obj->unpaid if necessary */
         addtobill(otmp, TRUE, FALSE, FALSE);
-        void strcpy(u.ushops, saveushops);
-        robshop = ((otmp.unpaid && !strchr(u.ushops, chars[fakeshop])) ? 1 : 0);
+        strcpy(u.ushops, saveushops);
+        robshop = (otmp.unpaid && !strchr(u.ushops, chars[fakeshop]) ? 1 : 0);
     }
 
     result = addinv(otmp);
@@ -1939,17 +1831,17 @@ pick_obj(otmp)
         remote_burglary(ox[0], oy[0]);
 
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* pickup_object()/out_container() helper;
    print an added-to-invent message for current object, limiting feedback
    about encumbrance to the first item which causes that to change */
-function /* void */
-pickup_prinv(
+function pickup_prinv(
     obj,
     count,
-    verb)
-{ const $frame = stack_frame(); try {
+    verb) { /* void */
+    const $frame = stack_frame(); try {
     let pbuf = stack_array(char, QBUFSZ);
     let prefix;
     let nearload = near_capacity();
@@ -1966,17 +1858,16 @@ pickup_prinv(
         gp.pickup_encumbrance = nearload;
     }
     if (prefix)
-        void sprintf(pbuf, _("%s %s"), prefix, verb);
+        sprintf(pbuf, _("%s %s"), prefix, verb);
 
     prinv(pbuf, obj, count);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * prints a message if encumbrance changed since the last check
  */
-export function /* void */
-encumber_msg()
-{
+export function encumber_msg() { /* void */
     let newcap = near_capacity();
 
     if (go.oldcap < newcap) {
@@ -2020,9 +1911,7 @@ encumber_msg()
 }
 
 /* Is there a container at x,y. Optional: return count of containers at x,y */
-export function /* int */
-container_at(x, y, countem)
-{
+export function container_at(x, y, countem) { /* int */
     let cobj, nobj;
     let container_count = 0;
 
@@ -2037,15 +1926,13 @@ container_at(x, y, countem)
     return container_count;
 }
 
-function /* boolean */
-able_to_loot(
+function able_to_loot(
     x, y,
-    looting) /* loot vs tip */
-{
+    looting) { /* boolean */ /* loot vs tip */
     let verb = looting ? _("loot") : _("tip");
     let t = t_at(x, y);
 
-    if (!can_reach_floor(((t && is_pit(t.ttyp)) ? 1 : 0))) {
+    if (!can_reach_floor((t && is_pit(t.ttyp) ? 1 : 0))) {
         if (u.usteed && P_SKILL(P_RIDING) < P_BASIC)
             rider_cant_reach(); /* not skilled enough to reach */
         else
@@ -2068,9 +1955,7 @@ able_to_loot(
     return TRUE;
 }
 
-function /* boolean */
-mon_beside(x, y)
-{
+function mon_beside(x, y) { /* boolean */
     let i, j;
     let nx, ny;
 
@@ -2084,24 +1969,16 @@ mon_beside(x, y)
     return FALSE;
 }
 
-function /* int */
-do_loot_cont(
+function do_loot_cont(
     cobjp,
     cindex,
-    ccount) /* ...number of them (N) */
-{
+    ccount) { /* int */ /* ...number of them (N) */
     let cobj = cobjp[0];
 
     if (!cobj)
         return ECMD_OK;
     if (cobj.olocked) {
         let res = ECMD_OK;
-
-
-
-
-
-
 
         if (cobj.lknown)
             pline(_("%s is locked."), The(xname(cobj)));
@@ -2162,9 +2039,7 @@ do_loot_cont(
 }
 
 /* #loot extended command */
-export function /* int */
-doloot()
-{
+export function doloot() { /* int */
     let res;
 
     gl.loot_reset_justpicked = TRUE;
@@ -2174,13 +2049,13 @@ doloot()
 }
 
 /* loot a container on the floor or loot saddle from mon. */
-function /* int */
-doloot_core()
-{ const $frame = stack_frame(); try { let $goto = null; var cobj = stack_var(ptr_to(struct_obj)), cc = stack_struct(struct_nhcoord), prev_inquiry = stack_var(int), prev_loot = stack_var(boolean), any = stack_struct(struct_any), pick_list = stack_var(ptr_to(struct_mi));
+function doloot_core() { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var cobj = stack_var(ptr_to(struct_obj)), cc = stack_struct(struct_nhcoord), prev_inquiry = stack_var(int), prev_loot = stack_var(boolean), any = stack_struct(struct_any), pick_list = stack_var(ptr_to(struct_mi));
     var nobj;
     var c = -1;
     var timepassed = 0;
-    
+
     var underfoot = TRUE;
     var dont_find_anything = _("don't find anything");
     var mtmp;
@@ -2238,7 +2113,7 @@ doloot_core()
             /* use a menu to loot many containers */
             var n, i;
             var win;
-            
+
             pick_list[0] = null;
 
             any.a_void = 0;
@@ -2343,12 +2218,12 @@ doloot_core()
             underfoot ? _("here") : _("there"));
     } } break; }
     return (timepassed ? ECMD_TIME : ECMD_OK);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called when attempting to #loot while confused */
-function /* boolean */
-reverse_loot()
-{ const $frame = stack_frame(); try {
+function reverse_loot() { /* boolean */
+    const $frame = stack_frame(); try {
     let goldob = null, coffers, otmp, boxdummy = stack_struct(struct_obj);
     let mon;
     let contribution;
@@ -2403,12 +2278,12 @@ reverse_loot()
                   ;
             verbalize(_("Thank you for your contribution to reduce the debt."));
             freeinv(goldob);
-            void add_to_container(coffers, goldob);
+            add_to_container(coffers, goldob);
             coffers.owt = unsigned(weight(coffers));
             coffers.cknown = 0;
             if (!coffers.olocked) {
                 struct_assign(boxdummy, cg.zeroobj), boxdummy.otyp = SPE_WIZARD_LOCK;
-                void boxlock(coffers, boxdummy);
+                boxlock(coffers, boxdummy);
             }
         } else if (levl()[x][y].flags != T_LOOTED
                    && (mon = makemon(courtmon(), x, y, NO_MM_FLAGS)) != null) {
@@ -2423,13 +2298,13 @@ reverse_loot()
         }
     }
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* loot_mon() returns amount of time passed.
  */
-export function /* int */
-loot_mon(mtmp, passed_info, prev_loot)
-{ const $frame = stack_frame(); try {
+export function loot_mon(mtmp, passed_info, prev_loot) { /* int */
+    const $frame = stack_frame(); try {
     let c = -1;
     let timepassed = 0;
     let otmp;
@@ -2442,7 +2317,7 @@ loot_mon(mtmp, passed_info, prev_loot)
     if (mtmp && mtmp != u.usteed && (otmp = which_armor(mtmp, W_SADDLE))) {
         if (passed_info)
             passed_info[0] = 1;
-        void sprintf(qbuf, _("Do you want to remove the saddle from %s?"), x_monnam(mtmp, ARTICLE_THE, 0,
+        sprintf(qbuf, _("Do you want to remove the saddle from %s?"), x_monnam(mtmp, ARTICLE_THE, 0,
                          SUPPRESS_SADDLE, FALSE))
 ;
         if ((c = yn_function(qbuf, ynqchars, ord('n'), TRUE)) == ord('y')) {
@@ -2463,7 +2338,7 @@ loot_mon(mtmp, passed_info, prev_loot)
                     thesimpleoname(otmp), mon_nam(mtmp));
             otmp = hold_another_object(otmp, _("You drop %s!"), doname(otmp),
                                        0);
-            (void (otmp));
+            (otmp);
             timepassed = rnd(3);
             if (prev_loot)
                 chars[prev_loot] = TRUE;
@@ -2478,15 +2353,14 @@ loot_mon(mtmp, passed_info, prev_loot)
         timepassed = pickup(count);
     }
     return timepassed;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Decide whether an object being placed into a magic bag will cause
  * it to explode.  If the object is a bag itself, check recursively.
  */
-function /* boolean */
-mbag_explodes(obj, depthin)
-{
+function mbag_explodes(obj, depthin) { /* boolean */
     /* these won't cause an explosion when they're empty */
     if ((obj.otyp == WAN_CANCELLATION || obj.otyp == BAG_OF_TRICKS)
         && obj.spe <= 0)
@@ -2506,17 +2380,13 @@ mbag_explodes(obj, depthin)
     return FALSE;
 }
 
-function /* boolean */
-is_boh_item_gone()
-{
+function is_boh_item_gone() { /* boolean */
     return (+!rn2(13));
 }
 
 /* Scatter most of Bag of holding contents around.  Some items will be
    destroyed with the same chance as looting a cursed bag. */
-function /* void */
-do_boh_explosion(boh, on_floor)
-{
+function do_boh_explosion(boh, on_floor) { /* void */
     let otmp, nobj;
 
     boh.in_use = 1; /* in case scatter() leads to bones creation */
@@ -2527,15 +2397,13 @@ do_boh_explosion(boh, on_floor)
             mbag_item_gone(+!on_floor, otmp, TRUE);
         } else {
             otmp.ox = u.ux, otmp.oy = u.uy;
-            void scatter(u.ux, u.uy, 4, MAY_HIT | MAY_DESTROY, otmp);
+            scatter(u.ux, u.uy, 4, MAY_HIT | MAY_DESTROY, otmp);
         }
     }
     /* boh is about to be deleted so no need to reset its in_use flag here */
 }
 
-function /* long long */
-boh_loss(container, held)
-{
+function boh_loss(container, held) { /* long long */
     /* sometimes toss objects if a cursed magic bag */
     if (Is_mbag(container) && container.cursed && Has_contents(container)) {
         let loss = 0;
@@ -2554,9 +2422,8 @@ boh_loss(container, held)
 }
 
 /* Returns: -1 to stop, 1 item was inserted, 0 item was not inserted. */
-function /* int */
-in_container(obj)
-{ const $frame = stack_frame(); try {
+function in_container(obj) { /* int */
+    const $frame = stack_frame(); try {
     let floor_container = +!carried(gc.current_container);
     let was_unpaid = FALSE;
     let buf = stack_array(char, BUFSZ);
@@ -2616,7 +2483,7 @@ in_container(obj)
     if (obj.otyp == ICE_BOX || Is_box(obj) || obj.otyp == BOULDER
         || (obj.otyp == STATUE && bigmonst(mons[obj.corpsenm]))) {
         /* consumes multiple obufs but not enough to overwrite the result */
-        void strcpy(buf, the(xname(obj)));
+        strcpy(buf, the(xname(obj)));
         You(_("cannot fit %s into %s."), buf, the(xname(gc.current_container)));
         return 0;
     }
@@ -2624,7 +2491,7 @@ in_container(obj)
     freeinv(obj);
 
     if (obj_is_burning(obj)) /* this used to be part of freeinv() */
-        void snuff_lit(obj);
+        snuff_lit(obj);
 
     if (floor_container && costly_spot(u.ux, u.uy)) {
         /* defer gold until after put-in message */
@@ -2646,14 +2513,14 @@ in_container(obj)
         /* stop any corpse timeouts when frozen */
         if (obj.otyp == CORPSE) {
             if (obj.timed) {
-                void stop_timer(ROT_CORPSE, obj_to_any(obj));
-                void stop_timer(REVIVE_MON, obj_to_any(obj));
+                stop_timer(ROT_CORPSE, obj_to_any(obj));
+                stop_timer(REVIVE_MON, obj_to_any(obj));
             }
             /* if this is the corpse of a cancelled ice troll, uncancel it */
             if (obj.corpsenm == PM_ICE_TROLL && has_omonst(obj))
                 OMONST(obj).mcan = 0;
         } else if (obj.globby && obj.timed) {
-            void stop_timer(SHRINK_GLOB, obj_to_any(obj));
+            stop_timer(SHRINK_GLOB, obj_to_any(obj));
         }
     } else if (Is_mbag(gc.current_container) && mbag_explodes(obj, 0)) {
         livelog_printf(LL_ACHIEVE, _("just blew up %s bag of holding"), uhis());
@@ -2694,13 +2561,13 @@ in_container(obj)
     }
 
     if (gc.current_container) {
-        void strcpy(buf, the(xname(gc.current_container)));
+        strcpy(buf, the(xname(gc.current_container)));
         You(_("put %s into %s."), doname(obj), buf);
 
         /* gold in container always needs to be added to credit */
         if (floor_container && obj.oclass == COIN_CLASS)
             sellobj(obj, gc.current_container.ox, gc.current_container.oy);
-        void add_to_container(gc.current_container, obj);
+        add_to_container(gc.current_container, obj);
         gc.current_container.owt = unsigned(weight(gc.current_container));
     }
     /* gold needs this, and freeinv() many lines above may cause
@@ -2709,27 +2576,25 @@ in_container(obj)
      */
     bot();
     return (gc.current_container ? 1 : -1);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* askchain() filter used by in_container();
  * returns True if the container is intact and 'obj' isn't it, False if
  * container is gone (magic bag explosion) or 'obj' is the container itself;
  * also used by getobj() when picking a single item to stash
  */
-export function /* int */
-ck_bag(obj)
-{
-    return (((gc.current_container && obj != gc.current_container) ? 1 : 0));
+export function ck_bag(obj) { /* int */
+    return (gc.current_container && obj != gc.current_container ? 1 : 0);
 }
 
 /* Returns: -1 to stop, 1 item was removed, 0 item was not removed. */
-function /* int */
-out_container(obj)
-{ const $frame = stack_frame(); try {
+function out_container(obj) { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let res;
     let count = stack_var(long);
-    let is_gold = (+(obj.oclass == COIN_CLASS));
+    let is_gold = +(obj.oclass == COIN_CLASS);
 
     if (!gc.current_container) {
         impossible(_("<out> no gc.current_container?"));
@@ -2774,18 +2639,17 @@ out_container(obj)
         bot(); /* update character's gold piece count immediately */
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* taking a corpse out of an ice box needs a couple of adjustments */
-export function /* void */
-removed_from_icebox(obj)
-{
+export function removed_from_icebox(obj) { /* void */
     if (!age_is_relative(obj)) {
         obj.age = svm.moves - obj.age; /* actual age */
         if (obj.otyp == CORPSE) {
             let m = get_mtraits(obj, FALSE);
-            let iceT = m ? (+(m.data == mons[PM_ICE_TROLL]))
-                             : (+(obj.corpsenm == PM_ICE_TROLL));
+            let iceT = m ? +(m.data == mons[PM_ICE_TROLL])
+                             : +(obj.corpsenm == PM_ICE_TROLL);
 
             /* start a revive timer if this corpse is for an ice troll,
                otherwise start a rot-away timer (even for other trolls) */
@@ -2799,9 +2663,7 @@ removed_from_icebox(obj)
 }
 
 /* an object inside a cursed bag of holding is being destroyed */
-function /* long long */
-mbag_item_gone(held, item, silent)
-{
+function mbag_item_gone(held, item, silent) { /* long long */
     let shkp;
     let loss = 0;
 
@@ -2822,9 +2684,8 @@ mbag_item_gone(held, item, silent)
 }
 
 /* used for #loot/apply, #tip, and final disclosure */
-export function /* void */
-observe_quantum_cat(box, makecat, givemsg)
-{ const $frame = stack_frame(); try {
+export function observe_quantum_cat(box, makecat, givemsg) { /* void */
+    const $frame = stack_frame(); try {
     let sc = init_string(static_array("observe_quantum_cat.sc", char, sizeof_string("Schroedinger's Cat")), _("Schroedinger's Cat"), true);
     let deadcat;
     let livecat = null;
@@ -2856,7 +2717,7 @@ observe_quantum_cat(box, makecat, givemsg)
                     pline(_("%s inside the box is still alive!"),
                           Monnam(livecat));
             }
-            void christen_monst(livecat, sc);
+            christen_monst(livecat, sc);
             if (deadcat) {
                 obj_extract_self(deadcat);
                 obfree(deadcat, null), deadcat = null;
@@ -2892,24 +2753,19 @@ observe_quantum_cat(box, makecat, givemsg)
             }
         }
     }
-    (void (deadcat));
+    (deadcat);
     return;
-} finally { stack_pop($frame); } }
-
-
-
-/* used by askchain() to check for magic bag explosion */
-export function /* boolean */
-container_gone(fn)
-{
-    /* result is only meaningful while use_container() is executing */
-    return (+((fn == in_container || fn == out_container)
-            && !gc.current_container));
+    } finally { stack_pop($frame); }
 }
 
-function /* void */
-explain_container_prompt(more_containers)
-{
+/* used by askchain() to check for magic bag explosion */
+export function container_gone(fn) { /* boolean */
+    /* result is only meaningful while use_container() is executing */
+    return +((fn == in_container || fn == out_container)
+            && !gc.current_container);
+}
+
+function explain_container_prompt(more_containers) { /* void */
     let explaintext = static_array("explain_container_prompt.explaintext", ptr_to(char), null, [
         _("Container actions:"),
         _(""),
@@ -2939,9 +2795,7 @@ explain_container_prompt(more_containers)
     }
 }
 
-export function /* boolean */
-u_handsy()
-{
+export function u_handsy() { /* boolean */
     if (nohands(gy.youmonst.data)) {
         You(_("have no hands!")); /* not `body_part(HAND)' */
         return FALSE;
@@ -2953,9 +2807,7 @@ u_handsy()
 }
 
 /* getobj callback for object to be stashed into a container */
-function /* int */
-stash_ok(obj)
-{
+function stash_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_EXCLUDE;
 
@@ -2968,12 +2820,11 @@ stash_ok(obj)
     return GETOBJ_SUGGEST;
 }
 
-export function /* int */
-use_container(
+export function use_container(
     objp,
     held,
-    more_containers) /* True iff #loot multiple and this isn't last */
-{ const $frame = stack_frame(); try {
+    more_containers) { /* int */ /* True iff #loot multiple and this isn't last */
+    const $frame = stack_frame(); try {
     var otmp, obj = objp[0];
     var quantum_cat, cursed_mbag, loot_out, loot_in, loot_in_first,
         stash_one, inokay, outokay, outmaybe;
@@ -3001,7 +2852,7 @@ use_container(
     } else if (obj.otrapped) {
         if (held)
             You(_("open %s..."), the(xname(obj)));
-        void chest_trap(obj, HAND, FALSE);
+        chest_trap(obj, HAND, FALSE);
         /* even if the trap fails, you've used up this turn */
         if (gm.multi >= 0) { /* in case we didn't become paralyzed */
             nomul(-1);
@@ -3024,9 +2875,9 @@ use_container(
         used = ECMD_TIME;
     }
 
-    cursed_mbag = ((Is_mbag(gc.current_container)
+    cursed_mbag = (Is_mbag(gc.current_container)
         && gc.current_container.cursed
-        && Has_contents(gc.current_container)) ? 1 : 0);
+        && Has_contents(gc.current_container) ? 1 : 0);
     if (cursed_mbag
         && (loss = boh_loss(gc.current_container, held)) != 0) {
         used = ECMD_TIME;
@@ -3035,12 +2886,12 @@ use_container(
     }
     /* might put something in if carrying anything other than just the
        container itself (invent is not the container or has a next object) */
-    inokay = (((gi.invent != null && (gi.invent != gc.current_container
-                                || gi.invent.nobj)) ? 1 : 0));
+    inokay = (gi.invent != null && (gi.invent != gc.current_container
+                                || gi.invent.nobj) ? 1 : 0);
     /* might take something out if container isn't empty */
     outokay = Has_contents(gc.current_container);
     if (!outokay) /* preformat the empty-container message */
-        void sprintf(emptymsg, _("%s is %sempty."), Ysimple_name2(gc.current_container), (quantum_cat || cursed_mbag) ? _("now ") : _(""))
+        sprintf(emptymsg, _("%s is %sempty."), Ysimple_name2(gc.current_container), (quantum_cat || cursed_mbag) ? _("now ") : _(""))
 
 ;
 
@@ -3072,13 +2923,13 @@ use_container(
      * <The/Your/Shk's container> is empty.  Do what with it? [:irs nq or ?]
      */
     for (;;) { /* repeats iff '?' or ':' gets chosen */
-        outmaybe = (((outokay || !gc.current_container.cknown) ? 1 : 0));
+        outmaybe = (outokay || !gc.current_container.cknown ? 1 : 0);
         if (!outmaybe)
-            void safe_qbuf(qbuf, 0, _(" is empty.  Do what with it?"),
+            safe_qbuf(qbuf, 0, _(" is empty.  Do what with it?"),
                              gc.current_container, Yname2, Ysimple_name2,
                              _("This"));
         else
-            void safe_qbuf(qbuf, _("Do what with "), _("?"), gc.current_container,
+            safe_qbuf(qbuf, _("Do what with "), _("?"), gc.current_container,
                              yname, ysimple_name, _("it"));
         /* ask player about what to do with this container */
         if (flags.menu_style == MENU_PARTIAL
@@ -3095,22 +2946,22 @@ use_container(
             }
         } else { /* TRADITIONAL or COMBINATION */
             chars[xbuf + 0] = ord('\0'); /* list of extra acceptable responses */
-            void strcpy(pbuf, _(":"));                   /* look inside */
-            void strcat(outmaybe ? pbuf : xbuf, _("o")); /* take out */
-            void strcat(inokay ? pbuf : xbuf, _("i"));   /* put in */
-            void strcat(outmaybe ? pbuf : xbuf, _("b")); /* both */
-            void strcat(inokay ? pbuf : xbuf, _("rs"));  /* reversed, stash */
-            void strcat(pbuf, _(" "));                   /* separator */
-            void strcat(more_containers ? pbuf : xbuf, _("n")); /* next container */
-            void strcat(pbuf, _("q"));                   /* quit */
+            strcpy(pbuf, _(":"));                   /* look inside */
+            strcat(outmaybe ? pbuf : xbuf, _("o")); /* take out */
+            strcat(inokay ? pbuf : xbuf, _("i"));   /* put in */
+            strcat(outmaybe ? pbuf : xbuf, _("b")); /* both */
+            strcat(inokay ? pbuf : xbuf, _("rs"));  /* reversed, stash */
+            strcat(pbuf, _(" "));                   /* separator */
+            strcat(more_containers ? pbuf : xbuf, _("n")); /* next container */
+            strcat(pbuf, _("q"));                   /* quit */
             if (iflags.cmdassist)
                 /* this unintentionally allows user to answer with 'o' or
                    'r'; fortunately, those are already valid choices here */
-                void strcat(pbuf, _(" or ?")); /* help */
+                strcat(pbuf, _(" or ?")); /* help */
             else
-                void strcat(xbuf, _("?"));
+                strcat(xbuf, _("?"));
             if (chars[xbuf])
-                void strcat(strcat(pbuf, _("\x1b")), xbuf);
+                strcat(strcat(pbuf, _("\x1b")), xbuf);
             c = yn_function(qbuf, pbuf, more_containers ? ord('n') : ord('q'), TRUE);
         } /* PARTIAL|FULL vs other modes */
 
@@ -3128,10 +2979,10 @@ use_container(
         ga.abort_looting = TRUE;
     containerdone: { if (c == ord('n') || c == ord('q')) /* [not strictly needed; falling thru works] */
         break containerdone;;
-    loot_out = (+(c == ord('o') || c == ord('b') || c == ord('r')));
-    loot_in = (+(c == ord('i') || c == ord('b') || c == ord('r')));
-    loot_in_first = (+(c == ord('r'))); /* both, reversed */
-    stash_one = (+(c == ord('s')));
+    loot_out = +(c == ord('o') || c == ord('b') || c == ord('r'));
+    loot_in = +(c == ord('i') || c == ord('b') || c == ord('r'));
+    loot_in_first = +(c == ord('r')); /* both, reversed */
+    stash_one = +(c == ord('s'));
 
     /* out-only or out before in */
     if (loot_out && !loot_in_first) {
@@ -3145,13 +2996,13 @@ use_container(
             if (flags.menu_style == MENU_TRADITIONAL)
                 used |= traditional_loot(FALSE);
             else
-                used |= (+(menu_loot(0, FALSE) > 0));
+                used |= +(menu_loot(0, FALSE) > 0);
             add_valid_menu_class(0);
         }
         /* recalculate 'inokay' in case something was just taken out and
            inventory is no longer empty or no longer just the container */
-        inokay = (((gi.invent && (gi.invent != gc.current_container
-                               || gi.invent.nobj)) ? 1 : 0));
+        inokay = (gi.invent && (gi.invent != gc.current_container
+                               || gi.invent.nobj) ? 1 : 0);
     }
 
     if ((loot_in || stash_one) && !inokay) {
@@ -3169,7 +3020,7 @@ use_container(
         if (flags.menu_style == MENU_TRADITIONAL)
             used |= traditional_loot(TRUE);
         else
-            used |= (+(menu_loot(0, TRUE) > 0));
+            used |= +(menu_loot(0, TRUE) > 0);
         add_valid_menu_class(0);
     } else if (stash_one) {
         /* put one item into container */
@@ -3180,7 +3031,7 @@ use_container(
             } else {
                 /* couldn't put selected item into container for some
                    reason; might need to undo splitobj() */
-                void unsplitobj(otmp);
+                unsplitobj(otmp);
             }
         }
     }
@@ -3200,11 +3051,10 @@ use_container(
             if (flags.menu_style == MENU_TRADITIONAL)
                 used |= traditional_loot(FALSE);
             else
-                used |= (+(menu_loot(0, FALSE) > 0));
+                used |= +(menu_loot(0, FALSE) > 0);
             add_valid_menu_class(0);
         }
     }
-
  }
     if (used) {
         /* Not completely correct; if we put something in without knowing
@@ -3223,12 +3073,12 @@ use_container(
     else
         ga.abort_looting = TRUE;
     return used;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* loot current_container (take things out or put things in), by prompting */
-function /* int */
-traditional_loot(put_in)
-{ const $frame = stack_frame(); try {
+function traditional_loot(put_in) { /* int */
+    const $frame = stack_frame(); try {
     let actionfunc, checkfunc;
     let objlist;
     let selection = stack_array(char, MAXOCLASSES + 10); /* +10: room for B,U,C,X plus slop */
@@ -3255,15 +3105,15 @@ traditional_loot(put_in)
                      actionfunc, checkfunc, 0, action))
             used = ECMD_TIME;
     } else if (menu_on_request[0] < 0) {
-        used = (+(menu_loot(menu_on_request[0], put_in) > 0));
+        used = +(menu_loot(menu_on_request[0], put_in) > 0);
     }
     return used;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* loot current_container (take things out or put things in), using a menu */
-function /* int */
-menu_loot(retry, put_in)
-{ const $frame = stack_frame(); try {
+function menu_loot(retry, put_in) { /* int */
+    const $frame = stack_frame(); try {
     let n, i, n_looted = 0;
     let all_categories = TRUE, loot_everything = FALSE, autopick = FALSE;
     let buf = stack_array(char, BUFSZ);
@@ -3277,10 +3127,10 @@ menu_loot(retry, put_in)
     gp.pickup_encumbrance = 0; /* used by out_container(); no harm in
                                 * zeroing it if about to use in_container() */
     if (retry) {
-        all_categories = (+(retry == -2));
+        all_categories = +(retry == -2);
     } else if (flags.menu_style == MENU_FULL) {
         all_categories = FALSE;
-        void sprintf(buf, _("%s what type of objects?"), action);
+        sprintf(buf, _("%s what type of objects?"), action);
         mflags = (ALL_TYPES | UNPAID_TYPES | BUCX_TYPES | CHOOSE_ALL
                   | JUSTPICKED );
         n = query_category(buf,
@@ -3333,7 +3183,7 @@ menu_loot(retry, put_in)
         for (otmp = firstobj; otmp && gc.current_container; otmp = otmp2) {
             otmp2 = otmp.nobj;
             if (loot_everything || all_categories || allow_category(otmp)) {
-                res = (inout_func)(otmp);
+                res = inout_func(otmp);
                 if (res < 0)
                     break;
                 n_looted += res;
@@ -3347,7 +3197,7 @@ menu_loot(retry, put_in)
             if (count > 0 && count < otmp.quan) {
                 otmp = splitobj(otmp, count);
             }
-            void in_container(otmp);
+            in_container(otmp);
             /* return value doesn't matter, even if container blew up */
         }
     } else {
@@ -3358,7 +3208,7 @@ menu_loot(retry, put_in)
             mflags |= JUSTPICKED;
         if (!put_in)
             gc.current_container.cknown = 1;
-        void sprintf(buf, _("%s what?"), action);
+        sprintf(buf, _("%s what?"), action);
         n = query_objlist(buf,
                           put_in ? ref_of(gi, "invent") : ref_of(gc.current_container, "cobj"),
                           mflags, pick_list, PICK_ANY,
@@ -3381,7 +3231,7 @@ menu_loot(retry, put_in)
                         otmp = null; /* and break loop */
                     } else if (otmp && otmp != ptr_add(pick_list[0], i).item.a_obj) {
                         /* split occurred, merge again */
-                        void unsplitobj(otmp);
+                        unsplitobj(otmp);
                     }
                     if (res < 0)
                         break;
@@ -3391,17 +3241,17 @@ menu_loot(retry, put_in)
         }
     }
     return n_looted ? ECMD_TIME : ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* char */
-in_or_out_menu(
+function in_or_out_menu(
     prompt,
     obj,
     outokay,
     inokay,
     alreadyused,
-    more_containers)
-{ const $frame = stack_frame(); try {
+    more_containers) { /* char */
+    const $frame = stack_frame(); try {
     /* underscore is not a choice; it's used to skip element [0] */
     let lootchars = init_string(static_array("in_or_out_menu.lootchars", char, sizeof_string("_:oibrsnq")), _("_:oibrsnq"), true), abc_chars = init_string(static_array("in_or_out_menu.abc_chars", char, sizeof_string("_:abcdenq")), _("_:abcdenq"), true);
     let win;
@@ -3417,35 +3267,35 @@ in_or_out_menu(
     start_menu()(win, MENU_BEHAVE_STANDARD);
 
     any.a_int = 1; /* ':' */
-    void sprintf(buf, _("Look inside %s"), thesimpleoname(obj));
+    sprintf(buf, _("Look inside %s"), thesimpleoname(obj));
     add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
              ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     if (outokay) {
         any.a_int = 2; /* 'o' */
-        void sprintf(buf, _("take %s out"), something());
+        sprintf(buf, _("take %s out"), something());
         add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
     if (inokay) {
         any.a_int = 3; /* 'i' */
-        void sprintf(buf, _("put %s in"), something());
+        sprintf(buf, _("put %s in"), something());
         add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
     if (outokay) {
         any.a_int = 4; /* 'b' */
-        void sprintf(buf, _("%stake out, then put in"), inokay ? _("both; ") : _(""));
+        sprintf(buf, _("%stake out, then put in"), inokay ? _("both; ") : _(""));
         add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
     if (inokay) {
         any.a_int = 5; /* 'r' */
-        void sprintf(buf, _("%sput in, then take out"), outokay ? _("both reversed; ") : _(""))
+        sprintf(buf, _("%sput in, then take out"), outokay ? _("both reversed; ") : _(""))
 ;
         add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
         any.a_int = 6; /* 's' */
-        void sprintf(buf, _("stash one item into %s"), thesimpleoname(obj));
+        sprintf(buf, _("stash one item into %s"), thesimpleoname(obj));
         add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
@@ -3457,7 +3307,7 @@ in_or_out_menu(
                  MENU_ITEMFLAGS_SELECTED);
     }
     any.a_int = 8; /* 'q' */
-    void strcpy(buf, alreadyused ? _("done") : _("do nothing"));
+    strcpy(buf, alreadyused ? _("done") : _("do nothing"));
     add_menu(win, nul_glyphinfo, any, chars[menuselector + any.a_int], 0,
              ATR_NONE, clr, buf,
              more_containers ? MENU_ITEMFLAGS_NONE : MENU_ITEMFLAGS_SELECTED);
@@ -3474,12 +3324,11 @@ in_or_out_menu(
         return chars[lootchars + k]; /* :,o,i,b,r,s,n,q */
     }
     return (n == 0 && more_containers) ? ord('n') : ord('q'); /* next or quit */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* getobj callback for object to tip */
-function /* int */
-tip_ok(obj)
-{
+function tip_ok(obj) { /* int */
     if (!obj || obj.oclass == COIN_CLASS)
         return GETOBJ_EXCLUDE;
 
@@ -3501,9 +3350,8 @@ tip_ok(obj)
    returns ECMD_CANCEL if menu was canceled,
    ECMD_TIME if a container was picked,
    otherwise returns ECMD_OK. */
-function /* int */
-choose_tip_container_menu()
-{ const $frame = stack_frame(); try {
+function choose_tip_container_menu() { /* int */
+    const $frame = stack_frame(); try {
     let n, i;
     let win;
     let any = stack_struct(struct_any);
@@ -3555,12 +3403,12 @@ choose_tip_container_menu()
     if (n == -1)
         return ECMD_CANCEL;
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #tip command -- empty container contents onto floor */
-export function /* int */
-dotip()
-{ const $frame = stack_frame(); try {
+export function dotip() { /* int */
+    const $frame = stack_frame(); try {
     let cobj, nobj;
     let cc = stack_struct(struct_nhcoord);
     let boxes;
@@ -3589,7 +3437,7 @@ dotip()
     if (boxes > 0
         && (!iflags.menu_requested
             || (flags.menu_style == MENU_TRADITIONAL && boxes > 1))) {
-        void sprintf(buf, _("You can't tip %s while carrying so much."), !flags.verbose ? _("a container") : (boxes > 1) ? _("one") : _("it"))
+        sprintf(buf, _("You can't tip %s while carrying so much."), !flags.verbose ? _("a container") : (boxes > 1) ? _("one") : _("it"))
 ;
         if (!check_capacity(buf) && able_to_loot(cc.x, cc.y, FALSE)) {
             if (boxes > 1) {
@@ -3651,9 +3499,9 @@ dotip()
     if (spillage) {
         chars[buf + 0] = ord('\0');
         if (is_pool(u.ux, u.uy))
-            void sprintf(buf, _(" and gradually %s"), vtense(spillage, _("dissipate")));
+            sprintf(buf, _(" and gradually %s"), vtense(spillage, _("dissipate")));
         else if (is_lava(u.ux, u.uy))
-            void sprintf(buf, _(" and immediately %s away"), vtense(spillage, _("burn")))
+            sprintf(buf, _(" and immediately %s away"), vtense(spillage, _("burn")))
 ;
         pline(_("Some %s %s onto the %s%s."), spillage,
               vtense(spillage, _("spill")), surface(u.ux, u.uy), buf);
@@ -3674,8 +3522,8 @@ dotip()
     else
         pline1(nothing_happens());
     return ECMD_OK;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
     const TIPCHECK_OK = 0;
     const TIPCHECK_LOCKED = TIPCHECK_OK + 1;
@@ -3683,10 +3531,8 @@ dotip()
     const TIPCHECK_CANNOT = TIPCHECK_TRAPPED + 1;
     const TIPCHECK_EMPTY = TIPCHECK_CANNOT + 1;
 
-
-function /* void */
-tipcontainer(box) /* or bag */
-{ const $frame = stack_frame(); try {
+function tipcontainer(box) { /* void */ /* or bag */
+    const $frame = stack_frame(); try {
     let ox = stack_var(coordxy, u.ux), oy = stack_var(coordxy, u.uy); /* #tip only works at hero's location */
     let srcheld = FALSE, dstheld = FALSE, maybeshopgoods;
     let targetbox = null;
@@ -3719,7 +3565,7 @@ tipcontainer(box) /* or bag */
        treated the same as in the carried case.   We do so one
        item at a time instead of doing whole container at once
        to reduce the chance of exhausting shk's billing capacity. */
-    maybeshopgoods = ((!carried(box) && costly_spot(box.ox, box.oy)) ? 1 : 0);
+    maybeshopgoods = (!carried(box) && costly_spot(box.ox, box.oy) ? 1 : 0);
 
     if (tipcontainer_checks(box, targetbox, FALSE) != TIPCHECK_OK)
         return;
@@ -3731,11 +3577,11 @@ tipcontainer(box) /* or bag */
         let otmp, nobj;
         let terse, highdrop = +!can_reach_floor(TRUE),
                 altarizing = IS_ALTAR(levl()[ox[0]][oy[0]].typ),
-                cursed_mbag = (((Is_mbag(box) && box.cursed) ? 1 : 0));
+                cursed_mbag = (Is_mbag(box) && box.cursed ? 1 : 0);
         let loss = 0;
 
         srcheld = carried(box);
-        dstheld = (((targetbox && carried(targetbox)) ? 1 : 0));
+        dstheld = (targetbox && carried(targetbox) ? 1 : 0);
         if (u.uswallow)
             highdrop = altarizing = FALSE;
         terse = +!(highdrop || altarizing || costly_spot(box.ox, box.oy));
@@ -3802,7 +3648,7 @@ tipcontainer(box) /* or bag */
 
                     losehp(d(6, 6), _("magical explosion"), KILLED_BY_AN);
                 } else {
-                    void add_to_container(targetbox, otmp);
+                    add_to_container(targetbox, otmp);
                 }
             } else if (highdrop) {
                 otmp.how_lost = LOST_DROPPED;
@@ -3838,40 +3684,18 @@ tipcontainer(box) /* or bag */
 
     if (srcheld || dstheld)
         update_inventory();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* ask user for a carried container into which they want box to be emptied;
    cancelled is TRUE if user cancelled the menu pick; hands aren't required
    when tipping to the floor but are when tipping into another container */
-function /* struct obj * */
-tipcontainer_gettarget(
+function tipcontainer_gettarget(
     box,
-    cancelled)
-{ const $frame = stack_frame(); try {
+    cancelled) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let n, n_conts;
     let win;
     let any = stack_struct(struct_any);
@@ -3881,17 +3705,7 @@ tipcontainer_gettarget(
     let hands_available = TRUE, exclude_it;
     let clr = NO_COLOR;
 
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
 
     win = create_nhwindow()(NHW_MENU);
     start_menu()(win, MENU_BEHAVE_STANDARD);
@@ -3919,15 +3733,15 @@ tipcontainer_gettarget(
             hands_available = u_handsy(); /* might issue message */
         /* container-to-container tip requires free hands;
            exclude container as possible target when known to be locked */
-        exclude_it = ((!hands_available || (otmp.olocked && otmp.lknown)) ? 1 : 0);
+        exclude_it = (!hands_available || (otmp.olocked && otmp.lknown) ? 1 : 0);
         struct_assign(any, cg.zeroany);
         any.a_obj = !exclude_it ? otmp : null;
-        void sprintf(buf, _("%s%s"), !exclude_it ? _("") : _("    "), doname(otmp));
+        sprintf(buf, _("%s%s"), !exclude_it ? _("") : _("    "), doname(otmp));
         add_menu(win, nul_glyphinfo, any, !exclude_it ? otmp.invlet : 0, 0,
                  ATR_NONE, clr, buf, MENU_ITEMFLAGS_NONE);
     }
 
-    void sprintf(buf, _("Where to tip the contents of %s"), doname(box));
+    sprintf(buf, _("Where to tip the contents of %s"), doname(box));
     end_menu()(win, buf);
     n = select_menu(win, PICK_ONE, pick_list);
     destroy_nhwindow()(win);
@@ -3945,17 +3759,17 @@ tipcontainer_gettarget(
     }
     chars[cancelled] = (+(n == -1));
     return otmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Perform check on box if we can tip it.
    Returns one of TIPCHECK_foo values.
    If allowempty if TRUE, return TIPCHECK_OK instead of TIPCHECK_EMPTY. */
-function /* int */
-tipcontainer_checks(
+function tipcontainer_checks(
     box,
     targetbox,
-    allowempty)    /* affects result when box is empty */
-{ const $frame = stack_frame(); try {
+    allowempty) { /* int */ /* affects result when box is empty */
+    const $frame = stack_frame(); try {
     /* undiscovered bag of tricks is acceptable as a container-to-container
        destination but it can't receive items; it has to be opened in
        preparation so apply it once before even trying to tip source box */
@@ -3978,10 +3792,9 @@ tipcontainer_checks(
     if (box.olocked) {
         pline(_("%s is locked."), upstart(thesimpleoname(box)));
         return TIPCHECK_LOCKED;
-
     } else if (box.otrapped) {
         /* we're not reaching inside but we're still handling it... */
-        void chest_trap(box, HAND, FALSE);
+        chest_trap(box, HAND, FALSE);
         /* even if the trap fails, you've used up this turn */
         if (gm.multi >= 0) { /* in case we didn't become paralyzed */
             nomul(-1);
@@ -3989,13 +3802,12 @@ tipcontainer_checks(
             gn.nomovemsg = _("");
         }
         return TIPCHECK_TRAPPED;
-
     } else if (box.otyp == BAG_OF_TRICKS || box.otyp == HORN_OF_PLENTY) {
         let res = TIPCHECK_OK;
-        let bag = (+(box.otyp == BAG_OF_TRICKS));
+        let bag = +(box.otyp == BAG_OF_TRICKS);
         let old_spe = box.spe, seen = stack_var(int), totseen;
-        let maybeshopgoods = (((!carried(box)
-                                  && costly_spot(box.ox, box.oy)) ? 1 : 0));
+        let maybeshopgoods = (!carried(box)
+                                  && costly_spot(box.ox, box.oy) ? 1 : 0);
         let ox = stack_var(coordxy, u.ux), oy = stack_var(coordxy, u.uy);
 
         if (targetbox
@@ -4030,7 +3842,6 @@ tipcontainer_checks(
         if (maybeshopgoods && !box.no_charge)
             subfrombill(box, shop_keeper(chars[in_rooms(ox[0], oy[0], SHOPBASE)]));
         return TIPCHECK_CANNOT; /* actually means 'already done' */
-
     } else if (SchroedingersBox(box)) {
         let yourbuf = stack_array(char, BUFSZ);
         let empty_it = FALSE;
@@ -4043,486 +3854,171 @@ tipcontainer_checks(
             empty_it = TRUE;
         box.cknown = 1;
         return (empty_it || allowempty) ? TIPCHECK_OK : TIPCHECK_EMPTY;
-
     } else if (!allowempty && !Has_contents(box)) {
         box.cknown = 1;
         pline(_("%s is empty."), upstart(thesimpleoname(box)));
         return TIPCHECK_EMPTY;
-
     }
 
     return TIPCHECK_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*pickup.c*/
+
 import { A_WIS } from "./attrib.h.js";
 import { NO_COLOR } from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { nothing_happens } from "./decl.h.macros.js";
-import { nothing_seems_to_happen } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { mon_to_glyph } from "./display.h.macros.js";
-import { obj_to_glyph } from "./display.h.macros.js";
-import { AUTOUNLOCK_APPLY_KEY } from "./flag.h.js";
-import { AUTOUNLOCK_FORCE } from "./flag.h.js";
-import { AUTOUNLOCK_UNTRAP } from "./flag.h.js";
-import { PLNMSG_BACK_ON_GROUND } from "./flag.h.js";
-import { PLNMSG_OBJNAM_ONLY } from "./flag.h.js";
-import { ParanoidAutoAll } from "./flag.h.macros.js";
-import { ParanoidConfirm } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_ACHIEVE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { ALL_TYPES } from "./hack.h.js";
-import { ALL_TYPES_SELECTED } from "./hack.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { AUTOSELECT_SINGLE } from "./hack.h.js";
-import { BILLED_TYPES } from "./hack.h.js";
-import { BUCX_TYPES } from "./hack.h.js";
-import { BUC_BLESSED } from "./hack.h.js";
-import { BUC_CURSED } from "./hack.h.js";
-import { BUC_UNCURSED } from "./hack.h.js";
-import { BUC_UNKNOWN } from "./hack.h.js";
-import { BY_NEXTHERE } from "./hack.h.js";
-import { CHOOSE_ALL } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CXN_ARTICLE } from "./hack.h.js";
-import { CXN_SINGULAR } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { EXT_ENCUMBER } from "./hack.h.js";
-import { FEEL_COCKATRICE } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { GETOBJ_ALLOWCNT } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_SELECTABLE } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HVY_ENCUMBER } from "./hack.h.js";
-import { INCLUDE_HERO } from "./hack.h.js";
-import { INCLUDE_VENOM } from "./hack.h.js";
-import { INVORDER_SORT } from "./hack.h.js";
-import { JUSTPICKED } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LOOKHERE_NOFLAGS } from "./hack.h.js";
-import { LOOKHERE_PICKED_SOME } from "./hack.h.js";
-import { LOOKHERE_SKIP_DFEATURE } from "./hack.h.js";
-import { MAY_DESTROY } from "./hack.h.js";
-import { MAY_HIT } from "./hack.h.js";
-import { MENU_FULL } from "./hack.h.js";
-import { MENU_PARTIAL } from "./hack.h.js";
-import { MENU_TRADITIONAL } from "./hack.h.js";
-import { MM_ADJACENTOK } from "./hack.h.js";
-import { MM_NOMSG } from "./hack.h.js";
-import { MOD_ENCUMBER } from "./hack.h.js";
-import { NO_MINVENT } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { ONAME_NO_FLAGS } from "./hack.h.js";
-import { SELL_DELIBERATE } from "./hack.h.js";
-import { SELL_DONTSELL } from "./hack.h.js";
-import { SELL_NORMAL } from "./hack.h.js";
-import { SIGNAL_ESCAPE } from "./hack.h.js";
-import { SIGNAL_NOMENU } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { SORTLOOT_INVLET } from "./hack.h.js";
-import { SORTLOOT_LOOT } from "./hack.h.js";
-import { SORTLOOT_PACK } from "./hack.h.js";
-import { SORTLOOT_PETRIFY } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { UNPAID_TYPES } from "./hack.h.js";
-import { USE_INVLET } from "./hack.h.js";
-import { WORN_TYPES } from "./hack.h.js";
-import { invlet_basic } from "./hack.h.js";
-import { st_all } from "./hack.h.js";
-import { st_corpse } from "./hack.h.js";
-import { st_gloves } from "./hack.h.js";
-import { st_petrifies } from "./hack.h.js";
-import { st_resists } from "./hack.h.js";
-import { struct_sortloot_item } from "./hack.h.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { ynNaq } from "./hack.h.macros.js";
-import { ynaq } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
+import { nothing_happens, nothing_seems_to_happen, something } from "./decl.h.macros.js";
+import { COIN_CLASS, MAXOCLASSES, POTION_CLASS, VENOM_CLASS } from "./defsym.h.js";
+import { canspotmon, mon_to_glyph, obj_to_glyph } from "./display.h.macros.js";
+import {
+    AUTOUNLOCK_APPLY_KEY, AUTOUNLOCK_FORCE, AUTOUNLOCK_UNTRAP, PLNMSG_BACK_ON_GROUND,
+    PLNMSG_OBJNAM_ONLY,
+} from "./flag.h.js";
+import { ParanoidAutoAll, ParanoidConfirm } from "./flag.h.macros.js";
+import { BUFSZ, FALSE, LL_ACHIEVE, QBUFSZ, TRUE, boolean, coordxy } from "./global.h.js";
+import {
+    ALL_TYPES, ALL_TYPES_SELECTED, ARTICLE_THE, AUTOSELECT_SINGLE, BILLED_TYPES, BUCX_TYPES,
+    BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN, BY_NEXTHERE, CHOOSE_ALL, CQ_CANNED,
+    CXN_ARTICLE, CXN_SINGULAR, ECMD_CANCEL, ECMD_OK, ECMD_TIME, EXT_ENCUMBER, FEEL_COCKATRICE, FOOT,
+    GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_PROMPT,
+    GETOBJ_SUGGEST, HAND, HVY_ENCUMBER, INCLUDE_HERO, INCLUDE_VENOM, INVORDER_SORT, JUSTPICKED,
+    KILLED_BY_AN, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, MAY_DESTROY,
+    MAY_HIT, MENU_FULL, MENU_PARTIAL, MENU_TRADITIONAL, MM_ADJACENTOK, MM_NOMSG, MOD_ENCUMBER,
+    NO_MINVENT, NO_MM_FLAGS, ONAME_NO_FLAGS, SELL_DELIBERATE, SELL_DONTSELL, SELL_NORMAL,
+    SIGNAL_ESCAPE, SIGNAL_NOMENU, SLT_ENCUMBER, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_PACK,
+    SORTLOOT_PETRIFY, SUPPRESS_SADDLE, UNPAID_TYPES, USE_INVLET, WORN_TYPES, invlet_basic, st_all,
+    st_corpse, st_gloves, st_petrifies, st_resists, struct_sortloot_item,
+} from "./hack.h.js";
+import {
+    Maybe_Half_Phys, distu, makeknown, max, min, pline1, plur, ynNaq, ynaq, ynq,
+} from "./hack.h.macros.js";
 import { debugpline0 } from "./lint.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { notake } from "./mondata.h.macros.js";
-import { throws_rocks } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_ICE_TROLL } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { LOST_DROPPED } from "./obj.h.js";
-import { LOST_EXPLODING } from "./obj.h.js";
-import { LOST_STOLEN } from "./obj.h.js";
-import { LOST_THROWN } from "./obj.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_box } from "./obj.h.macros.js";
-import { Is_candle } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { Is_mbag } from "./obj.h.macros.js";
-import { OMONST } from "./obj.h.macros.js";
-import { SchroedingersBox } from "./obj.h.macros.js";
-import { age_is_relative } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { is_pick } from "./obj.h.macros.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BAG_OF_HOLDING } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CAN_OF_GREASE } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRAM_RATION } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { HORN_OF_PLENTY } from "./objects.h.js";
-import { ICE_BOX } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { MAGIC_LAMP } from "./objects.h.js";
-import { OIL_LAMP } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_WIZARD_LOCK } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { WAN_CANCELLATION } from "./objects.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { W_ACCESSORY } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_WEAPONS } from "./prop.h.js";
-import { ICE } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { T_LOOTED } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_FURNITURE } from "./rm.h.macros.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { IS_LAVA } from "./rm.h.macros.js";
-import { IS_POOL } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { MON_AT } from "./rm.h.macros.js";
-import { OBJ_AT } from "./rm.h.macros.js";
-import { SURFACE_AT } from "./rm.h.macros.js";
-import { Sokoban } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_RIDING } from "./skills.h.js";
+import {
+    bigmonst, digests, hides_under, is_rider, nohands, nolimbs, notake, throws_rocks,
+    touch_petrifies,
+} from "./mondata.h.macros.js";
+import { PM_CLERIC, PM_HOUSECAT, PM_ICE_TROLL, PM_STONE_GOLEM } from "./monsters.h.js";
+import {
+    LOST_DROPPED, LOST_EXPLODING, LOST_STOLEN, LOST_THROWN, OBJ_CONTAINED, OBJ_FLOOR, OBJ_MINVENT,
+    struct_obj,
+} from "./obj.h.js";
+import {
+    Has_contents, Is_box, Is_candle, Is_container, Is_mbag, OMONST, SchroedingersBox,
+    age_is_relative, carried, has_omonst, is_pick,
+} from "./obj.h.macros.js";
+import {
+    AMULET_OF_YENDOR, BAG_OF_HOLDING, BAG_OF_TRICKS, BELL_OF_OPENING, BOULDER,
+    CANDELABRUM_OF_INVOCATION, CAN_OF_GREASE, CHEST, CORPSE, CRAM_RATION, FOOD_RATION, GOLD_PIECE,
+    HORN_OF_PLENTY, ICE_BOX, LEASH, LEMBAS_WAFER, LOADSTONE, MAGIC_LAMP, OIL_LAMP, POT_OIL,
+    SCR_SCARE_MONSTER, SPE_BOOK_OF_THE_DEAD, SPE_WIZARD_LOCK, STATUE, WAN_CANCELLATION,
+} from "./objects.h.js";
+import { TIMEOUT, W_ACCESSORY, W_ARMOR, W_SADDLE, W_WEAPONS } from "./prop.h.js";
+import { ICE, STONE, T_LOOTED } from "./rm.h.js";
+import {
+    IS_ALTAR, IS_FURNITURE, IS_GRAVE, IS_LAVA, IS_POOL, IS_THRONE, MON_AT, OBJ_AT, SURFACE_AT,
+    Sokoban, fobj, levl, m_at,
+} from "./rm.h.macros.js";
+import { P_BASIC, P_RIDING } from "./skills.h.js";
 import { P_SKILL } from "./skills.h.macros.js";
-import { REVIVE_MON } from "./timeout.h.js";
-import { ROT_CORPSE } from "./timeout.h.js";
-import { SHRINK_GLOB } from "./timeout.h.js";
+import { REVIVE_MON, ROT_CORPSE, SHRINK_GLOB } from "./timeout.h.js";
 import { is_pit } from "./trap.h.macros.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPINVERT } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_glyphinfo } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { uhis } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { HFumbling } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    clear_nhwindow, create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, putstr,
+    start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED,
+    MENU_ITEMFLAGS_SKIPINVERT, NHW_MENU, NHW_TEXT, PICK_ANY, PICK_NONE, PICK_ONE, WIN_ERR,
+    struct_any, struct_glyphinfo, struct_mi,
+} from "./wintype.h.js";
+import { Role_if, u_at, uhis } from "./you.h.macros.js";
+import {
+    Blind, Confusion, HFumbling, Hallucination, Stone_resistance, Stunned, Underwater,
+} from "./youprop.h.macros.js";
+import { char, int, long, ord, schar, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { assert, free, sprintf, strcat, strchr, strcmp, strcpy, strncmp } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import { addr_of, ptr_add, ptr_to, ref_of, struct_assign, view_of } from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { snuff_lit } from "./apply.js";
 import { touch_artifact } from "./artifact.js";
 import { exercise } from "./attrib.js";
 import { fix_ghostly_obj } from "./bones.js";
 import { bot } from "./botl.js";
-import { cmdq_add_ec } from "./cmd.js";
-import { get_adjacent_loc } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { paranoid_ynq } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gp } from "./decl.js";
-import { gs } from "./decl.js";
-import { gt } from "./decl.js";
-import { gv } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { ynqchars } from "./decl.js";
-import { flush_screen } from "./display.js";
-import { map_glyphinfo } from "./display.js";
-import { newsym } from "./display.js";
-import { newsym_force } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { doaltarobj } from "./do.js";
-import { dropx } from "./do.js";
-import { dropy } from "./do.js";
-import { revive_corpse } from "./do.js";
-import { trycall } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { christen_monst } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
+import { cmdq_add_ec, get_adjacent_loc, isok, paranoid_ynq, yn_function } from "./cmd.js";
+import { is_lava, is_pool } from "./dbridge.js";
+import {
+    cg, disp, flags, ga, gb, gc, gd, gi, gl, gm, gn, go, gp, gs, gt, gv, gy, iflags, svc, svl, svm,
+    u, ynqchars,
+} from "./decl.js";
+import { flush_screen, map_glyphinfo, newsym, newsym_force, nul_glyphinfo } from "./display.js";
+import { doaltarobj, dropx, dropy, revive_corpse, trycall } from "./do.js";
+import { Monnam, christen_monst, hliquid, mon_nam, oname, rndmonnam, x_monnam } from "./do_name.js";
 import { hitfloor } from "./dothrow.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { ceiling } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { container_contents } from "./end.js";
-import { panic } from "./end.js";
-import { can_reach_floor } from "./engrave.js";
-import { cant_reach_floor } from "./engrave.js";
-import { freehand } from "./engrave.js";
-import { read_engr_at } from "./engrave.js";
-import { more_experienced } from "./exper.js";
-import { newexplevel } from "./exper.js";
+import { def_char_to_objclass, def_oc_syms } from "./drawing.js";
+import { ceiling, surface } from "./dungeon.js";
+import { container_contents, panic } from "./end.js";
+import { can_reach_floor, cant_reach_floor, freehand, read_engr_at } from "./engrave.js";
+import { more_experienced, newexplevel } from "./exper.js";
 import { scatter } from "./explode.js";
-import { calc_capacity } from "./hack.js";
-import { check_capacity } from "./hack.js";
-import { in_rooms } from "./hack.js";
-import { inv_cnt } from "./hack.js";
-import { losehp } from "./hack.js";
-import { max_capacity } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { obj_to_any } from "./hack.js";
-import { strkitten } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { addinv } from "./invent.js";
-import { askchain } from "./invent.js";
-import { carrying } from "./invent.js";
-import { consume_obj_charge } from "./invent.js";
-import { count_buc } from "./invent.js";
-import { count_unpaid } from "./invent.js";
-import { currency } from "./invent.js";
-import { dfeature_at } from "./invent.js";
-import { display_inventory } from "./invent.js";
-import { feel_cockatrice } from "./invent.js";
-import { freeinv } from "./invent.js";
-import { g_at } from "./invent.js";
-import { getobj } from "./invent.js";
-import { hold_another_object } from "./invent.js";
-import { is_worn } from "./invent.js";
-import { let_to_name } from "./invent.js";
-import { look_here } from "./invent.js";
-import { merge_choice } from "./invent.js";
-import { nxtobj } from "./invent.js";
-import { obj_here } from "./invent.js";
-import { prinv } from "./invent.js";
-import { sobj_at } from "./invent.js";
-import { sortloot } from "./invent.js";
-import { tally_BUCX } from "./invent.js";
-import { unsortloot } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { useupf } from "./invent.js";
-import { will_feel_cockatrice } from "./invent.js";
+import {
+    calc_capacity, check_capacity, in_rooms, inv_cnt, losehp, max_capacity, money_cnt,
+    near_capacity, nomul, obj_to_any,
+} from "./hack.js";
+import { strkitten, upstart } from "./hacklib.js";
+import {
+    addinv, askchain, carrying, consume_obj_charge, count_buc, count_unpaid, currency, dfeature_at,
+    display_inventory, feel_cockatrice, freeinv, g_at, getobj, hold_another_object, is_worn,
+    let_to_name, look_here, merge_choice, nxtobj, obj_here, prinv, sobj_at, sortloot, tally_BUCX,
+    unsortloot, update_inventory, useup, useupf, will_feel_cockatrice,
+} from "./invent.js";
 import { obj_is_burning } from "./light.js";
-import { autokey } from "./lock.js";
-import { boxlock } from "./lock.js";
-import { doforce } from "./lock.js";
-import { pick_lock } from "./lock.js";
-import { u_have_forceable_weapon } from "./lock.js";
-import { bagotricks } from "./makemon.js";
-import { makemon } from "./makemon.js";
-import { set_malign } from "./makemon.js";
-import { add_to_container } from "./mkobj.js";
-import { add_to_minv } from "./mkobj.js";
-import { get_mtraits } from "./mkobj.js";
-import { hornoplenty } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { set_bknown } from "./mkobj.js";
-import { set_corpsenm } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { start_corpse_timeout } from "./mkobj.js";
-import { start_glob_timeout } from "./mkobj.js";
-import { unbless } from "./mkobj.js";
-import { unsplitobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import { autokey, boxlock, doforce, pick_lock, u_have_forceable_weapon } from "./lock.js";
+import { bagotricks, makemon, set_malign } from "./makemon.js";
+import {
+    add_to_container, add_to_minv, get_mtraits, hornoplenty, obj_extract_self, set_bknown,
+    set_corpsenm, splitobj, start_corpse_timeout, start_glob_timeout, unbless, unsplitobj, weight,
+} from "./mkobj.js";
 import { courtmon } from "./mkroom.js";
 import { hideunder } from "./mon.js";
-import { poly_when_stoned } from "./mondata.js";
-import { stagger } from "./mondata.js";
+import { poly_when_stoned, stagger } from "./mondata.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { Doname2 } from "./objnam.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { Ysimple_name2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { doname_with_price } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { safe_qbuf } from "./objnam.js";
-import { the } from "./objnam.js";
-import { thesimpleoname } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { ysimple_name } from "./objnam.js";
-import { self_lookat } from "./pager.js";
-import { waterbody_name } from "./pager.js";
-import { Norep } from "./pline.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { urgent_pline } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { polymon } from "./polyself.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { Shk_Your } from "./shk.js";
-import { addtobill } from "./shk.js";
-import { check_unpaid_usage } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { obfree } from "./shk.js";
-import { pick_pick } from "./shk.js";
-import { remote_burglary } from "./shk.js";
-import { sellobj } from "./shk.js";
-import { sellobj_state } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { subfrombill } from "./shk.js";
+import {
+    Doname2, The, Tobjnam, Yname2, Ysimple_name2, an, ansimpleoname, corpse_xname, doname,
+    doname_with_price, killer_xname, makesingular, otense, safe_qbuf, the, thesimpleoname, vtense,
+    xname, yname, ysimple_name,
+} from "./objnam.js";
+import { self_lookat, waterbody_name } from "./pager.js";
+import {
+    Norep, There, You, You_cant, Your, impossible, livelog_printf, pline, pline_The, urgent_pline,
+    verbalize,
+} from "./pline.js";
+import { body_part, polymon } from "./polyself.js";
+import { d, rn2, rn2_on_display_rng, rnd } from "./rnd.js";
+import {
+    Shk_Your, addtobill, check_unpaid_usage, costly_spot, obfree, pick_pick, remote_burglary,
+    sellobj, sellobj_state, shop_keeper, stolen_value, subfrombill,
+} from "./shk.js";
 import { tiphat } from "./sounds.js";
 import { remove_worn_item } from "./steal.js";
 import { rider_cant_reach } from "./steed.js";
 import { stop_timer } from "./timeout.js";
-import { back_on_ground } from "./trap.js";
-import { chest_trap } from "./trap.js";
-import { instapetrify } from "./trap.js";
-import { t_at } from "./trap.js";
-import { uescaped_shaft } from "./trap.js";
-import { unconscious } from "./trap.js";
-import { uteetering_at_seen_pit } from "./trap.js";
-import { setuqwep } from "./wield.js";
-import { setuswapwep } from "./wield.js";
-import { setuwep } from "./wield.js";
-import { welded } from "./wield.js";
-import { weldmsg } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { extract_from_minvent } from "./worn.js";
-import { which_armor } from "./worn.js";
+import {
+    back_on_ground, chest_trap, instapetrify, t_at, uescaped_shaft, unconscious,
+    uteetering_at_seen_pit,
+} from "./trap.js";
+import { setuqwep, setuswapwep, setuwep, welded, weldmsg } from "./wield.js";
+import { add_menu, add_menu_heading, add_menu_str, getlin, select_menu } from "./windows.js";
+import { extract_from_minvent, which_armor } from "./worn.js";
 import { get_obj_location } from "./zap.js";
 import { regex_match } from "../sys/share/posixregex.js";
 const __FILE__ = "pickup.c";

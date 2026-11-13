@@ -3,8 +3,6 @@
 /*-Copyright (c) Michael Allison, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 export const nhcb_name = static_array("nhcb_name", ptr_to(char), NUM_NHCB, [
     _("cmd_before"),
     _("level_enter"),
@@ -50,25 +48,12 @@ export const c_common_strings = static_struct("c_common_strings", struct_c_commo
       c_fakename: [ _("mon"), _("you") ]
 });
 
-
 export const disclosure_options = init_string(static_array("disclosure_options", char, sizeof_string("iavgco")), _("iavgco"), true);
 export const emptystr = static_array("emptystr", char, null, [0]);       /* non-const */
 
  export const flags = static_struct("flags", struct_flag);  /* extern declaration is in flag.h, not decl.h */
 
 /* Global windowing data, defined here for multi-window-system support */
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* used by coloratt.c, options.c, utf8map.c, windows.c */
 export const hexdd = init_string(static_array("hexdd", char, 33), _("00112233445566778899aAbBcCdDeEfF"), true);
@@ -79,7 +64,6 @@ export const ydir = static_array("ydir", schar, N_DIRS_Z, [  0, -1, -1, -1,  0, 
 export const zdir = static_array("zdir", schar, N_DIRS_Z, [  0,  0,  0,  0,  0,  0,  0,  0, 1, -1 ]);
 /* reordered directions, cardinals first */
 export const dirs_ord = static_array("dirs_ord", schar, N_DIRS, [ DIR_W, DIR_N, DIR_E, DIR_S, DIR_NW, DIR_NE, DIR_SE, DIR_SW ]);
-
 
  global_scalar("has_strong_rngseed", schar, FALSE);
 global_scalar("head_engr", ptr_to(struct_engr));
@@ -117,9 +101,6 @@ export const ynNaqchars = init_string(static_array("ynNaqchars", char, sizeof_st
 export const rightleftchars = init_string(static_array("rightleftchars", char, sizeof_string("rl")), _("rl"), true);
 export const hidespinchars = init_string(static_array("hidespinchars", char, sizeof_string("hsq")), _("hsq"), true);
  global_scalar("yn_number", long, 0);
-
-
-
 
 const urole_init_data = static_struct("urole_init_data", struct_Role, {
     name: { m: _("Undefined"), f: 0 },
@@ -185,10 +166,6 @@ const g_init_a = static_struct("g_init_a", struct_instance_globals_a, {
     animal_list: null, /* animal_list */
     animal_list_count: UNDEFINED_VALUE, /* animal_list_count */
 
-
-
-
-
     /* pickup.c */
     A_first_hint: 0, /* A_first_hint */
     A_second_hint: 0, /* A_second_hint */
@@ -208,7 +185,6 @@ const g_init_b = static_struct("g_init_b", struct_instance_globals_b, {
     blstats: [ [ { fldname: 0, fldfmt: 0, time: 0, chg: FALSE, percent_matters: FALSE, percent_value: 0, anytype: ANY_INVALID, a: { a_void: 0 }, rawval: { a_void: 0 }, val: 0, valwidth: 0, idxmax: 0, fld: 0
 
             , hilite_rule: null, thresholds: null
-
     } ]
     ], /* blstats */
     blinit: FALSE, /* blinit */
@@ -250,8 +226,6 @@ const g_init_c = static_struct("g_init_c", struct_instance_globals_c, {
     cmd_bind: null, /* cmd_bind */
     command_count: 0, /* command_count */
     current_wand: null, /* current_wand */
-
-
 
     /* dog.c */
     catname: [], /* catname */
@@ -389,8 +363,6 @@ const g_init_h = static_struct("g_init_h", struct_instance_globals_h, {
     /* decl.c */
     hname: 0, /* hname */
 
-
-
     hero_seq: shl64(1, 3), /* hero_seq: sequence number for hero movement, 'moves*8 + n'
               * where n is usually 1, sometimes 2 when Fast/Very_fast, maybe
               * higher if polymorphed into something that's even faster */
@@ -448,9 +420,6 @@ const g_init_l = static_struct("g_init_l", struct_instance_globals_l, {
 
     locknum: 0, /* locknum */
 
-
-
-
     /* files.c */
     lockptr: UNDEFINED_VALUE, /* lockptr */
     lock: LOCKNAMEINIT, /* lock */
@@ -463,9 +432,6 @@ const g_init_l = static_struct("g_init_l", struct_instance_globals_l, {
     /* mon.c */
     last_hider: 0, /* last_hider */
     /* nhlan.c */
-
-
-
 
     /* nhlua.c */
     luacore: 0, /* luacore */
@@ -693,8 +659,6 @@ const g_init_s = static_struct("g_init_s", struct_instance_globals_s, {
     symset_which_set: 0, /* symset_which_set */
     SAVEF: [], /* SAVEF */
 
-
-
     /* invent.c */
     sortlootmode: 0, /* sortloogmode */
     /* mhitm.c */
@@ -710,9 +674,6 @@ const g_init_s = static_struct("g_init_s", struct_instance_globals_s, {
     sellobj_first: FALSE, /* sellobj_first */
     shop_filter: FALSE, /* shop_filter */
     /* pline.c */
-
-
-
 
     /* polyself.c */
     sex_change_ok: 0, /* sex_change_ok */
@@ -1000,10 +961,6 @@ const init_svy = static_struct("init_svy", struct_instance_globals_saved_y, {
 
 const init_program_state = static_struct("init_program_state", struct_sinfo, { gameover: 0 });
 
-
-
-
-
 export const ga = static_struct("ga", struct_instance_globals_a);
 export const gb = static_struct("gb", struct_instance_globals_b);
 export const gc = static_struct("gc", struct_instance_globals_c);
@@ -1059,29 +1016,11 @@ export const cg = static_struct("cg", struct_const_globals, {
     zeroNhRect: {}, /* zeroNhRect */
 });
 
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-program_state_init()
-{
+export function program_state_init() { /* void */
     struct_assign(program_state, init_program_state);
 }
 
-export function /* void */
-decl_globals_init()
-{
-
-
-
+export function decl_globals_init() { /* void */
     struct_assign(ga, g_init_a);
     struct_assign(gb, g_init_b);
     struct_assign(gc, g_init_c);
@@ -1135,9 +1074,6 @@ decl_globals_init()
     gv.valuables[1].size = SIZE(ga.amulets);
     gv.valuables[2].list = null;
     gv.valuables[2].size = 0;
-
-
-
 
     do { if (((g_init_a).havestate != TRUE)) { raw_printf(_("decl_globals_init: %s.havestate not True."), _("g_init_a")); exit(1); } } while (0);
     do { if (((g_init_b).havestate != TRUE)) { raw_printf(_("decl_globals_init: %s.havestate not True."), _("g_init_b")); exit(1); } } while (0);
@@ -1195,128 +1131,60 @@ export const hands_obj = static_struct("hands_obj", struct_obj, {});
    initialization for fields that aren't explicitly initialized (all of
    'context'); having bite() pass &svc.context.victual to this no-op
    eliminates the analyzer's very verbose complaint */
-export function /* void */
-sa_victual(
-    context_victual)
-{
+export function sa_victual(
+    context_victual) { /* void */
     return;
 }
 
 /*decl.c*/
+
 import { A_INT } from "./attrib.h.js";
 import { STR18 } from "./attrib.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
-import { struct_const_globals } from "./decl.h.js";
-import { struct_display_hints } from "./decl.h.js";
-import { struct_instance_globals_a } from "./decl.h.js";
-import { struct_instance_globals_b } from "./decl.h.js";
-import { struct_instance_globals_c } from "./decl.h.js";
-import { struct_instance_globals_d } from "./decl.h.js";
-import { struct_instance_globals_e } from "./decl.h.js";
-import { struct_instance_globals_f } from "./decl.h.js";
-import { struct_instance_globals_g } from "./decl.h.js";
-import { struct_instance_globals_h } from "./decl.h.js";
-import { struct_instance_globals_i } from "./decl.h.js";
-import { struct_instance_globals_j } from "./decl.h.js";
-import { struct_instance_globals_k } from "./decl.h.js";
-import { struct_instance_globals_l } from "./decl.h.js";
-import { struct_instance_globals_m } from "./decl.h.js";
-import { struct_instance_globals_n } from "./decl.h.js";
-import { struct_instance_globals_o } from "./decl.h.js";
-import { struct_instance_globals_p } from "./decl.h.js";
-import { struct_instance_globals_q } from "./decl.h.js";
-import { struct_instance_globals_r } from "./decl.h.js";
-import { struct_instance_globals_s } from "./decl.h.js";
-import { struct_instance_globals_saved_b } from "./decl.h.js";
-import { struct_instance_globals_saved_c } from "./decl.h.js";
-import { struct_instance_globals_saved_d } from "./decl.h.js";
-import { struct_instance_globals_saved_e } from "./decl.h.js";
-import { struct_instance_globals_saved_h } from "./decl.h.js";
-import { struct_instance_globals_saved_i } from "./decl.h.js";
-import { struct_instance_globals_saved_k } from "./decl.h.js";
-import { struct_instance_globals_saved_l } from "./decl.h.js";
-import { struct_instance_globals_saved_m } from "./decl.h.js";
-import { struct_instance_globals_saved_n } from "./decl.h.js";
-import { struct_instance_globals_saved_o } from "./decl.h.js";
-import { struct_instance_globals_saved_p } from "./decl.h.js";
-import { struct_instance_globals_saved_q } from "./decl.h.js";
-import { struct_instance_globals_saved_r } from "./decl.h.js";
-import { struct_instance_globals_saved_s } from "./decl.h.js";
-import { struct_instance_globals_saved_t } from "./decl.h.js";
-import { struct_instance_globals_saved_u } from "./decl.h.js";
-import { struct_instance_globals_saved_w } from "./decl.h.js";
-import { struct_instance_globals_saved_x } from "./decl.h.js";
-import { struct_instance_globals_saved_y } from "./decl.h.js";
-import { struct_instance_globals_t } from "./decl.h.js";
-import { struct_instance_globals_u } from "./decl.h.js";
-import { struct_instance_globals_v } from "./decl.h.js";
-import { struct_instance_globals_w } from "./decl.h.js";
-import { struct_instance_globals_x } from "./decl.h.js";
-import { struct_instance_globals_y } from "./decl.h.js";
-import { struct_instance_globals_z } from "./decl.h.js";
-import { S_ss1 } from "./defsym.h.js";
-import { S_ss2 } from "./defsym.h.js";
-import { S_ss3 } from "./defsym.h.js";
-import { S_ss4 } from "./defsym.h.js";
+import {
+    struct_const_globals, struct_display_hints, struct_instance_globals_a,
+    struct_instance_globals_b, struct_instance_globals_c, struct_instance_globals_d,
+    struct_instance_globals_e, struct_instance_globals_f, struct_instance_globals_g,
+    struct_instance_globals_h, struct_instance_globals_i, struct_instance_globals_j,
+    struct_instance_globals_k, struct_instance_globals_l, struct_instance_globals_m,
+    struct_instance_globals_n, struct_instance_globals_o, struct_instance_globals_p,
+    struct_instance_globals_q, struct_instance_globals_r, struct_instance_globals_s,
+    struct_instance_globals_saved_b, struct_instance_globals_saved_c,
+    struct_instance_globals_saved_d, struct_instance_globals_saved_e,
+    struct_instance_globals_saved_h, struct_instance_globals_saved_i,
+    struct_instance_globals_saved_k, struct_instance_globals_saved_l,
+    struct_instance_globals_saved_m, struct_instance_globals_saved_n,
+    struct_instance_globals_saved_o, struct_instance_globals_saved_p,
+    struct_instance_globals_saved_q, struct_instance_globals_saved_r,
+    struct_instance_globals_saved_s, struct_instance_globals_saved_t,
+    struct_instance_globals_saved_u, struct_instance_globals_saved_w,
+    struct_instance_globals_saved_x, struct_instance_globals_saved_y, struct_instance_globals_t,
+    struct_instance_globals_u, struct_instance_globals_v, struct_instance_globals_w,
+    struct_instance_globals_x, struct_instance_globals_y, struct_instance_globals_z,
+} from "./decl.h.js";
+import { S_ss1, S_ss2, S_ss3, S_ss4 } from "./defsym.h.js";
 import { SHIELD_COUNT } from "./display.h.js";
 import { struct_engr } from "./engrave.h.js";
-import { struct_accessibility_data } from "./flag.h.js";
-import { struct_flag } from "./flag.h.js";
-import { struct_instance_flags } from "./flag.h.js";
-import { BONESINIT } from "./fnamesiz.h.js";
-import { LOCKNAMEINIT } from "./fnamesiz.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXNROFROOMS } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { phase_not_set } from "./global.h.js";
-import { DIR_E } from "./hack.h.js";
-import { DIR_N } from "./hack.h.js";
-import { DIR_NE } from "./hack.h.js";
-import { DIR_NW } from "./hack.h.js";
-import { DIR_S } from "./hack.h.js";
-import { DIR_SE } from "./hack.h.js";
-import { DIR_SW } from "./hack.h.js";
-import { DIR_W } from "./hack.h.js";
-import { NUM_NHCB } from "./hack.h.js";
-import { N_DIRS } from "./hack.h.js";
-import { N_DIRS_Z } from "./hack.h.js";
-import { SELL_NORMAL } from "./hack.h.js";
-import { UNDEFINED_VALUE } from "./hack.h.js";
-import { struct_c_color_names } from "./hack.h.js";
-import { struct_c_common_strings } from "./hack.h.js";
-import { struct_sinfo } from "./hack.h.js";
+import { struct_accessibility_data, struct_flag, struct_instance_flags } from "./flag.h.js";
+import { BONESINIT, LOCKNAMEINIT } from "./fnamesiz.h.js";
+import { COLNO, FALSE, MAXNROFROOMS, ROWNO, TRUE, phase_not_set } from "./global.h.js";
+import {
+    DIR_E, DIR_N, DIR_NE, DIR_NW, DIR_S, DIR_SE, DIR_SW, DIR_W, NUM_NHCB, N_DIRS, N_DIRS_Z,
+    SELL_NORMAL, UNDEFINED_VALUE, struct_c_color_names, struct_c_common_strings, struct_sinfo,
+} from "./hack.h.js";
 import { UNDEFINED_PTR } from "./hack.h.macros.js";
 import { NON_PM } from "./monsters.h.js";
 import { struct_obj } from "./obj.h.js";
 import { STRANGE_OBJECT } from "./objects.h.js";
 import { soundlib_nosound } from "./sndprocs.h.js";
-import { ANY_INVALID } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { wdmode_traditional } from "./wintype.h.js";
-import { struct_Race } from "./you.h.js";
-import { struct_Role } from "./you.h.js";
-import { struct_u_realtime } from "./you.h.js";
-import { struct_you } from "./you.h.js";
+import { ANY_INVALID, WIN_ERR, wdmode_traditional } from "./wintype.h.js";
+import { struct_Race, struct_Role, struct_u_realtime, struct_you } from "./you.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { global_ref } from "../rt/globals.js";
-import { global_scalar } from "../rt/globals.js";
+import { char, int, long, ord, schar, sizeof, sizeof_string } from "../rt/ctypes.js";
+import { global_ref, global_scalar } from "../rt/globals.js";
 import { shl64 } from "../rt/int64.js";
-import { exit } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
+import { exit, memset } from "../rt/libc.js";
+import { init_string, static_array, static_struct } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, ptr_to, struct_assign } from "../rt/struct.js";
 import { raw_printf } from "./pline.js";

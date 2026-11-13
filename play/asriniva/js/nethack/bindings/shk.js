@@ -1,3 +1,5 @@
+import {createNativeAddressFields} from '../native/address-fields.js';
+import {createNativeAddressNamespace} from '../native/address/shk.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Typed native transport and private state; original SHK algorithms/data are JS.
@@ -29,11 +31,13 @@ export function createShkEnvironment(services){
  };
  env.initialize=initialize;
  for(const row of shk.shkStaticInitializers(env)){const at=env.staticAddress(row.name);env.zero(at,row.size);if(row.values!==null)initialize(at,row.type,row.values);}
+ env.nativeFields=createNativeAddressFields(env,services,schema,decode,address);
+ env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }
 export function callShk(services,name,...args){
  let state=states.get(services.moduleKey);if(!state){state={services};const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});state.env=createShkEnvironment(forwarding);states.set(services.moduleKey,state);}
- const fn=shk[name];if(typeof fn!=='function')throw Error('Unknown original SHK function '+name);
+ const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original SHK function '+name);
  const previous=state.services;state.services=services;
- try{const frame=services.stackSave();try{return withCEnvironment(state.env,fn,...args)??0;}finally{services.stackRestore(frame);}}finally{state.services=previous;}
+ try{const frame=services.stackSave();try{return fn(...args)??0;}finally{services.stackRestore(frame);}}finally{state.services=previous;}
 }

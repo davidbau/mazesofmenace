@@ -3,75 +3,28 @@
 /*-Copyright (c) Alex Smith, 2017. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /* for UNIX, Rand #def'd to (long)lrand48() or (long)random() */
 /* croom->lx etc are schar (width <= int), so % arith ensures that */
 /* conversion of result to int is reasonable */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export function create_vault() { return create_room(-1, -1, 2, 2, -1, -1, VAULT, TRUE); }
 export function init_vault() { return gv.vault_x = -1; }
-export function do_vault() { return (+(gv.vault_x != -1)); }
+export function do_vault() { return +(gv.vault_x != -1); }
 
 /* Args must be (const genericptr) so that qsort will always be happy. */
 
-function /* int QSORTCALLBACK */
-mkroom_cmp(vx, vy)
-{
+function mkroom_cmp(vx, vy) { /* int QSORTCALLBACK */
     let x, y;
 
     x = view_of(struct_mkroom, vx);
     y = view_of(struct_mkroom, vy);
     if (x.lx < y.lx)
         return -1;
-    return (+(x.lx > y.lx));
+    return +(x.lx > y.lx);
 }
 
 /* is x,y a good location for a door into room? */
-function /* boolean */
-good_rm_wall_doorpos(x, y, dir, room)
-{
+function good_rm_wall_doorpos(x, y, dir, room) { /* boolean */
     let tx, ty;
     let rmno;
 
@@ -93,7 +46,7 @@ good_rm_wall_doorpos(x, y, dir, room)
     if (!isok(tx,ty) || IS_OBSTRUCTED(levl()[tx][ty].typ))
         return FALSE;
 
-    rmno = (ptr_diff(room, svr.rooms[0])) + ROOMOFFSET;
+    rmno = ptr_diff(room, svr.rooms[0]) + ROOMOFFSET;
 
     if (rmno != (levl()[tx][ty].roomno))
         return FALSE;
@@ -102,9 +55,7 @@ good_rm_wall_doorpos(x, y, dir, room)
 }
 
 /* starting from x,y going towards dir, find a good location for a door */
-function /* boolean */
-finddpos_shift(x, y, dir, aroom)
-{
+function finddpos_shift(x, y, dir, aroom) { /* boolean */
     let dx, dy;
 
     dir = DIR_180(dir);
@@ -143,9 +94,8 @@ finddpos_shift(x, y, dir, aroom)
 /* find a valid door position at room edge.
    dir is the preferred edge of the room.
    if found, returns TRUE and the coordinate in cc */
-function /* boolean */
-finddpos(cc, dir, aroom)
-{ const $frame = stack_frame(); try {
+function finddpos(cc, dir, aroom) { /* boolean */
+    const $frame = stack_frame(); try {
     var x = stack_var(coordxy), y = stack_var(coordxy);
     var x1, y1, x2, y2;
     var tryct = 0;
@@ -202,13 +152,13 @@ finddpos(cc, dir, aroom)
     cc.x = x[0];
     cc.y = y[0];
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Sort rooms on the level so they're ordered from left to right on the map.
    makecorridors() by default links rooms N and N+1 */
-export function /* void */
-sort_rooms()
-{ const $frame = stack_frame(); try {
+export function sort_rooms() { /* void */
+    const $frame = stack_frame(); try {
     let x, y;
     let i, ri = init_list(stack_array(unsigned, MAXNROFROOMS + 1), [ 0 ]), n = unsigned(svn.nroom);
 
@@ -225,13 +175,12 @@ sort_rooms()
             if (rno >= ROOMOFFSET && rno < MAXNROFROOMS + 1)
                 levl()[x][y].roomno = unsigned(ri[unsigned(rno - ROOMOFFSET)] + ROOMOFFSET);
         }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-do_room_or_subroom(croom,
+function do_room_or_subroom(croom,
                    lowx, lowy, hix, hiy,
-                   lit, rtype, special, is_room)
-{
+                   lit, rtype, special, is_room) { /* void */
     let x, y;
     let lev;
 
@@ -256,7 +205,7 @@ do_room_or_subroom(croom,
     } else
         croom.rlit = 0;
 
-    croom.roomnoidx = (ptr_diff(croom, svr.rooms[0]));
+    croom.roomnoidx = ptr_diff(croom, svr.rooms[0]);
     croom.lx = lowx;
     croom.hx = hix;
     croom.ly = lowy;
@@ -300,12 +249,9 @@ do_room_or_subroom(croom,
     }
 }
 
-export function /* void */
-add_room(lowx, lowy, hix, hiy,
-         lit, rtype, special)
-{
+export function add_room(lowx, lowy, hix, hiy,
+         lit, rtype, special) { /* void */
     let croom;
-
 
     if (svn.nroom >= MAXNROFROOMS)
         panic(_("level has too many rooms"));
@@ -318,14 +264,11 @@ add_room(lowx, lowy, hix, hiy,
     svn.nroom++;
 }
 
-export function /* void */
-add_subroom(proom,
+export function add_subroom(proom,
             lowx, lowy,
             hix, hiy,
-            lit, rtype, special)
-{
+            lit, rtype, special) { /* void */
     let croom;
-
 
     if (gn.nsubroom >= MAXNROFROOMS)
         panic(_("level has too many subrooms"));
@@ -341,9 +284,7 @@ add_subroom(proom,
     gn.nsubroom++;
 }
 
-export function /* void */
-free_luathemes(theme_group)
-{
+export function free_luathemes(theme_group) { /* void */
     let i;
 
     /*
@@ -363,9 +304,8 @@ free_luathemes(theme_group)
     }
 }
 
-function /* void */
-makerooms()
-{ const $frame = stack_frame(); try {
+function makerooms() { /* void */
+    const $frame = stack_frame(); try {
     let tried_vault = FALSE;
     let themeroom_tries = 0;
     let fname;
@@ -401,7 +341,7 @@ makerooms()
     /* make rooms until satisfied */
     /* rnd_rect() will returns 0 if no more rects are available... */
     while (svn.nroom < (MAXNROFROOMS - 1) && rnd_rect()) {
-        if (svn.nroom >= (Math.trunc(MAXNROFROOMS / 6)) && rn2(2) && !tried_vault) {
+        if (svn.nroom >= Math.trunc(MAXNROFROOMS / 6) && rn2(2) && !tried_vault) {
             tried_vault = TRUE;
             if (create_vault()) {
                 gv.vault_x = svr.rooms[svn.nroom].lx;
@@ -417,7 +357,7 @@ makerooms()
                 iflags.in_lua = gi.in_mk_themerooms = FALSE;
                 if (gt.themeroom_failed
                     && ((themeroom_tries++ > 10)
-                        || (svn.nroom >= (Math.trunc(MAXNROFROOMS / 6)))))
+                        || (svn.nroom >= Math.trunc(MAXNROFROOMS / 6))))
                     break;
             } else {
                 if (!create_room(-1, -1, -1, -1, -1, -1, OROOM, -1))
@@ -433,11 +373,11 @@ makerooms()
         nhl_pcall_handle(themes, 0, 0, _("makerooms-3"), NHLpa_panic);
         iflags.in_lua = gi.in_mk_themerooms = FALSE;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-join(a, b, nxcor)
-{ const $frame = stack_frame(); try {
+function join(a, b, nxcor) { /* void */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord), tt = stack_struct(struct_nhcoord), org = stack_struct(struct_nhcoord), dest = stack_struct(struct_nhcoord);
     let tx, ty, xx, yy;
     let croom, troom;
@@ -515,12 +455,11 @@ join(a, b, nxcor)
         gs.smeq[b] = gs.smeq[a];
     else
         gs.smeq[a] = gs.smeq[b];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* create random corridors between rooms */
-export function /* void */
-makecorridors()
-{
+export function makecorridors() { /* void */
     let a, b, i;
     let any = TRUE;
 
@@ -552,16 +491,14 @@ makecorridors()
 }
 
 /* (re)allocate space for svd.doors array */
-function /* void */
-alloc_doors()
-{
+function alloc_doors() { /* void */
     if (!svd.doors || gd.doorindex >= svd.doors_alloc) {
         let c = svd.doors_alloc + DOORINC;
-        let doortmp = view_of(struct_nhcoord, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned(c), sizeof(struct_nhcoord)))))));
+        let doortmp = view_of(struct_nhcoord, addr_of(alloc(unsigned(Math.imul(unsigned(c), sizeof(struct_nhcoord))))));
 
-        void memset(addr_of(doortmp), 0, unsigned(Math.imul(unsigned(c), sizeof(struct_nhcoord))));
+        memset(addr_of(doortmp), 0, unsigned(Math.imul(unsigned(c), sizeof(struct_nhcoord))));
         if (svd.doors) {
-            void memcpy(addr_of(doortmp), addr_of(svd.doors),
+            memcpy(addr_of(doortmp), addr_of(svd.doors),
                           unsigned(Math.imul(unsigned(svd.doors_alloc), sizeof(struct_nhcoord))));
             free(addr_of(svd.doors));
         }
@@ -570,9 +507,7 @@ alloc_doors()
     }
 }
 
-export function /* void */
-add_door(x, y, aroom)
-{
+export function add_door(x, y, aroom) { /* void */
     let broom;
     let tmp;
     let i;
@@ -611,9 +546,7 @@ add_door(x, y, aroom)
     ptr_add(svd.doors, aroom.fdoor).y = y;
 }
 
-function /* void */
-dosdoor(x, y, aroom, type)
-{
+function dosdoor(x, y, aroom, type) { /* void */
     let shdoor = chars[in_rooms(x, y, SHOPBASE)] ? TRUE : FALSE;
 
     if (!IS_WALL(levl()[x][y].typ)) /* avoid S.doors on already made doors */
@@ -632,14 +565,7 @@ dosdoor(x, y, aroom, type)
                 && level_difficulty() >= 5 && !rn2(25))
                 levl()[x][y].flags |= D_TRAPPED;
         } else {
-
-
-
-
-
-
             levl()[x][y].flags = (shdoor ? D_ISOPEN : D_NODOOR);
-
         }
 
         /* also done in roguecorr(); doing it here first prevents
@@ -677,10 +603,8 @@ dosdoor(x, y, aroom, type)
 
 /* is x,y location such that NEWS direction from it is inside aroom,
    excluding subrooms */
-function /* boolean */
-cardinal_nextto_room(aroom, x, y)
-{
-    let rmno = int(((ptr_diff(aroom, svr.rooms[0])) + ROOMOFFSET));
+function cardinal_nextto_room(aroom, x, y) { /* boolean */
+    let rmno = int((ptr_diff(aroom, svr.rooms[0]) + ROOMOFFSET));
 
     if (isok(x - 1, y) && !levl()[x - 1][y].edge
         && (levl()[x - 1][y].roomno) == rmno)
@@ -697,12 +621,11 @@ cardinal_nextto_room(aroom, x, y)
     return FALSE;
 }
 
-function /* boolean */
-place_niche(
+function place_niche(
     aroom,
     dy,
-    xx, yy)
-{ const $frame = stack_frame(); try {
+    xx, yy) { /* boolean */
+    const $frame = stack_frame(); try {
     let dd = stack_struct(struct_nhcoord);
 
     if (rn2(2)) {
@@ -716,13 +639,14 @@ place_niche(
     }
     xx[0] = dd.x;
     yy[0] = dd.y;
-    return ((((isok(xx[0], yy[0] + dy[0])
+    return ((isok(xx[0], yy[0] + dy[0])
                        && levl()[xx[0]][yy[0] + dy[0]].typ == STONE)
                       && (isok(xx[0], yy[0] - dy[0])
                           && !IS_POOL(levl()[xx[0]][yy[0] - dy[0]].typ)
                           && !IS_FURNITURE(levl()[xx[0]][yy[0] - dy[0]].typ))
-                      && cardinal_nextto_room(aroom, xx[0], yy[0])) ? 1 : 0));
-} finally { stack_pop($frame); } }
+                      && cardinal_nextto_room(aroom, xx[0], yy[0]) ? 1 : 0);
+    } finally { stack_pop($frame); }
+}
 
 /* there should be one of these per trap, in the same order as trap.h */
 const trap_engravings = static_array("trap_engravings", ptr_to(char), TRAPNUM, [
@@ -736,9 +660,8 @@ const trap_engravings = static_array("trap_engravings", ptr_to(char), TRAPNUM, [
     0, 0,
 ]);
 
-function /* void */
-makeniche(trap_type)
-{ const $frame = stack_frame(); try {
+function makeniche(trap_type) { /* void */
+    const $frame = stack_frame(); try {
     let aroom;
     let rm;
     let dy = stack_var(int), vct = 8;
@@ -781,29 +704,28 @@ makeniche(trap_type)
             } else {
                 /* inaccessible niches occasionally have iron bars */
                 if (!rn2(5) && IS_WALL(levl()[xx[0]][yy[0]].typ)) {
-                    void set_levltyp(xx[0], yy[0], IRONBARS);
+                    set_levltyp(xx[0], yy[0], IRONBARS);
                     if (rn2(3))
-                        void mkcorpstat(CORPSE, null,
+                        mkcorpstat(CORPSE, null,
                                           mkclass(S_HUMAN, 0), xx[0],
                                           yy[0] + dy[0], TRUE);
                 }
                 if (!svl.level.flags.noteleport)
-                    void mksobj_at(SCR_TELEPORTATION, xx[0], yy[0] + dy[0], TRUE,
+                    mksobj_at(SCR_TELEPORTATION, xx[0], yy[0] + dy[0], TRUE,
                                      FALSE);
                 if (!rn2(3))
-                    void mkobj_at(RANDOM_CLASS, xx[0], yy[0] + dy[0], TRUE);
+                    mkobj_at(RANDOM_CLASS, xx[0], yy[0] + dy[0], TRUE);
             }
         }
         return;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-make_niches()
-{
+function make_niches() { /* void */
     let ct = rnd((svn.nroom >> 1) + 1), dep = depth(u.uz);
-    let ltptr = (+(!svl.level.flags.noteleport && dep > 15)),
-            vamp = (+(dep > 5 && dep < 25));
+    let ltptr = +(!svl.level.flags.noteleport && dep > 15),
+            vamp = +(dep > 5 && dep < 25);
 
     while (ct--) {
         if (ltptr && !rn2(6)) {
@@ -817,16 +739,12 @@ make_niches()
     }
 }
 
-function /* void */
-makevtele()
-{
+function makevtele() { /* void */
     makeniche(TELEP_TRAP);
 }
 
 /* count the tracked features (sinks, fountains) present on the level */
-export function /* void */
-count_level_features()
-{
+export function count_level_features() { /* void */
     let x, y;
 
     svl.level.flags.nfountains = svl.level.flags.nsinks = 0;
@@ -846,9 +764,7 @@ count_level_features()
  * special) but it's easier to put it all in one place than make sure
  * each type initializes what it needs to separately.
  */
-export function /* void */
-clear_level_structures()
-{
+export function clear_level_structures() { /* void */
     let zerorm = static_struct("clear_level_structures.zerorm", struct_rm, { glyph: GLYPH_UNEXPLORED,
                                 typ: 0, seenv: 0, flags: 0, horizontal: 0, lit: 0, waslit: 0, roomno: 0, edge: 0, candig: 0 });
     let x, y;
@@ -926,20 +842,18 @@ clear_level_structures()
     }
 }
 
-export function ROOM_IS_FILLABLE(croom) { return (+((croom.rtype == OROOM || croom.rtype == THEMEROOM)       
-     && croom.needfill == FILL_NORMAL)); }
-
+export function ROOM_IS_FILLABLE(croom) { return +((croom.rtype == OROOM || croom.rtype == THEMEROOM)
+     && croom.needfill == FILL_NORMAL); }
 
 /* Fill a "random" room (i.e. a typical non-special room in the Dungeons of
    Doom) with random monsters, objects, and dungeon features.
 
    If bonus_items is TRUE, there may be an additional special item
    generated, depending on depth. */
-function /* void */
-fill_ordinary_room(
+function fill_ordinary_room(
     croom,
-    bonus_items)
-{ const $frame = stack_frame(); try {
+    bonus_items) { /* void */
+    const $frame = stack_frame(); try {
     var trycnt = 0;
     var pos = stack_struct(struct_nhcoord);
     var tmonst; /* always put a web with a spider */
@@ -975,16 +889,16 @@ fill_ordinary_room(
         tmonst = makemon(null, pos.x, pos.y, MM_NOGRP);
         if (tmonst && tmonst.data == mons[PM_GIANT_SPIDER]
             && !occupied(pos.x, pos.y))
-            void maketrap(pos.x, pos.y, WEB);
+            maketrap(pos.x, pos.y, WEB);
     }
     /* put traps and mimics inside */
-    x = 8 - (Math.trunc(level_difficulty() / 6));
+    x = 8 - Math.trunc(level_difficulty() / 6);
     if (x <= 1)
         x = 2;
     while (!rn2(x) && (++trycnt < 1000))
         mktrap(0, MKTRAP_NOFLAGS, croom, null);
     if (!rn2(3) && somexyspace(croom, pos))
-        void mkgold(0, pos.x, pos.y);
+        mkgold(0, pos.x, pos.y);
     skip_nonrogue: { if (Is_rogue_level(u.uz))
         break skip_nonrogue;;
     if (!rn2(10))
@@ -1001,7 +915,7 @@ fill_ordinary_room(
 
     /* put statues inside */
     if (!rn2(20) && somexyspace(croom, pos))
-        void mkcorpstat(STATUE, null,
+        mkcorpstat(STATUE, null,
                             null, pos.x,
                             pos.y, CORPSTAT_INIT);
 
@@ -1029,7 +943,7 @@ fill_ordinary_room(
         if (uz_branch && u.uz.dnum != mines_dnum()
             && (uz_branch.end1.dnum == mines_dnum()
                 || uz_branch.end2.dnum == mines_dnum())) {
-            void mksobj_at((rn2(5) < 3) ? FOOD_RATION
+            mksobj_at((rn2(5) < 3) ? FOOD_RATION
                              : rn2(2) ? CRAM_RATION
                                : LEMBAS_WAFER,
                              pos.x, pos.y, TRUE, FALSE);
@@ -1044,7 +958,7 @@ fill_ordinary_room(
             var supply_chest = mksobj_at(rn2(3) ? CHEST : LARGE_BOX,
                                                  pos.x, pos.y, FALSE, FALSE);
 
-            supply_chest.olocked = +!!(rn2(6));
+            supply_chest.olocked = +!!rn2(6);
 
             do {
                 var supply_items = static_array("fill_ordinary_room.supply_items", int, null, [
@@ -1127,7 +1041,6 @@ fill_ordinary_room(
         }
     }
 
-
     /* put box/chest inside;
      *  40% chance for at least 1 box, regardless of number
      *  of rooms; about 5 - 7.5% for 2 boxes, least likely
@@ -1135,7 +1048,7 @@ fill_ordinary_room(
      */
     /*assert(svn.nroom > 0); // must be true because we're filling a room*/
     if (!skip_chests && !rn2(Math.trunc(svn.nroom * 5 / 2)) && somexyspace(croom, pos))
-        void mksobj_at(rn2(3) ? LARGE_BOX : CHEST,
+        mksobj_at(rn2(3) ? LARGE_BOX : CHEST,
                          pos.x, pos.y, TRUE, FALSE);
 
     /* maybe make some graffiti */
@@ -1145,7 +1058,7 @@ fill_ordinary_room(
 
         if (mesg) {
             do {
-                void somexyspace(croom, pos);
+                somexyspace(croom, pos);
                 x = pos.x;
                 y = pos.y;
             } while (levl()[x][y].typ != ROOM && !rn2(40));
@@ -1153,10 +1066,9 @@ fill_ordinary_room(
                 make_engr_at(x, y, mesg, pristinebuf, 0, MARK);
         }
     }
-
  }
     if (!rn2(3) && somexyspace(croom, pos)) {
-        void mkobj_at(RANDOM_CLASS, pos.x, pos.y, TRUE);
+        mkobj_at(RANDOM_CLASS, pos.x, pos.y, TRUE);
         trycnt = 0;
         while (!rn2(5)) {
             if (++trycnt > 100) {
@@ -1164,15 +1076,14 @@ fill_ordinary_room(
                 break;
             }
             if (somexyspace(croom, pos)) {
-                void mkobj_at(RANDOM_CLASS, pos.x, pos.y, TRUE);
+                mkobj_at(RANDOM_CLASS, pos.x, pos.y, TRUE);
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-themerooms_post_level_generate()
-{
+function themerooms_post_level_generate() { /* void */
     let themes = view_of(struct_lua_State, gl.luathemes[u.uz.dnum]);
 
      /* themes should already be loaded by makerooms();
@@ -1194,9 +1105,7 @@ themerooms_post_level_generate()
 }
 
 /* if x,y is door, does it open into solid terrain */
-function /* boolean */
-chk_okdoor(x, y)
-{
+function chk_okdoor(x, y) { /* boolean */
     if (IS_DOOR(levl()[x][y].typ)) {
         if (levl()[x][y].horizontal) {
             if ((isok(x, y-1) && (elt(levl()[x], y-1).typ > TREE))
@@ -1219,9 +1128,7 @@ chk_okdoor(x, y)
 }
 
 /* check mklev created level sanity */
-function /* void */
-mklev_sanity_check()
-{
+function mklev_sanity_check() { /* void */
     let x, y;
     let i;
     let rmno = -1;
@@ -1246,10 +1153,9 @@ mklev_sanity_check()
     }
 }
 
-
-function /* void */
-makelevel()
-{ const $frame = stack_frame(); try { let $goto = null; var fillname = stack_array(char, 9), w = stack_var(coordxy), h = stack_var(coordxy);
+function makelevel() { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var fillname = stack_array(char, 9), w = stack_var(coordxy), h = stack_var(coordxy);
     var croom;
     var branchp;
     var prevstairs;
@@ -1273,19 +1179,18 @@ makelevel()
     } else if (chars[svd.dungeons[u.uz.dnum].fill_lvl + 0]) {
         makemaz(svd.dungeons[u.uz.dnum].fill_lvl);
     } else if (In_quest(u.uz)) {
-        
         var loc_lev;
 
-        void sprintf(fillname, _("%s-loca"), gu.urole.filecode);
+        sprintf(fillname, _("%s-loca"), gu.urole.filecode);
         loc_lev = find_level(fillname);
 
-        void sprintf(fillname, _("%s-fil"), gu.urole.filecode);
-        void strcat(fillname, (u.uz.dlevel < loc_lev.dlevel.dlevel) ? _("a") : _("b"))
+        sprintf(fillname, _("%s-fil"), gu.urole.filecode);
+        strcat(fillname, (u.uz.dlevel < loc_lev.dlevel.dlevel) ? _("a") : _("b"))
 ;
         makemaz(fillname);
     } else if (In_hell(u.uz)
                 || (rn2(5) && u.uz.dnum == medusa_level().dnum
-                    && depth(u.uz) > depth((svd.dungeon_topology.d_medusa_level)))) {
+                    && depth(u.uz) > depth(svd.dungeon_topology.d_medusa_level))) {
         makemaz(_(""));
     } else {
         /* otherwise, fall through - it's a "regular" level. */
@@ -1314,8 +1219,6 @@ makelevel()
 
         /* make a secret treasure vault, not connected to the rest */
         if (do_vault()) {
-            
-
             debugpline0(_("trying to make a vault..."), __FILE__);
             w[0] = 1;
             h[0] = 1;
@@ -1346,7 +1249,7 @@ makelevel()
            this step only sets the room's rtype - it doesn't fill it yet. */
         if (wizard() && nh_getenv(_("SHOPTYPE")))
             do_mkroom(SHOPBASE);
-        else if (u_depth > 1 && u_depth < depth((svd.dungeon_topology.d_medusa_level))
+        else if (u_depth > 1 && u_depth < depth(svd.dungeon_topology.d_medusa_level)
                  && svn.nroom >= room_threshold && rn2(u_depth) < 3)
             do_mkroom(SHOPBASE);
         else if (u_depth > 4 && !rn2(6))
@@ -1373,7 +1276,6 @@ makelevel()
         else if (u_depth > 16 && !rn2(8)
                  && !(svm.mvitals[PM_COCKATRICE].mvflags & G_GONE))
             do_mkroom(COCKNEST);
-
  }
         prevstairs = gs.stairs; /* used to test for place_branch() success */
         /* Place multi-dungeon branch. */
@@ -1406,7 +1308,7 @@ makelevel()
             var fillable = ROOM_IS_FILLABLE(croom);
 
             fill_ordinary_room(croom,
-                               ((fillable && bonus_item_room_countdown == 0) ? 1 : 0));
+                               (fillable && bonus_item_room_countdown == 0 ? 1 : 0));
             if (fillable)
                 --bonus_item_room_countdown;
         }
@@ -1425,12 +1327,11 @@ makelevel()
         nhl_pcall_handle(view_of(struct_lua_State, gl.luacore), 1, 0, _("makelevel"), NHLpa_panic);
         lua_settop(view_of(struct_lua_State, gl.luacore), 0);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return TRUE if water location at (x,y) should have kelp. */
-function /* boolean */
-water_has_kelp(x, y, kelp_pool, kelp_moat)
-{
+function water_has_kelp(x, y, kelp_pool, kelp_moat) { /* boolean */
     if ((kelp_pool && (levl()[x][y].typ == POOL
                        || (levl()[x][y].typ == WATER && !Is_waterlevel(u.uz)))
          && !rn2(kelp_pool))
@@ -1445,10 +1346,8 @@ water_has_kelp(x, y, kelp_pool, kelp_moat)
  *      Also place kelp in water.
  *      mineralize(-1, -1, -1, -1, FALSE); => "default" behavior
  */
-export function /* void */
-mineralize(kelp_pool, kelp_moat, goldprob, gemprob,
-           skip_lvl_checks)
-{
+export function mineralize(kelp_pool, kelp_moat, goldprob, gemprob,
+           skip_lvl_checks) { /* void */
     let sp;
     let otmp;
     let x, y;
@@ -1465,7 +1364,7 @@ mineralize(kelp_pool, kelp_moat, goldprob, gemprob,
     for (x = 2; x < (COLNO - 2); x++)
         for (y = 1; y < (ROWNO - 1); y++)
             if (water_has_kelp(x, y, kelp_pool, kelp_moat))
-                void mksobj_at(KELP_FROND, x, y, TRUE, FALSE);
+                mksobj_at(KELP_FROND, x, y, TRUE, FALSE);
 
     /* determine if it is even allowed;
        almost all special levels are excluded */
@@ -1540,9 +1439,7 @@ mineralize(kelp_pool, kelp_moat, goldprob, gemprob,
             }
 }
 
-export function /* void */
-level_finalize_topology()
-{
+export function level_finalize_topology() { /* void */
     let croom;
     let ridx;
 
@@ -1561,10 +1458,7 @@ level_finalize_topology()
     if (!svl.level.flags.is_maze_lev) {
         for (croom = ptr_add(svr.rooms[0], 0); croom != svr.rooms[svn.nroom]; croom = ptr_add(croom, 1))
 
-
-
             topologize(croom);
-
     }
     set_wall_state();
     /* for many room types, svr.rooms[].rtype is zeroed once the room has been
@@ -1573,9 +1467,7 @@ level_finalize_topology()
         svr.rooms[ridx].orig_rtype = svr.rooms[ridx].rtype;
 }
 
-export function /* void */
-mklev()
-{
+export function mklev() { /* void */
     reseed_random(rn2);
     reseed_random(rn2_on_display_rng);
 
@@ -1592,19 +1484,11 @@ mklev()
     reseed_random(rn2_on_display_rng);
 }
 
-export function /* void #ifdef SPECIALIZATION topologize(struct mkroom *croom, boolean do_ordinary) #else */
-
-
-
-topologize(croom)
-
-{
+export function topologize(croom) { /* void */
     let x, y;
-    let roomno = int(((ptr_diff(croom, svr.rooms[0])) + ROOMOFFSET));
+    let roomno = int((ptr_diff(croom, svr.rooms[0]) + ROOMOFFSET));
     let lowx = croom.lx, lowy = croom.ly;
     let hix = croom.hx, hiy = croom.hy;
-
-
 
     let subindex, nsubrooms = croom.nsubrooms;
 
@@ -1613,18 +1497,10 @@ topologize(croom)
     if ((levl()[lowx][lowy].roomno) == roomno || croom.irregular)
         return;
 
-
-
-
-
         {
         /* do innards first */
         for (x = lowx; x <= hix; x++)
             for (y = lowy; y <= hiy; y++)
-
-
-
-
 
                     levl()[x][y].roomno = unsigned(roomno);
         /* top and bottom edges */
@@ -1649,16 +1525,11 @@ topologize(croom)
     /* gs.subrooms */
     for (subindex = 0; subindex < nsubrooms; subindex++)
 
-
-
         topologize(croom.sbrooms[subindex]);
-
 }
 
 /* Find an unused room for a branch location. */
-function /* struct mkroom * */
-find_branch_room(mp)
-{
+function find_branch_room(mp) { /* struct mkroom * */
     let croom = null;
 
     if (svn.nroom == 0) {
@@ -1673,9 +1544,7 @@ find_branch_room(mp)
 }
 
 /* Find the room for (x,y).  Return null if not in a room. */
-function /* struct mkroom * */
-pos_to_room(x, y)
-{
+function pos_to_room(x, y) { /* struct mkroom * */
     let i;
     let curr;
 
@@ -1687,11 +1556,10 @@ pos_to_room(x, y)
 }
 
 /* If given a branch, randomly place a special stair or portal. */
-export function /* void */
-place_branch(
+export function place_branch(
     br,
-    x, y) /* location */
-{ const $frame = stack_frame(); try {
+    x, y) { /* void */ /* location */
+    const $frame = stack_frame(); try {
     let m = init_list(stack_struct(struct_nhcoord), {x: 0});
     let dest;
     let make_stairs;
@@ -1707,11 +1575,11 @@ place_branch(
 
     if (!x) { /* find random coordinates for branch */
         /* br_room = find_branch_room(&m); */
-        void find_branch_room(m);  /* sets m via mazexy() or somexy() */
+        find_branch_room(m);  /* sets m via mazexy() or somexy() */
         x = m.x;
         y = m.y;
     } else {
-        void pos_to_room(x, y);
+        pos_to_room(x, y);
     }
 
     if (on_level(br.end1, u.uz)) {
@@ -1734,7 +1602,7 @@ place_branch(
                                                      : +!br.end1_up;
 
         stairway_add(x, y, goes_up, FALSE, dest);
-        void set_levltyp(x, y, STAIRS);
+        set_levltyp(x, y, STAIRS);
         levl()[x][y].flags = goes_up ? LA_UP : LA_DOWN;
     }
     /*
@@ -1744,11 +1612,10 @@ place_branch(
      * next call.
      */
     gm.made_branch = TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-bydoor(x, y)
-{
+function bydoor(x, y) { /* boolean */
     let typ;
 
     if (isok(x + 1, y)) {
@@ -1775,45 +1642,35 @@ bydoor(x, y)
 }
 
 /* see whether it is allowable to create a door at [x,y] */
-export function /* int */
-okdoor(x, y)
-{
+export function okdoor(x, y) { /* int */
     let near_door = bydoor(x, y);
 
-    return ((((levl()[x][y].typ == HWALL || levl()[x][y].typ == VWALL)
+    return ((levl()[x][y].typ == HWALL || levl()[x][y].typ == VWALL)
             && ((isok(x - 1, y) && !IS_OBSTRUCTED(levl()[x - 1][y].typ))
                 || (isok(x + 1, y) && !IS_OBSTRUCTED(levl()[x + 1][y].typ))
                 || (isok(x, y - 1) && !IS_OBSTRUCTED(elt(levl()[x], y - 1).typ))
                 || (isok(x, y + 1) && !IS_OBSTRUCTED(levl()[x][y + 1].typ)))
-            && !near_door) ? 1 : 0));
+            && !near_door ? 1 : 0);
 }
 
 /* do we want a secret door/corridor? */
-export function /* boolean */
-maybe_sdoor(chance)
-{
+export function maybe_sdoor(chance) { /* boolean */
     return +((depth(u.uz) > 2) && !rn2(max(2, chance)));
 }
 
 /* create a door at x,y in room aroom */
-export function /* void */
-dodoor(x, y, aroom)
-{
+export function dodoor(x, y, aroom) { /* void */
     dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
-export function /* boolean */
-occupied(x, y)
-{
-    return (((t_at(x, y) || IS_FURNITURE(levl()[x][y].typ)
+export function occupied(x, y) { /* boolean */
+    return (t_at(x, y) || IS_FURNITURE(levl()[x][y].typ)
                       || is_lava(x, y) || is_pool(x, y)
-                      || invocation_pos(x, y)) ? 1 : 0));
+                      || invocation_pos(x, y) ? 1 : 0);
 }
 
 /* generate a corpse and some items on top of a trap */
-function /* void */
-mktrap_victim(ttmp)
-{
+function mktrap_victim(ttmp) { /* void */
     /* Object generated by the trap; initially NULL, stays NULL if
        the trap doesn't generate objects. */
     let otmp = null;
@@ -1934,9 +1791,7 @@ mktrap_victim(ttmp)
 }
 
 /* pick a random trap type, return NO_TRAP if "too hard" */
-function /* int */
-traptype_rnd(mktrapflags)
-{
+function traptype_rnd(mktrapflags) { /* int */
     let lvl = unsigned(level_difficulty());
     let kind = rnd(TRAPNUM - 1);
 
@@ -1998,9 +1853,7 @@ traptype_rnd(mktrapflags)
 }
 
 /* random trap type for the Rogue level */
-function /* int */
-traptype_roguelvl()
-{
+function traptype_roguelvl() { /* int */
     let kind;
 
     switch (rn2(7)) {
@@ -2032,13 +1885,12 @@ traptype_roguelvl()
 /* mktrap(): select trap type and location, then use maketrap() to create it;
    make it at location 'tm' when that isn't Null, otherwise in 'croom'
    if mktrapflags doesn't have MKTRAP_MAZEFLAG set, else in maze corridor */
-export function /* void */
-mktrap(
+export function mktrap(
     num,
     mktrapflags,
     croom,
-    tm)            /* specific location for trap */
-{ const $frame = stack_frame(); try {
+    tm) { /* void */ /* specific location for trap */
+    const $frame = stack_frame(); try {
     let mktrap_err = static_var("mktrap.mktrap_err", int, 0); /* move to struct g? */
     let t;
     let m = stack_struct(struct_nhcoord);
@@ -2083,7 +1935,7 @@ mktrap(
         struct_assign(m, tm);
     } else {
         let tryct = 0;
-        let avoid_boulder = (+(is_pit(kind) || is_hole(kind)));
+        let avoid_boulder = +(is_pit(kind) || is_hole(kind));
 
         do {
             if (++tryct > 200)
@@ -2102,7 +1954,7 @@ mktrap(
     kind = t ? t.ttyp : NO_TRAP;
 
     if (kind == WEB && !(mktrapflags & MKTRAP_NOSPIDERONWEB))
-        void makemon(mons[PM_GIANT_SPIDER], m.x, m.y, NO_MM_FLAGS);
+        makemon(mons[PM_GIANT_SPIDER], m.x, m.y, NO_MM_FLAGS);
     if (t && (mktrapflags & MKTRAP_SEEN))
         t.tseen = TRUE;
     if (kind == MAGIC_PORTAL && (u.ucamefrom.dnum || u.ucamefrom.dlevel)) {
@@ -2151,17 +2003,17 @@ mktrap(
         mktrap_victim(t);
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Create stairs up or down at x,y.
    If force is TRUE, change the terrain to ROOM first */
-export function /* void */
-mkstairs(
+export function mkstairs(
     x, y,
     up,
     croom,
-    force)
-{ const $frame = stack_frame(); try {
+    force) { /* void */
+    const $frame = stack_frame(); try {
     let ltyp;
     let dest = stack_struct(struct_d_level);
 
@@ -2192,14 +2044,13 @@ mkstairs(
     dest.dlevel = u.uz.dlevel + (up ? -1 : 1);
     stairway_add(x, y, up ? TRUE : FALSE, FALSE, dest);
 
-    void set_levltyp(x, y, STAIRS);
+    set_levltyp(x, y, STAIRS);
     levl()[x][y].flags = up ? LA_UP : LA_DOWN;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* is room a good one to generate up or down stairs in? */
-function /* boolean */
-generate_stairs_room_good(croom, phase)
-{
+function generate_stairs_room_good(croom, phase) { /* boolean */
     /*
      * phase values, smaller allows for more relaxed criteria:
      *  2 == no relaxed criteria;
@@ -2207,17 +2058,15 @@ generate_stairs_room_good(croom, phase)
      *  0 == allow same room as existing up/downstairs;
      * -1 == allow an unjoined room.
      */
-    return (((croom && (croom.needjoining || (phase < 0))
+    return (croom && (croom.needjoining || (phase < 0))
             && ((!has_dnstairs(croom) && !has_upstairs(croom))
                 || phase < 1)
             && (croom.rtype == OROOM
-                || ((phase < 2) && croom.rtype == THEMEROOM))) ? 1 : 0));
+                || ((phase < 2) && croom.rtype == THEMEROOM)) ? 1 : 0);
 }
 
 /* find a good room to generate an up or down stairs in */
-function /* struct mkroom * */
-generate_stairs_find_room()
-{
+function generate_stairs_find_room() { /* struct mkroom * */
     let croom;
     let i, phase, ai;
     let rmarr;
@@ -2225,7 +2074,7 @@ generate_stairs_find_room()
     if (!svn.nroom)
         return null;
 
-    rmarr = ref_to(int, addr_of(alloc(unsigned(unsigned(Math.imul(sizeof(int), unsigned(svn.nroom)))))));
+    rmarr = ref_to(int, addr_of(alloc(unsigned(Math.imul(sizeof(int), unsigned(svn.nroom))))));
 
     for (phase = 2; phase > -1; phase--) {
         ai = 0;
@@ -2246,9 +2095,8 @@ generate_stairs_find_room()
 
 /* construct stairs up and down within the same branch,
    up and down in different rooms if possible */
-function /* void */
-generate_stairs()
-{ const $frame = stack_frame(); try {
+function generate_stairs() { /* void */
+    const $frame = stack_frame(); try {
     /* generate_stairs_find_room() returns Null if nroom == 0, but that
        should never happen for a rooms+corridors style level */
     let gen_stairs_panic = init_string(static_array("generate_stairs.gen_stairs_panic", char, sizeof_string("generate_stairs: failed to find a room! (%d)")), _("generate_stairs: failed to find a room! (%d)"), true);
@@ -2279,11 +2127,11 @@ generate_stairs()
         }
         mkstairs(pos.x, pos.y, 1, croom, FALSE); /* up */
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mkfount(croom)
-{ const $frame = stack_frame(); try {
+function mkfount(croom) { /* void */
+    const $frame = stack_frame(); try {
     let m = stack_struct(struct_nhcoord);
 
     if (!find_okay_roompos(croom, m))
@@ -2297,11 +2145,10 @@ mkfount(croom)
         levl()[m.x][m.y].horizontal = 1;
 
     svl.level.flags.nfountains++;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-find_okay_roompos(croom, crd)
-{
+function find_okay_roompos(croom, crd) { /* boolean */
     let tryct = 0;
 
     do {
@@ -2313,9 +2160,8 @@ find_okay_roompos(croom, crd)
     return TRUE;
 }
 
-function /* void */
-mksink(croom)
-{ const $frame = stack_frame(); try {
+function mksink(croom) { /* void */
+    const $frame = stack_frame(); try {
     let m = stack_struct(struct_nhcoord);
 
     if (!find_okay_roompos(croom, m))
@@ -2326,11 +2172,11 @@ mksink(croom)
         return;
 
     svl.level.flags.nsinks++;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mkaltar(croom)
-{ const $frame = stack_frame(); try {
+function mkaltar(croom) { /* void */
+    const $frame = stack_frame(); try {
     let m = stack_struct(struct_nhcoord);
     let al;
 
@@ -2347,11 +2193,11 @@ mkaltar(croom)
     /* -1 - A_CHAOTIC, 0 - A_NEUTRAL, 1 - A_LAWFUL */
     al = rn2(A_LAWFUL + 2) - 1;
     levl()[m.x][m.y].flags = Align2amask(al);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-mkgrave(croom)
-{ const $frame = stack_frame(); try {
+function mkgrave(croom) { /* void */
+    const $frame = stack_frame(); try {
     let m = stack_struct(struct_nhcoord);
     let tryct = 0;
     let otmp;
@@ -2392,9 +2238,10 @@ mkgrave(croom)
 
     /* Leave a bell, in case we accidentally buried someone alive */
     if (dobell)
-        void mksobj_at(BELL, m.x, m.y, TRUE, FALSE);
+        mksobj_at(BELL, m.x, m.y, TRUE, FALSE);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Major level transmutation:  add a set of stairs (to the Sanctum) after
@@ -2406,9 +2253,7 @@ mkgrave(croom)
  * possible that "the Book reads the hero" rather than vice versa if
  * attempted while blind (in order to make blind-from-birth conduct viable).]
  */
-export function /* void */
-mkinvokearea()
-{
+export function mkinvokearea() { /* void */
     let dist, wallct;
     let xmin, xmax, ymin, ymax;
     let i;
@@ -2499,9 +2344,7 @@ mkinvokearea()
 /* Change level topology.  Boulders in the vicinity are eliminated.
  * Temporarily overrides vision in the name of a nice effect.
  */
-function /* void */
-mkinvpos(x, y, dist)
-{
+function mkinvpos(x, y, dist) { /* void */
     let ttmp;
     let otmp;
     let make_rocks;
@@ -2511,8 +2354,6 @@ mkinvpos(x, y, dist)
        these are also defined in mkmaze.c and may not be appropriate for
        mazes with corridors wider than 1 or for cavernous levels */
 
-
-
     /* clip at existing map borders if necessary */
     if (!within_bounded_area(x, y, x_maze_min, y_maze_min,
                              gx.x_maze_max, gy.y_maze_max)) {
@@ -2521,7 +2362,7 @@ mkinvpos(x, y, dist)
             let errfunc;
 
             errfunc = !isok(x, y) ? panic : impossible;
-            (errfunc)(_("mkinvpos: <%d,%d> (%d) off map edge!"), x, y, dist);
+            errfunc(_("mkinvpos: <%d,%d> (%d) off map edge!"), x, y, dist);
         }
         return;
     }
@@ -2583,9 +2424,9 @@ mkinvpos(x, y, dist)
             seemimic(mon);
 
         if ((ttmp = t_at(x, y)) != null)
-            void mintrap(mon, NO_TRAP_FLAGS);
+            mintrap(mon, NO_TRAP_FLAGS);
         else
-            void minliquid(mon);
+            minliquid(mon);
     }
 
     if (!does_block(x, y, lev))
@@ -2593,15 +2434,13 @@ mkinvpos(x, y, dist)
 
     /* display new value of position; could have a monster/object on it */
     newsym(x, y);
-
-
-} export const x_maze_min = 2; export const y_maze_min = 2;
+}
+export const x_maze_min = 2;
+export const y_maze_min = 2;
 
 /* reduces clutter in mkinvokearea() while avoiding potential static analyzer
    confusion about using isok(x,y) to control access to levl[x][y] */
-function /* int */
-mkinvk_check_wall(x, y)
-{
+function mkinvk_check_wall(x, y) { /* int */
     let ltyp;
 
     if (!isok(x, y))
@@ -2620,9 +2459,7 @@ mkinvk_check_wall(x, y)
  *
  * Ludios will remain isolated until the branch is corrected by this function.
  */
-function /* void */
-mk_knox_portal(x, y)
-{
+function mk_knox_portal(x, y) { /* void */
     let source;
     let br;
     let u_depth;
@@ -2631,7 +2468,7 @@ mk_knox_portal(x, y)
     /* dungeon_branch() panics (so never returns) if result would be Null */
     assert(br != null);
 
-    if (on_level((svd.dungeon_topology.d_knox_level), br.end1)) {
+    if (on_level(svd.dungeon_topology.d_knox_level, br.end1)) {
         source = br.end2;
     } else {
         /* disallow Knox branch on a level with one branch already */
@@ -2647,7 +2484,7 @@ mk_knox_portal(x, y)
     if (!(u.uz.dnum == oracle_level().dnum      /* in main dungeon */
           && !at_dgn_entrance(_("The Quest"))    /* but not Quest's entry */
           && (u_depth = depth(u.uz)) > 10    /* beneath 10 */
-          && u_depth < depth((svd.dungeon_topology.d_medusa_level)))) /* and above Medusa */
+          && u_depth < depth(svd.dungeon_topology.d_medusa_level))) /* and above Medusa */
         return;
 
     /* Adjust source to be current level and re-insert branch. */
@@ -2659,392 +2496,138 @@ mk_knox_portal(x, y)
 }
 
 /*mklev.c*/
+
 import { A_LAWFUL } from "./align.h.js";
 import { Align2amask } from "./align.h.macros.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RANDOM_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import {
+    ARMOR_CLASS, FOOD_CLASS, GEM_CLASS, POTION_CLASS, RANDOM_CLASS, RING_CLASS, SCROLL_CLASS,
+    S_HUMAN, S_MIMIC, TOOL_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { GLYPH_UNEXPLORED } from "./display.h.js";
-import { BR_NO_END1 } from "./dungeon.h.js";
-import { BR_NO_END2 } from "./dungeon.h.js";
-import { BR_PORTAL } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { Is_oracle_level } from "./dungeon.h.macros.js";
-import { Is_rogue_level } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
-import { within_bounded_area } from "./dungeon.h.macros.js";
-import { DUST } from "./engrave.h.js";
-import { MARK } from "./engrave.h.js";
+import { BR_NO_END1, BR_NO_END2, BR_PORTAL, struct_d_level } from "./dungeon.h.js";
+import {
+    In_endgame, Inhell, Is_oracle_level, Is_rogue_level, Is_waterlevel, within_bounded_area,
+} from "./dungeon.h.macros.js";
+import { DUST, MARK } from "./engrave.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { DOORINC } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { MAXNROFROOMS } from "./global.h.js";
-import { MAX_SUBROOMS } from "./global.h.js";
-import { NHL_SB_SAFE } from "./global.h.js";
-import { NHLpa_impossible } from "./global.h.js";
-import { NHLpa_panic } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { struct_nhl_sandbox_info } from "./global.h.js";
-import { CORPSTAT_INIT } from "./hack.h.js";
-import { DIR_E } from "./hack.h.js";
-import { DIR_N } from "./hack.h.js";
-import { DIR_S } from "./hack.h.js";
-import { DIR_W } from "./hack.h.js";
-import { MKTRAP_MAZEFLAG } from "./hack.h.js";
-import { MKTRAP_NOFLAGS } from "./hack.h.js";
-import { MKTRAP_NOSPIDERONWEB } from "./hack.h.js";
-import { MKTRAP_NOVICTIM } from "./hack.h.js";
-import { MKTRAP_SEEN } from "./hack.h.js";
-import { MM_NOGRP } from "./hack.h.js";
-import { NHCB_LVL_ENTER } from "./hack.h.js";
-import { NO_MM_FLAGS } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { TAINT_AGE } from "./hack.h.js";
-import { most_themes } from "./hack.h.js";
-import { tut_themes } from "./hack.h.js";
-import { DIR_180 } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { astral_level } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { medusa_level } from "./hack.h.macros.js";
-import { mines_dnum } from "./hack.h.macros.js";
-import { oracle_level } from "./hack.h.macros.js";
-import { qsort } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { tutorial_dnum } from "./hack.h.macros.js";
-import { wiz1_level } from "./hack.h.macros.js";
+import {
+    BUFSZ, COLNO, DOORINC, FALSE, MAXNROFROOMS, MAX_SUBROOMS, NHL_SB_SAFE, NHLpa_impossible,
+    NHLpa_panic, ROWNO, TRUE, coordxy, struct_nhl_sandbox_info,
+} from "./global.h.js";
+import {
+    CORPSTAT_INIT, DIR_E, DIR_N, DIR_S, DIR_W, MKTRAP_MAZEFLAG, MKTRAP_NOFLAGS,
+    MKTRAP_NOSPIDERONWEB, MKTRAP_NOVICTIM, MKTRAP_SEEN, MM_NOGRP, NHCB_LVL_ENTER, NO_MM_FLAGS,
+    NO_TRAP_FLAGS, TAINT_AGE, most_themes, tut_themes,
+} from "./hack.h.js";
+import {
+    DIR_180, ROLL_FROM, astral_level, max, medusa_level, mines_dnum, oracle_level, qsort, rn1,
+    tutorial_dnum, wiz1_level,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { debugpline0 } from "./lint.h.macros.js";
 import { LUA_GCCOLLECT } from "./lua.h.js";
-import { ANTHOLE } from "./mkroom.h.js";
-import { BARRACKS } from "./mkroom.h.js";
-import { BEEHIVE } from "./mkroom.h.js";
-import { COCKNEST } from "./mkroom.h.js";
-import { COURT } from "./mkroom.h.js";
-import { FILL_NORMAL } from "./mkroom.h.js";
-import { LEPREHALL } from "./mkroom.h.js";
-import { MORGUE } from "./mkroom.h.js";
-import { OROOM } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { SHARED } from "./mkroom.h.js";
-import { SHOPBASE } from "./mkroom.h.js";
-import { SWAMP } from "./mkroom.h.js";
-import { TEMPLE } from "./mkroom.h.js";
-import { THEMEROOM } from "./mkroom.h.js";
-import { VAULT } from "./mkroom.h.js";
-import { ZOO } from "./mkroom.h.js";
-import { struct_mkroom } from "./mkroom.h.js";
+import {
+    ANTHOLE, BARRACKS, BEEHIVE, COCKNEST, COURT, FILL_NORMAL, LEPREHALL, MORGUE, OROOM, ROOMOFFSET,
+    SHARED, SHOPBASE, SWAMP, TEMPLE, THEMEROOM, VAULT, ZOO, struct_mkroom,
+} from "./mkroom.h.js";
 import { G_GONE } from "./monflag.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_GIANT_MIMIC } from "./monsters.h.js";
-import { PM_GIANT_SPIDER } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_LARGE_MIMIC } from "./monsters.h.js";
-import { PM_LEPRECHAUN } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_SMALL_MIMIC } from "./monsters.h.js";
-import { PM_SOLDIER } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
+import {
+    PM_ARCHEOLOGIST, PM_COCKATRICE, PM_DWARF, PM_ELF, PM_GIANT_MIMIC, PM_GIANT_SPIDER, PM_GNOME,
+    PM_HUMAN, PM_KILLER_BEE, PM_LARGE_MIMIC, PM_LEPRECHAUN, PM_ORC, PM_SMALL_MIMIC, PM_SOLDIER,
+    PM_WIZARD,
+} from "./monsters.h.js";
 import { SPBOOK_no_NOVEL } from "./objclass.h.js";
-import { ARROW } from "./objects.h.js";
-import { BELL } from "./objects.h.js";
-import { BOULDER } from "./objects.h.js";
-import { CHEST } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRAM_RATION } from "./objects.h.js";
-import { DART } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { KELP_FROND } from "./objects.h.js";
-import { LARGE_BOX } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { POT_EXTRA_HEALING } from "./objects.h.js";
-import { POT_GAIN_ENERGY } from "./objects.h.js";
-import { POT_HEALING } from "./objects.h.js";
-import { POT_SPEED } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SCR_CONFUSE_MONSTER } from "./objects.h.js";
-import { SCR_ENCHANT_ARMOR } from "./objects.h.js";
-import { SCR_ENCHANT_WEAPON } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SCR_TELEPORTATION } from "./objects.h.js";
-import { SPE_HEALING } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TALLOW_CANDLE } from "./objects.h.js";
-import { WAN_DIGGING } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { ALTAR } from "./rm.h.js";
-import { BLCORNER } from "./rm.h.js";
-import { BRCORNER } from "./rm.h.js";
-import { CORR } from "./rm.h.js";
-import { DOOR } from "./rm.h.js";
-import { D_CLOSED } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_LOCKED } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { D_TRAPPED } from "./rm.h.js";
-import { FOUNTAIN } from "./rm.h.js";
-import { HWALL } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { LA_DOWN } from "./rm.h.js";
-import { LA_UP } from "./rm.h.js";
-import { MOAT } from "./rm.h.js";
-import { POOL } from "./rm.h.js";
-import { ROOM } from "./rm.h.js";
-import { SCORR } from "./rm.h.js";
-import { SDOOR } from "./rm.h.js";
-import { SINK } from "./rm.h.js";
-import { STAIRS } from "./rm.h.js";
-import { STONE } from "./rm.h.js";
-import { TLCORNER } from "./rm.h.js";
-import { TRCORNER } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { VWALL } from "./rm.h.js";
-import { WATER } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { struct_rm } from "./rm.h.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FURNITURE } from "./rm.h.macros.js";
-import { IS_OBSTRUCTED } from "./rm.h.macros.js";
-import { IS_POOL } from "./rm.h.macros.js";
-import { IS_STWALL } from "./rm.h.macros.js";
-import { IS_WALL } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { ARROW_TRAP } from "./trap.h.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { DART_TRAP } from "./trap.h.js";
-import { FIRE_TRAP } from "./trap.h.js";
-import { HOLE } from "./trap.h.js";
-import { LANDMINE } from "./trap.h.js";
-import { LEVEL_TELEP } from "./trap.h.js";
-import { MAGIC_PORTAL } from "./trap.h.js";
-import { MAGIC_TRAP } from "./trap.h.js";
-import { NO_TRAP } from "./trap.h.js";
-import { PIT } from "./trap.h.js";
-import { POLY_TRAP } from "./trap.h.js";
-import { ROCKTRAP } from "./trap.h.js";
-import { ROLLING_BOULDER_TRAP } from "./trap.h.js";
-import { RUST_TRAP } from "./trap.h.js";
-import { SLP_GAS_TRAP } from "./trap.h.js";
-import { SPIKED_PIT } from "./trap.h.js";
-import { SQKY_BOARD } from "./trap.h.js";
-import { STATUE_TRAP } from "./trap.h.js";
-import { TELEP_TRAP } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { TRAPNUM } from "./trap.h.js";
-import { TRAPPED_CHEST } from "./trap.h.js";
-import { TRAPPED_DOOR } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
-import { is_hole } from "./trap.h.macros.js";
-import { is_pit } from "./trap.h.macros.js";
-import { COULD_SEE } from "./vision.h.js";
-import { IN_SIGHT } from "./vision.h.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { nh_delay_output } from "./winprocs.h.macros.js";
+import {
+    ARROW, BELL, BOULDER, CHEST, CORPSE, CRAM_RATION, DART, FOOD_RATION, GOLD_PIECE, KELP_FROND,
+    LARGE_BOX, LEMBAS_WAFER, POT_EXTRA_HEALING, POT_GAIN_ENERGY, POT_HEALING, POT_SPEED, ROCK,
+    SCR_CONFUSE_MONSTER, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SCR_SCARE_MONSTER,
+    SCR_TELEPORTATION, SPE_HEALING, STATUE, TALLOW_CANDLE, WAN_DIGGING, WAX_CANDLE,
+} from "./objects.h.js";
+import {
+    ALTAR, BLCORNER, BRCORNER, CORR, DOOR, D_CLOSED, D_ISOPEN, D_LOCKED, D_NODOOR, D_TRAPPED,
+    FOUNTAIN, HWALL, ICE, IRONBARS, LA_DOWN, LA_UP, MOAT, POOL, ROOM, SCORR, SDOOR, SINK, STAIRS,
+    STONE, TLCORNER, TRCORNER, TREE, VWALL, WATER, W_NONDIGGABLE, struct_rm,
+} from "./rm.h.js";
+import {
+    IS_DOOR, IS_FURNITURE, IS_OBSTRUCTED, IS_POOL, IS_STWALL, IS_WALL, levl, m_at,
+} from "./rm.h.macros.js";
+import {
+    ARROW_TRAP, BEAR_TRAP, DART_TRAP, FIRE_TRAP, HOLE, LANDMINE, LEVEL_TELEP, MAGIC_PORTAL,
+    MAGIC_TRAP, NO_TRAP, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP, SLP_GAS_TRAP,
+    SPIKED_PIT, SQKY_BOARD, STATUE_TRAP, TELEP_TRAP, TRAPDOOR, TRAPNUM, TRAPPED_CHEST, TRAPPED_DOOR,
+    VIBRATING_SQUARE, WEB,
+} from "./trap.h.js";
+import { is_hole, is_pit } from "./trap.h.macros.js";
+import { COULD_SEE, IN_SIGHT } from "./vision.h.js";
+import { display_nhwindow, nh_delay_output } from "./winprocs.h.macros.js";
 import { TT_BURIEDBALL } from "./you.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
-import { abs } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
-import { lua_gc } from "../rt/lua.js";
-import { lua_getglobal } from "../rt/lua.js";
-import { lua_pushstring } from "../rt/lua.js";
-import { lua_settop } from "../rt/lua.js";
+import { char, int, ord, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop, uchars } from "../rt/heap.js";
+import { abs, assert, free, memcpy, memset, sprintf, strcat } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+    static_var,
+} from "../rt/locals.js";
+import { lua_gc, lua_getglobal, lua_pushstring, lua_settop } from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { record_or_opaque } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, ptr_add, ptr_diff, ptr_to, record_or_opaque, ref_of, ref_to,
+    struct_assign, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { getbones } from "./bones.js";
 import { isok } from "./cmd.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gt } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gx } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { nhcb_counts } from "./decl.js";
-import { nhcb_name } from "./decl.js";
-import { svd } from "./decl.js";
-import { svi } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
-import { xdir } from "./decl.js";
-import { ydir } from "./decl.js";
+import { is_lava, is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    gc, gd, gi, gl, gm, gn, gs, gt, gu, gv, gx, gy, iflags, nhcb_counts, nhcb_name, svd, svi, svl,
+    svm, svn, svr, u, xdir, ydir,
+} from "./decl.js";
 import { buried_ball_to_punishment } from "./dig.js";
-import { back_to_glyph } from "./display.js";
-import { flush_screen } from "./display.js";
-import { newsym } from "./display.js";
-import { set_wall_state } from "./display.js";
+import { back_to_glyph, flush_screen, newsym, set_wall_state } from "./display.js";
 import { breaktest } from "./dothrow.js";
 import { defsyms } from "./drawing.js";
-import { Can_fall_thru } from "./dungeon.js";
-import { In_V_tower } from "./dungeon.js";
-import { In_hell } from "./dungeon.js";
-import { In_mines } from "./dungeon.js";
-import { In_quest } from "./dungeon.js";
-import { Is_botlevel } from "./dungeon.js";
-import { Is_branchlev } from "./dungeon.js";
-import { Is_special } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { at_dgn_entrance } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dungeon_branch } from "./dungeon.js";
-import { dunlev } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { find_level } from "./dungeon.js";
-import { free_exclusions } from "./dungeon.js";
-import { init_dungeons } from "./dungeon.js";
-import { init_mapseen } from "./dungeon.js";
-import { insert_branch } from "./dungeon.js";
-import { level_difficulty } from "./dungeon.js";
-import { on_level } from "./dungeon.js";
-import { single_level_branch } from "./dungeon.js";
+import {
+    Can_fall_thru, In_V_tower, In_hell, In_mines, In_quest, Is_botlevel, Is_branchlev, Is_special,
+    assign_level, at_dgn_entrance, depth, dungeon_branch, dunlev, dunlevs_in_dungeon, find_level,
+    free_exclusions, init_dungeons, init_mapseen, insert_branch, level_difficulty, on_level,
+    single_level_branch,
+} from "./dungeon.js";
 import { panic } from "./end.js";
-import { make_engr_at } from "./engrave.js";
-import { make_grave } from "./engrave.js";
-import { random_engraving } from "./engrave.js";
-import { wipe_engr_at } from "./engrave.js";
-import { makerogueghost } from "./extralev.js";
-import { makeroguerooms } from "./extralev.js";
+import { make_engr_at, make_grave, random_engraving, wipe_engr_at } from "./engrave.js";
+import { makerogueghost, makeroguerooms } from "./extralev.js";
 import { paniclog } from "./files.js";
 import { glyph_to_cmap } from "./glyphs.js";
-import { in_rooms } from "./hack.js";
-import { invocation_pos } from "./hack.js";
+import { in_rooms, invocation_pos } from "./hack.js";
 import { sobj_at } from "./invent.js";
-import { makemon } from "./makemon.js";
-import { mkclass } from "./makemon.js";
-import { set_mimic_sym } from "./makemon.js";
-import { bound_digging } from "./mkmaze.js";
-import { makemaz } from "./mkmaze.js";
-import { mazexy } from "./mkmaze.js";
-import { mkportal } from "./mkmaze.js";
-import { set_levltyp } from "./mkmaze.js";
-import { wallification } from "./mkmaze.js";
-import { add_to_buried } from "./mkobj.js";
-import { add_to_container } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { mkcorpstat } from "./mkobj.js";
-import { mkgold } from "./mkobj.js";
-import { mkobj } from "./mkobj.js";
-import { mkobj_at } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { mksobj_at } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { antholemon } from "./mkroom.js";
-import { do_mkroom } from "./mkroom.js";
-import { has_dnstairs } from "./mkroom.js";
-import { has_upstairs } from "./mkroom.js";
-import { inside_room } from "./mkroom.js";
-import { somex } from "./mkroom.js";
-import { somexyspace } from "./mkroom.js";
-import { somey } from "./mkroom.js";
-import { minliquid } from "./mon.js";
-import { seemimic } from "./mon.js";
+import { makemon, mkclass, set_mimic_sym } from "./makemon.js";
+import { bound_digging, makemaz, mazexy, mkportal, set_levltyp, wallification } from "./mkmaze.js";
+import {
+    add_to_buried, add_to_container, curse, dealloc_obj, mkcorpstat, mkgold, mkobj, mkobj_at,
+    mksobj, mksobj_at, obj_extract_self, place_object, weight,
+} from "./mkobj.js";
+import {
+    antholemon, do_mkroom, has_dnstairs, has_upstairs, inside_room, somex, somexyspace, somey,
+} from "./mkroom.js";
+import { minliquid, seemimic } from "./mon.js";
 import { mons } from "./monst.js";
-import { nhl_done } from "./nhlua.js";
-import { nhl_init } from "./nhlua.js";
-import { nhl_loadlua } from "./nhlua.js";
-import { nhl_pcall_handle } from "./nhlua.js";
+import { nhl_done, nhl_init, nhl_loadlua, nhl_pcall_handle } from "./nhlua.js";
 import { oinit } from "./o_init.js";
 import { objects } from "./objects.js";
 import { nh_getenv } from "./options.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { init_rect } from "./rect.js";
-import { rnd_rect } from "./rect.js";
+import { You, impossible, pline_The } from "./pline.js";
+import { init_rect, rnd_rect } from "./rect.js";
 import { clear_regions } from "./region.js";
-import { reseed_random } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { reseed_random, rn2, rn2_on_display_rng, rnd } from "./rnd.js";
 import { obfree } from "./shk.js";
-import { check_room } from "./sp_lev.js";
-import { create_des_coder } from "./sp_lev.js";
-import { create_room } from "./sp_lev.js";
-import { dig_corridor } from "./sp_lev.js";
-import { fill_special_room } from "./sp_lev.js";
-import { reset_xystart_size } from "./sp_lev.js";
-import { stairway_add } from "./stairs.js";
-import { stairway_free_all } from "./stairs.js";
+import {
+    check_room, create_des_coder, create_room, dig_corridor, fill_special_room, reset_xystart_size,
+} from "./sp_lev.js";
+import { stairway_add, stairway_free_all } from "./stairs.js";
 import { begin_burn } from "./timeout.js";
-import { deltrap } from "./trap.js";
-import { maketrap } from "./trap.js";
-import { mintrap } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { t_at } from "./trap.js";
-import { does_block } from "./vision.js";
-import { unblock_point } from "./vision.js";
+import { deltrap, maketrap, mintrap, reset_utrap, t_at } from "./trap.js";
+import { does_block, unblock_point } from "./vision.js";
 import { fracture_rock } from "./zap.js";
 const struct_lua_State = record_or_opaque("struct_lua_State");
 const __FILE__ = "mklev.c";

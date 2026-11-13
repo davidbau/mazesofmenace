@@ -2,34 +2,13 @@
 /*      Copyright 1991, M. Stephenson                             */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "dlb.h"
-
 /*  quest-specific pager routines. */
 
 export const QTEXT_FILE = "quest.lua";
 
-
-// #include "wintty.h"
-
-
-
 /* sometimes find_qarti(gi.invent), and gi.invent can be null */
- 
 
-
-
-
-
-
-
-
-
-
-
-export function /* short */
-quest_info(typ)
-{
+export function quest_info(typ) { /* short */
     switch (typ) {
     case 0:
         return gu.urole.questarti;
@@ -46,32 +25,24 @@ quest_info(typ)
 }
 
 /* return your role leader's name */
-export function /* const char * */
-ldrname()
-{
+export function ldrname() { /* const char * */
     let i = gu.urole.ldrnum;
 
-    void sprintf(gn.nambuf, _("%s%s"), type_is_pname(mons[i]) ? _("") : _("the "), mons[i].pmnames[NEUTRAL])
+    sprintf(gn.nambuf, _("%s%s"), type_is_pname(mons[i]) ? _("") : _("the "), mons[i].pmnames[NEUTRAL])
 ;
     return gn.nambuf;
 }
 
 /* return your intermediate target string */
-function /* const char * */
-intermed()
-{
+function intermed() { /* const char * */
     return gu.urole.intermed;
 }
 
-export function /* boolean */
-is_quest_artifact(otmp)
-{
+export function is_quest_artifact(otmp) { /* boolean */
     return (+(otmp.oartifact == gu.urole.questarti));
 }
 
-function /* struct obj * */
-find_qarti(ochain)
-{
+function find_qarti(ochain) { /* struct obj * */
     let otmp, qarti;
 
     for (otmp = ochain; otmp; otmp = otmp.nobj) {
@@ -85,9 +56,7 @@ find_qarti(ochain)
 
 /* check several object chains for the quest artifact to determine
    whether it is present on the current level */
-export function /* struct obj * */
-find_quest_artifact(whichchains)
-{
+export function find_quest_artifact(whichchains) { /* struct obj * */
     let mtmp;
     let qarti = null;
 
@@ -120,57 +89,38 @@ find_quest_artifact(whichchains)
 }
 
 /* return your role nemesis' name */
-function /* const char * */
-neminame()
-{
+function neminame() { /* const char * */
     let i = gu.urole.neminum;
 
-    void sprintf(gn.nambuf, _("%s%s"), type_is_pname(mons[i]) ? _("") : _("the "), mons[i].pmnames[NEUTRAL])
+    sprintf(gn.nambuf, _("%s%s"), type_is_pname(mons[i]) ? _("") : _("the "), mons[i].pmnames[NEUTRAL])
 ;
     return gn.nambuf;
 }
 
-function /* const char * */
-guardname() /* return your role leader's guard monster name */
-{
+function guardname() { /* const char * */ /* return your role leader's guard monster name */
     let i = gu.urole.guardnum;
 
     return mons[i].pmnames[NEUTRAL];
 }
 
-function /* const char * */
-homebase() /* return your role leader's location */
-{
+function homebase() { /* const char * */ /* return your role leader's location */
     return gu.urole.homebase;
 }
 
 /* returns 1 if nemesis death message mentions noxious fumes, otherwise 0;
    does not display the message */
-export function /* int */
-stinky_nemesis(mon)
-{ const $frame = stack_frame(); try {
+export function stinky_nemesis(mon) { /* int */
+    const $frame = stack_frame(); try {
     let mesg = stack_var(ptr_to(char), 0);
     let res = 0;
 
+    /* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-    (void (mon));
+    (mon);
     /* since nemdead() just gave the message for hero's nemesis even if 'mon'
        is some other role's nemesis (feasible in wizard mode), base any gas
        cloud on the text that was shown even if not appropriate for 'mon' */
-    void com_pager_core(gu.urole.filecode, _("killed_nemesis"), FALSE, mesg);
-
+    com_pager_core(gu.urole.filecode, _("killed_nemesis"), FALSE, mesg);
 
     /* this is somewhat fragile; it assumes that when both {noxious or
        poisonous or toxic} and {gas or fumes} are present, the latter
@@ -180,7 +130,7 @@ stinky_nemesis(mon)
         let p;
 
         /* change newlines into spaces to cope with "...noxious\nfumes..." */
-        void strNsubst(mesg[0], _("\n"), _(" "), 0);
+        strNsubst(mesg[0], _("\n"), _(" "), 0);
 
         if (((p = strstri(mesg[0], _("noxious"))) != 0
              || (p = strstri(mesg[0], _("poisonous"))) != 0
@@ -191,15 +141,14 @@ stinky_nemesis(mon)
         free((mesg[0]));
     }
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* replace deity, leader, nemesis, or artifact name with pronoun;
    overwrites cvt_buf[] */
-function /* void */
-qtext_pronoun(
+function qtext_pronoun(
     who,
-    which) /* 'h'|'H'|'i'|'I'|'j'|'J' */
-{
+    which) { /* void */ /* 'h'|'H'|'i'|'I'|'j'|'J' */
     let pnoun;
     let godgend;
     let lwhich = lowc(which); /* H,I,J -> h,i,j */
@@ -225,16 +174,14 @@ qtext_pronoun(
                 : (lwhich == ord('i')) ? genders[godgend].him
                 : (lwhich == ord('j')) ? genders[godgend].his : _("?");
     }
-    void strcpy(gc.cvt_buf, pnoun);
+    strcpy(gc.cvt_buf, pnoun);
     /* capitalize for H,I,J */
     if (lwhich != which)
         chars[gc.cvt_buf + 0] = highc(chars[gc.cvt_buf + 0]);
     return;
 }
 
-function /* void */
-convert_arg(c)
-{
+function convert_arg(c) { /* void */
     let str;
 
     switch (c) {
@@ -252,10 +199,10 @@ convert_arg(c)
         str = rank_of(MIN_QUEST_LEVEL, Role_switch(), flags.female);
         break;
     case ord('s'):
-        str = (flags.female) ? _("sister") : _("brother");
+        str = flags.female ? _("sister") : _("brother");
         break;
     case ord('S'):
-        str = (flags.female) ? _("daughter") : _("son");
+        str = flags.female ? _("daughter") : _("son");
         break;
     case ord('l'):
         str = ldrname();
@@ -321,12 +268,10 @@ convert_arg(c)
         str = _("");
         break;
     }
-    void strcpy(gc.cvt_buf, str);
+    strcpy(gc.cvt_buf, str);
 }
 
-function /* void */
-convert_line(in_line, out_line)
-{
+function convert_line(in_line, out_line) { /* void */
     let c, cc;
 
     cc = out_line;
@@ -344,11 +289,11 @@ convert_line(in_line, out_line)
                 switch (chars[(++c)]) {
                 /* insert "a"/"an" prefix */
                 case ord('A'):
-                    void strcat(cc, An(gc.cvt_buf));
+                    strcat(cc, An(gc.cvt_buf));
                     cc += strlen(cc);
                     continue; /* for */
                 case ord('a'):
-                    void strcat(cc, an(gc.cvt_buf));
+                    strcat(cc, an(gc.cvt_buf));
                     cc += strlen(cc);
                     continue; /* for */
 
@@ -377,7 +322,7 @@ convert_line(in_line, out_line)
                     /* FALLTHROUGH */;
                     /*FALLTHRU*/
                 case ord('p'):
-                    void strcpy(gc.cvt_buf, makeplural(gc.cvt_buf));
+                    strcpy(gc.cvt_buf, makeplural(gc.cvt_buf));
                     break;
 
                 /* append possessive suffix */
@@ -386,13 +331,13 @@ convert_line(in_line, out_line)
                     /* FALLTHROUGH */;
                     /*FALLTHRU*/
                 case ord('s'):
-                    void strcpy(gc.cvt_buf, s_suffix(gc.cvt_buf));
+                    strcpy(gc.cvt_buf, s_suffix(gc.cvt_buf));
                     break;
 
                 /* strip any "the" prefix */
                 case ord('t'):
                     if (!strncmpi(gc.cvt_buf, _("the "), 4)) {
-                        void strcat(cc, gc.cvt_buf + 4);
+                        strcat(cc, gc.cvt_buf + 4);
                         cc += strlen(cc);
                         continue; /* for */
                     }
@@ -402,7 +347,7 @@ convert_line(in_line, out_line)
                     --c; /* undo switch increment */
                     break;
                 }
-                void strcat(cc, gc.cvt_buf);
+                strcat(cc, gc.cvt_buf);
                 cc += strlen(gc.cvt_buf);
                 break;
             }
@@ -419,9 +364,8 @@ convert_line(in_line, out_line)
     return;
 }
 
-function /* void */
-deliver_by_pline(str)
-{ const $frame = stack_frame(); try {
+function deliver_by_pline(str) { /* void */
+    const $frame = stack_frame(); try {
     let in_line = stack_array(char, BUFSZ), out_line = stack_array(char, BUFSZ);
     let msgp = str, msgend = eos(str);
 
@@ -433,11 +377,11 @@ deliver_by_pline(str)
         convert_line(in_line, out_line);
         pline(_("%s"), out_line);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-deliver_by_window(msg, how)
-{ const $frame = stack_frame(); try {
+function deliver_by_window(msg, how) { /* void */
+    const $frame = stack_frame(); try {
     let in_line = stack_array(char, BUFSZ), out_line = stack_array(char, BUFSZ);
     let msgp = msg, msgend = eos(msg);
     let datawin = create_nhwindow()(how);
@@ -453,24 +397,22 @@ deliver_by_window(msg, how)
 
     display_nhwindow()(datawin, TRUE);
     destroy_nhwindow()(datawin);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* boolean */
-skip_pager(common)
-{
+function skip_pager(common) { /* boolean */
     /* WIZKIT: suppress plot feedback if starting with quest artifact */
     if (program_state.wizkit_wishing)
         return TRUE;
     return FALSE;
 }
 
-function /* boolean */
-com_pager_core(
+function com_pager_core(
     section,
     msgid,
     showerror,
-    rawtext)
-{ const $frame = stack_frame(); try {
+    rawtext) { /* boolean */
+    const $frame = stack_frame(); try {
     var howtoput = static_array("com_pager_core.howtoput", ptr_to(char), null, [
         _("pline"), _("window"), _("text"), _("menu"), _("default"), 0
     ]);
@@ -582,9 +524,9 @@ com_pager_core(
         if (!synopsis) {
             var tmpbuf = stack_array(char, BUFSZ);
 
-            void sprintf(tmpbuf, _("[%.*s]"), BUFSZ - 1 - 2, text);
+            sprintf(tmpbuf, _("[%.*s]"), BUFSZ - 1 - 2, text);
             /* change every newline character to a space */
-            void strNsubst(tmpbuf, _("\n"), _(" "), 0);
+            strNsubst(tmpbuf, _("\n"), _(" "), 0);
             synopsis = dupstr(tmpbuf);
         }
     }
@@ -597,18 +539,13 @@ com_pager_core(
     if (synopsis) {
         var in_line = stack_array(char, BUFSZ), out_line = stack_array(char, BUFSZ);
 
-
-
-
-
-        void strcpy(in_line, synopsis);
+        strcpy(in_line, synopsis);
 
         convert_line(in_line, out_line);
         /* bypass message delivery but be available for ^P recall */
         putmsghistory()(out_line, FALSE);
     }
     res = TRUE;
-
  }
     if (text)
         free(text);
@@ -618,24 +555,19 @@ com_pager_core(
         free(fallback_msgid);
     nhl_done(L);
     return res;
-} finally { stack_pop($frame); } }
-
-export function /* void */
-com_pager(msgid)
-{
-    void com_pager_core(_("common"), msgid, TRUE, null);
+    } finally { stack_pop($frame); }
 }
 
-export function /* void */
-qt_pager(msgid)
-{
+export function com_pager(msgid) { /* void */
+    com_pager_core(_("common"), msgid, TRUE, null);
+}
+
+export function qt_pager(msgid) { /* void */
     if (!com_pager_core(gu.urole.filecode, msgid, FALSE, null))
-        void com_pager_core(_("common"), msgid, TRUE, null);
+        com_pager_core(_("common"), msgid, TRUE, null);
 }
 
-export function /* struct permonst * */
-qt_montype()
-{
+export function qt_montype() { /* struct permonst * */
     let qpm;
 
     if (rn2(5)) {
@@ -651,9 +583,7 @@ qt_montype()
 }
 
 /* special levels can include a custom arrival message; display it */
-export function /* void */
-deliver_splev_message()
-{
+export function deliver_splev_message() { /* void */
     /* there's no provision for delivering via window instead of pline */
     if (gl.lev_message) {
         deliver_by_pline(gl.lev_message);
@@ -663,116 +593,50 @@ deliver_splev_message()
     }
 }
 
-
-
 /*questpgr.c*/
+
 import { A_LAWFUL } from "./align.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { NHL_SB_SAFE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { struct_nhl_sandbox_info } from "./global.h.js";
+import { BUFSZ, FALSE, NHL_SB_SAFE, TRUE, struct_nhl_sandbox_info } from "./global.h.js";
 import { luaL_checkstring } from "./lauxlib.h.macros.js";
-import { lua_istable } from "./lua.h.macros.js";
-import { lua_pop } from "./lua.h.macros.js";
-import { lua_tointeger } from "./lua.h.macros.js";
+import { lua_istable, lua_pop, lua_tointeger } from "./lua.h.macros.js";
 import { type_is_pname } from "./mondata.h.macros.js";
-import { G_GENOD } from "./monflag.h.js";
-import { MS_GUARDIAN } from "./monflag.h.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
+import { G_GENOD, MS_GUARDIAN, MS_LEADER, MS_NEMESIS, NEUTRAL } from "./monflag.h.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
 import { NON_PM } from "./monsters.h.js";
-import { OBJ_BURIED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { OBJ_MIGRATING } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
+import { OBJ_BURIED, OBJ_FLOOR, OBJ_INVENT, OBJ_MIGRATING, OBJ_MINVENT } from "./obj.h.js";
 import { Has_contents } from "./obj.h.macros.js";
 import { MIN_QUEST_LEVEL } from "./quest.h.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { putmsghistory } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { NHW_TEXT } from "./wintype.h.js";
+import { fmon, fobj } from "./rm.h.macros.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, putmsghistory, putstr,
+} from "./winprocs.h.macros.js";
+import { NHW_MENU, NHW_TEXT } from "./wintype.h.js";
 import { A_ORIGINAL } from "./you.h.js";
 import { Role_switch } from "./you.h.macros.js";
 import { Blind } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { lua_getfield } from "../rt/lua.js";
-import { lua_getglobal } from "../rt/lua.js";
-import { lua_gettable } from "../rt/lua.js";
-import { lua_len } from "../rt/lua.js";
-import { lua_pushinteger } from "../rt/lua.js";
-import { lua_settop } from "../rt/lua.js";
+import { char, int, ord, sizeof, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { free, sprintf, strcat, strchr, strcpy, strlen } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
+import {
+    lua_getfield, lua_getglobal, lua_gettable, lua_len, lua_pushinteger, lua_settop,
+} from "../rt/lua.js";
 import { _ } from "../rt/strings.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
+import { array_of, ptr_to } from "../rt/struct.js";
 import { dupstr } from "./alloc.js";
 import { artiname } from "./artifact.js";
 import { rank_of } from "./botl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gu } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { svq } from "./decl.js";
-import { u } from "./decl.js";
+import {
+    flags, gc, gi, gl, gm, gn, gu, program_state, svd, svl, svm, svp, svq, u,
+} from "./decl.js";
 import { panic } from "./end.js";
-import { copynchars } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { lowc } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strNsubst } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
+import { copynchars, eos, highc, lowc, s_suffix, strNsubst, strncmpi, strstri } from "./hacklib.js";
 import { align_str } from "./insight.js";
 import { mkclass } from "./makemon.js";
 import { mons } from "./monst.js";
-import { get_table_option } from "./nhlua.js";
-import { get_table_str_opt } from "./nhlua.js";
-import { nhl_done } from "./nhlua.js";
-import { nhl_init } from "./nhlua.js";
-import { nhl_loadlua } from "./nhlua.js";
-import { An } from "./objnam.js";
-import { an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { the } from "./objnam.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { align_gname } from "./pray.js";
-import { align_gtitle } from "./pray.js";
+import { get_table_option, get_table_str_opt, nhl_done, nhl_init, nhl_loadlua } from "./nhlua.js";
+import { An, an, makeplural, makesingular, the } from "./objnam.js";
+import { impossible, pline } from "./pline.js";
+import { align_gname, align_gtitle } from "./pray.js";
 import { rn2 } from "./rnd.js";
 import { genders } from "./role.js";

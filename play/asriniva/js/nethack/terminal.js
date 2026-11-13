@@ -1,3 +1,4 @@
+import {nativeStateFor} from './native/state-bridge.js';
 // Existing terminal capability and recorder-shadow code on standalone storage.
 // The source port owns terminal policy; this file supplies memory and transport.
 import metadata from './terminal-metadata.json' with {type:'json'};
@@ -16,14 +17,14 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
         return at;
     });
     const buffers=metadata.bufferSizes.map((n,i)=>environment.allocateGlobal('termcap.'+metadata.bufferKeys[i],n));
-    const schemas=Object.entries(metadata.schemas),frames=[],callbackIds=new Map(),local=Object.create(services);
+    const nativeOwner=nativeStateFor(environment),schemas=Object.entries(metadata.schemas),frames=[],callbackIds=new Map(),local=Object.create(services);
     const cptr=v=>typeof v==='string'?services.literal(v):address(v);
     const scalar=d=>d.t?({i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'})[d.t]:d.p!==undefined||d.f?'void *':d.s??'void *';
     function field(kind,p,index) {
         const record=schemas[kind]?.[1],f=record?.fields[index];if(!f)throw new Error('Unknown terminal C field');
         return{type:metadata.typeAliases[record.ctype]??record.ctype,f,p};
     }
-    Object.assign(local,{
+    Object.assign(local,{nativeOwner,nativeTypes:ctypes,moduleKey:environment,
         global:i=>{if(!globals[i])throw new Error('Unknown terminal global');return globals[i];},
         read:(kind,p,i)=>{const e=field(kind,p,i);return e.f.d.a||e.f.d.s?BigInt(ctypes.locate(e.type,p,e.f.name).at):ctypes.getField(e.type,p,e.f.name,scalar(e.f.d));},
         write:(kind,p,i,v)=>{const e=field(kind,p,i);return ctypes.setField(e.type,p,e.f.name,scalar(e.f.d),v);},
@@ -62,7 +63,7 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
     local.tgetstr=(name,area)=>services.tgetstr(cptr(name),address(area));
     local.tgoto=(format,col,row)=>services.tgoto(cptr(format),col,row);
     local.tputs=(text,lines,fn)=>services.tputs(cptr(text),lines,fn);
-    const wrappers=Object.fromEntries(metadata.functions.map(name=>[name,(...args)=>callTermcap(local,layout,name,...args)]));
+    const wrappers=Object.fromEntries(metadata.functions.map(name=>{const call=(...args)=>callTermcap(local,layout,name,...args);call.nativeState=nativeOwner;call.nativeDirect=true;nativeOwner.functions.set(name,call);return[name,call];}));
     environment.register('termcap',wrappers,local);
     return{frames,globals,services:local,global:name=>{const i=metadata.globals.findIndex(g=>g.name===name);if(i<0)throw new Error('Unknown terminal global '+name);return globals[i];}};
 }

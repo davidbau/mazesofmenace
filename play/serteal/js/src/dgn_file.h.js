@@ -2,13 +2,6 @@
 /* Copyright (c) 1989 by M. Stephenson                            */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
 /*
  * Structures manipulated by the dungeon loader & compiler
  */
@@ -71,11 +64,7 @@ export const D_ALIGN_MASK = 0x70;
  */
 export const LEV_LIMIT = 50;
 export const BRANCH_LIMIT = 32;
-import { AM_CHAOTIC } from "./align.h.js";
-import { AM_LAWFUL } from "./align.h.js";
-import { AM_NEUTRAL } from "./align.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { AM_CHAOTIC, AM_LAWFUL, AM_NEUTRAL } from "./align.h.js";
+import { char, int, short } from "../rt/ctypes.js";
+import { ptr_to, struct } from "../rt/struct.js";

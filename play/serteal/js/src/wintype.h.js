@@ -2,9 +2,6 @@
 /* Copyright (c) David Cohrs, 1991                                */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 export const winid = int; /* a window identifier */
 
 /* generic parameter - must not be any larger than a pointer */
@@ -37,8 +34,6 @@ export const struct_any = union("struct_any", {
     /* add types as needed */
 });
 
-
-
 /* symbolic names for the data types housed in anything */
 
     export const ANY_VOID = 1;
@@ -61,14 +56,12 @@ export const struct_any = union("struct_any", {
 
     export const ANY_INVALID = ANY_MASK32 + 1; /* leave this last */
 
-
 /* menu return list */
 export const struct_mi = struct("struct_mi", {
     item: "struct_any", /* identifier */
     count: long, /* count */
     itemflags: unsigned, /* item flags */
 });
-
 
 /* These would be in sym.h and display.h if they weren't needed to
    define the windowproc interface for X11 which doesn't include
@@ -92,7 +85,6 @@ export const struct_glyph_map_entry = struct("struct_glyph_map_entry", {
     tileidx: short,
 
     u: ptr_to("struct_unicode_representation"),
-
 });
 
 /* glyph plus additional info
@@ -143,7 +135,7 @@ export const CLICK_2 = 2;
 export const NUM_MOUSE_BUTTONS = 2;
 
 /* invalid winid */
-export const WIN_ERR = ((-1));
+export const WIN_ERR = (-1);
 
 /* menu window keyboard commands (may be mapped); menu_shift_right and
    menu_shift_left are for interacting with persistent inventory window */
@@ -178,11 +170,9 @@ export const MENU_ITEMFLAGS_SKIPMENUCOLORS = 0x0000004;
 export const MENU_BEHAVE_STANDARD = 0x0000000;
 export const MENU_BEHAVE_PERMINV = 0x0000001;
 
-
     export const toggling_off = -1;
     export const toggling_not = 0;
     export const toggling_on = 1;
-
 
 /* perm_invent modes */
 
@@ -203,21 +193,16 @@ export const MENU_BEHAVE_PERMINV = 0x0000001;
 
     export const InvOptInUse = InvInUse; /* 8 */
 
-
-
     export const active = 0x001;
     export const too_small = 0x002;
     export const prohibited = 0x004;
     export const no_init_done = 0x008;
     export const too_early = 0x010;
 
-
-
     export const invalid_core_request = 0;
     export const set_mode = 1;
     export const request_settings = 2;
     export const set_menu_promptstyle = 3;
-
 
 export const struct_to_core = struct("struct_to_core", {
     tocore_flags: long,
@@ -239,7 +224,6 @@ export const struct_win_request_info_t = struct("struct_win_request_info_t", {
     fromcore: "struct_from_core",
 });
 
-
 /* windows.c */
 
 /* #define CORE_INVENT */
@@ -250,10 +234,8 @@ export const struct_win_request_info_t = struct("struct_win_request_info_t", {
  * the core needs to know if they are active or not at the time.
  */
 
-
     export const wdmode_traditional = 0;
     export const wdmode_tiled = wdmode_traditional + 1;
-
 
 export const struct_win_settings = struct("struct_win_settings", {
     wdmode: unsigned,
@@ -261,23 +243,10 @@ export const struct_win_settings = struct("struct_win_settings", {
 });
 
 /* clang-format on */
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { uint16 } from "./integer.h.js";
-import { uint32 } from "./integer.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { int64_t } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { uint64_t } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { union } from "../rt/struct.js";
-import { void_t } from "../rt/struct.js";
+
+import { boolean, coordxy } from "./global.h.js";
+import { uint16, uint32 } from "./integer.h.js";
+import {
+    char, int, int64_t, long, ord, schar, short, uchar, uint64_t, ulong, unsigned,
+} from "../rt/ctypes.js";
+import { fnptr_t, ptr_to, struct, union, void_t } from "../rt/struct.js";

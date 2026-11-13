@@ -3,210 +3,23 @@
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-// #include "hack.h"
-// #include "dlb.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// #include "wintty.h" /* more() */
-
-
-
-
-// #include <fcntl.h>
-
-
-// #include <errno.h>
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-// #include <sys/types.h>
-// #include <dirent.h>
-
-
-
-// #include <signal.h>
-
-
-
-
-
-
-
-
-
+/* #ifdef SFCTOOL: not in this build */
 
 export const O_BINARY = 0;
 
+  /* #ifdef AMIGA: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+  /* #if defined(WIN32) || defined(MSDOS): not in this build */
 
   /* in extern.h; why here too? */
 
-
-
-
 /* return a file's name without its path and optionally trailing 'type' */
-export function /* const char * */
-nh_basename(fname, keep_suffix)
-{
-
+export function nh_basename(fname, keep_suffix) { /* const char * */
     let basebuf = static_array("nh_basename.basebuf", char, 80);
     let p;
 
     if ((p = strrchr(fname, ord('/'))) != 0)
         fname = p + 1;
-
-
-
 
     if ((p = strrchr(fname, ord('.'))) != 0 && !keep_suffix) {
         let ln = unsigned((p - fname));
@@ -222,8 +35,6 @@ nh_basename(fname, keep_suffix)
             fname = basebuf;
         }
     }
-
-
 
     return fname;
 }
@@ -251,14 +62,12 @@ nh_basename(fname, keep_suffix)
  *      results in this encoding:
  *          "This%20is%20a%20%25%20test%21"
  */
-export function /* char * */
-fname_encode(
+export function fname_encode(
     legal,
     quotechar,
     s,
     callerbuf,
-    bufsz)
-{
+    bufsz) { /* char * */
     let sp, op;
     let cnt = 0;
     let hexdigits = init_string(static_array("fname_encode.hexdigits", char, sizeof_string("0123456789ABCDEF")), _("0123456789ABCDEF"), true);
@@ -273,7 +82,7 @@ fname_encode(
             return callerbuf;
 
         if (chars[sp] == quotechar) {
-            void sprintf(op, _("%c%02X"), quotechar, chars[sp]);
+            sprintf(op, _("%c%02X"), quotechar, chars[sp]);
             op += 3;
             cnt += 3;
         } else if ((strchr(legal, chars[sp]) != 0)
@@ -282,7 +91,7 @@ fname_encode(
             chars[op] = ord('\0');
             cnt++;
         } else {
-            void sprintf(op, _("%c%02X"), quotechar, chars[sp]);
+            sprintf(op, _("%c%02X"), quotechar, chars[sp]);
             op += 3;
             cnt += 3;
         }
@@ -301,9 +110,7 @@ fname_encode(
  *      callerbuf   buffer to house result
  *      bufsz       size of callerbuf
  */
-export function /* char * */
-fname_decode(quotechar, s, callerbuf, bufsz)
-{
+export function fname_decode(quotechar, s, callerbuf, bufsz) { /* char * */
     let sp, op;
     let k, calc, cnt = 0;
     let hexdigits = init_string(static_array("fname_decode.hexdigits", char, sizeof_string("0123456789ABCDEF")), _("0123456789ABCDEF"), true);
@@ -343,106 +150,26 @@ fname_decode(quotechar, s, callerbuf, bufsz)
     return callerbuf;
 }
 
-
-
-
-
-
-
 /*ARGSUSED*/
-export function /* const char * */
-fqname(basenam,
+export function fqname(basenam,
        whichprefix,
-       buffnum)
-{
-
-
-
-
-
-
-
-
+       buffnum) { /* const char * */
     return basenam;
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifndef PREFIXES_IN_USE): not in this build */
 }
 
-
 /* reasonbuf must be at least BUFSZ, supplied by caller */
-export function /* int */
-validate_prefix_locations(reasonbuf)
-{
-
-
-
-
-
-
-
-
+export function validate_prefix_locations(reasonbuf) { /* int */
     if (reasonbuf)
         chars[reasonbuf + 0] = ord('\0');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+        /* #if defined(NOCWD_ASSUMPTIONS): not in this build */
 
         return 1;
 }
 
 /* fopen a file, with OS-dependent bells and whistles */
 /* NOTE: a simpler version of this routine also exists in util/dlb_main.c */
-export function /* FILE * */
-fopen_datafile(filename, mode, prefix)
-{
+export function fopen_datafile(filename, mode, prefix) { /* FILE * */
     let fp;
 
     filename = fqname(filename, prefix, prefix == TROUBLEPREFIX ? 3 : 0);
@@ -450,25 +177,22 @@ fopen_datafile(filename, mode, prefix)
     return fp;
 }
 
-
 /* ----------  EXTERNAL FILE SUPPORT ----------- */
 
 /* determine byte order */
 const bei = static_var("bei", int, 1);
 export function IS_BIGENDIAN() { return ( +((chars[addr_of(bei)]) == 0) ); }
 
-export function /* void */
-init_nhfile(nhfp)
-{
+export function init_nhfile(nhfp) { /* void */
     if (nhfp.structlevel) {
         if (nhfp.fd != -1) {
             impossible(_("Warning - Unclosed structlevel file being reinitialized"));
-            void nhclose(nhfp.fd);
+            nhclose(nhfp.fd);
         }
     } else if (nhfp.fpdef) {
         if (nhfp.fpdef) {
             impossible(_("Warning - Unclosed fieldlevel file being reinitialized"));
-            void fclose(nhfp.fpdef);
+            fclose(nhfp.fpdef);
         }
     }
     nhfp.fd = -1;
@@ -489,12 +213,7 @@ init_nhfile(nhfp)
     nhfp.nhfpconvert = null;
 }
 
-
-function /* #endif NHFILE * */
-
-
-new_nhfile()
-{
+function new_nhfile() { /* NHFILE * */
     let nhfp = view_of(struct_nh_file, addr_of(alloc(sizeof(struct_nh_file))));
 
     memset(addr_of(nhfp), 0, sizeof(struct_nh_file));
@@ -502,52 +221,36 @@ new_nhfile()
     return nhfp;
 }
 
-
-function /* #endif void */
-
-
-free_nhfile(nhfp)
-{
+function free_nhfile(nhfp) { /* void */
     if (nhfp) {
         init_nhfile(nhfp);
         free(addr_of(nhfp));
     }
 }
 
-export function /* void */
-close_nhfile(nhfp)
-{
+export function close_nhfile(nhfp) { /* void */
     if (nhfp.structlevel && nhfp.fd != -1)
-        void nhclose(nhfp.fd), nhfp.fd = -1;
+        nhclose(nhfp.fd), nhfp.fd = -1;
     else if (nhfp.fpdef)
-        void fclose(nhfp.fpdef), nhfp.fpdef = null;
+        fclose(nhfp.fpdef), nhfp.fpdef = null;
     if (nhfp.fplog)
-        void fprintf(nhfp.fplog, _("# closing\n"));
+        fprintf(nhfp.fplog, _("# closing\n"));
     if (nhfp.fplog)
-        void fclose(nhfp.fplog);
+        fclose(nhfp.fplog);
     if (nhfp.fpdebug)
-        void fclose(nhfp.fpdebug);
+        fclose(nhfp.fpdebug);
     free_nhfile(nhfp);
 }
 
-export function /* void */
-rewind_nhfile(nhfp)
-{
+export function rewind_nhfile(nhfp) { /* void */
     if (nhfp.structlevel) {
-
-
-
-        void lseek(nhfp.fd, 0, 0);
-
+        lseek(nhfp.fd, 0, 0);
     } else {
         rewind(nhfp.fpdef);
     }
 }
 
-
-function /* NHFILE * */
-viable_nhfile(nhfp)
-{
+function viable_nhfile(nhfp) { /* NHFILE * */
     /* perform some sanity checks before returning
        the pointer to the nethack file descriptor */
     if (nhfp) {
@@ -561,15 +264,15 @@ viable_nhfile(nhfp)
             /* not viable, start the cleanup */
             if (nhfp.fieldlevel) {
                 if (nhfp.fpdef) {
-                    void fclose(nhfp.fpdef);
+                    fclose(nhfp.fpdef);
                     nhfp.fpdef = null;
                 }
                 if (nhfp.fplog) {
-                    void fprintf(nhfp.fplog, _("# closing, not viable\n"));
-                    void fclose(nhfp.fplog);
+                    fprintf(nhfp.fplog, _("# closing, not viable\n"));
+                    fclose(nhfp.fplog);
                 }
                 if (nhfp.fpdebug)
-                    void fclose(nhfp.fpdebug);
+                    fclose(nhfp.fpdebug);
             }
             free_nhfile(nhfp);
             nhfp = null;
@@ -578,10 +281,7 @@ viable_nhfile(nhfp)
     return nhfp;
 }
 
-
-export function /* int */
-nhclose(fd)
-{
+export function nhclose(fd) { /* int */
     let retval = 0;
 
     if (fd >= 0) {
@@ -595,31 +295,24 @@ nhclose(fd)
 
 /* ----------  BEGIN LEVEL FILE HANDLING ----------- */
 
-
 /* Construct a file name for a level-type file, which is of the form
  * something.level (with any old level stripped off).
  * This assumes there is space on the end of 'file' to append
  * a two digit number.  This is true for 'level'
  * but be careful if you use it for other things -dgk
  */
-export function /* void */
-set_levelfile_name(file, lev)
-{
+export function set_levelfile_name(file, lev) { /* void */
     let tf;
 
     tf = strrchr(file, ord('.'));
     if (!tf)
         tf = eos(file);
-    void sprintf(tf, _(".%d"), lev);
-
-
+    sprintf(tf, _(".%d"), lev);
 
     return;
 }
 
-export function /* NHFILE * */
-create_levelfile(lev, errbuf)
-{
+export function create_levelfile(lev, errbuf) { /* NHFILE * */
     let fq_lock;
     let nhfp = null;
 
@@ -641,37 +334,20 @@ create_levelfile(lev, errbuf)
         nhfp.fd = -1;
         nhfp.fpdef = null;
 
-
-
-
-
-
-
-
-
-
         nhfp.fd = creat(fq_lock, FCMASK);
-
-
 
         if (nhfp.fd >= 0)
             svl.level_info[lev].flags |= LFILE_EXISTS;
         else if (errbuf) /* failure explanation */
-            void sprintf(errbuf, _("Cannot create file \"%s\" for level %d (errno %d)."), gl.lock, lev, (__errno_location()[0]))
+            sprintf(errbuf, _("Cannot create file \"%s\" for level %d (errno %d)."), gl.lock, lev, (__errno_location()[0]))
 
 ;
-
-
-
-
     }
     nhfp = viable_nhfile(nhfp);
     return nhfp;
 }
 
-export function /* NHFILE * */
-open_levelfile(lev, errbuf)
-{
+export function open_levelfile(lev, errbuf) { /* NHFILE * */
     let fq_lock;
     let nhfp = null;
 
@@ -693,70 +369,51 @@ open_levelfile(lev, errbuf)
         nhfp.fpdef = null;
     }
     if (nhfp && nhfp.structlevel) {
-
-
-
         nhfp.fd = open(fq_lock, O_RDONLY | O_BINARY, 0);
-
 
         /* for failure, return an explanation that our caller can use;
            settle for `lock' instead of `fq_lock' because the latter
            might end up being too big for nethack's BUFSZ */
         if (nhfp.fd < 0 && errbuf)
-            void sprintf(errbuf, _("Cannot open file \"%s\" for level %d (errno %d)."), gl.lock, lev, (__errno_location()[0]))
+            sprintf(errbuf, _("Cannot open file \"%s\" for level %d (errno %d)."), gl.lock, lev, (__errno_location()[0]))
 
 ;
-
-
-
-
     }
     nhfp = viable_nhfile(nhfp);
     return nhfp;
 }
 
-export function /* void */
-delete_levelfile(lev)
-{
+export function delete_levelfile(lev) { /* void */
     /*
      * Level 0 might be created by port specific code that doesn't
      * call create_levfile(), so always assume that it exists.
      */
     if (lev == 0 || (svl.level_info[lev].flags & LFILE_EXISTS)) {
         set_levelfile_name(gl.lock, lev);
-        void unlink(fqname(gl.lock, LEVELPREFIX, 0));
+        unlink(fqname(gl.lock, LEVELPREFIX, 0));
         svl.level_info[lev].flags &= ~LFILE_EXISTS;
     }
 }
 
-export function /* void */
-clearlocks()
-{
+export function clearlocks() { /* void */
     let x;
-
 
     if (program_state.preserve_locks)
         return;
 
-
-    void signal(SIGINT, SIG_IGN);
+    signal(SIGINT, SIG_IGN);
 
     sethanguphandler(SIG_IGN);
-
 
     /* can't access maxledgerno() before dungeons are created -dlc */
     for (x = (svn.n_dgns ? maxledgerno() : 0); x >= 0; x--)
         delete_levelfile(x); /* not all levels need be present */
 }
 
-
 /* qsort comparison routine */
-function /* int QSORTCALLBACK */
-strcmp_wrap(p, q)
-{
+function strcmp_wrap(p, q) { /* int QSORTCALLBACK */
     return strcmp(ref_to(ptr_to(char), p)[0], ref_to(ptr_to(char), q)[0]);
 }
-
 
 /* ----------  END LEVEL FILE HANDLING ----------- */
 
@@ -765,9 +422,7 @@ strcmp_wrap(p, q)
 /* set up "file" to be file name for retrieving bones, and return a
  * bonesid to be read/written in the bones file.
  */
-function /* char * */
-set_bonesfile_name(file, lev)
-{
+function set_bonesfile_name(file, lev) { /* char * */
     let sptr;
     let dptr;
 
@@ -784,26 +439,24 @@ set_bonesfile_name(file, lev)
      * to manually move a bones file from one pool to another by
      * renaming it.
      */
-    void strcpy(file, _("bon"));
+    strcpy(file, _("bon"));
 
     if (sysopt.bones_pools > 1) {
         let poolnum = min(unsigned(sysopt.bones_pools), 10);
 
         poolnum = unsigned(ubirthday) % poolnum; /* 0..9 */
-        void sprintf(eos(file), _("%u"), poolnum);
+        sprintf(eos(file), _("%u"), poolnum);
     }
 
     dptr = eos(file);
     /* when this naming scheme was adopted, 'filecode' was one letter;
        3.3.0 turned it into a three letter string for quest levels */
-    void sprintf(dptr, _("%c%s"), elt(svd.dungeons, lev.dnum).boneid, In_quest(lev) ? gu.urole.filecode : _("0"))
+    sprintf(dptr, _("%c%s"), elt(svd.dungeons, lev.dnum).boneid, In_quest(lev) ? gu.urole.filecode : _("0"))
 ;
     if ((sptr = Is_special(lev)) != null)
-        void sprintf(eos(dptr), _(".%c"), sptr.boneid);
+        sprintf(eos(dptr), _(".%c"), sptr.boneid);
     else
-        void sprintf(eos(dptr), _(".%d"), lev.dlevel);
-
-
+        sprintf(eos(dptr), _(".%d"), lev.dlevel);
 
     return dptr;
 }
@@ -814,30 +467,21 @@ set_bonesfile_name(file, lev)
  * (we are not reading or writing level files while writing bones files, so
  * the same array may be used instead of copying.)
  */
-function /* char * */
-set_bonestemp_name()
-{
+function set_bonestemp_name() { /* char * */
     let tf;
 
     tf = strrchr(gl.lock, ord('.'));
     if (!tf)
         tf = eos(gl.lock);
-    void sprintf(tf, _(".bn"));
-
-
+    sprintf(tf, _(".bn"));
 
     return gl.lock;
 }
 
-export function /* NHFILE * */
-create_bonesfile(lev, bonesid, errbuf)
-{
+export function create_bonesfile(lev, bonesid, errbuf) { /* NHFILE * */
     let file;
     let nhfp = null;
     let failed = 0;
-
-
-
 
     if (errbuf)
         chars[errbuf] = ord('\0');
@@ -858,77 +502,38 @@ create_bonesfile(lev, bonesid, errbuf)
         nhfp.fd = -1;
         nhfp.fpdef = null;
         if (nhfp.fpdef) {
-
-
-
         } else {
             failed = (__errno_location()[0]);
         }
         if (nhfp.structlevel) {
-
-
-
-
-
-
-
-
-
-
+/* #if defined(MICRO): not in this build */
 
 /* implies UNIX or MACOS9 (MACOS9 is for OS9 or earlier) */
 
-
-
             nhfp.fd = creat(file, FCMASK);
-
 
             if (nhfp.fd < 0)
                 failed = (__errno_location()[0]);
-
-
-
-
         }
         if (failed && errbuf)  /* failure explanation */
-            void sprintf(errbuf, _("Cannot create bones \"%s\", id %s (errno %d)."), gl.lock, bonesid[0], (__errno_location()[0]))
+            sprintf(errbuf, _("Cannot create bones \"%s\", id %s (errno %d)."), gl.lock, bonesid[0], (__errno_location()[0]))
 ;
     }
-
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(VMS) && !defined(SECURE): not in this build */
 
     nhfp = viable_nhfile(nhfp);
     return nhfp;
 }
 
 /* move completed bones file to proper name */
-export function /* void */
-commit_bonesfile(lev)
-{
+export function commit_bonesfile(lev) { /* void */
     let fq_bones, tempname;
     let ret;
 
-    void set_bonesfile_name(gb.bones, lev);
+    set_bonesfile_name(gb.bones, lev);
     fq_bones = fqname(gb.bones, BONESPREFIX, 0);
     tempname = set_bonestemp_name();
     tempname = fqname(tempname, BONESPREFIX, 1);
-
-
-
-
-
-
-
-
 
     ret = rename(tempname, fq_bones);
 
@@ -936,14 +541,9 @@ commit_bonesfile(lev)
         pline(_("couldn't rename %s to %s."), tempname, fq_bones);
 }
 
-export function /* NHFILE * */
-open_bonesfile(lev, bonesid)
-{
+export function open_bonesfile(lev, bonesid) { /* NHFILE * */
     let fq_bones;
     let nhfp = null;
-
-
-
 
     bonesid[0] = set_bonesfile_name(gb.bones, lev);
     fq_bones = fqname(gb.bones, BONESPREFIX, 0);
@@ -951,50 +551,30 @@ open_bonesfile(lev, bonesid)
 
     nhfp = new_nhfile();
     if (nhfp) {
-
-
-
-
         nhfp.structlevel = TRUE;
         nhfp.fieldlevel = FALSE;
         nhfp.ftype = NHF_BONESFILE;
         nhfp.mode = READING;
         nhfp.addinfo = TRUE;
         nhfp.style.deflt = TRUE;
-        nhfp.style.binary = (+(sysopt.bonesformat[0] != exportascii));
+        nhfp.style.binary = +(sysopt.bonesformat[0] != exportascii);
         nhfp.fnidx = sysopt.bonesformat[0];
         nhfp.fd = -1;
         nhfp.fpdef = null;
         if (nhfp.fpdef) {
-
-
-
         }
         if (nhfp.structlevel) {
-
-
-
-
-
-
             nhfp.fd = open(fq_bones, O_RDONLY | O_BINARY, 0);
-
-
-
-
-
         }
     }
     nhfp = viable_nhfile(nhfp);
     return nhfp;
 }
 
-export function /* int */
-delete_bonesfile(lev)
-{
+export function delete_bonesfile(lev) { /* int */
     let reslt;
 
-    void set_bonesfile_name(gb.bones, lev);
+    set_bonesfile_name(gb.bones, lev);
     reslt = unlink(fqname(gb.bones, BONESPREFIX, 0));
     delete_convertedfile(fqname(gb.bones, BONESPREFIX, 0));
     return +!(reslt < 0);
@@ -1002,13 +582,10 @@ delete_bonesfile(lev)
 
 /* assume we're compressing the recently read or created bonesfile, so the
  * file name is already set properly */
-export function /* void */
-compress_bonesfile()
-{
+export function compress_bonesfile() { /* void */
     nh_sfconvert(fqname(gb.bones, BONESPREFIX, 0));
     nh_compress(fqname(gb.bones, BONESPREFIX, 0));
 }
-
 
 /* ----------  END BONES FILE HANDLING ----------- */
 
@@ -1016,78 +593,25 @@ compress_bonesfile()
 
 /* set savefile name in OS-dependent manner from pre-existing svp.plname,
  * avoiding troublesome characters */
-export function /* void */
-set_savefile_name(regularize_it)
-{
+export function set_savefile_name(regularize_it) { /* void */
     let regoffset = 0, overflow = 0,
         indicator_spot = 0; /* 0=no indicator, 1=before ext, 2=after ext */
     let postappend = 0,
                sfindicator = 0;
 
+    /* #if defined(WIN32): not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    void sprintf(gs.SAVEF, _("save/%d%s"), int(getuid()), svp.plname);
+    sprintf(gs.SAVEF, _("save/%d%s"), int(getuid()), svp.plname);
     regoffset = 5;
     indicator_spot = 2;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(MICRO) && !defined(WIN32) && !defined(MSDOS): not in this build */
 
     if (regularize_it)
          regularize(gs.SAVEF + regoffset);
     if (indicator_spot == 1 && sfindicator && !overflow) {
         if (unsigned(strlen(gs.SAVEF) + strlen(sfindicator)) < (SAVESIZE - 1))
-            void strcat(gs.SAVEF, sfindicator);
+            strcat(gs.SAVEF, sfindicator);
         else
             overflow = 2;
     }
@@ -1097,67 +621,36 @@ set_savefile_name(regularize_it)
        FALSE at compile-time). Done to appease clang's -Wunreachable-code */
     if (strlen(_(SAVE_EXTENSION)) > (0) && !overflow) {
         if (strlen(gs.SAVEF) + strlen(_(SAVE_EXTENSION)) < (SAVESIZE - 1)) {
-            void strcat(gs.SAVEF, _(SAVE_EXTENSION));
+            strcat(gs.SAVEF, _(SAVE_EXTENSION));
         } else
             overflow = 3;
     }
 
     if (indicator_spot == 2 && sfindicator && !overflow) {
         if (unsigned(strlen(gs.SAVEF) + strlen(sfindicator)) < (SAVESIZE - 1))
-           void strcat(gs.SAVEF, sfindicator);
+           strcat(gs.SAVEF, sfindicator);
         else
             overflow = 4;
     }
     if (postappend && !overflow) {
         if (unsigned(strlen(gs.SAVEF) + strlen(postappend)) < (SAVESIZE - 1))
-            void strcat(gs.SAVEF, postappend);
+            strcat(gs.SAVEF, postappend);
         else
             overflow = 5;
     }
-
-
-
-
-
-
 }
 
-
-
-export function /* void */
-save_savefile_name(nhfp)
-{
+export function save_savefile_name(nhfp) { /* void */
     Sfo_char(nhfp, gs.SAVEF, _("savefile_name"), sizeof_member(gs, "SAVEF"));
 }
 
-
-
 /* change pre-existing savefile name to indicate an error savefile */
-export function /* void */
-set_error_savefile()
-{
-
-
-
-
-
-
-
-
-
-
-
-
-    void strcat(gs.SAVEF, _(".e"));
-
-
+export function set_error_savefile() { /* void */
+    strcat(gs.SAVEF, _(".e"));
 }
 
-
 /* create save file, overwriting one if it already exists */
-export function /* NHFILE * */
-create_savefile()
-{
+export function create_savefile() { /* NHFILE * */
     let fq_save;
     let nhfp = null;
     let do_historical = TRUE;
@@ -1168,7 +661,7 @@ create_savefile()
         nhfp.ftype = NHF_SAVEFILE;
         nhfp.mode = WRITING;
         if (program_state.in_self_recover || do_historical) {
-            (void (do_historical));
+            (do_historical);
             nhfp.structlevel = TRUE;
             nhfp.fieldlevel = FALSE;
             nhfp.addinfo = FALSE;
@@ -1178,44 +671,19 @@ create_savefile()
             nhfp.fd = -1;
             nhfp.fpdef = null;
 
-
-
-
-
-
-
 /* UNIX || MACOS9 implied (MACOS9 is OS9 or earlier only) */
 
-
-
             nhfp.fd = creat(fq_save, FCMASK);
-
-
-
-
-
-
         }
     }
-
-
-
-
-
-
-
-
-
-
+    /* #if defined(VMS) && !defined(SECURE): not in this build */
 
     nhfp = viable_nhfile(nhfp);
     return nhfp;
 }
 
 /* open savefile for reading */
-export function /* NHFILE * */
-open_savefile()
-{
+export function open_savefile() { /* NHFILE * */
     let fq_save;
     let nhfp = null;
     let do_historical = TRUE;
@@ -1227,7 +695,7 @@ open_savefile()
         nhfp.mode = READING;
         if (program_state.in_self_recover || do_historical) {
             do_historical = TRUE;       /* force it */
-            (void (do_historical));
+            (do_historical);
             nhfp.structlevel = TRUE;
             nhfp.fieldlevel = FALSE;
             nhfp.addinfo = FALSE;
@@ -1236,39 +704,25 @@ open_savefile()
             nhfp.fnidx = historical;
             nhfp.fd = -1;
             nhfp.fpdef = null;
-
-
-
         }
 
-
-
         nhfp.fd = open(fq_save, O_RDONLY | O_BINARY, 0);
-
-
-
-
-
     }
     nhfp = viable_nhfile(nhfp);
     return nhfp;
 }
 
 /* delete savefile */
-export function /* int */
-delete_savefile()
-{
+export function delete_savefile() { /* int */
     let sfname = fqname(gs.SAVEF, SAVEPREFIX, 0);
 
-    void unlink(sfname);
-    void delete_convertedfile(sfname);
+    unlink(sfname);
+    delete_convertedfile(sfname);
     return 0; /* for restore_saved_game() (ex-xxxmain.c) test */
 }
 
 /* try to open up a save file and prepare to restore it */
-export function /* NHFILE * */
-restore_saved_game()
-{
+export function restore_saved_game() { /* NHFILE * */
     let fq_save;
     let nhfp = null;
     let sfstatus = 0;
@@ -1295,9 +749,7 @@ restore_saved_game()
  * (NHFILE *), and it will handle it correctly.
  */
 
-export function /* NHFILE * */
-get_freeing_nhfile()
-{
+export function get_freeing_nhfile() { /* NHFILE * */
     let nhfp = null;
 
     nhfp = new_nhfile(); /* also sets fd to -1 */
@@ -1308,9 +760,7 @@ get_freeing_nhfile()
 }
 
 /* called if there is no save file for current character */
-export function /* int */
-check_panic_save()
-{
+export function check_panic_save() { /* int */
     let result = 0;
 
     let cf;
@@ -1325,23 +775,21 @@ check_panic_save()
      * file's existence and then have to recompress it.
      */
 
-
-    let ln = unsigned((unsigned(strlen(savef) + strlen(_(COMPRESS_EXTENSION)))));
+    let ln = unsigned(strlen(savef) + strlen(_(COMPRESS_EXTENSION)));
     let cfn = addr_of(alloc(unsigned(ln + 1)));
 
-    void strcpy(cfn, savef);
-    void strcat(cfn, _(COMPRESS_EXTENSION));
+    strcpy(cfn, savef);
+    strcat(cfn, _(COMPRESS_EXTENSION));
     if ((cf = fopen(cfn, _(RDBMODE))) != null) {
-        void fclose(cf);
+        fclose(cf);
         result = 1;
     }
     free(cfn);
 
-
     if (!result) {
         /* maybe it has already been manually uncompressed */
         if ((cf = fopen(savef, _(RDBMODE))) != null) {
-            void fclose(cf);
+            fclose(cf);
             result = 1;
         }
     }
@@ -1351,19 +799,15 @@ check_panic_save()
     return result;
 }
 
-
-
-export function /* char * */
-plname_from_file(
+export function plname_from_file(
     filename,
-    without_wait_synch_per_file)
-{
+    without_wait_synch_per_file) { /* char * */
     let nhfp;
     let ln;
     let result = 0;
     let sfstatus = 0;
 
-    void strcpy(gs.SAVEF, filename);
+    strcpy(gs.SAVEF, filename);
 
     {
         /* if COMPRESS_EXTENSION is present, strip it off */
@@ -1390,94 +834,18 @@ plname_from_file(
     return result; /* file's plname[]+playmode value */
 }
 
-
-
 export const ALLOW_WAITSYNCH_PERFILE = FALSE;
 
 /* get list of saved games owned by current user */
-export function /* char ** */
-get_saved_games()
-{ const $frame = stack_frame(); try {
+export function get_saved_games() { /* char ** */
+    const $frame = stack_frame(); try {
     let result = null;
-
 
     let n;
 
     let j = 0;
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef WIN32: not in this build */
 
     /* posixly correct version */
     let myuid = int(getuid());
@@ -1492,8 +860,8 @@ get_saved_games()
 
             if (!(dir = opendir(fqname(_("save"), SAVEPREFIX, 0))))
                 return null;
-            result = ref_to(ptr_to(char), addr_of(alloc(unsigned(unsigned(Math.imul(unsigned((n + 1)), sizeof(ptr_to(char)))))))); /* at most */
-            void memset(addr_of(result), 0, unsigned(Math.imul(unsigned((n + 1)), sizeof(ptr_to(char)))));
+            result = ref_to(ptr_to(char), addr_of(alloc(unsigned(Math.imul(unsigned((n + 1)), sizeof(ptr_to(char))))))); /* at most */
+            memset(addr_of(result), 0, unsigned(Math.imul(unsigned((n + 1)), sizeof(ptr_to(char)))));
             for (i = 0, j = 0; i < n; i++) {
                 let uid = stack_var(int);
                 let name = stack_array(char, 64); /* more than PL_NSIZ+1 */
@@ -1506,7 +874,7 @@ get_saved_games()
                         let filename = stack_array(char, BUFSZ);
                         let r;
 
-                        void sprintf(filename, _("save/%d%s"), uid[0], name);
+                        sprintf(filename, _("save/%d%s"), uid[0], name);
                         r = plname_from_file(filename,
                                              ALLOW_WAITSYNCH_PERFILE);
                         if (r)
@@ -1518,12 +886,6 @@ get_saved_games()
         }
     }
 
-
-
-
-
-
-
     if (j > 0) {
         if (j > 1)
             nh_deterministic_qsort(addr_of((result)), unsigned((j)), (sizeof(ptr_to(char))), (strcmp_wrap));
@@ -1533,15 +895,11 @@ get_saved_games()
         result = null;
     }
 
-
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* void */
-free_saved_games(saved)
-{
+export function free_saved_games(saved) { /* void */
     if (saved) {
         let i;
 
@@ -1551,446 +909,23 @@ free_saved_games(saved)
     }
 }
 
-
-
 /* ----------  END SAVE FILE HANDLING ----------- */
 
 /* ----------  BEGIN FILE COMPRESSION HANDLING ----------- */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef COMPRESS: not in this build */
 
 /* compress file */
-export function /* void */
-nh_compress(filename)
-{
-
-
-
+export function nh_compress(filename) { /* void */
 }
 
 /* uncompress file if it exists */
-export function /* void */
-nh_uncompress(filename)
-{
-
-
-
+export function nh_uncompress(filename) { /* void */
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef ZLIB_COMP: not in this build */
 
 /* ----------  END FILE COMPRESSION HANDLING ----------- */
-
 
 /* ----------  BEGIN PROBLEMATIC SAVEFILE HANDLING ----------- */
 
@@ -2011,9 +946,7 @@ nh_uncompress(filename)
     { sfstatus: SF_DM_MISMATCH, msg: _("generic savefile mismatch") },
 ]);
 
-function /* NHFILE * */
-problematic_savefile(sfstatus, savefilenm)
-{
+function problematic_savefile(sfstatus, savefilenm) { /* NHFILE * */
     let i;
     let nhfp = null;
 
@@ -2045,57 +978,39 @@ problematic_savefile(sfstatus, savefilenm)
     return nhfp;
 }
 
-
 /* ----------  END PROBLEMATIC SAVEFILE HANDLING ----------- */
 
 /* ----------  BEGIN EXTERNAL CONVERSION HANDLING ----------- */
 
 const cvtinit = static_var("cvtinit", schar, FALSE);
 
-
 const unconverted_filename = static_var("unconverted_filename", ptr_to(char), 0); const converted_filename = static_var("converted_filename", ptr_to(char), 0);
 
 /*
  * Returns non-zero if unconvert was successful
  */
-function /* int */
-doconvert_file(filename, sfstatus, unconvert)
-{
-    (void (filename));
-    (void (sfstatus));
-    (void (unconvert));
+function doconvert_file(filename, sfstatus, unconvert) { /* int */
+    (filename);
+    (sfstatus);
+    (unconvert);
     return 1;
 }
 
 /* convert file */
-export function /* void */
-nh_sfconvert(filename)
-{
-    void doconvert_file(filename, 0, FALSE);
+export function nh_sfconvert(filename) { /* void */
+    doconvert_file(filename, 0, FALSE);
 }
 
 /* unconvert file if it exists */
-export function /* void */
-nh_sfunconvert(filename)
-{
-    void doconvert_file(filename, 0, TRUE);
+export function nh_sfunconvert(filename) { /* void */
+    doconvert_file(filename, 0, TRUE);
 }
 
-
-
-
-
-
-function /* boolean */
-make_converted_name(filename)
-{
+function make_converted_name(filename) { /* boolean */
     let ln;
     let xtra, finaldirchar;
     let dir = 0;
     let needsep = FALSE;
-
-
-
 
     if (!filename)
         return FALSE;
@@ -2105,28 +1020,16 @@ make_converted_name(filename)
     if (converted_filename[0])
         free((converted_filename[0])), converted_filename[0] = 0;
 
-
     /* do we need to do some ms-dos processing here? */
-
 
     ln = strlen(filename);
     if (!contains_directory(filename)) {
-
         dir = nh_getenv(_("NETHACKDIR"));
         if (!dir)
             dir = nh_getenv(_("HACKDIR"));
 
         if (!dir)
             dir = _(HACKDIR);
-
-
-
-
-
-
-
-
-
 
         if (dir) {
             finaldirchar = c_eos(dir);
@@ -2140,33 +1043,28 @@ make_converted_name(filename)
         }
     }
     unconverted_filename[0] = addr_of(alloc(unsigned(ln + 1)));
-    Snprintf(unconverted_filename[0], unsigned(unsigned(ln + 1)), _("%s%s%s"), dir ? dir : _(""), (dir && needsep) ? _("/") : _(""), filename)
-
+    Snprintf(unconverted_filename[0], unsigned(ln + 1), _("%s%s%s"), dir ? dir : _(""), (dir && needsep) ? _("/") : _(""), filename)
 
 ;
     xtra = _(".exportascii");
     ln = unsigned(ln + strlen(xtra));
     converted_filename[0] = addr_of(alloc(unsigned(ln + 1)));
-    void strcpy(converted_filename[0], unconverted_filename[0]);
-    void strcat(converted_filename[0], xtra);
+    strcpy(converted_filename[0], unconverted_filename[0]);
+    strcat(converted_filename[0], xtra);
     return TRUE;
 }
 
 /* delete converted savefile as a normal course of action */
-export function /* int */
-delete_convertedfile(basefilename)
-{
+export function delete_convertedfile(basefilename) { /* int */
     if (!converted_filename[0])
         make_converted_name(basefilename);
     if (converted_filename[0]) {
-        void unlink(converted_filename[0]);
+        unlink(converted_filename[0]);
     }
     return 0;
 }
 
-export function /* void */
-free_convert_filenames()
-{
+export function free_convert_filenames() { /* void */
     if (converted_filename[0])
         free((converted_filename[0])), converted_filename[0] = 0;
     if (unconverted_filename[0])
@@ -2175,9 +1073,7 @@ free_convert_filenames()
 }
 
 /* return TRUE if s contains a directory, not just a filespec */
-export function /* boolean */
-contains_directory(s)
-{
+export function contains_directory(s) { /* boolean */
     let i, slen = int(strlen(s));
     let cp = s;
 
@@ -2195,82 +1091,20 @@ contains_directory(s)
 
 /* ----------  BEGIN FILE LOCKING HANDLING ----------- */
 
-
-
-
 const lockfd = static_var("lockfd", int, -1); /* for lock_file() to pass to unlock_file() */
-
 
 const sflock = static_struct("sflock", struct_flock); /* for unlocking, same as above */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifndef USE_FCNTL: not in this build */
 
 /* lock a file */
-export function /* boolean */
-lock_file(filename, whichprefix,
-          retryct)
-{
-
-
-
-
-
+export function lock_file(filename, whichprefix,
+          retryct) { /* boolean */
     gn.nesting++;
     if (gn.nesting > 1) {
         impossible(_("TRIED TO NEST LOCKS"));
         return TRUE;
     }
-
-
-
-
-
-
 
     filename = fqname(filename, whichprefix, 0);
 
@@ -2287,19 +1121,7 @@ lock_file(filename, whichprefix,
     sflock.l_start = 0;
     sflock.l_len = 0;
 
-
-
-
     while (fcntl(lockfd[0], F_SETLK, sflock) == -1) {
-
-
-
-
-
-
-
-
-
         if (retryct--) {
             if (!program_state.done_hup) raw_printf(_("Waiting for release of fcntl lock on %s. " +
                            " (%d retries left.)"),
@@ -2312,158 +1134,35 @@ lock_file(filename, whichprefix,
             gn.nesting--;
             return FALSE;
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #else (#ifdef USE_FCNTL): not in this build */
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if (defined(AMIGA) || defined(WIN32) || defined(MSDOS)) \: not in this build */
 
     return TRUE;
 }
 
-
-
-
-
-
-
-
 /* unlock file, which must be currently locked by lock_file */
-export function /* void */
-unlock_file(filename)
-{
-
-
-
-
-
+export function unlock_file(filename) { /* void */
     if (gn.nesting == 1) {
-
         sflock.l_type = F_UNLCK;
         if (lockfd[0] >= 0) {
             if (fcntl(lockfd[0], F_SETLK, sflock) == -1)
                 if (!program_state.done_hup) raw_printf(_("Can't remove fcntl lock on %s."), filename);;
-            void close(lockfd[0]), lockfd[0] = -1;
+            close(lockfd[0]), lockfd[0] = -1;
         }
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #else (#ifdef USE_FCNTL): not in this build */
     }
 
     gn.nesting--;
 }
 
-
-
 /* ----------  END FILE LOCKING HANDLING ----------- */
 
 /* ----------  BEGIN WIZKIT FILE HANDLING ----------- */
 
-function /* FILE * */
-fopen_wizkit_file()
-{ const $frame = stack_frame(); try {
+function fopen_wizkit_file() { /* FILE * */
+    const $frame = stack_frame(); try {
     let fp;
 
     let tmp_wizkit = stack_array(char, BUFSZ);
@@ -2472,10 +1171,9 @@ fopen_wizkit_file()
 
     envp = nh_getenv(_("WIZKIT"));
     if (envp && chars[envp])
-        void strncpy(gw.wizkit, envp, WIZKIT_MAX - 1);
+        strncpy(gw.wizkit, envp, WIZKIT_MAX - 1);
     if (!chars[gw.wizkit + 0])
         return null;
-
 
     if (access(gw.wizkit, 4) == -1) {
         /* 4 is R_OK on newer systems */
@@ -2491,33 +1189,18 @@ fopen_wizkit_file()
 
         if ((fp = fopen(gw.wizkit, _("r"))) != null) {
         return fp;
-
     } else {
         /* access() above probably caught most problems for UNIX */
         raw_printf(_("Couldn't open requested wizkit file %s (%d)."), gw.wizkit,
                    (__errno_location()[0]));
         wait_synch()();
-
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
 
     envp = nh_getenv(_("HOME"));
     if (envp)
-        void sprintf(tmp_wizkit, _("%s/%s"), envp, gw.wizkit);
+        sprintf(tmp_wizkit, _("%s/%s"), envp, gw.wizkit);
     else
-        void strcpy(tmp_wizkit, gw.wizkit);
+        strcpy(tmp_wizkit, gw.wizkit);
     if ((fp = fopen(tmp_wizkit, _("r"))) != null)
         return fp;
     else if ((__errno_location()[0]) != ENOENT) {
@@ -2528,14 +1211,12 @@ fopen_wizkit_file()
         wait_synch()();
     }
 
-
     return null;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* add to hero's inventory if there's room, otherwise put item on floor */
-function /* void */
-wizkit_addinv(obj)
-{
+function wizkit_addinv(obj) { /* void */
     if (!obj || obj == hands_obj)
         return;
 
@@ -2554,13 +1235,11 @@ wizkit_addinv(obj)
         obj.owornmask =
             (MIGR_WITH_HERO | MIGR_NOBREAK | MIGR_NOSCATTER);
     } else {
-        void addinv(obj);
+        addinv(obj);
     }
 }
 
-export function /* boolean */
-proc_wizkit_line(buf)
-{
+export function proc_wizkit_line(buf) { /* boolean */
     let otmp;
 
     if (strlen(buf) >= BUFSZ)
@@ -2580,9 +1259,7 @@ proc_wizkit_line(buf)
     return TRUE;
 }
 
-export function /* void */
-read_wizkit()
-{
+export function read_wizkit() { /* void */
     let fp;
 
     if (!wizard() || !(fp = fopen_wizkit_file()))
@@ -2592,7 +1269,7 @@ read_wizkit()
     config_error_init(TRUE, _("WIZKIT"), FALSE);
 
     parse_conf_file(fp, proc_wizkit_line);
-    void fclose(fp);
+    fclose(fp);
 
     config_error_done();
     program_state.wizkit_wishing = 0;
@@ -2607,14 +1284,10 @@ read_wizkit()
      /* symbols.c */
  /* symbols.c */
 
-function /* FILE * */
-fopen_sym_file()
-{
+function fopen_sym_file() { /* FILE * */
     let fp;
 
     fp = fopen_datafile(_(SYMBOLS), _("r"),
-
-
 
                             HACKPREFIX
 
@@ -2627,9 +1300,7 @@ fopen_sym_file()
  * Returns 1 if the chosen symset was found and loaded.
  *         0 if it wasn't found in the sym file or other problem.
  */
-export function /* int */
-read_sym_file(which_set)
-{
+export function read_sym_file(which_set) { /* int */
     let fp;
 
     gs.symset[which_set].explicitly = FALSE;
@@ -2644,7 +1315,7 @@ read_sym_file(which_set)
     config_error_init(TRUE, _("symbols"), FALSE);
 
     parse_conf_file(fp, proc_symset_line);
-    void fclose(fp);
+    fclose(fp);
 
     if (!gc.chosen_symset_start && !gc.chosen_symset_end) {
         /* name caller put in symset[which_set].name was not found;
@@ -2653,7 +1324,7 @@ read_sym_file(which_set)
         if (gs.symset[which_set].name
             && (fuzzymatch(gs.symset[which_set].name, _("Default symbols"),
                            _(" -_"), TRUE)
-                || !strcmpi(gs.symset[which_set].name, _("default"))))
+                || !strncmpi((gs.symset[which_set].name), _(("default")), -1)))
             clear_symsetentry(which_set, TRUE);
         config_error_done();
 
@@ -2677,418 +1348,88 @@ read_sym_file(which_set)
 
 /* ----------  BEGIN SCOREBOARD CREATION ----------- */
 
-
-
-
-
-
-
 /* verify that we can write to scoreboard file; if not, try to create one */
 /*ARGUSED*/
-export function /* void */
-check_recordfile(dir)
-{
+export function check_recordfile(dir) { /* void */
     let fq_record;
     let fd;
-
 
     fq_record = fqname(_(RECORD), SCOREPREFIX, 0);
     fd = open(fq_record, O_RDWR, 0);
     if (fd >= 0) {
-
-
-
-
-
-
-
-
-        void nhclose(fd); /* RECORD is accessible */
+        nhclose(fd); /* RECORD is accessible */
     } else if ((fd = open(fq_record, O_CREAT | O_RDWR, FCMASK)) >= 0) {
-        void nhclose(fd); /* RECORD newly created */
-
-
-
-
+        nhclose(fd); /* RECORD newly created */
     } else {
         raw_printf(_("Warning: cannot write scoreboard file '%s'"), fq_record);
         wait_synch()();
     }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if defined(MICRO) || defined(WIN32): not in this build */
 }
-
-
 
 /* ----------  END SCOREBOARD CREATION ----------- */
 
 /* ----------  BEGIN PANIC/IMPOSSIBLE/TESTING LOG ----------- */
 
 /*ARGSUSED*/
-export function /* void */
-paniclog(
+export function paniclog(
     type,
-    reason) /* explanation */
-{ const $frame = stack_frame(); try {
-
+    reason) { /* void */ /* explanation */
+    const $frame = stack_frame(); try {
     let lfile;
 
     if (!program_state.in_paniclog) {
         program_state.in_paniclog = 1;
         lfile = fopen_datafile(_(PANICLOG), _("a"), TROUBLEPREFIX);
         if (lfile) {
-
-
-
-
-
             let buf = stack_array(char, BUFSZ);
             let now = getnow();
             let uid = int(getuid());
             let playmode = wizard() ? ord('D') : discover() ? ord('X') : ord('-');
 
-            void fprintf(lfile, _("%s %08lld %06lld %d %c: %s %s\n"),
+            fprintf(lfile, _("%s %08lld %06lld %d %c: %s %s\n"),
                            version_string(buf, sizeof(array_of(char, BUFSZ))),
                            yyyymmdd(now), hhmmss(now),
                            uid, playmode, type, reason);
 
-            void fclose(lfile);
+            fclose(lfile);
         }
         program_state.in_paniclog = 0;
     }
 
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-testinglog(filenm,
+export function testinglog(filenm,
            type,
-           reason)   /* explanation */
-{ const $frame = stack_frame(); try {
+           reason) { /* void */ /* explanation */
+    const $frame = stack_frame(); try {
     let lfile;
     let fnbuf = stack_array(char, BUFSZ);
 
     if (!filenm)
         return;
-    void strcpy(fnbuf, filenm);
+    strcpy(fnbuf, filenm);
     if (strchr(fnbuf, ord('.')) == 0)
-        void strcat(fnbuf, _(".log"));
+        strcat(fnbuf, _(".log"));
     lfile = fopen_datafile(fnbuf, _("a"), TROUBLEPREFIX);
     if (lfile) {
-        void fprintf(lfile, _("%s\n%s\n"), type, reason);
-        void fclose(lfile);
+        fprintf(lfile, _("%s\n%s\n"), type, reason);
+        fclose(lfile);
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* ----------  END PANIC/IMPOSSIBLE/TESTING LOG ----------- */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef SELF_RECOVER: not in this build */
 
 /* ----------  OTHER ----------- */
 
- export function /* void */
-do_deferred_showpaths(code)
-{
+ export function do_deferred_showpaths(code) { /* void */
     gd.deferred_showpaths = FALSE;
     reveal_paths(code);
 
@@ -3097,23 +1438,9 @@ do_deferred_showpaths(code)
     ;
     l_nhcore_done();
 
-
     after_opt_showpaths(gd.deferred_showpaths_dir);
-
-
-
-
-
-
-
-
-
-
-
-
+/* #else (#ifdef UNIX): not in this build */
 }
-
-
 
 /* used by debugpline() to decide whether to issue a message
  * from a particular source file; caller passes __FILE__ and we check
@@ -3122,9 +1449,7 @@ do_deferred_showpaths(code)
  * pass FALSE to override wildcard matching; useful for files
  * like dungeon.c and questpgr.c, which generate a ridiculous amount of
  * output if DEBUG is defined and effectively block the use of a wildcard */
-export function /* boolean */
-debugcore(filename, wildcards)
-{
+export function debugcore(filename, wildcards) { /* boolean */
     let debugfiles, p;
 
     /* debugpline() messages might disclose information that the player
@@ -3165,16 +1490,10 @@ debugcore(filename, wildcards)
     return FALSE;
 }
 
-
-
-
-
 export const SYSCONFFILE = "system configuration file";
 
-export function /* void */
-reveal_paths(code)
-{ const $frame = stack_frame(); try {
-
+export function reveal_paths(code) { /* void */
+    const $frame = stack_frame(); try {
     let skip_sysopt = FALSE;
 
     let fqn, nodumpreason;
@@ -3185,30 +1504,9 @@ reveal_paths(code)
 
     let gamename = (gh.hname && chars[gh.hname]) ? gh.hname : _("NetHack");
 
-
-
-
-
-
     let endp, envp, cwdbuf = stack_array(char, PATH_MAX);
 
-
-
-
-
-
-
-
-
-
     /* sysconf file */
-
-
-
-
-
-
-
 
     chars[buf + 0] = ord('\0');
 
@@ -3216,8 +1514,6 @@ reveal_paths(code)
                _(SYSCONFFILE), buf);
 
     filep = _(SYSCF_FILE);
-
-
 
     fqn = fqname(filep, SYSCONFPREFIX, 0);
     if (fqn) {
@@ -3231,186 +1527,60 @@ reveal_paths(code)
         skip_sysopt = TRUE;
     }
 
-
-
-
     /* symbols file */
 
     chars[buf + 0] = ord('\0');
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifndef UNIX: not in this build */
 
     envp = getcwd(cwdbuf, PATH_MAX);
     if (envp) {
         raw_print()(_("The loadable symbols file:"));
         raw_printf(_("    \"%s/%s\""), envp, _(SYMBOLS));
     }
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #else (#ifdef UNIX): not in this build */
 
     /* dlb vs non-dlb */
 
     chars[buf + 0] = ord('\0');
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef DLB: not in this build */
 
     raw_printf(_("Basic data files%s are in many separate files."), buf);
-
 
     /* dumplog */
 
     fqn = 0;
 
     nodumpreason = _("not supported");
+    /* #else (#ifndef DUMPLOG): not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #ifdef WIN32: not in this build */
 
     /* personal configuration file */
 
     chars[buf + 0] = ord('\0');
 
-
-
-
-
-
     raw_printf(_("Your personal configuration file%s:"), buf);
-
 
     chars[buf + 0] = ord('\0');
     if ((envp = nh_getenv(_("HOME"))) != 0) {
         copynchars(buf, envp, sizeof(array_of(char, BUFSZ)) - 1 - 1);
-        void strcat(buf, _("/"));
+        strcat(buf, _("/"));
     }
     endp = eos(buf);
     copynchars(endp, get_default_configfile(),
-               int((unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(buf)))));
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+               int(unsigned(sizeof(array_of(char, BUFSZ)) - 1 - strlen(buf))));
+    /* #if defined(__APPLE__): not in this build */
 
     raw_printf(_("    \"%s\""), buf);
 
-
-
-
-
-
-
-
     raw_print()(_(""));
 
+    (skip_sysopt);
 
-
-
-
-    (void (skip_sysopt));
-
-    (void (nodumpreason));
-
-} finally { stack_pop($frame); } }
+    (nodumpreason);
+    } finally { stack_pop($frame); }
+}
 
 /* ----------  BEGIN TRIBUTE ----------- */
 
@@ -3423,15 +1593,10 @@ export const PASSAGESCOPE = 3;
 
 export const MAXPASSAGES = (Math.trunc((sizeof_member(svc.context.novel, "pasg") / sizeof(schar))));
 
-
-
 /* choose a random passage that hasn't been chosen yet; once all have
    been chosen, reset the tracking to make all passages available again */
-function /* int */
-choose_passage(passagecnt,
-               oid)   /* book.o_id, used to determine whether
-                                  re-reading same book */
-{
+function choose_passage(passagecnt,
+               oid) { /* int */ /* book.o_id, used to determine whether re-reading same book */
     let idx, res;
 
     if (passagecnt < 1)
@@ -3470,11 +1635,10 @@ choose_passage(passagecnt,
 }
 
 /* Returns True if you were able to read something. */
-export function /* boolean */
-read_tribute(tribsection, tribtitle,
+export function read_tribute(tribsection, tribtitle,
              tribpassage, nowin_buf, bufsz,
-             oid) /* book identifier */
-{ const $frame = stack_frame(); try {
+             oid) { /* boolean */ /* book identifier */
+    const $frame = stack_frame(); try {
     var fp;
     var line = stack_array(char, BUFSZ), lastline = stack_array(char, BUFSZ);
 
@@ -3529,7 +1693,7 @@ read_tribute(tribsection, tribtitle,
     chars[line] = chars[lastline] = ord('\0');
     cleanup: { while (dlb_fgets(line, sizeof(array_of(char, BUFSZ)), fp) != 0) {
         linect++;
-        void strip_newline(line);
+        strip_newline(line);
         switch (chars[line + 0]) {
         case ord('%'):
             if (!strncmpi(line + 1, _("section "), sizeof_string("section ") - 1)) {
@@ -3543,7 +1707,7 @@ read_tribute(tribsection, tribtitle,
 
                 if ((p1 = strchr(st, ord('('))) != 0) {
                     chars[p1++] = ord('\0');
-                    void mungspaces(st);
+                    mungspaces(st);
                     if ((p2 = strchr(p1, ord(')'))) != 0) {
                         chars[p2] = ord('\0');
                         passagecnt = atoi(p1);
@@ -3600,7 +1764,7 @@ read_tribute(tribsection, tribtitle,
                     /* outputting multi-line passage to text window */
                     putstr()(tribwin, 0, line);
                     if (chars[line])
-                        void strcpy(lastline, line);
+                        strcpy(lastline, line);
                 } else {
                     /* fetching one-line passage into buffer */
                     copynchars(nowin_buf, line, bufsz - 1);
@@ -3609,9 +1773,8 @@ read_tribute(tribsection, tribtitle,
             }
         }
     }
-
  }
-    void dlb_fclose(fp);
+    dlb_fclose(fp);
     if (nowin_buf) {
         /* one-line buffer */
         grasped = chars[nowin_buf] ? TRUE : FALSE;
@@ -3629,9 +1792,9 @@ read_tribute(tribsection, tribtitle,
                 if (strchr(lastline, ord('[')))
                     mungspaces(lastline); /* to remove leading spaces */
                 else /* construct one if necessary */
-                    void sprintf(lastline, _("[%s, by Terry Pratchett]"), tribtitle);
+                    sprintf(lastline, _("[%s, by Terry Pratchett]"), tribtitle);
                 if ((p = strrchr(lastline, ord(']'))) != 0)
-                    void sprintf(p, _("; passage #%d]"), targetpassage);
+                    sprintf(p, _("; passage #%d]"), targetpassage);
                 putmsghistory()(lastline, FALSE);
                 grasped = TRUE;
             }
@@ -3642,11 +1805,10 @@ read_tribute(tribsection, tribtitle,
             pline(_("It seems to be %s of \"%s\"!"), badtranslation, tribtitle);
     }
     return grasped;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-Death_quote(buf, bufsz)
-{
+export function Death_quote(buf, bufsz) { /* boolean */
     let death_oid = 1; /* chance of oid #1 being a novel is negligible */
 
     return read_tribute(_("Death"), _("Death Quotes"), 0, buf, bufsz, death_oid);
@@ -3654,18 +1816,11 @@ Death_quote(buf, bufsz)
 
 /* ----------  END TRIBUTE ----------- */
 
-
-
-
-
-
 /* Locks the live log file and writes 'buffer'
  * iff the ll_type matches sysopt.livelog mask.
  * lltype is included in LL entry for post-process filtering also.
  */
-export function /* void */
-livelog_add(ll_type, str)
-{
+export function livelog_add(ll_type, str) { /* void */
     let livelogfile;
     let now;
     let gindx, aindx;
@@ -3689,250 +1844,105 @@ livelog_add(ll_type, str)
         aindx = 1 - u.ualign.type;
         /* format relies on STD C's implicit concatenation of
            adjacent string literals */
-        void fprintf(livelogfile,
+        fprintf(livelogfile,
                        _("lltype=%lld\tname=%s\trole=%s\trace=%s\tgender=%s\talign=%s\tturns=%lld\tstarttime=%lld\tcurtime=%lld\tmessage=%s\n"),
-                       (and64(ll_type, sysopt.livelog)), svp.plname,
+                       and64(ll_type, sysopt.livelog), svp.plname,
                        gu.urole.filecode, gu.urace.filecode,
                        genders[gindx].filecode, aligns[aindx].filecode,
                        svm.moves, timet_to_seconds(ubirthday),
                        timet_to_seconds(now), str)
 
-
-
 ;
-        void fclose(livelogfile);
+        fclose(livelogfile);
         unlock_file(_(LIVELOGFILE));
     }
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
 /*files.c*/
-import { COMPRESS_EXTENSION } from "./config.h.js";
-import { HACKDIR } from "./config.h.js";
-import { LIVELOGFILE } from "./config.h.js";
-import { PANICLOG } from "./config.h.js";
-import { SYSCF_FILE } from "./config.h.js";
+
+import { COMPRESS_EXTENSION, HACKDIR, LIVELOGFILE, PANICLOG, SYSCF_FILE } from "./config.h.js";
 import { COIN_CLASS } from "./defsym.h.js";
 import { RDBMODE } from "./dlb.h.js";
-import { dlb_fclose } from "./dlb.h.macros.js";
-import { dlb_fgets } from "./dlb.h.macros.js";
-import { dlb_fopen } from "./dlb.h.macros.js";
-import { LFILE_EXISTS } from "./dungeon.h.js";
-import { MIGR_NOBREAK } from "./dungeon.h.js";
-import { MIGR_NOSCATTER } from "./dungeon.h.js";
-import { MIGR_WITH_HERO } from "./dungeon.h.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { SAVESIZE } from "./fnamesiz.h.js";
-import { SAVE_EXTENSION } from "./fnamesiz.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { PL_NSIZ_PLUS } from "./global.h.js";
-import { RECORD } from "./global.h.js";
-import { SYMBOLS } from "./global.h.js";
-import { TRIBUTEFILE } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { xint16 } from "./global.h.js";
+import { dlb_fclose, dlb_fgets, dlb_fopen } from "./dlb.h.macros.js";
+import { LFILE_EXISTS, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_WITH_HERO } from "./dungeon.h.js";
+import { discover, wizard } from "./flag.h.macros.js";
+import { SAVESIZE, SAVE_EXTENSION } from "./fnamesiz.h.js";
+import {
+    BUFSZ, FALSE, PL_NSIZ_PLUS, RECORD, SYMBOLS, TRIBUTEFILE, TRUE, xint16,
+} from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { BONESPREFIX } from "./hack.h.js";
-import { COUNTING } from "./hack.h.js";
-import { FREEING } from "./hack.h.js";
-import { HACKPREFIX } from "./hack.h.js";
-import { LEVELPREFIX } from "./hack.h.js";
-import { NHF_BONESFILE } from "./hack.h.js";
-import { NHF_LEVELFILE } from "./hack.h.js";
-import { NHF_SAVEFILE } from "./hack.h.js";
-import { READING } from "./hack.h.js";
-import { SAVEPREFIX } from "./hack.h.js";
-import { SCOREPREFIX } from "./hack.h.js";
-import { SF_CRITICAL_BYTE_COUNT_MISMATCH } from "./hack.h.js";
-import { SF_DM_I32LP64_ON_IL32LLP64 } from "./hack.h.js";
-import { SF_DM_I32LP64_ON_ILP32LL64 } from "./hack.h.js";
-import { SF_DM_IL32LLP64_ON_I32LP64 } from "./hack.h.js";
-import { SF_DM_IL32LLP64_ON_ILP32LL64 } from "./hack.h.js";
-import { SF_DM_ILP32LL64_ON_I32LP64 } from "./hack.h.js";
-import { SF_DM_ILP32LL64_ON_IL32LLP64 } from "./hack.h.js";
-import { SF_DM_MISMATCH } from "./hack.h.js";
-import { SF_OUTDATED } from "./hack.h.js";
-import { SF_UPTODATE } from "./hack.h.js";
-import { SYSCONFPREFIX } from "./hack.h.js";
-import { TROUBLEPREFIX } from "./hack.h.js";
-import { WIZKIT_MAX } from "./hack.h.js";
-import { WRITING } from "./hack.h.js";
-import { exportascii } from "./hack.h.js";
-import { historical } from "./hack.h.js";
-import { invlet_basic } from "./hack.h.js";
-import { struct_nh_file } from "./hack.h.js";
+import {
+    BONESPREFIX, COUNTING, FREEING, HACKPREFIX, LEVELPREFIX, NHF_BONESFILE, NHF_LEVELFILE,
+    NHF_SAVEFILE, READING, SAVEPREFIX, SCOREPREFIX, SF_CRITICAL_BYTE_COUNT_MISMATCH,
+    SF_DM_I32LP64_ON_IL32LLP64, SF_DM_I32LP64_ON_ILP32LL64, SF_DM_IL32LLP64_ON_I32LP64,
+    SF_DM_IL32LLP64_ON_ILP32LL64, SF_DM_ILP32LL64_ON_I32LP64, SF_DM_ILP32LL64_ON_IL32LLP64,
+    SF_DM_MISMATCH, SF_OUTDATED, SF_UPTODATE, SYSCONFPREFIX, TROUBLEPREFIX, WIZKIT_MAX, WRITING,
+    exportascii, historical, invlet_basic, struct_nh_file,
+} from "./hack.h.js";
 import { min } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { debugpline1 } from "./lint.h.macros.js";
-import { debugpline3 } from "./lint.h.macros.js";
+import { debugpline1, debugpline3 } from "./lint.h.macros.js";
 import { PM_CLERIC } from "./monsters.h.js";
 import { Sfo_char } from "./savefile.h.macros.js";
 import { FCMASK } from "./unixconf.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { putmsghistory } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { raw_print } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, putmsghistory, putstr, raw_print,
+    wait_synch,
+} from "./winprocs.h.macros.js";
+import { NHW_MENU, WIN_ERR } from "./wintype.h.js";
 import { Role_if } from "./you.h.macros.js";
 import { struct_flock } from "../libc/records.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import { char, int, ord, schar, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
 import { and64 } from "../rt/int64.js";
-import { ENOENT } from "../rt/libc.js";
-import { F_SETLK } from "../rt/libc.js";
-import { F_UNLCK } from "../rt/libc.js";
-import { F_WRLCK } from "../rt/libc.js";
-import { O_CREAT } from "../rt/libc.js";
-import { O_RDONLY } from "../rt/libc.js";
-import { O_RDWR } from "../rt/libc.js";
-import { PATH_MAX } from "../rt/libc.js";
-import { SEEK_SET } from "../rt/libc.js";
-import { SIGINT } from "../rt/libc.js";
-import { SIG_IGN } from "../rt/libc.js";
-import { __errno_location } from "../rt/libc.js";
-import { access } from "../rt/libc.js";
-import { atoi } from "../rt/libc.js";
-import { close } from "../rt/libc.js";
-import { closedir } from "../rt/libc.js";
-import { creat } from "../rt/libc.js";
-import { fclose } from "../rt/libc.js";
-import { fcntl } from "../rt/libc.js";
-import { fopen } from "../rt/libc.js";
-import { fprintf } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { getcwd } from "../rt/libc.js";
-import { getuid } from "../rt/libc.js";
-import { lseek } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { open } from "../rt/libc.js";
-import { opendir } from "../rt/libc.js";
-import { readdir } from "../rt/libc.js";
-import { rename } from "../rt/libc.js";
-import { rewind } from "../rt/libc.js";
-import { signal } from "../rt/libc.js";
-import { sleep } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { strrchr } from "../rt/libc.js";
-import { strstr } from "../rt/libc.js";
-import { unlink } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    ENOENT, F_SETLK, F_UNLCK, F_WRLCK, O_CREAT, O_RDONLY, O_RDWR, PATH_MAX, SEEK_SET, SIGINT,
+    SIG_IGN, __errno_location, access, atoi, close, closedir, creat, fclose, fcntl, fopen, fprintf,
+    free, getcwd, getuid, lseek, memset, open, opendir, readdir, rename, rewind, signal, sleep,
+    sprintf, sscanf, strcat, strchr, strcmp, strcpy, strlen, strncpy, strrchr, strstr, unlink,
+} from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_to } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, ptr_to, ref_to, sizeof_member, struct, view_of,
+} from "../rt/struct.js";
 import { timet_to_seconds } from "./allmain.js";
 import { alloc } from "./alloc.js";
-import { getnow } from "./calendar.js";
-import { hhmmss } from "./calendar.js";
-import { yyyymmdd } from "./calendar.js";
-import { config_error_add } from "./cfgfiles.js";
-import { config_error_done } from "./cfgfiles.js";
-import { config_error_init } from "./cfgfiles.js";
-import { get_configfile } from "./cfgfiles.js";
-import { get_default_configfile } from "./cfgfiles.js";
-import { parse_conf_file } from "./cfgfiles.js";
-import { set_configfile_name } from "./cfgfiles.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gh } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gw } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { In_quest } from "./dungeon.js";
-import { Is_special } from "./dungeon.js";
-import { maxledgerno } from "./dungeon.js";
+import { getnow, hhmmss, yyyymmdd } from "./calendar.js";
+import {
+    config_error_add, config_error_done, config_error_init, get_configfile, get_default_configfile,
+    parse_conf_file, set_configfile_name,
+} from "./cfgfiles.js";
+import {
+    flags, gb, gc, gd, gh, gi, gl, gn, gs, gu, gw, hands_obj, program_state, svc, svd, svl, svm,
+    svn, svp, u,
+} from "./decl.js";
+import { In_quest, Is_special, maxledgerno } from "./dungeon.js";
 import { after_opt_showpaths } from "./earlyarg.js";
 import { inv_cnt } from "./hack.js";
-import { c_eos } from "./hacklib.js";
-import { copynchars } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { fuzzymatch } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { nh_deterministic_qsort } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strip_newline } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { addinv } from "./invent.js";
-import { merge_choice } from "./invent.js";
+import {
+    c_eos, copynchars, eos, fuzzymatch, mungspaces, nh_deterministic_qsort, s_suffix, strip_newline,
+    strncmpi,
+} from "./hacklib.js";
+import { addinv, merge_choice } from "./invent.js";
 import { add_to_migration } from "./mkobj.js";
 import { l_nhcore_done } from "./nhlua.js";
 import { observe_object } from "./o_init.js";
 import { readobjnam } from "./objnam.js";
 import { nh_getenv } from "./options.js";
-import { You_feel } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { raw_printf } from "./pline.js";
+import { You_feel, impossible, pline, raw_printf } from "./pline.js";
 import { get_plname_from_file } from "./restore.js";
 import { rn2 } from "./rnd.js";
-import { aligns } from "./role.js";
-import { genders } from "./role.js";
+import { aligns, genders } from "./role.js";
 import { freedynamicdata } from "./save.js";
-import { bclose } from "./sfstruct.js";
-import { close_check } from "./sfstruct.js";
+import { bclose, close_check } from "./sfstruct.js";
 import { pmatch } from "./strutil.js";
-import { clear_symsetentry } from "./symbols.js";
-import { proc_symset_line } from "./symbols.js";
+import { clear_symsetentry, proc_symset_line } from "./symbols.js";
 import { sysopt } from "./sys.js";
-import { validate } from "./version.js";
-import { version_string } from "./version.js";
+import { validate, version_string } from "./version.js";
 import { wish_history_add } from "./zap.js";
 import { regularize } from "../sys/c2js/nhjs_host.js";
 import { sethanguphandler } from "../sys/unix/unixmain.js";

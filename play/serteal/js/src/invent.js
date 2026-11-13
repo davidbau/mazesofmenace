@@ -3,43 +3,6 @@
 /*-Copyright (c) Derek S. Ray, 2015. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* enum and structs are defined in wintype.h */
 const wri_info = static_struct("wri_info", struct_win_request_info_t);
 const perminv_flags = static_var("perminv_flags", int, InvOptNone);
@@ -66,19 +29,9 @@ const inuse_headers = static_array("inuse_headers", ptr_to(char), null, [ /* [4]
 
 /* sortloot() classification for in-use sort;
    called at most once [per sort] for each object */
-function /* void */
-inuse_classify(sort_item, obj)
-{
+function inuse_classify(sort_item, obj) { /* void */
     var w_mask = (obj.owornmask & (W_ACCESSORY | W_WEAPONS | W_ARMOR));
     var rating = 0, altclass = 0;
-
-
-
-
-
-
-
-
 
     /*
      * In order of importance, least to most, somewhat arbitrarily.
@@ -131,7 +84,6 @@ inuse_classify(sort_item, obj)
     /* if we get here, the USE_RATING() checks failed to find a match */
     rating = 0;
     altclass = -1; /* 'orderclass' must end up non-zero */
-
  }
     sort_item.inuse = rating;
     sort_item.orderclass = altclass; /* used for alternate headings */
@@ -139,15 +91,11 @@ inuse_classify(sort_item, obj)
     /* not applicable for in-use */
     sort_item.subclass = 0;
     sort_item.disco = 0;
-
-
 }
 
 /* sortloot() classification; called at most once [per sort] for each object;
    also called by '\' command if discoveries use sortloot order */
-export function /* void */
-loot_classify(sort_item, obj)
-{
+export function loot_classify(sort_item, obj) { /* void */
     /* we may eventually make this a settable option to always use
        with sortloot instead of only when the 'sortpack' option isn't
        set; it is similar to sortpack's inv_order but items most
@@ -176,7 +124,7 @@ loot_classify(sort_item, obj)
     if (p)
         k = 1 + (p - classorder);
     else
-        k = 1 + int(strlen(classorder)) + (+(oclass != VENOM_CLASS));
+        k = 1 + int(strlen(classorder)) + +(oclass != VENOM_CLASS);
     sort_item.orderclass = k;
     /* subclass designation; only a few classes have subclasses
        and the non-armor ones we use are fairly arbitrary */
@@ -305,9 +253,8 @@ loot_classify(sort_item, obj)
 }
 
 /* sortloot() formatting routine; for alphabetizing, not shown to user */
-function /* char * */
-loot_xname(obj)
-{ const $frame = stack_frame(); try {
+function loot_xname(obj) { /* char * */
+    const $frame = stack_frame(); try {
     let saveo = stack_struct(struct_obj);
     let save_debug;
     let res, save_oname;
@@ -366,7 +313,7 @@ loot_xname(obj)
         /* give "towel" a suffix that will force wet ones to come first,
            moist ones next, and dry ones last regardless of whether
            they've been flagged as having spe known */
-        void strcat(res, is_wet_towel(obj) ? ((obj.spe >= 3) ? _("x") : _("y")) : _("z"));
+        strcat(res, is_wet_towel(obj) ? ((obj.spe >= 3) ? _("x") : _("y")) : _("z"));
     }
     if (obj.globby) {
         obj.owt = saveo.owt;
@@ -375,7 +322,7 @@ loot_xname(obj)
            but globs with different bless/curse state won't merge so it is
            feasible to have multiple at the same location; add a suffix to
            get such sorted by size (small first) */
-        void strcat(res, (obj.owt <= 100) ? _("a")
+        strcat(res, (obj.owt <= 100) ? _("a")
                     : (obj.owt <= 300) ? _("b")
                       : (obj.owt <= 500) ? _("c")
                         : _("d"));
@@ -384,12 +331,11 @@ loot_xname(obj)
         ((obj).oextra.oname) = save_oname;
 
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* '$'==1, 'a'-'z'==2..27, 'A'-'Z'==28..53, '#'==54, catchall 55 */
-function /* int */
-invletter_value(c)
-{
+function invletter_value(c) { /* int */
     return (ord('a') <= c && c <= ord('z')) ? (c - ord('a') + 2)
            : (ord('A') <= c && c <= ord('Z')) ? (c - ord('A') + 2 + 26)
              : (c == ord('$')) ? 1
@@ -399,9 +345,7 @@ invletter_value(c)
 }
 
 /* qsort comparison routine for sortloot() */
-function /* int QSORTCALLBACK */
-sortloot_cmp(vptr1, vptr2)
-{
+function sortloot_cmp(vptr1, vptr2) { /* int QSORTCALLBACK */
     var sli1 = view_of(struct_sortloot_item, vptr1),
                          sli2 = view_of(struct_sortloot_item, vptr2);
     var obj1 = sli1.obj,
@@ -521,8 +465,8 @@ sortloot_cmp(vptr1, vptr2)
     /* Sort by erodeproofing.  Map known-invulnerable to 1, and both
        known-vulnerable and unknown-vulnerability to 0, because that's
        how they're displayed. */
-    val1 = ((obj1.rknown && obj1.oerodeproof) ? 1 : 0);
-    val2 = ((obj2.rknown && obj2.oerodeproof) ? 1 : 0);
+    val1 = (obj1.rknown && obj1.oerodeproof ? 1 : 0);
+    val2 = (obj2.rknown && obj2.oerodeproof ? 1 : 0);
     if (val1 != val2)
         return val2 - val1; /* bigger is better */
 
@@ -538,7 +482,6 @@ sortloot_cmp(vptr1, vptr2)
         if (val1 != val2)
             return val2 - val1; /* bigger is better */
     }
-
  }
     /* They're identical, as far as we're concerned.  We want
        to force a deterministic order, and do so by producing a
@@ -589,13 +532,11 @@ sortloot_cmp(vptr1, vptr2)
  *      array contains 'struct sortloot_item' (aka 'Loot') entries
  *      instead of simple 'struct obj *' entries.
  */
-export function /* Loot * */
-sortloot(
+export function sortloot(
     olist,
     mode,
     by_nexthere,
-    filterfunc) /* optional filter */
-{
+    filterfunc) { /* Loot * */ /* optional filter */
     let zerosli = static_struct("sortloot.zerosli", struct_sortloot_item);
     let sliarray;
     let o;
@@ -605,14 +546,14 @@ sortloot(
     for (n = 0, o = olist[0]; o; o = by_nexthere ? o.v.v_nexthere : o.nobj)
         ++n;
     /* note: if there is a filter function, this might overallocate */
-    sliarray = view_of(struct_sortloot_item, addr_of(alloc(unsigned(unsigned(Math.imul(unsigned((unsigned(n + 1))), sizeof(struct_sortloot_item)))))));
+    sliarray = view_of(struct_sortloot_item, addr_of(alloc(unsigned(Math.imul(unsigned(n + 1), sizeof(struct_sortloot_item))))));
 
     /* the 'keep cockatrice corpses' flag is overloaded with sort mode */
     augment_filter = (mode & SORTLOOT_PETRIFY) ? TRUE : FALSE;
     mode = unsigned(mode & unsigned(~SORTLOOT_PETRIFY)); /* remove flag, leaving mode */
     /* populate aliarray[0..n-1] */
     for (i = 0, o = olist[0]; o; o = by_nexthere ? o.v.v_nexthere : o.nobj) {
-        if (filterfunc && !(filterfunc)(o)
+        if (filterfunc && !filterfunc(o)
             /* caller may be asking us to override filterfunc (in order
                to do a cockatrice corpse touch check during pickup even
                if/when the filter rejects food class) */
@@ -643,56 +584,15 @@ sortloot(
 }
 
 /* sortloot() callers should use this to free up memory it allocates */
-export function /* void */
-unsortloot(loot_array_p)
-{
+export function unsortloot(loot_array_p) { /* void */
     if (loot_array_p[0])
         free(addr_of(loot_array_p[0])), loot_array_p[0] = null;
 }
 
+/* #if 0: not in this build */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-export function /* void */
-assigninvlet(otmp)
-{ const $frame = stack_frame(); try {
+export function assigninvlet(otmp) { /* void */
+    const $frame = stack_frame(); try {
     let inuse = stack_array(schar, invlet_basic);
     let i;
     let obj;
@@ -729,15 +629,14 @@ assigninvlet(otmp)
     otmp.invlet =
         (chars[inuse + i] ? NOINVSYM : (i < 26) ? (ord('a') + i) : (ord('A') + i - 26));
     gl.lastinvnr = i;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* note: assumes ASCII; toggling a bit puts lowercase in front of uppercase */
-export function inv_rank(o) { return ((o).invlet ^ 0o40); }
+export function inv_rank(o) { return (o.invlet ^ 0o40); }
 
 /* sort the inventory; used by addinv() and doorganize() */
-function /* void */
-reorder_invent()
-{
+function reorder_invent() { /* void */
     let otmp, prev, next;
     let need_more_sorting;
 
@@ -766,14 +665,10 @@ reorder_invent()
     } while (need_more_sorting);
 }
 
-
-
 /* scan a list of objects to see whether another object will merge with
    one of them; used in pickup.c when all 52 inventory slots are in use,
    to figure out whether another object could still be picked up */
-export function /* struct obj * */
-merge_choice(objlist, obj)
-{
+export function merge_choice(objlist, obj) { /* struct obj * */
     let shkp;
     let save_nocharge;
 
@@ -810,9 +705,7 @@ merge_choice(objlist, obj)
 }
 
 /* merge obj with otmp and delete obj if types agree */
-export function /* int */
-merged(potmp, pobj)
-{
+export function merged(potmp, pobj) { /* int */
     let otmp = potmp[0], obj = pobj[0];
     let discovered = FALSE;
 
@@ -900,16 +793,7 @@ merged(potmp, pobj)
                 setnotworn(otmp);
             setworn(otmp, wmask);
             setnotworn(obj);
-
-
-
-
-
-
-
-
-
-
+        /* #if 0: not in this build */
         }
 
         /* mergable() no longer requires 'bypass' to match; if 'obj' has
@@ -956,9 +840,7 @@ merged(potmp, pobj)
  * addinv) or when an object in the hero's inventory has been polymorphed
  * in-place.
  */
-export function /* void */
-addinv_core1(obj)
-{
+export function addinv_core1(obj) { /* void */
     if (obj.oclass == COIN_CLASS) {
         disp.botl = TRUE;
     } else if (obj.otyp == AMULET_OF_YENDOR) {
@@ -1021,9 +903,7 @@ addinv_core1(obj)
  * so it should be written to work even if called multiple times in a row
  * (e.g. do not assume that the object was not in inventory already).
  */
-export function /* void */
-addinv_core2(obj)
-{
+export function addinv_core2(obj) { /* void */
     if (confers_luck(obj)) {
         /* new luckstone must be in inventory by this point
            for correct calculation */
@@ -1052,11 +932,11 @@ addinv_core2(obj)
  * Add obj to the hero's inventory.  Make sure the object is "free".
  * Adjust hero attributes as necessary.
  */
-function /* struct obj * */
-addinv_core0(
+function addinv_core0(
     obj$, other_obj,
-    update_perm_invent)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+    update_perm_invent) { /* struct obj * */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     var otmp = stack_var(ptr_to(struct_obj)), prev;
     var saved_otyp = (obj[0].otyp); /* for panic */
     var obj_was_thrown;
@@ -1071,7 +951,7 @@ addinv_core0(
     obj[0].no_charge = 0; /* should not be set in hero's invent */
     if (Has_contents(obj[0]))
         picked_container(obj[0]); /* clear no_charge */
-    obj_was_thrown = (+(obj[0].how_lost == LOST_THROWN));
+    obj_was_thrown = +(obj[0].how_lost == LOST_THROWN);
     obj[0].how_lost = LOST_NONE;
 
     if (gl.loot_reset_justpicked) {
@@ -1145,29 +1025,24 @@ addinv_core0(
     if (update_perm_invent)
         update_inventory();
     return obj[0];
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* add obj to the hero's inventory in the default fashion */
-export function /* struct obj * */
-addinv(obj)
-{
+export function addinv(obj) { /* struct obj * */
     return addinv_core0(obj, null, TRUE);
 }
 
 /* add obj to the hero's inventory by inserting in front of a specific item;
    used for throw-and-return in case '!fixinv' is in effect */
-export function /* struct obj * */
-addinv_before(
-    obj, other_obj)
-{
+export function addinv_before(
+    obj, other_obj) { /* struct obj * */
     /* if 'other_obj' is present this will implicitly be 'nomerge' */
     return addinv_core0(obj, other_obj, TRUE);
 }
 
 /* return value will always be 'obj' */
-export function /* struct obj * */
-addinv_nomerge(obj)
-{
+export function addinv_nomerge(obj) { /* struct obj * */
     let result;
     let save_nomerge = obj.nomerge;
 
@@ -1183,9 +1058,7 @@ addinv_nomerge(obj)
  * has been added to the hero's or monster's inventory,
  * and after hero's intrinsics have been updated.
  */
-export function /* void */
-carry_obj_effects(obj)
-{
+export function carry_obj_effects(obj) { /* void */
     /* Cursed figurines can spontaneously transform when carried. */
     if (obj.otyp == FIGURINE) {
         if (obj.cursed && obj.corpsenm != NON_PM
@@ -1195,8 +1068,6 @@ carry_obj_effects(obj)
     }
 }
 
-
-
 /* Add an item to the inventory unless we're fumbling or it refuses to be
  * held (via touch_artifact), and give a message.
  * If there aren't any free inventory slots, we'll drop it instead.
@@ -1204,20 +1075,19 @@ carry_obj_effects(obj)
  * fumbling/slot-limit checking for a silent grab.  In any case,
  * touch_artifact will print its own messages if they are warranted.
  */
-export function /* struct obj * */
-hold_another_object(
+export function hold_another_object(
     obj,
     drop_fmt,
     drop_arg,
-    hold_msg) /* message to display if successfully held */
-{ const $frame = stack_frame(); try {
+    hold_msg) { /* struct obj * */ /* message to display if successfully held */
+    const $frame = stack_frame(); try {
     var buf = stack_array(char, BUFSZ);
 
     if (!Blind())
         observe_object(obj); /* maximize mergeability */
     if (obj.oartifact) {
         /* place_object may change these */
-        var crysknife = (+(obj.otyp == CRYSKNIFE));
+        var crysknife = +(obj.otyp == CRYSKNIFE);
         var oerode = obj.oerodeproof;
         var wasUpolyd = Upolyd();
 
@@ -1291,7 +1161,6 @@ hold_another_object(
         }
     }
     return obj;
-
  }
     if (drop_fmt)
         pline(drop_fmt, drop_arg);
@@ -1303,23 +1172,18 @@ hold_another_object(
         hitfloor(obj, FALSE);
     }
     return null; /* might be gone */
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* useup() all of an item regardless of its quantity */
-export function /* void */
-useupall(obj)
-{
+export function useupall(obj) { /* void */
     setnotworn(obj);
     freeinv(obj);
     obfree(obj, null); /* deletes contents also */
 }
 
 /* an item in inventory is going away after being used */
-export function /* void */
-useup(obj)
-{
+export function useup(obj) { /* void */
     /* Note:  This works correctly for containers because they (containers)
        don't merge. */
     if (obj.quan > 1) {
@@ -1333,11 +1197,9 @@ useup(obj)
 }
 
 /* use one charge from an item and possibly incur shop debt for it */
-export function /* void */
-consume_obj_charge(
+export function consume_obj_charge(
     obj,
-    maybe_unpaid) /* false if caller handles shop billing */
-{
+    maybe_unpaid) { /* void */ /* false if caller handles shop billing */
     if (maybe_unpaid)
         check_unpaid(obj);
     obj.spe -= 1;
@@ -1352,9 +1214,7 @@ consume_obj_charge(
  *
  * Should think of a better name...
  */
-export function /* void */
-freeinv_core(obj)
-{
+export function freeinv_core(obj) { /* void */
     if (obj.oclass == COIN_CLASS) {
         disp.botl = TRUE;
         return;
@@ -1389,7 +1249,7 @@ freeinv_core(obj)
         set_moreluck();
         disp.botl = TRUE;
     } else if (obj.otyp == FIGURINE && obj.timed) {
-        void stop_timer(FIG_TRANSFORM, obj_to_any(obj));
+        stop_timer(FIG_TRANSFORM, obj_to_any(obj));
     }
 
     if (obj == svc.context.tin.tin) {
@@ -1399,9 +1259,7 @@ freeinv_core(obj)
 }
 
 /* remove an object from the hero's inventory */
-export function /* void */
-freeinv(obj)
-{
+export function freeinv(obj) { /* void */
     extract_nobj(obj, ref_of(gi, "invent"));
     obj.pickup_prev = 0;
     freeinv_core(obj);
@@ -1409,9 +1267,7 @@ freeinv(obj)
 }
 
 /* drawbridge is destroying all objects at <x,y> */
-export function /* void */
-delallobj(x, y)
-{
+export function delallobj(x, y) { /* void */
     let otmp, otmp2;
 
     for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp2) {
@@ -1426,19 +1282,15 @@ delallobj(x, y)
 }
 
 /* normal object deletion (if unpaid, it remains on the bill) */
-export function /* void */
-delobj(obj)
-{
+export function delobj(obj) { /* void */
     delobj_core(obj, FALSE);
 }
 
 /* destroy object; caller has control over whether to destroy something
    that ordinarily shouldn't be destroyed */
-export function /* void */
-delobj_core(
+export function delobj_core(
     obj,
-    force) /* 'force==TRUE' used when reviving Rider corpses */
-{
+    force) { /* void */ /* 'force==TRUE' used when reviving Rider corpses */
     let update_map;
 
     /* obj_resists(obj,0,0) protects the Amulet, the invocation tools,
@@ -1452,7 +1304,7 @@ delobj_core(
         obj.in_use = 0; /* in case caller has set this to 1 */
         return;
     }
-    update_map = (+(obj.where == OBJ_FLOOR));
+    update_map = +(obj.where == OBJ_FLOOR);
     obj_extract_self(obj);
     if (update_map) { /* floor object's coordinates are always up to date */
         maybe_unhide_at(obj.ox, obj.oy);
@@ -1462,9 +1314,7 @@ delobj_core(
 }
 
 /* try to find a particular type of object at designated map location */
-export function /* struct obj * */
-sobj_at(otyp, x, y)
-{
+export function sobj_at(otyp, x, y) { /* struct obj * */
     let otmp;
 
     for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp.v.v_nexthere)
@@ -1475,9 +1325,7 @@ sobj_at(otyp, x, y)
 }
 
 /* sobj_at(&c) traversal -- find next object of specified type */
-export function /* struct obj * */
-nxtobj(obj, type, by_nexthere)
-{
+export function nxtobj(obj, type, by_nexthere) { /* struct obj * */
     let otmp;
 
     otmp = obj; /* start with the object after this one */
@@ -1491,9 +1339,7 @@ nxtobj(obj, type, by_nexthere)
 }
 
 /* return inventory object of type 'type' if hero has one, otherwise Null */
-export function /* struct obj * */
-carrying(type)
-{
+export function carrying(type) { /* struct obj * */
     let otmp;
 
     /* this could be replaced by 'return m_carrying(&gy.youmonst, type);' */
@@ -1504,9 +1350,7 @@ carrying(type)
 }
 
 /* return inventory object of type that will petrify on touch */
-export function /* struct obj * */
-carrying_stoning_corpse()
-{
+export function carrying_stoning_corpse() { /* struct obj * */
     let otmp;
 
     for (otmp = gi.invent; otmp; otmp = otmp.nobj)
@@ -1542,9 +1386,7 @@ const currencies = static_array("currencies", ptr_to(char), null, [
     _("zorkmid"),               /* Zork, NetHack */
 ]);
 
-export function /* const char * */
-currency(amount)
-{
+export function currency(amount) { /* const char * */
     let res;
 
     res = Hallucination() ? ROLL_FROM(currencies) : _("zorkmid");
@@ -1553,9 +1395,7 @@ currency(amount)
     return res;
 }
 
-export function /* struct obj * */
-u_carried_gloves()
-{
+export function u_carried_gloves() { /* struct obj * */
     let otmp, gloves = null;
 
     if (uarmg) {
@@ -1570,11 +1410,8 @@ u_carried_gloves()
     return gloves;
 }
 
-
 /* 3.6 tribute */
-export function /* struct obj * */
-u_have_novel()
-{
+export function u_have_novel() { /* struct obj * */
     let otmp;
 
     for (otmp = gi.invent; otmp; otmp = otmp.nobj)
@@ -1583,9 +1420,7 @@ u_have_novel()
     return null;
 }
 
-export function /* struct obj * */
-o_on(id, objchn)
-{
+export function o_on(id, objchn) { /* struct obj * */
     let temp;
 
     while (objchn) {
@@ -1598,9 +1433,7 @@ o_on(id, objchn)
     return null;
 }
 
-export function /* boolean */
-obj_here(obj, x, y)
-{
+export function obj_here(obj, x, y) { /* boolean */
     let otmp;
 
     for (otmp = svl.level.objects[x][y]; otmp; otmp = otmp.v.v_nexthere)
@@ -1609,9 +1442,7 @@ obj_here(obj, x, y)
     return FALSE;
 }
 
-export function /* struct obj * */
-g_at(x, y)
-{
+export function g_at(x, y) { /* struct obj * */
     let obj = svl.level.objects[x][y];
 
     while (obj) {
@@ -1623,9 +1454,7 @@ g_at(x, y)
 }
 
 /* compact a string of inventory letters by dashing runs of letters */
-function /* void */
-compactify(buf)
-{
+function compactify(buf) { /* void */
     let i1 = 1, i2 = 1;
     let ilet, ilet1, ilet2;
 
@@ -1660,27 +1489,22 @@ compactify(buf)
 }
 
 /* some objects shouldn't be split when count given to getobj or askchain */
-export function /* boolean */
-splittable(obj)
-{
+export function splittable(obj) { /* boolean */
     return +!((obj.otyp == LOADSTONE && obj.cursed)
              || (obj == uwep && welded(uwep)));
 }
 
 /* match the prompt for either 'T' or 'R' command */
-function /* boolean */
-taking_off(action)
-{
+function taking_off(action) { /* boolean */
     return +(!strcmp(action, _("take off")) || !strcmp(action, _("remove")));
 }
 
-function /* void */
-mime_action(word)
-{ const $frame = stack_frame(); try {
+function mime_action(word) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let bp, pfx, sfx;
 
-    void strcpy(buf, word);
+    strcpy(buf, word);
     bp = pfx = sfx = 0;
 
     if ((bp = strstr(buf, _(" on the "))) != 0) {
@@ -1703,34 +1527,31 @@ mime_action(word)
 
     You(_("mime %s%s%s something%s%s."), ing_suffix(bp),
         pfx ? _(" ") : _(""), pfx ? pfx : _(""), sfx ? _(" ") : _(""), sfx ? sfx : _(""));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* getobj callback that allows any object - but not hands. */
-export function /* int */
-any_obj_ok(obj)
-{
+export function any_obj_ok(obj) { /* int */
     if (obj)
         return GETOBJ_SUGGEST;
     return GETOBJ_EXCLUDE;
 }
 
 /* return string describing your hands based on action. */
-function /* char * */
-getobj_hands_txt(action, qbuf)
-{
+function getobj_hands_txt(action, qbuf) { /* char * */
     if (!strcmp(action, _("grease"))) {
-        void sprintf(qbuf, _("your %s"), fingers_or_gloves(FALSE));
+        sprintf(qbuf, _("your %s"), fingers_or_gloves(FALSE));
     } else if (!strcmp(action, _("write with"))) {
-        void sprintf(qbuf, _("your %s"), body_part(FINGERTIP));
+        sprintf(qbuf, _("your %s"), body_part(FINGERTIP));
     } else if (!strcmp(action, _("wield"))) {
-        void sprintf(qbuf, _("your %s %s%s"), uarmg ? _("gloved") : _("bare"), makeplural(body_part(HAND)), !uwep ? _(" (wielded)") : _(""))
+        sprintf(qbuf, _("your %s %s%s"), uarmg ? _("gloved") : _("bare"), makeplural(body_part(HAND)), !uwep ? _(" (wielded)") : _(""))
 
 ;
     } else if (!strcmp(action, _("ready"))) {
-        void sprintf(qbuf, _("empty quiver%s"), !uquiver ? _(" (nothing readied)") : _(""))
+        sprintf(qbuf, _("empty quiver%s"), !uquiver ? _(" (nothing readied)") : _(""))
 ;
     } else {
-        void sprintf(qbuf, _("your %s"), makeplural(body_part(HAND)));
+        sprintf(qbuf, _("your %s"), makeplural(body_part(HAND)));
     }
     return qbuf;
 }
@@ -1748,12 +1569,11 @@ getobj_hands_txt(action, qbuf)
  * won't call it with &hands_obj, so its behavior can be undefined in that
  * case.
  */
-export function /* struct obj * */
-getobj(
+export function getobj(
     word,
     obj_ok,
-    ctrlflags) /* some control to fine-tune the behavior */
-{ const $frame = stack_frame(); try {
+    ctrlflags) { /* struct obj * */ /* some control to fine-tune the behavior */
+    const $frame = stack_frame(); try {
     var otmp;
     var ilet = 0;
     var buf = stack_array(char, BUFSZ), qbuf = stack_array(char, QBUFSZ);
@@ -1789,7 +1609,7 @@ getobj(
 
                 if (cq.key == HANDS_SYM) {
                     /* check whether the hands/self choice is suitable */
-                    v = (obj_ok)(null);
+                    v = obj_ok(null);
                     if (v == GETOBJ_SUGGEST || v == GETOBJ_DOWNPLAY)
                         otmp = hands_obj;
                 } else {
@@ -1797,7 +1617,7 @@ getobj(
                        take first one which passes the obj_ok callback */
                     for (otmp = gi.invent; otmp; otmp = otmp.nobj)
                         if (otmp.invlet == cq.key) {
-                            v = (obj_ok)(otmp);
+                            v = obj_ok(otmp);
                             if (v == GETOBJ_SUGGEST || v == GETOBJ_DOWNPLAY)
                                 break;
                         }
@@ -1829,7 +1649,7 @@ getobj(
     } break; }
 
     /* is "hands"/"self" a valid thing to do this action on? */
-    switch ((obj_ok)(null)) {
+    switch (obj_ok(null)) {
     case GETOBJ_SUGGEST: /* treat as likely candidate */
         allownone = TRUE;
         chars[bp++] = HANDS_SYM;
@@ -1870,7 +1690,7 @@ getobj(
         }
 
         chars[bp + (suggested++)] = otmp.invlet;
-        switch ((obj_ok)(otmp)) {
+        switch (obj_ok(otmp)) {
         case GETOBJ_EXCLUDE_INACCESS:
             /* remove inaccessible things */
             suggested--;
@@ -1904,7 +1724,7 @@ getobj(
      * hands, destroy the trailing space */
     if (suggested == 0 && bp > buf && chars[bp + (-1)] == ord(' '))
         chars[--bp] = ord('\0');
-    void strcpy(lets, bp); /* necessary since we destroy buf */
+    strcpy(lets, bp); /* necessary since we destroy buf */
     if (suggested > 5)      /* compactify string */
         compactify(bp);
     chars[ap] = ord('\0');
@@ -1916,7 +1736,7 @@ getobj(
     $out_redo_menu: for (;;) {
         cnt = 0;
         cntgiven = FALSE;
-        void sprintf(qbuf, _("What do you want to %s?"), word);
+        sprintf(qbuf, _("What do you want to %s?"), word);
         if (gi.in_doagain) {
             ilet = readchar();
         } else if (iflags.force_invmenu) {
@@ -1929,9 +1749,9 @@ getobj(
             oneloop = TRUE;
         } else {
             if (!chars[buf + 0])
-                void strcat(qbuf, _(" [*]"));
+                strcat(qbuf, _(" [*]"));
             else
-                void sprintf(eos(qbuf), _(" [%s or ?*]"), buf);
+                sprintf(eos(qbuf), _(" [%s or ?*]"), buf);
             ilet = yn_function(qbuf, 0, ord('\0'), FALSE);
         }
         if (digit(ilet)) {
@@ -2035,7 +1855,7 @@ getobj(
                "ready" or "fire" and this restriction doesn't apply */
             if (cnt == 0 || !otmp)
                 return null;
-            coins = (+(otmp.oclass == COIN_CLASS));
+            coins = +(otmp.oclass == COIN_CLASS);
             if (cnt > 1 && (!coins || cnt > otmp.quan)) {
                 if (cnt > otmp.quan)
                     You(_("only have %lld%s%s."), otmp.quan,
@@ -2086,39 +1906,12 @@ getobj(
         }
     }
     return otmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* void */
-silly_thing(word,
-            otmp)
-{
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+export function silly_thing(word,
+            otmp) { /* void */
+    /* #ifdef OBSOLETE_HANDLING: not in this build */
 
     /* see comment about Amulet of Yendor in objtyp_is_callable(do_name.c);
        known fakes yield the silly thing feedback */
@@ -2130,31 +1923,21 @@ silly_thing(word,
         pline(silly_thing_to(), word);
 }
 
-
-
-function /* int */
-ckvalidcat(otmp)
-{
+function ckvalidcat(otmp) { /* int */
     /* use allow_category() from pickup.c */
     return allow_category(otmp);
 }
 
-function /* int */
-ckunpaid(otmp)
-{
-    return (((otmp.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj))) ? 1 : 0));
+function ckunpaid(otmp) { /* int */
+    return (otmp.unpaid || (Has_contents(otmp) && count_unpaid(otmp.cobj)) ? 1 : 0);
 }
 
-export function /* boolean */
-wearing_armor()
-{
-    return (((uarm || uarmc || uarmf || uarmg
-                      || uarmh || uarms || uarmu) ? 1 : 0));
+export function wearing_armor() { /* boolean */
+    return (uarm || uarmc || uarmf || uarmg
+                      || uarmh || uarms || uarmu ? 1 : 0);
 }
 
-export function /* boolean */
-is_worn(otmp)
-{
+export function is_worn(otmp) { /* boolean */
     return (otmp.owornmask & (W_ARMOR | W_ACCESSORY | W_SADDLE | W_WEAPONS))
             ? TRUE
             : FALSE;
@@ -2163,10 +1946,8 @@ is_worn(otmp)
 /* is 'obj' being used by the hero?  worn, wielded, active lamp or leash;
    not to be confused with obj->in_use, which finishes using up an item
    (destroys it) if restoring a save file finds that bit set */
-export function /* boolean */
-is_inuse(obj)
-{
-    return (((carried(obj) && (is_worn(obj) || tool_being_used(obj))) ? 1 : 0));
+export function is_inuse(obj) { /* boolean */
+    return (carried(obj) && (is_worn(obj) || tool_being_used(obj)) ? 1 : 0);
 }
 
 /* extra xprname() input that askchain() can't pass through safe_qbuf() */
@@ -2176,17 +1957,13 @@ is_inuse(obj)
 }); const safeq_xprn_ctx = static_struct("safeq_xprn_ctx", struct_xprnctx);
 
 /* safe_qbuf() -> short_oname() callback */
-function /* char * */
-safeq_xprname(obj)
-{
+function safeq_xprname(obj) { /* char * */
     return xprname(obj, 0, safeq_xprn_ctx.let, safeq_xprn_ctx.dot,
                    0, 0);
 }
 
 /* alternate safe_qbuf() -> short_oname() callback */
-function /* char * */
-safeq_shortxprname(obj)
-{
+function safeq_shortxprname(obj) { /* char * */
     return xprname(obj, ansimpleoname(obj), safeq_xprn_ctx.let,
                    safeq_xprn_ctx.dot, 0, 0);
 }
@@ -2198,11 +1975,10 @@ const removeables = static_array("removeables", char, null, [ ARMOR_CLASS, WEAPO
 /* Interactive version of getobj - used for Drop, Identify, and Takeoff (A).
    Return the number of times fn was called successfully.
    If combo is TRUE, we just use this to get a category list. */
-export function /* int */
-ggetobj(word, fn, mx,
+export function ggetobj(word, fn, mx,
         combo,
-        resultflags)
-{ const $frame = stack_frame(); try {
+        resultflags) { /* int */
+    const $frame = stack_frame(); try {
     let ckfn = null;
     let ofilter = null;
     let takeoff, ident, allflag, m_seen;
@@ -2258,7 +2034,7 @@ ggetobj(word, fn, mx,
     chars[ilets + iletct] = ord('\0');
 
     for (;;) {
-        void sprintf(qbuf, _("What kinds of thing do you want to %s? [%s]"), word, ilets)
+        sprintf(qbuf, _("What kinds of thing do you want to %s? [%s]"), word, ilets)
 ;
         getlin(qbuf, buf);
         if (chars[buf + 0] == ord('\x1b'))
@@ -2273,8 +2049,8 @@ ggetobj(word, fn, mx,
                 for (otmp = gi.invent; otmp; otmp = nextobj) {
                     nextobj = otmp.nobj;
                     /* strchr() check: limit overflow items to one '#' */
-                    if ((ofilter)(otmp) && !strchr(ailets, otmp.invlet))
-                        void strkitten(ailets, otmp.invlet);
+                    if (ofilter(otmp) && !strchr(ailets, otmp.invlet))
+                        strkitten(ailets, otmp.invlet);
                 }
             if (display_inventory(ailets, TRUE) == ord('\x1b'))
                 return 0;
@@ -2287,11 +2063,11 @@ ggetobj(word, fn, mx,
         /* arbitrary types of items can be placed in the weapon slots
            [any duplicate entries in extra_removeables[] won't matter] */
         if (uwep)
-            void strkitten(extra_removeables, uwep.oclass);
+            strkitten(extra_removeables, uwep.oclass);
         if (uswapwep)
-            void strkitten(extra_removeables, uswapwep.oclass);
+            strkitten(extra_removeables, uswapwep.oclass);
         if (uquiver)
-            void strkitten(extra_removeables, uquiver.oclass);
+            strkitten(extra_removeables, uquiver.oclass);
     }
 
     ip = buf;
@@ -2366,23 +2142,23 @@ ggetobj(word, fn, mx,
             resultflags[0] |= ALL_FINISHED;
         return cnt;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Walk through the chain starting at objchn and ask for all objects
  * with olet in olets (if nonNULL) and satisfying ckfn (if nonnull)
  * whether the action in question (i.e., fn) has to be performed.
  */
-export function /* int */
-askchain(
+export function askchain(
     objchn,
     olets,
     allflag,
     fn,
     ckfn,
     mx,
-    word)    /* name of the action */
-{ const $frame = stack_frame(); try {
+    word) { /* int */ /* name of the action */
+    const $frame = stack_frame(); try {
     var otmp, otmpo;
     var sym, ilet;
     var cnt = 0, dud = 0, tmp;
@@ -2394,13 +2170,13 @@ askchain(
     ident = +!strcmp(word, _("identify"));
     take_out = +!strcmp(word, _("take out"));
     put_in = +!strcmp(word, _("put in"));
-    nodot = (((!strcmp(word, _("nodot")) || !strcmp(word, _("drop")) || ident
-             || takeoff || take_out || put_in) ? 1 : 0));
-    ininv = (+(objchn[0] == gi.invent));
-    bycat = (((menu_class_present(ord('u'))
+    nodot = (!strcmp(word, _("nodot")) || !strcmp(word, _("drop")) || ident
+             || takeoff || take_out || put_in ? 1 : 0);
+    ininv = +(objchn[0] == gi.invent);
+    bycat = (menu_class_present(ord('u'))
              || menu_class_present(ord('B')) || menu_class_present(ord('U'))
              || menu_class_present(ord('C')) || menu_class_present(ord('X'))
-             || menu_class_present(ord('P'))) ? 1 : 0));
+             || menu_class_present(ord('P')) ? 1 : 0);
 
     /* someday maybe we'll sort by 'olets' too (temporarily replace
        flags.packorder and pass SORTLOOT_PACK), but not yet... */
@@ -2443,7 +2219,7 @@ askchain(
             continue;
         if (ident && !not_fully_identified(otmp))
             continue;
-        if (ckfn && !(ckfn)(otmp))
+        if (ckfn && !ckfn(otmp))
             continue;
         if (bycat && !ckvalidcat(otmp))
             continue;
@@ -2456,10 +2232,10 @@ askchain(
                    class of objects is involved, so prefix the first
                    object being queried here with an explanation why */
                 if (take_out || put_in)
-                    void sprintf(qpfx, _("%s: "), word), chars[qpfx] = highc(chars[qpfx]);
+                    sprintf(qpfx, _("%s: "), word), chars[qpfx] = highc(chars[qpfx]);
                 first = FALSE;
             }
-            void safe_qbuf(qbuf, qpfx, _("?"), otmp,
+            safe_qbuf(qbuf, qpfx, _("?"), otmp,
                              ininv ? safeq_xprname : doname,
                              ininv ? safeq_shortxprname : ansimpleoname,
                              _("item"));
@@ -2492,7 +2268,7 @@ askchain(
             /* FALLTHROUGH */;
             /*FALLTHRU*/
         case ord('y'):
-            tmp = (fn)(otmp);
+            tmp = fn(otmp);
             if (tmp <= 0) {
                 if (container_gone(fn)) {
                     /* otmp caused magic bag to explode;
@@ -2500,7 +2276,7 @@ askchain(
                     otmp = null; /* and return */
                 } else if (otmp && otmp != otmpo) {
                     /* split occurred, merge again */
-                    void unsplitobj(otmp);
+                    unsplitobj(otmp);
                 }
                 if (tmp < 0)
                     break ret;;
@@ -2538,8 +2314,8 @@ askchain(
     /*bypass_objlist(*objchn, FALSE);*/
     clear_bypasses();
     return cnt;
-} finally { stack_pop($frame); } }
-
+    } finally { stack_pop($frame); }
+}
 
 /* The menu for rerolling attributes and inventory.
 
@@ -2548,9 +2324,8 @@ askchain(
    can't see the whole list at once).
 
    Returns TRUE (and increases numrerolls) if a reroll was requested. */
-export function /* boolean */
-reroll_menu()
-{ const $frame = stack_frame(); try {
+export function reroll_menu() { /* boolean */
+    const $frame = stack_frame(); try {
     let win;
     let any = stack_struct(struct_any);
     let pick_list = stack_var(ptr_to(struct_mi), null);
@@ -2589,8 +2364,7 @@ reroll_menu()
 
     add_menu(win, nul_glyphinfo, any, 0, 0, ATR_NONE, NO_COLOR, _(""),
              MENU_ITEMFLAGS_NONE);
-    void sprintf(buf, _("St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d"), get_strength_str(), ACURR(A_DEX), ACURR(A_CON), ACURR(A_INT), ACURR(A_WIS), ACURR(A_CHA))
-
+    sprintf(buf, _("St:%s Dx:%-1d Co:%-1d In:%-1d Wi:%-1d Ch:%-1d"), get_strength_str(), ACURR(A_DEX), ACURR(A_CON), ACURR(A_INT), ACURR(A_WIS), ACURR(A_CHA))
 
 ;
     add_menu(win, nul_glyphinfo, any, 0, 0, ATR_NONE, NO_COLOR,
@@ -2613,16 +2387,15 @@ reroll_menu()
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  *      Object identification routines:
  */
 
 /* set the cknown and lknown flags on an object if they're applicable */
-export function /* void */
-set_cknown_lknown(obj)
-{
+export function set_cknown_lknown(obj) { /* void */
     if (Is_container(obj) || obj.otyp == STATUE)
         obj.cknown = obj.lknown = 1;
     else if (obj.otyp == TIN)
@@ -2633,9 +2406,7 @@ set_cknown_lknown(obj)
 }
 
 /* make an object actually be identified; no display updating */
-export function /* void */
-fully_identify_obj(otmp)
-{
+export function fully_identify_obj(otmp) { /* void */
     makeknown(otmp.otyp);
     if (otmp.oartifact)
         discover_artifact(otmp.oartifact);
@@ -2647,25 +2418,22 @@ fully_identify_obj(otmp)
 }
 
 /* ggetobj callback routine; identify an object and give immediate feedback */
-export function /* int */
-identify(otmp)
-{
+export function identify(otmp) { /* int */
     fully_identify_obj(otmp);
     prinv(0, otmp, 0);
     return 1;
 }
 
 /* menu of unidentified objects; select and identify up to id_limit of them */
-function /* void */
-menu_identify(id_limit)
-{ const $frame = stack_frame(); try {
+function menu_identify(id_limit) { /* void */
+    const $frame = stack_frame(); try {
     let pick_list = stack_var(ptr_to(struct_mi));
     let n, i, first = 1, tryct = 5;
     let buf = stack_array(char, BUFSZ);
     /* assumptions:  id_limit > 0 and at least one unID'd item is present */
 
     while (id_limit) {
-        void sprintf(buf, _("What would you like to identify %s?"), first ? _("first") : _("next"))
+        sprintf(buf, _("What would you like to identify %s?"), first ? _("first") : _("next"))
 ;
         n = query_objlist(buf, ref_of(gi, "invent"), (SIGNAL_NOMENU | SIGNAL_ESCAPE
                                            | USE_INVLET | INVORDER_SORT),
@@ -2675,7 +2443,7 @@ menu_identify(id_limit)
             if (n > id_limit)
                 n = id_limit;
             for (i = 0; i < n; i++, id_limit--)
-                void identify(ptr_add(pick_list[0], i).item.a_obj);
+                identify(ptr_add(pick_list[0], i).item.a_obj);
             free(addr_of(pick_list[0]));
             if (id_limit)
                 wait_synch()(); /* Before we loop to pop open another menu */
@@ -2692,11 +2460,10 @@ menu_identify(id_limit)
             pline(_("Choose an item; use ESC to decline."));
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 /* count the unidentified items */
-export function /* int */
-count_unidentified(objchn)
-{
+export function count_unidentified(objchn) { /* int */
     let unid_cnt = 0;
     let obj;
 
@@ -2707,11 +2474,9 @@ count_unidentified(objchn)
 }
 
 /* dialog with user to identify a given number of items; 0 means all */
-export function /* void */
-identify_pack(
+export function identify_pack(
     id_limit,
-    learning_id) /* T: just read unknown identify scroll */
-{
+    learning_id) { /* void */ /* T: just read unknown identify scroll */
     let obj;
     let n, unid_cnt = count_unidentified(gi.invent);
 
@@ -2723,7 +2488,7 @@ identify_pack(
         /* TODO:  use fully_identify_obj and cornline/menu/whatever here */
         for (obj = gi.invent; obj; obj = obj.nobj) {
             if (not_fully_identified(obj)) {
-                void identify(obj);
+                identify(obj);
                 if (--unid_cnt < 1)
                     break;
             }
@@ -2746,9 +2511,7 @@ identify_pack(
 
 /* called when regaining sight; mark inventory objects which were picked
    up while blind as now having been seen */
-export function /* void */
-learn_unseen_invent()
-{
+export function learn_unseen_invent() { /* void */
     let otmp;
     let invupdated = FALSE;
 
@@ -2778,9 +2541,7 @@ learn_unseen_invent()
    'update_inventory' used to be a macro for
    (*windowprocs.win_update_inventory) but the restore hackery to suppress
    screen updates was getting out of hand; this is now a central call point */
-export function /* void */
-update_inventory()
-{
+export function update_inventory() { /* void */
     let save_suppress_price;
 
     if (!program_state.in_moveloop) /* not covered by suppress_map_output */
@@ -2805,14 +2566,12 @@ update_inventory()
      */
     save_suppress_price = iflags.suppress_price;
     iflags.suppress_price = 0;
-    (windowprocs.win_update_inventory)(0);
+    windowprocs.win_update_inventory(0);
     iflags.suppress_price = save_suppress_price;
 }
 
 /* the #perminv command - call interface's persistent inventory routine */
-export function /* int */
-doperminv()
-{
+export function doperminv() { /* int */
     /*
      * If persistent inventory window is enabled, interact with it.
      *
@@ -2822,44 +2581,30 @@ doperminv()
      * (typically by typing <return> or <esc> but that's up to interface).
      */
 
-
-
-
-
-
-
-
-
     if ((windowprocs.wincap & WC_PERM_INVENT) == 0) {
         /* [TODO? perhaps omit "by <interface>" if all the window ports
            compiled into this binary lack support for perm_invent...] */
         pline(_("Persistent inventory display is not supported by '%s'."),
               windowprocs.name);
-
     } else if (!iflags.perm_invent) {
         pline(
      _("Persistent inventory ('perm_invent' option) is not presently enabled."));
-
     } else if (!gi.invent) {
         /* [should this be left for the interface to decide?] */
         pline(_("Persistent inventory display is empty."));
-
     } else {
         /* note: we used to request a scrolling key here and pass that to
            (*win_update_inventory)(key), but that limited the functionality
            and also cluttered message history with prompt and response so
            just send non-zero and have the interface be responsible for it */
-        (windowprocs.win_update_inventory)(1);
-
+        windowprocs.win_update_inventory(1);
     } /* iflags.perm_invent */
 
     return ECMD_OK;
 }
 
 /* should of course only be called for things in invent */
-function /* char */
-obj_to_let(obj)
-{
+function obj_to_let(obj) { /* char */
     if (!flags.invlet_constant) {
         obj.invlet = NOINVSYM;
         reassign();
@@ -2871,10 +2616,9 @@ obj_to_let(obj)
  * Print the indicated quantity of the given object.  If quan == 0L then use
  * the current quantity.
  */
-export function /* void */
-prinv(prefix, obj, quan)
-{ const $frame = stack_frame(); try {
-    let total_of = (((quan && (quan < obj.quan)) ? 1 : 0));
+export function prinv(prefix, obj, quan) { /* void */
+    const $frame = stack_frame(); try {
+    let total_of = (quan && (quan < obj.quan) ? 1 : 0);
     let totalbuf = stack_array(char, QBUFSZ);
 
     if (!prefix)
@@ -2887,25 +2631,23 @@ prinv(prefix, obj, quan)
     pline(_("%s%s%s%s"), prefix, chars[prefix] ? _(" ") : _(""),
           xprname(obj, 0, obj_to_let(obj), +!total_of, 0, quan),
           flags.verbose ? totalbuf : _(""));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* char * */
-xprname(
+export function xprname(
     obj,
     txt,
     let_,
     dot,
     cost,
-    quan)       /* if non-0, print this quantity, not obj->quan */
-{ const $frame = stack_frame(); try {
+    quan) { /* char * */ /* if non-0, print this quantity, not obj->quan */
+    const $frame = stack_frame(); try {
     let li = static_array("xprname.li", char, BUFSZ);
     let suffix = stack_array(char, 80); /* plenty of room for count and hallucinatory currency */
     let sfxlen, txtlen; /* signed int for %*s formatting */
     let fmt;
-    let use_invlet = (((flags.invlet_constant && obj != null
-                          && let_ != CONTAINED_SYM && let_ != HANDS_SYM) ? 1 : 0));
+    let use_invlet = (flags.invlet_constant && obj != null
+                          && let_ != CONTAINED_SYM && let_ != HANDS_SYM ? 1 : 0);
     let savequan = 0;
 
     if (quan && obj) {
@@ -2929,7 +2671,7 @@ xprname(
         /* if dot is true, we're doing Iu, otherwise Ix */
         if (dot && use_invlet)
             let_ = obj.invlet;
-        void sprintf(suffix, _("%c%6lld %.50s"), iflags.menu_tab_sep ? ord('\t') : ord(' '), cost, currency(cost))
+        sprintf(suffix, _("%c%6lld %.50s"), iflags.menu_tab_sep ? ord('\t') : ord(' '), cost, currency(cost))
 ;
         if (!iflags.menu_tab_sep) {
             fmt = _("%c - %-45.*s%s");
@@ -2940,32 +2682,28 @@ xprname(
         /* ordinary inventory display or pickup message */
         if (use_invlet)
             let_ = obj.invlet;
-        void strcpy(suffix, dot ? _(".") : _(""));
+        strcpy(suffix, dot ? _(".") : _(""));
     }
     sfxlen = int(strlen(suffix));
     if (txtlen > BUFSZ - 1 - (4 + sfxlen)) /* 4: "c - " prefix */
         txtlen = BUFSZ - 1 - (4 + sfxlen);
-    void sprintf(li, fmt, let_, txtlen, txt, suffix);
+    sprintf(li, fmt, let_, txtlen, txt, suffix);
 
     if (savequan)
         obj.quan = savequan;
 
     return li;
-} finally { stack_pop($frame); } }
-
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* show some or all of inventory while allowing the picking of an item in
    order to preform context-sensitive item action on it; always returns 'ok';
    invent subsets specified by the ')', '[', '(', '=', '"', or '*' commands
    when they're invoked with the 'm' prefix (or without it for '*') */
-function /* int */
-dispinv_with_action(
+function dispinv_with_action(
     lets,
     use_inuse_ordering,
-    alt_label)      /* alternate value for in-use "Accessories" */
-{
+    alt_label) { /* int */ /* alternate value for in-use "Accessories" */
     let otmp, nextobj;
     let save_accessories = 0;
     let c, save_sortloot = 0;
@@ -3002,9 +2740,7 @@ dispinv_with_action(
 }
 
 /* the #inventory command (not much left...) */
-export function /* int */
-ddoinv()
-{
+export function ddoinv() { /* int */
     return dispinv_with_action(0, FALSE, 0);
 }
 
@@ -3017,9 +2753,7 @@ ddoinv()
  * next unpaid object is returned.  This routine recursively follows
  * containers.
  */
-function /* struct obj * */
-find_unpaid(list, last_found)
-{
+function find_unpaid(list, last_found) { /* struct obj * */
     let obj;
 
     while (list) {
@@ -3029,7 +2763,7 @@ find_unpaid(list, last_found)
                 if (list == last_found[0])
                     last_found[0] = null;
             } else
-                return ((last_found[0] = list));
+                return (last_found[0] = list);
         }
         if (Has_contents(list)) {
             if ((obj = find_unpaid(list.cobj, last_found)) != null)
@@ -3040,9 +2774,7 @@ find_unpaid(list, last_found)
     return null;
 }
 
-export function /* void */
-free_pickinv_cache()
-{
+export function free_pickinv_cache() { /* void */
     if (gc.cached_pickinv_win != WIN_ERR) {
         destroy_nhwindow()(gc.cached_pickinv_win);
         gc.cached_pickinv_win = WIN_ERR;
@@ -3053,15 +2785,14 @@ free_pickinv_cache()
  * Internal function used by display_inventory and getobj that can display
  * inventory and return a count as well as a letter.
  */
-function /* char */
-display_pickinv(
+function display_pickinv(
     lets,
     xtra_choice,
     query,
     allowxtra,
     want_reply,
-    out_cnt) /* optional; count player entered when selecting an item */
-{ const $frame = stack_frame(); try {
+    out_cnt) { /* char */ /* optional; count player entered when selecting an item */
+    const $frame = stack_frame(); try {
     var not_carrying_anything = init_string(static_array("display_pickinv.not_carrying_anything", char, sizeof_string("Not carrying anything")), _("Not carrying anything"), true),
         not_using_anything = init_string(static_array("display_pickinv.not_using_anything", char, sizeof_string("Not using any items")), _("Not using any items"), true),
         only_carrying_gold = init_string(static_array("display_pickinv.only_carrying_gold", char, sizeof_string("Only carrying gold")), _("Only carrying gold"), true);
@@ -3077,23 +2808,16 @@ display_pickinv(
     var sortedinvent = stack_var(ptr_to(struct_sortloot_item)), srtinv;
     var prevorderclass;
     var filter = null;
-    var wizid = (((wizard() && iflags.override_ID) ? 1 : 0)), gotsomething = FALSE;
+    var wizid = (wizard() && iflags.override_ID ? 1 : 0), gotsomething = FALSE;
     var clr = NO_COLOR, menu_behavior = MENU_BEHAVE_STANDARD;
     var show_gold = TRUE, inuse_only = FALSE, skipped_gold = FALSE,
             doing_perm_invent = FALSE, save_flags_sortpack,
-            usextra = (((xtra_choice && allowxtra) ? 1 : 0));
+            usextra = (xtra_choice && allowxtra ? 1 : 0);
 
     if (lets && !chars[lets])
         lets = 0; /* simplify tests: (lets) instead of (lets && *lets) */
 
-
-
-
-
-
     if (lets || usextra || wizid || want_reply
-
-
 
         || WIN_INVEN == WIN_ERR) {
         /* partial inventory in perm_invent setting; don't operate on
@@ -3108,8 +2832,8 @@ display_pickinv(
         win = WIN_INVEN;
         menu_behavior = MENU_BEHAVE_PERMINV;
         prepare_perminvent(win);
-        show_gold = (+((wri_info.fromcore.invmode & InvShowGold) != 0));
-        inuse_only = (+((wri_info.fromcore.invmode & InvInUse) != 0));
+        show_gold = +((wri_info.fromcore.invmode & InvShowGold) != 0);
+        inuse_only = +((wri_info.fromcore.invmode & InvInUse) != 0);
         doing_perm_invent = TRUE;
     }
     /*
@@ -3178,11 +2902,6 @@ display_pickinv(
         sortflags = unsigned(sortflags | SORTLOOT_PACK);
     save_flags_sortpack = flags.sortpack;
 
-
-
-
-
-
     if (inuse_only) {
         flags.sortpack = FALSE;
         sortflags = SORTLOOT_INUSE; /* override */
@@ -3224,9 +2943,9 @@ display_pickinv(
         var prompt = stack_array(char, QBUFSZ);
 
         unid_cnt = count_unidentified(gi.invent);
-        void sprintf(prompt, _("Debug Identify")); /* 'title' rather than 'prompt' */
+        sprintf(prompt, _("Debug Identify")); /* 'title' rather than 'prompt' */
         if (unid_cnt)
-            void sprintf(eos(prompt), _(" -- unidentified or partially identified item%s"), plur(unid_cnt))
+            sprintf(eos(prompt), _(" -- unidentified or partially identified item%s"), plur(unid_cnt))
 
 ;
         add_menu_str(win, prompt);
@@ -3236,7 +2955,7 @@ display_pickinv(
             gotsomething = TRUE;
         } else {
             any.a_obj = wizid_fakeobj;
-            void sprintf(prompt, _("select %s to permanently identify"), (unid_cnt == 1) ? _("it"): _("any or all of them"))
+            sprintf(prompt, _("select %s to permanently identify"), (unid_cnt == 1) ? _("it"): _("any or all of them"))
 ;
             /* wiz_identify stuffed the wiz_identify command character (^I)
                into iflags.override_ID for our use as an accelerator;
@@ -3244,7 +2963,7 @@ display_pickinv(
                the #wizidentify command, so include it as a group accelerator
                but use '_' as the primary selector */
             if (unid_cnt > 1)
-                void sprintf(eos(prompt), _(" (%s for all)"), visctrl(iflags.override_ID))
+                sprintf(eos(prompt), _(" (%s for all)"), visctrl(iflags.override_ID))
 ;
             add_menu(win, nul_glyphinfo, any, ord('_'), iflags.override_ID,
                      ATR_NONE, clr, prompt, MENU_ITEMFLAGS_SKIPINVERT);
@@ -3288,7 +3007,7 @@ display_pickinv(
             /* maybe insert a class header */
             if (inuse_only ? (srtinv.orderclass != prevorderclass)
                            : (flags.sortpack && !classcount)) {
-                var withsym = (((want_reply && iflags.menu_head_objsym) ? 1 : 0));
+                var withsym = (want_reply && iflags.menu_head_objsym ? 1 : 0);
                 var class_header = inuse_only
                         ? inuse_headers[srtinv.orderclass]
                         : let_to_name(chars[invlet], FALSE, withsym);
@@ -3311,7 +3030,7 @@ display_pickinv(
 
                 /* like doname() below, makeplural() returns an obuf[] */
                 formattedobj = makeplural(body_part(HAND));
-                void sprintf(barehands, _("%s %s (no weapon)"), uarmg ? _("gloved") : _("bare"), formattedobj)
+                sprintf(barehands, _("%s %s (no weapon)"), uarmg ? _("gloved") : _("bare"), formattedobj)
 ;
                 add_menu(win, nul_glyphinfo, any, ilet, 0,
                          ATR_NONE, clr, barehands, MENU_ITEMFLAGS_NONE);
@@ -3399,7 +3118,7 @@ display_pickinv(
                     break;
                 } else {
                     if (not_fully_identified(otmp))
-                        void identify(otmp);
+                        identify(otmp);
                     /* identify() does not perform update_inventory() */
                 }
             }
@@ -3415,7 +3134,8 @@ display_pickinv(
         ret = !n ? ord('\0') : ord('\x1b'); /* cancelled */
 
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * If lets == NULL or "", list all objects in the inventory.  Otherwise,
@@ -3424,9 +3144,7 @@ display_pickinv(
  * Returns the letter identifier of a selected item, or 0 if nothing
  * was selected.
  */
-export function /* char */
-display_inventory(lets, want_reply)
-{
+export function display_inventory(lets, want_reply) { /* char */
     let cmdq = cmdq_pop();
 
     if (cmdq) {
@@ -3452,10 +3170,8 @@ display_inventory(lets, want_reply)
                            FALSE, want_reply, null);
 }
 
-export function /* void */
-repopulate_perminvent()
-{
-        void display_pickinv(0, 0, 0,
+export function repopulate_perminvent() { /* void */
+        display_pickinv(0, 0, 0,
                                FALSE, FALSE, null);
 }
 
@@ -3463,9 +3179,8 @@ repopulate_perminvent()
  * Show what is current using inventory letters.
  *
  */
-function /* char */
-display_used_invlets(avoidlet)
-{ const $frame = stack_frame(); try {
+function display_used_invlets(avoidlet) { /* char */
+    const $frame = stack_frame(); try {
     let otmp;
     let ilet, ret = 0;
     let invlet = flags.inv_order;
@@ -3516,15 +3231,14 @@ display_used_invlets(avoidlet)
         destroy_nhwindow()(win);
     }
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Returns the number of unpaid items within the given list.  This includes
  * contained objects.
  */
-export function /* int */
-count_unpaid(list)
-{
+export function count_unpaid(list) { /* int */
     let count = 0;
 
     while (list) {
@@ -3544,17 +3258,15 @@ count_unpaid(list)
  * Assumes that the hero sees or touches or otherwise senses the objects
  * at some point:  bknown is forced for priest[ess], like in xname().
  */
-export function /* int */
-count_buc(list, type, filterfunc)
-{
+export function count_buc(list, type, filterfunc) { /* int */
     let count = 0;
 
     for (; list; list = list.nobj) {
         /* priests always know bless/curse state */
         if (Role_if(PM_CLERIC))
-            list.bknown = (+(list.oclass != COIN_CLASS));
+            list.bknown = +(list.oclass != COIN_CLASS);
         /* some actions exclude some or most items */
-        if (filterfunc && !(filterfunc)(list))
+        if (filterfunc && !filterfunc(list))
             continue;
 
         /* coins are either uncursed or unknown based upon option setting */
@@ -3576,12 +3288,10 @@ count_buc(list, type, filterfunc)
 
 /* similar to count_buc(), but tallies all states at once
    rather than looking for a specific type */
-export function /* void */
-tally_BUCX(
+export function tally_BUCX(
     list,
     by_nexthere,
-    bcp, ucp, ccp, xcp, ocp, jcp)
-{
+    bcp, ucp, ccp, xcp, ocp, jcp) { /* void */
     /* Future extensions:
      *  Skip current_container when list is invent, uchain when
      *  first object of list is located on the floor.  'ocp' will then
@@ -3592,7 +3302,7 @@ tally_BUCX(
     for ( ; list; list = (by_nexthere ? list.v.v_nexthere : list.nobj)) {
         /* priests always know bless/curse state */
         if (Role_if(PM_CLERIC))
-            list.bknown = (+(list.oclass != COIN_CLASS));
+            list.bknown = +(list.oclass != COIN_CLASS);
         if (list.pickup_prev)
             ++(jcp[0]);
         /* coins are either uncursed or unknown based upon option setting */
@@ -3616,17 +3326,13 @@ tally_BUCX(
 }
 
 /* count everything inside a container, or just shop-owned items inside */
-export function /* long long */
-count_contents(
+export function count_contents(
     container,
     nested,
     quantity,
     everything,
-    newdrop)    /* on floor, but hero-owned items haven't
-                         * been marked no_charge yet and shop-owned
-                         * items are still marked unpaid -- used
-                         * when asking the player whether to sell    */
-{ const $frame = stack_frame(); try {
+    newdrop) { /* long long */ /* on floor, but hero-owned items haven't * been marked no_charge yet and shop-owned * items are still marked unpaid -- used * when asking the player whether to sell */
+    const $frame = stack_frame(); try {
     let otmp, topc;
     let shoppy = FALSE;
     let count = 0;
@@ -3648,14 +3354,14 @@ count_contents(
             count += quantity ? otmp.quan : 1;
     }
     return count;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-dounpaid(
+function dounpaid(
     count,
     floorcount,
-    buriedcount) /* unpaid items under the floor (extremely rare) */
-{ const $frame = stack_frame(); try {
+    buriedcount) { /* void */ /* unpaid items under the floor (extremely rare) */
+    const $frame = stack_frame(); try {
     let win;
     let otmp, marker = stack_var(ptr_to(struct_obj)), contnr;
     let ilet;
@@ -3738,7 +3444,7 @@ dounpaid(
                     let contbuf = stack_array(char, BUFSZ);
 
                     /* Shopkeeper knows what to charge for contents */
-                    void sprintf(contbuf, _("%s contents"), s_suffix(xname(otmp)));
+                    sprintf(contbuf, _("%s contents"), s_suffix(xname(otmp)));
                     putstr()(win, 0,
                            xprname(null, contbuf, CONTAINED_SYM,
                                    TRUE, contcost, 0));
@@ -3762,21 +3468,16 @@ dounpaid(
         let buf = stack_array(char, BUFSZ);
         let floorverb = (xtracount > 1) ? _("are") : _("is"),
 
-
-
-
-
             where = (buriedcount == 0) ? _("on the floor")
                      : (floorcount == 0) ? _("under the floor")
                        : _("on or under the floor");
-
 
         if (!count) {
             You(_("aren't carrying any unpaid items but there %s %d %s."),
                 floorverb, xtracount, where);
         } else {
             putstr()(win, 0, _(""));
-            void sprintf(buf, _("(There %s %d more unpaid object%s %s.)"), floorverb, xtracount, plur(xtracount), where)
+            sprintf(buf, _("(There %s %d more unpaid object%s %s.)"), floorverb, xtracount, plur(xtracount), where)
 ;
             putstr()(win, 0, buf);
         }
@@ -3786,13 +3487,11 @@ dounpaid(
         display_nhwindow()(win, FALSE);
     destroy_nhwindow()(win);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* boolean */
-this_type_only(obj)
-{
-    let res = (+(obj.oclass == gt.this_type));
+function this_type_only(obj) { /* boolean */
+    let res = +(obj.oclass == gt.this_type);
 
     if (gt.this_type == ord('P')) {
         res = obj.pickup_prev;
@@ -3800,17 +3499,17 @@ this_type_only(obj)
         /* if filtering by bless/curse state, gold is classified as
            either unknown or uncursed based on user option setting */
         if (gt.this_type && strchr(_("BUCX"), gt.this_type))
-            res = (+(gt.this_type == (flags.goldX ? ord('X') : ord('U'))));
+            res = +(gt.this_type == (flags.goldX ? ord('X') : ord('U')));
     } else {
         switch (gt.this_type) {
         case ord('B'):
-            res = (((obj.bknown && obj.blessed) ? 1 : 0));
+            res = (obj.bknown && obj.blessed ? 1 : 0);
             break;
         case ord('U'):
-            res = (((obj.bknown && !(obj.blessed || obj.cursed)) ? 1 : 0));
+            res = (obj.bknown && !(obj.blessed || obj.cursed) ? 1 : 0);
             break;
         case ord('C'):
-            res = (((obj.bknown && obj.cursed) ? 1 : 0));
+            res = (obj.bknown && obj.cursed ? 1 : 0);
             break;
         case ord('X'):
             res = +!obj.bknown;
@@ -3823,9 +3522,8 @@ this_type_only(obj)
 }
 
 /* the #inventtype command */
-export function /* int */
-dotypeinv()
-{ const $frame = stack_frame(); try {
+export function dotypeinv() { /* int */
+    const $frame = stack_frame(); try {
     var prompt = init_string(static_array("dotypeinv.prompt", char, sizeof_string("What type of object do you want an inventory of?")), _("What type of object do you want an inventory of?"), true);
 
     var c = ord('\0');
@@ -3835,7 +3533,7 @@ dotypeinv()
     var class_count, oclass, itemcount = stack_var(int),
         any_unpaid, u_carried, u_floor, u_buried;
     var bcnt = stack_var(int), ccnt = stack_var(int), ucnt = stack_var(int), xcnt = stack_var(int), ocnt = stack_var(int), jcnt = stack_var(int);
-    var billx = ((chars[u.ushops] && doinvbill(0)) ? 1 : 0);
+    var billx = (chars[u.ushops] && doinvbill(0) ? 1 : 0);
     var pick_list = stack_var(ptr_to(struct_mi));
     var traditional = TRUE;
 
@@ -3942,7 +3640,7 @@ dotypeinv()
     }
     if (c == ord('x') || (c == ord('X') && billx && !xcnt[0])) {
         if (billx)
-            void doinvbill(1);
+            doinvbill(1);
         else
             pline(_("No used-up objects%s."),
                   any_unpaid ? _(" on your shopping bill") : _(""));
@@ -3960,13 +3658,6 @@ dotypeinv()
         oclass = c; /* not a class but understood by this_type_only() */
     else
         oclass = def_char_to_objclass(c); /* change to object class */
-
-
-
-
-
-
-
 
     /* these are used for traditional when not applicable and also for
        constructing a title to be used by query_objlist() */
@@ -4007,11 +3698,11 @@ dotypeinv()
     if (strchr(_("BUCXP"), c)) {
         /* the before and after phrases for "you have no..." can both be
            treated as mutually-exclusive suffices when creating a title */
-        void sprintf(title, _("Items %s"), (before && chars[before]) ? before : after);
+        sprintf(title, _("Items %s"), (before && chars[before]) ? before : after);
         /* get rid of trailing space from 'before' and double-space from
            'after's leading space */
-        void mungspaces(title);
-        void strcat(title, _(":")); /* after removing unwanted trailing space */
+        mungspaces(title);
+        strcat(title, _(":")); /* after removing unwanted trailing space */
         gt.this_title = title;
     }
 
@@ -4022,20 +3713,18 @@ dotypeinv()
         var otmp = ptr_add(pick_list[0], 0).item.a_obj;
 
         free(addr_of(pick_list[0]));
-        void itemactions(otmp); /* always returns ECMD_OK */
+        itemactions(otmp); /* always returns ECMD_OK */
     }
-
  }
     gt.this_type = 0;
     gt.this_title = 0;
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return a string describing the dungeon feature at <x,y> if there
    is one worth mentioning at that location; otherwise null */
-export function /* const char * */
-dfeature_at(x, y, buf)
-{
+export function dfeature_at(x, y, buf) { /* const char * */
     let lev = levl()[x][y];
     let ltyp = lev.typ, cmap = -1;
     let dfeature = 0;
@@ -4073,8 +3762,7 @@ dfeature_at(x, y, buf)
     else if (IS_SINK(ltyp))
         cmap = S_sink; /* "sink" */
     else if (IS_ALTAR(ltyp)) {
-        void sprintf(altbuf, _("%saltar to %s (%s)"), (lev.flags & AM_SANCTUM) ? _("high ") : _(""), a_gname(), align_str(Amask2align(lev.flags & ~AM_SHRINE)))
-
+        sprintf(altbuf, _("%saltar to %s (%s)"), (lev.flags & AM_SANCTUM) ? _("high ") : _(""), a_gname(), align_str(Amask2align(lev.flags & ~AM_SHRINE)))
 
 ;
         dfeature = altbuf;
@@ -4094,17 +3782,16 @@ dfeature_at(x, y, buf)
     if (cmap >= 0)
         dfeature = defsyms[cmap].explanation;
     if (dfeature)
-        void strcpy(buf, dfeature);
+        strcpy(buf, dfeature);
     return dfeature;
 }
 
 /* look at what is here; if there are many objects (pile_limit or more),
    don't show them unless obj_cnt is 0 */
-export function /* int */
-look_here(
+export function look_here(
     obj_cnt,
-    lookhere_flags)
-{ const $frame = stack_frame(); try {
+    lookhere_flags) { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let trap;
     let verb = Blind() ? _("feel") : _("see");
@@ -4118,7 +3805,7 @@ look_here(
 
     /* default pile_limit is 5; a value of 0 means "never skip"
        (and 1 effectively forces "always skip") */
-    skip_objects = (+(flags.pile_limit > 0 && obj_cnt >= flags.pile_limit));
+    skip_objects = +(flags.pile_limit > 0 && obj_cnt >= flags.pile_limit);
     if (u.uswallow) {
         let mtmp = u.ustuck;
 
@@ -4137,7 +3824,7 @@ look_here(
          *  something along the lines of "because it's worn on the outside
          *  so is unreachable from in here...").
          */
-        void sprintf(fbuf, _("Contents of %s %s"), s_suffix(mon_nam(mtmp)), mbodypart(mtmp, STOMACH))
+        sprintf(fbuf, _("Contents of %s %s"), s_suffix(mon_nam(mtmp)), mbodypart(mtmp, STOMACH))
 ;
         /* Skip "Contents of " by using fbuf index 12 */
         You(_("%s to %s what is lying in %s."), Blind() ? _("try") : _("look around"),
@@ -4151,9 +3838,9 @@ look_here(
                     feel_cockatrice(otmp, FALSE);
             }
             if (Blind())
-                void strcpy(fbuf, _("You feel"));
-            void strcat(fbuf, _(":"));
-            void display_minventory(mtmp, MINV_ALL | PICK_NONE, fbuf);
+                strcpy(fbuf, _("You feel"));
+            strcat(fbuf, _(":"));
+            display_minventory(mtmp, MINV_ALL | PICK_NONE, fbuf);
         } else {
             You(_("%s no objects here."), verb);
         }
@@ -4165,7 +3852,7 @@ look_here(
 
         chars[regbuf + 0] = ord('\0');
         if ((reg = visible_region_at(u.ux, u.uy)) != null)
-            void sprintf(regbuf, _("a %s cloud"), reg_damg(reg) ? _("poison gas") : _("vapor"))
+            sprintf(regbuf, _("a %s cloud"), reg_damg(reg) ? _("poison gas") : _("vapor"))
 ;
         if ((trap = t_at(u.ux, u.uy)) != null && !trap.tseen)
             trap = null;
@@ -4183,7 +3870,7 @@ look_here(
         dfeature = 0;
 
     if (Blind()) {
-        let drift = ((Is_airlevel(u.uz) || Is_waterlevel(u.uz)) ? 1 : 0);
+        let drift = (Is_airlevel(u.uz) || Is_waterlevel(u.uz) ? 1 : 0);
 
         if (dfeature && !strncmp(dfeature, _("altar "), 6)) {
             /* don't say "altar" twice, dfeature has more info */
@@ -4211,7 +3898,7 @@ look_here(
                 skip_dfeature = TRUE; /* terrain feature already identified */
         }
         trap = t_at(u.ux, u.uy);
-        if (!can_reach_floor(((trap && is_pit(trap.ttyp)) ? 1 : 0))) {
+        if (!can_reach_floor((trap && is_pit(trap.ttyp) ? 1 : 0))) {
             pline(_("But you can't reach it!"));
             return ECMD_OK;
         }
@@ -4228,14 +3915,14 @@ look_here(
             || !strcmp(dfeature, _("ice"))
             || !strncmp(dfeature, _("frozen "), 7) /* ice while hallucinating */
             /* thawing ice ("solid ice", "thin ice", &c) */
-            || ((p = strchr(dfeature, ord(' '))) != 0 && !strcmpi(p, _(" ice"))))
+            || ((p = strchr(dfeature, ord(' '))) != 0 && !strncmpi((p), _((" ice")), -1)))
             article = 0;
         if (article == 1)
             dfeature = an(dfeature);
 
         /* hardcoded "is" worked here because "iron bars" is actually
            "set of iron bars"; use vtense() instead of relying on that */
-        void sprintf(fbuf, _("There %s %s here."), vtense(dfeature, _("are")), dfeature);
+        sprintf(fbuf, _("There %s %s here."), vtense(dfeature, _("are")), dfeature);
     }
 
     if (!otmp || is_lava(u.ux, u.uy)
@@ -4292,14 +3979,14 @@ look_here(
             putstr()(tmpwin, 0, fbuf);
             putstr()(tmpwin, 0, _(""));
         }
-        void sprintf(buf, _("%s that %s here:"), picked_some ? _("Other things") : _("Things"), Blind() ? _("you feel") : _("are"))
+        sprintf(buf, _("%s that %s here:"), picked_some ? _("Other things") : _("Things"), Blind() ? _("you feel") : _("are"))
 
 ;
         putstr()(tmpwin, 0, buf);
         for (; otmp; otmp = otmp.v.v_nexthere) {
             if (otmp.otyp == CORPSE && will_feel_cockatrice(otmp, FALSE)) {
                 felt_cockatrice = TRUE;
-                void sprintf(buf, _("%s..."), doname(otmp));
+                sprintf(buf, _("%s..."), doname(otmp));
                 putstr()(tmpwin, 0, buf);
                 break;
             }
@@ -4312,12 +3999,11 @@ look_here(
         read_engr_at(u.ux, u.uy); /* Eric Backus */
     }
     return (!!Blind() ? ECMD_TIME : ECMD_OK);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* #look command - explicitly look at what is here, including all objects */
-export function /* int */
-dolook()
-{
+export function dolook() { /* int */
     let res;
 
     /* don't let
@@ -4330,23 +4016,20 @@ dolook()
     return res;
 }
 
-export function /* boolean */
-will_feel_cockatrice(otmp, force_touch)
-{
+export function will_feel_cockatrice(otmp, force_touch) { /* boolean */
     if ((Blind() || force_touch) && !uarmg && !Stone_resistance()
         && (otmp.otyp == CORPSE && touch_petrifies(mons[otmp.corpsenm])))
         return TRUE;
     return FALSE;
 }
 
-export function /* void */
-feel_cockatrice(otmp, force_touch)
-{ const $frame = stack_frame(); try {
+export function feel_cockatrice(otmp, force_touch) { /* void */
+    const $frame = stack_frame(); try {
     let kbuf = stack_array(char, BUFSZ);
 
     if (will_feel_cockatrice(otmp, force_touch)) {
         /* "the <cockatrice> corpse" */
-        void strcpy(kbuf, corpse_xname(otmp, 0, CXN_PFX_THE));
+        strcpy(kbuf, corpse_xname(otmp, 0, CXN_PFX_THE));
 
         if (poly_when_stoned(gy.youmonst.data))
             You(_("touched %s with your bare %s."), kbuf,
@@ -4354,17 +4037,18 @@ feel_cockatrice(otmp, force_touch)
         else
             pline(_("Touching %s is a fatal mistake..."), kbuf);
         /* normalize body shape here; hand, not body_part(HAND) */
-        void sprintf(kbuf, _("touching %s bare-handed"), killer_xname(otmp));
+        sprintf(kbuf, _("touching %s bare-handed"), killer_xname(otmp));
         /* will call polymon() for the poly_when_stoned() case */
         instapetrify(kbuf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 'obj' is being placed on the floor; if it can merge with something that
    is already there, combine them and discard obj as a separate object */
-export function /* void */
-stackobj(obj$)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+export function stackobj(obj$) { /* void */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     let otmp = stack_var(ptr_to(struct_obj));
 
     for (otmp[0] = svl.level.objects[obj[0].ox][obj[0].oy]; otmp[0];
@@ -4372,14 +4056,13 @@ stackobj(obj$)
         if (otmp[0] != obj[0] && merged(obj, otmp))
             break;
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* returns TRUE if obj & otmp can be merged; used in invent.c and mkobj.c */
-export function /* boolean */
-mergable(
+export function mergable(
     otmp,
-    obj)  /* 'combine' stack */
-{
+    obj) { /* boolean */ /* 'combine' stack */
     let objnamelth = 0, otmpnamelth = 0;
 
     /* fail if already the same object, if different types, if either is
@@ -4400,12 +4083,6 @@ mergable(
         return FALSE;
     if (otmp.how_lost != LOST_NONE && (obj.how_lost != otmp.how_lost))
         return FALSE;
-
-
-
-
-
-
 
     if (obj.globby)
         return TRUE;
@@ -4429,7 +4106,7 @@ mergable(
         || obj.greased != otmp.greased)
         return FALSE;
 
-    if ((erosion_matters(obj))
+    if (erosion_matters(obj)
         && (obj.oerodeproof != otmp.oerodeproof
             || (obj.rknown != otmp.rknown && (Blind() || Hallucination()))))
         return FALSE;
@@ -4479,14 +4156,12 @@ mergable(
         : (!has_omailcmd(otmp) || strcmp(OMAILCMD(obj), OMAILCMD(otmp)) != 0))
         return FALSE;
 
-
     if (obj.otyp == SCR_MAIL
         /* wished or bones mail and hand written stamped scrolls
            each have two flavors; spe keeps them separate from each
            other but we want to keep their flavors separate too */
         && obj.spe > 0 && (obj.o_id % 2) != (otmp.o_id % 2))
         return FALSE;
-
 
     /* should be moot since matching artifacts wouldn't be unique */
     if (obj.oartifact != otmp.oartifact)
@@ -4499,9 +4174,8 @@ mergable(
 }
 
 /* the #showgold command */
-export function /* int */
-doprgold()
-{ const $frame = stack_frame(); try {
+export function doprgold() { /* int */
+    const $frame = stack_frame(); try {
     /* Command takes containers into account. */
     let umoney = money_cnt(gi.invent);
 
@@ -4514,14 +4188,13 @@ doprgold()
         let buf = stack_array(char, BUFSZ);
 
         if (!umoney) {
-            void strcpy(buf, _("Your wallet is empty"));
+            strcpy(buf, _("Your wallet is empty"));
         } else {
-            void sprintf(buf, _("Your wallet contains %lld %s"), umoney, currency(umoney))
+            sprintf(buf, _("Your wallet contains %lld %s"), umoney, currency(umoney))
 ;
         }
         if (hmoney) {
-            void sprintf(eos(buf), _(", %s you have %lld %s stashed away in your pack"), umoney ? _("and") : _("but"), hmoney, umoney ? _("more") : currency(hmoney))
-
+            sprintf(eos(buf), _(", %s you have %lld %s stashed away in your pack"), umoney ? _("and") : _("but"), hmoney, umoney ? _("more") : currency(hmoney))
 
 ;
         }
@@ -4539,16 +4212,16 @@ doprgold()
         let dollarsign = init_string(stack_array(char, sizeof_string("$")), _("$"));
 
         /* mustn't use TRUE or gold wouldn't show up unless it was quivered */
-        void dispinv_with_action(dollarsign, FALSE, 0);
+        dispinv_with_action(dollarsign, FALSE, 0);
     }
 
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #seeweapon command */
-export function /* int */
-doprwep()
-{ const $frame = stack_frame(); try {
+export function doprwep() { /* int */
+    const $frame = stack_frame(); try {
     if (!uwep) {
         You(_("are %s."), empty_handed());
     } else if (!iflags.menu_requested) {
@@ -4568,15 +4241,15 @@ doprwep()
             chars[lets + (ct++)] = uquiver.invlet;
         chars[lets + ct] = ord('\0');
 
-        void dispinv_with_action(lets, TRUE, 0);
+        dispinv_with_action(lets, TRUE, 0);
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* caller is responsible for checking !wearing_armor() */
-function /* void */
-noarmor(report_uskin)
-{ const $frame = stack_frame(); try {
+function noarmor(report_uskin) { /* void */
+    const $frame = stack_frame(); try {
     if (!uskin || !report_uskin) {
         You(_("are not wearing any armor."));
     } else {
@@ -4594,12 +4267,12 @@ noarmor(report_uskin)
         You(_("are not wearing armor but have %s embedded in your skin."),
             uskinname);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #seearmor command */
-export function /* int */
-doprarm()
-{ const $frame = stack_frame(); try {
+export function doprarm() { /* int */
+    const $frame = stack_frame(); try {
     /*
      * Note:  players sometimes get here by pressing a function key which
      * transmits ''ESC [ <something>'' rather than by pressing '[';
@@ -4632,15 +4305,15 @@ doprarm()
             chars[lets + (ct++)] = obj_to_let(uarmu);
         chars[lets + ct] = 0;
 
-        void dispinv_with_action(lets, TRUE, 0);
+        dispinv_with_action(lets, TRUE, 0);
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #seerings command */
-export function /* int */
-doprring()
-{ const $frame = stack_frame(); try {
+export function doprring() { /* int */
+    const $frame = stack_frame(); try {
     if (!uleft && !uright) {
         You(_("are not wearing any rings."));
     } else {
@@ -4666,18 +4339,18 @@ doprring()
         if (ct > 1 || iflags.menu_requested)
             use_inuse_mode = TRUE;
 
-        void dispinv_with_action(lets, use_inuse_mode,
+        dispinv_with_action(lets, use_inuse_mode,
                                    /* note; alternate label will be ignored
                                       if 'use_inuse_mode' is False */
                                    (ct == 1) ? _("Ring") : _("Rings"));
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #seeamulet command */
-export function /* int */
-dopramulet()
-{ const $frame = stack_frame(); try {
+export function dopramulet() { /* int */
+    const $frame = stack_frame(); try {
     if (!uamul) {
         You(_("are not wearing an amulet."));
     } else {
@@ -4688,15 +4361,14 @@ dopramulet()
            in order to perform a context-sensitive item action */
         chars[lets + 0] = obj_to_let(uamul), chars[lets + 1] = ord('\0');
 
-        void dispinv_with_action(lets, TRUE, _("Amulet"));
+        dispinv_with_action(lets, TRUE, _("Amulet"));
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* is 'obj' a tool that's in use?  can't simply check obj->owornmask */
-function /* boolean */
-tool_being_used(obj)
-{
+function tool_being_used(obj) { /* boolean */
     /*
      * [Should this also include lit potions of oil?  They're not tools
      *  but they are "in use" without being noticeable via obj->owornmask.]
@@ -4706,14 +4378,13 @@ tool_being_used(obj)
     if (obj.oclass != TOOL_CLASS)
         return FALSE;
     /* [don't actually need to check uwep here; caller catches it] */
-    return (((obj == uwep || obj.lamplit
-                      || (obj.otyp == LEASH && obj.corpsenm)) ? 1 : 0));
+    return (obj == uwep || obj.lamplit
+                      || (obj.otyp == LEASH && obj.corpsenm) ? 1 : 0);
 }
 
 /* the #seetools command */
-export function /* int */
-doprtool()
-{ const $frame = stack_frame(); try {
+export function doprtool() { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let ct = 0;
     let lets = stack_array(char, invlet_basic + 1);
@@ -4730,15 +4401,14 @@ doprtool()
     if (!ct)
         You(_("are not using any tools."));
     else
-        void dispinv_with_action(lets, TRUE, 0);
+        dispinv_with_action(lets, TRUE, 0);
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #seeall command; combines the ')' + '[' + '=' + '"' + '(' commands;
    show inventory of all currently wielded, worn, or used objects */
-export function /* int */
-doprinuse()
-{
+export function doprinuse() { /* int */
     let otmp;
     let ct = 0;
 
@@ -4752,18 +4422,16 @@ doprinuse()
     if (!ct)
         You(_("are not wearing or wielding anything."));
     else
-        void dispinv_with_action(0, TRUE, 0);
+        dispinv_with_action(0, TRUE, 0);
     return ECMD_OK;
 }
 
 /*
  * uses up an object that's on the floor, charging for it as necessary
  */
-export function /* void */
-useupf(obj, numused)
-{
+export function useupf(obj, numused) { /* void */
     let otmp;
-    let at_u = (+(((obj.ox) == u.ux) && ((obj.oy) == u.uy)));
+    let at_u = +(((obj.ox) == u.ux) && ((obj.oy) == u.uy));
 
     /* burn_floor_objects() keeps an object pointer that it tries to
      * useupf() multiple times, so obj must survive if plural */
@@ -4775,11 +4443,11 @@ useupf(obj, numused)
         if (strchr(u.urooms, chars[in_rooms(otmp.ox, otmp.oy, 0)]))
             addtobill(otmp, FALSE, FALSE, FALSE);
         else
-            void stolen_value(otmp, otmp.ox, otmp.oy, FALSE, FALSE);
+            stolen_value(otmp, otmp.ox, otmp.oy, FALSE, FALSE);
     }
     delobj(otmp);
     if (at_u && u.uundetected && hides_under(gy.youmonst.data))
-        void hideunder(gy.youmonst);
+        hideunder(gy.youmonst);
 }
 
 /*
@@ -4794,11 +4462,7 @@ const names = static_array("names", ptr_to(char), null, [
 const oth_symbols = static_array("oth_symbols", char, null, [ CONTAINED_SYM, ord('\0') ]);
 const oth_names = static_array("oth_names", ptr_to(char), null, [ _("Bagged/Boxed items") ]);
 
-
-
-export function /* char * */
-let_to_name(let_, unpaid, showsym)
-{
+export function let_to_name(let_, unpaid, showsym) { /* char * */
     let ocsymfmt = _("  ('%c')");
     let invbuf_sympadding = 8; /* arbitrary */
     let class_name;
@@ -4813,8 +4477,8 @@ let_to_name(let_, unpaid, showsym)
     else
         class_name = names[ILLOBJ_CLASS];
 
-    len = unsigned(unsigned(unsigned(Strlen(class_name) + (unpaid ? sizeof_string("unpaid_") : sizeof_string("")))
-          + unsigned((oclass ? (unsigned(Strlen(ocsymfmt) + unsigned(invbuf_sympadding))) : 0))));
+    len = unsigned(unsigned(Strlen(class_name) + (unpaid ? sizeof_string("unpaid_") : sizeof_string("")))
+          + unsigned((oclass ? unsigned(Strlen(ocsymfmt) + unsigned(invbuf_sympadding)) : 0)));
     if (len > gi.invbufsiz) {
         if (gi.invbuf)
             free(gi.invbuf);
@@ -4822,9 +4486,9 @@ let_to_name(let_, unpaid, showsym)
         gi.invbuf = addr_of(alloc(gi.invbufsiz));
     }
     if (unpaid)
-        void strcat(strcpy(gi.invbuf, _("Unpaid ")), class_name);
+        strcat(strcpy(gi.invbuf, _("Unpaid ")), class_name);
     else
-        void strcpy(gi.invbuf, class_name);
+        strcpy(gi.invbuf, class_name);
     if ((oclass != 0) && showsym) {
         let bp = eos(gi.invbuf);
         let mlen = int(unsigned(unsigned(invbuf_sympadding) - Strlen(class_name)));
@@ -4833,17 +4497,13 @@ let_to_name(let_, unpaid, showsym)
             bp++;
         }
         chars[bp] = ord('\0');
-        void sprintf(eos(gi.invbuf), ocsymfmt, def_oc_syms[oclass].sym);
+        sprintf(eos(gi.invbuf), ocsymfmt, def_oc_syms[oclass].sym);
     }
     return gi.invbuf;
 }
 
-
-
 /* release the static buffer used by let_to_name() */
-export function /* void */
-free_invbuf()
-{
+export function free_invbuf() { /* void */
     if (gi.invbuf)
         free(gi.invbuf), gi.invbuf = 0;
     gi.invbufsiz = 0;
@@ -4851,9 +4511,7 @@ free_invbuf()
 
 /* give consecutive letters to every item in inventory (for !fixinv mode);
    gold is always forced to '$' slot at head of list */
-export function /* void */
-reassign()
-{
+export function reassign() { /* void */
     let i;
     let obj, prevobj, goldobj;
 
@@ -4885,9 +4543,7 @@ reassign()
 
 /* invent gold sanity check; used by doorganize() to control how getobj()
    deals with gold and also by wizard mode sanity_check() */
-export function /* boolean */
-check_invent_gold(why) /* 'why' == caller in case of warning */
-{
+export function check_invent_gold(why) { /* boolean */ /* 'why' == caller in case of warning */
     let otmp;
     let goldstacks = 0, wrongslot = 0;
 
@@ -4913,9 +4569,7 @@ check_invent_gold(why) /* 'why' == caller in case of warning */
 }
 
 /* normal getobj callback for item to #adjust; excludes gold */
-function /* int */
-adjust_ok(obj)
-{
+function adjust_ok(obj) { /* int */
     if (!obj || obj.oclass == COIN_CLASS)
         return GETOBJ_EXCLUDE;
 
@@ -4923,9 +4577,7 @@ adjust_ok(obj)
 }
 
 /* getobj callback for item to #adjust if gold is wonky; allows gold */
-function /* int */
-adjust_gold_ok(obj)
-{
+function adjust_gold_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_EXCLUDE;
 
@@ -4977,9 +4629,7 @@ adjust_gold_ok(obj)
  *      to get multiple stacks and/or it is in a slot other than '$'.
  *      Specifying a count to split it into two stacks is not allowed.
  */
-export function /* int */
-doorganize() /* inventory organizer by Del Lamb */
-{
+export function doorganize() { /* int */ /* inventory organizer by Del Lamb */
     let adjust_filter;
     let obj;
 
@@ -5004,9 +4654,8 @@ doorganize() /* inventory organizer by Del Lamb */
 }
 
 /* alternate version of #adjust used by itemactions() for splitting */
-export function /* int */
-adjust_split()
-{ const $frame = stack_frame(); try {
+export function adjust_split() { /* int */
+    const $frame = stack_frame(); try {
     let obj;
     let splitamount = stack_var(cmdcount_nht, 0);
     let let_, dig = ord('\0');
@@ -5048,7 +4697,6 @@ adjust_split()
     if (splitamount[0] < 1 || splitamount[0] >= obj.quan) {
         let Amount = init_string(static_array("adjust_split.Amount", char, sizeof_string("Amount to split from current stack must be")), _("Amount to split from current stack must be"), true);
 
-
         if (splitamount[0] < 1)
             pline(_("%s at least 1."), Amount);
         else
@@ -5062,19 +4710,19 @@ adjust_split()
        selecting the destination slot */
     obj = splitobj(obj, (splitamount[0]));
     return doorganize_core(obj);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-doorganize_core(obj$)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$); let $goto = null; var otmp = stack_var(ptr_to(struct_obj)), splitting = stack_var(ptr_to(struct_obj)), lets = stack_array(char, 1 + invlet_basic + 1 + 1), qbuf = stack_array(char, QBUFSZ);
+function doorganize_core(obj$) { /* int */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
+    let $goto = null; var otmp = stack_var(ptr_to(struct_obj)), splitting = stack_var(ptr_to(struct_obj)), lets = stack_array(char, 1 + invlet_basic + 1 + 1), qbuf = stack_array(char, QBUFSZ);
     var bumped;
     var ix, cur, trycnt;
     var let_;
 
-
-
      /* room for '$a-zA-Z#\0' */
-    
+
     var objname, otmpname;
     var adj_type;
     var ever_mind = FALSE, collect, isgold;
@@ -5086,7 +4734,7 @@ doorganize_core(obj$)
        stacks and/or gold in some other slot, otherwise (*adjust_filter)()
        won't allow gold to be picked; if player has picked any stack of gold
        as #adjust 'from' slot, we'll force the 'to' slot to be '$' below */
-    isgold = (+(obj[0].oclass == COIN_CLASS));
+    isgold = +(obj[0].oclass == COIN_CLASS);
 
     /* figure out whether user gave a split count to getobj() */
     splitting[0] = bumped = null;
@@ -5135,10 +4783,10 @@ doorganize_core(obj$)
 
     /* get 'to' slot to use as destination */
     if (!splitting[0])
-        void strcpy(qbuf, _("Adjust letter"));
+        strcpy(qbuf, _("Adjust letter"));
     else /* note: splitting->quan is the amount being left in original slot */
-        void sprintf(qbuf, _("Split %lld"), obj[0].quan);
-    void sprintf(eos(qbuf), _(" to what [%s]%s?"), lets, gi.invent ? _(" (? see used letters)") : _(""))
+        sprintf(qbuf, _("Split %lld"), obj[0].quan);
+    sprintf(eos(qbuf), _(" to what [%s]%s?"), lets, gi.invent ? _(" (? see used letters)") : _(""))
 ;
     $out_noadjust: for (trycnt = 1; ; ++trycnt) {
         let_ = !isgold ? yn_function(qbuf, 0, ord('\0'), TRUE) : GOLD_SYM;
@@ -5156,7 +4804,7 @@ doorganize_core(obj$)
             || (splitting[0] && let_ == obj[0].invlet))) {
  $goto = null;
             if (splitting[0])
-                void merged(splitting, obj);
+                merged(splitting, obj);
             if (!ever_mind)
                 pline1(Never_mind());
             return ECMD_OK;
@@ -5176,7 +4824,7 @@ doorganize_core(obj$)
         pline(_("Select an inventory slot letter.")); /* else try again */
     }
 
-    collect = (+(let_ == obj[0].invlet));
+    collect = +(let_ == obj[0].invlet);
     /* change the inventory and print the resulting item */
     adj_type = collect ? _("Collecting:")
                : !splitting[0] ? _("Moving:")
@@ -5244,7 +4892,7 @@ doorganize_core(obj$)
                     obj[0] = otmp[0];
                     extract_nobj(obj[0], ref_of(gi, "invent"));
                 } else if (inv_cnt(FALSE) >= invlet_basic) {
-                    void merged(splitting, obj); /* undo split */
+                    merged(splitting, obj); /* undo split */
                     /* "knapsack cannot accommodate any more items" */
                     Your(_("pack is too full."));
                     return ECMD_OK;
@@ -5283,12 +4931,15 @@ doorganize_core(obj$)
         clear_splitobjs(); /* reset splitobj context */
     update_inventory();
     return ECMD_OK;
-} finally { stack_pop($frame); } } export const GOLD_INDX = 0; export const GOLD_OFFSET = 1; export const OVRFLW_INDX = (GOLD_OFFSET + invlet_basic);
+    } finally { stack_pop($frame); }
+}
+export const GOLD_INDX = 0;
+export const GOLD_OFFSET = 1;
+export const OVRFLW_INDX = (GOLD_OFFSET + invlet_basic);
 
 /* common to display_minventory and display_cinventory */
-function /* void */
-invdisp_nothing(hdr, txt)
-{ const $frame = stack_frame(); try {
+function invdisp_nothing(hdr, txt) { /* void */
+    const $frame = stack_frame(); try {
     let win;
     let selected = stack_var(ptr_to(struct_mi));
 
@@ -5302,26 +4953,15 @@ invdisp_nothing(hdr, txt)
         free(addr_of(selected[0]));
     destroy_nhwindow()(win);
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* query_objlist callback: return things that are worn or wielded */
-function /* boolean */
-worn_wield_only(obj)
-{
-
+function worn_wield_only(obj) { /* boolean */
     /* check for things that *are* worn or wielded (only used for monsters,
        so we don't worry about excluding W_CHAIN, W_ARTI and the like) */
     return (+(obj.owornmask != 0));
-
-
-
-
-
-
-
-
-
-
+/* #else (#if 1): not in this build */
 }
 
 /*
@@ -5337,23 +4977,22 @@ worn_wield_only(obj)
  *      MINV_NOLET          - nothing selectable
  *      MINV_ALL            - display all inventory
  */
-export function /* struct obj * */
-display_minventory(
+export function display_minventory(
     mon,
     dflags,
-    title)       /* menu title */
-{ const $frame = stack_frame(); try {
+    title) { /* struct obj * */ /* menu title */
+    const $frame = stack_frame(); try {
     let ret;
     let tmp = stack_array(char, QBUFSZ);
     let n;
     let selected = stack_var(ptr_to(struct_mi), null);
     let do_all = +((dflags & MINV_ALL) != 0),
-        incl_hero = (((do_all && engulfing_u(mon)) ? 1 : 0)),
-        have_inv = (+(mon.minvent != null)),
-        have_any = (((have_inv || incl_hero) ? 1 : 0)),
+        incl_hero = (do_all && engulfing_u(mon) ? 1 : 0),
+        have_inv = +(mon.minvent != null),
+        have_any = (have_inv || incl_hero ? 1 : 0),
         pickings = (dflags & MINV_PICKMASK);
 
-    void sprintf(tmp, _("%s %s:"), s_suffix(noit_Monnam(mon)), do_all ? _("possessions") : _("armament"))
+    sprintf(tmp, _("%s %s:"), s_suffix(noit_Monnam(mon)), do_all ? _("possessions") : _("armament"))
 ;
 
     if (do_all ? have_any : (mon.misc_worn_check || MON_WEP(mon))) {
@@ -5383,13 +5022,12 @@ display_minventory(
     } else
         ret = null;
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* format a container name for cinventory_display(), inserting "trapped"
    if that's appropriate */
-function /* char * */
-cinv_doname(obj)
-{
+function cinv_doname(obj) { /* char * */
     let result = doname(obj);
 
     /*
@@ -5408,49 +5046,46 @@ cinv_doname(obj)
              q = strstri(result, _(" unlocked"));
 
         if (p && (!q || p < q))
-            void strsubst(p, _(" locked "), _(" trapped locked "));
+            strsubst(p, _(" locked "), _(" trapped locked "));
         else if (q)
-            void strsubst(q, _(" unlocked "), _(" trapped unlocked "));
+            strsubst(q, _(" unlocked "), _(" trapped unlocked "));
         /* might need to change "an" to "a"; when no BUC is present,
            "an unlocked" yielded "an trapped unlocked" above */
-        void strsubst(result, _("an trapped "), _("a trapped "));
+        strsubst(result, _("an trapped "), _("a trapped "));
     }
     return result;
 }
 
 /* used by safe_qbuf() if the full doname() result is too long */
-function /* char * */
-cinv_ansimpleoname(obj)
-{
+function cinv_ansimpleoname(obj) { /* char * */
     let result = ansimpleoname(obj);
 
     /* result is an obuf[] so we know this will always fit */
     if (obj.otrapped) {
         if (strncmp(result, _("a "), 2))
-            void strsubst(result, _("a "), _("a trapped "));
+            strsubst(result, _("a "), _("a trapped "));
         else if (strncmp(result, _("an "), 3))
-            void strsubst(result, _("an "), _("an trapped "));
+            strsubst(result, _("an "), _("an trapped "));
         /* unique container? nethack doesn't have any */
         else if (strncmp(result, _("the "), 4))
-            void strsubst(result, _("the "), _("the trapped "));
+            strsubst(result, _("the "), _("the trapped "));
         /* no leading article at all? shouldn't happen with ansimpleoname() */
         else
-            void strsubst(result, _(""), _("trapped ")); /* insert at beginning */
+            strsubst(result, _(""), _("trapped ")); /* insert at beginning */
     }
     return result;
 }
 
 /* Display the contents of a container in inventory style.
    Used for wand of probing of non-empty containers and statues. */
-export function /* struct obj * */
-display_cinventory(obj)
-{ const $frame = stack_frame(); try {
+export function display_cinventory(obj) { /* struct obj * */
+    const $frame = stack_frame(); try {
     let ret;
     let qbuf = stack_array(char, QBUFSZ);
     let n;
     let selected = stack_var(ptr_to(struct_mi), null);
 
-    void safe_qbuf(qbuf, _("Contents of "), _(":"), obj,
+    safe_qbuf(qbuf, _("Contents of "), _(":"), obj,
                      /* custom formatting routines to insert "trapped"
                         into the object's name when appropriate;
                         last resort "that" won't ever get used */
@@ -5470,13 +5105,11 @@ display_cinventory(obj)
         ret = null;
     obj.cknown = 1;
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-function /* boolean */
-only_here(obj)
-{
-    return (+(obj.ox == go.only.x && obj.oy == go.only.y));
+function only_here(obj) { /* boolean */
+    return +(obj.ox == go.only.x && obj.oy == go.only.y);
 }
 
 /*
@@ -5485,9 +5118,8 @@ only_here(obj)
  *
  * Currently, this is only used with a wand of probing zapped downwards.
  */
-export function /* int */
-display_binventory(x, y, as_if_seen)
-{ const $frame = stack_frame(); try {
+export function display_binventory(x, y, as_if_seen) { /* int */
+    const $frame = stack_frame(); try {
     let obj;
     let qbuf = stack_array(char, QBUFSZ);
     let underwhat = _("here");
@@ -5514,7 +5146,7 @@ display_binventory(x, y, as_if_seen)
                 more_than_1 = TRUE;
             underwhat = more_than_1 ? _("under them") : _("beneath it");
         } else {
-            void sprintf(qbuf, _("Things that are under the %s here:"), seen_liquid);
+            sprintf(qbuf, _("Things that are under the %s here:"), seen_liquid);
             if (query_objlist(qbuf, svl.level.objects[x].subarray(y), BY_NEXTHERE,
                               selected, PICK_NONE, allow_all) > 0)
                 free(addr_of(selected[0])), selected[0] = null;
@@ -5536,18 +5168,17 @@ display_binventory(x, y, as_if_seen)
         go.only.x = x;
         go.only.y = y;
         /* "buried here", but vary if we've already shown underwater items */
-        void sprintf(qbuf, _("Things that are buried %s:"), underwhat);
+        sprintf(qbuf, _("Things that are buried %s:"), underwhat);
         if (query_objlist(qbuf, ref_of(svl.level, "buriedobjlist"), INVORDER_SORT,
                           selected, PICK_NONE, only_here) > 0)
             free(addr_of(selected[0]));
         go.only.x = go.only.y = 0;
     }
     return n + n2;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-prepare_perminvent(window)
-{
+export function prepare_perminvent(window) { /* void */
     let wri;
     let invmode = iflags.perminv_mode;
 
@@ -5557,13 +5188,11 @@ prepare_perminvent(window)
         /*  relay the mode settings to the window port */
         wri = ctrl_nhwindow()(window, set_mode, wri_info);
         perminv_flags[0] = invmode;
-        (void (wri));
+        (wri);
     }
 }
 
-export function /* void */
-sync_perminvent()
-{
+export function sync_perminvent() { /* void */
     let wri = static_var("sync_perminvent.wri", ptr_to(struct_win_request_info_t), null);
     let wport_id;
 
@@ -5581,9 +5210,6 @@ sync_perminvent()
          * which just sets boolean iflags.perm_invent to
          * FALSE without actually doing anything else.
          */
-
-
-
 
         docrt();
         return;
@@ -5610,7 +5236,7 @@ sync_perminvent()
             || in_perm_invent_toggled[0]) {
             wri[0] = ctrl_nhwindow()(WIN_INVEN, request_settings, wri_info);
             if (wri[0] != null) {
-                if ((wri[0].tocore.tocore_flags & (too_early)) != 0) {
+                if ((wri[0].tocore.tocore_flags & too_early) != 0) {
                     /* don't be too noisy about this as it's really
                      * a startup timing issue. Just set a marker. */
                     iflags.perm_invent_pending = TRUE;
@@ -5626,7 +5252,7 @@ sync_perminvent()
                     iflags.perm_invent = FALSE;
                     if (WIN_INVEN != WIN_ERR)
                         destroy_nhwindow()(WIN_INVEN), WIN_INVEN = WIN_ERR;
-                    wport_id = ((windowprocs.wp_id == wp_tty)) ? _("tty perm_invent")
+                    wport_id = (windowprocs.wp_id == wp_tty) ? _("tty perm_invent")
                                                : _("perm_invent");
                     pline(_("%s could not be enabled."), wport_id);
                     pline(_("%s needs a terminal that is at least %dx%d, yours " +
@@ -5652,14 +5278,12 @@ sync_perminvent()
 
     if (WIN_INVEN != WIN_ERR && program_state.beyond_savefile_load) {
         gi.in_sync_perminvent = 1;
-        void display_inventory(0, FALSE);
+        display_inventory(0, FALSE);
         gi.in_sync_perminvent = 0;
     }
 }
 
-export function /* void */
-perm_invent_toggled(negated)
-{
+export function perm_invent_toggled(negated) { /* void */
     in_perm_invent_toggled[0] = TRUE;
     if (negated) {
         gp.perm_invent_toggling_direction = toggling_off;
@@ -5677,552 +5301,190 @@ perm_invent_toggled(negated)
 }
 
 /*invent.c*/
-import { AM_SANCTUM } from "./align.h.js";
-import { AM_SHRINE } from "./align.h.js";
+
+import { AM_SANCTUM, AM_SHRINE } from "./align.h.js";
 import { Amask2align } from "./align.h.macros.js";
 import { ART_MJOLLNIR } from "./artilist.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
+import { A_CHA, A_CON, A_DEX, A_INT, A_WIS } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { NO_COLOR } from "./color.h.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { silly_thing_to } from "./decl.h.macros.js";
-import { thats_enough_tries } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { GOLD_SYM } from "./defsym.h.js";
-import { ILLOBJ_CLASS } from "./defsym.h.js";
-import { MAXOCLASSES } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { ROCK_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { S_fountain } from "./defsym.h.js";
-import { S_grave } from "./defsym.h.js";
-import { S_lava } from "./defsym.h.js";
-import { S_ndoor } from "./defsym.h.js";
-import { S_sink } from "./defsym.h.js";
-import { S_throne } from "./defsym.h.js";
-import { S_tree } from "./defsym.h.js";
-import { S_vcdbridge } from "./defsym.h.js";
-import { S_vcdoor } from "./defsym.h.js";
-import { S_vodbridge } from "./defsym.h.js";
-import { S_vodoor } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { Never_mind, silly_thing_to, thats_enough_tries } from "./decl.h.macros.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, GOLD_SYM,
+    ILLOBJ_CLASS, MAXOCLASSES, POTION_CLASS, RING_CLASS, ROCK_CLASS, SCROLL_CLASS, SPBOOK_CLASS,
+    S_fountain, S_grave, S_lava, S_ndoor, S_sink, S_throne, S_tree, S_vcdbridge, S_vcdoor,
+    S_vodbridge, S_vodoor, TOOL_CLASS, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { obj_to_glyph } from "./display.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import { Is_airlevel, Is_waterlevel } from "./dungeon.h.macros.js";
 import { PLNMSG_ONE_ITEM_HERE } from "./flag.h.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LARGEST_INT } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { set_gameview } from "./global.h.js";
-import { Strlen } from "./global.h.macros.js";
-import { strcmpi } from "./global.h.macros.js";
-import { ALL_FINISHED } from "./hack.h.js";
-import { BILLED_TYPES } from "./hack.h.js";
-import { BUC_BLESSED } from "./hack.h.js";
-import { BUC_CURSED } from "./hack.h.js";
-import { BUC_UNCURSED } from "./hack.h.js";
-import { BUC_UNKNOWN } from "./hack.h.js";
-import { BY_NEXTHERE } from "./hack.h.js";
-import { CMDQ_INT } from "./hack.h.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CMDQ_USER_INPUT } from "./hack.h.js";
-import { CONTAINED_SYM } from "./hack.h.js";
-import { COST_NOCONTENTS } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CQ_REPEAT } from "./hack.h.js";
-import { CXN_ARTICLE } from "./hack.h.js";
-import { CXN_PFX_THE } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FINGERTIP } from "./hack.h.js";
-import { GC_CONDHIST } from "./hack.h.js";
-import { GC_ECHOFIRST } from "./hack.h.js";
-import { GC_SAVEHIST } from "./hack.h.js";
-import { GETOBJ_ALLOWCNT } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_INACCESS } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_NONINVENT } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_SELECTABLE } from "./hack.h.js";
-import { GETOBJ_NOFLAGS } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HANDS_SYM } from "./hack.h.js";
-import { INCLUDE_HERO } from "./hack.h.js";
-import { INCLUDE_VENOM } from "./hack.h.js";
-import { INVORDER_SORT } from "./hack.h.js";
-import { JUSTPICKED } from "./hack.h.js";
-import { LOOKHERE_NOFLAGS } from "./hack.h.js";
-import { LOOKHERE_PICKED_SOME } from "./hack.h.js";
-import { LOOKHERE_SKIP_DFEATURE } from "./hack.h.js";
-import { MENU_FULL } from "./hack.h.js";
-import { MENU_PARTIAL } from "./hack.h.js";
-import { MENU_TRADITIONAL } from "./hack.h.js";
-import { MSGTYP_MASK_REP_SHOW } from "./hack.h.js";
-import { NOINVSYM } from "./hack.h.js";
-import { ONAME_SKIP_INVUPD } from "./hack.h.js";
-import { SIGNAL_ESCAPE } from "./hack.h.js";
-import { SIGNAL_NOMENU } from "./hack.h.js";
-import { SORTLOOT_INUSE } from "./hack.h.js";
-import { SORTLOOT_INVLET } from "./hack.h.js";
-import { SORTLOOT_LOOT } from "./hack.h.js";
-import { SORTLOOT_PACK } from "./hack.h.js";
-import { SORTLOOT_PETRIFY } from "./hack.h.js";
-import { STOMACH } from "./hack.h.js";
-import { UNPAID_TYPES } from "./hack.h.js";
-import { USE_INVLET } from "./hack.h.js";
-import { cmdcount_nht } from "./hack.h.js";
-import { invlet_basic } from "./hack.h.js";
-import { st_all } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
-import { struct_sortloot_item } from "./hack.h.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { qsort } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import {
+    BUFSZ, FALSE, LARGEST_INT, LL_CONDUCT, QBUFSZ, TRUE, boolean, coordxy, set_gameview,
+} from "./global.h.js";
+import { Strlen, strcmpi } from "./global.h.macros.js";
+import {
+    ALL_FINISHED, BILLED_TYPES, BUC_BLESSED, BUC_CURSED, BUC_UNCURSED, BUC_UNKNOWN, BY_NEXTHERE,
+    CMDQ_INT, CMDQ_KEY, CMDQ_USER_INPUT, CONTAINED_SYM, COST_NOCONTENTS, CQ_CANNED, CQ_REPEAT,
+    CXN_ARTICLE, CXN_PFX_THE, ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, FINGERTIP, GC_CONDHIST,
+    GC_ECHOFIRST, GC_SAVEHIST, GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE,
+    GETOBJ_EXCLUDE_INACCESS, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_NOFLAGS,
+    GETOBJ_PROMPT, GETOBJ_SUGGEST, HAND, HANDS_SYM, INCLUDE_HERO, INCLUDE_VENOM, INVORDER_SORT,
+    JUSTPICKED, LOOKHERE_NOFLAGS, LOOKHERE_PICKED_SOME, LOOKHERE_SKIP_DFEATURE, MENU_FULL,
+    MENU_PARTIAL, MENU_TRADITIONAL, MSGTYP_MASK_REP_SHOW, NOINVSYM, ONAME_SKIP_INVUPD,
+    SIGNAL_ESCAPE, SIGNAL_NOMENU, SORTLOOT_INUSE, SORTLOOT_INVLET, SORTLOOT_LOOT, SORTLOOT_PACK,
+    SORTLOOT_PETRIFY, STOMACH, UNPAID_TYPES, USE_INVLET, cmdcount_nht, invlet_basic, st_all,
+    struct__cmd_queue, struct_sortloot_item,
+} from "./hack.h.js";
+import { ROLL_FROM, makeknown, pline1, plur, qsort, y_n } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { is_reviver } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { MINV_ALL } from "./monst.h.js";
-import { MINV_PICKMASK } from "./monst.h.js";
-import { MON_WEP } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { LOST_EXPLODING } from "./obj.h.js";
-import { LOST_NONE } from "./obj.h.js";
-import { LOST_THROWN } from "./obj.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_candle } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { Is_pudding } from "./obj.h.macros.js";
-import { OMAILCMD } from "./obj.h.macros.js";
-import { ONAME } from "./obj.h.macros.js";
-import { ammo_and_launcher } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { greatest_erosion } from "./obj.h.macros.js";
-import { has_omailcmd } from "./obj.h.macros.js";
-import { has_omid } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_ammo } from "./obj.h.macros.js";
-import { is_gloves } from "./obj.h.macros.js";
-import { is_mines_prize } from "./obj.h.macros.js";
-import { is_missile } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
-import { is_pole } from "./obj.h.macros.js";
-import { is_soko_prize } from "./obj.h.macros.js";
-import { is_wet_towel } from "./obj.h.macros.js";
-import { pair_of } from "./obj.h.macros.js";
-import { ARM_BOOTS } from "./objclass.h.js";
-import { ARM_CLOAK } from "./objclass.h.js";
-import { ARM_GLOVES } from "./objclass.h.js";
-import { ARM_HELM } from "./objclass.h.js";
-import { ARM_SHIELD } from "./objclass.h.js";
-import { ARM_SHIRT } from "./objclass.h.js";
-import { ARM_SUIT } from "./objclass.h.js";
-import { GEMSTONE } from "./objclass.h.js";
-import { GLASS } from "./objclass.h.js";
+import { hides_under, is_reviver, touch_petrifies } from "./mondata.h.macros.js";
+import { MINV_ALL, MINV_PICKMASK } from "./monst.h.js";
+import { MON_WEP, engulfing_u } from "./monst.h.macros.js";
+import { LOW_PM, NON_PM, PM_ARCHEOLOGIST, PM_CLERIC } from "./monsters.h.js";
+import {
+    LOST_EXPLODING, LOST_NONE, LOST_THROWN, OBJ_CONTAINED, OBJ_FLOOR, OBJ_FREE, OBJ_INVENT,
+    struct_obj,
+} from "./obj.h.js";
+import {
+    Has_contents, Is_candle, Is_container, Is_pudding, OMAILCMD, ONAME, ammo_and_launcher, carried,
+    greatest_erosion, has_omailcmd, has_omid, has_omonst, has_oname, is_ammo, is_gloves,
+    is_mines_prize, is_missile, is_plural, is_pole, is_soko_prize, is_wet_towel, pair_of,
+} from "./obj.h.macros.js";
+import {
+    ARM_BOOTS, ARM_CLOAK, ARM_GLOVES, ARM_HELM, ARM_SHIELD, ARM_SHIRT, ARM_SUIT, GEMSTONE, GLASS,
+} from "./objclass.h.js";
 import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { AKLYS } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BAG_OF_TRICKS } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BUGLE } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRYSKNIFE } from "./objects.h.js";
-import { DRUM_OF_EARTHQUAKE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { FIRE_HORN } from "./objects.h.js";
-import { FROST_HORN } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { HORN_OF_PLENTY } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LEATHER_DRUM } from "./objects.h.js";
-import { LOADSTONE } from "./objects.h.js";
-import { MAGIC_FLUTE } from "./objects.h.js";
-import { MAGIC_HARP } from "./objects.h.js";
-import { POT_OIL } from "./objects.h.js";
-import { POT_WATER } from "./objects.h.js";
-import { ROCK } from "./objects.h.js";
-import { SCR_BLANK_PAPER } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TOOLED_HORN } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { WOODEN_FLUTE } from "./objects.h.js";
-import { WOODEN_HARP } from "./objects.h.js";
-import { LEFT_RING } from "./prop.h.js";
-import { RIGHT_RING } from "./prop.h.js";
-import { WORN_AMUL } from "./prop.h.js";
-import { WORN_ARMOR } from "./prop.h.js";
-import { WORN_BLINDF } from "./prop.h.js";
-import { WORN_BOOTS } from "./prop.h.js";
-import { WORN_CLOAK } from "./prop.h.js";
-import { WORN_GLOVES } from "./prop.h.js";
-import { WORN_HELMET } from "./prop.h.js";
-import { WORN_SHIELD } from "./prop.h.js";
-import { WORN_SHIRT } from "./prop.h.js";
-import { W_ACCESSORY } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_ART } from "./prop.h.js";
-import { W_QUIVER } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { W_WEAPONS } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { DBWALL } from "./rm.h.js";
-import { DRAWBRIDGE_DOWN } from "./rm.h.js";
-import { D_BROKEN } from "./rm.h.js";
-import { D_ISOPEN } from "./rm.h.js";
-import { D_NODOOR } from "./rm.h.js";
-import { ICE } from "./rm.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { TREE } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { IS_GRAVE } from "./rm.h.macros.js";
-import { IS_SINK } from "./rm.h.macros.js";
-import { IS_THRONE } from "./rm.h.macros.js";
-import { SURFACE_AT } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { P_BOW } from "./skills.h.js";
-import { P_CROSSBOW } from "./skills.h.js";
-import { P_DAGGER } from "./skills.h.js";
-import { P_KNIFE } from "./skills.h.js";
-import { P_SPEAR } from "./skills.h.js";
+import {
+    AKLYS, AMULET_OF_YENDOR, BAG_OF_TRICKS, BELL_OF_OPENING, BUGLE, CANDELABRUM_OF_INVOCATION,
+    CORPSE, CRYSKNIFE, DRUM_OF_EARTHQUAKE, EGG, FAKE_AMULET_OF_YENDOR, FIGURINE, FIRE_HORN,
+    FROST_HORN, GOLD_PIECE, HORN_OF_PLENTY, LEASH, LEATHER_DRUM, LOADSTONE, MAGIC_FLUTE, MAGIC_HARP,
+    POT_OIL, POT_WATER, ROCK, SCR_BLANK_PAPER, SCR_MAIL, SCR_SCARE_MONSTER, SLIME_MOLD,
+    SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, TOOLED_HORN, TOWEL, WOODEN_FLUTE, WOODEN_HARP,
+} from "./objects.h.js";
+import {
+    LEFT_RING, RIGHT_RING, WORN_AMUL, WORN_ARMOR, WORN_BLINDF, WORN_BOOTS, WORN_CLOAK, WORN_GLOVES,
+    WORN_HELMET, WORN_SHIELD, WORN_SHIRT, W_ACCESSORY, W_ARMOR, W_ART, W_QUIVER, W_SADDLE,
+    W_SWAPWEP, W_TOOL, W_WEAPONS, W_WEP,
+} from "./prop.h.js";
+import {
+    DBWALL, DRAWBRIDGE_DOWN, D_BROKEN, D_ISOPEN, D_NODOOR, ICE, IRONBARS, TREE,
+} from "./rm.h.js";
+import {
+    IS_ALTAR, IS_DOOR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_THRONE, SURFACE_AT, fobj, levl,
+} from "./rm.h.macros.js";
+import { P_BOW, P_CROSSBOW, P_DAGGER, P_KNIFE, P_SPEAR } from "./skills.h.js";
 import { FIG_TRANSFORM } from "./timeout.h.js";
 import { is_pit } from "./trap.h.macros.js";
-import { WC_PERM_INVENT } from "./winprocs.h.js";
-import { wp_tty } from "./winprocs.h.js";
-import { clear_nhwindow } from "./winprocs.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { ctrl_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { message_menu } from "./winprocs.h.macros.js";
-import { putmsghistory } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { wait_synch } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { InvInUse } from "./wintype.h.js";
-import { InvOptNone } from "./wintype.h.js";
-import { InvOptOn } from "./wintype.h.js";
-import { InvShowGold } from "./wintype.h.js";
-import { MENU_BEHAVE_PERMINV } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SKIPINVERT } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_NONE } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { prohibited } from "./wintype.h.js";
-import { request_settings } from "./wintype.h.js";
-import { set_mode } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_glyphinfo } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { struct_win_request_info_t } from "./wintype.h.js";
-import { toggling_not } from "./wintype.h.js";
-import { toggling_off } from "./wintype.h.js";
-import { toggling_on } from "./wintype.h.js";
-import { too_early } from "./wintype.h.js";
-import { too_small } from "./wintype.h.js";
-import { ACH_AMUL } from "./you.h.js";
-import { ACH_BELL } from "./you.h.js";
-import { ACH_BOOK } from "./you.h.js";
-import { ACH_CNDL } from "./you.h.js";
-import { ACH_MINE_PRIZE } from "./you.h.js";
-import { ACH_SOKO_PRIZE } from "./you.h.js";
-import { Role_if } from "./you.h.macros.js";
-import { ULEFTY } from "./you.h.macros.js";
-import { URIGHTY } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Fumbling } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+import { WC_PERM_INVENT, wp_tty } from "./winprocs.h.js";
+import {
+    clear_nhwindow, create_nhwindow, ctrl_nhwindow, destroy_nhwindow, display_nhwindow, end_menu,
+    message_menu, putmsghistory, putstr, start_menu, wait_synch,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, InvInUse, InvOptNone, InvOptOn, InvShowGold, MENU_BEHAVE_PERMINV,
+    MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SKIPINVERT, NHW_MENU, PICK_ANY,
+    PICK_NONE, PICK_ONE, WIN_ERR, prohibited, request_settings, set_mode, struct_any,
+    struct_glyphinfo, struct_mi, struct_win_request_info_t, toggling_not, toggling_off, toggling_on,
+    too_early, too_small,
+} from "./wintype.h.js";
+import { ACH_AMUL, ACH_BELL, ACH_BOOK, ACH_CNDL, ACH_MINE_PRIZE, ACH_SOKO_PRIZE } from "./you.h.js";
+import { Role_if, ULEFTY, URIGHTY, Upolyd } from "./you.h.macros.js";
+import {
+    Blind, Fumbling, Hallucination, Stone_resistance, Underwater,
+} from "./youprop.h.macros.js";
+import {
+    char, int, long, ord, schar, sizeof, sizeof_string, ulong, unsigned,
+} from "../rt/ctypes.js";
 import { global_ref } from "../rt/globals.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { not64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strstr } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { not64, or64 } from "../rt/int64.js";
+import {
+    assert, free, sprintf, strcat, strchr, strcmp, strcpy, strlen, strncmp, strstr,
+} from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+    static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { confers_luck } from "./artifact.js";
-import { discover_artifact } from "./artifact.js";
-import { set_artifact_intrinsic } from "./artifact.js";
-import { touch_artifact } from "./artifact.js";
+import {
+    addr_of, array_of, ptr_add, ptr_to, ref_of, struct, struct_assign, view_of,
+} from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
+import {
+    confers_luck, discover_artifact, set_artifact_intrinsic, touch_artifact,
+} from "./artifact.js";
 import { set_moreluck } from "./attrib.js";
 import { get_strength_str } from "./botl.js";
-import { cmdq_add_int } from "./cmd.js";
-import { cmdq_add_key } from "./cmd.js";
-import { cmdq_clear } from "./cmd.js";
-import { cmdq_pop } from "./cmd.js";
-import { get_count } from "./cmd.js";
-import { readchar } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_drawbridge_wall } from "./dbridge.js";
-import { is_ice } from "./dbridge.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gc } from "./decl.js";
-import { gd } from "./decl.js";
-import { gi } from "./decl.js";
-import { gl } from "./decl.js";
-import { go } from "./decl.js";
-import { gp } from "./decl.js";
-import { gs } from "./decl.js";
-import { gt } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { quitchars } from "./decl.js";
-import { svc } from "./decl.js";
-import { svl } from "./decl.js";
-import { u } from "./decl.js";
-import { ynNaqchars } from "./decl.js";
-import { ynaqchars } from "./decl.js";
-import { docrt } from "./display.js";
-import { map_glyphinfo } from "./display.js";
-import { newsym } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { suppress_map_output } from "./display.js";
-import { dropx } from "./do.js";
-import { dropy } from "./do.js";
-import { hliquid } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { noit_Monnam } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { safe_oname } from "./do_name.js";
+import {
+    cmdq_add_int, cmdq_add_key, cmdq_clear, cmdq_pop, get_count, readchar, yn_function,
+} from "./cmd.js";
+import { is_drawbridge_wall, is_ice, is_lava, is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    cg, disp, flags, gc, gd, gi, gl, go, gp, gs, gt, gy, hands_obj, iflags, program_state,
+    quitchars, svc, svl, u, ynNaqchars, ynaqchars,
+} from "./decl.js";
+import { docrt, map_glyphinfo, newsym, nul_glyphinfo, suppress_map_output } from "./display.js";
+import { dropx, dropy } from "./do.js";
+import { hliquid, mon_nam, noit_Monnam, oname, safe_oname } from "./do_name.js";
 import { fingers_or_gloves } from "./do_wear.js";
-import { hitfloor } from "./dothrow.js";
-import { throwing_weapon } from "./dothrow.js";
-import { def_char_to_objclass } from "./drawing.js";
-import { def_oc_syms } from "./drawing.js";
-import { defsyms } from "./drawing.js";
+import { hitfloor, throwing_weapon } from "./dothrow.js";
+import { def_char_to_objclass, def_oc_syms, defsyms } from "./drawing.js";
 import { surface } from "./dungeon.js";
 import { panic } from "./end.js";
-import { can_reach_floor } from "./engrave.js";
-import { read_engr_at } from "./engrave.js";
-import { in_rooms } from "./hack.js";
-import { inv_cnt } from "./hack.js";
-import { money_cnt } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { obj_to_any } from "./hack.js";
-import { digit } from "./hacklib.js";
-import { eos } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { ing_suffix } from "./hacklib.js";
-import { letter } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strkitten } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { visctrl } from "./hacklib.js";
+import { can_reach_floor, read_engr_at } from "./engrave.js";
+import { in_rooms, inv_cnt, money_cnt, near_capacity, obj_to_any } from "./hack.js";
+import {
+    digit, eos, highc, ing_suffix, letter, mungspaces, s_suffix, strkitten, strncmpi, strstri,
+    strsubst, visctrl,
+} from "./hacklib.js";
 import { itemactions } from "./iactions.js";
-import { align_str } from "./insight.js";
-import { record_achievement } from "./insight.js";
+import { align_str, record_achievement } from "./insight.js";
 import { obj_merge_light_sources } from "./light.js";
-import { clear_splitobjs } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { extract_nobj } from "./mkobj.js";
-import { obj_absorb } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { pudding_merge_message } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { unknwn_contnr_contents } from "./mkobj.js";
-import { unsplitobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { dead_species } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { maybe_unhide_at } from "./mon.js";
+import {
+    clear_splitobjs, curse, extract_nobj, obj_absorb, obj_extract_self, place_object,
+    pudding_merge_message, splitobj, unknwn_contnr_contents, unsplitobj, weight,
+} from "./mkobj.js";
+import { dead_species, hideunder, maybe_unhide_at } from "./mon.js";
 import { poly_when_stoned } from "./mondata.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { cxname_singular } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { doname_with_price } from "./objnam.js";
-import { erosion_matters } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { maybereleaseobuf } from "./objnam.js";
-import { not_fully_identified } from "./objnam.js";
-import { safe_qbuf } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { hide_unhide_msgtypes } from "./options.js";
-import { set_option_mod_status } from "./options.js";
+import {
+    an, ansimpleoname, corpse_xname, cxname_singular, distant_name, doname, doname_with_price,
+    erosion_matters, killer_xname, makeplural, maybereleaseobuf, not_fully_identified, safe_qbuf,
+    simpleonames, vtense, xname, yname,
+} from "./objnam.js";
+import { hide_unhide_msgtypes, set_option_mod_status } from "./options.js";
 import { ice_descr } from "./pager.js";
-import { add_valid_menu_class } from "./pickup.js";
-import { allow_all } from "./pickup.js";
-import { allow_category } from "./pickup.js";
-import { collect_obj_classes } from "./pickup.js";
-import { container_gone } from "./pickup.js";
-import { count_justpicked } from "./pickup.js";
-import { encumber_msg } from "./pickup.js";
-import { force_decor } from "./pickup.js";
-import { menu_class_present } from "./pickup.js";
-import { query_category } from "./pickup.js";
-import { query_objlist } from "./pickup.js";
-import { reset_justpicked } from "./pickup.js";
-import { u_safe_from_fatal_corpse } from "./pickup.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { mbodypart } from "./polyself.js";
+import {
+    add_valid_menu_class, allow_all, allow_category, collect_obj_classes, container_gone,
+    count_justpicked, encumber_msg, force_decor, menu_class_present, query_category, query_objlist,
+    reset_justpicked, u_safe_from_fatal_corpse,
+} from "./pickup.js";
+import { There, You, Your, impossible, livelog_printf, pline, pline_The } from "./pline.js";
+import { body_part, mbodypart } from "./polyself.js";
 import { a_gname } from "./pray.js";
 import { artitouch } from "./quest.js";
 import { is_quest_artifact } from "./questpgr.js";
 import { unpunish } from "./read.js";
-import { reg_damg } from "./region.js";
-import { visible_region_at } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { addtobill } from "./shk.js";
-import { check_unpaid } from "./shk.js";
-import { costly_spot } from "./shk.js";
-import { doinvbill } from "./shk.js";
-import { inhishop } from "./shk.js";
-import { inside_shop } from "./shk.js";
-import { obfree } from "./shk.js";
-import { picked_container } from "./shk.js";
-import { same_price } from "./shk.js";
-import { shop_keeper } from "./shk.js";
-import { shopper_financial_report } from "./shk.js";
-import { stolen_value } from "./shk.js";
-import { unpaid_cost } from "./shk.js";
-import { stairs_description } from "./stairs.js";
-import { stairway_at } from "./stairs.js";
-import { attach_fig_transform_timeout } from "./timeout.js";
-import { learn_egg_type } from "./timeout.js";
-import { obj_stop_timers } from "./timeout.js";
-import { stop_timer } from "./timeout.js";
-import { instapetrify } from "./trap.js";
-import { t_at } from "./trap.js";
-import { trapname } from "./trap.js";
+import { reg_damg, visible_region_at } from "./region.js";
+import { rn2, rn2_on_display_rng } from "./rnd.js";
+import {
+    addtobill, check_unpaid, costly_spot, doinvbill, inhishop, inside_shop, obfree,
+    picked_container, same_price, shop_keeper, shopper_financial_report, stolen_value, unpaid_cost,
+} from "./shk.js";
+import { stairs_description, stairway_at } from "./stairs.js";
+import {
+    attach_fig_transform_timeout, learn_egg_type, obj_stop_timers, stop_timer,
+} from "./timeout.js";
+import { instapetrify, t_at, trapname } from "./trap.js";
 import { hidden_gold } from "./vault.js";
-import { empty_handed } from "./wield.js";
-import { setuqwep } from "./wield.js";
-import { welded } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { add_menu_heading } from "./windows.js";
-import { add_menu_str } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { windowprocs } from "./windows.js";
-import { zerowri } from "./windows.js";
-import { bypass_objlist } from "./worn.js";
-import { clear_bypasses } from "./worn.js";
-import { nxt_unbypassed_loot } from "./worn.js";
-import { setnotworn } from "./worn.js";
-import { setworn } from "./worn.js";
-import { get_obj_location } from "./zap.js";
-import { obj_resists } from "./zap.js";
+import { empty_handed, setuqwep, welded } from "./wield.js";
+import {
+    add_menu, add_menu_heading, add_menu_str, getlin, select_menu, windowprocs, zerowri,
+} from "./windows.js";
+import {
+    bypass_objlist, clear_bypasses, nxt_unbypassed_loot, setnotworn, setworn,
+} from "./worn.js";
+import { get_obj_location, obj_resists } from "./zap.js";

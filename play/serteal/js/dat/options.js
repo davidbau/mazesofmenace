@@ -1,4 +1,4 @@
-export default `
+export default String.raw`
     NetHack version 5.0.0
 
 Options compiled into this edition:

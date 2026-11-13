@@ -3,8 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2009. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 /* KMH -- Differences between the three weapon slots.
  *
  * The main weapon (uwep):
@@ -52,31 +50,21 @@
  * No item may be in more than one of these slots.
  */
 
-
- 
- 
- 
-
-
 /* used by will_weld() */
 /* probably should be renamed */
-export function erodeable_wep(optr) { return (+((optr).oclass == WEAPON_CLASS || is_weptool(optr) 
-     || (optr).otyp == HEAVY_IRON_BALL || (optr).otyp == IRON_CHAIN)); }
-
+export function erodeable_wep(optr) { return +(optr.oclass == WEAPON_CLASS || is_weptool(optr)
+     || optr.otyp == HEAVY_IRON_BALL || optr.otyp == IRON_CHAIN); }
 
 /* used by welded(), and also while wielding */
-export function will_weld(optr) { return ((((optr).cursed && (erodeable_wep(optr) || (optr).otyp == TIN_OPENER)) ? 1 : 0)); }
-
+export function will_weld(optr) { return (optr.cursed && (erodeable_wep(optr) || optr.otyp == TIN_OPENER) ? 1 : 0); }
 
 /* to dual-wield, 'obj' must be a weapon or a weapon-tool, and not a bow
    or arrow or missile (dart, shuriken, boomerang), so not matching the
    one-handed weapons which yield "you begin bashing" if used for melee;
    empty hands and two-handed weapons have to be handled separately */
-export function TWOWEAPOK(obj) { return (((obj).oclass == WEAPON_CLASS)                            
-     ? +!(is_launcher(obj) || is_ammo(obj) || is_missile(obj))   
+export function TWOWEAPOK(obj) { return ((obj.oclass == WEAPON_CLASS)
+     ? +!(is_launcher(obj) || is_ammo(obj) || is_missile(obj))
      : is_weptool(obj)); }
-
-
 
 const are_no_longer_twoweap = init_string(static_array("are_no_longer_twoweap", char, sizeof_string("are no longer using two weapons at once")), _("are no longer using two weapons at once"), true);
 const can_no_longer_twoweap = init_string(static_array("can_no_longer_twoweap", char, sizeof_string("can no longer wield two weapons at once")), _("can no longer wield two weapons at once"), true);
@@ -96,9 +84,7 @@ const can_no_longer_twoweap = init_string(static_array("can_no_longer_twoweap", 
  * responsibility to handle that.  It's also the caller's responsibility
  * to print the appropriate messages.
  */
-export function /* void */
-setuwep(obj)
-{
+export function setuwep(obj) { /* void */
     let olduwep = uwep;
 
     if (obj == uwep)
@@ -127,16 +113,15 @@ setuwep(obj)
      */
     if (obj) {
         gu.unweapon = (obj.oclass == WEAPON_CLASS)
-                       ? ((is_launcher(obj) || is_ammo(obj) || is_missile(obj)
-            || (is_pole(obj) && !u.usteed && !is_art(obj, ART_SNICKERSNEE))) ? 1 : 0)
+                       ? (is_launcher(obj) || is_ammo(obj) || is_missile(obj)
+            || (is_pole(obj) && !u.usteed && !is_art(obj, ART_SNICKERSNEE)) ? 1 : 0)
                        : +(!is_weptool(obj) && !is_wet_towel(obj));
     } else
         gu.unweapon = TRUE; /* for "bare hands" message */
 }
 
-function /* boolean */
-cant_wield_corpse(obj)
-{ const $frame = stack_frame(); try {
+function cant_wield_corpse(obj) { /* boolean */
+    const $frame = stack_frame(); try {
     let kbuf = stack_array(char, BUFSZ);
 
     if (uarmg || obj.otyp != CORPSE || !touch_petrifies(mons[obj.corpsenm])
@@ -147,16 +132,15 @@ cant_wield_corpse(obj)
     You(_("wield %s in your bare %s."),
         corpse_xname(obj, 0, CXN_PFX_THE),
         makeplural(body_part(HAND)));
-    void sprintf(kbuf, _("wielding %s bare-handed"), killer_xname(obj));
+    sprintf(kbuf, _("wielding %s bare-handed"), killer_xname(obj));
     instapetrify(kbuf);
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* description of hands when not wielding anything; also used
    by #seeweapon (')'), #attributes (^X), and #takeoffall ('A') */
-export function /* const char * */
-empty_handed()
-{
+export function empty_handed() { /* const char * */
     return uarmg ? _("empty handed") /* gloves imply hands */
            : humanoid(gy.youmonst.data)
              /* hands but no weapon and no gloves */
@@ -165,12 +149,12 @@ empty_handed()
                : _("not wielding anything");
 }
 
-function /* int */
-ready_weapon(wep$)
-{ const $frame = stack_frame(); try { const wep = stack_var(ptr_to(struct_obj), wep$);
+function ready_weapon(wep$) { /* int */
+    const $frame = stack_frame(); try {
+    const wep = stack_var(ptr_to(struct_obj), wep$);
     /* Separated function so swapping works easily */
     let res = ECMD_OK;
-    let was_twoweap = u.twoweap, had_wep = (+(uwep != null));
+    let was_twoweap = u.twoweap, had_wep = +(uwep != null);
 
     if (!wep[0]) {
         /* No weapon */
@@ -249,14 +233,6 @@ ready_weapon(wep$)
                       arti_light_description(wep[0]));
         }
 
-
-
-
-
-
-
-
-
         if (wep[0].unpaid) {
             let this_shkp;
 
@@ -267,32 +243,27 @@ ready_weapon(wep$)
             }
         }
     }
-    if ((had_wep != (+(uwep != null))) && condtests[bl_bareh].enabled)
+    if ((had_wep != +(uwep != null)) && condtests[bl_bareh].enabled)
         disp.botl = TRUE;
     return res;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-setuqwep(obj)
-{
+export function setuqwep(obj) { /* void */
     setworn(obj, W_QUIVER);
     /* no extra handling needed; this used to include a call to
        update_inventory() but that's already performed by setworn() */
     return;
 }
 
-export function /* void */
-setuswapwep(obj)
-{
+export function setuswapwep(obj) { /* void */
     setworn(obj, W_SWAPWEP);
     return;
 }
 
 /* getobj callback for object to ready for throwing/shooting;
    this filter lets worn items through so that caller can reject them */
-function /* int */
-ready_ok(obj)
-{
+function ready_ok(obj) { /* int */
     if (!obj) /* '-', will empty quiver slot if chosen */
         return uquiver ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY;
 
@@ -314,22 +285,11 @@ ready_ok(obj)
            such as whips, bows, slings, rubber hoses. */
     }
 
-
-
-
-
-
-
-
-
-
     return GETOBJ_DOWNPLAY;
 }
 
 /* getobj callback for object to wield */
-function /* int */
-wield_ok(obj)
-{
+function wield_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_SUGGEST;
 
@@ -342,19 +302,17 @@ wield_ok(obj)
     return GETOBJ_DOWNPLAY;
 }
 
-function /* void */
-finish_splitting(obj)
-{
+function finish_splitting(obj) { /* void */
     /* obj was split off from something; give it its own invlet */
     freeinv(obj);
     addinv_nomerge(obj);
 }
 
 /* the #wield command - wield a weapon */
-export function /* int */
-dowield()
-{ const $frame = stack_frame(); try { let $goto = null; var qbuf = stack_array(char, QBUFSZ);
-    
+export function dowield() { /* int */
+    const $frame = stack_frame(); try {
+    let $goto = null; var qbuf = stack_array(char, QBUFSZ);
+
     var wep, oldwep;
     var result;
 
@@ -410,7 +368,7 @@ dowield()
         /* offer to split stack if multiple are quivered */
         if (uquiver.quan > 1 && inv_cnt(FALSE) < invlet_basic
                                     && splittable(uquiver)) {
-            void sprintf(qbuf, _("You have %lld %s readied.  Wield one?"), uquiver.quan, simpleonames(uquiver))
+            sprintf(qbuf, _("You have %lld %s readied.  Wield one?"), uquiver.quan, simpleonames(uquiver))
 ;
             switch (ynq(qbuf)) {
             case ord('q'):
@@ -423,17 +381,17 @@ dowield()
             default:
                 break;
             }
-            void strcpy(qbuf, _("Wield all of them instead?"));
+            strcpy(qbuf, _("Wield all of them instead?"));
         } else {
-            var use_plural = (+(is_plural(uquiver) || pair_of(uquiver)));
+            var use_plural = +(is_plural(uquiver) || pair_of(uquiver));
 
-            void sprintf(qbuf, _("You have %s readied.  Wield %s instead?"), !use_plural ? _("that") : _("those"), !use_plural ? _("it") : _("them"))
+            sprintf(qbuf, _("You have %s readied.  Wield %s instead?"), !use_plural ? _("that") : _("those"), !use_plural ? _("it") : _("them"))
 
 ;
         }
         /* require confirmation to wield the quivered weapon */
         if (ynq(qbuf) != ord('y')) {
-            void Shk_Your(qbuf, uquiver); /* replace qbuf[] contents */
+            Shk_Your(qbuf, uquiver); /* replace qbuf[] contents */
             pline(_("%s%s %s readied."), qbuf,
                   simpleonames(uquiver), otense(uquiver, _("remain")));
             return ECMD_OK;
@@ -454,12 +412,11 @@ dowield()
     untwoweapon();
 
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #swap command - swap wielded and secondary weapons */
-export function /* int */
-doswapweapon()
-{
+export function doswapweapon() { /* int */
     let oldwep, oldswap;
     let result = 0;
 
@@ -501,17 +458,15 @@ doswapweapon()
 }
 
 /* the #quiver command */
-export function /* int */
-dowieldquiver()
-{
+export function dowieldquiver() { /* int */
     return doquiver_core(_("ready"));
 }
 
 /* guts of #quiver command; also used by #fire when refilling empty quiver */
-export function /* int */
-doquiver_core(verb) /* "ready" or "fire" */
-{ const $frame = stack_frame(); try { let $goto = null; var qbuf = stack_array(char, QBUFSZ);
-    
+export function doquiver_core(verb) { /* int */ /* "ready" or "fire" */
+    const $frame = stack_frame(); try {
+    let $goto = null; var qbuf = stack_array(char, QBUFSZ);
+
     var newquiver;
     var res;
     var was_uwep = FALSE, was_twoweap = u.twoweap;
@@ -576,7 +531,7 @@ doquiver_core(verb) /* "ready" or "fire" */
         /* offer to split stack if wielding more than 1 */
         if (uwep.quan > 1 && inv_cnt(FALSE) < invlet_basic
                                     && splittable(uwep)) {
-            void sprintf(qbuf, _("You are wielding %lld %s.  Ready %lld of them?"), uwep.quan, simpleonames(uwep), uwep.quan - 1)
+            sprintf(qbuf, _("You are wielding %lld %s.  Ready %lld of them?"), uwep.quan, simpleonames(uwep), uwep.quan - 1)
 ;
             switch (ynq(qbuf)) {
             case ord('q'):
@@ -589,17 +544,17 @@ doquiver_core(verb) /* "ready" or "fire" */
             default:
                 break;
             }
-            void strcpy(qbuf, _("Ready all of them instead?"));
+            strcpy(qbuf, _("Ready all of them instead?"));
         } else {
-            var use_plural = (+(is_plural(uwep) || pair_of(uwep)));
+            var use_plural = +(is_plural(uwep) || pair_of(uwep));
 
-            void sprintf(qbuf, _("You are wielding %s.  Ready %s instead?"), !use_plural ? _("that") : _("those"), !use_plural ? _("it") : _("them"))
+            sprintf(qbuf, _("You are wielding %s.  Ready %s instead?"), !use_plural ? _("that") : _("those"), !use_plural ? _("it") : _("them"))
 
 ;
         }
         /* require confirmation to ready the main weapon */
         if (ynq(qbuf) != ord('y')) {
-            void Shk_Your(qbuf, uwep); /* replace qbuf[] contents */
+            Shk_Your(qbuf, uwep); /* replace qbuf[] contents */
             pline(_("%s%s %s wielded."), qbuf,
                   simpleonames(uwep), otense(uwep, _("remain")));
             return ECMD_OK;
@@ -611,9 +566,8 @@ doquiver_core(verb) /* "ready" or "fire" */
     } else if (newquiver == uswapwep) {
         if (uswapwep.quan > 1 && inv_cnt(FALSE) < invlet_basic
             && splittable(uswapwep)) {
-            void sprintf(qbuf, _("%s %lld %s.  Ready %lld of them?"), u.twoweap ? _("You are dual wielding")
+            sprintf(qbuf, _("%s %lld %s.  Ready %lld of them?"), u.twoweap ? _("You are dual wielding")
                               : _("Your alternate weapon is"), uswapwep.quan, simpleonames(uswapwep), uswapwep.quan - 1)
-
 
 ;
             switch (ynq(qbuf)) {
@@ -627,18 +581,17 @@ doquiver_core(verb) /* "ready" or "fire" */
             default:
                 break;
             }
-            void strcpy(qbuf, _("Ready all of them instead?"));
+            strcpy(qbuf, _("Ready all of them instead?"));
         } else {
-            var use_plural = (+(is_plural(uswapwep) || pair_of(uswapwep)));
+            var use_plural = +(is_plural(uswapwep) || pair_of(uswapwep));
 
-            void sprintf(qbuf, _("%s your %s weapon.  Ready %s instead?"), !use_plural ? _("That is") : _("Those are"), u.twoweap ? _("second") : _("alternate"), !use_plural ? _("it") : _("them"))
-
+            sprintf(qbuf, _("%s your %s weapon.  Ready %s instead?"), !use_plural ? _("That is") : _("Those are"), u.twoweap ? _("second") : _("alternate"), !use_plural ? _("it") : _("them"))
 
 ;
         }
         /* require confirmation to ready the alternate weapon */
         if (ynq(qbuf) != ord('y')) {
-            void Shk_Your(qbuf, uswapwep); /* replace qbuf[] contents */
+            Shk_Your(qbuf, uswapwep); /* replace qbuf[] contents */
             pline(_("%s%s %s %s."), qbuf,
                   simpleonames(uswapwep), otense(uswapwep, _("remain")),
                   u.twoweap ? _("wielded") : _("as secondary weapon"));
@@ -676,13 +629,12 @@ doquiver_core(verb) /* "ready" or "fire" */
         res = 1;
     }
     return res ? ECMD_TIME : ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* used for #rub and for applying pick-axe, whip, grappling hook or polearm */
-export function /* boolean */
-wield_tool(obj,
-           verb) /* "rub",&c */
-{
+export function wield_tool(obj,
+           verb) { /* boolean */ /* "rub",&c */
     let what;
     let more_than_1;
 
@@ -692,8 +644,8 @@ wield_tool(obj,
     if (!verb)
         verb = _("wield");
     what = xname(obj);
-    more_than_1 = (+(obj.quan > 1 || strstri(what, _("pair of ")) != 0
-                   || strstri(what, _("s of ")) != 0));
+    more_than_1 = +(obj.quan > 1 || strstri(what, _("pair of ")) != 0
+                   || strstri(what, _("s of ")) != 0);
 
     if (obj.owornmask & (W_ARMOR | W_ACCESSORY)) {
         You_cant(_("%s %s while wearing %s."), verb, yname(obj),
@@ -730,7 +682,7 @@ wield_tool(obj,
     if (uquiver == obj)
         setuqwep(null);
     if (uswapwep == obj) {
-        void doswapweapon();
+        doswapweapon();
         /* doswapweapon might fail */
         if (uswapwep == obj)
             return FALSE;
@@ -739,7 +691,7 @@ wield_tool(obj,
 
         if (will_weld(obj)) {
             /* hope none of ready_weapon()'s early returns apply here... */
-            void ready_weapon(obj);
+            ready_weapon(obj);
         } else {
             You(_("now wield %s."), doname(obj));
             setuwep(obj);
@@ -757,9 +709,7 @@ wield_tool(obj,
     return TRUE;
 }
 
-export function /* int */
-can_twoweapon()
-{
+export function can_twoweapon() { /* int */
     let otmp;
 
     if (!could_twoweap(gy.youmonst.data)) {
@@ -805,9 +755,8 @@ can_twoweapon()
 
 /* uswapwep has become cursed while in two-weapon combat mode or hero is
    attempting to dual-wield when it is already cursed or hands are slippery */
-export function /* void */
-drop_uswapwep()
-{ const $frame = stack_frame(); try {
+export function drop_uswapwep() { /* void */
+    const $frame = stack_frame(); try {
     let left_hand = stack_array(char, QBUFSZ);
     let obj = uswapwep;
 
@@ -815,7 +764,7 @@ drop_uswapwep()
        dual-wielded, or to get this far attempting to achieve that,
        uswapwep must be one-handed; since it's secondary, the hand must
        be the left one */
-    void sprintf(left_hand, _("left %s"), body_part(HAND));
+    sprintf(left_hand, _("left %s"), body_part(HAND));
     if (!obj.cursed)
         /* attempting to two-weapon while Glib */
         pline(_("%s from your %s!"), Yobjnam2(obj, _("slip")), left_hand);
@@ -828,11 +777,10 @@ drop_uswapwep()
            become cursed */
         Your(_("%s spasms and drops %s!"), left_hand, yobjnam(obj, 0));
     dropx(obj);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-set_twoweap(on_off)
-{
+export function set_twoweap(on_off) { /* void */
     if (on_off != u.twoweap) {
         u.twoweap = on_off;
         if (flags.weaponstatus)
@@ -841,9 +789,7 @@ set_twoweap(on_off)
 }
 
 /* the #twoweapon command */
-export function /* int */
-dotwoweapon()
-{
+export function dotwoweapon() { /* int */
     /* You can always toggle it off */
     if (u.twoweap) {
         You(_("switch to your primary weapon."));
@@ -869,9 +815,7 @@ dotwoweapon()
  * 1.  The item has been eaten, stolen, burned away, or rotted away.
  * 2.  Making an item disappear for a bones pile.
  */
-export function /* void */
-uwepgone()
-{
+export function uwepgone() { /* void */
     if (uwep) {
         if (artifact_light(uwep) && uwep.lamplit) {
             end_burn(uwep, FALSE);
@@ -884,27 +828,21 @@ uwepgone()
     }
 }
 
-export function /* void */
-uswapwepgone()
-{
+export function uswapwepgone() { /* void */
     if (uswapwep) {
         setworn(null, W_SWAPWEP);
         update_inventory();
     }
 }
 
-export function /* void */
-uqwepgone()
-{
+export function uqwepgone() { /* void */
     if (uquiver) {
         setworn(null, W_QUIVER);
         update_inventory();
     }
 }
 
-export function /* void */
-untwoweapon()
-{
+export function untwoweapon() { /* void */
     if (u.twoweap) {
         You(_("%s."), can_no_longer_twoweap);
         set_twoweap(FALSE); /* u.twoweap = FALSE */
@@ -914,9 +852,8 @@ untwoweapon()
 }
 
 /* enchant wielded weapon */
-export function /* int */
-chwepon(otmp, amount)
-{ const $frame = stack_frame(); try {
+export function chwepon(otmp, amount) { /* int */
+    const $frame = stack_frame(); try {
     let color = hcolor((amount < 0) ? NH_BLACK() : NH_BLUE());
     let xtime, wepname = _("");
     let multiple;
@@ -927,17 +864,17 @@ chwepon(otmp, amount)
 
         if (amount >= 0 && uwep && will_weld(uwep)) { /* cursed tin opener */
             if (!Blind()) {
-                void sprintf(buf, _("%s with %s aura."), Yobjnam2(uwep, _("glow")), an(hcolor(NH_AMBER())))
+                sprintf(buf, _("%s with %s aura."), Yobjnam2(uwep, _("glow")), an(hcolor(NH_AMBER())))
 ;
                 uwep.bknown = +!Hallucination(); /* ok to bypass set_bknown() */
             } else {
                 /* cursed tin opener is wielded in right hand */
-                void sprintf(buf, _("Your right %s tingles."), body_part(HAND));
+                sprintf(buf, _("Your right %s tingles."), body_part(HAND));
             }
             uncurse(uwep);
             update_inventory();
         } else {
-            void sprintf(buf, _("Your %s %s."), makeplural(body_part(HAND)), (amount >= 0) ? _("twitch") : _("itch"))
+            sprintf(buf, _("Your %s %s."), makeplural(body_part(HAND)), (amount >= 0) ? _("twitch") : _("itch"))
 ;
         }
         strange_feeling(otmp, buf); /* pline()+docall()+useup() */
@@ -949,7 +886,7 @@ chwepon(otmp, amount)
         otyp = otmp.otyp;
 
     if (uwep.otyp == WORM_TOOTH && amount >= 0) {
-        multiple = (+(uwep.quan > 1));
+        multiple = +(uwep.quan > 1);
         /* order: message, transformation, shop handling */
         Your(_("%s %s much sharper now."), simpleonames(uwep),
              multiple ? _("fuse, and become") : _("is"));
@@ -970,7 +907,7 @@ chwepon(otmp, amount)
             encumber_msg();
         return 1;
     } else if (uwep.otyp == CRYSKNIFE && amount < 0) {
-        multiple = (+(uwep.quan > 1));
+        multiple = +(uwep.quan > 1);
         /* order matters: message, shop handling, transformation */
         Your(_("%s %s much duller now."), simpleonames(uwep),
              multiple ? _("fuse, and become") : _("is"));
@@ -1045,11 +982,10 @@ chwepon(otmp, amount)
         pline(_("%s unexpectedly."), Yobjnam2(uwep, _("suddenly vibrate")));
 
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-welded(obj)
-{
+export function welded(obj) { /* int */
     if (obj && obj == uwep && will_weld(obj)) {
         set_bknown(obj, 1);
         return 1;
@@ -1057,9 +993,7 @@ welded(obj)
     return 0;
 }
 
-export function /* void */
-weldmsg(obj)
-{
+export function weldmsg(obj) { /* void */
     let savewornmask;
     let hand = body_part(HAND);
 
@@ -1074,9 +1008,7 @@ weldmsg(obj)
 }
 
 /* test whether monster's wielded weapon is stuck to hand/paw/whatever */
-export function /* boolean */
-mwelded(obj)
-{
+export function mwelded(obj) { /* boolean */
     /* caller is responsible for making sure this is a monster's item */
     if (obj && (obj.owornmask & W_WEP) && will_weld(obj))
         return TRUE;
@@ -1084,165 +1016,68 @@ mwelded(obj)
 }
 
 /*wield.c*/
-import { ART_MAGICBANE } from "./artilist.h.js";
-import { ART_OGRESMASHER } from "./artilist.h.js";
-import { ART_SNICKERSNEE } from "./artilist.h.js";
+
+import { ART_MAGICBANE, ART_OGRESMASHER, ART_SNICKERSNEE } from "./artilist.h.js";
 import { A_DEX } from "./attrib.h.js";
 import { ACURR } from "./attrib.h.macros.js";
 import { bl_bareh } from "./botl.h.js";
-import { NH_AMBER } from "./decl.h.macros.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { NH_BLUE } from "./decl.h.macros.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { COST_DECHNT } from "./hack.h.js";
-import { COST_DEGRD } from "./hack.h.js";
-import { CXN_PFX_THE } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { GETOBJ_ALLOWCNT } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { invlet_basic } from "./hack.h.js";
-import { makeknown } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { ynq } from "./hack.h.macros.js";
-import { cantwield } from "./mondata.h.macros.js";
-import { could_twoweap } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
+import { NH_AMBER, NH_BLACK, NH_BLUE } from "./decl.h.macros.js";
+import { COIN_CLASS, SCROLL_CLASS, WEAPON_CLASS } from "./defsym.h.js";
+import { BUFSZ, FALSE, QBUFSZ, TRUE } from "./global.h.js";
+import {
+    COST_DECHNT, COST_DEGRD, CXN_PFX_THE, ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME,
+    GETOBJ_ALLOWCNT, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_PROMPT, GETOBJ_SUGGEST, HAND,
+    invlet_basic,
+} from "./hack.h.js";
+import { makeknown, plur, ynq } from "./hack.h.macros.js";
+import { cantwield, could_twoweap, humanoid, touch_petrifies } from "./mondata.h.macros.js";
 import { struct_obj } from "./obj.h.js";
-import { ONAME } from "./obj.h.macros.js";
-import { ammo_and_launcher } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_ammo } from "./obj.h.macros.js";
-import { is_elven_weapon } from "./obj.h.macros.js";
-import { is_launcher } from "./obj.h.macros.js";
-import { is_missile } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
-import { is_pole } from "./obj.h.macros.js";
-import { is_sword } from "./obj.h.macros.js";
-import { is_weptool } from "./obj.h.macros.js";
-import { is_wet_towel } from "./obj.h.macros.js";
-import { pair_of } from "./obj.h.macros.js";
-import { u_wield_art } from "./obj.h.macros.js";
-import { AKLYS } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRYSKNIFE } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { IRON_CHAIN } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { WORM_TOOTH } from "./objects.h.js";
-import { W_ACCESSORY } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_QUIVER } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { URIGHTY } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
+import {
+    ONAME, ammo_and_launcher, bimanual, has_oname, is_ammo, is_elven_weapon, is_launcher,
+    is_missile, is_plural, is_pole, is_sword, is_weptool, is_wet_towel, pair_of, u_wield_art,
+} from "./obj.h.macros.js";
+import {
+    AKLYS, BATTLE_AXE, CORPSE, CRYSKNIFE, HEAVY_IRON_BALL, IRON_CHAIN, STRANGE_OBJECT, TIN_OPENER,
+    WORM_TOOTH,
+} from "./objects.h.js";
+import { W_ACCESSORY, W_ARMOR, W_QUIVER, W_SADDLE, W_SWAPWEP, W_WEP } from "./prop.h.js";
+import { URIGHTY, Upolyd } from "./you.h.macros.js";
+import { Blind, Glib, Hallucination, Stone_resistance } from "./youprop.h.macros.js";
+import { char, ord, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop } from "../rt/heap.js";
 import { or64 } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { sprintf, strcmp, strcpy, strncmp } from "../rt/libc.js";
+import { init_string, stack_array, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
 import { ptr_to } from "../rt/struct.js";
-import { arti_speak } from "./artifact.js";
-import { artifact_light } from "./artifact.js";
-import { is_art } from "./artifact.js";
-import { restrict_name } from "./artifact.js";
-import { retouch_object } from "./artifact.js";
+import { arti_speak, artifact_light, is_art, restrict_name, retouch_object } from "./artifact.js";
 import { exercise } from "./attrib.js";
 import { condtests } from "./botl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { svc } from "./decl.js";
-import { u } from "./decl.js";
+import { disp, flags, gi, gm, gu, gy, hands_obj, svc, u } from "./decl.js";
 import { dropx } from "./do.js";
 import { hcolor } from "./do_name.js";
 import { reset_remarm } from "./do_wear.js";
 import { inv_cnt } from "./hack.js";
 import { strstri } from "./hacklib.js";
-import { addinv_nomerge } from "./invent.js";
-import { freeinv } from "./invent.js";
-import { getobj } from "./invent.js";
-import { prinv } from "./invent.js";
-import { splittable } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useupall } from "./invent.js";
+import {
+    addinv_nomerge, freeinv, getobj, prinv, splittable, update_inventory, useupall,
+} from "./invent.js";
 import { arti_light_description } from "./light.js";
-import { clear_splitobjs } from "./mkobj.js";
-import { costly_alteration } from "./mkobj.js";
-import { set_bknown } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
-import { unsplitobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
+import {
+    clear_splitobjs, costly_alteration, set_bknown, splitobj, uncurse, unsplitobj, weight,
+} from "./mkobj.js";
 import { mons } from "./monst.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { Yobjnam2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { aobjnam } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { yobjnam } from "./objnam.js";
+import {
+    The, Tobjnam, Yname2, Yobjnam2, an, aobjnam, corpse_xname, doname, killer_xname, makeplural,
+    otense, simpleonames, vtense, xname, yname, yobjnam,
+} from "./objnam.js";
 import { encumber_msg } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { Your } from "./pline.js";
-import { pline } from "./pline.js";
+import { You, You_cant, Your, pline } from "./pline.js";
 import { body_part } from "./polyself.js";
 import { strange_feeling } from "./potion.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { Shk_Your } from "./shk.js";
-import { alter_cost } from "./shk.js";
-import { inside_shop } from "./shk.js";
-import { shop_keeper } from "./shk.js";
+import { rn2, rnd } from "./rnd.js";
+import { Shk_Your, alter_cost, inside_shop, shop_keeper } from "./shk.js";
 import { shkname } from "./shknam.js";
-import { begin_burn } from "./timeout.js";
-import { end_burn } from "./timeout.js";
+import { begin_burn, end_burn } from "./timeout.js";
 import { instapetrify } from "./trap.js";
 import { setworn } from "./worn.js";

@@ -1,4 +1,4 @@
-export default `                    NETHACK GENERAL PUBLIC LICENSE
+export default String.raw`                    NETHACK GENERAL PUBLIC LICENSE
                     (Copyright 1989 M. Stephenson)
 
                (Based on the BISON general public license,

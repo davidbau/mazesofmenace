@@ -2,9 +2,6 @@
 /* Copyright (c) Steve Creps, 1988.                               */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * The placements of the NONNULLARG* and NONNULLPTRS macros were done
  * using the following rules:
@@ -67,1199 +64,107 @@
  *
  */
 
-
-
-
-
-
-
-
-
 /* ### alloc.c ### */
-
 
 /* routines in alloc.c depend on MONITOR_HEAP and are declared in global.h */
 
-
-
 /* moved from hacklib.c to alloc.c so that utility programs have access */
-
-
-
 
 /* for Strlen() which returns unsigned instead of size_t and panics for
    strings of length INT_MAX (32K - 1) or longer */
 
-
-
 /* This next pre-processor directive covers almost the entire file,
  * interrupted only occasionally to pick up specific functions as needed. */
 
-
 /* ### allmain.c ### */
-
-
-
-
-
-
-
-
-
-
 
 /* ### apply.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### artifact.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### attrib.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### ball.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### bones.c ### */
 
-
-
-
-
-
-
-
-
-
-
 /* ### botl.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### calendar.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### cfgfiles.c ### */
-
-
-
-
-
-
-
-
-
-
-
 
 /* arg1 of read_config_file can be NULL to pass through
  * to fopen_config_file() to mean 'use the default config file name' */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### coloratt.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### cmd.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### date.c ### */
-
-
-
 
 /* ### dbridge.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### decl.c ### */
-
-
-
-
 
 /* ### detect.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### dig.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### display.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### do.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### do_name.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 extern struct obj *realloc_obj(struct obj *, int, genericptr_t, int,
                                const char *);
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### do_wear.c ### */
-
-
-
-
-
-
-
-
 
 /* doseduce() calls with NULL */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### dog.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### dogmove.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
 /* ### dokick.c ### */
-
-
-
-
-
-
-
-
-
 
 /* ### dothrow.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### drawing.c ### */
-
-
-
-
 
 /* ### dungeon.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### earlyarg.c ### */
-
-
-
-
-
-
 
 /* ### eat.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### end.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### engrave.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### exper.c ### */
-
-
-
-
-
-
-
-
-
 
 /* ### explode.c ### */
 
-
-
-
-
-
-
-
 /* ### extralev.c ### */
-
-
-
-
 
 /* ### files.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### fountain.c ### */
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### getpos.c ### */
 
-
-
-
-
-
-
-
-
-
 /* ### glyphs.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### hack.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* sometimes money_cnt(gi.invent) which can be null */
 
-
-
-
 /* ### strutil.c ### */
-
-
-
-
-
-
-
-
 
 /*
 extern boolean pmatchz(const char *, const char *) NONNULLPTRS;
@@ -1267,189 +172,20 @@ extern boolean pmatchz(const char *, const char *) NONNULLPTRS;
 
 /* ### iactions.c ### */
 
-
-
 /* ### insight.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### invent.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* nhlua.c calls useupall(gi.invent), but checks gi.invent against NULL
  * before doing so. useupall() won't handle NULL*/
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* sometimes count_unpaid(gi.invent) which can be null */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### ioctl.c ### */
 
-
-
-
-
-
-
-
-
-
 /* ### light.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### lock.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* outdated functions removed */
 /* ### macfile.c ### */
@@ -1458,813 +194,100 @@ extern boolean pmatchz(const char *, const char *) NONNULLPTRS;
 /* ### macwin.c ### */
 /* ### mttymain.c ### */
 
-
 /* ### mail.c ### */
-
-
-
-
-
-
-
-
-
-
 
 /* ### makemon.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* tests for NULL mtmp */
-
-
-
-
-
-
 
 /* ### mcastu.c ### */
 
-
-
-
-
-
-
-
 /* ### mdlib.c ### */
-
-
-
-
-
 
 /* ### mhitm.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### mhitu.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* extern boolean ranged_attk_assessed(struct monst *mtmp,
                              boolean (*assessfunct)(struct monst *, int)) NONNULLARG1;
 */
 
-
 /* ### minion.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### mklev.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* place_branch() has tests for NULL branch arg, preventing NONNULLARG1 */
-
-
-
-
-
-
-
-
-
 
 /* ### mkmap.c ### */
 
-
-
-
-
 /* ### mkmaze.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* dungeon.c u_on_rndspot() passes NULL final arg to place_lregion() */
 
-
-
-
-
-
-
-
-
-
 /* ### mkobj.c ### */
-
-
-
-
-
-
-
 
 /*
 extern void newolong(struct obj *);
 extern void free_olong(struct obj *);
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### mkroom.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### mon.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### mondata.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### monmove.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### monst.c ### */
-
-
 
 /* ### mplayer.c ### */
 
-
-
-
-
-
-
-
 /* ### msdos.c,os2.c,tos.c,windsys.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### mthrowu.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### muse.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### music.c ### */
 
-
-
-
-
 /* ### nhlsel.c ### */
-
-
-
-
-
-
-
 
 /* ### nhlobj.c ### */
 
-
-
-
-
-
-
 /* ### nhlua.c ### */
-
-
-
-
-
 
 /* nhl_done contains a test for NULL arg1, preventing NONNULLARG1 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* dungeon.c init_dungeon_levels() passes NULL to get_table_str_opt arg3 */
-
-
 
 /* lspo_feature calls get_table_option(L, "type", NULL, features),
    so arg3 can be NULL.  NONNULLARG124 is not currently defined */
 
-
 /* extern int str_lines_max_width(const char *); */
-
-
-
-
-
-
-
 
 /* ### {cpp,pmatch,posix}regex.c ### */
 
-
-
-
 /* ### consoletty.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### o_init.c ### */
 
-
-
-
 /* objdescr_is() contains a test for NULL arg1, so can't be NONNULLARG12 */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### objects.c ### */
 
-
-
 /* ### objnam.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* an(), the() contain tests for NULL arg, preventing NONNULLARG1 */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* makeplural() and makesingular() never return NULL but have tests for NULL
    arg1, and code path that leads to impossible(), preventing NONNULLARG1 */
 
-
 /* readobjnam() can return NULL and  allows a NULL to trigger code path for
    random object */
 
-
 /* discover_object() passes NULL arg2 to Japanese_item_name(),
  * preventing NONNULLARG2 */
-
 
 /* suit_simple_name has its code in a NULL arg test
    conditional block, preventing NONNULLARG1 */
@@ -2285,154 +308,30 @@ extern void free_olong(struct obj *);
 
 /* shirt_simple_name always just returns hardcoded "shirt" */
 
-
 /* safe_qbuf() contains tests for NULL arg2 and arg3, qprefix and qsuffix,
    preventing use of NONNULLPTRS. */
 
-
-
-
-
 /* ### options.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### pager.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*might return NULL*/
-
-
-
 
 /* ### xxmain.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### pcsys.c, windsys.c ### */
-
-
 
 export const nethack_exit = exit;
 
-
 /* ### pcsys.c  ### */
-
-
-
-
-
-
-
-
 
 /* E FILE *fopenp(const char *, const char *); */
 
-
 /* ### pctty.c ### */
-
-
-
-
-
-
-
-
-
-
 
 /* ### pcunix.c ### */
 
-
-
-
-
-
-
 /* ### pickup.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* reset_justpicked() is sometimes passed gi.invent
  * which can be null */
@@ -2441,629 +340,77 @@ export const nethack_exit = exit;
 
 /* sometimes find_justpicked(gi.invent) which can be null */
 
-
-
-
 /* dotypeinv() call query_objlist with NULL arg1 */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### pline.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### polyself.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### potion.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* altdip */
-
-
-
-
-
 
 /* ### pray.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### priest.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### quest.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### questpgr.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### random.c ### */
 
-
-
-
-
-
-
-
-
-
 /* ### read.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### rect.c ### */
 
-
-
-
-
-
-
-
-
-
 /* ## region.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### report.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### restore.c ### */
-
-
-
-
-
-
-
-
-
-
 
 /* extern void reset_restpref(void); */
 /* extern void set_restpref(const char *); */
 /* extern void set_savepref(const char *); */
 
-
-
-
-
-
-
-
-
-
 /* ### rip.c ### */
-
-
 
 /* ### rnd.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Deterministic qsort wrapper. */
-
-
-
-
-
-
-
 
 /* ### role.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### rumors.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### save.c ### */
 
-
-
-
-
-
-
-
 /* extern genericptr_t mon_to_buffer(struct monst *, int *); */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### selvar.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### sfstruct.c ### */
 
-
 /* extern void newread(NHFILE *, int, int, genericptr_t, unsigned); */
-
-
-
-
-
-
 
 /* ### shk.c ### */
 
 /* setpaid() has a conditional code block near the end of the
    function, where arg1 is tested for NULL, preventing NONNULLARG1 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* costly_adjacent() has checks for null 1st arg, and an early return,
    so it cannot be NONNULLARG1 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*extern void globby_donation(struct obj *, struct obj *); */
-
-
-
-
-
 
 /* ### shknam.c ### */
 
-
-
-
-
-
-
-
-
-
-
 /* ### sit.c ### */
-
-
-
-
-
 
 /* ### sounds.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### sp_lev.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* wiz_load_splua NULL */
 /* lspo_finalize_level() has tests for whether arg1 L is null, and chooses
@@ -3071,693 +418,84 @@ export const nethack_exit = exit;
    being called from wiz_load_splua() with a NULL arg.
    Side note: The parameter is also marked as UNUSED, but apparently it is */
 
-
-
-
-
-
-
-
-
-
-
-
 /* ### spell.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### stairs.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### steal.c ### */
-
-
-
-
-
-
 
 /* mpickobj() contains a test for NULL arg2 obj and a code path
    that leads to impossible(). Prevents NONNULLARG12. */
 
-
-
-
-
-
-
-
 /* ### steed.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### symbols.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### sys.c ### */
-
-
-
-
 
 /* ### teleport.c ### */
 
-
 /* rloc_engr() passes NULL monst arg to goodpos()*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### timeout.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### topten.c ### */
-
-
-
-
-
-
-
-
 
 /* ### track.c ### */
 
-
-
-
-
-
-
-
 /* ### trap.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
 /* revisit */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* acid_damage() has a test for NULL arg and early return if so,
    preventing NONNULLARG1 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### u_init.c ### */
-
-
-
-
 
 /* ### uhitm.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* gazemm() calls mhitm_ad_blnd with a NULL 4th arg */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* domove_fight_empty passes NULL to explum arg1 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### unixmain.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### unixtty.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### unixunix.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### unixres.c ### */
 
-
-
-
-
-
-
 /* ### utf8map.c ### */
-
-
-
-
-
-
-
-
 
 /* ### vault.c ### */
 
-
-
-
-
-
-
 /* NULL leads to impossible() */
-
-
-
-
-
-
 
 /* ### version.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### video.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### vision.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### vmsfiles.c ### */
-
-
-
-
-
-
-
-
 
 /* ### vmsmail.c ### */
 
-
-
-
-
-
-
-
 /* ### vmsmain.c ### */
-
-
-
-
-
-
-
-
 
 /* ### vmsmisc.c ### */
 
-
-
-
-
-
-
 /* ### vmstty.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### vmsunix.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### weapon.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* find_roll_to_hit() calls weapon_hit_bonus() with a NULL argument,
    preventing NONNULLARG1 */
 
-
-
-
-
-
-
 /* ### were.c ### */
-
-
-
-
-
-
-
-
-
 
 /* ### wield.c ### */
 
@@ -3766,287 +504,33 @@ export const nethack_exit = exit;
 /* NULL:ball.c, do.c */
 /* NULL: ball.c, do.c */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### windows.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### windsys.c ### */
 
-
-
-
-
 /* ### wizard.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### wizcmds.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### worm.c ### */
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* NULL leads to impossible */
 
-
-
-
-
-
-
-
-
-
-
-
 /* ### worn.c ### */
 
-
 /* has tests for obj */
 /* has tests for obj */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* callers don't check gi.invent before passing to bypass_objlist */
 
-
-
-
-
-
-
 /* ### write.c ### */
-
-
 
 /* ### zap.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* tests !obj */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* ### unixmain.c, windsys.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
 /*extern.h*/
+
 import { exit } from "../rt/libc.js";

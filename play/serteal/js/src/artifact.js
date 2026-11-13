@@ -3,12 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2013. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-// #include "artifact.h"
-// #include "artilist.h"
-
-
-
 /*
  * Note:  both artilist[] and artiexist[] have a dummy element #0,
  *        so loops over them should normally start at #1.  The primary
@@ -16,41 +10,10 @@
  *        the contents, just the total size.
  */
 
-
-
 /* #define get_artifact(o) \
     (((o) && ((o)->artifact > 0 && (o)->artifact < AFTER_LAST_ARTIFACT)) \
                              ? &artilist[(int) (o)->oartifact] \
                              : &artilist[ART_NONARTIFACT]) */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* The amount added to the victim's total hit points to insure that the
    victim will be killed even after damage bonus/penalty adjustments.
@@ -61,7 +24,6 @@
    Note: this will still break if they have more than about half the number
    of hit points that will fit in a 15 bit integer. */
 export const FATAL_DAMAGE_MODIFIER = 200;
-
 
 /* arti_info struct definition moved to artifact.h */
 
@@ -77,15 +39,10 @@ const artidisco = static_array("artidisco", short, NROFARTIFACTS);
  * and restored but that is done through this file so they can be local.
  */
 
-
 const zero_artiexist = static_struct("zero_artiexist", struct_arti_info, {exists: 0}); /* all bits zero */
 
-
-
 /* handle some special cases; must be called after u_init() */
-function /* void */
-hack_artifacts()
-{
+function hack_artifacts() { /* void */
     let art;
     let alignmnt = aligns[flags.initalign].value;
 
@@ -107,17 +64,13 @@ hack_artifacts()
 }
 
 /* zero out the artifact existence list */
-export function /* void */
-init_artifacts()
-{
-    void memset(addr_of(artiexist[0]), 0, sizeof(array_of(struct_arti_info, 1 + NROFARTIFACTS)));
-    void memset(addr_of(artidisco), 0, sizeof(array_of(short, NROFARTIFACTS)));
+export function init_artifacts() { /* void */
+    memset(addr_of(artiexist[0]), 0, sizeof(array_of(struct_arti_info, 1 + NROFARTIFACTS)));
+    memset(addr_of(artidisco), 0, sizeof(array_of(short, NROFARTIFACTS)));
     hack_artifacts();
 }
 
-export function /* void */
-save_artifacts(nhfp)
-{
+export function save_artifacts(nhfp) { /* void */
     let i;
 
     for (i = 0; i < (NROFARTIFACTS + 1); ++i)
@@ -127,11 +80,7 @@ save_artifacts(nhfp)
         Sfo_xint16(nhfp, artidisco.subarray(i), _("artidisco"));
 }
 
-
-
-export function /* void */
-restore_artifacts(nhfp)
-{
+export function restore_artifacts(nhfp) { /* void */
     let i;
 
     for (i = 0; i < (NROFARTIFACTS + 1); ++i)
@@ -140,16 +89,9 @@ restore_artifacts(nhfp)
         Sfi_short(nhfp, artidisco.subarray(i), _("artidisco"));
 
     hack_artifacts();   /* redo non-saved special cases */
-
-
-
 }
 
-
-
-export function /* const char * */
-artiname(artinum)
-{
+export function artiname(artinum) { /* const char * */
     if (artinum <= 0 || artinum > NROFARTIFACTS)
         return _("");
     return artilist[artinum].name;
@@ -168,19 +110,18 @@ artiname(artinum)
    The max_giftvalue is the value of the sacrifice, for an artifact obtained
    by sacrificing, or 99 otherwise.
  */
-export function /* struct obj * */
-mk_artifact(
+export function mk_artifact(
     otmp,
 
     alignment,
     max_giftvalue,
-    adjust_spe)  /* whether to add spe to situational artifacts */
-{ const $frame = stack_frame(); try {
+    adjust_spe) { /* struct obj * */ /* whether to add spe to situational artifacts */
+    const $frame = stack_frame(); try {
     let a;
     let m, n, altn;
-    let by_align = (+(alignment != A_NONE));
+    let by_align = +(alignment != A_NONE);
     let o_typ = (by_align || !otmp) ? 0 : otmp.otyp;
-    let unique = ((!by_align && otmp && objects[o_typ].oc_unique) ? 1 : 0);
+    let unique = (!by_align && otmp && objects[o_typ].oc_unique ? 1 : 0);
     let eligible = stack_array(short, NROFARTIFACTS);
     let skill_compatibility;
 
@@ -306,11 +247,10 @@ mk_artifact(
     if (otmp && permapoisoned(otmp))
         otmp.otrapped = 1;
     return otmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-dispose_of_orig_obj(obj)
-{
+function dispose_of_orig_obj(obj) { /* void */
     if (!obj)
         return;
 
@@ -325,12 +265,10 @@ dispose_of_orig_obj(obj)
  * The object type of the artifact is returned in otyp if the return value
  * is non-NULL.
  */
-export function /* const char * */
-artifact_name(
+export function artifact_name(
     name,
     otyp_p,
-    fuzzy)    /* whether to allow extra or omitted spaces or dashes */
-{
+    fuzzy) { /* const char * */ /* whether to allow extra or omitted spaces or dashes */
     let a;
     let aname;
 
@@ -352,9 +290,7 @@ artifact_name(
     return 0;
 }
 
-export function /* boolean */
-exist_artifact(otyp, name)
-{
+export function exist_artifact(otyp, name) { /* boolean */
     let a;
     let arex;
 
@@ -367,19 +303,17 @@ exist_artifact(otyp, name)
 
 /* an artifact has just been created or is being "un-created" for a chance
    to be created again later */
-export function /* void */
-artifact_exists(
+export function artifact_exists(
     otmp,
     name,
     mod,
-    flgs)    /* ONAME_xyz flags; not relevant if !mod */
-{
+    flgs) { /* void */ /* ONAME_xyz flags; not relevant if !mod */
     let a;
 
     if (otmp && chars[name])
         for (a = ptr_add(artilist[0], 1); a.otyp; a = ptr_add(a, 1))
             if (a.otyp == otmp.otyp && !strcmp(a.name, name)) {
-                let m = (ptr_diff(a, artilist[0]));
+                let m = ptr_diff(a, artilist[0]);
 
                 otmp.oartifact = char((mod ? m : 0));
                 otmp.age = 0;
@@ -405,9 +339,7 @@ artifact_exists(
 }
 
 /* mark an artifact as 'found' */
-export function /* void */
-found_artifact(a)
-{
+export function found_artifact(a) { /* void */
     if (a < 1 || a > NROFARTIFACTS)
         impossible(_("found_artifact: invalid artifact index! (%d)"), a);
     else if (!artiexist[a].exists)
@@ -418,9 +350,7 @@ found_artifact(a)
 
 /* if an artifact hasn't already been designated 'found', do that now
    and generate a livelog event about finding it */
-export function /* void */
-find_artifact(otmp)
-{
+export function find_artifact(otmp) { /* void */
     let a = otmp.oartifact;
 
     if (a && !artiexist[a].found) {
@@ -458,9 +388,7 @@ find_artifact(otmp)
     }
 }
 
-export function /* int */
-nartifact_exist()
-{
+export function nartifact_exist() { /* int */
     let i, a = 0;
 
     for (i = 1; i <= NROFARTIFACTS; ++i)
@@ -474,11 +402,9 @@ nartifact_exist()
    calling sequence: oname() -> artifact_exists() -> artifact_origin() or
    mksobj(),others -> mk_artifact() -> artifact_origin(random) possibly
    followed by mksobj(),others -> artifact_origin(non-random origin) */
-export function /* void */
-artifact_origin(
+export function artifact_origin(
     arti,
-    aflags)  /* ONAME_xxx flags, shared by artifact_exists() */
-{
+    aflags) { /* void */ /* ONAME_xxx flags, shared by artifact_exists() */
     let ct, a = arti.oartifact;
 
     if (a) {
@@ -512,9 +438,7 @@ artifact_origin(
     }
 }
 
-export function /* boolean */
-spec_ability(otmp, abil)
-{
+export function spec_ability(otmp, abil) { /* boolean */
     let arti = get_artifact(otmp);
 
     return (+(arti != artilist[ART_NONARTIFACT]
@@ -522,20 +446,16 @@ spec_ability(otmp, abil)
 }
 
 /* used so that callers don't need to known about SPFX_ codes */
-export function /* boolean */
-confers_luck(obj)
-{
+export function confers_luck(obj) { /* boolean */
     /* might as well check for this too */
     if (obj.otyp == LUCKSTONE)
         return TRUE;
 
-    return (((obj.oartifact && spec_ability(obj, SPFX_LUCK)) ? 1 : 0));
+    return (obj.oartifact && spec_ability(obj, SPFX_LUCK) ? 1 : 0);
 }
 
 /* used to check whether a monster is getting reflection from an artifact */
-export function /* boolean */
-arti_reflects(obj)
-{
+export function arti_reflects(obj) { /* boolean */
     let arti = get_artifact(obj);
 
     if (arti != artilist[ART_NONARTIFACT]) {
@@ -551,9 +471,7 @@ arti_reflects(obj)
 
 /* decide whether this obj is effective when attacking against shades;
    does not consider the bonus for blessed objects versus undead */
-export function /* boolean */
-shade_glare(obj)
-{
+export function shade_glare(obj) { /* boolean */
     let arti;
 
     /* any silver object is effective */
@@ -571,9 +489,8 @@ shade_glare(obj)
 }
 
 /* returns 1 if name is restricted for otmp->otyp */
-export function /* boolean */
-restrict_name(otmp, name)
-{ const $frame = stack_frame(); try {
+export function restrict_name(otmp, name) { /* boolean */
+    const $frame = stack_frame(); try {
     let a;
     let aname, odesc, other;
     let sametype = stack_array(schar, NUM_OBJECTS);
@@ -589,7 +506,7 @@ restrict_name(otmp, name)
        otherwise, include all other undiscovered objects
        of the same class which have the same description
        or share the same pool of shuffled descriptions */
-    void memset(sametype, 0, sizeof(array_of(schar, NUM_OBJECTS))); /* FALSE */
+    memset(sametype, 0, sizeof(array_of(schar, NUM_OBJECTS))); /* FALSE */
     chars[sametype + otyp] = TRUE;
     if (!objects[otyp].oc_name_known
         && (odesc = OBJ_DESCR(objects[otyp])) != 0) {
@@ -620,11 +537,10 @@ restrict_name(otmp, name)
     }
 
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-attacks(adtyp, otmp)
-{
+export function attacks(adtyp, otmp) { /* boolean */
     let weap;
 
     if ((weap = get_artifact(otmp)) != artilist[ART_NONARTIFACT])
@@ -632,9 +548,7 @@ attacks(adtyp, otmp)
     return FALSE;
 }
 
-export function /* boolean */
-defends(adtyp, otmp)
-{
+export function defends(adtyp, otmp) { /* boolean */
     let weap;
 
     if (!otmp)
@@ -650,30 +564,30 @@ defends(adtyp, otmp)
 
         switch (adtyp) {
         case AD_MAGM: /* magic missiles => general magic resistance */
-            return (+(otyp == GRAY_DRAGON_SCALES));
+            return +(otyp == GRAY_DRAGON_SCALES);
         case AD_HALU: /* confers hallucination resistance */
-            return (+(otyp == GOLD_DRAGON_SCALES));
+            return +(otyp == GOLD_DRAGON_SCALES);
         case AD_FIRE:
       /*case AD_BLND: -- gives infravision but does not prevent blindness */
-            return (+(otyp == RED_DRAGON_SCALES)); /* red but not gold */
+            return +(otyp == RED_DRAGON_SCALES); /* red but not gold */
         case AD_COLD:
       /*case AD_FAMN: -- slows digestion but does not override Famine */
-            return (+(otyp == WHITE_DRAGON_SCALES)); /* white but not silver */
+            return +(otyp == WHITE_DRAGON_SCALES); /* white but not silver */
         case AD_DRST: /* drain strength => poison */
         case AD_DISE: /* blocks disease but not slime */
-            return (+(otyp == GREEN_DRAGON_SCALES));
+            return +(otyp == GREEN_DRAGON_SCALES);
         case AD_SLEE: /* sleep */
         case AD_PLYS: /* paralysis => free action */
-            return (+(otyp == ORANGE_DRAGON_SCALES));
+            return +(otyp == ORANGE_DRAGON_SCALES);
         case AD_DISN: /* disintegration */
         case AD_DRLI: /* level drain resistance */
-            return (+(otyp == BLACK_DRAGON_SCALES));
+            return +(otyp == BLACK_DRAGON_SCALES);
         case AD_ELEC: /* electricity == lightning */
         case AD_SLOW: /* confers speed so blocks speed removal */
-            return (+(otyp == BLUE_DRAGON_SCALES));
+            return +(otyp == BLUE_DRAGON_SCALES);
         case AD_ACID:
         case AD_STON: /* petrification resistance */
-            return (+(otyp == YELLOW_DRAGON_SCALES));
+            return +(otyp == YELLOW_DRAGON_SCALES);
         default:
             /* SILVER_DRAGON_SCALES don't resist any particular attack type */
             break;
@@ -683,9 +597,7 @@ defends(adtyp, otmp)
 }
 
 /* used for monsters */
-export function /* boolean */
-defends_when_carried(adtyp, otmp)
-{
+export function defends_when_carried(adtyp, otmp) { /* boolean */
     let weap;
 
     if ((weap = get_artifact(otmp)) != artilist[ART_NONARTIFACT])
@@ -694,9 +606,7 @@ defends_when_carried(adtyp, otmp)
 }
 
 /* determine whether an item confers Protection */
-export function /* boolean */
-protects(otmp, being_worn)
-{
+export function protects(otmp, being_worn) { /* boolean */
     let arti;
 
     if (being_worn && objects[otmp.otyp].oc_oprop == PROTECTION)
@@ -704,20 +614,18 @@ protects(otmp, being_worn)
     arti = get_artifact(otmp);
     if (arti == artilist[ART_NONARTIFACT])
         return FALSE;
-    return ((((arti.cspfx & SPFX_PROTECT) != 0
-                      || (being_worn && (arti.spfx & SPFX_PROTECT) != 0)) ? 1 : 0));
+    return ((arti.cspfx & SPFX_PROTECT) != 0
+                      || (being_worn && (arti.spfx & SPFX_PROTECT) != 0) ? 1 : 0);
 }
 
 /*
  * a potential artifact has just been worn/wielded/picked-up or
  * unworn/unwielded/dropped.  Pickup/drop only set/reset the W_ART mask.
  */
-export function /* void */
-set_artifact_intrinsic(
+export function set_artifact_intrinsic(
     otmp,
     on,
-    wp_mask)
-{
+    wp_mask) { /* void */
     let mask = null;
     let art, oart = get_artifact(otmp);
     let obj;
@@ -791,7 +699,7 @@ set_artifact_intrinsic(
          * that can print a message--need to guard against being printed
          * when restoring a game
          */
-        void make_hallucinated((+!on),
+        make_hallucinated((+!on),
                                  program_state.restoring ? FALSE : TRUE,
                                  wp_mask);
     }
@@ -881,7 +789,7 @@ set_artifact_intrinsic(
         /* might have to turn off invoked power too */
         if (oart.inv_prop <= LAST_PROP
             && (u.uprops[oart.inv_prop].extrinsic & W_ARTI))
-            void arti_invoke(otmp);
+            arti_invoke(otmp);
     }
 
     if (wp_mask == W_WEP && is_art(otmp, ART_SUNSWORD)) {
@@ -904,9 +812,8 @@ const touch_blasted = static_var("touch_blasted", schar); /* for retouch_object(
  * Ignores such things as gauntlets, assuming the artifact is not
  * fooled by such trappings.
  */
-export function /* int */
-touch_artifact(obj, mon)
-{ const $frame = stack_frame(); try {
+export function touch_artifact(obj, mon) { /* int */
+    const $frame = stack_frame(); try {
     let oart = get_artifact(obj);
     let badclass, badalign, self_willed, yours;
 
@@ -914,23 +821,23 @@ touch_artifact(obj, mon)
     if (oart == artilist[ART_NONARTIFACT])
         return 1;
 
-    yours = (+(mon == gy.youmonst));
+    yours = +(mon == gy.youmonst);
     /* all quest artifacts are self-willed; if this ever changes, `badclass'
        will have to be extended to explicitly include quest artifacts */
-    self_willed = (+((oart.spfx & SPFX_INTEL) != 0));
+    self_willed = +((oart.spfx & SPFX_INTEL) != 0);
     if (yours) {
-        badclass = ((self_willed
+        badclass = (self_willed
                    && ((oart.role != NON_PM && !Role_if(oart.role))
-                       || (oart.race != NON_PM && !Race_if(oart.race)))) ? 1 : 0);
-        badalign = (+((oart.spfx & SPFX_RESTR) != 0
+                       || (oart.race != NON_PM && !Race_if(oart.race))) ? 1 : 0);
+        badalign = +((oart.spfx & SPFX_RESTR) != 0
                     && oart.alignment != A_NONE
                     && (oart.alignment != u.ualign.type
-                        || u.ualign.record < 0)));
+                        || u.ualign.record < 0));
     } else if (!is_covetous(mon.data) && !is_mplayer(mon.data)) {
-        badclass = ((self_willed && oart.role != NON_PM
-                   && oart != artilist[ART_EXCALIBUR]) ? 1 : 0);
-        badalign = (((oart.spfx & SPFX_RESTR) && oart.alignment != A_NONE
-                   && (oart.alignment != mon_aligntyp(mon))) ? 1 : 0);
+        badclass = (self_willed && oart.role != NON_PM
+                   && oart != artilist[ART_EXCALIBUR] ? 1 : 0);
+        badalign = ((oart.spfx & SPFX_RESTR) && oart.alignment != A_NONE
+                   && (oart.alignment != mon_aligntyp(mon)) ? 1 : 0);
     } else { /* an M3_WANTSxxx monster or a fake player */
         /* special monsters trying to take the Amulet, invocation tools or
            quest item can touch anything except `spec_applies' artifacts */
@@ -954,7 +861,7 @@ touch_artifact(obj, mon)
         /* add half (maybe quarter) of the usual silver damage bonus */
         if (objects[obj.otyp].oc_material == SILVER && Hate_silver())
             tmp = rnd(10), dmg += Maybe_Half_Phys(tmp);
-        void sprintf(buf, _("touching %s"), oart.name);
+        sprintf(buf, _("touching %s"), oart.name);
         losehp(dmg, buf, KILLED_BY); /* magic damage, not physical */
         exercise(A_WIS, FALSE);
     }
@@ -971,13 +878,12 @@ touch_artifact(obj, mon)
     }
 
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* decide whether an artifact itself is vulnerable to a particular type
    of erosion damage, independent of the properties of its bearer */
-export function /* boolean */
-arti_immune(obj, dtyp)
-{
+export function arti_immune(obj, dtyp) { /* boolean */
     let weap = get_artifact(obj);
 
     if (weap == artilist[ART_NONARTIFACT])
@@ -989,9 +895,8 @@ arti_immune(obj, dtyp)
                       || weap.cary.adtyp == dtyp));
 }
 
-function /* boolean */
-bane_applies(oart, mon)
-{ const $frame = stack_frame(); try {
+function bane_applies(oart, mon) { /* boolean */
+    const $frame = stack_frame(); try {
     let atmp = stack_struct(struct_artifact);
 
     if (oart != artilist[ART_NONARTIFACT]
@@ -1002,36 +907,35 @@ bane_applies(oart, mon)
             return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* decide whether an artifact's special attacks apply against mtmp */
-function /* int */
-spec_applies(weap, mtmp)
-{
+function spec_applies(weap, mtmp) { /* int */
     let ptr;
     let yours;
 
     if (!(weap.spfx & (SPFX_DBONUS | SPFX_ATTK)))
-        return (+(weap.attk.adtyp == AD_PHYS));
+        return +(weap.attk.adtyp == AD_PHYS);
 
-    yours = (+(mtmp == gy.youmonst));
+    yours = +(mtmp == gy.youmonst);
     ptr = mtmp.data;
 
     if (weap.spfx & SPFX_DMONS) {
-        return (+(ptr == mons[int(weap.mtype)]));
+        return +(ptr == mons[int(weap.mtype)]);
     } else if (weap.spfx & SPFX_DCLAS) {
-        return (+(weap.mtype == ulong(ptr.mlet)));
+        return +(weap.mtype == ulong(ptr.mlet));
     } else if (weap.spfx & SPFX_DFLAG1) {
-        return (+((ptr.mflags1 & weap.mtype) != 0));
+        return +((ptr.mflags1 & weap.mtype) != 0);
     } else if (weap.spfx & SPFX_DFLAG2) {
-        return ((((ptr.mflags2 & weap.mtype)
+        return ((ptr.mflags2 & weap.mtype)
                 || (yours
                     && ((!Upolyd() && (gu.urace.selfmask & weap.mtype))
-                        || ((weap.mtype & M2_WERE) && ismnum(u.ulycn))))) ? 1 : 0));
+                        || ((weap.mtype & M2_WERE) && ismnum(u.ulycn)))) ? 1 : 0);
     } else if (weap.spfx & SPFX_DALIGN) {
-        return yours ? (+(u.ualign.type != weap.alignment))
-                     : (+(ptr.maligntyp == A_NONE
-                        || sgn(ptr.maligntyp) != weap.alignment));
+        return yours ? +(u.ualign.type != weap.alignment)
+                     : +(ptr.maligntyp == A_NONE
+                        || sgn(ptr.maligntyp) != weap.alignment);
     } else if (weap.spfx & SPFX_ATTK) {
         if (defended(mtmp, weap.attk.adtyp))
             return FALSE;
@@ -1061,9 +965,7 @@ spec_applies(weap, mtmp)
 
 /* return the M2 flags of monster that an artifact's special attacks apply
  * against */
-export function /* long long */
-spec_m2(otmp)
-{
+export function spec_m2(otmp) { /* long long */
     let artifact = get_artifact(otmp);
 
     if (artifact != artilist[ART_NONARTIFACT])
@@ -1072,9 +974,7 @@ spec_m2(otmp)
 }
 
 /* special attack bonus */
-export function /* int */
-spec_abon(otmp, mon)
-{
+export function spec_abon(otmp, mon) { /* int */
     let weap = get_artifact(otmp);
 
     /* no need for an extra check for `NO_ATTK' because this will
@@ -1087,9 +987,7 @@ spec_abon(otmp, mon)
 }
 
 /* special damage bonus */
-export function /* int */
-spec_dbon(otmp, mon, tmp)
-{
+export function spec_dbon(otmp, mon, tmp) { /* int */
     let weap = get_artifact(otmp);
 
     if ((weap == artilist[ART_NONARTIFACT])
@@ -1109,9 +1007,7 @@ spec_dbon(otmp, mon, tmp)
 }
 
 /* add identified artifact to discoveries list */
-export function /* void */
-discover_artifact(m)
-{
+export function discover_artifact(m) { /* void */
     let i;
 
     /* look for this artifact in the discoveries list;
@@ -1127,9 +1023,7 @@ discover_artifact(m)
 }
 
 /* used to decide whether an artifact has been fully identified */
-export function /* boolean */
-undiscovered_artifact(m)
-{
+export function undiscovered_artifact(m) { /* boolean */
     let i;
 
     /* look for this artifact in the discoveries list;
@@ -1143,10 +1037,9 @@ undiscovered_artifact(m)
 }
 
 /* display a list of discovered artifacts; return their count */
-export function /* int */
-disp_artifact_discoveries(
-    tmpwin) /* supplied by dodiscover(); type is NHW_TEXT */
-{ const $frame = stack_frame(); try {
+export function disp_artifact_discoveries(
+    tmpwin) { /* int */ /* supplied by dodiscover(); type is NHW_TEXT */
+    const $frame = stack_frame(); try {
     let i, m, otyp;
     let algnstr;
     let buf = stack_array(char, BUFSZ);
@@ -1165,17 +1058,17 @@ disp_artifact_discoveries(
         if (!strcmp(algnstr, _("unaligned")))
             algnstr = _("non-aligned");
 
-        void sprintf(buf, _("  %s [%s %s]"), artiname(m), algnstr, simple_typename(otyp))
+        sprintf(buf, _("  %s [%s %s]"), artiname(m), algnstr, simple_typename(otyp))
 ;
         putstr()(tmpwin, 0, buf);
     }
     return i;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* (wizard mode only) show all artifacts and their flags */
-export function /* void */
-dump_artifact_info(tmpwin)
-{ const $frame = stack_frame(); try {
+export function dump_artifact_info(tmpwin) { /* void */
+    const $frame = stack_frame(); try {
     let m;
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ);
 
@@ -1184,21 +1077,7 @@ dump_artifact_info(tmpwin)
     for (m = 1; m <= NROFARTIFACTS; ++m) {
         Snprintf(buf2, sizeof(array_of(char, BUFSZ)), _("[%s%s%s%s%s%s%s%s%s]"), artiexist[m].exists ? _("exists;") : _(""), artiexist[m].found  ? _(" hero knows;") : _(""), artiexist[m].gift   ? _(" gift")   : _(""), artiexist[m].wish   ? _(" wish")   : _(""), artiexist[m].named  ? _(" named")  : _(""), artiexist[m].viadip ? _(" viadip") : _(""), artiexist[m].lvldef ? _(" lvldef") : _(""), artiexist[m].bones  ? _(" bones")  : _(""), artiexist[m].rndm   ? _(" random") : _(""))
 
-
-
-
-
-
-
-
-
-
-
 ;
-
-
-
-
 
             /* "The Platinum Yendorian Express Card" is 35 characters */
             Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("  %-36.36s%s"), artiname(m), buf2);
@@ -1206,7 +1085,8 @@ dump_artifact_info(tmpwin)
         putstr()(tmpwin, 0, buf);
     }
     return;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * Magicbane's intrinsic magic is incompatible with normal
@@ -1229,14 +1109,12 @@ dump_artifact_info(tmpwin)
  * will be slightly less likely than they were in 3.3.x.]
  */
 
-
     const MB_INDEX_PROBE = 0;
     const MB_INDEX_STUN = MB_INDEX_PROBE + 1;
     const MB_INDEX_SCARE = MB_INDEX_STUN + 1;
     const MB_INDEX_CANCEL = MB_INDEX_SCARE + 1;
 
     const NUM_MB_INDICES = MB_INDEX_CANCEL + 1;
-
 
 export const MB_MAX_DIEROLL = 8;
 const mb_verb = static_array("mb_verb", array_of(ptr_to(char), NUM_MB_INDICES), 2, [
@@ -1245,26 +1123,25 @@ const mb_verb = static_array("mb_verb", array_of(ptr_to(char), NUM_MB_INDICES), 
 ]);
 
 /* called when someone is being hit by Magicbane */
-function /* boolean */
-Mb_hit(magr,
+function Mb_hit(magr,
        mdef,
        mb,
        dmgptr,
        dieroll,
        vis,
-       hittee)       /* target's name: "you" or mon_nam(mdef) */
-{ const $frame = stack_frame(); try {
+       hittee) { /* boolean */ /* target's name: "you" or mon_nam(mdef) */
+    const $frame = stack_frame(); try {
     let old_mdat;
     let verb;
-    let youattack = (+(magr == gy.youmonst)),
-            youdefend = (+(mdef == gy.youmonst)),
+    let youattack = +(magr == gy.youmonst),
+            youdefend = +(mdef == gy.youmonst),
             resisted = FALSE, do_stun, do_confuse, result;
     let attack_indx, fakeidx, scare_dieroll = Math.trunc(MB_MAX_DIEROLL / 2);
 
     result = FALSE; /* no message given yet */
     /* the most severe effects are less likely at higher enchantment */
     if (mb.spe >= 3)
-        scare_dieroll = Math.trunc(scare_dieroll / (1 << (Math.trunc(mb.spe / 3))));
+        scare_dieroll = Math.trunc(scare_dieroll / (1 << Math.trunc(mb.spe / 3)));
     /* if target successfully resisted the artifact damage bonus,
        reduce overall likelihood of the assorted special effects */
     if (!gs.spec_dbon_applies)
@@ -1274,7 +1151,7 @@ Mb_hit(magr,
        in that case it will only happen if the other effect fails;
        extra damage will apply regardless; 3.4.1: sometimes might
        just probe even when it hasn't been enchanted */
-    do_stun = (+(max(mb.spe, 0) < rn2(gs.spec_dbon_applies ? 11 : 7)));
+    do_stun = +(max(mb.spe, 0) < rn2(gs.spec_dbon_applies ? 11 : 7));
 
     /* the special effects also boost physical damage; increments are
        generally cumulative, but since the stun effect is based on a
@@ -1293,7 +1170,7 @@ Mb_hit(magr,
         attack_indx = MB_INDEX_SCARE;
         dmgptr[0] += rnd(4); /* (3..5)d4 */
     }
-    if (dieroll <= (Math.trunc(scare_dieroll / 2))) {
+    if (dieroll <= Math.trunc(scare_dieroll / 2)) {
         attack_indx = MB_INDEX_CANCEL;
         dmgptr[0] += rnd(4); /* (4..6)d4 */
     }
@@ -1336,7 +1213,7 @@ Mb_hit(magr,
                 /* canceled shapeshifter/vamp may have changed forms, so
                    update its name if necessary */
                 if (mdef.data != old_mdat)
-                    void strcpy(hittee, mon_nam(mdef));
+                    strcpy(hittee, mon_nam(mdef));
                 if (mdef.data == mons[PM_CLAY_GOLEM])
                     mdef.mhp = 1; /* cancelled clay golems will die */
                 if (youattack && attacktype(mdef.data, AT_MAGC)) {
@@ -1368,7 +1245,7 @@ Mb_hit(magr,
             if (rn2(2) && resist(mdef, WEAPON_CLASS, 0, NOTELL))
                 resisted = TRUE;
             else
-                monflee(mdef, 3, FALSE, (+(mdef.mhp > dmgptr[0])));
+                monflee(mdef, 3, FALSE, +(mdef.mhp > dmgptr[0]));
         }
         if (!resisted)
             do_stun = FALSE;
@@ -1409,7 +1286,7 @@ Mb_hit(magr,
        so vtense() won't be fooled by assigned name ending in 's' */
     fakeidx = youdefend ? 1 : 0;
     if (youattack || youdefend || vis) {
-        void upstart(hittee); /* capitalize */
+        upstart(hittee); /* capitalize */
         if (resisted) {
             pline(_("%s %s!"), hittee, vtense(fakename()[fakeidx], _("resist")));
             shieldeff(youdefend ? u.ux : mdef.mx,
@@ -1420,20 +1297,19 @@ Mb_hit(magr,
 
             chars[buf + 0] = ord('\0');
             if (do_stun)
-                void strcat(buf, _("stunned"));
+                strcat(buf, _("stunned"));
             if (do_stun && do_confuse)
-                void strcat(buf, _(" and "));
+                strcat(buf, _(" and "));
             if (do_confuse)
-                void strcat(buf, _("confused"));
+                strcat(buf, _("confused"));
             pline(_("%s %s %s%c"), hittee, vtense(fakename()[fakeidx], _("are")), buf,
                   (do_stun && do_confuse) ? ord('!') : ord('.'));
         }
     }
 
     return result;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* Function used when someone attacks someone else with an artifact
  * weapon.  Only adds the special (artifact) damage, and returns a 1 if it
@@ -1443,25 +1319,24 @@ Mb_hit(magr,
  * extension: change the killer so that when an orc kills you with
  * Stormbringer it's "killed by Stormbringer" instead of "killed by an orc".
  */
-export function /* boolean */
-artifact_hit(
+export function artifact_hit(
     magr,
     mdef,
     otmp,
     dmgptr,
-    dieroll)        /* needed for Magicbane and vorpal blades */
-{ const $frame = stack_frame(); try {
-    let youattack = (+(magr == gy.youmonst));
-    let youdefend = (+(mdef == gy.youmonst));
-    let vis = (((!youattack && magr && cansee(magr.mx, magr.my))
+    dieroll) { /* boolean */ /* needed for Magicbane and vorpal blades */
+    const $frame = stack_frame(); try {
+    let youattack = +(magr == gy.youmonst);
+    let youdefend = +(mdef == gy.youmonst);
+    let vis = ((!youattack && magr && cansee(magr.mx, magr.my))
                   || (!youdefend && cansee(mdef.mx, mdef.my))
-                  || (youattack && engulfing_u(mdef) && !Blind())) ? 1 : 0);
+                  || (youattack && engulfing_u(mdef) && !Blind()) ? 1 : 0);
     let realizes_damage;
     let wepdesc;
     let you = init_string(static_array("artifact_hit.you", char, sizeof_string("you")), _("you"), true);
     let hittee = stack_array(char, BUFSZ);
 
-    void strcpy(hittee, youdefend ? you : mon_nam(mdef));
+    strcpy(hittee, youdefend ? you : mon_nam(mdef));
 
     /* The following takes care of most of the damage, but not all--
      * the exception being for level draining, which is specially
@@ -1474,9 +1349,9 @@ artifact_hit(
         return FALSE;
     }
 
-    realizes_damage = (((youdefend || vis
+    realizes_damage = (youdefend || vis
                        /* feel the effect even if not seen */
-                       || (youattack && mdef == u.ustuck)) ? 1 : 0));
+                       || (youattack && mdef == u.ustuck) ? 1 : 0);
 
     /* the four basic attacks: fire, cold, shock and missiles */
     if (attacks(AD_FIRE, otmp)) {
@@ -1607,7 +1482,7 @@ artifact_hit(
                     else if (vis)
                         pline(_("Somehow, %s misses wildly."), mon_nam(magr));
                     dmgptr[0] = 0;
-                    return (((youattack || vis) ? 1 : 0));
+                    return (youattack || vis ? 1 : 0);
                 }
                 if (noncorporeal(mdef.data) || amorphous(mdef.data)) {
                     pline(_("%s slices through %s %s."), wepdesc,
@@ -1718,14 +1593,11 @@ artifact_hit(
         }
     }
     return FALSE;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* getobj callback for object to be invoked */
-function /* int */
-invoke_ok(obj)
-{
+function invoke_ok(obj) { /* int */
     if (!obj)
         return GETOBJ_EXCLUDE;
 
@@ -1745,9 +1617,8 @@ invoke_ok(obj)
 }
 
 /* the #invoke command */
-export function /* int */
-doinvoke()
-{ const $frame = stack_frame(); try {
+export function doinvoke() { /* int */
+    const $frame = stack_frame(); try {
     let obj = stack_var(ptr_to(struct_obj));
 
     obj[0] = getobj(_("invoke"), invoke_ok, GETOBJ_PROMPT);
@@ -1756,29 +1627,26 @@ doinvoke()
     if (!retouch_object(obj, FALSE))
         return ECMD_TIME;
     return arti_invoke(obj[0]);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-nothing_special(obj)
-{
+function nothing_special(obj) { /* void */
     if (carried(obj))
         You_feel(_("a surge of power, but nothing seems to happen."));
 }
 
-function /* int */
-invoke_taming(obj)
-{ const $frame = stack_frame(); try {
+function invoke_taming(obj) { /* int */
+    const $frame = stack_frame(); try {
     let pseudo = stack_struct(struct_obj);
 
     struct_assign(pseudo, cg.zeroobj); /* neither cursed nor blessed, zero oextra too */
     pseudo.otyp = SCR_TAMING;
-    void seffects(pseudo);
+    seffects(pseudo);
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-invoke_healing(obj)
-{
+function invoke_healing(obj) { /* int */
     let healamt = Math.trunc((u.uhpmax + 1 - u.uhp) / 2);
     let creamed = u.ucreamed;
 
@@ -1814,9 +1682,7 @@ invoke_healing(obj)
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_energy_boost(obj)
-{
+function invoke_energy_boost(obj) { /* int */
     let epboost = Math.trunc((u.uenmax + 1 - u.uen) / 2);
 
     if (epboost > 120)
@@ -1834,9 +1700,7 @@ invoke_energy_boost(obj)
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_untrap(obj)
-{
+function invoke_untrap(obj) { /* int */
     if (!untrap(TRUE, 0, 0, null)) {
         obj.age = 0; /* don't charge for changing their mind */
         return ECMD_CANCEL;
@@ -1844,9 +1708,7 @@ invoke_untrap(obj)
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_charge_obj(obj)
-{
+function invoke_charge_obj(obj) { /* int */
     let oart = get_artifact(obj);
     let otmp = getobj(_("charge"), charge_ok,
                               GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
@@ -1856,16 +1718,15 @@ invoke_charge_obj(obj)
         obj.age = 0;
         return ECMD_CANCEL;
     }
-    b_effect = (((obj.blessed && (oart.role == Role_switch()
-                                 || oart.role == NON_PM)) ? 1 : 0));
+    b_effect = (obj.blessed && (oart.role == Role_switch()
+                                 || oart.role == NON_PM) ? 1 : 0);
     recharge(otmp, b_effect ? 1 : obj.cursed ? -1 : 0);
     update_inventory();
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_create_portal(obj)
-{ const $frame = stack_frame(); try {
+function invoke_create_portal(obj) { /* int */
+    const $frame = stack_frame(); try {
     let i, num_ok_dungeons, last_ok_dungeon = 0;
     let newlev = stack_struct(struct_d_level);
     let tmpwin = create_nhwindow()(NHW_MENU);
@@ -1928,11 +1789,10 @@ invoke_create_portal(obj)
         goto_level(newlev, FALSE, FALSE, FALSE);
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-invoke_create_ammo(obj)
-{
+function invoke_create_ammo(obj) { /* int */
     let otmp = mksobj(ARROW, TRUE, FALSE);
 
     if (!otmp) {
@@ -1955,13 +1815,12 @@ invoke_create_ammo(obj)
     otmp.owt = unsigned(weight(otmp));
     otmp = hold_another_object(otmp, _("Suddenly %s out."),
                                aobjnam(otmp, _("fall")), 0);
-    (void (otmp));
+    (otmp);
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_banish(obj)
-{ const $frame = stack_frame(); try {
+function invoke_banish(obj) { /* int */
+    const $frame = stack_frame(); try {
     let nvanished = 0, nstayed = 0;
     let mtmp, mtmp2;
     let dest = stack_struct(struct_d_level);
@@ -2016,11 +1875,10 @@ invoke_banish(obj)
               subject, vtense(subject, _("disappear")));
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-invoke_fling_poison(obj)
-{
+function invoke_fling_poison(obj) { /* int */
     if (getdir(0)) {
         let venom = rn2(2) ? BLINDING_VENOM : ACID_VENOM;
         let otmp = mksobj(venom, TRUE, FALSE);
@@ -2036,23 +1894,19 @@ invoke_fling_poison(obj)
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_storm_spell(obj)
-{
+function invoke_storm_spell(obj) { /* int */
     let oart = get_artifact(obj);
     let storm = oart.inv_prop == SNOWSTORM ? SPE_CONE_OF_COLD : SPE_FIREBALL;
     let skill = spell_skilltype(storm);
     let expertise = P_SKILL(skill);
 
     (u.weapon_skills[skill].skill) = P_EXPERT;
-    void spelleffects(storm, FALSE, TRUE);
+    spelleffects(storm, FALSE, TRUE);
     (u.weapon_skills[skill].skill) = expertise;
     return ECMD_TIME;
 }
 
-function /* int */
-invoke_blinding_ray(obj)
-{
+function invoke_blinding_ray(obj) { /* int */
     if (getdir(0)) {
         if (u.dx || u.dy) {
             do_blinding_ray(obj);
@@ -2066,11 +1920,11 @@ invoke_blinding_ray(obj)
                          ? _("It is lit here now.")
                          : nothing_seems_to_happen()));
         } else { /* zapyourself() */
-            let vulnerable = (+(u.umonnum == PM_GREMLIN));
+            let vulnerable = +(u.umonnum == PM_GREMLIN);
             let damg = obj.blessed ? 15 : !obj.cursed ? 10 : 5;
 
             if (vulnerable) /* could be fatal if Unchanging */
-                void lightdamage(obj, TRUE, 2 * damg);
+                lightdamage(obj, TRUE, 2 * damg);
 
             if (!flashburn((damg + rnd(damg)), FALSE)
                 && !vulnerable)
@@ -2087,9 +1941,7 @@ invoke_blinding_ray(obj)
 
 /* return the amount of Pw invoking an object costs.
    return a negative value, if obj invoking cannot be paid with Pw */
-function /* int */
-arti_invoke_cost_pw(obj)
-{
+function arti_invoke_cost_pw(obj) { /* int */
     let oart = get_artifact(obj);
 
     if (oart.inv_prop == FLING_POISON
@@ -2102,9 +1954,7 @@ arti_invoke_cost_pw(obj)
 }
 
 /* return TRUE if artifact object's invoke cost can be paid (and pay it) */
-function /* boolean */
-arti_invoke_cost(obj)
-{
+function arti_invoke_cost(obj) { /* boolean */
     if (obj.age > svm.moves) {
         let pw_cost = arti_invoke_cost_pw(obj);
 
@@ -2127,9 +1977,9 @@ arti_invoke_cost(obj)
     return TRUE;
 }
 
-function /* int */
-arti_invoke(obj$)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+function arti_invoke(obj$) { /* int */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     let oart;
     let res = ECMD_OK;
 
@@ -2211,7 +2061,7 @@ arti_invoke(obj$)
                 float_up();
                 spoteffects(FALSE);
             } else
-                void float_down(I_SPECIAL | TIMEOUT, W_ARTI);
+                float_down(I_SPECIAL | TIMEOUT, W_ARTI);
             break;
         case INVIS:
             if (BInvis() || Blind()) {
@@ -2229,12 +2079,12 @@ arti_invoke(obj$)
     }
 
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* will freeing this object from inventory cause levitation to end? */
-export function /* boolean */
-finesse_ahriman(obj)
-{ const $frame = stack_frame(); try {
+export function finesse_ahriman(obj) { /* boolean */
+    const $frame = stack_frame(); try {
     let oart;
     let save_Lev = stack_struct(struct_prop);
     let result;
@@ -2257,12 +2107,11 @@ finesse_ahriman(obj)
     result = (+!Levitation());
     struct_assign(u.uprops[LEVITATION], save_Lev);
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* WAC return TRUE if artifact is always lit */
-export function /* boolean */
-artifact_light(obj)
-{
+export function artifact_light(obj) { /* boolean */
     /* not artifacts but treat them as if they were because they emit
        light without burning */
     if (obj && (obj.otyp == GOLD_DRAGON_SCALE_MAIL
@@ -2270,14 +2119,13 @@ artifact_light(obj)
         && (obj.owornmask & W_ARM) != 0)
         return TRUE;
 
-    return ((((get_artifact(obj) != artilist[ART_NONARTIFACT])
-                      && is_art(obj, ART_SUNSWORD)) ? 1 : 0));
+    return ((get_artifact(obj) != artilist[ART_NONARTIFACT])
+                      && is_art(obj, ART_SUNSWORD) ? 1 : 0);
 }
 
 /* KMH -- Talking artifacts are finally implemented */
-export function /* int */
-arti_speak(obj)
-{ const $frame = stack_frame(); try {
+export function arti_speak(obj) { /* int */
+    const $frame = stack_frame(); try {
     let oart = get_artifact(obj);
     let line;
     let buf = stack_array(char, BUFSZ);
@@ -2293,11 +2141,10 @@ arti_speak(obj)
           ;
     verbalize1(line);
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-artifact_has_invprop(otmp, inv_prop)
-{
+export function artifact_has_invprop(otmp, inv_prop) { /* boolean */
     let arti = get_artifact(otmp);
 
     return (+((arti != artilist[ART_NONARTIFACT])
@@ -2305,9 +2152,7 @@ artifact_has_invprop(otmp, inv_prop)
 }
 
 /* Return the price sold to the hero of a given artifact or unique item */
-export function /* long long */
-arti_cost(otmp)
-{
+export function arti_cost(otmp) { /* long long */
     if (!otmp.oartifact)
         return (objects[otmp.otyp].oc_cost);
     else if (artilist[otmp.oartifact].cost)
@@ -2316,9 +2161,8 @@ arti_cost(otmp)
         return (100 * (objects[otmp.otyp].oc_cost));
 }
 
-function /* uchar */
-abil_to_adtyp(abil)
-{ const $frame = stack_frame(); try {
+function abil_to_adtyp(abil) { /* uchar */
+    const $frame = stack_frame(); try {
     const struct_abil2adtyp_tag = struct("abil_to_adtyp.struct_abil2adtyp_tag", {
         abil: ptr_to(long),
         adtyp: uchar,
@@ -2338,11 +2182,10 @@ abil_to_adtyp(abil)
             return abil2adtyp[k].adtyp;
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* unsigned long long */
-abil_to_spfx(abil)
-{
+function abil_to_spfx(abil) { /* unsigned long long */
     const struct_abil2spfx_tag = struct("abil_to_spfx.struct_abil2spfx_tag", {
         abil: ptr_to(long),
         spfx: ulong,
@@ -2372,9 +2215,7 @@ abil_to_spfx(abil)
 /*
  * Return the first item that is conveying a particular intrinsic.
  */
-export function /* struct obj * */
-what_gives(abil)
-{
+export function what_gives(abil) { /* struct obj * */
     let obj;
     let dtyp;
     let spfx;
@@ -2388,7 +2229,7 @@ what_gives(abil)
         wornmask = or64(wornmask, W_SWAPWEP);
     dtyp = abil_to_adtyp(abil);
     spfx = abil_to_spfx(abil);
-    wornbits = (and64(wornmask, abil[0]));
+    wornbits = and64(wornmask, abil[0]);
 
     for (obj = gi.invent; obj; obj = obj.nobj) {
         if (obj.oartifact
@@ -2404,10 +2245,10 @@ what_gives(abil)
                 }
                 if (spfx) {
                     /* property conferred when carried */
-                    if ((and64u(art.cspfx, spfx)) == spfx)
+                    if (and64u(art.cspfx, spfx) == spfx)
                         return obj;
                     /* property conferred when wielded or worn */
-                    if ((and64u(art.spfx, spfx)) == spfx && obj.owornmask)
+                    if (and64u(art.spfx, spfx) == spfx && obj.owornmask)
                         return obj;
                 }
                 if (obj == uwep && (addr_of(abil) == addr_of(ref_of(u.uprops[BLND_RES], "extrinsic")))
@@ -2416,16 +2257,14 @@ what_gives(abil)
                 }
             }
         } else {
-            if (wornbits && wornbits == (and64(wornmask, obj.owornmask)))
+            if (wornbits && wornbits == and64(wornmask, obj.owornmask))
                 return obj;
         }
     }
     return null;
 }
 
-export function /* const char * */
-glow_color(arti_indx)
-{
+export function glow_color(arti_indx) { /* const char * */
     let colornum = artilist[arti_indx].acolor;
     let colorstr = clr2colorname(colornum);
 
@@ -2438,35 +2277,28 @@ const glow_verbs = static_array("glow_verbs", ptr_to(char), null, [
 ]);
 
 /* relative strength that Sting is glowing (0..3), to select verb */
-function /* int */
-glow_strength(count)
-{
+function glow_strength(count) { /* int */
     /* glow strength should also be proportional to proximity and
        probably difficulty, but we don't have that information and
        gathering it is more trouble than this would be worth */
-    return (count > 12) ? 3 : (count > 4) ? 2 : (+(count > 0));
+    return (count > 12) ? 3 : (count > 4) ? 2 : +(count > 0);
 }
 
-export function /* const char * */
-glow_verb(count,
-          ingsfx)
-{
+export function glow_verb(count,
+          ingsfx) { /* const char * */
     let resbuf = static_array("glow_verb.resbuf", char, 20);
 
-    void strcpy(resbuf, glow_verbs[glow_strength(count)]);
+    strcpy(resbuf, glow_verbs[glow_strength(count)]);
     /* ing_suffix() will double the last consonant for all the words
        we're using and none of them should have that, so bypass it */
     if (ingsfx)
-        void strcat(resbuf, _("ing"));
+        strcat(resbuf, _("ing"));
     return resbuf;
 }
 
 /* use for warning "glow" for Sting, Orcrist, and Grimtooth */
-export function /* void */
-Sting_effects(
-    orc_count) /* new count (warn_obj_cnt is old count);
-                    * -1 is a flag value */
-{
+export function Sting_effects(
+    orc_count) { /* void */ /* new count (warn_obj_cnt is old count); * -1 is a flag value */
     if (u_wield_art(ART_STING)
         || u_wield_art(ART_ORCRIST)
         || u_wield_art(ART_GRIMTOOTH)) {
@@ -2504,11 +2336,10 @@ Sting_effects(
 /* called when hero is wielding/applying/invoking a carried item, or
    after undergoing a transformation (alignment change, lycanthropy,
    polymorph) which might affect item access */
-export function /* int */
-retouch_object(
+export function retouch_object(
     objp,
-    loseit)    /* whether to drop it if hero can longer touch it */
-{ const $frame = stack_frame(); try {
+    loseit) { /* int */ /* whether to drop it if hero can longer touch it */
+    const $frame = stack_frame(); try {
     let obj = objp[0];
 
     /* allow hero in silver-hating form to try to perform invocation ritual */
@@ -2520,7 +2351,7 @@ retouch_object(
     if (touch_artifact(obj, gy.youmonst)) {
         let buf = stack_array(char, BUFSZ);
         let dmg = 0, tmp;
-        let ag = (((objects[obj.otyp].oc_material == SILVER && Hate_silver()) ? 1 : 0)),
+        let ag = (objects[obj.otyp].oc_material == SILVER && Hate_silver() ? 1 : 0),
                 bane = bane_applies(get_artifact(obj), gy.youmonst);
 
         /* nothing else to do if hero can successfully handle this object */
@@ -2552,7 +2383,7 @@ retouch_object(
                 tmp = rnd(10), dmg += Maybe_Half_Phys(tmp);
             if (bane)
                 dmg += rnd(10);
-            void sprintf(buf, _("handling %s"), what);
+            sprintf(buf, _("handling %s"), what);
             losehp(dmg, buf, KILLED_BY);
             exercise(A_CON, FALSE);
         }
@@ -2588,34 +2419,35 @@ retouch_object(
         objp[0] = obj = null; /* no longer in inventory */
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* hero has changed form or alignment; an item which is worn/wielded
    or an artifact which conveys something via being carried or which
    has an #invoke effect currently in operation undergoes a touch test;
    if it fails, it will be unworn/unwielded and maybe dropped */
-function /* boolean */
-untouchable(
+function untouchable(
     obj$,
-    drop_untouchable) /* whether to drop it if it can't be touched */
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+    drop_untouchable) { /* boolean */ /* whether to drop it if it can't be touched */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     let art;
     let beingworn, carryeffect, invoked;
     let wearmask = ~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL);
 
-    beingworn = (((obj[0] /* never Null; this pacifies static analysis when
+    beingworn = ((obj[0] /* never Null; this pacifies static analysis when
                       * the get_artifact() macro tests 'obj' for Null */
                  && ((obj[0].owornmask & wearmask) != 0
                      /* some items in use don't have any wornmask setting */
                      || (obj[0].oclass == TOOL_CLASS
                          && (obj[0].lamplit
                              || (obj[0].otyp == LEASH && obj[0].corpsenm)
-                             || (Is_container(obj[0]) && Has_contents(obj[0])))))) ? 1 : 0));
+                             || (Is_container(obj[0]) && Has_contents(obj[0]))))) ? 1 : 0));
 
     if ((art = get_artifact(obj[0])) != artilist[ART_NONARTIFACT]) {
-        carryeffect = (((art.cary.adtyp || art.cspfx) ? 1 : 0));
-        invoked = (+(art.inv_prop > 0 && art.inv_prop <= LAST_PROP
-                   && (u.uprops[art.inv_prop].extrinsic & W_ARTI) != 0));
+        carryeffect = (art.cary.adtyp || art.cspfx ? 1 : 0);
+        invoked = +(art.inv_prop > 0 && art.inv_prop <= LAST_PROP
+                   && (u.uprops[art.inv_prop].extrinsic & W_ARTI) != 0);
     } else {
         carryeffect = invoked = FALSE;
     }
@@ -2628,21 +2460,20 @@ untouchable(
                carried effect was turned off, else we leave that alone;
                we turn off invocation property here if still carried */
             if (invoked && obj[0])
-                void arti_invoke(obj[0]); /* reverse #invoke */
+                arti_invoke(obj[0]); /* reverse #invoke */
             return TRUE;
         }
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* check all items currently in use (mostly worn) for touchability */
-export function /* void */
-retouch_equipment(
-    dropflag) /* 0==don't drop, 1==drop all, 2==drop weapon */
-{
+export function retouch_equipment(
+    dropflag) { /* void */ /* 0==don't drop, 1==drop all, 2==drop weapon */
     let nesting = static_var("retouch_equipment.nesting", int, 0); /* recursion control */
     let obj;
-    let dropit, had_gloves = (+(uarmg != null));
+    let dropit, had_gloves = +(uarmg != null);
     let had_rings = (+!!uleft + +!!uright);
 
     /*
@@ -2659,16 +2490,16 @@ retouch_equipment(
     if (!nesting[0]++)
         clear_bypasses(); /* init upon initial entry */
 
-    dropit = (+(dropflag > 0)); /* drop all or drop weapon */
+    dropit = +(dropflag > 0); /* drop all or drop weapon */
     /* check secondary weapon first, before possibly unwielding primary */
     if (u.twoweap) {
         bypass_obj(uswapwep); /* so loop below won't process it again */
-        void untouchable(uswapwep, dropit);
+        untouchable(uswapwep, dropit);
     }
     /* check primary weapon next so that they're handled together */
     if (uwep) {
         bypass_obj(uwep); /* so loop below won't process it again */
-        void untouchable(uwep, dropit);
+        untouchable(uwep, dropit);
     }
 
     /* in case someone is daft enough to add artifact or silver saddle */
@@ -2686,14 +2517,14 @@ retouch_equipment(
      * not, due to the possibility of unwearing silver rings.
      */
 
-    dropit = (+(dropflag == 1)); /* all untouchable items */
+    dropit = +(dropflag == 1); /* all untouchable items */
     /* loss of levitation (silver ring, or Heart of Ahriman invocation)
        might cause hero to lose inventory items (by dropping into lava,
        for instance), so inventory traversal needs to rescan the whole
        gi.invent chain each time it moves on to another object; we use bypass
        handling to keep track of which items have already been processed */
     while ((obj = nxt_unbypassed_obj(gi.invent)) != null)
-        void untouchable(obj, dropit);
+        untouchable(obj, dropit);
 
     if (had_rings != (+!!uleft + +!!uright) && uarmg && uarmg.cursed)
         uncurse(uarmg); /* temporary? hack for ring removal plausibility */
@@ -2704,9 +2535,7 @@ retouch_equipment(
         clear_bypasses(); /* reset upon final exit */
 }
 
-function /* int */
-count_surround_traps(x, y)
-{
+function count_surround_traps(x, y) { /* int */
     let levp;
     let o;
     let dx, dy;
@@ -2749,9 +2578,7 @@ count_surround_traps(x, y)
 }
 
 /* sense adjacent traps if wielding MKoT without wearing gloves */
-export function /* void */
-mkot_trap_warn()
-{
+export function mkot_trap_warn() { /* void */
     let heat = static_array("mkot_trap_warn.heat", ptr_to(char), 7, [
         _("cool"), _("slightly warm"), _("warm"), _("very warm"),
         _("hot"), _("very hot"), _("like fire")
@@ -2771,10 +2598,8 @@ mkot_trap_warn()
 
 /* Master Key is magic key if its bless/curse state meets our criteria:
    not cursed for rogues or blessed for non-rogues */
-export function /* boolean */
-is_magic_key(mon,
-             obj)
-{
+export function is_magic_key(mon,
+             obj) { /* boolean */
     if (is_art(obj, ART_MASTER_KEY_OF_THIEVERY)) {
         if ((mon == gy.youmonst) ? Role_if(PM_ROGUE)
                                  : (mon && mon.data == mons[PM_ROGUE]))
@@ -2786,9 +2611,7 @@ is_magic_key(mon,
 }
 
 /* figure out whether 'mon' (usually youmonst) is carrying the magic key */
-export function /* struct obj * */
-has_magic_key(mon) /* if null, hero assumed */
-{
+export function has_magic_key(mon) { /* struct obj * */ /* if null, hero assumed */
     let o;
     let key = artilist[ART_MASTER_KEY_OF_THIEVERY].otyp;
 
@@ -2804,9 +2627,7 @@ has_magic_key(mon) /* if null, hero assumed */
 
 /* #define is_art(o,art) ((o) && (o)->oartifact == (art)) */
 
-export function /* boolean */
-is_art(obj, art)
-{
+export function is_art(obj, art) { /* boolean */
     if (obj && obj.oartifact == art)
         return TRUE;
     return FALSE;
@@ -2817,9 +2638,7 @@ is_art(obj, art)
                              ? &artilist[(int) (o)->oartifact] \
                              : &artilist[ART_NONARTIFACT]) */
 
-function /* struct artifact * */
-get_artifact(obj)
-{
+function get_artifact(obj) { /* struct artifact * */
     if (obj) {
         let artidx = obj.oartifact;
 
@@ -2833,568 +2652,193 @@ get_artifact(obj)
 }
 
 /* is object permanently poisoned? (currently only Grimtooth) */
-export function /* boolean */
-permapoisoned(obj)
-{
-    return (((obj && is_art(obj, ART_GRIMTOOTH)) ? 1 : 0));
+export function permapoisoned(obj) { /* boolean */
+    return (obj && is_art(obj, ART_GRIMTOOTH) ? 1 : 0);
 }
 
-
 /*artifact.c*/
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { A_NONE } from "./align.h.js";
-import { BANISH } from "./artifact.h.js";
-import { BLINDING_RAY } from "./artifact.h.js";
-import { CHARGE_OBJ } from "./artifact.h.js";
-import { CREATE_AMMO } from "./artifact.h.js";
-import { CREATE_PORTAL } from "./artifact.h.js";
-import { ENERGY_BOOST } from "./artifact.h.js";
-import { ENLIGHTENING } from "./artifact.h.js";
-import { FIRESTORM } from "./artifact.h.js";
-import { FLING_POISON } from "./artifact.h.js";
-import { HEALING } from "./artifact.h.js";
-import { LEV_TELE } from "./artifact.h.js";
-import { SNOWSTORM } from "./artifact.h.js";
-import { SPFX_ATTK } from "./artifact.h.js";
-import { SPFX_BEHEAD } from "./artifact.h.js";
-import { SPFX_DALIGN } from "./artifact.h.js";
-import { SPFX_DBONUS } from "./artifact.h.js";
-import { SPFX_DCLAS } from "./artifact.h.js";
-import { SPFX_DEFN } from "./artifact.h.js";
-import { SPFX_DFLAG1 } from "./artifact.h.js";
-import { SPFX_DFLAG2 } from "./artifact.h.js";
-import { SPFX_DMONS } from "./artifact.h.js";
-import { SPFX_DRLI } from "./artifact.h.js";
-import { SPFX_EREGEN } from "./artifact.h.js";
-import { SPFX_ESP } from "./artifact.h.js";
-import { SPFX_HALRES } from "./artifact.h.js";
-import { SPFX_HPHDAM } from "./artifact.h.js";
-import { SPFX_HSPDAM } from "./artifact.h.js";
-import { SPFX_INTEL } from "./artifact.h.js";
-import { SPFX_LUCK } from "./artifact.h.js";
-import { SPFX_NOGEN } from "./artifact.h.js";
-import { SPFX_PROTECT } from "./artifact.h.js";
-import { SPFX_REFLECT } from "./artifact.h.js";
-import { SPFX_REGEN } from "./artifact.h.js";
-import { SPFX_RESTR } from "./artifact.h.js";
-import { SPFX_SEARCH } from "./artifact.h.js";
-import { SPFX_SEEK } from "./artifact.h.js";
-import { SPFX_SPEAK } from "./artifact.h.js";
-import { SPFX_STLTH } from "./artifact.h.js";
-import { SPFX_TCTRL } from "./artifact.h.js";
-import { SPFX_WARN } from "./artifact.h.js";
-import { SPFX_XRAY } from "./artifact.h.js";
-import { TAMING } from "./artifact.h.js";
-import { UNTRAP } from "./artifact.h.js";
-import { struct_arti_info } from "./artifact.h.js";
-import { struct_artifact } from "./artifact.h.js";
-import { AFTER_LAST_ARTIFACT } from "./artilist.h.js";
-import { ART_EXCALIBUR } from "./artilist.h.js";
-import { ART_GRIMTOOTH } from "./artilist.h.js";
-import { ART_MASTER_KEY_OF_THIEVERY } from "./artilist.h.js";
-import { ART_NONARTIFACT } from "./artilist.h.js";
-import { ART_ORCRIST } from "./artilist.h.js";
-import { ART_STING } from "./artilist.h.js";
-import { ART_STORMBRINGER } from "./artilist.h.js";
-import { ART_SUNSWORD } from "./artilist.h.js";
-import { ART_TSURUGI_OF_MURAMASA } from "./artilist.h.js";
-import { ART_VORPAL_BLADE } from "./artilist.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { CLR_BRIGHT_BLUE } from "./color.h.js";
-import { CLR_RED } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { fakename } from "./decl.h.macros.js";
-import { nothing_happens } from "./decl.h.macros.js";
-import { nothing_seems_to_happen } from "./decl.h.macros.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_IMP } from "./defsym.h.js";
-import { S_OGRE } from "./defsym.h.js";
-import { S_TROLL } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_trap } from "./display.h.macros.js";
-import { MIGR_RANDOM } from "./dungeon.h.js";
-import { struct_d_level } from "./dungeon.h.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Inhell } from "./dungeon.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_ARTIFACT } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+
+import { A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE } from "./align.h.js";
+import {
+    BANISH, BLINDING_RAY, CHARGE_OBJ, CREATE_AMMO, CREATE_PORTAL, ENERGY_BOOST, ENLIGHTENING,
+    FIRESTORM, FLING_POISON, HEALING, LEV_TELE, SNOWSTORM, SPFX_ATTK, SPFX_BEHEAD, SPFX_DALIGN,
+    SPFX_DBONUS, SPFX_DCLAS, SPFX_DEFN, SPFX_DFLAG1, SPFX_DFLAG2, SPFX_DMONS, SPFX_DRLI,
+    SPFX_EREGEN, SPFX_ESP, SPFX_HALRES, SPFX_HPHDAM, SPFX_HSPDAM, SPFX_INTEL, SPFX_LUCK, SPFX_NOGEN,
+    SPFX_PROTECT, SPFX_REFLECT, SPFX_REGEN, SPFX_RESTR, SPFX_SEARCH, SPFX_SEEK, SPFX_SPEAK,
+    SPFX_STLTH, SPFX_TCTRL, SPFX_WARN, SPFX_XRAY, TAMING, UNTRAP, struct_arti_info, struct_artifact,
+} from "./artifact.h.js";
+import {
+    AFTER_LAST_ARTIFACT, ART_EXCALIBUR, ART_GRIMTOOTH, ART_MASTER_KEY_OF_THIEVERY, ART_NONARTIFACT,
+    ART_ORCRIST, ART_STING, ART_STORMBRINGER, ART_SUNSWORD, ART_TSURUGI_OF_MURAMASA,
+    ART_VORPAL_BLADE,
+} from "./artilist.h.js";
+import { A_CON, A_WIS } from "./attrib.h.js";
+import { CLR_BRIGHT_BLUE, CLR_RED, NO_COLOR } from "./color.h.js";
+import {
+    NH_BLACK, Never_mind, fakename, nothing_happens, nothing_seems_to_happen,
+} from "./decl.h.macros.js";
+import {
+    RING_CLASS, S_DRAGON, S_IMP, S_OGRE, S_TROLL, TOOL_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { canspotmon, glyph_is_trap } from "./display.h.macros.js";
+import { MIGR_RANDOM, struct_d_level } from "./dungeon.h.js";
+import { In_endgame, Inhell } from "./dungeon.h.macros.js";
+import { BUFSZ, FALSE, LL_ARTIFACT, TRUE } from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { DISMOUNT_THROWN } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { ENL_GAMEINPROGRESS } from "./hack.h.js";
-import { GETOBJ_ALLOWCNT } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { MAGICENLIGHTENMENT } from "./hack.h.js";
-import { NECK } from "./hack.h.js";
-import { NOTELL } from "./hack.h.js";
-import { NROFARTIFACTS } from "./hack.h.js";
-import { ONAME_BONES } from "./hack.h.js";
-import { ONAME_GIFT } from "./hack.h.js";
-import { ONAME_KNOW_ARTI } from "./hack.h.js";
-import { ONAME_LEVEL_DEF } from "./hack.h.js";
-import { ONAME_NO_FLAGS } from "./hack.h.js";
-import { ONAME_RANDOM } from "./hack.h.js";
-import { ONAME_VIA_DIP } from "./hack.h.js";
-import { ONAME_VIA_NAMING } from "./hack.h.js";
-import { ONAME_WISH } from "./hack.h.js";
-import { Maybe_Half_Phys } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { min } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { tutorial_dnum } from "./hack.h.macros.js";
-import { verbalize1 } from "./hack.h.macros.js";
+import {
+    DISMOUNT_THROWN, ECMD_CANCEL, ECMD_OK, ECMD_TIME, ENL_GAMEINPROGRESS, GETOBJ_ALLOWCNT,
+    GETOBJ_EXCLUDE, GETOBJ_PROMPT, GETOBJ_SUGGEST, KILLED_BY, MAGICENLIGHTENMENT, NECK, NOTELL,
+    NROFARTIFACTS, ONAME_BONES, ONAME_GIFT, ONAME_KNOW_ARTI, ONAME_LEVEL_DEF, ONAME_NO_FLAGS,
+    ONAME_RANDOM, ONAME_VIA_DIP, ONAME_VIA_NAMING, ONAME_WISH,
+} from "./hack.h.js";
+import {
+    Maybe_Half_Phys, ROLL_FROM, max, min, pline1, tutorial_dnum, verbalize1,
+} from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
 import { NO_ROOM } from "./mkroom.h.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_DISE } from "./monattk.h.js";
-import { AD_DISN } from "./monattk.h.js";
-import { AD_DRLI } from "./monattk.h.js";
-import { AD_DRST } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_HALU } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_PHYS } from "./monattk.h.js";
-import { AD_PLYS } from "./monattk.h.js";
-import { AD_SLEE } from "./monattk.h.js";
-import { AD_SLOW } from "./monattk.h.js";
-import { AD_STON } from "./monattk.h.js";
-import { AD_STUN } from "./monattk.h.js";
-import { AD_WERE } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { bigmonst } from "./mondata.h.macros.js";
-import { has_head } from "./mondata.h.macros.js";
-import { is_covetous } from "./mondata.h.macros.js";
-import { is_demon } from "./mondata.h.macros.js";
-import { is_dlord } from "./mondata.h.macros.js";
-import { is_dprince } from "./mondata.h.macros.js";
-import { is_mplayer } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { race_hostile } from "./mondata.h.macros.js";
-import { M2_DEMON } from "./monflag.h.js";
-import { M2_ELF } from "./monflag.h.js";
-import { M2_GIANT } from "./monflag.h.js";
-import { M2_ORC } from "./monflag.h.js";
-import { M2_UNDEAD } from "./monflag.h.js";
-import { M2_WERE } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { resists_cold } from "./monst.h.macros.js";
-import { resists_elec } from "./monst.h.macros.js";
-import { resists_fire } from "./monst.h.macros.js";
-import { resists_poison } from "./monst.h.macros.js";
-import { resists_ston } from "./monst.h.macros.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_BARBARIAN } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CLAY_GOLEM } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_HEALER } from "./monsters.h.js";
-import { PM_JABBERWOCK } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_RANGER } from "./monsters.h.js";
-import { PM_ROGUE } from "./monsters.h.js";
-import { PM_SAMURAI } from "./monsters.h.js";
-import { PM_TOURIST } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_WATER_ELEMENTAL } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { OBJ_MINVENT } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { Is_container } from "./obj.h.macros.js";
-import { Is_dragon_armor } from "./obj.h.macros.js";
-import { Is_dragon_mail } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { u_wield_art } from "./obj.h.macros.js";
+import {
+    AD_ACID, AD_BLND, AD_COLD, AD_DISE, AD_DISN, AD_DRLI, AD_DRST, AD_ELEC, AD_FIRE, AD_HALU,
+    AD_MAGM, AD_PHYS, AD_PLYS, AD_SLEE, AD_SLOW, AD_STON, AD_STUN, AD_WERE, AT_MAGC,
+} from "./monattk.h.js";
+import {
+    amorphous, bigmonst, has_head, is_covetous, is_demon, is_dlord, is_dprince, is_mplayer,
+    noncorporeal, nonliving, race_hostile,
+} from "./mondata.h.macros.js";
+import { M2_DEMON, M2_ELF, M2_GIANT, M2_ORC, M2_UNDEAD, M2_WERE, MS_NEMESIS } from "./monflag.h.js";
+import {
+    DEADMONSTER, engulfing_u, ismnum, resists_cold, resists_elec, resists_fire, resists_poison,
+    resists_ston,
+} from "./monst.h.macros.js";
+import {
+    NON_PM, PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVE_DWELLER, PM_CLAY_GOLEM, PM_CLERIC, PM_ELF,
+    PM_GREMLIN, PM_HEALER, PM_JABBERWOCK, PM_KNIGHT, PM_MONK, PM_ORC, PM_RANGER, PM_ROGUE,
+    PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WATER_ELEMENTAL, PM_WIZARD,
+} from "./monsters.h.js";
+import { OBJ_CONTAINED, OBJ_FLOOR, OBJ_MINVENT, struct_obj } from "./obj.h.js";
+import {
+    Has_contents, Is_container, Is_dragon_armor, Is_dragon_mail, carried, u_wield_art,
+} from "./obj.h.macros.js";
 import { SILVER } from "./objclass.h.js";
 import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { ACID_VENOM } from "./objects.h.js";
-import { AMULET_OF_ESP } from "./objects.h.js";
-import { ARROW } from "./objects.h.js";
-import { ATHAME } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BLACK_DRAGON_SCALES } from "./objects.h.js";
-import { BLINDING_VENOM } from "./objects.h.js";
-import { BLUE_DRAGON_SCALES } from "./objects.h.js";
-import { BOW } from "./objects.h.js";
-import { BROADSWORD } from "./objects.h.js";
-import { CREDIT_CARD } from "./objects.h.js";
-import { CRYSTAL_BALL } from "./objects.h.js";
-import { ELVEN_BROADSWORD } from "./objects.h.js";
-import { ELVEN_DAGGER } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { GOLD_DRAGON_SCALES } from "./objects.h.js";
-import { GOLD_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GRAY_DRAGON_SCALES } from "./objects.h.js";
-import { GRAY_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GREEN_DRAGON_SCALES } from "./objects.h.js";
-import { HELM_OF_BRILLIANCE } from "./objects.h.js";
-import { KATANA } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { LONG_SWORD } from "./objects.h.js";
-import { LUCKSTONE } from "./objects.h.js";
-import { MACE } from "./objects.h.js";
-import { MIRROR } from "./objects.h.js";
-import { MORNING_STAR } from "./objects.h.js";
-import { NUM_OBJECTS } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALES } from "./objects.h.js";
-import { ORCISH_DAGGER } from "./objects.h.js";
-import { QUARTERSTAFF } from "./objects.h.js";
-import { RED_DRAGON_SCALES } from "./objects.h.js";
-import { RIN_INCREASE_DAMAGE } from "./objects.h.js";
-import { RUNESWORD } from "./objects.h.js";
-import { SCR_TAMING } from "./objects.h.js";
-import { SILVER_MACE } from "./objects.h.js";
-import { SILVER_SABER } from "./objects.h.js";
-import { SKELETON_KEY } from "./objects.h.js";
-import { SPE_CONE_OF_COLD } from "./objects.h.js";
-import { SPE_FIREBALL } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TSURUGI } from "./objects.h.js";
-import { WAR_HAMMER } from "./objects.h.js";
-import { WHITE_DRAGON_SCALES } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALES } from "./objects.h.js";
-import { ANTIMAGIC } from "./prop.h.js";
-import { BLND_RES } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { CONFLICT } from "./prop.h.js";
-import { DISINT_RES } from "./prop.h.js";
-import { DRAIN_RES } from "./prop.h.js";
-import { ENERGY_REGENERATION } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { HALF_PHDAM } from "./prop.h.js";
-import { HALF_SPDAM } from "./prop.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { LAST_PROP } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { REFLECTING } from "./prop.h.js";
-import { REGENERATION } from "./prop.h.js";
-import { SEARCHING } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { TELEPORT_CONTROL } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { WARNING } from "./prop.h.js";
-import { WARN_OF_MON } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { W_ART } from "./prop.h.js";
-import { W_ARTI } from "./prop.h.js";
-import { W_BALL } from "./prop.h.js";
-import { W_QUIVER } from "./prop.h.js";
-import { W_RINGL } from "./prop.h.js";
-import { W_RINGR } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { struct_prop } from "./prop.h.js";
+import {
+    ACID_VENOM, AMULET_OF_ESP, ARROW, ATHAME, BATTLE_AXE, BELL_OF_OPENING, BLACK_DRAGON_SCALES,
+    BLINDING_VENOM, BLUE_DRAGON_SCALES, BOW, BROADSWORD, CREDIT_CARD, CRYSTAL_BALL,
+    ELVEN_BROADSWORD, ELVEN_DAGGER, FAKE_AMULET_OF_YENDOR, GOLD_DRAGON_SCALES,
+    GOLD_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL, GREEN_DRAGON_SCALES,
+    HELM_OF_BRILLIANCE, KATANA, LEASH, LENSES, LONG_SWORD, LUCKSTONE, MACE, MIRROR, MORNING_STAR,
+    NUM_OBJECTS, ORANGE_DRAGON_SCALES, ORCISH_DAGGER, QUARTERSTAFF, RED_DRAGON_SCALES,
+    RIN_INCREASE_DAMAGE, RUNESWORD, SCR_TAMING, SILVER_MACE, SILVER_SABER, SKELETON_KEY,
+    SPE_CONE_OF_COLD, SPE_FIREBALL, STRANGE_OBJECT, TSURUGI, WAR_HAMMER, WHITE_DRAGON_SCALES,
+    YELLOW_DRAGON_SCALES,
+} from "./objects.h.js";
+import {
+    ANTIMAGIC, BLND_RES, COLD_RES, CONFLICT, DISINT_RES, DRAIN_RES, ENERGY_REGENERATION, FIRE_RES,
+    HALF_PHDAM, HALF_SPDAM, HALLUC_RES, INVIS, I_SPECIAL, LAST_PROP, LEVITATION, POISON_RES,
+    PROTECTION, REFLECTING, REGENERATION, SEARCHING, SHOCK_RES, STEALTH, TELEPAT, TELEPORT_CONTROL,
+    TIMEOUT, WARNING, WARN_OF_MON, W_AMUL, W_ARM, W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMS, W_ARMU,
+    W_ART, W_ARTI, W_BALL, W_QUIVER, W_RINGL, W_RINGR, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEP,
+    struct_prop,
+} from "./prop.h.js";
 import { D_TRAPPED } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { IS_DOOR } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { Sfi_arti_info } from "./savefile.h.macros.js";
-import { Sfi_short } from "./savefile.h.macros.js";
-import { Sfo_arti_info } from "./savefile.h.macros.js";
-import { Sfo_xint16 } from "./savefile.h.macros.js";
-import { P_BASIC } from "./skills.h.js";
-import { P_EXPERT } from "./skills.h.js";
-import { P_SKILLED } from "./skills.h.js";
-import { P_MAX_SKILL } from "./skills.h.macros.js";
-import { P_SKILL } from "./skills.h.macros.js";
+import { IS_ALTAR, IS_DOOR, fmon, levl } from "./rm.h.macros.js";
+import { Sfi_arti_info, Sfi_short, Sfo_arti_info, Sfo_xint16 } from "./savefile.h.macros.js";
+import { P_BASIC, P_EXPERT, P_SKILLED } from "./skills.h.js";
+import { P_MAX_SKILL, P_SKILL } from "./skills.h.macros.js";
 import { SPELL_LEV_PW } from "./spell.h.macros.js";
-import { cansee } from "./vision.h.macros.js";
-import { couldsee } from "./vision.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { putstr } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { WIN_ERR } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import { cansee, couldsee } from "./vision.h.macros.js";
+import {
+    create_nhwindow, destroy_nhwindow, end_menu, putstr, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, PICK_ONE, WIN_ERR, struct_any,
+    struct_mi,
+} from "./wintype.h.js";
 import { SICK_ALL } from "./you.h.js";
-import { Race_if } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { Antimagic } from "./youprop.h.macros.js";
-import { BInvis } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blinded } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Cold_resistance } from "./youprop.h.macros.js";
-import { Drain_resistance } from "./youprop.h.macros.js";
-import { ELevitation } from "./youprop.h.macros.js";
-import { Fire_resistance } from "./youprop.h.macros.js";
-import { HBlinded } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Hate_silver } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { Shock_resistance } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
+import { Race_if, Role_if, Role_switch, Upolyd } from "./you.h.macros.js";
+import {
+    Antimagic, BInvis, Blind, Blinded, BlindedTimeout, Cold_resistance, Drain_resistance,
+    ELevitation, Fire_resistance, HBlinded, HConfusion, HStun, Hallucination, Hate_silver,
+    Levitation, Poison_resistance, Shock_resistance, Sick, Slimed, Stone_resistance,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { and64u } from "../rt/int64.js";
-import { not64 } from "../rt/int64.js";
-import { not64u } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { or64u } from "../rt/int64.js";
-import { xor64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import {
+    char, int, long, ord, schar, short, sizeof, sizeof_string, uchar, ulong, unsigned,
+} from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, and64u, not64, not64u, or64, or64u, xor64 } from "../rt/int64.js";
+import { abs, assert, free, memset, sprintf, strcat, strcmp, strcpy } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_struct,
+    static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_diff } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { do_blinding_ray } from "./apply.js";
-import { next_to_u } from "./apply.js";
+import {
+    addr_of, array_of, ptr_add, ptr_diff, ptr_to, ref_of, struct, struct_assign,
+} from "../rt/struct.js";
+import { do_blinding_ray, next_to_u } from "./apply.js";
 import { exercise } from "./attrib.js";
-import { getdir } from "./cmd.js";
-import { isok } from "./cmd.js";
+import { getdir, isok } from "./cmd.js";
 import { clr2colorname } from "./coloratt.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svb } from "./decl.js";
-import { svc } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svn } from "./decl.js";
-import { svq } from "./decl.js";
-import { u } from "./decl.js";
+import {
+    cg, disp, flags, gi, gm, gn, gs, gu, gv, gw, gy, iflags, program_state, svb, svc, svd, svl, svm,
+    svn, svq, u,
+} from "./decl.js";
 import { use_crystal_ball } from "./detect.js";
-import { glyph_at } from "./display.js";
-import { map_invisible } from "./display.js";
-import { newsym } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { see_monsters } from "./display.js";
-import { shieldeff } from "./display.js";
-import { dropx } from "./do.js";
-import { goto_level } from "./do.js";
-import { maybe_lvltport_feedback } from "./do.js";
-import { Monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { oname } from "./do_name.js";
-import { hitfloor } from "./dothrow.js";
-import { throwit } from "./dothrow.js";
-import { In_quest } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { find_hell } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { surface } from "./dungeon.js";
+import {
+    glyph_at, map_invisible, newsym, nul_glyphinfo, see_monsters, shieldeff,
+} from "./display.js";
+import { dropx, goto_level, maybe_lvltport_feedback } from "./do.js";
+import { Monnam, hcolor, mon_nam, oname } from "./do_name.js";
+import { hitfloor, throwit } from "./dothrow.js";
+import { In_quest, depth, dunlevs_in_dungeon, find_hell, ledger_no, surface } from "./dungeon.js";
 import { losexp } from "./exper.js";
-import { invocation_pos } from "./hack.js";
-import { losehp } from "./hack.js";
-import { nomul } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { fuzzymatch } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { align_str } from "./insight.js";
-import { enlightenment } from "./insight.js";
-import { freeinv } from "./invent.js";
-import { getobj } from "./invent.js";
-import { hold_another_object } from "./invent.js";
-import { nxtobj } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import { invocation_pos, losehp, nomul, spoteffects } from "./hack.js";
+import { eos, fuzzymatch, s_suffix, sgn, strncmpi, upstart } from "./hacklib.js";
+import { align_str, enlightenment } from "./insight.js";
+import { freeinv, getobj, hold_another_object, nxtobj, update_inventory } from "./invent.js";
 import { monhp_per_lvl } from "./makemon.js";
-import { bcsign } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { uncurse } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { healmon } from "./mon.js";
-import { migrate_mon } from "./mon.js";
-import { set_ustuck } from "./mon.js";
-import { wake_nearto } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { defended } from "./mondata.js";
-import { resists_drli } from "./mondata.js";
-import { sticks } from "./mondata.js";
+import { bcsign, mksobj, obj_extract_self, uncurse, weight } from "./mkobj.js";
+import { healmon, migrate_mon, set_ustuck, wake_nearto } from "./mon.js";
+import { attacktype, defended, resists_drli, sticks } from "./mondata.js";
 import { monflee } from "./monmove.js";
 import { mons } from "./monst.js";
-import { obj_shuffle_range } from "./o_init.js";
-import { observe_object } from "./o_init.js";
+import { obj_shuffle_range, observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Tobjnam } from "./objnam.js";
-import { aobjnam } from "./objnam.js";
-import { bare_artifactname } from "./objnam.js";
-import { distant_name } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { simple_typename } from "./objnam.js";
-import { the } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { mbodypart } from "./polyself.js";
-import { healup } from "./potion.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stunned } from "./potion.js";
+import {
+    The, Tobjnam, aobjnam, bare_artifactname, distant_name, killer_xname, otense, simple_typename,
+    the, vtense, xname, yname,
+} from "./objnam.js";
+import {
+    You, You_cant, You_feel, Your, impossible, livelog_printf, pline, pline_The,
+} from "./pline.js";
+import { body_part, mbodypart } from "./polyself.js";
+import {
+    healup, make_blinded, make_confused, make_hallucinated, make_sick, make_slimed, make_stunned,
+} from "./potion.js";
 import { mon_aligntyp } from "./priest.js";
-import { charge_ok } from "./read.js";
-import { litroom } from "./read.js";
-import { recharge } from "./read.js";
-import { seffects } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnz } from "./rnd.js";
+import { charge_ok, litroom, recharge, seffects } from "./read.js";
+import { d, rn2, rnd, rnz } from "./rnd.js";
 import { aligns } from "./role.js";
 import { getrumor } from "./rumors.js";
-import { inside_shop } from "./shk.js";
-import { obfree } from "./shk.js";
-import { spell_skilltype } from "./spell.js";
-import { spelleffects } from "./spell.js";
+import { inside_shop, obfree } from "./shk.js";
+import { spell_skilltype, spelleffects } from "./spell.js";
 import { On_stairs } from "./stairs.js";
 import { remove_worn_item } from "./steal.js";
 import { dismount_steed } from "./steed.js";
-import { level_tele } from "./teleport.js";
-import { u_teleport_mon } from "./teleport.js";
+import { level_tele, u_teleport_mon } from "./teleport.js";
 import { burn_away_slime } from "./timeout.js";
-import { float_down } from "./trap.js";
-import { float_up } from "./trap.js";
-import { ignite_items } from "./trap.js";
-import { selftouch } from "./trap.js";
-import { t_at } from "./trap.js";
-import { untrap } from "./trap.js";
-import { add_menu } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { bypass_obj } from "./worn.js";
-import { clear_bypasses } from "./worn.js";
-import { nxt_unbypassed_obj } from "./worn.js";
-import { recalc_telepat_range } from "./worn.js";
-import { which_armor } from "./worn.js";
-import { cancel_monst } from "./zap.js";
-import { destroy_items } from "./zap.js";
-import { flashburn } from "./zap.js";
-import { lightdamage } from "./zap.js";
-import { probe_monster } from "./zap.js";
-import { resist } from "./zap.js";
+import { float_down, float_up, ignite_items, selftouch, t_at, untrap } from "./trap.js";
+import { add_menu, select_menu } from "./windows.js";
+import {
+    bypass_obj, clear_bypasses, nxt_unbypassed_obj, recalc_telepat_range, which_armor,
+} from "./worn.js";
+import {
+    cancel_monst, destroy_items, flashburn, lightdamage, probe_monster, resist,
+} from "./zap.js";
 
 // defined by artilist.h (included above; at the line shown)
 // artilist.h:49
 const artilist = static_array("artilist", struct_artifact, null, [
-
 
     /* Artifact cost rationale:
      * 1.  The more useful the artifact, the better its cost.
@@ -3600,17 +3044,6 @@ const artilist = static_array("artilist", struct_artifact, null, [
       defn: { adtyp: AD_MAGM }, inv_prop: CONFLICT, alignment: A_LAWFUL, role: PM_CAVE_DWELLER, race: NON_PM,
       gift_value: 12, cost: 2500, acolor: NO_COLOR },
 
-
-
-
-
-
-
-
-
-
-
-
     { otyp: QUARTERSTAFF, name: _("The Staff of Aesculapius"),
       spfx: (SPFX_NOGEN | SPFX_RESTR | SPFX_ATTK | SPFX_INTEL | SPFX_DRLI
        | SPFX_REGEN),
@@ -3673,10 +3106,6 @@ const artilist = static_array("artilist", struct_artifact, null, [
       defn: { adtyp: AD_MAGM }, inv_prop: CREATE_PORTAL, alignment: A_NEUTRAL, role: PM_WIZARD,
       race: NON_PM,
       gift_value: 12, cost: 4000, acolor: NO_COLOR },
-
-
-
-
 
 { alignment: A_NONE, role: NON_PM, race: NON_PM,
       acolor: NO_COLOR }

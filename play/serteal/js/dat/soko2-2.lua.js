@@ -1,8 +1,8 @@
-export default "\n" + // -- NetHack sokoban soko2-2.lua	$NHDT-Date: 1652196035 2022/05/10 15:20:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1998-1999 by Kevin Hugo
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack sokoban soko2-2.lua	$NHDT-Date: 1652196035 2022/05/10 15:20:35 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1998-1999 by Kevin Hugo
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel", "noteleport", "premapped", "sokoban", "solidify");
 
@@ -29,8 +29,8 @@ des.region(selection.area(00,00,21,12), "lit");
 des.non_diggable(selection.area(00,00,21,12));
 des.non_passwall(selection.area(00,00,21,12));
 
-` + "\n" + // -- Boulders
-`des.object("boulder",04,02)
+-- Boulders
+des.object("boulder",04,02)
 des.object("boulder",04,03)
 des.object("boulder",05,03)
 des.object("boulder",07,03)
@@ -47,10 +47,10 @@ des.object("boulder",06,09)
 des.object("boulder",05,10)
 des.object("boulder",05,11)
 
-` + "\n" + // -- prevent monster generation over the (filled) holes
-`des.exclusion({ type = "monster-generation", region = { 06,11, 18,11 } });
-` + "\n" + // -- Traps
-`des.trap("rolling boulder",07,11)
+-- prevent monster generation over the (filled) holes
+des.exclusion({ type = "monster-generation", region = { 06,11, 18,11 } });
+-- Traps
+des.trap("rolling boulder",07,11)
 des.trap("hole",08,11)
 des.trap("hole",09,11)
 des.trap("hole",10,11)
@@ -63,8 +63,8 @@ des.trap("hole",16,11)
 des.trap("hole",17,11)
 des.trap("hole",18,11)
 
-` + "\n" + // -- Random objects
-`des.object({ class = "%" });
+-- Random objects
+des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "%" });
 des.object({ class = "%" });

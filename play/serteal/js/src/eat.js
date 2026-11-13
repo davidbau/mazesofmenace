@@ -3,67 +3,21 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* also used to see if you're allowed to eat cats and dogs */
-export function CANNIBAL_ALLOWED() { return (+(Role_if(PM_CAVE_DWELLER) || Race_if(PM_ORC))); }
+export function CANNIBAL_ALLOWED() { return +(Role_if(PM_CAVE_DWELLER) || Race_if(PM_ORC)); }
 
 /* Rider corpses are treated as non-rotting so that attempting to eat one
    will be sure to reach the stage of eating where that meal is fatal;
    acid blob corpses eventually rot away to nothing but before that happens
    they can be sacrificed regardless of age which implies that they never
    become rotten */
-export function nonrotting_corpse(mnum) { return (+((mnum) == PM_LIZARD || (mnum) == PM_LICHEN 
-     || is_rider(mons[mnum])                   
-     || (mnum) == PM_ACID_BLOB)); }
-
+export function nonrotting_corpse(mnum) { return +(mnum == PM_LIZARD || mnum == PM_LICHEN
+     || is_rider(mons[mnum])
+     || mnum == PM_ACID_BLOB); }
 
 /* non-rotting non-corpses; unlike lizard corpses, these items will behave
    as if rotten if they are cursed (fortune cookies handled elsewhere) */
-export function nonrotting_food(otyp) { return (+((otyp) == LEMBAS_WAFER || (otyp) == CRAM_RATION)); }
-
+export function nonrotting_food(otyp) { return +(otyp == LEMBAS_WAFER || otyp == CRAM_RATION); }
 
 /* see hunger states in hack.h - texts used on bottom line
    Also used in botl.c and insight.c  */
@@ -87,9 +41,7 @@ const getobj_else = static_var("getobj_else", int, 0);
  * Decide whether a particular object can be eaten by the possibly
  * polymorphed character.  Not used for monster checks.
  */
-export function /* boolean */
-is_edible(obj)
-{
+export function is_edible(obj) { /* boolean */
     /* protect invocation tools but not Rider corpses (handled elsewhere)*/
     /* if (obj->oclass != FOOD_CLASS && obj_resists(obj, 0, 0)) */
     if (objects[obj.otyp].oc_unique)
@@ -122,10 +74,8 @@ is_edible(obj)
 
 /* used for hero init, life saving (if choking), and prayer results of fix
    starving, fix weak from hunger, or golden glow boon (if u.uhunger < 900) */
-export function /* void */
-init_uhunger()
-{
-    disp.botl = (+(u.uhs != NOT_HUNGRY || ATEMP(A_STR) < 0));
+export function init_uhunger() { /* void */
+    disp.botl = +(u.uhs != NOT_HUNGRY || ATEMP(A_STR) < 0);
     u.uhunger = 900;
     u.uhs = NOT_HUNGRY;
     if (ATEMP(A_STR) < 0) {
@@ -159,9 +109,7 @@ init_uhunger()
 export const TTSZ = SIZE(tintxts);
 
 /* called after mimicking is over */
-function /* int */
-eatmdone()
-{
+function eatmdone() { /* int */
     /* release `eatmbuf' */
     if (ge.eatmbuf) {
         if (gn.nomovemsg == ge.eatmbuf)
@@ -177,9 +125,7 @@ eatmdone()
 }
 
 /* called when hallucination is toggled */
-export function /* void */
-eatmupdate()
-{
+export function eatmupdate() { /* void */
     let altmsg = 0;
     let altapp = 0; /* lint suppression */
 
@@ -213,9 +159,7 @@ eatmupdate()
 }
 
 /* ``[the(] singular(food, xname) [)]'' */
-function /* const char * */
-food_xname(food, the_pfx)
-{
+function food_xname(food, the_pfx) { /* const char * */
     let result;
 
     if (food.otyp == CORPSE) {
@@ -241,9 +185,7 @@ food_xname(food, the_pfx)
  *
  * To a full belly all food is bad. (It.)
  */
-function /* void */
-choke(food)
-{
+function choke(food) { /* void */
     /* only happens if you were satiated */
     if (u.uhs != SATIATED) {
         if (!food || food.otyp != AMULET_OF_STRANGULATION)
@@ -273,14 +215,14 @@ choke(food)
         if (food) {
             You(_("choke over your %s."), foodword(food));
             if (food.oclass == COIN_CLASS) {
-                void strcpy(svk.killer.name, _("very rich meal"));
+                strcpy(svk.killer.name, _("very rich meal"));
             } else {
                 svk.killer.format = KILLED_BY;
-                void strcpy(svk.killer.name, killer_xname(food));
+                strcpy(svk.killer.name, killer_xname(food));
             }
         } else {
             You(_("choke over it."));
-            void strcpy(svk.killer.name, _("quick snack"));
+            strcpy(svk.killer.name, _("quick snack"));
         }
         You(_("die..."));
         done(CHOKING);
@@ -288,9 +230,7 @@ choke(food)
 }
 
 /* modify victual.piece->owt depending on time spent consuming it */
-function /* void */
-recalc_wt()
-{
+function recalc_wt() { /* void */
     let piece = svc.context.victual.piece;
 
     if (!piece) {
@@ -305,9 +245,7 @@ recalc_wt()
 }
 
 /* called when eating interrupted by an event */
-export function /* void */
-reset_eat()
-{
+export function reset_eat() { /* void */
     /* we only set a flag here - the actual reset process is done after
      * the round is spent eating.
      */
@@ -321,9 +259,7 @@ reset_eat()
 /* base nutrition of a food-class object; this used to include a variation
    of the code that is now in adj_victual_nutrition() and was moved due to
    its affect on weight() */
-export function /* unsigned */
-obj_nutrition(otmp)
-{
+export function obj_nutrition(otmp) { /* unsigned */
     let nut = (otmp.otyp == CORPSE) ? mons[otmp.corpsenm].cnutrit
                       : otmp.globby ? otmp.owt
                          : (objects[otmp.otyp].oc_nutrition);
@@ -334,21 +270,19 @@ obj_nutrition(otmp)
 /* nutrition increment for next byte; this used to be factored into
    victual.piece->oeaten but that produced weight change if hero
    polymorphed to or from one of the races which has nutrition adjusted */
-function /* int */
-adj_victual_nutrition()
-{
+function adj_victual_nutrition() { /* int */
     let otyp = svc.context.victual.piece.otyp;
     /* note: adj_victual_nutrition() is only called when 'nmod' is negative */
     let nut = -svc.context.victual.nmod; /* convert 'nmod' to positive */
 
     assert(nut > 0);
     if (otyp == LEMBAS_WAFER) {
-        if (((Upolyd() ? (is_elf(gy.youmonst.data)) : (Race_if(PM_ELF)))))
+        if ((Upolyd() ? (is_elf(gy.youmonst.data)) : (Race_if(PM_ELF))))
             nut += Math.trunc((nut + 2) / 4); /* 800 -> 1000 */
-        else if (((Upolyd() ? (is_orc(gy.youmonst.data)) : (Race_if(PM_ORC)))))
+        else if ((Upolyd() ? (is_orc(gy.youmonst.data)) : (Race_if(PM_ORC))))
             nut -= Math.trunc((nut + 2) / 4); /* 800 -> 600 */
     } else if (otyp == CRAM_RATION) {
-        if (((Upolyd() ? (is_dwarf(gy.youmonst.data)) : (Race_if(PM_DWARF)))))
+        if ((Upolyd() ? (is_dwarf(gy.youmonst.data)) : (Race_if(PM_DWARF))))
             nut += Math.trunc((nut + 3) / 6); /* 600 -> 700 */
     }
     nut = max(nut, 1);
@@ -356,12 +290,10 @@ adj_victual_nutrition()
 }
 
 /* might destroy otmp if hero drops it */
-function /* struct obj * */
-touchfood(otmp)
-{
+function touchfood(otmp) { /* struct obj * */
     if (otmp.quan > 1) {
         if (!carried(otmp))
-            void splitobj(otmp, otmp.quan - 1);
+            splitobj(otmp, otmp.quan - 1);
         else
             otmp = splitobj(otmp, 1);
         debugpline0(_("split food,"), __FILE__);
@@ -392,9 +324,7 @@ touchfood(otmp)
  * do_reset_eat() at the beginning of eatfood()) and check for null pointers
  * in do_reset_eat().
  */
-export function /* void */
-food_disappears(obj)
-{
+export function food_disappears(obj) { /* void */
     if (obj == svc.context.victual.piece)
         struct_assign(svc.context.victual, zero_victual); /* victual.piece = 0, .o_id = 0 */
 
@@ -405,9 +335,7 @@ food_disappears(obj)
 /* renaming an object used to result in it having a different address,
    so the sequence start eating/opening, get interrupted, name the food,
    resume eating/opening would restart from scratch */
-export function /* void */
-food_substitution(old_obj, new_obj)
-{
+export function food_substitution(old_obj, new_obj) { /* void */
     if (old_obj == svc.context.victual.piece) {
         svc.context.victual.piece = new_obj;
         svc.context.victual.o_id = new_obj.o_id;
@@ -418,9 +346,7 @@ food_substitution(old_obj, new_obj)
     }
 }
 
-function /* void */
-do_reset_eat()
-{
+function do_reset_eat() { /* void */
     debugpline0(_("do_reset_eat..."), __FILE__);
     if (svc.context.victual.piece) {
         let otmp;
@@ -449,9 +375,7 @@ do_reset_eat()
 /* if 'prop' is only set because of a timed value (so not an intrinsic
    attribute or because of polymorph shape or worn or carried gear), return
    its timeout, otherwise return 0; used by enlightenment */
-export function /* long long */
-temp_resist(prop)
-{
+export function temp_resist(prop) { /* long long */
     let p = u.uprops[prop];
     let timeout = p.intrinsic & TIMEOUT;
 
@@ -471,9 +395,7 @@ temp_resist(prop)
 /* if temporary acid or stoning resistance is timing out while eating
    something which that resistance is protecting against, caller will
    extend resistance's duration so that it times out after meal finishes */
-export function /* boolean */
-eating_dangerous_corpse(res)
-{
+export function eating_dangerous_corpse(res) { /* boolean */
     let food;
     let mnum;
 
@@ -482,7 +404,6 @@ eating_dangerous_corpse(res)
         && food.otyp == CORPSE
         && (mnum = food.corpsenm) >= LOW_PM
         && (carried(food) || obj_here(food, u.ux, u.uy))) {
-
         if (res == ACID_RES && acidic(mons[mnum]))
             return TRUE;
         /* flesh_petrifies() includes Medusa as well as touch_petrifies() */
@@ -492,32 +413,10 @@ eating_dangerous_corpse(res)
     return FALSE;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /* called each move during eating process */
-function /* int */
-eatfood()
-{
+function eatfood() { /* int */
     let food = svc.context.victual.piece;
 
     if (food && !carried(food) && !obj_here(food, u.ux, u.uy))
@@ -540,9 +439,7 @@ eatfood()
     }
 }
 
-function /* void */
-done_eating(message)
-{
+function done_eating(message) { /* void */
     let piece = svc.context.victual.piece;
 
     piece.in_use = TRUE;
@@ -572,9 +469,7 @@ done_eating(message)
     struct_assign(svc.context.victual, zero_victual); /* victual.piece = 0, .o_id = 0 */
 }
 
-export function /* void */
-eating_conducts(pd)
-{
+export function eating_conducts(pd) { /* void */
     let ll_conduct = 0;
 
     if (!u.uconduct.food++) {
@@ -599,13 +494,11 @@ eating_conducts(pd)
 }
 
 /* handle side-effects of mind flayer's tentacle attack */
-export function /* int */
-eat_brains(
+export function eat_brains(
     magr,
     mdef,
     visflag,
-    dmg_p) /* for dishing out extra damage in lieu of Int loss */
-{
+    dmg_p) { /* int */ /* for dishing out extra damage in lieu of Int loss */
     let pd = mdef.data;
     let give_nutrit = FALSE;
     let result = M_ATTK_HIT, xtra_dmg = rnd(10);
@@ -667,7 +560,7 @@ eat_brains(
             return M_ATTK_MISS;
         } else if (is_rider(pd)) {
             pline(_("Ingesting that is fatal."));
-            void sprintf(svk.killer.name, _("unwisely ate the brain of %s"), pmname(pd, Mgender(mdef)))
+            sprintf(svk.killer.name, _("unwisely ate the brain of %s"), pmname(pd, Mgender(mdef)))
 ;
             svk.killer.format = NO_KILLER_PREFIX;
             done(DIED);
@@ -688,8 +581,7 @@ eat_brains(
         }
         /* targeting another mind flayer or your own underlying species
            is cannibalism */
-        void maybe_cannibal(monsndx(pd), TRUE);
-
+        maybe_cannibal(monsndx(pd), TRUE);
     } else if (mdef == gy.youmonst) {
         /*
          * monster mind flayer is eating hero's brain
@@ -699,7 +591,7 @@ eat_brains(
             let brainlessness = init_string(static_array("eat_brains.brainlessness", char, sizeof_string("brainlessness")), _("brainlessness"), true);
 
             if (Lifesaved()) {
-                void strcpy(svk.killer.name, brainlessness);
+                strcpy(svk.killer.name, brainlessness);
                 svk.killer.format = KILLED_BY;
                 done(DIED);
                 /* amulet of life saving has now been used up */
@@ -710,7 +602,7 @@ eat_brains(
             } else {
                 Your(_("last thought fades away."));
             }
-            void strcpy(svk.killer.name, brainlessness);
+            strcpy(svk.killer.name, brainlessness);
             svk.killer.format = KILLED_BY;
             done(DIED);
             /* can only get here when in wizard or explore mode and user has
@@ -721,7 +613,6 @@ eat_brains(
         give_nutrit = TRUE; /* in case a conflicted pet is doing this */
         exercise(A_WIS, FALSE);
         /* caller handles Int and memory loss */
-
     } else { /* mhitm */
         /*
          * monster mind flayer is eating another monster's brain
@@ -754,9 +645,7 @@ eat_brains(
 }
 
 /* eating a corpse or egg of one's own species is usually naughty */
-function /* boolean */
-maybe_cannibal(pm, allowmsg)
-{
+function maybe_cannibal(pm, allowmsg) { /* boolean */
     let ate_brains = static_var("maybe_cannibal.ate_brains", long, 0);
     let fptr = mons[pm]; /* food type */
 
@@ -787,10 +676,8 @@ maybe_cannibal(pm, allowmsg)
     return FALSE;
 }
 
-function /* void */
-cprefx(pm)
-{
-    void maybe_cannibal(pm, TRUE);
+function cprefx(pm) { /* void */
+    maybe_cannibal(pm, TRUE);
     if (flesh_petrifies(mons[pm])) {
         if (!Stone_resistance()
             && !(poly_when_stoned(gy.youmonst.data)
@@ -799,7 +686,7 @@ cprefx(pm)
             if (svc.context.tin.tin)
                 use_up_tin(svc.context.tin.tin);
 
-            void sprintf(svk.killer.name, _("tasting %s meat"), mons[pm].pmnames[NEUTRAL])
+            sprintf(svk.killer.name, _("tasting %s meat"), mons[pm].pmnames[NEUTRAL])
 ;
             svk.killer.format = KILLED_BY;
             You(_("turn to stone."));
@@ -832,7 +719,7 @@ cprefx(pm)
     case PM_PESTILENCE:
     case PM_FAMINE: {
         pline(_("Eating that is instantly fatal."));
-        void sprintf(svk.killer.name, _("unwisely ate the body of %s"), mons[pm].pmnames[NEUTRAL])
+        sprintf(svk.killer.name, _("unwisely ate the body of %s"), mons[pm].pmnames[NEUTRAL])
 ;
         svk.killer.format = NO_KILLER_PREFIX;
         done(DIED);
@@ -863,18 +750,18 @@ cprefx(pm)
     }
 }
 
-export function /* void */
-fix_petrification()
-{ const $frame = stack_frame(); try {
+export function fix_petrification() { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
 
     if (Hallucination())
-        void sprintf(buf, _("What a pity--you just ruined a future piece of %sart!"), ACURR(A_CHA) > 15 ? _("fine ") : _(""));
+        sprintf(buf, _("What a pity--you just ruined a future piece of %sart!"), ACURR(A_CHA) > 15 ? _("fine ") : _(""));
     else
-        void strcpy(buf, _("You feel limber!"))
+        strcpy(buf, _("You feel limber!"))
 ;
     make_stoned(0, buf, 0, 0);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * If you add an intrinsic that can be gotten by eating a monster, add it
@@ -886,19 +773,8 @@ fix_petrification()
  */
 
 /* intrinsic_possible() returns TRUE iff a monster can give an intrinsic. */
-export function /* int */
-intrinsic_possible(type, ptr)
-{
+export function intrinsic_possible(type, ptr) { /* int */
     let res = 0;
-
-
-
-
-
-
-
-
-
 
     switch (type) {
     case FIRE_RES:
@@ -957,9 +833,7 @@ intrinsic_possible(type, ptr)
  * into its own function. Depends on the monster's level and the type of
  * intrinsic it is trying to give you.
  */
-export function /* boolean */
-should_givit(type, ptr)
-{
+export function should_givit(type, ptr) { /* boolean */
     let chance;
 
     /* some intrinsics are easier to get than others */
@@ -985,23 +859,19 @@ should_givit(type, ptr)
         break;
     }
 
-    return (+(ptr.mlevel > rn2(chance)));
+    return +(ptr.mlevel > rn2(chance));
 }
 
-function /* boolean */
-temp_givit(type, ptr)
-{
+function temp_givit(type, ptr) { /* boolean */
     let chance = (type == STONE_RES) ? 6 : (type == ACID_RES) ? 3 : 0;
 
-    return chance ? (+(ptr.mlevel > rn2(chance))) : FALSE;
+    return chance ? +(ptr.mlevel > rn2(chance)) : FALSE;
 }
 
 /* givit() tries to give you an intrinsic based on the monster's level
  * and what type of intrinsic it is trying to give you.
  */
-function /* void */
-givit(type, ptr)
-{
+function givit(type, ptr) { /* void */
     debugpline1(_("Attempting to give intrinsic %d"), type, __FILE__);
 
     if (!should_givit(type, ptr) && !temp_givit(type, ptr))
@@ -1099,9 +969,7 @@ givit(type, ptr)
     }
 }
 
-function /* void */
-eye_of_newt_buzz()
-{
+function eye_of_newt_buzz() { /* void */
     /* MRKR: "eye of newt" may give small magical energy boost */
     if (rn2(3) || 3 * u.uen <= 2 * u.uenmax) {
         let old_uen = u.uen;
@@ -1122,12 +990,9 @@ eye_of_newt_buzz()
     }
 }
 
-
-
 /* called after completely consuming a corpse */
-function /* void */
-cpostfx(pm)
-{ const $frame = stack_frame(); try {
+function cpostfx(pm) { /* void */
+    const $frame = stack_frame(); try {
     let tmp = 0;
     let catch_lycanthropy = NON_PM;
     let check_intrinsics = FALSE;
@@ -1135,7 +1000,7 @@ cpostfx(pm)
     /* in case `afternmv' didn't get called for previously mimicking
        gold, clean up now to avoid `eatmbuf' memory leak */
     if (ge.eatmbuf)
-        void eatmdone();
+        eatmdone();
 
     switch (pm) {
     case PM_WRAITH:
@@ -1206,7 +1071,7 @@ cpostfx(pm)
                 dismount_steed(DISMOUNT_FELL);
             nomul(-tmp);
             gm.multi_reason = _("pretending to be a pile of gold");
-            void sprintf(buf, Hallucination()
+            sprintf(buf, Hallucination()
                        ? _("You suddenly dread being peeled and mimic %s again!")
                        : _("You now prefer mimicking %s again."), an(Upolyd() ? pmname(gy.youmonst.data, Ugender())
                               : gu.urace.noun))
@@ -1271,7 +1136,7 @@ cpostfx(pm)
         /* picks an intrinsic at random and removes it; there's
            no feedback if hero already lacks the chosen ability */
         debugpline0(_("using attrcurse to strip an intrinsic"), __FILE__);
-        void attrcurse();
+        attrcurse();
         break;
     case PM_DEATH:
     case PM_PESTILENCE:
@@ -1283,7 +1148,7 @@ cpostfx(pm)
         if (ABASE(A_INT) < ATTRMAX(A_INT)) {
             if (!rn2(2)) {
                 pline(_("Yum!  That was real brain food!"));
-                void adjattrib(A_INT, 1, FALSE);
+                adjattrib(A_INT, 1, FALSE);
                 break; /* don't give them telepathy, too */
             }
         } else {
@@ -1303,7 +1168,7 @@ cpostfx(pm)
         if (dmgtype(ptr, AD_STUN) || dmgtype(ptr, AD_HALU)
             || pm == PM_VIOLET_FUNGUS) {
             pline(_("Oh wow!  Great stuff!"));
-            void make_hallucinated((HHallucination() & TIMEOUT) + 200, FALSE,
+            make_hallucinated((HHallucination() & TIMEOUT) + 200, FALSE,
                                      0);
         }
 
@@ -1325,9 +1190,8 @@ cpostfx(pm)
         retouch_equipment(2);
     }
     return;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* Choose (one of) the intrinsics granted by a corpse, and return it.
  * If this corpse gives no intrinsics, return 0.
@@ -1335,9 +1199,7 @@ cpostfx(pm)
  * return fake prop value of -1.
  * Non-deterministic; should only be called once per corpse.
  */
-export function /* int */
-corpse_intrinsic(ptr)
-{
+export function corpse_intrinsic(ptr) { /* int */
     /* Check the monster for all of the intrinsics.  If this
      * monster can give more than one, pick one to try to give
      * from among all it can give.
@@ -1372,9 +1234,7 @@ corpse_intrinsic(ptr)
     return prop;
 }
 
-export function /* void */
-violated_vegetarian()
-{
+export function violated_vegetarian() { /* void */
     u.uconduct.unvegetarian++;
     if (Role_if(PM_MONK)) {
         You_feel(_("guilty."));
@@ -1385,9 +1245,7 @@ violated_vegetarian()
 
 /* common code to check and possibly charge for 1 svc.context.tin.tin,
  * will split() svc.context.tin.tin if necessary */
-function /* struct obj * */
-costly_tin(alter_type) /* COST_xxx */
-{
+function costly_tin(alter_type) { /* struct obj * */ /* COST_xxx */
     let tin = svc.context.tin.tin;
 
     if (carried(tin) ? tin.unpaid
@@ -1401,9 +1259,7 @@ costly_tin(alter_type) /* COST_xxx */
     return tin;
 }
 
-export function /* int */
-tin_variety_txt(s, tinvariety)
-{
+export function tin_variety_txt(s, tinvariety) { /* int */
     let k, l;
 
     if (s && tinvariety) {
@@ -1424,9 +1280,8 @@ tin_variety_txt(s, tinvariety)
  * This assumes that buf already contains the word "tin",
  * as is the case with caller xname().
  */
-export function /* void */
-tin_details(obj, mnum, buf)
-{ const $frame = stack_frame(); try {
+export function tin_details(obj, mnum, buf) { /* void */
+    const $frame = stack_frame(); try {
     let buf2 = stack_array(char, BUFSZ);
 
     if (!obj || !buf)
@@ -1435,31 +1290,30 @@ tin_details(obj, mnum, buf)
     let r = tin_variety(obj, TRUE);
 
     if (r == SPINACH_TIN)
-        void strcat(buf, _(" of spinach"));
+        strcat(buf, _(" of spinach"));
     else if (mnum == NON_PM)
-        void strcpy(buf, _("empty tin"));
+        strcpy(buf, _("empty tin"));
     else {
         if ((obj.cknown || iflags.override_ID) && obj.spe < 0) {
             if (r == ROTTEN_TIN || r == HOMEMADE_TIN) {
                 /* put these before the word tin */
-                void sprintf(buf2, _("%s %s of "), tintxts[r].txt, buf);
-                void strcpy(buf, buf2);
+                sprintf(buf2, _("%s %s of "), tintxts[r].txt, buf);
+                strcpy(buf, buf2);
             } else {
-                void sprintf(eos(buf), _(" of %s "), tintxts[r].txt);
+                sprintf(eos(buf), _(" of %s "), tintxts[r].txt);
             }
         } else {
-            void strcpy(eos(buf), _(" of "));
+            strcpy(eos(buf), _(" of "));
         }
         if (vegetarian(mons[mnum]))
-            void sprintf(eos(buf), _("%s"), mons[mnum].pmnames[NEUTRAL]);
+            sprintf(eos(buf), _("%s"), mons[mnum].pmnames[NEUTRAL]);
         else
-            void sprintf(eos(buf), _("%s meat"), mons[mnum].pmnames[NEUTRAL]);
+            sprintf(eos(buf), _("%s meat"), mons[mnum].pmnames[NEUTRAL]);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-set_tin_variety(obj, forcetype)
-{
+export function set_tin_variety(obj, forcetype) { /* void */
     let r, mnum = obj.corpsenm;
 
     if (forcetype == SPINACH_TIN
@@ -1485,11 +1339,9 @@ set_tin_variety(obj, forcetype)
     obj.spe = -(r + 1); /* offset by 1 to allow index 0 */
 }
 
-function /* int */
-tin_variety(
+function tin_variety(
     obj,
-    displ) /* we're just displaying so leave things alone */
-{
+    displ) { /* int */ /* we're just displaying so leave things alone */
     let r, mnum = obj.corpsenm;
 
     if (obj.spe == 1) {
@@ -1497,7 +1349,7 @@ tin_variety(
     } else if (obj.cursed) {
         r = ROTTEN_TIN; /* always rotten if cursed */
     } else if (obj.spe < 0) {
-        r = -(obj.spe);
+        r = -obj.spe;
         --r; /* get rid of the offset */
     } else {
         r = rn2(TTSZ - 1);
@@ -1512,9 +1364,7 @@ tin_variety(
 }
 
 /* finish consume_tin(); also potentially used by cprefx() and cpostfx() */
-function /* void */
-use_up_tin(tin)
-{
+function use_up_tin(tin) { /* void */
     if (carried(tin))
         useup(tin);
     else
@@ -1524,9 +1374,7 @@ use_up_tin(tin)
     svc.context.tin.o_id = 0;
 }
 
-function /* void */
-consume_tin(mesg)
-{
+function consume_tin(mesg) { /* void */
     let what;
     let which, mnum, r, nutamt;
     /* if you've eaten tin itself, chance to not eat contents gets bypassed */
@@ -1643,7 +1491,6 @@ consume_tin(mesg)
                   tintxts[r].txt, fingers_or_gloves(TRUE),
                   alreadyglib ? _("even more") : _("very"));
         }
-
     } else { /* spinach... */
         if (tin.cursed) {
             pline(_("It contains some decaying%s%s substance."),
@@ -1699,9 +1546,7 @@ consume_tin(mesg)
 }
 
 /* called during each move whilst opening a tin */
-function /* int */
-opentin()
-{
+function opentin() { /* int */
     /* perhaps it was stolen (although that should cause interruption) */
     if (!carried(svc.context.tin.tin)
         && (!obj_here(svc.context.tin.tin, u.ux, u.uy)
@@ -1719,9 +1564,8 @@ opentin()
 }
 
 /* called when starting to open a tin */
-function /* void */
-start_tin(otmp)
-{ let $goto = null;
+function start_tin(otmp) { /* void */
+    let $goto = null;
     var mesg = 0;
     var tmp;
 
@@ -1781,7 +1625,7 @@ start_tin(otmp)
                 stackobj(otmp);
             return;
         }
-        tmp = ((rn2(1 + Math.trunc(500 / ((ACURR(A_DEX) + ACURRSTR())))) + (10)));
+        tmp = (rn2(1 + Math.trunc(500 / (ACURR(A_DEX) + ACURRSTR()))) + (10));
     } } break; }
 
     svc.context.tin.tin = otmp;
@@ -1797,9 +1641,7 @@ start_tin(otmp)
 }
 
 /* called when waking up after fainting */
-export function /* int */
-Hear_again()
-{
+export function Hear_again() { /* int */
     /* Chance of deafness going away while fainted/sleeping/etc. */
     if (!rn2(2)) {
         make_deaf(0, FALSE);
@@ -1809,9 +1651,7 @@ Hear_again()
 }
 
 /* called on the "first bite" of rotten food */
-function /* int */
-rottenfood(obj)
-{
+function rottenfood(obj) { /* int */
     pline(_("Blecch!  %s %s!"),
           is_rottable(obj) ? _("Rotten") : _("Awful"), foodword(obj));
     if (!rn2(4)) {
@@ -1837,7 +1677,7 @@ rottenfood(obj)
             what = _("you lose control of"), where = _("yourself");
         else
             what = _("you slap against the"),
-            where = (u.usteed) ? _("saddle") : surface(u.ux, u.uy);
+            where = u.usteed ? _("saddle") : surface(u.ux, u.uy);
         pline_The(_("world spins and %s %s."), what, where);
         incr_itimeout(ref_of(u.uprops[DEAF], "intrinsic"), duration);
         disp.botl = TRUE;
@@ -1851,20 +1691,18 @@ rottenfood(obj)
 }
 
 /* called when a corpse is selected as food */
-function /* int */
-eatcorpse(otmp)
-{
+function eatcorpse(otmp) { /* int */
     let retcode = 0, tp = 0, mnum = otmp.corpsenm;
     let rotted = 0;
     let ll_conduct = 0;
     let stoneable,
-            slimeable = (+(mnum == PM_GREEN_SLIME && !Slimed() && !Unchanging()
-                         && !slimeproof(gy.youmonst.data))),
+            slimeable = +(mnum == PM_GREEN_SLIME && !Slimed() && !Unchanging()
+                         && !slimeproof(gy.youmonst.data)),
             glob = otmp.globby ? TRUE : FALSE;
 
     assert(ismnum(mnum));
-    stoneable = (+(flesh_petrifies(mons[mnum]) && !Stone_resistance()
-                 && !poly_when_stoned(gy.youmonst.data)));
+    stoneable = +(flesh_petrifies(mons[mnum]) && !Stone_resistance()
+                 && !poly_when_stoned(gy.youmonst.data));
 
     /* KMH, conduct */
     if (!vegan(mons[mnum]))
@@ -1938,7 +1776,7 @@ eatcorpse(otmp)
     /* now any corpse left too long will make you mildly ill */
     } else if ((rotted > 5 || (rotted > 3 && rn2(5))) && !Sick_resistance()) {
         tp++;
-        You_feel(_("%ssick."), (Sick()) ? _("very ") : _(""));
+        You_feel(_("%ssick."), Sick() ? _("very ") : _(""));
         losehp(rnd(8), !glob ? _("cadaver") : _("rotted glob"), KILLED_BY_AN);
     }
 
@@ -1978,15 +1816,15 @@ eatcorpse(otmp)
     } else {
         /* yummy is always False for omnivores, palatable always True */
         let yummy = (vegan(mons[mnum])
-                            ? (+(!carnivorous(gy.youmonst.data)
-                               && herbivorous(gy.youmonst.data)))
-                            : (+(carnivorous(gy.youmonst.data)
-                               && !herbivorous(gy.youmonst.data)))),
-                palatable = ((((vegetarian(mons[mnum])
+                            ? +(!carnivorous(gy.youmonst.data)
+                               && herbivorous(gy.youmonst.data))
+                            : +(carnivorous(gy.youmonst.data)
+                               && !herbivorous(gy.youmonst.data))),
+                palatable = ((vegetarian(mons[mnum])
                               ? herbivorous(gy.youmonst.data)
                               : carnivorous(gy.youmonst.data))
                              && rn2(10)
-                             && (rotted < 1 || !rn2(int(rotted) + 1))) ? 1 : 0));
+                             && (rotted < 1 || !rn2(int(rotted) + 1)) ? 1 : 0);
         let pmxnam = food_xname(otmp, FALSE);
         let palatable_msgs = static_array("eatcorpse.palatable_msgs", ptr_to(char), null, [
             /* first char: T = tastes ... , I = is ... */
@@ -1995,7 +1833,7 @@ eatcorpse(otmp)
         ]);
         let idx = vegetarian(mons[mnum]) ? 0 : rn2(SIZE(palatable_msgs));
         let palat_msg = palatable_msgs[idx];
-        let use_is = (((Hallucination() || (palatable && chars[palat_msg] == ord('I'))) ? 1 : 0));
+        let use_is = (Hallucination() || (palatable && chars[palat_msg] == ord('I')) ? 1 : 0);
 
         if (!strncmpi(pmxnam, _("the "), 4))
             pmxnam += 4;
@@ -2018,16 +1856,11 @@ eatcorpse(otmp)
 }
 
 /* called as you start to eat */
-function /* void */
-start_eating(otmp, already_partly_eaten)
-{
+function start_eating(otmp, already_partly_eaten) { /* void */
     let old_nomovemsg, save_nomovemsg;
     let msgbuf = static_array("start_eating.msgbuf", char, BUFSZ);
 
     do { if (showdebug(_(__FILE__))) { let save_plnmsg = iflags.last_msg; pline(_("start_eating: %s (victual = %s)"), fmt_ptr(addr_of(otmp)), fmt_ptr(addr_of(svc.context.victual.piece))); iflags.last_msg = save_plnmsg; } } while (0)
-
-
-
 
 ;
     debugpline1(_("reqtime = %d"), svc.context.victual.reqtime, __FILE__);
@@ -2069,21 +1902,17 @@ start_eating(otmp, already_partly_eaten)
         return;
     }
 
-    void sprintf(msgbuf, _("eating %s"), food_xname(otmp, TRUE));
+    sprintf(msgbuf, _("eating %s"), food_xname(otmp, TRUE));
     set_occupation(eatfood, msgbuf, 0);
 }
 
 /* used by shrink_glob() timer routine */
-export function /* boolean */
-eating_glob(glob)
-{
-    return (+(go.occupation == eatfood && glob == svc.context.victual.piece));
+export function eating_glob(glob) { /* boolean */
+    return +(go.occupation == eatfood && glob == svc.context.victual.piece);
 }
 
 /* scare nearby monster when hero eats garlic */
-function /* void */
-garlic_breath(mtmp)
-{
+function garlic_breath(mtmp) { /* void */
     if (olfaction(mtmp.data) && distu(mtmp.mx, mtmp.my) < 7)
         monflee(mtmp, 0, FALSE, FALSE);
 }
@@ -2095,9 +1924,8 @@ garlic_breath(mtmp)
  * finishing at the time they're issued.
  * Returns FALSE if eating should not succeed for whatever reason.
  */
-function /* boolean */
-fprefx(otmp)
-{ let $goto = null;
+function fprefx(otmp) { /* boolean */
+    let $goto = null;
     $goto_give_feedback: for (;;) { switch ($goto || (otmp.otyp)) {
     case EGG:
         if (otmp.corpsenm == PM_PYROLISK) {
@@ -2131,7 +1959,7 @@ fprefx(otmp)
     case TRIPE_RATION:
         if (carnivorous(gy.youmonst.data) && !humanoid(gy.youmonst.data)) {
             pline(_("This tripe ration is surprisingly good!"));
-        } else if (((Upolyd() ? (is_orc(gy.youmonst.data)) : (Race_if(PM_ORC))))) {
+        } else if ((Upolyd() ? (is_orc(gy.youmonst.data)) : (Race_if(PM_ORC)))) {
             pline(Hallucination() ? _("Tastes great!  Less filling!")
                                 : _("Mmm, tripe... not bad!"));
         } else {
@@ -2146,10 +1974,10 @@ fprefx(otmp)
         }
         break;
     case LEMBAS_WAFER:
-        if (((Upolyd() ? (is_orc(gy.youmonst.data)) : (Race_if(PM_ORC))))) {
+        if ((Upolyd() ? (is_orc(gy.youmonst.data)) : (Race_if(PM_ORC)))) {
             pline(_("%s"), _("!#?&* elf kibble!"));
             break;
-        } else if (((Upolyd() ? (is_elf(gy.youmonst.data)) : (Race_if(PM_ELF))))) {
+        } else if ((Upolyd() ? (is_elf(gy.youmonst.data)) : (Race_if(PM_ELF)))) {
             pline(_("A little goes a long way."));
             break;
         }
@@ -2176,15 +2004,11 @@ fprefx(otmp)
         } else if (!$goto && (otmp.otyp == APPLE && otmp.cursed && !Sleep_resistance())) {
             ; /* skip core joke; feedback deferred til fpostfx() */
 
-
         /* KMH -- Why should Unix have all the fun?
            We check MACOS before UNIX to get the Apple-specific apple
            message; the '#if UNIX' code will still kick in for pear. */
         } else if (!$goto && (otmp.otyp == APPLE)) {
             pline(_("Delicious!  Must be a Macintosh!"));
-
-
-
         } else if (!$goto && (otmp.otyp == APPLE || otmp.otyp == PEAR)) {
             if (!Hallucination()) {
                 pline(_("Core dumped."));
@@ -2199,7 +2023,6 @@ fprefx(otmp)
                             ? _("Bus error")
                             : _("Yo' mama"));
             }
-
         } else {
  $goto = null;
             pline(_("This %s is %s"), singular(otmp, xname),
@@ -2217,9 +2040,7 @@ fprefx(otmp)
 }
 
 /* increment a combat intrinsic with limits on its growth */
-function /* int */
-bounded_increase(old, inc, typ)
-{
+function bounded_increase(old, inc, typ) { /* int */
     let absold, absinc, sgnold, sgninc;
 
     /* don't include any amount coming from worn rings (caller handles
@@ -2254,16 +2075,12 @@ bounded_increase(old, inc, typ)
     return old + inc;
 }
 
-function /* void */
-accessory_has_effect(otmp)
-{
+function accessory_has_effect(otmp) { /* void */
     pline(_("Magic spreads through your body as you digest the %s."),
           (otmp.oclass == RING_CLASS) ? _("ring") : _("amulet"));
 }
 
-function /* void */
-eataccessory(otmp)
-{
+function eataccessory(otmp) { /* void */
     let typ = otmp.otyp;
     let oldprop;
 
@@ -2394,7 +2211,7 @@ eataccessory(otmp)
             u.uprops[SLEEPY].intrinsic = or64(u.uprops[SLEEPY].intrinsic, FROMOUTSIDE);
             /* might also be wearing one; use shorter of two timeouts */
             if (newnap < oldnap || oldnap == 0)
-                u.uprops[SLEEPY].intrinsic = or64((and64(HSleepy(), ~TIMEOUT)), newnap);
+                u.uprops[SLEEPY].intrinsic = or64(and64(HSleepy(), ~TIMEOUT), newnap);
             break;
         }
         case RIN_SUSTAIN_ABILITY:
@@ -2410,9 +2227,7 @@ eataccessory(otmp)
 }
 
 /* called after eating non-food */
-function /* void */
-eatspecial()
-{
+function eatspecial() { /* void */
     let otmp = svc.context.victual.piece;
 
     /* lesshungry wants an occupation to handle choke messages correctly */
@@ -2430,7 +2245,6 @@ eatspecial()
         return;
     }
     if (objects[otmp.otyp].oc_material == PAPER) {
-
         if (otmp.otyp == SCR_MAIL)
             /* no nutrition */
             pline(_("This junk mail is less than satisfying."));
@@ -2448,7 +2262,7 @@ eatspecial()
     }
     if (otmp.oclass == POTION_CLASS) {
         otmp.quan++; /* dopotion() does a useup() */
-        void dopotion(otmp);
+        dopotion(otmp);
     } else if (otmp.oclass == RING_CLASS || otmp.oclass == AMULET_CLASS) {
         eataccessory(otmp);
     } else if (otmp.otyp == LEASH && otmp.corpsenm) {
@@ -2494,9 +2308,7 @@ const foodwords = static_array("foodwords", ptr_to(char), null, [
     _("plastic"), _("glass"),   _("rich food"), _("stone")
 ]);
 
-function /* const char * */
-foodword(otmp)
-{
+function foodword(otmp) { /* const char * */
     if (otmp.oclass == FOOD_CLASS)
         return _("food");
     if (otmp.oclass == GEM_CLASS && objects[otmp.otyp].oc_material == GLASS
@@ -2506,9 +2318,7 @@ foodword(otmp)
 }
 
 /* called after consuming (non-corpse) food */
-function /* void */
-fpostfx(otmp)
-{
+function fpostfx(otmp) { /* void */
     switch (otmp.otyp) {
     case SPRIG_OF_WOLFSBANE:
         if (ismnum(u.ulycn) || is_were(gy.youmonst.data))
@@ -2550,7 +2360,7 @@ fpostfx(otmp)
                 u.uhp = u.uhpmax;
             } else if (u.uhp <= 0) {
                 svk.killer.format = KILLED_BY_AN;
-                void strcpy(svk.killer.name, _("rotten lump of royal jelly"));
+                strcpy(svk.killer.name, _("rotten lump of royal jelly"));
                 done(POISONING);
             }
         }
@@ -2564,7 +2374,7 @@ fpostfx(otmp)
                 && !(poly_when_stoned(gy.youmonst.data)
                      && polymon(PM_STONE_GOLEM))) {
                 if (!Stoned()) {
-                    void sprintf(svk.killer.name, _("%s egg"), mons[otmp.corpsenm].pmnames[NEUTRAL])
+                    sprintf(svk.killer.name, _("%s egg"), mons[otmp.corpsenm].pmnames[NEUTRAL])
 ;
                     make_stoned(5, 0, KILLED_BY_AN,
                                 svk.killer.name);
@@ -2599,33 +2409,15 @@ fpostfx(otmp)
     return;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #if 0: not in this build */
 
 /*
  * return 0 if the food was not dangerous.
  * return 1 if the food was dangerous and you chose to stop.
  * return 2 if the food was dangerous and you chose to eat it anyway.
  */
-function /* int */
-edibility_prompts(otmp)
-{ const $frame = stack_frame(); try {
+function edibility_prompts(otmp) { /* int */
+    const $frame = stack_frame(); try {
     /* Blessed food detection grants hero a one-use
      * ability to detect food that is unfit for consumption
      * or dangerous and avoid it.
@@ -2633,23 +2425,23 @@ edibility_prompts(otmp)
     let buf = stack_array(char, BUFSZ), foodsmell = stack_array(char, BUFSZ),
          it_or_they = stack_array(char, QBUFSZ);
     /* 5.0: decaying globs don't become tainted anymore; in 3.6, they did */
-    let cadaver = (+(otmp.otyp == CORPSE)), stoneorslime = FALSE;
+    let cadaver = +(otmp.otyp == CORPSE), stoneorslime = FALSE;
     let material = objects[otmp.otyp].oc_material, mnum = otmp.corpsenm;
     let rotted = 0;
 
-    void strcpy(foodsmell, Tobjnam(otmp, _("smell")));
-    void strcpy(it_or_they, (otmp.quan == 1) ? _("it") : _("they"));
+    strcpy(foodsmell, Tobjnam(otmp, _("smell")));
+    strcpy(it_or_they, (otmp.quan == 1) ? _("it") : _("they"));
 
     if (cadaver || otmp.otyp == EGG || otmp.otyp == TIN
         || otmp.otyp == GLOB_OF_GREEN_SLIME) {
         /* These checks must match those in eatcorpse() */
-        stoneorslime = (+(ismnum(mnum)
+        stoneorslime = +(ismnum(mnum)
                         && flesh_petrifies(mons[mnum])
                         && !Stone_resistance()
-                        && !poly_when_stoned(gy.youmonst.data)));
+                        && !poly_when_stoned(gy.youmonst.data));
 
         if (mnum == PM_GREEN_SLIME || otmp.otyp == GLOB_OF_GREEN_SLIME)
-            stoneorslime = (+(!Unchanging() && !slimeproof(gy.youmonst.data)));
+            stoneorslime = +(!Unchanging() && !slimeproof(gy.youmonst.data));
 
         if (cadaver && !nonrotting_corpse(mnum)) {
             let age = peek_at_iced_corpse_age(otmp);
@@ -2728,11 +2520,10 @@ edibility_prompts(otmp)
         return (yn_function(buf, ynchars, ord('n'), TRUE) == ord('n')) ? 1 : 2;
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-doeat_nonfood(otmp)
-{
+function doeat_nonfood(otmp) { /* int */
     let basenutrit; /* nutrition of full item */
     let ll_conduct = 0;
     let nodelicious = FALSE;
@@ -2743,12 +2534,12 @@ doeat_nonfood(otmp)
     svc.context.victual.o_id = otmp.o_id;
     /* Don't split it, we don't need to if it's 1 move */
     svc.context.victual.usedtime = 0;
-    svc.context.victual.canchoke = (+(u.uhs == SATIATED));
+    svc.context.victual.canchoke = +(u.uhs == SATIATED);
     /* Note: gold weighs 1 pt. for each 1000 pieces (see
        pickup.c) so gold and non-gold is consistent. */
     if (otmp.oclass == COIN_CLASS)
         basenutrit = ((otmp.quan > 200000) ? 2000
-                      : int((Math.trunc(otmp.quan / 100))));
+                      : int(Math.trunc(otmp.quan / 100)));
     else if (otmp.oclass == BALL_CLASS || otmp.oclass == CHAIN_CLASS)
         basenutrit = weight(otmp);
     /* oc_nutrition is usually weight anyway */
@@ -2787,7 +2578,7 @@ doeat_nonfood(otmp)
     }
 
     if (otmp.cursed) {
-        void rottenfood(otmp);
+        rottenfood(otmp);
         nodelicious = TRUE;
     } else if (objects[otmp.otyp].oc_material == PAPER)
         nodelicious = TRUE;
@@ -2813,9 +2604,8 @@ doeat_nonfood(otmp)
 }
 
 /* the #eat command */
-export function /* int */
-doeat()
-{ const $frame = stack_frame(); try {
+export function doeat() { /* int */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj));
     let basenutrit; /* nutrition of full item */
     let dont_start = FALSE,
@@ -2878,7 +2668,7 @@ doeat()
         otmp[0].rknown = TRUE;
         if (otmp[0].quan > 1) {
             if (!carried(otmp[0]))
-                void splitobj(otmp[0], otmp[0].quan - 1);
+                splitobj(otmp[0], otmp[0].quan - 1);
             else
                 otmp[0] = splitobj(otmp[0], 1);
         }
@@ -2911,7 +2701,7 @@ doeat()
     /* KMH -- Slow digestion is... indigestible */
     if (otmp[0].otyp == RIN_SLOW_DIGESTION) {
         pline(_("This ring is indigestible!"));
-        void rottenfood(otmp[0]);
+        rottenfood(otmp[0]);
         if (otmp[0].dknown)
             trycall(otmp[0]);
         return ECMD_TIME;
@@ -2919,10 +2709,9 @@ doeat()
     if (otmp[0].oclass != FOOD_CLASS)
         return doeat_nonfood(otmp[0]);
 
-
     if (otmp[0] == svc.context.victual.piece) {
-        let one_bite_left = (+(svc.context.victual.usedtime + 1
-                                 >= svc.context.victual.reqtime));
+        let one_bite_left = +(svc.context.victual.usedtime + 1
+                                 >= svc.context.victual.reqtime);
 
         /* If they weren't able to choke, they don't suddenly become able to
          * choke just because they were interrupted.  On the other hand, if
@@ -3070,33 +2859,30 @@ doeat()
         /* possible if most has been eaten before */
         svc.context.victual.nmod = 0;
     else if (int((otmp[0].oeaten)) >= svc.context.victual.reqtime)
-        svc.context.victual.nmod = -(Math.trunc(int((otmp[0].oeaten))
-                                    / svc.context.victual.reqtime));
+        svc.context.victual.nmod = -Math.trunc(int((otmp[0].oeaten))
+                                    / svc.context.victual.reqtime);
     else
         svc.context.victual.nmod = int(unsigned(svc.context.victual.reqtime) % otmp[0].oeaten);
-    svc.context.victual.canchoke = (+(u.uhs == SATIATED));
+    svc.context.victual.canchoke = +(u.uhs == SATIATED);
 
     if (!dont_start)
         start_eating(otmp[0], already_partly_eaten);
     else
         otmp[0].owt = unsigned(weight(otmp[0]));
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* getobj callback for object to be opened with a tin opener */
-function /* int */
-tinopen_ok(obj)
-{
+function tinopen_ok(obj) { /* int */
     if (obj && obj.otyp == TIN)
         return GETOBJ_SUGGEST;
 
     return GETOBJ_EXCLUDE;
 }
 
-
-export function /* int */
-use_tin_opener(obj)
-{ const $frame = stack_frame(); try {
+export function use_tin_opener(obj) { /* int */
+    const $frame = stack_frame(); try {
     let otmp;
     let res = ECMD_OK;
 
@@ -3124,14 +2910,13 @@ use_tin_opener(obj)
 
     start_tin(otmp);
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Take a single bite from a piece of food, checking for choking and
  * modifying usedtime.  Returns 1 if they choked and survived, 0 otherwise.
  */
-function /* int */
-bite()
-{
+function bite() { /* int */
     /* hack to pacify static analyzer incorporated into gcc 12.2 */
     sa_victual(svc.context.victual);
 
@@ -3159,9 +2944,7 @@ bite()
 }
 
 /* as time goes by - called by moveloop(every move) & domove(melee attack) */
-export function /* void */
-gethungry()
-{
+export function gethungry() { /* void */
     let accessorytime;
 
     if (u.uinvulnerable || iflags.debug_hunger)
@@ -3248,7 +3031,7 @@ gethungry()
                     || !objects[uleft.otyp].oc_charged
                     || (uleft.otyp == RIN_PROTECTION
                         && ((EProtection() & ~W_RINGL) == 0
-                            || ((and64(EProtection(), ~W_RINGL)) == W_RINGR
+                            || (and64(EProtection(), ~W_RINGL) == W_RINGR
                                 && uright && uright.otyp == RIN_PROTECTION
                                 && !uright.spe)))))
                 u.uhunger--;
@@ -3277,19 +3060,15 @@ gethungry()
 }
 
 /* called after vomiting and after performing feats of magic */
-export function /* void */
-morehungry(num)
-{
+export function morehungry(num) { /* void */
     u.uhunger -= num;
     newuhs(TRUE);
 }
 
 /* called after eating (and after drinking fruit juice) */
-export function /* void */
-lesshungry(num)
-{
+export function lesshungry(num) { /* void */
     /* See comments in newuhs() for discussion on force_save_hs */
-    let iseating = (((go.occupation == eatfood) || gf.force_save_hs) ? 1 : 0);
+    let iseating = ((go.occupation == eatfood) || gf.force_save_hs ? 1 : 0);
 
     debugpline1(_("lesshungry(%d)"), num, __FILE__);
     u.uhunger += num;
@@ -3332,10 +3111,8 @@ lesshungry(num)
     newuhs(FALSE);
 }
 
-function /* int */
-unfaint()
-{
-    void Hear_again();
+function unfaint() { /* int */
+    Hear_again();
     if (u.uhs > FAINTING)
         u.uhs = FAINTING;
     stop_occupation();
@@ -3343,24 +3120,18 @@ unfaint()
     return 0;
 }
 
-export function /* boolean */
-is_fainted()
-{
+export function is_fainted() { /* boolean */
     return (+(u.uhs == FAINTED));
 }
 
 /* call when a faint must be prematurely terminated */
-export function /* void */
-reset_faint()
-{
+export function reset_faint() { /* void */
     if (ga.afternmv == unfaint)
         unmul(_("You revive."));
 }
 
 /* compute and comment on your (new?) hunger status */
-export function /* void */
-newuhs(incr)
-{
+export function newuhs(incr) { /* void */
     let newhs;
     let save_hs = static_var("newuhs.save_hs", unsigned);
     let saved_hs = static_var("newuhs.saved_hs", schar, FALSE);
@@ -3409,7 +3180,7 @@ newuhs(incr)
 
     if (newhs == FAINTING) {
         /* u,uhunger is likely to be negative at this point */
-        let uhunger_div_by_10 = sgn(u.uhunger) * (Math.trunc((abs(u.uhunger) + 5) / 10));
+        let uhunger_div_by_10 = sgn(u.uhunger) * Math.trunc((abs(u.uhunger) + 5) / 10);
 
         if (is_fainted())
             newhs = FAINTED;
@@ -3440,7 +3211,7 @@ newuhs(incr)
             bot();
             You(_("die from starvation."));
             svk.killer.format = KILLED_BY;
-            void strcpy(svk.killer.name, _("starvation"));
+            strcpy(svk.killer.name, _("starvation"));
             done(STARVING);
             /* if we return, we lifesaved, and that calls newuhs */
             return;
@@ -3505,7 +3276,7 @@ newuhs(incr)
         if ((Upolyd() ? u.mh : u.uhp) < 1) {
             You(_("die from hunger and exhaustion."));
             svk.killer.format = KILLED_BY;
-            void strcpy(svk.killer.name, _("exhaustion"));
+            strcpy(svk.killer.name, _("exhaustion"));
             done(STARVING);
             return;
         }
@@ -3513,9 +3284,7 @@ newuhs(incr)
 }
 
 /* getobj callback for object to eat - effectively just wraps is_edible() */
-function /* int */
-eat_ok(obj)
-{
+function eat_ok(obj) { /* int */
     /* 'getobj_else' will be non-zero if floor food is present and
        player declined to eat that; used to insert "else" into
        "you don't have anything [else] to eat" if not carrying any food */
@@ -3535,9 +3304,7 @@ eat_ok(obj)
 
 /* getobj callback for object to be offered (corpses and things that look like
  * the Amulet only */
-function /* int */
-offer_ok(obj)
-{
+function offer_ok(obj) { /* int */
     if (!obj)
         return getobj_else[0] ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
 
@@ -3550,16 +3317,14 @@ offer_ok(obj)
 
     /* suppress corpses on astral, amulets elsewhere
      * (!astral && amulet) || (astral && !amulet) */
-    if (Is_astralevel(u.uz) ^ (+(obj.oclass == AMULET_CLASS)))
+    if (Is_astralevel(u.uz) ^ +(obj.oclass == AMULET_CLASS))
         return GETOBJ_DOWNPLAY;
 
     return GETOBJ_SUGGEST;
 }
 
 /* getobj callback for object to be tinned */
-function /* int */
-tin_ok(obj)
-{
+function tin_ok(obj) { /* int */
     if (!obj)
         return getobj_else[0] ? GETOBJ_EXCLUDE_NONINVENT : GETOBJ_EXCLUDE;
 
@@ -3575,11 +3340,10 @@ tin_ok(obj)
 /* Returns an object representing food.
  * Object may be either on floor or in inventory.
  */
-export function /* struct obj * */
-floorfood(
+export function floorfood(
     verb,
-    corpsecheck) /* 0, no check, 1, corpses, 2, tinnable corpses */
-{ const $frame = stack_frame(); try {
+    corpsecheck) { /* struct obj * */ /* 0, no check, 1, corpses, 2, tinnable corpses */
+    const $frame = stack_frame(); try {
     var otmp;
     var qbuf = stack_array(char, QBUFSZ);
     var c;
@@ -3604,12 +3368,12 @@ floorfood(
         var ttmp = t_at(u.ux, u.uy);
 
         if (ttmp && ttmp.tseen && ttmp.ttyp == BEAR_TRAP) {
-            var u_in_beartrap = (((u.utrap && u.utraptype == TT_BEARTRAP) ? 1 : 0));
+            var u_in_beartrap = (u.utrap && u.utraptype == TT_BEARTRAP ? 1 : 0);
 
             /* If not already stuck in the trap, perhaps there should
                be a chance to becoming trapped?  Probably not, because
                then the trap would just get eaten on the _next_ turn... */
-            void sprintf(qbuf, _("There is a bear trap here (%s); eat it?"), u_in_beartrap ? _("holding you") : _("armed"))
+            sprintf(qbuf, _("There is a bear trap here (%s); eat it?"), u_in_beartrap ? _("holding you") : _("armed"))
 ;
             if ((c = yn_function(qbuf, ynqchars, ord('n'), TRUE)) == ord('y')) {
                 var beartrap;
@@ -3618,7 +3382,7 @@ floorfood(
                 if (u_in_beartrap)
                     reset_utrap(TRUE);
                 beartrap = mksobj(BEARTRAP, TRUE, FALSE);
-                void sprintf(qbuf, _("You only manage to %s the bear trap."), u_in_beartrap ? _("free yourself from") : _("disarm"))
+                sprintf(qbuf, _("You only manage to %s the bear trap."), u_in_beartrap ? _("free yourself from") : _("disarm"))
 ;
                 if (check_capacity(qbuf) && beartrap) {
                     obj_extract_self(beartrap);
@@ -3636,12 +3400,12 @@ floorfood(
             var nodig = +((levl()[u.ux][u.uy].flags & W_NONDIGGABLE) != 0);
 
             c = ord('n');
-            void strcpy(qbuf, _("There are iron bars here"));
+            strcpy(qbuf, _("There are iron bars here"));
             if (nodig || u.uhunger > 1500) {
                 pline(_("%s but you %s eat them."), qbuf,
                       nodig ? _("cannot") : _("are too full to"));
             } else {
-                void strcat(qbuf, (!svc.context.digging.chew
+                strcat(qbuf, (!svc.context.digging.chew
                               || !u_at(svc.context.digging.pos.x,
                                        svc.context.digging.pos.y)
                               || !on_level(svc.context.digging.level, u.uz))
@@ -3658,9 +3422,9 @@ floorfood(
         if (uptr != mons[PM_RUST_MONSTER]
             && (gold = g_at(u.ux, u.uy)) != null) {
             if (gold.quan == 1)
-                void sprintf(qbuf, _("There is 1 gold piece here; eat it?"));
+                sprintf(qbuf, _("There is 1 gold piece here; eat it?"));
             else
-                void sprintf(qbuf, _("There are %lld gold pieces here; eat them?"), gold.quan)
+                sprintf(qbuf, _("There are %lld gold pieces here; eat them?"), gold.quan)
 ;
             if ((c = yn_function(qbuf, ynqchars, ord('n'), TRUE)) == ord('y')) {
                 return gold;
@@ -3679,7 +3443,7 @@ floorfood(
                 : feeding ? (otmp.oclass != COIN_CLASS && is_edible(otmp))
                           : otmp.oclass == FOOD_CLASS) {
             var qsfx = stack_array(char, QBUFSZ);
-            var one = (+(otmp.quan == 1));
+            var one = +(otmp.quan == 1);
 
             /* if blind and without gloves, attempting to eat (or tin or
                offer) a cockatrice corpse is fatal before asking whether
@@ -3693,9 +3457,9 @@ floorfood(
             }
             /* "There is <an object> here; <verb> it?" or
                "There are <N objects> here; <verb> one?" */
-            void sprintf(qbuf, _("There %s "), otense(otmp, _("are")));
-            void sprintf(qsfx, _(" here; %s %s?"), verb, one ? _("it") : _("one"));
-            void safe_qbuf(qbuf, qbuf, qsfx, otmp, doname, ansimpleoname,
+            sprintf(qbuf, _("There %s "), otense(otmp, _("are")));
+            sprintf(qsfx, _(" here; %s %s?"), verb, one ? _("it") : _("one"));
+            safe_qbuf(qbuf, qbuf, qsfx, otmp, doname, ansimpleoname,
                              one ? something() : _("things"));
             if ((c = yn_function(qbuf, ynqchars, ord('n'), TRUE)) == ord('y'))
                 return  otmp;
@@ -3704,7 +3468,6 @@ floorfood(
             ++getobj_else[0];
         }
     }
-
  }
     /* We cannot use GETOBJ_PROMPT since we don't want a prompt in the case
        where nothing edible is being carried. */
@@ -3728,13 +3491,12 @@ floorfood(
        next time it needs to be used */
     getobj_else[0] = 0;
     return otmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Side effects of vomiting */
 /* added nomul (MRS) - it makes sense, you're too busy being sick! */
-export function /* void */
-vomit() /* A good idea from David Neves */
-{
+export function vomit() { /* void */ /* A good idea from David Neves */
     let spewed = FALSE;
 
     if (cantvomit(gy.youmonst.data)) {
@@ -3765,7 +3527,6 @@ vomit() /* A good idea from David Neves */
     if (spewed) {
         let mattk = attacktype_fordmg(gy.youmonst.data, AT_BREA, AD_ACID);
 
-
         /* currently, only yellow dragons can breathe acid */
         if (mattk) {
             You(_("breathe acid on yourself...")); /* [why?] */
@@ -3784,9 +3545,7 @@ vomit() /* A good idea from David Neves */
     }
 }
 
-export function /* int */
-eaten_stat(base, obj)
-{
+export function eaten_stat(base, obj) { /* int */
     let uneaten_amt, full_amount;
 
     /* get full_amount first; obj_nutrition() might modify obj->oeaten */
@@ -3804,20 +3563,19 @@ eaten_stat(base, obj)
 }
 
 /* reduce obj's oeaten field, making sure it never hits or passes 0 */
-export function /* void */
-consume_oeaten(obj, amt)
-{ const $frame = stack_frame(); try {
+export function consume_oeaten(obj, amt) { /* void */
+    const $frame = stack_frame(); try {
     if (!obj_nutrition(obj)) {
         let itembuf = stack_array(char, 40);
         let otyp = obj.otyp;
 
         if (otyp == CORPSE || otyp == EGG || otyp == TIN) {
-            void strcpy(itembuf, (otyp == CORPSE) ? _("corpse")
+            strcpy(itembuf, (otyp == CORPSE) ? _("corpse")
                             : (otyp == EGG) ? _("egg")
                               : (otyp == TIN) ? _("tin") : _("other?"));
-            void sprintf(eos(itembuf), _(" [%d]"), obj.corpsenm);
+            sprintf(eos(itembuf), _(" [%d]"), obj.corpsenm);
         } else {
-            void sprintf(itembuf, _("%d"), otyp);
+            sprintf(itembuf, _("%d"), otyp);
         }
         impossible(
             _("oeaten: attempting to set 0 nutrition food (%s) partially eaten"),
@@ -3869,29 +3627,26 @@ consume_oeaten(obj, amt)
             svc.context.victual.reqtime = svc.context.victual.usedtime;
         obj.oeaten = 1; /* smallest possible positive value */
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called when eatfood occupation has been interrupted,
    or in the case of theft, is about to be interrupted */
-export function /* boolean */
-maybe_finished_meal(stopping)
-{
+export function maybe_finished_meal(stopping) { /* boolean */
     /* in case consume_oeaten() has decided that the food is all gone */
     if (go.occupation == eatfood
         && svc.context.victual.usedtime >= svc.context.victual.reqtime) {
         if (stopping)
             go.occupation = null; /* for do_reset_eat */
         /* eatfood() calls done_eating() to use up svc.context.victual.piece */
-        void eatfood();
+        eatfood();
         return TRUE;
     }
     return FALSE;
 }
 
 /* called by revive(); sort of the opposite of maybe_finished_meal() */
-export function /* void */
-cant_finish_meal(corpse)
-{
+export function cant_finish_meal(corpse) { /* void */
     /*
      * When a corpse gets resurrected, the makemon() for that might
      * call stop_occupation().  If that happens, prevent it from using
@@ -3916,9 +3671,7 @@ cant_finish_meal(corpse)
    We don't care about consumption of non-tinned food here because special
    effects there take place on first bite rather than at end of occupation.
    [Popeye the Sailor gets out of trouble by eating tins of spinach. :-] */
-export function /* boolean */
-Popeye(threat)
-{
+export function Popeye(threat) { /* boolean */
     let otin;
     let mndx;
 
@@ -3957,9 +3710,7 @@ Popeye(threat)
 
 /* the hero has swallowed a monster whole as a purple worm or similar, and has
    finished digesting its corpse (called via ga.afternmv) */
-export function /* int */
-Finish_digestion()
-{
+export function Finish_digestion() { /* int */
     if (gc.corpsenm_digested != NON_PM) {
         cpostfx(gc.corpsenm_digested);
         gc.corpsenm_digested = NON_PM;
@@ -3968,647 +3719,186 @@ Finish_digestion()
 }
 
 /*eat.c*/
+
 import { A_LAWFUL } from "./align.h.js";
 import { ART_ORB_OF_DETECTION } from "./artilist.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { ACURRSTR } from "./attrib.h.macros.js";
-import { AMAX } from "./attrib.h.macros.js";
-import { ATEMP } from "./attrib.h.macros.js";
-import { ATTRMAX } from "./attrib.h.macros.js";
-import { ATTRMIN } from "./attrib.h.macros.js";
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS } from "./attrib.h.js";
+import { ABASE, ACURR, ACURRSTR, AMAX, ATEMP, ATTRMAX, ATTRMIN } from "./attrib.h.macros.js";
 import { struct_victual_info } from "./context.h.js";
-import { NH_GREEN } from "./decl.h.macros.js";
-import { You_can_move_again } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { vision_clears } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { BALL_CLASS } from "./defsym.h.js";
-import { CHAIN_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
+import { NH_GREEN, You_can_move_again, something, vision_clears } from "./decl.h.macros.js";
+import {
+    AMULET_CLASS, BALL_CLASS, CHAIN_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, POTION_CLASS,
+    RING_CLASS, SCROLL_CLASS, S_FUNGUS, S_MIMIC, WEAPON_CLASS,
+} from "./defsym.h.js";
 import { EXPL_FIERY } from "./display.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import { Is_airlevel, Is_astralevel, Is_waterlevel } from "./dungeon.h.macros.js";
 import { ParanoidEating } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import { BUFSZ, FALSE, LL_CONDUCT, QBUFSZ, TRUE } from "./global.h.js";
 import { Strlen } from "./global.h.macros.js";
-import { BY_COOKIE } from "./hack.h.js";
-import { CHOKING } from "./hack.h.js";
-import { COST_BITE } from "./hack.h.js";
-import { COST_DSTROY } from "./hack.h.js";
-import { COST_OPEN } from "./hack.h.js";
-import { CXN_NORMAL } from "./hack.h.js";
-import { CXN_PFX_THE } from "./hack.h.js";
-import { CXN_SINGULAR } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { DISMOUNT_FELL } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FAINTED } from "./hack.h.js";
-import { FAINTING } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_NONINVENT } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_SELECTABLE } from "./hack.h.js";
-import { GETOBJ_NOFLAGS } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HEALTHY_TIN } from "./hack.h.js";
-import { HOMEMADE_TIN } from "./hack.h.js";
-import { HUNGRY } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LIGHT_HEADED } from "./hack.h.js";
-import { NOSE } from "./hack.h.js";
-import { NOT_HUNGRY } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_PART } from "./hack.h.js";
-import { POISONING } from "./hack.h.js";
-import { POLY_NOFLAGS } from "./hack.h.js";
-import { ROTTEN_TIN } from "./hack.h.js";
-import { SATIATED } from "./hack.h.js";
-import { SELL_DONTSELL } from "./hack.h.js";
-import { SELL_NORMAL } from "./hack.h.js";
-import { SLT_ENCUMBER } from "./hack.h.js";
-import { SPINACH_TIN } from "./hack.h.js";
-import { STARVED } from "./hack.h.js";
-import { STARVING } from "./hack.h.js";
-import { STOMACH } from "./hack.h.js";
-import { STONING } from "./hack.h.js";
-import { WEAK } from "./hack.h.js";
-import { invlet_basic } from "./hack.h.js";
-import { Your1 } from "./hack.h.macros.js";
-import { distu } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { max } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import {
+    BY_COOKIE, CHOKING, COST_BITE, COST_DSTROY, COST_OPEN, CXN_NORMAL, CXN_PFX_THE, CXN_SINGULAR,
+    DIED, DISMOUNT_FELL, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FAINTED, FAINTING, GETOBJ_DOWNPLAY,
+    GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_NONINVENT, GETOBJ_EXCLUDE_SELECTABLE, GETOBJ_NOFLAGS,
+    GETOBJ_SUGGEST, HEALTHY_TIN, HOMEMADE_TIN, HUNGRY, KILLED_BY, KILLED_BY_AN, LIGHT_HEADED, NOSE,
+    NOT_HUNGRY, NO_KILLER_PREFIX, NO_PART, POISONING, POLY_NOFLAGS, ROTTEN_TIN, SATIATED,
+    SELL_DONTSELL, SELL_NORMAL, SLT_ENCUMBER, SPINACH_TIN, STARVED, STARVING, STOMACH, STONING,
+    WEAK, invlet_basic,
+} from "./hack.h.js";
+import { Your1, distu, makeknown, max, pline1, rn1, y_n } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { debugpline0 } from "./lint.h.macros.js";
-import { debugpline1 } from "./lint.h.macros.js";
-import { debugpline2 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
+import { debugpline0, debugpline1, debugpline2, showdebug } from "./lint.h.macros.js";
 import { GD_EATGOLD } from "./mextra.h.js";
 import { EDOG } from "./mextra.h.macros.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_HALU } from "./monattk.h.js";
-import { AD_STUN } from "./monattk.h.js";
-import { AT_BREA } from "./monattk.h.js";
-import { AT_ENGL } from "./monattk.h.js";
-import { AT_MAGC } from "./monattk.h.js";
-import { M_ATTK_AGR_DIED } from "./monattk.h.js";
-import { M_ATTK_HIT } from "./monattk.h.js";
-import { M_ATTK_MISS } from "./monattk.h.js";
-import { acidic } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { cantwield } from "./mondata.h.macros.js";
-import { carnivorous } from "./mondata.h.macros.js";
-import { control_teleport } from "./mondata.h.macros.js";
-import { flesh_petrifies } from "./mondata.h.macros.js";
-import { herbivorous } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_clinger } from "./mondata.h.macros.js";
-import { is_dwarf } from "./mondata.h.macros.js";
-import { is_elf } from "./mondata.h.macros.js";
-import { is_giant } from "./mondata.h.macros.js";
-import { is_orc } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { metallivorous } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { noncorporeal } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { poisonous } from "./mondata.h.macros.js";
-import { slimeproof } from "./mondata.h.macros.js";
-import { telepathic } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
-import { vegan } from "./mondata.h.macros.js";
-import { vegetarian } from "./mondata.h.macros.js";
-import { your_race } from "./mondata.h.macros.js";
-import { MR_ACID } from "./monflag.h.js";
-import { MR_COLD } from "./monflag.h.js";
-import { MR_DISINT } from "./monflag.h.js";
-import { MR_ELEC } from "./monflag.h.js";
-import { MR_FIRE } from "./monflag.h.js";
-import { MR_POISON } from "./monflag.h.js";
-import { MR_SLEEP } from "./monflag.h.js";
-import { MR_STONE } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { is_obj_mappear } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ACID_BLOB } from "./monsters.h.js";
-import { PM_BAT } from "./monsters.h.js";
-import { PM_CAVE_DWELLER } from "./monsters.h.js";
-import { PM_CHAMELEON } from "./monsters.h.js";
-import { PM_CHICKATRICE } from "./monsters.h.js";
-import { PM_COCKATRICE } from "./monsters.h.js";
-import { PM_DEATH } from "./monsters.h.js";
-import { PM_DISENCHANTER } from "./monsters.h.js";
-import { PM_DISPLACER_BEAST } from "./monsters.h.js";
-import { PM_DOG } from "./monsters.h.js";
-import { PM_DOPPELGANGER } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_FAMINE } from "./monsters.h.js";
-import { PM_FIRE_ELEMENTAL } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_GELATINOUS_CUBE } from "./monsters.h.js";
-import { PM_GENETIC_ENGINEER } from "./monsters.h.js";
-import { PM_GHOUL } from "./monsters.h.js";
-import { PM_GIANT_BAT } from "./monsters.h.js";
-import { PM_GIANT_MIMIC } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_HOUSECAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREJACKAL } from "./monsters.h.js";
-import { PM_HUMAN_WERERAT } from "./monsters.h.js";
-import { PM_HUMAN_WEREWOLF } from "./monsters.h.js";
-import { PM_KILLER_BEE } from "./monsters.h.js";
-import { PM_KITTEN } from "./monsters.h.js";
-import { PM_KNIGHT } from "./monsters.h.js";
-import { PM_LARGE_CAT } from "./monsters.h.js";
-import { PM_LARGE_DOG } from "./monsters.h.js";
-import { PM_LARGE_MIMIC } from "./monsters.h.js";
-import { PM_LICHEN } from "./monsters.h.js";
-import { PM_LITTLE_DOG } from "./monsters.h.js";
-import { PM_LIZARD } from "./monsters.h.js";
-import { PM_MASTER_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MIND_FLAYER } from "./monsters.h.js";
-import { PM_MONK } from "./monsters.h.js";
-import { PM_NEWT } from "./monsters.h.js";
-import { PM_NURSE } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_PESTILENCE } from "./monsters.h.js";
-import { PM_PYROLISK } from "./monsters.h.js";
-import { PM_QUANTUM_MECHANIC } from "./monsters.h.js";
-import { PM_QUEEN_BEE } from "./monsters.h.js";
-import { PM_RAVEN } from "./monsters.h.js";
-import { PM_RUST_MONSTER } from "./monsters.h.js";
-import { PM_SANDESTIN } from "./monsters.h.js";
-import { PM_SCORPION } from "./monsters.h.js";
-import { PM_SMALL_MIMIC } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { PM_TIGER } from "./monsters.h.js";
-import { PM_VALKYRIE } from "./monsters.h.js";
-import { PM_VIOLET_FUNGUS } from "./monsters.h.js";
-import { PM_WEREJACKAL } from "./monsters.h.js";
-import { PM_WERERAT } from "./monsters.h.js";
-import { PM_WEREWOLF } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { PM_WRAITH } from "./monsters.h.js";
-import { PM_YELLOW_LIGHT } from "./monsters.h.js";
-import { OBJ_DELETED } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { Has_contents } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { polyfood } from "./obj.h.macros.js";
-import { stale_egg } from "./obj.h.macros.js";
-import { BONE } from "./objclass.h.js";
-import { DRAGON_HIDE } from "./objclass.h.js";
-import { FLESH } from "./objclass.h.js";
-import { GLASS } from "./objclass.h.js";
-import { LEATHER } from "./objclass.h.js";
-import { PAPER } from "./objclass.h.js";
-import { WAX } from "./objclass.h.js";
-import { is_metallic } from "./objclass.h.macros.js";
-import { is_organic } from "./objclass.h.macros.js";
-import { is_rustprone } from "./objclass.h.macros.js";
-import { AMULET_OF_CHANGE } from "./objects.h.js";
-import { AMULET_OF_FLYING } from "./objects.h.js";
-import { AMULET_OF_GUARDING } from "./objects.h.js";
-import { AMULET_OF_LIFE_SAVING } from "./objects.h.js";
-import { AMULET_OF_REFLECTION } from "./objects.h.js";
-import { AMULET_OF_RESTFUL_SLEEP } from "./objects.h.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { AMULET_OF_UNCHANGING } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { APPLE } from "./objects.h.js";
-import { ATHAME } from "./objects.h.js";
-import { AXE } from "./objects.h.js";
-import { BEARTRAP } from "./objects.h.js";
-import { CANDY_BAR } from "./objects.h.js";
-import { CARROT } from "./objects.h.js";
-import { CLOVE_OF_GARLIC } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { CRAM_RATION } from "./objects.h.js";
-import { CREAM_PIE } from "./objects.h.js";
-import { CRYSKNIFE } from "./objects.h.js";
-import { C_RATION } from "./objects.h.js";
-import { DAGGER } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ELVEN_DAGGER } from "./objects.h.js";
-import { ENORMOUS_MEATBALL } from "./objects.h.js";
-import { EUCALYPTUS_LEAF } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FLINT } from "./objects.h.js";
-import { FOOD_RATION } from "./objects.h.js";
-import { FORTUNE_COOKIE } from "./objects.h.js";
-import { GLOB_OF_GREEN_SLIME } from "./objects.h.js";
-import { GOLD_PIECE } from "./objects.h.js";
-import { KNIFE } from "./objects.h.js";
-import { K_RATION } from "./objects.h.js";
-import { LEASH } from "./objects.h.js";
-import { LEMBAS_WAFER } from "./objects.h.js";
-import { LUMP_OF_ROYAL_JELLY } from "./objects.h.js";
-import { MEATBALL } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { MEAT_STICK } from "./objects.h.js";
-import { ORANGE } from "./objects.h.js";
-import { ORCISH_DAGGER } from "./objects.h.js";
-import { PANCAKE } from "./objects.h.js";
-import { PEAR } from "./objects.h.js";
-import { PICK_AXE } from "./objects.h.js";
-import { RIN_ADORNMENT } from "./objects.h.js";
-import { RIN_FREE_ACTION } from "./objects.h.js";
-import { RIN_GAIN_CONSTITUTION } from "./objects.h.js";
-import { RIN_GAIN_STRENGTH } from "./objects.h.js";
-import { RIN_INCREASE_ACCURACY } from "./objects.h.js";
-import { RIN_INCREASE_DAMAGE } from "./objects.h.js";
-import { RIN_INVISIBILITY } from "./objects.h.js";
-import { RIN_LEVITATION } from "./objects.h.js";
-import { RIN_PROTECTION } from "./objects.h.js";
-import { RIN_PROTECTION_FROM_SHAPE_CHAN } from "./objects.h.js";
-import { RIN_SEE_INVISIBLE } from "./objects.h.js";
-import { RIN_SLOW_DIGESTION } from "./objects.h.js";
-import { RIN_SUSTAIN_ABILITY } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SCR_SCARE_MONSTER } from "./objects.h.js";
-import { SILVER_DAGGER } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPRIG_OF_WOLFSBANE } from "./objects.h.js";
-import { STILETTO } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TIN_OPENER } from "./objects.h.js";
-import { TRIDENT } from "./objects.h.js";
-import { TRIPE_RATION } from "./objects.h.js";
-import { ACID_RES } from "./prop.h.js";
-import { AGGRAVATE_MONSTER } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { DEAF } from "./prop.h.js";
-import { DISINT_RES } from "./prop.h.js";
-import { DISPLACED } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FROMFORM } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { HUNGER } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { LAST_PROP } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { LIFESAVED } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { PROTECTION } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SICK } from "./prop.h.js";
-import { SLEEPY } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { SLIMED } from "./prop.h.js";
-import { STONED } from "./prop.h.js";
-import { STONE_RES } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { TELEPORT } from "./prop.h.js";
-import { TELEPORT_CONTROL } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { VOMITING } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_ARTI } from "./prop.h.js";
-import { W_RING } from "./prop.h.js";
-import { W_RINGL } from "./prop.h.js";
-import { W_RINGR } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { IRONBARS } from "./rm.h.js";
-import { W_NONDIGGABLE } from "./rm.h.js";
-import { IS_ALTAR } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
+import {
+    AD_ACID, AD_BLND, AD_HALU, AD_STUN, AT_BREA, AT_ENGL, AT_MAGC, M_ATTK_AGR_DIED, M_ATTK_HIT,
+    M_ATTK_MISS,
+} from "./monattk.h.js";
+import {
+    acidic, can_teleport, cantwield, carnivorous, control_teleport, flesh_petrifies, herbivorous,
+    humanoid, is_clinger, is_dwarf, is_elf, is_giant, is_orc, is_rider, is_undead, is_were,
+    metallivorous, mindless, monsndx, noncorporeal, perceives, poisonous, slimeproof, telepathic,
+    type_is_pname, vegan, vegetarian, your_race,
+} from "./mondata.h.macros.js";
+import {
+    MR_ACID, MR_COLD, MR_DISINT, MR_ELEC, MR_FIRE, MR_POISON, MR_SLEEP, MR_STONE, NEUTRAL,
+} from "./monflag.h.js";
+import { M_AP_NOTHING, M_AP_OBJECT } from "./monst.h.js";
+import { DEADMONSTER, U_AP_TYPE, is_obj_mappear, ismnum } from "./monst.h.macros.js";
+import {
+    LOW_PM, NON_PM, PM_ACID_BLOB, PM_BAT, PM_CAVE_DWELLER, PM_CHAMELEON, PM_CHICKATRICE,
+    PM_COCKATRICE, PM_DEATH, PM_DISENCHANTER, PM_DISPLACER_BEAST, PM_DOG, PM_DOPPELGANGER, PM_DWARF,
+    PM_ELF, PM_FAMINE, PM_FIRE_ELEMENTAL, PM_FLOATING_EYE, PM_GELATINOUS_CUBE, PM_GENETIC_ENGINEER,
+    PM_GHOUL, PM_GIANT_BAT, PM_GIANT_MIMIC, PM_GREEN_SLIME, PM_HOUSECAT, PM_HUMAN_WEREJACKAL,
+    PM_HUMAN_WERERAT, PM_HUMAN_WEREWOLF, PM_KILLER_BEE, PM_KITTEN, PM_KNIGHT, PM_LARGE_CAT,
+    PM_LARGE_DOG, PM_LARGE_MIMIC, PM_LICHEN, PM_LITTLE_DOG, PM_LIZARD, PM_MASTER_MIND_FLAYER,
+    PM_MIND_FLAYER, PM_MONK, PM_NEWT, PM_NURSE, PM_ORC, PM_PESTILENCE, PM_PYROLISK,
+    PM_QUANTUM_MECHANIC, PM_QUEEN_BEE, PM_RAVEN, PM_RUST_MONSTER, PM_SANDESTIN, PM_SCORPION,
+    PM_SMALL_MIMIC, PM_STALKER, PM_STONE_GOLEM, PM_TIGER, PM_VALKYRIE, PM_VIOLET_FUNGUS,
+    PM_WEREJACKAL, PM_WERERAT, PM_WEREWOLF, PM_WIZARD, PM_WRAITH, PM_YELLOW_LIGHT,
+} from "./monsters.h.js";
+import { OBJ_DELETED, struct_obj } from "./obj.h.js";
+import { Has_contents, carried, polyfood, stale_egg } from "./obj.h.macros.js";
+import { BONE, DRAGON_HIDE, FLESH, GLASS, LEATHER, PAPER, WAX } from "./objclass.h.js";
+import { is_metallic, is_organic, is_rustprone } from "./objclass.h.macros.js";
+import {
+    AMULET_OF_CHANGE, AMULET_OF_FLYING, AMULET_OF_GUARDING, AMULET_OF_LIFE_SAVING,
+    AMULET_OF_REFLECTION, AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING,
+    AMULET_OF_YENDOR, APPLE, ATHAME, AXE, BEARTRAP, CANDY_BAR, CARROT, CLOVE_OF_GARLIC, CORPSE,
+    CRAM_RATION, CREAM_PIE, CRYSKNIFE, C_RATION, DAGGER, EGG, ELVEN_DAGGER, ENORMOUS_MEATBALL,
+    EUCALYPTUS_LEAF, FAKE_AMULET_OF_YENDOR, FLINT, FOOD_RATION, FORTUNE_COOKIE, GLOB_OF_GREEN_SLIME,
+    GOLD_PIECE, KNIFE, K_RATION, LEASH, LEMBAS_WAFER, LUMP_OF_ROYAL_JELLY, MEATBALL, MEAT_RING,
+    MEAT_STICK, ORANGE, ORCISH_DAGGER, PANCAKE, PEAR, PICK_AXE, RIN_ADORNMENT, RIN_FREE_ACTION,
+    RIN_GAIN_CONSTITUTION, RIN_GAIN_STRENGTH, RIN_INCREASE_ACCURACY, RIN_INCREASE_DAMAGE,
+    RIN_INVISIBILITY, RIN_LEVITATION, RIN_PROTECTION, RIN_PROTECTION_FROM_SHAPE_CHAN,
+    RIN_SEE_INVISIBLE, RIN_SLOW_DIGESTION, RIN_SUSTAIN_ABILITY, SCR_MAIL, SCR_SCARE_MONSTER,
+    SILVER_DAGGER, SLIME_MOLD, SPRIG_OF_WOLFSBANE, STILETTO, TIN, TIN_OPENER, TRIDENT, TRIPE_RATION,
+} from "./objects.h.js";
+import {
+    ACID_RES, AGGRAVATE_MONSTER, COLD_RES, DEAF, DISINT_RES, DISPLACED, FAST, FIRE_RES, FROMFORM,
+    FROMOUTSIDE, HUNGER, INTRINSIC, INVIS, LAST_PROP, LEVITATION, LIFESAVED, POISON_RES, PROTECTION,
+    SEE_INVIS, SHOCK_RES, SICK, SLEEPY, SLEEP_RES, SLIMED, STONED, STONE_RES, TELEPAT, TELEPORT,
+    TELEPORT_CONTROL, TIMEOUT, VOMITING, W_AMUL, W_ARMOR, W_ARTI, W_RING, W_RINGL, W_RINGR,
+    W_SADDLE, W_TOOL, W_WEP,
+} from "./prop.h.js";
+import { IRONBARS, W_NONDIGGABLE } from "./rm.h.js";
+import { IS_ALTAR, levl } from "./rm.h.macros.js";
 import { BEAR_TRAP } from "./trap.h.js";
 import { display_nhwindow } from "./winprocs.h.macros.js";
-import { SICK_ALL } from "./you.h.js";
-import { SICK_VOMITABLE } from "./you.h.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { Race_if } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { Ugender } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Acid_resistance } from "./youprop.h.macros.js";
-import { BInvis } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { BlindedTimeout } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { Displaced } from "./youprop.h.macros.js";
-import { EConflict } from "./youprop.h.macros.js";
-import { EInvis } from "./youprop.h.macros.js";
-import { EProtection } from "./youprop.h.macros.js";
-import { ERegeneration } from "./youprop.h.macros.js";
-import { ESee_invisible } from "./youprop.h.macros.js";
-import { Fixed_abil } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { HCold_resistance } from "./youprop.h.macros.js";
-import { HConflict } from "./youprop.h.macros.js";
-import { HConfusion } from "./youprop.h.macros.js";
-import { HDisint_resistance } from "./youprop.h.macros.js";
-import { HFast } from "./youprop.h.macros.js";
-import { HFire_resistance } from "./youprop.h.macros.js";
-import { HHallucination } from "./youprop.h.macros.js";
-import { HInvis } from "./youprop.h.macros.js";
-import { HPoison_resistance } from "./youprop.h.macros.js";
-import { HRegeneration } from "./youprop.h.macros.js";
-import { HShock_resistance } from "./youprop.h.macros.js";
-import { HSleep_resistance } from "./youprop.h.macros.js";
-import { HSleepy } from "./youprop.h.macros.js";
-import { HStun } from "./youprop.h.macros.js";
-import { HTelepat } from "./youprop.h.macros.js";
-import { HTeleport_control } from "./youprop.h.macros.js";
-import { HTeleportation } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Hunger } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Lifesaved } from "./youprop.h.macros.js";
-import { Poison_resistance } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Sick_resistance } from "./youprop.h.macros.js";
-import { Sleep_resistance } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Slow_digestion } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Vomiting } from "./youprop.h.macros.js";
-import { Wwalking } from "./youprop.h.macros.js";
+import { SICK_ALL, SICK_VOMITABLE, TT_BEARTRAP } from "./you.h.js";
+import { Race_if, Role_if, Ugender, Upolyd, u_at } from "./you.h.macros.js";
+import {
+    Acid_resistance, BInvis, Blind, BlindedTimeout, Breathless, Deaf, Displaced, EConflict, EInvis,
+    EProtection, ERegeneration, ESee_invisible, Fixed_abil, Flying, Glib, HCold_resistance,
+    HConflict, HConfusion, HDisint_resistance, HFast, HFire_resistance, HHallucination, HInvis,
+    HPoison_resistance, HRegeneration, HShock_resistance, HSleep_resistance, HSleepy, HStun,
+    HTelepat, HTeleport_control, HTeleportation, Hallucination, Hunger, Invis, Levitation,
+    Lifesaved, Poison_resistance, See_invisible, Sick, Sick_resistance, Sleep_resistance, Slimed,
+    Slow_digestion, Stone_resistance, Stoned, Strangled, Unaware, Unchanging, Vomiting, Wwalking,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_struct } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, long, ord, schar, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64 } from "../rt/int64.js";
+import { abs, assert, free, sprintf, strcat, strcmp, strcpy, strlen } from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_var, static_array, static_struct, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { Bitfield } from "../rt/struct.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import {
+    Bitfield, addr_of, array_of, ptr_to, ref_of, struct, struct_assign,
+} from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
-import { o_unleash } from "./apply.js";
-import { tinnable } from "./apply.js";
-import { retouch_equipment } from "./artifact.js";
-import { retouch_object } from "./artifact.js";
-import { touch_artifact } from "./artifact.js";
-import { adjalign } from "./attrib.js";
-import { adjattrib } from "./attrib.js";
-import { change_luck } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { gainstr } from "./attrib.js";
-import { poison_strdmg } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
+import { alloc, dupstr, fmt_ptr } from "./alloc.js";
+import { o_unleash, tinnable } from "./apply.js";
+import { retouch_equipment, retouch_object, touch_artifact } from "./artifact.js";
+import {
+    adjalign, adjattrib, change_luck, exercise, gainstr, poison_strdmg, setuhpmax,
+} from "./attrib.js";
 import { bot } from "./botl.js";
-import { paranoid_query } from "./cmd.js";
-import { set_occupation } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_ice } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gc } from "./decl.js";
-import { ge } from "./decl.js";
-import { gf } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { go } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { hands_obj } from "./decl.js";
-import { iflags } from "./decl.js";
-import { sa_victual } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { u } from "./decl.js";
-import { ynchars } from "./decl.js";
-import { ynqchars } from "./decl.js";
-import { canseemon } from "./display.js";
-import { curs_on_u } from "./display.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { set_mimic_blocking } from "./display.js";
-import { donull } from "./do.js";
-import { dropx } from "./do.js";
-import { dropy } from "./do.js";
-import { heal_legs } from "./do.js";
-import { revive_corpse } from "./do.js";
-import { trycall } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { hcolor } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { rndmonnam } from "./do_name.js";
-import { Ring_gone } from "./do_wear.js";
-import { fingers_or_gloves } from "./do_wear.js";
-import { toggle_displacement } from "./do_wear.js";
-import { on_level } from "./dungeon.js";
-import { surface } from "./dungeon.js";
-import { delayed_killer } from "./end.js";
-import { done } from "./end.js";
+import { paranoid_query, set_occupation, yn_function } from "./cmd.js";
+import { is_ice, is_pool_or_lava } from "./dbridge.js";
+import {
+    disp, flags, ga, gc, ge, gf, gm, gn, go, gu, gy, hands_obj, iflags, sa_victual, svc, svk, svl,
+    svm, u, ynchars, ynqchars,
+} from "./decl.js";
+import { canseemon, curs_on_u, newsym, see_monsters, set_mimic_blocking } from "./display.js";
+import { donull, dropx, dropy, heal_legs, revive_corpse, trycall } from "./do.js";
+import { Mgender, Monnam, hcolor, mon_nam, pmname, rndmonnam } from "./do_name.js";
+import { Ring_gone, fingers_or_gloves, toggle_displacement } from "./do_wear.js";
+import { on_level, surface } from "./dungeon.js";
+import { delayed_killer, done } from "./end.js";
 import { can_reach_floor } from "./engrave.js";
-import { more_experienced } from "./exper.js";
-import { newexplevel } from "./exper.js";
-import { pluslvl } from "./exper.js";
+import { more_experienced, newexplevel, pluslvl } from "./exper.js";
 import { explode } from "./explode.js";
-import { check_capacity } from "./hack.js";
-import { end_running } from "./hack.js";
-import { inv_cnt } from "./hack.js";
-import { losehp } from "./hack.js";
-import { near_capacity } from "./hack.js";
-import { nomul } from "./hack.js";
-import { rounddiv } from "./hack.js";
-import { still_chewing } from "./hack.js";
-import { unmul } from "./hack.js";
-import { eos } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { sgn } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { addinv_nomerge } from "./invent.js";
-import { carrying } from "./invent.js";
-import { feel_cockatrice } from "./invent.js";
-import { freeinv } from "./invent.js";
-import { g_at } from "./invent.js";
-import { getobj } from "./invent.js";
-import { obj_here } from "./invent.js";
-import { stackobj } from "./invent.js";
-import { useup } from "./invent.js";
-import { useupall } from "./invent.js";
-import { useupf } from "./invent.js";
-import { will_feel_cockatrice } from "./invent.js";
-import { bcsign } from "./mkobj.js";
-import { costly_alteration } from "./mkobj.js";
-import { is_flammable } from "./mkobj.js";
-import { is_rottable } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { peek_at_iced_corpse_age } from "./mkobj.js";
-import { set_bknown } from "./mkobj.js";
-import { splitobj } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { iter_mons } from "./mon.js";
-import { mondied } from "./mon.js";
-import { monstone } from "./mon.js";
-import { rescham } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { attacktype_fordmg } from "./mondata.js";
-import { cantvomit } from "./mondata.js";
-import { dmgtype } from "./mondata.js";
-import { olfaction } from "./mondata.js";
-import { poly_when_stoned } from "./mondata.js";
-import { same_race } from "./mondata.js";
+import {
+    check_capacity, end_running, inv_cnt, losehp, near_capacity, nomul, rounddiv, still_chewing,
+    unmul,
+} from "./hack.js";
+import { eos, s_suffix, sgn, strncmpi } from "./hacklib.js";
+import {
+    addinv_nomerge, carrying, feel_cockatrice, freeinv, g_at, getobj, obj_here, stackobj, useup,
+    useupall, useupf, will_feel_cockatrice,
+} from "./invent.js";
+import {
+    bcsign, costly_alteration, is_flammable, is_rottable, mksobj, obj_extract_self,
+    peek_at_iced_corpse_age, set_bknown, splitobj, weight,
+} from "./mkobj.js";
+import { iter_mons, mondied, monstone, rescham } from "./mon.js";
+import {
+    attacktype, attacktype_fordmg, cantvomit, dmgtype, olfaction, poly_when_stoned, same_race,
+} from "./mondata.js";
 import { monflee } from "./monmove.js";
 import { mons } from "./monst.js";
-import { objdescr_is } from "./o_init.js";
-import { observe_object } from "./o_init.js";
+import { objdescr_is, observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { obj_is_pname } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { safe_qbuf } from "./objnam.js";
-import { singular } from "./objnam.js";
-import { the } from "./objnam.js";
-import { the_unique_pm } from "./objnam.js";
-import { thesimpleoname } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yobjnam } from "./objnam.js";
+import {
+    Tobjnam, an, ansimpleoname, corpse_xname, doname, killer_xname, makeplural, obj_is_pname,
+    otense, safe_qbuf, singular, the, the_unique_pm, thesimpleoname, xname, yobjnam,
+} from "./objnam.js";
 import { encumber_msg } from "./pickup.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { You_hear } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { verbalize } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { change_sex } from "./polyself.js";
-import { polymon } from "./polyself.js";
-import { polyself } from "./polyself.js";
-import { rehumanize } from "./polyself.js";
-import { dopotion } from "./potion.js";
-import { incr_itimeout } from "./potion.js";
-import { make_blinded } from "./potion.js";
-import { make_confused } from "./potion.js";
-import { make_deaf } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stoned } from "./potion.js";
-import { make_stunned } from "./potion.js";
-import { make_vomiting } from "./potion.js";
-import { self_invis_message } from "./potion.js";
-import { set_itimeout } from "./potion.js";
+import {
+    You, You_cant, You_feel, You_hear, Your, impossible, livelog_printf, pline, pline_The,
+    verbalize,
+} from "./pline.js";
+import { body_part, change_sex, polymon, polyself, rehumanize } from "./polyself.js";
+import {
+    dopotion, incr_itimeout, make_blinded, make_confused, make_deaf, make_glib, make_hallucinated,
+    make_sick, make_slimed, make_stoned, make_stunned, make_vomiting, self_invis_message,
+    set_itimeout,
+} from "./potion.js";
 import { altar_wrath } from "./pray.js";
 import { unpunish } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { d, rn2, rnd } from "./rnd.js";
 import { outrumor } from "./rumors.js";
-import { costly_spot } from "./shk.js";
-import { sellobj_state } from "./shk.js";
+import { costly_spot, sellobj_state } from "./shk.js";
 import { attrcurse } from "./sit.js";
 import { remove_worn_item } from "./steal.js";
 import { dismount_steed } from "./steed.js";
-import { fall_asleep } from "./timeout.js";
-import { obj_stop_timers } from "./timeout.js";
-import { b_trapped } from "./trap.js";
-import { deltrap } from "./trap.js";
-import { float_up } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { selftouch } from "./trap.js";
-import { t_at } from "./trap.js";
+import { fall_asleep, obj_stop_timers } from "./timeout.js";
+import { b_trapped, deltrap, float_up, reset_utrap, selftouch, t_at } from "./trap.js";
 import { vault_gd_watching } from "./vault.js";
-import { set_ulycn } from "./were.js";
-import { were_beastie } from "./were.js";
-import { you_unwere } from "./were.js";
-import { uqwepgone } from "./wield.js";
-import { uswapwepgone } from "./wield.js";
-import { uwepgone } from "./wield.js";
-import { welded } from "./wield.js";
-import { wield_tool } from "./wield.js";
-import { melt_ice } from "./zap.js";
-import { ubreatheu } from "./zap.js";
+import { set_ulycn, were_beastie, you_unwere } from "./were.js";
+import { uqwepgone, uswapwepgone, uwepgone, welded, wield_tool } from "./wield.js";
+import { melt_ice, ubreatheu } from "./zap.js";
 const __FILE__ = "eat.c";

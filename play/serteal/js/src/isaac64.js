@@ -9,45 +9,20 @@
  *      skip rest of file if USE_ISAAC64 isn't defined there;
  *      re-do 'inline' handling.
  */
-// #include "config.h"
-
-
-// #include <string.h>
-// #include "isaac64.h"
 
 export const ISAAC64_MASK = (0xFFFFFFFFFFFFFFFFn);
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* Extract ISAAC64_SZ_LOG bits (starting at bit 3). */
-function /* uint32_t */ lower_bits(x)
-{
+function lower_bits(x) { /* uint32_t */
     return unsigned((x & u64(((ISAAC64_SZ-1) << 3))) >>3n);
 }
 
 /* Extract next ISAAC64_SZ_LOG bits (starting at bit ISAAC64_SZ_LOG+2). */
-function /* uint32_t */ upper_bits(y)
-{
+function upper_bits(y) { /* uint32_t */
     return unsigned((y >> BigInt((ISAAC64_SZ_LOG+3))) & u64((ISAAC64_SZ-1)));
 }
 
-function /* void */ isaac64_update(_ctx){
+function isaac64_update(_ctx) { /* void */
   let m;
   let r;
   let a;
@@ -100,7 +75,7 @@ function /* void */ isaac64_update(_ctx){
   _ctx.n=ISAAC64_SZ;
 }
 
-function /* void */ isaac64_mix(_x){
+function isaac64_mix(_x) { /* void */
   let SHIFT = static_array("isaac64_mix.SHIFT", uchar, 8, [9,9,23,15,14,20,17,14]);
   let i;
   for(i=0;i<8;i++){
@@ -114,14 +89,14 @@ function /* void */ isaac64_mix(_x){
   }
 }
 
-
-export function /* void */ isaac64_init(_ctx, _seed, _nseed){
+export function isaac64_init(_ctx, _seed, _nseed) { /* void */
   _ctx.a=_ctx.b=_ctx.c=0n;
   memset(addr_of(_ctx.r),0,sizeof_member(_ctx, "r"));
   isaac64_reseed(_ctx,_seed,_nseed);
 }
 
-export function /* void */ isaac64_reseed(_ctx, _seed, _nseed){ const $frame = stack_frame(); try {
+export function isaac64_reseed(_ctx, _seed, _nseed) { /* void */
+    const $frame = stack_frame(); try {
   let m;
   let r;
   let x = stack_array(uint64_t, 8);
@@ -156,14 +131,15 @@ export function /* void */ isaac64_reseed(_ctx, _seed, _nseed){ const $frame = s
     memcpy(addr_of(m.subarray(i)),addr_of(x),sizeof(array_of(uint64_t, 8)));
   }
   isaac64_update(_ctx);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* uint64_t */ isaac64_next_uint64(_ctx){
+export function isaac64_next_uint64(_ctx) { /* uint64_t */
   if(!_ctx.n)isaac64_update(_ctx);
   return _ctx.r[--_ctx.n];
 }
 
-export function /* uint64_t */ isaac64_next_uint(_ctx, _n){
+export function isaac64_next_uint(_ctx, _n) { /* uint64_t */
   let r;
   let v;
   let d;
@@ -172,27 +148,16 @@ export function /* uint64_t */ isaac64_next_uint(_ctx, _n){
     v=r%_n;
     d=u64(r-v);
   }
-  while(((u64(u64(d+_n)-1n))&ISAAC64_MASK)<d);
+  while((u64(u64(d+_n)-1n)&ISAAC64_MASK)<d);
   return v;
 }
 
-
 /*isaac64.c*/
-import { ISAAC64_SEED_SZ_MAX } from "./isaac64.h.js";
-import { ISAAC64_SZ } from "./isaac64.h.js";
-import { ISAAC64_SZ_LOG } from "./isaac64.h.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { uint64_t } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { uchars } from "../rt/heap.js";
+
+import { ISAAC64_SEED_SZ_MAX, ISAAC64_SZ, ISAAC64_SZ_LOG } from "./isaac64.h.js";
+import { sizeof, uchar, uint64_t, unsigned } from "../rt/ctypes.js";
+import { stack_frame, stack_pop, uchars } from "../rt/heap.js";
 import { u64 } from "../rt/int64.js";
-import { memcpy } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { stack_array } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
+import { memcpy, memset } from "../rt/libc.js";
+import { stack_array, static_array } from "../rt/locals.js";
+import { addr_of, array_of, sizeof_member } from "../rt/struct.js";

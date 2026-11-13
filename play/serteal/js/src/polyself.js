@@ -19,24 +19,10 @@
  *    polymon (called directly)             usually golem petrification
  */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
 const no_longer_petrify_resistant = init_string(static_array("no_longer_petrify_resistant", char, sizeof_string("No longer petrify-resistant, you")), _("No longer petrify-resistant, you"), true);
 
-
 /* update the gy.youmonst.data structure pointer and intrinsics */
-export function /* void */
-set_uasmon()
-{
+export function set_uasmon() { /* void */
     let mdat = mons[u.umonnum];
     let was_vampshifter = valid_vampshiftform(gy.youmonst.cham, u.umonnum);
 
@@ -51,15 +37,6 @@ set_uasmon()
     else if (!was_vampshifter)
         gy.youmonst.cham = NON_PM;
     u.mcham = gy.youmonst.cham; /* for save/restore since youmonst isn't */
-
-
-
-
-
-
-
-
-
 
     do { if (resist_from_form(MR_FIRE)) u.uprops[FIRE_RES].intrinsic = or64(u.uprops[FIRE_RES].intrinsic, FROMFORM); else u.uprops[FIRE_RES].intrinsic = and64(u.uprops[FIRE_RES].intrinsic, ~FROMFORM); } while (0);
     do { if (resist_from_form( MR_COLD)) u.uprops[COLD_RES].intrinsic = or64(u.uprops[COLD_RES].intrinsic, FROMFORM); else u.uprops[COLD_RES].intrinsic = and64(u.uprops[COLD_RES].intrinsic, ~FROMFORM); } while (0);
@@ -105,10 +82,8 @@ set_uasmon()
     do { if (regenerates(mdat)) u.uprops[REGENERATION].intrinsic = or64(u.uprops[REGENERATION].intrinsic, FROMFORM); else u.uprops[REGENERATION].intrinsic = and64(u.uprops[REGENERATION].intrinsic, ~FROMFORM); } while (0);
     do { if ((mdat == mons[PM_SILVER_DRAGON])) u.uprops[REFLECTING].intrinsic = or64(u.uprops[REFLECTING].intrinsic, FROMFORM); else u.uprops[REFLECTING].intrinsic = and64(u.uprops[REFLECTING].intrinsic, ~FROMFORM); } while (0);
     do { if (!haseyes(mdat)) u.uprops[BLINDED].intrinsic = or64(u.uprops[BLINDED].intrinsic, FROMFORM); else u.uprops[BLINDED].intrinsic = and64(u.uprops[BLINDED].intrinsic, ~FROMFORM); } while (0);
-    PROPSET(BLND_RES, (((dmgtype_fromattack(mdat, AD_BLND, AT_EXPL)
-                       || dmgtype_fromattack(mdat, AD_BLND, AT_GAZE)) ? 1 : 0)));
-
-
+    PROPSET(BLND_RES, (dmgtype_fromattack(mdat, AD_BLND, AT_EXPL)
+                       || dmgtype_fromattack(mdat, AD_BLND, AT_GAZE) ? 1 : 0));
 
     /* whether the player is flying/floating depends on their steed,
        which won't be known during the restore process: but BFlying
@@ -118,19 +93,18 @@ set_uasmon()
         float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
     polysense();
 
-
     if (VIA_WINDOWPORT())
         status_initialize(TRUE);
 
     /* we can reset this now, having just done what it is meant to trigger */
     gw.were_changes = 0;
-} export function resist_from_form(MRtyp) { return (+((gy.youmonst.data.mresists & (MRtyp)) != 0)); } export function PROPSET(PropIndx, ON) { do {                                                        if (ON)                                                     u.uprops[PropIndx].intrinsic = or64(u.uprops[PropIndx].intrinsic, FROMFORM);           else                                                        u.uprops[PropIndx].intrinsic = and64(u.uprops[PropIndx].intrinsic, ~FROMFORM);      } while (0) }
+}
+export function resist_from_form(MRtyp) { return +((gy.youmonst.data.mresists & MRtyp) != 0); }
+export function PROPSET(PropIndx, ON) { do { if (ON) u.uprops[PropIndx].intrinsic = or64(u.uprops[PropIndx].intrinsic, FROMFORM); else u.uprops[PropIndx].intrinsic = and64(u.uprops[PropIndx].intrinsic, ~FROMFORM); } while (0) }
 
 /* Levitation overrides Flying; set or clear BFlying|I_SPECIAL */
-export function /* void */
-float_vs_flight()
-{
-    let stuck_in_floor = (((u.utrap && u.utraptype != TT_PIT) ? 1 : 0));
+export function float_vs_flight() { /* void */
+    let stuck_in_floor = (u.utrap && u.utraptype != TT_PIT ? 1 : 0);
 
     /* floating overrides flight; so does being trapped in the floor */
     if ((HLevitation() || ELevitation())
@@ -154,9 +128,7 @@ float_vs_flight()
 }
 
 /* riding blocks stealth unless hero+steed fly */
-export function /* void */
-steed_vs_stealth()
-{
+export function steed_vs_stealth() { /* void */
     if (u.usteed && !Flying() && !Levitation())
         u.uprops[STEALTH].blocked = or64(u.uprops[STEALTH].blocked, FROMOUTSIDE);
     else
@@ -164,12 +136,10 @@ steed_vs_stealth()
 }
 
 /* for changing into form that's immune to strangulation */
-function /* void */
-check_strangling(on)
-{
+function check_strangling(on) { /* void */
     /* on -- maybe resume strangling */
     if (on) {
-        let was_strangled = (+(Strangled() != 0));
+        let was_strangled = +(Strangled() != 0);
 
         /* when Strangled is already set, polymorphing from one
            vulnerable form into another causes the counter to be reset */
@@ -193,14 +163,10 @@ check_strangling(on)
     }
 }
 
-
-
 /* make a (new) human out of the player */
-function /* void */
-polyman(fmt, arg)
-{
-    let sticking = (((sticks(gy.youmonst.data) && u.ustuck && !u.uswallow) ? 1 : 0)),
-            was_mimicking = (+(U_AP_TYPE() != M_AP_NOTHING));
+function polyman(fmt, arg) { /* void */
+    let sticking = (sticks(gy.youmonst.data) && u.ustuck && !u.uswallow ? 1 : 0),
+            was_mimicking = +(U_AP_TYPE() != M_AP_NOTHING);
     let was_blind = +!!Blind(),
             had_see_invis = +!!See_invisible();
 
@@ -237,10 +203,10 @@ polyman(fmt, arg)
 
         if (kptr != null && chars[kptr.name + 0]) {
             svk.killer.format = kptr.format;
-            void strcpy(svk.killer.name, kptr.name);
+            strcpy(svk.killer.name, kptr.name);
         } else {
             svk.killer.format = KILLED_BY;
-            void strcpy(svk.killer.name, _("self-genocide"));
+            strcpy(svk.killer.name, _("self-genocide"));
         }
         dealloc_killer(kptr);
         done(GENOCIDED);
@@ -267,11 +233,7 @@ polyman(fmt, arg)
     see_monsters();
 }
 
-
-
-export function /* void */
-change_sex()
-{
+export function change_sex() { /* void */
     /* Some monsters are always of one sex and their sex can't be changed;
      * Succubi/incubi can change, but are handled below.
      *
@@ -286,26 +248,21 @@ change_sex()
         u.mfemale = +!u.mfemale;
     max_rank_sz(); /* [this appears to be superfluous] */
     if ((Upolyd() ? u.mfemale : flags.female) && gu.urole.name.f)
-        void strcpy(svp.pl_character, gu.urole.name.f);
+        strcpy(svp.pl_character, gu.urole.name.f);
     else
-        void strcpy(svp.pl_character, gu.urole.name.m);
+        strcpy(svp.pl_character, gu.urole.name.m);
     if (!Upolyd()) {
         u.umonnum = u.umonster;
     } else if (u.umonnum == PM_AMOROUS_DEMON) {
         flags.female = +!flags.female;
-
-
-
-
 
         set_uasmon();
     }
 }
 
 /* log a message if non-poly'd hero's gender has changed */
-export function /* void */
-livelog_newform(viapoly, oldgend, newgend)
-{ const $frame = stack_frame(); try {
+export function livelog_newform(viapoly, oldgend, newgend) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let oldrole, oldrank, newrole, newrank;
 
@@ -322,7 +279,7 @@ livelog_newform(viapoly, oldgend, newgend)
                                                   : gu.urole.name.m;
             oldrank = rank_of(u.ulevel, Role_switch(), oldgend);
             newrank = rank_of(u.ulevel, Role_switch(), newgend);
-            void sprintf(buf, _("%.10s %.30s"), genders[flags.female].adj, newrank);
+            sprintf(buf, _("%.10s %.30s"), genders[flags.female].adj, newrank);
             livelog_printf(LL_MINORAC, _("%s into %s"),
                            viapoly ? _("polymorphed") : _("transformed"),
                            an(strcmp(newrole, oldrole) ? newrole
@@ -330,11 +287,11 @@ livelog_newform(viapoly, oldgend, newgend)
                                 : buf));
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-newman()
-{ let $goto = null;
+function newman() { /* void */
+    let $goto = null;
     var newform;
     var i, oldlvl, newlvl, oldgend, newgend, hpmax, enmax;
 
@@ -425,7 +382,7 @@ newman()
             urgent_pline(
                      _("Your new form doesn't seem healthy enough to survive."));
             svk.killer.format = KILLED_BY_AN;
-            void strcpy(svk.killer.name, _("unsuccessful polymorph"));
+            strcpy(svk.killer.name, _("unsuccessful polymorph"));
             done(DIED);
             /* must have been life-saved to get here */
             newuhs(FALSE);
@@ -437,7 +394,7 @@ newman()
     /* use saved gender we're about to revert to, not current */
     newform = ((Upolyd() ? u.mfemale : flags.female) && gu.urace.individual.f)
                 ? gu.urace.individual.f
-                : (gu.urace.individual.m)
+                : gu.urace.individual.m
                    ? gu.urace.individual.m
                    : gu.urace.noun;
     polyman(_("You feel like a new %s!"), newform);
@@ -465,20 +422,20 @@ newman()
         selftouch(no_longer_petrify_resistant);
 }
 
-export function /* void */
-polyself(psflags)
-{ const $frame = stack_frame(); try { let $goto = null; var buf = stack_array(char, BUFSZ), mntmp = stack_var(int), gvariant = stack_var(int);
-    
+export function polyself(psflags) { /* void */
+    const $frame = stack_frame(); try {
+    let $goto = null; var buf = stack_array(char, BUFSZ), mntmp = stack_var(int), gvariant = stack_var(int);
+
     var old_light, new_light, class_, tryct; gvariant[0] = NEUTRAL;
-    var forcecontrol = (+((psflags & POLY_CONTROLLED) != 0)),
-            low_control = (+((psflags & POLY_LOW_CTRL) != 0)),
-            monsterpoly = (+((psflags & POLY_MONSTER) != 0)),
-            formrevert = (+((psflags & POLY_REVERT) != 0)),
-            draconian = (((uarm && Is_dragon_armor(uarm)) ? 1 : 0)),
-            iswere = (ismnum(u.ulycn)),
-            isvamp = (+(is_vampire(gy.youmonst.data)
-                      || is_vampshifter(gy.youmonst))),
-            controllable_poly = ((Polymorph_control() && !(Stunned() || Unaware())) ? 1 : 0);
+    var forcecontrol = +((psflags & POLY_CONTROLLED) != 0),
+            low_control = +((psflags & POLY_LOW_CTRL) != 0),
+            monsterpoly = +((psflags & POLY_MONSTER) != 0),
+            formrevert = +((psflags & POLY_REVERT) != 0),
+            draconian = (uarm && Is_dragon_armor(uarm) ? 1 : 0),
+            iswere = ismnum(u.ulycn),
+            isvamp = +(is_vampire(gy.youmonst.data)
+                      || is_vampshifter(gy.youmonst)),
+            controllable_poly = (Polymorph_control() && !(Stunned() || Unaware()) ? 1 : 0);
 
     if (Unchanging()) {
         You(_("fail to transform!"));
@@ -517,14 +474,14 @@ polyself(psflags)
         $out_by_class: do {
             mntmp[0] = NON_PM;
             getlin(_("Become what kind of monster? [type the name]"), buf);
-            void mungspaces(buf);
+            mungspaces(buf);
             if (chars[buf] == ord('\x1b')) {
                 /* user is cancelling controlled poly */
                 if (forcecontrol) { /* wizard mode #polyself */
                     pline1(Never_mind());
                     return;
                 }
-                void strcpy(buf, _("*")); /* resort to random */
+                strcpy(buf, _("*")); /* resort to random */
             }
             if (!strcmp(buf, _("*")) || !strcmp(buf, _("random"))) {
                 /* explicitly requesting random result */
@@ -640,7 +597,7 @@ polyself(psflags)
                 } else { /* dragon scale mail reverts to scales */
                     /* similar to noarmor(invent.c),
                        shorten to "<color> scale mail" */
-                    void strcpy(buf, simpleonames(uarm));
+                    strcpy(buf, simpleonames(uarm));
                     strsubst(buf, _(" dragon "), _(" "));
                     /* tricky phrasing; dragon scale mail is singular, dragon
                        scales are plural (note: we don't use "set of scales",
@@ -679,7 +636,7 @@ polyself(psflags)
                     mntmp[0] = gy.youmonst.cham;
             }
             if (controllable_poly) {
-                void sprintf(buf, _("Become %s?"), an(pmname(mons[mntmp[0]], gvariant[0])))
+                sprintf(buf, _("Become %s?"), an(pmname(mons[mntmp[0]], gvariant[0])))
 ;
                 if (y_n(buf) != ord('y'))
                     return;
@@ -691,7 +648,7 @@ polyself(psflags)
         if (mntmp[0] == PM_HUMAN)
             newman(); /* werecritter */
         else
-            void polymon(mntmp[0]);
+            polymon(mntmp[0]);
         { $goto = "made_change"; continue $goto_do_merge; } /* maybe not, but this is right anyway */
     }
 
@@ -713,7 +670,7 @@ polyself(psflags)
         || your_race(mons[mntmp[0]])) {
         newman();
     } else {
-        void polymon(mntmp[0]);
+        polymon(mntmp[0]);
     }
     gs.sex_change_ok--; /* reset */
 
@@ -728,16 +685,16 @@ polyself(psflags)
             new_light_source(u.ux, u.uy, new_light, LS_MONSTER,
                              monst_to_any(gy.youmonst));
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* (try to) make a mntmp monster out of the player; return 1 if successful */
-export function /* int */
-polymon(mntmp)
-{ const $frame = stack_frame(); try {
+export function polymon(mntmp) { /* int */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), ustuckNam = stack_array(char, BUFSZ);
-    let sticking = ((sticks(gy.youmonst.data) && u.ustuck && !u.uswallow) ? 1 : 0),
+    let sticking = (sticks(gy.youmonst.data) && u.ustuck && !u.uswallow ? 1 : 0),
             was_blind = +!!Blind(), dochange = FALSE, was_expelled = FALSE,
-            was_hiding_under = ((u.uundetected && hides_under(gy.youmonst.data)) ? 1 : 0);
+            was_hiding_under = (u.uundetected && hides_under(gy.youmonst.data) ? 1 : 0);
     let mlvl, newMaxStr;
 
     if (svm.mvitals[mntmp].mvflags & G_GENOD) { /* allow G_EXTINCT */
@@ -793,15 +750,15 @@ polymon(mntmp)
             dochange = TRUE;
     }
 
-    void strcpy(ustuckNam, u.ustuck ? Some_Monnam(u.ustuck) : _(""));
+    strcpy(ustuckNam, u.ustuck ? Some_Monnam(u.ustuck) : _(""));
 
-    void strcpy(buf, (u.umonnum != mntmp) ? _("") : _("new "));
+    strcpy(buf, (u.umonnum != mntmp) ? _("") : _("new "));
     if (dochange) {
         flags.female = +!flags.female;
-        void strcat(buf, (is_male(mons[mntmp]) || is_female(mons[mntmp]))
+        strcat(buf, (is_male(mons[mntmp]) || is_female(mons[mntmp]))
                        ? _("") : flags.female ? _("female ") : _("male "));
     }
-    void strcat(buf, pmname(mons[mntmp], flags.female ? FEMALE : MALE));
+    strcat(buf, pmname(mons[mntmp], flags.female ? FEMALE : MALE));
     You(_("%s %s!"), (u.umonnum != mntmp) ? _("turn into") : _("feel like"), an(buf));
 
     if (Stoned() && poly_when_stoned(mons[mntmp])) {
@@ -874,13 +831,7 @@ polymon(mntmp)
     if (u.ulevel < mlvl) {
         /* Low level characters can't become high level monsters for long */
 
-
-
-
-
-
         u.mtimedone = Math.trunc(u.mtimedone * u.ulevel / mlvl);
-
     }
 
     if (uskin && mntmp != armor_to_dragon(uskin.otyp))
@@ -891,7 +842,7 @@ polymon(mntmp)
     /* if hiding under something and can't hide anymore, unhide now;
        but don't auto-hide when not already hiding-under */
     if (was_hiding_under)
-        void hideunder(gy.youmonst);
+        hideunder(gy.youmonst);
 
     if (u.utrap && u.utraptype == TT_PIT) {
         set_utrap(unsigned(rn1(6, 2)), TT_PIT); /* time to escape resets */
@@ -922,7 +873,7 @@ polymon(mntmp)
 
             if (unsolid(gy.youmonst.data)) {
                 if (canspotmon(u.ustuck)) /* [see below for explanation] */
-                    void strcpy(ustuckNam, Monnam(u.ustuck));
+                    strcpy(ustuckNam, Monnam(u.ustuck));
                 pline(_("%s can no longer contain you."), ustuckNam);
                 expels_mesg = FALSE;
             }
@@ -944,7 +895,7 @@ polymon(mntmp)
            to can't-see; but might have changed from can't-see to can-see so
            override here if hero knows who u.ustuck is */
         if (canspotmon(u.ustuck))
-            void strcpy(ustuckNam, Monnam(u.ustuck));
+            strcpy(ustuckNam, Monnam(u.ustuck));
         set_ustuck(null);
         pline(_("%s loses its grip on you."), ustuckNam);
     } else if (sticking && !sticks(gy.youmonst.data)) {
@@ -956,7 +907,7 @@ polymon(mntmp)
         if (touch_petrifies(u.usteed.data) && !Stone_resistance() && rnl(3)) {
             pline(_("%s touch %s."), no_longer_petrify_resistant,
                   mon_nam(u.usteed));
-            void sprintf(buf, _("riding %s"), an(pmname(u.usteed.data, Mgender(u.usteed))))
+            sprintf(buf, _("riding %s"), an(pmname(u.usteed.data, Mgender(u.usteed))))
 ;
             instapetrify(buf);
         }
@@ -1032,7 +983,7 @@ polymon(mntmp)
         let use_thec = init_string(static_array("polymon.use_thec", char, sizeof_string("Use the command #%s to %s.")), _("Use the command #%s to %s."), true);
         let monsterc = init_string(static_array("polymon.monsterc", char, sizeof_string("monster")), _("monster"), true);
         let uptr = gy.youmonst.data;
-        let might_hide = (+(is_hider(uptr) || hides_under(uptr)));
+        let might_hide = +(is_hider(uptr) || hides_under(uptr));
 
         if (can_breathe(uptr))
             pline(use_thec, monsterc, _("use your breath weapon"));
@@ -1068,14 +1019,13 @@ polymon(mntmp)
                   eggs_in_water(uptr) ? _("spawn in the water") : _("lay an egg"));
     }
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* determine hero's temporary strength value used while polymorphed;
    hero poly'd into M2_STRONG monster usually gets 18/100 strength but
    there are exceptions; non-M2_STRONG get maximum strength set to 18 */
-export function /* schar */
-uasmon_maxStr()
-{
+export function uasmon_maxStr() { /* schar */
     let R;
     let newMaxStr;
     let mndx = u.umonnum;
@@ -1090,10 +1040,6 @@ uasmon_maxStr()
         mndx = PM_DWARF;
     } else if (is_gnome(ptr)) {
         mndx = PM_GNOME;
-
-
-
-
     }
     R = character_race(mndx);
 
@@ -1119,9 +1065,7 @@ uasmon_maxStr()
 }
 
 /* dropx() jacket for break_armor() */
-function /* void */
-dropp(obj)
-{
+function dropp(obj) { /* void */
     let otmp;
 
     /*
@@ -1153,9 +1097,8 @@ dropp(obj)
     }
 }
 
-function /* void */
-break_armor()
-{ const $frame = stack_frame(); try {
+function break_armor() { /* void */
+    const $frame = stack_frame(); try {
     let otmp;
     let uptr = gy.youmonst.data;
 
@@ -1170,7 +1113,7 @@ break_armor()
 
             You(_("break out of your armor!"));
             exercise(A_STR, FALSE);
-            void Armor_gone();
+            Armor_gone();
             useup(otmp);
         }
         if ((otmp = uarmc) != null
@@ -1179,15 +1122,15 @@ break_armor()
             if (otmp.otyp == MUMMY_WRAPPING) {
                 /* doesn't have a clasp to break open */
                 Your(_("%s tears apart!"), cloak_simple_name(otmp));
-                void Cloak_off();
+                Cloak_off();
                 useup(otmp);
             } else if (otmp.otyp == ALCHEMY_SMOCK) {
                 pline_The(_("knot on your %s is pulled apart!"), cloak_simple_name(otmp));
-                void Cloak_off();
+                Cloak_off();
                 dropp(otmp);
             } else {
                 pline_The(_("clasp on your %s breaks open!"), cloak_simple_name(otmp));
-                void Cloak_off();
+                Cloak_off();
                 dropp(otmp);
             }
         }
@@ -1204,7 +1147,7 @@ break_armor()
                could force fire resisting armor back on if hero burned in
                hell (3.0, predating Gehennom); the armor isn't actually
                gone here but also isn't available to be put back on] */
-            void Armor_gone();
+            Armor_gone();
             dropp(otmp);
         }
         if ((otmp = uarmc) != null
@@ -1214,7 +1157,7 @@ break_armor()
                 Your(_("%s falls, unsupported!"), cloak_simple_name(otmp));
             else
                 You(_("shrink out of your %s!"), cloak_simple_name(otmp));
-            void Cloak_off();
+            Cloak_off();
             dropp(otmp);
         }
         if ((otmp = uarmu) != null) {
@@ -1232,7 +1175,7 @@ break_armor()
                 let hornbuf = stack_array(char, BUFSZ);
 
                 /* Future possibilities: This could damage/destroy helmet */
-                void sprintf(hornbuf, _("horn%s"), plur(num_horns(uptr)));
+                sprintf(hornbuf, _("horn%s"), plur(num_horns(uptr)));
                 Your(_("%s %s through %s."), hornbuf, vtense(hornbuf, _("pierce")),
                      yname(otmp));
             } else {
@@ -1240,7 +1183,7 @@ break_armor()
                     cancel_don();
                 Your(_("%s falls to the %s!"), helm_simple_name(otmp),
                      surface(u.ux, u.uy));
-                void Helmet_off();
+                Helmet_off();
                 dropp(otmp);
             }
         }
@@ -1252,13 +1195,13 @@ break_armor()
             /* Drop weapon along with gloves */
             You(_("drop your gloves%s!"), uwep ? _(" and weapon") : _(""));
             drop_weapon(0);
-            void Gloves_off();
+            Gloves_off();
             /* Glib manipulation (ends immediately) handled by Gloves_off */
             dropp(otmp);
         }
         if ((otmp = uarms) != null) {
             You(_("can no longer hold your shield!"));
-            void Shield_off();
+            Shield_off();
             dropp(otmp);
         }
         if ((otmp = uarmh) != null) {
@@ -1266,7 +1209,7 @@ break_armor()
                 cancel_don();
             Your(_("%s falls to the %s!"), helm_simple_name(otmp),
                  surface(u.ux, u.uy));
-            void Helmet_off();
+            Helmet_off();
             dropp(otmp);
         }
     }
@@ -1280,7 +1223,7 @@ break_armor()
             else
                 Your(_("boots %s off your feet!"),
                      verysmall(uptr) ? _("slide") : _("are pushed"));
-            void Boots_off();
+            Boots_off();
             dropp(otmp);
         }
     }
@@ -1295,15 +1238,14 @@ break_armor()
         if (!strncmp(eyewear, _("pair of "), l = 8)) /* lenses */
             eyewear += l;
         Your(_("%s %s off!"), eyewear, vtense(eyewear, _("fall")));
-        void Blindf_off(null); /* Null: skip usual off mesg */
+        Blindf_off(null); /* Null: skip usual off mesg */
         dropp(otmp);
     }
     /* rings stay worn even when no hands */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-drop_weapon(alone)
-{
+function drop_weapon(alone) { /* void */
     let otmp;
     let what, which, whichtoo;
     let candropwep, candropswapwep, updateinv = TRUE;
@@ -1315,7 +1257,7 @@ drop_weapon(alone)
          */
         if (!alone || cantwield(gy.youmonst.data)) {
             candropwep = canletgo(uwep, _(""));
-            candropswapwep = ((!u.twoweap || canletgo(uswapwep, _(""))) ? 1 : 0);
+            candropswapwep = (!u.twoweap || canletgo(uswapwep, _("")) ? 1 : 0);
             if (alone) {
                 what = (candropwep && candropswapwep) ? _("drop") : _("release");
                 which = is_sword(uwep) ? _("sword") : weapon_descr(uwep);
@@ -1363,16 +1305,14 @@ drop_weapon(alone)
 
 /* return to original form, usually either due to polymorph timing out
    or dying from loss of hit points while being polymorphed */
-export function /* void */
-rehumanize()
-{
-    let was_flying = (+(Flying() != 0));
+export function rehumanize() { /* void */
+    let was_flying = +(Flying() != 0);
 
     /* You can't revert back while unchanging */
     if (Unchanging()) {
         if (u.mh < 1) {
             svk.killer.format = NO_KILLER_PREFIX;
-            void strcpy(svk.killer.name, _("killed while stuck in creature form"));
+            strcpy(svk.killer.name, _("killed while stuck in creature form"));
             done(DIED);
             /* can get to here if declining to die in explore or wizard
                mode; since we're wearing an amulet of unchanging we can't
@@ -1398,7 +1338,7 @@ rehumanize()
         /* can only happen if some bit of code reduces u.uhp
            instead of u.mh while poly'd */
         Your(_("old form was not healthy enough to survive."));
-        void sprintf(svk.killer.name, _("reverting to unhealthy %s form"), gu.urace.adj)
+        sprintf(svk.killer.name, _("reverting to unhealthy %s form"), gu.urace.adj)
 ;
         svk.killer.format = KILLED_BY;
         done(DIED);
@@ -1417,9 +1357,7 @@ rehumanize()
         selftouch(no_longer_petrify_resistant);
 }
 
-export function /* int */
-dobreathe()
-{
+export function dobreathe() { /* int */
     let mattk;
 
     if (Strangled()) {
@@ -1446,9 +1384,7 @@ dobreathe()
     return ECMD_TIME;
 }
 
-export function /* int */
-dospit()
-{
+export function dospit() { /* int */
     let otmp;
     let mattk;
 
@@ -1477,9 +1413,7 @@ dospit()
     return ECMD_TIME;
 }
 
-export function /* int */
-doremove()
-{
+export function doremove() { /* int */
     if (!Punished()) {
         if (u.utrap && u.utraptype == TT_BURIEDBALL) {
             pline_The(_("ball and chain are buried firmly in the %s."),
@@ -1493,13 +1427,12 @@ doremove()
     return ECMD_TIME;
 }
 
-export function /* int */
-dospinweb()
-{ const $frame = stack_frame(); try {
+export function dospinweb() { /* int */
+    const $frame = stack_frame(); try {
     let x = u.ux, y = u.uy;
     let ttmp = t_at(x, y);
     /* disallow webs on water, lava, air & cloud */
-    let reject_terrain = ((is_pool_or_lava(x, y) || IS_AIR(levl()[x][y].typ)) ? 1 : 0);
+    let reject_terrain = (is_pool_or_lava(x, y) || IS_AIR(levl()[x][y].typ) ? 1 : 0);
 
     /* [at the time this was written, it was not possible to be both a
        webmaker and a flyer, but with the advent of amulet of flying that
@@ -1529,13 +1462,13 @@ dospinweb()
                 chars[sweep + 0] = ord('\0');
                 switch (u.ustuck.data.mattk[i].adtyp) {
                 case AD_FIRE:
-                    void strcpy(sweep, _("ignites and "));
+                    strcpy(sweep, _("ignites and "));
                     break;
                 case AD_ELEC:
-                    void strcpy(sweep, _("fries and "));
+                    strcpy(sweep, _("fries and "));
                     break;
                 case AD_COLD:
-                    void strcpy(sweep, _("freezes, shatters and "));
+                    strcpy(sweep, _("freezes, shatters and "));
                     break;
                 }
                 pline_The(_("web %sis swept away!"), sweep);
@@ -1618,11 +1551,11 @@ dospinweb()
             add_damage(x, y, SHOP_WEB_COST);
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-dosummon()
-{ const $frame = stack_frame(); try {
+export function dosummon() { /* int */
+    const $frame = stack_frame(); try {
     let placeholder = stack_var(int);
     if (u.uen < 10) {
         You(_("lack the energy to send forth a call for help!"));
@@ -1636,11 +1569,11 @@ dosummon()
     if (!were_summon(gy.youmonst.data, TRUE, placeholder, 0))
         pline(_("But none arrive."));
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-dogaze()
-{ const $frame = stack_frame(); try {
+export function dogaze() { /* int */
+    const $frame = stack_frame(); try {
     let mtmp;
     let looked = 0;
     let qbuf = stack_array(char, QBUFSZ);
@@ -1689,7 +1622,7 @@ dogaze()
                 You(_("avoid gazing at %s."), y_monnam(mtmp));
             } else {
                 if (flags.confirm && mtmp.mpeaceful && !Confusion()) {
-                    void sprintf(qbuf, _("Really %s %s?"), (adtyp == AD_CONF) ? _("confuse") : _("attack"), mon_nam(mtmp))
+                    sprintf(qbuf, _("Really %s %s?"), (adtyp == AD_CONF) ? _("confuse") : _("attack"), mon_nam(mtmp))
 
 ;
                     if (y_n(qbuf) != ord('y'))
@@ -1760,7 +1693,7 @@ dogaze()
                     /* as if gazing at a sleeping anything is fruitful... */
                     urgent_pline(_("You turn to stone..."));
                     svk.killer.format = KILLED_BY;
-                    void strcpy(svk.killer.name, _("deliberately meeting Medusa's gaze"))
+                    strcpy(svk.killer.name, _("deliberately meeting Medusa's gaze"))
 ;
                     done(STONING);
                 }
@@ -1770,14 +1703,14 @@ dogaze()
     if (!looked)
         You(_("gaze at no place in particular."));
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* called by domonability() for #monster */
-export function /* int */
-dohide()
-{ const $frame = stack_frame(); try {
+export function dohide() { /* int */
+    const $frame = stack_frame(); try {
     let ismimic = +(gy.youmonst.data.mlet == S_MIMIC),
-            on_ceiling = ((is_clinger(gy.youmonst.data) || Flying()) ? 1 : 0);
+            on_ceiling = (is_clinger(gy.youmonst.data) || Flying() ? 1 : 0);
 
     /* can't hide while being held (or holding) or while trapped
        (except for floor hiders [trapper or mimic] in pits) */
@@ -1834,7 +1767,7 @@ dohide()
                turn into stone golems instead of becoming petrified */
             pline(_("Hiding under %s%s is a fatal mistake..."),
                   corpse_name, plur(ct));
-            void sprintf(kbuf, _("hiding under %s%s"), corpse_name, plur(ct));
+            sprintf(kbuf, _("hiding under %s%s"), corpse_name, plur(ct));
             instapetrify(kbuf);
             /* only reach here if life-saved */
             u.uundetected = 0;
@@ -1871,11 +1804,10 @@ dohide()
     newsym(u.ux, u.uy);
     youhiding(FALSE, 0); /* "you are now hiding" */
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-dopoly()
-{
+export function dopoly() { /* int */
     let savedat = gy.youmonst.data;
 
     if (is_vampire(gy.youmonst.data) || is_vampshifter(gy.youmonst)) {
@@ -1890,9 +1822,7 @@ dopoly()
 }
 
 /* #monster for hero-as-mind_flayer giving psychic blast */
-export function /* int */
-domindblast()
-{
+export function domindblast() { /* int */
     let mtmp, nmon;
     let dmg;
 
@@ -1937,9 +1867,7 @@ domindblast()
     return ECMD_TIME;
 }
 
-export function /* void */
-uunstick()
-{
+export function uunstick() { /* void */
     let mtmp = u.ustuck;
 
     if (!mtmp) {
@@ -1950,9 +1878,7 @@ uunstick()
     pline(_("%s is no longer in your clutches."), Monnam(mtmp));
 }
 
-export function /* void */
-skinback(silently)
-{
+export function skinback(silently) { /* void */
     if (uskin) {
         let old_light = arti_light_radius(uskin);
 
@@ -1968,9 +1894,7 @@ skinback(silently)
     }
 }
 
-export function /* const char * */
-mbodypart(mon, part)
-{
+export function mbodypart(mon, part) { /* const char * */
     let humanoid_parts = static_array("mbodypart.humanoid_parts", ptr_to(char), null, [ _("arm"),       _("eye"),  _("face"),         _("finger"),
                               _("fingertip"), _("foot"), _("hand"),         _("handed"),
                               _("head"),      _("leg"),  _("light headed"), _("neck"),
@@ -2139,15 +2063,11 @@ mbodypart(mon, part)
     return animal_parts[part];
 }
 
-export function /* const char * */
-body_part(part)
-{
+export function body_part(part) { /* const char * */
     return mbodypart(gy.youmonst, part);
 }
 
-export function /* int */
-poly_gender()
-{
+export function poly_gender() { /* int */
     /* Returns gender of polymorphed player;
      * 0/1=same meaning as flags.female, 2=none.
      */
@@ -2156,9 +2076,7 @@ poly_gender()
     return flags.female;
 }
 
-export function /* void */
-ugolemeffects(damtype, dam)
-{
+export function ugolemeffects(damtype, dam) { /* void */
     let heal = 0;
 
     /* We won't bother with "slow"/"haste" since players do not
@@ -2187,9 +2105,7 @@ ugolemeffects(damtype, dam)
     }
 }
 
-function /* int */
-armor_to_dragon(atyp)
-{
+function armor_to_dragon(atyp) { /* int */
     switch (atyp) {
     case GRAY_DRAGON_SCALE_MAIL:
     case GRAY_DRAGON_SCALES:
@@ -2200,10 +2116,6 @@ armor_to_dragon(atyp)
     case GOLD_DRAGON_SCALE_MAIL:
     case GOLD_DRAGON_SCALES:
         return PM_GOLD_DRAGON;
-
-
-
-
 
     case RED_DRAGON_SCALE_MAIL:
     case RED_DRAGON_SCALES:
@@ -2232,9 +2144,7 @@ armor_to_dragon(atyp)
 }
 
 /* some species have awareness of other species */
-function /* void */
-polysense()
-{
+function polysense() { /* void */
     let warnidx = NON_PM;
 
     svc.context.warntype.speciesidx = NON_PM;
@@ -2261,17 +2171,13 @@ polysense()
 }
 
 /* True iff hero's role or race has been genocided */
-export function /* boolean */
-ugenocided()
-{
-    return ((((svm.mvitals[gu.urole.mnum].mvflags & G_GENOD)
-            || (svm.mvitals[gu.urace.mnum].mvflags & G_GENOD)) ? 1 : 0));
+export function ugenocided() { /* boolean */
+    return ((svm.mvitals[gu.urole.mnum].mvflags & G_GENOD)
+            || (svm.mvitals[gu.urace.mnum].mvflags & G_GENOD) ? 1 : 0);
 }
 
 /* how hero feels "inside" after self-genocide of role or race */
-export function /* const char * */
-udeadinside()
-{
+export function udeadinside() { /* const char * */
     /* self-genocide used to always say "you feel dead inside" but that
        seems silly when you're polymorphed into something undead;
        monkilled() distinguishes between living (killed) and non (destroyed)
@@ -2284,599 +2190,177 @@ udeadinside()
 }
 
 /*polyself.c*/
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { AMAX } from "./attrib.h.macros.js";
-import { STR18 } from "./attrib.h.macros.js";
-import { STR19 } from "./attrib.h.macros.js";
+
+import { A_CON, A_DEX, A_STR, A_WIS } from "./attrib.h.js";
+import { ABASE, ACURR, AMAX, STR18, STR19 } from "./attrib.h.macros.js";
 import { VIA_WINDOWPORT } from "./botl.h.macros.js";
-import { Never_mind } from "./decl.h.macros.js";
-import { shudder_for_moment } from "./decl.h.macros.js";
-import { thats_enough_tries } from "./decl.h.macros.js";
-import { the_your } from "./decl.h.macros.js";
-import { S_ANGEL } from "./defsym.h.js";
-import { S_BLOB } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { S_COCKATRICE } from "./defsym.h.js";
-import { S_DOG } from "./defsym.h.js";
-import { S_DRAGON } from "./defsym.h.js";
-import { S_EEL } from "./defsym.h.js";
-import { S_ELEMENTAL } from "./defsym.h.js";
-import { S_EYE } from "./defsym.h.js";
-import { S_FELINE } from "./defsym.h.js";
-import { S_FUNGUS } from "./defsym.h.js";
-import { S_GIANT } from "./defsym.h.js";
-import { S_HUMAN } from "./defsym.h.js";
-import { S_JELLY } from "./defsym.h.js";
-import { S_LEPRECHAUN } from "./defsym.h.js";
-import { S_LIGHT } from "./defsym.h.js";
-import { S_MIMIC } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
-import { S_NYMPH } from "./defsym.h.js";
-import { S_ORC } from "./defsym.h.js";
-import { S_PUDDING } from "./defsym.h.js";
-import { S_QUANTMECH } from "./defsym.h.js";
-import { S_RODENT } from "./defsym.h.js";
-import { S_SPIDER } from "./defsym.h.js";
-import { S_UNICORN } from "./defsym.h.js";
-import { S_VAMPIRE } from "./defsym.h.js";
-import { S_VORTEX } from "./defsym.h.js";
-import { S_WORM } from "./defsym.h.js";
-import { S_YETI } from "./defsym.h.js";
-import { S_ZOMBIE } from "./defsym.h.js";
+import { Never_mind, shudder_for_moment, thats_enough_tries, the_your } from "./decl.h.macros.js";
+import {
+    S_ANGEL, S_BLOB, S_CENTAUR, S_COCKATRICE, S_DOG, S_DRAGON, S_EEL, S_ELEMENTAL, S_EYE, S_FELINE,
+    S_FUNGUS, S_GIANT, S_HUMAN, S_JELLY, S_LEPRECHAUN, S_LIGHT, S_MIMIC, S_MUMMY, S_NYMPH, S_ORC,
+    S_PUDDING, S_QUANTMECH, S_RODENT, S_SPIDER, S_UNICORN, S_VAMPIRE, S_VORTEX, S_WORM, S_YETI,
+    S_ZOMBIE,
+} from "./defsym.h.js";
 import { canspotmon } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import { In_endgame, Is_airlevel, Is_waterlevel } from "./dungeon.h.macros.js";
 import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { LL_MINORAC } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { ARM } from "./hack.h.js";
-import { BOLT_LIM } from "./hack.h.js";
-import { DIED } from "./hack.h.js";
-import { DISMOUNT_POLY } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { EYE } from "./hack.h.js";
-import { FINGER } from "./hack.h.js";
-import { FINGERTIP } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { GENOCIDED } from "./hack.h.js";
-import { HAIR } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HANDED } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { KILLED_BY } from "./hack.h.js";
-import { KILLED_BY_AN } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { NECK } from "./hack.h.js";
-import { NOSE } from "./hack.h.js";
-import { NO_KILLER_PREFIX } from "./hack.h.js";
-import { NO_PART } from "./hack.h.js";
-import { NO_TRAP_FLAGS } from "./hack.h.js";
-import { POLY_CONTROLLED } from "./hack.h.js";
-import { POLY_LOW_CTRL } from "./hack.h.js";
-import { POLY_MONSTER } from "./hack.h.js";
-import { POLY_REVERT } from "./hack.h.js";
-import { SHOP_WEB_COST } from "./hack.h.js";
-import { STONING } from "./hack.h.js";
-import { TOE } from "./hack.h.js";
-import { BZ_OFS_AD } from "./hack.h.macros.js";
-import { BZ_U_BREATH } from "./hack.h.macros.js";
-import { You1 } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { mdistu } from "./hack.h.macros.js";
-import { pline1 } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
+import { BUFSZ, FALSE, LL_CONDUCT, LL_MINORAC, MAXULEV, QBUFSZ, TRUE } from "./global.h.js";
+import {
+    ARM, BOLT_LIM, DIED, DISMOUNT_POLY, ECMD_CANCEL, ECMD_OK, ECMD_TIME, EYE, FINGER, FINGERTIP,
+    FOOT, GENOCIDED, HAIR, HAND, HANDED, HEAD, KILLED_BY, KILLED_BY_AN, LEG, NECK, NOSE,
+    NO_KILLER_PREFIX, NO_PART, NO_TRAP_FLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, POLY_MONSTER,
+    POLY_REVERT, SHOP_WEB_COST, STONING, TOE,
+} from "./hack.h.js";
+import {
+    BZ_OFS_AD, BZ_U_BREATH, You1, makeknown, mdistu, pline1, plur, rn1, y_n,
+} from "./hack.h.macros.js";
 import { SHOPBASE } from "./mkroom.h.js";
-import { AD_ACID } from "./monattk.h.js";
-import { AD_ANY } from "./monattk.h.js";
-import { AD_BLND } from "./monattk.h.js";
-import { AD_COLD } from "./monattk.h.js";
-import { AD_CONF } from "./monattk.h.js";
-import { AD_DRST } from "./monattk.h.js";
-import { AD_ELEC } from "./monattk.h.js";
-import { AD_FIRE } from "./monattk.h.js";
-import { AD_HALU } from "./monattk.h.js";
-import { AD_MAGM } from "./monattk.h.js";
-import { AD_RBRE } from "./monattk.h.js";
-import { AT_BREA } from "./monattk.h.js";
-import { AT_CLAW } from "./monattk.h.js";
-import { AT_ENGL } from "./monattk.h.js";
-import { AT_EXPL } from "./monattk.h.js";
-import { AT_GAZE } from "./monattk.h.js";
-import { AT_SPIT } from "./monattk.h.js";
-import { amorphous } from "./mondata.h.macros.js";
-import { can_breathe } from "./mondata.h.macros.js";
-import { can_teleport } from "./mondata.h.macros.js";
-import { cantwield } from "./mondata.h.macros.js";
-import { control_teleport } from "./mondata.h.macros.js";
-import { could_twoweap } from "./mondata.h.macros.js";
-import { digests } from "./mondata.h.macros.js";
-import { eggs_in_water } from "./mondata.h.macros.js";
-import { emits_light } from "./mondata.h.macros.js";
-import { flaming } from "./mondata.h.macros.js";
-import { has_head } from "./mondata.h.macros.js";
-import { has_horns } from "./mondata.h.macros.js";
-import { haseyes } from "./mondata.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { infravision } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_bat } from "./mondata.h.macros.js";
-import { is_clinger } from "./mondata.h.macros.js";
-import { is_dwarf } from "./mondata.h.macros.js";
-import { is_elf } from "./mondata.h.macros.js";
-import { is_female } from "./mondata.h.macros.js";
-import { is_floater } from "./mondata.h.macros.js";
-import { is_flyer } from "./mondata.h.macros.js";
-import { is_giant } from "./mondata.h.macros.js";
-import { is_gnome } from "./mondata.h.macros.js";
-import { is_golem } from "./mondata.h.macros.js";
-import { is_hider } from "./mondata.h.macros.js";
-import { is_male } from "./mondata.h.macros.js";
-import { is_mind_flayer } from "./mondata.h.macros.js";
-import { is_neuter } from "./mondata.h.macros.js";
-import { is_orc } from "./mondata.h.macros.js";
-import { is_placeholder } from "./mondata.h.macros.js";
-import { is_swimmer } from "./mondata.h.macros.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { is_unicorn } from "./mondata.h.macros.js";
-import { is_vampire } from "./mondata.h.macros.js";
-import { is_were } from "./mondata.h.macros.js";
-import { is_whirly } from "./mondata.h.macros.js";
-import { lays_eggs } from "./mondata.h.macros.js";
-import { likes_lava } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nonliving } from "./mondata.h.macros.js";
-import { passes_walls } from "./mondata.h.macros.js";
-import { perceives } from "./mondata.h.macros.js";
-import { pm_invisible } from "./mondata.h.macros.js";
-import { polyok } from "./mondata.h.macros.js";
-import { regenerates } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { strongmonst } from "./mondata.h.macros.js";
-import { telepathic } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
-import { unsolid } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
-import { webmaker } from "./mondata.h.macros.js";
-import { weirdnonliving } from "./mondata.h.macros.js";
-import { your_race } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { G_GENOD } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { M2_ELF } from "./monflag.h.js";
-import { M2_HUMAN } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { MR_ACID } from "./monflag.h.js";
-import { MR_COLD } from "./monflag.h.js";
-import { MR_DISINT } from "./monflag.h.js";
-import { MR_ELEC } from "./monflag.h.js";
-import { MR_FIRE } from "./monflag.h.js";
-import { MR_POISON } from "./monflag.h.js";
-import { MR_SLEEP } from "./monflag.h.js";
-import { MR_STONE } from "./monflag.h.js";
-import { MS_SHRIEK } from "./monflag.h.js";
-import { MZ_HUGE } from "./monflag.h.js";
-import { MZ_SMALL } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_NOTHING } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { DEADMONSTER } from "./monst.h.macros.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { U_AP_TYPE } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { is_vampshifter } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { resists_fire } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_AMOROUS_DEMON } from "./monsters.h.js";
-import { PM_BABY_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_BABY_PURPLE_WORM } from "./monsters.h.js";
-import { PM_BLACK_DRAGON } from "./monsters.h.js";
-import { PM_BLUE_DRAGON } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_DWARF } from "./monsters.h.js";
-import { PM_ELECTRIC_EEL } from "./monsters.h.js";
-import { PM_ELF } from "./monsters.h.js";
-import { PM_FLESH_GOLEM } from "./monsters.h.js";
-import { PM_FLOATING_EYE } from "./monsters.h.js";
-import { PM_FOG_CLOUD } from "./monsters.h.js";
-import { PM_GHOUL } from "./monsters.h.js";
-import { PM_GIANT } from "./monsters.h.js";
-import { PM_GIANT_EEL } from "./monsters.h.js";
-import { PM_GNOME } from "./monsters.h.js";
-import { PM_GOLD_DRAGON } from "./monsters.h.js";
-import { PM_GRAY_DRAGON } from "./monsters.h.js";
-import { PM_GREEN_DRAGON } from "./monsters.h.js";
-import { PM_GREEN_ELF } from "./monsters.h.js";
-import { PM_GREEN_SLIME } from "./monsters.h.js";
-import { PM_GREMLIN } from "./monsters.h.js";
-import { PM_GREY_ELF } from "./monsters.h.js";
-import { PM_HILL_GIANT } from "./monsters.h.js";
-import { PM_HILL_ORC } from "./monsters.h.js";
-import { PM_HUMAN } from "./monsters.h.js";
-import { PM_IRON_GOLEM } from "./monsters.h.js";
-import { PM_JELLYFISH } from "./monsters.h.js";
-import { PM_KI_RIN } from "./monsters.h.js";
-import { PM_KRAKEN } from "./monsters.h.js";
-import { PM_MASTODON } from "./monsters.h.js";
-import { PM_MEDUSA } from "./monsters.h.js";
-import { PM_MORDOR_ORC } from "./monsters.h.js";
-import { PM_MUMAK } from "./monsters.h.js";
-import { PM_ORANGE_DRAGON } from "./monsters.h.js";
-import { PM_ORC } from "./monsters.h.js";
-import { PM_ORC_CAPTAIN } from "./monsters.h.js";
-import { PM_OWLBEAR } from "./monsters.h.js";
-import { PM_PURPLE_WORM } from "./monsters.h.js";
-import { PM_RAVEN } from "./monsters.h.js";
-import { PM_RED_DRAGON } from "./monsters.h.js";
-import { PM_ROTHE } from "./monsters.h.js";
-import { PM_SHARK } from "./monsters.h.js";
-import { PM_SHRIEKER } from "./monsters.h.js";
-import { PM_SILVER_DRAGON } from "./monsters.h.js";
-import { PM_STALKER } from "./monsters.h.js";
-import { PM_STONE_GIANT } from "./monsters.h.js";
-import { PM_STONE_GOLEM } from "./monsters.h.js";
-import { PM_URUK_HAI } from "./monsters.h.js";
-import { PM_VAMPIRE } from "./monsters.h.js";
-import { PM_VAMPIRE_BAT } from "./monsters.h.js";
-import { PM_VAMPIRE_LEADER } from "./monsters.h.js";
-import { PM_WHITE_DRAGON } from "./monsters.h.js";
-import { PM_WOLF } from "./monsters.h.js";
-import { PM_YELLOW_DRAGON } from "./monsters.h.js";
-import { SPECIAL_PM } from "./monsters.h.js";
-import { Is_dragon_armor } from "./obj.h.macros.js";
-import { Is_dragon_scales } from "./obj.h.macros.js";
-import { WrappingAllowed } from "./obj.h.macros.js";
-import { is_flimsy } from "./obj.h.macros.js";
-import { is_sword } from "./obj.h.macros.js";
-import { ACID_VENOM } from "./objects.h.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { AMULET_OF_UNCHANGING } from "./objects.h.js";
-import { BLACK_DRAGON_SCALES } from "./objects.h.js";
-import { BLACK_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { BLINDING_VENOM } from "./objects.h.js";
-import { BLUE_DRAGON_SCALES } from "./objects.h.js";
-import { BLUE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { GOLD_DRAGON_SCALES } from "./objects.h.js";
-import { GOLD_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GRAY_DRAGON_SCALES } from "./objects.h.js";
-import { GRAY_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GREEN_DRAGON_SCALES } from "./objects.h.js";
-import { GREEN_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { MUMMY_WRAPPING } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALES } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { RED_DRAGON_SCALES } from "./objects.h.js";
-import { RED_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { SILVER_DRAGON_SCALES } from "./objects.h.js";
-import { SILVER_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { WHITE_DRAGON_SCALES } from "./objects.h.js";
-import { WHITE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALES } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALE_MAIL } from "./objects.h.js";
+import {
+    AD_ACID, AD_ANY, AD_BLND, AD_COLD, AD_CONF, AD_DRST, AD_ELEC, AD_FIRE, AD_HALU, AD_MAGM,
+    AD_RBRE, AT_BREA, AT_CLAW, AT_ENGL, AT_EXPL, AT_GAZE, AT_SPIT,
+} from "./monattk.h.js";
+import {
+    amorphous, can_breathe, can_teleport, cantwield, control_teleport, could_twoweap, digests,
+    eggs_in_water, emits_light, flaming, has_head, has_horns, haseyes, hides_under, humanoid,
+    infravision, is_animal, is_bat, is_clinger, is_dwarf, is_elf, is_female, is_floater, is_flyer,
+    is_giant, is_gnome, is_golem, is_hider, is_male, is_mind_flayer, is_neuter, is_orc,
+    is_placeholder, is_swimmer, is_undead, is_unicorn, is_vampire, is_were, is_whirly, lays_eggs,
+    likes_lava, mindless, nohands, nonliving, passes_walls, perceives, pm_invisible, polyok,
+    regenerates, slithy, strongmonst, telepathic, touch_petrifies, type_is_pname, unsolid,
+    verysmall, webmaker, weirdnonliving, your_race,
+} from "./mondata.h.macros.js";
+import {
+    FEMALE, G_GENOD, G_UNIQ, M2_ELF, M2_HUMAN, MALE, MR_ACID, MR_COLD, MR_DISINT, MR_ELEC, MR_FIRE,
+    MR_POISON, MR_SLEEP, MR_STONE, MS_SHRIEK, MZ_HUGE, MZ_SMALL, NEUTRAL,
+} from "./monflag.h.js";
+import { M_AP_FURNITURE, M_AP_NOTHING, M_AP_OBJECT } from "./monst.h.js";
+import {
+    DEADMONSTER, M_AP_TYPE, U_AP_TYPE, helpless, is_vampshifter, ismnum, resists_fire,
+} from "./monst.h.macros.js";
+import {
+    LOW_PM, NON_PM, PM_ALIGNED_CLERIC, PM_AMOROUS_DEMON, PM_BABY_GRAY_DRAGON, PM_BABY_PURPLE_WORM,
+    PM_BLACK_DRAGON, PM_BLUE_DRAGON, PM_CLERIC, PM_DWARF, PM_ELECTRIC_EEL, PM_ELF, PM_FLESH_GOLEM,
+    PM_FLOATING_EYE, PM_FOG_CLOUD, PM_GHOUL, PM_GIANT, PM_GIANT_EEL, PM_GNOME, PM_GOLD_DRAGON,
+    PM_GRAY_DRAGON, PM_GREEN_DRAGON, PM_GREEN_ELF, PM_GREEN_SLIME, PM_GREMLIN, PM_GREY_ELF,
+    PM_HILL_GIANT, PM_HILL_ORC, PM_HUMAN, PM_IRON_GOLEM, PM_JELLYFISH, PM_KI_RIN, PM_KRAKEN,
+    PM_MASTODON, PM_MEDUSA, PM_MORDOR_ORC, PM_MUMAK, PM_ORANGE_DRAGON, PM_ORC, PM_ORC_CAPTAIN,
+    PM_OWLBEAR, PM_PURPLE_WORM, PM_RAVEN, PM_RED_DRAGON, PM_ROTHE, PM_SHARK, PM_SHRIEKER,
+    PM_SILVER_DRAGON, PM_STALKER, PM_STONE_GIANT, PM_STONE_GOLEM, PM_URUK_HAI, PM_VAMPIRE,
+    PM_VAMPIRE_BAT, PM_VAMPIRE_LEADER, PM_WHITE_DRAGON, PM_WOLF, PM_YELLOW_DRAGON, SPECIAL_PM,
+} from "./monsters.h.js";
+import {
+    Is_dragon_armor, Is_dragon_scales, WrappingAllowed, is_flimsy, is_sword,
+} from "./obj.h.macros.js";
+import {
+    ACID_VENOM, ALCHEMY_SMOCK, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, BLACK_DRAGON_SCALES,
+    BLACK_DRAGON_SCALE_MAIL, BLINDING_VENOM, BLUE_DRAGON_SCALES, BLUE_DRAGON_SCALE_MAIL, CORPSE,
+    GOLD_DRAGON_SCALES, GOLD_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, GRAY_DRAGON_SCALE_MAIL,
+    GREEN_DRAGON_SCALES, GREEN_DRAGON_SCALE_MAIL, MUMMY_WRAPPING, ORANGE_DRAGON_SCALES,
+    ORANGE_DRAGON_SCALE_MAIL, RED_DRAGON_SCALES, RED_DRAGON_SCALE_MAIL, SILVER_DRAGON_SCALES,
+    SILVER_DRAGON_SCALE_MAIL, STRANGE_OBJECT, WHITE_DRAGON_SCALES, WHITE_DRAGON_SCALE_MAIL,
+    YELLOW_DRAGON_SCALES, YELLOW_DRAGON_SCALE_MAIL,
+} from "./objects.h.js";
 import { NATTK } from "./permonst.h.js";
-import { ACID_RES } from "./prop.h.js";
-import { ANTIMAGIC } from "./prop.h.js";
-import { BLINDED } from "./prop.h.js";
-import { BLND_RES } from "./prop.h.js";
-import { COLD_RES } from "./prop.h.js";
-import { DISINT_RES } from "./prop.h.js";
-import { DRAIN_RES } from "./prop.h.js";
-import { FIRE_RES } from "./prop.h.js";
-import { FLYING } from "./prop.h.js";
-import { FROMFORM } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { FROMRACE } from "./prop.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { INFRAVISION } from "./prop.h.js";
-import { INVIS } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { LEVITATION } from "./prop.h.js";
-import { PASSES_WALLS } from "./prop.h.js";
-import { POISON_RES } from "./prop.h.js";
-import { POLYMORPH } from "./prop.h.js";
-import { REFLECTING } from "./prop.h.js";
-import { REGENERATION } from "./prop.h.js";
-import { SEE_INVIS } from "./prop.h.js";
-import { SHOCK_RES } from "./prop.h.js";
-import { SICK_RES } from "./prop.h.js";
-import { SLEEP_RES } from "./prop.h.js";
-import { STEALTH } from "./prop.h.js";
-import { STONE_RES } from "./prop.h.js";
-import { STRANGLED } from "./prop.h.js";
-import { STUNNED } from "./prop.h.js";
-import { SWIMMING } from "./prop.h.js";
-import { TELEPAT } from "./prop.h.js";
-import { TELEPORT } from "./prop.h.js";
-import { TELEPORT_CONTROL } from "./prop.h.js";
-import { WARN_OF_MON } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
+import {
+    ACID_RES, ANTIMAGIC, BLINDED, BLND_RES, COLD_RES, DISINT_RES, DRAIN_RES, FIRE_RES, FLYING,
+    FROMFORM, FROMOUTSIDE, FROMRACE, HALLUC_RES, INFRAVISION, INVIS, I_SPECIAL, LEVITATION,
+    PASSES_WALLS, POISON_RES, POLYMORPH, REFLECTING, REGENERATION, SEE_INVIS, SHOCK_RES, SICK_RES,
+    SLEEP_RES, STEALTH, STONE_RES, STRANGLED, STUNNED, SWIMMING, TELEPAT, TELEPORT,
+    TELEPORT_CONTROL, WARN_OF_MON, W_ARMU,
+} from "./prop.h.js";
 import { STAIRS } from "./rm.h.js";
-import { IS_AIR } from "./rm.h.macros.js";
-import { IS_FOUNTAIN } from "./rm.h.macros.js";
-import { fmon } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { ANTI_MAGIC } from "./trap.h.js";
-import { ARROW_TRAP } from "./trap.h.js";
-import { BEAR_TRAP } from "./trap.h.js";
-import { DART_TRAP } from "./trap.h.js";
-import { FIRE_TRAP } from "./trap.h.js";
-import { HOLE } from "./trap.h.js";
-import { LANDMINE } from "./trap.h.js";
-import { LEVEL_TELEP } from "./trap.h.js";
-import { MAGIC_PORTAL } from "./trap.h.js";
-import { MAGIC_TRAP } from "./trap.h.js";
-import { PIT } from "./trap.h.js";
-import { POLY_TRAP } from "./trap.h.js";
-import { ROCKTRAP } from "./trap.h.js";
-import { ROLLING_BOULDER_TRAP } from "./trap.h.js";
-import { RUST_TRAP } from "./trap.h.js";
-import { SLP_GAS_TRAP } from "./trap.h.js";
-import { SPIKED_PIT } from "./trap.h.js";
-import { SQKY_BOARD } from "./trap.h.js";
-import { TELEP_TRAP } from "./trap.h.js";
-import { TRAPDOOR } from "./trap.h.js";
-import { VIBRATING_SQUARE } from "./trap.h.js";
-import { WEB } from "./trap.h.js";
+import { IS_AIR, IS_FOUNTAIN, fmon, levl } from "./rm.h.macros.js";
+import {
+    ANTI_MAGIC, ARROW_TRAP, BEAR_TRAP, DART_TRAP, FIRE_TRAP, HOLE, LANDMINE, LEVEL_TELEP,
+    MAGIC_PORTAL, MAGIC_TRAP, PIT, POLY_TRAP, ROCKTRAP, ROLLING_BOULDER_TRAP, RUST_TRAP,
+    SLP_GAS_TRAP, SPIKED_PIT, SQKY_BOARD, TELEP_TRAP, TRAPDOOR, VIBRATING_SQUARE, WEB,
+} from "./trap.h.js";
 import { LS_MONSTER } from "./vision.h.js";
 import { couldsee } from "./vision.h.macros.js";
-import { SICK_ALL } from "./you.h.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { TT_PIT } from "./you.h.js";
-import { TT_WEB } from "./you.h.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Ugender } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Confusion } from "./youprop.h.macros.js";
-import { EFlying } from "./youprop.h.macros.js";
-import { ELevitation } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Free_action } from "./youprop.h.macros.js";
-import { HFlying } from "./youprop.h.macros.js";
-import { HLevitation } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Passes_walls } from "./youprop.h.macros.js";
-import { Polymorph_control } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Sick } from "./youprop.h.macros.js";
-import { Sick_resistance } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Stoned } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Stunned } from "./youprop.h.macros.js";
-import { Swimming } from "./youprop.h.macros.js";
-import { Unaware } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import {
+    SICK_ALL, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB,
+} from "./you.h.js";
+import { Role_switch, Ugender, Upolyd } from "./you.h.macros.js";
+import {
+    Blind, Confusion, EFlying, ELevitation, Flying, Free_action, HFlying, HLevitation,
+    Hallucination, Invis, Levitation, Passes_walls, Polymorph_control,
+    Protection_from_shape_changers, Punished, See_invisible, Sick, Sick_resistance, Slimed,
+    Stone_resistance, Stoned, Strangled, Stunned, Swimming, Unaware, Unchanging, Underwater,
+} from "./youprop.h.macros.js";
+import { char, int, ord, schar, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, or64 } from "../rt/int64.js";
+import { sprintf, strcat, strchr, strcmp, strcpy, strncmp } from "../rt/libc.js";
+import { init_string, stack_array, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { artifact_light } from "./artifact.js";
-import { retouch_equipment } from "./artifact.js";
-import { adjabil } from "./attrib.js";
-import { exercise } from "./attrib.js";
-import { newhp } from "./attrib.js";
-import { redist_attr } from "./attrib.js";
-import { setuhpmax } from "./attrib.js";
-import { max_rank_sz } from "./botl.js";
-import { rank_of } from "./botl.js";
-import { status_initialize } from "./botl.js";
+import { ptr_to, ref_of, struct_assign } from "../rt/struct.js";
+import { artifact_light, retouch_equipment } from "./artifact.js";
+import { adjabil, exercise, newhp, redist_attr, setuhpmax } from "./attrib.js";
+import { max_rank_sz, rank_of, status_initialize } from "./botl.js";
 import { getdir } from "./cmd.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { gv } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svc } from "./decl.js";
-import { svk } from "./decl.js";
-import { svl } from "./decl.js";
-import { svm } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { buried_ball_to_freedom } from "./dig.js";
-import { bury_objs } from "./dig.js";
-import { canseemon } from "./display.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { set_mimic_blocking } from "./display.js";
-import { canletgo } from "./do.js";
-import { dropx } from "./do.js";
-import { Mgender } from "./do_name.js";
-import { Monnam } from "./do_name.js";
-import { Some_Monnam } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { l_monnam } from "./do_name.js";
-import { mon_nam } from "./do_name.js";
-import { pmname } from "./do_name.js";
-import { y_monnam } from "./do_name.js";
-import { Armor_gone } from "./do_wear.js";
-import { Blindf_off } from "./do_wear.js";
-import { Boots_off } from "./do_wear.js";
-import { Cloak_off } from "./do_wear.js";
-import { Gloves_off } from "./do_wear.js";
-import { Helmet_off } from "./do_wear.js";
-import { Shield_off } from "./do_wear.js";
-import { cancel_don } from "./do_wear.js";
-import { donning } from "./do_wear.js";
-import { find_ac } from "./do_wear.js";
+import { is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    disp, flags, gi, gm, gn, gs, gu, gv, gw, gy, program_state, svc, svk, svl, svm, svp, u,
+} from "./decl.js";
+import { buried_ball_to_freedom, bury_objs } from "./dig.js";
+import { canseemon, newsym, see_monsters, set_mimic_blocking } from "./display.js";
+import { canletgo, dropx } from "./do.js";
+import {
+    Mgender, Monnam, Some_Monnam, hliquid, l_monnam, mon_nam, pmname, y_monnam,
+} from "./do_name.js";
+import {
+    Armor_gone, Blindf_off, Boots_off, Cloak_off, Gloves_off, Helmet_off, Shield_off, cancel_don,
+    donning, find_ac,
+} from "./do_wear.js";
 import { throwit } from "./dothrow.js";
-import { has_ceiling } from "./dungeon.js";
-import { surface } from "./dungeon.js";
+import { has_ceiling, surface } from "./dungeon.js";
 import { newuhs } from "./eat.js";
-import { dealloc_killer } from "./end.js";
-import { done } from "./end.js";
-import { find_delayed_killer } from "./end.js";
-import { newpw } from "./exper.js";
-import { rndexp } from "./exper.js";
-import { in_rooms } from "./hack.js";
-import { losehp } from "./hack.js";
-import { monst_to_any } from "./hack.js";
-import { nomul } from "./hack.js";
-import { rounddiv } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { unmul } from "./hack.js";
-import { mungspaces } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
+import { dealloc_killer, done, find_delayed_killer } from "./end.js";
+import { newpw, rndexp } from "./exper.js";
+import { in_rooms, losehp, monst_to_any, nomul, rounddiv, spoteffects, unmul } from "./hack.js";
+import { mungspaces, s_suffix, strstri, strsubst } from "./hacklib.js";
 import { youhiding } from "./insight.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { arti_light_radius } from "./light.js";
-import { del_light_source } from "./light.js";
-import { new_light_source } from "./light.js";
-import { golemhp } from "./makemon.js";
-import { is_home_elemental } from "./makemon.js";
-import { mkclass_poly } from "./makemon.js";
+import { update_inventory, useup } from "./invent.js";
+import { arti_light_radius, del_light_source, new_light_source } from "./light.js";
+import { golemhp, is_home_elemental, mkclass_poly } from "./makemon.js";
 import { expels } from "./mhitu.js";
-import { maybe_adjust_light } from "./mkobj.js";
-import { mksobj } from "./mkobj.js";
-import { egg_type_from_parent } from "./mon.js";
-import { hideunder } from "./mon.js";
-import { killed } from "./mon.js";
-import { set_ustuck } from "./mon.js";
-import { setmangry } from "./mon.js";
-import { valid_vampshiftform } from "./mon.js";
-import { wakeup } from "./mon.js";
-import { attacktype } from "./mondata.js";
-import { attacktype_fordmg } from "./mondata.js";
-import { breakarm } from "./mondata.js";
-import { can_be_strangled } from "./mondata.js";
-import { dmgtype } from "./mondata.js";
-import { dmgtype_fromattack } from "./mondata.js";
-import { name_to_mon } from "./mondata.js";
-import { name_to_monclass } from "./mondata.js";
-import { num_horns } from "./mondata.js";
-import { poly_when_stoned } from "./mondata.js";
-import { resists_drli } from "./mondata.js";
-import { set_mon_data } from "./mondata.js";
-import { sliparm } from "./mondata.js";
-import { sticks } from "./mondata.js";
+import { maybe_adjust_light, mksobj } from "./mkobj.js";
+import {
+    egg_type_from_parent, hideunder, killed, set_ustuck, setmangry, valid_vampshiftform, wakeup,
+} from "./mon.js";
+import {
+    attacktype, attacktype_fordmg, breakarm, can_be_strangled, dmgtype, dmgtype_fromattack,
+    name_to_mon, name_to_monclass, num_horns, poly_when_stoned, resists_drli, set_mon_data, sliparm,
+    sticks,
+} from "./mondata.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
-import { an } from "./objnam.js";
-import { cloak_simple_name } from "./objnam.js";
-import { cxname } from "./objnam.js";
-import { helm_simple_name } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { the } from "./objnam.js";
-import { the_unique_pm } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { yname } from "./objnam.js";
+import {
+    an, cloak_simple_name, cxname, helm_simple_name, makeplural, otense, simpleonames, the,
+    the_unique_pm, vtense, yname,
+} from "./objnam.js";
 import { encumber_msg } from "./pickup.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { urgent_pline } from "./pline.js";
-import { make_blinded } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_sick } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { make_stoned } from "./potion.js";
-import { set_itimeout } from "./potion.js";
+import {
+    There, You, You_cant, You_feel, Your, impossible, livelog_printf, pline, pline_The,
+    urgent_pline,
+} from "./pline.js";
+import {
+    make_blinded, make_glib, make_sick, make_slimed, make_stoned, set_itimeout,
+} from "./potion.js";
 import { unpunish } from "./read.js";
-import { d } from "./rnd.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
-import { rnl } from "./rnd.js";
-import { character_race } from "./role.js";
-import { genders } from "./role.js";
+import { d, rn2, rnd, rnl } from "./rnd.js";
+import { character_race, genders } from "./role.js";
 import { add_damage } from "./shk.js";
 import { On_stairs } from "./stairs.js";
-import { can_ride } from "./steed.js";
-import { dismount_steed } from "./steed.js";
-import { end_burn } from "./timeout.js";
-import { learn_egg_type } from "./timeout.js";
-import { deltrap } from "./trap.js";
-import { dotrap } from "./trap.js";
-import { feeltrap } from "./trap.js";
-import { ignite_items } from "./trap.js";
-import { instapetrify } from "./trap.js";
-import { maketrap } from "./trap.js";
-import { reset_utrap } from "./trap.js";
-import { selftouch } from "./trap.js";
-import { set_utrap } from "./trap.js";
-import { t_at } from "./trap.js";
+import { can_ride, dismount_steed } from "./steed.js";
+import { end_burn, learn_egg_type } from "./timeout.js";
+import {
+    deltrap, dotrap, feeltrap, ignite_items, instapetrify, maketrap, reset_utrap, selftouch,
+    set_utrap, t_at,
+} from "./trap.js";
 import { weapon_descr } from "./weapon.js";
-import { counter_were } from "./were.js";
-import { were_beastie } from "./were.js";
-import { were_summon } from "./were.js";
-import { untwoweapon } from "./wield.js";
-import { uswapwepgone } from "./wield.js";
-import { uwepgone } from "./wield.js";
+import { counter_were, were_beastie, were_summon } from "./were.js";
+import { untwoweapon, uswapwepgone, uwepgone } from "./wield.js";
 import { getlin } from "./windows.js";
-import { racial_exception } from "./worn.js";
-import { setworn } from "./worn.js";
-import { destroy_items } from "./zap.js";
-import { ubreatheu } from "./zap.js";
-import { ubuzz } from "./zap.js";
+import { racial_exception, setworn } from "./worn.js";
+import { destroy_items, ubreatheu, ubuzz } from "./zap.js";

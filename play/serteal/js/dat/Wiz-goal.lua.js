@@ -1,8 +1,8 @@
-export default "\n" + // -- NetHack Wizard Wiz-goal.lua	$NHDT-Date: 1652196018 2022/05/10 15:20:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
-"\n" + // --	Copyright (c) 1992 by David Cohrs
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-`des.level_init({ style = "solidfill", fg = " " });
+export default String.raw`-- NetHack Wizard Wiz-goal.lua	$NHDT-Date: 1652196018 2022/05/10 15:20:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.2 $
+--	Copyright (c) 1992 by David Cohrs
+-- NetHack may be freely redistributed.  See license for details.
+--
+des.level_init({ style = "solidfill", fg = " " });
 
 des.level_flags("mazelevel");
 
@@ -28,8 +28,8 @@ des.map([[
                                                                             
                                                                             
 ]]);
-` + "\n" + // -- Dungeon Description
-`des.region({ region={13,10,18,12}, lit=0, type="temple", filled=2 })
+-- Dungeon Description
+des.region({ region={13,10,18,12}, lit=0, type="temple", filled=2 })
 des.region(selection.area(13,06,18,08), "lit")
 des.region(selection.area(20,04,30,14), "unlit")
 des.region(selection.area(32,06,33,07), "unlit")
@@ -46,8 +46,8 @@ des.region(selection.area(41,11,42,12), "unlit")
 des.region(selection.area(44,11,45,12), "unlit")
 des.region(selection.area(47,11,48,12), "unlit")
 des.region(selection.area(50,04,60,14), "lit")
-` + "\n" + // -- Doors
-`des.door("locked",19,06)
+-- Doors
+des.door("locked",19,06)
 des.door("locked",14,09)
 des.door("locked",31,09)
 des.door("locked",33,08)
@@ -63,14 +63,14 @@ des.door("locked",42,10)
 des.door("locked",45,10)
 des.door("locked",48,10)
 des.door("locked",49,09)
-` + "\n" + // -- Stairs
-`des.stair("up", 55,05)
-` + "\n" + // -- Non diggable walls
-`des.non_diggable(selection.area(00,00,75,19))
-` + "\n" + // -- The altar.  This is not a shrine.
-`des.altar({ coord={16,11}, aligned="noncoaligned", type="altar" })
-` + "\n" + // -- Objects
-`des.object({ id = "amulet of ESP", x=16, y=11, buc="blessed", spe=0, name="The Eye of the Aethiopica" })
+-- Stairs
+des.stair("up", 55,05)
+-- Non diggable walls
+des.non_diggable(selection.area(00,00,75,19))
+-- The altar.  This is not a shrine.
+des.altar({ coord={16,11}, aligned="noncoaligned", type="altar" })
+-- Objects
+des.object({ id = "amulet of ESP", x=16, y=11, buc="blessed", spe=0, name="The Eye of the Aethiopica" })
 des.object()
 des.object()
 des.object()
@@ -85,15 +85,15 @@ des.object()
 des.object()
 des.object()
 des.object()
-` + "\n" + // -- Random traps
-`des.trap()
+-- Random traps
 des.trap()
 des.trap()
 des.trap()
 des.trap()
 des.trap()
-` + "\n" + // -- Random monsters.
-`des.monster("Dark One", 16, 11)
+des.trap()
+-- Random monsters.
+des.monster("Dark One", 16, 11)
 des.monster({ class = "B",random, peaceful = 0 })
 des.monster({ class = "B",random, peaceful = 0 })
 des.monster({ class = "B",random, peaceful = 0 })
@@ -121,8 +121,8 @@ des.monster("vampire bat")
 des.monster("vampire bat")
 des.monster("vampire bat")
 des.monster({ class = "i",random, peaceful = 0 })
-` + "\n" + // -- Captive Monsters in the dungeon
-`des.monster({ id = "rogue", x=35, y=06, peaceful=1, name="Pug" })
+-- Captive Monsters in the dungeon
+des.monster({ id = "rogue", x=35, y=06, peaceful=1, name="Pug" })
 des.monster({ id = "owlbear", x=47, y=06, peaceful=1, asleep=1 })
 des.monster({ id = "wizard", x=32, y=11, peaceful=1, asleep=1, name="Newt" })
 des.monster({ id = "Grey-elf", x=44, y=11, peaceful=1 })

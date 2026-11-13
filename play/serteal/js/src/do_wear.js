@@ -3,8 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 const see_yourself = init_string(static_array("see_yourself", char, sizeof_string("see yourself")), _("see yourself"), true);
 const unknown_type = init_string(static_array("unknown_type", char, sizeof_string("Unknown type of %s (%d)")), _("Unknown type of %s (%d)"), true);
 const c_armor = init_string(static_array("c_armor", char, sizeof_string("armor")), _("armor"), true); const c_suit = init_string(static_array("c_suit", char, sizeof_string("suit")), _("suit"), true);
@@ -20,61 +18,25 @@ const takeoff_order = static_array("takeoff_order", long, null, [
     WORN_SHIRT,  WORN_BOOTS, W_SWAPWEP,   W_QUIVER,    0
 ]);
 
-
-
-
 /* int Boots_on(void); -- moved to extern.h */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* maybe_destroy_armor() may return NULL */
 
-
-
-
-
 /* plural "fingers" or optionally "gloves" */
-export function /* const char * */
-fingers_or_gloves(check_gloves)
-{
+export function fingers_or_gloves(check_gloves) { /* const char * */
     return ((check_gloves && uarmg)
             ? gloves_simple_name(uarmg) /* "gloves" or "gauntlets" */
             : makeplural(body_part(FINGER))); /* "fingers" */
 }
 
-export function /* void */
-off_msg(otmp)
-{
+export function off_msg(otmp) { /* void */
     if (flags.verbose)
         You(_("were wearing %s."), doname(otmp));
 }
 
 /* for items that involve no delay */
-function /* void */
-on_msg(otmp)
-{ const $frame = stack_frame(); try {
+function on_msg(otmp) { /* void */
+    const $frame = stack_frame(); try {
     /* on_msg() for rings and amulets just shows add-to-invent feedback
        [after caller calls setworn(), for suffix: "(on {left|right} hand)"
        or "(being worn)"]; eyewear too unless giving verbose message below */
@@ -92,23 +54,21 @@ on_msg(otmp)
 
         chars[how + 0] = ord('\0');
         if (otmp.otyp == TOWEL)
-            void sprintf(how, _(" around your %s"), body_part(HEAD));
+            sprintf(how, _(" around your %s"), body_part(HEAD));
         You(_("are now wearing %s%s."),
             obj_is_pname(otmp) ? the(otmp_name) : an(otmp_name), how);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* putting on or taking off an item which confers stealth;
    give feedback and discover it iff stealth state is changing;
    stealth is blocked by riding unless hero+steed fly (handled with
    BStealth by mount and dismount routines) */
-function /* void */
-
-toggle_stealth(
+function toggle_stealth(
     obj,
     oldprop,
-    on)
-{
+    on) { /* void */
     if (on ? gi.initial_don : svc.context.takeoff.cancelled_don)
         return;
 
@@ -128,7 +88,7 @@ toggle_stealth(
             else
                 You(_("walk very quietly."));
         } else {
-            let riding = (+(u.usteed != null));
+            let riding = +(u.usteed != null);
 
             You(_("%s%s are noisy."), riding ? _("and ") : _("sure"),
                 riding ? x_monnam(u.usteed, ARTICLE_YOUR, (0),
@@ -144,13 +104,11 @@ toggle_stealth(
    give feedback and discover it iff displacement state is changing *and*
    hero is able to see self (or sense monsters); for timed, 'obj' is Null
    and this is only called for the message */
-export function /* void */
-toggle_displacement(
+export function toggle_displacement(
     obj,
     oldprop,
 
-    on)
-{
+    on) { /* void */
     if (on ? gi.initial_don : svc.context.takeoff.cancelled_don)
         return;
 
@@ -183,11 +141,8 @@ toggle_displacement(
  * [Blindf_on() is an exception and calls setworn() itself.]
  */
 
-export function /* int */
-Boots_on()
-{
+export function Boots_on() { /* int */
     let oldprop = and64(u.uprops[objects[uarmf.otyp].oc_oprop].extrinsic, ~WORN_BOOTS);
-
 
     switch (uarmf.otyp) {
     case LOW_BOOTS:
@@ -258,9 +213,7 @@ Boots_on()
     return 0;
 }
 
-export function /* int */
-Boots_off()
-{
+export function Boots_off() { /* int */
     let otmp = uarmf;
     let otyp = otmp.otyp;
     let oldprop = and64(u.uprops[objects[otyp].oc_oprop].extrinsic, ~WORN_BOOTS);
@@ -303,7 +256,7 @@ Boots_off()
             /* lava_effects() sets in_lava_effects and calls Boots_off()
                so hero is already in midst of floating down */
             if (!iflags.in_lava_effects)
-                void float_down(0, 0);
+                float_down(0, 0);
             makeknown(otyp);
         } else {
             float_vs_flight(); /* maybe toggle (BFlying & I_SPECIAL) */
@@ -322,11 +275,8 @@ Boots_off()
     return 0;
 }
 
-function /* int */
-Cloak_on()
-{
+function Cloak_on() { /* int */
     let oldprop = and64(u.uprops[objects[uarmc.otyp].oc_oprop].extrinsic, ~WORN_CLOAK);
-
 
     switch (uarmc.otyp) {
     case ORCISH_CLOAK:
@@ -379,9 +329,7 @@ Cloak_on()
     return 0;
 }
 
-export function /* int */
-Cloak_off()
-{
+export function Cloak_off() { /* int */
     let otmp = uarmc;
     let otyp = otmp.otyp;
     let oldprop = and64(u.uprops[objects[otyp].oc_oprop].extrinsic, ~WORN_CLOAK);
@@ -430,9 +378,7 @@ Cloak_off()
     return 0;
 }
 
-function /* int */
-Helmet_on()
-{
+function Helmet_on() { /* int */
     switch (uarmh.otyp) {
     case FEDORA:
         if (Role_if(PM_ARCHEOLOGIST))
@@ -514,9 +460,7 @@ Helmet_on()
     return 0;
 }
 
-export function /* int */
-Helmet_off()
-{
+export function Helmet_off() { /* int */
     svc.context.takeoff.mask = and64(svc.context.takeoff.mask, ~W_ARMH);
 
     switch (uarmh.otyp) {
@@ -564,19 +508,14 @@ Helmet_off()
 }
 
 /* hard helms provide better protection against falling rocks */
-export function /* boolean */
-hard_helmet(obj)
-{
+export function hard_helmet(obj) { /* boolean */
     if (!obj || !is_helmet(obj))
         return FALSE;
     return (is_metallic(obj) || is_crackable(obj)) ? TRUE : FALSE;
 }
 
-function /* int */
-Gloves_on()
-{
+function Gloves_on() { /* int */
     let oldprop = and64(u.uprops[objects[uarmg.otyp].oc_oprop].extrinsic, ~WORN_GLOVES);
-
 
     switch (uarmg.otyp) {
     case LEATHER_GLOVES:
@@ -604,12 +543,11 @@ Gloves_on()
 
 /* check for wielding cockatrice corpse after taking off gloves or yellow
    dragon scales/mail or having temporary stoning resistance time out */
-export function /* void */
-wielding_corpse(
+export function wielding_corpse(
     obj,
     how,
-    voluntary) /* True: taking protective armor off on purpose */
-{ const $frame = stack_frame(); try {
+    voluntary) { /* void */ /* True: taking protective armor off on purpose */
+    const $frame = stack_frame(); try {
     if (!obj || obj.otyp != CORPSE || uarmg)
         return;
     /* note: can't dual-wield with non-weapons/weapon-tools so u.twoweap
@@ -627,10 +565,10 @@ wielding_corpse(
         /* "removing" ought to be "taking off" but that makes the
            tombstone text more likely to be truncated */
         if (how)
-            void sprintf(hbuf, _("%s %s"), voluntary ? _("removing") : _("losing"), is_gloves(how) ? gloves_simple_name(how)
+            sprintf(hbuf, _("%s %s"), voluntary ? _("removing") : _("losing"), is_gloves(how) ? gloves_simple_name(how)
                     : strsubst(simpleonames(how), _("set of "), _("")));
         else
-            void strcpy(hbuf, _("resistance timing out"))
+            strcpy(hbuf, _("resistance timing out"))
 ;
         Snprintf(kbuf, sizeof(array_of(char, BUFSZ)), _("%s while wielding %s"), hbuf, killer_xname(obj))
 ;
@@ -640,11 +578,10 @@ wielding_corpse(
         if (!Stone_resistance())
             remove_worn_item(obj, FALSE);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-Gloves_off()
-{
+export function Gloves_off() { /* int */
     let gloves = uarmg; /* needed after uarmg has been set to Null */
     let oldprop = and64(u.uprops[objects[uarmg.otyp].oc_oprop].extrinsic, ~WORN_GLOVES);
 
@@ -701,9 +638,7 @@ Gloves_off()
     return 0;
 }
 
-function /* int */
-Shield_on()
-{
+function Shield_on() { /* int */
     /* no shield currently requires special handling when put on, but we
        keep this uncommented in case somebody adds a new one which does
        [the magical shields are handled by setting u.uprops[*].extrinsic
@@ -729,9 +664,7 @@ Shield_on()
     return 0;
 }
 
-export function /* int */
-Shield_off()
-{
+export function Shield_off() { /* int */
     svc.context.takeoff.mask = and64(svc.context.takeoff.mask, ~W_ARMS);
 
     /* no shield currently requires special handling when taken off, but we
@@ -755,9 +688,7 @@ Shield_off()
     return 0;
 }
 
-function /* int */
-Shirt_on()
-{
+function Shirt_on() { /* int */
     /* no shirt currently requires special handling when put on, but we
        keep this uncommented in case somebody adds a new one which does */
     switch (uarmu.otyp) {
@@ -774,9 +705,7 @@ Shirt_on()
     return 0;
 }
 
-export function /* int */
-Shirt_off()
-{
+export function Shirt_off() { /* int */
     svc.context.takeoff.mask = and64(svc.context.takeoff.mask, ~W_ARMU);
 
     /* no shirt currently requires special handling when taken off, but we
@@ -794,12 +723,10 @@ Shirt_off()
 }
 
 /* handle extra abilities for hero wearing dragon scale armor */
-function /* void */
-dragon_armor_handling(
+function dragon_armor_handling(
     otmp,
     puton,
-    on_purpose) /* voluntary removal; not applicable for putting on */
-{
+    on_purpose) { /* void */ /* voluntary removal; not applicable for putting on */
     if (!otmp)
         return;
 
@@ -845,7 +772,7 @@ dragon_armor_handling(
         break;
     case GOLD_DRAGON_SCALES:
     case GOLD_DRAGON_SCALE_MAIL:
-        void make_hallucinated((+!puton),
+        make_hallucinated((+!puton),
                                  program_state.restoring ? FALSE : TRUE,
                                  W_ARM);
         break;
@@ -883,9 +810,7 @@ dragon_armor_handling(
     }
 }
 
-function /* int */
-Armor_on()
-{
+function Armor_on() { /* int */
     if (!uarm) /* no known instances of !uarm here but play it safe */
         return 0;
     if (!uarm.known) {
@@ -905,11 +830,9 @@ Armor_on()
     return 0;
 }
 
-export function /* int */
-Armor_off()
-{
+export function Armor_off() { /* int */
     let otmp = uarm;
-    let was_arti_light = ((otmp && otmp.lamplit && artifact_light(otmp)) ? 1 : 0);
+    let was_arti_light = (otmp && otmp.lamplit && artifact_light(otmp) ? 1 : 0);
 
     svc.context.takeoff.mask = and64(svc.context.takeoff.mask, ~W_ARM);
     setworn(null, W_ARM);
@@ -935,11 +858,9 @@ Armor_off()
  * saving putting a removed item back on to prevent that from immediately
  * repeating.]
  */
-export function /* int */
-Armor_gone()
-{
+export function Armor_gone() { /* int */
     let otmp = uarm;
-    let was_arti_light = ((otmp && otmp.lamplit && artifact_light(otmp)) ? 1 : 0);
+    let was_arti_light = (otmp && otmp.lamplit && artifact_light(otmp) ? 1 : 0);
 
     svc.context.takeoff.mask = and64(svc.context.takeoff.mask, ~W_ARM);
     setnotworn(uarm);
@@ -959,9 +880,7 @@ Armor_gone()
     return 0;
 }
 
-function /* void */
-Amulet_on(amul)
-{
+function Amulet_on(amul) { /* void */
     let on_msg_done = FALSE;
 
     /* make sure amulet isn't wielded/alt-wielded/quivered, before wearing */
@@ -1024,7 +943,7 @@ Amulet_on(amul)
                changed the character's base sex */
             You(_("don't feel like yourself."));
             /* checking dknown is redundant--amulets always have dknown set */
-            call_it = (+(uamul.dknown != 0));
+            call_it = +(uamul.dknown != 0);
         }
         livelog_newform(FALSE, orig_sex, new_sex);
         pline_The(_("amulet disintegrates!"));
@@ -1050,7 +969,7 @@ Amulet_on(amul)
         if (newnap < oldnap || oldnap == 0)
             /* avoid clobbering FROMOUTSIDE bit, which might have
                gotten set by previously eating one of these amulets */
-            u.uprops[SLEEPY].intrinsic = or64((and64(HSleepy(), ~TIMEOUT)), newnap);
+            u.uprops[SLEEPY].intrinsic = or64(and64(HSleepy(), ~TIMEOUT), newnap);
         break;
     }
     case AMULET_OF_FLYING:
@@ -1086,9 +1005,7 @@ Amulet_on(amul)
         on_msg(uamul);
 }
 
-export function /* void */
-Amulet_off()
-{
+export function Amulet_off() { /* void */
     let amul = uamul; /* for off_msg() after setworn(NULL,W_AMUL) */
     let mkn = FALSE, early_off_msg = FALSE;
 
@@ -1122,7 +1039,7 @@ Amulet_off()
                 You(_("suddenly inhale an unhealthy amount of %s!"),
                     hliquid(_("water")));
                 mkn = TRUE; /* in case of life-saving */
-                void drown();
+                drown();
             }
         }
         if (region_danger()) {
@@ -1189,9 +1106,7 @@ Amulet_off()
 }
 
 /* handle ring discovery; comparable to learnwand() */
-function /* void */
-learnring(ring, observed)
-{
+function learnring(ring, observed) { /* void */
     let ringtype = ring.otyp;
 
     /* if effect was observable then we usually discover the type */
@@ -1204,10 +1119,6 @@ learnring(ring, observed)
             observe_object(ring);
         else if (ring.dknown)
             makeknown(ringtype);
-
-
-
-
     }
 
     /* make enchantment of charged ring known (might be +0) and update
@@ -1219,15 +1130,13 @@ learnring(ring, observed)
     }
 }
 
-function /* void */
-adjust_attrib(obj, which, val)
-{
+function adjust_attrib(obj, which, val) { /* void */
     let old_attrib;
     let observable;
 
     old_attrib = ACURR(which);
     (chars[u.abon.a + which]) += val;
-    observable = (+(old_attrib != ACURR(which)));
+    observable = +(old_attrib != ACURR(which));
     /* if didn't change, usually means ring is +0 but might
         be because nonzero couldn't go below min or above max;
         learn +0 enchantment if attribute value is not stuck
@@ -1238,9 +1147,7 @@ adjust_attrib(obj, which, val)
     disp.botl = TRUE;
 }
 
-export function /* void */
-Ring_on(obj)
-{
+export function Ring_on(obj) { /* void */
     let oldprop = u.uprops[objects[obj.otyp].oc_oprop].extrinsic;
     let observable;
 
@@ -1335,7 +1242,7 @@ Ring_on(obj)
         /* usually learn enchantment and discover type;
            won't happen if ring is unseen or if it's +0
            and the type hasn't been discovered yet */
-        observable = (+(obj.spe != 0));
+        observable = +(obj.spe != 0);
         learnring(obj, observable);
         if (obj.spe)
             find_ac(); /* updates botl */
@@ -1343,9 +1250,7 @@ Ring_on(obj)
     }
 }
 
-function /* void */
-Ring_off_or_gone(obj, gone)
-{
+function Ring_off_or_gone(obj, gone) { /* void */
     let mask = (obj.owornmask & W_RING);
     let observable;
 
@@ -1377,7 +1282,7 @@ Ring_off_or_gone(obj, gone)
     case MEAT_RING:
         break;
     case RIN_STEALTH:
-        toggle_stealth(obj, (and64(EStealth(), not64(mask))), FALSE);
+        toggle_stealth(obj, and64(EStealth(), not64(mask)), FALSE);
         break;
     case RIN_WARNING:
         see_monsters();
@@ -1405,7 +1310,7 @@ Ring_off_or_gone(obj, gone)
         break;
     case RIN_LEVITATION:
         if (!(BLevitation() & FROMOUTSIDE)) {
-            void float_down(0, 0);
+            float_down(0, 0);
             if (!Levitation())
                 learnring(obj, TRUE);
         } else {
@@ -1430,7 +1335,7 @@ Ring_off_or_gone(obj, gone)
     case RIN_PROTECTION:
         /* might have been put on while blind and we can now see
            or perhaps been forgotten due to amnesia */
-        observable = (+(obj.spe != 0));
+        observable = +(obj.spe != 0);
         learnring(obj, observable);
         if (obj.spe)
             find_ac(); /* updates botl */
@@ -1445,21 +1350,15 @@ Ring_off_or_gone(obj, gone)
     }
 }
 
-export function /* void */
-Ring_off(obj)
-{
+export function Ring_off(obj) { /* void */
     Ring_off_or_gone(obj, FALSE);
 }
 
-export function /* void */
-Ring_gone(obj)
-{
+export function Ring_gone(obj) { /* void */
     Ring_off_or_gone(obj, TRUE);
 }
 
-export function /* void */
-Blindf_on(otmp)
-{
+export function Blindf_on(otmp) { /* void */
     let already_blind = Blind(), changed = FALSE;
 
     /* blindfold might be wielded; release it for wearing */
@@ -1491,9 +1390,7 @@ Blindf_on(otmp)
     }
 }
 
-export function /* void */
-Blindf_off(otmp)
-{
+export function Blindf_off(otmp) { /* void */
     let was_blind = Blind(), changed = FALSE,
             nooffmsg = +!otmp;
 
@@ -1535,63 +1432,59 @@ Blindf_off(otmp)
 
 /* called in moveloop()'s prologue to set side-effects of worn start-up items;
    also used by poly_obj() when a worn item gets transformed */
-export function /* void */
-set_wear(
-    obj) /* if Null, do all worn items; otherwise just obj */
-{
+export function set_wear(
+    obj) { /* void */ /* if Null, do all worn items; otherwise just obj */
     gi.initial_don = +!obj;
 
     if (!obj ? ublindf != null : (obj == ublindf))
-        void Blindf_on(ublindf);
+        Blindf_on(ublindf);
     if (!obj ? uright != null : (obj == uright))
-        void Ring_on(uright);
+        Ring_on(uright);
     if (!obj ? uleft != null : (obj == uleft))
-        void Ring_on(uleft);
+        Ring_on(uleft);
     if (!obj ? uamul != null : (obj == uamul))
-        void Amulet_on(uamul);
+        Amulet_on(uamul);
 
     if (!obj ? uarmu != null : (obj == uarmu))
-        void Shirt_on();
+        Shirt_on();
     if (!obj ? uarm != null : (obj == uarm))
-        void Armor_on();
+        Armor_on();
     if (!obj ? uarmc != null : (obj == uarmc))
-        void Cloak_on();
+        Cloak_on();
     if (!obj ? uarmf != null : (obj == uarmf))
-        void Boots_on();
+        Boots_on();
     if (!obj ? uarmg != null : (obj == uarmg))
-        void Gloves_on();
+        Gloves_on();
     if (!obj ? uarmh != null : (obj == uarmh))
-        void Helmet_on();
+        Helmet_on();
     if (!obj ? uarms != null : (obj == uarms))
-        void Shield_on();
+        Shield_on();
 
     gi.initial_don = FALSE;
 }
 
 /* check whether the target object is currently being put on (or taken off--
    also checks for doffing--[why?]) */
-export function /* boolean */
-donning(otmp)
-{
+export function donning(otmp) { /* boolean */
     let result = FALSE;
 
     /* 'W' (or 'P' used for armor) sets ga.afternmv */
     if (doffing(otmp))
         result = TRUE;
     else if (otmp == uarm)
-        result = (+(ga.afternmv == Armor_on));
+        result = +(ga.afternmv == Armor_on);
     else if (otmp == uarmu)
-        result = (+(ga.afternmv == Shirt_on));
+        result = +(ga.afternmv == Shirt_on);
     else if (otmp == uarmc)
-        result = (+(ga.afternmv == Cloak_on));
+        result = +(ga.afternmv == Cloak_on);
     else if (otmp == uarmf)
-        result = (+(ga.afternmv == Boots_on));
+        result = +(ga.afternmv == Boots_on);
     else if (otmp == uarmh)
-        result = (+(ga.afternmv == Helmet_on));
+        result = +(ga.afternmv == Helmet_on);
     else if (otmp == uarmg)
-        result = (+(ga.afternmv == Gloves_on));
+        result = +(ga.afternmv == Gloves_on);
     else if (otmp == uarms)
-        result = (+(ga.afternmv == Shield_on));
+        result = +(ga.afternmv == Shield_on);
 
     return result;
 }
@@ -1599,51 +1492,47 @@ donning(otmp)
 /* check whether the target object is currently being taken off,
    so that stop_donning() and steal() can vary messages and doname()
    can vary "(being worn)" suffix */
-export function /* boolean */
-doffing(otmp)
-{
+export function doffing(otmp) { /* boolean */
     let what = svc.context.takeoff.what;
     let result = FALSE;
 
     /* 'T' (or 'R' used for armor) sets ga.afternmv, 'A' sets takeoff.what */
     if (otmp == uarm)
-        result = (+(ga.afternmv == Armor_off || what == WORN_ARMOR));
+        result = +(ga.afternmv == Armor_off || what == WORN_ARMOR);
     else if (otmp == uarmu)
-        result = (+(ga.afternmv == Shirt_off || what == WORN_SHIRT));
+        result = +(ga.afternmv == Shirt_off || what == WORN_SHIRT);
     else if (otmp == uarmc)
-        result = (+(ga.afternmv == Cloak_off || what == WORN_CLOAK));
+        result = +(ga.afternmv == Cloak_off || what == WORN_CLOAK);
     else if (otmp == uarmf)
-        result = (+(ga.afternmv == Boots_off || what == WORN_BOOTS));
+        result = +(ga.afternmv == Boots_off || what == WORN_BOOTS);
     else if (otmp == uarmh)
-        result = (+(ga.afternmv == Helmet_off || what == WORN_HELMET));
+        result = +(ga.afternmv == Helmet_off || what == WORN_HELMET);
     else if (otmp == uarmg)
-        result = (+(ga.afternmv == Gloves_off || what == WORN_GLOVES));
+        result = +(ga.afternmv == Gloves_off || what == WORN_GLOVES);
     else if (otmp == uarms)
-        result = (+(ga.afternmv == Shield_off || what == WORN_SHIELD));
+        result = +(ga.afternmv == Shield_off || what == WORN_SHIELD);
     /* these 1-turn items don't need 'ga.afternmv' checks */
     else if (otmp == uamul)
-        result = (+(what == WORN_AMUL));
+        result = +(what == WORN_AMUL);
     else if (otmp == uleft)
-        result = (+(what == LEFT_RING));
+        result = +(what == LEFT_RING);
     else if (otmp == uright)
-        result = (+(what == RIGHT_RING));
+        result = +(what == RIGHT_RING);
     else if (otmp == ublindf)
-        result = (+(what == WORN_BLINDF));
+        result = +(what == WORN_BLINDF);
     else if (otmp == uwep)
-        result = (+(what == W_WEP));
+        result = +(what == W_WEP);
     else if (otmp == uswapwep)
-        result = (+(what == W_SWAPWEP));
+        result = +(what == W_SWAPWEP);
     else if (otmp == uquiver)
-        result = (+(what == W_QUIVER));
+        result = +(what == W_QUIVER);
 
     return result;
 }
 
 /* despite their names, cancel_don() and cancel_doff() both apply to both
    donning and doffing... */
-export function /* void */
-cancel_doff(obj, slotmask)
-{
+export function cancel_doff(obj, slotmask) { /* void */
     /* Called by setworn() for old item in specified slot or by setnotworn()
      * for specified item.  We don't want to call cancel_don() if we got
      * here via <X>_off() -> setworn((struct obj *) 0) -> cancel_doff()
@@ -1660,22 +1549,20 @@ cancel_doff(obj, slotmask)
 
 /* despite their names, cancel_don() and cancel_doff() both apply to both
    donning and doffing... */
-export function /* void */
-cancel_don()
-{
+export function cancel_don() { /* void */
     /* the piece of armor we were donning/doffing has vanished, so stop
      * wasting time on it (and don't dereference it when donning would
      * otherwise finish); afternmv never has some of these values because
      * every item of the corresponding armor category takes 1 turn to wear,
      * but check all of them anyway
      */
-    svc.context.takeoff.cancelled_don = (+(ga.afternmv == Cloak_on
+    svc.context.takeoff.cancelled_don = +(ga.afternmv == Cloak_on
                                         || ga.afternmv == Armor_on
                                         || ga.afternmv == Shirt_on
                                         || ga.afternmv == Helmet_on
                                         || ga.afternmv == Gloves_on
                                         || ga.afternmv == Boots_on
-                                        || ga.afternmv == Shield_on));
+                                        || ga.afternmv == Shield_on);
     ga.afternmv = null;
     gn.nomovemsg = 0;
     gm.multi = 0;
@@ -1684,10 +1571,9 @@ cancel_don()
 }
 
 /* called by steal() during theft from hero; interrupt donning/doffing */
-export function /* int */
-stop_donning(
-    stolenobj) /* no mesg if stolenobj is already being doffed */
-{ const $frame = stack_frame(); try {
+export function stop_donning(
+    stolenobj) { /* int */ /* no mesg if stolenobj is already being doffed */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let otmp;
     let putting_on;
@@ -1708,7 +1594,7 @@ stop_donning(
        by unmul() since the on or off action isn't completing */
     ga.afternmv = null;
     if (putting_on || otmp != stolenobj) {
-        void sprintf(buf, _("You stop %s %s."), putting_on ? _("putting on") : _("taking off"), thesimpleoname(otmp))
+        sprintf(buf, _("You stop %s %s."), putting_on ? _("putting on") : _("taking off"), thesimpleoname(otmp))
 
 ;
     } else {
@@ -1724,20 +1610,18 @@ stop_donning(
         remove_worn_item(otmp, FALSE);
 
     return result;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const Narmorpieces = static_var("Narmorpieces", int); const Naccessories = static_var("Naccessories", int);
 
 /* assign values to Narmorpieces and Naccessories */
-function /* void */
-count_worn_stuff(
+function count_worn_stuff(
     which,
-    accessorizing)
-{
+    accessorizing) { /* void */
     let otmp;
 
     Narmorpieces[0] = Naccessories[0] = 0;
-
 
     otmp = null;
     do { if (uarmh) { Narmorpieces[0]++; otmp = uarmh; } } while (0);
@@ -1762,14 +1646,12 @@ count_worn_stuff(
     do { if (ublindf) { Naccessories[0]++; otmp = ublindf; } } while (0);
     if (accessorizing)
         which[0] = otmp; /* default item iff Naccessories is 1 */
-
 }
 
 /* take off one piece or armor or one accessory;
    shared by dotakeoff('T') and doremring('R') */
-function /* int */
-armor_or_accessory_off(obj)
-{ const $frame = stack_frame(); try {
+function armor_or_accessory_off(obj) { /* int */
+    const $frame = stack_frame(); try {
     if (!(obj.owornmask & (W_ARMOR | W_ACCESSORY))) {
         You(_("are not wearing that."));
         return ECMD_OK;
@@ -1782,30 +1664,30 @@ armor_or_accessory_off(obj)
         chars[why + 0] = chars[what + 0] = ord('\0');
         if (obj != uskin) {
             if (uarmc)
-                void strcat(what, cloak_simple_name(uarmc));
+                strcat(what, cloak_simple_name(uarmc));
             if ((obj == uarmu) && uarm) {
                 if (uarmc)
-                    void strcat(what, _(" and "));
-                void strcat(what, suit_simple_name(uarm));
+                    strcat(what, _(" and "));
+                strcat(what, suit_simple_name(uarm));
             }
             Snprintf(why, sizeof(array_of(char, QBUFSZ)), _(" without taking off your %s first"), what)
 ;
         } else {
-            void strcpy(why, _("; it's embedded"));
+            strcpy(why, _("; it's embedded"));
         }
         You_cant(_("take that off%s."), why);
         return ECMD_OK;
     }
 
     reset_remarm(); /* clear context.takeoff.mask and context.takeoff.what */
-    void select_off(obj);
+    select_off(obj);
     if (!svc.context.takeoff.mask)
         return ECMD_OK;
     /* none of armoroff()/Ring_/Amulet/Blindf_off() use context.takeoff.mask */
     reset_remarm();
 
     if (obj.owornmask & W_ARMOR) {
-        void armoroff(obj);
+        armoroff(obj);
     } else if (obj == uright || obj == uleft) {
         /* Sometimes we want to give the off_msg before removing and
          * sometimes after; for instance, "you were wearing a moonstone
@@ -1826,12 +1708,12 @@ armor_or_accessory_off(obj)
             remove_worn_item(obj, FALSE);
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #takeoff command - remove worn armor */
-export function /* int */
-dotakeoff()
-{ const $frame = stack_frame(); try {
+export function dotakeoff() { /* int */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj), null);
 
     count_worn_stuff(otmp, FALSE);
@@ -1852,15 +1734,14 @@ dotakeoff()
         return ECMD_CANCEL;
 
     return armor_or_accessory_off(otmp[0]);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* 'i' or 'I[' followed by <invlet> and then 'T';
    plain dotakeoff() would not give any feedback when picking suit
    covered by cloak, or shirt covered by suit and/or cloak, due to the
    default behavior of equip_ok() (skipping inaccessible items) */
-export function /* int */
-ia_dotakeoff()
-{
+export function ia_dotakeoff() { /* int */
     let res;
 
     gi.item_action_in_progress = TRUE;
@@ -1870,9 +1751,8 @@ ia_dotakeoff()
 }
 
 /* the #remove command - take off ring or other accessory */
-export function /* int */
-doremring()
-{ const $frame = stack_frame(); try {
+export function doremring() { /* int */
+    const $frame = stack_frame(); try {
     let otmp = stack_var(ptr_to(struct_obj), null);
 
     count_worn_stuff(otmp, TRUE);
@@ -1886,20 +1766,19 @@ doremring()
         return ECMD_CANCEL;
 
     return armor_or_accessory_off(otmp[0]);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Check if something worn is cursed _and_ unremovable. */
-export function /* int */
-cursed(otmp)
-{
+export function cursed(otmp) { /* int */
     if (!otmp) {
         impossible(_("cursed without otmp"));
         return 0;
     }
     /* Curses, like chickens, come home to roost. */
     if ((otmp == uwep) ? welded(otmp) : otmp.cursed) {
-        let use_plural = (+(is_boots(otmp) || is_gloves(otmp)
-                              || otmp.otyp == LENSES || otmp.quan > 1));
+        let use_plural = +(is_boots(otmp) || is_gloves(otmp)
+                              || otmp.otyp == LENSES || otmp.quan > 1);
 
         /* might be trying again after applying grease to hands */
         if (Glib() && otmp.bknown
@@ -1916,9 +1795,7 @@ cursed(otmp)
     return 0;
 }
 
-export function /* int */
-armoroff(otmp)
-{
+export function armoroff(otmp) { /* int */
     let offdelaybuf = static_array("armoroff.offdelaybuf", char, 60);
     let delay = -objects[otmp.otyp].oc_delay;
     let what = 0;
@@ -1974,25 +1851,25 @@ armoroff(otmp)
         /* no delay so no '(*afternmv)()' or 'nomovemsg' */
         switch (objects[otmp.otyp].oc_subtyp) {
         case ARM_SUIT:
-            void Armor_off();
+            Armor_off();
             break;
         case ARM_SHIELD:
-            void Shield_off();
+            Shield_off();
             break;
         case ARM_HELM:
-            void Helmet_off();
+            Helmet_off();
             break;
         case ARM_GLOVES:
-            void Gloves_off();
+            Gloves_off();
             break;
         case ARM_BOOTS:
-            void Boots_off();
+            Boots_off();
             break;
         case ARM_CLOAK:
-            void Cloak_off();
+            Cloak_off();
             break;
         case ARM_SHIRT:
-            void Shirt_off();
+            Shirt_off();
             break;
         default:
             impossible(_("Taking off unknown armor (%d: %d), no delay"),
@@ -2007,15 +1884,11 @@ armoroff(otmp)
     return 1;
 }
 
-function /* void */
-already_wearing(cc)
-{
+function already_wearing(cc) { /* void */
     You(_("are already wearing %s%c"), cc, (cc == c_that_) ? ord('!') : ord('.'));
 }
 
-function /* void */
-already_wearing2(cc1, cc2)
-{
+function already_wearing2(cc1, cc2) { /* void */
     You_cant(_("wear %s because you're wearing %s there already."), cc1, cc2);
 }
 
@@ -2026,9 +1899,7 @@ already_wearing2(cc1, cc2)
  *         noisy (if TRUE give error messages, otherwise be quiet about it)
  * output: mask (otmp's armor type)
  */
-export function /* int */
-canwearobj(otmp, mask, noisy)
-{
+export function canwearobj(otmp, mask, noisy) { /* int */
     let err = 0;
     let which;
 
@@ -2205,9 +2076,9 @@ canwearobj(otmp, mask, noisy)
     return +!err;
 }
 
-function /* int */
-accessory_or_armor_on(obj$)
-{ const $frame = stack_frame(); try { const obj = stack_var(ptr_to(struct_obj), obj$);
+function accessory_or_armor_on(obj$) { /* int */
+    const $frame = stack_frame(); try {
+    const obj = stack_var(ptr_to(struct_obj), obj$);
     let mask = stack_var(long, 0);
     let armor, ring, amulet, eyewear;
 
@@ -2215,11 +2086,11 @@ accessory_or_armor_on(obj$)
         already_wearing(c_that_);
         return ECMD_OK;
     }
-    armor = (+(obj[0].oclass == ARMOR_CLASS));
-    ring = (+(obj[0].oclass == RING_CLASS || obj[0].otyp == MEAT_RING));
-    amulet = (+(obj[0].oclass == AMULET_CLASS));
-    eyewear = (+(obj[0].otyp == BLINDFOLD || obj[0].otyp == TOWEL
-               || obj[0].otyp == LENSES));
+    armor = +(obj[0].oclass == ARMOR_CLASS);
+    ring = +(obj[0].oclass == RING_CLASS || obj[0].otyp == MEAT_RING);
+    amulet = +(obj[0].oclass == AMULET_CLASS);
+    eyewear = +(obj[0].otyp == BLINDFOLD || obj[0].otyp == TOWEL
+               || obj[0].otyp == LENSES);
     /* checks which are performed prior to actually touching the item */
     if (armor) {
         if (!canwearobj(obj[0], mask, TRUE))
@@ -2267,7 +2138,7 @@ accessory_or_armor_on(obj$)
                 mask[0] = LEFT_RING;
             } else {
                 do {
-                    void sprintf(qbuf, _("Which %s%s, Right or Left?"), humanoid(gy.youmonst.data) ? _("ring-") : _(""), body_part(FINGER))
+                    sprintf(qbuf, _("Which %s%s, Right or Left?"), humanoid(gy.youmonst.data) ? _("ring-") : _(""), body_part(FINGER))
 
 ;
                     answer = yn_function(qbuf, rightleftchars, ord('\0'), TRUE);
@@ -2425,12 +2296,11 @@ accessory_or_armor_on(obj$)
         }
     }
     return ECMD_TIME;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* the #wear command */
-export function /* int */
-dowear()
-{
+export function dowear() { /* int */
     let otmp;
 
     /* cantweararm() checks for suits of armor, not what we want here;
@@ -2450,9 +2320,7 @@ dowear()
 }
 
 /* the #puton command */
-export function /* int */
-doputon()
-{
+export function doputon() { /* int */
     let otmp;
 
     if (uleft && uright && uamul && ublindf
@@ -2469,9 +2337,7 @@ doputon()
 }
 
 /* calculate current armor class */
-export function /* void */
-find_ac()
-{
+export function find_ac() { /* void */
     let uac = mons[u.umonnum].ac; /* base armor class for current form */
 
     /* armor class from worn gear */
@@ -2508,36 +2374,22 @@ find_ac()
     if (uac != u.uac) {
         u.uac = uac;
         disp.botl = TRUE;
-
-
-
-
-
-
-
-
-
-
-
-
-
+    /* #if 0: not in this build */
     }
 }
 
-export function /* void */
-glibr()
-{
+export function glibr() { /* void */
     let otmp;
     let xfl = 0;
     let leftfall, rightfall, wastwoweap = FALSE;
     let otherwep = 0, thiswep, which, hand;
 
-    leftfall = (((uleft && !uleft.cursed
+    leftfall = (uleft && !uleft.cursed
                 && (!uwep || !(welded(uwep) && ULEFTY())
-                    || !bimanual(uwep))) ? 1 : 0));
-    rightfall = (((uright && !uright.cursed
+                    || !bimanual(uwep)) ? 1 : 0);
+    rightfall = (uright && !uright.cursed
                 && (!uwep || !(welded(uwep) && URIGHTY())
-                    || !bimanual(uwep))) ? 1 : 0));
+                    || !bimanual(uwep)) ? 1 : 0);
 /*
     leftfall = (uleft && !uleft->cursed
                 && (!uwep || !welded(uwep) || !bimanual(uwep)));
@@ -2626,9 +2478,7 @@ glibr()
     }
 }
 
-export function /* struct obj * */
-some_armor(victim)
-{
+export function some_armor(victim) { /* struct obj * */
     let otmph, otmp;
 
     otmph = (victim == gy.youmonst) ? uarmc : which_armor(victim, W_ARMC);
@@ -2653,9 +2503,7 @@ some_armor(victim)
 }
 
 /* used for praying to check and fix levitation trouble */
-export function /* struct obj * */
-stuck_ring(ring, otyp)
-{
+export function stuck_ring(ring, otyp) { /* struct obj * */
     if (ring != uleft && ring != uright) {
         impossible(_("stuck_ring: neither left nor right?"));
         return null;
@@ -2683,18 +2531,14 @@ stuck_ring(ring, otyp)
 }
 
 /* also for praying; find worn item that confers "Unchanging" attribute */
-export function /* struct obj * */
-unchanger()
-{
+export function unchanger() { /* struct obj * */
     if (uamul && uamul.otyp == AMULET_OF_UNCHANGING)
         return uamul;
     return null;
 }
 
-function /* int */
-
-select_off(otmp)
-{ const $frame = stack_frame(); try {
+function select_off(otmp) { /* int */
+    const $frame = stack_frame(); try {
     let why;
     let buf = stack_array(char, BUFSZ);
 
@@ -2713,10 +2557,10 @@ select_off(otmp)
         struct_assign(glibdummy, cg.zeroobj);
         why = null; /* the item which prevents ring removal */
         if (welded(uwep) && ((otmp == RING_ON_PRIMARY()) || bimanual(uwep))) {
-            void sprintf(buf, _("free a weapon %s"), body_part(HAND));
+            sprintf(buf, _("free a weapon %s"), body_part(HAND));
             why = uwep;
         } else if (uarmg && (uarmg.cursed || Glib())) {
-            void sprintf(buf, _("take off your %s%s"), Glib() ? _("slippery ") : _(""), gloves_simple_name(uarmg))
+            sprintf(buf, _("take off your %s%s"), Glib() ? _("slippery ") : _(""), gloves_simple_name(uarmg))
 ;
             why = !Glib() ? uarmg : glibdummy;
         }
@@ -2758,13 +2602,13 @@ select_off(otmp)
     if (otmp == uarm || otmp == uarmu) {
         why = null; /* the item which prevents disrobing */
         if (uarmc && uarmc.cursed) {
-            void sprintf(buf, _("remove your %s"), cloak_simple_name(uarmc));
+            sprintf(buf, _("remove your %s"), cloak_simple_name(uarmc));
             why = uarmc;
         } else if (otmp == uarmu && uarm && uarm.cursed) {
-            void sprintf(buf, _("remove your %s"), c_suit);
+            sprintf(buf, _("remove your %s"), c_suit);
             why = uarm;
         } else if (welded(uwep) && bimanual(uwep)) {
-            void sprintf(buf, _("release your %s"), is_sword(uwep) ? c_sword : (uwep.otyp == BATTLE_AXE)
+            sprintf(buf, _("release your %s"), is_sword(uwep) ? c_sword : (uwep.otyp == BATTLE_AXE)
                                                    ? c_axe
                                                    : c_weapon)
 ;
@@ -2818,11 +2662,10 @@ select_off(otmp)
         impossible(_("select_off: %s???"), doname(otmp));
 
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* struct obj * */
-do_takeoff()
-{
+function do_takeoff() { /* struct obj * */
     let otmp = null;
     let was_twoweap = u.twoweap;
     let doff = svc.context.takeoff;
@@ -2847,31 +2690,31 @@ do_takeoff()
     } else if (doff.what == WORN_ARMOR) {
         otmp = uarm;
         if (!cursed(otmp))
-            void Armor_off();
+            Armor_off();
     } else if (doff.what == WORN_CLOAK) {
         otmp = uarmc;
         if (!cursed(otmp))
-            void Cloak_off();
+            Cloak_off();
     } else if (doff.what == WORN_BOOTS) {
         otmp = uarmf;
         if (!cursed(otmp))
-            void Boots_off();
+            Boots_off();
     } else if (doff.what == WORN_GLOVES) {
         otmp = uarmg;
         if (!cursed(otmp))
-            void Gloves_off();
+            Gloves_off();
     } else if (doff.what == WORN_HELMET) {
         otmp = uarmh;
         if (!cursed(otmp))
-            void Helmet_off();
+            Helmet_off();
     } else if (doff.what == WORN_SHIELD) {
         otmp = uarms;
         if (!cursed(otmp))
-            void Shield_off();
+            Shield_off();
     } else if (doff.what == WORN_SHIRT) {
         otmp = uarmu;
         if (!cursed(otmp))
-            void Shirt_off();
+            Shirt_off();
     } else if (doff.what == WORN_AMUL) {
         otmp = uamul;
         if (!cursed(otmp))
@@ -2896,9 +2739,7 @@ do_takeoff()
 }
 
 /* occupation callback for 'A' */
-function /* int */
-take_off()
-{
+function take_off() { /* int */
     let i;
     let otmp;
     let doff = svc.context.takeoff;
@@ -2986,9 +2827,8 @@ take_off()
     return 1; /* get busy */
 }
 
-function /* boolean */
-better_not_take_that_off(otmp)
-{ const $frame = stack_frame(); try {
+function better_not_take_that_off(otmp) { /* boolean */
+    const $frame = stack_frame(); try {
     let corpse = carrying_stoning_corpse();
     let buf = stack_array(char, BUFSZ);
 
@@ -3004,23 +2844,20 @@ better_not_take_that_off(otmp)
         Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("Take off your %s despite carrying a dead %s?"), gloves_simple_name(otmp), obj_pmname(corpse))
 
 ;
-        return (+(paranoid_ynq(TRUE, buf, FALSE) != ord('y')));
+        return +(paranoid_ynq(TRUE, buf, FALSE) != ord('y'));
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* clear saved context to avoid inappropriate resumption of interrupted 'A' */
-export function /* void */
-reset_remarm()
-{
+export function reset_remarm() { /* void */
     svc.context.takeoff.what = svc.context.takeoff.mask = 0;
     chars[svc.context.takeoff.disrobing + 0] = ord('\0');
 }
 
 /* the #takeoffall command -- remove multiple worn items */
-export function /* int */
-doddoremarm()
-{
+export function doddoremarm() { /* int */
     let result = 0;
 
     if (svc.context.takeoff.what || svc.context.takeoff.mask) {
@@ -3037,17 +2874,17 @@ doddoremarm()
     if (flags.menu_style != MENU_TRADITIONAL
         || (result = ggetobj(_("take off"), select_off, 0, FALSE,
                              null)) < -1)
-        void menu_remarm(result);
+        menu_remarm(result);
 
     if (svc.context.takeoff.mask) {
-        void strncpy(svc.context.takeoff.disrobing,
+        strncpy(svc.context.takeoff.disrobing,
                        (((svc.context.takeoff.mask & ~W_WEAPONS) != 0)
                         /* default activity for armor and/or accessories,
                            possibly combined with weapons */
                         ? _("disrobing")
                         /* specific activity when handling weapons only */
                         : _("disarming")), CONTEXTVERBSZ);
-        void take_off();
+        take_off();
     }
     /* The time to perform the command is already completely accounted for
      * in take_off(); if we return 1, that would add an extra turn to each
@@ -3058,9 +2895,8 @@ doddoremarm()
 
 /* #altunwield - just unwield alternate weapon, item-action '-' when picking
    uswapwep from context-sensitive inventory */
-export function /* int */
-remarm_swapwep()
-{ const $frame = stack_frame(); try {
+export function remarm_swapwep() { /* int */
+    const $frame = stack_frame(); try {
     let cq = stack_struct(struct__cmd_queue), cmdq;
     let oldbknown;
 
@@ -3082,19 +2918,19 @@ remarm_swapwep()
                                    * don't work that way... */
     reset_remarm();
     svc.context.takeoff.what = svc.context.takeoff.mask = W_SWAPWEP;
-    void do_takeoff();
+    do_takeoff();
     return (!uswapwep || uswapwep.bknown != oldbknown) ? ECMD_TIME : ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* int */
-menu_remarm(retry)
-{ const $frame = stack_frame(); try {
+function menu_remarm(retry) { /* int */
+    const $frame = stack_frame(); try {
     let n, i = 0;
     let pick_list = stack_var(ptr_to(struct_mi));
     let all_worn_categories = TRUE;
 
     if (retry) {
-        all_worn_categories = (+(retry == -2));
+        all_worn_categories = +(retry == -2);
     } else if (flags.menu_style == MENU_FULL) {
         all_worn_categories = FALSE;
         n = query_category(_("What type of things do you want to take off?"),
@@ -3116,7 +2952,7 @@ menu_remarm(retry)
         i = ggetobj(_("take off"), select_off, 0, TRUE, ggofeedback);
         if (ggofeedback[0] & ALL_FINISHED)
             return 0;
-        all_worn_categories = (+(i == -2));
+        all_worn_categories = +(i == -2);
     }
     if (menu_class_present(ord('u'))
         || menu_class_present(ord('B')) || menu_class_present(ord('U'))
@@ -3129,20 +2965,19 @@ menu_remarm(retry)
                       all_worn_categories ? is_worn : is_worn_by_type);
     if (n > 0) {
         for (i = 0; i < n; i++)
-            void select_off(ptr_add(pick_list[0], i).item.a_obj);
+            select_off(ptr_add(pick_list[0], i).item.a_obj);
         free(addr_of(pick_list[0]));
     } else if (n < 0 && flags.menu_style != MENU_COMBINATION) {
         There(_("is nothing else you can remove or unwield."));
     }
     return 0;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* take off the specific worn object and if it still exists after that,
    destroy it (taking off the item might already destroy it by dunking
    hero into lava) */
-function /* void */
-wornarm_destroyed(wornarm)
-{
+function wornarm_destroyed(wornarm) { /* void */
     let invobj, nextobj;
     let wornoid = wornarm.o_id;
 
@@ -3153,19 +2988,19 @@ wornarm_destroyed(wornarm)
         cancel_don();
 
     if (wornarm == uarmc)
-        void Cloak_off();
+        Cloak_off();
     else if (wornarm == uarm)
-        void Armor_off();
+        Armor_off();
     else if (wornarm == uarmu)
-        void Shirt_off();
+        Shirt_off();
     else if (wornarm == uarmh)
-        void Helmet_off();
+        Helmet_off();
     else if (wornarm == uarmg)
-        void Gloves_off();
+        Gloves_off();
     else if (wornarm == uarmf)
-        void Boots_off();
+        Boots_off();
     else if (wornarm == uarms)
-        void Shield_off();
+        Shield_off();
 
     /* 'wornarm' might be destroyed as a side-effect of xxx_off() so
        using carried() to check wornarm->where==OBJ_INVENT is not viable;
@@ -3185,9 +3020,7 @@ wornarm_destroyed(wornarm)
  * returns impacted armor with its in_use bit set,
  * or Null. *resisted is updated to reflect whether
  * it resisted or not */
-function /* struct obj * */
-maybe_destroy_armor(armor, atmp, resisted)
-{
+function maybe_destroy_armor(armor, atmp, resisted) { /* struct obj * */
     if ((armor != null) && (!atmp || atmp == armor)
         && ((chars[resisted] = obj_resists(armor, 0, 90)) == FALSE)) {
         armor.in_use = 1;
@@ -3197,9 +3030,8 @@ maybe_destroy_armor(armor, atmp, resisted)
 }
 
 /* hit by destroy armor scroll/black dragon breath */
-export function /* int */
-disintegrate_arm(atmp)
-{ const $frame = stack_frame(); try {
+export function disintegrate_arm(atmp) { /* int */
+    const $frame = stack_frame(); try {
     let otmp = null;
     let losing_gloves = FALSE, resisted = stack_var(boolean, FALSE),
             resistedc = stack_var(boolean, FALSE), resistedsuit = stack_var(boolean, FALSE);
@@ -3253,12 +3085,11 @@ disintegrate_arm(atmp)
 
     stop_occupation();
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return ERODE_foo erosion type which can apply to object */
-function /* int */
-obj_erode_type(otmp)
-{
+function obj_erode_type(otmp) { /* int */
     if (is_flammable(otmp))
         return ERODE_BURN;
     else if (is_rustprone(otmp))
@@ -3274,9 +3105,8 @@ obj_erode_type(otmp)
 
 /* erode a number of worn armor(s).
    if the armor is hit when max eroded, destroys it. */
-export function /* int */
-destroy_arm()
-{ const $frame = stack_frame(); try {
+export function destroy_arm() { /* int */
+    const $frame = stack_frame(); try {
     let armors = init_list(stack_array(ptr_to(struct_obj), 7), [ null ]);
     let otmp;
     let i, idx = 0, hits = rn2(4) + 1;
@@ -3313,23 +3143,22 @@ destroy_arm()
     if (ret)
         stop_occupation();
     return ret;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-adj_abon(otmp, delta)
-{
+export function adj_abon(otmp, delta) { /* void */
     if (uarmg && uarmg == otmp && otmp.otyp == GAUNTLETS_OF_DEXTERITY) {
         if (delta) {
             makeknown(uarmg.otyp);
-            (chars[u.abon.a + A_DEX]) += (delta);
+            (chars[u.abon.a + A_DEX]) += delta;
         }
         disp.botl = TRUE;
     }
     if (uarmh && uarmh == otmp && otmp.otyp == HELM_OF_BRILLIANCE) {
         if (delta) {
             makeknown(uarmh.otyp);
-            (chars[u.abon.a + A_INT]) += (delta);
-            (chars[u.abon.a + A_WIS]) += (delta);
+            (chars[u.abon.a + A_INT]) += delta;
+            (chars[u.abon.a + A_WIS]) += delta;
         }
         disp.botl = TRUE;
     }
@@ -3338,71 +3167,66 @@ adj_abon(otmp, delta)
 /* decide whether a worn item is covered up by some other worn item,
    used for dipping into liquid and applying grease and takeoff_ok();
    some criteria are different than select_off()'s */
-export function /* boolean */
-inaccessible_equipment(
+export function inaccessible_equipment(
     obj,
     verb,
-    only_if_known_cursed) /* ignore covering unless it is known to
-                                   * be cursed */
-{ const $frame = stack_frame(); try {
+    only_if_known_cursed) { /* boolean */ /* ignore covering unless it is known to * be cursed */
+    const $frame = stack_frame(); try {
     let need_to_take_off_outer_armor = init_string(static_array("inaccessible_equipment.need_to_take_off_outer_armor", char, sizeof_string("need to take off %s to %s %s.")), _("need to take off %s to %s %s."), true);
 
     let buf = stack_array(char, BUFSZ);
     let anycovering = +!only_if_known_cursed; /* more comprehensible... */
 
-
     if (!obj || !obj.owornmask)
         return FALSE; /* not inaccessible */
 
     /* check for suit covered by cloak */
-    if (obj == uarm && uarmc && ((anycovering || (((uarmc).cursed && (uarmc).bknown))))) {
+    if (obj == uarm && uarmc && (anycovering || ((uarmc).cursed && (uarmc).bknown))) {
         if (verb) {
-            void strcpy(buf, yname(uarmc));
+            strcpy(buf, yname(uarmc));
             You(need_to_take_off_outer_armor, buf, verb, yname(obj));
         }
         return TRUE;
     }
     /* check for shirt covered by suit and/or cloak */
     if (obj == uarmu
-        && ((uarm && ((anycovering || (((uarm).cursed && (uarm).bknown))))) || (uarmc && ((anycovering || (((uarmc).cursed && (uarmc).bknown))))))) {
+        && ((uarm && (anycovering || ((uarm).cursed && (uarm).bknown))) || (uarmc && (anycovering || ((uarmc).cursed && (uarmc).bknown))))) {
         if (verb) {
             let cloaktmp = stack_array(char, QBUFSZ), suittmp = stack_array(char, QBUFSZ);
             /* if sameprefix, use yname and xname to get "your cloak and suit"
                or "Manlobbi's cloak and suit"; otherwise, use yname and yname
                to get "your cloak and Manlobbi's suit" or vice versa */
-            let sameprefix = (((uarm && uarmc
+            let sameprefix = (uarm && uarmc
                                   && !strcmp(shk_your(cloaktmp, uarmc),
-                                             shk_your(suittmp, uarm))) ? 1 : 0));
+                                             shk_your(suittmp, uarm)) ? 1 : 0);
 
             chars[buf] = ord('\0');
             if (uarmc)
-                void strcat(buf, yname(uarmc));
+                strcat(buf, yname(uarmc));
             if (uarm && uarmc)
-                void strcat(buf, _(" and "));
+                strcat(buf, _(" and "));
             if (uarm)
-                void strcat(buf, sameprefix ? xname(uarm) : yname(uarm));
+                strcat(buf, sameprefix ? xname(uarm) : yname(uarm));
             You(need_to_take_off_outer_armor, buf, verb, yname(obj));
         }
         return TRUE;
     }
     /* check for ring covered by gloves */
-    if ((obj == uleft || obj == uright) && uarmg && ((anycovering || (((uarmg).cursed && (uarmg).bknown))))) {
+    if ((obj == uleft || obj == uright) && uarmg && (anycovering || ((uarmg).cursed && (uarmg).bknown))) {
         if (verb) {
-            void strcpy(buf, yname(uarmg));
+            strcpy(buf, yname(uarmg));
             You(need_to_take_off_outer_armor, buf, verb, yname(obj));
         }
         return TRUE;
     }
     /* item is not inaccessible */
     return FALSE;
-
-
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* not a getobj callback - unifies code among the other 4 getobj callbacks */
-function /* int */
-equip_ok(obj, removing, accessory)
-{ const $frame = stack_frame(); try {
+function equip_ok(obj, removing, accessory) { /* int */
+    const $frame = stack_frame(); try {
     let is_worn;
     let dummymask = stack_var(long, 0);
 
@@ -3410,7 +3234,7 @@ equip_ok(obj, removing, accessory)
         return GETOBJ_EXCLUDE;
 
     /* ignore for putting on if already worn, or removing if not worn */
-    is_worn = (+((obj.owornmask & (W_ARMOR | W_ACCESSORY)) != 0));
+    is_worn = +((obj.owornmask & (W_ARMOR | W_ACCESSORY)) != 0);
     if (removing ^ is_worn)
         return GETOBJ_EXCLUDE_INACCESS;
 
@@ -3424,7 +3248,7 @@ equip_ok(obj, removing, accessory)
     }
 
     /* armor with 'P' or 'R' or accessory with 'W' or 'T' */
-    if (accessory ^ (+(obj.oclass != ARMOR_CLASS)))
+    if (accessory ^ +(obj.oclass != ARMOR_CLASS))
         return GETOBJ_DOWNPLAY;
 
     /* armor we can't wear, e.g. from polyform */
@@ -3438,56 +3262,45 @@ equip_ok(obj, removing, accessory)
     /* removing inaccessible equipment */
     if (removing && !gi.item_action_in_progress) {
         if (inaccessible_equipment(obj, 0,
-                                   (+(obj.oclass == RING_CLASS))))
+                                   +(obj.oclass == RING_CLASS)))
             return GETOBJ_EXCLUDE_INACCESS;
     }
 
     /* all good to go */
     return GETOBJ_SUGGEST;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* getobj callback for P command */
-function /* int */
-puton_ok(obj)
-{
+function puton_ok(obj) { /* int */
     return equip_ok(obj, FALSE, TRUE);
 }
 
 /* getobj callback for R command */
-function /* int */
-remove_ok(obj)
-{
+function remove_ok(obj) { /* int */
     return equip_ok(obj, TRUE, TRUE);
 }
 
 /* getobj callback for W command */
-function /* int */
-wear_ok(obj)
-{
+function wear_ok(obj) { /* int */
     return equip_ok(obj, FALSE, FALSE);
 }
 
 /* getobj callback for T command */
-function /* int */
-takeoff_ok(obj)
-{
+function takeoff_ok(obj) { /* int */
     return equip_ok(obj, TRUE, FALSE);
 }
 
 /* getobj callback for blessed destroy armor.
    suggest any worn armor, even if covered by other armor */
-export function /* int */
-any_worn_armor_ok(obj)
-{
+export function any_worn_armor_ok(obj) { /* int */
     if (obj && (obj.owornmask & W_ARMOR))
         return GETOBJ_SUGGEST;
     return GETOBJ_EXCLUDE;
 }
 
 /* number of armor pieces worn by hero */
-export function /* int */
-count_worn_armor()
-{
+export function count_worn_armor() { /* int */
     let ret = 0;
 
     if (uarm) ret++;
@@ -3502,517 +3315,159 @@ count_worn_armor()
 }
 
 /*do_wear.c*/
-import { A_CG_HELM_OFF } from "./align.h.js";
-import { A_CG_HELM_ON } from "./align.h.js";
-import { A_CHAOTIC } from "./align.h.js";
-import { A_LAWFUL } from "./align.h.js";
-import { A_NEUTRAL } from "./align.h.js";
-import { A_CHA } from "./attrib.h.js";
-import { A_CON } from "./attrib.h.js";
-import { A_DEX } from "./attrib.h.js";
-import { A_INT } from "./attrib.h.js";
-import { A_STR } from "./attrib.h.js";
-import { A_WIS } from "./attrib.h.js";
-import { ABASE } from "./attrib.h.macros.js";
-import { ABON } from "./attrib.h.macros.js";
-import { ACURR } from "./attrib.h.macros.js";
-import { ATEMP } from "./attrib.h.macros.js";
+
+import { A_CG_HELM_OFF, A_CG_HELM_ON, A_CHAOTIC, A_LAWFUL, A_NEUTRAL } from "./align.h.js";
+import { A_CHA, A_CON, A_DEX, A_INT, A_STR, A_WIS } from "./attrib.h.js";
+import { ABASE, ABON, ACURR, ATEMP } from "./attrib.h.macros.js";
 import { bl_bareh } from "./botl.h.js";
 import { CONTEXTVERBSZ } from "./context.h.js";
-import { NH_BLACK } from "./decl.h.macros.js";
-import { something } from "./decl.h.macros.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { S_CENTAUR } from "./defsym.h.js";
-import { Is_airlevel } from "./dungeon.h.macros.js";
-import { Is_waterlevel } from "./dungeon.h.macros.js";
+import { NH_BLACK, something } from "./decl.h.macros.js";
+import { AMULET_CLASS, ARMOR_CLASS, RING_CLASS, S_CENTAUR } from "./defsym.h.js";
+import { Is_airlevel, Is_waterlevel } from "./dungeon.h.macros.js";
 import { ParanoidRemove } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { ALL_FINISHED } from "./hack.h.js";
-import { ALL_TYPES } from "./hack.h.js";
-import { ALL_TYPES_SELECTED } from "./hack.h.js";
-import { ARTICLE_YOUR } from "./hack.h.js";
-import { BUCX_TYPES } from "./hack.h.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { CXN_ARTICLE } from "./hack.h.js";
-import { ECMD_CANCEL } from "./hack.h.js";
-import { ECMD_FAIL } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { ECMD_TIME } from "./hack.h.js";
-import { FACE } from "./hack.h.js";
-import { FINGER } from "./hack.h.js";
-import { FOOT } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_EXCLUDE_INACCESS } from "./hack.h.js";
-import { GETOBJ_NOFLAGS } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { HEAD } from "./hack.h.js";
-import { INVORDER_SORT } from "./hack.h.js";
-import { LEG } from "./hack.h.js";
-import { MENU_COMBINATION } from "./hack.h.js";
-import { MENU_FULL } from "./hack.h.js";
-import { MENU_TRADITIONAL } from "./hack.h.js";
-import { NECK } from "./hack.h.js";
-import { SIGNAL_NOMENU } from "./hack.h.js";
-import { SUPPRESS_HALLUCINATION } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { UNPAID_TYPES } from "./hack.h.js";
-import { USE_INVLET } from "./hack.h.js";
-import { WORN_TYPES } from "./hack.h.js";
-import { st_corpse } from "./hack.h.js";
-import { st_petrifies } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
-import { ARM_BONUS } from "./hack.h.macros.js";
-import { makeknown } from "./hack.h.macros.js";
-import { plur } from "./hack.h.macros.js";
-import { qstart_level } from "./hack.h.macros.js";
+import { BUFSZ, FALSE, QBUFSZ, TRUE, boolean } from "./global.h.js";
+import {
+    ALL_FINISHED, ALL_TYPES, ALL_TYPES_SELECTED, ARTICLE_YOUR, BUCX_TYPES, CMDQ_KEY, CQ_CANNED,
+    CXN_ARTICLE, ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, FACE, FINGER, FOOT, GETOBJ_DOWNPLAY,
+    GETOBJ_EXCLUDE, GETOBJ_EXCLUDE_INACCESS, GETOBJ_NOFLAGS, GETOBJ_SUGGEST, HAND, HEAD,
+    INVORDER_SORT, LEG, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, NECK, SIGNAL_NOMENU,
+    SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, UNPAID_TYPES, USE_INVLET, WORN_TYPES, st_corpse,
+    st_petrifies, struct__cmd_queue,
+} from "./hack.h.js";
+import { ARM_BONUS, makeknown, plur, qstart_level } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { cant_drown } from "./mondata.h.macros.js";
-import { cantweararm } from "./mondata.h.macros.js";
-import { has_head } from "./mondata.h.macros.js";
-import { has_horns } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_clinger } from "./mondata.h.macros.js";
-import { nohands } from "./mondata.h.macros.js";
-import { nolimbs } from "./mondata.h.macros.js";
-import { slithy } from "./mondata.h.macros.js";
-import { touch_petrifies } from "./mondata.h.macros.js";
-import { verysmall } from "./mondata.h.macros.js";
+import {
+    cant_drown, cantweararm, has_head, has_horns, humanoid, is_clinger, nohands, nolimbs, slithy,
+    touch_petrifies, verysmall,
+} from "./mondata.h.macros.js";
 import { MZ_SMALL } from "./monflag.h.js";
-import { PM_ARCHEOLOGIST } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_WIZARD } from "./monsters.h.js";
-import { EF_DESTROY } from "./obj.h.js";
-import { EF_PAY } from "./obj.h.js";
-import { ERODE_BURN } from "./obj.h.js";
-import { ERODE_CORRODE } from "./obj.h.js";
-import { ERODE_CRACK } from "./obj.h.js";
-import { ERODE_NONE } from "./obj.h.js";
-import { ERODE_ROT } from "./obj.h.js";
-import { ERODE_RUST } from "./obj.h.js";
-import { ER_DESTROYED } from "./obj.h.js";
-import { ER_NOTHING } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { WrappingAllowed } from "./obj.h.macros.js";
-import { bimanual } from "./obj.h.macros.js";
-import { is_boots } from "./obj.h.macros.js";
-import { is_cloak } from "./obj.h.macros.js";
-import { is_flimsy } from "./obj.h.macros.js";
-import { is_gloves } from "./obj.h.macros.js";
-import { is_helmet } from "./obj.h.macros.js";
-import { is_shield } from "./obj.h.macros.js";
-import { is_shirt } from "./obj.h.macros.js";
-import { is_suit } from "./obj.h.macros.js";
-import { is_sword } from "./obj.h.macros.js";
-import { ARM_BOOTS } from "./objclass.h.js";
-import { ARM_CLOAK } from "./objclass.h.js";
-import { ARM_GLOVES } from "./objclass.h.js";
-import { ARM_HELM } from "./objclass.h.js";
-import { ARM_SHIELD } from "./objclass.h.js";
-import { ARM_SHIRT } from "./objclass.h.js";
-import { ARM_SUIT } from "./objclass.h.js";
-import { is_corrodeable } from "./objclass.h.macros.js";
-import { is_crackable } from "./objclass.h.macros.js";
-import { is_damageable } from "./objclass.h.macros.js";
-import { is_metallic } from "./objclass.h.macros.js";
-import { is_rustprone } from "./objclass.h.macros.js";
-import { AKLYS } from "./objects.h.js";
-import { ALCHEMY_SMOCK } from "./objects.h.js";
-import { AMULET_OF_CHANGE } from "./objects.h.js";
-import { AMULET_OF_ESP } from "./objects.h.js";
-import { AMULET_OF_FLYING } from "./objects.h.js";
-import { AMULET_OF_GUARDING } from "./objects.h.js";
-import { AMULET_OF_LIFE_SAVING } from "./objects.h.js";
-import { AMULET_OF_MAGICAL_BREATHING } from "./objects.h.js";
-import { AMULET_OF_REFLECTION } from "./objects.h.js";
-import { AMULET_OF_RESTFUL_SLEEP } from "./objects.h.js";
-import { AMULET_OF_STRANGULATION } from "./objects.h.js";
-import { AMULET_OF_UNCHANGING } from "./objects.h.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { AMULET_VERSUS_POISON } from "./objects.h.js";
-import { BATTLE_AXE } from "./objects.h.js";
-import { BLACK_DRAGON_SCALES } from "./objects.h.js";
-import { BLACK_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { BLINDFOLD } from "./objects.h.js";
-import { BLUE_DRAGON_SCALES } from "./objects.h.js";
-import { BLUE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { CLOAK_OF_DISPLACEMENT } from "./objects.h.js";
-import { CLOAK_OF_INVISIBILITY } from "./objects.h.js";
-import { CLOAK_OF_MAGIC_RESISTANCE } from "./objects.h.js";
-import { CLOAK_OF_PROTECTION } from "./objects.h.js";
-import { CORNUTHAUM } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { DENTED_POT } from "./objects.h.js";
-import { DUNCE_CAP } from "./objects.h.js";
-import { DWARVISH_CLOAK } from "./objects.h.js";
-import { DWARVISH_IRON_HELM } from "./objects.h.js";
-import { DWARVISH_ROUNDSHIELD } from "./objects.h.js";
-import { ELVEN_BOOTS } from "./objects.h.js";
-import { ELVEN_CLOAK } from "./objects.h.js";
-import { ELVEN_LEATHER_HELM } from "./objects.h.js";
-import { ELVEN_SHIELD } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FEDORA } from "./objects.h.js";
-import { FUMBLE_BOOTS } from "./objects.h.js";
-import { GAUNTLETS_OF_DEXTERITY } from "./objects.h.js";
-import { GAUNTLETS_OF_FUMBLING } from "./objects.h.js";
-import { GAUNTLETS_OF_POWER } from "./objects.h.js";
-import { GOLD_DRAGON_SCALES } from "./objects.h.js";
-import { GOLD_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { GRAY_DRAGON_SCALES } from "./objects.h.js";
-import { GREEN_DRAGON_SCALES } from "./objects.h.js";
-import { GREEN_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { HAWAIIAN_SHIRT } from "./objects.h.js";
-import { HELMET } from "./objects.h.js";
-import { HELM_OF_BRILLIANCE } from "./objects.h.js";
-import { HELM_OF_CAUTION } from "./objects.h.js";
-import { HELM_OF_OPPOSITE_ALIGNMENT } from "./objects.h.js";
-import { HELM_OF_TELEPATHY } from "./objects.h.js";
-import { HIGH_BOOTS } from "./objects.h.js";
-import { IRON_SHOES } from "./objects.h.js";
-import { JUMPING_BOOTS } from "./objects.h.js";
-import { KICKING_BOOTS } from "./objects.h.js";
-import { LARGE_SHIELD } from "./objects.h.js";
-import { LEATHER_CLOAK } from "./objects.h.js";
-import { LEATHER_GLOVES } from "./objects.h.js";
-import { LENSES } from "./objects.h.js";
-import { LEVITATION_BOOTS } from "./objects.h.js";
-import { LOW_BOOTS } from "./objects.h.js";
-import { MEAT_RING } from "./objects.h.js";
-import { MUMMY_WRAPPING } from "./objects.h.js";
-import { OILSKIN_CLOAK } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALES } from "./objects.h.js";
-import { ORANGE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { ORCISH_CLOAK } from "./objects.h.js";
-import { ORCISH_HELM } from "./objects.h.js";
-import { ORCISH_SHIELD } from "./objects.h.js";
-import { RED_DRAGON_SCALES } from "./objects.h.js";
-import { RED_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { RIN_ADORNMENT } from "./objects.h.js";
-import { RIN_AGGRAVATE_MONSTER } from "./objects.h.js";
-import { RIN_COLD_RESISTANCE } from "./objects.h.js";
-import { RIN_CONFLICT } from "./objects.h.js";
-import { RIN_FIRE_RESISTANCE } from "./objects.h.js";
-import { RIN_FREE_ACTION } from "./objects.h.js";
-import { RIN_GAIN_CONSTITUTION } from "./objects.h.js";
-import { RIN_GAIN_STRENGTH } from "./objects.h.js";
-import { RIN_HUNGER } from "./objects.h.js";
-import { RIN_INCREASE_ACCURACY } from "./objects.h.js";
-import { RIN_INCREASE_DAMAGE } from "./objects.h.js";
-import { RIN_INVISIBILITY } from "./objects.h.js";
-import { RIN_LEVITATION } from "./objects.h.js";
-import { RIN_POISON_RESISTANCE } from "./objects.h.js";
-import { RIN_POLYMORPH } from "./objects.h.js";
-import { RIN_POLYMORPH_CONTROL } from "./objects.h.js";
-import { RIN_PROTECTION } from "./objects.h.js";
-import { RIN_PROTECTION_FROM_SHAPE_CHAN } from "./objects.h.js";
-import { RIN_REGENERATION } from "./objects.h.js";
-import { RIN_SEARCHING } from "./objects.h.js";
-import { RIN_SEE_INVISIBLE } from "./objects.h.js";
-import { RIN_SHOCK_RESISTANCE } from "./objects.h.js";
-import { RIN_SLOW_DIGESTION } from "./objects.h.js";
-import { RIN_STEALTH } from "./objects.h.js";
-import { RIN_SUSTAIN_ABILITY } from "./objects.h.js";
-import { RIN_TELEPORTATION } from "./objects.h.js";
-import { RIN_TELEPORT_CONTROL } from "./objects.h.js";
-import { RIN_WARNING } from "./objects.h.js";
-import { ROBE } from "./objects.h.js";
-import { SHIELD_OF_DRAIN_RESISTANCE } from "./objects.h.js";
-import { SHIELD_OF_REFLECTION } from "./objects.h.js";
-import { SHIELD_OF_SHOCK_RESISTANCE } from "./objects.h.js";
-import { SMALL_SHIELD } from "./objects.h.js";
-import { SPEED_BOOTS } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { T_SHIRT } from "./objects.h.js";
-import { URUK_HAI_SHIELD } from "./objects.h.js";
-import { WATER_WALKING_BOOTS } from "./objects.h.js";
-import { WHITE_DRAGON_SCALES } from "./objects.h.js";
-import { WHITE_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALES } from "./objects.h.js";
-import { YELLOW_DRAGON_SCALE_MAIL } from "./objects.h.js";
-import { ACID_RES } from "./prop.h.js";
-import { DISPLACED } from "./prop.h.js";
-import { DRAIN_RES } from "./prop.h.js";
-import { FAST } from "./prop.h.js";
-import { FLYING } from "./prop.h.js";
-import { FREE_ACTION } from "./prop.h.js";
-import { FROMOUTSIDE } from "./prop.h.js";
-import { FUMBLING } from "./prop.h.js";
-import { INFRAVISION } from "./prop.h.js";
-import { INTRINSIC } from "./prop.h.js";
-import { I_SPECIAL } from "./prop.h.js";
-import { LEFT_RING } from "./prop.h.js";
-import { MAGICAL_BREATHING } from "./prop.h.js";
-import { RIGHT_RING } from "./prop.h.js";
-import { SICK_RES } from "./prop.h.js";
-import { SLEEPY } from "./prop.h.js";
-import { SLOW_DIGESTION } from "./prop.h.js";
-import { STONE_RES } from "./prop.h.js";
-import { STRANGLED } from "./prop.h.js";
-import { TIMEOUT } from "./prop.h.js";
-import { WORN_AMUL } from "./prop.h.js";
-import { WORN_ARMOR } from "./prop.h.js";
-import { WORN_BLINDF } from "./prop.h.js";
-import { WORN_BOOTS } from "./prop.h.js";
-import { WORN_CLOAK } from "./prop.h.js";
-import { WORN_GLOVES } from "./prop.h.js";
-import { WORN_HELMET } from "./prop.h.js";
-import { WORN_SHIELD } from "./prop.h.js";
-import { WORN_SHIRT } from "./prop.h.js";
-import { W_ACCESSORY } from "./prop.h.js";
-import { W_AMUL } from "./prop.h.js";
-import { W_ARM } from "./prop.h.js";
-import { W_ARMC } from "./prop.h.js";
-import { W_ARMF } from "./prop.h.js";
-import { W_ARMG } from "./prop.h.js";
-import { W_ARMH } from "./prop.h.js";
-import { W_ARMOR } from "./prop.h.js";
-import { W_ARMS } from "./prop.h.js";
-import { W_ARMU } from "./prop.h.js";
-import { W_QUIVER } from "./prop.h.js";
-import { W_RING } from "./prop.h.js";
-import { W_SWAPWEP } from "./prop.h.js";
-import { W_TOOL } from "./prop.h.js";
-import { W_WEAPONS } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
-import { AC_MAX } from "./you.h.js";
-import { A_CURRENT } from "./you.h.js";
-import { A_ORIGINAL } from "./you.h.js";
-import { TT_BEARTRAP } from "./you.h.js";
-import { TT_BURIEDBALL } from "./you.h.js";
-import { TT_INFLOOR } from "./you.h.js";
-import { TT_LAVA } from "./you.h.js";
-import { RING_ON_PRIMARY } from "./you.h.macros.js";
-import { Role_if } from "./you.h.macros.js";
-import { ULEFTY } from "./you.h.macros.js";
-import { URIGHTY } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { BInvis } from "./youprop.h.macros.js";
-import { BLevitation } from "./youprop.h.macros.js";
-import { BStealth } from "./youprop.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Blind_telepat } from "./youprop.h.macros.js";
-import { Breathless } from "./youprop.h.macros.js";
-import { Detect_monsters } from "./youprop.h.macros.js";
-import { EInvis } from "./youprop.h.macros.js";
-import { ESleepy } from "./youprop.h.macros.js";
-import { EStealth } from "./youprop.h.macros.js";
-import { Fast } from "./youprop.h.macros.js";
-import { Flying } from "./youprop.h.macros.js";
-import { Glib } from "./youprop.h.macros.js";
-import { HFast } from "./youprop.h.macros.js";
-import { HFumbling } from "./youprop.h.macros.js";
-import { HInvis } from "./youprop.h.macros.js";
-import { HLevitation } from "./youprop.h.macros.js";
-import { HProtection } from "./youprop.h.macros.js";
-import { HSee_invisible } from "./youprop.h.macros.js";
-import { HSleepy } from "./youprop.h.macros.js";
-import { HStealth } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { Invis } from "./youprop.h.macros.js";
-import { Invisible } from "./youprop.h.macros.js";
-import { Levitation } from "./youprop.h.macros.js";
-import { Protection_from_shape_changers } from "./youprop.h.macros.js";
-import { Punished } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
-import { Slimed } from "./youprop.h.macros.js";
-import { Stone_resistance } from "./youprop.h.macros.js";
-import { Strangled } from "./youprop.h.macros.js";
-import { Swimming } from "./youprop.h.macros.js";
-import { Unblind_telepat } from "./youprop.h.macros.js";
-import { Unchanging } from "./youprop.h.macros.js";
-import { Underwater } from "./youprop.h.macros.js";
-import { Very_fast } from "./youprop.h.macros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { and64 } from "../rt/int64.js";
-import { not64 } from "../rt/int64.js";
-import { or64 } from "../rt/int64.js";
-import { abs } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { PM_ARCHEOLOGIST, PM_CLERIC, PM_WIZARD } from "./monsters.h.js";
+import {
+    EF_DESTROY, EF_PAY, ERODE_BURN, ERODE_CORRODE, ERODE_CRACK, ERODE_NONE, ERODE_ROT, ERODE_RUST,
+    ER_DESTROYED, ER_NOTHING, struct_obj,
+} from "./obj.h.js";
+import {
+    WrappingAllowed, bimanual, is_boots, is_cloak, is_flimsy, is_gloves, is_helmet, is_shield,
+    is_shirt, is_suit, is_sword,
+} from "./obj.h.macros.js";
+import {
+    ARM_BOOTS, ARM_CLOAK, ARM_GLOVES, ARM_HELM, ARM_SHIELD, ARM_SHIRT, ARM_SUIT,
+} from "./objclass.h.js";
+import {
+    is_corrodeable, is_crackable, is_damageable, is_metallic, is_rustprone,
+} from "./objclass.h.macros.js";
+import {
+    AKLYS, ALCHEMY_SMOCK, AMULET_OF_CHANGE, AMULET_OF_ESP, AMULET_OF_FLYING, AMULET_OF_GUARDING,
+    AMULET_OF_LIFE_SAVING, AMULET_OF_MAGICAL_BREATHING, AMULET_OF_REFLECTION,
+    AMULET_OF_RESTFUL_SLEEP, AMULET_OF_STRANGULATION, AMULET_OF_UNCHANGING, AMULET_OF_YENDOR,
+    AMULET_VERSUS_POISON, BATTLE_AXE, BLACK_DRAGON_SCALES, BLACK_DRAGON_SCALE_MAIL, BLINDFOLD,
+    BLUE_DRAGON_SCALES, BLUE_DRAGON_SCALE_MAIL, CLOAK_OF_DISPLACEMENT, CLOAK_OF_INVISIBILITY,
+    CLOAK_OF_MAGIC_RESISTANCE, CLOAK_OF_PROTECTION, CORNUTHAUM, CORPSE, DENTED_POT, DUNCE_CAP,
+    DWARVISH_CLOAK, DWARVISH_IRON_HELM, DWARVISH_ROUNDSHIELD, ELVEN_BOOTS, ELVEN_CLOAK,
+    ELVEN_LEATHER_HELM, ELVEN_SHIELD, FAKE_AMULET_OF_YENDOR, FEDORA, FUMBLE_BOOTS,
+    GAUNTLETS_OF_DEXTERITY, GAUNTLETS_OF_FUMBLING, GAUNTLETS_OF_POWER, GOLD_DRAGON_SCALES,
+    GOLD_DRAGON_SCALE_MAIL, GRAY_DRAGON_SCALES, GREEN_DRAGON_SCALES, GREEN_DRAGON_SCALE_MAIL,
+    HAWAIIAN_SHIRT, HELMET, HELM_OF_BRILLIANCE, HELM_OF_CAUTION, HELM_OF_OPPOSITE_ALIGNMENT,
+    HELM_OF_TELEPATHY, HIGH_BOOTS, IRON_SHOES, JUMPING_BOOTS, KICKING_BOOTS, LARGE_SHIELD,
+    LEATHER_CLOAK, LEATHER_GLOVES, LENSES, LEVITATION_BOOTS, LOW_BOOTS, MEAT_RING, MUMMY_WRAPPING,
+    OILSKIN_CLOAK, ORANGE_DRAGON_SCALES, ORANGE_DRAGON_SCALE_MAIL, ORCISH_CLOAK, ORCISH_HELM,
+    ORCISH_SHIELD, RED_DRAGON_SCALES, RED_DRAGON_SCALE_MAIL, RIN_ADORNMENT, RIN_AGGRAVATE_MONSTER,
+    RIN_COLD_RESISTANCE, RIN_CONFLICT, RIN_FIRE_RESISTANCE, RIN_FREE_ACTION, RIN_GAIN_CONSTITUTION,
+    RIN_GAIN_STRENGTH, RIN_HUNGER, RIN_INCREASE_ACCURACY, RIN_INCREASE_DAMAGE, RIN_INVISIBILITY,
+    RIN_LEVITATION, RIN_POISON_RESISTANCE, RIN_POLYMORPH, RIN_POLYMORPH_CONTROL, RIN_PROTECTION,
+    RIN_PROTECTION_FROM_SHAPE_CHAN, RIN_REGENERATION, RIN_SEARCHING, RIN_SEE_INVISIBLE,
+    RIN_SHOCK_RESISTANCE, RIN_SLOW_DIGESTION, RIN_STEALTH, RIN_SUSTAIN_ABILITY, RIN_TELEPORTATION,
+    RIN_TELEPORT_CONTROL, RIN_WARNING, ROBE, SHIELD_OF_DRAIN_RESISTANCE, SHIELD_OF_REFLECTION,
+    SHIELD_OF_SHOCK_RESISTANCE, SMALL_SHIELD, SPEED_BOOTS, TOWEL, T_SHIRT, URUK_HAI_SHIELD,
+    WATER_WALKING_BOOTS, WHITE_DRAGON_SCALES, WHITE_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES,
+    YELLOW_DRAGON_SCALE_MAIL,
+} from "./objects.h.js";
+import {
+    ACID_RES, DISPLACED, DRAIN_RES, FAST, FLYING, FREE_ACTION, FROMOUTSIDE, FUMBLING, INFRAVISION,
+    INTRINSIC, I_SPECIAL, LEFT_RING, MAGICAL_BREATHING, RIGHT_RING, SICK_RES, SLEEPY,
+    SLOW_DIGESTION, STONE_RES, STRANGLED, TIMEOUT, WORN_AMUL, WORN_ARMOR, WORN_BLINDF, WORN_BOOTS,
+    WORN_CLOAK, WORN_GLOVES, WORN_HELMET, WORN_SHIELD, WORN_SHIRT, W_ACCESSORY, W_AMUL, W_ARM,
+    W_ARMC, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_QUIVER, W_RING, W_SWAPWEP, W_TOOL,
+    W_WEAPONS, W_WEP,
+} from "./prop.h.js";
+import { PICK_ANY, struct_mi } from "./wintype.h.js";
+import {
+    AC_MAX, A_CURRENT, A_ORIGINAL, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA,
+} from "./you.h.js";
+import { RING_ON_PRIMARY, Role_if, ULEFTY, URIGHTY, Upolyd } from "./you.h.macros.js";
+import {
+    BInvis, BLevitation, BStealth, Blind, Blind_telepat, Breathless, Detect_monsters, EInvis,
+    ESleepy, EStealth, Fast, Flying, Glib, HFast, HFumbling, HInvis, HLevitation, HProtection,
+    HSee_invisible, HSleepy, HStealth, Hallucination, Invis, Invisible, Levitation,
+    Protection_from_shape_changers, Punished, See_invisible, Slimed, Stone_resistance, Strangled,
+    Swimming, Unblind_telepat, Unchanging, Underwater, Very_fast,
+} from "./youprop.h.macros.js";
+import { char, int, long, ord, sizeof, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { and64, not64, or64 } from "../rt/int64.js";
+import { abs, free, sprintf, strcat, strcmp, strcpy, strncmp, strncpy } from "../rt/libc.js";
+import {
+    init_list, init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
+import { addr_of, array_of, ptr_add, ptr_to, ref_of, struct_assign } from "../rt/struct.js";
 import { stop_occupation } from "./allmain.js";
-import { artifact_light } from "./artifact.js";
-import { retouch_object } from "./artifact.js";
-import { change_luck } from "./attrib.js";
-import { extremeattr } from "./attrib.js";
-import { uchangealign } from "./attrib.js";
+import { artifact_light, retouch_object } from "./artifact.js";
+import { change_luck, extremeattr, uchangealign } from "./attrib.js";
 import { set_bc } from "./ball.js";
 import { condtests } from "./botl.js";
-import { cmdq_clear } from "./cmd.js";
-import { cmdq_peek } from "./cmd.js";
-import { cmdq_pop } from "./cmd.js";
-import { paranoid_ynq } from "./cmd.js";
-import { set_occupation } from "./cmd.js";
-import { yn_function } from "./cmd.js";
-import { is_lava } from "./dbridge.js";
-import { is_pool } from "./dbridge.js";
-import { is_pool_or_lava } from "./dbridge.js";
-import { cg } from "./decl.js";
-import { disp } from "./decl.js";
-import { flags } from "./decl.js";
-import { ga } from "./decl.js";
-import { gi } from "./decl.js";
-import { gm } from "./decl.js";
-import { gn } from "./decl.js";
-import { gw } from "./decl.js";
-import { gy } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { rightleftchars } from "./decl.js";
-import { svc } from "./decl.js";
-import { u } from "./decl.js";
-import { newsym } from "./display.js";
-import { see_monsters } from "./display.js";
-import { set_mimic_blocking } from "./display.js";
-import { canletgo } from "./do.js";
-import { dropx } from "./do.js";
-import { trycall } from "./do.js";
-import { hcolor } from "./do_name.js";
-import { hliquid } from "./do_name.js";
-import { obj_pmname } from "./do_name.js";
-import { x_monnam } from "./do_name.js";
-import { has_ceiling } from "./dungeon.js";
-import { surface } from "./dungeon.js";
+import {
+    cmdq_clear, cmdq_peek, cmdq_pop, paranoid_ynq, set_occupation, yn_function,
+} from "./cmd.js";
+import { is_lava, is_pool, is_pool_or_lava } from "./dbridge.js";
+import {
+    cg, disp, flags, ga, gi, gm, gn, gw, gy, iflags, program_state, rightleftchars, svc, u,
+} from "./decl.js";
+import { newsym, see_monsters, set_mimic_blocking } from "./display.js";
+import { canletgo, dropx, trycall } from "./do.js";
+import { hcolor, hliquid, obj_pmname, x_monnam } from "./do_name.js";
+import { has_ceiling, surface } from "./dungeon.js";
 import { panic } from "./end.js";
-import { nomul } from "./hack.js";
-import { spoteffects } from "./hack.js";
-import { unmul } from "./hack.js";
-import { sgn } from "./hacklib.js";
-import { strsubst } from "./hacklib.js";
-import { carrying_stoning_corpse } from "./invent.js";
-import { getobj } from "./invent.js";
-import { ggetobj } from "./invent.js";
-import { is_worn } from "./invent.js";
-import { prinv } from "./invent.js";
-import { silly_thing } from "./invent.js";
-import { update_inventory } from "./invent.js";
-import { useup } from "./invent.js";
-import { wearing_armor } from "./invent.js";
+import { nomul, spoteffects, unmul } from "./hack.js";
+import { sgn, strsubst } from "./hacklib.js";
+import {
+    carrying_stoning_corpse, getobj, ggetobj, is_worn, prinv, silly_thing, update_inventory, useup,
+    wearing_armor,
+} from "./invent.js";
 import { arti_light_description } from "./light.js";
 import { gulp_blnd_check } from "./mhitu.js";
-import { curse } from "./mkobj.js";
-import { is_flammable } from "./mkobj.js";
-import { is_rottable } from "./mkobj.js";
-import { set_bknown } from "./mkobj.js";
-import { rescham } from "./mon.js";
-import { restartcham } from "./mon.js";
-import { can_be_strangled } from "./mondata.js";
-import { num_horns } from "./mondata.js";
+import { curse, is_flammable, is_rottable, set_bknown } from "./mkobj.js";
+import { rescham, restartcham } from "./mon.js";
+import { can_be_strangled, num_horns } from "./mondata.js";
 import { mons } from "./monst.js";
 import { observe_object } from "./o_init.js";
 import { objects } from "./objects.js";
-import { Tobjnam } from "./objnam.js";
-import { Yname2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { boots_simple_name } from "./objnam.js";
-import { cloak_simple_name } from "./objnam.js";
-import { corpse_xname } from "./objnam.js";
-import { doname } from "./objnam.js";
-import { erosion_matters } from "./objnam.js";
-import { gloves_simple_name } from "./objnam.js";
-import { helm_simple_name } from "./objnam.js";
-import { killer_xname } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { makesingular } from "./objnam.js";
-import { obj_is_pname } from "./objnam.js";
-import { otense } from "./objnam.js";
-import { safe_typename } from "./objnam.js";
-import { shield_simple_name } from "./objnam.js";
-import { shirt_simple_name } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { suit_simple_name } from "./objnam.js";
-import { the } from "./objnam.js";
-import { thesimpleoname } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { yname } from "./objnam.js";
-import { add_valid_menu_class } from "./pickup.js";
-import { encumber_msg } from "./pickup.js";
-import { is_worn_by_type } from "./pickup.js";
-import { menu_class_present } from "./pickup.js";
-import { query_category } from "./pickup.js";
-import { query_objlist } from "./pickup.js";
-import { u_safe_from_fatal_corpse } from "./pickup.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { You_cant } from "./pline.js";
-import { You_feel } from "./pline.js";
-import { Your } from "./pline.js";
-import { impossible } from "./pline.js";
-import { pline } from "./pline.js";
-import { pline_The } from "./pline.js";
-import { urgent_pline } from "./pline.js";
-import { body_part } from "./polyself.js";
-import { change_sex } from "./polyself.js";
-import { float_vs_flight } from "./polyself.js";
-import { livelog_newform } from "./polyself.js";
-import { poly_gender } from "./polyself.js";
-import { incr_itimeout } from "./potion.js";
-import { make_glib } from "./potion.js";
-import { make_hallucinated } from "./potion.js";
-import { make_slimed } from "./potion.js";
-import { self_invis_message } from "./potion.js";
-import { toggle_blindness } from "./potion.js";
+import {
+    Tobjnam, Yname2, an, ansimpleoname, boots_simple_name, cloak_simple_name, corpse_xname, doname,
+    erosion_matters, gloves_simple_name, helm_simple_name, killer_xname, makeplural, makesingular,
+    obj_is_pname, otense, safe_typename, shield_simple_name, shirt_simple_name, simpleonames,
+    suit_simple_name, the, thesimpleoname, vtense, xname, yname,
+} from "./objnam.js";
+import {
+    add_valid_menu_class, encumber_msg, is_worn_by_type, menu_class_present, query_category,
+    query_objlist, u_safe_from_fatal_corpse,
+} from "./pickup.js";
+import {
+    There, You, You_cant, You_feel, Your, impossible, pline, pline_The, urgent_pline,
+} from "./pline.js";
+import {
+    body_part, change_sex, float_vs_flight, livelog_newform, poly_gender,
+} from "./polyself.js";
+import {
+    incr_itimeout, make_glib, make_hallucinated, make_slimed, self_invis_message, toggle_blindness,
+} from "./potion.js";
 import { region_danger } from "./region.js";
-import { rn2 } from "./rnd.js";
-import { rnd } from "./rnd.js";
+import { rn2, rnd } from "./rnd.js";
 import { shk_your } from "./shk.js";
 import { remove_worn_item } from "./steal.js";
-import { begin_burn } from "./timeout.js";
-import { end_burn } from "./timeout.js";
-import { drown } from "./trap.js";
-import { erode_obj } from "./trap.js";
-import { float_down } from "./trap.js";
-import { float_up } from "./trap.js";
-import { instapetrify } from "./trap.js";
-import { selftouch } from "./trap.js";
+import { begin_burn, end_burn } from "./timeout.js";
+import { drown, erode_obj, float_down, float_up, instapetrify, selftouch } from "./trap.js";
 import { weapon_descr } from "./weapon.js";
-import { empty_handed } from "./wield.js";
-import { setuqwep } from "./wield.js";
-import { setuswapwep } from "./wield.js";
-import { setuwep } from "./wield.js";
-import { welded } from "./wield.js";
-import { racial_exception } from "./worn.js";
-import { setnotworn } from "./worn.js";
-import { setworn } from "./worn.js";
-import { which_armor } from "./worn.js";
+import { empty_handed, setuqwep, setuswapwep, setuwep, welded } from "./wield.js";
+import { racial_exception, setnotworn, setworn, which_armor } from "./worn.js";
 import { obj_resists } from "./zap.js";

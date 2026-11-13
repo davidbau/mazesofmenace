@@ -2,55 +2,16 @@
 /* Copyright (c) David Cohrs, 1991,1992                           */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* NOMUX_CAPTURE: shadow frame buffer for direct screen capture without tmux */
-
-
-
 
 export const nomux_cell = struct("nomux_cell", { ch: char, fg: uchar, attr: uchar, decgfx: uchar, });
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* for static init of zerottycell, put pointer first */
-
-
-
-
-
-
-
-
 
     /* adjusted color 0 = ignore
                          * 1-16             = NetHack color + 1
                          * 17..16,777,233   = 24-bit color  + 17
                          */
-
-
 
 /* menu structure */
 export const struct_tty_mi = struct("struct_tty_mi", {
@@ -90,9 +51,6 @@ export const struct_WinDesc = struct("struct_WinDesc", {
     nitems: long, /* total number of items (MENU) */
     how: short, /* menu mode - pick 1 or N (MENU) */
     menu_ch: char, /* menu char (MENU) */
-
-
-
 });
 
 /* window flags */
@@ -101,9 +59,6 @@ export const WIN_STOP = 1;
 
 export const WIN_LOCKHISTORY = 2;
 export const WIN_NOSTOP = 4;
-
-
-
 
 /* topline states */
 export const TOPLINE_EMPTY = 0;
@@ -130,9 +85,6 @@ export const struct_DisplayDesc = struct("struct_DisplayDesc", {
     mixed: int, /* we are processing mixed output */
 });
 
-
-
-
 export const struct_tty_status_fields = struct("struct_tty_status_fields", {
     idx: int,
     color: int,
@@ -145,23 +97,15 @@ export const struct_tty_status_fields = struct("struct_tty_status_fields", {
     sanitycheck: boolean, /* was 'last_in_row' */
 });
 
-
 export const MAXWIN = 20;
 
 /* tty dependent window types */
-
-
 
 export const NHW_BASE = (NHW_LAST_TYPE + 1);
 
 /* external declarations */
 
-
-
 /* port specific variable declarations */
-
-
-
 
 /* the tty display descriptor */
 
@@ -171,8 +115,6 @@ export const NHW_BASE = (NHW_LAST_TYPE + 1);
 /* port specific external function references */
 
 /* ### getline.c ### */
-
-
 
 /* ### termcap.c, video.c ### */
 
@@ -195,149 +137,16 @@ export const NHW_BASE = (NHW_LAST_TYPE + 1);
  *
  */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* ### topl.c ### */
-
-
-
-
-
-
-
 
 /* ### wintty.c ### */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* tty interface */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 /* termcap is implied if NO_TERMS is not defined */
-import { boolean } from "./global.h.js";
-import { xint16 } from "./global.h.js";
+
+import { boolean, xint16 } from "./global.h.js";
 import { uint32 } from "./integer.h.js";
-import { NHW_LAST_TYPE } from "./wintype.h.js";
-import { winid } from "./wintype.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { NHW_LAST_TYPE, winid } from "./wintype.h.js";
+import { char, int, long, short, uchar, ulong, unsigned } from "../rt/ctypes.js";
+import { ptr_to, struct } from "../rt/struct.js";

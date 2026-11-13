@@ -3,26 +3,13 @@
 /*-Copyright (c) Robert Patrick Rankin, 2012. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
-
-function /* boolean */
-no_bones_level(lev)
-{
+function no_bones_level(lev) { /* boolean */
     let sptr;
 
     if (ledger_no(gs.save_dlevel))
         assign_level(lev, gs.save_dlevel);
 
-    return (((((sptr = Is_special(lev)) != null && !sptr.boneid)
+    return ((((sptr = Is_special(lev)) != null && !sptr.boneid)
                       || !elt(svd.dungeons, lev.dnum).boneid
                       /* no bones on the last or multiway branch levels
                          in any dungeon (level 1 isn't multiway) */
@@ -30,7 +17,7 @@ no_bones_level(lev)
                       || (Is_branchlev(lev) && lev.dlevel > 1)
                       /* no bones in the invocation level */
                       || (In_hell(lev)
-                          && lev.dlevel == dunlevs_in_dungeon(lev) - 1)) ? 1 : 0));
+                          && lev.dlevel == dunlevs_in_dungeon(lev) - 1) ? 1 : 0));
 }
 
 /* Call this function for each fruit object saved in the bones level: it marks
@@ -38,18 +25,15 @@ no_bones_level(lev)
  * ID is positive instead of negative).  This way, when we later save the
  * chain of fruit types, we know to only save the types that exist.
  */
-function /* void */
-goodfruit(id)
-{
+function goodfruit(id) { /* void */
     let f = fruit_from_indx(-id);
 
     if (f)
         f.fid = id;
 }
 
-function /* void */
-resetobjs(ochain, restore)
-{ const $frame = stack_frame(); try {
+function resetobjs(ochain, restore) { /* void */
+    const $frame = stack_frame(); try {
     let otmp, nobj;
 
     for (otmp = ochain; otmp; otmp = nobj) {
@@ -89,13 +73,13 @@ resetobjs(ochain, restore)
                 for (top = otmp; top.where == OBJ_CONTAINED;
                      top = top.v.v_ocontainer)
                     continue;
-                otmp.no_charge = (((top.where == OBJ_FLOOR
+                otmp.no_charge = (top.where == OBJ_FLOOR
                                    && get_obj_location(top, ox, oy, 0)
                                    /* can't use costly_spot() since its
                                       result depends upon hero's location */
                                    && inside_shop(ox[0], oy[0])
                                    && chars[(p = in_rooms(ox[0], oy[0], SHOPBASE))]
-                                 && tended_shop(elt(svr.rooms, chars[p] - ROOMOFFSET))) ? 1 : 0));
+                                 && tended_shop(elt(svr.rooms, chars[p] - ROOMOFFSET)) ? 1 : 0);
             }
         } else { /* saving */
             /* do not zero out o_ids for ghost levels anymore */
@@ -130,13 +114,11 @@ resetobjs(ochain, restore)
 
             if (otmp.otyp == SLIME_MOLD) {
                 goodfruit(otmp.spe);
-
             } else if (otmp.otyp == SCR_MAIL) {
                 /* 0: delivered in-game via external event;
                    1: from bones or wishing; 2: written with marker */
                 if (otmp.spe == 0)
                     otmp.spe = 1;
-
             } else if (otmp.otyp == EGG) {
                 otmp.spe = 0; /* not "laid by you" in next game */
             } else if (otmp.otyp == TIN) {
@@ -190,16 +172,15 @@ resetobjs(ochain, restore)
             }
         }
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* while loading bones, strip out text possibly supplied by old player
    that might accidentally or maliciously disrupt new player's display */
-export function /* void */
-sanitize_name(namebuf)
-{
+export function sanitize_name(namebuf) { /* void */
     let c;
-    let strip_8th_bit = (+(((windowprocs.wp_id == wp_tty))
-                             && !iflags.wc_eight_bit_input));
+    let strip_8th_bit = +((windowprocs.wp_id == wp_tty)
+                             && !iflags.wc_eight_bit_input);
 
     /* it's tempting to skip this for single-user platforms, since
        only the current player could have left these bones--except
@@ -222,9 +203,7 @@ sanitize_name(namebuf)
 /* Give object to a random object-liking monster on or adjacent to x,y
    but skipping hero's location.
    If no such monster, place object on floor at x,y. */
-function /* void */
-give_to_nearby_mon(otmp, x, y)
-{
+function give_to_nearby_mon(otmp, x, y) { /* void */
     let mtmp;
     let selected = null;
     let nmon = 0, xx, yy;
@@ -255,12 +234,10 @@ give_to_nearby_mon(otmp, x, y)
 }
 
 /* called by savebones(); also by finish_paybill(shk.c) */
-export function /* void */
-drop_upon_death(
+export function drop_upon_death(
     mtmp,
     cont,
-    x, y)
-{
+    x, y) { /* void */
     let otmp;
 
     /* when dual-wielding, the second weapon gets dropped rather than
@@ -290,9 +267,9 @@ drop_upon_death(
         if (rn2(5))
             curse(otmp);
         if (mtmp)
-            void add_to_minv(mtmp, otmp);
+            add_to_minv(mtmp, otmp);
         else if (cont)
-            void add_to_container(cont, otmp);
+            add_to_container(cont, otmp);
         else if (!rn2(8))
             give_to_nearby_mon(otmp, x, y);
         else
@@ -304,9 +281,8 @@ drop_upon_death(
 
 /* possibly restore oracle's room and/or put her back inside it; returns
    False if she's on the wrong level and should be removed, True otherwise */
-function /* boolean */
-fixuporacle(oracle)
-{ const $frame = stack_frame(); try {
+function fixuporacle(oracle) { /* boolean */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
     let ridx, o_ridx;
 
@@ -349,12 +325,11 @@ fixuporacle(oracle)
     if (ridx == o_ridx) /* if she's in her room, mark it as such */
         svr.rooms[ridx].rtype = DELPHI;
     return TRUE; /* keep oracle in new bones file */
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* check whether bones are feasible */
-export function /* boolean */
-can_make_bones()
-{
+export function can_make_bones() { /* boolean */
     let ttmp;
 
     if (!flags.bones)
@@ -386,9 +361,7 @@ can_make_bones()
 
 /* monster might need to be removed before saving a bones file,
    in case these characters are not in their home bases */
-function /* void */
-remove_mon_from_bones(mtmp)
-{
+function remove_mon_from_bones(mtmp) { /* void */
     let mptr = mtmp.data;
 
     if (mtmp.iswiz || mptr == mons[PM_MEDUSA]
@@ -399,9 +372,8 @@ remove_mon_from_bones(mtmp)
 }
 
 /* save bones and possessions of a deceased adventurer */
-export function /* void */
-savebones(how, when, corpse)
-{ const $frame = stack_frame(); try {
+export function savebones(how, when, corpse) { /* void */
+    const $frame = stack_frame(); try {
     var x, y;
     var ttmp;
     var mtmp;
@@ -430,7 +402,6 @@ savebones(how, when, corpse)
         compress_bonesfile();
         return;
     }
-
  }
     unleash_all();
     /* new ghost or other undead isn't punished even if hero was;
@@ -474,7 +445,7 @@ savebones(how, when, corpse)
         /* 'mtmp' now has hero's inventory; if 'mtmp' is a mummy, give it
            a wrapping unless already carrying one */
         if (mtmp.data.mlet == S_MUMMY && !m_carrying(mtmp, MUMMY_WRAPPING))
-            void mongets(mtmp, MUMMY_WRAPPING);
+            mongets(mtmp, MUMMY_WRAPPING);
         m_dowear(mtmp, TRUE);
     } else if (u.ugrave_arise == LEAVESTATUE) {
         var otmp;
@@ -500,7 +471,7 @@ savebones(how, when, corpse)
             return;
         mtmp = christen_monst(mtmp, svp.plname);
         if (corpse)
-            void obj_attach_mid(corpse, mtmp.m_id);
+            obj_attach_mid(corpse, mtmp.m_id);
     }
     if (mtmp) {
         var i;
@@ -574,16 +545,15 @@ savebones(how, when, corpse)
     newbones = view_of(struct_cemetery, addr_of(alloc(sizeof(struct_cemetery))));
     /* entries are '\0' terminated but have fixed length allocations,
        so pre-fill with spaces to initialize any excess room */
-    void memset(addr_of(newbones), ord(' '), sizeof(struct_cemetery));
+    memset(addr_of(newbones), ord(' '), sizeof(struct_cemetery));
     /* format name+role,&c, death reason, and date+time;
        gender and alignment reflect final values rather than what the
        character started out as, same as topten and logfile entries */
-    void sprintf(newbones.who, _("%s-%.3s-%.3s-%.3s-%.3s"), svp.plname, gu.urole.filecode, gu.urace.filecode, genders[flags.female].filecode, aligns[1 - u.ualign.type].filecode)
-
+    sprintf(newbones.who, _("%s-%.3s-%.3s-%.3s-%.3s"), svp.plname, gu.urole.filecode, gu.urace.filecode, genders[flags.female].filecode, aligns[1 - u.ualign.type].filecode)
 
 ;
     formatkiller(newbones.how, sizeof_member(newbones, "how"), how, TRUE);
-    void strcpy(newbones.when, yyyymmddhhmmss(when));
+    strcpy(newbones.when, yyyymmddhhmmss(when));
     /* final resting place, used to decide when bones are discovered */
     newbones.frpx = u.ux0, newbones.frpy = u.uy0;
     newbones.bonesknown = FALSE;
@@ -607,7 +577,7 @@ savebones(how, when, corpse)
         paniclog(_("savebones"), whynot);
         return;
     }
-    c[0] = char((unsigned(strlen(bonesid[0]) + 1)));
+    c[0] = char(unsigned(strlen(bonesid[0]) + 1));
 
     nhfp.mode = WRITING;
     store_version(nhfp);
@@ -622,19 +592,16 @@ savebones(how, when, corpse)
     close_nhfile(nhfp);
     commit_bonesfile(u.uz);
     compress_bonesfile();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* int */
-getbones()
-{ const $frame = stack_frame(); try {
+export function getbones() { /* int */
+    const $frame = stack_frame(); try {
     let ok;
     let nhfp = null;
     let c = stack_var(char, 0), bonesid = stack_var(ptr_to(char)),
          oldbonesid = init_list(stack_array(char, 40), [ 0 ]); /* was [10]; more should be safer */
     let ancestor_nhuuid = stack_array(char, (Math.trunc((sizeof_member(svn, "nhuuid") / sizeof(char)))));
-
 
     if (discover()) /* save bones files for real games */
         return 0;
@@ -647,7 +614,6 @@ getbones()
         return 0;
     if (no_bones_level(u.uz))
         return 0;
-
 
     nhfp = open_bonesfile(u.uz, bonesid);
     if (!nhfp)
@@ -693,7 +659,7 @@ getbones()
         if (strcmp(bonesid[0], oldbonesid) != 0) {
             let errbuf = stack_array(char, BUFSZ);
 
-            void sprintf(errbuf, _("This is bones level '%s', not '%s'!"), oldbonesid, bonesid[0])
+            sprintf(errbuf, _("This is bones level '%s', not '%s'!"), oldbonesid, bonesid[0])
 ;
             if (wizard()) {
                 pline1(errbuf);
@@ -753,22 +719,20 @@ getbones()
         return 0;
     }
     return ok;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
 /* check whether current level contains bones from a particular player */
-export function /* boolean */
-bones_include_name(name)
-{ const $frame = stack_frame(); try {
+export function bones_include_name(name) { /* boolean */
+    const $frame = stack_frame(); try {
     let bp;
     let len;
     let buf = stack_array(char, BUFSZ);
 
     /* prepare buffer by appending terminal hyphen to name, to avoid partial
      * matches producing false positives */
-    void strcpy(buf, name);
-    void strcat(buf, _("-"));
+    strcpy(buf, name);
+    strcat(buf, _("-"));
     len = strlen(buf);
 
     for (bp = svl.level.bonesinfo; bp; bp = bp.next) {
@@ -777,12 +741,11 @@ bones_include_name(name)
     }
 
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* set the ghostly bit in a list of objects */
-function /* void */
-set_ghostly_objlist(objchain)
-{
+function set_ghostly_objlist(objchain) { /* void */
     while (objchain) {
         objchain.ghostly = 1;
         objchain = objchain.nobj;
@@ -792,9 +755,7 @@ set_ghostly_objlist(objchain)
 /* This is called when a marked object from a bones file is picked-up.
    Some could result in a message, and the obj->ghostly flag is always
    cleared. obj->ghostly has no other usage at this time. */
-export function /* void */
-fix_ghostly_obj(obj)
-{
+export function fix_ghostly_obj(obj) { /* void */
     if (!obj.ghostly)
         return;
     switch(obj.otyp) {
@@ -814,257 +775,124 @@ fix_ghostly_obj(obj)
     obj.ghostly = 0;
 }
 
-export function /* void */
-newebones(mtmp)
-{
+export function newebones(mtmp) { /* void */
     if (!mtmp.mextra)
         mtmp.mextra = newmextra();
     if (!EBONES(mtmp)) {
         ((mtmp).mextra.ebones) = view_of(struct_ebones, addr_of(alloc(
             sizeof(struct_ebones))));
-        void memset(addr_of(EBONES(mtmp)), 0,
+        memset(addr_of(EBONES(mtmp)), 0,
                       sizeof(struct_ebones));
         EBONES(mtmp).parentmid = mtmp.m_id;
     }
 }
 
 /* this is not currently used */
-export function /* void */
-free_ebones(mtmp)
-{
+export function free_ebones(mtmp) { /* void */
     if (mtmp.mextra && EBONES(mtmp)) {
         free(addr_of(EBONES(mtmp)));
         ((mtmp).mextra.ebones) = null;
     }
 }
 
-
-
 /*bones.c*/
+
 import { struct_nhcoord } from "./coord.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { S_MUMMY } from "./defsym.h.js";
+import { FOOD_CLASS, S_MUMMY } from "./defsym.h.js";
 import { GLYPH_UNEXPLORED } from "./display.h.js";
 import { Is_oracle_level } from "./dungeon.h.macros.js";
-import { discover } from "./flag.h.macros.js";
-import { wizard } from "./flag.h.macros.js";
-import { BUFSZ } from "./global.h.js";
-import { COLNO } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { ROWNO } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { DEFUNCT_MONSTER } from "./hack.h.js";
-import { DISMOUNT_BONES } from "./hack.h.js";
-import { MM_NONAME } from "./hack.h.js";
-import { NO_MINVENT } from "./hack.h.js";
-import { NUM_RACES } from "./hack.h.js";
-import { NUM_ROLES } from "./hack.h.js";
-import { ONAME_BONES } from "./hack.h.js";
-import { SF_UPTODATE } from "./hack.h.js";
-import { WRITING } from "./hack.h.js";
-import { pline1 } from "./hack.h.macros.js";
-import { y_n } from "./hack.h.macros.js";
-import { debugpline2 } from "./lint.h.macros.js";
-import { showdebug } from "./lint.h.macros.js";
+import { discover, wizard } from "./flag.h.macros.js";
+import { BUFSZ, COLNO, FALSE, ROWNO, TRUE, coordxy } from "./global.h.js";
+import {
+    DEFUNCT_MONSTER, DISMOUNT_BONES, MM_NONAME, NO_MINVENT, NUM_RACES, NUM_ROLES, ONAME_BONES,
+    SF_UPTODATE, WRITING,
+} from "./hack.h.js";
+import { pline1, y_n } from "./hack.h.macros.js";
+import { debugpline2, showdebug } from "./lint.h.macros.js";
 import { struct_ebones } from "./mextra.h.js";
-import { EBONES } from "./mextra.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
-import { has_ebones } from "./mextra.h.macros.js";
-import { has_mgivenname } from "./mextra.h.macros.js";
-import { DELPHI } from "./mkroom.h.js";
-import { ROOMOFFSET } from "./mkroom.h.js";
-import { SHOPBASE } from "./mkroom.h.js";
-import { is_undead } from "./mondata.h.macros.js";
-import { likes_gems } from "./mondata.h.macros.js";
-import { likes_gold } from "./mondata.h.macros.js";
-import { likes_magic } from "./mondata.h.macros.js";
-import { likes_objs } from "./mondata.h.macros.js";
-import { unique_corpstat } from "./mondata.h.macros.js";
-import { MS_LEADER } from "./monflag.h.js";
-import { MS_NEMESIS } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
+import { EBONES, MGIVENNAME, has_ebones, has_mgivenname } from "./mextra.h.macros.js";
+import { DELPHI, ROOMOFFSET, SHOPBASE } from "./mkroom.h.js";
+import {
+    is_undead, likes_gems, likes_gold, likes_magic, likes_objs, unique_corpstat,
+} from "./mondata.h.macros.js";
+import { MS_LEADER, MS_NEMESIS, NEUTRAL } from "./monflag.h.js";
 import { M_SEEN_NOTHING } from "./monst.h.js";
-import { is_Vlad } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { LEAVESTATUE } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { PM_DOPPELGANGER } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_MEDUSA } from "./monsters.h.js";
-import { PM_ORACLE } from "./monsters.h.js";
-import { SPECIAL_PM } from "./monsters.h.js";
-import { LOST_NONE } from "./obj.h.js";
-import { OBJ_CONTAINED } from "./obj.h.js";
-import { OBJ_FLOOR } from "./obj.h.js";
-import { ONAME } from "./obj.h.macros.js";
-import { has_omonst } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_mines_prize } from "./obj.h.macros.js";
-import { is_soko_prize } from "./obj.h.macros.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { BELL } from "./objects.h.js";
-import { BELL_OF_OPENING } from "./objects.h.js";
-import { BOOMERANG } from "./objects.h.js";
-import { BOW } from "./objects.h.js";
-import { CANDELABRUM_OF_INVOCATION } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { EGG } from "./objects.h.js";
-import { ELVEN_BOW } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { MUMMY_WRAPPING } from "./objects.h.js";
-import { ORCISH_BOW } from "./objects.h.js";
-import { SCR_MAIL } from "./objects.h.js";
-import { SLIME_MOLD } from "./objects.h.js";
-import { SPE_BLANK_PAPER } from "./objects.h.js";
-import { SPE_BOOK_OF_THE_DEAD } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { WAX_CANDLE } from "./objects.h.js";
-import { YUMI } from "./objects.h.js";
+import { is_Vlad, ismnum } from "./monst.h.macros.js";
+import {
+    LEAVESTATUE, NON_PM, PM_DOPPELGANGER, PM_GHOST, PM_MEDUSA, PM_ORACLE, SPECIAL_PM,
+} from "./monsters.h.js";
+import { LOST_NONE, OBJ_CONTAINED, OBJ_FLOOR } from "./obj.h.js";
+import { ONAME, has_omonst, has_oname, is_mines_prize, is_soko_prize } from "./obj.h.macros.js";
+import {
+    AMULET_OF_YENDOR, BELL, BELL_OF_OPENING, BOOMERANG, BOW, CANDELABRUM_OF_INVOCATION, CORPSE, EGG,
+    ELVEN_BOW, FAKE_AMULET_OF_YENDOR, MUMMY_WRAPPING, ORCISH_BOW, SCR_MAIL, SLIME_MOLD,
+    SPE_BLANK_PAPER, SPE_BOOK_OF_THE_DEAD, SPE_NOVEL, STATUE, TIN, WAX_CANDLE, YUMI,
+} from "./objects.h.js";
 import { struct_cemetery } from "./rm.h.js";
-import { fmon } from "./rm.h.macros.js";
-import { fobj } from "./rm.h.macros.js";
-import { levl } from "./rm.h.macros.js";
-import { m_at } from "./rm.h.macros.js";
-import { Sfi_char } from "./savefile.h.macros.js";
-import { Sfo_char } from "./savefile.h.macros.js";
+import { fmon, fobj, levl, m_at } from "./rm.h.macros.js";
+import { Sfi_char, Sfo_char } from "./savefile.h.macros.js";
 import { MAGIC_PORTAL } from "./trap.h.js";
 import { unhideable_trap } from "./trap.h.macros.js";
 import { wp_tty } from "./winprocs.h.js";
-import { Role_switch } from "./you.h.macros.js";
-import { URIGHTY } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
+import { Role_switch, URIGHTY, u_at } from "./you.h.macros.js";
 import { Punished } from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { free } from "../rt/libc.js";
-import { memset } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { init_list } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
+import { char, int, ord, sizeof, uchar, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { free, memset, sprintf, strcat, strcmp, strcpy, strlen, strncmp } from "../rt/libc.js";
+import { init_list, stack_array, stack_struct, stack_var } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { sizeof_member } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
+import {
+    addr_of, array_of, elt, ptr_to, sizeof_member, struct_assign, view_of,
+} from "../rt/struct.js";
 import { alloc } from "./alloc.js";
 import { unleash_all } from "./apply.js";
-import { artifact_exists } from "./artifact.js";
-import { artifact_light } from "./artifact.js";
-import { exist_artifact } from "./artifact.js";
+import { artifact_exists, artifact_light, exist_artifact } from "./artifact.js";
 import { yyyymmddhhmmss } from "./calendar.js";
 import { isok } from "./cmd.js";
-import { flags } from "./decl.js";
-import { gb } from "./decl.js";
-import { gf } from "./decl.js";
-import { gi } from "./decl.js";
-import { gs } from "./decl.js";
-import { gu } from "./decl.js";
-import { iflags } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svd } from "./decl.js";
-import { svl } from "./decl.js";
-import { svn } from "./decl.js";
-import { svp } from "./decl.js";
-import { svr } from "./decl.js";
-import { u } from "./decl.js";
+import {
+    flags, gb, gf, gi, gs, gu, iflags, program_state, svd, svl, svn, svp, svr, u,
+} from "./decl.js";
 import { newsym } from "./display.js";
 import { obj_no_longer_held } from "./do.js";
-import { christen_monst } from "./do_name.js";
-import { free_oname } from "./do_name.js";
-import { safe_oname } from "./do_name.js";
+import { christen_monst, free_oname, safe_oname } from "./do_name.js";
 import { update_mlstmv } from "./dog.js";
-import { In_hell } from "./dungeon.js";
-import { Is_botlevel } from "./dungeon.js";
-import { Is_branchlev } from "./dungeon.js";
-import { Is_special } from "./dungeon.js";
-import { assign_level } from "./dungeon.js";
-import { depth } from "./dungeon.js";
-import { dunlevs_in_dungeon } from "./dungeon.js";
-import { ledger_no } from "./dungeon.js";
-import { maxledgerno } from "./dungeon.js";
-import { forget_engravings } from "./engrave.js";
-import { sanitize_engravings } from "./engrave.js";
-import { close_nhfile } from "./files.js";
-import { commit_bonesfile } from "./files.js";
-import { compress_bonesfile } from "./files.js";
-import { create_bonesfile } from "./files.js";
-import { delete_bonesfile } from "./files.js";
-import { open_bonesfile } from "./files.js";
-import { paniclog } from "./files.js";
+import {
+    In_hell, Is_botlevel, Is_branchlev, Is_special, assign_level, depth, dunlevs_in_dungeon,
+    ledger_no, maxledgerno,
+} from "./dungeon.js";
+import { forget_engravings, sanitize_engravings } from "./engrave.js";
+import {
+    close_nhfile, commit_bonesfile, compress_bonesfile, create_bonesfile, delete_bonesfile,
+    open_bonesfile, paniclog,
+} from "./files.js";
 import { in_rooms } from "./hack.js";
 import { obj_is_burning } from "./light.js";
-import { makemon } from "./makemon.js";
-import { mongets } from "./makemon.js";
-import { newmextra } from "./makemon.js";
-import { add_to_container } from "./mkobj.js";
-import { add_to_minv } from "./mkobj.js";
-import { curse } from "./mkobj.js";
-import { dealloc_obj } from "./mkobj.js";
-import { free_omonst } from "./mkobj.js";
-import { mk_named_object } from "./mkobj.js";
-import { obj_attach_mid } from "./mkobj.js";
-import { obj_extract_self } from "./mkobj.js";
-import { place_object } from "./mkobj.js";
-import { set_corpsenm } from "./mkobj.js";
-import { weight } from "./mkobj.js";
-import { can_carry } from "./mon.js";
-import { dmonsfree } from "./mon.js";
-import { iter_mons } from "./mon.js";
-import { mongone } from "./mon.js";
+import { makemon, mongets, newmextra } from "./makemon.js";
+import {
+    add_to_container, add_to_minv, curse, dealloc_obj, free_omonst, mk_named_object, obj_attach_mid,
+    obj_extract_self, place_object, set_corpsenm, weight,
+} from "./mkobj.js";
+import { can_carry, dmonsfree, iter_mons, mongone } from "./mon.js";
 import { give_u_to_m_resistances } from "./mondata.js";
 import { mons } from "./monst.js";
 import { m_carrying } from "./mthrowu.js";
 import { objects } from "./objects.js";
-import { fruit_from_indx } from "./objnam.js";
-import { the } from "./objnam.js";
-import { xname } from "./objnam.js";
-import { You } from "./pline.js";
-import { pline } from "./pline.js";
+import { fruit_from_indx, the, xname } from "./objnam.js";
+import { You, pline } from "./pline.js";
 import { is_quest_artifact } from "./questpgr.js";
-import { cant_revive } from "./read.js";
-import { unpunish } from "./read.js";
-import { getlev } from "./restore.js";
-import { trickery } from "./restore.js";
+import { cant_revive, unpunish } from "./read.js";
+import { getlev, trickery } from "./restore.js";
 import { rn2 } from "./rnd.js";
-import { aligns } from "./role.js";
-import { genders } from "./role.js";
-import { races } from "./role.js";
-import { roles } from "./role.js";
-import { savefruitchn } from "./save.js";
-import { savelev } from "./save.js";
-import { fix_shop_damage } from "./shk.js";
-import { inside_shop } from "./shk.js";
-import { tended_shop } from "./shk.js";
+import { aligns, genders, races, roles } from "./role.js";
+import { savefruitchn, savelev } from "./save.js";
+import { fix_shop_damage, inside_shop, tended_shop } from "./shk.js";
 import { dismount_steed } from "./steed.js";
-import { enexto } from "./teleport.js";
-import { rloc_to } from "./teleport.js";
+import { enexto, rloc_to } from "./teleport.js";
 import { end_burn } from "./timeout.js";
 import { formatkiller } from "./topten.js";
-import { store_version } from "./version.js";
-import { validate } from "./version.js";
+import { store_version, validate } from "./version.js";
 import { windowprocs } from "./windows.js";
-import { clear_bypasses } from "./worn.js";
-import { m_dowear } from "./worn.js";
+import { clear_bypasses, m_dowear } from "./worn.js";
 import { get_obj_location } from "./zap.js";
 const __FILE__ = "bones.c";

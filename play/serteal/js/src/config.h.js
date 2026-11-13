@@ -3,9 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * Section 1:   Operating and window systems selection.
  *              Select the version of the OS you are using.
@@ -14,8 +11,6 @@
  *              provide it (no need to change sec#1, vmsconf.h handles it).
  *              MacOSX uses the UNIX configuration, not the old MAC one.
  */
-
-
 
 /* #define MSDOS *//* in case it's not auto-detected */
 
@@ -36,24 +31,14 @@
 /* Hint: if you're not developing code, don't define
    ULTRIX_PROTO. */
 
-
-
 /*
  * Consolidated version, patchlevel, development status.
  */
-
-
-
-
-
-
 
 /* Windowing systems...
  * Define all of those you want supported in your binary.
  * Some combinations make no sense.  See the installation document.
  */
-
-
 
 /* #define CURSES_GRAPHICS *//* Curses interface - Karl Garrison*/
 /* #define X11_GRAPHICS *//* X11 interface */
@@ -69,84 +54,11 @@
 
 /* MACOS9 also means MAC windows */
 
-
-
-
-
-
 /* Amiga supports AMII_GRAPHICS and/or TTY_GRAPHICS */
-
-
-
-
 
 /* Atari supports GEM_GRAPHICS and/or TTY_GRAPHICS */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const DEFAULT_WINDOW_SYS = "tty";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  * There are two ways that X11 tiles may be defined:
@@ -159,15 +71,6 @@ export const DEFAULT_WINDOW_SYS = "tty";
  *      ppmtoxpm >x11tiles_big.xpm
  */
 /* # define USE_XPM *//* Disable if you do not have the XPM library */
-
-
-
-
-
-
-
-
-
 
 /*
  * Section 2:   Some global parameters and filenames.
@@ -225,76 +128,15 @@ export const DEFAULT_WINDOW_SYS = "tty";
  *              default is 'sysconf' in nethack's playground.
  */
 
-
 export const WIZARD_NAME = "wizard";
 
-
-
-
 export const SYSCF_FILE = "sysconf";
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
        /* Define this if the terminal is filled with useless error messages
         * when the browser launches. */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 // This test isn't quite right: CNG is only available from Windows 2000 on.
 // But we'll check that at runtime.
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* note: "larger" is in comparison with 'record', the high-scores file
    (whose name can be overridden via #define in global.h if desired) */
@@ -321,7 +163,6 @@ export const PANICLOG = "paniclog";
  *      makedefs wouldn't reject them.)
  */
 
-
 /*
  *      PERSMAX, POINTSMIN, ENTRYMAX, PERS_IS_UID:
  *      These control the contents of 'record', the high-scores file.
@@ -332,19 +173,11 @@ export const PANICLOG = "paniclog";
 
 export const PERSMAX = 3;
 
-
 export const POINTSMIN = 1;
-
 
 export const ENTRYMAX = 100;
 
-
-
 export const PERS_IS_UID = 1;
-
-
-
-
 
 /*
  *      NODUMPENUMS
@@ -365,8 +198,6 @@ export const PERS_IS_UID = 1;
  *      Enabled by default, but it can be disabled by commenting it out.
  */
 
-
-
 /*
  *      If COMPRESS is defined, it should contain the full path name of your
  *      'compress' program.
@@ -385,7 +216,6 @@ export const PERS_IS_UID = 1;
  *
  */
 
-
 /* path and file name extension for compression program */
 
 export const COMPRESS_EXTENSION = ".Z";
@@ -393,15 +223,9 @@ export const COMPRESS_EXTENSION = ".Z";
 /* #define COMPRESS "/usr/local/bin/gzip" *//* FSF gzip compression */
 /* #define COMPRESS_EXTENSION ".gz" *//* normal gzip extension */
 
-
-
 /* c2js keeps saves uncompressed in the JS VFS. */
 
-
-
-
 /* # define ZLIB_COMP *//* ZLIB for compression */
-
 
 /*
  *      Data librarian.  Defining DLB places most of the support files into
@@ -430,19 +254,11 @@ export const COMPRESS_EXTENSION = ".Z";
  *      Not necessary for normal game play....
  */
 
-
-
 /*
  *      Defining INSURANCE slows down level changes, but allows games that
  *      died due to program or system crashes to be resumed from the point
  *      of the last level change, after running a utility program.
  */
-
-
-
-
-
-
 
 /*
  * If you define HACKDIR, then this will be the default playground;
@@ -450,7 +266,6 @@ export const COMPRESS_EXTENSION = ".Z";
  */
 
 export const HACKDIR = "/usr/games/lib/nethackdir";
-
 
 /*
  * Some system administrators are stupid enough to make Hack suid root
@@ -467,8 +282,6 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  * MAXPLAYERS under SYSCF).
  * #define MAX_NR_OF_PLAYERS 6
  */
-
-
 
 /*
  * Section 3:   Definitions that may vary with system type.
@@ -490,8 +303,6 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  */
 /* #define NOTSTDC *//* define for lying compilers */
 
-
-
 /*
  * type schar:
  * small signed integers (8 bits suffice) (eg. TOS)
@@ -499,11 +310,6 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  * will do when you have signed characters; otherwise use
  *      typedef short int schar;
  */
-
-
-
-
-
 
 /*
  * type uchar:
@@ -513,9 +319,6 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  *      typedef unsigned short int uchar;
  */
 
-
-
-
 /*
  * Various structures have the option of using bitfields to save space.
  * If your C compiler handles bitfields well (e.g., it can initialize structs
@@ -523,7 +326,6 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  * allocate a separate character for each bitfield.  (The bitfields used never
  * have more than 7 bits, and most are only 1 bit.)
  */
-
 
 /* #define STRNCMPI *//* compiler/library has the strncmpi function */
 
@@ -534,23 +336,10 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  * cannot deal with the size of the functions that have been macroized.
  */
 
-
-
-
-
-
-
-
-
-
-
 /* CONFIG_ERROR_SECURE: If user makes NETHACKOPTIONS point to a file ...
  *  TRUE: Show the first error, nothing else.
  *  FALSE: Show all errors as normal, with line numbers and context.
  */
-
-
-
 
 /*
  * Section 4:  EXPERIMENTAL STUFF
@@ -577,7 +366,6 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
  * Comment out if the wildcard file name lookup in files.c doesn't
  * compile or doesn't work as intended.
  */
-
 
 /* TTY_TILES_ESCCODES: Enable output of special console escape codes
  * which act as hints for external programs such as EbonHack or hterm.
@@ -619,13 +407,7 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
 /* enable status highlighting via STATUS_HILITE directives in run-time
    config file and the 'statushilites' option */
 
-
 /* #define WINCHAIN *//* stacked window systems */
-
-
-
-
-
 
 /* SCORE_ON_BOTL is neither experimental nor inadequately tested,
    but doesn't seem to fit in any other section... */
@@ -635,12 +417,8 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
 /* FREE_ALL_MEMORY is neither experimental nor inadequately tested,
    but it isn't necessary for successful operation of the program */
 
-
 /* EXTRA_SANITY_CHECKS adds extra impossible calls,
  * probably not useful for normal play */
-
-
-
 
 /* BREADCRUMBS employs the use of predefined compiler macros
  * __FUNCTION__ and __LINE__ to store some caller breadcrumbs
@@ -659,32 +437,18 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
    whole thing, then type a new end for the text. */
 /* #define EDIT_GETLIN */
 
-
 /* CHRONICLE - enable #chronicle command, a log of major game events.
    The logged messages will also appear in DUMPLOG. */
-
 
 /* LIVELOG - log CHRONICLE events into LIVELOGFILE as they happen. */
 /* #define LIVELOG */
 
-
-
-
-
 /* #define DUMPLOG *//* End-of-game dump logs */
-
-
 
 /* TEMPORARY - MAKE UNCONDITIONAL BEFORE RELEASE */
 /* undef this to check if sandbox breaks something */
 
-
-
-
     /* LIVELOG (and therefore CHRONICLE)  is needed for --loglua */
-
-
-
 
 /* experimential; if the platform/window-port supports it; when the game has
  * started to wait for player input, and the wait lasts longer than
@@ -699,29 +463,11 @@ export const HACKDIR = "/usr/games/lib/nethackdir";
 
 /* End of Section 4 */
 
-
-
-
-
-
-
-
-
-
-
 /* Place the following after #include [platform]conf.h in global.h so that
    overrides are possible in there, for things like unix-specific file
    paths. */
 
-
-
 export const LIVELOGFILE = "livelog";
-
-
-
-
-
-
 
 /* DUMPLOG_FILE allows following placeholders:
    %% literal '%'

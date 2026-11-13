@@ -2,10 +2,6 @@
 /* Copyright (c) Sean Hunt  2015.                                 */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-// #include <regex.h>
-
 /* The nhregex interface is implemented by several source files. The
  * file to be used can be linked in by the build.
  *
@@ -56,15 +52,11 @@ const struct_nhregex = struct("struct_nhregex", {
     err: int,
 });
 
-export function /* struct nhregex * */
-regex_init()
-{
+export function regex_init() { /* struct nhregex * */
     return view_of(struct_nhregex, addr_of(alloc(sizeof(struct_nhregex))));
 }
 
-export function /* boolean */
-regex_compile(s, re)
-{
+export function regex_compile(s, re) { /* boolean */
     if (!re)
         return FALSE;
     if ((re.err = regcomp(re.re, s, REG_EXTENDED | REG_NOSUB)))
@@ -72,32 +64,25 @@ regex_compile(s, re)
     return TRUE;
 }
 
-export function /* char * */
-regex_error_desc(re, errbuf)
-{
+export function regex_error_desc(re, errbuf) { /* char * */
     if (!re) {
-        void strcpy(errbuf, _("no regexp"));
+        strcpy(errbuf, _("no regexp"));
     } else if (!re.err) {
-        void strcpy(errbuf, _("no explanation"));
+        strcpy(errbuf, _("no explanation"));
     } else {
         chars[errbuf + 0] = ord('\0');
 
         /* c2js recorder Darwin regerror text */
-        
 
         nhjs_regerror(re.err, re.re, errbuf, BUFSZ);
 
-
-
         if (!chars[errbuf + 0])
-            void strcpy(errbuf, _("unspecified regexp error"));
+            strcpy(errbuf, _("unspecified regexp error"));
     }
     return errbuf;
 }
 
-export function /* boolean */
-regex_match(s, re)
-{
+export function regex_match(s, re) { /* boolean */
     let result;
 
     if (!re || !s)
@@ -111,37 +96,22 @@ regex_match(s, re)
     return TRUE;
 }
 
-export function /* void */
-regex_free(re)
-{
+export function regex_free(re) { /* void */
     regfree(re.re);
     free(addr_of(re));
 }
 
 /*posixregex.c*/
-import { BUFSZ } from "../../src/global.h.js";
-import { FALSE } from "../../src/global.h.js";
-import { TRUE } from "../../src/global.h.js";
+
+import { BUFSZ, FALSE, TRUE } from "../../src/global.h.js";
 import { struct_re_pattern_buffer } from "../../libc/records.js";
-import { char } from "../../rt/ctypes.js";
-import { int } from "../../rt/ctypes.js";
-import { ord } from "../../rt/ctypes.js";
-import { sizeof } from "../../rt/ctypes.js";
-import { sizeof_string } from "../../rt/ctypes.js";
+import { char, int, ord, sizeof, sizeof_string } from "../../rt/ctypes.js";
 import { chars } from "../../rt/heap.js";
-import { REG_EXTENDED } from "../../rt/libc.js";
-import { REG_NOMATCH } from "../../rt/libc.js";
-import { REG_NOSUB } from "../../rt/libc.js";
-import { free } from "../../rt/libc.js";
-import { regcomp } from "../../rt/libc.js";
-import { regexec } from "../../rt/libc.js";
-import { regfree } from "../../rt/libc.js";
-import { strcpy } from "../../rt/libc.js";
-import { init_string } from "../../rt/locals.js";
-import { static_array } from "../../rt/locals.js";
+import {
+    REG_EXTENDED, REG_NOMATCH, REG_NOSUB, free, regcomp, regexec, regfree, strcpy,
+} from "../../rt/libc.js";
+import { init_string, static_array } from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";
-import { addr_of } from "../../rt/struct.js";
-import { struct } from "../../rt/struct.js";
-import { view_of } from "../../rt/struct.js";
+import { addr_of, struct, view_of } from "../../rt/struct.js";
 import { alloc } from "../../src/alloc.js";
 import { nhjs_regerror } from "../c2js/nhjs_host.js";

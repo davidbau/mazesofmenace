@@ -2,108 +2,6 @@
 /* Copyright (c) NetHack Development Team 2025.                   */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const struct_sf_procs = struct("struct_sf_procs", {
     sf_arti_info: fnptr_t,
     sf_nhrect: fnptr_t,
@@ -176,10 +74,6 @@ export const struct_sf_procs = struct("struct_sf_procs", {
     sf_bitfield: fnptr_t,
 });
 
-
-
-
-
 export const struct_sf_structlevel_procs = struct("struct_sf_structlevel_procs", {
     ext: ptr_to(char),
     fn: "struct_sf_procs", /* called for structlevel (historical) */
@@ -188,7 +82,6 @@ export const struct_sf_fieldlevel_procs = struct("struct_sf_fieldlevel_procs", {
     ext: ptr_to(char),
     fn_x: "struct_sf_procs", /* called for fieldlevel */
 });
+
 import { char } from "../rt/ctypes.js";
-import { fnptr_t } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { fnptr_t, ptr_to, struct } from "../rt/struct.js";

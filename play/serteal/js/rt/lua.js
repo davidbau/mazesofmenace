@@ -5,13 +5,9 @@
 // lauxlib.h macros (lua_pop, lua_tostring, lua_pcall, ...) are emitted from the headers as calls
 // of these functions. Opaque handles (lua_State *, lua_Debug *) cross as addresses or views.
 
-import { machine } from "./heap.js";
+import { libc_function } from "./heap.js";
 
-function residue(name) {
-  const f = function (...args) { return machine.libc(name, args); };
-  Object.defineProperty(f, "name", { value: name });
-  return f;
-}
+function residue(name) { return libc_function(name); }
 
 // lua.h: state, stack, access, push, get/set, calls, misc
 export const lua_newstate = residue("lua_newstate");

@@ -3,9 +3,6 @@
 /*-Copyright (c) Michael Allison, 2006. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /*
  * Files expected to exist in the playground directory (possibly inside
  * a dlb container file).
@@ -49,14 +46,6 @@ export const MD_PAD_BOGONS = 20;
  * DUMB if needed is defined in CFLAGS
  */
 
-
-
-
-
-
-
-
-
 /*
  * type xint8: small integers (typedef'd as signed,
  * in the range -127 - 127).
@@ -75,14 +64,10 @@ export const coordxy = short;
  */
 export const xint16 = short;
 
-
 /* Resolve conflict with Qt 5 and MinGW-w32 */
 /* 0 or 1 */
 
-
 export const boolean = schar; /* 0 or 1 */
-
-
 
 /* vision seen vectors: viz_array[][] and levl[][].seenv, which use different
    values from each other but are close enough in size to share a type;
@@ -90,12 +75,6 @@ export const boolean = schar; /* 0 or 1 */
 /* no need for uint8_t */
 
 /* Type for third parameter of read(2) */
-
-
-
-
-
-
 
 export const TRUE = (1);
 export const FALSE = (0);
@@ -107,25 +86,7 @@ export const BOOL_RANDOM = (-1);
  */
 export const nhsym = uchar;
 
-
-/* SAS/C already shifts to stricmp */
-
-
-
-
-
-
-
-
 /* #define SPECIALIZATION *//* do "specialized" version of new topology */
-
-
-
-
-
-
-
-
 
 /* A limit for some NetHack int variables.  It need not, and for comparable
  * scoring should not, depend on the actual limit on integers for a
@@ -133,164 +94,6 @@ export const nhsym = uchar;
  * signed integer for C (2^15 -1).
  */
 export const LARGEST_INT = 32767;
-
-
-
-/* define USING_ADDRESS_SANITIZER if ASAN is in use */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
- * Automatic inclusions for the subsidiary files.
- * Please don't change the order.  It does matter.
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* amiconf.h needs to be the last nested #include of config.h because
-   'make depend' will turn it into a comment, hiding anything after it */
-
-
-
-
-/* Displayable name of this port; don't redefine if defined in *conf.h */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Check again in case something more specific has been defined above. */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* vms_exit() (sys/vms/vmsmisc.c) expects the non-VMS EXIT_xxx values below.
- * these definitions allow all systems to be treated uniformly, provided
- * main() routines do not terminate with return(), whose value is not
- * so massaged.
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
  *  Memory allocation.  Functions are declared here rather than in
@@ -312,8 +115,6 @@ export const LARGEST_INT = 32767;
 
 /* same, but return strlen(string) in extra argument */
 
-
-
 /*
  * MONITOR_HEAP is conditionally used for primitive memory leak debugging.
  * When enabled, NH_HEAPLOG (if defined in the environment) is used as the
@@ -325,23 +126,13 @@ export const LARGEST_INT = 32767;
 
 /* plain alloc() is not declared except in alloc.c */
 
-
-
-
-
 /* this predates C99's __func__; that is trickier to use conditionally
    because it is not implemented as a preprocessor macro; MONITOR_HEAP
    wouldn't gain much benefit from it anyway so continue to live without it;
    if func's caller were accessible, that would be a very different issue */
 
-
-
-
-
 /* declare alloc.c's alloc(); allocations made with it use ordinary free() */
 /* alloc.c */
-
-
 
 /* Used for consistency checks of various data files; declare it here so
    that utility programs which include config.h but not hack.h can see it. */
@@ -369,7 +160,6 @@ export const struct_nomakedefs_s = struct("struct_nomakedefs_s", {
     build_time: ulong,
 });
 
-
 /*
  * Configurable internal parameters.
  *
@@ -390,13 +180,9 @@ export const BUFSZ = 256;
 export const QBUFSZ = 128;
 export const TBUFSZ = 300;
 
-
 /* COLBUFSZ is the larger of BUFSZ and COLNO */
 
 export const COLBUFSZ = BUFSZ;
-
-
-
 
 export const PL_NSIZ = 32;
 export const PL_CSIZ = 32;
@@ -415,79 +201,7 @@ export const MAXULEV = 30;
 export const MAXMONNO = 120;
 export const MHPMAX = 500;
 
-
 export const MAX_MSG_HISTORY = 128;
-
-
-
-
-/*
- * Version 5.0.x has aspirations of portable file formats. We
- * make a distinction between MAIL functionality and MAIL_STRUCTURES
- * so that the underlying structures are consistent, whether MAIL is
- * defined or not.
- */
-
-
-/* PANICTRACE: Always defined for NH_DEVEL_STATUS != NH_STATUS_RELEASED
-   but only for supported platforms. */
-
-
-
-/* see end.c */
-
-
-
-
-
-
-
-
-
-/* The following are meaningless if PANICTRACE is not defined: */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* Supply nethack_enter macro if not supplied by port */
-
-
-
-
-/* Supply nhassert macro if not supplied by port */
-
-
-
-
-
-/* Macros for meta and ctrl modifiers:
- *   M and C return the meta/ctrl code for the given character;
- *     e.g., (C('c') is ctrl-c
- */
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* Game log message type flags */
 export const LL_NONE = 0x0000;
@@ -501,7 +215,6 @@ export const LL_ARTIFACT = 0x0040;
 export const LL_GENOCIDE = 0x0080;
 export const LL_KILLEDPET = 0x0100;
 export const LL_ALIGNMENT = 0x0200;
-
 
 export const LL_MINORAC = 0x1000;
 export const LL_SPOILER = 0x2000;
@@ -524,7 +237,6 @@ export const struct_nhl_sandbox_info = struct("struct_nhl_sandbox_info", {
 
 export const NHL_SB_STEPSIZE = 1000;
 
-
 /* High level groups.  Use these flags. */
     /* Safe functions. */
 export const NHL_SB_SAFE = 0x80000000;
@@ -540,10 +252,6 @@ export const NHL_SB_TABLE = 0x00000002;
 export const NHL_SB_COROUTINE = 0x00000004;
 export const NHL_SB_MATH = 0x00000008;
 export const NHL_SB_UTF8 = 0x00000010;
-
-
-
-
 
 export const NHL_SB_BASEMASK = 0x00000f80;
 export const NHL_SB_BASE_BASE = 0x00000080;
@@ -564,14 +272,10 @@ export const NHL_SB_ALL = 0x0000ffff;
 
 /* return codes */
 
-
-
-
 /* NHL_pcall_handle action values */
 
     export const NHLpa_panic = 0;
     export const NHLpa_impossible = NHLpa_panic + 1;
-
 
 export const opt_in = 0; export const opt_out = opt_in + 1;
 /*
@@ -587,7 +291,6 @@ export const opt_in = 0; export const opt_out = opt_in + 1;
     export const set_wiznofuz = 6; /* wizard-mode only, but not by fuzzer */
     export const set_hidden = 7; /* placeholder for prefixed entries, never show it  */
 
-
 /* these aren't the same as set_xxx */
 
     export const phase_not_set = 0;
@@ -599,26 +302,8 @@ export const opt_in = 0; export const opt_out = opt_in + 1;
     export const play_opt = cmdline_opt + 1; /* 'O' command, interactively set so overrides all */
     export const num_opt_phases = play_opt + 1;
 
+export const SFCTOOL_BIT = shl64(1, 30);
 
-
-
-
-
-
-
-
-
-
-
-
-
-export const SFCTOOL_BIT = (shl64(1, 30));
-import { char } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
+import { char, schar, short, uchar, ulong, unsigned } from "../rt/ctypes.js";
 import { shl64 } from "../rt/int64.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { ptr_to, struct } from "../rt/struct.js";

@@ -5,12 +5,8 @@
 /* used by ckmailstatus() to pass information to the mail-daemon in newmail()
  */
 
-
-
-
 export const MSG_OTHER = 0;
 export const MSG_MAIL = 1;
-
 
 export const struct_mail_info = struct("struct_mail_info", {
     message_typ: int, /* MSG_foo value */
@@ -18,7 +14,6 @@ export const struct_mail_info = struct("struct_mail_info", {
     object_nam: ptr_to(char), /* text to tag object with */
     response_cmd: ptr_to(char), /* command to eventually execute */
 });
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { char, int } from "../rt/ctypes.js";
+import { ptr_to, struct } from "../rt/struct.js";

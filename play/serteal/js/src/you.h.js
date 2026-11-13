@@ -3,16 +3,6 @@
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
-
-
-
-
-
-
-
 /*** Substructures ***/
 
 export const struct_RoleName = struct("struct_RoleName", {
@@ -204,15 +194,6 @@ export const ROLE_RACEMASK = 0x0ff8; export const ROLE_GENDMASK = 0xf000; export
     /*** Bitmasks ***/
     allow: short, /* bit mask of allowed variations */
 
-
-
-
-
-
-
-
-
-
     /*** Attributes (from attrib.c and exper.c) ***/
     attrbase: array_of(short, A_MAX), /* lowest initial attributes */
     attrdist: array_of(short, A_MAX), /* distribution of initial attributes */
@@ -242,10 +223,6 @@ export const ROLE_RACEMASK = 0x0ff8; export const ROLE_GENDMASK = 0xf000; export
     /* quest text (dat/quest.txt) */
     /* dictionary entries (dat/data.bas) */
 });
-
-/* table of available roles */
-
-
 
 /* used during initialization for race, gender, and alignment
    as well as for character class */
@@ -282,7 +259,6 @@ export const struct_Race = struct("struct_Race", {
     /* night vision range */
     /* X-ray vision range */
 
-
     /*** Properties in variable-length arrays ***/
     /* intrinsics (see attrib.c) */
 
@@ -292,10 +268,6 @@ export const struct_Race = struct("struct_Race", {
     /* quest text (dat/quest.txt) */
     /* dictionary entries (dat/data.bas) */
 });
-
-/* Table of available races */
-
-
 
 /*** Unified structure specifying gender information ***/
 export const struct_Gender = struct("struct_Gender", {
@@ -308,27 +280,10 @@ export const struct_Gender = struct("struct_Gender", {
 });
 export const ROLE_GENDERS = 2;
 
-
-/* table of available genders */
-/* pronouns for the hero */
-
-
-
 /* pronoun_gender() flag masks */
 
 export const PRONOUN_NO_IT = 1;
 export const PRONOUN_HALLU = 2;
-/* corresponding pronouns for monsters; yields "it" when mtmp can't be seen */
-
-
-
-/* override "it" if reason is lack of visibility rather than neuter species */
-
-
-
-
-
-
 
 /*** Unified structure specifying alignment information ***/
 export const struct_Align = struct("struct_Align", {
@@ -342,7 +297,6 @@ export const ROLE_ALIGNS = 3;
 
 /* table of available alignments */
 
-
     export const TT_NONE = 0;
     export const TT_BEARTRAP = 1;
     export const TT_PIT = 2;
@@ -351,15 +305,12 @@ export const ROLE_ALIGNS = 3;
     export const TT_INFLOOR = 5;
     export const TT_BURIEDBALL = 6;
 
-
-
     export const UTOTYPE_NONE = 0x00;
     export const UTOTYPE_ATSTAIRS = 0x01;
     export const UTOTYPE_FALLING = 0x02;
     export const UTOTYPE_PORTAL = 0x04;
     export const UTOTYPE_RMPORTAL = 0x10; /* remove portal */
     export const UTOTYPE_DEFERRED = 0x20; /* deferred_goto */
-
 
 /*** Information about the player ***/
 export const SICK_VOMITABLE = 0x01; export const SICK_NONVOMITABLE = 0x02; export const SICK_ALL = 0x03; export const BC_BALL = 0x01; export const BC_CHAIN = 0x02; export const RIGHT_HANDED = 0x00; export const LEFT_HANDED = 0x01; export const CONVERT = 2; export const A_ORIGINAL = 1; export const A_CURRENT = 0; export const LUCKADD = 3; export const LUCKMAX = 10; export const LUCKMIN = (-10); export const AC_MAX = 99; export const struct_you = struct("struct_you", {
@@ -397,9 +348,6 @@ export const SICK_VOMITABLE = 0x01; export const SICK_NONVOMITABLE = 0x02; expor
     umconf: unsigned,
     usick_type: Bitfield(2),
 
-
-
-
     /* These ranges can never be more than MAX_RANGE (vision.h). */
     nv_range: int, /* current night vision range */
     xray_range: int, /* current xray vision range */
@@ -408,7 +356,6 @@ export const SICK_VOMITABLE = 0x01; export const SICK_NONVOMITABLE = 0x02; expor
 /*
  * These variables are valid globally only when punished and blind.
  */
-
 
     bglyph: int, /* glyph under the ball */
     cglyph: int, /* glyph under the chain */
@@ -439,8 +386,6 @@ export const SICK_VOMITABLE = 0x01; export const SICK_NONVOMITABLE = 0x02; expor
                                  The distinction is only for flavor variation
                                  and for use in messages. */
 
-
-
     udg_cnt: unsigned, /* how long you have been demigod */
     uevent: "struct_u_event", /* certain events have happened */
     uhave: "struct_u_have", /* you're carrying special objects */
@@ -454,17 +399,8 @@ export const SICK_VOMITABLE = 0x01; export const SICK_NONVOMITABLE = 0x02; expor
                    atime: "struct_attribs", /* used for loss/gain countdown */
     ualign: "struct_align", /* character alignment */
 
-
-
     ualignbase: array_of(schar, CONVERT), /* for ualign conversion record */
     uluck: schar, moreluck: schar, /* luck and luck bonus */
-    /* default u.uluck is 0 except on special days (full moon: +1, Fri 13: -1,
-       both: 0); equilibrium for luck timeout is changed to those values,
-       but Luck max and min stay at 10+3 and -10-3 even on those days */
-
-
-
-
 
     uhitinc: schar,
     udaminc: schar,
@@ -506,7 +442,6 @@ export const SICK_VOMITABLE = 0x01; export const SICK_NONVOMITABLE = 0x02; expor
     uachieved: array_of(schar, N_ACH), /* list of achievements in the order attained */
     umonst: ptr_to("struct_monst"), /* for future conversion of &gy.youmonst to u.umonst */
 }); /* end of `struct you' */
-
 
 /* _hitmon_data: Info for when hero hits a monster */
 /* The basic reason we need all these booleans is that we don't want
@@ -551,32 +486,10 @@ export const struct__hitmon_data = struct("struct__hitmon_data", {
     saved_oname: array_of(char, BUFSZ),
 });
 
-
-
-
-/* point px,py is adjacent to (or same location as) hero */
-
-/* is monster on top of or next to hero? */
-
-/* hero at (x,y)? */
 import { aligntyp } from "./align.h.js";
 import { A_MAX } from "./attrib.h.js";
-import { BUFSZ } from "./global.h.js";
-import { MAXULEV } from "./global.h.js";
-import { boolean } from "./global.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
+import { BUFSZ, MAXULEV, boolean, coordxy, xint16 } from "./global.h.js";
 import { LAST_PROP } from "./prop.h.js";
-import { P_NUM_SKILLS } from "./skills.h.js";
-import { P_SKILL_LIMIT } from "./skills.h.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { P_NUM_SKILLS, P_SKILL_LIMIT } from "./skills.h.js";
+import { char, int, long, schar, short, uchar, unsigned } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";

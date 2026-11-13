@@ -5,21 +5,6 @@
 ** See Copyright Notice at the end of this file
 */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 export const LUA_VERSION_NUM = 504;
 export const LUA_VERSION_RELEASE_NUM = (LUA_VERSION_NUM * 100 + 8);
 
@@ -27,14 +12,10 @@ export const LUA_VERSION = "Lua 5.4";
 export const LUA_RELEASE = "Lua 5.4.8";
 export const LUA_COPYRIGHT = "Lua 5.4.8  Copyright (C) 1994-2025 Lua.org, PUC-Rio";
 
-
-
 /* mark for precompiled code ('<esc>Lua') */
-
 
 /* option for multiple returns in 'lua_pcall' and 'lua_call' */
 export const LUA_MULTRET = (-1);
-
 
 /*
 ** Pseudo-indices
@@ -43,19 +24,8 @@ export const LUA_MULTRET = (-1);
 */
 export const LUA_REGISTRYINDEX = (-LUAI_MAXSTACK - 1000);
 
-
-
 /* thread status */
 export const LUA_OK = 0;
-
-
-
-
-
-
-
-
-
 
 /*
 ** basic types
@@ -71,360 +41,31 @@ export const LUA_TTABLE = 5;
 export const LUA_TFUNCTION = 6;
 export const LUA_TUSERDATA = 7;
 
-
-
-
-
-
 /* minimum Lua stack available to a C function */
 
-
-
 /* predefined values in the registry */
-
-
-
-
 
 /* type of numbers in Lua */
 export const lua_Number = double;
 
-
 /* type for integer functions */
 export const lua_Integer = long;
-
-/* unsigned integer type */
-
-
-/* type for continuation-function contexts */
-
-
-
-/*
-** Type for C functions registered with Lua
-*/
-
-
-/*
-** Type for continuation functions
-*/
-
-
-
-/*
-** Type for functions that read/write blocks when loading/dumping Lua chunks
-*/
-
-
-
-
-
-/*
-** Type for memory-allocation functions
-*/
-
-
-
-/*
-** Type for warning functions
-*/
-
-
-
-/*
-** Type used by the debug API to collect debug information
-*/
-
-
-
-/*
-** Functions to be called by the debugger in specific events
-*/
-
-
-
-/*
-** generic extra include file
-*/
-
-
-
-
-
-/*
-** RCS ident string
-*/
-
-
-
-/*
-** state manipulation
-*/
-
-
-
-
-/* Deprecated! */
-
-
-
-
-
-
-
-/*
-** basic stack manipulation
-*/
-
-
-
-
-
-
-
-
-
-
-
-/*
-** access functions (stack -> C)
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-** Comparison and arithmetic functions
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-** push functions (C -> stack)
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-** get functions (Lua -> stack)
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-** set functions (stack -> Lua)
-*/
-
-
-
-
-
-
-
-
-
-
-
-/*
-** 'load' and 'call' functions (load and run Lua code)
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /*
 ** coroutine functions
 */
 
-
-
-
-
-
-
-
-
-
 /*
 ** Warning-related functions
 */
-
-
-
 
 /*
 ** garbage-collection function and options
 */
 
-
-
 export const LUA_GCCOLLECT = 2;
 export const LUA_GCCOUNT = 3;
 export const LUA_GCCOUNTB = 4;
-
-
-
-
-
-
-
-
-
-
-/*
-** miscellaneous functions
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/*
-** {==============================================================
-** some useful macros
-** ===============================================================
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* }============================================================== */
-
-
-/*
-** {==============================================================
-** compatibility macros
-** ===============================================================
-*/
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 /* }============================================================== */
 
@@ -434,43 +75,17 @@ export const LUA_GCCOUNTB = 4;
 ** =======================================================================
 */
 
-
 /*
 ** Event codes
 */
 
-
-
 export const LUA_HOOKCOUNT = 3;
-
-
 
 /*
 ** Event masks
 */
 
-
-
 export const LUA_MASKCOUNT = (1 << LUA_HOOKCOUNT);
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 export const struct_lua_Debug = struct("struct_lua_Debug", {
   event: int,
@@ -495,7 +110,6 @@ export const struct_lua_Debug = struct("struct_lua_Debug", {
 
 /* }====================================================================== */
 
-
 /******************************************************************************
 * Copyright (C) 1994-2025 Lua.org, PUC-Rio.
 *
@@ -518,15 +132,7 @@ export const struct_lua_Debug = struct("struct_lua_Debug", {
 * TORT OR OTHERWISE, ARISING FROM, OUT OF OR IN CONNECTION WITH THE
 * SOFTWARE OR THE USE OR OTHER DEALINGS IN THE SOFTWARE.
 ******************************************************************************/
-import { LUAI_MAXSTACK } from "./luaconf.h.js";
-import { LUA_IDSIZE } from "./luaconf.h.js";
-import { char } from "../rt/ctypes.js";
-import { double } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+
+import { LUAI_MAXSTACK, LUA_IDSIZE } from "./luaconf.h.js";
+import { char, double, int, long, uchar, unsigned, ushort } from "../rt/ctypes.js";
+import { array_of, ptr_to, struct } from "../rt/struct.js";

@@ -3,22 +3,10 @@
 /*-Copyright (c) Pasi Kallinen, 2018. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
-
-
-
-
-
-
-
-
 export const NUMMBUF = 5;
 
 /* manage a pool of BUFSZ buffers, so callers don't have to */
-function /* char * */
-nextmbuf()
-{
+function nextmbuf() { /* char * */
     let bufs = static_array("nextmbuf.bufs", array_of(char, BUFSZ), NUMMBUF);
     let bufidx = static_var("nextmbuf.bufidx", int, 0);
 
@@ -27,11 +15,9 @@ nextmbuf()
 }
 
 /* allocate space for a monster's name; removes old name if there is one */
-export function /* void */
-new_mgivenname(
+export function new_mgivenname(
     mon,
-    lth) /* desired length (caller handles adding 1 for terminator) */
-{
+    lth) { /* void */ /* desired length (caller handles adding 1 for terminator) */
     if (lth) {
         /* allocate mextra if necessary; otherwise get rid of old name */
         if (!mon.mextra)
@@ -47,9 +33,7 @@ new_mgivenname(
 }
 
 /* release a monster's name; retains mextra even if all fields are now null */
-export function /* void */
-free_mgivenname(mon)
-{
+export function free_mgivenname(mon) { /* void */
     if (has_mgivenname(mon)) {
         free(MGIVENNAME(mon));
         ((mon).mextra.mgivenname) = 0;
@@ -57,11 +41,9 @@ free_mgivenname(mon)
 }
 
 /* allocate space for an object's name; removes old name if there is one */
-export function /* void */
-new_oname(
+export function new_oname(
     obj,
-    lth) /* desired length (caller handles adding 1 for terminator) */
-{
+    lth) { /* void */ /* desired length (caller handles adding 1 for terminator) */
     if (lth) {
         /* allocate oextra if necessary; otherwise get rid of old name */
         if (!obj.oextra)
@@ -77,9 +59,7 @@ new_oname(
 }
 
 /* release an object's name; retains oextra even if all fields are now null */
-export function /* void */
-free_oname(obj)
-{
+export function free_oname(obj) { /* void */
     if (has_oname(obj)) {
         free(ONAME(obj));
         ((obj).oextra.oname) = 0;
@@ -91,9 +71,7 @@ free_oname(obj)
  *  if it has one, or a pointer to an empty string
  *  if it doesn't.
  */
-export function /* const char * */
-safe_oname(obj)
-{
+export function safe_oname(obj) { /* const char * */
     if (has_oname(obj))
         return ONAME(obj);
     return _("");
@@ -101,27 +79,21 @@ safe_oname(obj)
 
 /* get a name for a monster or an object from player;
    truncate if longer than PL_PSIZ, then return it */
-function /* char * */
-name_from_player(
+function name_from_player(
     outbuf,
 
     prompt,
-    defres) /* only used if EDIT_GETLIN is enabled; only useful
-                         * if windowport xxx's xxx_getlin() supports that */
-{
+    defres) { /* char * */ /* only used if EDIT_GETLIN is enabled; only useful * if windowport xxx's xxx_getlin() supports that */
     chars[outbuf + 0] = ord('\0');
 
-
-
-
-    (void (defres));
+    (defres);
 
     getlin(prompt, outbuf);
     if (!chars[outbuf] || chars[outbuf] == ord('\x1b'))
         return 0;
 
     /* strip leading and trailing spaces, condense internal sequences */
-    void mungspaces(outbuf);
+    mungspaces(outbuf);
     if (strlen(outbuf) >= PL_PSIZ)
         chars[outbuf + (PL_PSIZ - 1)] = ord('\0');
     return outbuf;
@@ -129,9 +101,8 @@ name_from_player(
 
 /* historical note: this returns a monster pointer because it used to
    allocate a new bigger block of memory to hold the monster and its name */
-export function /* struct monst * */
-christen_monst(mtmp, name)
-{ const $frame = stack_frame(); try {
+export function christen_monst(mtmp, name) { /* struct monst * */
+    const $frame = stack_frame(); try {
     let lth;
     let buf = stack_array(char, PL_PSIZ);
 
@@ -144,25 +115,25 @@ christen_monst(mtmp, name)
     }
     new_mgivenname(mtmp, lth); /* removes old name if one is present */
     if (lth)
-        void strcpy(MGIVENNAME(mtmp), name);
+        strcpy(MGIVENNAME(mtmp), name);
     /* if 'mtmp' is leashed, persistent inventory window needs updating */
     if (mtmp.mleashed)
         update_inventory(); /* x - leash (attached to Fido) */
     return mtmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* check whether user-supplied name matches or nearly matches an unnameable
    monster's name, or is an attempt to delete the monster's name; if so, give
    alternate reject message for do_mgivenname() */
-function /* boolean */
-alreadynamed(mtmp, monnambuf, usrbuf)
-{ const $frame = stack_frame(); try {
+function alreadynamed(mtmp, monnambuf, usrbuf) { /* boolean */
+    const $frame = stack_frame(); try {
     let pronounbuf = stack_array(char, 10), p;
 
     if (!chars[usrbuf]) { /* attempt to erase existing name */
-        let name_not_title = (((has_mgivenname(mtmp)
+        let name_not_title = (has_mgivenname(mtmp)
                                   || type_is_pname(mtmp.data)
-                                  || mtmp.isshk) ? 1 : 0));
+                                  || mtmp.isshk ? 1 : 0);
         pline(_("%s would rather keep %s existing %s."), upstart(monnambuf),
               is_rider(mtmp.data) ? _("its") : mhis(mtmp),
               name_not_title ? _("name") : _("title"));
@@ -187,17 +158,17 @@ alreadynamed(mtmp, monnambuf, usrbuf)
         return TRUE;
     } else if (mtmp.data == mons[PM_JUIBLEX]
                && strstri(monnambuf, _("Juiblex"))
-               && !strcmpi(usrbuf, _("Jubilex"))) {
+               && !strncmpi((usrbuf), _(("Jubilex")), -1)) {
         pline(_("%s doesn't like being called %s."), upstart(monnambuf), usrbuf);
         return TRUE;
     }
     return FALSE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* allow player to assign a name to some chosen monster */
-function /* void */
-do_mgivenname()
-{ const $frame = stack_frame(); try {
+function do_mgivenname() { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), monnambuf = stack_array(char, BUFSZ), qbuf = stack_array(char, QBUFSZ);
     let cc = stack_struct(struct_nhcoord);
     let cx, cy;
@@ -242,12 +213,11 @@ do_mgivenname()
                 || mtmp.mundetected || M_AP_TYPE(mtmp) == M_AP_FURNITURE
                 || M_AP_TYPE(mtmp) == M_AP_OBJECT
                 || (mtmp.minvis && !See_invisible()))))) {
-
         pline(_("I see no monster there."));
         return;
     }
     /* special case similar to the one in lookat() */
-    void sprintf(qbuf, _("What do you want to call %s?"), distant_monnam(mtmp, ARTICLE_THE, monnambuf))
+    sprintf(qbuf, _("What do you want to call %s?"), distant_monnam(mtmp, ARTICLE_THE, monnambuf))
 ;
     /* use getlin() to get a name string from the player */
     if (!name_from_player(buf, qbuf,
@@ -277,18 +247,18 @@ do_mgivenname()
         if (!alreadynamed(mtmp, monnambuf, buf))
             pline(_("%s will not accept the name %s."), upstart(monnambuf), buf);
     } else {
-        void christen_monst(mtmp, buf);
+        christen_monst(mtmp, buf);
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /*
  * This routine used to change the address of 'obj' so be unsafe if not
  * used with extreme care.  Applying a name to an object no longer
  * allocates a replacement object, so that old risk is gone.
  */
-function /* void */
-do_oname(obj)
-{ const $frame = stack_frame(); try {
+function do_oname(obj) { /* void */
+    const $frame = stack_frame(); try {
     let bufp, buf = stack_array(char, BUFSZ), bufcpy = stack_array(char, BUFSZ), qbuf = stack_array(char, QBUFSZ);
     let aname;
     let objtyp = stack_var(short, STRANGE_OBJECT);
@@ -299,9 +269,9 @@ do_oname(obj)
         return;
     }
 
-    void sprintf(qbuf, _("What do you want to name %s "), is_plural(obj) ? _("these") : _("this"))
+    sprintf(qbuf, _("What do you want to name %s "), is_plural(obj) ? _("these") : _("this"))
 ;
-    void safe_qbuf(qbuf, qbuf, _("?"), obj, xname, simpleonames, _("item"));
+    safe_qbuf(qbuf, qbuf, _("?"), obj, xname, simpleonames, _("item"));
     /* use getlin() to get a name string from the player */
     if (!name_from_player(buf, qbuf, safe_oname(obj)))
         return;
@@ -330,7 +300,7 @@ do_oname(obj)
     if ((aname = artifact_name(buf, objtyp, TRUE)) != 0
         && (restrict_name(obj, aname) || exist_artifact(obj.otyp, aname))) {
         /* substitute canonical spelling before slippage */
-        void strcpy(buf, aname);
+        strcpy(buf, aname);
         /* this used to change one letter, substituting a value
            of 'a' through 'y' (due to an off by one error, 'z'
            would never be selected) and then force that to
@@ -342,7 +312,7 @@ do_oname(obj)
            it targeting spaces so failing to make any change
            (we know that it must eventually target a nonspace
            because buf[] matches a valid artifact name) */
-        void strcpy(bufcpy, buf);
+        strcpy(bufcpy, buf);
         /* for "the Foo of Bar", only scuff "Foo of Bar" part */
         bufp = !strncmpi(buf, _("the "), 4) ? (buf + 4) : buf;
         do {
@@ -361,25 +331,25 @@ do_oname(obj)
         /* artifact_name() found a match and restrict_name() didn't reject
            it; since 'obj' is the right type, naming will change it into an
            artifact so use canonical capitalization (Sting or Orcrist) */
-        void strcpy(buf, aname);
+        strcpy(buf, aname);
     }
 
     obj = oname(obj, buf, ONAME_VIA_NAMING | ONAME_KNOW_ARTI);
-    (void (obj));
-} finally { stack_pop($frame); } }
+    (obj);
+    } finally { stack_pop($frame); }
+}
 
-export function /* struct obj * */
-oname(
+export function oname(
     obj,
     name,
-    oflgs)   /* flags, mostly for artifact creation */
-{ const $frame = stack_frame(); try {
+    oflgs) { /* struct obj * */ /* flags, mostly for artifact creation */
+    const $frame = stack_frame(); try {
     let lth;
     let buf = stack_array(char, PL_PSIZ);
     let via_naming = +((oflgs & ONAME_VIA_NAMING) != 0),
             skip_inv_update = +((oflgs & ONAME_SKIP_INVUPD) != 0);
 
-    lth = chars[name] ? int((unsigned(strlen(name) + 1))) : 0;
+    lth = chars[name] ? int(unsigned(strlen(name) + 1)) : 0;
     if (lth > PL_PSIZ) {
         lth = PL_PSIZ;
         name = strncpy(buf, name, PL_PSIZ - 1);
@@ -394,7 +364,7 @@ oname(
 
     new_oname(obj, lth); /* removes old name if one is present */
     if (lth)
-        void strcpy(ONAME(obj), name);
+        strcpy(ONAME(obj), name);
 
     if (lth)
         artifact_exists(obj, name, TRUE, oflgs);
@@ -423,11 +393,10 @@ oname(
     if (carried(obj) && !skip_inv_update)
         update_inventory();
     return obj;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-objtyp_is_callable(i)
-{
+export function objtyp_is_callable(i) { /* boolean */
     if (objects[i].oc_uname)
         return TRUE;
 
@@ -463,9 +432,7 @@ objtyp_is_callable(i)
 }
 
 /* getobj callback for object to name (specific item) - anything but gold */
-export function /* int */
-name_ok(obj)
-{
+export function name_ok(obj) { /* int */
     if (!obj || obj.oclass == COIN_CLASS)
         return GETOBJ_EXCLUDE;
 
@@ -476,9 +443,7 @@ name_ok(obj)
 }
 
 /* getobj callback for object to call (name its type) */
-export function /* int */
-call_ok(obj)
-{
+export function call_ok(obj) { /* int */
     if (!obj || !objtyp_is_callable(obj.otyp))
         return GETOBJ_EXCLUDE;
 
@@ -495,9 +460,8 @@ call_ok(obj)
 }
 
 /* #call / #name command - player can name monster or object or type of obj */
-export function /* int */
-docallcmd()
-{ const $frame = stack_frame(); try {
+export function docallcmd() { /* int */
+    const $frame = stack_frame(); try {
     var obj;
     var win;
     var any = stack_struct(struct_any);
@@ -554,7 +518,6 @@ docallcmd()
     } else
         ch = ord('q');
     destroy_nhwindow()(win);
-
  }
     switch (ch) {
     default:
@@ -574,14 +537,10 @@ docallcmd()
             /* behave as if examining it in inventory;
                this might set dknown if it was picked up
                while blind and the hero can now see */
-            void xname(obj);
+            xname(obj);
 
             if (!obj.dknown) {
                 You(_("would never recognize another one."));
-
-
-
-
             } else {
                 docall(obj);
             }
@@ -598,12 +557,12 @@ docallcmd()
         break;
     }
     return ECMD_OK;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for use by safe_qbuf() */
-function /* char * */
-docall_xname(obj)
-{ const $frame = stack_frame(); try {
+function docall_xname(obj) { /* char * */
+    const $frame = stack_frame(); try {
     let otemp = stack_struct(struct_obj);
 
     struct_assign(otemp, obj);
@@ -630,11 +589,11 @@ docall_xname(obj)
         otemp.owt = 120; /* 6*20, neither a small glob nor a large one */
 
     return an(xname(otemp));
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* void */
-docall(obj)
-{ const $frame = stack_frame(); try {
+export function docall(obj) { /* void */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ), qbuf = stack_array(char, QBUFSZ);
     let uname_p;
     let had_name = FALSE;
@@ -645,9 +604,9 @@ docall(obj)
 
     if (obj.oclass == POTION_CLASS && obj.corpsenm)
         /* fromsink: kludge, meaning it's sink water */
-        void sprintf(qbuf, _("Call a stream of %s fluid:"), OBJ_DESCR(objects[obj.otyp]));
+        sprintf(qbuf, _("Call a stream of %s fluid:"), OBJ_DESCR(objects[obj.otyp]));
     else
-        void safe_qbuf(qbuf, _("Call "), _(":"), obj,
+        safe_qbuf(qbuf, _("Call "), _(":"), obj,
                          docall_xname, simpleonames, _("thing"))
 ;
     /* pointer to old name */
@@ -663,7 +622,7 @@ docall(obj)
     }
 
     /* strip leading and trailing spaces; uncalls item if all spaces */
-    void mungspaces(buf);
+    mungspaces(buf);
     if (!chars[buf]) {
         if (had_name) /* possibly remove from disco[]; old *uname_p is gone */
             undiscover_object(obj.otyp);
@@ -673,11 +632,11 @@ docall(obj)
     }
     if (obj.where == OBJ_INVENT || carrying(obj.otyp))
         update_inventory();
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-function /* void */
-namefloorobj()
-{ const $frame = stack_frame(); try {
+function namefloorobj() { /* void */
+    const $frame = stack_frame(); try {
     let cc = stack_struct(struct_nhcoord);
     let glyph;
     let buf = stack_array(char, BUFSZ);
@@ -688,7 +647,7 @@ namefloorobj()
     /* "dot for under/over you" only makes sense when the cursor hasn't
        been moved off the hero's '@' yet, but there's no way to adjust
        the help text once getpos() has started */
-    void sprintf(buf, _("object on map (or '.' for one %s you)"), (u.uundetected && hides_under(gy.youmonst.data))
+    sprintf(buf, _("object on map (or '.' for one %s you)"), (u.uundetected && hides_under(gy.youmonst.data))
               ? _("over") : _("under"))
 ;
     if (getpos(cc, FALSE, buf) < 0 || cc.x <= 0)
@@ -712,10 +671,10 @@ namefloorobj()
        would yield "glorkum" so we need to handle it explicitly; it will
        always fail the Hallucination test and pass the !callable test,
        resulting in the "can't be assigned a type name" message */
-    void strcpy(buf, (obj[0].otyp != STRANGE_OBJECT)
+    strcpy(buf, (obj[0].otyp != STRANGE_OBJECT)
                  ? simpleonames(obj[0])
                  : obj_descr[STRANGE_OBJECT].oc_name);
-    use_plural = (+(obj[0].quan > 1));
+    use_plural = +(obj[0].quan > 1);
     if (Hallucination()) {
         let unames = stack_array(ptr_to(char), 6);
         let tmpbuf = stack_array(char, BUFSZ);
@@ -754,7 +713,8 @@ namefloorobj()
         obj[0].where = OBJ_FREE; /* object_from_map() sets it to OBJ_FLOOR */
         dealloc_obj(obj[0]); /* has no contents */
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 const ghostnames = static_array("ghostnames", ptr_to(char), null, [
     /* these names should have length < PL_NSIZ */
@@ -768,9 +728,7 @@ const ghostnames = static_array("ghostnames", ptr_to(char), null, [
 ]);
 
 /* ghost names formerly set by x_monnam(), now by makemon() instead */
-export function /* const char * */
-rndghostname()
-{
+export function rndghostname() { /* const char * */
     return rn2(7) ? ROLL_FROM(ghostnames)
                   : svp.plname;
 }
@@ -823,21 +781,20 @@ rndghostname()
  * Bug: if the monster is a priest or shopkeeper, not every one of these
  * options works, since those are special cases.
  */
-export function /* char * */
-x_monnam(
+export function x_monnam(
     mtmp,
     article,
     adjective,
     suppress,
-    called)
-{ const $frame = stack_frame(); try {
+    called) { /* char * */
+    const $frame = stack_frame(); try {
     let buf = nextmbuf();
     let mdat = mtmp.data;
     let pm_name;
     let do_hallu, do_invis, do_it, do_saddle, do_mappear,
             do_exact, do_name, augment_it;
     let name_at_start, has_adjectives, insertbuf2,
-            mappear_as_mon = (+(M_AP_TYPE(mtmp) == M_AP_MONSTER));
+            mappear_as_mon = +(M_AP_TYPE(mtmp) == M_AP_MONSTER);
     let bp, buf2 = stack_array(char, BUFSZ);
 
     if (mtmp == gy.youmonst)
@@ -858,13 +815,13 @@ x_monnam(
         article = ARTICLE_THE;
         suppress |= SUPPRESS_INVISIBLE;
     }
-    do_hallu = ((Hallucination() && !(suppress & SUPPRESS_HALLUCINATION)) ? 1 : 0);
-    do_invis = ((mtmp.minvis && !(suppress & SUPPRESS_INVISIBLE)) ? 1 : 0);
+    do_hallu = (Hallucination() && !(suppress & SUPPRESS_HALLUCINATION) ? 1 : 0);
+    do_invis = (mtmp.minvis && !(suppress & SUPPRESS_INVISIBLE) ? 1 : 0);
     do_it = +(!canspotmon(mtmp) && article != ARTICLE_YOUR
             && !program_state.gameover && mtmp != u.usteed
             && !engulfing_u(mtmp) && !(suppress & SUPPRESS_IT));
     do_saddle = +!(suppress & SUPPRESS_SADDLE);
-    do_mappear = ((mappear_as_mon && !(suppress & SUPPRESS_MAPPEARANCE)) ? 1 : 0);
+    do_mappear = (mappear_as_mon && !(suppress & SUPPRESS_MAPPEARANCE) ? 1 : 0);
     do_exact = +((suppress & EXACT_NAME) == EXACT_NAME);
     do_name = +(!(suppress & SUPPRESS_NAME) || type_is_pname(mdat));
     augment_it = +((suppress & AUGMENT_IT) != 0);
@@ -877,7 +834,7 @@ x_monnam(
         /* !is_animal excludes all Y; !mindless excludes Z, M, \' */
         let s_one = +(humanoid(mdat) && !is_animal(mdat) && !mindless(mdat));
 
-        void strcpy(buf, !augment_it ? _("it")
+        strcpy(buf, !augment_it ? _("it")
                     : (!do_hallu ? s_one : !rn2(2)) ? _("someone")
                       : _("something"));
         return buf;
@@ -920,16 +877,16 @@ x_monnam(
         if (adjective && article == ARTICLE_THE) {
             /* pathological case: "the angry Asidonhopo the blue dragon"
                sounds silly */
-            void strcpy(buf, _("the "));
-            void strcat(strcat(buf, adjective), _(" "));
-            void strcat(buf, shkname(mtmp));
+            strcpy(buf, _("the "));
+            strcat(strcat(buf, adjective), _(" "));
+            strcat(buf, shkname(mtmp));
         } else {
-            void strcat(buf, shkname(mtmp));
+            strcat(buf, shkname(mtmp));
             if (mdat != mons[PM_SHOPKEEPER] || do_invis){
-                void strcat(buf, _(" the "));
+                strcat(buf, _(" the "));
                 if (do_invis)
-                    void strcat(buf, _("invisible "));
-                void strcat(buf, pm_name);
+                    strcat(buf, _("invisible "));
+                strcat(buf, pm_name);
             }
         }
         return buf;
@@ -937,13 +894,13 @@ x_monnam(
 
     /* Put the adjectives in the buffer */
     if (adjective)
-        void strcat(strcat(buf, adjective), _(" "));
+        strcat(strcat(buf, adjective), _(" "));
     if (do_invis)
-        void strcat(buf, _("invisible "));
+        strcat(buf, _("invisible "));
     if (do_saddle && (mtmp.misc_worn_check & W_SADDLE) && !Blind()
         && !Hallucination())
-        void strcat(buf, _("saddled "));
-    has_adjectives = (+(chars[buf + 0] != ord('\0')));
+        strcat(buf, _("saddled "));
+    has_adjectives = +(chars[buf + 0] != ord('\0'));
 
     /* Put the actual monster name or type into the buffer now.
        Remember whether the buffer starts with a personal name. */
@@ -951,49 +908,42 @@ x_monnam(
         let rnamecode = stack_var(char);
         let rname = rndmonnam(addr_of(rnamecode));
 
-        void strcat(buf, rname);
+        strcat(buf, rname);
         name_at_start = bogon_is_pname(rnamecode[0]);
     } else if (do_name && has_mgivenname(mtmp)) {
         let name = MGIVENNAME(mtmp);
 
-
-
-
-
         if (mdat == mons[PM_GHOST]) {
-            void sprintf(eos(buf), _("%s ghost"), s_suffix(name));
+            sprintf(eos(buf), _("%s ghost"), s_suffix(name));
             name_at_start = TRUE;
         } else if (called) {
-            void sprintf(eos(buf), _("%s called %s"), pm_name, name);
+            sprintf(eos(buf), _("%s called %s"), pm_name, name);
             name_at_start = type_is_pname(mdat);
         } else if (is_mplayer(mdat) && (bp = strstri(name, _(" the "))) != 0) {
             /* <name> the <adjective> <invisible> <saddled> <rank> */
             let pbuf = stack_array(char, BUFSZ);
 
-            void strcpy(pbuf, name);
+            strcpy(pbuf, name);
             chars[pbuf + (bp - name + 5)] = ord('\0'); /* adjectives right after " the " */
             if (has_adjectives)
-                void strcat(pbuf, buf);
-            void strcat(pbuf, bp + 5); /* append the rest of the name */
-            void strcpy(buf, pbuf);
+                strcat(pbuf, buf);
+            strcat(pbuf, bp + 5); /* append the rest of the name */
+            strcpy(buf, pbuf);
             article = ARTICLE_NONE;
             name_at_start = TRUE;
         } else {
-            void strcat(buf, name);
+            strcat(buf, name);
             name_at_start = TRUE;
         }
-
-
-
     } else if (is_mplayer(mdat) && !In_endgame(u.uz)) {
         let pbuf = stack_array(char, BUFSZ);
 
-        void strcpy(pbuf, rank_of(mtmp.m_lev, monsndx(mdat),
+        strcpy(pbuf, rank_of(mtmp.m_lev, monsndx(mdat),
                              mtmp.female));
-        void strcat(buf, lcase(pbuf));
+        strcat(buf, lcase(pbuf));
         name_at_start = FALSE;
     } else {
-        void strcat(buf, pm_name);
+        strcat(buf, pm_name);
         name_at_start = type_is_pname(mdat);
     }
 
@@ -1010,14 +960,14 @@ x_monnam(
     chars[buf2 + 0] = ord('\0'); /* lint suppression */
     switch (article) {
     case ARTICLE_YOUR:
-        void strcpy(buf2, _("your "));
+        strcpy(buf2, _("your "));
         break;
     case ARTICLE_THE:
-        void strcpy(buf2, _("the "));
+        strcpy(buf2, _("the "));
         break;
     case ARTICLE_A:
         /* avoid an() here */
-        void just_an(buf2, buf); /* copy "a " or "an " into buf2[] */
+        just_an(buf2, buf); /* copy "a " or "an " into buf2[] */
         break;
     case ARTICLE_NONE:
     default:
@@ -1025,24 +975,21 @@ x_monnam(
         break;
     }
     if (insertbuf2) {
-        void strcat(buf2, buf); /* buf2[] isn't viable to return,  */
-        void strcpy(buf, buf2); /* so transfer the result to buf[] */
+        strcat(buf2, buf); /* buf2[] isn't viable to return,  */
+        strcpy(buf, buf2); /* so transfer the result to buf[] */
     }
     return buf;
-} finally { stack_pop($frame); } }
-
-export function /* char * */
-l_monnam(mtmp)
-{
-    return x_monnam(mtmp, ARTICLE_NONE, 0,
-                    (has_mgivenname(mtmp)) ? SUPPRESS_SADDLE : 0, TRUE);
+    } finally { stack_pop($frame); }
 }
 
-export function /* char * */
-mon_nam(mtmp)
-{
+export function l_monnam(mtmp) { /* char * */
+    return x_monnam(mtmp, ARTICLE_NONE, 0,
+                    has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, TRUE);
+}
+
+export function mon_nam(mtmp) { /* char * */
     return x_monnam(mtmp, ARTICLE_THE, 0,
-                    (has_mgivenname(mtmp)) ? SUPPRESS_SADDLE : 0, FALSE);
+                    has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, FALSE);
 }
 
 /* print the name as if mon_nam() (y_monnam() if tame) was called, but
@@ -1050,9 +997,7 @@ mon_nam(mtmp)
    for monsters aggravating the player with a cursed potion of invisibility;
    also used for pet moving "reluctantly" onto cursed object when that pet
    can be seen either before or after it moves */
-export function /* char * */
-noit_mon_nam(mtmp)
-{
+export function noit_mon_nam(mtmp) { /* char * */
     return x_monnam(mtmp, ARTICLE_YOUR, 0,
                     (has_mgivenname(mtmp) ? (SUPPRESS_SADDLE | SUPPRESS_IT)
                                           : SUPPRESS_IT),
@@ -1061,36 +1006,28 @@ noit_mon_nam(mtmp)
 
 /* in between noit_mon_nam() and mon_nam(); if the latter would pick "it",
    use "someone" (for humanoids) or "something" (for others) instead */
-export function /* char * */
-some_mon_nam(mtmp)
-{
+export function some_mon_nam(mtmp) { /* char * */
     return x_monnam(mtmp, ARTICLE_THE, 0,
                     (has_mgivenname(mtmp) ? (SUPPRESS_SADDLE | AUGMENT_IT)
                                           : AUGMENT_IT),
                     FALSE);
 }
 
-export function /* char * */
-Monnam(mtmp)
-{
+export function Monnam(mtmp) { /* char * */
     let bp = mon_nam(mtmp);
 
     chars[bp] = highc(chars[bp]);
     return bp;
 }
 
-export function /* char * */
-noit_Monnam(mtmp)
-{
+export function noit_Monnam(mtmp) { /* char * */
     let bp = noit_mon_nam(mtmp);
 
     chars[bp] = highc(chars[bp]);
     return bp;
 }
 
-export function /* char * */
-Some_Monnam(mtmp)
-{
+export function Some_Monnam(mtmp) { /* char * */
     let bp = some_mon_nam(mtmp);
 
     chars[bp] = highc(chars[bp]);
@@ -1098,24 +1035,18 @@ Some_Monnam(mtmp)
 }
 
 /* return "a dog" rather than "Fido", honoring hallucination and visibility */
-export function /* char * */
-noname_monnam(mtmp, article)
-{
+export function noname_monnam(mtmp, article) { /* char * */
     return x_monnam(mtmp, article, 0, SUPPRESS_NAME, FALSE);
 }
 
 /* monster's own name -- overrides hallucination and [in]visibility
    so shouldn't be used in ordinary messages (mainly for disclosure) */
-export function /* char * */
-m_monnam(mtmp)
-{
+export function m_monnam(mtmp) { /* char * */
     return x_monnam(mtmp, ARTICLE_NONE, 0, EXACT_NAME, FALSE);
 }
 
 /* pet name: "your little dog" */
-export function /* char * */
-y_monnam(mtmp)
-{
+export function y_monnam(mtmp) { /* char * */
     let prefix, suppression_flag;
 
     prefix = mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE;
@@ -1129,18 +1060,14 @@ y_monnam(mtmp)
 }
 
 /* y_monnam() for start of sentence */
-export function /* char * */
-YMonnam(mtmp)
-{
+export function YMonnam(mtmp) { /* char * */
     let bp = y_monnam(mtmp);
 
     chars[bp] = highc(chars[bp]);
     return bp;
 }
 
-export function /* char * */
-Adjmonnam(mtmp, adj)
-{
+export function Adjmonnam(mtmp, adj) { /* char * */
     let bp = x_monnam(mtmp, ARTICLE_THE, adj,
                         has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, FALSE);
 
@@ -1148,16 +1075,12 @@ Adjmonnam(mtmp, adj)
     return bp;
 }
 
-export function /* char * */
-a_monnam(mtmp)
-{
+export function a_monnam(mtmp) { /* char * */
     return x_monnam(mtmp, ARTICLE_A, 0,
                     has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, FALSE);
 }
 
-export function /* char * */
-Amonnam(mtmp)
-{
+export function Amonnam(mtmp) { /* char * */
     let bp = a_monnam(mtmp);
 
     chars[bp] = highc(chars[bp]);
@@ -1166,30 +1089,26 @@ Amonnam(mtmp)
 
 /* used for monster ID by the '/', ';', and 'C' commands to block remote
    identification of the endgame altars via their attending priests */
-export function /* char * */
-distant_monnam(
+export function distant_monnam(
     mon,
     article,
-    outbuf)
-{
+    outbuf) { /* char * */
     /* high priest(ess)'s identity is concealed on the Astral Plane,
        unless you're adjacent (overridden for hallucination which does
        its own obfuscation) */
     if (mon.data == mons[PM_HIGH_CLERIC] && !Hallucination()
         && Is_astralevel(u.uz) && !m_next2u(mon)) {
-        void strcpy(outbuf, article == ARTICLE_THE ? _("the ") : _(""));
-        void strcat(outbuf, mon.female ? _("high priestess") : _("high priest"));
+        strcpy(outbuf, article == ARTICLE_THE ? _("the ") : _(""));
+        strcat(outbuf, mon.female ? _("high priestess") : _("high priest"));
     } else {
-        void strcpy(outbuf, x_monnam(mon, article, 0, 0, TRUE));
+        strcpy(outbuf, x_monnam(mon, article, 0, 0, TRUE));
     }
     return outbuf;
 }
 
 /* returns mon_nam(mon) relative to other_mon; normal name unless they're
    the same, in which case the reference is to {him|her|it} self */
-export function /* char * */
-mon_nam_too(mon, other_mon)
-{
+export function mon_nam_too(mon, other_mon) { /* char * */
     let outbuf;
 
     if (mon != other_mon) {
@@ -1198,17 +1117,17 @@ mon_nam_too(mon, other_mon)
         outbuf = nextmbuf();
         switch (pronoun_gender(mon, PRONOUN_HALLU)) {
         case 0:
-            void strcpy(outbuf, _("himself"));
+            strcpy(outbuf, _("himself"));
             break;
         case 1:
-            void strcpy(outbuf, _("herself"));
+            strcpy(outbuf, _("herself"));
             break;
         default:
         case 2:
-            void strcpy(outbuf, _("itself"));
+            strcpy(outbuf, _("itself"));
             break;
         case 3: /* could happen when hallucinating */
-            void strcpy(outbuf, _("themselves"));
+            strcpy(outbuf, _("themselves"));
             break;
         }
     }
@@ -1217,77 +1136,72 @@ mon_nam_too(mon, other_mon)
 
 /* construct "<monnamtext> <verb> <othertext> {him|her|it}self" which might
    be distorted by Hallu; if that's plural, adjust monnamtext and verb */
-export function /* char * */
-monverbself(
+export function monverbself(
     mon,
     monnamtext,
     verb,
-    othertext)
-{ const $frame = stack_frame(); try {
+    othertext) { /* char * */
+    const $frame = stack_frame(); try {
     let verbs, selfbuf = stack_array(char, 40); /* sizeof "themselves" suffices */
 
     /* "himself"/"herself"/"itself", maybe "themselves" if hallucinating */
-    void strcpy(selfbuf, mon_nam_too(mon, mon));
+    strcpy(selfbuf, mon_nam_too(mon, mon));
     /* verb starts plural; this will yield singular except for "themselves" */
     verbs = vtense(selfbuf, verb);
     if (!strcmp(verb, verbs)) { /* a match indicates that it stayed plural */
         monnamtext = makeplural(monnamtext);
         /* for "it", makeplural() produces "them" but we want "they" */
         if (!strcmpi(monnamtext, genders[3].he)) {
-            let capitaliz = (+(chars[monnamtext + 0] == highc(chars[monnamtext + 0])));
+            let capitaliz = +(chars[monnamtext + 0] == highc(chars[monnamtext + 0]));
 
-            void strcpy(monnamtext, genders[3].him);
+            strcpy(monnamtext, genders[3].him);
             if (capitaliz)
                 chars[monnamtext + 0] = highc(chars[monnamtext + 0]);
         }
     }
-    void strcat(strcat(monnamtext, _(" ")), verbs);
+    strcat(strcat(monnamtext, _(" ")), verbs);
     if (othertext && chars[othertext])
-        void strcat(strcat(monnamtext, _(" ")), othertext);
-    void strcat(strcat(monnamtext, _(" ")), selfbuf);
+        strcat(strcat(monnamtext, _(" ")), othertext);
+    strcat(strcat(monnamtext, _(" ")), selfbuf);
     return monnamtext;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* for debugging messages, where data might be suspect and we aren't
    taking what the hero does or doesn't know into consideration */
-export function /* char * */
-minimal_monnam(mon, ckloc)
-{
+export function minimal_monnam(mon, ckloc) { /* char * */
     let ptr;
     let outbuf = nextmbuf();
 
     if (!mon) {
-        void strcpy(outbuf, _("[Null monster]"));
+        strcpy(outbuf, _("[Null monster]"));
     } else if ((ptr = mon.data) == null) {
-        void strcpy(outbuf, _("[Null mon->data]"));
+        strcpy(outbuf, _("[Null mon->data]"));
     } else if (ptr < mons[0]) {
-        void sprintf(outbuf, _("[Invalid mon->data %s < %s]"), fmt_ptr(addr_of(mon.data)), fmt_ptr(addr_of(mons[0])))
+        sprintf(outbuf, _("[Invalid mon->data %s < %s]"), fmt_ptr(addr_of(mon.data)), fmt_ptr(addr_of(mons[0])))
 
 ;
     } else if (ptr >= mons[NUMMONS]) {
-        void sprintf(outbuf, _("[Invalid mon->data %s >= %s]"), fmt_ptr(addr_of(mon.data)), fmt_ptr(addr_of(mons[NUMMONS])))
+        sprintf(outbuf, _("[Invalid mon->data %s >= %s]"), fmt_ptr(addr_of(mon.data)), fmt_ptr(addr_of(mons[NUMMONS])))
 
 ;
     } else if (ckloc && ptr == mons[PM_LONG_WORM] && mon.mx
                && svl.level.monsters[mon.mx][mon.my] != mon) {
-        void sprintf(outbuf, _("%s <%d,%d>"), pmname(mons[PM_LONG_WORM_TAIL], Mgender(mon)), mon.mx, mon.my)
+        sprintf(outbuf, _("%s <%d,%d>"), pmname(mons[PM_LONG_WORM_TAIL], Mgender(mon)), mon.mx, mon.my)
 
 ;
     } else {
-        void sprintf(outbuf, _("%s%s <%d,%d>"), mon.mtame ? _("tame ") : mon.mpeaceful ? _("peaceful ") : _(""), mon_pmname(mon), mon.mx, mon.my)
+        sprintf(outbuf, _("%s%s <%d,%d>"), mon.mtame ? _("tame ") : mon.mpeaceful ? _("peaceful ") : _(""), mon_pmname(mon), mon.mx, mon.my)
 
 ;
         if (mon.cham != NON_PM)
-            void sprintf(eos(outbuf), _("{%s}"), pmname(mons[mon.cham], Mgender(mon)))
+            sprintf(eos(outbuf), _("{%s}"), pmname(mons[mon.cham], Mgender(mon)))
 ;
     }
     return outbuf;
 }
 
-
-export function /* int */
-Mgender(mtmp)
-{
+export function Mgender(mtmp) { /* int */
     let mgender = MALE;
 
     if (mtmp == gy.youmonst) {
@@ -1299,38 +1213,21 @@ Mgender(mtmp)
     return mgender;
 }
 
-export function /* const char * */
-pmname(pm, mgender)
-{
+export function pmname(pm, mgender) { /* const char * */
     if (mgender < MALE || mgender >= NUM_MGENDERS || !pm.pmnames[mgender])
         mgender = NEUTRAL;
     return pm.pmnames[mgender];
 }
 
-
 /* mons[]->pmname for a monster */
-export function /* const char * */
-mon_pmname(mon)
-{
+export function mon_pmname(mon) { /* const char * */
     /* for neuter, mon->data->pmnames[MALE] will be Null and use [NEUTRAL] */
     return pmname(mon.data, Mgender(mon));
 }
 
 /* mons[]->pmname for a corpse or statue or figurine */
-export function /* const char * */
-obj_pmname(obj)
-{
-
-
-
-
-
-
-
-
-
-
-
+export function obj_pmname(obj) { /* const char * */
+    /* #if 0: not in this build */
 
     if ((obj.otyp == CORPSE || obj.otyp == STATUE || obj.otyp == FIGURINE)
         && ismnum(obj.corpsenm)) {
@@ -1365,9 +1262,7 @@ obj_pmname(obj)
 export const bogon_codes = init_string(static_array("bogon_codes", char, sizeof_string("-_+|=")), _("-_+|="), true); /* see dat/bonusmon.txt */
 
 /* fake monsters used to be in a hard-coded array, now in a data file */
-export function /* char * */
-bogusmon(buf, code)
-{
+export function bogusmon(buf, code) { /* char * */
     let mnam = buf;
 
     if (code)
@@ -1375,7 +1270,7 @@ bogusmon(buf, code)
     /* might fail (return empty buf[]) if the file isn't available */
     get_rnd_text(_(BOGUSMONFILE), buf, rn2_on_display_rng, MD_PAD_BOGONS);
     if (!chars[mnam]) {
-        void strcpy(buf, _("bogon"));
+        strcpy(buf, _("bogon"));
     } else if (strchr(bogon_codes, chars[mnam])) { /* strip prefix if present */
         if (code)
             chars[code] = chars[mnam];
@@ -1385,13 +1280,10 @@ bogusmon(buf, code)
 }
 
 /* return a random monster name, for hallucination */
-export function /* char * */
-rndmonnam(code)
-{
+export function rndmonnam(code) { /* char * */
     let buf = static_array("rndmonnam.buf", char, BUFSZ);
     let mnam;
     let name;
-
 
     if (code)
         chars[code] = ord('\0');
@@ -1407,22 +1299,18 @@ rndmonnam(code)
         mnam = strcpy(buf, pmname(mons[name], rn2_on_display_rng(2)));
     }
     return mnam;
-
-} export const BOGUSMONSIZE = 100;
+}
+export const BOGUSMONSIZE = 100;
 
 /* check bogusmon prefix to decide whether it's a personal name */
-export function /* boolean */
-bogon_is_pname(code)
-{
+export function bogon_is_pname(code) { /* boolean */
     if (!code)
         return FALSE;
     return strchr(_("-+="), code) ? TRUE : FALSE;
 }
 
 /* name of a Rogue player */
-export function /* const char * */
-roguename()
-{
+export function roguename() { /* const char * */
     let i, opts;
 
     if ((opts = nh_getenv(_("ROGUEOPTS"))) != 0) {
@@ -1457,18 +1345,14 @@ const hcolors = static_array("hcolors", ptr_to(char), null, [
     _("bistre"), _("ecru"), _("fulvous"), _("tekhelet"), _("selective yellow"),
 ]);
 
-export function /* const char * */
-hcolor(colorpref)
-{
+export function hcolor(colorpref) { /* const char * */
     return (Hallucination() || !colorpref)
         ? hcolors[rn2_on_display_rng(SIZE(hcolors))]
         : colorpref;
 }
 
 /* return a random real color unless hallucinating */
-export function /* const char * */
-rndcolor()
-{
+export function rndcolor() { /* const char * */
     let k = rn2(CLR_MAX);
 
     return Hallucination() ? hcolor(0)
@@ -1489,11 +1373,9 @@ const hliquids = static_array("hliquids", ptr_to(char), null, [
 ]);
 
 /* if hallucinating, return a random liquid instead of 'liquidpref' */
-export function /* const char * */
-hliquid(
-    liquidpref) /* use as-is when not hallucintg (unless empty) */
-{
-    let hallucinate = ((Hallucination() && !program_state.gameover) ? 1 : 0);
+export function hliquid(
+    liquidpref) { /* const char * */ /* use as-is when not hallucintg (unless empty) */
+    let hallucinate = (Hallucination() && !program_state.gameover ? 1 : 0);
 
     if (hallucinate || !liquidpref || !chars[liquidpref]) {
         let indx, count = SIZE(hliquids);
@@ -1522,11 +1404,9 @@ const coynames = static_array("coynames", ptr_to(char), null, [
     _("Canis latrans")
 ]);
 
-export function /* char * */
-coyotename(mtmp, buf)
-{
+export function coyotename(mtmp, buf) { /* char * */
     if (mtmp && buf) {
-        void sprintf(buf, _("%s - %s"), x_monnam(mtmp, ARTICLE_NONE, 0, 0, TRUE), mtmp.mcan ? coynames[SIZE(coynames) - 1]
+        sprintf(buf, _("%s - %s"), x_monnam(mtmp, ARTICLE_NONE, 0, 0, TRUE), mtmp.mcan ? coynames[SIZE(coynames) - 1]
                            : coynames[mtmp.m_id % (SIZE(coynames) - 1)])
 
 ;
@@ -1534,9 +1414,7 @@ coyotename(mtmp, buf)
     return buf;
 }
 
-export function /* char * */
-rndorcname(s)
-{
+export function rndorcname(s) { /* char * */
     let v = static_array("rndorcname.v", ptr_to(char), null, [ _("a"), _("ai"), _("og"), _("u") ]);
     let snd = static_array("rndorcname.snd", ptr_to(char), null, [ _("gor"), _("gris"), _("un"), _("bane"), _("ruk"),
                                  _("oth"),_("ul"), _("z"), _("thos"),_("akh"),_("hai") ]);
@@ -1546,16 +1424,15 @@ rndorcname(s)
         chars[s] = ord('\0');
         for (i = 0; i < iend; ++i) {
             vstart = 1 - vstart;                /* 0 -> 1, 1 -> 0 */
-            void sprintf(eos(s), _("%s%s"), (i > 0 && !rn2(30)) ? _("-") : _(""), vstart ? ROLL_FROM(v) : ROLL_FROM(snd))
+            sprintf(eos(s), _("%s%s"), (i > 0 && !rn2(30)) ? _("-") : _(""), vstart ? ROLL_FROM(v) : ROLL_FROM(snd))
 ;
         }
     }
     return s;
 }
 
-export function /* struct monst * */
-christen_orc(mtmp, gang, other)
-{ const $frame = stack_frame(); try {
+export function christen_orc(mtmp, gang, other) { /* struct monst * */
+    const $frame = stack_frame(); try {
     let sz = 0;
     let buf = stack_array(char, BUFSZ), buf2 = stack_array(char, BUFSZ), orcname;
 
@@ -1563,7 +1440,7 @@ christen_orc(mtmp, gang, other)
     /* rndorcname() won't return NULL */
     sz = int(strlen(orcname));
     if (gang)
-        sz += int((unsigned(unsigned(strlen(gang) + sizeof_string(" of ")) - sizeof_string(""))));
+        sz += int(unsigned(unsigned(strlen(gang) + sizeof_string(" of ")) - sizeof_string("")));
     else if (other)
         sz += int(strlen(other));
 
@@ -1572,18 +1449,19 @@ christen_orc(mtmp, gang, other)
         let nameit = FALSE;
 
         if (gang) {
-            void sprintf(buf, _("%s of %s"), upstart(orcname), upstart(strcpy(gbuf, gang)))
+            sprintf(buf, _("%s of %s"), upstart(orcname), upstart(strcpy(gbuf, gang)))
 ;
             nameit = TRUE;
         } else if (other) {
-            void sprintf(buf, _("%s%s"), upstart(orcname), other);
+            sprintf(buf, _("%s%s"), upstart(orcname), other);
             nameit = TRUE;
         }
         if (nameit)
             mtmp = christen_monst(mtmp, buf);
     }
     return mtmp;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* Discworld novel titles, in the order that they were published; a subset
    of them have index macros used for variant spellings; if the titles are
@@ -1607,9 +1485,7 @@ export const NVL_MASKERADE = 17;
 export const NVL_AMAZING_MAURICE = 27;
 export const NVL_THUD = 33;
 
-export function /* const char * */
-noveltitle(novidx)
-{
+export function noveltitle(novidx) { /* const char * */
     let j, k = SIZE(sir_Terry_novels);
 
     j = rn2(k);
@@ -1623,9 +1499,7 @@ noveltitle(novidx)
 }
 
 /* figure out canonical novel title from player-specified one */
-export function /* const char * */
-lookup_novel(lookname, idx)
-{
+export function lookup_novel(lookname, idx) { /* const char * */
     let k;
 
     /*
@@ -1636,13 +1510,13 @@ lookup_novel(lookname, idx)
      */
     if (!strncmpi((The(lookname)), _(("The Color of Magic")), -1))
         lookname = sir_Terry_novels[NVL_COLOUR_OF_MAGIC];
-    else if (!strcmpi(lookname, _("Sorcery")))
+    else if (!strncmpi((lookname), _(("Sorcery")), -1))
         lookname = sir_Terry_novels[NVL_SOURCERY];
-    else if (!strcmpi(lookname, _("Masquerade")))
+    else if (!strncmpi((lookname), _(("Masquerade")), -1))
         lookname = sir_Terry_novels[NVL_MASKERADE];
     else if (!strncmpi((The(lookname)), _(("The Amazing Maurice")), -1))
         lookname = sir_Terry_novels[NVL_AMAZING_MAURICE];
-    else if (!strcmpi(lookname, _("Thud")))
+    else if (!strncmpi((lookname), _(("Thud")), -1))
         lookname = sir_Terry_novels[NVL_THUD];
 
     for (k = 0; k < SIZE(sir_Terry_novels); ++k) {
@@ -1661,270 +1535,106 @@ lookup_novel(lookname, idx)
 }
 
 /*do_name.c*/
-import { CLR_MAX } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
+
+import { CLR_MAX, NO_COLOR } from "./color.h.js";
 import { struct_nhcoord } from "./coord.h.js";
-import { AMULET_CLASS } from "./defsym.h.js";
-import { ARMOR_CLASS } from "./defsym.h.js";
-import { COIN_CLASS } from "./defsym.h.js";
-import { FOOD_CLASS } from "./defsym.h.js";
-import { GEM_CLASS } from "./defsym.h.js";
-import { POTION_CLASS } from "./defsym.h.js";
-import { RING_CLASS } from "./defsym.h.js";
-import { SCROLL_CLASS } from "./defsym.h.js";
-import { SPBOOK_CLASS } from "./defsym.h.js";
-import { TOOL_CLASS } from "./defsym.h.js";
-import { VENOM_CLASS } from "./defsym.h.js";
-import { WAND_CLASS } from "./defsym.h.js";
-import { WEAPON_CLASS } from "./defsym.h.js";
-import { canspotmon } from "./display.h.macros.js";
-import { glyph_is_object } from "./display.h.macros.js";
-import { glyph_is_swallow } from "./display.h.macros.js";
-import { vobj_at } from "./display.h.macros.js";
-import { In_endgame } from "./dungeon.h.macros.js";
-import { Is_astralevel } from "./dungeon.h.macros.js";
-import { BOGUSMONFILE } from "./global.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { LL_ARTIFACT } from "./global.h.js";
-import { LL_CONDUCT } from "./global.h.js";
-import { MD_PAD_BOGONS } from "./global.h.js";
-import { PL_PSIZ } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
+import {
+    AMULET_CLASS, ARMOR_CLASS, COIN_CLASS, FOOD_CLASS, GEM_CLASS, POTION_CLASS, RING_CLASS,
+    SCROLL_CLASS, SPBOOK_CLASS, TOOL_CLASS, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS,
+} from "./defsym.h.js";
+import { canspotmon, glyph_is_object, glyph_is_swallow, vobj_at } from "./display.h.macros.js";
+import { In_endgame, Is_astralevel } from "./dungeon.h.macros.js";
+import {
+    BOGUSMONFILE, BUFSZ, FALSE, LL_ARTIFACT, LL_CONDUCT, MD_PAD_BOGONS, PL_PSIZ, QBUFSZ, TRUE,
+} from "./global.h.js";
 import { strcmpi } from "./global.h.macros.js";
-import { ARTICLE_A } from "./hack.h.js";
-import { ARTICLE_NONE } from "./hack.h.js";
-import { ARTICLE_THE } from "./hack.h.js";
-import { ARTICLE_YOUR } from "./hack.h.js";
-import { AUGMENT_IT } from "./hack.h.js";
-import { CMDQ_KEY } from "./hack.h.js";
-import { CORPSTAT_FEMALE } from "./hack.h.js";
-import { CORPSTAT_GENDER } from "./hack.h.js";
-import { CORPSTAT_MALE } from "./hack.h.js";
-import { CORPSTAT_RANDOM } from "./hack.h.js";
-import { CQ_CANNED } from "./hack.h.js";
-import { ECMD_OK } from "./hack.h.js";
-import { EXACT_NAME } from "./hack.h.js";
-import { GETOBJ_DOWNPLAY } from "./hack.h.js";
-import { GETOBJ_EXCLUDE } from "./hack.h.js";
-import { GETOBJ_NOFLAGS } from "./hack.h.js";
-import { GETOBJ_PROMPT } from "./hack.h.js";
-import { GETOBJ_SUGGEST } from "./hack.h.js";
-import { HAND } from "./hack.h.js";
-import { ONAME_KNOW_ARTI } from "./hack.h.js";
-import { ONAME_SKIP_INVUPD } from "./hack.h.js";
-import { ONAME_VIA_NAMING } from "./hack.h.js";
-import { SUPPRESS_HALLUCINATION } from "./hack.h.js";
-import { SUPPRESS_INVISIBLE } from "./hack.h.js";
-import { SUPPRESS_IT } from "./hack.h.js";
-import { SUPPRESS_MAPPEARANCE } from "./hack.h.js";
-import { SUPPRESS_NAME } from "./hack.h.js";
-import { SUPPRESS_SADDLE } from "./hack.h.js";
-import { struct__cmd_queue } from "./hack.h.js";
-import { IndexOk } from "./hack.h.macros.js";
-import { ROLL_FROM } from "./hack.h.macros.js";
-import { rn1 } from "./hack.h.macros.js";
-import { MGIVENNAME } from "./mextra.h.macros.js";
-import { has_ebones } from "./mextra.h.macros.js";
-import { has_mgivenname } from "./mextra.h.macros.js";
-import { hides_under } from "./mondata.h.macros.js";
-import { humanoid } from "./mondata.h.macros.js";
-import { is_animal } from "./mondata.h.macros.js";
-import { is_mplayer } from "./mondata.h.macros.js";
-import { is_rider } from "./mondata.h.macros.js";
-import { mindless } from "./mondata.h.macros.js";
-import { monsndx } from "./mondata.h.macros.js";
-import { type_is_pname } from "./mondata.h.macros.js";
-import { FEMALE } from "./monflag.h.js";
-import { G_NOGEN } from "./monflag.h.js";
-import { G_UNIQ } from "./monflag.h.js";
-import { MALE } from "./monflag.h.js";
-import { MS_ANIMAL } from "./monflag.h.js";
-import { NEUTRAL } from "./monflag.h.js";
-import { NUM_MGENDERS } from "./monflag.h.js";
-import { M_AP_FURNITURE } from "./monst.h.js";
-import { M_AP_MONSTER } from "./monst.h.js";
-import { M_AP_OBJECT } from "./monst.h.js";
-import { M_AP_TYPE } from "./monst.h.macros.js";
-import { engulfing_u } from "./monst.h.macros.js";
-import { helpless } from "./monst.h.macros.js";
-import { ismnum } from "./monst.h.macros.js";
-import { LOW_PM } from "./monsters.h.js";
-import { NON_PM } from "./monsters.h.js";
-import { NUMMONS } from "./monsters.h.js";
-import { PM_ALIGNED_CLERIC } from "./monsters.h.js";
-import { PM_CLERIC } from "./monsters.h.js";
-import { PM_GHOST } from "./monsters.h.js";
-import { PM_HIGH_CLERIC } from "./monsters.h.js";
-import { PM_JUIBLEX } from "./monsters.h.js";
-import { PM_LONG_WORM } from "./monsters.h.js";
-import { PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { PM_SHOPKEEPER } from "./monsters.h.js";
-import { PM_WIZARD_OF_YENDOR } from "./monsters.h.js";
-import { SPECIAL_PM } from "./monsters.h.js";
-import { OBJ_FREE } from "./obj.h.js";
-import { OBJ_INVENT } from "./obj.h.js";
-import { struct_obj } from "./obj.h.js";
-import { ONAME } from "./obj.h.macros.js";
-import { carried } from "./obj.h.macros.js";
-import { has_oname } from "./obj.h.macros.js";
-import { is_plural } from "./obj.h.macros.js";
+import {
+    ARTICLE_A, ARTICLE_NONE, ARTICLE_THE, ARTICLE_YOUR, AUGMENT_IT, CMDQ_KEY, CORPSTAT_FEMALE,
+    CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_RANDOM, CQ_CANNED, ECMD_OK, EXACT_NAME,
+    GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS, GETOBJ_PROMPT, GETOBJ_SUGGEST, HAND,
+    ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD, ONAME_VIA_NAMING, SUPPRESS_HALLUCINATION,
+    SUPPRESS_INVISIBLE, SUPPRESS_IT, SUPPRESS_MAPPEARANCE, SUPPRESS_NAME, SUPPRESS_SADDLE,
+    struct__cmd_queue,
+} from "./hack.h.js";
+import { IndexOk, ROLL_FROM, rn1 } from "./hack.h.macros.js";
+import { MGIVENNAME, has_ebones, has_mgivenname } from "./mextra.h.macros.js";
+import {
+    hides_under, humanoid, is_animal, is_mplayer, is_rider, mindless, monsndx, type_is_pname,
+} from "./mondata.h.macros.js";
+import { FEMALE, G_NOGEN, G_UNIQ, MALE, MS_ANIMAL, NEUTRAL, NUM_MGENDERS } from "./monflag.h.js";
+import { M_AP_FURNITURE, M_AP_MONSTER, M_AP_OBJECT } from "./monst.h.js";
+import { M_AP_TYPE, engulfing_u, helpless, ismnum } from "./monst.h.macros.js";
+import {
+    LOW_PM, NON_PM, NUMMONS, PM_ALIGNED_CLERIC, PM_CLERIC, PM_GHOST, PM_HIGH_CLERIC, PM_JUIBLEX,
+    PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_SHOPKEEPER, PM_WIZARD_OF_YENDOR, SPECIAL_PM,
+} from "./monsters.h.js";
+import { OBJ_FREE, OBJ_INVENT, struct_obj } from "./obj.h.js";
+import { ONAME, carried, has_oname, is_plural } from "./obj.h.macros.js";
 import { OBJ_DESCR } from "./objclass.h.macros.js";
-import { AMULET_OF_YENDOR } from "./objects.h.js";
-import { CORPSE } from "./objects.h.js";
-import { FAKE_AMULET_OF_YENDOR } from "./objects.h.js";
-import { FIGURINE } from "./objects.h.js";
-import { HEAVY_IRON_BALL } from "./objects.h.js";
-import { SPE_NOVEL } from "./objects.h.js";
-import { STATUE } from "./objects.h.js";
-import { STRANGE_OBJECT } from "./objects.h.js";
-import { TIN } from "./objects.h.js";
-import { TOWEL } from "./objects.h.js";
-import { HALLUC_RES } from "./prop.h.js";
-import { W_SADDLE } from "./prop.h.js";
-import { W_WEP } from "./prop.h.js";
+import {
+    AMULET_OF_YENDOR, CORPSE, FAKE_AMULET_OF_YENDOR, FIGURINE, HEAVY_IRON_BALL, SPE_NOVEL, STATUE,
+    STRANGE_OBJECT, TIN, TOWEL,
+} from "./objects.h.js";
+import { HALLUC_RES, W_SADDLE, W_WEP } from "./prop.h.js";
 import { m_at } from "./rm.h.macros.js";
 import { cansee } from "./vision.h.macros.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { display_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import {
+    create_nhwindow, destroy_nhwindow, display_nhwindow, end_menu, start_menu,
+} from "./winprocs.h.macros.js";
+import {
+    ATR_NONE, MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, NHW_MENU, PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { PRONOUN_HALLU } from "./you.h.js";
-import { Role_switch } from "./you.h.macros.js";
-import { Upolyd } from "./you.h.macros.js";
-import { m_next2u } from "./you.h.macros.js";
-import { mhe } from "./you.h.macros.js";
-import { mhis } from "./you.h.macros.js";
-import { u_at } from "./you.h.macros.js";
-import { Blind } from "./youprop.h.macros.js";
-import { Deaf } from "./youprop.h.macros.js";
-import { EHalluc_resistance } from "./youprop.h.macros.js";
-import { Hallucination } from "./youprop.h.macros.js";
-import { See_invisible } from "./youprop.h.macros.js";
+import { Role_switch, Upolyd, m_next2u, mhe, mhis, u_at } from "./you.h.macros.js";
+import {
+    Blind, Deaf, EHalluc_resistance, Hallucination, See_invisible,
+} from "./youprop.h.macros.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { assert } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { strcat } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strcmp } from "../rt/libc.js";
-import { strcpy } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncmp } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
-import { static_var } from "../rt/locals.js";
+import { char, int, ord, short, sizeof_string, unsigned } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import {
+    assert, free, sprintf, strcat, strchr, strcmp, strcpy, strlen, strncmp, strncpy,
+} from "../rt/libc.js";
+import {
+    init_string, stack_array, stack_struct, stack_var, static_array, static_var,
+} from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { ref_of } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
-import { fmt_ptr } from "./alloc.js";
+import { addr_of, array_of, ptr_add, ptr_to, ref_of, struct_assign } from "../rt/struct.js";
+import { alloc, dupstr, fmt_ptr } from "./alloc.js";
 import { beautiful } from "./apply.js";
-import { artifact_exists } from "./artifact.js";
-import { artifact_name } from "./artifact.js";
-import { exist_artifact } from "./artifact.js";
-import { restrict_name } from "./artifact.js";
-import { set_artifact_intrinsic } from "./artifact.js";
+import {
+    artifact_exists, artifact_name, exist_artifact, restrict_name, set_artifact_intrinsic,
+} from "./artifact.js";
 import { rank_of } from "./botl.js";
-import { cmdq_clear } from "./cmd.js";
-import { cmdq_pop } from "./cmd.js";
-import { isok } from "./cmd.js";
-import { c_obj_colors } from "./decl.js";
-import { cg } from "./decl.js";
-import { flags } from "./decl.js";
-import { gi } from "./decl.js";
-import { gu } from "./decl.js";
-import { gy } from "./decl.js";
-import { program_state } from "./decl.js";
-import { svl } from "./decl.js";
-import { svp } from "./decl.js";
-import { u } from "./decl.js";
-import { flush_screen } from "./display.js";
-import { glyph_at } from "./display.js";
-import { nul_glyphinfo } from "./display.js";
-import { see_with_infrared } from "./display.js";
-import { sensemon } from "./display.js";
+import { cmdq_clear, cmdq_pop, isok } from "./cmd.js";
+import { c_obj_colors, cg, flags, gi, gu, gy, program_state, svl, svp, u } from "./decl.js";
+import { flush_screen, glyph_at, nul_glyphinfo, see_with_infrared, sensemon } from "./display.js";
 import { donamelevel } from "./dungeon.js";
 import { wipeout_text } from "./engrave.js";
 import { getpos } from "./getpos.js";
-import { eos } from "./hacklib.js";
-import { fuzzymatch } from "./hacklib.js";
-import { highc } from "./hacklib.js";
-import { lcase } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { s_suffix } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { upstart } from "./hacklib.js";
-import { carrying } from "./invent.js";
-import { getobj } from "./invent.js";
-import { update_inventory } from "./invent.js";
+import {
+    eos, fuzzymatch, highc, lcase, mungspaces, s_suffix, strncmpi, strstri, upstart,
+} from "./hacklib.js";
+import { carrying, getobj, update_inventory } from "./invent.js";
 import { newmextra } from "./makemon.js";
-import { dealloc_obj } from "./mkobj.js";
-import { newoextra } from "./mkobj.js";
+import { dealloc_obj, newoextra } from "./mkobj.js";
 import { pronoun_gender } from "./mondata.js";
 import { mons } from "./monst.js";
-import { discover_object } from "./o_init.js";
-import { rename_disco } from "./o_init.js";
-import { undiscover_object } from "./o_init.js";
-import { obj_descr } from "./objects.js";
-import { objects } from "./objects.js";
-import { The } from "./objnam.js";
-import { Ysimple_name2 } from "./objnam.js";
-import { an } from "./objnam.js";
-import { ansimpleoname } from "./objnam.js";
-import { bare_artifactname } from "./objnam.js";
-import { just_an } from "./objnam.js";
-import { makeplural } from "./objnam.js";
-import { safe_qbuf } from "./objnam.js";
-import { simpleonames } from "./objnam.js";
-import { vtense } from "./objnam.js";
-import { xname } from "./objnam.js";
+import { discover_object, rename_disco, undiscover_object } from "./o_init.js";
+import { obj_descr, objects } from "./objects.js";
+import {
+    The, Ysimple_name2, an, ansimpleoname, bare_artifactname, just_an, makeplural, safe_qbuf,
+    simpleonames, vtense, xname,
+} from "./objnam.js";
 import { nh_getenv } from "./options.js";
 import { object_from_map } from "./pager.js";
-import { There } from "./pline.js";
-import { You } from "./pline.js";
-import { impossible } from "./pline.js";
-import { livelog_printf } from "./pline.js";
-import { pline } from "./pline.js";
-import { verbalize } from "./pline.js";
+import { There, You, impossible, livelog_printf, pline, verbalize } from "./pline.js";
 import { body_part } from "./polyself.js";
 import { priestname } from "./priest.js";
-import { rn2 } from "./rnd.js";
-import { rn2_on_display_rng } from "./rnd.js";
-import { rnd_on_display_rng } from "./rnd.js";
+import { rn2, rn2_on_display_rng, rnd_on_display_rng } from "./rnd.js";
 import { genders } from "./role.js";
 import { get_rnd_text } from "./rumors.js";
 import { alter_cost } from "./shk.js";
 import { shkname } from "./shknam.js";
 import { untwoweapon } from "./wield.js";
-import { add_menu } from "./windows.js";
-import { getlin } from "./windows.js";
-import { select_menu } from "./windows.js";
+import { add_menu, getlin, select_menu } from "./windows.js";

@@ -1,9 +1,9 @@
-export default "\n" + // -- NetHack Wizard Wiz-fila.lua	$NHDT-Date: 1652196018 2022/05/10 15:20:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
-"\n" + // --	Copyright (c) 1992 by David Cohrs
-"\n" + // -- NetHack may be freely redistributed.  See license for details.
-"\n" + // --
-"\n" + // --
-`des.room({ type = "ordinary",
+export default String.raw`-- NetHack Wizard Wiz-fila.lua	$NHDT-Date: 1652196018 2022/05/10 15:20:18 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.1 $
+--	Copyright (c) 1992 by David Cohrs
+-- NetHack may be freely redistributed.  See license for details.
+--
+--
+des.room({ type = "ordinary",
            contents = function()
               des.stair("up")
               des.object()

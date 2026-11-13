@@ -2,8 +2,6 @@
 /* Copyright (c) Pasi Kallinen, 2024 */
 /* NetHack may be freely redistributed.  See license for details. */
 
-// #include "hack.h"
-
 const struct_color_names = struct("struct_color_names", {
     name: ptr_to(char),
     color: int,
@@ -225,46 +223,33 @@ export const colortable = static_array("colortable", struct_nethack_color, null,
     { colortyp: RGBC, tableindex: 154, rgbindex: 138, name: _("white"), r: 0xFF, g: 0xFF, b: 0xFF },               /* #FFFFFF */
 ]);
 
-
-
-
-
-
-
-
-
-export function /* int32 */
-colortable_to_int32(cte)
-{
+export function colortable_to_int32(cte) { /* int32 */
     let clr = NO_COLOR | NH_BASIC_COLOR;
 
     if (cte.colortyp == rgb_color)
-        clr = or64(or64((shl64(cte.r, 16)), (shl64(cte.g, 8))), cte.b);
+        clr = or64(or64(shl64(cte.r, 16), shl64(cte.g, 8)), cte.b);
     else if (cte.colortyp == nh_color)
         clr = cte.tableindex | NH_BASIC_COLOR;
     return clr;
 }
 
-export function /* char * */
-color_attr_to_str(ca)
-{
+export function color_attr_to_str(ca) { /* char * */
     let buf = static_array("color_attr_to_str.buf", char, BUFSZ);
 
-    void sprintf(buf, _("%s&%s"), clr2colorname(ca.color), attr2attrname(ca.attr))
+    sprintf(buf, _("%s&%s"), clr2colorname(ca.color), attr2attrname(ca.attr))
 
 ;
     return buf;
 }
 
 /* parse string like "color&attr" into color_attr */
-export function /* boolean */
-color_attr_parse_str(ca, str)
-{ const $frame = stack_frame(); try {
+export function color_attr_parse_str(ca, str) { /* boolean */
+    const $frame = stack_frame(); try {
     let buf = stack_array(char, BUFSZ);
     let amp = 0;
     let tmp, c = NO_COLOR, a = ATR_NONE;
 
-    void strncpy(buf, str, sizeof(array_of(char, BUFSZ)) - 1);
+    strncpy(buf, str, sizeof(array_of(char, BUFSZ)) - 1);
     chars[buf + (sizeof(array_of(char, BUFSZ)) - 1)] = ord('\0');
 
     if ((amp = strchr(buf, ord('&'))) != 0)
@@ -298,11 +283,10 @@ color_attr_parse_str(ca, str)
     ca.attr = a;
     ca.color = c;
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* boolean */
-query_color_attr(ca, prompt)
-{
+export function query_color_attr(ca, prompt) { /* boolean */
     let c, a;
 
     c = query_color(prompt, ca.color);
@@ -316,9 +300,7 @@ query_color_attr(ca, prompt)
     return TRUE;
 }
 
-export function /* const char * */
-attr2attrname(attr)
-{
+export function attr2attrname(attr) { /* const char * */
     let i;
 
     for (i = 0; i < SIZE(attrnames); i++)
@@ -334,9 +316,7 @@ attr2attrname(attr)
  *
  */
 
-export function /* const char * */
-clr2colorname(clr)
-{
+export function clr2colorname(clr) { /* const char * */
     let i;
 
     for (i = 0; i < SIZE(colornames); i++)
@@ -345,9 +325,7 @@ clr2colorname(clr)
     return 0;
 }
 
-export function /* int */
-match_str2clr(str, suppress_msg)
-{
+export function match_str2clr(str, suppress_msg) { /* int */
     let i, c = CLR_MAX;
 
     /* allow "lightblue", "light blue", and "light-blue" to match "light blue"
@@ -370,9 +348,7 @@ match_str2clr(str, suppress_msg)
     return c;
 }
 
-export function /* int */
-match_str2attr(str, complain)
-{
+export function match_str2attr(str, complain) { /* int */
     let i, a = -1;
 
     for (i = 0; i < SIZE(attrnames); i++)
@@ -392,14 +368,13 @@ match_str2attr(str, complain)
    coloring patterns, only one attribute at a time is allowed;
    for status highlighting, multiple attributes are allowed [overkill;
    life would be much simpler if that were restricted to one also...] */
-export function /* int */
-query_attr(prompt, dflt_attr)
-{ const $frame = stack_frame(); try {
+export function query_attr(prompt, dflt_attr) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i, pick_cnt;
     let picks = stack_var(ptr_to(struct_mi), null);
-    let allow_many = (((prompt && !strncmpi(prompt, _("Choose"), 6)) ? 1 : 0));
+    let allow_many = (prompt && !strncmpi(prompt, _("Choose"), 6) ? 1 : 0);
     let clr = NO_COLOR;
 
     tmpwin = create_nhwindow()(NHW_MENU);
@@ -469,11 +444,11 @@ query_attr(prompt, dflt_attr)
     /* either ESC to explicitly cancel (pick_cnt==-1) or
        PICK_ANY with preselected entry toggled off and nothing chosen */
     return -1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-query_color(prompt, dflt_color)
-{ const $frame = stack_frame(); try {
+export function query_color(prompt, dflt_color) { /* int */
+    const $frame = stack_frame(); try {
     let tmpwin;
     let any = stack_struct(struct_any);
     let i, pick_cnt;
@@ -515,9 +490,8 @@ query_color(prompt, dflt_color)
         return dflt_color;
     }
     return -1;
-} finally { stack_pop($frame); } }
-
-
+    } finally { stack_pop($frame); }
+}
 
  /* from sys/share/<various>regex.{c,cpp} */
 
@@ -526,12 +500,9 @@ query_color(prompt, dflt_color)
    so forth; suppresses color for black and white because one of those will
    likely be invisible due to matching the background; the alternate set of
    MENUCOLORS is kept around for potential re-use */
-export function /* void */
-basic_menu_colors(
-    load_colors) /* True: temporarily replace menu color entries with
-                          * a fake set of menu colors which match their names;
-                          * False: restore user-specified colorings */
-{ const $frame = stack_frame(); try {
+export function basic_menu_colors(
+    load_colors) { /* void */ /* True: temporarily replace menu color entries with * a fake set of menu colors which match their names; * False: restore user-specified colorings */
+    const $frame = stack_frame(); try {
     if (load_colors) {
         /* replace normal menu colors with a set specifically for colors */
         gs.save_menucolors = iflags.use_menu_color;
@@ -545,7 +516,7 @@ basic_menu_colors(
             /* create the alternate colorings once */
             let cnm = stack_array(char, QBUFSZ);
             let i, c;
-            let pmatchregex = +!strcmpi(regex_id, _("pmatchregex"));
+            let pmatchregex = +!strncmpi((regex_id), _(("pmatchregex")), -1);
             let patternfmt = pmatchregex ? _("*%s") : _("%s");
 
             /* menu_colorings pointer has been saved; clear it in order
@@ -563,7 +534,7 @@ basic_menu_colors(
                 c = colornames[i].color;
                 if (c == CLR_BLACK || c == CLR_WHITE || c == NO_COLOR)
                     continue; /* skip these */
-                void sprintf(cnm, patternfmt, colornames[i].name);
+                sprintf(cnm, patternfmt, colornames[i].name);
                 add_menu_coloring_parsed(cnm, c, ATR_NONE);
             }
 
@@ -577,13 +548,11 @@ basic_menu_colors(
         iflags.use_menu_color = gs.save_menucolors;
         gm.menu_colorings = gs.save_colorings;
     }
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-
-
-export function /* boolean */
-add_menu_coloring_parsed(str, c, a)
-{ const $frame = stack_frame(); try {
+export function add_menu_coloring_parsed(str, c, a) { /* boolean */
+    const $frame = stack_frame(); try {
     let re_error = init_string(static_array("add_menu_coloring_parsed.re_error", char, sizeof_string("Menucolor regex error")), _("Menucolor regex error"), true);
     let tmp;
 
@@ -610,17 +579,17 @@ add_menu_coloring_parsed(str, c, a)
     gm.menu_colorings = tmp;
     iflags.use_menu_color = TRUE;
     return TRUE;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* parse '"regex_string"=color&attr' and add it to menucoloring */
-export function /* boolean */
-add_menu_coloring(tmpstr) /* never Null but could be empty */
-{ const $frame = stack_frame(); try {
+export function add_menu_coloring(tmpstr) { /* boolean */ /* never Null but could be empty */
+    const $frame = stack_frame(); try {
     let c = NO_COLOR, a = ATR_NONE;
     let tmps, cs, amp;
     let str = stack_array(char, BUFSZ);
 
-    void strncpy(str, tmpstr, sizeof(array_of(char, BUFSZ)) - 1);
+    strncpy(str, tmpstr, sizeof(array_of(char, BUFSZ)) - 1);
     chars[str + (sizeof(array_of(char, BUFSZ)) - 1)] = ord('\0');
 
     if ((cs = strchr(str, ord('='))) == 0) {
@@ -657,12 +626,11 @@ add_menu_coloring(tmpstr) /* never Null but could be empty */
         }
     }
     return add_menu_coloring_parsed(tmps, c, a);
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* release all menu color patterns */
-export function /* void */
-free_menu_coloring()
-{
+export function free_menu_coloring() { /* void */
     /* either menu_colorings or color_colorings or both might need to
        be freed or already be Null; do-loop will iterate at most twice */
     do {
@@ -680,9 +648,7 @@ free_menu_coloring()
 }
 
 /* release a specific menu color pattern; not used for color_colorings */
-export function /* void */
-free_one_menu_coloring(idx) /* 0 .. */
-{
+export function free_one_menu_coloring(idx) { /* void */ /* 0 .. */
     let tmp = gm.menu_colorings;
     let prev = null;
 
@@ -705,9 +671,7 @@ free_one_menu_coloring(idx) /* 0 .. */
     }
 }
 
-export function /* int */
-count_menucolors()
-{
+export function count_menucolors() { /* int */
     let tmp;
     let count = 0;
 
@@ -719,9 +683,8 @@ count_menucolors()
 /* returns -1 on no-match.
  * buf is NONNULLARG1
  */
-export function /* int32 */
-check_enhanced_colors(buf)
-{ const $frame = stack_frame(); try {
+export function check_enhanced_colors(buf) { /* int32 */
+    const $frame = stack_frame(); try {
     let xtra = stack_var(char, ord('\0')); /* used to catch trailing junk after "#rrggbb" */
     let r = stack_var(unsigned), g = stack_var(unsigned), b = stack_var(unsigned);
     let retcolor = -1, color;
@@ -729,7 +692,7 @@ check_enhanced_colors(buf)
     if ((color = match_str2clr(buf, TRUE)) != CLR_MAX)  {
         retcolor = color | NH_BASIC_COLOR;
     } else if (sscanf(buf, _("#%02x%02x%02x%c"), r, g, b, addr_of(xtra)) >= 3) {
-        retcolor = !xtra[0] ? int32((unsigned(unsigned((unsigned(r[0] << 16)) | (unsigned(g[0] << 8))) | b[0]))) : -1;
+        retcolor = !xtra[0] ? int32(unsigned(unsigned(unsigned(r[0] << 16) | unsigned(g[0] << 8)) | b[0])) : -1;
     } else {
         /* altbuf: allow user's "grey" to match colortable[]'s "gray";
          * fuzzymatch(): ignore spaces, hyphens, and underscores so that
@@ -743,7 +706,7 @@ check_enhanced_colors(buf)
             altbuf = dupstr(buf);
             /* use direct copy because strsubst() is case-sensitive */
             /*(void) strncpy(&altbuf[greyoffset], "gray", 4);*/
-            void memcpy(altbuf + greyoffset, _("gray"), 4);
+            memcpy(altbuf + greyoffset, _("gray"), 4);
         }
         for (color = 0; color < SIZE(colortable); ++color) {
             if (fuzzymatch(buf, colortable[color].name, _(" -_"), TRUE)
@@ -757,12 +720,11 @@ check_enhanced_colors(buf)
             free(altbuf);
     }
     return retcolor;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
 /* return the canonical name of a particular color */
-export function /* const char * */
-wc_color_name(colorindx)
-{
+export function wc_color_name(colorindx) { /* const char * */
     let hexcolor = static_array("wc_color_name.hexcolor", char, sizeof_string("#rrggbb")); /* includes room for '\0' */
     let result = _("no-color");
 
@@ -797,9 +759,7 @@ wc_color_name(colorindx)
 }
 
 /* hexdd[] is defined in decl.c */
-export function /* boolean */
-onlyhexdigits(buf)
-{
+export function onlyhexdigits(buf) { /* boolean */
     let dp = buf;
 
     for (dp = buf; chars[dp]; ++dp) {
@@ -809,15 +769,13 @@ onlyhexdigits(buf)
     return TRUE;
 }
 
-export function /* int32_t */
-rgbstr_to_int32(rgbstr)
-{ const $frame = stack_frame(); try {
+export function rgbstr_to_int32(rgbstr) { /* int32_t */
+    const $frame = stack_frame(); try {
     let r, g, b, milestone = 0;
     let cp, c_r, c_g, c_b;
     let rgb = 0;
     let buf = stack_array(char, BUFSZ);
     let dash = FALSE;
-
 
     Snprintf(buf, sizeof(array_of(char, BUFSZ)), _("%s"), rgbstr ? rgbstr : _(""))
 ;
@@ -862,11 +820,11 @@ rgbstr_to_int32(rgbstr)
         }
     }
     return -1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
-export function /* int */
-set_map_customcolor(gmap, nhcolor)
-{ const $frame = stack_frame(); try {
+export function set_map_customcolor(gmap, nhcolor) { /* int */
+    const $frame = stack_frame(); try {
     let tmpgm = gmap;
     let closecolor = stack_var(uint32, 0);
     let clridx = stack_var(uint16, 0);
@@ -880,7 +838,8 @@ set_map_customcolor(gmap, nhcolor)
     else
         gmap.color256idx = 0;
     return 1;
-} finally { stack_pop($frame); } }
+    } finally { stack_pop($frame); }
+}
 
  const struct___anon1 = struct("coloratt.struct___anon1", {
     index: int,
@@ -975,15 +934,13 @@ set_map_customcolor(gmap, nhcolor)
  * https://www.compuphase.com/cmetric.htm
  **/
 
-export function /* int */
-color_distance(rgb1, rgb2)
-{
+export function color_distance(rgb1, rgb2) { /* int */
     let r1 = (rgb1 >>> 16) & 0xFF;
     let g1 = (rgb1 >>> 8) & 0xFF;
-    let b1 = (rgb1) & 0xFF;
+    let b1 = rgb1 & 0xFF;
     let r2 = (rgb2 >>> 16) & 0xFF;
     let g2 = (rgb2 >>> 8) & 0xFF;
-    let b2 = (rgb2) & 0xFF;
+    let b2 = rgb2 & 0xFF;
 
     let rmean = Math.trunc((r1 + r2) / 2);
     let r = r1 - r2;
@@ -993,9 +950,7 @@ color_distance(rgb1, rgb2)
             + (((767 - rmean) * b * b) >> 8));
 }
 
-export function /* boolean */
-closest_color(lcolor, closecolor, clridx)
-{
+export function closest_color(lcolor, closecolor, clridx) { /* boolean */
     let i, color_index = -1, similar = INT_MAX, current;
     let retbool = FALSE;
 
@@ -1020,9 +975,7 @@ closest_color(lcolor, closecolor, clridx)
     return retbool;
 }
 
-export function /* uint32 */
-get_nhcolor_from_256_index(idx)
-{
+export function get_nhcolor_from_256_index(idx) { /* uint32 */
     let retcolor = NO_COLOR | NH_BASIC_COLOR;
 
     if (IndexOk(idx, color_256_definitions))
@@ -1030,260 +983,45 @@ get_nhcolor_from_256_index(idx)
     return retcolor;
 }
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+/* #ifdef CHANGE_COLOR: not in this build */
 
 /*coloratt.c*/
-import { HL_BLINK } from "./botl.h.js";
-import { HL_BOLD } from "./botl.h.js";
-import { HL_DIM } from "./botl.h.js";
-import { HL_INVERSE } from "./botl.h.js";
-import { HL_ITALIC } from "./botl.h.js";
-import { HL_NONE } from "./botl.h.js";
-import { HL_ULINE } from "./botl.h.js";
-import { CLR_BLACK } from "./color.h.js";
-import { CLR_BLUE } from "./color.h.js";
-import { CLR_BRIGHT_BLUE } from "./color.h.js";
-import { CLR_BRIGHT_CYAN } from "./color.h.js";
-import { CLR_BRIGHT_GREEN } from "./color.h.js";
-import { CLR_BRIGHT_MAGENTA } from "./color.h.js";
-import { CLR_BROWN } from "./color.h.js";
-import { CLR_CYAN } from "./color.h.js";
-import { CLR_GRAY } from "./color.h.js";
-import { CLR_GREEN } from "./color.h.js";
-import { CLR_MAGENTA } from "./color.h.js";
-import { CLR_MAX } from "./color.h.js";
-import { CLR_ORANGE } from "./color.h.js";
-import { CLR_RED } from "./color.h.js";
-import { CLR_WHITE } from "./color.h.js";
-import { CLR_YELLOW } from "./color.h.js";
-import { NH_BASIC_COLOR } from "./color.h.js";
-import { NO_COLOR } from "./color.h.js";
-import { nh_color } from "./color.h.js";
-import { no_color } from "./color.h.js";
-import { rgb_color } from "./color.h.js";
-import { struct_nethack_color } from "./color.h.js";
-import { BUFSZ } from "./global.h.js";
-import { FALSE } from "./global.h.js";
-import { QBUFSZ } from "./global.h.js";
-import { TRUE } from "./global.h.js";
-import { strcmpi } from "./global.h.macros.js";
+
+import { HL_BLINK, HL_BOLD, HL_DIM, HL_INVERSE, HL_ITALIC, HL_NONE, HL_ULINE } from "./botl.h.js";
+import {
+    CLR_BLACK, CLR_BLUE, CLR_BRIGHT_BLUE, CLR_BRIGHT_CYAN, CLR_BRIGHT_GREEN, CLR_BRIGHT_MAGENTA,
+    CLR_BROWN, CLR_CYAN, CLR_GRAY, CLR_GREEN, CLR_MAGENTA, CLR_MAX, CLR_ORANGE, CLR_RED, CLR_WHITE,
+    CLR_YELLOW, NH_BASIC_COLOR, NO_COLOR, nh_color, no_color, rgb_color, struct_nethack_color,
+} from "./color.h.js";
+import { BUFSZ, FALSE, QBUFSZ, TRUE } from "./global.h.js";
 import { struct_menucoloring } from "./hack.h.js";
 import { IndexOk } from "./hack.h.macros.js";
 import { Snprintf } from "./hacklib.h.macros.js";
-import { int32 } from "./integer.h.js";
-import { uint16 } from "./integer.h.js";
-import { uint32 } from "./integer.h.js";
-import { uint8 } from "./integer.h.js";
-import { create_nhwindow } from "./winprocs.h.macros.js";
-import { destroy_nhwindow } from "./winprocs.h.macros.js";
-import { end_menu } from "./winprocs.h.macros.js";
-import { start_menu } from "./winprocs.h.macros.js";
-import { ATR_BLINK } from "./wintype.h.js";
-import { ATR_BOLD } from "./wintype.h.js";
-import { ATR_DIM } from "./wintype.h.js";
-import { ATR_INVERSE } from "./wintype.h.js";
-import { ATR_ITALIC } from "./wintype.h.js";
-import { ATR_NONE } from "./wintype.h.js";
-import { ATR_ULINE } from "./wintype.h.js";
-import { MENU_BEHAVE_STANDARD } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_NONE } from "./wintype.h.js";
-import { MENU_ITEMFLAGS_SELECTED } from "./wintype.h.js";
-import { NHW_MENU } from "./wintype.h.js";
-import { PICK_ANY } from "./wintype.h.js";
-import { PICK_ONE } from "./wintype.h.js";
-import { struct_any } from "./wintype.h.js";
-import { struct_mi } from "./wintype.h.js";
+import { int32, uint16, uint32, uint8 } from "./integer.h.js";
+import { create_nhwindow, destroy_nhwindow, end_menu, start_menu } from "./winprocs.h.macros.js";
+import {
+    ATR_BLINK, ATR_BOLD, ATR_DIM, ATR_INVERSE, ATR_ITALIC, ATR_NONE, ATR_ULINE,
+    MENU_BEHAVE_STANDARD, MENU_ITEMFLAGS_NONE, MENU_ITEMFLAGS_SELECTED, NHW_MENU, PICK_ANY,
+    PICK_ONE, struct_any, struct_mi,
+} from "./wintype.h.js";
 import { SIZE } from "../rt/cmacros.js";
-import { char } from "../rt/ctypes.js";
-import { int } from "../rt/ctypes.js";
-import { ord } from "../rt/ctypes.js";
-import { sizeof } from "../rt/ctypes.js";
-import { sizeof_string } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { chars } from "../rt/heap.js";
-import { stack_frame } from "../rt/heap.js";
-import { stack_pop } from "../rt/heap.js";
-import { or64 } from "../rt/int64.js";
-import { shl64 } from "../rt/int64.js";
-import { INT_MAX } from "../rt/libc.js";
-import { __isspace } from "../rt/libc.js";
-import { assert } from "../rt/libc.js";
-import { atoi } from "../rt/libc.js";
-import { free } from "../rt/libc.js";
-import { memcpy } from "../rt/libc.js";
-import { sprintf } from "../rt/libc.js";
-import { sscanf } from "../rt/libc.js";
-import { strchr } from "../rt/libc.js";
-import { strlen } from "../rt/libc.js";
-import { strncpy } from "../rt/libc.js";
-import { init_string } from "../rt/locals.js";
-import { stack_array } from "../rt/locals.js";
-import { stack_struct } from "../rt/locals.js";
-import { stack_var } from "../rt/locals.js";
-import { static_array } from "../rt/locals.js";
+import { char, int, ord, sizeof, sizeof_string, uchar, unsigned, ushort } from "../rt/ctypes.js";
+import { chars, stack_frame, stack_pop } from "../rt/heap.js";
+import { or64, shl64 } from "../rt/int64.js";
+import {
+    INT_MAX, __isspace, assert, atoi, free, memcpy, sprintf, sscanf, strchr, strlen, strncpy,
+} from "../rt/libc.js";
+import { init_string, stack_array, stack_struct, stack_var, static_array } from "../rt/locals.js";
 import { _ } from "../rt/strings.js";
-import { addr_of } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { elt } from "../rt/struct.js";
-import { ptr_add } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
-import { struct_assign } from "../rt/struct.js";
-import { view_of } from "../rt/struct.js";
-import { alloc } from "./alloc.js";
-import { dupstr } from "./alloc.js";
+import {
+    addr_of, array_of, elt, ptr_add, ptr_to, struct, struct_assign, view_of,
+} from "../rt/struct.js";
+import { alloc, dupstr } from "./alloc.js";
 import { config_error_add } from "./cfgfiles.js";
-import { cg } from "./decl.js";
-import { gc } from "./decl.js";
-import { gm } from "./decl.js";
-import { gs } from "./decl.js";
-import { hexdd } from "./decl.js";
-import { iflags } from "./decl.js";
+import { cg, gc, gm, gs, hexdd, iflags } from "./decl.js";
 import { nul_glyphinfo } from "./display.js";
-import { digit } from "./hacklib.js";
-import { fuzzymatch } from "./hacklib.js";
-import { mungspaces } from "./hacklib.js";
-import { strncmpi } from "./hacklib.js";
-import { strstri } from "./hacklib.js";
-import { add_menu } from "./windows.js";
-import { select_menu } from "./windows.js";
-import { regex_compile } from "../sys/share/posixregex.js";
-import { regex_error_desc } from "../sys/share/posixregex.js";
-import { regex_free } from "../sys/share/posixregex.js";
-import { regex_id } from "../sys/share/posixregex.js";
-import { regex_init } from "../sys/share/posixregex.js";
+import { digit, fuzzymatch, mungspaces, strncmpi, strstri } from "./hacklib.js";
+import { add_menu, select_menu } from "./windows.js";
+import {
+    regex_compile, regex_error_desc, regex_free, regex_id, regex_init,
+} from "../sys/share/posixregex.js";

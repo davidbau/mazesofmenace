@@ -3,17 +3,8 @@
 /*-Copyright (c) Robert Patrick Rankin, 2016. */
 /* NetHack may be freely redistributed.  See license for details. */
 
-
-
-
 /* start with incomplete types in case these aren't defined yet;
    basic pointers to them don't need to know their details */
-
-
-
-
-
-
 
 /* The weapon_check flag is used two ways:
  * 1) When calling mon_wield_item, is 2-6 depending on what is desired.
@@ -34,7 +25,6 @@
     export const NEED_AXE = 5;
     export const NEED_PICK_OR_AXE = 6;
 
-
 /* The following flags are used for the second argument to display_minventory
  * in invent.c:
  *
@@ -54,7 +44,6 @@ export const MINV_ALL = 0x08;
     export const M_AP_OBJECT = 2; /* an object */
     export const M_AP_MONSTER = 3; /* a monster; mostly used for cloned Wizard */
 
-
 export const MON_FLOOR = 0x00;
 export const MON_OFFMAP = 0x01;
 export const MON_DETACH = 0x02;
@@ -69,11 +58,6 @@ export const MON_STILL_ARRIVING = 0x100;
 export const M_AP_TYPMASK = 0x7;
 export const M_AP_F_DKNOWN = 0x8;
 
-
-
-
-
-
     export const M_SEEN_NOTHING = 0x0000;
     export const M_SEEN_MAGR = 0x0001; /* Antimagic, AD_MAGM */
     export const M_SEEN_FIRE = 0x0002; /* Fire_resistance, AD_FIRE */
@@ -84,14 +68,6 @@ export const M_AP_F_DKNOWN = 0x8;
     export const M_SEEN_POISON = 0x0040; /* AD_DRST */
     export const M_SEEN_ACID = 0x0080; /* Acid_resistance, AD_ACID */
     export const M_SEEN_REFL = 0x0100; /* reflection, no corresponding AD_foo */
-
-
-
-
-
-
-
-
 
 export const MTSZ = 4; export const MAX_NUM_WORMS = 32; export const STRAT_APPEARMSG = 0x80000000; export const STRAT_ARRIVE = 0x40000000; export const STRAT_WAITFORU = 0x20000000; export const STRAT_CLOSE = 0x10000000; export const STRAT_WAITMASK = (STRAT_CLOSE | STRAT_WAITFORU); export const STRAT_HEAL = 0x08000000; export const STRAT_GROUND = 0x04000000; export const STRAT_MONSTR = 0x02000000; export const STRAT_PLAYER = 0x01000000; export const STRAT_NONE = 0x00000000; export const STRAT_STRATMASK = 0x0f000000; export const STRAT_GOAL = 0x000000ff; export const struct_monst = struct("struct_monst", {
     nmon: ptr_to("struct_monst"),
@@ -169,22 +145,7 @@ export const MTSZ = 4; export const MAX_NUM_WORMS = 32; export const STRAT_APPEA
 
     mstrategy: ulong, /* for monsters with mflag3: current strategy */
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
     /* mstrategy unused 0x00ffff00L */
-
 
     mgoal: "struct_nhcoord", /* monster strategy, target location */
     mtrapseen: long, /* bitmap of traps we've been trapped in */
@@ -201,99 +162,11 @@ export const MTSZ = 4; export const MAX_NUM_WORMS = 32; export const STRAT_APPEA
     mextra: ptr_to("struct_mextra"), /* point to mextra struct */
 });
 
-
-
 /* these are in mspeed */
 export const MSLOW = 1;
 export const MFAST = 2;
 
-
-
-
-/* dead monsters stay on the fmon list until dmonsfree() at end of turn */
-
-
-
-
-
-
-
-/* Vlad might be vampshifted so just checking monst->data is insufficient */
-
-
-
-/* monsters which cannot be displaced: temple priests, shopkeepers,
-   vault guards, the Oracle, quest leader */
-
-
-
-
-
-/* mimic appearances that block vision/light */
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* is mon m (presumably just killed) a troll and obj o Trollsbane? */
-
-
-
-
-
-
-
-
-
-
-/* Get the maximum difficulty monsters that can currently be generated,
-   given the current level difficulty and the hero's level. */
-
-
-
-
-/* Macros for whether a type of monster is too strong for a specific level. */
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-/* x is a valid index into mons[] array */
 import { aligntyp } from "./align.h.js";
-import { coordxy } from "./global.h.js";
-import { xint16 } from "./global.h.js";
-import { int } from "../rt/ctypes.js";
-import { long } from "../rt/ctypes.js";
-import { schar } from "../rt/ctypes.js";
-import { short } from "../rt/ctypes.js";
-import { uchar } from "../rt/ctypes.js";
-import { ulong } from "../rt/ctypes.js";
-import { unsigned } from "../rt/ctypes.js";
-import { ushort } from "../rt/ctypes.js";
-import { Bitfield } from "../rt/struct.js";
-import { array_of } from "../rt/struct.js";
-import { ptr_to } from "../rt/struct.js";
-import { struct } from "../rt/struct.js";
+import { coordxy, xint16 } from "./global.h.js";
+import { int, long, schar, short, uchar, ulong, unsigned, ushort } from "../rt/ctypes.js";
+import { Bitfield, array_of, ptr_to, struct } from "../rt/struct.js";
