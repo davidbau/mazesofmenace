@@ -54,7 +54,12 @@ import {
 import { def_char_to_monclass, def_char_to_objclass } from './drawing.js';
 import { MAXMCLASSES } from './symbols.js';
 import { add_to_container, obj_extract_self, obfree, sobj_at } from './invent.js';
-import { makemon, dmonsfree, set_mimic_sym } from './makemon_create.js';
+import {
+    makemon,
+    makemon_by_context,
+    dmonsfree,
+    set_mimic_sym,
+} from './makemon_create.js';
 import { mkclass, rndmonnum } from './makemon.js';
 import { mineralize } from './mineralize.js';
 import { make_grave } from './grave.js';
@@ -487,7 +492,6 @@ function clear_level_structures() {
     g.subrooms = [];
     g.nsubroom = 0;
     g.made_branch = false;
-    g.smeq = new Array(MAXNROFROOMS + 1).fill(0);
     g.stairs = null;
     g.head_engr = null;
     free_exclusions(g);
@@ -826,7 +830,7 @@ async function makelevel(specialLevelLoader = null) {
     let room_threshold = branchp ? 4 : 3;
 
     if (!rogue) {
-        makecorridors();
+        await makecorridors();
         await make_niches();
     }
 
@@ -1245,7 +1249,7 @@ function set_themeroom_map_terrain(x, y, typ, state, lit = 0, frame = null) {
     } else if (typ === HWALL || typ === IRONBARS) {
         loc.horizontal = true;
     } else if (frame?.splev_init_present && typ === ICE) {
-        loc.icedpool = frame.icedpools ? ICED_POOL : ICED_MOAT;
+        loc.flags = frame.icedpools ? ICED_POOL : ICED_MOAT;
     } else if (typ === CLOUD) {
         del_engr_at(x, y, state);
     }
@@ -1464,7 +1468,7 @@ function sel_set_ter(x, y, typ, lit, state, frame, random = rn2) {
     } else if (actualType === HWALL || actualType === IRONBARS) {
         location.horizontal = true;
     } else if (frame?.splev_init_present && actualType === ICE) {
-        location.icedpool = frame.icedpools ? ICED_POOL : ICED_MOAT;
+        location.flags = frame.icedpools ? ICED_POOL : ICED_MOAT;
     } else if (actualType === CLOUD) {
         del_engr_at(x, y, state);
     }
@@ -1573,7 +1577,7 @@ function create_trap(t, croom, frame, env) {
     if (t.novictim)
         mktrap_flags |= MKTRAP_NOVICTIM;
 
-    make_level_trap(t.type, mktrap_flags, null, tm, env);
+    return make_level_trap(t.type, mktrap_flags, null, tm, env);
 }
 
 // C ref: sp_lev.c good_stair_loc(). The is_ok_location_func that
@@ -1637,11 +1641,17 @@ function create_altar(a, croom, frame, env) {
         return;
 
     if (a.shrine) { /* Is it a shrine  or sanctum? */
-        priestini(state.u.uz, croom, x, y, (a.shrine > 1), env);
-        loc.flags |= AM_SHRINE;
-        if (a.shrine === 2) /* high altar or sanctum */
-            loc.flags |= AM_SANCTUM;
-        state.level.flags.has_temple = true;
+        const finishShrine = () => {
+            loc.flags |= AM_SHRINE;
+            if (a.shrine === 2) /* high altar or sanctum */
+                loc.flags |= AM_SANCTUM;
+            state.level.flags.has_temple = true;
+        };
+        // A Promise when a level program that #wizloadlua runs makes the
+        // priest outside level creation (priestini()).
+        const made = priestini(state.u.uz, croom, x, y, (a.shrine > 1), env);
+        return made && typeof made.then === 'function'
+            ? made.then(finishShrine) : finishShrine();
     }
 }
 
@@ -1694,11 +1704,11 @@ export function search_door(croom, wall, cnt, state = game) {
 // C ref: sp_lev.c create_corridor(). A source room of -1 asks for the
 // ordinary makecorridors(); otherwise the corridor runs from the door on
 // the source wall to the door on the destination wall, each stepped one
-// square outward from its wall.
+// square outward from its wall. Returns makecorridors()'s Promise when it
+// waits.
 function create_corridor(c, state = game) {
     if (c.src.room === -1) {
-        makecorridors(); /*makecorridors(c->src.door);*/
-        return;
+        return makecorridors(); /*makecorridors(c->src.door);*/
     }
 
     /* Safety railings - if there's ever a case where des.corridor() needs
@@ -1797,7 +1807,6 @@ function lvlfill_solid(filling, lit, frame, state) {
                 continue;
             const loc = state.level.at(x, y);
             loc.flags = 0;
-            loc.icedpool = 0;
             loc.horizontal = false;
             loc.roomno = 0;
             loc.edge = false;
@@ -3149,14 +3158,14 @@ function l_create_stairway(args, using_ladder, env) {
                 dlevel: state.u.uz.dlevel - 1,
             };
             stairway_add(x, y, true, true, dest);
-            loc.ladder = LA_UP;
+            loc.flags = LA_UP;
         } else {
             const dest = {
                 dnum: state.u.uz.dnum,
                 dlevel: state.u.uz.dlevel + 1,
             };
             stairway_add(x, y, false, true, dest);
-            loc.ladder = LA_DOWN;
+            loc.flags = LA_DOWN;
         }
     } else {
         // sp_lev.c:4209–4210 forces fixed-coordinate stairs onto ROOM.
@@ -3234,7 +3243,7 @@ export function lspo_altar(args, env) {
 
     const tmpaltar = { coord: acoord, sp_amask: al, shrine };
 
-    create_altar(tmpaltar, coder.croom, frame, env);
+    return create_altar(tmpaltar, coder.croom, frame, env);
 }
 
 // C ref: sp_lev.c trap_types[]. The Lua trap names in the source's order;
@@ -3373,8 +3382,14 @@ export function lspo_trap(args, env) {
     else
         tmptrap.coord = SP_COORD_PACK(x, y);
 
-    create_trap(tmptrap, coder.croom, frame, env);
-    state.launchplace = { x: 0, y: 0 };
+    // A Promise when a level program that #wizloadlua runs makes a statue
+    // trap or a web's spider outside level creation (mklev.c mktrap()).
+    const made = create_trap(tmptrap, coder.croom, frame, env);
+    const finish = () => {
+        state.launchplace = { x: 0, y: 0 };
+    };
+    return made && typeof made.then === 'function'
+        ? made.then(finish) : finish();
 }
 
 // C ref: sp_lev.c lspo_gold(). gold(amount, x, y), gold(amount, {x, y}),
@@ -3447,7 +3462,7 @@ export function lspo_corridor(args, env) {
         },
     };
 
-    create_corridor(tc, state);
+    return create_corridor(tc, state);
 }
 
 // C ref: sp_lev.c lspo_random_corridors(). A corridor descriptor with every
@@ -3459,7 +3474,7 @@ export function lspo_random_corridors(args, env) {
         dest: { room: -1, door: -1, wall: -1 },
     };
 
-    create_corridor(tc, state);
+    return create_corridor(tc, state);
 }
 
 // C ref: sp_lev.c random_wdir(). Choose a single random W_* direction.
@@ -4399,7 +4414,7 @@ export function lspo_drawbridge(args, env) {
 // with x/y or coord, typ, stocked, and dir. Steps one square in the walk
 // direction, moves the start onto odd parity, carves from it through
 // walkfrom(), and fills the maze through fill_empty_maze() when stocked.
-export function lspo_mazewalk(args, env) {
+export async function lspo_mazewalk(args, env) {
     const { state, coder, frame } = env;
     const mwdirs = ['north', 'south', 'east', 'west', 'random'];
     const mwdirs2i = [W_NORTH, W_SOUTH, W_EAST, W_WEST, W_RANDOM, -2];
@@ -4487,7 +4502,7 @@ export function lspo_mazewalk(args, env) {
 
     walkfrom(x, y, ftyp, state);
     if (fstocked)
-        fill_empty_maze(frame, state, env);
+        await fill_empty_maze(frame, state, env);
 }
 
 // C ref: sp_lev.c lspo_wall_property(). A rectangle from x1/y1/x2/y2 or
@@ -4718,12 +4733,7 @@ function createSpecialLevelApi(state) {
     const env = {
         state,
         random: coreRandom,
-        hooks: {
-            ...objectGenerationHooks(),
-            makeMonster(species, x, y, mmflags, monEnv) {
-                return makemon(species, x, y, mmflags, monEnv);
-            },
-        },
+        hooks: objectGenerationHooks(),
         frame,
         // gc.coder as it is now: each des.* call creates it first (below).
         get coder() { return state.gc?.coder ?? null; },
@@ -5502,7 +5512,7 @@ function mkmap_finish_map(fg_typ, bg_typ, lit, walled, icedpools, state) {
             const loc = state.level.at(x, y);
             if (loc.typ === LAVAPOOL) loc.lit = true;
             else if (loc.typ === ICE)
-                loc.icedpool = icedpools ? ICED_POOL : ICED_MOAT;
+                loc.flags = icedpools ? ICED_POOL : ICED_MOAT;
         }
     }
 }
@@ -5652,8 +5662,11 @@ function maze1xy(humidity, frame, state) {
 
 // C ref: sp_lev.c fill_empty_maze(). Fills unused maze area with random
 // objects, boulders, minotaurs, monsters, gold, and traps proportional
-// to how much of the maze the special-level map did not cover.
-function fill_empty_maze(frame, state, env) {
+// to how much of the maze the special-level map did not cover. A level
+// program that #wizloadlua runs (nhlua.c load_lua()) walks its maze outside
+// level creation, so makemon() and a statue trap's donor monster take their
+// runtime form there.
+async function fill_empty_maze(frame, state, env) {
     let mapcountmax, mapcount;
     mapcountmax = mapcount =
         (frame.xMazeMax - 2) * (frame.yMazeMax - 2);
@@ -5685,7 +5698,7 @@ function fill_empty_maze(frame, state, env) {
         // Minotaurs
         for (let i = rn2(2); i > 0; i--) {
             const mm = maze1xy(DRY, frame, state);
-            makemon(
+            await makemon_by_context(
                 state.mons[PM_MINOTAUR],
                 mm.x,
                 mm.y,
@@ -5696,7 +5709,7 @@ function fill_empty_maze(frame, state, env) {
         // Random monsters
         for (let i = rnd(Math.trunc((12 * mapfact) / 100)); i > 0; i--) {
             const mm = maze1xy(DRY, frame, state);
-            makemon(null, mm.x, mm.y, NO_MM_FLAGS, env);
+            await makemon_by_context(null, mm.x, mm.y, NO_MM_FLAGS, env);
         }
         // Gold
         for (let i = rn2(Math.trunc((15 * mapfact) / 100)); i > 0; i--) {
@@ -5714,7 +5727,7 @@ function fill_empty_maze(frame, state, env) {
             // sp_lev.c calls maketrap() directly here. Route through the
             // mklev wrapper to install its statue-trap capability while
             // retaining direct-call semantics for web and victim handling.
-            make_level_trap(
+            await make_level_trap(
                 trytrap,
                 MKTRAP_NOSPIDERONWEB | MKTRAP_NOVICTIM,
                 null,
@@ -5843,7 +5856,6 @@ function register_irregular_map_region(
         state,
     );
     if (!bounds) return null;
-    state.smeq ??= new Array(MAXNROFROOMS + 1).fill(0);
     state.smeq[roomIndex] = roomIndex;
     add_room(
         bounds.minx, bounds.miny, bounds.maxx, bounds.maxy,
@@ -7221,8 +7233,16 @@ function dig_corridor(org, dest, npoints_out, nxcor, ftyp, btyp) {
     return true;
 }
 
-// C ref: mklev.c dosdoor()
+// C ref: mklev.c dosdoor(). The trapped-door mimic is the only step that can
+// wait: a level program that #wizloadlua runs (nhlua.c load_lua()) reaches it
+// outside level creation through sp_lev.c create_corridor() ->
+// makecorridors() -> join() -> dodoor(), where makemon() takes its runtime
+// form. dosdoor() then returns a Promise.
 function dosdoor(x, y, aroom, type) {
+    return finish_steps(dosdoor_steps(x, y, aroom, type));
+}
+
+function* dosdoor_steps(x, y, aroom, type) {
     const map = game.level;
     const loc = map.at(x, y);
     if (!loc) return;
@@ -7249,7 +7269,9 @@ function dosdoor(x, y, aroom, type) {
                 && !([PM_SMALL_MIMIC, PM_LARGE_MIMIC, PM_GIANT_MIMIC]
                     .every(pm => game.mvitals[pm].mvflags & G_GONE))) {
                 loc.flags = D_NODOOR;
-                const mimic = makemon(mkclass(S_MIMIC, 0), x, y, NO_MM_FLAGS);
+                const mimic = yield makemon_by_context(
+                    mkclass(S_MIMIC, 0), x, y, NO_MM_FLAGS, { state: game },
+                );
                 if (mimic) set_mimic_sym(mimic, { state: game });
             }
         }
@@ -7262,8 +7284,9 @@ function dosdoor(x, y, aroom, type) {
     add_door(x, y, aroom);
 }
 
+// C ref: mklev.c dodoor(). Returns dosdoor()'s Promise when it waits.
 function dodoor(x, y, aroom) {
-    dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
+    return dosdoor(x, y, aroom, maybe_sdoor(8) ? SDOOR : DOOR);
 }
 
 function add_door(x, y, aroom) {
@@ -7504,8 +7527,8 @@ export function add_doors_to_room(croom) {
         add_doors_to_room(subrooms[i]);
 }
 
-// C ref: mklev.c join()
-function join(a, b, nxcor) {
+// C ref: mklev.c join(). Waits only where dodoor() does.
+function* join_steps(a, b, nxcor) {
     const g = game;
     const croom = g.level.rooms[a];
     const troom = g.level.rooms[b];
@@ -7543,29 +7566,37 @@ function join(a, b, nxcor) {
     const ftyp = CORR;
     const dig_result = dig_corridor(org, dest, npoints, nxcor, ftyp, STONE);
     if ((npoints.v > 0) && (okdoor(xx, yy) || !nxcor))
-        dodoor(xx, yy, croom);
+        yield dodoor(xx, yy, croom);
     if (!dig_result) return;
     if (okdoor(tt.x, tt.y) || !nxcor)
-        dodoor(tt.x, tt.y, troom);
+        yield dodoor(tt.x, tt.y, troom);
     if (g.smeq[a] < g.smeq[b]) g.smeq[b] = g.smeq[a];
     else g.smeq[a] = g.smeq[b];
 }
 
-// C ref: mklev.c makecorridors()
+// C ref: mklev.c makecorridors(). Synchronous during level creation; a
+// Promise when a door's mimic waits for makemon()'s runtime form (dosdoor()).
 function makecorridors() {
+    return finish_steps(makecorridors_steps());
+}
+
+function* makecorridors_steps() {
     const g = game;
     let any = true;
-    for (let i = 0; i < g.level.nroom; i++) g.smeq[i] = i;
     for (let a = 0; a < g.level.nroom - 1; a++) {
-        join(a, a + 1, false);
+        yield* join_steps(a, a + 1, false);
         if (!rn2(50)) break;
     }
     for (let a = 0; a < g.level.nroom - 2; a++)
-        if (g.smeq[a] !== g.smeq[a + 2]) join(a, a + 2, false);
+        if (g.smeq[a] !== g.smeq[a + 2]) yield* join_steps(a, a + 2, false);
     for (let a = 0; any && a < g.level.nroom; a++) {
         any = false;
-        for (let b = 0; b < g.level.nroom; b++)
-            if (g.smeq[a] !== g.smeq[b]) { join(a, b, false); any = true; }
+        for (let b = 0; b < g.level.nroom; b++) {
+            if (g.smeq[a] !== g.smeq[b]) {
+                yield* join_steps(a, b, false);
+                any = true;
+            }
+        }
     }
     if (g.level.nroom > 2) {
         const count = rn2(g.level.nroom) + 4;
@@ -7573,7 +7604,7 @@ function makecorridors() {
             let a = rn2(g.level.nroom);
             let b = rn2(g.level.nroom - 2);
             if (b >= a) b += 2;
-            join(a, b, true);
+            yield* join_steps(a, b, true);
         }
     }
 }
@@ -7663,7 +7694,7 @@ export function mkstairs(x, y, up, croom, force = false) {
         return;
     if (loc) {
         loc.typ = STAIRS;
-        loc.ladder = up ? 1 : 2;
+        loc.flags = up ? LA_UP : LA_DOWN; // rm.h: ladder aliases flags
     }
     const dest = {
         dnum: g.u?.uz?.dnum ?? 0,
@@ -7762,11 +7793,11 @@ export async function makeniche(trap_type) {
                     }
                 }
             }
-            dosdoor(xx, yy, aroom, SDOOR);
+            await dosdoor(xx, yy, aroom, SDOOR);
         } else {
             rm.typ = CORR;
             if (rn2(7)) {
-                dosdoor(xx, yy, aroom, rn2(5) ? SDOOR : DOOR);
+                await dosdoor(xx, yy, aroom, rn2(5) ? SDOOR : DOOR);
             } else {
                 const loc = g.level.at(xx, yy);
                 if (!rn2(5) && loc && IS_WALL(loc.typ)) {
@@ -7878,7 +7909,7 @@ function place_branch(branchp, x = 0, y = 0) {
             const loc = g.level?.at(x, y);
             if (loc) {
                 loc.typ = STAIRS;
-                loc.ladder = goes_up ? LA_UP : LA_DOWN;
+                loc.flags = goes_up ? LA_UP : LA_DOWN;
             }
         }
     }
@@ -8135,7 +8166,7 @@ export function fill_ordinary_room(croom, bonusItems) {
         if (croom.needfill !== FILL_NORMAL) return;
 
         const env = levelObjectEnv({
-            hooks: { bydoor, makeMonster: makemon, somexyspace },
+            hooks: { bydoor, somexyspace },
         });
         const position = { x: 0, y: 0 };
         let tryCount = 0;

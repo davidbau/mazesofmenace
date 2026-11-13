@@ -291,7 +291,6 @@ export function savelev(ledger, state = game, options = {}) {
             billobjs: state.gb?.billobjs ?? null,
             stairs: state.stairs,
             head_engr: state.head_engr,
-            smeq: state.smeq ? [...state.smeq] : null,
             omoves: state.moves,         // C: svm.moves saved as svo.omoves
             // track.c save_track() writes the current level's populated track
             // entries before release_data() clears the process-global ring.
@@ -443,9 +442,12 @@ export async function dosave0(state = game) {
     // This command runs after the TTY message window is initialized.
     clearTtyMessageWindow(state);
 
-    // C ref: save.c:168 savelev(nhfp, ledger_no(&u.uz)). Of its writes,
-    // only the VISITED mark (savelev_core():493-494) reaches state that
+    // C ref: save.c:168 savelev(nhfp, ledger_no(&u.uz)). savelev_core()
+    // first purges the monsters that died since movemon() last did
+    // (save.c:487-488), so the file holds none of them. Of its writes, only
+    // the VISITED mark (savelev_core():493-494) reaches state that
     // savegamestate() then saves, through save_dungeon()'s level_info.
+    if (state.iflags?.purge_monsters) dmonsfree(state);
     level_info(ledger_no(state.u.uz, state), state).flags |= VISITED;
 
     // C ref: save.c:168 savelev() writes fmon through savemonchn(), and
@@ -594,7 +596,6 @@ function serializeGameState(state) {
         level_info: save_level_info(state),
         inv_pos: state.inv_pos,
         specialLevels: serializeSpecialLevels(state.specialLevels),
-        smeq: state.smeq,
         tune: state.tune,
         // Inventory and objects
         invent: state.invent,

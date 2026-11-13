@@ -73,7 +73,7 @@ import {
     depth,
     ledger_no,
     ledger_to_dlev,
-    ledger_to_dnum,
+    ledger_to_dnum_async,
     builds_up,
     mapseen_room,
 } from './dungeon.js';
@@ -115,7 +115,9 @@ import {
 import {
     m_at, mon_track_clear, place_monster,
 } from './monst.js';
-import { impossible_printer, livelog_printf, pline_mon } from './pline.js';
+import {
+    impossible, impossible_printer, livelog_printf, pline_mon,
+} from './pline.js';
 import { finish_steps } from './source_steps.js';
 import {
     AT_WEAP,
@@ -1242,10 +1244,9 @@ export async function mon_arrive(monster, when, rawEnv = {}) {
             && level.dlevel === state.qstart_level?.dlevel;
         if (!(u.uevent?.qexpelled
             && (questStart(u.uz0) || questStart(u.uz)))) {
-            note_unported('pline.c impossible');
+            await impossible('mon_arrive: no corresponding portal?', state);
         }
-        // C falls through to MIGR_RANDOM when the portal is absent after
-        // quest expulsion.
+        // With no portal, C falls through to MIGR_RANDOM.
         xlocale = 0;
         ylocale = 0;
         break;
@@ -1378,10 +1379,6 @@ export async function migrate_to_level(
 ) {
     const env = dogEnv(rawEnv);
     const { state } = env;
-    const destination = {
-        dnum: ledger_to_dnum(destinationLedger, state),
-        dlevel: ledger_to_dlev(destinationLedger, state),
-    };
     if (monster.mleashed) {
         monster.mtame--;
         await m_unleash(monster, true, { ...env, state });
@@ -1433,6 +1430,14 @@ export async function migrate_to_level(
     await relmon(monster, 'migrating_mons', state, env);
     monster.mstate |= MON_MIGRATING;
 
+    // dog.c:909-910, after the monster has left the map. A magic portal
+    // that maketrap() made without mkportal() keeps dst {-1,-1}, so
+    // mlevel_tele_trap() passes a ledger number no dungeon holds and
+    // ledger_to_dnum() panics here.
+    const destination = {
+        dnum: await ledger_to_dnum_async(destinationLedger, state),
+        dlevel: ledger_to_dlev(destinationLedger, state),
+    };
     let xyFlags = depth(destination, state) < depth(state.u.uz, state)
         ? 1
         : 0;

@@ -1,9 +1,9 @@
 import {createAddressBindings} from '../c-runtime/address-bindings.js';
 // Existing address-based adapters on standalone storage, with real JS symbol
 // resolution. Missing game functions remain explicit link errors, never stubs.
-import publicFunctions from '../standalone/public-functions.json' with {type:'json'};
-import metadata from '../standalone/address-ports.json' with {type:'json'};
-import callbackAbi from '../standalone/callback-address-abi.json' with {type:'json'};
+import publicFunctions from './public-functions.json' with {type:'json'};
+import metadata from './address-ports.json' with {type:'json'};
+import callbackAbi from './callback-address-abi.json' with {type:'json'};
 import * as mklev from '../ported/mklev.js';
 import {callMklev} from './bindings/mklev.js';
 import * as mkmaze from '../ported/mkmaze.js';

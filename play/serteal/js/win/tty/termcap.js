@@ -677,10 +677,10 @@ global_scalar("nomux_anim_id", int, 0);
 
 
 /* the reference recorder's capture buffer, see nomux_ref_overflow_state() */
-export const NOMUX_REF_RAW_ACTIVE = 6146;
-export const NOMUX_REF_RAW_ROW = 6150;
-export const NOMUX_REF_RAW_COL = 6154;
-export const NOMUX_REF_STDOUT_BUF = 6442;
+export const NOMUX_REF_RAW_ACTIVE = 6144;
+export const NOMUX_REF_RAW_ROW = 6148;
+export const NOMUX_REF_RAW_COL = 6152;
+export const NOMUX_REF_STDOUT_BUF = 6448;
 export const NOMUX_REF_STDOUT_BUFSIZ = 1024;
 
 
@@ -994,16 +994,17 @@ export function /* void */ nomux_get_cursor(cx, cy) {
  * The reference recorder's capture buffer is 6,144 bytes
  * (nomux_out[24 * 256]); this one is larger.  A longer capture runs past
  * the end of that buffer into the statics placed after it in the reference
- * build, and is reproduced here for the rest of the process:
- *   offset 6146  nomux_raw_active   6150  nomux_raw_row
- *          6154  nomux_raw_col      6442  stdout's buffer (BUFSIZ 1024)
+ * build (the x86_64 macOS layout), and is reproduced here for the rest of
+ * the process:
+ *   offset 6144  nomux_raw_active   6148  nomux_raw_row
+ *          6152  nomux_raw_col      6448  stdout's buffer (BUFSIZ 1024)
  * (the statics in between do not reach the capture).  The capture's bytes
  * and its terminating NUL replace the bytes of the three ints they cover
  * (little-endian).  Once nomux_raw_active is non-zero the cursor comes from
  * nomux_raw_col/nomux_raw_row and raw_print output goes on from there
  * without clearing the screen, as in the reference build.  The marker is
  * then written into stdout's buffer with the start of the capture after
- * it, so a capture longer than 6,442 bytes carries them from that offset.
+ * it, so a capture longer than 6,448 bytes carries them from that offset.
  * NHJS_UNBOUNDED_CAPTURE (interactive play) keeps the whole capture.
  */
 function /* int */

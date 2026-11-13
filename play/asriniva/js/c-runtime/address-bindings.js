@@ -8,17 +8,20 @@ export function createAddressBindings({environment,name,schema,layout,namespace,
         if(typeof services[fn]==='function')return services[fn];
         return environment.resolve(fn);
     };
+    const fieldDeclarations=new WeakMap();
     function field(kind,at,index) {
         const key=records[kind],record=schema.schema[key],f=record?.fields[index];
         if(!f)throw new Error('Unknown '+name+' C field '+kind+':'+index);
-        return{type:record.ctype,f,at};
+        let declaration=fieldDeclarations.get(f);
+        if(!declaration||declaration.type!==record.ctype){declaration={type:record.ctype,f};fieldDeclarations.set(f,declaration);}
+        return declaration;
     }
     const globals=schema.globals.map(g=>g.name);
     Object.assign(local,{
         layout:i=>{if(layout[i]===undefined)throw new Error('Unknown '+name+' layout index '+i);return BigInt(layout[i]);},
         global:i=>{if(i>=globals.length){const p=backings[i-globals.length];if(!p)throw new Error('Unknown '+name+' backing index '+i);return p;}const key=globals[i];if(!key)throw new Error('Unknown '+name+' global index '+i);return environment.requireGlobal(key);},
         storage:i=>{if(!backings[i])throw new Error('Unknown '+name+' static index '+i);return backings[i];},
-        address:(kind,at,i)=>{const f=field(kind,at,i);if(f.f.bit)throw new Error('C bitfields have no address');return ctypes.locate(f.type,at,f.f.name).at;},
+        address:(kind,at,i)=>{const f=field(kind,at,i);if(f.f.bit)throw new Error('C bitfields have no address');return typeof ctypes.fieldAddress==='function'?ctypes.fieldAddress(f.type,at,f.f.name):ctypes.locate(f.type,at,f.f.name).at;},
         read:(kind,at,i)=>{const f=field(kind,at,i);return ctypes.getField(f.type,at,f.f.name,f.f.canonical);},
         write:(kind,at,i,value)=>{const f=field(kind,at,i);return ctypes.setField(f.type,at,f.f.name,f.f.canonical,value);},
         copyRecord:(to,from,bytes)=>environment.memory.memmove(environment.address(to),environment.address(from),Number(bytes)),

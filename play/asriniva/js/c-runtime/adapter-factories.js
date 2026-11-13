@@ -5,7 +5,7 @@ export function callWithStack(services,fn,...args){const saved=services.stackSav
 
 export function unsignedPointer(value){return BigInt.asUintN(64,BigInt(value?.address??value??0));}
 
-export function exactAddress(value,errorText,coalesceNull=false){if(coalesceNull)value=value??0;const n=Number(value);if(!Number.isSafeInteger(n)||BigInt(n)!==BigInt(value))throw Error(errorText);return n;}
+export function exactAddress(value,errorText,coalesceNull=false){if(coalesceNull)value=value??0;const n=Number(value);if(!Number.isSafeInteger(n)||(typeof value!=='number'&&BigInt(n)!==BigInt(value)))throw Error(errorText);return n;}
 
 export function signedInt(value,coerceNumber=false){return typeof value==='bigint'?Number(BigInt.asIntN(32,value)):coerceNumber?Number(value)|0:value|0;}
 
@@ -57,12 +57,12 @@ export function createTypedRecordFactory({services,L,records,address,size,read,w
 export function createDescriptorMemory({services,layout,addr,raw,memory,cache,view,pointerArrays=false,rows=false,coerceRecordSize=false,voidPointer='number',directIntegerReads=false,decodeCallback,rowDescriptor,arrays={}}){
  if(voidPointer!=='number'&&voidPointer!=='bigint'&&typeof voidPointer!=='function')throw new TypeError('Unknown C void-pointer representation');
  const width=d=>rows&&d.row?8:d.t?Number(d.t.slice(1))/8:d.p!==undefined||(pointerArrays&&d.q)||d.f?8:d.s?coerceRecordSize?Number(layout[d.s+'Size']):layout[d.s+'Size']:d.a.reduce((a,b)=>a*b,1)*width(d.e);
- const decode=(d,v)=>{if(pointerArrays&&d.q)return v?array({a:[0],e:d.q},addr(v)):0;if(d.p!==undefined)return d.p?view(d.p,v):typeof voidPointer==='function'?voidPointer(v):voidPointer==='bigint'?BigInt(v):Number(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return decodeCallback?decodeCallback(v):v;const bits=+d.t.slice(1),r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
+ const decode=(d,v)=>{if(pointerArrays&&d.q)return v?array({a:[0],e:d.q},addr(v)):0;if(d.p!==undefined)return d.p?view(d.p,v):typeof voidPointer==='function'?voidPointer(v):voidPointer==='bigint'?BigInt(v):Number(v);if(d.s)return view(d.s,v);if(d.a)return array(d,addr(v));if(d.f)return decodeCallback?decodeCallback(v):v;const bits=+d.t.slice(1);if((bits===8||bits===16||bits===32)&&typeof v==='number'&&Number.isInteger(v)){if(bits===32)return d.t[0]==='i'?v|0:v>>>0;return d.t[0]==='i'?v<<(32-bits)>>(32-bits):(v>>>0)&(2**bits-1);}const r=d.t[0]==='i'?BigInt.asIntN(bits,BigInt(v)):BigInt.asUintN(bits,BigInt(v));return bits===64?r:Number(r);};
  const read=(d,at)=>{if(rows&&d.row)return array(rowDescriptor?rowDescriptor(d.row):{a:[0],e:{t:d.row}},Number(memory().getBigUint64(at,true)));if(d.s||d.a)return decode(d,at);const dv=memory();if(d.p!==undefined||(pointerArrays&&d.q)||d.f)return decode(d,dv.getBigUint64(at,true));const bits=+d.t.slice(1);if(directIntegerReads)return bits===64?decode(d,dv.getBigUint64(at,true)):dv[(d.t[0]==='i'?'getInt':'getUint')+bits](at,true);return decode(d,bits===64?dv.getBigUint64(at,true):dv['getUint'+bits](at,true));};
  const write=(d,at,v)=>{if(d.s){services.heap().copyWithin(at,addr(v),addr(v)+width(d));return;}const dv=memory();if(d.p!==undefined||(pointerArrays&&d.q)||d.f||d.t?.slice(1)==='64')dv.setBigUint64(at,raw(v),true);else dv['setUint'+d.t.slice(1)](at,Number(v),true);};
+ const childOf=d=>arrays.childOf?arrays.childOf(d):d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},keyOf=d=>arrays.keyOf?arrays.keyOf(d):JSON.stringify(d);
  function array(d,at){
   if(arrays.profile!==undefined&&arrays.profile!=='identity'&&arrays.profile!=='structural')throw new TypeError('Unknown C descriptor-array profile');
-  const childOf=d=>arrays.childOf?arrays.childOf(d):d.a.length===1?d.e:{a:d.a.slice(1),e:d.e},keyOf=d=>arrays.keyOf?arrays.keyOf(d):JSON.stringify(d);
   let child,stride,bytes,addresses,key;
   if(arrays.profile==='identity'){
    const types=arrays.types;let type=types.get(d);if(!type){const next=childOf(d);type={key:'array:'+keyOf(d),child:next,stride:width(next),bytes:width(d)};types.set(d,type);}addresses=cache.get(type.key);if(!addresses)cache.set(type.key,addresses=new Map());if(addresses.has(at))return addresses.get(at);({child,stride}=type);bytes=type.bytes;
@@ -80,12 +80,18 @@ export function createDescriptorMemory({services,layout,addr,raw,memory,cache,vi
 export function createDependencyCall(callNative,mapArgument,convertResult){return (...args)=>{args=args.map(mapArgument);try{const value=callNative(...args);return convertResult?convertResult(value,args):value;}finally{for(const arg of args)arg?.copyback?.();}};}
 
 export function createScalarTypes(){return {char:'i8','signed char':'i8','unsigned char':'u8',short:'i16','unsigned short':'u16',int:'i32','unsigned int':'u32',unsigned:'u32',long:'i64','unsigned long':'u64','long long':'i64','unsigned long long':'u64'};}
+const immutableFieldMetadata=new WeakMap();
+export function createImmutableFieldMetadata(schema){
+ const rows=new Map(Object.entries(schema.schema).map(([name,row],kind)=>[name,new Map(row.fields.map((field,index)=>[field.name,Object.freeze({kind,index,canonical:field.canonical})]))]));
+ const views=new Map(Array.from(rows,([name,fields])=>[name,Object.freeze({get:key=>fields.get(key)})]));
+ const facade=Object.freeze({get:name=>views.get(name)});immutableFieldMetadata.set(facade,rows);return facade;
+}
 export function createScalarAdapter(services,layout,schema,ptr,options){
  const {profile,errors,address,fieldMetadata}=options,cached=profile==='cached-fields',declaredEnum=profile==='declared-enum',addressCells=profile==='address-cells',abi=profile==='abi-globals';
  if(!['signed-enum','cached-fields','declared-enum','address-cells','abi-globals'].includes(profile))throw new TypeError('Unknown C scalar transport profile: '+profile);
  const types=createScalarTypes(),env=createScalarEnvironment(services,layout,ptr);
  for(const signed of ['i','u'])for(const bits of [8,16,32,64])env[signed+bits]=v=>{
-  if(cached&&bits!==64&&typeof v==='number'&&Number.isFinite(v)){if(bits===32)return signed==='i'?v|0:v>>>0;return signed==='i'?v<<(32-bits)>>(32-bits):(v>>>0)&(2**bits-1);}
+  if(bits!==64&&typeof v==='number'&&Number.isFinite(v)){if(bits===32)return signed==='i'?v|0:v>>>0;return signed==='i'?v<<(32-bits)>>(32-bits):(v>>>0)&(2**bits-1);}
   return Crt.narrowInteger(signed,bits,v);
  };
  let dataView;
@@ -97,6 +103,23 @@ export function createScalarAdapter(services,layout,schema,ptr,options){
  let kinds;
  if(cached){
   const fieldAccessors=new Map(),fieldBases=new WeakMap();
+  const ownedMetadata=immutableFieldMetadata.get(fieldMetadata);
+  if(ownedMetadata){
+   const selectors=new Map(Array.from(ownedMetadata,([name,fields])=>[name,new Map(Array.from(fields,([field,metadata])=>[field,{metadata,bucket:null}]))]));
+   env.field=(at,name,field)=>{
+    const selector=selectors.get(name)?.get(field);if(!selector)throw Error(errors[2]+name+'.'+field);at=ptr(at);
+    let bucket=selector.bucket;
+    if(bucket){if(bucket.last.at===at)return bucket.last.accessor;if(at!==0&&bucket.entries.has(at)){const entry=bucket.entries.get(at);bucket.last=entry;return entry.accessor;}}
+    else{
+     const {kind,index,canonical}=selector.metadata;
+     const prototype={get address(){return ptr(services.address(kind,fieldBases.get(this),index));},get value(){return decode(canonical,services.read(kind,fieldBases.get(this),index));},set value(v){services.write(kind,fieldBases.get(this),index,BigInt.asUintN(64,BigInt(v)));}};
+     bucket={entries:new Map(),prototype,last:null};selector.bucket=bucket;
+    }
+    const accessor=Object.create(bucket.prototype);fieldBases.set(accessor,at);const entry={at,accessor};bucket.last=entry;bucket.entries.set(at,entry);
+    if(bucket.entries.size>128)bucket.entries.delete(bucket.entries.keys().next().value);
+    return accessor;
+   };
+  }else{
   env.field=(at,name,field)=>{
    const metadata=fieldMetadata.get(name)?.get(field);if(!metadata)throw Error(errors[2]+name+'.'+field);at=ptr(at);
    let bucket=fieldAccessors.get(metadata);
@@ -110,9 +133,17 @@ export function createScalarAdapter(services,layout,schema,ptr,options){
    if(bucket.entries.size>128)bucket.entries.delete(bucket.entries.keys().next().value);
    return accessor;
   };
+  }
  }else{
   kinds=Object.keys(schema.schema);const convert=addressCells?address:ptr,readName=abi?'abiRead':'read',writeName=abi?'abiWrite':'write',addressName=abi?'abiAddress':'address';
-  env.field=(at,name,field)=>{const kind=kinds.indexOf(name),index=schema.schema[name]?.fields.findIndex(f=>f.name===field),f=schema.schema[name]?.fields[index];if(kind<0||index<0||!f)throw Error(errors[2]+name+'.'+field);at=convert(at);return {get address(){return convert(services[addressName](kind,at,index));},get value(){return decode(f.canonical,services[readName](kind,at,index));},set value(v){services[writeName](kind,at,index,BigInt.asUintN(64,BigInt(v)));}};};
+  // Declaration lookup and bounded lvalue wrappers are stable; values stay live.
+  const declarations=new Map(),fieldViews=new Map();
+  env.field=(at,name,field)=>{
+   let fields=declarations.get(name);if(!fields){const kind=kinds.indexOf(name);if(kind<0)throw Error(errors[2]+name+'.'+field);fields=new Map();schema.schema[name].fields.forEach((f,index)=>{if(!fields.has(f.name))fields.set(f.name,{kind,index,f});});declarations.set(name,fields);}
+   const metadata=fields.get(field);if(!metadata)throw Error(errors[2]+name+'.'+field);at=convert(at);
+   let bucket=fieldViews.get(metadata);if(bucket){if(bucket.last.at===at)return bucket.last.accessor;const entry=bucket.entries.get(at);if(entry){bucket.last=entry;return entry.accessor;}}else{bucket={entries:new Map(),last:null};fieldViews.set(metadata,bucket);}
+   const {kind,index,f}=metadata,accessor={get address(){return convert(services[addressName](kind,at,index));},get value(){return decode(f.canonical,services[readName](kind,at,index));},set value(v){services[writeName](kind,at,index,BigInt.asUintN(64,BigInt(v)));}},entry={at,accessor};bucket.entries.set(at,entry);bucket.last=entry;if(bucket.entries.size>128)bucket.entries.delete(bucket.entries.keys().next().value);return accessor;
+  };
  }
  const globalAddress=addressCells?address:ptr,globalName=abi?'abiGlobal':'global';schema.globals.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>globalAddress(services[globalName](i))}));
  return {env,types,memory,type,decode,kinds};

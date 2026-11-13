@@ -904,13 +904,21 @@ function withCmapAccessibility(glyph, cmap, customizationName) {
 }
 
 function glyphPresentation(symbol, color, state, customization = null) {
-    const displayCh = customization?.displayCh ?? symbol.displayCh;
+    // wintty.c tty_print_glyph() prints a glyph's gm.u sequence only while
+    // SYMHANDLING(H_UTF8), the handling of gs.symset[gc.currentgraphics].
+    // reset_glyphmap() leaves gm.u in place, so on the Rogue level, whose
+    // set is not UTF-8, a primary-set customization is still attached but
+    // g_putch() prints the symbol's byte instead.
+    const customCh = state.gs?.symset?.[
+        state.gc?.currentgraphics ?? PRIMARYSET
+    ]?.handling === H_UTF8 ? customization?.displayCh : undefined;
+    const displayCh = customCh ?? symbol.displayCh;
     const result = {
         // tty_print_glyph() sends UTF-8 customizations through g_pututf8().
         // Recorder patch 006 does not mirror that byte sequence into its
         // shadow frame, so its existing cell stays untouched.  The browser
         // still receives the Unicode presentation independently.
-        ch: customization?.displayCh ? null : symbol.ch,
+        ch: customCh ? null : symbol.ch,
         color: recorderMapColor(
             customization?.basicColor ?? color,
             state,
@@ -2800,7 +2808,7 @@ export function back_to_glyph(x, y, state = game) {
         break;
     case STAIRS: {
         const stairway = stairway_at(x, y, state);
-        const down = Boolean(ptr.ladder & LA_DOWN);
+        const down = Boolean(ptr.flags & LA_DOWN);
         idx = known_branch_stairs(stairway, state)
             ? down ? S_brdnstair : S_brupstair
             : down ? S_dnstair : S_upstair;
@@ -2808,7 +2816,7 @@ export function back_to_glyph(x, y, state = game) {
     }
     case LADDER: {
         const stairway = stairway_at(x, y, state);
-        const down = Boolean(ptr.ladder & LA_DOWN);
+        const down = Boolean(ptr.flags & LA_DOWN);
         idx = known_branch_stairs(stairway, state)
             ? down ? S_brdnladder : S_brupladder
             : down ? S_dnladder : S_upladder;
@@ -7383,6 +7391,11 @@ function _buildScreenOutput(cursorOnHero = true) {
         // writes them physically, so restoring the status cells kept while
         // bot() is disabled must leave them in place.
         const printedOverStatus = new Set();
+        // tty_print_glyph() moves the terminal cursor to each cell it prints
+        // and writes one column there, so the cursor ends just past the last
+        // cell this loop prints, in display.c flush_screen()'s row-major
+        // order. A zero cursor_on_u flush leaves it there.
+        let afterLastPrinted = null;
         for (let offset = 0; offset < viewport.height; ++offset) {
             const y = viewport.top + offset;
             // An unclipped map row that lands on the status window is
@@ -7407,6 +7420,7 @@ function _buildScreenOutput(cursorOnHero = true) {
                     // its UTF-8 path leaves the shadow cell as it was.
                     if (game._screenOverlay && loc.disp_glyph?.ch !== null)
                         game._screenOverlay.delete(`${offset + 1}:${x - 1}`);
+                    afterLastPrinted = [x, offset + 1];
                 }
                 const ch = browserGlyphs && loc.disp_browser_ch
                     ? loc.disp_browser_ch
@@ -7488,6 +7502,8 @@ function _buildScreenOutput(cursorOnHero = true) {
                 game.u.ux - 1,
                 game.u.uy - viewport.top + 1,
             );
+        else if (!cursorOnHero && afterLastPrinted)
+            display.setCursor(afterLastPrinted[0], afterLastPrinted[1]);
         else if (!cursorOnHero && savedCursor)
             display.setCursor(savedCursor[0], savedCursor[1]);
     }

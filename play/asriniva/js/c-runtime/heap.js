@@ -7,6 +7,23 @@
 const ALIGN = 16;
 const aligned = size => Math.ceil(size / ALIGN) * ALIGN;
 
+// The input is the allocator-owned sorted, coalesced free list.
+function insertFreeRange(previous,released){
+    const address=released.address,length=previous.length;let index;
+    if(address>=previous[length-1].address)index=length;
+    else if(address<previous[0].address)index=0;
+    else{let low=0,high=length;while(low<high){const mid=Math.floor((low+high)/2);if(previous[mid].address<=address)low=mid+1;else high=mid;}index=low;}
+    if(index===length)previous.push(released);else if(index===0)previous.unshift(released);else previous.splice(index,0,released);
+    const left=index?previous[index-1]:null,right=index<length?previous[index+1]:null;
+    const joinsLeft=Boolean(left&&left.address+left.capacity===address),joinsRight=Boolean(right&&address+released.capacity===right.address);
+    const survivor=joinsLeft?left:released;
+    if(joinsLeft)survivor.capacity+=released.capacity;
+    if(joinsRight)survivor.capacity+=right.capacity;
+    const removed=Number(joinsLeft)+Number(joinsRight);
+    if(previous.length-removed===1)return[survivor];
+    const merged=previous.slice();if(removed){const at=index+(joinsLeft?0:1);merged.copyWithin(at,at+removed);merged.length-=removed;}return merged;
+}
+
 export class CMemory {
     constructor({ initialBytes = 65536, maximumBytes = 64 * 1024 * 1024 } = {}) {
         if (!Number.isSafeInteger(initialBytes) || !Number.isSafeInteger(maximumBytes)
@@ -19,9 +36,10 @@ export class CMemory {
         this.available = [];
         this.generation = 0;
     }
-    get HEAPU8() { return new Uint8Array(this.buffer); }
-    get HEAP8() { return new Int8Array(this.buffer); }
-    get view() { return new DataView(this.buffer); }
+    // Match persistent heap views; a replacement buffer retires every cached view.
+    get HEAPU8() { if(!this._heapU8||this._heapU8.buffer!==this.buffer)this._heapU8=new Uint8Array(this.buffer);return this._heapU8; }
+    get HEAP8() { if(!this._heap8||this._heap8.buffer!==this.buffer)this._heap8=new Int8Array(this.buffer);return this._heap8; }
+    get view() { if(!this._dataView||this._dataView.buffer!==this.buffer)this._dataView=new DataView(this.buffer);return this._dataView; }
     bounds(address, length = 1) {
         if (!Number.isSafeInteger(address) || !Number.isSafeInteger(length)
             || address < ALIGN || length < 0 || address + length > this.buffer.byteLength)
@@ -36,6 +54,7 @@ export class CMemory {
             const replacement = new ArrayBuffer(size);
             new Uint8Array(replacement).set(this.HEAPU8);
             this.buffer = replacement;
+            this._heapU8=this._heap8=this._dataView=undefined;
             this.generation++;
             return true;
         } catch (error) {
@@ -74,17 +93,11 @@ export class CMemory {
         const block = this.live.get(address);
         if (!block) throw new RangeError('Invalid or repeated C memory free');
         this.live.delete(address);
-        this.available.push({ address, capacity: block.capacity });
-        this.available.sort((a, b) => a.address - b.address);
-        const merged = [];
-        for (const next of this.available) {
-            const previous = merged.at(-1);
-            if (previous && previous.address + previous.capacity === next.address)
-                previous.capacity += next.capacity;
-            else merged.push(next);
-        }
-        this.available = merged;
+        const previous=this.available,released={address,capacity:block.capacity};
+        if(!previous.length){previous.push(released);this.available=[released];return;}
+        this.available=insertFreeRange(previous,released);
     }
+
     realloc(address, size) {
         if (address === 0) return this.malloc(size);
         const block = this.live.get(address);

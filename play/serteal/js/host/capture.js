@@ -26,13 +26,16 @@ export function splitRngLog(text) {
     .filter(Boolean);
 }
 
+/**
+ * The recorder stores an empty screen, which the judge skips, only when each
+ * of the first 24 lines holds nothing but spaces.  A screen of attribute or
+ * charset codes around spaces is kept and compared like any other.
+ */
 export function isBlankCapturedScreen(screen) {
-  return (
-    String(screen || "")
-      .replace(/\x1b\[[0-9;?]*[ -/]*[@-~]/g, "")
-      .replace(/[\x0e\x0f]/g, "")
-      .trim() === ""
-  );
+  return String(screen || "")
+    .split("\n")
+    .slice(0, 24)
+    .every((line) => /^ *$/.test(line));
 }
 
 export function canonicalizeCapturedScreen(screen) {
@@ -78,7 +81,7 @@ export class CaptureLog {
       return;
     }
     const step = this.inputSteps++;
-    if (isBlankCapturedScreen(screen)) return;
+    if (isBlankCapturedScreen(rawScreen)) return;
     this.screens.push(screen);
     this.cursors.push(cursor);
     this.screenSteps.push(step);
