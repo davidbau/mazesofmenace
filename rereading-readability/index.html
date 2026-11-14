@@ -316,7 +316,7 @@ article ul.options li { margin-bottom: 0.15em; }
     x: coordxy,
     y: coordxy,
 });</code></pre>
-<p>At load time the runtime computes each field's offset with the C layout rules (alignment, bit-field packing) and defines a getter and setter for it on the struct's class. There is no <code>Proxy</code> and no interception of property names. <code>mtmp.data.mlet</code> is ordinary JavaScript property access on an ordinary object, and the property is an accessor that reads the heap. This is the one for a 32-bit integer field, and the one for a pointer field:</p>
+<p>At load time the runtime computes each field's offset with the C layout rules (alignment, bit-field packing) and defines a getter and a setter for the field on the struct's class. A getter is JavaScript's own mechanism for running a function when a property is read. So a struct is an object with no data of its own except an address, and reading <code>mtmp.mlet</code> calls a small function that reads the byte at that address plus the field's offset. The runtime does not use a JavaScript <code>Proxy</code>, which would intercept every property access by name at run time and be slower. It does not need to, because the field names and offsets are known in advance. This is the accessor for a 32-bit integer field, and the one for a pointer field:</p>
 <pre><code>case "i32": return { get() { return i32[(this._a + o) &gt;&gt; 2]; },
                      set(v) { i32[(this._a + o) &gt;&gt; 2] = v; } };
 case "ptr": return { get() { return rd(u32[(this._a + o) &gt;&gt; 2]); },
