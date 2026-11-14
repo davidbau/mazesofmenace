@@ -1260,6 +1260,17 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
         if (unacknowledged && g._pending_message)
             await force_more_lone_frame(g._pending_message);
     }
+    /* C topl.c:416/:422 custompline(SUPPRESS_HISTORY) -> tty_putstr (wintty.c:2294)
+     * remember_topl()s gt.toplines before show_topl() replaces it.  After an ESC
+     * at a --More-- (WIN_STOP) the incoming owner was drawn and, with later
+     * messages, gt.toplines (_topl_win_stop_buf) holds it: the question
+     * overwrites it, so file it in the ^P ring now (nothing else will). */
+    if (g._topl_win_stop && !g._topl_suppress_history) {
+        const _gt = String(g._topl_win_stop_buf ?? g._pending_message ?? '').replace(/--More--$/, '');
+        const _h = (g._msg_history ||= []);
+        if (_gt && _h[_h.length - 1] !== _gt && g._topl_history_recall !== _gt)
+            _h.push(_gt);
+    }
     g._topl_unacknowledged = false;
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
@@ -1363,7 +1374,17 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
             finally { g._topl_suppress_history = savedHist; }
             const key = typeof raw === 'number' ? raw
                       : (raw && raw.charCodeAt ? raw.charCodeAt(0) : 0);
-            const _answered = (c) => { g._toplEmptyAfterSuppress = false; putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0))); return c; };
+            const _answered = (c) => {
+                g._toplEmptyAfterSuppress = false;
+                putmsghistory(qbuf + ' ' + key2txt(c.charCodeAt(0)));
+                // C topl.c:537-548 leaves a cancelled, unwrapped prompt
+                // painted. A NUL default has no following result message;
+                // nhgetch already cleared _pending_message, so the finally
+                // block's equality test cannot preserve this frame.
+                if (c === '\0')
+                    g._topl_sticky = wrapRow > 0 ? null : qbuf;
+                return c;
+            };
             /* C topl.c:432-460 — ^P recalls message history.  msg_window:single
              * recalls twice ("need two initially") and the NEXT key is then
              * swallowed by the reprompt (topl.c:452-459 "BUG[?]"); the menu
@@ -1384,6 +1405,10 @@ async function _yn_prompt(query, choices, defchoice, opts = {}) {
                      * then tty_clear_nhwindow(WIN_MESSAGE) + addtopl(prompt);
                      * doprev stays 0, so the next key answers the prompt. */
                     await doprev_message();
+                    /* topl.c:440 `cw->maxcol = cw->maxrow` after every ^P: the next ^P
+                     * restarts the combination walk at gt.toplines. */
+                    g._prevmsg_combo = 0;
+                    g._prevmsg_next = null;
                     doprev = false;
                     continue; /* loop top re-adds the prompt */
                 }

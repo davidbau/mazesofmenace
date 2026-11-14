@@ -307,6 +307,9 @@ export function hilite_status_config_error(op) {
                 return ["hilite_status: invalid percentage value '%s'",
                     (grt ? '>' : gte ? '>=' : lt ? '<' : le ? '<=' : '=') + num + '%'];
         }
+        /* botl.c:2966-2969 ANY_STR fields (title, dungeon-level, alignment) */
+        if (BL_STRFLDS.has(f) && /^[<>]?=?[-+]?[0-9]+%?$/.test(t))
+            return ["Field '%s' does not support numeric values", f];
         if (/^[<>]?=?[-+]?[0-9]+%?$/.test(t) || BL_STRFLDS.has(f))
             return null;
         if (f === 'carrying-capacity' || f === 'hunger')
@@ -2586,7 +2589,8 @@ function store_status_hilite(op) {
         }
         tok = ''; fldnum = 0;
     };
-    for (const c of op) {
+    for (const ch of op) {
+        const c = ch.toLowerCase(); /* botl.c:2606 c = lowc(*op) */
         if (c === ' ') {
             if (fldnum === 1 && tok.split('/')[0].toLowerCase() === 'title') { tok += c; continue; }
             flush();
@@ -2601,6 +2605,12 @@ function store_status_hilite(op) {
  * once per field from BL_STR through BL_CH, each with its own rule chain. */
 function push_status_field_hilite(op) {
     const parts = op.split('/');
+    /* C botl.c:2905-2910 parse_status_hl2(): "field/color" (an empty next
+     * token) is "field/always/color" and is stored as an always rule. */
+    if (parts.length === 2 && parts[1] !== '' && status_fieldname(parts[0]) !== 'characteristics') {
+        (game.status_field_hilites ||= []).push(`${parts[0]}/always/${parts[1]}`);
+        return;
+    }
     if (status_fieldname(parts[0]) !== 'characteristics') {
         (game.status_field_hilites ||= []).push(op);
         return;

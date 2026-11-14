@@ -1,3 +1,4 @@
+import {createNativeStack} from './native-stack.js';
 import {createRecordStore,createArrayView} from './records.js';
 // Shared C memory transport. No game declarations or WebAssembly dependency.
 const types = Object.freeze({Int8:1, Uint8:1, Int16:2, Uint16:2, Int32:4, Uint32:4,
@@ -7,7 +8,7 @@ export const address = value => {
     if (!Number.isSafeInteger(result) || result < 0) throw new RangeError('Unrepresentable C address');
     return result;
 };
-export function createMemoryServices(memory) {
+export function createMemoryServices(memory,{nativeStack=false}={}) {
     const stack = [], marks = new Set(), literals = new Map(), schemas = new Map();
     let markSequence=0;
     const read = (kind, at) => {
@@ -137,5 +138,6 @@ export function createMemoryServices(memory) {
         };
         materialize.assertAlive=assertAlive;return materialize;
     };
+    if(nativeStack)Object.assign(api,createNativeStack(memory));
     return api;
 }

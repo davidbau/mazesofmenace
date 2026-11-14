@@ -145,10 +145,10 @@ function dopush(sx,sy,rx,ry,otmp,costly)
            unlike with Norep(), intervening messages don't cause
            it to repeat, only doing something else in the meantime */
         if (otmp.o_id != C.gb.bldrpush_oid) {
-            C.gb.bldrpushtime = C.long(C.long((C.long(C.svm.moves)) + (C.long(1n))));
+            C.gb.bldrpushtime = C.long(C.long((C.long(C.svm.moves)) + ((1n))));
             C.gb.bldrpush_oid = C.uint(otmp.o_id);
         }
-        givemesg = C.char((Number(Boolean(C.svm.moves > C.long((C.long(C.gb.bldrpushtime)) + (C.long(2n)))
+        givemesg = C.char((Number(Boolean(C.svm.moves > C.long((C.long(C.gb.bldrpushtime)) + ((2n)))
                     || C.svm.moves < C.gb.bldrpushtime))));
         what = C.charPointer(givemesg ? C.the(C.xname(otmp)) : 0);
         if (!C.u.usteed) {
@@ -168,7 +168,7 @@ function dopush(sx,sy,rx,ry,otmp,costly)
     /* Move the boulder *after* the message. */
     if (C.glyph_is_invisible(C.levl[rx][ry].glyph))
         C.unmap_object(rx, ry);
-    otmp.next_boulder = C.int(0);
+    otmp.next_boulder = ((0)|0);
     movobj(otmp, rx, ry); /* does newsym(rx,ry) */
     if (C.Blind) {
         C.feel_location(rx, ry);
@@ -258,16 +258,16 @@ function cannot_push(otmp,sx,sy)
                past it without pushing it to plug a pit or hole */
             C.sokoban_guilt();
         }
-        return C.int(0);
+        return ((0)|0);
     }
 
     if (could_move_onto_boulder(sx, sy)) {
         C.pline(
            "However, you can squeeze yourself into a small opening.");
         C.sokoban_guilt();
-        return C.int(0);
+        return ((0)|0);
     } else {
-        return C.int(-1);
+        return ((-1)|0);
     }
 }
 
@@ -289,7 +289,7 @@ function moverock_done(sx,sy)
     let otmp;
     for (otmp = C.svl.level.objects[sx][sy]; otmp; otmp = otmp.nexthere)
         if (otmp.otyp == C.BOULDER)
-            otmp.next_boulder = C.int(0); /* resume normal xname() for this obj */
+            otmp.next_boulder = ((0)|0); /* resume normal xname() for this obj */
 }
 
 function moverock()
@@ -298,7 +298,7 @@ function moverock()
     let sx; let sy;
     let ret;
 
-    sx = C.short(C.u.ux + C.u.dx), sy = C.short(C.u.uy + C.u.dy); /* boulder starting position */
+    sx = ((C.u.ux + C.u.dx)<<16>>16), sy = ((C.u.uy + C.u.dy)<<16>>16); /* boulder starting position */
     ret = C.int(moverock_core(sx, sy));
     moverock_done(sx, sy);
     return C.int(ret);
@@ -325,13 +325,13 @@ function moverock_core(sx,sy)
             C.pline("That feels like a boulder.");
             C.map_object(otmp, C.TRUE);
             nomul(0);
-            return C.int(-1);
+            return ((-1)|0);
         }
 
         /* when otmp->next_boulder is 1, xname() will format it as
            "next boulder" instead of just "boulder"; affects
            boulder_hits_pool()'s messages as well as messages below */
-        otmp.next_boulder = C.int(firstboulder ? 0 : 1);
+        otmp.next_boulder = ((firstboulder ? 0 : 1)|0);
         /* FIXME?  'firstboulder' should be reset to True if this boulder
            isn't the first and the previous one is named differently from
            this one.  Probably not worth bothering with... */
@@ -341,8 +341,8 @@ function moverock_core(sx,sy)
         if (!C.pointerEqual(otmp,C.svl.level.objects[sx][sy]))
             movobj(otmp, sx, sy);
 
-        rx = C.short(C.u.ux + 2 * C.u.dx); /* boulder destination position */
-        ry = C.short(C.u.uy + 2 * C.u.dy);
+        rx = ((C.u.ux + 2 * C.u.dx)<<16>>16); /* boulder destination position */
+        ry = ((C.u.uy + 2 * C.u.dy)<<16>>16);
         nomul(0);
 
         /* using m<dir> towards an adjacent boulder steps over/onto it if
@@ -362,19 +362,19 @@ function moverock_core(sx,sy)
                 C.You("%s over a boulder here.", u_locomotion("step"));
                 /* ["over" seems weird on air level but what else to say?] */
                 C.sokoban_guilt();
-                res = C.int(0); /* move to <sx,sy> */
+                res = ((0)|0); /* move to <sx,sy> */
             } else if (could_move_onto_boulder(sx, sy)) {
                 C.You("squeeze yourself %s the boulder.",
                     C.Flying ? "over" : "against");
                 C.sokoban_guilt();
-                res = C.int(0); /* move to <sx,sy> */
+                res = ((0)|0); /* move to <sx,sy> */
             } else {
                 C.There("is a boulder in your way.");
                 /* use a move if hero learns something; see test_move() for
                    how/why 'context.door_opened' is being dragged into this */
                 if (C.glyph_at(sx, sy) != oldglyph)
-                    C.svc.context.door_opened = C.char(C.svc.context.move = C.char(C.TRUE));
-                res = C.int(-1); /* don't move to <sx,sy>, so no soko guilt */
+                    C.svc.context.door_opened = ((C.svc.context.move = C.char(C.TRUE))<<24>>24);
+                res = ((-1)|0); /* don't move to <sx,sy>, so no soko guilt */
             }
             return C.int(res);
         }
@@ -387,7 +387,7 @@ function moverock_core(sx,sy)
                 C.feel_location(sx, sy);
             C.You("don't have enough leverage to push %s.", C.the(C.xname(otmp)));
             /* Give them a chance to climb over it? */
-            return C.int(-1);
+            return ((-1)|0);
         }
         if (Number(Boolean(C.verysmall(C.gy.youmonst.data) && !C.u.usteed))) {
             if (C.Blind)
@@ -415,7 +415,7 @@ function moverock_core(sx,sy)
 
             if (revive_nasty(rx, ry,
                              "You sense movement on the other side.")) {
-                return C.int(-1);
+                return ((-1)|0);
             }
 
             if (Number(Boolean(mtmp && !C.noncorporeal(mtmp.data)
@@ -460,7 +460,7 @@ function moverock_core(sx,sy)
             disturb_buried_zombies(sx, sy);
 
             if (ttmp) {
-                let newlev = C.int(0); /* lint suppression */
+                let newlev = ((0)|0); /* lint suppression */
                 let dest = C.recordLocal("d_level");
 
                 /* if a trap operates on the boulder, don't attempt
@@ -490,7 +490,7 @@ function moverock_core(sx,sy)
                         C.fill_pit(C.u.ux, C.u.uy);
                         if (C.cansee(rx, ry))
                             C.newsym(rx, ry);
-                        return C.int(C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0);
+                        return ((C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0)|0);
                     }
                     break;
                 case C.SPIKED_PIT:
@@ -500,13 +500,13 @@ function moverock_core(sx,sy)
                        the pit will temporarily be seen even
                        if this is one among multiple boulders */
                     if (!C.Blind)
-                        ((_hackTarget,_hackIndex)=>_hackTarget[_hackIndex] = C.uchar(C.int(C.int(_hackTarget[_hackIndex]) | C.int(C.IN_SIGHT))))(C.gv.viz_array[ry],rx);
+                        C.writeVisibility(ry,rx,((((C.int(C.readVisibility(ry,rx)) | C.int(C.IN_SIGHT))|0))&255));
                     if (!C.flooreffects(otmp, rx, ry, "fall")) {
                         C.place_object(otmp, rx, ry);
                     }
                     if (Number(Boolean(mtmp && !C.Blind)))
                         C.newsym(rx, ry);
-                    return C.int(C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0);
+                    return ((C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0)|0);
                 case C.HOLE:
                 case C.TRAPDOOR:
                     ;
@@ -525,11 +525,11 @@ function moverock_core(sx,sy)
                     C.deltrap(ttmp);
                     C.useupf(otmp, 1n);
                     C.bury_objs(rx, ry);
-                    ((_hackTarget)=>_hackTarget.wall_info = (C.uint(C.int(C.int(_hackTarget.wall_info) & C.int(~C.W_NONDIGGABLE))) & 31))(C.levl[rx][ry]);
-                    C.levl[rx][ry].candig = C.uint(1);
+                    ((_hackTarget)=>_hackTarget.wall_info = (((((C.int(_hackTarget.wall_info) & C.int(~C.W_NONDIGGABLE))|0))>>>0) & 31))(C.levl[rx][ry]);
+                    C.levl[rx][ry].candig = ((1)>>>0);
                     if (C.cansee(rx, ry))
                         C.newsym(rx, ry);
-                    return C.int(C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0);
+                    return ((C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0)|0);
                 case C.LEVEL_TELEP:
                     /* 20% chance of picking current level; 100% chance for
                        that if in single-level branch (Knox) or in endgame */
@@ -543,7 +543,7 @@ function moverock_core(sx,sy)
                     /*FALLTHRU*/
                 case C.TELEP_TRAP:
                     rock_disappear_msg(otmp);
-                    otmp.next_boulder = C.int(0); /* reset before moving it */
+                    otmp.next_boulder = ((0)|0); /* reset before moving it */
                     if (ttmp.ttyp == C.TELEP_TRAP) {
                         void (C.rloco(otmp));
                     } else {
@@ -557,7 +557,7 @@ function moverock_core(sx,sy)
                         otmp.owornmask = C.long(C.long( C.MIGR_RANDOM));
                     }
                     C.seetrap(ttmp);
-                    return C.int(C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0);
+                    return ((C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0)|0);
                 case C.ROLLING_BOULDER_TRAP:
                 {
                     let tox = C.int(rx);
@@ -565,8 +565,8 @@ function moverock_core(sx,sy)
                     /* the boulder continues until it reaches one of
                        the trap's launch spots or hits a wall / out-of-bounds */
                     while (C.isok(tox + C.u.dx, toy + C.u.dy)) {
-                        tox = C.int(C.int(C.int(tox) + C.int(C.u.dx)));
-                        toy = C.int(C.int(C.int(toy) + C.int(C.u.dy)));
+                        tox = ((((C.int(tox) + ((C.u.dx)|0))|0))|0);
+                        toy = ((((C.int(toy) + ((C.u.dy)|0))|0))|0);
                         if (Number(Boolean(tox == ttmp.launch.x && toy == ttmp.launch.y)))
                             break;
                         if (Number(Boolean(tox == ttmp.launch2.x && toy == ttmp.launch2.y)))
@@ -576,7 +576,7 @@ function moverock_core(sx,sy)
                           C.Tobjnam(otmp, "suddenly roll"));
                     C.feeltrap(ttmp);
                     C.launch_obj(C.BOULDER, sx, sy, tox, toy, C.ROLL | C.LAUNCH_KNOWN);
-                    return C.int(C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0);
+                    return ((C.sobj_at(C.BOULDER, sx, sy) ? -1 : 0)|0);
                 }
                 default:
                     break; /* boulder not affected by this trap */
@@ -600,7 +600,7 @@ function moverock_core(sx,sy)
             return C.int(cannot_push(otmp, sx, sy));
         }
     }
-    return C.int(0);
+    return ((0)|0);
 }
 
 function still_chewing(x,y)
@@ -625,13 +625,13 @@ function still_chewing(x,y)
                     ? "tree"
                     : "hard stone");
         nomul(0);
-        return C.int(1);
+        return ((1)|0);
     } else if (Number(Boolean(lev.typ == C.IRONBARS
                && C.metallivorous(C.gy.youmonst.data) && C.u.uhunger > 1500))) {
         /* finishing eating via 'morehungry()' doesn't handle choking */
         C.You("are too full to eat the bars.");
         nomul(0);
-        return C.int(1);
+        return ((1)|0);
     } else if (Number(Boolean(!C.svc.context.digging.chew
                || C.svc.context.digging.pos.x != x
                || C.svc.context.digging.pos.y != y
@@ -643,7 +643,7 @@ function still_chewing(x,y)
         C.svc.context.digging.pos.y = C.short(y);
         C.assign_level(C.svc.context.digging.level, C.u.uz);
         /* solid rock takes more work & time to dig through */
-        C.svc.context.digging.effort = C.int((Number(Boolean(C.IS_OBSTRUCTED(lev.typ) && !C.IS_TREE(lev.typ))) ? 30 : 60) + C.u.udaminc);
+        C.svc.context.digging.effort = (((Number(Boolean(C.IS_OBSTRUCTED(lev.typ) && !C.IS_TREE(lev.typ))) ? 30 : 60) + C.u.udaminc)|0);
         C.You("start chewing %s %s.",
             (Number(Boolean(boulder || C.IS_TREE(lev.typ) || lev.typ == C.IRONBARS)))
                 ? "on a"
@@ -658,8 +658,8 @@ function still_chewing(x,y)
                             ? "bar"
                             : "door");
         C.watch_dig(C.view("monst", 0), x, y, C.FALSE);
-        return C.int(1);
-    } else if ((((_hackTarget)=>_hackTarget.effort = C.int(C.int(C.int(_hackTarget.effort) + C.int((30 + C.u.udaminc)))))(C.svc.context.digging)) <= 100) {
+        return ((1)|0);
+    } else if ((((_hackTarget)=>_hackTarget.effort = ((((C.int(_hackTarget.effort) + ((30 + C.u.udaminc)|0))|0))|0))(C.svc.context.digging)) <= 100) {
         if (C.flags.verbose)
             C.You("%s chewing on the %s.",
                 C.svc.context.digging.chew ? "continue" : "begin",
@@ -674,7 +674,7 @@ function still_chewing(x,y)
                                 : "door");
         C.svc.context.digging.chew = C.char(C.TRUE);
         C.watch_dig(C.view("monst", 0), x, y, C.FALSE);
-        return C.int(1);
+        return ((1)|0);
     }
 
     /* Okay, you've chewed through something */
@@ -686,7 +686,7 @@ function still_chewing(x,y)
                          : C.IS_OBSTRUCTED(lev.typ) ? "rock"
                            : (lev.typ == C.IRONBARS) ? "iron bars"
                              : "a door");
-    ((_hackTarget)=>_hackTarget.uhunger = C.int(C.int(C.int(_hackTarget.uhunger) + C.int((C.rngCaller(730,"still_chewing"),C.rnd(20))))))(C.u);
+    ((_hackTarget)=>_hackTarget.uhunger = ((((C.int(_hackTarget.uhunger) + C.int((C.rngCaller(730,"still_chewing"),C.rnd(20))))|0))|0))(C.u);
 
     if (boulder) {
         C.delobj(boulder);         /* boulder goes bye-bye */
@@ -705,7 +705,7 @@ function still_chewing(x,y)
             /* reset dig state */
             void (C.memset(( C.svc.context.digging), 0,
                           BigInt(C.sizes["dig_info"])));
-            return C.int(1);
+            return ((1)|0);
         }
 
     } else if (C.IS_WALL(lev.typ)) {
@@ -729,7 +729,7 @@ function still_chewing(x,y)
         if (C.metallivorous(C.gy.youmonst.data)) { /* should always be True here */
             /* arbitrary amount; unlike proper eating, nutrition is
                bestowed in a lump sum at the end */
-            let nut = C.int(C.int( C.objects[C.HEAVY_IRON_BALL].oc_weight));
+            let nut = ((((C.objects[C.HEAVY_IRON_BALL].oc_weight)|0))|0);
 
             /* lesshungry() requires that victual be set up, so skip it;
                morehungry() of a negative amount will increase nutrition
@@ -777,7 +777,7 @@ function still_chewing(x,y)
         C.pay_for_damage(dmgtxt, C.FALSE);
     void (C.memset(( C.svc.context.digging), 0,
                   BigInt(C.sizes["dig_info"])));
-    return C.int(0);
+    return ((0)|0);
 }
 
 function movobj(obj,ox,oy)
@@ -802,7 +802,7 @@ function dosinkfall()
     
     let obj;
     let dmg;
-    let lev_boots = C.char((Number(Boolean(C.uarmf && C.uarmf.otyp == C.LEVITATION_BOOTS)))); let innate_lev = C.char(((C.long((C.long(C.HLevitation)) & (C.long((C.long((C.long(C.FROMOUTSIDE)) | (C.long(C.FROMFORM)))))))) != 0n)); let blockd_lev = C.char((C.BLevitation == C.I_SPECIAL)); let ufall = C.char((Number(Boolean(!innate_lev && !blockd_lev
+    let lev_boots = C.char((Number(Boolean(C.uarmf && C.uarmf.otyp == C.LEVITATION_BOOTS)))); let innate_lev = (((C.long((C.long(C.HLevitation)) & (C.long((C.long((C.long(C.FROMOUTSIDE)) | (C.long(C.FROMFORM)))))))) != 0n)<<24>>24); let blockd_lev = ((C.BLevitation == C.I_SPECIAL)<<24>>24); let ufall = C.char((Number(Boolean(!innate_lev && !blockd_lev
                      && !(Number(Boolean(C.HFlying || C.EFlying))))))); /* BFlying */
 
     if (!ufall) {
@@ -815,7 +815,7 @@ function dosinkfall()
            disclosure will be right in case this turns out to
            be fatal; fortunately the fact that rings and boots
            are really still worn has no effect on bones data */
-        C.ELevitation = C.long(C.HLevitation = C.long(0n));
+        C.ELevitation = C.long(C.HLevitation = (0n));
         C.You("crash to the floor!");
         dmg = C.int(((C.rngCaller(863,"dosinkfall"),C.rn2(8)) + ( 25 - C.int( C.ACURR(C.A_CON)))));
         losehp((C.Half_physical_damage ? Math.trunc(((dmg) + 1)/2) : (dmg)), C.state.fell_on_sink, C.NO_KILLER_PREFIX);
@@ -880,15 +880,15 @@ function may_dig(x,y)
     x=C.short(x);y=C.short(y);
     let lev = C.levl[x][y];
 
-    return C.char(C.char( !(Number(Boolean((C.IS_STWALL(lev.typ) || C.IS_TREE(lev.typ))
-                       && (lev.wall_info & C.W_NONDIGGABLE))))));
+    return ((((!(Number(Boolean((C.IS_STWALL(lev.typ) || C.IS_TREE(lev.typ))
+                       && (lev.wall_info & C.W_NONDIGGABLE)))))<<24>>24))<<24>>24);
 }
 
 function may_passwall(x,y)
 {
     x=C.short(x);y=C.short(y);
-    return C.char(C.char( !(Number(Boolean(C.IS_STWALL(C.levl[x][y].typ)
-                       && (C.levl[x][y].wall_info & C.W_NONPASSWALL))))));
+    return ((((!(Number(Boolean(C.IS_STWALL(C.levl[x][y].typ)
+                       && (C.levl[x][y].wall_info & C.W_NONPASSWALL)))))<<24>>24))<<24>>24);
 }
 
 /* caller has already decided that it's a tight diagonal; check whether a
@@ -898,11 +898,11 @@ function may_passwall(x,y)
 function bad_rock(mdat,x,y)
 {
     x=C.short(x);y=C.short(y);
-    return C.char(C.char( (Number(Boolean((C.Sokoban && C.sobj_at(C.BOULDER, x, y))
+    return ((C.char( (Number(Boolean((C.Sokoban && C.sobj_at(C.BOULDER, x, y))
                       || (C.IS_OBSTRUCTED(C.levl[x][y].typ)
                           && (!C.tunnels(mdat) || C.needspick(mdat)
                               || !may_dig(x, y))
-                          && !(Number(Boolean(C.passes_walls(mdat) && may_passwall(x, y))))))))));
+                          && !(Number(Boolean(C.passes_walls(mdat) && may_passwall(x, y))))))))))<<24>>24);
 }
 
 function cant_squeeze_thru(mon)
@@ -912,26 +912,26 @@ function cant_squeeze_thru(mon)
     let ptr = mon.data;
 
     if ((C.pointerEqual(mon,C.gy.youmonst)) ? C.Passes_walls : C.passes_walls(ptr))
-        return C.int(0);
+        return ((0)|0);
 
     /* too big? */
     if (Number(Boolean(C.bigmonst(ptr)
         && !(Number(Boolean(C.amorphous(ptr) || C.is_whirly(ptr) || C.noncorporeal(ptr)
              || C.slithy(ptr) || C.can_fog(mon)))))))
-        return C.int(1);
+        return ((1)|0);
 
     /* lugging too much junk? */
     amt = C.int((C.pointerEqual(mon,C.gy.youmonst)) ? inv_weight() + weight_cap()
                                : C.curr_mon_load(mon));
     if (amt > C.WT_TOOMUCH_DIAGONAL)
-        return C.int(2);
+        return ((2)|0);
 
     /* Sokoban restriction applies to hero only */
     if (Number(Boolean(C.pointerEqual(mon,C.gy.youmonst) && C.Sokoban)))
-        return C.int(3);
+        return ((3)|0);
 
     /* can squeeze through */
-    return C.int(0);
+    return ((0)|0);
 }
 
 /* return TRUE if (ux+dx,uy+dy) is an OK place to move;
@@ -939,8 +939,8 @@ function cant_squeeze_thru(mon)
 function invocation_pos(x,y)
 {
     x=C.short(x);y=C.short(y);
-    return C.char(C.char( (Number(Boolean(C.Invocation_lev(C.u.uz)
-                      && x == C.svi.inv_pos.x && y == C.svi.inv_pos.y)))));
+    return ((C.char( (Number(Boolean(C.Invocation_lev(C.u.uz)
+                      && x == C.svi.inv_pos.x && y == C.svi.inv_pos.y)))))<<24>>24);
 }
 
 /* these are -1|0|+1, not coordinates */
@@ -1070,7 +1070,7 @@ function test_move(ux,uy,dx,dy,mode)
                                canned kick will be executed as next command */
                             C.svc.context.door_opened = C.char(C.TRUE);
                         else
-                            C.svc.context.door_opened = C.char(!C.closed_door(x, y));
+                            C.svc.context.door_opened = ((!C.closed_door(x, y))<<24>>24);
                         C.svc.context.move = C.char((Number(Boolean(ux != C.u.ux || uy != C.u.uy))));
                     } else if (Number(Boolean(x == ux || y == uy))) {
                         if (Number(Boolean(C.Blind || C.Stunned || C.ACURR(C.A_DEX) < 10
@@ -1087,7 +1087,7 @@ function test_move(ux,uy,dx,dy,mode)
                                we haven't opened a door but we're going to
                                return False and without having 'door_opened'
                                set, 'move' would get reset by caller */
-                            C.svc.context.door_opened = C.char(C.svc.context.move = C.char(C.TRUE));
+                            C.svc.context.door_opened = ((C.svc.context.move = C.char(C.TRUE))<<24>>24);
                             /* since we've just lied about successfully
                                moving, we need to manually stop running */
                             nomul(0);
@@ -1148,7 +1148,7 @@ function test_move(ux,uy,dx,dy,mode)
         let t = C.t_at(x, y);
 
         if (Number(Boolean(t && t.tseen && t.ttyp != C.VIBRATING_SQUARE)))
-            return C.char((mode == C.TEST_TRAP));
+            return ((mode == C.TEST_TRAP)<<24>>24);
 
         /* FIXME: should be using lastseentyp[x][y] rather than seen vector
          */
@@ -1162,7 +1162,7 @@ function test_move(ux,uy,dx,dy,mode)
                 || !(Number(Boolean(C.Levitation || C.Flying
                      || (C.is_pool(x, y) ? C.Known_wwalking
                          : (Number(Boolean(C.Known_lwalking && C.is_lava(C.u.ux, C.u.uy))))))))))))
-            return C.char((mode == C.TEST_TRAP));
+            return ((mode == C.TEST_TRAP)<<24>>24);
     }
 
     if (mode == C.TEST_TRAP)
@@ -1236,25 +1236,25 @@ function findtravelpath(mode)
         end_running(C.FALSE);
         if (test_move(C.u.ux, C.u.uy, C.u.tx - C.u.ux, C.u.ty - C.u.uy, C.TEST_MOVE)) {
             if (mode == TRAVP_TRAVEL) {
-                C.u.dx = C.int(C.u.tx - C.u.ux);
-                C.u.dy = C.int(C.u.ty - C.u.uy);
+                C.u.dx = ((C.u.tx - C.u.ux)|0);
+                C.u.dy = ((C.u.ty - C.u.uy)|0);
                 nomul(0);
-                C.iflags.travelcc.x = C.short(C.iflags.travelcc.y = C.short(0));
+                C.iflags.travelcc.x = ((C.iflags.travelcc.y = ((0)<<16>>16))<<16>>16);
             }
             return C.char(C.TRUE);
         }
         if (mode == TRAVP_TRAVEL)
-            C.svc.context.run = C.uint(8);
+            C.svc.context.run = ((8)>>>0);
     }
     found: {
     if (Number(Boolean(C.u.tx != C.u.ux || C.u.ty != C.u.uy))) {
-        let travel = C.localArray("coordxy",[80, 21]);
-        let travelstepx = C.localArray("coordxy",[2, 1680]);
-        let travelstepy = C.localArray("coordxy",[2, 1680]);
+        let travel = C.nativeTravelGrid(80,21);
+        let travelstepx = C.nativeTravelGrid(2,1680);
+        let travelstepy = C.nativeTravelGrid(2,1680);
         let tx; let ty; let ux; let uy;
-        let n = C.int(1);      /* max offset in travelsteps */
-        let set = C.int(0);    /* two sets current and previous */
-        let radius = C.int(1); /* search radius */
+        let n = ((1)|0);      /* max offset in travelsteps */
+        let set = ((0)|0);    /* two sets current and previous */
+        let radius = ((1)|0); /* search radius */
         let i;
 
         /* If guessing, first find an "obvious" goal location.  The obvious
@@ -1262,26 +1262,26 @@ function findtravelpath(mode)
          * (couldsee) that is closest to the target on a straight path.
          */
         if (Number(Boolean(mode == TRAVP_GUESS || mode == TRAVP_VALID))) {
-            tx = C.short(C.u.ux);
-            ty = C.short(C.u.uy);
-            ux = C.short(C.u.tx);
-            uy = C.short(C.u.ty);
+            tx = ((C.u.ux)<<16>>16);
+            ty = ((C.u.uy)<<16>>16);
+            ux = ((C.u.tx)<<16>>16);
+            uy = ((C.u.ty)<<16>>16);
         } else {
-            tx = C.short(C.u.tx);
-            ty = C.short(C.u.ty);
-            ux = C.short(C.u.ux);
-            uy = C.short(C.u.uy);
+            tx = ((C.u.tx)<<16>>16);
+            ty = ((C.u.ty)<<16>>16);
+            ux = ((C.u.ux)<<16>>16);
+            uy = ((C.u.uy)<<16>>16);
         }
 
  noguess: for (;;) {
-        void (C.memset(( travel), 0, BigInt(2*80*21)));
+        void (C.clearTravelGrid(travel));
         travelstepx[0][0] = C.short(tx);
         travelstepy[0][0] = C.short(ty);
 
         while (n != 0) {
-            let nn = C.int(0);
+            let nn = ((0)|0);
 
-            for (i = C.int(0); i < n; i++) {
+            for (i = ((0)|0); i < n; i++) {
                 let dir;
                 let x = C.short(travelstepx[set][i]);
                 let y = C.short(travelstepy[set][i]);
@@ -1289,7 +1289,7 @@ function findtravelpath(mode)
                 let dirmax = C.int(C.NODIAG(C.u.umonnum) ? 4 : C.N_DIRS);
                 let alreadyrepeated = C.char(C.FALSE);
 
-                for (dir = C.int(0); dir < dirmax; ++dir) {
+                for (dir = ((0)|0); dir < dirmax; ++dir) {
                     let nx = C.short(x + C.xdir[C.dirs_ord[dir]]);
                     let ny = C.short(y + C.ydir[C.dirs_ord[dir]]);
 
@@ -1366,11 +1366,11 @@ function findtravelpath(mode)
                                         || visited)))) {
                                     nomul(0);
                                     /* reset run so domove run checks work */
-                                    C.svc.context.run = C.uint(8);
+                                    C.svc.context.run = ((8)>>>0);
                                     if (visited)
                                         C.You("stop, unsure which way to go.");
                                     else
-                                        C.iflags.travelcc.x = C.short(C.iflags.travelcc.y = C.short(0));
+                                        C.iflags.travelcc.x = ((C.iflags.travelcc.y = ((0)<<16>>16))<<16>>16);
                                 }
                                 C.selection_setpoint(C.u.ux, C.u.uy,
                                                    C.gt.travelmap, 1);
@@ -1389,7 +1389,7 @@ function findtravelpath(mode)
             if (C.iflags.trav_debug) {
                 /* Use of warning glyph is arbitrary. It stands out. */
                 C.tmp_at(C.DISP_ALL, C.warning_to_glyph(1));
-                for (i = C.int(0); i < nn; ++i) {
+                for (i = ((0)|0); i < nn; ++i) {
                     C.tmp_at(travelstepx[1 - set][i], travelstepy[1 - set][i]);
                 }
                 C.nh_delay_output();
@@ -1413,8 +1413,8 @@ function findtravelpath(mode)
 
             dist = C.int(C.distmin(ux, uy, tx, ty));
             d2 = C.int(C.dist2(ux, uy, tx, ty));
-            for (tx = C.short(1); tx < C.COLNO; ++tx)
-                for (ty = C.short(0); ty < C.ROWNO; ++ty)
+            for (tx = ((1)<<16>>16); tx < C.COLNO; ++tx)
+                for (ty = ((0)<<16>>16); ty < C.ROWNO; ++ty)
                     if (Number(Boolean(C.couldsee(tx, ty) && (ctrav = C.int(travel[tx][ty])) > 0))) {
                         nxtdist = C.int(C.distmin(ux, uy, tx, ty));
                         if (Number(Boolean(nxtdist == dist && ctrav < ptrav))) {
@@ -1460,10 +1460,10 @@ function findtravelpath(mode)
             }
             tx = C.short(px);
             ty = C.short(py);
-            ux = C.short(C.u.ux);
-            uy = C.short(C.u.uy);
-            set = C.int(0);
-            n = C.int(radius = C.int(1));
+            ux = ((C.u.ux)<<16>>16);
+            uy = ((C.u.uy)<<16>>16);
+            set = ((0)|0);
+            n = ((radius = ((1)|0))|0);
             mode = C.int(TRAVP_TRAVEL);
             continue noguess;
         }
@@ -1471,8 +1471,8 @@ function findtravelpath(mode)
         } // noguess
     }
     } // found
-    C.u.dx = C.int(0);
-    C.u.dy = C.int(0);
+    C.u.dx = ((0)|0);
+    C.u.dy = ((0)|0);
     nomul(0);
     return C.char(C.FALSE);
 }
@@ -1483,8 +1483,8 @@ function findtravelpath(mode)
 function is_valid_travelpt(x,y)
 {
     x=C.short(x);y=C.short(y);
-    let tx = C.int(C.u.tx);
-    let ty = C.int(C.u.ty);
+    let tx = ((C.u.tx)|0);
+    let ty = ((C.u.ty)|0);
     let ret;
     let glyph = C.int(C.glyph_at(x,y));
 
@@ -1554,7 +1554,7 @@ function trapmove(x,y,desttrap)
     case C.TT_WEB:
         if (C.u_wield_art(C.ART_STING)) {
             /* escape trap but don't move and don't destroy it */
-            C.u.utrap = C.uint(0); /* caller will call reset_utrap() */
+            C.u.utrap = ((0)>>>0); /* caller will call reset_utrap() */
             C.pline("Sting cuts through the web!");
             break;
         }
@@ -1584,7 +1584,7 @@ function trapmove(x,y,desttrap)
         if (!C.is_lava(x, y)) {
             C.u.utrap--;
             if ((C.u.utrap & 0xff) == 0) {
-                C.u.utrap = C.uint(0);
+                C.u.utrap = ((0)>>>0);
                 if (C.u.usteed)
                     C.You("lead %s to the edge of the %s.", steedname,
                         C.hliquid("lava"));
@@ -1597,11 +1597,11 @@ function trapmove(x,y,desttrap)
         break;
     case C.TT_INFLOOR:
     case C.TT_BURIEDBALL:
-        anchored = C.char((C.u.utraptype == C.TT_BURIEDBALL));
+        anchored = ((C.u.utraptype == C.TT_BURIEDBALL)<<24>>24);
         if (anchored) {
             let cc = C.recordLocal("nhcoord");
 
-            cc.x = C.short(C.u.ux), cc.y = C.short(C.u.uy);
+            cc.x = ((C.u.ux)<<16>>16), cc.y = ((C.u.uy)<<16>>16);
             /* can move normally within radius 1 of buried ball */
             if (Number(Boolean(C.buried_ball(cc) && C.dist2(x, y, cc.x, cc.y) <= 2))) {
                 /* ugly hack: we need to issue some message here
@@ -1643,7 +1643,7 @@ function trapmove(x,y,desttrap)
         break;
     default:
         C.impossible("trapmove: stuck in unknown trap? (%d)",
-                   C.int( C.u.utraptype));
+                   ((C.u.utraptype)|0));
         break;
     }
     return C.char(C.FALSE);
@@ -1705,7 +1705,7 @@ function notice_all_mons(reset)
     if (Number(Boolean(C.a11y.mon_notices && !C.a11y.mon_notices_blocked))) {
         let mtmp;
         let arr = C.NULL;
-        let j; let i = C.int(0); let cnt = C.int(0);
+        let j; let i = ((0)|0); let cnt = ((0)|0);
 
         for (mtmp = C.fmon; mtmp; mtmp = mtmp.nmon) {
             if (C.DEADMONSTER(mtmp))
@@ -1733,7 +1733,7 @@ function notice_all_mons(reset)
             C.qsort(( arr), C.ulong( i), BigInt(8),
                   notice_mons_cmp);
 
-            for (j = C.int(0); j < i; j++)
+            for (j = ((0)|0); j < i; j++)
                 notice_mon(arr[j]);
         }
 
@@ -1765,7 +1765,7 @@ function disturb_buried_zombies(x,y)
             && otmp.oy >= y - 1 && otmp.oy <= y + 1
             && (t = C.long(C.peek_timer(C.ZOMBIFY_MON, obj_to_any(otmp)))) > 0))) {
             t = C.long(C.stop_timer(C.ZOMBIFY_MON, obj_to_any(otmp)));
-            void (C.start_timer(((1) > ( (C.long((C.long(C.long((C.long(t)) * (C.long(2))))) / (C.long(3))))) ? (1) : ( (C.long((C.long(C.long((C.long(t)) * (C.long(2))))) / (C.long(3)))))), C.TIMER_OBJECT,
+            void (C.start_timer(((1) > ( (C.long((C.long(C.long((C.long(t)) * ((2n))))) / ((3n))))) ? (1) : ( (C.long((C.long(C.long((C.long(t)) * ((2n))))) / ((3n)))))), C.TIMER_OBJECT,
                                C.ZOMBIFY_MON, obj_to_any(otmp)));
         }
     }
@@ -1775,7 +1775,7 @@ function disturb_buried_zombies(x,y)
 function u_locomotion(def)
 {
     
-    let capitalize = C.char((C.HEAP8[C.charPointer(def)] == C.highc(C.HEAP8[C.charPointer(def)])));
+    let capitalize = ((C.HEAP8[C.charPointer(def)] == C.highc(C.HEAP8[C.charPointer(def)]))<<24>>24);
 
     /* regular locomotion() takes a monster type rather than a specific
        monster, so can't tell whether it is operating on hero;
@@ -1961,9 +1961,9 @@ function domove_fight_ironbars(x,y)
             else
                 C.setuwep(C.view("obj", 0));
             C.freeinv(obj);
-            breakflags = C.uint(C.uint(C.uint(breakflags) | C.uint(C.BRK_KNOWN2BREAK)));
+            breakflags = ((((C.uint(breakflags) | C.uint(C.BRK_KNOWN2BREAK))>>>0))>>>0);
         } else {
-            breakflags = C.uint(C.uint(C.uint(breakflags) | C.uint(C.BRK_KNOWN2NOTBREAK)));
+            breakflags = ((((C.uint(breakflags) | C.uint(C.BRK_KNOWN2NOTBREAK))>>>0))>>>0);
         }
 
         C.hit_bars(C.localPointer("obj *",()=>obj,_value=>obj=_value), C.u.ux, C.u.uy, x, y, breakflags);
@@ -2054,20 +2054,20 @@ function domove_swap_with_pet(mtmp,x,y)
     let trap;
     /* if it turns out we can't actually move */
     let didnt_move = C.char(C.FALSE);
-    let u_with_boulder = C.char((!C.pointerEqual(C.sobj_at(C.BOULDER, C.u.ux, C.u.uy),0)));
+    let u_with_boulder = ((!C.pointerEqual(C.sobj_at(C.BOULDER, C.u.ux, C.u.uy),0))<<24>>24);
 
     /* seemimic/newsym should be done before moving hero, otherwise
        the display code will draw the hero here before we possibly
        cancel the swap below (we can ignore steed mx,my here) */
-    C.u.ux = C.short(C.u.ux0), C.u.uy = C.short(C.u.uy0);
-    mtmp.mundetected = C.uint(0);
+    C.u.ux = ((C.u.ux0)<<16>>16), C.u.uy = ((C.u.uy0)<<16>>16);
+    mtmp.mundetected = ((0)>>>0);
     if (C.M_AP_TYPE(mtmp))
         C.seemimic(mtmp);
     C.u.ux = C.short(mtmp.mx), C.u.uy = C.short(mtmp.my); /* resume swapping positions */
 
     trap = mtmp.mtrapped ? C.t_at(mtmp.mx, mtmp.my) : 0;
     if (!trap)
-        mtmp.mtrapped = C.uint(0);
+        mtmp.mtrapped = ((0)>>>0);
 
     if (Number(Boolean(mtmp.mtrapped && C.is_pit(trap.ttyp)
         && C.sobj_at(C.BOULDER, trap.tx, trap.ty)))) {
@@ -2112,7 +2112,7 @@ function domove_swap_with_pet(mtmp,x,y)
         C.You("stop.  %s doesn't want to swap places.", C.YMonnam(mtmp));
         didnt_move = C.char(C.TRUE);
     } else {
-        mtmp.mtrapped = C.uint(0);
+        mtmp.mtrapped = ((0)>>>0);
         C.remove_monster(x, y);
         C.place_monster(mtmp, C.u.ux0, C.u.uy0);
         C.newsym(x, y);
@@ -2153,7 +2153,7 @@ function domove_swap_with_pet(mtmp,x,y)
                 if (!C.u.uconduct.killer++)
                     C.livelog_printf(C.LL_CONDUCT, "killed for the first time");
                 mndx = C.int(C.monsndx(mtmp.data));
-                tmp = C.int(C.experience(mtmp, C.int( C.svm.mvitals[mndx].died)));
+                tmp = C.int(C.experience(mtmp, ((C.svm.mvitals[mndx].died)|0)));
                 C.more_experienced(tmp, 0);
                 C.newexplevel(); /* will decide if you go up */
             }
@@ -2173,7 +2173,7 @@ function domove_swap_with_pet(mtmp,x,y)
             break;
         }
     }
-    return C.char(!didnt_move);
+    return ((!didnt_move)<<24>>24);
 }
 
 /* does the plane of air disturb movement? */
@@ -2181,11 +2181,11 @@ function domove_fight_empty(x,y)
 {
     x=C.short(x);y=C.short(y);
     
-    let off_edge = C.char(!C.isok(x, y));
+    let off_edge = ((!C.isok(x, y))<<24>>24);
     let glyph = C.int(!off_edge ? C.glyph_at(x, y) : C.GLYPH_UNEXPLORED);
 
     if (off_edge)
-        x = C.short(0), y = C.short(1); /* for forcefight against the edge of the map; make
+        x = ((0)<<16>>16), y = ((1)<<16>>16); /* for forcefight against the edge of the map; make
                        * sure 'bad' coordinates are within array bounds in
                        * case a bounds check gets overlooked; avoid <0,0>
                        * because m_at() might find a vault guard there */
@@ -2213,7 +2213,7 @@ function domove_fight_empty(x,y)
             C.wake_nearto(C.u.ux, C.u.uy, 7 * 7); /* same radius as explum() */
             if (attk)
                 C.explum(C.view("monst", 0), attk);
-            C.u.mh = C.int(-1); /* dead in the current form */
+            C.u.mh = ((-1)|0); /* dead in the current form */
             C.rehumanize();
         }
         return C.char(C.TRUE);
@@ -2325,8 +2325,8 @@ function water_turbulence(x,y)
             nomul(0);
             return C.char(C.TRUE);
         }
-        (x).value = C.short(C.u.ux + C.u.dx);
-        (y).value = C.short(C.u.uy + C.u.dy);
+        (x).value = ((C.u.ux + C.u.dx)<<16>>16);
+        (y).value = ((C.u.uy + C.u.dy)<<16>>16);
 
         /* are we trying to move out of water while carrying too much? */
         if (Number(Boolean(C.isok((x).value, (y).value) && !C.is_pool((x).value, (y).value) && !C.Is_waterlevel(C.u.uz)
@@ -2359,7 +2359,7 @@ function slippery_ice_fumbling()
         } else if (!(C.rngCaller(2407,"slippery_ice_fumbling"),C.rn2(C.Cold_resistance ? 3 : 2))) {
             C.HFumbling = C.long(C.long(C.long(C.HFumbling) | C.long(C.FROMOUTSIDE)));
             C.HFumbling = C.long(C.long(C.long(C.HFumbling) & C.long(~C.TIMEOUT)));
-            C.HFumbling = C.long(C.long(C.long(C.HFumbling) + C.long(1))); /* slip on next move */
+            C.HFumbling = C.long(C.long(C.long(C.HFumbling) + (1n))); /* slip on next move */
         }
     }
     if (Number(Boolean(!on_ice && (C.long((C.long(C.HFumbling)) & (C.long(C.FROMOUTSIDE)))))))
@@ -2377,7 +2377,7 @@ function impaired_movement(x,y)
 {
     
     if (u_maybe_impaired()) {
-        let tries = C.int(0);
+        let tries = ((0)|0);
 
         do {
             if (tries++ > 50) {
@@ -2385,8 +2385,8 @@ function impaired_movement(x,y)
                 return C.char(C.TRUE);
             }
             C.confdir(C.TRUE);
-            (x).value = C.short(C.u.ux + C.u.dx);
-            (y).value = C.short(C.u.uy + C.u.dy);
+            (x).value = ((C.u.ux + C.u.dx)<<16>>16);
+            (y).value = ((C.u.uy + C.u.dy)<<16>>16);
         } while (Number(Boolean(!C.isok((x).value, (y).value) || bad_rock(C.gy.youmonst.data, (x).value, (y).value))));
     }
     return C.char(C.FALSE);
@@ -2447,7 +2447,7 @@ function avoid_moving_on_liquid(x,y,msg)
 function avoid_running_into_trap_or_liquid(x,y)
 {
     x=C.short(x);y=C.short(y);
-    let would_stop = C.char((C.svc.context.run >= 2));
+    let would_stop = ((C.svc.context.run >= 2)<<24>>24);
     if (!C.svc.context.run)
         return C.char(C.FALSE);
 
@@ -2455,7 +2455,7 @@ function avoid_running_into_trap_or_liquid(x,y)
         || (C.Blind && avoid_moving_on_liquid(x,y, would_stop))))) {
         nomul(0);
         if (would_stop)
-            C.svc.context.move = C.char(0);
+            C.svc.context.move = ((0)<<24>>24);
         return C.char(would_stop);
     }
     return C.char(C.FALSE);
@@ -2465,7 +2465,7 @@ function avoid_running_into_trap_or_liquid(x,y)
 function avoid_trap_andor_region(x,y)
 {
     x=C.short(x);y=C.short(y);
-    let qbuf = C.localArray("char",[128]);
+    let qbuf = C.nativePromptBuffer(128);
     let newreg; let oldreg;
     let trap = C.NULL;
 
@@ -2495,7 +2495,7 @@ function avoid_trap_andor_region(x,y)
                  (C.reg_damg(newreg) > 0) ? "poison gas" : "vapor");
         if (!C.paranoid_query(C.ParanoidConfirm, C.upstart(qbuf))) {
             nomul(0);
-            C.svc.context.move = C.char(0);
+            C.svc.context.move = ((0)<<24>>24);
             return C.char(C.TRUE);
         }
     }
@@ -2525,7 +2525,7 @@ function avoid_trap_andor_region(x,y)
            yes/no if it is */
         if (!C.paranoid_query(C.ParanoidConfirm, qbuf)) {
             nomul(0);
-            C.svc.context.move = C.char(0);
+            C.svc.context.move = ((0)<<24>>24);
             return C.char(C.TRUE);
         }
     }
@@ -2541,22 +2541,22 @@ function move_out_of_bounds(x,y)
             return C.char(domove_fight_empty(x, y));
 
         if (C.flags.mention_walls) {
-            let dx = C.short(C.u.dx); let dy = C.short(C.u.dy);
+            let dx = ((C.u.dx)<<16>>16); let dy = ((C.u.dy)<<16>>16);
 
             if (Number(Boolean(dx && dy))) { /* diagonal */
                 /* only as far as possible diagonally if in very
                    corner; otherwise just report whichever of the
                    cardinal directions has reached its limit */
                 if (C.isok(x, C.u.uy))
-                    dx = C.short(0);
+                    dx = ((0)<<16>>16);
                 else if (C.isok(C.u.ux, y))
-                    dy = C.short(0);
+                    dy = ((0)<<16>>16);
             }
             C.You("have already gone as far %s as possible.",
                 C.directionname(C.xytodir(dx, dy)));
         }
         nomul(0);
-        C.svc.context.move = C.char(0);
+        C.svc.context.move = ((0)<<24>>24);
         return C.char(C.TRUE);
     }
     return C.char(C.FALSE);
@@ -2615,8 +2615,8 @@ function escape_from_sticky_mon(x,y)
             case 3:
                 if (!C.u.ustuck.mcanmove) {
                     /* it's free to move on next turn */
-                    C.u.ustuck.mfrozen = C.uint(1);
-                    C.u.ustuck.msleeping = C.uint(0);
+                    C.u.ustuck.mfrozen = ((1)>>>0);
+                    C.u.ustuck.msleeping = ((0)>>>0);
                 }
                 ;
                 /*FALLTHRU*/
@@ -2644,18 +2644,18 @@ function escape_from_sticky_mon(x,y)
 function domove()
 {
     
-        let ux1 = C.short(C.u.ux); let uy1 = C.short(C.u.uy);
+        let ux1 = ((C.u.ux)<<16>>16); let uy1 = ((C.u.uy)<<16>>16);
 
-        C.gd.domove_succeeded = C.long(0n);
+        C.gd.domove_succeeded = (0n);
         domove_core();
         /* gd.domove_succeeded is available to make assessments now */
         if ((C.long((C.long(C.gd.domove_succeeded)) & (C.long((C.DOMOVE_RUSH | C.DOMOVE_WALK))))) != 0) {
             maybe_smudge_engr(ux1, uy1, C.u.ux, C.u.uy);
             C.maybe_adjust_hero_bubble();
         }
-        C.gd.domove_attempting = C.long(0n);
+        C.gd.domove_attempting = (0n);
 
-        C.gk.kickedloc.x = C.short(0), C.gk.kickedloc.y = C.short(0);
+        C.gk.kickedloc.x = ((0)<<16>>16), C.gk.kickedloc.y = ((0)<<16>>16);
 }
 
 /* dragging ball will skip a move */
@@ -2668,22 +2668,22 @@ function domove_core()
     let tmpr;
     let x; let y;
     let glyph;
-    let chainx = C.short(0); let chainy = C.short(0); let ballx = C.short(0); let bally = C.short(0);       /* ball&chain new positions */
-    let bc_control = C.int(0);                 /* control for ball&chain */
+    let chainx = ((0)<<16>>16); let chainy = ((0)<<16>>16); let ballx = ((0)<<16>>16); let bally = ((0)<<16>>16);       /* ball&chain new positions */
+    let bc_control = ((0)|0);                 /* control for ball&chain */
     let cause_delay = C.char(C.FALSE); let displaceu = C.char(C.FALSE);          /* involuntary swap */
 
     if (C.svc.context.travel) {
         if (!findtravelpath(TRAVP_TRAVEL))
             void (findtravelpath(TRAVP_GUESS));
-        C.svc.context.travel1 = C.char(0);
+        C.svc.context.travel1 = ((0)<<24>>24);
     }
 
     if (carrying_too_much())
         return;
 
     if (C.u.uswallow) {
-        C.u.dx = C.int(C.u.dy = C.int(0));
-        x = C.short(C.u.ustuck.mx), y = C.short(C.u.ustuck.my);
+        C.u.dx = ((C.u.dy = ((0)|0))|0);
+        x = ((C.u.ustuck.mx)<<16>>16), y = ((C.u.ustuck.my)<<16>>16);
         C.u_on_newpos(x, y); /* set u.ux,uy and handle CLIPPING */
         mtmp = C.u.ustuck;
     } else {
@@ -2693,8 +2693,8 @@ function domove_core()
         /* check slippery ice */
         slippery_ice_fumbling();
 
-        x = C.short(C.u.ux + C.u.dx);
-        y = C.short(C.u.uy + C.u.dy);
+        x = ((C.u.ux + C.u.dx)<<16>>16);
+        y = ((C.u.uy + C.u.dy)<<16>>16);
         if (impaired_movement(C.localPointer("coordxy",()=>x,_value=>x=_value), C.localPointer("coordxy",()=>y,_value=>y=_value)))
             return;
 
@@ -2722,14 +2722,14 @@ function domove_core()
                                      || C.Protection_from_shape_changers))
                                 || C.sensemon(mtmp))))) {
                 nomul(0);
-                C.svc.context.move = C.char(0);
+                C.svc.context.move = ((0)<<24>>24);
                 return;
             }
         }
     }
 
-    C.u.ux0 = C.short(C.u.ux);
-    C.u.uy0 = C.short(C.u.uy);
+    C.u.ux0 = ((C.u.ux)<<16>>16);
+    C.u.uy0 = ((C.u.uy)<<16>>16);
     C.gb.bhitpos.x = C.short(x);
     C.gb.bhitpos.y = C.short(y);
     tmpr = C.levl[x][y];
@@ -2793,7 +2793,7 @@ function domove_core()
 
         if (!test_move(C.u.ux, C.u.uy, x - C.u.ux, y - C.u.uy, C.DO_MOVE)) {
             if (!C.svc.context.door_opened) {
-                C.svc.context.move = C.char(0);
+                C.svc.context.move = ((0)<<24>>24);
                 nomul(0);
             }
             return;
@@ -2801,7 +2801,7 @@ function domove_core()
 
         /* Is it dangerous to swim in water or lava? */
         if (swim_move_danger(x, y)) {
-            C.svc.context.move = C.char(0);
+            C.svc.context.move = ((0)<<24>>24);
             nomul(0);
             return;
         }
@@ -2822,14 +2822,14 @@ function domove_core()
     /* mtmp can be null at this point */
 
     /* tentatively move the hero plus steed; leave CLIPPING til later */
-    ((_hackTarget)=>_hackTarget.ux = C.short(C.int(C.int(_hackTarget.ux) + C.int(C.u.dx))))(C.u);
-    ((_hackTarget)=>_hackTarget.uy = C.short(C.int(C.int(_hackTarget.uy) + C.int(C.u.dy))))(C.u);
+    ((_hackTarget)=>_hackTarget.ux = ((((C.int(_hackTarget.ux) + ((C.u.dx)|0))|0))<<16>>16))(C.u);
+    ((_hackTarget)=>_hackTarget.uy = ((((C.int(_hackTarget.uy) + ((C.u.dy)|0))|0))<<16>>16))(C.u);
 
     C.m_postmove_effect(C.gy.youmonst);
 
     if (C.u.usteed) {
-        C.u.usteed.mx = C.short(C.u.ux);
-        C.u.usteed.my = C.short(C.u.uy);
+        C.u.usteed.mx = ((C.u.ux)<<16>>16);
+        C.u.usteed.my = ((C.u.uy)<<16>>16);
         /* [if move attempt ends up being blocked, should training count?] */
         C.exercise_steed(); /* train riding skill */
     }
@@ -2845,7 +2845,7 @@ function domove_core()
             C.newsym(C.u.ux, C.u.uy);
             C.newsym(C.u.ux0, C.u.uy0);
             /* monst still knows where hero is */
-            mtmp.mux = C.short(C.u.ux), mtmp.muy = C.short(C.u.uy);
+            mtmp.mux = ((C.u.ux)<<16>>16), mtmp.muy = ((C.u.uy)<<16>>16);
 
             C.pline("%s swaps places with you...",
                   !noticed_it ? C.Something : C.YMonnam(mtmp));
@@ -2853,10 +2853,10 @@ function domove_core()
                 C.map_invisible(C.u.ux0, C.u.uy0);
             /* monster chose to swap places; hero doesn't get any credit
                or blame if something bad happens to it */
-            C.svc.context.mon_moving = C.char(1);
+            C.svc.context.mon_moving = ((1)<<24>>24);
             if (!C.minliquid(mtmp))
                 void (C.mintrap(mtmp, C.NO_TRAP_FLAGS));
-            C.svc.context.mon_moving = C.char(0);
+            C.svc.context.mon_moving = ((0)<<24>>24);
 
         /*
          * If safepet at destination then move the pet to the hero's
@@ -2871,10 +2871,10 @@ function domove_core()
         } else if (Number(Boolean(C.is_safemon(mtmp)
                    && !(Number(Boolean(C.is_hider(mtmp.data) && mtmp.mundetected)))))) {
             if (!domove_swap_with_pet(mtmp, x, y)) {
-                C.u.ux = C.short(C.u.ux0), C.u.uy = C.short(C.u.uy0); /* didn't move after all */
+                C.u.ux = ((C.u.ux0)<<16>>16), C.u.uy = ((C.u.uy0)<<16>>16); /* didn't move after all */
                 /* could skip this since we're about to call u_on_newpos() */
                 if (C.u.usteed)
-                    C.u.usteed.mx = C.short(C.u.ux), C.u.usteed.my = C.short(C.u.uy);
+                    C.u.usteed.mx = ((C.u.ux)<<16>>16), C.u.usteed.my = ((C.u.uy)<<16>>16);
             }
         }
     }  /* mtmp != NULL */
@@ -2949,9 +2949,9 @@ function runmode_delay_output()
            (relative to turn counter; ought to be to start of running);
            for walk and crawl (visual debugging) modes, update the
            display after every step */
-        if (Number(Boolean(C.flags.runmode != C.RUN_LEAP || !(C.long((C.long(C.svm.moves)) % (C.long(7n))))))) {
+        if (Number(Boolean(C.flags.runmode != C.RUN_LEAP || !(C.long((C.long(C.svm.moves)) % ((7n))))))) {
             /* moveloop() suppresses time_botl when running */
-            C.disp.time_botl = C.char(C.flags.time);
+            C.disp.time_botl = ((C.flags.time)<<24>>24);
             C.curs_on_u();
             C.nh_delay_output();
             if (C.flags.runmode == C.RUN_CRAWL) {
@@ -2986,7 +2986,7 @@ function overexert_hp()
     let hp = (!C.Upolyd ? C.fieldPointer(C.u,"uhp") : C.fieldPointer(C.u,"mh"));
 
     if ((hp).value > 1) {
-        ((_hackTarget)=>_hackTarget.value = C.int(C.int(C.int(_hackTarget.value) - C.int(1))))(hp);
+        ((_hackTarget)=>_hackTarget.value = ((((C.int(_hackTarget.value) - ((1)|0))|0))|0))(hp);
         C.disp.botl = C.char(C.TRUE);
     } else {
         C.You("pass out from exertion!");
@@ -3002,10 +3002,10 @@ function overexertion()
        position, but is now called by do_attack() so that it doesn't
        execute if you decline to attack a peaceful monster */
     C.gethungry();
-    if (Number(Boolean((C.long((C.long(C.svm.moves)) % (C.long(3n)))) != 0n && near_capacity() >= C.HVY_ENCUMBER))) {
+    if (Number(Boolean((C.long((C.long(C.svm.moves)) % ((3n)))) != 0n && near_capacity() >= C.HVY_ENCUMBER))) {
         overexert_hp();
     }
-    return C.char(C.char( (C.gm.multi < 0))); /* might have fainted (forced to sleep) */
+    return ((((C.gm.multi < 0)<<24>>24))<<24>>24); /* might have fainted (forced to sleep) */
 }
 
 /* for status: set up iflags.terrain_typ, an index into terrain_descrp[];
@@ -3027,7 +3027,7 @@ function invocation_message()
             C.Sprintf(buf, "under your %s", C.makeplural(C.body_part(C.FOOT)));
 
         C.You_feel("a strange vibration %s.", buf);
-        C.u.uevent.uvibrated = C.uint(1);
+        C.u.uevent.uvibrated = ((1)>>>0);
         if (Number(Boolean(otmp && otmp.spe == 7 && otmp.lamplit)))
             C.pline("%s %s!", C.The(C.xname(otmp)),
                   C.Blind ? "throbs palpably" : "glows with a strange light");
@@ -3048,7 +3048,7 @@ function classify_terrain()
 {
     
     let lev = C.levl[C.u.ux][C.u.uy];
-    let typ = C.int(C.svl.lastseentyp[C.u.ux][C.u.uy]); /* lev->typ */
+    let typ = ((C.svl.lastseentyp[C.u.ux][C.u.uy])|0); /* lev->typ */
 
     /*
      * If the terrain under the hero is different now from what it
@@ -3115,7 +3115,7 @@ function switch_terrain()
     let lev = C.levl[C.u.ux][C.u.uy];
     let blocklev = C.char((Number(Boolean(C.IS_OBSTRUCTED(lev.typ) || C.closed_door(C.u.ux, C.u.uy)
                         || C.IS_WATERWALL(lev.typ)
-                        || lev.typ == C.LAVAWALL)))); let was_levitating = C.char(!!C.Levitation); let was_flying = C.char(!!C.Flying);
+                        || lev.typ == C.LAVAWALL)))); let was_levitating = ((!!C.Levitation)<<24>>24); let was_flying = ((!!C.Flying)<<24>>24);
 
     if (blocklev) {
         /* called from spoteffects(), stop levitating but skip float_down() */
@@ -3156,8 +3156,8 @@ function switch_terrain()
 function set_uinwater(in_out)
 {
     in_out=C.int(in_out);
-    if (in_out != C.int( C.u.uinwater)) {
-        C.u.uinwater = C.uint(in_out ? 1 : 0);
+    if (in_out != ((C.u.uinwater)|0)) {
+        C.u.uinwater = ((in_out ? 1 : 0)>>>0);
         switch_terrain();
     }
 }
@@ -3196,7 +3196,7 @@ function pooleffects(newspot)
             set_uinwater(0); /* u.uinwater = 0; leave the water */
             if (was_underwater) { /* restore vision */
                 C.docrt();
-                C.gv.vision_full_recalc = C.char(1);
+                C.gv.vision_full_recalc = ((1)<<24>>24);
             }
         }
     }
@@ -3272,8 +3272,8 @@ function spoteffects(pick)
 
     spotdone: {
     ++C.state.inspoteffects;
-    C.state.spotterrain = C.int(C.levl[C.u.ux][C.u.uy].typ);
-    C.state.spotloc.x = C.short(C.u.ux), C.state.spotloc.y = C.short(C.u.uy);
+    C.state.spotterrain = ((C.levl[C.u.ux][C.u.uy].typ)|0);
+    C.state.spotloc.x = ((C.u.ux)<<16>>16), C.state.spotloc.y = ((C.u.uy)<<16>>16);
 
     /* moving onto different terrain might cause Lev or Fly to toggle;
       level change sets <ux0,uy0> to <ux,uy>, so this spotterrain
@@ -3347,7 +3347,7 @@ function spoteffects(pick)
     }
 
     if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(C.u.ux, C.u.uy)),0) && !C.u.uswallow))) {
-        mtmp.mundetected = C.uint(mtmp.msleeping = C.uint(0));
+        mtmp.mundetected = ((mtmp.msleeping = ((0)>>>0))>>>0);
         switch (mtmp.data.mlet) {
         case C.S_PIERCER:
             C.pline("%s suddenly drops from the %s!", C.Amonnam(mtmp),
@@ -3378,7 +3378,7 @@ function spoteffects(pick)
             else if (mtmp.mpeaceful) {
                 C.You("surprise %s!",
                     Number(Boolean(C.Blind && !C.sensemon(mtmp))) ? C.something : C.a_monnam(mtmp));
-                mtmp.mpeaceful = C.uint(0);
+                mtmp.mpeaceful = ((0)>>>0);
             } else
                 C.pline("%s attacks you by surprise!", C.Amonnam(mtmp));
             break;
@@ -3388,7 +3388,7 @@ function spoteffects(pick)
     } // spotdone
     if (!--C.state.inspoteffects) {
         C.state.spotterrain = C.int(C.STONE); /* 0 */
-        C.state.spotloc.x = C.short(C.state.spotloc.y = C.short(0));
+        C.state.spotloc.x = ((C.state.spotloc.y = ((0)<<16>>16))<<16>>16);
     }
     return;
 }
@@ -3430,19 +3430,19 @@ function in_rooms(x,y,typewanted)
 {
     x=C.short(x);y=C.short(y);typewanted=C.int(typewanted);
     const buf = C.in_rooms_buf;
-    let rno = C.char(0); let ptr = C.charPointer((C.charPointer(buf) + 4));
+    let rno = ((0)<<24>>24); let ptr = C.charPointer((C.charPointer(buf) + 4));
     let typefound; let min_x; let min_y; let max_x; let max_y_offset; let step;
     let lev;
 
 
-    switch (rno = C.char(C.levl[x][y].roomno)) {
+    switch (rno = ((C.levl[x][y].roomno)<<24>>24)) {
     case C.NO_ROOM:
         return ptr;
     case C.SHARED:
-        step = C.int(2);
+        step = ((2)|0);
         break;
     case C.SHARED_PLUS:
-        step = C.int(1);
+        step = ((1)|0);
         break;
     default: /* i.e. a regular room # */
         if ((!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))
@@ -3453,34 +3453,34 @@ function in_rooms(x,y,typewanted)
     min_x = C.int(x - 1);
     max_x = C.int(x + 1);
     if (x < 1)
-        min_x = C.int(C.int(C.int(min_x) + C.int(step)));
+        min_x = ((((C.int(min_x) + C.int(step))|0))|0);
     else if (x >= C.COLNO)
-        max_x = C.int(C.int(C.int(max_x) - C.int(step)));
+        max_x = ((((C.int(max_x) - C.int(step))|0))|0);
 
     min_y = C.int(y - 1);
-    max_y_offset = C.int(2);
+    max_y_offset = ((2)|0);
     if (min_y < 0) {
-        min_y = C.int(C.int(C.int(min_y) + C.int(step)));
-        max_y_offset = C.int(C.int(C.int(max_y_offset) - C.int(step)));
+        min_y = ((((C.int(min_y) + C.int(step))|0))|0);
+        max_y_offset = ((((C.int(max_y_offset) - C.int(step))|0))|0);
     } else if ((min_y + max_y_offset) >= C.ROWNO)
-        max_y_offset = C.int(C.int(C.int(max_y_offset) - C.int(step)));
+        max_y_offset = ((((C.int(max_y_offset) - C.int(step))|0))|0);
 
-    for (x = C.short(min_x); x <= max_x; x = C.short(C.int(C.int(x) + C.int(step)))) {
+    for (x = C.short(min_x); x <= max_x; x = ((((C.int(x) + C.int(step))|0))<<16>>16)) {
         lev = C.levl[x][min_y];
-        y = C.short(0);
-        if (Number(Boolean((rno = C.char(lev[y].roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
+        y = ((0)<<16>>16);
+        if (Number(Boolean((rno = C.char(C.advanceRecord(lev,y).roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
             && (!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
-        y = C.short(C.int(C.int(y) + C.int(step)));
+        y = ((((C.int(y) + C.int(step))|0))<<16>>16);
         if (y > max_y_offset)
             continue;
-        if (Number(Boolean((rno = C.char(lev[y].roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
+        if (Number(Boolean((rno = C.char(C.advanceRecord(lev,y).roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
             && (!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
-        y = C.short(C.int(C.int(y) + C.int(step)));
+        y = ((((C.int(y) + C.int(step))|0))<<16>>16);
         if (y > max_y_offset)
             continue;
-        if (Number(Boolean((rno = C.char(lev[y].roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
+        if (Number(Boolean((rno = C.char(C.advanceRecord(lev,y).roomno)) >= C.ROOMOFFSET && !C.strchr(ptr, rno)
             && (!typewanted || (typefound = C.svr.rooms[rno - C.ROOMOFFSET].rtype) == typewanted || (typewanted == C.SHOPBASE && typefound > C.SHOPBASE)))))
             C.HEAP8[C.charPointer((--ptr))] = C.char(rno);
     }
@@ -3508,7 +3508,7 @@ function in_town(x,y)
         }
     }
 
-    return C.char(!has_subrooms);
+    return ((!has_subrooms)<<24>>24);
 }
 
 /* possibly deliver a one-time room entry message */
@@ -3540,13 +3540,13 @@ function move_update(newlev)
                 C.HEAP8[C.charPointer(ptr4++)] = C.char(c);
         }
     }
-    C.HEAP8[C.charPointer(ptr2)] = C.char(0), C.HEAP8[C.charPointer(ptr3)] = C.char(0), C.HEAP8[C.charPointer(ptr4)] = C.char(0);
+    C.HEAP8[C.charPointer(ptr2)] = ((0)<<24>>24), C.HEAP8[C.charPointer(ptr3)] = ((0)<<24>>24), C.HEAP8[C.charPointer(ptr4)] = ((0)<<24>>24);
 
     /* filter u.ushops0 -> u.ushops_left */
     for (ptr1 = C.charPointer(C.u.ushops0), ptr2 = C.charPointer(C.u.ushops_left); C.HEAP8[C.charPointer(ptr1)]; ptr1++)
         if (!C.strchr(C.u.ushops, C.HEAP8[C.charPointer(ptr1)]))
             C.HEAP8[C.charPointer(ptr2++)] = C.char(C.HEAP8[C.charPointer(ptr1)]);
-    C.HEAP8[C.charPointer(ptr2)] = C.char(0);
+    C.HEAP8[C.charPointer(ptr2)] = ((0)<<24>>24);
 }
 
 /* returns
@@ -3660,7 +3660,7 @@ function check_special_room(newlev)
         /*FALLTHRU*/
         default:
             msg_given = C.char((Number(Boolean(rt == C.TEMPLE || rt >= C.SHOPBASE))));
-            rt = C.int(0);
+            rt = ((0)|0);
             break;
         }
         if (msg_given)
@@ -3672,25 +3672,25 @@ function check_special_room(newlev)
                 /* No more room of that type */
                 switch (rt) {
                 case C.COURT:
-                    C.svl.level.flags.has_court = C.uint(0);
+                    C.svl.level.flags.has_court = ((0)>>>0);
                     break;
                 case C.SWAMP:
-                    C.svl.level.flags.has_swamp = C.uint(0);
+                    C.svl.level.flags.has_swamp = ((0)>>>0);
                     break;
                 case C.MORGUE:
-                    C.svl.level.flags.has_morgue = C.uint(0);
+                    C.svl.level.flags.has_morgue = ((0)>>>0);
                     break;
                 case C.ZOO:
-                    C.svl.level.flags.has_zoo = C.uint(0);
+                    C.svl.level.flags.has_zoo = ((0)>>>0);
                     break;
                 case C.BARRACKS:
-                    C.svl.level.flags.has_barracks = C.uint(0);
+                    C.svl.level.flags.has_barracks = ((0)>>>0);
                     break;
                 case C.TEMPLE:
-                    C.svl.level.flags.has_temple = C.uint(0);
+                    C.svl.level.flags.has_temple = ((0)>>>0);
                     break;
                 case C.BEEHIVE:
-                    C.svl.level.flags.has_beehive = C.uint(0);
+                    C.svl.level.flags.has_beehive = ((0)>>>0);
                     break;
                 }
             }
@@ -3699,11 +3699,11 @@ function check_special_room(newlev)
                     if (C.DEADMONSTER(mtmp))
                         continue;
                     if (Number(Boolean(!C.isok(mtmp.mx,mtmp.my)
-                        || roomno != C.int( C.levl[mtmp.mx][mtmp.my].roomno))))
+                        || roomno != ((C.levl[mtmp.mx][mtmp.my].roomno)|0))))
                         continue;
                     if (Number(Boolean(!C.Stealth && !(C.rngCaller(3772,"check_special_room"),C.rn2(3))))) {
                         C.wake_msg(mtmp, C.FALSE);
-                        mtmp.msleeping = C.uint(0);
+                        mtmp.msleeping = ((0)>>>0);
                     }
                 }
         }
@@ -3726,9 +3726,9 @@ function pickup_checks()
             } else
                 C.You("don't %s anything in here to pick up.",
                     C.Blind ? "feel" : "see");
-            return C.int(1);
+            return ((1)|0);
         } else {
-            return C.int(-2); /* loot the monster inventory */
+            return ((-2)|0); /* loot the monster inventory */
         }
     }
     if (C.is_pool(C.u.ux, C.u.uy)) {
@@ -3736,20 +3736,20 @@ function pickup_checks()
             || C.is_clinger(C.gy.youmonst.data) || (C.Flying && !C.Breathless)))) {
             C.You("cannot dive into the %s to pick things up.",
                 C.hliquid("water"));
-            return C.int(0);
+            return ((0)|0);
         } else if (!C.Underwater) {
             C.You_cant("even see the bottom, let alone pick up %s.", C.something);
-            return C.int(0);
+            return ((0)|0);
         }
     }
     if (C.is_lava(C.u.ux, C.u.uy)) {
         if (Number(Boolean(C.Wwalking || C.is_floater(C.gy.youmonst.data)
             || C.is_clinger(C.gy.youmonst.data) || (C.Flying && !C.Breathless)))) {
             C.You_cant("reach the bottom to pick things up.");
-            return C.int(0);
+            return ((0)|0);
         } else if (!C.likes_lava(C.gy.youmonst.data)) {
             C.You("would burn to a crisp trying to pick things up.");
-            return C.int(0);
+            return ((0)|0);
         }
     }
     if (!C.OBJ_AT(C.u.ux, C.u.uy)) {
@@ -3771,7 +3771,7 @@ function pickup_checks()
             C.pline_The("stairs are solidly affixed.");
         else
             C.There("is nothing here to pick up.");
-        return C.int(0);
+        return ((0)|0);
     }
     traphere = C.t_at(C.u.ux, C.u.uy);
     if (!C.can_reach_floor(Number(Boolean(traphere && C.is_pit(traphere.ttyp))))) {
@@ -3794,9 +3794,9 @@ function pickup_checks()
             }
             C.You("cannot reach the %s.", surf);
         }
-        return C.int(0);
+        return ((0)|0);
     }
-    return C.int(-1); /* can do normal pickup */
+    return ((-1)|0); /* can do normal pickup */
 }
 
 /* stop running if we see something interesting next to us */
@@ -3807,7 +3807,7 @@ function dopickup()
     
     let count; let tmpcount; let ret;
 
-    count = C.int(C.int( C.gc.command_count));
+    count = ((C.int( C.gc.command_count))|0);
     C.gm.multi = 0; /* always reset */
 
     if ((ret = C.int(pickup_checks())) >= 0) {
@@ -3826,8 +3826,8 @@ function lookaround()
 {
     
     let x; let y;
-    let i; let x0 = C.short(0); let y0 = C.short(0); let m0 = C.short(1); let i0 = C.short(9);
-    let corrct = C.int(0); let noturn = C.int(0);
+    let i; let x0 = ((0)<<16>>16); let y0 = ((0)<<16>>16); let m0 = ((1)<<16>>16); let i0 = ((9)<<16>>16);
+    let corrct = ((0)|0); let noturn = ((0)|0);
     let mtmp;
 
     /* Grid bugs stop if trying to move diagonal, even if blind.  Maybe */
@@ -3840,8 +3840,8 @@ function lookaround()
 
     if (Number(Boolean(C.Blind || C.svc.context.run == 0)))
         return;
-    for (x = C.short(C.u.ux - 1); x <= C.u.ux + 1; x++)
-        for (y = C.short(C.u.uy - 1); y <= C.u.uy + 1; y++) {
+    for (x = ((C.u.ux - 1)<<16>>16); x <= C.u.ux + 1; x++)
+        for (y = ((C.u.uy - 1)<<16>>16); y <= C.u.uy + 1; y++) {
             let infront = C.char((Number(Boolean(x == C.u.ux + C.u.dx && y == C.u.uy + C.u.dy))));
 
             /* ignore out of bounds, and our own location */
@@ -3892,14 +3892,14 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
                            if we've seen one corridor, and x,y is not directly
                            orthogonally next to it, mark noturn */
                         if (Number(Boolean(corrct == 1 && C.dist2(x, y, x0, y0) != 1)))
-                            noturn = C.int(1);
+                            noturn = ((1)|0);
                         /* if previous x,y was diagonal, now x,y is
                            orthogonal (or this is first time we're here) */
                         if (i < i0) {
                             i0 = C.short(i);
                             x0 = C.short(x);
                             y0 = C.short(y);
-                            m0 = C.short(mtmp ? 1 : 0);
+                            m0 = ((mtmp ? 1 : 0)<<16>>16);
                         }
                     }
                     corrct++;
@@ -3941,14 +3941,14 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
                            if we've seen one corridor, and x,y is not directly
                            orthogonally next to it, mark noturn */
                         if (Number(Boolean(corrct == 1 && C.dist2(x, y, x0, y0) != 1)))
-                            noturn = C.int(1);
+                            noturn = ((1)|0);
                         /* if previous x,y was diagonal, now x,y is
                            orthogonal (or this is first time we're here) */
                         if (i < i0) {
                             i0 = C.short(i);
                             x0 = C.short(x);
                             y0 = C.short(y);
-                            m0 = C.short(mtmp ? 1 : 0);
+                            m0 = ((mtmp ? 1 : 0)<<16>>16);
                         }
                     }
                     corrct++;
@@ -3971,14 +3971,14 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
                            if we've seen one corridor, and x,y is not directly
                            orthogonally next to it, mark noturn */
                         if (Number(Boolean(corrct == 1 && C.dist2(x, y, x0, y0) != 1)))
-                            noturn = C.int(1);
+                            noturn = ((1)|0);
                         /* if previous x,y was diagonal, now x,y is
                            orthogonal (or this is first time we're here) */
                         if (i < i0) {
                             i0 = C.short(i);
                             x0 = C.short(x);
                             y0 = C.short(y);
-                            m0 = C.short(mtmp ? 1 : 0);
+                            m0 = ((mtmp ? 1 : 0)<<16>>16);
                         }
                     }
                     corrct++;
@@ -4004,14 +4004,14 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
                            if we've seen one corridor, and x,y is not directly
                            orthogonally next to it, mark noturn */
                         if (Number(Boolean(corrct == 1 && C.dist2(x, y, x0, y0) != 1)))
-                            noturn = C.int(1);
+                            noturn = ((1)|0);
                         /* if previous x,y was diagonal, now x,y is
                            orthogonal (or this is first time we're here) */
                         if (i < i0) {
                             i0 = C.short(i);
                             x0 = C.short(x);
                             y0 = C.short(y);
-                            m0 = C.short(mtmp ? 1 : 0);
+                            m0 = ((mtmp ? 1 : 0)<<16>>16);
                         }
                     }
                     corrct++;
@@ -4042,23 +4042,23 @@ if (C.levl[C.u.ux][C.u.uy].typ != C.ROOM) {
         /* make sure that we do not turn too far */
         if (i0 == 2) {
             if (Number(Boolean(C.u.dx == y0 - C.u.uy && C.u.dy == C.u.ux - x0)))
-                i = C.short(2); /* straight turn right */
+                i = ((2)<<16>>16); /* straight turn right */
             else
-                i = C.short(-2); /* straight turn left */
+                i = ((-2)<<16>>16); /* straight turn left */
         } else if (Number(Boolean(C.u.dx && C.u.dy))) {
             if (Number(Boolean((C.u.dx == C.u.dy && y0 == C.u.uy) || (C.u.dx != C.u.dy && y0 != C.u.uy))))
-                i = C.short(-1); /* half turn left */
+                i = ((-1)<<16>>16); /* half turn left */
             else
-                i = C.short(1); /* half turn right */
+                i = ((1)<<16>>16); /* half turn right */
         } else {
             if (Number(Boolean((x0 - C.u.ux == y0 - C.u.uy && !C.u.dy)
                 || (x0 - C.u.ux != y0 - C.u.uy && C.u.dy))))
-                i = C.short(1); /* half turn right */
+                i = ((1)<<16>>16); /* half turn right */
             else
-                i = C.short(-1); /* half turn left */
+                i = ((-1)<<16>>16); /* half turn left */
         }
 
-        i = C.short(C.int(C.int(i) + C.int(C.u.last_str_turn)));
+        i = ((((C.int(i) + ((C.u.last_str_turn)|0))|0))<<16>>16);
         if (Number(Boolean(i <= 2 && i >= -2))) {
             C.u.last_str_turn = C.int(i);
             C.u.dx = C.int(x0 - C.u.ux);
@@ -4080,7 +4080,7 @@ function doorless_door(x,y)
        we treat them as if their non-existent doors were actually present */
     if (C.Is_rogue_level(C.u.uz))
         return C.char(C.FALSE);
-    return C.char(!(lev_p.doormask & ~(C.D_NODOOR | C.D_BROKEN)));
+    return ((!(lev_p.doormask & ~(C.D_NODOOR | C.D_BROKEN)))<<24>>24);
 }
 
 /* something like lookaround, but we are not running */
@@ -4105,9 +4105,9 @@ function crawl_destination(x,y)
     if (Number(Boolean(C.IS_DOOR(C.levl[x][y].typ) && (!doorless_door(x, y) || C.block_door(x, y)))))
         return C.char(C.FALSE);
     /* finally, are we trying to squeeze through a too-narrow gap? */
-    return C.char(!(Number(Boolean(bad_rock(C.gy.youmonst.data, C.u.ux, y)
+    return ((!(Number(Boolean(bad_rock(C.gy.youmonst.data, C.u.ux, y)
              && bad_rock(C.gy.youmonst.data, x, C.u.uy)
-             && cant_squeeze_thru(C.gy.youmonst)))));
+             && cant_squeeze_thru(C.gy.youmonst)))))<<24>>24);
 }
 
 function monster_nearby()
@@ -4117,8 +4117,8 @@ function monster_nearby()
     let mtmp;
 
     /* Also see the similar check in dochugw() in monmove.c */
-    for (x = C.short(C.u.ux - 1); x <= C.u.ux + 1; x++)
-        for (y = C.short(C.u.uy - 1); y <= C.u.uy + 1; y++) {
+    for (x = ((C.u.ux - 1)<<16>>16); x <= C.u.ux + 1; x++)
+        for (y = ((C.u.uy - 1)<<16>>16); y <= C.u.uy + 1; y++) {
             if (Number(Boolean(!C.isok(x, y) || C.u_at(x, y))))
                 continue;
             if (Number(Boolean(!C.pointerEqual((mtmp = C.m_at(x, y)),0)
@@ -4129,9 +4129,9 @@ function monster_nearby()
                 && (!C.is_hider(mtmp.data) || !mtmp.mundetected)
                 && !C.helpless(mtmp)
                 && !C.onscary(C.u.ux, C.u.uy, mtmp) && C.canspotmon(mtmp))))
-                return C.int(1);
+                return ((1)|0);
         }
-    return C.int(0);
+    return ((0)|0);
 }
 
 function end_running(and_travel)
@@ -4140,7 +4140,7 @@ function end_running(and_travel)
     /* moveloop() suppresses time_botl when context.run is non-zero; when
        running stops, update 'time' even if other botl status is unchanged */
     if (C.svc.context.run) {
-        C.svc.context.run = C.uint(0);
+        C.svc.context.run = ((0)>>>0);
         if (C.flags.time)
             C.disp.time_botl = C.char(C.TRUE);
         /* classify_terrain() suppresses setting disp.botl when
@@ -4155,7 +4155,7 @@ function end_running(and_travel)
     /* 'context.mv' isn't travel but callers who want to end travel
        all clear it too */
     if (and_travel)
-        C.svc.context.travel = C.char(C.svc.context.travel1 = C.char(C.svc.context.mv = C.char(0)));
+        C.svc.context.travel = ((C.svc.context.travel1 = ((C.svc.context.mv = ((0)<<24>>24))<<24>>24))<<24>>24);
     if (C.gt.travelmap) {
         C.selection_free(C.gt.travelmap, C.TRUE);
         C.gt.travelmap = C.NULL;
@@ -4171,12 +4171,12 @@ function nomul(nval)
     nval=C.int(nval);
     if (C.gm.multi < nval)
         return;              /* This is a bug fix by ab@unido */
-    ((_hackTarget)=>_hackTarget.botl = C.char(C.int(C.int(_hackTarget.botl) | C.int((C.gm.multi >= 0)))))(C.disp);
+    ((_hackTarget)=>_hackTarget.botl = ((((C.int(_hackTarget.botl) | ((C.gm.multi >= 0)|0))|0))<<24>>24))(C.disp);
     C.u.uinvulnerable = C.uint(C.FALSE); /* Kludge to avoid ctrl-C bug -dlc */
-    C.u.usleep = C.long(0);
+    C.u.usleep = (0n);
     C.gm.multi = nval;
     if (nval == 0)
-        C.gm.multi_reason = C.charPointer(C.NULL), C.gm.multireasonbuf[0] = C.char(0);
+        C.gm.multi_reason = C.charPointer(C.NULL), C.gm.multireasonbuf[0] = ((0)<<24>>24);
     end_running(C.TRUE);
     C.cmdq_clear(C.CQ_CANNED);
 }
@@ -4202,8 +4202,8 @@ function unmul(msg_override)
                 C.an(C.pmname(C.mons[C.u.umonnum], C.Ugender))); /* (ignore Hallu) */
     }
     C.gn.nomovemsg = C.charPointer(0);
-    C.u.usleep = C.long(0);
-    C.gm.multi_reason = C.charPointer(C.NULL), C.gm.multireasonbuf[0] = C.char(0);
+    C.u.usleep = (0n);
+    C.gm.multi_reason = C.charPointer(C.NULL), C.gm.multireasonbuf[0] = ((0)<<24>>24);
 
     if (C.ga.afternmv) {
         let f = C.ga.afternmv;
@@ -4221,7 +4221,7 @@ function maybe_wail()
     
     
 
-    if (C.svm.moves <= C.long((C.long(C.gw.wailmsg)) + (C.long(50))))
+    if (C.svm.moves <= C.long((C.long(C.gw.wailmsg)) + ((50n))))
         return;
 
     C.gw.wailmsg = C.long(C.svm.moves);
@@ -4234,7 +4234,7 @@ function maybe_wail()
         if (C.u.uhp == 1) {
             C.pline("%s is about to die.", who);
         } else {
-            for (i = C.int(0), powercnt = C.int(0); i < C.SIZE(C.state.powers); ++i)
+            for (i = ((0)|0), powercnt = ((0)|0); i < C.SIZE(C.state.powers); ++i)
                 if (C.long((C.long(C.u.uprops[C.state.powers[i]].intrinsic)) & (C.long(C.INTRINSIC))))
                     ++powercnt;
 
@@ -4266,10 +4266,10 @@ function losehp(n,knam,k_format)
     C.disp.botl = C.char(C.TRUE); /* u.uhp or u.mh is changing */
     end_running(C.TRUE);
     if (C.Upolyd) {
-        ((_hackTarget)=>_hackTarget.mh = C.int(C.int(C.int(_hackTarget.mh) - C.int(n))))(C.u);
+        ((_hackTarget)=>_hackTarget.mh = ((((C.int(_hackTarget.mh) - C.int(n))|0))|0))(C.u);
         showdamage(n);
         if (C.u.mhmax < C.u.mh)
-            C.u.mhmax = C.int(C.u.mh);
+            C.u.mhmax = ((C.u.mh)|0);
         if (C.u.mh < 1)
             C.rehumanize();
         else if (Number(Boolean(n > 0 && C.u.mh * 10 < C.u.mhmax && C.Unchanging)))
@@ -4277,10 +4277,10 @@ function losehp(n,knam,k_format)
         return;
     }
 
-    ((_hackTarget)=>_hackTarget.uhp = C.int(C.int(C.int(_hackTarget.uhp) - C.int(n))))(C.u);
+    ((_hackTarget)=>_hackTarget.uhp = ((((C.int(_hackTarget.uhp) - C.int(n))|0))|0))(C.u);
     showdamage(n);
     if (C.u.uhp > C.u.uhpmax)
-        C.u.uhpmax = C.int(C.u.uhp); /* perhaps n was negative */
+        C.u.uhpmax = ((C.u.uhp)|0); /* perhaps n was negative */
     if (C.u.uhp < 1) {
         C.svk.killer.format = C.int(k_format);
         if (!C.pointerEqual(C.svk.killer.name,knam)) /* the thing that killed you */
@@ -4345,7 +4345,7 @@ function weight_cap()
         C.float_vs_flight();
     }
 
-    return C.int(C.int( ((carrcap) > ( 1n) ? (carrcap) : ( 1n)))); /* never return 0 */
+    return ((C.int( ((carrcap) > ( 1n) ? (carrcap) : ( 1n))))|0); /* never return 0 */
 }
 
 /*
@@ -4356,13 +4356,13 @@ function inv_weight()
 {
     
     let otmp = C.gi.invent;
-    let wt = C.int(0);
+    let wt = ((0)|0);
 
     while (otmp) {
         if (otmp.oclass == C.COIN_CLASS)
-            wt = C.int(C.int(C.int(wt) + C.int(C.int( (C.long((C.long((C.long((C.long(C.long( otmp.quan))) + (C.long(50n)))))) / (C.long(100n))))))));
+            wt = ((((C.int(wt) + ((C.int( (C.long((C.long((C.long((C.long(C.long( otmp.quan))) + ((50n)))))) / ((100n))))))|0))|0))|0);
         else if (Number(Boolean(otmp.otyp != C.BOULDER || !C.throws_rocks(C.gy.youmonst.data))))
-            wt = C.int(C.uint(C.uint(wt) + C.uint(otmp.owt)));
+            wt = ((((C.uint(wt) + C.uint(otmp.owt))>>>0))|0);
         otmp = otmp.nobj;
     }
     C.gw.wc = C.int(weight_cap());
@@ -4406,15 +4406,15 @@ function check_capacity(str)
             C.pline1(str);
         else
             C.You_cant("do that while carrying so much stuff.");
-        return C.char(1);
+        return ((1)<<24>>24);
     }
-    return C.char(0);
+    return ((0)<<24>>24);
 }
 
 function dump_weights()
 {
     
-    let i; let cnt = C.int(0); let nmwidth = C.int(49); let mcount = C.int(C.NUMMONS); let ocount = C.int(C.NUM_OBJECTS);
+    let i; let cnt = ((0)|0); let nmwidth = ((49)|0); let mcount = C.int(C.NUMMONS); let ocount = C.int(C.NUM_OBJECTS);
     let nmbuf = C.localArray("char",[256]); let nmbufbase = C.localArray("char",[256]);
     let num_entries = C.ulong(C.ulong( (mcount + ocount)));
 
@@ -4422,52 +4422,52 @@ function dump_weights()
                 C.alloc(C.ulong((C.ulong(BigInt(C.sizes["weight_table_entry"]))) * (C.ulong(num_entries)))));
     C.decl_globals_init();
     C.init_objects();
-    for (i = C.int(0); i < mcount; ++i) {
+    for (i = ((0)|0); i < mcount; ++i) {
         if (i != C.PM_LONG_WORM_TAIL) {
             let cm;
 
-            C.weightlist[cnt].wt = C.int(C.int( C.mons[i].cwt));
-            C.weightlist[cnt].idx = C.int(i);
-            C.weightlist[cnt].wtyp = C.uint(1);
-            C.weightlist[cnt].unique = C.char(((C.mons[i].geno & C.G_UNIQ) != 0));
-            C.nh_snprintf("dump_weights",4439,nmbuf, BigInt(1*256), "%07u", C.weightlist[cnt].wt);
+            C.weightAt(cnt).wt = ((((C.mons[i].cwt)|0))|0);
+            C.weightAt(cnt).idx = C.int(i);
+            C.weightAt(cnt).wtyp = ((1)>>>0);
+            C.weightAt(cnt).unique = (((C.mons[i].geno & C.G_UNIQ) != 0)<<24>>24);
+            C.nh_snprintf("dump_weights",4439,nmbuf, BigInt(1*256), "%07u", C.weightAt(cnt).wt);
             cm = C.char(C.CapitalMon(C.mons[i].pmnames[C.NEUTRAL]));
-            C.nh_snprintf("dump_weights",4444,(C.charPointer(nmbuf) + 7), C.ulong((C.ulong(BigInt(1*256))) - (C.ulong(7))), "%s%s", "the body of ",
+            C.nh_snprintf("dump_weights",4444,(C.charPointer(nmbuf) + 7), C.ulong((C.ulong(BigInt(1*256))) - ((7n))), "%s%s", "the body of ",
                      (cm)                     ? C.the(C.mons[i].pmnames[C.NEUTRAL])
-                     : C.weightlist[cnt].unique ? C.mons[i].pmnames[C.NEUTRAL]
+                     : C.weightAt(cnt).unique ? C.mons[i].pmnames[C.NEUTRAL]
                                               : C.an(C.mons[i].pmnames[C.NEUTRAL]));
-            C.weightlist[cnt].nm = C.charPointer(C.dupstr(nmbuf));
+            C.weightAt(cnt).nm = C.charPointer(C.dupstr(nmbuf));
             cnt++;
         }
     }
-    for (i = C.int(0); i < ocount; ++i) {
+    for (i = ((0)|0); i < ocount; ++i) {
         let oc_name = C.charPointer((i == C.SLIME_MOLD) ? "slime mold"
                               : C.obj_descr[i].oc_name);
-        let wt = C.int(C.int( C.objects[i].oc_weight));
+        let wt = ((((C.objects[i].oc_weight)|0))|0);
 
         if (Number(Boolean(wt && oc_name))) {
-            C.weightlist[cnt].idx = C.int(i);
-            C.weightlist[cnt].wt = C.int(wt);
-            C.weightlist[cnt].wtyp = C.uint(2);
-            C.weightlist[cnt].unique = C.char((C.objects[i].oc_unique != 0));
-            C.objects[i].oc_name_known = C.uint(1);
+            C.weightAt(cnt).idx = C.int(i);
+            C.weightAt(cnt).wt = C.int(wt);
+            C.weightAt(cnt).wtyp = ((2)>>>0);
+            C.weightAt(cnt).unique = ((C.objects[i].oc_unique != 0)<<24>>24);
+            C.objects[i].oc_name_known = ((1)>>>0);
             C.Strcpy(nmbufbase, C.simple_typename(i));
             C.nh_snprintf("dump_weights",4463,nmbuf, BigInt(1*256), "%07u%s", wt,
-                     (C.weightlist[cnt].unique) ? C.the(nmbufbase)
+                     (C.weightAt(cnt).unique) ? C.the(nmbufbase)
                                               : C.an(nmbufbase));
-            C.weightlist[cnt].nm = C.charPointer(C.dupstr(nmbuf));
+            C.weightAt(cnt).nm = C.charPointer(C.dupstr(nmbuf));
             cnt++;
         }
     }
     C.qsort(( C.weightlist), cnt,
           BigInt(C.sizes["weight_table_entry"]), cmp_weights);
     C.raw_printf("int all_weights[] = {");
-    for (i = C.int(0); i < cnt; ++i) {
-        if (C.weightlist[i].nm) {
-            C.raw_printf("    %7u%s /* %*s */", C.weightlist[i].wt,
+    for (i = ((0)|0); i < cnt; ++i) {
+        if (C.weightAt(i).nm) {
+            C.raw_printf("    %7u%s /* %*s */", C.weightAt(i).wt,
                        (i == cnt - 1) ? " " : ",", -nmwidth,
-                       (C.charPointer(C.weightlist[i].nm) + 7));
-            C.free(( C.weightlist[i].nm)), C.weightlist[i].nm = C.charPointer(0);
+                       (C.charPointer(C.weightAt(i).nm) + 7));
+            C.free(( C.weightAt(i).nm)), C.weightAt(i).nm = C.charPointer(0);
         }
     }
     C.raw_print("};");
@@ -4493,7 +4493,7 @@ function inv_cnt(incl_gold)
 {
     incl_gold=C.char(incl_gold);
     let otmp = C.gi.invent;
-    let ct = C.int(0);
+    let ct = ((0)|0);
 
     while (otmp) {
         if (Number(Boolean(incl_gold || otmp.invlet != C.GOLD_SYM)))
@@ -4511,19 +4511,19 @@ function money_cnt(otmp)
             return C.long(otmp.quan);
         otmp = otmp.nobj;
     }
-    return C.long(0n);
+    return (0n);
 }
 
 /* calculate x/y, rounding as appropriate */
 function spot_checks(x,y,old_typ)
 {
     x=C.short(x);y=C.short(y);old_typ=C.char(old_typ);
-    let new_typ = C.char(C.levl[x][y].typ);
+    let new_typ = ((C.levl[x][y].typ)<<24>>24);
     let db_ice_now = C.char(C.FALSE);
 
     switch (old_typ) {
     case C.DRAWBRIDGE_UP:
-        db_ice_now = C.char(((C.levl[x][y].drawbridgemask & C.DB_UNDER) == C.DB_ICE));
+        db_ice_now = (((C.levl[x][y].drawbridgemask & C.DB_UNDER) == C.DB_ICE)<<24>>24);
         ;
         /*FALLTHRU*/
     case C.ICE:
@@ -4545,7 +4545,7 @@ function rounddiv(x,y)
 {
     x=C.long(x);y=C.int(y);
     let r; let m;
-    let divsgn = C.int(1);
+    let divsgn = ((1)|0);
 
     if (y == 0)
         C.panic("division by zero in rounddiv");
@@ -4557,7 +4557,7 @@ function rounddiv(x,y)
         divsgn = C.int(-divsgn);
         x = C.long(-x);
     }
-    r = C.int(C.int( (C.long((C.long(x)) / (C.long(y))))));
+    r = ((C.int( (C.long((C.long(x)) / (C.long(y))))))|0);
     m = C.int(C.long((C.long(x)) % (C.long(y))));
     if (2 * m >= y)
         r++;

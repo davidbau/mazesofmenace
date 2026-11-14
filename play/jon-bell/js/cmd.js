@@ -4304,7 +4304,7 @@ export async function doprev_message(liveTopline) {
     let reversed = _pmw === 'r' ? _recent.slice().reverse() : _recent;
     /* topl.c:178-189 + do.c:1379: a checkpoint's remember_topl() leaves a copy of
      * gt.toplines in the maxrow slot, which the full window (topl.c:34-38) lists first. */
-    if (_pmw === 'f' && g._ckptToplSlot && !_noLiveTopl && _recent.length
+    if ((_pmw === 'f' || (_pmw === 'c' && _comboWindow)) && g._ckptToplSlot && !_noLiveTopl && _recent.length
         && String(_recent[_recent.length - 1] || '').replace(/\s+/g, ' ').trim()
             === g._ckptToplSlot.replace(/\s+/g, ' ').trim())
         reversed = [g._ckptToplSlot, ...(history.length > _ring ? _recent.slice(1) : _recent)];
@@ -7726,18 +7726,33 @@ async function _doswapweapon() {
             && g._pending_message.length >= TOPL_LIMIT
             ? g._pending_message.slice(_swapFirst.length + 2) : '';
         if (_swapExtra) {
+            /* Keep the genuine message boundaries of the extras (topl.c:262-265
+             * decides fit per pline): re-key the join record to the remainder so
+             * two extra plines that do not fit together still page apart. */
+            const _fullSwap = g._pending_message;
+            const _shift = _swapFirst.length + 2;
+            const _extraJoins = (g._topl_joins_src === _fullSwap && Array.isArray(g._topl_joins))
+                ? g._topl_joins.filter(j => j > _swapFirst.length).map(j => j - _shift) : [];
+            const _extraFrames = (g._plineFlushFrames || []).filter(f => f.off > _swapFirst.length)
+                .map(f => ({ ...f, off: f.off - _shift }));
             g._pending_message = _swapFirst;
             const _extraMorc = await force_more(_swapFirst);
             if (_extraMorc === 27) {
                 g._swapMoreFrame = null;
                 g._pending_message = '';
-                g._resultMessage = _swapExtra;
+                /* ESC set WIN_STOP at this more() (topl.c:232-235): the extra pline
+                 * that raised it is drawn, later ones (skip was sampled TRUE) are
+                 * swallowed, so only the first extra message survives. */
+                g._resultMessage = _extraJoins.length ? _swapExtra.slice(0, _extraJoins[0]) : _swapExtra;
                 g._topl_win_stop_armed = false;
                 g._topl_win_stop = true;
                 g._topl_win_stop_buf = secondaryLine;
                 return 1;
             }
             g._pending_message = _swapExtra;
+            g._topl_joins = _extraJoins;
+            g._plineFlushFrames = _extraFrames;
+            g._topl_joins_src = _swapExtra;
             g._swapMoreFrame = null;
             await pline(secondaryLine);
             _topl_stash_result();
@@ -9555,6 +9570,10 @@ async function display_nhwindow(win, _blocking) {
      * standing topline message before the window is drawn. */
     if (g._pending_message && !g._topl_win_stop)
         await force_more(g._pending_message);
+    // C wintty.c:1927-1940 clears WIN_MESSAGE before a text/menu window,
+    // including a single-row yn prompt left by topl.c:537-548 cleanup.
+    g._topl_sticky = null;
+    g._topl_empty_sticky = null;
     const lines = w.lines;
     const visLen = (t) => String(t ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd().length;
     let longest = (w.maxcol ?? 1) - 1;
@@ -13780,6 +13799,13 @@ async function dispatch_command(command, outcome = {}, queued = false) {
                 .filter(sym => !shown.includes(sym)).join('');
             const selected = await yn_function('View discoveries for which sort of objects?',
                 shown + (extras ? '\x1b' + extras : ''), '\0', true);
+            if (selected === '\0') {
+                // C o_init.c:1016-1017 `if (!c) clear_nhwindow(WIN_MESSAGE)`
+                // wipes the prompt that topl.c:537-548 left painted.
+                game._pending_message = '';
+                game._topl_sticky = null;
+                game._topl_empty_sticky = null;
+            }
             const oclass = def_char_to_objclass(selected.charCodeAt(0));
             if (classes.includes(oclass)) choice = { key: oclass };
             else if ('aur'.includes(selected)) choice = { key: selected };
@@ -17659,8 +17685,6 @@ async function _ynq_cmd(query) {
      * 109978700 and 0402e0305 each landed this push — the second copy made every
      * answered [ynq] prompt appear twice in the ^P Message History ring
      * (df-xb363ae6b21 step 81). */
-    g._toplEmptyAfterSuppress = false;
-    putmsghistory(`${prompt} ${ch}`);
     /* C topl.c:531-536 clean_up: gt.toplines = prompt + key2txt(q); the prompt
      * was SUPPRESS_HISTORY, so the next remember_topl() files the ANSWERED line. */
     g._toplEmptyAfterSuppress = false;

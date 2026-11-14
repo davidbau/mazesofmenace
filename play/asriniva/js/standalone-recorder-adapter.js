@@ -1,26 +1,28 @@
 // Public recorder host boundary. Only seed/date/options/keys/storage enter the engine.
-// Node reads game data/layouts here; production policies, memory and VM remain pure JS.
-import fs from 'node:fs';
-import path from 'node:path';
-import {fileURLToPath} from 'node:url';
+// Bundled data works in browsers; optional Node diagnostics stay at the host boundary.
+import bundledLayouts from './wasm/tu-layouts.json' with {type:'json'};
 import {setStorageForTesting,vfsReadFile,vfsWriteFile} from './storage.js';
 import {recordingClockEpoch} from './wasm-replay-support.js';
 import {recordingProfile,profileSysconf} from './recording-profile.js';
 import {loadGameAssets} from './nethack/game-assets.js';
 const STATE_PATH='/teleport-standalone-state.json';let loadedData,segmentIndex=0;
-function data(){
+const nodeHost=typeof process!=='undefined'&&Boolean(process.versions?.node);
+async function data(){
  if(loadedData)return loadedData;
- const override=process.env.STANDALONE_RECORDER_ASSETS,assets=override?{}:loadGameAssets();
- function visit(from,to){for(const entry of fs.readdirSync(from,{withFileTypes:true})){const source=path.join(from,entry.name),target=to+'/'+entry.name;if(entry.isDirectory())visit(source,target);else if(entry.isFile())assets[target]={bytes:new Uint8Array(fs.readFileSync(source)),mode:fs.statSync(source).mode&0o777};else throw Error('Unsupported recorder asset '+source);}}
- if(override)visit(path.resolve(override),'/nethack');const layouts=JSON.parse(fs.readFileSync(process.env.STANDALONE_RECORDER_LAYOUTS??fileURLToPath(new URL('./wasm/tu-layouts.json',import.meta.url))));loadedData={assets,layouts};return loadedData;
+ let assets=loadGameAssets(),layouts=bundledLayouts;
+ if(nodeHost&&(process.env.STANDALONE_RECORDER_ASSETS||process.env.STANDALONE_RECORDER_LAYOUTS)){
+  const host=await import('./standalone-recorder-node.js');
+  ({assets,layouts}=host.loadRecorderOverrides(assets,layouts));
+ }
+ loadedData={assets,layouts};return loadedData;
 }
 export async function runSegment(input){
  if(typeof input.moves!=='string'&&input.moves!==undefined)throw TypeError('Recorder moves must be literal text');
- const index=segmentIndex++,moves=input.moves??'',profile=recordingProfile(),epoch=Number(recordingClockEpoch()),timezone=process.env.TZ||Intl.DateTimeFormat().resolvedOptions().timeZone,counts={get:0,set:0,remove:0};
+ const index=segmentIndex++,moves=input.moves??'',profile=recordingProfile(),epoch=Number(recordingClockEpoch()),timezone=(nodeHost&&process.env.TZ)||Intl.DateTimeFormat().resolvedOptions().timeZone,counts={get:0,set:0,remove:0};
  const storage=input.storage?{getItem(key){counts.get++;return input.storage.getItem(key);},setItem(key,value){counts.set++;return input.storage.setItem(key,value);},removeItem(key){counts.remove++;return input.storage.removeItem(key);},get length(){return input.storage.length;},key:i=>input.storage.key(i)}:null;
- setStorageForTesting(storage);const previous=vfsReadFile(STATE_PATH),{assets,layouts}=data(),env={NETHACKDIR:'/nethack',HACKDIR:'/nethack',HOME:profile.home,USER:'root',LOGNAME:'root',TERM:'xterm-256color',TERMINFO:'/nethack/terminfo',LINES:'24',COLUMNS:'80',TZ:timezone,NETHACK_NO_DELAY:'1',NOMUX_MARKERS:'1',NETHACK_RAW_KEYS:'1',NETHACK_SEED:String(input.seed??0),NETHACK_FIXED_DATETIME:input.datetime||'20000110090000',NETHACK_RECORDING_EPOCH:String(epoch),NETHACK_RNGLOG:'/rng.log'};
+ setStorageForTesting(storage);const previous=vfsReadFile(STATE_PATH),{assets,layouts}=await data(),env={NETHACKDIR:'/nethack',HACKDIR:'/nethack',HOME:profile.home,USER:'root',LOGNAME:'root',TERM:'xterm-256color',TERMINFO:'/nethack/terminfo',LINES:'24',COLUMNS:'80',TZ:timezone,NETHACK_NO_DELAY:'1',NOMUX_MARKERS:'1',NETHACK_RAW_KEYS:'1',NETHACK_SEED:String(input.seed??0),NETHACK_FIXED_DATETIME:input.datetime||'20000110090000',NETHACK_RECORDING_EPOCH:String(epoch),NETHACK_RNGLOG:'/rng.log'};
  const installed={...assets,[profile.home+'/.nethackrc']:{bytes:new TextEncoder().encode(input.nethackrc??''),mode:0o666},'/nethack/sysconf':{bytes:new TextEncoder().encode(profileSysconf(new TextDecoder().decode(assets['/nethack/sysconf'].bytes),profile)),mode:0o666}};
- const names=['WebAssembly','fetch','Worker','WebSocket','XMLHttpRequest'],isolatedWorker=process.argv.some(a=>a.startsWith('--worker-session=')),saved=isolatedWorker?null:names.map(name=>Object.getOwnPropertyDescriptor(globalThis,name)),exhausted=new Error('Recorder input exhausted'),screens=[],cursors=[],animations=[];let program,keyIndex=0,rng=[],state,error=null,forbiddenAttempts=0,pending=[];
+ const names=['WebAssembly','fetch','Worker','WebSocket','XMLHttpRequest'],isolatedWorker=nodeHost&&process.argv.some(a=>a.startsWith('--worker-session=')),saved=isolatedWorker?null:names.map(name=>Object.getOwnPropertyDescriptor(globalThis,name)),exhausted=new Error('Recorder input exhausted'),screens=[],cursors=[],animations=[];let program,keyIndex=0,rng=[],state,error=null,forbiddenAttempts=0,pending=[];
  const deny=()=>{forbiddenAttempts++;throw Error('Forbidden Wasm/network capability in pure-JS recorder');};
  try{
   // Recorder workers are disposable; remove lazy globals without initializing them.
@@ -38,7 +40,9 @@ export async function runSegment(input){
  }catch(e){error=String(e?.stack??e);throw Error('Pure-JS recorder failed: '+error);}
  finally{
   if(saved)names.forEach((name,i)=>saved[i]?Object.defineProperty(globalThis,name,saved[i]):delete globalThis[name]);
-  const directory=process.env.STANDALONE_RECORDER_STATS_DIR;
-  if(directory){fs.mkdirSync(directory,{recursive:true});const worker=process.argv.find(a=>a.startsWith('--worker-session=')),session=worker?path.basename(worker.slice('--worker-session='.length)):'direct';fs.writeFileSync(path.join(directory,session+'.'+process.pid+'.'+index+'.json'),JSON.stringify({session,pid:process.pid,segment:index,inputKeys:moves.length,consumedKeys:keyIndex,rngCalls:rng.filter(line=>/^(?:rn2|rnd|rn1|rnl|rne|rnz|d)\(/.test(line)).length,screens:screens.length,cursors:cursors.length,animationSteps:animations.length,animationFrames:animations.map(frames=>frames.length),animationCursors:animations.map(frames=>frames.map(frame=>Array.isArray(frame.cursor)?[...frame.cursor]:null)),animationTotal:animations.reduce((n,frames)=>n+frames.length,0),pendingAnimationFrames:pending.length,storage:counts,persistedFiles:state?Object.keys(state.files):[],deletedFiles:state?.deleted??[],forbiddenAttempts,error},null,2));}
+  if(nodeHost&&process.env.STANDALONE_RECORDER_STATS_DIR){
+   const {writeRecorderStats}=await import('./standalone-recorder-node.js');
+   writeRecorderStats(index,(session,pid)=>({session,pid,segment:index,inputKeys:moves.length,consumedKeys:keyIndex,rngCalls:rng.filter(line=>/^(?:rn2|rnd|rn1|rnl|rne|rnz|d)\(/.test(line)).length,screens:screens.length,cursors:cursors.length,animationSteps:animations.length,animationFrames:animations.map(frames=>frames.length),animationCursors:animations.map(frames=>frames.map(frame=>Array.isArray(frame.cursor)?[...frame.cursor]:null)),animationTotal:animations.reduce((n,frames)=>n+frames.length,0),pendingAnimationFrames:pending.length,storage:counts,persistedFiles:state?Object.keys(state.files):[],deletedFiles:state?.deleted??[],forbiddenAttempts,error}));
+  }
  }
 }

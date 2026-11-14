@@ -1121,7 +1121,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
     /* C uhitm.c:462-463 — `if (is_safemon(mtmp) && !forcefight) { if
      * (!u_wield_art(ART_STORMBRINGER)) {...} }`: an intelligent chaotic
      * weapon skips the swap/stop block and falls through to the attack. */
-    if (is_safemon(mtmp) && !forcefight
+    if (!kickOnly && is_safemon(mtmp) && !forcefight
         && !_ac_is_art(game.u?.uwep, _AC_ART_STORMBRINGER)) {
         /* C uhitm.c:475-478:
          *   boolean foo = (Punished || !rn2(7)
@@ -1221,14 +1221,16 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
      * hero whose drop_weapon() (polyself.c:1346) had emptied uwep. */
 
     /* C uhitm.c:515 — go.override_confirmation = FALSE (set by attack_checks) */
-    (game.go ||= {}).override_confirmation = false;
-    {
-        const _u = game.u || {};
-        const _bx = ((_u.ux | 0) + (_u.dx | 0)) | 0;
-        const _by = ((_u.uy | 0) + (_u.dy | 0)) | 0;
-        (game.gb ||= {}).bhitpos = { x: _bx, y: _by };
-        (game.gn ||= {}).notonhead =
-            (_bx !== (mtmp.mx | 0) || _by !== (mtmp.my | 0));
+    if (!kickOnly) {
+        (game.go ||= {}).override_confirmation = false;
+        {
+            const _u = game.u || {};
+            const _bx = ((_u.ux | 0) + (_u.dx | 0)) | 0;
+            const _by = ((_u.uy | 0) + (_u.dy | 0)) | 0;
+            (game.gb ||= {}).bhitpos = { x: _bx, y: _by };
+            (game.gn ||= {}).notonhead =
+                (_bx !== (mtmp.mx | 0) || _by !== (mtmp.my | 0));
+        }
     }
     /* Step 1: C uhitm.c:519 `if (attack_checks(mtmp, uwep)) return TRUE;`.
      * TRUE aborts do_attack BEFORE overexertion() and exercise(), so neither
@@ -1923,14 +1925,14 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
     const _hmonas = async () => {
         // C uhitm.c:5434: shared visibility for the mhitm_ad_* handlers.
         game.v = game.v || {};
-        game.v.vis = canseemon(mtmp) || _ac_m_next2u(mtmp);
+        if (!kickOnly) game.v.vis = canseemon(mtmp) || _ac_m_next2u(mtmp);
         const AT_CLAW_H = 1, AT_KICK_H = 3, AT_SPIT_H = 10, AT_ENGL_H = 11,
               AT_BREA_H = 12, AT_EXPL_H = 13, AT_GAZE_H = 15,
               AT_HUGS_H = 7, AT_WEAP_H = 254, AT_MAGC_H = 255;
         // C uhitm.c:5441,5462: count and execute the substituted attacks,
         // including physical lich touches against cold-resistant defenders.
         const _sumHist = Array(NATTK_UH).fill(M_ATTK_MISS);
-        const rows = Array.from({ length: NATTK_UH }, (_, i) =>
+        const rows = kickOnly ? [] : Array.from({ length: NATTK_UH }, (_, i) =>
             getmattk(game.youmonst, false, mtmp, i, _sumHist)
             || { aatyp: 0, adtyp: 0, damn: 0, damd: 0 });
         let odd_claw = true; /* C uhitm.c:5428, 5445-5448, 5470 */
@@ -1988,6 +1990,35 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
             }
             return M_ATTK_HIT; /* C uhitm.c:4883 */
         };
+        // C dokick.c:183-223 owns a distinct loop: raw current-form attacks,
+        // one to-hit calculation, and no melee displacement or hmonas cleanup.
+        if (kickOnly) {
+            _find_roll_to_hit();
+            check_caitiff(mtmp);
+            const tmp = _tmpBase + (_uh_martial_bonus() ? await weapon_hit_bonus(null) : 0);
+            mon_maybe_unparalyze(mtmp);
+            for (let i = 0; i < NATTK_UH; i++) {
+                if ((game.multi | 0) < 0) break;
+                const row = game.youmonst.data.mattk[i];
+                if (row.aatyp !== AT_KICK_H) continue;
+                const dieroll = rnd(20);
+                const specialdmg = special_dmgval(game.youmonst, mtmp, W_ARMF, null);
+                if (mtmp.data.pmidx === PM_SHADE && !specialdmg) {
+                    await Your('kick passes harmlessly through %s.', mon_nam(mtmp));
+                    break;
+                } else if (tmp > dieroll) {
+                    await You('kick %s.', mon_nam(mtmp));
+                    const sum = await _damageum(row, specialdmg);
+                    await passive(mtmp, u.uarmf, sum !== M_ATTK_MISS,
+                                  !(sum & M_ATTK_DEF_DIED), AT_KICK_H, false);
+                    if (sum & M_ATTK_DEF_DIED) break;
+                } else {
+                    await missum(mtmp, tmp + _armorpenalty > dieroll, row);
+                    await passive(mtmp, u.uarmf, false, 1, AT_KICK_H, false);
+                }
+            }
+            return;
+        }
         const _passiveAndKnockback = async (aatypRow, mhitRow, weaponRow, sumRow = M_ATTK_MISS) => {
             /* C hmonas: retain every row's sum[i], including explum/gulpum,
              * for getmattk and the later hug/two-handed-weapon checks. */
@@ -2006,7 +2037,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                        !diedThisRow, aatypRow | 0, false);
             /* uhitm.c:5833 mhitm_knockback(&youmonst, mon, mattk, &sum[i],
              * weapon_used): TRUE breaks out of the attack loop. */
-            if (!kickOnly && await _hero_mhitm_knockback(mtmp, weapon_used ? u.uwep : null,
+            if (await _hero_mhitm_knockback(mtmp, weapon_used ? u.uwep : null,
                                             aatypRow | 0, _curAdtyp, !!(sumRow & M_ATTK_HIT)))
                 _knockedBreak = true;
         };
@@ -2081,8 +2112,6 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                 || { aatyp: 0, adtyp: 0, damn: 0, damd: 0 };
             const aatyp = row.aatyp | 0;
             _curAdtyp = row.adtyp | 0;
-            if (kickOnly && aatyp !== AT_KICK_H)
-                continue; /* dokick.c:201 "we only care about kicking attacks" */
             /* C uhitm.c:5559 — a kick can't be made from inside a pit
              * (mtrapped_in_pit(&youmonst), mhitu.c:467-476). */
             if (aatyp === AT_KICK_H && u.utrap && (u.utraptype | 0) === TT_PIT) {
@@ -2587,25 +2616,10 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
              * is seen by the next row's to-hit. */
             _find_roll_to_hit();
             let tmp = _tmpBase;
-            /* uhitm.c:419-423 — weapon==NULL here, so `if (weapon)
-             * tmp += hitval(...)` never fires; `tmp += weapon_hit_bonus(weapon)`
-             * still does for AT_CLAW, and AT_KICK gets it only with
-             * martial_bonus(). */
-            if (aatyp === AT_CLAW_H)
-                tmp += await weapon_hit_bonus(null);
-            else if (aatyp === AT_KICK_H && _uh_martial_bonus())
+            if (aatyp === AT_CLAW_H || (aatyp === AT_KICK_H && _uh_martial_bonus()))
                 tmp += await weapon_hit_bonus(null);
             mon_maybe_unparalyze(mtmp);
             const dieroll = rnd(20);
-            /* C dokick.c:204-214: kick_monster checks special damage and
-             * shade immunity even when the kick's to-hit roll would miss.
-             * A harmless kick ends the sequence without passive retaliation. */
-            const kickSpecial = kickOnly
-                ? special_dmgval(game.youmonst, mtmp, W_ARMF, null) : 0;
-            if (kickOnly && mtmp.data?.pmidx === PM_SHADE && !kickSpecial) {
-                await Your('kick passes harmlessly through %s.', mon_nam(mtmp));
-                break;
-            }
             const dhit = tmp > dieroll || !!(u && u.uswallow);
             let _sumI = M_ATTK_MISS;
             /* C uhitm.c:5581-5590, the prologue of this arm's `if (dhit)`:
@@ -2659,8 +2673,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                           (_compat === 2) ? 'engagingly' : 'seductively');
                 _sumI = await _damageum(row, 0);
             } else if (dhit) {
-                if (!kickOnly)
-                    await wakeup_attack(mtmp, true); /* C uhitm.c:5590 */
+                await wakeup_attack(mtmp, true); /* C uhitm.c:5590 */
                 const AT_TUCH_H = 5, AT_BUTT_H = 4, AT_STNG_H = 6,
                       AT_BITE_H = 2, AT_TENT_H = 16;
                 let verb;
@@ -2682,8 +2695,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                         | ((!odd_claw || !multi_claw) ? W_RINGR : 0);
                 } else if (aatyp === AT_KICK_H) armask = W_ARMF;
                 else if (aatyp === AT_BUTT_H) armask = W_ARMH;
-                if (armask) specialdmg = kickOnly ? kickSpecial
-                    : special_dmgval(game.youmonst, mtmp, armask, silverhit);
+                if (armask) specialdmg = special_dmgval(game.youmonst, mtmp, armask, silverhit);
                 const isShade = !!(mtmp.data && (mtmp.data.pmidx | 0) === PM_SHADE);
                 if (isShade && !specialdmg) {
                     if (verb === 'hit'
@@ -2692,10 +2704,6 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                         verb = 'attack';
                     await Your('%s %s harmlessly through %s.', verb, vtense(verb, 'pass'),
                          mon_nam(mtmp));
-                    /* dokick.c:213-216 -- the kick loop breaks here: no
-                     * passive() for a shade, no further kicks. */
-                    if (kickOnly)
-                        break;
                 } else {
                     const adtyp = row.adtyp | 0;
                     const isUnsolid = !!(mtmp.data
@@ -2742,7 +2750,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
      * (m_move(mtmp, 0) == MMOVE_DIED || it moved)` -> "You miss wildly and
      * stumble forwards." and do_attack returns FALSE.  The rn2(7) comes
      * before the to-hit roll. */
-    if (mtmp.data && (mtmp.data.mlet | 0) === 12 /* S_LEPRECHAUN */
+    if (!kickOnly && mtmp.data && (mtmp.data.mlet | 0) === 12 /* S_LEPRECHAUN */
         && !(mtmp.mfrozen | 0) && !helpless(mtmp)
         && !(mtmp.mconf | 0) && (mtmp.mcansee | 0) && !rn2(7)
         && (((await m_move(mtmp, 0)) | 0) === 2 /* MMOVE_DIED */
@@ -2754,6 +2762,7 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
 
     if (Upolyd(u)) {
         await _hmonas();
+        if (kickOnly) return true;
     } else hitum: {
         const _twohits = (u && u.uwep) ? (u.twoweap ? 1 : 0) : (double_punch() ? 1 : 0);
         /* C hitum: `x = u.ux + u.dx, y = u.uy + u.dy` — the attacked square,

@@ -1,7 +1,7 @@
 // One per-game native field owner. Legacy byte-level services are explicit
 // synchronization boundaries; native-to-native field access stays in JS.
 export class NativeStateBridge {
- constructor() { this.sharedTypes=new Set(['struct you','struct prop','struct d_level','struct u_roleplay','struct u_conduct','struct monst','struct permonst','struct obj','struct rm','struct nhcoord','struct attack','struct mfndposdata','struct mextra','struct edog','struct eshk','struct epri','struct emin','struct egd','struct ebones','struct trap']);this.providers=[];this.schemaVersion=0;this.enriched=new WeakMap();this.depth=0; this.epoch=0; this.dirty=new Set();this.aliasVersions=new Map();this.pendingAliases=new Map(); this.fields=0; this.hits=0; this.boundaries=0; }
+ constructor() { this.sharedTypes=new Set(['struct you','struct prop','struct d_level','struct u_roleplay','struct u_conduct','struct monst','struct permonst','struct obj','struct rm','struct nhcoord','struct attack','struct mfndposdata','struct mextra','struct edog','struct eshk','struct epri','struct emin','struct egd','struct ebones','struct trap','struct engr']);this.providers=[];this.schemaVersion=0;this.enriched=new WeakMap();this.depth=0; this.epoch=0; this.dirty=new Set();this.aliasVersions=new Map();this.pendingAliases=new Map(); this.fields=0; this.hits=0; this.boundaries=0; }
  registerSchemas(provider) {this.providers.push(provider);this.schemaVersion++;}
  enrich(record,type,address) {
   if(this.enriched.get(record)===this.schemaVersion)return;

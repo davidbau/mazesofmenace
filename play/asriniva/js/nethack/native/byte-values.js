@@ -10,7 +10,7 @@ export function createNativeByteValues(environment){
   const bytes=()=>{reservation.assertAlive();return at===undefined?(data??=new Uint8Array(size)):memory.HEAPU8.subarray(at,at+size);};
   function make(offset){
    reservation.assertAlive();if(!Number.isSafeInteger(offset)||offset<0||offset>size)throw RangeError('Native byte buffer extent');if(views.has(offset))return views.get(offset);
-   const value={nativeBytes:true,get address(){reservation.assertAlive();if(at===undefined){at=reservation();if(data){memory.HEAPU8.set(data,at);data=undefined;}}return at+offset;},
+   const value={nativeBytes:true,[Symbol.toPrimitive](){return this.address;},get address(){reservation.assertAlive();if(at===undefined){at=reservation();if(data){memory.HEAPU8.set(data,at);data=undefined;}}return at+offset;},
     at(index){if(!Number.isSafeInteger(index))throw RangeError('Native byte buffer extent');return make(offset+index);},
     store(i,v){i+=offset;bounds(i);v=t.char(v);bytes()[i]=v;return v;},
     load(i=0){i+=offset;bounds(i);const v=bytes()[i];return v<<24>>24;},

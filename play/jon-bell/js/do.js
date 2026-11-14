@@ -2921,7 +2921,14 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
      * the ring slot at maxrow but neither advances maxrow nor clears toplines; until the
      * next message overwrites it, that slot is the FIRST line of a ^P full window.
      * save.c:406 skips savegamestate (and history) when checkpoint is off. */
-    g._ckptToplSlot = (g.flags.ins_chkpt ?? true) ? String(g._pending_message || g._resultMessage || '') || null : null;
+    /* gt.toplines is never cleared by more()/clear_nhwindow (only remember_topl()
+     * resets it when the NEXT message arrives), so a --More-- already dismissed
+     * still leaves its text as the checkpointed slot: fall back to the newest
+     * history entry unless a SUPPRESS_HISTORY line emptied toplines. */
+    g._ckptToplSlot = (g.flags.ins_chkpt ?? true)
+        ? (String(g._pending_message || g._resultMessage
+            || (g._toplEmptyAfterSuppress ? '' : (g._msg_history?.at(-1) ?? ''))) || null)
+        : null;
     if ((g.flags.ins_chkpt ?? true) && (g.iflags.purge_monsters | 0))
         await dmonsfree();
     if ((g.flags.ins_chkpt ?? true) && g.objs_deleted) dobjsfree();

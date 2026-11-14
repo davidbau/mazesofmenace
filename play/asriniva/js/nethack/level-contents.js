@@ -1,26 +1,17 @@
 // Next level-generation owners on shared storage; source policies unchanged.
 import {callRegion} from './bindings/region.js';
 import {enableDig} from './dig.js';
-import {make_grave,random_engraving,rubouts} from '../ported/engrave.js';
+import {nativeEngraveFor} from './engrave.js';
 import {enableRandomText} from './random-text.js';
 import {nativeSpatialFor} from './native/spatial-state.js';
 import {enableVision} from './vision.js';
-import abi from './trap-abi.json' with {type:'json'};
-import * as trap from '../ported/trap.js';
+import {enableTrap} from './trap.js';
 import {invocation_pos,in_rooms} from '../ported/hack.js';
-import {callTrap} from './bindings/trap.js';
 import {antholemon,courtmon,mkundead,squadprob,fill_zoo,cmap_to_type,do_mkroom,has_dnstairs,has_upstairs,inside_room,somex,somey,somexy,somexyspace,save_rooms,rest_rooms,search_special} from '../ported/mkroom.js';
-import {enableSchemaPort} from './schema-port.js';
 export function enableLevelContents(environment,layouts,creation){
  if(!environment.hasFunction('m_dowear'))environment.enableMonsterInventory(layouts);
- const randomText=enableRandomText(environment,layouts),engraving=environment.start('world-engravings').environment;
- engraving.get_rnd_text=(name,out,rng,pad)=>{if(rng!==engraving.rn2)throw new Error('Unexpected engraving RNG callback');return environment.resolve('get_rnd_text')(name,out,environment.functionPointer('rn2','ii'),pad);};
- const text=p=>typeof p==='string'?environment.services.literal(p):environment.address(p);
- engraving.rubouts=rubouts.map(row=>({...row,wipeto:environment.services.literal(row.wipeto)}));
- engraving.strlen=p=>BigInt(environment.memory.strlen(text(p)));engraving.strchr=(p,ch)=>environment.services.strchr(text(p),ch);
- engraving.loadChar=p=>environment.transport.read('Int8',text(p));engraving.storeChar=(p,v)=>environment.transport.write('Int8',environment.address(p),v);
- engraving.rn2=(n,line,caller)=>{if(environment.services.rng_log_enabled())environment.services.rng_log_set_caller(environment.services.literal('engrave.c'),line,environment.services.literal(caller));return environment.services.rn2(n);};
- environment.extend('world-engravings',{make_grave,random_engraving});
+ const randomText=enableRandomText(environment,layouts),engraving=nativeEngraveFor(environment,layouts);
+ environment.extend('world-engravings',Object.fromEntries(['make_grave','random_engraving'].map(name=>[name,engraving.functions[name]])));
  const vision=enableVision(environment,layouts);
  const regions=environment.start('region-reset').environment;environment.extend('region-reset',Object.fromEntries(['visible_region_at','any_visible_region'].filter(name=>!environment.hasFunction(name)).map(name=>[name,nativeSpatialFor(environment,layouts).regions[name]])));
  enableDig(environment,layouts);
@@ -30,7 +21,7 @@ export function enableLevelContents(environment,layouts,creation){
  const numeric=k=>typeof k==='string'&&/^-?\d+$/.test(k),cell=(x,y)=>new Proxy(creation.environment.levl[x][y],{get:(o,k,r)=>numeric(k)?creation.views.advance(o,Number(k)):Reflect.get(o,k,r)});
  Object.defineProperty(position,'levl',{value:new Proxy({}, {get:(_,x)=>new Proxy({}, {get:(_,y)=>cell(Number(x),Number(y))})})});
  environment.register('level-invocation',{invocation_pos,in_rooms},position);
- const traps=enableSchemaPort(environment,'trap',trap,trap.trapSchema,abi.layout,callTrap,['maketrap']);environment.extend('trap',{t_at:nativeSpatialFor(environment,layouts).t_at});
+ const traps=enableTrap(environment,layouts);
  const room=creation.context(layouts.mkroom),{views}=creation;
  // Original MKROOM bridge materializes these native struct obj* returns.
  for(const name of ['mkgold','mk_tt_object','mksobj_at','mkobj','add_to_container','mkobj_at','mksobj','sobj_at'])room[name]=(...args)=>views.record('struct obj',environment.resolve(name)(...args.map(v=>v?.address??v)));

@@ -2541,7 +2541,7 @@ async function use_grease(obj) {
         }
         const otmp = await getObjFromGetobj('grease', _grease_ok, GETOBJ_PROMPT);
         if (!otmp) return ECMD_CANCEL;
-        if (!otmp.hands && inaccessible_equipment(otmp, 'grease', false)) return ECMD_OK;
+        if (!otmp.hands && await inaccessible_equipment(otmp, 'grease', false)) return ECMD_OK;
         consume_obj_charge(obj, true);
         const oldglib = _hprop(GLIB) & TIMEOUT;
         if (!otmp.hands) {
@@ -2976,6 +2976,18 @@ export async function doapply() {
              * and setuwep() then runs; the displaced artifact's plines (Sting_effects
              * "Sting stops quivering.", via worn.c:106) join it, so the first --More--
              * pages both (topl.c:262-265). */
+            /* C wield.c:226 prinv() -> update_topl (topl.c:257-275): a standing line
+             * (the first retouch_object's blast, apply.c:4232, artifact.c:951) that
+             * does not fit beside the prinv is paged first. */
+            let _standEsc = false;
+            if (wasSwap && g._pending_message && !g._topl_win_stop
+                && g._pending_message.length + 2 + msg1.length - 8 >= TOPL_LIMIT) {
+                const _standing = g._pending_message;
+                pline_flush_point();
+                _standEsc = (await force_more(_standing)) === 27;
+                g._pending_message = '';
+                if (g._topl_win_stop_armed) { g._topl_win_stop_armed = false; g._topl_win_stop = true; }
+            }
             let _swapSetDone = false, _swapExtra = '';
             if (wasSwap && _swapWeldMsg === null) {
                 const _base = msg1.slice(0, -8);
@@ -2995,8 +3007,20 @@ export async function doapply() {
             if (!wasSwap) {
                 if (plainMsg !== null) {
                     pline_flush_point();
-                    g._pending_message = plainMsg;
+                    /* A standing topline (e.g. "OK, so you don't die." after a
+                     * lifesaved touch_artifact blast, end.c:1117) is paged or
+                     * joined by update_topl (topl.c:262-275), never replaced. */
+                    if (g._pending_message) await pline('%s', plainMsg);
+                    else g._pending_message = plainMsg;
                 }
+            } else if (_standEsc) {
+                /* ESC at the standing page's more() set WIN_STOP (topl.c:232-235):
+                 * the prinv that raised it is still drawn (skip was sampled
+                 * before), and everything after it is swallowed. */
+                g._pending_message = msg1.slice(0, -'--More--'.length);
+                g._topl_win_stop = true;
+                g._topl_win_stop_armed = false;
+                g._topl_win_stop_buf = g._pending_message;
             } else {
                 await _showMsg1();
                 await await_topl_more_dismiss(_showMsg1);
@@ -3031,7 +3055,7 @@ export async function doapply() {
             const msg2 = oldwep
                 ? `${await _prinv_line(oldwep, `alternate weapon${((oldwep.quan ?? 1) | 0) === 1 ? '' : 's'}; not wielded`)}--More--`
                 : 'You have no secondary weapon readied.--More--';
-            g._pending_message = msg2.slice(0, -'--More--'.length);
+            if (!_standEsc) g._pending_message = msg2.slice(0, -'--More--'.length);
             /* topl.c more():232-235 — an ESC on page #1 set WIN_STOP at more()
              * time; msg2 is the pline that raised it and is still drawn (skip
              * was sampled before), but everything the wield turn prints after

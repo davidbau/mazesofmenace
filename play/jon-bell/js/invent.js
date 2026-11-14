@@ -2443,6 +2443,8 @@ export async function dotypeinv() {
                 typesAll, '\0', true);
             if (c === '\0') {
                 g._pending_message = '';
+                g._topl_sticky = null;
+                g._topl_empty_sticky = null;
                 await flush_screen(1);   /* clear_nhwindow(WIN_MESSAGE) */
                 return ECMD_OK;
             }

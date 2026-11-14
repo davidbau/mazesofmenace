@@ -6151,7 +6151,10 @@ export async function xkilled(mtmp, xkflags) {
         unmap_object(dx, dy);
     if (mtmp.mleashed) m_unleash(mtmp, false); /* C mon.c:2741-2742 m_detach */
     await unlink_mon(mtmp, onmap);
-    newsym(dx, dy);
+    /* C mon.c:2698-2726: mon_leaving_level redraws only an occupied
+     * on-map square.  grddead may already have parked this guard at <0,0>;
+     * dx/dy still name xkilled's original death square for its later redraw. */
+    if (onmap) newsym(dx, dy);
     if (mtmp.iswiz) wizdeadorgone(); /* C mon.c:2761-2762, before relobj */
     await quest_monster_died(mtmp);
     }

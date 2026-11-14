@@ -887,7 +887,7 @@ export async function Boots_off() {
         const HFast = rec ? (rec.intrinsic | 0) : 0;
         if (!_dw_Very_fast() && !cancelled) {
             makeknown_otyp(otyp);
-            await pline(`You feel yourself slow down${HFast ? ' a bit' : ''}.`);
+            await You_feel(`yourself slow down${HFast ? ' a bit' : ''}.`);
         }
     } else if (otyp === LEVITATION_BOOTS_OTYP_DW) {
         const BLevFromOutside = (rec ? (rec.blocked | 0) : 0) & FROMOUTSIDE;
@@ -1270,7 +1270,7 @@ export async function Helmet_on() {
         } else {
             const di = C_ATTR_TO_DISP[A_INT] ?? A_INT;
             const tot = (getAbase(u)[di] | 0) + ((u.abon?.a?.[di]) | 0) + ((u.atemp?.a?.[di]) | 0);
-            await pline(`You feel ${acurr(u, A_INT) <= tot ? 'like sitting in a corner' : 'giddy'}.`);
+            await You_feel(`${acurr(u, A_INT) <= tot ? 'like sitting in a corner' : 'giddy'}.`);
         }
     }
     if (u.uarmh && ARMOR_DATA[u.uarmh.otyp]?.armcat !== ARM_HELM && u.uarmh.otyp !== 'FEDORA')
@@ -1310,7 +1310,7 @@ export async function Boots_on() {
             const HFast = rec ? (rec.intrinsic | 0) : 0;
             if (!oldprop && !(HFast & PROP_TIMEOUT)) {
                 discover_object(otyp, true, true, true);
-                await pline(`You feel yourself speed up${(oldprop || HFast) ? ' a bit more' : ''}.`);
+                await You_feel(`yourself speed up${(oldprop || HFast) ? ' a bit more' : ''}.`);
             }
             break;
         }
@@ -1574,7 +1574,7 @@ const LENSES_OTYP_DW = 232;
 export async function cursed_dw(otmp) {
     const u = game.u;
     if (!otmp) {
-        impossible_do_wear('cursed without otmp');
+        await equipment_impossible('cursed without otmp');
         return false;
     }
     if (otmp === u.uwep ? welded(otmp) : otmp.cursed) {
@@ -2492,85 +2492,26 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
         } else if (g.u.uright) {
             mask = LEFT_RING_VAL;
         } else {
-            const u = g.u;
-            /* C do_wear.c:2271-2272 — humanoid(gy.youmonst.data) ? "ring-" : ""
-             * (mondata.h:65, mflags1 & M1_HUMANOID). */
-            const humanoid = _humanoid_dw();
-            const qbuf = `Which ${humanoid ? 'ring-' : ''}${body_part(FINGER)}, Right or Left?`;
-            /* tty_yn_function renders "<q> [rl]" with cursor one past the prompt. */
-            const promptText = `${qbuf} [rl]`;
-            /* C cmd.c:5394 yn_menuable_resp(rightleftchars): query_menu answers via a menu. */
-            if (g.iflags?.query_menu) {
-                const { yn_function_menu } = await import('./cmd.js');
-                const ans = await yn_function_menu(qbuf, 'rl', '\0');
-                if (ans !== null) {
-                    if (ans === 'l' || ans === 'L') mask = LEFT_RING_VAL;
-                    else if (ans === 'r' || ans === 'R') mask = RIGHT_RING_VAL;
-                    else return ECMD_OK;
-                }
-            }
-            while (!mask) {
-            /* C cmd.c:5497 yn_function(..., addcmdq=TRUE): a queued CMDQ_KEY
-             * (^A repeat, CQ_REPEAT) answers without prompting; any other
-             * queued entry clears CQ_CANNED and the answer is ESC. */
-            {
-                const cq = cmdq_pop();
-                if (cq) {
-                    if (cq.typ === CMDQ_KEY) {
-                        const qc = String.fromCharCode(cq.key & 255);
-                        if (qc === 'l' || qc === 'L') { mask = LEFT_RING_VAL; break; }
-                        if (qc === 'r' || qc === 'R') { mask = RIGHT_RING_VAL; break; }
-                        if (qc === '\0' || qc === '\x1b') return ECMD_OK;
-                        continue;
-                    }
-                    cmdq_clear(CQ_CANNED);
+            // C do_wear.c:2270-2287: yn_function consumes queued answers
+            // before opening a prompt and records menu answers for do-again.
+            const { yn_function } = await import('./cmd.js');
+            const query = `Which ${_humanoid_dw() ? 'ring-' : ''}${body_part(FINGER)}, Right or Left?`;
+            do {
+                const answer = await yn_function(query, 'rl', '\0', true);
+                switch (answer) {
+                case '\0':
+                case '\x1b':
                     return ECMD_OK;
+                case 'l':
+                case 'L':
+                    mask = LEFT_RING_VAL;
+                    break;
+                case 'r':
+                case 'R':
+                    mask = RIGHT_RING_VAL;
+                    break;
                 }
-            }
-            g._pending_message = promptText;
-            /* C topl.c:421 custompline() files the prompt in gp.prevmsg (pline.c:282). */
-            g._prevmsg = promptText + ' ';
-            await flush_screen(1);
-            {
-                const disp = g.nhDisplay;
-                if (disp) topl_park_cursor(disp, promptText + ' ');
-            }
-            /* C topl.c:531-541 clean_up — Sprintf(gt.toplines, "%s%s", prompt,
-             * rtmp) with rtmp = key2txt(q) and prompt's trailing space, so the
-             * line remember_topl() files is the ANSWERED prompt ("... [rl] l"),
-             * never the bare question: the initial custompline carried
-             * SUPPRESS_HISTORY (topl.c:428), so nothing files it first. */
-            const fileAnswered = (q) => {
-                g._toplEmptyAfterSuppress = false; /* gt.toplines non-empty */
-                putmsghistory(promptText + ' ' + key2txt(q));
-            };
-            for (;;) {
-                /* topl.c:428 SUPPRESS_HISTORY also covers the answer read:
-                 * unsuppressed, nhgetch files _pending_message as the bare
-                 * prompt, and ^P then recalls it without the answer. */
-                const savedHist = g._topl_suppress_history;
-                g._topl_suppress_history = true;
-                let raw;
-                try { raw = await nhgetch(); }
-                finally { g._topl_suppress_history = savedHist; }
-                const key = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-                /* C tty_yn_function (topl.c:463-474) maps ESC and
-                 * space/CR/LF to the NUL default.  Its cleanup leaves a
-                 * single-row prompt painted (topl.c:533-548); nhgetch()
-                 * cleared our live buffer, so preserve that paint. */
-                if (key === 0 || key === 27 || key === 32 || key === 13 || key === 10) {
-                    fileAnswered(0); /* q = def = '\0' -> key2txt "^@" */
-                    g._topl_sticky = promptText;
-                    return ECMD_OK;
-                }
-                const c = String.fromCharCode(key);
-                /* rightleftchars "rl" is all-lowercase, so tty_yn_function
-                 * folds the answer with lowc() before clean_up (topl.c:436). */
-                if (c === 'l' || c === 'L') { fileAnswered(108); cmdq_add_key(CQ_REPEAT, 108); mask = LEFT_RING_VAL; break; }
-                if (c === 'r' || c === 'R') { fileAnswered(114); cmdq_add_key(CQ_REPEAT, 114); mask = RIGHT_RING_VAL; break; }
-                /* invalid key: loop and re-read (C do..while !mask). */
-            }
-            }
+            } while (!mask);
         }
         /* do_wear.c:2290-2317 — Glib / cursed-gloves / welded-weapon guards. */
         {
@@ -3871,6 +3812,8 @@ export function cancel_doff(obj, slotmask) {
 
 
 export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
+    // Inventory classifiers use the silent synchronous boolean. Action callers
+    // supply a verb and await the message, which C prints before returning.
     const g = game;
     g.u = g.u || {};
     const u = g.u;
@@ -3900,7 +3843,8 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
     if (obj === u.uarm && u.uarmc && blocksaccess(u.uarmc)) {
         if (verb) {
             /* C: Strcpy(buf, yname(uarmc)); You(fmt, buf, verb, yname(obj)); */
-            You(need_to_take_off_outer_armor, yname(u.uarmc), verb, yname(obj));
+            return You(need_to_take_off_outer_armor, yname(u.uarmc), verb, yname(obj))
+                .then(() => true);
         }
         return true;
     }
@@ -3917,7 +3861,8 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
             if (u.uarmc) buf += yname(u.uarmc);
             if (u.uarm && u.uarmc) buf += ' and ';
             if (u.uarm) buf += sameprefix ? xname(u.uarm) : yname(u.uarm);
-            You(need_to_take_off_outer_armor, buf, verb, yname(obj));
+            return You(need_to_take_off_outer_armor, buf, verb, yname(obj))
+                .then(() => true);
         }
         return true;
     }
@@ -3926,7 +3871,8 @@ export function inaccessible_equipment(obj, verb, only_if_known_cursed) {
     if ((obj === u.uleft || obj === u.uright) && u.uarmg && blocksaccess(u.uarmg)) {
         if (verb) {
             /* C: Strcpy(buf, yname(uarmg)); You(fmt, buf, verb, yname(obj)); */
-            You(need_to_take_off_outer_armor, yname(u.uarmg), verb, yname(obj));
+            return You(need_to_take_off_outer_armor, yname(u.uarmg), verb, yname(obj))
+                .then(() => true);
         }
         return true;
     }

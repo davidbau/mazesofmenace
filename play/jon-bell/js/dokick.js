@@ -23,12 +23,13 @@ import { pline, You_hear } from './pline.js';
 import { impossible } from './pline.js';
 import { Norep } from './pline.js';
 import { PASSES_WALLS, HALLUC_RES } from './const.js';
+// C strchr includes the terminating NUL. in_rooms() represents an empty
+// C room string as [], so its first byte is 0 even when JS yields undefined.
 function strchr(str, ch) {
-    if (str == null) return false;
-    const want = typeof ch === 'number' ? ch : String(ch);
-    if (typeof str !== 'string') return Array.from(str).includes(ch);
-    return Array.from(str).some(c => c === String(want)
-        || (typeof want === 'number' && c.charCodeAt(0) === want));
+    const want = typeof ch === 'string' ? ch.charCodeAt(0) : (ch ?? 0);
+    if (want === 0) return true;
+    if (typeof str === 'string') return str.includes(String.fromCharCode(want));
+    return Array.from(str ?? []).includes(want);
 }
 /* `cansee` was used by ship_object (dokick.c:1099 `if (cansee(x, y))
  * otransit_msg(...)`) but never imported, so the first monster whose thrown
@@ -54,11 +55,12 @@ import { PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './pm.generat
 import { wakeup } from './mon.js';
 import { sink_backs_up } from './fountain.js';
 import { finish_meating } from './dogmove.js';
-import { verbalize } from './cmd.js';
+import { verbalize, hit_bars_hero } from './cmd.js';
+import { show_transient_light, transient_light_cleanup } from './light.js';
 import { money_cnt } from './hack.js';
 import { hidden_gold } from './vault.js';
 import { miss } from './zap.js';
-import { mhis_mon } from './mhitu.js';
+import { mhis_mon, hits_bars_mu } from './mhitu.js';
 import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD, PM_VALKYRIE, PM_ELF, } from './pm.generated.js';
 /* decl.h:17 NH_BLACK = c_color_names.c_black = "black" (a color-name string,
  * not the CLR_BLACK terminal-attribute int) — the SINK arm's C call
@@ -110,6 +112,7 @@ import { is_pick } from './dig.js';
 import { stairway_at } from './stairs.js';
 import { remove_worn_item } from './steal.js';
 import { rloco } from './teleport.js';
+import { place_monster } from './steed.js';
 import { ismnum } from './const.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 /* C dokick.c:1912-1935 otransit_msg's namers.  Imported by name from
@@ -305,13 +308,13 @@ async function kick_dumb(x, y) {
     const dex = acurr(u, A_DEX) | 0;
     if (martial() || dex >= 16 || rn2(3)) {
         /* C: You("kick at empty space."); if (Blind) feel_location(x,y) — no RNG */
-        void pline("You kick at empty space.");
+        await pline("You kick at empty space.");
         if (_Blind_dk())
             feel_location(x, y);
     }
     else {
         /* Dumb move: strain a muscle */
-        void pline("Dumb move!  You strain a muscle.");
+        await pline("Dumb move!  You strain a muscle.");
         exercise(A_STR, false);
         /* C: set_wounded_legs(RIGHT_SIDE, 5 + rnd(5)) */
         set_wounded_legs(RIGHT_SIDE, 5 + rnd(5));
@@ -421,7 +424,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             /* C: Soundeffect(se_crash_door, 40) — no RNG */
             /* C: pline("Crash!  %s a secret door!", ...) */
             const locked_only = (maploc.doormask & (D_LOCKED | D_TRAPPED)) === D_LOCKED;
-            void pline(`Crash!  ${locked_only ? "Your kick uncovers" : "You kick open"} a secret door!`);
+            await pline(`Crash!  ${locked_only ? "Your kick uncovers" : "You kick open"} a secret door!`);
             exercise(A_DEX, true);
             if (maploc.doormask & D_TRAPPED) {
                 maploc.doormask = D_NODOOR;
@@ -445,7 +448,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
     if (maploc.typ === SCORR) {
         if (!Levitation && rn2(30) < avrg_attrib) {
             /* C: Soundeffect(se_crash_door, 40) — no RNG */
-            void pline("Crash!  You kick open a secret passage!");
+            await pline("Crash!  You kick open a secret passage!");
             exercise(A_DEX, true);
             maploc.typ = CORR;
             feel_newsym(x, y); /* we know it's gone */
@@ -473,10 +476,10 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             await mkgold(_gold_amt, x, y);
             /* C: Soundeffect(se_crash_throne_destroyed, 60) — no RNG */
             if (Blind) {
-                void pline("CRASH!  You destroy it.");
+                await pline("CRASH!  You destroy it.");
             }
             else {
-                void pline("CRASH!  You destroy the throne.");
+                await pline("CRASH!  You destroy the throne.");
                 newsym(x, y);
             }
             exercise(A_DEX, true);
@@ -532,7 +535,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         /* C dokick.c:1071-1074 — kicking an altar invokes the canonical
          * prayer-side wrath logic before the independent 1-in-3 kick injury
          * roll.  altar_wrath() owns its alignment, voice, luck, and RNG arms. */
-        void pline(`You kick ${Blind ? 'something' : 'the altar'}.`);
+        await pline(`You kick ${Blind ? 'something' : 'the altar'}.`);
         await altar_wrath(x, y);
         if (!rn2(3)) {
             await kick_ouch(x, y, "");
@@ -548,7 +551,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             return ECMD_TIME;
         }
         /* C: You("kick %s.", (Blind ? something : "the fountain")) — no RNG */
-        void pline(`You kick ${Blind ? 'something' : 'the fountain'}.`);
+        await pline(`You kick ${Blind ? 'something' : 'the fountain'}.`);
         if (!rn2(3)) {
             await kick_ouch(x, y, "");
             return ECMD_TIME;
@@ -591,10 +594,10 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             await mksobj_at(474 /* ROCK */, x, y, true, false);
             del_engr_at_dk(x, y);
             if (Blind) {
-                void pline("Crack!  Something broke!"); /* C: "Crack!  %s broke!", Something */
+                await pline("Crack!  Something broke!"); /* C: "Crack!  %s broke!", Something */
             }
             else {
-                void pline("The headstone topples over and breaks!"); /* C: pline_The(...) */
+                await pline("The headstone topples over and breaks!"); /* C: pline_The(...) */
                 newsym(x, y);
             }
         }
@@ -631,16 +634,16 @@ export async function kick_nondoor(x, y, avrg_attrib) {
              * this reduces to quan != 1 (see the full macro's artifact arm,
              * obj.h:421, which cannot apply here). */
             if ((treefruit.quan | 0) !== 1)
-                pline(`Some ${xname(treefruit)} fall from the tree!`);
+                await pline(`Some ${xname(treefruit)} fall from the tree!`);
             else
-                pline(`${An(xname(treefruit))} falls from the tree!`);
+                await pline(`${An(xname(treefruit))} falls from the tree!`);
             const nfall = await scatter(x, y, 2, MAY_HIT, treefruit);
             if (nfall !== nfruit) {
                 /* scatter left some in the tree, but treefruit may not refer
                  * to the correct object */
                 const leftover = await mksobj(frtype, true, false);
                 leftover.quan = nfruit - nfall;
-                pline(`${nfruit - nfall} ${xname(leftover)} got caught in the branches.`);
+                await pline(`${nfruit - nfall} ${xname(leftover)} got caught in the branches.`);
                 await dealloc_obj(leftover);
             }
             exercise(A_DEX, true);
@@ -672,10 +675,10 @@ export async function kick_nondoor(x, y, avrg_attrib) {
                 }
             }
             if (made) {
-                void pline("You've attracted the tree's former occupants!");
+                await pline("You've attracted the tree's former occupants!");
             }
             else {
-                void pline("You smell stale honey.");
+                await pline("You smell stale honey.");
             }
             maploc.looted |= TREE_SWARM;
             return ECMD_TIME;
@@ -693,7 +696,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
         /* C: if (rn2(5)) — 80% chance klunk */
         if (rn2(5)) {
             /* C: Soundeffect(se_klunk_pipe, 60) — no RNG */
-            void pline(_Deaf_dk() ? "Klunk!" : "Klunk!  The pipes vibrate noisily.");
+            await pline(_Deaf_dk() ? "Klunk!" : "Klunk!  The pipes vibrate noisily.");
             exercise(A_DEX, true);
             return ECMD_TIME;
         }
@@ -706,10 +709,10 @@ export async function kick_nondoor(x, y, avrg_attrib) {
              * already-exported js/mklev.js body — see the tree-swarm arm's
              * import note above for why this was a WIRE_PENDING no-op. */
             if (_Blind_dk()) {
-                if (!_Deaf_dk()) void You_hear("a gushing sound.");
+                if (!_Deaf_dk()) await You_hear("a gushing sound.");
             }
             else {
-                void pline(`A ${hcolor("black")} ooze gushes up from the drain!`);
+                await pline(`A ${hcolor("black")} ooze gushes up from the drain!`);
             }
             await makemon(permonstTemplate(PM_BLACK_PUDDING), x, y, MM_NOMSG);
             exercise(A_DEX, true);
@@ -722,6 +725,7 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             /* C: pline("%s returns!", (Blind ? Something : "The dish washer")) — no RNG
              * C: makemon(..., MM_NOMSG | (gend==1||(gend==2&&rn2(2)) ? MM_MALE : MM_FEMALE)) */
             /* rn2(2) only fires when gend == 2 */
+            await pline(`${_Blind_dk() ? "Something" : "The dish washer"} returns!`);
             let mmflags = MM_NOMSG;
             if (gend === 1 || (gend === 2 && rn2(2))) {
                 mmflags |= MM_MALE;
@@ -729,7 +733,6 @@ export async function kick_nondoor(x, y, avrg_attrib) {
             else {
                 mmflags |= MM_FEMALE;
             }
-            void pline(`${_Blind_dk() ? "Something" : "The dish washer"} returns!`);
             const demon = await makemon(permonstTemplate(PM_AMOROUS_DEMON_DK), x, y, mmflags);
             if (demon) newsym(x, y);
             maploc.looted |= S_LDWASHER;
@@ -830,13 +833,13 @@ async function kick_door(x, y, avrg_attrib) {
         }
         else if ((acurr(u, A_STR) | 0) > 18 && !rn2(5) && !shopdoor) {
             Soundeffect(se_kick_door_it_shatters, 50);
-            void pline("As you kick the door, it shatters to pieces!");
+            await pline("As you kick the door, it shatters to pieces!");
             exercise(A_STR, true);
             maploc.doormask = D_NODOOR;
         }
         else {
             Soundeffect(se_kick_door_it_crashes_open, 50);
-            void pline("As you kick the door, it crashes open!");
+            await pline("As you kick the door, it crashes open!");
             exercise(A_STR, true);
             maploc.doormask = D_BROKEN;
         }
@@ -867,7 +870,7 @@ async function kick_door(x, y, avrg_attrib) {
             feel_location(x, y); /* dokick.c:961 we know we hit it */
         exercise(A_STR, true);
         /* C: pline("%s!!", (Deaf || !rn2(3)) ? "Thwack" : "Whammm") */
-        void pline(`${(_Deaf_dk() || !rn2(3)) ? "Thwack" : "Whammm"}!!`);
+        await pline(`${(_Deaf_dk() || !rn2(3)) ? "Thwack" : "Whammm"}!!`);
         if (in_town(x, y)) {
             /* C mon.c:4562 get_iter_mons_xy, with the same async boundary. */
             for (let mon = g.fmon, next; mon; mon = next) {
@@ -1045,9 +1048,7 @@ async function kickdmg(mon, clumsy) {
 
     if (!_km_deadmonster(mon) && martial() && !_km_bigmonst(mon.data) && !rn2(3)
         && (mon.mcanmove | 0) && mon !== u.ustuck && !(mon.mtrapped | 0)) {
-        /* C dokick.c:98-111 -- martial-arts knockback.  The JS level
-         * representation finds monsters by fmon coordinates, so changing
-         * mx/my is the equivalent of remove_monster/place_monster here. */
+        /* C dokick.c:98-111 -- martial-arts knockback. */
         const mdx = (mon.mx | 0) + (u.dx | 0);
         const mdy = (mon.my | 0) + (u.dy | 0);
         const canmove = goodpos(mdx, mdy, mon, 0);
@@ -1055,9 +1056,9 @@ async function kickdmg(mon, clumsy) {
         if (canmove && m_in_out_region(mon, mdx, mdy)) {
             const oldx = mon.mx | 0;
             const oldy = mon.my | 0;
-            mon.mx = mdx;
-            mon.my = mdy;
+            mon._mapRemoved = true;
             newsym(oldx, oldy);
+            place_monster(mon, mdx, mdy);
             newsym(mdx, mdy);
             set_apparxy(mon);
             if (await mintrap(mon, NO_TRAP_FLAGS) === Trap_Killed_Mon)
@@ -1252,7 +1253,7 @@ export async function container_impact_dmg(obj, x, y) {
                     otmp.no_charge = 1;
                 loss += await stolen_value(otmp, x, y, !!shkp.mpeaceful, true);
             }
-            if ((otmp.quan | 0) > 1) {
+            if (otmp.quan > 1) {
                 await useup(otmp);
             } else {
                 obj_extract_self(otmp);
@@ -1295,7 +1296,7 @@ async function ghitm(mtmp, gold) {
         }
     } else {
         const was_sleeping = mtmp.msleeping | 0;
-        const value = (gold.quan | 0) * (OC_COST[gold.otyp | 0] | 0);
+        const value = gold.quan * (OC_COST[gold.otyp | 0] | 0);
 
         mtmp.msleeping = 0;
         finish_meating(mtmp);
@@ -1307,7 +1308,7 @@ async function ghitm(mtmp, gold) {
         await mpickobj(mtmp, gold);
         if (mtmp.isshk) {
             const eshk = ESHK(mtmp);
-            let robbed = eshk.robbed | 0;
+            let robbed = eshk.robbed;
             if (robbed) {
                 robbed -= value;
                 if (robbed < 0) robbed = 0;
@@ -1316,7 +1317,7 @@ async function ghitm(mtmp, gold) {
                 if (!robbed)
                     await make_happy_shk(mtmp, false);
             } else if (mtmp.mpeaceful) {
-                eshk.credit = (eshk.credit | 0) + value;
+                eshk.credit = eshk.credit + value;
                 await pline(`You have ${eshk.credit} ${currency(eshk.credit)} in credit.`);
             } else
                 await verbalize('Thanks, scum!');
@@ -1434,7 +1435,7 @@ async function really_kick_object(x, y, kickedobj) {
 
     const isgold = (kickedobj.oclass | 0) === _KO_COIN_CLASS;
     let k_owt = kickedobj.owt | 0;
-    if ((kickedobj.quan | 0) > 1 && !isgold) {
+    if (kickedobj.quan > 1 && !isgold) {
         const save_quan = kickedobj.quan;
         kickedobj.quan = 1;
         k_owt = weight(kickedobj);
@@ -1491,7 +1492,7 @@ async function really_kick_object(x, y, kickedobj) {
              * so a stack renders "The arrows don't come loose." where this
              * port rendered "2 arrows doesn't come loose.".  Routing through
              * distant_name() also keeps a far kicked object undknown. */
-            void pline(Blind ? "It doesn't come loose."
+            await pline(Blind ? "It doesn't come loose."
                               : `${The((await distant_name(kickedobj, xname)))} ${otense(kickedobj, 'do')}n't come loose.`);
             return (!rn2(3) || martial()) ? 1 : 0;
         }
@@ -1502,7 +1503,7 @@ async function really_kick_object(x, y, kickedobj) {
          *   else
          *       pline("%s %s loose.", The(distant_name(gk.kickedobj, xname)),
          *             otense(gk.kickedobj, "come")); */
-        void pline(Blind2 ? 'It comes loose.'
+        await pline(Blind2 ? 'It comes loose.'
                           : `${The((await distant_name(kickedobj, xname)))} ${otense(kickedobj, 'come')} loose.`);
         obj_extract_self(kickedobj);
         newsym(x, y);
@@ -1526,11 +1527,11 @@ async function really_kick_object(x, y, kickedobj) {
     if (_ko_Is_box(kickedobj)) {
         const otrp = !!kickedobj.otrapped;
         if (range < 2)
-            void pline('THUD!');
+            await pline('THUD!');
         await container_impact_dmg(kickedobj, x, y);
         if (kickedobj.olocked) {
             if (!rn2(5) || (martial() && !rn2(2))) {
-                void pline('You break open the lock!');
+                await pline('You break open the lock!');
                 await breakchestlock(kickedobj, false);
                 if (otrp)
                     await chest_trap(kickedobj, LEG, false);
@@ -1538,7 +1539,7 @@ async function really_kick_object(x, y, kickedobj) {
             }
         } else {
             if (!rn2(3) || (martial() && !rn2(2))) {
-                void pline('The lid slams open, then falls shut.');
+                await pline('The lid slams open, then falls shut.');
                 kickedobj.lknown = 1;
                 if (otrp)
                     await chest_trap(kickedobj, LEG, false);
@@ -1557,11 +1558,11 @@ async function really_kick_object(x, y, kickedobj) {
     /* too heavy to move: range == 2 means it may move up to one square */
     if (range < 2) {
         if (!_ko_Is_box(kickedobj))
-            void pline('Thump!');
+            await pline('Thump!');
         return (!rn2(3) || martial()) ? 1 : 0;
     }
 
-    if ((kickedobj.quan | 0) > 1) {
+    if (kickedobj.quan > 1) {
         if (!isgold) {
             /* C dokick.c:694 gk.kickedobj = splitobj(gk.kickedobj, 1L);  splitobj()
              * returns the SPLIT-OFF single item and leaves the original as the
@@ -1581,14 +1582,14 @@ async function really_kick_object(x, y, kickedobj) {
                  * draw (Cardinal Rule 2) and picked the wrong message 2 times
                  * in 3. */
                 if (!_Deaf_dk())
-                    void pline('Thwwpingg!');
-                void pline(`You ${_KO_FLYINGCOINMSG[rn2(3)]}!`);
-                void await scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT, kickedobj);
+                    await pline('Thwwpingg!');
+                await pline(`You ${_KO_FLYINGCOINMSG[rn2(3)]}!`);
+                await scatter(x, y, rnd(3), VIS_EFFECTS | MAY_HIT, kickedobj);
                 newsym(x, y);
                 return 1;
             }
-            if ((kickedobj.quan | 0) > 300) {
-                void pline('Thump!');
+            if (kickedobj.quan > 300) {
+                await pline('Thump!');
                 return (!rn2(3) || martial()) ? 1 : 0;
             }
         }
@@ -1596,7 +1597,7 @@ async function really_kick_object(x, y, kickedobj) {
 
     if (slide && !_Blind_dk()) {
         const _dn2 = await doname(kickedobj);
-        void pline(`Whee!  ${_dn2.charAt(0).toUpperCase() + _dn2.slice(1)} ${otense(kickedobj, 'slide')} across the ${surface(x, y)}.`);
+        await pline(`Whee!  ${_dn2.charAt(0).toUpperCase() + _dn2.slice(1)} ${otense(kickedobj, 'slide')} across the ${surface(x, y)}.`);
     }
 
     obj_extract_self(kickedobj);
@@ -1604,6 +1605,7 @@ async function really_kick_object(x, y, kickedobj) {
     newsym(x, y);
 
     let bx = x, by = y, bRange = range - 1, mon = null;
+    let point_blank = true;
     const wasReturning = g.iflags?.returning_missile === kickedobj;
     /* C zap.c:3868 tmp_at(DISP_FLASH, obj_to_glyph(obj, rn2_on_display_rng)):
      * under Hallucination the glyph pick draws on the DISPLAY stream. */
@@ -1618,6 +1620,18 @@ async function really_kick_object(x, y, kickedobj) {
         const bloc = g.level.at(bx, by);
         if (IS_WATERWALL(bloc.typ | 0) || (bloc.typ | 0) === LAVAWALL)
             break;
+        if (kickedobj.lamplit && !_Blind_dk()) {
+            g.gb = g.gb || {};
+            g.bhitpos = g.gb.bhitpos = { x: bx, y: by };
+            await show_transient_light(kickedobj, bx, by);
+        }
+        if ((bloc.typ | 0) === IRONBARS
+            && hits_bars_mu(kickedobj, point_blank ? 0 : (!rn2(5) ? 1 : 0))) {
+            if (await hit_bars_hero(kickedobj, bx - dxTo, by - dyTo, bx, by, acurrstr(u)))
+                g.kickedobj = null;
+            bx -= dxTo; by -= dyTo;
+            break;
+        }
         mon = m_at(bx, by);
         /* C zap.c:3926-3940: webs can catch a kicked object before the
          * monster/mimic checks, shipping, or terrain stop tests. */
@@ -1673,6 +1687,7 @@ async function really_kick_object(x, y, kickedobj) {
         if (is_pool(bx, by) || (bloc.typ | 0) === LAVAPOOL || (bloc.typ | 0) === LAVAWALL
             || IS_SINK(bloc.typ | 0))
             break;
+        point_blank = false;
     }
     /* C zap.c:4127 / 4007 / 4052 — every exit path closes the flight. */
     tmp_at(DISP_END, 0);
@@ -1680,6 +1695,7 @@ async function really_kick_object(x, y, kickedobj) {
     // C zap.c bhit(): thitmonst must use the flight's final impact square.
     // C bhit() leaves gb.bhitpos at impact; thitmonst uses the flat alias.
     g.bhitpos = g.gb.bhitpos = { x: bx, y: by };
+    await transient_light_cleanup();
 
     // C dokick.c:739-740: bhit may destroy the object and clear kickedobj.
     kickedobj = g.kickedobj;
@@ -1788,7 +1804,8 @@ export async function dokick_resolve() {
             && !IS_OBSTRUCTED(behind.typ | 0)
             && !IS_DOOR(behind.typ | 0)
             && (!Is_airlevel(u.uz) || !obj_at(xx, yy))) {
-            void pline('You have nothing to brace yourself against.');
+            await pline('You have nothing to brace yourself against.');
+            g.context.move = 0;
             return ECMD_OK;
         }
     }
@@ -2668,7 +2685,7 @@ export async function dokick() {
     // draws the same RNG in the same order as C.  It sets g.context.move.
     g.context.move = 1; /* a real kick consumes a turn (ECMD_TIME) by default */
     const kickResult = await dokick_resolve();
-    if (g.context.move && g._pending_message) {
+    if (kickResult === ECMD_TIME && g.context.move && g._pending_message) {
         _topl_stash_result();
     }
     // C ref: dokick.c:1322-1471 — dokick_resolve mirrors the whole tail

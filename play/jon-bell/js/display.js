@@ -6993,6 +6993,16 @@ function _status_temp_bot_eval() {
  * botl.c sends BL_TITLE before BL_HP, so a bot() that re-sends the title alone
  * (its 'changed' rule expiring, hilite_reset_needed) leaves the bar un-inverted
  * until HP is next re-sent. */
+/* botl.c bot_via_windowport() delivers BL_TITLE then BL_HP in ONE bot(): when the
+ * title changed because HP changed (repad_with_dashes, critically_low_hp), the
+ * live HP differs from the last-evaluated one and BL_HP follows the title in
+ * that same delivery, so the title-only (plain) bar state does not survive. */
+function _hp_pending_in_bot(hp) {
+    const u = game.u;
+    if (!hp || !u) return false;
+    const live = Math.max(0, ((u.umonnum | 0) !== (u.umonster | 0)) ? (u.mh | 0) : (u.uhp | 0));
+    return live !== hp.val;
+}
 export function status_hpbar_attr_eval() {
     const ev = game._hpbarEval;
     if (!ev || !game._blTemp) return;
@@ -7026,7 +7036,7 @@ export function status_hpbar_attr_eval() {
         t.time = 0;
         titleSent = true;
     }
-    if (hpSent) game._hpbarPlain = false;
+    if (hpSent || (titleSent && _hp_pending_in_bot(hp))) game._hpbarPlain = false;
     else if (titleSent) {
         game._hpbarPlain = true;
         /* wintty.c:4513-4517: the BL_TITLE update stores the title's own
@@ -7047,7 +7057,11 @@ export function status_hpbar_attr_eval() {
 function _status_temp_hilites(row, cells) {
     const hist = (game._blTemp ||= {});
     const fields = [
-        ['gold', /\$:(\d+)/, (m) => [m.index, m[0].length]],
+        /* botl.c:131,1051: the gold field is labelled with the live gold symbol
+         * (blank under symset:Blank); tty skips the leading blanks of a field
+         * before starting colour/attr (wintty.c:5218-5221). */
+        ['gold', new RegExp('(?:^| )' + gold_status_char().replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ':(\\d+)'),
+            (m) => { const t = m[0].replace(/^ /, '').trimStart(); return [m.index + m[0].length - t.length, t.length]; }],
         ['experience', /Xp:\d+\/(\d+)/, (m) => [m.index + m[0].length - m[1].length, m[1].length]],
         /* BL_XP (experience-level): plain value direction (botl.c:1592-1595) */
         ['experience-level', /Xp:(\d+)/, (m) => [m.index, m[0].length]],
@@ -7199,16 +7213,31 @@ function _status_condition_hilites(row) {
              * such as "Stone Giant" on the first line is not the Stone condition */
             /* statuslines:3 puts the conditions on a third row with no AC: */
             const acAt = Math.max(0, row.search(/ AC:/));
-            at = new RegExp(` (${sp})(?= |$)`, 'g');
+            at = new RegExp(`( |(?<=[a-z]))(${sp})(?= |$)`, 'g');
             at.lastIndex = acAt;
             at = at.exec(row);
             if (at) { shown = sp; break; }
+        }
+        if (!at) {
+            /* the terrain field overwrote the front of the condition's first
+             * letters (tty writes at fixed columns, wintty.c:4838): colour the
+             * surviving tail ("Stairs" + "low") */
+            const terr = TERRAIN_DESCR.filter((t) => t && !t.includes('(')).join('|');
+            for (const sp of [cname.trim(), ...(_COND_SPELL.find((n) => n[0] === cname.trim()) || [])]) {
+                for (let k = 1; k < sp.length - 1 && !at; k++) {
+                    const re = new RegExp(`(?<=${terr})()(${sp.slice(k)})(?= |$)`, 'g');
+                    re.lastIndex = Math.max(0, row.search(/ AC:/));
+                    at = re.exec(row);
+                    if (at) shown = sp.slice(k);
+                }
+                if (at) break;
+            }
         }
         if (!at) return;
         /* botl.c:1514-1590: a held status keeps what was delivered; a condition
          * that was not on the row at the hold is evaluated afresh. */
         if (held && new RegExp(` ${shown}(?= |$)`).test(game._statusHeldRow || '')) return;
-        for (let c = at.index + 1; c < at.index + 1 + shown.length; c++)
+        for (let c = at.index + at[1].length; c < at.index + at[1].length + shown.length; c++)
             cells.set(c, { color, attr });
     });
     for (const [c, h] of fields) cells.set(c, h);
@@ -7823,6 +7852,12 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     /* `slipFrozen` is the value bot() painted at a frozen --More-- pline:
      * nh_timeout's make_glib(0) (timeout.c:935, GLIB 21) runs after an earlier
      * property's expiry pline (e.g. BLINDED 15) has already raised more(). */
+    /* C botl.c:1206 bl_icy = (levl[u.ux][u.uy].typ == ICE); opt_in, rank 20, useroption
+     * "ice" sorts after "holding" and before "paralyzed". */
+    if (_condEn('ice', false)
+        && (condPaint?.icy != null ? condPaint.icy
+            : (game.level?.at?.(u.ux | 0, u.uy | 0)?.typ | 0) === ICE))
+        s += ' Icy';
     {
         const mc = condPaint?.multiCond ?? _multi_cond();
         if (mc === 'parlyz') s += ' Parlyz';
@@ -7830,6 +7865,7 @@ export function botl_status_suffix(uhs, cap, blindFrozen, deafFrozen, stunFrozen
     }
     if (_condEn('slip', false)
         && ((slipFrozen !== undefined) ? slipFrozen
+            : condPaint?.slippery != null ? condPaint.slippery
             : ((u.uprops?.[GLIB]?.intrinsic | 0) !== 0)))
         s += ' Slip';
     /* C botl.c:1154-1163: bl_tethered (opt_in) is u.utraptype == TT_BURIEDBALL;
@@ -9912,7 +9948,12 @@ function _capture_botl(paint = false) {
          * set_wounded_legs (trap.c), so the --More-- page shows no WLegs. */
         woundedLegs: !!((u.uprops?.[WOUNDED_LEGS]?.intrinsic | 0) || (u.uprops?.[WOUNDED_LEGS]?.extrinsic | 0)),
         /* botl.c:1204 bl_slippery = Glib (u.uprops[GLIB].intrinsic), painted-time */
-        slippery: !!(u.uprops?.[GLIB]?.intrinsic | 0),
+        /* potion.c:463 make_glib's `!Glib ^ !!xtime` does not flag botl when Glib
+         * first turns on, so an unflagged flush keeps the last paint (hpPaint). */
+        /* botl.c:1206 bl_icy, painted-time like the other opt_in conditions */
+        icy: game.flags?.cond_ice ? (hpPaint?.icy != null ? hpPaint.icy
+            : (game.level?.at?.(u.ux | 0, u.uy | 0)?.typ | 0) === ICE) : undefined,
+        slippery: hpPaint?.slippery != null ? hpPaint.slippery : !!(u.uprops?.[GLIB]?.intrinsic | 0),
         levitating: (() => {
             const lq = u.uprops && u.uprops[LEVITATION];
             return !!lq && !!((lq.intrinsic | 0) || (lq.extrinsic | 0)) && !(lq.blocked | 0);

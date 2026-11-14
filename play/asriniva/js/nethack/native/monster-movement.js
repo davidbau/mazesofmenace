@@ -12,9 +12,9 @@ export function createNativeMonsterMovement(C) {
 function msg_mon_movement(mtmp, omx, omy)
 
 {
-    omx = C.coordxy(C.coordxy(omx)); omy = C.coordxy(C.coordxy(omy));
+    omx = ((C.coordxy(omx))<<16>>16); omy = ((C.coordxy(omy))<<16>>16);
     if (C.bool(C.bool(C.a11y.mon_movement && C.canspotmon(mtmp)) && mtmp.mspotted)) {
-        let nix = C.coordxy(mtmp.mx), niy = C.coordxy(mtmp.my);
+        let nix = ((mtmp.mx)<<16>>16), niy = ((mtmp.my)<<16>>16);
         let n2u = C.char(C.next2u(nix, niy)),
             close = C.char(C.bool(!n2u && (C.distu(nix, niy) <= (C.BOLT_LIM * C.BOLT_LIM)))),
             closer = C.char(C.bool(!n2u && (C.distu(nix, niy) <= C.distu(omx, omy))));
@@ -34,7 +34,7 @@ function msg_mon_movement(mtmp, omx, omy)
 function mb_trapped(mtmp, canseeit)
 
 {
-    canseeit = C.char(C.boolean(canseeit));
+    canseeit = ((C.boolean(canseeit))<<24>>24);
     if (C.flags.verbose) {
         if (C.bool(canseeit && !C.Unaware))
             C.pline_mon(mtmp, "KABOOM!!  You see a door explode.");
@@ -59,7 +59,7 @@ function mb_trapped(mtmp, canseeit)
 function mon_track_add(mtmp, x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     let j;
 
     for (j = C.int(C.MTSZ - 1); j > 0; j--)
@@ -78,7 +78,7 @@ function mon_track_clear(mtmp)
 function monhaskey(mon, for_unlocking)
  /* true => credit card ok, false => not ok */
 {
-    for_unlocking = C.char(C.boolean(for_unlocking));
+    for_unlocking = ((C.boolean(for_unlocking))<<24>>24);
     if (C.bool(for_unlocking && C.m_carrying(mon, C.CREDIT_CARD)))
         return 1;
     return C.bool(C.m_carrying(mon, C.SKELETON_KEY) || C.m_carrying(mon, C.LOCK_PICK));
@@ -124,7 +124,7 @@ function m_can_break_boulder(mtmp)
 function m_break_boulder(mtmp, x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     let otmp;
 
     if (C.bool(m_can_break_boulder(mtmp) && ((otmp = C.sobj_at(C.BOULDER, x, y)) != 0))) {
@@ -189,8 +189,8 @@ function dochugw(mtmp, chug)
                    * so perform stop-what-you're-doing-if-close-enough-
                    * to-be-a-threat check but don't move mtmp */
 {
-    chug = C.char(C.boolean(chug));
-    let x = C.coordxy(mtmp.mx), y = C.coordxy(mtmp.my); /* 'mtmp's location before dochug() */
+    chug = ((C.boolean(chug))<<24>>24);
+    let x = ((mtmp.mx)<<16>>16), y = ((mtmp.my)<<16>>16); /* 'mtmp's location before dochug() */
     /* skip canspotmon() if occupation is Null */
     let already_saw_mon = C.char((C.bool(chug && C.go.occupation)) ? C.canspotmon(mtmp) : 0);
     let rd = C.int(chug ? dochug(mtmp) : 0);
@@ -222,12 +222,12 @@ function dochugw(mtmp, chug)
 function onscary(x, y, mtmp)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     let ep;
     /* <0,0> is used by musical scaring;
      * it doesn't care about scrolls or engravings or dungeon branch */
     let auditory_scare = (C.char(C.bool(x == 0 && y == 0))),
-            magical_scare = C.char(!auditory_scare);
+            magical_scare = ((!auditory_scare)<<24>>24);
 
     /* creatures who are directly resistant to any type of scaring:
      * Rodney, lawful minions, Angels, the Riders */
@@ -289,7 +289,7 @@ function onscary(x, y, mtmp)
 function mon_regen(mon, digest_meal)
 
 {
-    digest_meal = C.char(C.boolean(digest_meal));
+    digest_meal = ((C.boolean(digest_meal))<<24>>24);
     if (C.bool(C.svm.moves % 20n == 0 || C.regenerates(mon.data)))
         C.healmon(mon, 1, 0);
     if (mon.mspec_used)
@@ -357,7 +357,7 @@ function release_hero(mon)
 function find_pmmonst(pm)
 
 {
-    pm = C.int(C.int(pm));
+    pm = ((C.int(pm))|0);
     let mtmp = 0;
 
     if ((C.svm.mvitals[pm].mvflags & C.G_GENOD) == 0)
@@ -382,15 +382,15 @@ function bee_eat_jelly(mon, obj)
 
     /* if there's no queen on the level, eat the royal jelly and become one */
     if (!mtmp) {
-        m_delay = C.int(obj.blessed ? 3 : !obj.cursed ? 5 : 7);
+        m_delay = ((obj.blessed ? 3 : !obj.cursed ? 5 : 7)|0);
         if (obj.quan > 1n)
             obj = C.splitobj(obj, 1n);
         if (C.canseemon(mon))
             C.pline_mon(mon, "%s eats %s.", C.Monnam(mon), C.an(C.xname(obj)));
         C.delobj(obj);
 
-        if (C.int(mon.m_lev) < C.mons[C.PM_QUEEN_BEE].mlevel - 1)
-            mon.m_lev = C.uchar((C.mons[C.PM_QUEEN_BEE].mlevel - 1));
+        if (((mon.m_lev)|0) < C.mons[C.PM_QUEEN_BEE].mlevel - 1)
+            mon.m_lev = ((C.mons[C.PM_QUEEN_BEE].mlevel - 1)&255);
         /* there should be delay after eating, but that's too much
            hassle; transform immediately, then have a short delay */
         C.grow_up(mon, 0);
@@ -440,7 +440,7 @@ function gelcube_digests(mtmp)
 function monflee(mtmp, fleetime, first, fleemsg)
 
 {
-    fleetime = C.int(C.int(fleetime)); first = C.char(C.boolean(first)); fleemsg = C.char(C.boolean(fleemsg));
+    fleetime = ((C.int(fleetime))|0); first = ((C.boolean(first))<<24>>24); fleemsg = ((C.boolean(fleemsg))<<24>>24);
     /* shouldn't happen; maybe warrants impossible()? */
     if (C.DEADMONSTER(mtmp))
         return;
@@ -453,7 +453,7 @@ function monflee(mtmp, fleetime, first, fleemsg)
         if (!fleetime)
             mtmp.mfleetim = 0;
         else if (C.bool(!mtmp.mflee || mtmp.mfleetim)) {
-            fleetime = C.int(fleetime + (C.int(mtmp.mfleetim)));
+            fleetime = C.int(fleetime + (((mtmp.mfleetim)|0)));
             /* ensure monster flees long enough to visibly stop fighting */
             if (fleetime == 1)
                 fleetime++;
@@ -509,7 +509,7 @@ function distfleeck(mtmp, inrange, nearby, scared)
  /* output */
 {
     let seescaryx, seescaryy;
-    let sawscary = C.char(0), bravegremlin = (C.char(C.rn2(5, 538, "distfleeck") == 0));
+    let sawscary = ((0)<<24>>24), bravegremlin = (((C.rn2(5, 538, "distfleeck") == 0)<<24>>24));
 
     inrange.value = (C.dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy)
                 <= (C.BOLT_LIM * C.BOLT_LIM));
@@ -523,11 +523,11 @@ function distfleeck(mtmp, inrange, nearby, scared)
      * where it guesses you are.
      */
     if (C.bool(!mtmp.mcansee || (C.bool(C.Invis && !C.perceives(mtmp.data))))) {
-        seescaryx = C.int(mtmp.mux);
-        seescaryy = C.int(mtmp.muy);
+        seescaryx = ((mtmp.mux)|0);
+        seescaryy = ((mtmp.muy)|0);
     } else {
-        seescaryx = C.int(C.u.ux);
-        seescaryy = C.int(C.u.uy);
+        seescaryx = ((C.u.ux)|0);
+        seescaryy = ((C.u.uy)|0);
     }
 
     sawscary = C.char(onscary(seescaryx, seescaryy, mtmp));
@@ -622,9 +622,9 @@ function mind_blast(mtmp)
 function m_everyturn_effect(mtmp)
 
 {
-    let is_u = C.char((C.samePtr(mtmp, C.gy.youmonst)) ? 1 : 0);
-    let x = C.coordxy(is_u ? C.u.ux : mtmp.mx),
-            y = C.coordxy(is_u ? C.u.uy : mtmp.my);
+    let is_u = (((C.samePtr(mtmp, C.gy.youmonst)) ? 1 : 0)<<24>>24);
+    let x = ((is_u ? C.u.ux : mtmp.mx)<<16>>16),
+            y = ((is_u ? C.u.uy : mtmp.my)<<16>>16);
 
     if (C.samePtr(mtmp.data, C.mons[C.PM_FOG_CLOUD])) {
         /* don't leave a vapor cloud if some other gas cloud is already
@@ -644,9 +644,9 @@ function m_everyturn_effect(mtmp)
 function m_postmove_effect(mtmp)
 
 {
-    let is_u = C.char((C.samePtr(mtmp, C.gy.youmonst)) ? 1 : 0);
-    let x = C.coordxy(is_u ? C.u.ux0 : mtmp.mx),
-            y = C.coordxy(is_u ? C.u.uy0 : mtmp.my);
+    let is_u = (((C.samePtr(mtmp, C.gy.youmonst)) ? 1 : 0)<<24>>24);
+    let x = ((is_u ? C.u.ux0 : mtmp.mx)<<16>>16),
+            y = ((is_u ? C.u.uy0 : mtmp.my)<<16>>16);
 
     /* Hezrous create clouds of stench. This does not cost a move. */
     if (C.samePtr(mtmp.data, C.mons[C.PM_HEZROU])) /* stench */
@@ -666,7 +666,7 @@ function dochug(mtmp)
     let status = C.int(C.MMOVE_NOTHING);
     const inrange=C.intLocal(), nearby=C.intLocal(), scared=C.intLocal(); let res;
     let otmp;
-    let panicattk = C.char(0);
+    let panicattk = ((0)<<24>>24);
 
     /*
      * PHASE ONE: Pre-movement adjustments
@@ -891,7 +891,7 @@ function dochug(mtmp)
         switch (status) { /* for pets, cases 0 and 3 are equivalent */
         case C.MMOVE_NOMOVES:
             if (scared.value)
-                panicattk = C.char(1);
+                panicattk = ((1)<<24>>24);
             
             /*FALLTHRU*/
         case C.MMOVE_NOTHING: /* no movement, but it can still attack you */
@@ -1043,16 +1043,16 @@ function itsstuck(mtmp)
 function should_displace(mtmp, data, ggx, ggy)
 
 {
-    ggx = C.coordxy(C.coordxy(ggx)); ggy = C.coordxy(C.coordxy(ggy));
-    let shortest_with_displacing = C.int(-1);
-    let shortest_without_displacing = C.int(-1);
-    let count_without_displacing = C.int(0);
+    ggx = ((C.coordxy(ggx))<<16>>16); ggy = ((C.coordxy(ggy))<<16>>16);
+    let shortest_with_displacing = ((-1)|0);
+    let shortest_without_displacing = ((-1)|0);
+    let count_without_displacing = ((0)|0);
     let i, nx, ny;
     let ndist;
 
-    for (i = C.int(0); i < data.cnt; i++) {
-        nx = C.int(data.poss[i].x);
-        ny = C.int(data.poss[i].y);
+    for (i = ((0)|0); i < data.cnt; i++) {
+        nx = ((data.poss[i].x)|0);
+        ny = ((data.poss[i].y)|0);
         ndist = C.int(C.dist2(nx, ny, ggx, ggy));
         if (C.bool(C.bool(C.bool(C.MON_AT(nx, ny) && (data.info[i] & C.ALLOW_MDISP)) && !(data.info[i] & C.ALLOW_M))
             && !undesirable_disp(mtmp, nx, ny))) {
@@ -1078,8 +1078,8 @@ function should_displace(mtmp, data, ggx, ggy)
 function m_digweapon_check(mtmp, nix, niy)
 
 {
-    nix = C.coordxy(C.coordxy(nix)); niy = C.coordxy(C.coordxy(niy));
-    let can_tunnel = C.char(0);
+    nix = ((C.coordxy(nix))<<16>>16); niy = ((C.coordxy(niy))<<16>>16);
+    let can_tunnel = ((0)<<24>>24);
     let mw_tmp = C.MON_WEP(mtmp);
 
     if (!C.Is_rogue_level(C.u.uz))
@@ -1150,9 +1150,9 @@ function leppie_stash(mtmp)
 function m_balks_at_approaching(oldappr, mtmp, pdistmin, pdistmax)
 
 {
-    oldappr = C.int(C.int(oldappr));
+    oldappr = ((C.int(oldappr))|0);
     let mwep = C.MON_WEP(mtmp);
-    let x = C.coordxy(mtmp.mx), y = C.coordxy(mtmp.my), ux = C.coordxy(mtmp.mux), uy = C.coordxy(mtmp.muy);
+    let x = ((mtmp.mx)<<16>>16), y = ((mtmp.my)<<16>>16), ux = ((mtmp.mux)<<16>>16), uy = ((mtmp.muy)<<16>>16);
     let edist = C.int(C.dist2(x, y, ux, uy));
     let arw;
 
@@ -1196,7 +1196,7 @@ function m_balks_at_approaching(oldappr, mtmp, pdistmin, pdistmax)
 function holds_up_web(x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     let sway;
 
     if (C.bool(C.bool(C.bool(!C.isok(x, y)
@@ -1214,7 +1214,7 @@ function holds_up_web(x, y)
 function count_webbing_walls(x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     return (holds_up_web(x, y - 1) + holds_up_web(x + 1, y)
             + holds_up_web(x, y + 1) + holds_up_web(x - 1, y));
 }
@@ -1268,7 +1268,7 @@ function maybe_spin_web(mtmp)
 function m_avoid_kicked_loc(mtmp, nx, ny)
 
 {
-    nx = C.coordxy(C.coordxy(nx)); ny = C.coordxy(C.coordxy(ny));
+    nx = ((C.coordxy(nx))<<16>>16); ny = ((C.coordxy(ny))<<16>>16);
     if (C.bool(C.bool(C.bool(C.bool(C.bool(C.bool(C.bool(C.bool((C.bool(mtmp.mpeaceful || mtmp.mtame))
         && mtmp.mcansee)
         && !mtmp.mconf) && !mtmp.mstun)
@@ -1285,7 +1285,7 @@ function m_avoid_kicked_loc(mtmp, nx, ny)
 function m_avoid_soko_push_loc(mtmp, nx, ny)
 
 {
-    nx = C.coordxy(C.coordxy(nx)); ny = C.coordxy(C.coordxy(ny));
+    nx = ((C.coordxy(nx))<<16>>16); ny = ((C.coordxy(ny))<<16>>16);
     if (C.bool(C.bool(C.bool(C.bool(C.bool(C.bool(C.Sokoban
         && (C.bool(mtmp.mpeaceful || mtmp.mtame)))
         && !mtmp.mconf) && !mtmp.mstun)
@@ -1309,7 +1309,7 @@ function m_search_items(mtmp, ggx, ggy, mmoved, appr)
     let xx, yy;
     let hmx, hmy, lmx, lmy;
     let ttmp;
-    let omx = C.coordxy(mtmp.mx), omy = C.coordxy(mtmp.my);
+    let omx = ((mtmp.mx)<<16>>16), omy = ((mtmp.my)<<16>>16);
     let ptr = mtmp.data;
     let mtoo;
     let costly;
@@ -1320,7 +1320,7 @@ function m_search_items(mtmp, ggx, ggy, mmoved, appr)
         minr--;
     /* guards shouldn't get too distracted */
     if (C.bool(!mtmp.mpeaceful && C.is_mercenary(ptr)))
-        minr = C.int(1);
+        minr = ((1)|0);
 
     /* in shop, usually skip */
     finish_search: {
@@ -1425,7 +1425,7 @@ function m_search_items(mtmp, ggx, ggy, mmoved, appr)
 function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_unlock, can_open)
 
 {
-    omx = C.coordxy(C.coordxy(omx)); omy = C.coordxy(C.coordxy(omy)); mmoved = C.int(C.int(mmoved)); seenflgs = C.uint(C.uint(seenflgs)); can_tunnel = C.char(C.boolean(can_tunnel)); can_unlock = C.char(C.boolean(can_unlock)); can_open = C.char(C.boolean(can_open));
+    omx = ((C.coordxy(omx))<<16>>16); omy = ((C.coordxy(omy))<<16>>16); mmoved = ((C.int(mmoved))|0); seenflgs = ((C.uint(seenflgs))>>>0); can_tunnel = ((C.boolean(can_tunnel))<<24>>24); can_unlock = ((C.boolean(can_unlock))<<24>>24); can_open = ((C.boolean(can_open))<<24>>24);
     let nix, niy;
     let etmp, trapret;
     let canseeit = C.char(C.cansee(mtmp.mx, mtmp.my)),
@@ -1434,7 +1434,7 @@ function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_unlock, 
     C.notice_mon(mtmp);
 
     if (mmoved == C.MMOVE_MOVED) {
-        nix = C.coordxy(mtmp.mx), niy = C.coordxy(mtmp.my);
+        nix = ((mtmp.mx)<<16>>16), niy = ((mtmp.my)<<16>>16);
         /* sequencing issue:  when monster movement decides that a
            monster can move to a door location, it moves the monster
            there before dealing with the door rather than after;
@@ -1485,7 +1485,7 @@ function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_unlock, 
             && !C.passes_walls(ptr)) /* doesn't need to open doors */
             && !can_tunnel)) {     /* taken care of below */
             let here = C.levl[mtmp.mx][mtmp.my];
-            let btrapped = C.char((here.doormask & C.D_TRAPPED) != 0);
+            let btrapped = (((here.doormask & C.D_TRAPPED) != 0)<<24>>24);
 
     /* used after monster 'who' has been moved to closed door spot 'where'
        which will now be changed to door state 'what' with map update */
@@ -1500,7 +1500,7 @@ function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_unlock, 
                    door.  Not significant enough to worry about; perhaps
                    the Key's magic is more powerful for monsters? */
                 here.doormask &= ~C.D_TRAPPED;
-                btrapped = C.char(0);
+                btrapped = ((0)<<24>>24);
             }
             if (C.bool((here.doormask & (C.D_LOCKED | C.D_CLOSED)) != 0
                 && C.amorphous(ptr))) {
@@ -1682,22 +1682,22 @@ function postmov(mtmp, ptr, omx, omy, mmoved, seenflgs, can_tunnel, can_unlock, 
 function m_move(mtmp, after)
 
 {
-    after = C.int(C.int(after));
+    after = ((C.int(after))|0);
     const appr=C.intLocal();
     const ggx=C.coordxyLocal(), ggy=C.coordxyLocal(); let nix, niy;
     let chcnt;
-    let can_tunnel = C.char(0);
-    let can_open = C.char(0), can_unlock = C.char(0) /*, doorbuster = 0 */;
-    let getitems = C.char(0);
-    let avoid = C.char(0);
-    let better_with_displacing = C.char(0);
+    let can_tunnel = ((0)<<24>>24);
+    let can_open = ((0)<<24>>24), can_unlock = ((0)<<24>>24) /*, doorbuster = 0 */;
+    let getitems = ((0)<<24>>24);
+    let avoid = ((0)<<24>>24);
+    let better_with_displacing = ((0)<<24>>24);
     let seenflgs;
     let ptr;
     let chi; const mmoved=C.intLocal(C.MMOVE_NOTHING); let /* not strictly nec.: chi >= 0 will do */
         preferredrange_min=C.intLocal(0), preferredrange_max=C.intLocal(0);
     const mfp = C.mfndposLocal();
     let flag;
-    let omx = C.coordxy(mtmp.mx), omy = C.coordxy(mtmp.my);
+    let omx = ((mtmp.mx)<<16>>16), omy = ((mtmp.my)<<16>>16);
 
     if (mtmp.mtrapped) {
         let i = C.int(C.mintrap(mtmp, C.NO_TRAP_FLAGS));
@@ -1723,7 +1723,7 @@ function m_move(mtmp, after)
         return C.MMOVE_NOTHING; /* do not leave hiding place */
 
     /* set up pre-move visibility flags */
-    seenflgs = C.uint((C.canseemon(mtmp) ? 1 : 0) | (C.canspotmon(mtmp) ? 2 : 0));
+    seenflgs = (((C.canseemon(mtmp) ? 1 : 0) | (C.canspotmon(mtmp) ? 2 : 0))>>>0);
 
     /* Where does 'mtmp' think you are?  Not necessary if m_move() called
        from this file, but needed for other calls of m_move(). */
@@ -1731,7 +1731,7 @@ function m_move(mtmp, after)
 
     if (!C.Is_rogue_level(C.u.uz))
         can_tunnel = C.char(C.tunnels(ptr));
-    can_open = C.char(!(C.bool(C.nohands(ptr) || C.verysmall(ptr))));
+    can_open = ((!(C.bool(C.nohands(ptr) || C.verysmall(ptr))))<<24>>24);
     can_unlock = C.char(C.bool(C.bool((C.bool(can_open && monhaskey(mtmp, 1)))
                   || mtmp.iswiz) || C.is_rider(ptr)));
     /* doorbuster = is_giant(ptr); */
@@ -1748,8 +1748,8 @@ function m_move(mtmp, after)
     if (C.is_covetous(ptr)) { /* [should this include
                              *  '&& mtmp->mstrategy != STRAT_NONE'?] */
         let covetousattack;
-        let tx = C.coordxy(mtmp.mgoal.x),
-                ty = C.coordxy(mtmp.mgoal.y);
+        let tx = ((mtmp.mgoal.x)<<16>>16),
+                ty = ((mtmp.mgoal.y)<<16>>16);
         let intruder = C.isok(tx, ty) ? C.m_at(tx, ty) : 0;
         /*
          * if there's a monster on the object or in possession of it,
@@ -1820,8 +1820,8 @@ function m_move(mtmp, after)
     }
     if (C.bool(C.bool(C.u.uswallow && !mtmp.mflee) && !C.samePtr(C.u.ustuck, mtmp)))
         return C.MMOVE_MOVED;
-    omx = C.coordxy(mtmp.mx);
-    omy = C.coordxy(mtmp.my);
+    omx = ((mtmp.mx)<<16>>16);
+    omy = ((mtmp.my)<<16>>16);
     ggx.value = mtmp.mux;
     ggy.value = mtmp.muy;
     appr.value = mtmp.mflee ? -1 : 1;
@@ -1869,7 +1869,7 @@ function m_move(mtmp, after)
              * situation where you toss arrows at it and it has nothing
              * better to do than pick the arrows up.
              */
-            getitems = C.char(1);
+            getitems = ((1)<<24>>24);
         }
     }
 
@@ -1881,7 +1881,7 @@ function m_move(mtmp, after)
     if (C.bool(C.bool(can_tunnel && C.needspick(ptr))
         && (C.bool((C.bool(!mtmp.mpeaceful || C.Conflict))
             && C.dist2(mtmp.mx, mtmp.my, mtmp.mux, mtmp.muy) <= 8))))
-        can_tunnel = C.char(0);
+        can_tunnel = ((0)<<24>>24);
 
     nix = C.coordxy(omx);
     niy = C.coordxy(omy);
@@ -1898,9 +1898,9 @@ function m_move(mtmp, after)
                 return C.MMOVE_DONE;
             return C.MMOVE_NOMOVES;
         }
-        chcnt = C.coordxy(0);
+        chcnt = ((0)<<16>>16);
         jcnt = C.int(C.min(C.MTSZ, cnt - 1));
-        chi = C.int(-1);
+        chi = ((-1)|0);
         nidist = C.int(C.dist2(nix, niy, ggx.value, ggy.value));
         /* allow monsters be shortsighted on some levels for balance */
         if (C.bool(C.bool(C.bool(!mtmp.mpeaceful && C.svl.level.flags.shortsighted)
@@ -1908,12 +1908,12 @@ function m_move(mtmp, after)
             appr.value = 0;
         if (C.bool(C.is_unicorn(ptr) && C.noteleport_level(mtmp))) {
             /* on noteleport levels, perhaps we cannot avoid hero */
-            for (i = C.int(0); i < cnt; i++)
+            for (i = ((0)|0); i < cnt; i++)
                 if (!(mfp.info[i] & C.NOTONL))
-                    avoid = C.char(1);
+                    avoid = ((1)<<24>>24);
         }
         better_with_displacing = C.char(should_displace(mtmp, mfp, ggx.value, ggy.value));
-        nxti: for (i = C.int(0); i < cnt; i++) {
+        nxti: for (i = ((0)|0); i < cnt; i++) {
             if (C.bool(avoid && (mfp.info[i] & C.NOTONL)))
                 continue;
             nx = C.int(mfp.poss[i].x);
@@ -1927,13 +1927,13 @@ function m_move(mtmp, after)
                 continue;
             if (appr.value != 0) {
                 mtrk = mtmp.mtrack[0];
-                for (j = C.int(0); j < jcnt; j++)
+                for (j = ((0)|0); j < jcnt; j++)
                     if (C.bool(nx == mtmp.mtrack[j].x && ny == mtmp.mtrack[j].y))
                         if (C.rn2(4 * (cnt - j), 1963, "m_move"))
                             continue nxti;
             }
 
-            nearer = C.int((ndist = C.int(C.dist2(nx, ny, ggx.value, ggy.value))) < nidist);
+            nearer = (((ndist = C.int(C.dist2(nx, ny, ggx.value, ggy.value))) < nidist)|0);
 
             if (C.bool(C.bool(C.bool(C.bool((C.bool(appr.value == 1 && nearer)) || (C.bool(appr.value == -1 && !nearer)))
                 || (C.bool(!appr.value && !C.rn2(++chcnt, 1970, "m_move"))))
@@ -1971,8 +1971,8 @@ function m_move(mtmp, after)
          */
         C.assert(C.IndexOk(chi, mfp.info));
         if (mfp.info[chi] & C.ALLOW_U) {
-            nix = C.coordxy(mtmp.mux);
-            niy = C.coordxy(mtmp.muy);
+            nix = ((mtmp.mux)<<16>>16);
+            niy = ((mtmp.muy)<<16>>16);
         }
         if (C.u_at(nix, niy)) {
             mtmp.mux = C.u.ux;
@@ -2054,9 +2054,9 @@ function m_move(mtmp, after)
 function m_move_aggress(mtmp, x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     let mtmp2;
-    let mstatus = C.int(0); /* M_ATTK_MISS */
+    let mstatus = ((0)|0); /* M_ATTK_MISS */
 
     mtmp2 = C.m_at(x, y);
     if (mtmp2) {
@@ -2103,7 +2103,7 @@ function can_hide_under_obj(obj)
     /* can't hide under small amount of coins unless non-coins are also
        present; we expect coins to be a single stack but don't assume that */
     if (obj.oclass == C.COIN_CLASS) {
-        let coinquan = C.long(0n);
+        let coinquan = (0n);
 
         do {
             /* 10 coins is arbitrary amount considered enough to hide under */
@@ -2130,7 +2130,7 @@ function can_hide_under_obj(obj)
 function dissolve_bars(x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     C.levl[x][y].typ = (C.levl[x][y].edge == 1) ? C.DOOR
         : (C.bool(C.Is_special(C.u.uz) || C.loadChar(C.in_rooms(x, y, 0)))) ? C.ROOM : C.CORR;
     C.levl[x][y].flags = 0; /* doormask = D_NODOOR */
@@ -2142,7 +2142,7 @@ function dissolve_bars(x, y)
 function closed_door(x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     return C.boolean((C.bool(C.IS_DOOR(C.levl[x][y].typ)
                       && (C.levl[x][y].doormask & (C.D_LOCKED | C.D_CLOSED)))));
 }
@@ -2150,7 +2150,7 @@ function closed_door(x, y)
 function accessible(x, y)
 
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     /* use underlying terrain in front of closed drawbridge */
     let levtyp = C.int(C.SURFACE_AT(x, y));
 
@@ -2163,7 +2163,7 @@ function set_apparxy(mtmp)
 {
     let notseen, notthere, gotu;
     let displ;
-    let mx = C.coordxy(mtmp.mux), my = C.coordxy(mtmp.muy);
+    let mx = ((mtmp.mux)<<16>>16), my = ((mtmp.muy)<<16>>16);
     let umoney = C.long(C.money_cnt(C.gi.invent));
 
     /*
@@ -2182,15 +2182,15 @@ function set_apparxy(mtmp)
     notthere = C.char(C.bool(C.Displaced && !C.samePtr(mtmp.data, C.mons[C.PM_DISPLACER_BEAST])));
     /* add cases as required.  eg. Displacement ... */
     if (C.Underwater) {
-        displ = C.int(1);
+        displ = ((1)|0);
     } else if (notseen) {
         /* Xorns can smell quantities of valuable metal
            like that in solid gold coins, treat as seen */
-        displ = C.int((C.bool(C.samePtr(mtmp.data, C.mons[C.PM_XORN]) && umoney)) ? 0 : 1);
+        displ = (((C.bool(C.samePtr(mtmp.data, C.mons[C.PM_XORN]) && umoney)) ? 0 : 1)|0);
     } else if (notthere) {
-        displ = C.int(C.couldsee(mx, my) ? 2 : 1);
+        displ = ((C.couldsee(mx, my) ? 2 : 1)|0);
     } else {
-        displ = C.int(0);
+        displ = ((0)|0);
     }
     if (!displ) {
         mtmp.mux = C.u.ux;
@@ -2200,15 +2200,15 @@ function set_apparxy(mtmp)
 
     /* without something like the following, invisibility and displacement
        are too powerful */
-    gotu = C.char(notseen ? !C.rn2(3, 2239, "set_apparxy") : notthere ? !C.rn2(4, 2239, "set_apparxy") : 0);
+    gotu = ((notseen ? !C.rn2(3, 2239, "set_apparxy") : notthere ? !C.rn2(4, 2239, "set_apparxy") : 0)<<24>>24);
 
     if (!gotu) {
-        let try_cnt = C.int(0);
+        let try_cnt = ((0)|0);
 
         do {
             if (++try_cnt > 200) {
-                mx = C.coordxy(C.u.ux);
-                my = C.coordxy(C.u.uy);
+                mx = ((C.u.ux)<<16>>16);
+                my = ((C.u.uy)<<16>>16);
                 break; /* punt */
             }
             mx = C.coordxy(C.u.ux - displ + C.rn2(2 * displ + 1, 2250, "set_apparxy"));
@@ -2221,8 +2221,8 @@ function set_apparxy(mtmp)
                               && (C.bool(can_ooze(mtmp) || can_fog(mtmp))))))))))
                  || !C.couldsee(mx, my)));
     } else {
-        mx = C.coordxy(C.u.ux);
-        my = C.coordxy(C.u.uy);
+        mx = ((C.u.ux)<<16>>16);
+        my = ((C.u.uy)<<16>>16);
     }
 
     mtmp.mux = mx;
@@ -2240,7 +2240,7 @@ function set_apparxy(mtmp)
 function undesirable_disp(mtmp, x, y)
  /* spot 'mtmp' is considering moving to */
 {
-    x = C.coordxy(C.coordxy(x)); y = C.coordxy(C.coordxy(y));
+    x = ((C.coordxy(x))<<16>>16); y = ((C.coordxy(y))<<16>>16);
     let is_pet = (C.char(C.bool(mtmp.mtame && !mtmp.isminion)));
     let trap = C.t_at(x, y);
 
@@ -2338,12 +2338,12 @@ function can_fog(mtmp)
 function vamp_shift(mon, ptr, domsg)
 
 {
-    domsg = C.char(C.boolean(domsg));
-    let reslt = C.int(0);
+    domsg = ((C.boolean(domsg))<<24>>24);
+    let reslt = ((0)|0);
 
     if (C.samePtr(mon.data, ptr)) {
         /* already right shape */
-        reslt = C.int(1);
+        reslt = ((1)|0);
     } else if (C.is_vampshifter(mon)) {
         reslt = C.int(C.newcham(mon, ptr, domsg ? C.NC_SHOW_MSG : C.NO_NC_FLAGS));
         /* shape-change message is given when vampshifter turns into a

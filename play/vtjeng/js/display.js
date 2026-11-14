@@ -972,6 +972,12 @@ function glyphPresentation(symbol, color, state, customization = null) {
     if (customization?.rgb && state.iflags?.wc_color !== false) {
         result.rgb = [...customization.rgb];
         result.displayColor = `rgb(${customization.rgb.join(', ')})`;
+        // wintty.c tty_print_glyph() (3893-3913) prints an RGB customcolor
+        // with term_start_extracolor() and skips term_start_color(). The
+        // recorder's TERM, xterm-256color, sets colorcount to 256, so this
+        // is the path taken, and recorder patch 006 hooks only
+        // term_start_color(): the captured cell keeps the default colour.
+        result.color = NO_COLOR;
     }
     return result;
 }
@@ -1022,16 +1028,20 @@ export function hero_glyph_info(state = game) {
         GLYPH_MON_MALE_OFF,
         GLYPH_MON_FEM_OFF,
     );
+    const customization = numeric_glyph_customization(logicalGlyph, state);
     const glyph = glyphPresentation(
         symbol,
         monsterGlyphColor(logicalGlyph, species?.mcolor ?? CLR_WHITE, state),
         state,
-        numeric_glyph_customization(logicalGlyph, state),
+        customization,
     );
     // C ref: display.c map_glyphinfo() (2620-2632). The hero's color tweak
     // replaces the stored glyphmap color, so it survives reset_glyphmap()
-    // turning colors off on a Rogue level without Rogue IBM colors.
-    if (state.iflags?.wc_color !== false && !Upolyd(state.u)) {
+    // turning colors off on a Rogue level without Rogue IBM colors. It
+    // changes gm.sym.color only; wintty.c tty_print_glyph() prints a
+    // customcolor instead (see glyphPresentation()).
+    if (state.iflags?.wc_color !== false && !Upolyd(state.u)
+        && customization?.basicColor == null && !glyph.rgb) {
         if (hasRogueColor(state)) glyph.color = CLR_YELLOW;
         else if (showRace) glyph.color = HI_DOMESTIC;
     }
@@ -2638,8 +2648,11 @@ export function map_glyphinfo(glyph, state = game, options = undefined) {
         state,
         customization,
     );
-    // A glyph customization's color still takes precedence, as before.
-    if (heroColor !== null && customization?.basicColor == null)
+    // A glyph customization's color takes precedence: tty_print_glyph()
+    // replaces gm.sym.color with a basic customcolor and prints an RGB one
+    // through term_start_extracolor() (see glyphPresentation()).
+    if (heroColor !== null && customization?.basicColor == null
+        && !presentation.rgb)
         presentation.color = heroColor;
     const attr = print_glyph_attr(glyphflags, state);
     if (attr) presentation.attr = attr;
@@ -2977,6 +2990,28 @@ function terrain_to_glyph(ptr, x, y, state) {
     return bypass_glyph !== NO_GLYPH ? bypass_glyph : cmap_to_glyph(idx, state);
 }
 
+// display.c nul_gbuf (2088-2100), the entry clear_glyph_buffer() copies into
+// every gbuf cell: GLYPH_UNEXPLORED drawn as a blank with NO_COLOR and no
+// customization. A JS cell whose disp_glyph is null holds it.
+const NUL_GBUF_PRESENTATION = Object.freeze({
+    glyph: GLYPH_UNEXPLORED_OFF, ch: ' ', color: NO_COLOR,
+});
+
+// display.c show_glyph() (2031-2044): the glyph number and every glyphinfo
+// field tty_print_glyph() reads. `rgb` is gm.customcolor's RGB form.
+function glyphPresentationChanged(prior, next) {
+    const priorRgb = prior.rgb?.join(',') ?? null;
+    const nextRgb = next.rgb?.join(',') ?? null;
+    return prior.glyph !== next.glyph
+        || prior.ch !== next.ch
+        || (prior.color ?? NO_COLOR) !== next.color
+        || (prior.attr ?? 0) !== next.attr
+        || Boolean(prior.dec) !== next.dec
+        || (prior.displayCh ?? null) !== next.displayCh
+        || (prior.displayColor ?? null) !== next.displayColor
+        || priorRgb !== nextRgb;
+}
+
 // ── show_glyph_cell ──
 export function show_glyph_cell(x, y, glyph) {
     if (!glyph || typeof glyph !== 'object'
@@ -3019,40 +3054,45 @@ export function show_glyph_cell(x, y, glyph) {
             });
         }
     }
+    // display.c show_glyph() (2031-2044) leaves an entry alone when the new
+    // glyphinfo equals the buffered one. A cell with no disp_glyph holds
+    // nul_gbuf, so writing GLYPH_UNEXPLORED there is a no-op only while the
+    // unexplored glyph still draws as nul_gbuf's blank; S_unexplored or a
+    // G_unexplored customization makes it a real write that flush_screen()
+    // prints.
+    if (!loc.disp_glyph
+        && !glyphPresentationChanged(NUL_GBUF_PRESENTATION, logicalPresentation))
+        return;
     const previousPresentation = loc.disp_glyph ?? null;
     const previousGnew = glyphGnewSinceNotice(x, y, loc, game);
+    // display.c show_glyph() (2031-2047) sets gnew only when the buffered
+    // glyph or its presentation changes. cls() leaves nul_gbuf behind.
+    const changed = glyphPresentationChanged(
+        previousPresentation ?? NUL_GBUF_PRESENTATION, logicalPresentation);
     // C's gbuf retains logical glyph identity even when a UTF-8 customization
     // deliberately leaves the recorder-facing `ch` cell untouched. That cell
     // keeps the last ASCII glyph flush_screen() printed (tty_*), not one that
     // show_glyph() buffered and replaced before the flush.
     loc.disp_glyph = logicalPresentation;
-    if (ch !== null) {
-        loc.disp_ch = ch;
-        loc.disp_color = color;
-        loc.disp_decgfx = !!decgfx;
-        loc.disp_attr = attr | 0;
-    } else if (loc.tty_ch !== undefined) {
-        loc.disp_ch = loc.tty_ch;
-        loc.disp_color = loc.tty_color;
-        loc.disp_decgfx = loc.tty_decgfx;
-        loc.disp_attr = loc.tty_attr;
-    }
-    loc.disp_browser_ch = displayCh;
-    loc.disp_browser_color = displayColor ?? (displayCh ? color : null);
-    loc.disp_browser_attr = displayCh ? attr | 0 : null;
-    // display.c show_glyph() (2031-2047) sets gnew only when the buffered
-    // glyph or its presentation changes. cls() leaves nul_gbuf behind: an
-    // unexplored glyph drawn as a plain space.
-    const prior = previousPresentation
-        ?? { glyph: GLYPH_UNEXPLORED_OFF, ch: ' ', color: NO_COLOR };
-    if (prior.glyph !== logicalPresentation.glyph
-        || prior.ch !== logicalPresentation.ch
-        || (prior.color ?? NO_COLOR) !== logicalPresentation.color
-        || (prior.attr ?? 0) !== logicalPresentation.attr
-        || Boolean(prior.dec) !== logicalPresentation.dec
-        || (prior.displayCh ?? null) !== logicalPresentation.displayCh
-        || (prior.displayColor ?? null) !== logicalPresentation.displayColor)
+    // An unchanged entry is not printed again, so the screen keeps what it
+    // shows; docorner() may have blanked it (display.c row_refresh()).
+    if (changed) {
+        if (ch !== null) {
+            loc.disp_ch = ch;
+            loc.disp_color = color;
+            loc.disp_decgfx = !!decgfx;
+            loc.disp_attr = attr | 0;
+        } else if (loc.tty_ch !== undefined) {
+            loc.disp_ch = loc.tty_ch;
+            loc.disp_color = loc.tty_color;
+            loc.disp_decgfx = loc.tty_decgfx;
+            loc.disp_attr = loc.tty_attr;
+        }
+        loc.disp_browser_ch = displayCh;
+        loc.disp_browser_color = displayColor ?? (displayCh ? color : null);
+        loc.disp_browser_attr = displayCh ? attr | 0 : null;
         loc.gnew = 1;
+    }
     // This order is the sparse-frame contract: install the buffer write, record
     // its mutation, then test notice eligibility and queue it. The first
     // eligible notice captures a full frame; filtered intervening writes remain
@@ -4362,20 +4402,15 @@ export function* newsym_steps(x, y) {
         show_glyph_cell(
             x, y, remembered_glyph_presentation(loc.remembered_glyph, game),
         );
-    } else if (loc.disp_glyph) {
+    } else {
         // display.c:1094-1097, show_mem with lev->glyph == GLYPH_UNEXPLORED.
-        // The cell has no remembered glyph (unexplored). C reaches
-        // show_glyph(x, y, lev->glyph) with GLYPH_UNEXPLORED, which is a
-        // no-op when the glyph buffer already holds GLYPH_UNEXPLORED (old ==
-        // new, gnew stays 0). In JS the uninitialized state is
-        // disp_glyph === undefined rather than GLYPH_UNEXPLORED, so the
-        // equivalent no-op is to skip the write entirely. But when a transient
-        // glyph was previously written here (e.g. a warning digit for a
-        // monster that has since moved away), disp_glyph is set and stale. C's
-        // show_glyph overwrites it with GLYPH_UNEXPLORED (space, NO_COLOR);
-        // this clause does the same. The presentation keeps the sentinel's
-        // glyph number, which display.c show_glyph()'s mention_map test
-        // reads as glyph_is_unexplored() when a later glyph lands here.
+        // The cell has no remembered glyph (unexplored). show_glyph_cell()
+        // treats a cell with no disp_glyph as nul_gbuf, as C's show_glyph()
+        // does, and overwrites a stale transient glyph (e.g. a warning digit
+        // for a monster that has since moved away). The presentation keeps
+        // the sentinel's glyph number, which display.c show_glyph()'s
+        // mention_map test reads as glyph_is_unexplored() when a later glyph
+        // lands here.
         show_glyph_cell(x, y, unexploredGlyphInfo(game));
     }
 }
@@ -4571,6 +4606,7 @@ export async function docrt(options = {}) {
             if (options.suspendVision) options.suspendVision();
             else vision_recalc(2);
             await cls();
+            const unexplored = unexploredGlyphInfo(game);
             // display.c docrt_flags() first paints remembered map glyphs,
             // without calling newsym(), and only then see_monsters() overlays
             // the live monsters in fmon order.  Keeping those as two passes
@@ -4586,14 +4622,13 @@ export async function docrt(options = {}) {
                             y,
                             remembered_glyph_presentation(remembered, game),
                         );
-                    } else if (location.disp_glyph) {
+                    } else {
                         // display.c:1750-1754 calls show_glyph() with
-                        // GLYPH_UNEXPLORED here. After cls() the glyph buffer
-                        // already contains that value, so C leaves an
-                        // untouched cell alone; only a stale transient entry
-                        // needs the blank write. This mirrors newsym()'s
-                        // unexplored-cell arm below.
-                        show_glyph_cell(x, y, unexploredGlyphInfo(game));
+                        // GLYPH_UNEXPLORED here. show_glyph_cell() leaves a
+                        // cell cls() reset alone unless S_unexplored or a
+                        // customization makes that glyph differ from
+                        // nul_gbuf's blank.
+                        show_glyph_cell(x, y, unexplored);
                     }
                 }
             // vision_recalc(0) redraws every square in sight through
@@ -7162,8 +7197,8 @@ function clipProjectedMessage(column, ymax, state) {
 // C ref: win/tty/wintty.c docorner()'s ordinary map-window path and
 // display.c row_refresh(). More can overwrite the top map rows with its
 // wrapped prompt. Once it is dismissed, C clears each physical row and
-// redraws from gg.gbuf, skipping GLYPH_UNEXPLORED unless its resolved glyph
-// differs from the blank null entry or a background frame colour is active.
+// redraws from gg.gbuf, skipping GLYPH_UNEXPLORED unless a background frame
+// colour is active.
 export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
     const display = state.nhDisplay;
     if (!display?.grid || ystartBetweenMenuPages) return;
@@ -7180,14 +7215,12 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
     const lastRow = Math.min(ymax, display.rows);
     const browserGlyphs = Boolean(display.spans);
     const decMap = browserGlyphs ? DEC_TO_UNICODE : SCORER_DEC_MAP;
-    const unexplored = state.level
-        ? map_glyphinfo(GLYPH_UNEXPLORED_OFF, state) : null;
-    // display.c:2163-2168 compares the unexplored glyph entry with nul_gbuf.
-    // C's null entry is a space, NO_COLOR, MG_UNEXPL and no customization.
-    const forceUnexplored = Boolean(unexplored)
-        && (unexplored.ttychar !== ' '.charCodeAt(0)
-            || unexplored.color !== NO_COLOR
-            || unexplored.rgb !== undefined);
+    // display.c row_refresh() (2147-2187) computes `force` from giptr, which
+    // the build (no UNBUFFERED_GLYPHINFO) points at gg.gbuf[0][0].glyphinfo,
+    // not at a freshly mapped GLYPH_UNEXPLORED. Column 0 is outside isok()
+    // (cmd.c:4329), so only clear_glyph_buffer() writes that entry, always
+    // with nul_gbuf. `force` is therefore false in play however S_unexplored
+    // is drawn, and the cl_end() blank stays on every unexplored cell.
 
     const firstStatusRow = display.rows - statusRowCount;
     clipProjectedMessage(Math.max(0, xmin - 1), lastRow, state);
@@ -7216,8 +7249,12 @@ export function docorner(xmin, ymax, ystartBetweenMenuPages = 0, state = game) {
             // cl_end() above blanked the terminal cell. A cell whose gbuf
             // glyph prints through g_pututf8() keeps that blank.
             if (loc.disp_glyph?.ch === null) clearTtyCell(loc, true);
-            if (glyph === GLYPH_UNEXPLORED_OFF
-                && !forceUnexplored && !frameColor) continue;
+            if (glyph === GLYPH_UNEXPLORED_OFF && !frameColor) {
+                // The gbuf entry still holds S_unexplored, which may not be
+                // a blank; the physical cell keeps cl_end()'s blank.
+                clearTtyCell(loc, true);
+                continue;
+            }
 
             const presentation = map_glyphinfo(glyph, state, { x, y: mapY });
             const ch = browserGlyphs && presentation.displayCh
@@ -7583,6 +7620,19 @@ function _buildScreenOutput(cursorOnHero = true) {
                 if (!loc || (bufferedOnly && !loc.gnew)) continue;
                 if (overStatus && !loc.gnew) continue;
                 if (loc.gnew) {
+                    // flush_screen() prints the gbuf entry itself, so a cell
+                    // marked by newsym_force() without a changed glyph is
+                    // printed from disp_glyph again, not from what the screen
+                    // last showed there.
+                    const entry = loc.disp_glyph;
+                    if (entry && entry.ch !== null) {
+                        loc.disp_ch = entry.ch;
+                        loc.disp_color = entry.color;
+                        loc.disp_decgfx = entry.dec;
+                        loc.disp_attr = entry.attr;
+                    }
+                    if (entry?.displayCh)
+                        loc.disp_browser_attr = entry.attr;
                     // tty_print_glyph() decides the attribute as it prints;
                     // the printed cell keeps it until it is printed again.
                     loc.disp_attr = framed_print_attr(loc.disp_attr ?? 0,

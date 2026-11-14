@@ -32,7 +32,7 @@ import {createRndState,createRndEnvironment} from './bindings/rnd.js';
 import * as sys from '../ported/sys.js';
 import {enableAddressPort} from './address-ports.js';
 import {enableSerialization} from './serialization.js';
-import * as track from '../ported/track.js';
+import {createNativeTrackBindings} from './native/track-state.js';
 import {isok} from '../ported/cmd.js';
 import {createLibraryBindings} from '../c-runtime/library-bindings.js';
 import {filesUnder,captureGameFiles,restoreGameFiles} from './game-files.js';
@@ -264,23 +264,8 @@ export function createStandaloneEnvironment(options={}) {
     function enableTrack(layouts) {
         const layout=layouts.track;
         if(!services.u||typeof services.sfo_int!=='function'||typeof services.distmin!=='function')throw new Error('Enable DECL, HACKLIB and serialization before TRACK');
-        const at=allocateGlobal('track.state',layout.size),state={utcntAddress:at+layout.utcnt,utpntAddress:at+layout.utpnt};
-        for(const key of ['utcnt','utpnt'])Object.defineProperty(state,key,{get:()=>transport.read('Int32',at+layout[key]),set:v=>transport.write('Int32',at+layout[key],v)});
-        state.utrack=new Proxy({address:at+layout.utrack},{get(o,key){
-            if(typeof key!=='string'||!/^\d+$/.test(key))return Reflect.get(o,key);
-            const index=Number(key);if(index>layout.UTSZ)throw new RangeError('Track pointer bounds');
-            const pointer=o.address+index*layout.coordSize,out={address:pointer,index};
-            for(const field of ['x','y'])Object.defineProperty(out,field,{get:()=>transport.read('Int16',pointer+layout[field]),set:v=>transport.write('Int16',pointer+layout[field],v)});
-            return out;
-        }});
-        const env=Object.create(services),mode=file=>transport.read('Int32',address(file)+layouts.sfbase.nhf_mode);
-        Object.assign(env,{trackState:state,CoordSize:layout.coordSize,RIN_STEALTH:layout.RIN_STEALTH,
-            update_file:file=>mode(file)&(layout.COUNTING|layout.WRITING),release_data:file=>mode(file)&layout.FREEING,
-            trackPanic:()=>{throw new CPanic('rest_track: impossible pt counts');},
-            Sfo_int:(...args)=>services.sfo_int(...args),Sfi_int:(...args)=>services.sfi_int(...args),
-            Sfo_nhcoord:(...args)=>services.sfo_nhcoord(...args),Sfi_nhcoord:(...args)=>services.sfi_nhcoord(...args)});
-        for(const key of ['uleft','uright'])Object.defineProperty(env,key,{get(){const pointer=services[key];return pointer?{otyp:ctypes.getField('struct obj',pointer,'otyp','short')}:0;}});
-        register('track',track,env,{prepareArgs:(fn,args)=>['gettrack','hastrack'].includes(fn)?args.map(transport.coordxy):args});states.set('track',state);return state;
+        const native=createNativeTrackBindings(environment,layouts,()=>{throw new CPanic('rest_track: impossible pt counts');});
+        register('track',native.functions,native.context);states.set('track',native.state);return native.state;
     }
     function enableCommandGeometry(){register('cmd-geometry',{isok:nativeGeometryFor(environment).isok});}
     function enableDependencies() {

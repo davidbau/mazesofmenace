@@ -202,6 +202,9 @@ export const NOT_SAVED = [
     '_rawCursorFrozen', '_configfile', '_generated_configfile', '_hilite_rc',
     // C save.c:265-333 omits blstats; botl.c:1694,1759-1795 initializes
     // field values, colors and temporary highlight timers in each process.
+    // botl.c:1498-1499 static oldrndencode/oldgoldsym and the two blstats[] buffers
+    // (percent_value, now_or_before_idx) are zeroed in each new process.
+    '_blPctSlots', '_blExpPercent', '_blOldGoldSym',
     '_blTemp', '_statusFieldColors', '_statusHilitesReset', '_statusHiliteHeld',
     // botl.c:2784 status_hilite_add_threshold keeps rules in
     // blstats[].thresholds, which save.c never writes: a restored process has

@@ -732,6 +732,18 @@ export function rest_regions(nhfp) {
 // draws rnd(dam) ONLY for a damaging cloud (arg.a_int >= 1); every cloud
 // create_gas_cloud produces from monmove.c:683/704 is damage 0 (vapor) and
 // consumes nothing.
+/* C pline.c:266-272 vpline(): `if (gv.vision_full_recalc) vision_recalc(0)` runs BEFORE
+ * the message is shown, and vision_recalc's newly seen squares make show_glyph()
+ * (display.c:2060-2072) pline their mention_map description FIRST.  Those
+ * descriptions are async here, so drain them before the synchronous topline
+ * accumulation of run_regions' own dissipation messages (region.c:458-472). */
+async function region_pline_vision_first(msg) {
+    if (game.vision_full_recalc)
+        vision_recalc(0);
+    while (game._mentionMapPending)
+        await game._mentionMapPending;
+    region_pline_sync(msg);
+}
 export async function run_regions() {
     let i, j, k;
     let f_indx;
@@ -777,7 +789,7 @@ export async function run_regions() {
     }
 
     if (gg.gas_cloud_diss_within) {
-        region_pline_sync("The gas cloud around you dissipates.");
+        await region_pline_vision_first("The gas cloud around you dissipates.");
         /* normally won't see additional dissipation when within */
         if ((game.u && (game.u.xray_range | 0)) <= 1)
             gg.gas_cloud_diss_seen = 0;
@@ -785,7 +797,7 @@ export async function run_regions() {
     }
     if (gg.gas_cloud_diss_seen) {
         /* C ref: pline.c:454-467 You_see() prefix */
-        region_pline_sync((Unaware() ? "You dream that you see "
+        await region_pline_vision_first((Unaware() ? "You dream that you see "
                           : Blind() ? "You sense " : "You see ")
                           + ((gg.gas_cloud_diss_seen === 1) ? "a" : "some")
                           + " gas cloud" + plur(gg.gas_cloud_diss_seen)
