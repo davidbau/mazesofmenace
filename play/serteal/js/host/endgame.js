@@ -10,7 +10,7 @@
 export class GameExit extends Error {
   constructor(status) {
     super(`exit(${status})`);
-    this.name = "ExitStatus"; // as Emscripten's runtime names it (host/game.js checks it)
+    this.name = "ExitStatus"; // host/game.js checks it
     this.status = status;
   }
 }
@@ -20,14 +20,6 @@ export class GameAbort extends Error {
   constructor(message = "abort") {
     super(message);
     this.name = "GameAbort";
-  }
-}
-
-/** The input queue ran dry: the game wants a key that has not been typed yet. */
-export class InputExhausted extends Error {
-  constructor() {
-    super("input exhausted");
-    this.name = "InputExhausted";
   }
 }
 

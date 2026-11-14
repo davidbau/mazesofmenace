@@ -455,7 +455,8 @@ function nomux_markers_enabled() { /* int */
 const nomux_seq = static_var("nomux_seq", int, 0);
 global_scalar("nomux_anim_id", int, 0);
 
-/* the reference recorder's capture buffer, see nomux_ref_overflow_state() */
+/* the capture buffer as it is laid out for long captures, see
+   nomux_ref_overflow_state() */
 export const NOMUX_REF_RAW_ACTIVE = 6144;
 export const NOMUX_REF_RAW_ROW = 6148;
 export const NOMUX_REF_RAW_COL = 6152;
@@ -469,18 +470,14 @@ function nomux_emit_marker(kind) { /* void */
     let scr = nomux_capture_screen();
     let cx = stack_var(int), cy = stack_var(int);
     let scr_len = scr ? strlen(scr) : 0;
-
     if (scr_len >= NOMUX_REF_RAW_ACTIVE)
         nomux_ref_overflow_state(scr, scr_len);
-
     nomux_get_cursor(cx, cy);
-
     if (scr_len > NOMUX_REF_STDOUT_BUF)
         nomux_ref_overflow_payload(scr, scr_len, kind, cx[0], cy[0]);
     nhjs_tty_capture_boundary(kind, nomux_seq[0], nomux_anim_id, cx[0], cy[0], scr);
     if (getenv(_("NHJS_SUPPRESS_NOMUX_MARKERS")))
         return;
-
     if (!nomux_markers_enabled())
         return;
 
@@ -754,20 +751,18 @@ export function nomux_get_cursor(cx, cy) { /* void */
 }
 
 /*
- * The reference recorder's capture buffer is 6,144 bytes
- * (nomux_out[24 * 256]); this one is larger.  A longer capture runs past
- * the end of that buffer into the statics placed after it in the reference
- * build (the x86_64 macOS layout), and is reproduced here for the rest of
- * the process:
+ * Long captures.  A capture is handled as if it were written into a
+ * 6,144-byte buffer (nomux_out[24 * 256]) followed in memory by
  *   offset 6144  nomux_raw_active   6148  nomux_raw_row
  *          6152  nomux_raw_col      6448  stdout's buffer (BUFSIZ 1024)
- * (the statics in between do not reach the capture).  The capture's bytes
- * and its terminating NUL replace the bytes of the three ints they cover
- * (little-endian).  Once nomux_raw_active is non-zero the cursor comes from
- * nomux_raw_col/nomux_raw_row and raw_print output goes on from there
- * without clearing the screen, as in the reference build.  The marker is
- * then written into stdout's buffer with the start of the capture after
- * it, so a capture longer than 6,448 bytes carries them from that offset.
+ * (nothing in between is reached by a capture).  A capture that runs past
+ * the end of the buffer overwrites them for the rest of the process: its
+ * bytes and its terminating NUL replace the bytes of the three ints they
+ * cover (little-endian).  Once nomux_raw_active is non-zero the cursor
+ * comes from nomux_raw_col/nomux_raw_row and raw_print output goes on from
+ * there without clearing the screen.  The marker is then written into
+ * stdout's buffer with the start of the capture after it, so a capture
+ * longer than 6,448 bytes carries them from that offset.
  * NHJS_UNBOUNDED_CAPTURE (interactive play) keeps the whole capture.
  */
 function nomux_ref_overflow_enabled() { /* int */
@@ -1034,11 +1029,7 @@ function analyze_seq(str, fg, bg) { /* void */
 function init_hilite() { /* void */
     const $frame = stack_frame(); try {
     let c;
-
-    /* c2js recorder TERM=xterm-256color colors: the capture is drawn with
-       the built-in ANSI codes, but NetHack saw terminfo's Co#256 */
-    iflags.colorcount = 256;
-
+    iflags.colorcount = 256; /* the terminal's colour count */
     /* #ifdef TOS: not in this build */
 
     let backg = stack_var(int), foreg = stack_var(int), hi_backg = stack_var(int), hi_foreg = stack_var(int);
@@ -1161,10 +1152,7 @@ export function term_attr_fixup(msk) { /* int */
         msk &= ~HL_ULINE;
     }
     /* blink used to be converted to bold unconditionally; now depends on MB */
-
-    /* c2js leaves blink as blink for NOMUX parity with the xterm recorder;
-       NOMUX captures inverse/color but does not serialize blink itself. */
-
+    /* blink is kept as blink, which the capture does not show */
     /* dim is ignored if its start sequence isn't available */
     if ((msk & HL_DIM) && (!MH[0] || !chars[MH[0]])) {
         msk &= ~HL_DIM;
@@ -1177,7 +1165,6 @@ export function term_start_attr(attr) { /* void */
         let astr = s_atr2str(attr);
 
         if (astr && chars[astr]) {
-            /* c2js mirrors emitted termcap state. */
             nomux_set_attr(attr);
 
             xputs(astr);
@@ -1190,7 +1177,6 @@ export function term_end_attr(attr) { /* void */
         let astr = e_atr2str(attr);
 
         if (astr && chars[astr]) {
-            /* c2js mirrors emitted termcap state. */
             nomux_end_attr();
 
             xputs(astr);
@@ -1219,7 +1205,6 @@ export function term_end_color() { /* void */
     if (nh_HE() && chars[nh_HE()]) {
         xputs(nh_HE());
 
-        /* c2js mirrors emitted termcap state. */
         nomux_end_fg();
         nomux_end_attr();
     }
@@ -1230,12 +1215,10 @@ export function term_start_color(color) { /* void */
         if (nh_HE() && chars[nh_HE()]) {
             xputs(nh_HE()); /* inline term_end_color() */
 
-            /* c2js mirrors emitted termcap state. */
             nomux_end_fg();
             nomux_end_attr();
         }
     } else if (color < CLR_MAX && hilites[color] && chars[hilites[color]]) {
-        /* c2js mirrors emitted termcap state. */
         nomux_set_fg(color);
 
         xputs(hilites[color]);

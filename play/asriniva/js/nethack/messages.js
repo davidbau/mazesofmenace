@@ -1,33 +1,35 @@
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
 // Original PLINE policies and source-private state on shared JavaScript storage.
 import abi from './messages-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as pline from '../ported/pline.js';
 import {createPlineEnvironment} from './bindings/pline.js';
-import {withCEnvironment} from '../c-runtime/context.js';
 
 export function enableMessages(environment,layouts){
  const {services,memory,ctypes,functions,transport}=environment,L=layouts.pline;
+ const owner=nativeStateFor(environment),views=createNativeRecordViews(environment);
  const address=environment.address,text=value=>typeof value==='string'?services.literal(value):address(value),chr=value=>typeof value==='string'?value.charCodeAt(0):transport.int(value);
  const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
  const local=new Proxy(Object.create(services),{get:(o,key,receiver)=>Reflect.has(o,key)?Reflect.get(o,key,receiver):typeof key==='string'?(...args)=>environment.resolve(key)(...args.map(value=>value?.address??value)):undefined});
  const roots={gs:'instance_globals_s',iflags:'instance_flags',gp:'instance_globals_p',windowprocs:'window_procs',a11y:'accessibility_data',u:'you',program_state:'sinfo',gv:'instance_globals_v',gy:'instance_globals_y',gg:'instance_globals_g',svm:'instance_globals_saved_m',ge:'instance_globals_e',sysopt:'sysopt_s',flags:'flag'};
  for(const name of Object.keys(roots))Object.defineProperty(local,name,{value:undefined,writable:true,configurable:true});
+ Object.assign(local,{nativeOwner:owner,nativeRoots:Object.fromEntries(Object.entries(roots).map(([name,type])=>[name,views.record(type,environment.requireGlobal(name))]))});
  const location=path=>{
   const [root,...parts]=path.split('.');let at=environment.requireGlobal(root),type=roots[root];
   for(const key of parts){const entry=ctypes.locate(type,at,key);at=entry.at;type=entry.field.record??entry.field.ctype.replace(new RegExp('\\s+'+key+'$'),'');}
   return at;
  };
  const globals=abi.fields.map(([path])=>location(path));
- const u=environment.requireGlobal('u'),props=ctypes.locate('struct you',u,'uprops').at;
- const prop=(name,field)=>ctypes.getField('struct prop',props+Number(layouts.do_wear[name])*ctypes.size('struct prop'),field,'long');
+ const prop=(name,field)=>local.nativeRoots.u.uprops[Number(layouts.do_wear[name])][field];
  Object.assign(local,{
   moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,readString:p=>memory.readString(address(p)),rectState:undefined,trackState:undefined,
   global:index=>{if(globals[index]===undefined)throw new Error('Unknown PLINE field '+index);return globals[index];},
   devteamEmail:()=>services.literal(abi.devteamEmail),stderr:()=>services.stderr,
   heroFlag:kind=>{switch(kind){
-   case 0:return Number(ctypes.getField('struct instance_globals_m',environment.requireGlobal('gm'),'multi','long')<0n&&(resolve('unconscious')()||resolve('is_fainted')()));
-   case 1:return Number(Boolean(prop('DEAF','intrinsic')||prop('DEAF','extrinsic')||ctypes.getField('struct u_roleplay',ctypes.locate('struct you',u,'uroleplay').at,'deaf','boolean')));
-   case 2:return Number(Boolean(ctypes.getField('struct you',u,'uinwater','unsigned int')));
+   case 0:return Number(views.record('struct instance_globals_m',environment.requireGlobal('gm')).multi<0n&&(resolve('unconscious')()||resolve('is_fainted')()));
+   case 1:return Number(Boolean(prop('DEAF','intrinsic')||prop('DEAF','extrinsic')||local.nativeRoots.u.uroleplay.deaf));
+   case 2:return Number(Boolean(local.nativeRoots.u.uinwater));
    case 3:return Number(Boolean((prop('BLINDED','intrinsic')||prop('BLINDED','extrinsic'))&&!prop('BLINDED','blocked')));
    default:throw new Error('Unknown PLINE hero header flag '+kind);
   }},
@@ -56,6 +58,7 @@ export function enableMessages(environment,layouts){
  local.waitpid=(pid,status,flags)=>resolve('waitpid')(transport.int(pid),address(status),transport.int(flags));
  local.execv=(path,args)=>resolve('execv')(text(path),address(args));local.perror=value=>resolve('perror')(text(value));
  const window=(field,signature,...args)=>{
+  if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke(field,signature,...args);
   const entry=ctypes.record('struct window_procs').fields[field];if(!entry)throw new Error('Unknown PLINE window callback '+field);
   const callback=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+entry.offset,true);
   return functions.indirect(callback,signature,...args);
@@ -74,6 +77,8 @@ export function enableMessages(environment,layouts){
  };
  const names=Object.keys(pline).filter(name=>typeof pline[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  const prepareArgs=(name,args)=>{args=args.map(value=>typeof value==='string'?text(value):value?.address??value);if(name==='pline_mon')args[0]=context.monster(args[0]);if(name==='gamelog_add'){args[0]=transport.long(args[0]);args[1]=transport.long(args[1]);}else if(name==='livelog_printf')args[0]=transport.long(args[0]);else if(name==='set_msg_xy'||name==='pline_xy'){args[0]=transport.short(args[0]);args[1]=transport.short(args[1]);}return args;};
- environment.register('messages',Object.fromEntries(names.map(name=>[name,pline[name]])),context,{prepareArgs});
- return {state,context,services:local,call:(name,...args)=>transport.scoped(()=>withCEnvironment(context,pline[name],...prepareArgs(name,args))),limitation:'PLINE shared state and standalone JS varargs transport connected; native opaque va_list, message/error/handler branches and original-C full lifecycle need separate verification.'};
+ const call=(name,...args)=>{const saved=transport.stackSave();owner.enter();try{return context.nativeNamespace[name](...prepareArgs(name,args));}finally{try{owner.leave();}finally{transport.stackRestore(saved);}}};
+ const entries=Object.fromEntries(names.map(name=>{const fn=(...args)=>call(name,...args);fn.nativeState=owner;fn.nativeDirect=true;fn.nativePrepared=true;owner.functions.set(name,fn);return[name,fn];}));
+ environment.register('messages',entries,context);
+ return {state,context,services:local,call,limitation:'Native PLINE execution consumes shared records and JS varargs. Opaque va_list, C strings, formatting, handler processes and foreign dependencies remain explicit compatibility boundaries.'};
 }

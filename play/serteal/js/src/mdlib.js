@@ -310,8 +310,6 @@ function build_options() { /* void */
     chars[optbuf + 0] = ord('\0');
     length[0] = COLNO + 1; /* force 1st item onto new line */
 
-    /* c2js recorder platform version text: public traces were recorded on
-       macOS LP64, while the JS engine uses the ILP32 (wasm32) layout. */
     strcat(strcpy(buf, _("I32LP64")), _(" data model,"));
 
     opt_out_words(buf, length);

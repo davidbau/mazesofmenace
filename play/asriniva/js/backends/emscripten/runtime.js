@@ -913,7 +913,7 @@ zapState(services) {return zapState(services);},
                 args[1] = environment.charPointerPointer(args[1]); args[2] = environment.intPointer(args[2]);
             }
             if (name === 'msummon_environ') args[1] = environment.charPointerPointer(args[1]);
-            const result = withCEnvironment(environment, mondata[name], ...args);
+            const result = environment.nativeNamespace ? environment.nativeNamespace[name](...args) : withCEnvironment(environment, mondata[name], ...args);
             return typeof result === 'string' ? services.literal(result) : result?.address ?? result ?? 0;
         },
         dbridge(services, name, ...args) {

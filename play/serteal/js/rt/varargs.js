@@ -5,7 +5,7 @@
 // the C library (vsnprintf) is laid out in memory from the format string by the C library's
 // call glue (clib.call, tools/residue/glue.js).
 
-export class VaList {
+class VaList {
   constructor(args) { this.args = args; this.i = 0; }
   next() { return this.args[this.i++]; }
   rest() { return this.args.slice(this.i); }

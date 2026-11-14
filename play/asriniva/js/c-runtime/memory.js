@@ -99,7 +99,7 @@ export function createMemoryServices(memory) {
         stackAlloc(n){const at=memory.malloc(Number(n));if(!at)throw new RangeError('C stack allocation failed');stack.push({at,allocation:memory.live.get(at)});return at;},
         stackRestore(mark) {
             if(!marks.has(mark))throw new Error('Invalid C stack mark');
-            while(stack.length>mark.index){const {at,allocation}=stack.pop();if(memory.live.get(at)===allocation)memory.free(at);}
+            while(stack.length>mark.index){const slot=stack.pop(),{at,allocation}=slot;slot.active=false;if(at&&memory.live.get(at)===allocation)memory.free(at);}
             for(const item of marks)if(item.sequence>=mark.sequence)marks.delete(item);
         },
         scoped(fn,...args){const mark=api.stackSave();try{const result=fn(...args);if(result&&typeof result.then==='function')throw new TypeError('C calls must be synchronous');return result;}finally{api.stackRestore(mark);}},
@@ -123,5 +123,19 @@ export function createMemoryServices(memory) {
     };
     api.size_t=api.ulong;
     Object.defineProperties(api,{HEAPU8:{get:()=>memory.HEAPU8},HEAP8:{get:()=>memory.HEAP8}});
+    // Reserve lifetime in the declaring frame, without allocating C bytes.
+    // First address use may happen inside a nested callee; move the actual
+    // allocation into this already-reserved slot before that callee restores.
+    api.stackAlloc.reserve=n=>{
+        const slot={at:0,allocation:undefined,active:true};stack.push(slot);
+        const assertAlive=()=>{if(!slot.active)throw new Error('Expired native stack reservation');};
+        const materialize=()=>{
+            assertAlive();if(slot.at)return slot.at;
+            const at=api.stackAlloc(n),allocated=stack.pop();
+            if(!slot.active){if(memory.live.get(at)===allocated.allocation)memory.free(at);assertAlive();}
+            slot.at=allocated.at;slot.allocation=allocated.allocation;return at;
+        };
+        materialize.assertAlive=assertAlive;return materialize;
+    };
     return api;
 }

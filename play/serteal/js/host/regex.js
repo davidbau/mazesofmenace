@@ -1,25 +1,53 @@
-// host/regex.js - regcomp()/regexec() of the recorder's C library.
+// host/regex.js - regcomp()/regexec() in the regex dialect of the reference C library.
 //
 // NetHack compiles the patterns of MENUCOLOR, MSGTYPE and AUTOPICKUP_EXCEPTION options with
 // regcomp(REG_EXTENDED | REG_NOSUB) and only asks regexec() whether a string matches
-// (sys/share/posixregex.c).  The recorder ran on macOS, whose regex is Apple's build of TRE
-// (Libc regex/TRE: BSD_COMPATIBILITY, no REG_ENHANCED by default), in the "C" locale (the game
-// never calls setlocale), where every byte is one character.  musl's regex is also TRE-based
+// (sys/share/posixregex.c).  The reference dialect is TRE built with BSD_COMPATIBILITY and
+// without REG_ENHANCED, in the "C" locale (the game never calls setlocale), where every byte
+// is one character.  musl's regex is also TRE-based
 // but another dialect: it reads \w \d \s \b \< \> and \1 as GNU extensions, accepts "a**",
 // "^*", "a||b" and an empty pattern, rejects "[[:<:]]", "[[.a.]]", "a{,2}" and a literal "{".
 // Users see the difference in which menu lines get colours, which messages are hidden and
 // which objects are picked up, and in the error text of a pattern that does not compile.
 //
-// This module is that dialect, for those flags: parse() follows Apple's tre_parse(),
+// This module is that dialect, for those flags: parse() follows TRE's tre_parse(),
 // tre_parse_bracket() and tre_parse_bound() step for step (same explicit parse stack, so the
 // same error code for every malformed pattern), and the automaton is built and run the way
 // tre_compile() and tre_tnfa_run_parallel() do it (see "TNFA" below: TRE's handling of
 // assertions on empty paths is its own, and decides some matches).
 //
-//   compile(bytes)          -> { err } (a Darwin <regex.h> error code) or { nsub, nfa }
+//   compile(bytes)          -> { err } (a <regex.h> error code, see host/regerror.js) or { nsub, nfa }
 //   matches(nfa, bytes)     -> boolean (regexec(..., 0, NULL, 0) == 0)
+//
+// The parser and matcher follow TRE, which is distributed under this licence:
+//
+//   Copyright (c) 2001-2009 Ville Laurikari <vl@iki.fi>
+//   All rights reserved.
+//
+//   Redistribution and use in source and binary forms, with or without
+//   modification, are permitted provided that the following conditions
+//   are met:
+//
+//     1. Redistributions of source code must retain the above copyright
+//        notice, this list of conditions and the following disclaimer.
+//
+//     2. Redistributions in binary form must reproduce the above copyright
+//        notice, this list of conditions and the following disclaimer in the
+//        documentation and/or other materials provided with the distribution.
+//
+//   THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDER AND CONTRIBUTORS
+//   ``AS IS'' AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT
+//   LIMITED TO, THE IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR
+//   A PARTICULAR PURPOSE ARE DISCLAIMED.  IN NO EVENT SHALL THE COPYRIGHT
+//   HOLDER OR CONTRIBUTORS BE LIABLE FOR ANY DIRECT, INDIRECT, INCIDENTAL,
+//   SPECIAL, EXEMPLARY, OR CONSEQUENTIAL DAMAGES (INCLUDING, BUT NOT
+//   LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR SERVICES; LOSS OF USE,
+//   DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER CAUSED AND ON ANY
+//   THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY, OR TORT
+//   (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+//   OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.
 
-// Darwin <regex.h> error codes (1-13 have the same values as musl's)
+// <regex.h> error codes of the dialect (1-13 have the same values as musl's)
 export const REG_NOMATCH = 1, REG_ECOLLATE = 3, REG_ECTYPE = 4, REG_EESCAPE = 5, REG_EBRACK = 7,
   REG_EPAREN = 8, REG_EBRACE = 9, REG_BADBR = 10, REG_ERANGE = 11, REG_ESPACE = 12, REG_BADRPT = 13,
   REG_EMPTY = 14, REG_BADMAX = 18;
@@ -28,7 +56,7 @@ const RE_DUP_MAX = 255;
 const INT_MAX = 2147483647;
 const SUBMATCH_ID_INVISIBLE_START = 0x40000000;
 
-// "C" locale character classes of Darwin's wctype()/iswctype() (bytes 0-255; nothing above
+// "C" locale character classes of the dialect's wctype()/iswctype() (bytes 0-255; nothing above
 // 127 is in any class but "rune" covers 0-127)
 const range = (lo, hi) => { const s = []; for (let c = lo; c <= hi; c++) s.push(c); return s; };
 const chars = (t) => Array.from(t, (ch) => ch.charCodeAt(0));
@@ -153,112 +181,130 @@ function parseBracket(re, ctx) {
   let negate = false;
   if (re[p] === 94 /* ^ */) { negate = true; p++; }
   const first = p;
-  const items = []; // [kind, a, b]: "c" char, "r" range, "k" class (array of chars)
-  const add = (item) => { if (items.length >= 1024) fail(REG_ESPACE); items.push(item); };
-  let range = -1; // -1 unset, 0 begin range set, +1 end range expected
-  let min = 0;
-  const single = (c) => { // process_single_character
-    if (range > 0) {
-      if (min > c) fail(REG_ERANGE); // __collate_range_cmp in the C locale
-      add(["r", min, c]);
-      range = -1;
-    } else {
-      if (range === 0) add(["c", min]);
-      min = c;
-      range = 0;
-    }
-  };
+  const items = new BracketItems();
   for (; p < end; p++) {
     const ch = re[p];
     if (ch === 45 /* - */) {
-      if (p === first) { min = 45; range = 0; continue; }
-      if (range > 0) { single(45); continue; }
+      if (p === first) { items.single(45); continue; }
+      if (items.range > 0) { items.single(45); continue; }
       if (p + 1 >= end) fail(REG_EBRACK);
-      if (re[p + 1] === 93) { single(45); continue; }
-      if (range < 0) fail(REG_ERANGE);
-      range = 1;
+      if (re[p + 1] === 93) { items.single(45); continue; }
+      if (items.range < 0) fail(REG_ERANGE);
+      items.range = 1;
       continue;
     }
     if (ch === 91 /* [ */) {
       if (p + 1 >= end) fail(REG_EBRACK);
       const kind = re[p + 1];
-      if (kind === 46 /* . */) {
-        p += 2;
-        const start = p;
-        for (;; p++) {
-          if (p >= end) fail(REG_ECOLLATE);
-          if (re[p] === 46) {
-            if (p + 1 >= end) fail(REG_ECOLLATE);
-            if (re[p + 1] === 93) {
-              if (p === start) fail(REG_ECOLLATE);
-              let c = searchCnames(re, start, p - start);
-              if (c === -1) {
-                // __collate_equiv_value() of the C locale: only single characters exist
-                if (p - start !== 1) fail(REG_ECOLLATE);
-                c = re[start];
-              }
-              p++;
-              single(c);
-              break;
-            }
-          }
-        }
-        continue;
-      }
-      if (kind === 61 /* = */ || kind === 58 /* : */) {
-        if (range > 0) fail(REG_ERANGE);
-        if (range === 0) add(["c", min]);
-        range = -1;
-        p += 2;
-        const start = p;
-        const err = kind === 61 ? REG_ECOLLATE : REG_ECTYPE;
-        for (;; p++) {
-          if (p >= end) fail(err);
-          if (re[p] === kind) {
-            if (p + 1 >= end) fail(err);
-            if (re[p + 1] === 93) {
-              if (p === start) fail(err);
-              if (kind === 61) {
-                if (p - start === 1) add(["c", re[start]]); // its own equivalence class
-                else {
-                  const c = searchCnames(re, start, p - start);
-                  if (c === -1) fail(REG_ECOLLATE);
-                  p++;
-                  single(c);
-                  break;
-                }
-              } else {
-                const name = String.fromCharCode(...re.subarray(start, start + Math.min(p - start, 63)));
-                const cls = CLASSES.get(name);
-                if (!cls) fail(REG_ECTYPE);
-                add(["k", cls]);
-              }
-              p++;
-              break;
-            }
-          }
-        }
-        continue;
-      }
-      single(91);
+      if (kind === 46 /* . */) p = collatingSymbol(re, p + 2, items);
+      else if (kind === 61 /* = */ || kind === 58 /* : */) p = classOrEquivalence(re, p + 2, kind, items);
+      else items.single(91);
       continue;
     }
     if (ch === 93 /* ] */) {
-      if (p === first) { min = 93; range = 0; continue; }
-      if (range === 0) add(["c", min]);
+      if (p === first) { items.single(93); continue; }
       ctx.i = p + 1;
-      const set = new Uint8Array(256);
-      for (const [k, a, b] of items) {
-        if (k === "c") set[a] = 1;
-        else if (k === "r") set.fill(1, a, b + 1);
-        else for (const c of a) set[c] = 1;
-      }
-      if (negate) for (let c = 0; c < 256; c++) set[c] ^= 1;
-      return lit(set);
+      return lit(items.toSet(negate));
     }
-    single(ch);
+    items.single(ch);
   }
   fail(REG_EBRACK);
+}
+
+// The items of a bracket expression as tre_parse_bracket() collects them: characters, ranges
+// and classes, with the character that may still start a range.
+class BracketItems {
+  constructor() {
+    this.items = []; // [kind, a, b]: "c" char, "r" range, "k" class (array of chars)
+    this.range = -1; // -1 unset, 0 begin range set (`min`), +1 end range expected
+    this.min = 0;
+  }
+
+  add(item) {
+    if (this.items.length >= 1024) fail(REG_ESPACE);
+    this.items.push(item);
+  }
+
+  // process_single_character
+  single(c) {
+    if (this.range > 0) {
+      if (this.min > c) fail(REG_ERANGE); // __collate_range_cmp in the C locale
+      this.add(["r", this.min, c]);
+      this.range = -1;
+    } else {
+      if (this.range === 0) this.add(["c", this.min]);
+      this.min = c;
+      this.range = 0;
+    }
+  }
+
+  // a class ends the range that may have begun before it
+  closeRange() {
+    if (this.range > 0) fail(REG_ERANGE);
+    if (this.range === 0) this.add(["c", this.min]);
+    this.range = -1;
+  }
+
+  toSet(negate) {
+    if (this.range === 0) this.add(["c", this.min]);
+    const set = new Uint8Array(256);
+    for (const [k, a, b] of this.items) {
+      if (k === "c") set[a] = 1;
+      else if (k === "r") set.fill(1, a, b + 1);
+      else for (const c of a) set[c] = 1;
+    }
+    if (negate) for (let c = 0; c < 256; c++) set[c] ^= 1;
+    return set;
+  }
+}
+
+// [.name.] (p: the name): one character.  Returns the index of the closing ']'.
+function collatingSymbol(re, p, items) {
+  const end = re.length;
+  const start = p;
+  for (;; p++) {
+    if (p >= end) fail(REG_ECOLLATE);
+    if (re[p] !== 46) continue;
+    if (p + 1 >= end) fail(REG_ECOLLATE);
+    if (re[p + 1] !== 93) continue;
+    if (p === start) fail(REG_ECOLLATE);
+    let c = searchCnames(re, start, p - start);
+    if (c === -1) {
+      // __collate_equiv_value() of the C locale: only single characters exist
+      if (p - start !== 1) fail(REG_ECOLLATE);
+      c = re[start];
+    }
+    items.single(c);
+    return p + 1;
+  }
+}
+
+// [=x=] or [:name:] (kind '=' or ':'; p: the name).  Returns the index of the closing ']'.
+function classOrEquivalence(re, p, kind, items) {
+  items.closeRange();
+  const end = re.length;
+  const start = p;
+  const err = kind === 61 ? REG_ECOLLATE : REG_ECTYPE;
+  for (;; p++) {
+    if (p >= end) fail(err);
+    if (re[p] !== kind) continue;
+    if (p + 1 >= end) fail(err);
+    if (re[p + 1] !== 93) continue;
+    if (p === start) fail(err);
+    if (kind === 58) {
+      const name = String.fromCharCode(...re.subarray(start, start + Math.min(p - start, 63)));
+      const cls = CLASSES.get(name);
+      if (!cls) fail(REG_ECTYPE);
+      items.add(["k", cls]);
+    } else if (p - start === 1) {
+      items.add(["c", re[start]]); // its own equivalence class
+    } else {
+      const c = searchCnames(re, start, p - start);
+      if (c === -1) fail(REG_ECOLLATE);
+      items.single(c);
+    }
+    return p + 1;
+  }
 }
 
 // tre_parse() stack symbols
@@ -267,132 +313,166 @@ const PARSE_RE = 0, PARSE_ATOM = 1, PARSE_MARK_FOR_SUBMATCH = 2, PARSE_BRANCH = 
 
 /** tre_parse() for cflags REG_EXTENDED: AST, or throws ParseError. */
 function parse(re) {
-  const end = re.length;
-  if (end <= 0) fail(REG_EMPTY);
-  const ctx = { i: 0 };
-  let submatchId = 0, invisible = SUBMATCH_ID_INVISIBLE_START;
-  const stack = [];
-  let result = null, depth = 0;
-  stack.push(submatchId, PARSE_MARK_FOR_SUBMATCH);
-  submatchId++;
-  stack.push(PARSE_RE);
-  const parseLiteral = () => {
-    if (ctx.i >= end) fail(depth > 0 ? REG_EPAREN : REG_EMPTY);
-    const c = re[ctx.i];
-    if (c === 124 /* | */) fail(REG_EMPTY);
-    if (c === 123 /* { */) {
-      ctx.i++;
-      const b = parseBound(re, ctx);
-      if (b !== REG_NOMATCH) fail(REG_BADRPT);
-      ctx.i--;
-    } else if (c === 42 || c === 43 || c === 63) fail(REG_BADRPT);
-    result = single(re[ctx.i]);
-    ctx.i++;
-  };
-  while (stack.length) {
-    const symbol = stack.pop();
-    switch (symbol) {
-      case PARSE_RE:
-        stack.push(PARSE_UNION, PARSE_BRANCH);
-        break;
-      case PARSE_BRANCH:
-        stack.push(PARSE_CATENATION, PARSE_PIECE);
-        break;
-      case PARSE_PIECE:
-        stack.push(PARSE_POSTFIX, PARSE_ATOM);
-        break;
-      case PARSE_CATENATION: {
-        if (ctx.i >= end) break;
-        const c = re[ctx.i];
-        if (c === 124) break;
-        if (c === 41 /* ) */ && depth > 0) { depth--; break; }
-        stack.push(result, PARSE_POST_CATENATION, PARSE_CATENATION, PARSE_PIECE);
-        break;
-      }
-      case PARSE_POST_CATENATION: {
-        const tree = stack.pop();
-        result = { t: "cat", l: tree, r: result, sub: -1 };
-        break;
-      }
-      case PARSE_UNION:
-        if (ctx.i >= end) break;
-        if (re[ctx.i] === 124) {
-          stack.push(PARSE_UNION, ctx.i, result, PARSE_POST_UNION, PARSE_BRANCH);
-          ctx.i++;
-        } else if (re[ctx.i] === 41) ctx.i++;
-        break;
-      case PARSE_POST_UNION: {
-        const tree = stack.pop();
-        const pipe = stack.pop();
-        if (pipe === ctx.i - 1) fail(REG_EMPTY);
-        result = { t: "union", l: tree, r: result, sub: -1 };
-        break;
-      }
-      case PARSE_POSTFIX: {
-        if (ctx.i >= end) break;
-        const c = re[ctx.i];
-        if (c === 43 || c === 63 || c === 42) {
-          if (isRawAssertion(result)) fail(REG_BADRPT);
-          const min = c === 43 ? 1 : 0, max = c === 63 ? 1 : -1;
-          if (ctx.i + 1 < end) {
-            const n = re[ctx.i + 1];
-            if (n === 63 || n === 42 || n === 43) fail(REG_BADRPT);
+  if (re.length <= 0) fail(REG_EMPTY);
+  return new TreParser(re).run();
+}
+
+// tre_parse()'s explicit stack machine; `i` is the position in the pattern, `result` the
+// last subtree built.
+class TreParser {
+  constructor(re) {
+    this.re = re;
+    this.end = re.length;
+    this.i = 0;
+    this.stack = [];
+    this.result = null;
+    this.depth = 0;
+    this.submatchId = 0;
+    this.invisible = SUBMATCH_ID_INVISIBLE_START;
+  }
+
+  run() {
+    const stack = this.stack;
+    stack.push(this.submatchId++, PARSE_MARK_FOR_SUBMATCH);
+    stack.push(PARSE_RE);
+    while (stack.length) {
+      switch (stack.pop()) {
+        case PARSE_RE:
+          stack.push(PARSE_UNION, PARSE_BRANCH);
+          break;
+        case PARSE_BRANCH:
+          stack.push(PARSE_CATENATION, PARSE_PIECE);
+          break;
+        case PARSE_PIECE:
+          stack.push(PARSE_POSTFIX, PARSE_ATOM);
+          break;
+        case PARSE_CATENATION:
+          this.catenation();
+          break;
+        case PARSE_POST_CATENATION:
+          this.result = { t: "cat", l: stack.pop(), r: this.result, sub: -1 };
+          break;
+        case PARSE_UNION:
+          this.union();
+          break;
+        case PARSE_POST_UNION: {
+          const tree = stack.pop();
+          const pipe = stack.pop();
+          if (pipe === this.i - 1) fail(REG_EMPTY);
+          this.result = { t: "union", l: tree, r: this.result, sub: -1 };
+          break;
+        }
+        case PARSE_POSTFIX:
+          this.postfix();
+          break;
+        case PARSE_ATOM:
+          this.atom();
+          break;
+        case PARSE_MARK_FOR_SUBMATCH: {
+          const id = stack.pop();
+          if (this.result.sub >= 0 && this.result.sub < SUBMATCH_ID_INVISIBLE_START) {
+            this.result = { t: "cat", l: { t: "empty", sub: -1 }, r: this.result, sub: -1 };
           }
-          ctx.i++;
-          result = { t: "iter", x: result, min, max, sub: invisible++ };
-        } else if (c === 123) {
-          const raw = isRawAssertion(result);
-          ctx.i++;
-          const b = parseBound(re, ctx);
-          if (b === REG_NOMATCH) { ctx.i--; break; }
-          result = { t: "iter", x: result, min: b.min, max: b.max, sub: invisible++ };
-          ctx.i = b.end;
-          if (raw) fail(REG_BADRPT);
+          this.result.sub = id;
+          break;
         }
-        break;
-      }
-      case PARSE_ATOM: {
-        if (ctx.i >= end) { parseLiteral(); break; }
-        const c = re[ctx.i];
-        if (c === 40 /* ( */) {
-          ctx.i++;
-          stack.push(submatchId, PARSE_MARK_FOR_SUBMATCH, PARSE_RE);
-          submatchId++;
-          depth++;
-        } else if (c === 41 && depth > 0) {
-          result = { t: "empty", sub: -1 };
-        } else if (c === 91 /* [ */) {
-          ctx.i++;
-          result = parseBracket(re, ctx);
-        } else if (c === 92 /* \ */) {
-          if (ctx.i + 1 >= end) fail(REG_EESCAPE);
-          // not REG_ENHANCED: a backslash makes any character literal (no \w, \1, ...)
-          ctx.i++;
-          result = single(re[ctx.i]);
-          ctx.i++;
-        } else if (c === 46 /* . */) {
-          const s = new Uint8Array(256).fill(1);
-          s[0] = 0;
-          result = lit(s);
-          ctx.i++;
-        } else if (c === 94 /* ^ */ || c === 36 /* $ */) {
-          result = { t: "assert", a: c === 94 ? "BOL" : "EOL", sub: -1 };
-          ctx.i++;
-        } else parseLiteral();
-        break;
-      }
-      case PARSE_MARK_FOR_SUBMATCH: {
-        const id = stack.pop();
-        if (result.sub >= 0 && result.sub < SUBMATCH_ID_INVISIBLE_START) {
-          result = { t: "cat", l: { t: "empty", sub: -1 }, r: result, sub: -1 };
-        }
-        result.sub = id;
-        break;
       }
     }
+    if (this.depth > 0) fail(REG_EPAREN);
+    return { ast: this.result, nsub: this.submatchId - 1 };
   }
-  if (depth > 0) fail(REG_EPAREN);
-  return { ast: result, nsub: submatchId - 1 };
+
+  catenation() {
+    if (this.i >= this.end) return;
+    const c = this.re[this.i];
+    if (c === 124 /* | */) return;
+    if (c === 41 /* ) */ && this.depth > 0) {
+      this.depth--;
+      return;
+    }
+    this.stack.push(this.result, PARSE_POST_CATENATION, PARSE_CATENATION, PARSE_PIECE);
+  }
+
+  union() {
+    if (this.i >= this.end) return;
+    if (this.re[this.i] === 124) {
+      this.stack.push(PARSE_UNION, this.i, this.result, PARSE_POST_UNION, PARSE_BRANCH);
+      this.i++;
+    } else if (this.re[this.i] === 41) this.i++;
+  }
+
+  // *, +, ? or a bound after a piece
+  postfix() {
+    const re = this.re;
+    if (this.i >= this.end) return;
+    const c = re[this.i];
+    if (c === 43 || c === 63 || c === 42) {
+      if (isRawAssertion(this.result)) fail(REG_BADRPT);
+      const min = c === 43 ? 1 : 0, max = c === 63 ? 1 : -1;
+      if (this.i + 1 < this.end) {
+        const n = re[this.i + 1];
+        if (n === 63 || n === 42 || n === 43) fail(REG_BADRPT);
+      }
+      this.i++;
+      this.result = { t: "iter", x: this.result, min, max, sub: this.invisible++ };
+    } else if (c === 123 /* { */) {
+      const raw = isRawAssertion(this.result);
+      this.i++;
+      const b = parseBound(re, this);
+      if (b === REG_NOMATCH) {
+        this.i--;
+        return;
+      }
+      this.result = { t: "iter", x: this.result, min: b.min, max: b.max, sub: this.invisible++ };
+      this.i = b.end;
+      if (raw) fail(REG_BADRPT);
+    }
+  }
+
+  atom() {
+    const re = this.re;
+    if (this.i >= this.end) return this.literal();
+    const c = re[this.i];
+    if (c === 40 /* ( */) {
+      this.i++;
+      this.stack.push(this.submatchId++, PARSE_MARK_FOR_SUBMATCH, PARSE_RE);
+      this.depth++;
+    } else if (c === 41 && this.depth > 0) {
+      this.result = { t: "empty", sub: -1 };
+    } else if (c === 91 /* [ */) {
+      this.i++;
+      this.result = parseBracket(re, this);
+    } else if (c === 92 /* \ */) {
+      if (this.i + 1 >= this.end) fail(REG_EESCAPE);
+      // not REG_ENHANCED: a backslash makes any character literal (no \w, \1, ...)
+      this.i++;
+      this.result = single(re[this.i]);
+      this.i++;
+    } else if (c === 46 /* . */) {
+      const s = new Uint8Array(256).fill(1);
+      s[0] = 0;
+      this.result = lit(s);
+      this.i++;
+    } else if (c === 94 /* ^ */ || c === 36 /* $ */) {
+      this.result = { t: "assert", a: c === 94 ? "BOL" : "EOL", sub: -1 };
+      this.i++;
+    } else this.literal();
+  }
+
+  literal() {
+    const re = this.re;
+    if (this.i >= this.end) fail(this.depth > 0 ? REG_EPAREN : REG_EMPTY);
+    const c = re[this.i];
+    if (c === 124 /* | */) fail(REG_EMPTY);
+    if (c === 123 /* { */) {
+      this.i++;
+      const b = parseBound(re, this);
+      if (b !== REG_NOMATCH) fail(REG_BADRPT);
+      this.i--;
+    } else if (c === 42 || c === 43 || c === 63) fail(REG_BADRPT);
+    this.result = single(re[this.i]);
+    this.i++;
+  }
 }
 
 // ---- TNFA ----------------------------------------------------------------------------------
@@ -403,7 +483,7 @@ function parse(re) {
 // Two of those rules are not textbook and decide some matches: the assertions of an empty
 // path are those of ONE path (a union takes its left branch when it is nullable, an
 // iteration goes through its argument), and tre_set_union() adds them to the entries of its
-// first set only.  So "x([[:<:]])?" cannot match "x" at the end of the string on macOS.
+// first set only.  So "x([[:<:]])?" cannot match "x" at the end of the string.
 // The states of the automaton are the positions; a transition reads the character of its
 // source position and checks the assertions of both ends after it (tre_make_trans).
 const A_BOL = 1, A_EOL = 2, A_BOW = 4, A_EOW = 8;

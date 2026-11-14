@@ -1,3 +1,6 @@
+import {createNativeArtifact} from '../native/artifact.js';
+import {createNativeDescriptorViews} from '../native/descriptor-views.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -12,16 +15,19 @@ export function createArtifactEnvironment(services,layout,namespace) {
         if(Number(layout[k])!==v)throw Error('Review changed ARTIFACT ABI: '+k);
     const pointerValue=v=>{const r=BigInt.asUintN(64,BigInt(v?.address??v??0));return r<=BigInt(Number.MAX_SAFE_INTEGER)?Number(r):r;};
     const addr=v=>Number(v?.address??v??0),raw=v=>BigInt.asUintN(64,BigInt(typeof v==='string'?services.literal(v):typeof v==='boolean'?Number(v):typeof v==='number'?Math.trunc(v):v?.address??v??0));
-    const memory=()=>CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
-    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:false,rows:true,coerceRecordSize:true,directIntegerReads:false,voidPointer:pointerValue});
+    const nativeArena=services.nativeOwner?.nativeArena;
+    const memory=()=>nativeArena?.view??CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
+    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:false,rows:true,coerceRecordSize:true,directIntegerReads:Boolean(nativeArena),pointerRead:nativeArena?(at=>nativeArena.pointer(at)):undefined,pointerWrite:nativeArena?((at,value)=>nativeArena.storePointer(at,raw(value))):undefined,voidPointer:pointerValue});
 
 
 
 
-    const view=CAdapter.createDescriptorViewFactory({services,schemas,address:pointerValue,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'artifact'),numericRows:true,layout,aggregateField:{record:'instance_globals_v',field:'viz_array',array,address:addr,makeDescriptor:()=>({a:[0],e:{row:'u8'}})}});
+    const viewOptions={services,schemas,address:pointerValue,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'artifact',Boolean(services.nativeOwner)),numericRows:true,layout,aggregateField:{record:'instance_globals_v',field:'viz_array',array,address:addr,makeDescriptor:()=>({a:[0],e:{row:'u8'}})}};
+    const view=services.nativeOwner?createNativeDescriptorViews({...viewOptions,owner:services.nativeOwner,plans:services.nativeFieldPlans}):CAdapter.createDescriptorViewFactory(viewOptions);
+    const kindOf=obj=>view.kindOf?.(obj)??obj.kind;
     const env=Object.assign(Object.create(services),layout,{view,
         callLocal:(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);},
-        addressOf:(o,f)=>addr(services.address(names.indexOf(o.kind),o.address,schemas[o.kind].fields.findIndex(x=>x.name===f))),
+        addressOf:(o,f)=>addr(services.address(names.indexOf(kindOf(o)),o.address,schemas[kindOf(o)].fields.findIndex(x=>x.name===f))),
         int:v=>Number(BigInt.asIntN(32,raw(v))),char:v=>Number(BigInt.asIntN(8,raw(v))),uchar:v=>Number(BigInt.asUintN(8,raw(v))),boolean:v=>Number(BigInt.asIntN(8,raw(v))),short:v=>Number(BigInt.asIntN(16,raw(v))),long:v=>BigInt.asIntN(64,raw(v)),ulong:v=>raw(v),
         charPointer:v=>typeof v==='string'?services.literal(v):Array.isArray(v)?services.literal(String.fromCharCode(...v.slice(0,v.indexOf(0)<0?v.length:v.indexOf(0)))):addr(v),
         loadChar:v=>memory().getInt8(addr(v)),storeChar:(v,b)=>memory().setInt8(addr(v),Number(b)),intReference:(get,set)=>({get,set}),
@@ -29,7 +35,7 @@ export function createArtifactEnvironment(services,layout,namespace) {
     for(const [name,value]of Object.entries(layout))if(name.startsWith('constwidth_')){const k=name.slice(11);env[k]=Number(value)===8?(Number(layout['constsigned_'+k])?BigInt.asIntN(64,BigInt(layout[k])):BigInt.asUintN(64,BigInt(layout[k]))):Number(layout['constsigned_'+k])?Number(BigInt.asIntN(32,BigInt(layout[k]))):Number(BigInt.asUintN(32,BigInt(layout[k])));}
     for(const [name,sch]of Object.entries(schemas))for(const f of sch.fields)if(!f.bit&&width(f.d)!==Number(layout['width_'+name+'_'+f.name]))throw Error('Review changed ARTIFACT field width: '+name+'.'+f.name);
     CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr);
-    namespace=namespace??core;
+    namespace={...(namespace??core)};
     const functions=["hack_artifacts", "init_artifacts", "save_artifacts", "restore_artifacts", "artiname", "mk_artifact", "dispose_of_orig_obj", "artifact_name", "exist_artifact", "artifact_exists", "found_artifact", "find_artifact", "nartifact_exist", "artifact_origin", "spec_ability", "confers_luck", "arti_reflects", "shade_glare", "restrict_name", "attacks", "defends", "defends_when_carried", "protects", "set_artifact_intrinsic", "touch_artifact", "arti_immune", "bane_applies", "spec_applies", "spec_m2", "spec_abon", "spec_dbon", "discover_artifact", "undiscovered_artifact", "disp_artifact_discoveries", "dump_artifact_info", "Mb_hit", "artifact_hit", "invoke_ok", "doinvoke", "nothing_special", "invoke_taming", "invoke_healing", "invoke_energy_boost", "invoke_untrap", "invoke_charge_obj", "invoke_create_portal", "invoke_create_ammo", "invoke_banish", "invoke_fling_poison", "invoke_storm_spell", "invoke_blinding_ray", "arti_invoke_cost_pw", "arti_invoke_cost", "arti_invoke", "finesse_ahriman", "artifact_light", "arti_speak", "artifact_has_invprop", "arti_cost", "abil_to_adtyp", "abil_to_spfx", "what_gives", "glow_color", "glow_strength", "glow_verb", "Sting_effects", "retouch_object", "untouchable", "retouch_equipment", "count_surround_traps", "mkot_trap_warn", "is_magic_key", "has_magic_key", "is_art", "get_artifact", "permapoisoned"];
     for(const name of functions)env[name]=(...args)=>env.callLocal(namespace[name],...args);
     const functionPointer=fn=>{if(typeof fn!=='function')return fn;const i=functions.findIndex(n=>namespace[n]===fn||env[n]===fn);if(i<0){const foreign=["charge_ok", "xname"].findIndex(n=>env[n]===fn);if(foreign>=0)return services.foreignFunctionPointer(foreign);throw Error('Unrecognized ARTIFACT native callback');}return services.functionPointer(i);};
@@ -41,13 +47,13 @@ export function createArtifactEnvironment(services,layout,namespace) {
     const descriptor=type=>{type=type.replace(/^(?:const )?(?:struct |union )/,'');type=aliases[type]??type;if(type.endsWith('*')){const n=type.slice(0,-1).trim();return{p:aliases[n]??(schemas[n]?n:'')};}if(schemas[type])return{s:type};const scalar={char:'i8','signed char':'i8','unsigned char':'u8',uchar:'u8',boolean:'i8',short:'i16','unsigned short':'u16',int:'i32','unsigned int':'u32',unsigned:'u32',long:'i64','unsigned long':'u64'};if(scalar[type])return{t:scalar[type]};throw Error('Review ARTIFACT local type '+type);};
     env.longPointer=at=>Object.defineProperty({address:addr(at)},'value',{get:()=>memory().getBigInt64(addr(at),true),set:v=>memory().setBigInt64(addr(at),BigInt(v),true)});
     env.localPointer=(type,get,set)=>{const d=descriptor(type),at=addr(services.stackAlloc(width(d)));write(d,at,get());return{address:at,descriptor:d,localRef:true,set,get value(){return read(d,at);},set value(v){write(d,at,v);set(read(d,at));}};};
-    env.fieldPointer=(obj,name)=>{const field=schemas[obj.kind].fields.find(f=>f.name===name);if(!field)throw Error('Unknown ARTIFACT field reference '+name);return Object.defineProperty({address:env.addressOf(obj,name)},'value',{get:()=>obj[name],set:v=>obj[name]=v});};
+    env.fieldPointer=(obj,name)=>{const field=schemas[kindOf(obj)].fields.find(f=>f.name===name);if(!field)throw Error('Unknown ARTIFACT field reference '+name);return Object.defineProperty({address:env.addressOf(obj,name)},'value',{get:()=>obj[name],set:v=>obj[name]=v});};
     env.recordLocal=(name,initial)=>{name=aliases[name]??name;const at=addr(services.stackAlloc(Number(layout[name+'Size']))),out=view(name,at);if(Array.isArray(initial)){schemas[name].fields.forEach((f,i)=>{out[f.name]=initial[i]??0;});}else if(initial!==undefined)services.heap().copyWithin(at,addr(initial),addr(initial)+Number(layout[name+'Size']));return out;};
     env.copyRecord=(out,input,bytes)=>services.heap().copyWithin(addr(out),addr(input),addr(input)+Number(bytes));
     env.pointerLoad=(kind,at)=>view(aliases[kind]??kind,memory().getBigUint64(addr(at),true));
     env.pointerArray=(kind,at)=>array({a:[0],e:{p:aliases[kind]??kind}},addr(at));
     env.intArray=at=>array({a:[0],e:{t:'i32'}},addr(at));
-    env.advanceRecord=(obj,n)=>view(obj.kind,obj.address+Number(n)*Number(layout[obj.kind+'Size']));
+    env.advanceRecord=(obj,n)=>view(kindOf(obj),obj.address+Number(n)*Number(layout[kindOf(obj)+'Size']));
     env.SIZE=a=>typeof a==='string'?a.length+1:Array.isArray(a)?a.length:a.descriptor?.a?.[0]??(()=>{throw Error('Review ARTIFACT SIZE operand');})();
     env.callLocal=(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);};
     env.uint=v=>Number(BigInt.asUintN(32,raw(v)));env.ushort=v=>Number(BigInt.asUintN(16,raw(v)));env.int=v=>Number(BigInt.asIntN(32,raw(v)));env.char=v=>Number(BigInt.asIntN(8,raw(v)));env.short=v=>Number(BigInt.asIntN(16,raw(v)));env.long=v=>BigInt.asIntN(64,raw(v));env.ulong=raw;
@@ -338,6 +344,7 @@ export function createArtifactEnvironment(services,layout,namespace) {
     env.sprintf=(...args)=>{const key="sprintf_pp"+formatShape(args[1]);const fn=services[key];if(!fn)throw Error("Review unconfigured ARTIFACT vararg ABI "+key);return invoke(fn,args);};
     env.verbalize=(...args)=>{const key="verbalize_p"+formatShape(args[0]);const fn=services[key];if(!fn)throw Error("Review unconfigured ARTIFACT vararg ABI "+key);return invoke(fn,args);};
     env.Sprintf=env.sprintf;env.Strcpy=env.strcpy;env.Strcat=env.strcat;
+    if(services.nativeOwner){installNativeIntegerCasts(env);env.nativeState=services.nativeOwner;env.nativeNamespace=createNativeArtifact(env);Object.assign(namespace,env.nativeNamespace);}
     return env;
 }
 // Reuse validated views, while preserving per-call service overrides and reentry.
@@ -355,7 +362,7 @@ function artifactEnvironmentFor(services,layout){
  }
  return entry;
 }
-export function callArtifact(services,layout,name,...args){const saved=services.stackSave();let entry,previous;try{entry=artifactEnvironmentFor(services,layout);previous=entry.active;entry.active=services;const env=entry.environment;if(!env.state.initialized)core.initializeArtifactData(env);
+export function callArtifact(services,layout,name,...args){const saved=services.stackSave();let entry,previous;try{entry=artifactEnvironmentFor(services,layout);previous=entry.active;entry.active=services;const env=entry.environment;if(!env.state.initialized)(env.nativeNamespace??core).initializeArtifactData(env);
 if(name==="mk_artifact"){args[0]=env.view('obj',args[0]);}
 if(name==="dispose_of_orig_obj"){args[0]=env.view('obj',args[0]);}
 if(name==="artifact_name"){args[1]=env.scalarPointer("short",args[1]);}
@@ -412,4 +419,4 @@ if(name==="has_magic_key"){args[0]=env.view('monst',args[0]);}
 if(name==="is_art"){args[0]=env.view('obj',args[0]);}
 if(name==="get_artifact"){args[0]=env.view('obj',args[0]);}
 if(name==="permapoisoned"){args[0]=env.view('obj',args[0]);}
-const result=withCEnvironment(env,()=>core[name](...args));return typeof result==='string'?services.literal(result):result?.address??result;}finally{if(entry)entry.active=previous;services.stackRestore(saved);}}
+const invoke=()=>env.nativeNamespace?env.nativeNamespace[name](...args):withCEnvironment(env,()=>core[name](...args));const owner=env.nativeState;let result;if(owner){owner.enter();try{result=invoke();}finally{owner.leave();}}else result=invoke();return typeof result==='string'?services.literal(result):result?.address??result;}finally{if(entry)entry.active=previous;services.stackRestore(saved);}}

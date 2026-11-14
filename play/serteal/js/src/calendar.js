@@ -4,20 +4,21 @@
 /* Copyright (c) Robert Patrick Rankin, 1991                      */
 /* NetHack may be freely redistributed.  See license for details. */
 
-/* c2js recorder fixed datetime timezone: public traces are recorded with
-   TZ=America/New_York and fixed datetimes parsed through mktime().  The
-   recorder leaves tm_isdst set from the real current time, so fixed wall
-   times are interpreted as daylight time before localtime() renders them
-   back as New York civil time.  Keep that behavior deterministic in JS. */
-export const NH_C2JS_RECORDER_STD_OFFSET_SECONDS = (-5 * 60 * 60);
-export const NH_C2JS_RECORDER_DST_OFFSET_SECONDS = (-4 * 60 * 60);
-export const NH_C2JS_RECORDER_MKTIME_ISDST = 1;
+/*
+ * The game's clock is New York civil time (US daylight-saving rules as in
+ * tzdata's America/New_York).  A fixed datetime (NETHACK_FIXED_DATETIME) is
+ * read as mktime() reads it when tm_isdst is already set: as daylight time,
+ * whatever the season.  Dates are then rendered as New York civil time.
+ */
+export const NHJS_EST_OFFSET_SECONDS = (-5 * 60 * 60);
+export const NHJS_EDT_OFFSET_SECONDS = (-4 * 60 * 60);
+export const NHJS_MKTIME_ISDST = 1;
 
-function nh_c2js_leap_year(year) { /* int */
+function nhjs_leap_year(year) { /* int */
     return +(year % 4 == 0 && (year % 100 != 0 || year % 400 == 0));
 }
 
-function nh_c2js_days_from_civil(year, month, day) { /* long long */
+function nhjs_days_from_civil(year, month, day) { /* long long */
     let era;
     let yoe, doy, doe;
 
@@ -29,8 +30,8 @@ function nh_c2js_days_from_civil(year, month, day) { /* long long */
     return era * 146097 + doe - 719468;
 }
 
-function nh_c2js_civil_from_days(z, year, month,
-                        day) { /* void */
+function nhjs_civil_from_days(z, year, month,
+                     day) { /* void */
     let era;
     let doe, yoe, doy, mp;
 
@@ -46,7 +47,7 @@ function nh_c2js_civil_from_days(z, year, month,
     year[0] += +(month[0] <= 2);
 }
 
-function nh_c2js_weekday_from_days(days) { /* int */
+function nhjs_weekday_from_days(days) { /* int */
     let wday = ((days + 4) % 7);
 
     if (wday < 0)
@@ -54,25 +55,25 @@ function nh_c2js_weekday_from_days(days) { /* int */
     return wday;
 }
 
-function nh_c2js_nth_sunday_mday(year, month, nth) { /* unsigned */
-    let days = nh_c2js_days_from_civil(year, month, 1);
-    let first_sunday = unsigned((1 + ((7 - nh_c2js_weekday_from_days(days)) % 7)));
+function nhjs_nth_sunday_mday(year, month, nth) { /* unsigned */
+    let days = nhjs_days_from_civil(year, month, 1);
+    let first_sunday = unsigned((1 + ((7 - nhjs_weekday_from_days(days)) % 7)));
 
     return unsigned(first_sunday + unsigned(Math.imul(7, unsigned(nth - 1))));
 }
 
-function nh_c2js_epoch_from_civil_offset(year, month, day,
-                                hour, minute, second,
-                                offset) { /* long long */
-    let days = nh_c2js_days_from_civil(year, month, day);
+function nhjs_epoch_from_civil_offset(year, month, day,
+                             hour, minute, second,
+                             offset) { /* long long */
+    let days = nhjs_days_from_civil(year, month, day);
 
     return days * 86400 + hour * 3600
            + minute * 60 + second - offset;
 }
 
-function nh_c2js_recorder_dst_for_epoch(epoch) { /* int */
+function nhjs_dst_for_epoch(epoch) { /* int */
     const $frame = stack_frame(); try {
-    let shifted = epoch + NH_C2JS_RECORDER_STD_OFFSET_SECONDS;
+    let shifted = epoch + NHJS_EST_OFFSET_SECONDS;
     let days = Math.trunc(shifted / 86400);
     let year = stack_var(int);
     let month = stack_var(unsigned), day = stack_var(unsigned), march_start, november_end, start_month, end_month;
@@ -80,7 +81,7 @@ function nh_c2js_recorder_dst_for_epoch(epoch) { /* int */
 
     if (shifted < 0 && shifted % 86400)
         --days;
-    nh_c2js_civil_from_days(days, year, month, day);
+    nhjs_civil_from_days(days, year, month, day);
     /* US rules as in tzdata's America/New_York: since 2007 the second
        Sunday of March to the first Sunday of November; 1987-2006 the
        first Sunday of April to the last Sunday of October; 1967-1986 the
@@ -89,13 +90,13 @@ function nh_c2js_recorder_dst_for_epoch(epoch) { /* int */
         return 0;
     if (year[0] >= 2007) {
         start_month = 3;
-        march_start = nh_c2js_nth_sunday_mday(year[0], 3, 2);
+        march_start = nhjs_nth_sunday_mday(year[0], 3, 2);
         end_month = 11;
-        november_end = nh_c2js_nth_sunday_mday(year[0], 11, 1);
+        november_end = nhjs_nth_sunday_mday(year[0], 11, 1);
     } else {
         start_month = 4;
-        march_start = year[0] >= 1987 ? nh_c2js_nth_sunday_mday(year[0], 4, 1)
-                                   : nh_c2js_nth_sunday_mday(year[0], 4, 4);
+        march_start = year[0] >= 1987 ? nhjs_nth_sunday_mday(year[0], 4, 1)
+                                   : nhjs_nth_sunday_mday(year[0], 4, 4);
         if (year[0] < 1987 && unsigned(march_start + 7) <= 30)
             march_start = unsigned(march_start + 7);
         if (year[0] == 1974)
@@ -103,22 +104,22 @@ function nh_c2js_recorder_dst_for_epoch(epoch) { /* int */
         else if (year[0] == 1975)
             start_month = 2, march_start = 23;
         end_month = 10;
-        november_end = nh_c2js_nth_sunday_mday(year[0], 10, 4);
+        november_end = nhjs_nth_sunday_mday(year[0], 10, 4);
         if (unsigned(november_end + 7) <= 31)
             november_end = unsigned(november_end + 7);
     }
-    start_epoch = nh_c2js_epoch_from_civil_offset(
+    start_epoch = nhjs_epoch_from_civil_offset(
         year[0], start_month, march_start, 2, 0, 0,
-        NH_C2JS_RECORDER_STD_OFFSET_SECONDS);
-    end_epoch = nh_c2js_epoch_from_civil_offset(
+        NHJS_EST_OFFSET_SECONDS);
+    end_epoch = nhjs_epoch_from_civil_offset(
         year[0], end_month, november_end, 2, 0, 0,
-        NH_C2JS_RECORDER_DST_OFFSET_SECONDS);
+        NHJS_EDT_OFFSET_SECONDS);
     return +(epoch >= start_epoch && epoch < end_epoch);
     } finally { stack_pop($frame); }
 }
 
-function nh_c2js_parse_yyyymmddhhmmss(buf, year, month, day,
-                             hour, minute, second) { /* int */
+function nhjs_parse_yyyymmddhhmmss(buf, year, month, day,
+                          hour, minute, second) { /* int */
     let i;
 
     if (!buf || strlen(buf) != 14)
@@ -140,17 +141,17 @@ function nh_c2js_parse_yyyymmddhhmmss(buf, year, month, day,
         && day[0] > 30)
         return 0;
     if (month[0] == 2
-        && day[0] > (nh_c2js_leap_year(year[0]) ? 29 : 28))
+        && day[0] > (nhjs_leap_year(year[0]) ? 29 : 28))
         return 0;
     return 1;
 }
 
-function nh_c2js_fill_tm(t, year, month, day, hour,
-                minute, second, isdst) { /* void */
-    let days = nh_c2js_days_from_civil(year, unsigned(month),
-                                             unsigned(day));
-    let year_start = nh_c2js_days_from_civil(year, 1, 1);
-    let wday = nh_c2js_weekday_from_days(days);
+function nhjs_fill_tm(t, year, month, day, hour,
+             minute, second, isdst) { /* void */
+    let days = nhjs_days_from_civil(year, unsigned(month),
+                                          unsigned(day));
+    let year_start = nhjs_days_from_civil(year, 1, 1);
+    let wday = nhjs_weekday_from_days(days);
 
     t.tm_sec = second;
     t.tm_min = minute;
@@ -163,30 +164,30 @@ function nh_c2js_fill_tm(t, year, month, day, hour,
     t.tm_isdst = isdst;
 }
 
-function nh_c2js_time_from_yyyymmddhhmmss(buf) { /* time_t */
+function nhjs_time_from_yyyymmddhhmmss(buf) { /* time_t */
     const $frame = stack_frame(); try {
     let year = stack_var(int), month = stack_var(int), day = stack_var(int), hour = stack_var(int), minute = stack_var(int), second = stack_var(int);
     let offset;
 
-    if (!nh_c2js_parse_yyyymmddhhmmss(buf, year, month, day, hour,
-                                      minute, second))
+    if (!nhjs_parse_yyyymmddhhmmss(buf, year, month, day, hour,
+                                   minute, second))
         return 0;
-    offset = NH_C2JS_RECORDER_MKTIME_ISDST
-                 ? NH_C2JS_RECORDER_DST_OFFSET_SECONDS
-                 : NH_C2JS_RECORDER_STD_OFFSET_SECONDS;
-    return nh_c2js_epoch_from_civil_offset(
+    offset = NHJS_MKTIME_ISDST
+                 ? NHJS_EDT_OFFSET_SECONDS
+                 : NHJS_EST_OFFSET_SECONDS;
+    return nhjs_epoch_from_civil_offset(
         year[0], unsigned((month[0])), unsigned((day[0])), hour[0], minute[0], second[0], offset);
     } finally { stack_pop($frame); }
 }
 
-function nh_c2js_tm_from_time(date) { /* struct tm * */
+function nhjs_tm_from_time(date) { /* struct tm * */
     const $frame = stack_frame(); try {
-    let t = static_struct("nh_c2js_tm_from_time.t", struct_tm);
+    let t = static_struct("nhjs_tm_from_time.t", struct_tm);
     let epoch = date;
-    let isdst = nh_c2js_recorder_dst_for_epoch(epoch);
+    let isdst = nhjs_dst_for_epoch(epoch);
     let shifted = epoch
-        + (isdst ? NH_C2JS_RECORDER_DST_OFFSET_SECONDS
-                 : NH_C2JS_RECORDER_STD_OFFSET_SECONDS);
+        + (isdst ? NHJS_EDT_OFFSET_SECONDS
+                 : NHJS_EST_OFFSET_SECONDS);
 
     let days = Math.trunc(shifted / 86400);
     let rem = shifted % 86400;
@@ -197,23 +198,15 @@ function nh_c2js_tm_from_time(date) { /* struct tm * */
         rem += 86400;
         --days;
     }
-    nh_c2js_civil_from_days(days, year, month, day);
+    nhjs_civil_from_days(days, year, month, day);
     hour = int(Math.trunc(rem / 3600));
     rem %= 3600;
     minute = int(Math.trunc(rem / 60));
     second = (rem % 60);
-    nh_c2js_fill_tm(t, year[0], int((month[0])), int((day[0])), hour, minute, second,
-                    isdst);
+    nhjs_fill_tm(t, year[0], int((month[0])), int((day[0])), hour, minute, second,
+                 isdst);
     return t;
     } finally { stack_pop($frame); }
-}
-
-function nh_c2js_tm_from_yyyymmddhhmmss(buf) { /* struct tm * */
-    let date = nh_c2js_time_from_yyyymmddhhmmss(buf);
-
-    if (date == 0)
-        return null;
-    return nh_c2js_tm_from_time(date);
 }
 
 /*
@@ -236,8 +229,7 @@ export function getnow() { /* time_t */
     let datetime = stack_var(long, 0);
 
     if (fixed_dt && chars[fixed_dt]) {
-        let parsed = nh_c2js_time_from_yyyymmddhhmmss(fixed_dt);
-
+        let parsed = nhjs_time_from_yyyymmddhhmmss(fixed_dt);
         if (parsed != 0)
             return parsed;
     }
@@ -249,7 +241,7 @@ export function getnow() { /* time_t */
 function getlt() { /* struct tm * */
     let date = getnow();
 
-    return nh_c2js_tm_from_time(date);
+    return nhjs_tm_from_time(date);
 }
 
 export function getyear() { /* int */
@@ -263,8 +255,7 @@ export function yyyymmdd(date) { /* long long */
     if (date == 0)
         lt = getlt();
     else
-
-        lt = nh_c2js_tm_from_time(date);
+        lt = nhjs_tm_from_time(date);
 
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -286,8 +277,7 @@ export function hhmmss(date) { /* long long */
     if (date == 0)
         lt = getlt();
     else
-
-        lt = nh_c2js_tm_from_time(date);
+        lt = nhjs_tm_from_time(date);
 
     timenum = lt.tm_hour * 10000 + lt.tm_min * 100 + lt.tm_sec;
     return timenum;
@@ -301,8 +291,7 @@ export function yyyymmddhhmmss(date) { /* char * */
     if (date == 0)
         lt = getlt();
     else
-
-        lt = nh_c2js_tm_from_time(date);
+        lt = nhjs_tm_from_time(date);
 
     /* just in case somebody's localtime supplies (year % 100)
        rather than the expected (year - 1900) */
@@ -318,8 +307,7 @@ export function yyyymmddhhmmss(date) { /* char * */
 }
 
 export function time_from_yyyymmddhhmmss(buf) { /* time_t */
-    return nh_c2js_time_from_yyyymmddhhmmss(buf);
-/* #else (#ifdef NH_C2JS_RECORDER_PLATFORM): not in this build */
+    return nhjs_time_from_yyyymmddhhmmss(buf);
 }
 
 /*

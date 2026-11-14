@@ -40,6 +40,7 @@ export function enableTerminalMessages(environment,layouts){
  local.tty_curs=(win,x,y)=>resolve('tty_curs')(transport.int(win),transport.int(x),transport.int(y));
  local.xwaitforspace=value=>resolve('xwaitforspace')(text(value));
  const window=(field,signature,...args)=>{
+  if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke(field,signature,...args);
   const entry=ctypes.record('struct window_procs').fields[field];if(!entry)throw new Error('Unknown TOPL window callback '+field);
   const callback=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+entry.offset,true);
   return functions.indirect(callback,signature,...args);

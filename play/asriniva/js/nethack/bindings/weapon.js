@@ -1,3 +1,6 @@
+import {validateNativeWeaponLayouts} from '../native/weapon-layout.js';
+import {createNativeWeapon} from '../native/weapon.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // Native layouts, pointer lvalues and original header macros only.
 import * as weapon from '../../ported/weapon.js';
@@ -5,24 +8,27 @@ import { withCEnvironment } from '../../c-runtime/context.js';
 const states = new WeakMap();
 export function createWeaponEnvironment(services,L) {
  const address=value=>Number(value?.address??value??0),raw=value=>CAdapter.unsignedPointer(value);
- const view=()=>CAdapter.currentDataView(services),global=i=>Number(services.global(i));
- const int=value=>CAdapter.signedInt(value,true);
+ const native=services.nativeOwner?.nativeArena?services.nativeOwner:undefined,records=native?.nativeRecords;
+ if(native)validateNativeWeaponLayouts(services.nativeWeaponTypes,L);
+ const nativeClasses=new WeakSet(),nativeObjects=new WeakSet();
+ const view=()=>native?native.nativeArena.view:CAdapter.currentDataView(services),global=i=>Number(services.global(i));
+ const int=value=>native&&typeof value==='number'&&Number.isInteger(value)?value|0:CAdapter.signedInt(value,true);
  const scalar=(obj,key,at,type)=>Object.defineProperty(obj,key,{get:()=>view()['get'+type](at(),true),set:value=>view()['set'+type](at(),type.includes('Big')?BigInt(value):Number(value),true)});
  const pointer=at=>CAdapter.readPointerNumber(view,at);
  const ptrField=(obj,key,at,wrap=value=>value)=>Object.defineProperty(obj,key,{get:()=>wrap(pointer(at())),set:value=>view().setBigUint64(at(),raw(value),true)});
  const array=(at,stride,wrap)=>new Proxy({address:at},{get:(target,key)=>typeof key==='string'&&/^\d+$/.test(key)?wrap(at+Number(key)*stride):target[key]});
  const numericArray=(at,count,type)=>new Proxy({address:at,length:count},{get:(target,key)=>typeof key==='string'&&/^\d+$/.test(key)?view()['get'+type](at+Number(key)*(type.endsWith('16')?2:4),true):target[key],set(target,key,value){if(typeof key==='string'&&/^\d+$/.test(key))view()['set'+type](at+Number(key)*(type.endsWith('16')?2:4),Number(value),true);else target[key]=value;return true;}});
- const permonst=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({mlet:'Int8',msize:'Uint8',mflags1:'BigUint64',mflags2:'BigUint64'}))scalar(item,k,()=>at+L['pm_'+k],type);return item;};
- const monster=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const k of ['mx','my','mux','muy','weapon_check'])scalar(item,k,()=>at+L['mon_'+k],'Int16');scalar(item,'misc_worn_check',()=>at+L.mon_misc_worn_check,'BigInt64');ptrField(item,'data',()=>at+L.mon_data,permonst);ptrField(item,'mw',()=>at+L.mon_mw,object);ptrField(item,'minvent',()=>at+L.mon_minvent,object);return item;};
- const object=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({otyp:'Int16',oclass:'Int8',oartifact:'Int8',spe:'Int8',owt:'Uint32',quan:'BigInt64',owornmask:'BigInt64',corpsenm:'Int32',where:'Int8'}))scalar(item,k,()=>at+L['obj_'+k],type);ptrField(item,'nobj',()=>at+L.obj_nobj,object);ptrField(item,'ocarry',()=>at+L.obj_ocarry,monster);for(const[i,key]of ['globby','blessed','lamplit','dknown','cursed','bknown','oeroded','oeroded2'].entries())Object.defineProperty(item,key,{get:()=>services.objectBit(at,i),set:value=>services.setObjectBit(at,i,value)});return item;};
- const classView=at=>{const item={address:at};for(const[k,type]of Object.entries({oc_name_idx:'Int16',oc_skill:'Int8',oc_hitbon:'Int8',oc_wldam:'Int8',oc_wsdam:'Int8',oc_weight:'Uint32'}))scalar(item,k,()=>at+L['cls_'+k],type);for(const[i,key]of ['oc_material','oc_bimanual'].entries())Object.defineProperty(item,key,{get:()=>services.classBit(at,i)});return item;};
- const skills=at=>{const item={address:at};for(const[k,type]of Object.entries({skill:'Int16',max_skill:'Int16',advance:'Uint16'}))scalar(item,k,()=>at+L['skill_'+k],type);return item;};
- const defSkill=value=>{const at=address(value);if(!at)return 0;const item={address:at};for(const k of ['skill','skmax'])scalar(item,k,()=>at+L['defskill_'+k],'Int16');return item;};
+ const permonst=value=>{if(records)return records.record('struct permonst',value);const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({mlet:'Int8',msize:'Uint8',mflags1:'BigUint64',mflags2:'BigUint64'}))scalar(item,k,()=>at+L['pm_'+k],type);return item;};
+ const monster=value=>{if(records)return records.record('struct monst',value);const at=address(value);if(!at)return 0;const item={address:at};for(const k of ['mx','my','mux','muy','weapon_check'])scalar(item,k,()=>at+L['mon_'+k],'Int16');scalar(item,'misc_worn_check',()=>at+L.mon_misc_worn_check,'BigInt64');ptrField(item,'data',()=>at+L.mon_data,permonst);ptrField(item,'mw',()=>at+L.mon_mw,object);ptrField(item,'minvent',()=>at+L.mon_minvent,object);return item;};
+ const object=value=>{if(records){const item=records.record('struct obj',value);if(item&&!nativeObjects.has(item)){CAdapter.installStringAliases(item,{ocarry:'v.v_ocarry'},true);nativeObjects.add(item);}return item;}const at=address(value);if(!at)return 0;const item={address:at};for(const[k,type]of Object.entries({otyp:'Int16',oclass:'Int8',oartifact:'Int8',spe:'Int8',owt:'Uint32',quan:'BigInt64',owornmask:'BigInt64',corpsenm:'Int32',where:'Int8'}))scalar(item,k,()=>at+L['obj_'+k],type);ptrField(item,'nobj',()=>at+L.obj_nobj,object);ptrField(item,'ocarry',()=>at+L.obj_ocarry,monster);for(const[i,key]of ['globby','blessed','lamplit','dknown','cursed','bknown','oeroded','oeroded2'].entries())Object.defineProperty(item,key,{get:()=>services.objectBit(at,i),set:value=>services.setObjectBit(at,i,value)});return item;};
+ const classView=at=>{if(records){const item=records.record('struct objclass',at);if(!nativeClasses.has(item)){CAdapter.installStringAliases(item,{oc_skill:'oc_subtyp',oc_bimanual:'oc_big',oc_hitbon:'oc_oc1'},true);nativeClasses.add(item);}return item;}const item={address:at};for(const[k,type]of Object.entries({oc_name_idx:'Int16',oc_skill:'Int8',oc_hitbon:'Int8',oc_wldam:'Int8',oc_wsdam:'Int8',oc_weight:'Uint32'}))scalar(item,k,()=>at+L['cls_'+k],type);for(const[i,key]of ['oc_material','oc_bimanual'].entries())Object.defineProperty(item,key,{get:()=>services.classBit(at,i)});return item;};
+ const skills=at=>{if(records)return records.record('struct skills',at);const item={address:at};for(const[k,type]of Object.entries({skill:'Int16',max_skill:'Int16',advance:'Uint16'}))scalar(item,k,()=>at+L['skill_'+k],type);return item;};
+ const defSkill=value=>{if(records)return records.record('struct def_skill',value);const at=address(value);if(!at)return 0;const item={address:at};for(const k of ['skill','skmax'])scalar(item,k,()=>at+L['defskill_'+k],'Int16');return item;};
  const longPointer=value=>{const at=address(value);if(!at)return 0;const box={address:at};scalar(box,'value',()=>at,'BigInt64');return box;};
- const anything=value=>{const at=address(value);if(!at)return 0;const item={address:at};scalar(item,'a_int',()=>at+L.any_a_int,'Int32');return item;};
+ const anything=value=>{if(records)return records.record('union any',value);const at=address(value);if(!at)return 0;const item={address:at};scalar(item,'a_int',()=>at+L.any_a_int,'Int32');return item;};
  const menu=value=>array(address(value),L.menuSize,at=>({address:at,item:anything(at+L.menu_item)}));
  const menuPointerLocal=()=>{const at=services.stackAlloc(L.pointerSize),box={address:at};ptrField(box,'value',()=>at,value=>value?menu(value):0);return box;};
- const arw=value=>{const at=address(value);if(!at)return 0;const item={address:at};scalar(item,'otyp',()=>at+L.arw_otyp,'Int16');scalar(item,'range',()=>at+L.arw_range,'Int32');Object.defineProperty(item,'tethered',{get:()=>services.tethered(at)});return item;};
+ const arw=value=>{if(records)return records.record('struct throw_and_return_weapon',value);const at=address(value);if(!at)return 0;const item={address:at};scalar(item,'otyp',()=>at+L.arw_otyp,'Int16');scalar(item,'range',()=>at+L.arw_range,'Int32');Object.defineProperty(item,'tethered',{get:()=>services.tethered(at)});return item;};
  if(L.pointerSize!==8||L.longSize!==8||L.booleanSize!==1)throw new Error('Review changed WEAPON ABI');
  const key=services.moduleKey;if(!key||typeof key!=='object')throw new Error('WEAPON needs actual Module identity');
  if(!states.has(key)){
@@ -38,7 +44,7 @@ export function createWeaponEnvironment(services,L) {
  }
  const env=Object.assign(Object.create(services),L,states.get(key),{object,monster,permonst,defSkill,longPointer,menuPointerLocal,
   int,bool:value=>Number(Boolean(value)),long:value=>BigInt.asIntN(64,BigInt(value)),charPointer:value=>typeof value==='string'?services.literal(value):address(value),
-  samePtr:(a,b)=>raw(a)===raw(b),defSkillNext:value=>defSkill(address(value)+L.defSkillSize),
+  samePtr:(a,b)=>{const left=a?.address??a,right=b?.address??b;return native&&typeof left==='number'&&typeof right==='number'&&Number.isSafeInteger(left)&&Number.isSafeInteger(right)&&left>=0&&right>=0?left===right:raw(a)===raw(b);},defSkillNext:value=>defSkill(address(value)+L.defSkillSize),
   anyLocal:()=>anything(services.stackAlloc(L.anythingSize)),copyAny:(dst,src)=>services.heap().copyWithin(address(dst),address(src),address(src)+L.anythingSize),
   callLocal:(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);},
   min:Math.min,max:Math.max,plur:value=>value==1?'':'s',STR18:value=>18+value,
@@ -51,7 +57,7 @@ export function createWeaponEnvironment(services,L) {
  scalar(env.u,'twoweap',()=>global(0)+L.u_twoweap,'Int8');ptrField(env.u,'usteed',()=>global(0)+L.u_usteed,monster);
  scalar(env.u.uroleplay,'pauper',()=>global(0)+L.u_uroleplay_pauper,'Int8');
  env.objects=array(global(1),L.objectClassSize,classView);env.mons=array(global(3),L.permonstSize,permonst);
- env.OBJ_NAME=cls=>pointer(global(2)+view().getInt16(address(cls)+L.cls_oc_name_idx,true)*L.objDescrSize+L.descr_oc_name);
+ env.OBJ_NAME=cls=>records?records.record('struct objdescr',global(2)+cls.oc_name_idx*L.objDescrSize).oc_name:pointer(global(2)+view().getInt16(address(cls)+L.cls_oc_name_idx,true)*L.objDescrSize+L.descr_oc_name);
  env.gy={youmonst:monster(global(4)+L.youmonst)};
  env.gp={};ptrField(env.gp,'propellor',()=>global(5)+L.propellor,object);
  env.gu={urole:{}};scalar(env.gu,'unweapon',()=>global(6)+L.unweapon,'Int8');for(const k of ['mnum','petnum'])scalar(env.gu.urole,k,()=>global(6)+L[k==='mnum'?'roleMnum':'petnum'],'Int16');scalar(env.gu.urole,'spelspec',()=>global(6)+L.spelspec,'Int32');
@@ -59,7 +65,10 @@ export function createWeaponEnvironment(services,L) {
  env.svc={context:{}};scalar(env.svc.context,'tips',()=>global(9)+L.tips,'BigUint64');env.cg={zeroany:anything(global(10)+L.zeroany)};
  Object.defineProperties(env,{wizard:{get:()=>view().getInt8(global(11)+L.debug)},Upolyd:{get:()=>Number(env.u.umonnum!==env.u.umonster)},hands_obj:{get:()=>object(services.hands())},nul_glyphinfo:{get:()=>services.nulGlyphInfo()}});
  for(const[i,name]of ['uleft','uright','uwep','uswapwep'].entries())Object.defineProperty(env,name,{get:()=>object(services.equipment(i))});
- env.def_oc_syms=array(global(14),L.classsymSize,at=>({get name(){return pointer(at+L.classsym_name);}}));
+ env.def_oc_syms=array(global(14),L.classsymSize,at=>records?records.record('struct class_sym',at):({get name(){return pointer(at+L.classsym_name);}}));
+ if(records){
+  for(const [name,type,index]of [['u','struct you',0],['gy','struct instance_globals_y',4],['gp','struct instance_globals_p',5],['gu','struct instance_globals_u',6],['gi','struct instance_globals_i',7],['iflags','struct instance_flags',8],['svc','struct instance_globals_saved_c',9],['cg','struct const_globals',10]])env[name]=records.record(type,global(index));
+ }
  env.Role_if=pm=>Number(env.gu.urole.mnum===pm);env.martial_bonus=()=>Number(Boolean(env.Role_if(L.PM_SAMURAI)||env.Role_if(L.PM_MONK)));
  env.MON_WEP=mon=>mon.mw;env.MON_NOWEP=mon=>(mon.mw=0);
  env.mhis=mon=>pointer(global(13)+services.pronoun_gender(mon,L.PRONOUN_HALLU)*L.genderSize+L.gender_his);
@@ -82,10 +91,21 @@ export function createWeaponEnvironment(services,L) {
  env.ACURR=services.acurr;
  for(const name of ['which_armor','m_carrying'])env[name]=(...args)=>object(services[name](...args));
  env.distant_name=(obj,fn)=>{if(fn!==env.doname)throw new Error('Unexpected original WEAPON naming callback');return services.distant_name(obj);};
+ if(native){installNativeIntegerCasts(env,['byte']);env.nativeState=native;env.nativeNamespace=createNativeWeapon(env);}
  return env;
 }
+const environments=new WeakMap();
 export function callWeapon(services,layout,name,...args) {
- const env=createWeaponEnvironment(services,layout),saved=services.stackSave();
+ const native=services.nativeOwner?.nativeArena?services.nativeOwner:undefined;
+ let state,env,previous;
+ if(native){
+  state=environments.get(services.moduleKey);
+  if(!state){state={services,layout};const forward=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});state.environment=createWeaponEnvironment(forward,layout);environments.set(services.moduleKey,state);}
+  if(state.layout!==layout)throw Error('Changed native weapon layout owner');
+  env=state.environment;previous=state.services;state.services=services;
+ }else env=createWeaponEnvironment(services,layout);
+ if(name==='environment'){if(state)state.services=previous;return env;}
+ const saved=services.stackSave();
  try {
   const objects={weapon_descr:[0],hitval:[0],dmgval:[0],autoreturn_weapon:[0],monmightthrowwep:[0],finish_towel_change:[0],wet_a_towel:[0],dry_a_towel:[0],weapon_type:[0],weapon_hit_bonus:[0],weapon_dam_bonus:[0],setmnotwielded:[1]};
   const monsters={hitval:[1],dmgval:[1],special_dmgval:[0,1],silver_sears:[0,1],oselect:[0],select_rwep:[0],select_hwep:[0],possibly_unwield:[0],mon_wield_item:[0],mwepgone:[0],setmnotwielded:[0]};
@@ -93,6 +113,6 @@ export function callWeapon(services,layout,name,...args) {
   if(name==='special_dmgval'){args[2]=BigInt.asIntN(64,BigInt(args[2]));args[3]=env.longPointer(args[3]);}
   if(name==='silver_sears')args[2]=BigInt.asIntN(64,BigInt(args[2]));
   if(name==='skill_init')args[0]=env.defSkill(args[0]);
-  const result=withCEnvironment(env,()=>weapon[name](...args));return result?.address??result;
- }finally{services.stackRestore(saved);}
+  let result;if(native){native.enter();try{result=env.nativeNamespace[name](...args);}finally{native.leave();}}else result=withCEnvironment(env,()=>weapon[name](...args));return native?result:result?.address??result;
+ }finally{try{services.stackRestore(saved);}finally{if(state)state.services=previous;}}
 }

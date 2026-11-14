@@ -1,38 +1,26 @@
-// jsmain.js - contest entry points (runSegment, the interactive NethackGame
-// interface of index.html and frozen/playability_runner.mjs).
+// jsmain.js - the game's entry points:
 //
-// The game is the readable JS emitted from the NetHack C sources (js/src, js/win,
-// js/sys, js/dat) running on js/rt over the vendored C library (js/vendor),
-// driven by js/host (js/host/game.js).
-import * as engine from "./host/game.js";
-engine.setShipEntry(() => import("./host/ship_entry.js"));
+//   runSegment(input)                          one segment, run to its end (the scorer)
+//   NethackGame                                the game class (host/game.js Game), which
+//                                              index.html and frozen/playability_runner.mjs
+//                                              start on a display
+//   continueInteractiveGame(display, keyCode)  one key of interactive play (js/allmain.js)
+//
+// The game is the readable JS emitted from the NetHack C sources (js/src, js/win, js/sys,
+// js/dat) running on js/rt over the vendored C library (js/vendor), driven by js/host.
+import { Game, setGameEntry, gameOnDisplay } from "./host/game.js";
 
-export { keyBytes, renderCapturedScreen } from "./host/capture.js";
-export { recorderPlayerName } from "./host/env.js";
-import { renderCapturedScreen } from "./host/capture.js";
+setGameEntry(() => import("./host/entry.js"));
 
 /** The game class used by runSegment and the interactive page. */
-export const NethackGame = engine.ShipGame;
+export const NethackGame = Game;
+
+export { gameOnDisplay };
 
 export async function runSegment(input) {
   const game = new NethackGame(input);
   await game.start();
   return game;
-}
-
-function renderLatestCapturedScreen(game, display) {
-  const shown = game.shownScreen();
-  if (shown) renderCapturedScreen(display, shown.screen, shown.cursor);
-}
-
-function attachInteractiveDisplay(game, display) {
-  if (!display) return;
-  display._nhjsInteractive = { game };
-  renderLatestCapturedScreen(game, display);
-}
-
-export function initializeInteractiveGame(display, game) {
-  attachInteractiveDisplay(game, display);
 }
 
 // The keys typed but not read yet, in order (js/terminal.js's queue, read only).
@@ -45,8 +33,8 @@ function queuedKeys(display) {
 // typed after it (type-ahead, see host/game.js pushKey).  Returns false once
 // the game has ended.
 export function continueInteractiveGame(display, keyCode) {
-  const game = display?._nhjsInteractive?.game;
+  const game = gameOnDisplay(display);
   if (!game || !game.pushKey(keyCode, queuedKeys(display))) return false;
-  renderLatestCapturedScreen(game, display);
+  game.paintDisplay();
   return true;
 }

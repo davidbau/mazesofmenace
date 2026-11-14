@@ -1,3 +1,4 @@
+import {createNativeHacklibBindings} from './native/hacklib-state.js';
 import {nativeGeometryFor} from './native/spatial-state.js';
 import {createNativeRngBindings} from './native/rng-bindings.js';
 import {createNativeRecordViews} from './native/record-views.js';
@@ -168,15 +169,17 @@ export function createStandaloneEnvironment(options={}) {
     }
 
     function enableHacklib(layout) {
-        const local=Object.create(services),storage=[layout.BUFSZ,layout.BUFSZ,25,13]
+        const local=Object.create(services),namespace={...hacklib},storage=[layout.BUFSZ,layout.BUFSZ,25,13]
             .map((size,i)=>allocateGlobal('hacklib.'+i,size));
+        local.nativeOwner=nativeStateFor(environment);
         local.storage=i=>{if(!Number.isInteger(i)||i<0||i>=storage.length)throw new RangeError('Unknown hacklib static');return storage[i];};
-        local.qsort=(base,n,size)=>services.qsort(base,n,size,hacklib.nh_qsort_idx_cmp);
-        const state=createHacklibState(),env=createHacklibEnvironment(local,layout,hacklib,state);
+        local.qsort=(base,n,size)=>services.qsort(base,n,size,namespace.nh_qsort_idx_cmp);
+        const state=createHacklibState(),env=createHacklibEnvironment(local,layout,namespace,state);
         // Preserve the port's packet contract; the packet contains JS values,
         // not a native va_list pointer, in this provider.
         env.va_start=ap=>{ap.nativeVaList=ap[0]?.nativeVaList??ap;};
-        register('hacklib',{...hacklib,...Object.fromEntries(Object.entries(nativeGeometryFor(environment)).filter(([name])=>name!=='isok'))},env);states.set('hacklib',state);return state;
+        const native=createNativeHacklibBindings(environment,env,namespace);
+        register('hacklib',{...native.entries,...Object.fromEntries(Object.entries(nativeGeometryFor(environment)).filter(([name])=>name!=='isok'))},env);states.set('hacklib',state);return state;
     }
     function enableDecl(layout,{raw_printf}={}) {
         const pointers=declStorage.globals.map(g=>allocateGlobal(g.name,g.bytes));

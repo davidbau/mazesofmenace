@@ -1,12 +1,11 @@
-// host/regerror.js - regerror() with the messages of the recorder's C library.
+// host/regerror.js - regerror() with the messages of the reference C library.
 //
 // NetHack shows regerror() text when a menucolor or message-type pattern
-// in the options does not compile.  The recorder ran on macOS, whose regex
-// comes from FreeBSD; the texts below are those of FreeBSD's
+// in the options does not compile.  The texts below are those of FreeBSD's
 // lib/libc/regex/regerror.c (BSD licence, Henry Spencer's regex package).
-// The error codes are Darwin's: 1-13 are also musl's, 14-18 only come from host/regex.js.
+// Codes 1-13 are also musl's; 14-18 only come from host/regex.js.
 
-// <regex.h> error codes (Darwin's; 1-13 have the same values in musl, the linked C library)
+// <regex.h> error codes (1-13 have the same values in musl, the linked C library)
 export const REG_NOMATCH = 1;
 export const REG_BADPAT = 2;
 export const REG_ECOLLATE = 3;
@@ -20,7 +19,7 @@ export const REG_BADBR = 10;
 export const REG_ERANGE = 11;
 export const REG_ESPACE = 12;
 export const REG_BADRPT = 13;
-// codes only Darwin's <regex.h> has (host/regex.js returns REG_EMPTY and REG_BADMAX)
+// codes beyond musl's <regex.h> (host/regex.js returns REG_EMPTY and REG_BADMAX)
 export const REG_EMPTY = 14;
 export const REG_ASSERT = 15;
 export const REG_INVARG = 16;

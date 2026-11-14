@@ -123,7 +123,7 @@ import { monsndx, sticks } from './mondata.js';
 import { m_at } from './monst.js';
 import {
     dist2,
-    encodeUtf8ByteString,
+    textBytes,
     mungspaces,
     sgn, lcase, ucase, upstart, strcmpi,
 } from './hacklib.js';
@@ -2675,7 +2675,7 @@ function statueColor(state) {
 // objects[CORPSE].oc_class + SYM_OFF_O. The class carries the symbol; the
 // species only chooses the colour, through mon_color(offset).
 function corpseSymbol(state) {
-    return object_class_symbol(FOOD_CLASS, state, CORPSE);
+    return object_class_symbol(FOOD_CLASS, state);
 }
 
 // display.c reset_glyphmap()'s two object arms:
@@ -2691,7 +2691,7 @@ function objectSymbol(otyp, state) {
             'object display requires the complete object catalog',
         );
     }
-    return object_class_symbol(type.oc_class, state, otyp);
+    return object_class_symbol(type.oc_class, state);
 }
 
 /**
@@ -4695,14 +4695,14 @@ export function reglyph_darkroom(state = game) {
 // reason obj_to_glyph() records above: tmp_at()'s frame stack and
 // show_glyph_cell() both take one. The number stays reachable on it.
 //
-// C's out-of-range guard is `impossible("zapdir_to_glyph: illegal beam type")`
-// followed by beam_type = 0. Every ported caller passes dobuzz()'s hdmgtype,
-// which is a wand's damage type (0..5) or Hallucination's rn2(6), so the guard
-// is unreachable and a wrong number is a defect here rather than a glyph to
-// substitute for.
+// C's out-of-range guard is `impossible("zapdir_to_glyph:  illegal beam
+// type")` followed by beam_type = 0; this synchronous port records the print
+// as unported. Every ported caller passes dobuzz()'s hdmgtype, which is a
+// wand's damage type (0..5) or Hallucination's rn2(6), so no play reaches it.
 export function zapdir_to_glyph(dx, dy, beam_type, state = game) {
-    if (beam_type < 0 || beam_type >= NUM_ZAP) {
-        throw new RangeError(`zapdir_to_glyph: illegal beam type ${beam_type}`);
+    if (beam_type >= NUM_ZAP) {
+        note_unported('pline.c impossible');
+        beam_type = 0;
     }
     const dir = (dx === dy) ? 2 : (dx && dy) ? 3 : dx ? 1 : 0;
     return map_glyphinfo(((beam_type << 2) | dir) + GLYPH_ZAP_OFF, state);
@@ -4735,17 +4735,6 @@ export function tether_glyph(x, y, state = game) {
     return zapdir_to_glyph(
         sgn(state.u?.ux - x), sgn(state.u?.uy - y), 2, state,
     );
-}
-
-// A transient-display branch this port has not translated. js/cmd.js
-// failClosedCommandRefusals() lists it, so a segment keeps every frame the
-// command already matched instead of failing hard.
-export class UnsupportedTransientDisplayError extends Error {
-    constructor(what) {
-        super(`display.c tmp_at() reached ${what}`);
-        this.name = 'UnsupportedTransientDisplayError';
-        this.what = what;
-    }
 }
 
 export async function tmp_at(x, y, state = game) {
@@ -5085,8 +5074,8 @@ function _statusPlayerName() {
     // byte, then truncate only when the complete title exceeds 30 bytes.
     const rawName = game.plname || 'Hero';
     const role = _statusRoleText();
-    const nameBytes = encodeUtf8ByteString(rawName);
-    const roleBytes = encodeUtf8ByteString(role);
+    const nameBytes = textBytes(rawName);
+    const roleBytes = textBytes(role);
     if (nameBytes[0] >= 0x61 && nameBytes[0] <= 0x7A) {
         nameBytes[0] -= 0x20;
     }
@@ -6279,7 +6268,7 @@ function _statusFieldData(field, valueSnapshot = null) {
         // names follow strlen(), not JavaScript code-unit indexing.
         return {
             text: title.slice(
-                encodeUtf8ByteString(game.plname || 'Hero').length + 5,
+                textBytes(game.plname || 'Hero').length + 5,
             ),
         };
     case 'strength': return { value: attrs[A_STR] ?? 0 };
@@ -8415,7 +8404,7 @@ export async function status_hilite_menu_add(state, origfld, helpers) {
                 } else {
                     const text = await hiliteLine(state, query, helpers);
                     if (!text || text[0] === '\x1b') { phase = 'behavior'; continue; }
-                    if (encodeUtf8ByteString(text).length >= 80) return false;
+                    if (textBytes(text).length >= 80) return false;
                     rule.text = text;
                 }
                 rule.relation = '=';

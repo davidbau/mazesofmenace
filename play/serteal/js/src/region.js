@@ -745,12 +745,12 @@ export function region_stats(
     let i;
 
     /* other stats formats take one parameter; this takes two */
-    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_NhRegion, NHJS_LP64_SIZEOF_NhRect);
+    sprintf(hdrbuf, hdrfmt, NHJS_SIZEOF_NhRegion, NHJS_SIZEOF_NhRect);
     count[0] = svn.n_regions; /* might be 0 even tho max_regions isn't */
-    size[0] = gm.max_regions * NHJS_LP64_SIZEOF_NhRegion;
+    size[0] = gm.max_regions * NHJS_SIZEOF_NhRegion;
     for (i = 0; i < svn.n_regions; ++i) {
         rg = gr.regions[i];
-        size[0] += rg.nrects * NHJS_LP64_SIZEOF_NhRect;
+        size[0] += rg.nrects * NHJS_SIZEOF_NhRect;
         if (rg.enter_msg)
             size[0] += unsigned(strlen(rg.enter_msg) + 1);
         if (rg.leave_msg)
@@ -1156,7 +1156,7 @@ import { haseyes, is_silent, nonliving } from "./mondata.h.macros.js";
 import { M_SEEN_POISON, struct_monst } from "./monst.h.js";
 import { DEADMONSTER, resists_poison } from "./monst.h.macros.js";
 import { PM_FOG_CLOUD, PM_LONG_WORM } from "./monsters.h.js";
-import { NHJS_LP64_SIZEOF_NhRect, NHJS_LP64_SIZEOF_NhRegion } from "./nhjs_recorder_sizes.h.js";
+import { NHJS_SIZEOF_NhRect, NHJS_SIZEOF_NhRegion } from "./nhjs_struct_sizes.h.js";
 import { MAGICAL_BREATHING } from "./prop.h.js";
 import { struct_nhrect } from "./rect.h.js";
 import { MONST_INC, NhRegion } from "./region.h.js";

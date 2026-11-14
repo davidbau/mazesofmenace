@@ -441,7 +441,7 @@ class PtrElements {
 function elementProxy(t, a, n) { return new Proxy(t.kind === "ptr" ? new PtrElements(t, a, n) : new Elements(t, a, n), proxyHandler); }
 
 /** Read a value of type t stored at address a (generic, used by refs and marshalling). */
-export function readAt(t, a) {
+function readAt(t, a) {
   t = resolve(t);
   switch (t.kind) {
     case "i8": return chars[a];

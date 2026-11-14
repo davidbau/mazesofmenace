@@ -1,3 +1,6 @@
+import {createNativeDo} from '../native/do.js';
+import {createNativeDescriptorViews} from '../native/descriptor-views.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -9,13 +12,16 @@ const instances=new WeakMap();
 export function createDoEnvironment(services,layout){
     for(const[k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,charSigned:1,config_INSURANCE:1,config_MICRO:0,config_SND_LIB_INTEGRATED:0}))if(layout[k]!==v)throw Error("Review changed DO ABI/config "+k);
     const addr=v=>Number(v?.address??v??0),raw=v=>CAdapter.unsignedPointer(v);
-    const memory=()=>CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
-    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:true,rows:false,coerceRecordSize:false,directIntegerReads:false,voidPointer:'bigint'});
+    const native=services.nativeOwner?.nativeArena?services.nativeOwner:undefined;
+    const memory=()=>native?native.nativeArena.view:CAdapter.currentDataView(services),cache=new Map(),names=Object.keys(schemas);
+    const {width,decode,read,write,array}=CAdapter.createDescriptorMemory({services,layout,addr,raw,memory,cache,view:(name,value)=>view(name,value),pointerArrays:true,rows:false,coerceRecordSize:false,directIntegerReads:Boolean(native),voidPointer:'bigint'});
 
 
 
 
-    const view=CAdapter.createDescriptorViewFactory({services,schemas,address:addr,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'do')});
+    const options={services,schemas,address:addr,raw,cache,names,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'do',Boolean(native))};
+    const view=native?createNativeDescriptorViews({...options,owner:native,plans:services.nativeFieldPlans}):CAdapter.createDescriptorViewFactory(options);
+    const kindOf=value=>view.kindOf?.(value)??value.kind;
     const constants={};
     for(const name of ["ACH_ASTR", "ACH_BGRM", "ACH_ENDG", "ACH_HELL", "ACH_MINE", "ACH_SOKO", "AD_DGST", "AD_POLY", "ALL_FINISHED", "ALL_TYPES", "ALL_TYPES_SELECTED", "ALTAR", "AM_LAWFUL", "AM_NONE", "APPLE", "ART_EYES_OF_THE_OVERWORLD", "AT_ENGL", "A_DEX", "A_LAWFUL", "A_NONE", "BLINDED", "BOTH_SIDES", "BOULDER", "BUC_BLESSED", "BUC_CURSED", "BUC_UNCURSED", "BUC_UNKNOWN", "BUFSZ", "BURIED_TOO", "CHOOSE_ALL", "COIN_CLASS", "COLNO", "CONTAINED_TOO", "CORPSE", "CORR", "COST_DEGRD", "CRYSKNIFE", "CXN_SINGULAR", "DAGGER", "DB_FLOOR", "DB_UNDER", "DEAF", "DIR_DOWN", "DIR_UP", "DISMOUNT_FELL", "DRAWBRIDGE_UP", "ECMD_FAIL", "ECMD_OK", "ECMD_TIME", "EGG", "ENORMOUS_MEATBALL", "ER_DESTROYED", "ESCAPED", "FACE", "FEMALE", "FIRE_RES", "FLYING", "FOUNTAIN", "FREEING", "FROMOUTSIDE", "FUMBLING", "GETOBJ_ALLOWCNT", "GETOBJ_PROMPT", "GLOB_OF_GREEN_SLIME", "GRAVE", "G_GENOD", "HALF_PHDAM", "HALLUC", "HALLUC_RES", "HAND", "HMON_THROWN", "HOLE", "INCLUDE_VENOM", "INTRINSIC", "INVORDER_SORT", "IN_SIGHT", "I_SPECIAL", "JUSTPICKED", "KILLED_BY", "LADDER", "LEASH", "LEFT_SIDE", "LEG", "LEVITATION", "LFILE_EXISTS", "LL_ACHIEVE", "LL_CONDUCT", "LL_DEBUG", "LOADSTONE", "LOST_DROPPED", "LOW_PM", "M1_AMORPHOUS", "M1_ANIMAL", "M1_BREATHLESS", "M1_CARNIVORE", "M1_CLING", "M1_CONCEAL", "M1_FLY", "M1_HIDE", "M1_HUMANOID", "M1_METALLIVORE", "M1_NOEYES", "M1_NOHANDS", "M1_NOLIMBS", "M1_SWIM", "M1_UNSOLID", "M1_WALLWALK", "M2_DEMON", "M2_GIANT", "M2_ROCKTHROW", "M2_UNDEAD", "M3_DISPLACES", "MAGIC_PORTAL", "MALE", "MEATBALL", "MEAT_RING", "MEAT_STICK", "MENU_COMBINATION", "MENU_FULL", "MENU_TRADITIONAL", "MZ_HUGE", "NC_SHOW_MSG", "NHCB_LVL_LEAVE", "NHLpa_panic", "NON_PM", "NO_KILLER_PREFIX", "NO_NC_FLAGS", "NO_TRAP", "NUMMONS", "OBJ_BURIED", "OBJ_CONTAINED", "OBJ_FLOOR", "OBJ_FREE", "OBJ_INVENT", "OBJ_MINVENT", "PASSES_WALLS", "PICK_ANY", "PIT", "PM_AIR_ELEMENTAL", "PM_CHICKATRICE", "PM_COCKATRICE", "PM_CROESUS", "PM_DEATH", "PM_FAMINE", "PM_GHOST", "PM_GIANT_MIMIC", "PM_GREEN_SLIME", "PM_HUMAN", "PM_MANES", "PM_NURSE", "PM_PESTILENCE", "PM_ROGUE", "PM_TOURIST", "PM_TROLL", "PM_VAMPIRE", "PM_VAMPIRE_LEADER", "PM_VLAD_THE_IMPALER", "PM_WRAITH", "POTION_CLASS", "POT_OIL", "PRIMARYSET", "P_PICK_AXE", "QBUFSZ", "REVIVE_MON", "RIGHT_SIDE", "RING_CLASS", "RIN_ADORNMENT", "RIN_AGGRAVATE_MONSTER", "RIN_COLD_RESISTANCE", "RIN_CONFLICT", "RIN_FIRE_RESISTANCE", "RIN_FREE_ACTION", "RIN_GAIN_CONSTITUTION", "RIN_GAIN_STRENGTH", "RIN_HUNGER", "RIN_INCREASE_ACCURACY", "RIN_INCREASE_DAMAGE", "RIN_INVISIBILITY", "RIN_LEVITATION", "RIN_POISON_RESISTANCE", "RIN_POLYMORPH", "RIN_POLYMORPH_CONTROL", "RIN_PROTECTION", "RIN_PROTECTION_FROM_SHAPE_CHAN", "RIN_REGENERATION", "RIN_SEARCHING", "RIN_SEE_INVISIBLE", "RIN_SHOCK_RESISTANCE", "RIN_SLOW_DIGESTION", "RIN_STEALTH", "RIN_SUSTAIN_ABILITY", "RIN_TELEPORTATION", "RIN_TELEPORT_CONTROL", "RIN_WARNING", "RLOC_NOMSG", "ROGUESET", "ROOM", "ROT_CORPSE", "ROWNO", "SELL_DELIBERATE", "SELL_NORMAL", "SICK", "SINK", "SLIMED", "SLT_ENCUMBER", "SPIKED_PIT", "STAIRS", "STOMACH", "STONED", "STRANGLED", "S_EEL", "S_GHOST", "S_GOLEM", "S_LIGHT", "S_MIMIC", "S_TROLL", "S_VORTEX", "S_ZOMBIE", "S_altar", "S_dnladder", "S_dnstair", "S_fountain", "S_grave", "S_room", "S_sink", "S_throne", "TELEDS_NO_FLAGS", "TELEPAT", "THRONE", "TIMEOUT", "TIMER_OBJECT", "TIN", "TOOKPLUNGE", "TOOL_CLASS", "TRAPDOOR", "TT_BURIEDBALL", "TT_PIT", "T_LOOTED", "UNENCUMBERED", "UNPAID_TYPES", "USE_INVLET", "UTOTYPE_ATSTAIRS", "UTOTYPE_DEFERRED", "UTOTYPE_FALLING", "UTOTYPE_NONE", "UTOTYPE_PORTAL", "UTOTYPE_RMPORTAL", "VIBRATING_SQUARE", "VISITED", "WATER", "WEAPON_CLASS", "WORM_TOOTH", "WOUNDED_LEGS", "WRITING", "WT_SPLASH_THRESHOLD", "W_ACCESSORY", "W_ARMOR", "W_ART", "W_ARTI", "W_BALL", "W_CHAIN", "W_SADDLE", "W_WEP", "gm_levelchange", "most_themes", "st_all", "tut_themes", "LAVAPOOL", "MOAT", "POOL", "STONE"]){const bits=BigInt(layout['lo_'+name])+ (BigInt(layout['hi_'+name])<<32n),signed=layout['csigned_'+name];const v=signed?BigInt.asIntN(64,bits):bits;constants[name]=layout['csize_'+name]===8?v:Number(v);}
     const env=Object.assign(Object.create(services),constants,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,
@@ -34,11 +40,11 @@ export function createDoEnvironment(services,layout){
     const descriptor=type=>type==='coordxy'?{t:'i16'}:type==='unsigned'?{t:'u32'}:type==='int'?{t:'i32'}:type==='long'?{t:'i64'}:type==='menuarray'?{q:{s:'mi'}}:{p:type};
     env.pointerBox=(p,d)=>{const at=addr(p);return at?{address:at,descriptor:d,get value(){return read(d,at);},set value(v){write(d,at,v);}}:0;};
     env.reference=(type,get,set)=>{const d=descriptor(type),at=services.stackAlloc(width(d)),v=get();if(v!==undefined)write(d,at,v);return {address:at,descriptor:d,copyback(){set(read(d,at));},get value(){return read(d,at);},set value(v){write(d,at,v);}};};
-    env.addressOf=(o,name)=>{if(o===env)return env[name];const f=schemas[o.kind].fields.find(x=>x.name===name);if(f.d.s||f.d.a)return o[name];return env.pointerBox(services.address(names.indexOf(o.kind),addr(o),schemas[o.kind].fields.indexOf(f)),f.d);};
+    env.addressOf=(o,name)=>{if(o===env)return env[name];const f=schemas[kindOf(o)].fields.find(x=>x.name===name);if(f.d.s||f.d.a)return o[name];return env.pointerBox(services.address(names.indexOf(kindOf(o)),addr(o),schemas[kindOf(o)].fields.indexOf(f)),f.d);};
     env.charArray=n=>array({a:[Number(n)],e:{t:'i8'}},services.stackAlloc(Number(n)));
     env.staticBuffer=n=>{if(n!==39)throw Error('Review DO static buffer');return array({a:[39],e:{t:'i8'}},addr(services.buffer()));};
-    env.localStruct=name=>view(name,services.stackAlloc(layout[name+'Size']));env.copyStruct=(dst,src)=>services.heap().copyWithin(addr(dst),addr(src),addr(src)+layout[dst.kind+'Size']);
-    env.sizeof=v=>v.byteLength??layout[v.kind+'Size'];env.loadChar=p=>typeof p==='string'?(p.charCodeAt(0)||0)<<24>>24:memory().getInt8(addr(p));
+    env.localStruct=name=>view(name,services.stackAlloc(layout[name+'Size']));env.copyStruct=(dst,src)=>services.heap().copyWithin(addr(dst),addr(src),addr(src)+layout[kindOf(dst)+'Size']);
+    env.sizeof=v=>v.byteLength??layout[kindOf(v)+'Size'];env.loadChar=p=>typeof p==='string'?(p.charCodeAt(0)||0)<<24>>24:memory().getInt8(addr(p));
     env.int=v=>Number(BigInt.asIntN(32,BigInt(v)));env.intDiv=(a,b)=>env.int(Math.trunc(a/b));env.long=v=>BigInt.asIntN(64,BigInt(v));
     env.min=(a,b)=>a<b?a:b;env.max=(a,b)=>a>b?a:b;
     env.callLocal=(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);};
@@ -68,7 +74,7 @@ export function createDoEnvironment(services,layout){
     env.SET_FOUNTAIN_LOOTED=(x,y)=>env.levl[x][y].looted=1;
     env.Align2amask=a=>a===env.A_NONE?env.AM_NONE:a===env.A_LAWFUL?env.AM_LAWFUL:a+2;
     // Real native callees see real pointer cells; copy back output references even on unwind.
-    const mapDependencyArgument0=v=>v===core.drop?services.callbackPointer(0):v===core.wipeoff?services.callbackPointer(1):v;
+    const mapDependencyArgument0=v=>(v===core.drop||v===env.nativeNamespace?.drop)?services.callbackPointer(0):(v===core.wipeoff||v===env.nativeNamespace?.wipeoff)?services.callbackPointer(1):v;
 env["sellobj_state"]=CAdapter.createDependencyCall((...args)=>services["sellobj_state"](...args),mapDependencyArgument0,null);
     env["getobj"]=CAdapter.createDependencyCall((...args)=>services["getobj"](...args),mapDependencyArgument0,(value,args)=>(view("obj",value)));
     env["any_obj_ok"]=CAdapter.createDependencyCall((...args)=>services["any_obj_ok"](...args),mapDependencyArgument0,null);
@@ -371,6 +377,7 @@ env["sellobj_state"]=CAdapter.createDependencyCall((...args)=>services["sellobj_
     Object.defineProperty(env.rn2,'address',{get:()=>services.callbackPointer(7)});Object.defineProperty(env.rn2_on_display_rng,'address',{get:()=>services.callbackPointer(8)});
     env.Strcpy=services.strcpy;env.canspotmon=m=>services.canseemon(m)||services.sensemon(m);env.has_omid=o=>o.oextra&&o.oextra.omid;env.has_omonst=o=>o.oextra&&o.oextra.omonst;env.next2u=(x,y)=>env.distu(x,y)<=2;env.plur=x=>x==1?'':'s';
     env.the_your=env.c_common_strings.c_the_your;
+    if(native){installNativeIntegerCasts(env,['byte']);env.nativeState=native;env.nativeNamespace=createNativeDo(env);}
     return env;
 }
 
@@ -378,5 +385,5 @@ function environment(services,layout){const key=services.moduleKey;if(!key)throw
 export function callDo(services,layout,name,...args){const env=environment(services,layout);if(name==='environment')return env;
     const params={"dodrop":[],"boulder_hits_pool":["struct obj *","short","short","signed char"],"flooreffects":["struct obj *","short","short","const char *"],"doaltarobj":["struct obj *"],"trycall":["struct obj *"],"polymorph_sink":[],"teleport_sink":[],"dosinkring":["struct obj *"],"canletgo":["struct obj *","const char *"],"drop":["struct obj *"],"dropx":["struct obj *"],"dropy":["struct obj *"],"dropz":["struct obj *","signed char"],"engulfer_digests_food":["struct obj *"],"obj_no_longer_held":["struct obj *"],"doddrop":[],"better_not_try_to_drop_that":["struct obj *"],"menudrop_split":["struct obj *","long"],"menu_drop":["int"],"u_stuck_cannot_go":["const char *"],"dodown":[],"doup":[],"currentlevel_rewrite":[],"save_currentstate":[],"u_collide_m":["struct monst *"],"familiar_level_msg":[],"goto_level":["d_level *","signed char","signed char","signed char"],"hellish_smoke_mesg":[],"temperature_change_msg":["signed char"],"maybe_lvltport_feedback":[],"final_level":[],"schedule_goto":["d_level *","int","const char *","const char *"],"deferred_goto":[],"revive_corpse":["struct obj *"],"revive_mon":["anything *","long"],"zombify_mon":["anything *","long"],"danger_uprops":[],"cmd_safety_prevention":["const char *","const char *","const char *","int *"],"donull":[],"wipeoff":[],"dowipe":[],"legs_in_no_shape":["const char *","signed char"],"set_wounded_legs":["long","int"],"heal_legs":["int"]};const recordNames=Object.keys(schemas);
     args=args.map((v,i)=>{const t=params[name][i];if(t==='anything *')return env.view('any',v);if(t==='NHFILE *')return env.view('nh_file',v);const m=/^(?:const )?(?:struct )?(\w+) \*$/.exec(t);if(m&&recordNames.includes(m[1]))return env.view(m[1],v);if(t==='int *')return env.pointerBox(v,{t:'i32'});if(t==='coordxy')return Number(v)<<16>>16;if(t==='signed char'||t==='boolean'||t==='schar')return Number(v)<<24>>24;return v;});
-    const sp=services.stackSave();try{return withCEnvironment(env,core[name],...args);}finally{services.stackRestore(sp);}
+    const sp=services.stackSave();try{if(!Object.hasOwn(env,'nativeNamespace'))return withCEnvironment(env,core[name],...args);env.nativeState.enter();try{return env.nativeNamespace[name](...args);}finally{env.nativeState.leave();}}finally{services.stackRestore(sp);}
 }

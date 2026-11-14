@@ -1,25 +1,7 @@
-/* nhjs_host.c - the Unix port routines that the c2js build does not take
- * from sys/unix/unixunix.c and sys/share/unixtty.c, which assume a real
+/* nhjs_host.c - the Unix port routines that the port does not take from
+ * sys/unix/unixunix.c and sys/share/unixtty.c, which assume a real
  * terminal, fork() and signals.  sys/unix/unixmain.c itself is compiled
  * unchanged (with main renamed to nhjs_unix_main). */
-
-export function nh_c2js_link_smoke() { /* int */
-    return 5000;
-}
-
-/* Only used when the build keeps 32-bit `long` (NHJS_LONG64=0): rnd.c then
-   seeds ISAAC64 with the recorder's eight little-endian seed bytes. */
-export function nhjs_get_seed_bytes(out, max) { /* int */
-    let text = getenv(_("NETHACK_SEED"));
-    let seed = text ? strtoull(text, null, 10) : 0n;
-    let i;
-
-    for (i = 0; i < max && i < 8; ++i) {
-        uchars[out + i] = uchar((seed & 0xFFn));
-        seed >>= 8n;
-    }
-    return 8;
-}
 
 /* sysconf SHELLERS gate shared by '!' and ^Z, as in dosh() and dosuspend() */
 function nhjs_shell_allowed() { /* boolean */
@@ -27,8 +9,8 @@ function nhjs_shell_allowed() { /* boolean */
            && check_user_string(sysopt.shellers) ? 1 : 0);
 }
 
-/* '!': the recorder forks a shell; what remains visible is the tty being
-   suspended and then redrawn when the child exits (child(0)). */
+/* '!': instead of running a shell, the tty is suspended and then redrawn,
+   as when the shell exits (child(0)). */
 export function dosh() { /* int */
     if (!nhjs_shell_allowed()) {
         Norep(_("Unavailable command '!'."));
@@ -50,7 +32,7 @@ export function dosuspend() { /* int */
     return 0;
 }
 
-/* the recorder is built with CRASHREPORT; its browser launch fails */
+/* #bugreport (see src/cmd.c): no browser can be launched for the report */
 export function dobugreport() { /* int */
     pline(_("Unable to send bug report.  Please visit %s instead."),
           (sysopt.crashreporturl && chars[sysopt.crashreporturl])
@@ -111,11 +93,9 @@ export function ask_about_panic_save() { /* void */
     }
 }
 
-/* regerror() with the messages of the recorder's libc.  Darwin's regex
-   comes from FreeBSD; the texts below are those of FreeBSD's
-   lib/libc/regex/regerror.c (BSD licence, Henry Spencer's regex package).
-   The error codes are Darwin's: 1-13 are also musl's (<regex.h> of the
-   port's C library). */
+/* regerror() with the messages of Henry Spencer's regex package (BSD
+   licence), lib/libc/regex/regerror.c.  Codes 1-13 are those of the
+   port's <regex.h>; 14-18 are the package's own. */
 export function nhjs_regerror(errcode, preg, errbuf,
               errbuf_size) { /* size_t */
     const struct___anon1 = struct("nhjs_regerror.struct___anon1", {
@@ -135,8 +115,8 @@ export function nhjs_regerror(errcode, preg, errbuf,
         { code: REG_ERANGE, explain: _("invalid character range") },
         { code: REG_ESPACE, explain: _("out of memory") },
         { code: REG_BADRPT, explain: _("repetition-operator operand invalid") },
-        /* codes only Darwin's <regex.h> has; the port's regcomp
-           (js/host/regex.js, macOS's dialect) returns 14 and 18 */
+        /* codes beyond <regex.h>; the port's regcomp (js/host/regex.js)
+           returns 14 and 18 */
         { code: 14, explain: _("empty (sub)expression") },             /* REG_EMPTY */
         { code: 15, explain: _("\"can't happen\" -- you found a bug") }, /* REG_ASSERT */
         { code: 16, explain: _("invalid argument to regex routine") }, /* REG_INVARG */
@@ -184,12 +164,12 @@ import {
     exit_nhwindows, raw_print, resume_nhwindows, suspend_nhwindows, wait_synch,
 } from "../../src/winprocs.h.macros.js";
 import { SIZE } from "../../rt/cmacros.js";
-import { char, int, ord, sizeof_string, uchar, unsigned } from "../../rt/ctypes.js";
-import { chars, uchars } from "../../rt/heap.js";
+import { char, int, ord, sizeof_string, unsigned } from "../../rt/ctypes.js";
+import { chars } from "../../rt/heap.js";
 import {
     EXIT_FAILURE, EXIT_SUCCESS, REG_BADBR, REG_BADPAT, REG_BADRPT, REG_EBRACE, REG_EBRACK,
     REG_ECOLLATE, REG_ECTYPE, REG_EESCAPE, REG_EPAREN, REG_ERANGE, REG_ESPACE, REG_ESUBREG,
-    REG_NOMATCH, exit, getenv, putchar, strchr, strcpy, strlen, strncpy, strtoull, vprintf,
+    REG_NOMATCH, exit, putchar, strchr, strcpy, strlen, strncpy, vprintf,
 } from "../../rt/libc.js";
 import { init_string, static_array } from "../../rt/locals.js";
 import { _ } from "../../rt/strings.js";

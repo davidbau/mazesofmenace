@@ -11,17 +11,19 @@ export function createHacklibEnvironment(services, layout, namespace, state) {
         config_STRSTRI:0,VISCTRL_NBUF:5,TABSIZ:32,MAX_D:5})) {
         if (layout[key] !== expected) throw new Error('Review changed hacklib ABI: '+key);
     }
+    const native=services.nativeOwner?.nativeArena;
     const raw = value => CAdapter.unsignedPointer(value);
     const identity = value => {
+        if(native&&typeof value==='number'&&Number.isSafeInteger(value)&&value>=0)return value;
         const bits = raw(value);
         return bits <= BigInt(Number.MAX_SAFE_INTEGER) ? Number(bits) : bits;
     };
     const address = value => Number(value?.address ?? value ?? 0);
-    const int = value => Number(BigInt.asIntN(32, BigInt(value)));
-    const char = value => Number(BigInt.asIntN(8, BigInt(value)));
-    const uchar = value => Number(BigInt.asUintN(8, BigInt(value)));
+    const int = value => native&&typeof value==='number'&&Number.isInteger(value)?value|0:Number(BigInt.asIntN(32, BigInt(value)));
+    const char = value => native&&typeof value==='number'&&Number.isInteger(value)?value<<24>>24:Number(BigInt.asIntN(8, BigInt(value)));
+    const uchar = value => native&&typeof value==='number'&&Number.isInteger(value)?value&255:Number(BigInt.asUintN(8, BigInt(value)));
     const heap = () => services.heap();
-    const view = () => new DataView(heap().buffer);
+    const view = () => native?.view??new DataView(heap().buffer);
     const indexRecord = value => {
         const at = identity(value);
         return Object.defineProperties({address:at}, {
@@ -43,10 +45,10 @@ export function createHacklibEnvironment(services, layout, namespace, state) {
     };
     const env = Object.assign(Object.create(services),layout,{
         hacklibState:state,indexRecord,indexArray,int,char,uchar,
-        uint:value=>Number(BigInt.asUintN(32,BigInt(value))),
-        boolean:char,coordxy:value=>Number(BigInt.asIntN(16,BigInt(value))),
+        uint:value=>native&&typeof value==='number'&&Number.isInteger(value)?value>>>0:Number(BigInt.asUintN(32,BigInt(value))),
+        boolean:char,coordxy:value=>native&&typeof value==='number'&&Number.isInteger(value)?value<<16>>16:Number(BigInt.asIntN(16,BigInt(value))),
         size_t:raw,ssize:value=>BigInt.asIntN(64,BigInt(value)),
-        ptrAdd:(ptr,offset)=>identity(raw(ptr)+BigInt(offset)),
+        ptrAdd:(ptr,offset)=>{if(native&&typeof ptr==='number'&&typeof offset==='number'&&Number.isSafeInteger(ptr)&&ptr>=0&&Number.isSafeInteger(offset)){const next=ptr+offset;if(Number.isSafeInteger(next)&&next>=0)return next;}return identity(raw(ptr)+BigInt(offset));},
         ptrDiff:(a,b)=>BigInt.asIntN(64,raw(a)-raw(b)),
         charPointer:value=>typeof value==='string'?services.literal(value):identity(value),
         loadChar:at=>view().getInt8(address(at)),
@@ -73,7 +75,7 @@ export function createHacklibEnvironment(services, layout, namespace, state) {
         })),
     });
     Object.defineProperties(env,{
-        HEAP8:{get:()=>new Int8Array(heap().buffer)},
+        HEAP8:{get:()=>native?.Int8??new Int8Array(heap().buffer)},
         HEAPU8:{get:heap},
     });
     return env;

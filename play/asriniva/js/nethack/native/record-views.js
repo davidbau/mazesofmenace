@@ -23,23 +23,23 @@ export function createNativeRecordViews(environment){
   const match=type.match(/^(.*?)\[(\d+)\](.*)$/);
   if(match){
    const key=type+':'+p;if(arrays.has(key))return arrays.get(key);
-   const child=match[1]+match[3],length=Number(match[2]),stride=ctypes.size(child),aggregate=child.includes('[')||isRecord(child),kind=scalars[ctypes.canonical(child)];
-   const aligned=kind&&p>=16&&p%stride===0&&p+length*stride<=memory.buffer.byteLength;
+   const child=match[1]+match[3],length=Number(match[2]),stride=ctypes.size(child),aggregate=child.includes('[')||isRecord(child),kind=scalars[ctypes.abiType(child)],pointer=child.endsWith('*'),pointee=pointer?child.slice(0,-1).trim():undefined,pointerRecord=pointer&&isRecord(pointee);
+   const aligned=littleHost&&kind&&p>=16&&p%stride===0&&p+length*stride<=memory.buffer.byteLength;
    const cells=aligned&&kind.startsWith('Big')?new Map():undefined;
-   const read=aligned?(cells?i=>{let cell=cells.get(i);if(!cell){cell=arena.scalar(kind,p+i*stride);cells.set(i,cell);}return cell.get();}:i=>arena[kind][p/stride+i]):i=>value(child,p+i*stride);
-   const target={address:p,length,[Symbol.iterator]:function*(){for(let i=0;i<length;i++)yield read(i);}};
+   const read=aligned?(cells?i=>{let cell=cells.get(i);if(!cell){cell=arena.scalar(kind,p+i*stride);cells.set(i,cell);}return cell.get();}:i=>arena[kind][p/stride+i]):pointer?i=>{const at=p+i*stride;memory.bounds(at,8);const raw=arena.pointer(at);return pointerRecord?record(pointee,raw):raw;}:i=>value(child,p+i*stride);
+   const target={address:p,length,[Symbol.toPrimitive]:()=>p,[Symbol.iterator]:function*(){for(let i=0;i<length;i++)yield read(i);}};
    const out=createArrayView(target,{allowLeadingZeroes:true,propertyCount:aggregate?length:undefined,cacheReads:aggregate,
-    read,write:(i,v)=>ctypes.store(child,p+i*stride,v),
+    read,write:(i,v)=>{const at=p+i*stride;if(pointer){memory.bounds(at,8);arena.storePointer(at,v);}else if(kind){memory.bounds(at,stride);v=normalizers[kind](v);if(aligned)arena[kind][p/stride+i]=v;else memory.view['set'+kind](at,v,true);}else ctypes.store(child,at,v);},
     onePast:i=>{if(!isRecord(child))throw new RangeError('C array bounds');return Object.freeze({address:p+i*stride});},
    });arrays.set(key,out);return out;
   }
   if(type.endsWith('*')){memory.bounds(p,8);const target=type.slice(0,-1).trim(),pointer=arena.pointer(p);return isRecord(target)?record(target,pointer):pointer;}
   if(isRecord(type))return record(type,p);
-  const kind=scalars[type];memory.bounds(p,ctypes.size(type));return kind?arena.scalar(kind,p).get():ctypes.load(type,p);
+  const kind=scalars[ctypes.abiType(type)];memory.bounds(p,ctypes.size(type));return kind?arena.scalar(kind,p).get():ctypes.load(type,p);
  }
  function sharedDescriptor(type,name,field){
   const key=definition(type).type+':'+name;if(sharedDescriptors.has(key))return sharedDescriptors.get(key);
-  const scalar=ctypes.canonical(field.ctype.replace(new RegExp('\\s+'+name+'$'),'')),offset=field.offset;
+  const scalar=ctypes.abiType(field.ctype.replace(new RegExp('\\s+'+name+'$'),'')),offset=field.offset;
   let result;
   if(field.bits!==undefined&&field.shift+field.bits<=32){
    const bytes=Math.ceil((field.shift+field.bits)/8),mask=2**field.bits-1,packed=mask<<field.shift,shift=field.shift;
@@ -51,7 +51,7 @@ export function createNativeRecordViews(environment){
   sharedDescriptors.set(key,result);return result;
  }
  function descriptor(type,p,name,field){
-  const declared=field.ctype.replace(new RegExp('\\s+'+name+'$'),''),scalar=ctypes.canonical(declared),at=p+field.offset;
+  const declared=field.ctype.replace(new RegExp('\\s+'+name+'$'),''),scalar=ctypes.abiType(declared),at=p+field.offset;
   if(field.bits!==undefined){
    const bytes=Math.ceil((field.shift+field.bits)/8),mask=2**field.bits-1;
    if(field.shift+field.bits<=32){
@@ -74,7 +74,9 @@ export function createNativeRecordViews(environment){
  }
  function record(type,pointer){
   const at=address(pointer);if(!at)return 0;
-  const row=definition(type),key=row.type+':'+at,sharedType=owner.sharedTypes.has('struct '+row.type)?'struct '+row.type:undefined;
+  const row=definition(type),sharedType=owner.sharedTypes.has('struct '+row.type)?'struct '+row.type:undefined;
+  if(pointer&&typeof pointer==='object'&&viewDefinitions.get(pointer)?.type===row.type&&pointer[storageAddress]===at){if(sharedType)owner.enrich(pointer,sharedType,at);return pointer;}
+  const key=row.type+':'+at;
   if(records.has(key)){const out=records.get(key);if(sharedType)owner.enrich(out,sharedType,at);return out;}
   memory.bounds(at,row.size);
   const out=(sharedType?owner.records.get(sharedType+':'+at):undefined)??{address:at};records.set(key,out);
@@ -89,6 +91,6 @@ export function createNativeRecordViews(environment){
  }
  owner.completeRecordTypes=new Set([...owner.sharedTypes].filter(isRecord));
  owner.registerSchemas(new Map([...owner.completeRecordTypes].map(type=>[type,p=>record(type,p)])));
- const result={record,value,argument:record,array:(type,p,length)=>value(type+'['+length+']',p),advance(view,n){const row=viewDefinitions.get(view);if(!row)throw new TypeError('Unrecognized native record view');return record(row.type,view.address+Number(n)*row.size);}};
+ const result={record,value,argument:record,kindOf:value=>value&&typeof value==='object'?viewDefinitions.get(value)?.type:undefined,array:(type,p,length)=>value(type+'['+length+']',p),advance(view,n){const row=viewDefinitions.get(view);if(!row)throw new TypeError('Unrecognized native record view');return record(row.type,view.address+Number(n)*row.size);}};
  owner.nativeRecords=result;owners.set(environment,result);return result;
 }

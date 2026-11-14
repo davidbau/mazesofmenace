@@ -40,7 +40,7 @@ export const bool = scalar("bool", 1, "bool", (v) => (v ? 1 : 0));
 const big = (v) => (typeof v === "bigint" ? v : BigInt(Number.isInteger(v) ? v : Math.trunc(v)));
 export const uint64_t = scalar("uint64_t", 8, "u64n", (v) => BigInt.asUintN(64, big(v)));
 export const int64_t = scalar("int64_t", 8, "i64n", (v) => BigInt.asIntN(64, big(v)));
-export const int8_t = char, uint8_t = uchar, int16_t = short, uint16_t = ushort;
+export const uint8_t = uchar, int16_t = short, uint16_t = ushort;
 export const int32_t = int, uint32_t = unsigned;
 export const size_t = unsigned, ssize_t = int, intptr_t = int, uintptr_t = unsigned;
 export const time_t = long;

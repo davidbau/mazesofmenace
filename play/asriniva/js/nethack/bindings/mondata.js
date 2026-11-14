@@ -1,3 +1,5 @@
+import {createNativeMondata} from '../native/mondata.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
 // Fixed scalar field metadata only; offsets and ABI sizes remain checked per view.
@@ -14,14 +16,16 @@ const mondataFields=Object.freeze({
 });
 // Compiler layouts and header macros only; monster policy stays in mondata.js.
 export function createMondataEnvironment(services, layout, namespace) {
+    const native=services.nativeOwner,records=native?.nativeRecords;
     const widths = {pointerSize:8,longSize:8,intSize:4,shortSize:2,booleanSize:1,coordSize:2,
         config_DEBUG:1,config_MAKEDEFS_C:0};
     for (const [key,size] of Object.entries(widths)) if(layout[key]!==size)
         throw new Error('Review changed mondata ABI: '+key);
+    if(native){const prefixes={attack:'atk_',permonst:'pm_',object:'obj_',monster:'mon_',trap:'dtrap_',hero:'u_',props:'prop_',mvitals:'mvital_',objects:'cls_'};for(const [kind,definitions]of Object.entries(mondataFields))for(const [key,_type,size]of definitions)if(layout[prefixes[kind]+key+'_size']!==size)throw Error('Review changed mondata field: '+prefixes[kind]+key);}
     const raw=value=>CAdapter.unsignedPointer(value);
     const address=value=>Number(value?.address??value??0);
     const identity=value=>{const bits=raw(value);return bits>BigInt(Number.MAX_SAFE_INTEGER)?bits:Number(bits);};
-    const view=()=>CAdapter.currentDataView(services);
+    const view=()=>native?.nativeArena?.view??CAdapter.currentDataView(services);
     const pointer=at=>identity(view().getBigUint64(at,true));
     const global=i=>address(services.global(i));
     const int=value=>CAdapter.signedInt(value,true);
@@ -36,18 +40,18 @@ export function createMondataEnvironment(services, layout, namespace) {
     };
     const pointerField=(obj,key,at,wrap=value=>value)=>Crt.definePointerField(pointer,view,raw,obj,key,at,wrap);
     const indexed=get=>new Proxy({}, {get(obj,key){return typeof key==='string'&&/^-?\d+$/.test(key)?get(Number(key)):Reflect.get(obj,key);}});
-    function attack(value){const at=address(value);if(!at)return 0;
+    function attack(value){if(records)return records.record('struct attack',value);const at=address(value);if(!at)return 0;
         return fields({address:identity(value)},at,'atk_',mondataFields.attack);}
-    function permonst(value){const at=address(value);if(!at)return 0;
+    function permonst(value){if(records)return records.record('struct permonst',value);const at=address(value);if(!at)return 0;
         const obj=fields({address:identity(value)},at,'pm_',mondataFields.permonst);
         Object.defineProperties(obj,{
             mattk:{get(){return indexed(i=>attack(at+layout.pm_mattk+i*layout.attackSize));}},
             pmnames:{get(){return indexed(i=>pointer(at+layout.pm_pmnames+i*layout.pointerSize));}},
         });return obj;}
-    function object(value){const at=address(value);if(!at)return 0;
+    function object(value){if(records)return records.record('struct obj',value);const at=address(value);if(!at)return 0;
         const obj=fields({address:identity(value)},at,'obj_',mondataFields.object);
         pointerField(obj,'nobj',()=>at+layout.obj_nobj,object);return obj;}
-    function monster(value){const at=address(value);if(!at)return 0;
+    function monster(value){if(records)return records.record('struct monst',value);const at=address(value);if(!at)return 0;
         const obj=fields({address:identity(value)},at,'mon_',mondataFields.monster);
         pointerField(obj,'data',()=>at+layout.mon_data,permonst);
         for(const key of ['mw','minvent'])pointerField(obj,key,()=>at+layout['mon_'+key],object);
@@ -55,7 +59,7 @@ export function createMondataEnvironment(services, layout, namespace) {
         for(const [i,key] of ['mblinded','mcansee','msleeping','mcan','female','iswiz','mflee'].entries())
             Object.defineProperty(obj,key,{get(){return services.monsterBit(at,i);}});
         return obj;}
-    function trap(value){const at=address(value);if(!at)return 0;
+    function trap(value){if(records)return records.record('struct trap',value);const at=address(value);if(!at)return 0;
         const obj=fields({address:identity(value)},at,'dtrap_',mondataFields.trap);
         Object.defineProperty(obj,'ttyp',{get(){return services.trapBit(at,0);}});return obj;}
     const scalarPointer=(value,kind)=>{const at=address(value);if(!at)return 0;const obj={address:identity(value)};scalar(obj,'value',()=>at,kind);return obj;};
@@ -63,12 +67,14 @@ export function createMondataEnvironment(services, layout, namespace) {
     const charPointer=value=>typeof value==='string'?services.literal(value):identity(value);
     const charPointerPointer=value=>{const at=address(value);if(!at)return 0;const obj={address:identity(value)};
         Object.defineProperty(obj,'value',{get(){return pointer(at);},set(value){view().setBigUint64(at,raw(charPointer(value)),true);}});return obj;};
-    const u=fields({address:global(0)},global(0),'u_',mondataFields.hero);
+    const u=records?records.record('struct you',global(0)):fields({address:global(0)},global(0),'u_',mondataFields.hero);
+    const props=records?u.uprops:indexed(i=>fields({address:global(0)+layout.u_uprops+i*layout.propSize},global(0)+layout.u_uprops+i*layout.propSize,'prop_',mondataFields.props));
+    if(!records){
     pointerField(u,'usteed',()=>global(0)+layout.u_usteed,monster);
-    const props=indexed(i=>fields({address:global(0)+layout.u_uprops+i*layout.propSize},global(0)+layout.u_uprops+i*layout.propSize,'prop_',mondataFields.props));
     Object.defineProperty(u,'uprops',{get(){return props;}});
     for(const [i,key] of ['twoweap','uswallow'].entries())Object.defineProperty(u,key,{get(){return services.heroBit(i);}});
     u.uhave={};Object.defineProperty(u.uhave,'amulet',{get(){return services.heroBit(2);}});
+    }
     const gy={},svm={},gi={},cg={},gm={},gu={urace:{}};
     Object.defineProperty(gy,'youmonst',{get(){return monster(global(1)+layout.youmonst);}});
     Object.defineProperty(svm,'mvitals',{get(){return indexed(i=>fields({},global(2)+layout.mvitals+i*layout.mvitalSize,'mvital_',mondataFields.mvitals));}});
@@ -77,7 +83,7 @@ export function createMondataEnvironment(services, layout, namespace) {
     scalar(gm,'multi',()=>global(5)+layout.multi,'BigInt64');
     scalar(gu.urace,'mnum',()=>global(8)+layout.raceMnum,'Int16');
     const mons=indexed(i=>permonst(global(9)+i*layout.permonstSize));
-    const objects=indexed(i=>fields({address:global(10)+i*layout.objectClassSize},global(10)+i*layout.objectClassSize,'cls_',mondataFields.objects));
+    const objects=indexed(i=>records?records.record('struct objclass',global(10)+i*layout.objectClassSize):fields({address:global(10)+i*layout.objectClassSize},global(10)+i*layout.objectClassSize,'cls_',mondataFields.objects));
     const def_monsyms=indexed(i=>{const at=global(11)+i*layout.classSymSize,obj={address:at};
         scalar(obj,'sym',()=>at+layout.sym_sym,'Int8');pointerField(obj,'explain',()=>at+layout.sym_explain);return obj;});
     const levl=indexed(x=>indexed(y=>{const obj={};Object.defineProperty(obj,'lit',{get(){return services.terrainBit(x,y,0);}});return obj;}));
@@ -149,5 +155,6 @@ export function createMondataEnvironment(services, layout, namespace) {
     env.grownups=namespace.grownups.map(row=>row.map(symbol=>typeof symbol==='string'?layout[symbol]:symbol));
     for(const key of ['levitate','flys','flyl','slither','ooze','immobile','crawl'])env[key]=namespace[key].map(services.literal);
     env.which_armor=(...args)=>object(services.which_armor(...args));
+    if(native){installNativeIntegerCasts(env);env.nativeState=native;env.nativeNamespace=createNativeMondata(env);}
     return env;
 }

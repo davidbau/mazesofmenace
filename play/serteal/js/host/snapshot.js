@@ -9,8 +9,8 @@
 //     stack, malloc's heap: every byte of C-visible state, the Lua VM too);
 //   - the file system, by its journal (host/vfs.js mark/rollback);
 //   - JS-side state: js/rt's (arena, literals, statics) when it exports
-//     rt_state_save/rt_state_restore, the driver's, the capture counters and
-//     the signal table of host/libc.js.
+//     rt_state_save/rt_state_restore, the capture counters (passed as
+//     `extra` by host/game.js) and the signal table of host/libc.js.
 
 import * as rtHeap from "../rt/heap.js";
 

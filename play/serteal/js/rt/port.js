@@ -1,6 +1,6 @@
 // rt/port.js: platform functions called by emitted code that have no C definition to emit.
 //
-// They are the host callbacks of the game driver (sys/c2js/nhjs_tty_api.c declares them EM_JS)
+// They are the host callbacks of the game driver (declared in sys/c2js/nhjs_tty_api.c)
 // and the data-file installer; each forwards to the host (machine.libc(name, args)), which
 // implements them in js/host (host/boot.js).
 

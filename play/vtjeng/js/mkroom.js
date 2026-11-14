@@ -43,6 +43,7 @@ import {
     OROOM,
     POOL,
     ROOM,
+    MAXNROFROOMS,
     ROOMOFFSET,
     SHOPBASE,
     SINK,
@@ -196,6 +197,81 @@ import {
     S_vwall,
     S_water,
 } from './symbols.js';
+
+// A zero room record: a gs.subrooms[] slot no add_subroom() has written in
+// this process. C's clear_level_structures() resets only subrooms[0].hx
+// (mklev.c:909), so a slot an earlier level used keeps that level's record;
+// the port starts each level's gs.subrooms[] empty and cannot reproduce it.
+function zero_room() {
+    return {
+        lx: 0, hx: 0, ly: 0, hy: 0, rtype: 0, orig_rtype: 0, rlit: 0,
+        needfill: 0, needjoining: 0, doorct: 0, fdoor: 0, nsubrooms: 0,
+        irregular: false, sbrooms: [], resident: null,
+    };
+}
+
+// Sfi_mkroom(): read one saved record into the room memory `slot`,
+// replacing every field, as C overwrites the whole struct. The record is a
+// copy taken before any slot was written, so overwriting a slot cannot
+// change a record not yet read.
+function read_mkroom(slot, record) {
+    for (const key of Object.keys(slot)) delete slot[key];
+    Object.assign(slot, record, { sbrooms: [...record.sbrooms] });
+}
+
+// C ref: mkroom.c rest_room() (875-886). `records` holds the rooms in the
+// order mkroom.c save_room() writes them: each room, then its subrooms,
+// recursively. Each subroom is read into the next gs.subrooms[] slot, and
+// the slot's room number comes from its index, as C derives it from the
+// slot's address. C reads a subroom's own subrooms into that same slot,
+// because gn.nsubroom only advances after the inner read returns; the
+// slot then holds the innermost record, the loop re-reads the overwritten
+// nsubrooms, and the skipped slot after it keeps its old contents. Themed
+// rooms nest subrooms this way, so the port follows C here.
+function rest_room(slot, records, state) {
+    read_mkroom(slot, records.next().value);
+    for (let i = 0; i < (slot.nsubrooms ?? 0); i++) {
+        const n = state.nsubroom;
+        // An empty slot takes the record's own room object (the saved link),
+        // so a level without nested subrooms keeps its room objects.
+        state.subrooms[n] ??= slot.sbrooms[i] ?? zero_room();
+        slot.sbrooms[i] = state.subrooms[n];
+        rest_room(state.subrooms[n], records, state);
+        state.subrooms[n].roomnoidx = MAXNROFROOMS + 1 + n;
+        state.subrooms[state.nsubroom] ??= zero_room();
+        state.subrooms[state.nsubroom++].resident = null;
+    }
+}
+
+// C ref: mkroom.c rest_rooms() (893-906), which restore.c getlev() calls for
+// every level it reads. gs.subrooms[] is process state that savelev() does
+// not keep apart from the rooms, so a level the hero returns to, or the
+// hero's level after a restore, gets it back here. Every room's resident is
+// cleared; getlev() later calls shk.c set_residency() for each shopkeeper.
+// savelev() zeroed svr.rooms[] (save.c:564) and the save holds only the
+// first svn.nroom rooms, so the entries after them start empty here; the
+// snapshot would otherwise keep whatever the level's generation left there.
+export function rest_rooms(state = game) {
+    const level = state.level;
+    // The level snapshot is what mkroom.c save_rooms() wrote: copy each
+    // record, in save order, before rest_room() overwrites any room.
+    const saved = [];
+    const save_room = (r) => {
+        saved.push({ ...r, sbrooms: [...(r.sbrooms ?? [])] });
+        for (let i = 0; i < (r.nsubrooms ?? 0); i++) save_room(r.sbrooms[i]);
+    };
+    for (let i = 0; i < level.nroom; i++) save_room(level.rooms[i]);
+    const records = saved.values();
+    state.subrooms = [];
+    state.nsubroom = 0;
+    level.rooms.length = level.nroom;
+    for (let i = 0; i < level.nroom; i++) {
+        rest_room(level.rooms[i], records, state);
+        level.rooms[i].resident = null;
+    }
+    level.rooms[level.nroom] = { hx: -1 }; /* restore ending flags */
+    state.subrooms[state.nsubroom] = { hx: -1 };
+}
 
 export function cmap_to_type(symbol) {
     switch (symbol) {
@@ -402,9 +478,10 @@ export function invalid_shop_shape(sroom, state = game) {
             }
         }
     }
+    // mkroom.c invalid_shop_shape():1069-1072
     if (insidect < 1) {
-        // C's impossible() answers TRUE and carries on.
-        throw new Error('invalid_shop_shape: no squares inside door?');
+        note_unported('pline.c impossible');
+        return true;
     }
     // More than one square beside the door already gives the shopkeeper room
     // to move, so no further check is needed.

@@ -1,3 +1,4 @@
+import {createNativeStairBindings} from './native/stairs-state.js';
 // Level-generation entry points on the shared C environment. Policies remain
 // in the translated owners; missing dependencies retain explicit link errors.
 import {enableSelections} from './selections.js';
@@ -47,7 +48,8 @@ export function enableLevelStartup(environment,layouts,creation){
  const {views,context}=creation,stair=context(layouts.stairs),record=(type,p)=>views.record(type,p);
  Object.assign(stair,{StairwaySize:ctypes.size('stairway'),stairway:p=>record('stairway',p),assign_level:(to,from)=>memory.memmove(environment.address(to),environment.address(from),ctypes.size('d_level')),levelCopy:from=>{const p=environment.transport.stackAlloc(ctypes.size('d_level'));memory.memmove(p,environment.address(from),ctypes.size('d_level'));return record('d_level',p);},Sprintf:(out,format,...args)=>services.sprintf(environment.address(out),typeof format==='string'?services.literal(format):environment.address(format),...(format.includes('%d')?[environment.transport.int(args[0])]:args.map(v=>typeof v==='string'?services.literal(v):environment.address(v)))),strsubst:(out,from,to)=>environment.resolve('strsubst')(environment.address(out),typeof from==='string'?services.literal(from):environment.address(from),typeof to==='string'?services.literal(to):environment.address(to))});
  for(const name of ['earth','air','fire','water'])Object.defineProperty(stair,name+'_level',{get:()=>creation.environment.svd.dungeon_topology['d_'+name+'_level']});
- environment.register('stairs',Object.fromEntries(Object.entries(stairs).filter(([,v])=>typeof v==='function')),stair,{prepareArgs:(fn,args)=>{if(fn==='stairway_add'){args[0]=environment.transport.short(args[0]);args[1]=environment.transport.short(args[1]);args[2]=environment.transport.char(args[2]);args[3]=environment.transport.char(args[3]);args[4]=record('d_level',args[4]);}else if(['stairway_find','stairway_find_from'].includes(fn))args[0]=record('d_level',args[0]);else if(['known_branch_stairs','stairs_description'].includes(fn))args[0]=record('stairway',args[0]);return args;}});
+ const nativeStairs=createNativeStairBindings(environment,stair);
+ environment.register('stairs',nativeStairs.entries,stair);
  const reg=Object.create(services),regionGlobals=['gr','gm','svn','svm','gg','u','gy','gi','svc','iflags','cg','svl','mons','gv'];
  for(const name of regionGlobals)Object.defineProperty(reg,name,{value:undefined,writable:true,configurable:true});
  Object.assign(reg,{global:i=>environment.requireGlobal(regionGlobals[i]),free:p=>services.free(environment.address(p)),alloc:n=>environment.alloc('alloc',n),memcpy:(a,b,n)=>memory.memmove(environment.address(a),environment.address(b),Number(n))});

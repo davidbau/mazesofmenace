@@ -4,19 +4,18 @@
 // with JS values through clib.call().  The functions here are the ones the
 // residue does not have, or must not be used for:
 //
-//   qsort       macOS's qsort in JS (host/qsort.js): comparators are JS functions
-//   regcomp, regexec, regfree   macOS's regex dialect (host/regex.js) for REG_EXTENDED
-//   regerror    Darwin message texts (host/regerror.js); also as nhjs_regerror
-//   sscanf      the residue's, with macOS's saturation of %d / %lld numbers out of range
+//   qsort       the reference comparator call order (host/qsort.js): comparators are JS functions
+//   regcomp, regexec, regfree   the reference regex dialect (host/regex.js) for REG_EXTENDED
+//   regerror    the reference message texts (host/regerror.js); also as nhjs_regerror
+//   sscanf      the residue's, with %d / %lld numbers out of range saturated (see sscanf below)
 //   creat       open(path, O_CREAT|O_WRONLY|O_TRUNC, mode), as musl defines it
 //   getlogin    getenv("LOGNAME") (musl)
 //   getpwuid, getpwnam   no password database: NULL, errno ENOENT (Emscripten)
 //   signal      remembers handlers; no signal is ever delivered
 //   fork, execv, execl, waitpid, setuid, setgid   -1 with the errno Emscripten sets
-//   popen, pclose   the recorder's environment runs no subprocess here: NULL / -1, errno ENOSYS
-//   isatty      the recorder's harness spawned NetHack with stdin, stdout and stderr on pipes
-//               (Node "pipe" = a socketpair on macOS): isatty() is 0 for fd 0, 1, 2 (with
-//               errno EOPNOTSUPP there, ENOTSUP here); other descriptors: their device
+//   popen, pclose   no subprocess is run: NULL / -1, errno ENOSYS
+//   isatty      stdin, stdout and stderr are pipes: 0 for fd 0, 1, 2 (errno ENOTSUP);
+//               other descriptors: their device
 //   file_exists unixunix.c of upstream's tip (SYSCF GDBPATH checks): stat(path) == 0
 //   exit        ends the game at once (host/endgame.js); stdio is not flushed
 //   abort, __assert_fail   end the game with an error
@@ -95,7 +94,7 @@ export function createHostLibc(clib, opts = {}) {
     qsort(base, nel, width, cmp) {
       jsQsort(clib, base, nel, width, cmp);
     },
-    // regcomp/regexec/regfree: macOS's regex dialect (host/regex.js) for the extended REs
+    // regcomp/regexec/regfree: the reference regex dialect (host/regex.js) for the extended REs
     // NetHack compiles; other flags (not used by the game) stay with the residue's musl.
     // The regex_t (musl's layout, 32 bytes) holds re_nsub, a malloc'd copy of the pattern in
     // __opaque and a marker in __padding[0]: all state is in the heap, so snapshots and game
@@ -129,7 +128,7 @@ export function createHostLibc(clib, opts = {}) {
         H.fill(0, preg >> 2, (preg >> 2) + 3);
       } else if (H[(preg >> 2) + 1]) clib.call("regfree", preg);
     },
-    // sscanf: macOS converts %d / %lld with strtoimax(), which saturates at LLONG_MIN/LLONG_MAX
+    // sscanf: %d / %lld are converted as by strtoimax(), which saturates at LLONG_MIN/LLONG_MAX
     // before the value is stored; musl wraps.  For the formats made of width-less %d %lld %c and
     // literal text (bribe()'s "%lld", #levelchange's "%d%c", ...), an input number beyond the
     // 64-bit range is replaced by the limit it saturates to; other formats go unchanged.

@@ -729,7 +729,7 @@ export function place_worm_tail_randomly(worm, x, y) { /* void */
 
 /* for size_monst(cmd.c) to support #stats */
 export function size_wseg(worm) { /* int */
-    return int(unsigned(Math.imul(unsigned(count_wsegs(worm)), NHJS_LP64_SIZEOF_struct_wseg)));
+    return int(unsigned(Math.imul(unsigned(count_wsegs(worm)), NHJS_SIZEOF_struct_wseg)));
 }
 
 /*  count_wsegs()
@@ -895,7 +895,7 @@ import { has_mcorpsenm } from "./mextra.h.macros.js";
 import { FEMALE, MALE } from "./monflag.h.js";
 import { MAX_NUM_WORMS } from "./monst.h.js";
 import { NON_PM, PM_LONG_WORM, PM_LONG_WORM_TAIL } from "./monsters.h.js";
-import { NHJS_LP64_SIZEOF_struct_wseg } from "./nhjs_recorder_sizes.h.js";
+import { NHJS_SIZEOF_struct_wseg } from "./nhjs_struct_sizes.h.js";
 import { NORMAL_SPEED } from "./permonst.h.js";
 import { m_at, place_worm_seg, remove_monster } from "./rm.h.macros.js";
 import { Sfi_coordxy, Sfo_coordxy, Sfo_int } from "./savefile.h.macros.js";

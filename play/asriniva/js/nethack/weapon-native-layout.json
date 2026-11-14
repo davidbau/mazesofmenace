@@ -1,0 +1,873 @@
+{
+  "referenceHeader": "scripts/tu-weapon-layout.h",
+  "headerSha256": "e00112475b833f380ee102ed2d9fc95fb91c679c432747573018e4d3958d91a6",
+  "checks": [
+    [
+      "pointerSize",
+      "size",
+      "void*"
+    ],
+    [
+      "longSize",
+      "size",
+      "long"
+    ],
+    [
+      "intSize",
+      "size",
+      "int"
+    ],
+    [
+      "booleanSize",
+      "size",
+      "boolean"
+    ],
+    [
+      "objectSize",
+      "size",
+      "struct obj"
+    ],
+    [
+      "permonstSize",
+      "size",
+      "struct permonst"
+    ],
+    [
+      "objectClassSize",
+      "size",
+      "struct objclass"
+    ],
+    [
+      "objDescrSize",
+      "size",
+      "struct objdescr"
+    ],
+    [
+      "skillsSize",
+      "size",
+      "struct skills"
+    ],
+    [
+      "defSkillSize",
+      "size",
+      "struct def_skill"
+    ],
+    [
+      "arwSize",
+      "size",
+      "struct throw_and_return_weapon"
+    ],
+    [
+      "classsymSize",
+      "size",
+      "struct class_sym"
+    ],
+    [
+      "genderSize",
+      "size",
+      "struct Gender"
+    ],
+    [
+      "anythingSize",
+      "size",
+      "anything"
+    ],
+    [
+      "menuSize",
+      "size",
+      "menu_item"
+    ],
+    [
+      "obj_nobj",
+      "offset",
+      "struct obj",
+      "nobj"
+    ],
+    [
+      "obj_nobj_size",
+      "fieldSize",
+      "struct obj",
+      "nobj"
+    ],
+    [
+      "obj_otyp",
+      "offset",
+      "struct obj",
+      "otyp"
+    ],
+    [
+      "obj_otyp_size",
+      "fieldSize",
+      "struct obj",
+      "otyp"
+    ],
+    [
+      "obj_oclass",
+      "offset",
+      "struct obj",
+      "oclass"
+    ],
+    [
+      "obj_oclass_size",
+      "fieldSize",
+      "struct obj",
+      "oclass"
+    ],
+    [
+      "obj_oartifact",
+      "offset",
+      "struct obj",
+      "oartifact"
+    ],
+    [
+      "obj_oartifact_size",
+      "fieldSize",
+      "struct obj",
+      "oartifact"
+    ],
+    [
+      "obj_spe",
+      "offset",
+      "struct obj",
+      "spe"
+    ],
+    [
+      "obj_spe_size",
+      "fieldSize",
+      "struct obj",
+      "spe"
+    ],
+    [
+      "obj_owt",
+      "offset",
+      "struct obj",
+      "owt"
+    ],
+    [
+      "obj_owt_size",
+      "fieldSize",
+      "struct obj",
+      "owt"
+    ],
+    [
+      "obj_quan",
+      "offset",
+      "struct obj",
+      "quan"
+    ],
+    [
+      "obj_quan_size",
+      "fieldSize",
+      "struct obj",
+      "quan"
+    ],
+    [
+      "obj_owornmask",
+      "offset",
+      "struct obj",
+      "owornmask"
+    ],
+    [
+      "obj_owornmask_size",
+      "fieldSize",
+      "struct obj",
+      "owornmask"
+    ],
+    [
+      "obj_corpsenm",
+      "offset",
+      "struct obj",
+      "corpsenm"
+    ],
+    [
+      "obj_corpsenm_size",
+      "fieldSize",
+      "struct obj",
+      "corpsenm"
+    ],
+    [
+      "obj_where",
+      "offset",
+      "struct obj",
+      "where"
+    ],
+    [
+      "obj_where_size",
+      "fieldSize",
+      "struct obj",
+      "where"
+    ],
+    [
+      "obj_ocarry",
+      "offset",
+      "struct obj",
+      "ocarry"
+    ],
+    [
+      "obj_ocarry_size",
+      "fieldSize",
+      "struct obj",
+      "ocarry"
+    ],
+    [
+      "mon_data",
+      "offset",
+      "struct monst",
+      "data"
+    ],
+    [
+      "mon_data_size",
+      "fieldSize",
+      "struct monst",
+      "data"
+    ],
+    [
+      "mon_minvent",
+      "offset",
+      "struct monst",
+      "minvent"
+    ],
+    [
+      "mon_minvent_size",
+      "fieldSize",
+      "struct monst",
+      "minvent"
+    ],
+    [
+      "mon_mw",
+      "offset",
+      "struct monst",
+      "mw"
+    ],
+    [
+      "mon_mw_size",
+      "fieldSize",
+      "struct monst",
+      "mw"
+    ],
+    [
+      "mon_weapon_check",
+      "offset",
+      "struct monst",
+      "weapon_check"
+    ],
+    [
+      "mon_weapon_check_size",
+      "fieldSize",
+      "struct monst",
+      "weapon_check"
+    ],
+    [
+      "mon_mx",
+      "offset",
+      "struct monst",
+      "mx"
+    ],
+    [
+      "mon_mx_size",
+      "fieldSize",
+      "struct monst",
+      "mx"
+    ],
+    [
+      "mon_my",
+      "offset",
+      "struct monst",
+      "my"
+    ],
+    [
+      "mon_my_size",
+      "fieldSize",
+      "struct monst",
+      "my"
+    ],
+    [
+      "mon_mux",
+      "offset",
+      "struct monst",
+      "mux"
+    ],
+    [
+      "mon_mux_size",
+      "fieldSize",
+      "struct monst",
+      "mux"
+    ],
+    [
+      "mon_muy",
+      "offset",
+      "struct monst",
+      "muy"
+    ],
+    [
+      "mon_muy_size",
+      "fieldSize",
+      "struct monst",
+      "muy"
+    ],
+    [
+      "mon_misc_worn_check",
+      "offset",
+      "struct monst",
+      "misc_worn_check"
+    ],
+    [
+      "mon_misc_worn_check_size",
+      "fieldSize",
+      "struct monst",
+      "misc_worn_check"
+    ],
+    [
+      "pm_mlet",
+      "offset",
+      "struct permonst",
+      "mlet"
+    ],
+    [
+      "pm_mlet_size",
+      "fieldSize",
+      "struct permonst",
+      "mlet"
+    ],
+    [
+      "pm_msize",
+      "offset",
+      "struct permonst",
+      "msize"
+    ],
+    [
+      "pm_msize_size",
+      "fieldSize",
+      "struct permonst",
+      "msize"
+    ],
+    [
+      "pm_mflags1",
+      "offset",
+      "struct permonst",
+      "mflags1"
+    ],
+    [
+      "pm_mflags1_size",
+      "fieldSize",
+      "struct permonst",
+      "mflags1"
+    ],
+    [
+      "pm_mflags2",
+      "offset",
+      "struct permonst",
+      "mflags2"
+    ],
+    [
+      "pm_mflags2_size",
+      "fieldSize",
+      "struct permonst",
+      "mflags2"
+    ],
+    [
+      "cls_oc_name_idx",
+      "offset",
+      "struct objclass",
+      "oc_name_idx"
+    ],
+    [
+      "cls_oc_name_idx_size",
+      "fieldSize",
+      "struct objclass",
+      "oc_name_idx"
+    ],
+    [
+      "cls_oc_skill",
+      "offset",
+      "struct objclass",
+      "oc_skill"
+    ],
+    [
+      "cls_oc_skill_size",
+      "fieldSize",
+      "struct objclass",
+      "oc_skill"
+    ],
+    [
+      "cls_oc_hitbon",
+      "offset",
+      "struct objclass",
+      "oc_hitbon"
+    ],
+    [
+      "cls_oc_hitbon_size",
+      "fieldSize",
+      "struct objclass",
+      "oc_hitbon"
+    ],
+    [
+      "cls_oc_wldam",
+      "offset",
+      "struct objclass",
+      "oc_wldam"
+    ],
+    [
+      "cls_oc_wldam_size",
+      "fieldSize",
+      "struct objclass",
+      "oc_wldam"
+    ],
+    [
+      "cls_oc_wsdam",
+      "offset",
+      "struct objclass",
+      "oc_wsdam"
+    ],
+    [
+      "cls_oc_wsdam_size",
+      "fieldSize",
+      "struct objclass",
+      "oc_wsdam"
+    ],
+    [
+      "cls_oc_weight",
+      "offset",
+      "struct objclass",
+      "oc_weight"
+    ],
+    [
+      "cls_oc_weight_size",
+      "fieldSize",
+      "struct objclass",
+      "oc_weight"
+    ],
+    [
+      "descr_oc_name",
+      "offset",
+      "struct objdescr",
+      "oc_name"
+    ],
+    [
+      "descr_oc_name_size",
+      "fieldSize",
+      "struct objdescr",
+      "oc_name"
+    ],
+    [
+      "u_weapon_slots",
+      "offset",
+      "struct you",
+      "weapon_slots"
+    ],
+    [
+      "u_weapon_slots_size",
+      "fieldSize",
+      "struct you",
+      "weapon_slots"
+    ],
+    [
+      "u_skills_advanced",
+      "offset",
+      "struct you",
+      "skills_advanced"
+    ],
+    [
+      "u_skills_advanced_size",
+      "fieldSize",
+      "struct you",
+      "skills_advanced"
+    ],
+    [
+      "u_skill_record",
+      "offset",
+      "struct you",
+      "skill_record"
+    ],
+    [
+      "u_skill_record_size",
+      "fieldSize",
+      "struct you",
+      "skill_record"
+    ],
+    [
+      "u_weapon_skills",
+      "offset",
+      "struct you",
+      "weapon_skills"
+    ],
+    [
+      "u_weapon_skills_size",
+      "fieldSize",
+      "struct you",
+      "weapon_skills"
+    ],
+    [
+      "u_twoweap",
+      "offset",
+      "struct you",
+      "twoweap"
+    ],
+    [
+      "u_twoweap_size",
+      "fieldSize",
+      "struct you",
+      "twoweap"
+    ],
+    [
+      "u_usteed",
+      "offset",
+      "struct you",
+      "usteed"
+    ],
+    [
+      "u_usteed_size",
+      "fieldSize",
+      "struct you",
+      "usteed"
+    ],
+    [
+      "u_umonnum",
+      "offset",
+      "struct you",
+      "umonnum"
+    ],
+    [
+      "u_umonnum_size",
+      "fieldSize",
+      "struct you",
+      "umonnum"
+    ],
+    [
+      "u_umonster",
+      "offset",
+      "struct you",
+      "umonster"
+    ],
+    [
+      "u_umonster_size",
+      "fieldSize",
+      "struct you",
+      "umonster"
+    ],
+    [
+      "u_ulevel",
+      "offset",
+      "struct you",
+      "ulevel"
+    ],
+    [
+      "u_ulevel_size",
+      "fieldSize",
+      "struct you",
+      "ulevel"
+    ],
+    [
+      "u_ux",
+      "offset",
+      "struct you",
+      "ux"
+    ],
+    [
+      "u_ux_size",
+      "fieldSize",
+      "struct you",
+      "ux"
+    ],
+    [
+      "u_uy",
+      "offset",
+      "struct you",
+      "uy"
+    ],
+    [
+      "u_uy_size",
+      "fieldSize",
+      "struct you",
+      "uy"
+    ],
+    [
+      "u_uroleplay_pauper",
+      "offset",
+      "struct you",
+      "uroleplay.pauper"
+    ],
+    [
+      "u_uroleplay_pauper_size",
+      "fieldSize",
+      "struct you",
+      "uroleplay.pauper"
+    ],
+    [
+      "skill_skill",
+      "offset",
+      "struct skills",
+      "skill"
+    ],
+    [
+      "skill_skill_size",
+      "fieldSize",
+      "struct skills",
+      "skill"
+    ],
+    [
+      "skill_max_skill",
+      "offset",
+      "struct skills",
+      "max_skill"
+    ],
+    [
+      "skill_max_skill_size",
+      "fieldSize",
+      "struct skills",
+      "max_skill"
+    ],
+    [
+      "skill_advance",
+      "offset",
+      "struct skills",
+      "advance"
+    ],
+    [
+      "skill_advance_size",
+      "fieldSize",
+      "struct skills",
+      "advance"
+    ],
+    [
+      "defskill_skill",
+      "offset",
+      "struct def_skill",
+      "skill"
+    ],
+    [
+      "defskill_skill_size",
+      "fieldSize",
+      "struct def_skill",
+      "skill"
+    ],
+    [
+      "defskill_skmax",
+      "offset",
+      "struct def_skill",
+      "skmax"
+    ],
+    [
+      "defskill_skmax_size",
+      "fieldSize",
+      "struct def_skill",
+      "skmax"
+    ],
+    [
+      "arw_otyp",
+      "offset",
+      "struct throw_and_return_weapon",
+      "otyp"
+    ],
+    [
+      "arw_otyp_size",
+      "fieldSize",
+      "struct throw_and_return_weapon",
+      "otyp"
+    ],
+    [
+      "arw_range",
+      "offset",
+      "struct throw_and_return_weapon",
+      "range"
+    ],
+    [
+      "arw_range_size",
+      "fieldSize",
+      "struct throw_and_return_weapon",
+      "range"
+    ],
+    [
+      "classsym_name",
+      "offset",
+      "struct class_sym",
+      "name"
+    ],
+    [
+      "classsym_name_size",
+      "fieldSize",
+      "struct class_sym",
+      "name"
+    ],
+    [
+      "gender_his",
+      "offset",
+      "struct Gender",
+      "his"
+    ],
+    [
+      "gender_his_size",
+      "fieldSize",
+      "struct Gender",
+      "his"
+    ],
+    [
+      "menu_item",
+      "offset",
+      "menu_item",
+      "item"
+    ],
+    [
+      "menu_item_size",
+      "fieldSize",
+      "menu_item",
+      "item"
+    ],
+    [
+      "any_a_int",
+      "offset",
+      "anything",
+      "a_int"
+    ],
+    [
+      "any_a_int_size",
+      "fieldSize",
+      "anything",
+      "a_int"
+    ],
+    [
+      "youmonst",
+      "offset",
+      "struct instance_globals_y",
+      "youmonst"
+    ],
+    [
+      "youmonst_size",
+      "fieldSize",
+      "struct instance_globals_y",
+      "youmonst"
+    ],
+    [
+      "propellor",
+      "offset",
+      "struct instance_globals_p",
+      "propellor"
+    ],
+    [
+      "propellor_size",
+      "fieldSize",
+      "struct instance_globals_p",
+      "propellor"
+    ],
+    [
+      "roleMnum",
+      "offset",
+      "struct instance_globals_u",
+      "urole.mnum"
+    ],
+    [
+      "roleMnum_size",
+      "fieldSize",
+      "struct instance_globals_u",
+      "urole.mnum"
+    ],
+    [
+      "petnum",
+      "offset",
+      "struct instance_globals_u",
+      "urole.petnum"
+    ],
+    [
+      "petnum_size",
+      "fieldSize",
+      "struct instance_globals_u",
+      "urole.petnum"
+    ],
+    [
+      "spelspec",
+      "offset",
+      "struct instance_globals_u",
+      "urole.spelspec"
+    ],
+    [
+      "spelspec_size",
+      "fieldSize",
+      "struct instance_globals_u",
+      "urole.spelspec"
+    ],
+    [
+      "unweapon",
+      "offset",
+      "struct instance_globals_u",
+      "unweapon"
+    ],
+    [
+      "unweapon_size",
+      "fieldSize",
+      "struct instance_globals_u",
+      "unweapon"
+    ],
+    [
+      "invent",
+      "offset",
+      "struct instance_globals_i",
+      "invent"
+    ],
+    [
+      "invent_size",
+      "fieldSize",
+      "struct instance_globals_i",
+      "invent"
+    ],
+    [
+      "menu_tab_sep",
+      "offset",
+      "struct instance_flags",
+      "menu_tab_sep"
+    ],
+    [
+      "menu_tab_sep_size",
+      "fieldSize",
+      "struct instance_flags",
+      "menu_tab_sep"
+    ],
+    [
+      "tips",
+      "offset",
+      "struct instance_globals_saved_c",
+      "context.tips"
+    ],
+    [
+      "tips_size",
+      "fieldSize",
+      "struct instance_globals_saved_c",
+      "context.tips"
+    ],
+    [
+      "zeroany",
+      "offset",
+      "struct const_globals",
+      "zeroany"
+    ],
+    [
+      "zeroany_size",
+      "fieldSize",
+      "struct const_globals",
+      "zeroany"
+    ],
+    [
+      "debug",
+      "offset",
+      "struct flag",
+      "debug"
+    ],
+    [
+      "debug_size",
+      "fieldSize",
+      "struct flag",
+      "debug"
+    ],
+    [
+      "vizArray",
+      "offset",
+      "struct instance_globals_v",
+      "viz_array"
+    ],
+    [
+      "vizArray_size",
+      "fieldSize",
+      "struct instance_globals_v",
+      "viz_array"
+    ]
+  ]
+}

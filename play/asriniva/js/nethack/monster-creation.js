@@ -1,3 +1,4 @@
+import {connectNativeMakemon} from './native/makemon-state.js';
 // Monster construction on shared measured records; policies remain in ports.
 import * as makemon from '../ported/makemon.js';
 import {set_mon_data,mon_learns_traps,attacktype,attacktype_fordmg} from '../ported/mondata.js';
@@ -121,6 +122,7 @@ export function enableMonsterCreation(environment,layouts,selection){
   if(fn==='makemon_rnd_goodpos')args[2]=record('coord',args[2]);
   return args;
  }});
+ const native=connectNativeMakemon(environment,'monster-creation',names);
  // Each owner gets its own header/constants context, sharing only C memory.
  const biology=context(layouts.mondata);Object.assign(biology,{
   gy:record('struct instance_globals_y',environment.requireGlobal('gy')),
@@ -145,5 +147,5 @@ export function enableMonsterCreation(environment,layouts,selection){
  environment.register('monster-anything',{monst_to_any},Object.assign(Object.create(env),{sizes:{any:ctypes.size('union any')}}),{prepareArgs:(_fn,args)=>[record('struct monst',args[0])]});
  environment.exposeAddressPort('dungeon',['In_V_tower','In_mines']);
  if(!Object.hasOwn(environment.status(),'cmd-geometry'))environment.enableCommandGeometry();
- return {environment:env,views,context,limitation:'Monster creation dependency integration in progress; unresolved world/UI/equipment owners fail explicitly.'};
+ return {environment:env,views,context,native,limitation:'Monster creation dependency integration in progress; unresolved world/UI/equipment owners fail explicitly.'};
 }

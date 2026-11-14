@@ -182,7 +182,6 @@ import { m_in_air, newcham, setmangry } from './mon.js';
 import { hard_helmet } from './do_wear.js';
 import { dist2, distmin, s_suffix, sgn, upstart } from './hacklib.js';
 import {
-    UnsupportedHeroMoveBoundaryError,
     curs_on_u,
     losehp,
     nh_delay_output,
@@ -298,7 +297,7 @@ import { hits_bars, ohitmon, thitu } from './mthrowu.js';
 import { sleep_monst } from './mhitm.js';
 import { splash_lit } from './apply_splash_lit.js';
 import {
-    add_to_migration,
+    add_to_migration_async,
     carried,
     costly_alteration,
     dealloc_obj,
@@ -892,8 +891,7 @@ export async function thitm(tlev, mon, obj, d_override, nocorpse, env) {
 //     pline.c You_hear(); the rn2(15) draw happens regardless, and only when
 //     it returns 0 does the arm print the soft-click message before deleting
 //     the trap.
-// The steed branch (u.usteed, C 1276) calls steedintrap(), which is not ported.
-//     preflight_dotrap() refuses when u.usteed is set, so this is unreachable.
+// The steed branch (u.usteed, C 1276) calls steedintrap().
 //
 // The monster arm is fully ported, misfire included.
 async function trapeffect_dart_trap(mtmp, trap, _trflags, env) {
@@ -2857,7 +2855,7 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style, state, rawEnv = {}
                             ...env, hooks: objectHooks, redraw,
                         });
                     } else {
-                        add_to_migration(singleobj, state);
+                        await add_to_migration_async(singleobj, state, env);
                         const destination = {};
                         get_level(destination, newlev, state);
                         singleobj.ox = destination.dnum;
@@ -3612,9 +3610,11 @@ export async function blow_up_landmine(trap, rawEnv = {}) {
 
 // C ref: trap.c keep_saddle_with_steedcorpse() (939-963). Search the floor
 // object list, including container contents, for the slain mount's corpse.
-// The saddle is moved onto the corpse's reported physical location and
-// merged into that square's pile.
-function keep_saddle_with_steedcorpse(
+// The saddle is moved onto the corpse's location and merged into that
+// square's pile. get_obj_location() without CONTAINED_TOO fails for a corpse
+// inside a container; C then leaves the saddle where it is and still reports
+// the corpse found.
+export function keep_saddle_with_steedcorpse(
     steedMid,
     objchn,
     saddle,
@@ -3624,11 +3624,13 @@ function keep_saddle_with_steedcorpse(
     while (objchn) {
         const corpseMonster = objchn.otyp === CORPSE ? OMONST(objchn) : null;
         if (corpseMonster?.m_id === steedMid) {
-            const location = get_obj_location(objchn, 0, state) ?? { x: 0, y: 0 };
-            const objectEnv = objectGenerationEnv({ state });
-            obj_extract_self(saddle, objectEnv);
-            place_object(saddle, location.x, location.y, objectEnv);
-            stackobj(saddle, objectEnv);
+            const location = get_obj_location(objchn, 0, state);
+            if (location) {
+                const objectEnv = objectGenerationEnv({ state });
+                obj_extract_self(saddle, objectEnv);
+                place_object(saddle, location.x, location.y, objectEnv);
+                stackobj(saddle, objectEnv);
+            }
             return true;
         }
         if (Has_contents(objchn)
@@ -3927,46 +3929,11 @@ export async function trapeffect_selector(monster, trap, trflags, env) {
     return Trap_Effect_Finished;
 }
 
-// Everything dotrap() and its trapeffect_*() hero arms cannot answer, asked
-// before the hero commits to the square so that no refusal lands after a draw
-// or a state change. hack.c requireSimpleHeroDestination() calls this ahead of
-// the move, and dotrap() calls it again as its first statement for any caller
-// that arrives another way.
-//
-// Every trap type from ARROW_TRAP to VIBRATING_SQUARE has its trapeffect_*()
-// arm, mounted or not, so the one stop left is a trap of no known type, which
-// no game creates (C's trapeffect_selector() would print impossible() for
-// it). Some tests use it as a fixed refusal boundary.
-export function preflight_dotrap(trap, state = game, trflags = 0) {
-    const pitTrap = is_pit(trap.ttyp);
-    if (trap.ttyp !== ARROW_TRAP && trap.ttyp !== BEAR_TRAP
-        && trap.ttyp !== DART_TRAP
-        && trap.ttyp !== MAGIC_TRAP && trap.ttyp !== FIRE_TRAP
-        && trap.ttyp !== SLP_GAS_TRAP
-        && trap.ttyp !== ANTI_MAGIC
-        && trap.ttyp !== RUST_TRAP && trap.ttyp !== ROCKTRAP
-        && trap.ttyp !== TELEP_TRAP
-        && trap.ttyp !== LEVEL_TELEP
-        && trap.ttyp !== MAGIC_PORTAL
-        && trap.ttyp !== LANDMINE && !pitTrap
-        && trap.ttyp !== WEB
-        && trap.ttyp !== POLY_TRAP
-        && trap.ttyp !== STATUE_TRAP
-        && trap.ttyp !== SQKY_BOARD
-        && trap.ttyp !== ROLLING_BOULDER_TRAP
-        && trap.ttyp !== VIBRATING_SQUARE && !is_hole(trap.ttyp))
-        throw new UnsupportedHeroMoveBoundaryError('trap activation');
-}
-
 // C ref: trap.c dotrap() (2995-3060). The hero's counterpart to mintrap():
 // hack.c spoteffects() calls it for the trap under the hero's feet. Its
 // ROCKTRAP dispatch reaches trapeffect_rocktrap() after the source's escape
 // check, including for already-seen rock traps.
 export async function dotrap(trap, trflags, state = game, rawEnv = {}) {
-    // First, and before nomul(0): a refusal has to precede the state change,
-    // not follow it.
-    preflight_dotrap(trap, state, trflags);
-
     const u = state.u;
     const ttype = trap.ttyp;
     const already_seen = trap.tseen;

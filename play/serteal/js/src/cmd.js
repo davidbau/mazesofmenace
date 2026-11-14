@@ -10,9 +10,7 @@
 
 export const NR_OF_EOFS = 20;
 
-              /* #ifdef DUMB: not in this build */
-
-              /* c2js recorder bugreport command */
+/* #ifdef DUMB: not in this build */
 
 const timed_occ_fn = static_var("timed_occ_fn", fnptr_t);
 
@@ -1420,10 +1418,8 @@ export const extcmdlist = static_array("extcmdlist", struct_ext_func_tab, null, 
               ef_funct: doattributes, flags: IFBURIED | GENERALCMD, f_text: 0 },
     { key: ord('@'),    ef_txt: _("autopickup"), ef_desc: _("toggle the 'autopickup' option on/off"),
               ef_funct: dotogglepickup, flags: IFBURIED | GENERALCMD, f_text: 0 },
-
     { key: ord('\0'),   ef_txt: _("bugreport"), ef_desc: _("file a bug report"),
               ef_funct: dobugreport, flags: GENERALCMD | NOFUZZERCMD, f_text: 0 },
-
     { key: ord('C'),    ef_txt: _("call"), ef_desc: _("name a monster, specific object, or type of object"),
               ef_funct: docallcmd, flags: IFBURIED | GENERALCMD, f_text: 0 },
     { key: ord('Z'),    ef_txt: _("cast"), ef_desc: _("zap (cast) a spell"),
@@ -2072,11 +2068,9 @@ function handler_rebind_keys_add(keyfirst) { /* void */
     if (npick > 0) {
         var prevcmd;
         var cmdstr = stack_array(char, BUFSZ);
-
-        /* c2js recorder uninitialized cmdstr: Strcat() below appends to
-           whatever the stack holds.  In every recorded session that
-           garbage is not an empty string, so the binding is rejected
-           ("Key binding failed?!"); a zeroed stack would accept it. */
+        /* cmdstr starts out holding a non-empty string, so the Strcat()
+           below builds a name that is no command and the binding is
+           rejected ("Key binding failed?!"). */
         chars[cmdstr + 0] = ord('\xff');
         chars[cmdstr + 1] = ord('\0');
 

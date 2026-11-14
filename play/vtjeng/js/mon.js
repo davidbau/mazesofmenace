@@ -184,6 +184,7 @@ import {
     glyph_is_invisible,
     mon_to_glyph,
     newsym,
+    newsym_async,
     newsymOffMapImpossible,
     newsymReportsOffMap,
     see_monsters,
@@ -273,7 +274,7 @@ import {
     count_wsegs,
     get_wormno,
     initworm,
-    place_worm_tail_randomly,
+    place_worm_tail_randomly_steps,
     place_wsegs,
     remove_worm,
     worm_known,
@@ -590,7 +591,7 @@ import {
     remove_monster,
 } from './monst.js';
 import {
-    impossible_printer, livelog_printf, pline_mon, youFeel, youSee,
+    impossible, impossible_printer, livelog_printf, pline_mon, youFeel, youSee,
 } from './pline.js';
 import { finish_steps } from './source_steps.js';
 import { SHTYPES } from './shtypes_data.js';
@@ -2544,9 +2545,9 @@ export function mcalcmove(
     return movement;
 }
 
-// C ref: monmove.c mon_regen().  Meal digestion is owned by each actual
-// monster action; mcalcdistress() passes false and only performs turn-based
-// healing plus special-attack cooldown.
+// C ref: monmove.c mon_regen() (307-320). Its one caller, mon.c
+// mcalcdistress(), passes digest_meal FALSE; the digestion arm is ported for
+// completeness.
 export function mon_regen(monster, digestMeal = false, state = game) {
     if (!(Math.trunc(state.moves ?? 0) % 20)
         || regenerates(monster.data)) {
@@ -2557,7 +2558,11 @@ export function mon_regen(monster, digestMeal = false, state = game) {
     }
     if (monster.mspec_used) monster.mspec_used--;
     if (digestMeal) {
-        throw new Error('mon_regen meal-digestion branch is not implemented');
+        if (monster.meating) {
+            monster.meating--;
+            if (monster.meating <= 0)
+                finish_meating(monster, { state });
+        }
     }
 }
 
@@ -2994,7 +2999,8 @@ function* apply_newcham_steps(
     if (target.pmidx === PM_LONG_WORM
         && (monster.wormno = get_wormno(state)) !== 0) {
         initworm(monster, random.rn2(5), { ...normalized, state });
-        place_worm_tail_randomly(monster, monster.mx, monster.my, normalized);
+        yield* place_worm_tail_randomly_steps(
+            monster, monster.mx, monster.my, normalized);
     }
     monster.meverseen = false;
     shapeRedraw(monster.mx, monster.my, normalized);
@@ -4348,8 +4354,20 @@ export async function mcalcdistress(state = game, env = {}) {
 // Match js/makemon_create.js redrawSquare(): a caller that supplies its own
 // newsym owns the redraw, and a synthetic state must not repaint the live map.
 function killRedraw(x, y, env) {
-    if (typeof env.hooks?.newsym === 'function') env.hooks.newsym(x, y, env);
-    else if ((env.state ?? game) === game) newsym(x, y);
+    if (typeof env.hooks?.newsym === 'function')
+        return env.hooks.newsym(x, y, env);
+    if ((env.state ?? game) === game) newsym(x, y);
+    return undefined;
+}
+
+// killRedraw() for a caller that can wait: display.c newsym() can reach
+// wall_angle()'s impossible() for a seen wall, which then prints at C's
+// point (js/display.js newsym_async()). The result is a promise only then.
+function killRedrawAsync(x, y, env) {
+    if (typeof env.hooks?.newsym === 'function') return killRedraw(x, y, env);
+    const state = env.state ?? game;
+    if (state === game) return newsym_async(x, y, { state });
+    return undefined;
 }
 
 // make_corpse()'s newsym(x, y) calls. A dead vault guard that vault.c
@@ -4544,10 +4562,12 @@ async function relmon(mon, state = game) {
 // swallowing state. Worm segments are moved with the replacement record.
 export async function replmon(mtmp, mtmp2, state = game) {
     for (let obj = mtmp2.minvent; obj; obj = obj.nobj) {
-        if (obj.where !== undefined && obj.where !== OBJ_MINVENT)
-            throw new Error('replmon: minvent inconsistency');
-        if (obj.ocarry !== undefined && obj.ocarry !== mtmp)
-            throw new Error('replmon: minvent inconsistency');
+        // mon.c replmon():2521-2522 reports an inconsistent object through
+        // impossible() and transfers it anyway. An unset where or ocarry
+        // (an object record a test builds) is not reported.
+        if ((obj.where !== undefined && obj.where !== OBJ_MINVENT)
+            || (obj.ocarry !== undefined && obj.ocarry !== mtmp))
+            await impossible('replmon: minvent inconsistency', state);
         obj.ocarry = mtmp2;
     }
     mtmp.minvent = null;
@@ -4561,7 +4581,7 @@ export async function replmon(mtmp, mtmp2, state = game) {
 
     if (mtmp !== state.u?.usteed)
         place_monster(mtmp2, mtmp2.mx, mtmp2.my, state);
-    if (mtmp2.wormno) place_wsegs(mtmp2, mtmp, { state });
+    if (mtmp2.wormno) await place_wsegs(mtmp2, mtmp, { state });
     if (emits_light(mtmp2.data)) {
         new_light_source(
             mtmp2.mx,
@@ -4656,14 +4676,20 @@ export function mon_leaving_level(mon, state = game, env = {}) {
     /* "to prevent an infinite relobj-flooreffects-hmon-killed loop" */
     mon.mtrapped = 0;
     /* "mon is not swallowing or holding you nor held by you" */
-    const finishAfterSettling = () => {
-        if (onmap) killRedraw(mx, my, { ...env, state });
+    const forgetTarget = () => {
         /* "if mon is a remembered target, forget it since it isn't here anymore".
            apply.c use_pole() is the only C writer that stores a monster here and
            none of it is ported, so in production this pointer is null and the
            test cannot hold. */
         if (state.context?.polearm?.hitmon === mon)
             state.context.polearm.hitmon = null;
+    };
+    // Every caller of mon_leaving_level() waits for a promise it returns.
+    const finishAfterSettling = () => {
+        const redraw = onmap ? killRedrawAsync(mx, my, { ...env, state }) : null;
+        return redraw && typeof redraw.then === 'function'
+            ? redraw.then(forgetTarget)
+            : forgetTarget();
     };
     const finishLeaving = () => {
         /* "vault guard might be at <0,0>" */
@@ -4824,11 +4850,14 @@ export function m_detach(
         if (In_endgame(state.u.uz, state))
             mtmp.mstate = (mtmp.mstate ?? 0) | MON_ENDGAME_FREE;
 
-        if ((mtmp.mstate ?? 0) & MON_DETACH)
-            throw new Error('m_detach: monster is already detached');
-        mtmp.mstate |= MON_DETACH;
-        state.iflags ??= {};
-        state.iflags.purge_monsters = (state.iflags.purge_monsters ?? 0) + 1;
+        // mon.c m_detach():2791-2797
+        if ((mtmp.mstate ?? 0) & MON_DETACH) {
+            note_unported('pline.c impossible');
+        } else {
+            mtmp.mstate |= MON_DETACH;
+            state.iflags ??= {};
+            state.iflags.purge_monsters = (state.iflags.purge_monsters ?? 0) + 1;
+        }
 
         /* "hero is thrown from his steed when it dies or gets genocided" */
         if (mtmp === state.u.usteed) {
@@ -4907,8 +4936,6 @@ export function mongone(monster, env = {}) {
         throw new TypeError('mongone requires a monster instance');
     if (!monsterOnLevelChain(monster, state))
         throw new Error('mongone: monster is not on the level chain');
-    if (monster.mstate & MON_DETACH)
-        throw new Error('mongone: monster is already detached');
 
     monster.mhp = 0;
 

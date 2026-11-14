@@ -5,10 +5,6 @@
 
 /* various code that was replicated in *main.c */
 
- /* c2js exposes moveloop_preamble */
-
- /* c2js exposes maybe_do_tutorial */
-
 /*ARGSUSED*/
 export function early_init(argc, argv) { /* void */
     program_state_init();
@@ -143,7 +139,7 @@ const mvl_change = static_var("mvl_change", int, 0);
 export function moveloop_core() { /* void */
     let monscanmove = FALSE;
 
-    nhjs_moveloop_boundary(); /* c2js snapshot point for interactive play */
+    nhjs_moveloop_boundary(); /* a resumable point of the game */
 
     if (program_state.done_hup)
         end_of_input();
@@ -532,8 +528,7 @@ export function maybe_do_tutorial() { /* void */
 }
 
 export function moveloop(resuming) { /* void */
-    nhjs_moveloop_entry(resuming); /* c2js host drives the game loop */
-
+    nhjs_moveloop_entry(resuming); /* does not return */
     moveloop_preamble(resuming);
 
     if (!resuming)

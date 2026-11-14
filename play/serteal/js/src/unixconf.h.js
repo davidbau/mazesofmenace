@@ -43,7 +43,7 @@
                         * job control (note that AIX is SYSV otherwise)
                         * Also define this for AIX 3.2 */
 
-/* #undef TERMINFO -- c2js uses ANSI_DEFAULT termcap, not curses/terminfo */
+/* #undef TERMINFO -- the built-in ANSI terminal sequences are used */
                        /* Should be defined for most SYSV, SVR4 (including
                         * Solaris 2+), HPUX, and Linux systems.  In
                         * particular, it should NOT be defined for the UNIXPC

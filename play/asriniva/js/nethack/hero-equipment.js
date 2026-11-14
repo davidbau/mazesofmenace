@@ -1,3 +1,7 @@
+import {compileNativeFieldPlans} from './native/address-fields.js';
+import {createEquipmentServices} from './native/equipment-services.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
 // Shared storage transport for unchanged WEAPON, WORN, WIELD and DO_WEAR.
 import abi from './equipment-abi.json' with {type:'json'};
 import wornTextAbi from './worn-text-abi.json' with {type:'json'};
@@ -13,13 +17,12 @@ import {withCEnvironment} from '../c-runtime/context.js';
 import * as armor from '../ported/do_wear.js';
 import {callDoWear} from './bindings/do_wear.js';
 import {attachEquipmentFormatting} from './equipment-format.js';
+const armorScalar=d=>d.t?{i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'}[d.t]:'void *';
+const armorNativeSchema={schema:Object.fromEntries(Object.entries(armorAbi.schemas).map(([name,row])=>[name,{ctype:row.ctype,fields:row.fields.map(f=>({name:f.name,canonical:f.d.s||f.d.a?f.ctype:armorScalar(f.d),bit:f.bit}))}]))};
+export function createArmorFieldPlans(environment){return compileNativeFieldPlans(environment,armorNativeSchema);}
 export function enableHeroEquipment(environment,layouts,hero){
  const {services,ctypes,memory,transport}=environment,address=environment.address;
- const forward=()=>new Proxy(Object.create(services),{get:(o,k,r)=>{
-  if(Object.hasOwn(o,k))return Reflect.get(o,k,r);
-  const fn=Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined;
-  return typeof fn==='function'?(...args)=>fn(...args.map(v=>v?.address??v)):fn;
- }});
+ const forward=()=>createEquipmentServices(environment);
  const bit=(type,p,key)=>ctypes.getField(type,address(p),key,'unsigned int');
  const setBit=(type,p,key,v)=>ctypes.setField(type,address(p),key,'unsigned int',v);
  const locals={};
@@ -31,7 +34,10 @@ export function enableHeroEquipment(environment,layouts,hero){
    equipmentCell:i=>environment.requireGlobal(abi[name].equipment[i]),
   });
  }
+ const nativeOwner=nativeStateFor(environment);createNativeRecordViews(environment);
  const W=layouts.weapon,ws=locals.weapon,arw=environment.allocateGlobal('weapon.arwep',W.arwSize*weapon.arwep.length),kebab=environment.allocateGlobal('weapon.kebabable',weapon.kebabable.length);
+ ws.nativeOwner=nativeOwner;ws.nativeWeaponTypes=ctypes;
+ Object.defineProperty(ws,'nativeContext',{get:()=>callWeapon(ws,W,'environment')});
  ws.y_n=prompt=>transport.char(environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynchars'),110,1));
  Object.assign(ws,{storage:i=>[arw,kebab][i],storageCount:i=>[weapon.arwep.length,weapon.kebabable.length][i],
   equipment:i=>address(ctypes.load('struct obj *',environment.requireGlobal(['uleft','uright','uwep','uswapwep'][i]))),
@@ -43,7 +49,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  });
  // Original WEAPON window macros dispatch through the same live windowprocs.
  // Keep the namespace/callback identities; only native argument carriers change.
- const weaponWindow=(name,...args)=>{const row=abi.weapon.windows[name];if(!row||ctypes.record('struct window_procs').fields[row.field]?.ctype!==row.nativeType)throw Error('Review WEAPON native window '+name);return environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),row.field,'void *'),row.signature,...args);};
+ const weaponWindow=(name,...args)=>{const row=abi.weapon.windows[name];if(!row||ctypes.record('struct window_procs').fields[row.field]?.ctype!==row.nativeType)throw Error('Review WEAPON native window '+name);if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke(row.field,row.signature,...args);return environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),row.field,'void *'),row.signature,...args);};
  Object.assign(ws,{
   create_nhwindow:type=>weaponWindow('create_nhwindow',transport.int(type)),
   start_menu:(win,flags)=>weaponWindow('start_menu',transport.int(win),transport.ulong(flags)),
@@ -66,7 +72,8 @@ export function enableHeroEquipment(environment,layouts,hero){
  const logged=(file,kind)=>(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal(file),line,services.literal(caller));return services[kind](transport.int(n));};
  wn.rnl=logged('worn.c','rnl');for(const kind of ['rn2','rnd'])wd[kind]=logged('wield.c',kind);
  const owned=(namespace)=>Object.fromEntries(Object.entries(namespace).filter(([name,fn])=>typeof fn==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name)));
- environment.register('hero-weapons',Object.fromEntries(Object.keys(owned(weapon)).map(name=>[name,(...args)=>callWeapon(ws,W,name,...args)])));
+ const weaponEntries=Object.fromEntries(Object.keys(owned(weapon)).map(name=>{const fn=(...args)=>callWeapon(ws,W,name,...args);fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];}));
+ environment.register('hero-weapons',weaponEntries,ws);
  const wornEnv=createWornEnvironment(wn,layouts.worn,worn),wieldEnv=createWieldEnvironment(wd,layouts.wield,wield);
  // The unchanged wield bridge indexes its two private getobj filters in this order.
  // Re-enter this same context when INVENT calls the native-shaped selector token.
@@ -92,7 +99,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  const local=forward(),schemas=Object.keys(armorAbi.schemas),scalar=d=>d.t?{i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'}[d.t]:'void *';
  const field=(k,i)=>{const row=armorAbi.schemas[schemas[k]],f=row?.fields[i];if(!f)throw new Error('Unknown DO_WEAR field');return{type:row.ctype,f};};
  const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.q||d.f?8:d.s?layouts.do_wear[d.s+'Size']:d.a.reduce((a,b)=>a*b,1)*width(d.e);
- Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,
+ Object.assign(local,{nativeOwner,nativeFieldPlans:createArmorFieldPlans(environment),moduleKey:environment,heap:()=>memory.HEAPU8,
   getobj,
   unmul:message=>environment.resolve('unmul')(typeof message==='string'?services.literal(message):address(message)),
   buffer:()=>offdelaybuf,
@@ -104,7 +111,8 @@ export function enableHeroEquipment(environment,layouts,hero){
   address:(k,p,i)=>{const {type,f}=field(k,i);return ctypes.locate(type,address(p),f.name).at;},
  });
  const offdelaybuf=environment.allocateGlobal('do_wear.armoroff.offdelaybuf',armorAbi.bufferBytes);
- environment.register('hero-armor',Object.fromEntries(Object.keys(owned(armor)).map(name=>[name,(...args)=>callDoWear(local,layouts.do_wear,name,...args)])));
+ const armorEntries=Object.fromEntries(Object.keys(owned(armor)).map(name=>{const fn=(...args)=>callDoWear(local,layouts.do_wear,name,...args);fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];}));
+ environment.register('hero-armor',armorEntries,local);
  attachEquipmentFormatting(environment,{weapon:ws,worn:wn,wield:wd,armor:local},layouts);
  hero.enableSkills();
  return {weapon:ws,worn:wornEnv,wield:wieldEnv,armor:local,limitation:'Shared equipment/skills transport connected; startup and later gear lifecycle require original-C verification.'};

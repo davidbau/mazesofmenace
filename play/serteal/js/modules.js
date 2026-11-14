@@ -37,7 +37,7 @@ import "./src/monattk.h.js";
 import "./src/monflag.h.js";
 import "./src/monst.h.js";
 import "./src/monsters.h.js";
-import "./src/nhjs_recorder_sizes.h.js";
+import "./src/nhjs_struct_sizes.h.js";
 import "./src/obj.h.js";
 import "./src/objclass.h.js";
 import "./src/objects.h.js";

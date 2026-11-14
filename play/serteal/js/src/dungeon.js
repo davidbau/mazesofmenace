@@ -2439,10 +2439,10 @@ export function overview_stats(
     ocount = bcount = acount = osize = bsize = asize = 0;
     for (mptr = svm.mapseenchn; mptr; mptr = mptr.next) {
         ++ocount;
-        osize += NHJS_LP64_SIZEOF_mapseen;
+        osize += NHJS_SIZEOF_mapseen;
         for (ce = mptr.final_resting_place; ce; ce = ce.next) {
             ++bcount;
-            bsize += NHJS_LP64_SIZEOF_struct_cemetery;
+            bsize += NHJS_SIZEOF_struct_cemetery;
         }
         if (mptr.custom_lth) {
             ++acount;
@@ -2450,11 +2450,11 @@ export function overview_stats(
         }
     }
 
-    sprintf(hdrbuf, _("general, size %lld"), NHJS_LP64_SIZEOF_mapseen);
+    sprintf(hdrbuf, _("general, size %lld"), NHJS_SIZEOF_mapseen);
     sprintf(buf, statsfmt, hdrbuf, ocount, osize);
     putstr()(win, 0, buf);
     if (bcount) {
-        sprintf(hdrbuf, _("cemetery, size %lld"), NHJS_LP64_SIZEOF_struct_cemetery)
+        sprintf(hdrbuf, _("cemetery, size %lld"), NHJS_SIZEOF_struct_cemetery)
 ;
         sprintf(buf, statsfmt, hdrbuf, bcount, bsize);
         putstr()(win, 0, buf);
@@ -3344,9 +3344,7 @@ import { digests, enfolds, is_animal } from "./mondata.h.macros.js";
 import { M_AP_FURNITURE } from "./monst.h.js";
 import { M_AP_TYPE } from "./monst.h.macros.js";
 import { PM_DWARF } from "./monsters.h.js";
-import {
-    NHJS_LP64_SIZEOF_mapseen, NHJS_LP64_SIZEOF_struct_cemetery,
-} from "./nhjs_recorder_sizes.h.js";
+import { NHJS_SIZEOF_mapseen, NHJS_SIZEOF_struct_cemetery } from "./nhjs_struct_sizes.h.js";
 import {
     ALTAR, CLOUD, CORR, DBWALL, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, FOUNTAIN, GRAVE, MAX_TYPE,
     ROOM, SDOOR, SINK, SVALL, THRONE, TREE, struct_cemetery,

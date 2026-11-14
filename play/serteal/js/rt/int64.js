@@ -39,10 +39,6 @@ export function xor64u(a, b) { return joinu(hi(a) ^ hi(b), lo(a) ^ lo(b)); }
 export function not64u(a) { return join(~hi(a), ~lo(a)); }
 export function shr64u(a, n) { return Number(BigInt.asUintN(64, BigInt(a)) >> BigInt(n)); }
 
-/** a * b with C wrap-around (for hashing code; plain * is used elsewhere) */
-export function mul64(a, b) { return Number(BigInt.asIntN(64, BigInt(a) * BigInt(b))); }
-export function mul64u(a, b) { return Number(BigInt.asUintN(64, BigInt(a) * BigInt(b))); }
-
 // ---- exact 64-bit integers: uint64_t / int64_t (RNG state, hashes) are BigInt ---------------
 
 /** (uint64_t) v: BigInt in [0, 2^64), from a Number or a BigInt (also wraps arithmetic). */

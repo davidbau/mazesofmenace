@@ -9,7 +9,11 @@
 //
 // A jmp_buf is identified by its address. A host whose C code longjmps to JS setjmp sites (and
 // back) can install machine.longjmp / machine.catch_longjmp so that JS and C use one exception
-// protocol in both directions; the game's host does not need to (host/setjmp.js).
+// protocol in both directions. The game's host does not: the vendored C library's own longjmp
+// (lua_error, luaL_error inside the Lua VM) is a different exception that only the C library's
+// own setjmp points catch, so it never reaches a JS setjmp site; and a JS longjmp that crosses
+// Lua frames (nhlua.c nhl_hookfn -> nhl_pcall) leaves that lua_State unusable, which is fine:
+// the game panics there, and interactive play restores a heap snapshot.
 
 import { machine } from "./heap.js";
 import { addr } from "./struct.js";

@@ -173,7 +173,7 @@ import {
 } from './cmd.js';
 import { food_disappears } from './eat.js';
 import { makeplural } from './fruit.js';
-import { digit, encodeUtf8ByteString, ing_suffix, letter, nh_deterministic_qsort, s_suffix, strstri, strsubst, visctrl, upstart, strcmpi } from './hacklib.js';
+import { digit, textBytes, ing_suffix, letter, nh_deterministic_qsort, s_suffix, strstri, strsubst, visctrl, upstart, strcmpi } from './hacklib.js';
 import {
     LOW_PM,
     PM_ARCHEOLOGIST,
@@ -413,17 +413,6 @@ export function nxtobj(obj, type, by_nexthere) {
         if (!current) break;
     } while (current.otyp !== type);
     return current;
-}
-
-// Thrown where invent.c reads a terrain description this port has not reached
-// yet. dfeature_at() is source-shaped for its admitted terrain cases, so every
-// stop below names the C helper that is missing rather than the caller that hit it.
-export class UnsupportedFeatureDescriptionError extends Error {
-    constructor(helper) {
-        super(`feature description requires ${helper}`);
-        this.name = 'UnsupportedFeatureDescriptionError';
-        this.helper = helper;
-    }
 }
 
 function alignmentName(alignment) {
@@ -1155,8 +1144,9 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
             break;
         case GETOBJ_SUGGEST:
             break; /* adding otmp->invlet is all that's needed */
+        case GETOBJ_EXCLUDE_NONINVENT: /* not applicable for invent items */
         default:
-            throw new Error('bad return from getobj callback');
+            await impossible('bad return from getobj callback', state);
         }
     }
 
@@ -4202,19 +4192,13 @@ function addinv_core2(obj, env, facts) {
         && !Blind(env.state.u)
         && !objectType(obj, env.state).oc_name_known) {
         observe_object(obj, env.state);
-        const message = env.hooks?.message ?? env.message;
-        let output = null;
-        if (typeof message === 'function') {
-            output = message(
-                `You decipher the label on ${yname(obj, env.state)}.`,
-                env.state,
-            );
-        } else {
-            // The synchronous startup addinv() API has no message owner. C's
-            // pline result is discarded here; runtime pickup supplies the
-            // asynchronous owner and completes this arm below.
-            note_unported('invent.c addinv_core2 pline');
-        }
+        // C's pline(). A caller may supply its own message owner; otherwise
+        // the tty prints it, and addinv() returns the wait to its caller.
+        const message = env.hooks?.message ?? env.message ?? ttyPline;
+        const output = message(
+            `You decipher the label on ${yname(obj, env.state)}.`,
+            env.state,
+        );
         const finishDiscovery = () => {
             discover_object(
                 obj.otyp,
@@ -4640,18 +4624,7 @@ async function addinvCore0Runtime(
     obj, env = {}, prepared = null, updatePermInvent,
     otherObj = null,
 ) {
-    // Live addinv() may be called by a wish or a container path with only a
-    // state argument. Supply ttyPline to the async addinv_core2() arm while
-    // leaving synchronous startup addinv() free of an unawaited Promise.
-    const message = env.hooks?.message ?? env.message ?? ttyPline;
-    const liveEnv = {
-        ...env,
-        hooks: {
-            ...(env.hooks ?? {}),
-            message,
-        },
-    };
-    const pendingContext = beginAddinv(obj, liveEnv, prepared);
+    const pendingContext = beginAddinv(obj, env, prepared);
     const context = isThenable(pendingContext)
         ? await pendingContext : pendingContext;
     if (!context) return null;
@@ -5895,7 +5868,7 @@ export async function display_minventory(
 export function cinv_doname(obj, state = game) {
     let result = donameFresh(obj, state);
     // sizeof "trapped " includes its terminating byte in C.
-    if (obj.otrapped && encodeUtf8ByteString(result).length + 9 <= QBUFSZ) {
+    if (obj.otrapped && textBytes(result).length + 9 <= QBUFSZ) {
         const p = strstri(result, ' locked');
         const q = strstri(result, ' unlocked');
         if (p >= 0 && (q < 0 || p < q))

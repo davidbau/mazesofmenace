@@ -21,11 +21,11 @@
 // Times come from the `now` option (milliseconds; default a fixed 0), so
 // runs are reproducible.  No timestamp is visible to the game.
 
-export const S_IFMT = 0o170000;
-export const S_IFREG = 0o100000;
-export const S_IFDIR = 0o040000;
-export const S_IFCHR = 0o020000;
-export const S_IFLNK = 0o120000;
+const S_IFMT = 0o170000;
+const S_IFREG = 0o100000;
+const S_IFDIR = 0o040000;
+const S_IFCHR = 0o020000;
+const S_IFLNK = 0o120000;
 
 // errno values of the C library the game is linked with (Emscripten/WASI)
 export const E = Object.freeze({
@@ -524,7 +524,6 @@ export class Vfs {
     if (!isDir(lookup.node.mode)) throw new FsError(E.ENOTDIR);
     const err = this._perm(lookup.node, "x");
     if (err) throw new FsError(err);
-    this._state();
     this.cwdPath = lookup.path;
   }
 
@@ -919,10 +918,6 @@ export class Vfs {
     const j = this.journal;
     if (j && !j.positions.has(stream.shared)) j.positions.set(stream.shared, stream.shared.position);
   }
-
-  _state() {
-    // cwd/umask are restored from journal.state
-  }
 }
 
 function relative(from, to) {
@@ -934,7 +929,8 @@ function relative(from, to) {
   return [...up, ...t.slice(i)].join("/");
 }
 
-export function modeStringToFlags(str) {
+// open() flags of an fopen() mode string
+function modeStringToFlags(str) {
   const flags = {
     r: 0,
     "r+": 2,

@@ -1,3 +1,6 @@
+import {createNativeUhitm} from '../native/uhitm.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
+import {createNativeScalarLocal} from '../native/scalar-local.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -16,7 +19,8 @@ const CALLBACK_NAMES=["Finish_digestion", "rn2_on_display_rng", "xname"];
 const CALLBACK_CONSUMERS=["askchain", "at_quick_exit", "atexit", "bhit", "bhitpile", "bsearch", "cmd_from_func", "cmdname_from_func", "cmdq_add_ec", "collect_coords", "collect_obj_classes", "container_gone", "count_buc", "detecting", "distant_name", "do_clear_area", "ecname_from_fn", "ext_func_tab_from_func", "get_iter_mons", "get_iter_mons_xy", "get_rnd_text", "getobj", "getpos_sethilite", "ggetobj", "init_isaac64", "init_random", "iter_mons", "iter_mons_safe", "linedup_callback", "nh_deterministic_qsort", "parse_conf_file", "parse_conf_str", "qsort", "qsort_r", "query_objlist", "reseed_random", "safe_qbuf", "set_occupation", "set_selection_floodfillchk", "sethanguphandler", "short_oname", "signal", "sigset", "singular", "sortloot", "walk_path"];
 export function createUhitmEnvironment(services,L){
  const raw=v=>CAdapter.unsignedPointer(v),address=v=>Number(raw(v));
- const view=()=>CAdapter.currentDataView(services),literal=v=>typeof v==='string'?services.literal(v):address(v);
+ const native=services.nativeOwner;
+ const view=()=>native?.nativeArena?.view??CAdapter.currentDataView(services),literal=v=>typeof v==='string'?services.literal(v):address(v);
  const scalarType=t=>(Crt.scalarMethod(t));
  const widths={Int8:1,Uint8:1,Int16:2,Uint16:2,Int32:4,Uint32:4,BigInt64:8,BigUint64:8};
  const size=t=>t.includes('*')?L.pointerSize:scalarType(t)?widths[scalarType(t)]:records[t]?L[recordSizeKeys[t]]:(()=>{throw Error('Review UHITM native type '+t);})();
@@ -31,7 +35,16 @@ export function createUhitmEnvironment(services,L){
   throw Error('Review UHITM read type '+t);
  }
  const recordCache=new Map();
- const record=CAdapter.createTypedRecordFactory({services,L,records,address,size,read,write,decorate:(t,out)=>CAdapter.installStringAliases(out,fieldAliases,true),cache:recordCache,primitive:true,immutableErrorPrefix:"UHITM immutable field ",unknownErrorPrefix:"Unknown UHITM "});
+ const legacyRecord=CAdapter.createTypedRecordFactory({services,L,records,address,size,read,write,decorate:(t,out)=>CAdapter.installStringAliases(out,fieldAliases,true),cache:recordCache,primitive:true,immutableErrorPrefix:"UHITM immutable field ",unknownErrorPrefix:"Unknown UHITM "});
+ const nativeKinds=new Map(Object.keys(records).map(type=>[type.replace(/^(struct |union )/,''),type]));
+ const recordType=obj=>native?nativeKinds.get(native.nativeRecords.kindOf(obj)):obj.nativeType;
+ if(native)for(const[type,fields]of Object.entries(records)){
+  const definition=services.nativeRecordLayouts[type];if(!definition||definition.size!==Number(L[recordSizeKeys[type]]))throw Error('Review UHITM native record size '+type);
+  for(const[name,field]of Object.entries(fields)){const measured=definition.fields[fieldAliases[name]??name];if(!measured)throw Error('Review UHITM native field '+type+'.'+name);if(!field.bit&&measured.offset!==Number(L[field.key]))throw Error('Review UHITM native field offset '+type+'.'+name);}
+ }
+ // Function-pointer records retain token conversion at the callback boundary.
+ const callbackRecords=new Set(Object.entries(records).filter(([,fields])=>Object.values(fields).some(field=>field.type.includes('(*)'))).map(([type])=>type));
+ const record=native?(type,value)=>{if(callbackRecords.has(type))return legacyRecord(type,value);const result=native.nativeRecords.record(type,value);if(result)CAdapter.installStringAliases(result,fieldAliases,true);return result;}:legacyRecord;
  const env=Object.assign(Object.create(services),L,{
   record,
   int:v=>Number(BigInt.asIntN(32,(typeof v==='bigint'?v:BigInt(Math.trunc(v))))),uint:v=>Number(BigInt.asUintN(32,(typeof v==='bigint'?v:BigInt(Math.trunc(v))))),
@@ -39,10 +52,10 @@ export function createUhitmEnvironment(services,L){
   boolean:v=>Number(BigInt.asIntN(8,(typeof v==='bigint'?v:BigInt(Math.trunc(v))))),long:v=>BigInt.asIntN(64,BigInt(v)),
   byte:p=>Object.defineProperty({address:literal(p)},'value',{get:()=>view().getInt8(literal(p)),set:v=>view().setInt8(literal(p),Number(v))}),
   ref:(t,p)=>{p=address(p);return p?Object.defineProperty({address:p},'value',{get:()=>read(t,p),set:v=>write(t,p,v)}):0;},
-  localScalar:(t,v)=>{const p=Number(services.stackAlloc(size(t)));write(t,p,v);return env.ref(t,p);},
+  localScalar:(t,v)=>{if(native&&(t==='int'||t==='short'))return createNativeScalarLocal(v,t==='int'?'Int32':'Int16',services.stackAlloc,view,{requireLifetime:true});const p=Number(services.stackAlloc(size(t)));write(t,p,v);return env.ref(t,p);},
   localArray:(t,n)=>seq(Number(services.stackAlloc(size(t)*n)),t,size(t)),
   localRecord:t=>record(t,services.stackAlloc(size(t))),
-  fieldRef:(o,name)=>{const f=records[o.nativeType][fieldAliases[name]??name];if(!f||f.bit||f.const)throw Error('Review UHITM addressable field '+name);return env.ref(f.type,o.address+L[f.key]);},
+  fieldRef:(o,name)=>{const f=records[recordType(o)][fieldAliases[name]??name];if(!f||f.bit||f.const)throw Error('Review UHITM addressable field '+name);return env.ref(f.type,o.address+L[f.key]);},
   assignField:(o,k,v)=>{o[k]=v;return o[k];},samePtr:(a,b)=>raw(a)===raw(b),
   callLocal:(fn,...args)=>{return CAdapter.callWithStack(services,fn,...args);},
   SIZE:a=>a.length,min:(a,b)=>a<b?a:b,max:(a,b)=>a>b?a:b,abs:Math.abs,
@@ -53,6 +66,10 @@ export function createUhitmEnvironment(services,L){
   if(records[type])env[name]=record(type,p);
   else Object.defineProperty(env,name,{get:()=>read(type,p),set:v=>write(type,p,v)});
  }
+
+ // The visibility pointer table is a genuine byte-row boundary. Keep its
+ // profile local; the canonical private record retains the physical pointer.
+ if(native){const globals=env.gv;env.gv=Object.create(globals,{viz_array:{get:()=>read('unsigned char**',globals.address+L[records['struct instance_globals_v'].viz_array.key])}});}
 
 // Exact configured expression macros; original definitions bound in private metadata.
 env.ACURR=(x)=>((env.acurr(x)));
@@ -319,19 +336,19 @@ env.weirdnonliving=(ptr)=>((Number(Boolean(env.is_golem(ptr) || (ptr).mlet == en
 env.what_mon=(mon,rng)=>((env.Hallucination ? env.random_monster(rng) : mon));
  // Header expressions are JavaScript; only true foreign calls use the native services.
  const callbackTargets = new Set(CALLBACK_NAMES);
- const callback=fn=>{for(const name of callbackTargets)if(fn===core[name]||fn===services[name])return services.callback(name);if(typeof fn==='number'||typeof fn==='bigint'||fn===null)return fn??0;throw Error('Review UHITM callback identity');};
+ const callback=fn=>{for(const name of callbackTargets)if(fn===core[name]||fn===env.nativeNamespace?.[name]||fn===services[name])return services.callback(name);if(typeof fn==='number'||typeof fn==='bigint'||fn===null)return fn??0;throw Error('Review UHITM callback identity');};
  env.callbackAddress=callback;
  const pcall=(name,...args)=>services[name](...args.map(v=>typeof v==='function'?callback(v):v));
  for(const[name,type]of Object.entries(returnRecords))if(services[name])env[name]=(...args)=>record(type,pcall(name,...args));
  for(const name of CALLBACK_CONSUMERS)if(services[name]&&!returnRecords[name])env[name]=(...args)=>pcall(name,...args);
  env.propertyRef=n=>env.fieldRef(env.u.uprops[n], 'intrinsic');
- env.copyRecord=(target,source)=>{services.heap().copyWithin(address(target),address(source),address(source)+size(target.nativeType));return target;};
+ env.copyRecord=(target,source)=>{services.heap().copyWithin(address(target),address(source),address(source)+size(recordType(target)));return target;};
  env.rngSource=(line,index)=>services.rngSource(line,CALLER_NAMES[index]);
  // Constant flags retain actual C64 widths; layout values themselves stay signed64 transport.
  for(const name of LONG_CONSTANTS)if(name in env)env[name]=BigInt(env[name]);
  env.Strcpy=(a,b)=>services.Strcpy(a,b);
  env.div=(a,b)=>typeof a==='bigint'||typeof b==='bigint'?env.long(a)/env.long(b):Math.trunc(a/b);
- const scalarArgument=(t,v)=>t==='int'?env.int(v):t==='unsigned int'?env.uint(v):t==='short'?env.short(v):t==='unsigned char'?env.uchar(v):t==='char'||t==='signed char'?env.char(v):t==='long'||t==='unsigned long'?env.long(v):v;
+ const scalarArgument=(t,v)=>native&&t.endsWith('*')&&records[t.slice(0,-1).trim()]?record(t.slice(0,-1).trim(),v):t==='int'?env.int(v):t==='unsigned int'?env.uint(v):t==='short'?env.short(v):t==='unsigned char'?env.uchar(v):t==='char'||t==='signed char'?env.char(v):t==='long'||t==='unsigned long'?env.long(v):v;
  env.callLocal=(fn,...args)=>{const saved=services.stackSave();try{for(const[i,t]of(params[fn.name]??[]).entries())args[i]=scalarArgument(t,args[i]);return fn(...args);}finally{services.stackRestore(saved);}};
  env.uchar=v=>Number(BigInt.asUintN(8,(typeof v==='bigint'?v:BigInt(Math.trunc(v)))));
  env.globalRef=name=>env.ref(globals[name],globalAddresses.get(name));
@@ -341,6 +358,7 @@ env.what_mon=(mon,rng)=>((env.Hallucination ? env.random_monster(rng) : mon));
  env.gulpum_msgbuf=persistent(1);env.mimic_generic=persistent(2);
  if(!services.moduleKey.teleportUhitmPersistentInitialized){services.heap().set(new Uint8Array([97,32,109,111,110,115,116,101,114,0]),env.mimic_generic);services.moduleKey.teleportUhitmPersistentInitialized=true;}
  env.rectState=undefined;env.trackState=undefined;
+ if(native){installNativeIntegerCasts(env,['byte']);env.nativeState=native;env.nativeNamespace=createNativeUhitm(env);}
  return new Proxy(env,{get:(o,k,r)=>{if(typeof k==='string'&&!Reflect.has(o,k))throw Error('Missing UHITM environment key '+k);return Reflect.get(o,k,r);}});
 
 }
@@ -361,7 +379,8 @@ export function callUhitm(services,layout,name,...args){
    else if(t==='int')args[i]=env.int(args[i]);
    else if(t==='long'||t==='long long')args[i]=env.long(args[i]);
   }
-  const result=withCEnvironment(env,()=>core[name](...args));
+  const invoke=()=>env.nativeNamespace?env.nativeNamespace[name](...args):withCEnvironment(env,()=>core[name](...args));
+  let result;if(env.nativeState){env.nativeState.enter();try{result=invoke();}finally{env.nativeState.leave();}}else result=invoke();
   return typeof result==='string'?services.literal(result):result?.address??result;
  }finally{services.stackRestore(saved);}
 }

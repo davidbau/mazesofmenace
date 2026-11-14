@@ -1025,10 +1025,10 @@ const stats_hdr = init_string(static_array("stats_hdr", char, sizeof_string("   
 const stats_sep = init_string(static_array("stats_sep", char, sizeof_string("---------------------------  ----- -------")), _("---------------------------  ----- -------"), true);
 
 function size_obj(otmp) { /* int */
-    let sz = NHJS_LP64_SIZEOF_struct_obj;
+    let sz = NHJS_SIZEOF_struct_obj;
 
     if (otmp.oextra) {
-        sz += NHJS_LP64_SIZEOF_struct_oextra;
+        sz += NHJS_SIZEOF_struct_oextra;
         if (ONAME(otmp))
             sz += int(strlen(ONAME(otmp))) + 1;
         if (OMONST(otmp))
@@ -1132,27 +1132,27 @@ function contained_stats(
 }
 
 function size_monst(mtmp, incl_wsegs) { /* int */
-    let sz = NHJS_LP64_SIZEOF_struct_monst;
+    let sz = NHJS_SIZEOF_struct_monst;
 
     if (mtmp.wormno && incl_wsegs)
         sz += size_wseg(mtmp);
 
     if (mtmp.mextra) {
-        sz += NHJS_LP64_SIZEOF_struct_mextra;
+        sz += NHJS_SIZEOF_struct_mextra;
         if (MGIVENNAME(mtmp))
             sz += int(strlen(MGIVENNAME(mtmp))) + 1;
         if (EGD(mtmp))
-            sz += NHJS_LP64_SIZEOF_struct_egd;
+            sz += NHJS_SIZEOF_struct_egd;
         if (EPRI(mtmp))
-            sz += NHJS_LP64_SIZEOF_struct_epri;
+            sz += NHJS_SIZEOF_struct_epri;
         if (ESHK(mtmp))
-            sz += NHJS_LP64_SIZEOF_struct_eshk;
+            sz += NHJS_SIZEOF_struct_eshk;
         if (EMIN(mtmp))
-            sz += NHJS_LP64_SIZEOF_struct_emin;
+            sz += NHJS_SIZEOF_struct_emin;
         if (EDOG(mtmp))
-            sz += NHJS_LP64_SIZEOF_struct_edog;
+            sz += NHJS_SIZEOF_struct_edog;
         if (EBONES(mtmp))
-            sz += NHJS_LP64_SIZEOF_struct_ebones;
+            sz += NHJS_SIZEOF_struct_ebones;
         /* mextra->mcorpsenm doesn't point to more memory */
     }
     return sz;
@@ -1203,11 +1203,11 @@ function misc_stats(
     count[0] = size[0] = 0;
     for (tt = gf.ftrap; tt; tt = tt.ntrap) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_struct_trap;
+        size[0] += NHJS_SIZEOF_struct_trap;
     }
     total_count[0] += count[0];
     total_size[0] += size[0];
-    sprintf(hdrbuf, _("traps, size %lld"), NHJS_LP64_SIZEOF_struct_trap);
+    sprintf(hdrbuf, _("traps, size %lld"), NHJS_SIZEOF_struct_trap);
     sprintf(buf, template, hdrbuf, count[0], size[0]);
     putstr()(win, 0, buf);
 
@@ -1239,12 +1239,12 @@ function misc_stats(
     count[0] = size[0] = 0;
     for (sd = svl.level.damagelist; sd; sd = sd.next) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_struct_damage;
+        size[0] += NHJS_SIZEOF_struct_damage;
     }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        sprintf(hdrbuf, _("shop damage, size %lld"), NHJS_LP64_SIZEOF_struct_damage)
+        sprintf(hdrbuf, _("shop damage, size %lld"), NHJS_SIZEOF_struct_damage)
 ;
         sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
@@ -1262,12 +1262,12 @@ function misc_stats(
     count[0] = size[0] = 0;
     for (k = svk.killer.next; k; k = k.next) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_struct_kinfo;
+        size[0] += NHJS_SIZEOF_struct_kinfo;
     }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        sprintf(hdrbuf, _("delayed killer%s, size %lld"), plur(count[0]), NHJS_LP64_SIZEOF_struct_kinfo)
+        sprintf(hdrbuf, _("delayed killer%s, size %lld"), plur(count[0]), NHJS_SIZEOF_struct_kinfo)
 ;
         sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
@@ -1276,12 +1276,12 @@ function misc_stats(
     count[0] = size[0] = 0;
     for (bi = svl.level.bonesinfo; bi; bi = bi.next) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_struct_cemetery;
+        size[0] += NHJS_SIZEOF_struct_cemetery;
     }
     if (count[0] || size[0]) {
         total_count[0] += count[0];
         total_size[0] += size[0];
-        sprintf(hdrbuf, _("bones history, size %lld"), NHJS_LP64_SIZEOF_struct_cemetery)
+        sprintf(hdrbuf, _("bones history, size %lld"), NHJS_SIZEOF_struct_cemetery)
 ;
         sprintf(buf, template, hdrbuf, count[0], size[0]);
         putstr()(win, 0, buf);
@@ -1522,7 +1522,7 @@ export function wiz_show_stats() { /* int */
 
     total_obj_count[0] = total_obj_size[0] = 0;
     putstr()(win, 0, stats_hdr);
-    sprintf(buf, _("  Objects, base size %lld"), NHJS_LP64_SIZEOF_struct_obj);
+    sprintf(buf, _("  Objects, base size %lld"), NHJS_SIZEOF_struct_obj);
     putstr()(win, 0, buf);
     obj_chain(win, _("invent"), gi.invent, TRUE,
               total_obj_count, total_obj_size);
@@ -1543,7 +1543,7 @@ export function wiz_show_stats() { /* int */
 
     total_mon_count[0] = total_mon_size[0] = 0;
     putstr()(win, 0, _(""));
-    sprintf(buf, _("  Monsters, base size %lld"), NHJS_LP64_SIZEOF_struct_monst);
+    sprintf(buf, _("  Monsters, base size %lld"), NHJS_SIZEOF_struct_monst);
     putstr()(win, 0, buf);
     mon_chain(win, _("fmon"), fmon(), TRUE, total_mon_count, total_mon_size);
     mon_chain(win, _("migrating"), gm.migrating_mons, FALSE,
@@ -1939,12 +1939,12 @@ import { MON_ENDGAME_MIGR, MON_LIMBO, MON_MIGRATING, MON_OFFMAP, struct_monst } 
 import { DEADMONSTER } from "./monst.h.macros.js";
 import { NUMMONS, PM_GRID_BUG, PM_SAMURAI } from "./monsters.h.js";
 import {
-    NHJS_LP64_SIZEOF_struct_cemetery, NHJS_LP64_SIZEOF_struct_damage,
-    NHJS_LP64_SIZEOF_struct_ebones, NHJS_LP64_SIZEOF_struct_edog, NHJS_LP64_SIZEOF_struct_egd,
-    NHJS_LP64_SIZEOF_struct_emin, NHJS_LP64_SIZEOF_struct_epri, NHJS_LP64_SIZEOF_struct_eshk,
-    NHJS_LP64_SIZEOF_struct_kinfo, NHJS_LP64_SIZEOF_struct_mextra, NHJS_LP64_SIZEOF_struct_monst,
-    NHJS_LP64_SIZEOF_struct_obj, NHJS_LP64_SIZEOF_struct_oextra, NHJS_LP64_SIZEOF_struct_trap,
-} from "./nhjs_recorder_sizes.h.js";
+    NHJS_SIZEOF_struct_cemetery, NHJS_SIZEOF_struct_damage, NHJS_SIZEOF_struct_ebones,
+    NHJS_SIZEOF_struct_edog, NHJS_SIZEOF_struct_egd, NHJS_SIZEOF_struct_emin,
+    NHJS_SIZEOF_struct_epri, NHJS_SIZEOF_struct_eshk, NHJS_SIZEOF_struct_kinfo,
+    NHJS_SIZEOF_struct_mextra, NHJS_SIZEOF_struct_monst, NHJS_SIZEOF_struct_obj,
+    NHJS_SIZEOF_struct_oextra, NHJS_SIZEOF_struct_trap,
+} from "./nhjs_struct_sizes.h.js";
 import { OMAILCMD, OMONST, ONAME } from "./obj.h.macros.js";
 import { OBJ_NAME } from "./objclass.h.macros.js";
 import { FIRST_OBJECT, NUM_OBJECTS } from "./objects.h.js";

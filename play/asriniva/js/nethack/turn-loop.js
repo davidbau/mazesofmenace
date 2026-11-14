@@ -90,7 +90,7 @@ export function enableTurnLoop(environment,layouts,startup){
  for(const [name,row]of Object.entries(abi.windowMacros))if(!Object.hasOwn(C,name)){
   const match=row.type.match(/^(.*?)\s*\(\*\)\s*\((.*)\)$/);if(!match)throw new Error('Unknown ALLMAIN window callback '+name);
   const result=match[1].trim(),parameters=match[2].split(',').map(type=>type.trim()).filter(type=>type&&type!=='void'),code=type=>{type=ctypes.canonical(type);return type==='void'?'v':type.includes('*')?'p':type.includes('long')?'j':'i';},signature=[result,...parameters].map(code).join('');
-  C[name]=(...args)=>{const offset=ctypes.record('struct window_procs').fields[row.field].offset,fn=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+offset,true);return boundary(result,functions.indirect(fn,signature,...args.map((value,i)=>boundary(parameters[i],value))));};
+  C[name]=(...args)=>{const offset=ctypes.record('struct window_procs').fields[row.field].offset,fn=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+offset,true);return boundary(result,environment.nativeWindowCallbacks?environment.nativeWindowCallbacks.invoke(row.field,signature,...args.map((value,i)=>boundary(parameters[i],value))):functions.indirect(fn,signature,...args.map((value,i)=>boundary(parameters[i],value))));};
  }
  // Keep already-installed explicit header/callback transports (for example,
  // game-windows' create_nhwindow macro) on this same shared context.

@@ -1,0 +1,4 @@
+// Native level positioning and overview share the live window function state.
+import {connectNativeDisplayWindows} from './display-window-callbacks.js';
+export const dungeonWindowFields=Object.freeze(["win_clear_nhwindow", "win_cliparound", "win_putstr", "win_create_nhwindow", "win_start_menu", "win_putstr", "win_putstr", "win_end_menu", "win_destroy_nhwindow", "win_putstr", "win_putstr", "win_putstr", "win_putstr", "win_putstr", "win_putstr", "win_putstr", "win_display_nhwindow", "win_destroy_nhwindow", "win_putstr", "win_putstr", "win_putstr", "win_create_nhwindow", "win_start_menu", "win_end_menu", "win_destroy_nhwindow"]);
+export function connectNativeDungeonWindows(environment,services,schema){return connectNativeDisplayWindows(environment,services,schema,dungeonWindowFields,'dungeon');}

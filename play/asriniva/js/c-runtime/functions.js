@@ -13,6 +13,7 @@ export function createFunctions() {
     return {
         functionPointer:register,
         callback(id){const entry=entries.get(BigInt(id));if(!entry)throw new TypeError('Unknown C callback');return entry.fn;},
+        typedCallback(id,signature){const entry=entries.get(BigInt(id));if(!entry||entry.signature!==signature)throw new TypeError('Unknown or incompatible C callback');return entry.fn;},
         indirect(id,signature,...args){const entry=entries.get(BigInt(id));if(!entry||entry.signature!==signature)throw new TypeError('Unknown or incompatible C callback');return entry.fn(...args);},
         withJumpScope(callback){const scope={};frames.push(scope);try{return callback(scope);}catch(error){if(error instanceof CJump&&error.scope===scope)return error.value;throw error;}finally{frames.pop();}},
         longjmp(scope,value){if(!frames.includes(scope))throw new Error('Expired C jump target');throw new CJump(scope,value);},

@@ -1,3 +1,6 @@
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
+import {installNativeDependency,createNativeAbiCaster} from './native/execution.js';
 // Full original EAT policies on shared hunger, inventory and callback state.
 import abi from './eat-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
@@ -6,6 +9,7 @@ import {initializeEat,callEat,eatState} from './bindings/eat.js';
 
 export function enableEating(environment,layouts,hungerTable){
  const {services,memory,ctypes,transport,functions}=environment,L=layouts.eat,address=environment.address;
+ const native=nativeStateFor(environment);createNativeRecordViews(environment);
  const text=v=>typeof v==='string'?services.literal(v):address(v);
  const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
  const forwards=new Map(),local=new Proxy(Object.create(services),{get:(o,k,r)=>{
@@ -21,20 +25,20 @@ export function enableEating(environment,layouts,hungerTable){
  const packed=(kind,p,index)=>{const row=abi.bits[kind],key=row?.fields[index];if(!key)throw new Error('Unknown EAT packed field '+kind+':'+index);return{type:row.type,key,at:address(p)};};
  const callback=(name,signature)=>environment.functionPointer(Object.hasOwn(publicFunctions.functions,name)?name:'eat::'+name,signature,(...args)=>callEat(local,L,name,...args));
  const convert={pointer:address,text,int:transport.int,uint:transport.uint,byte:transport.char,ubyte:transport.uchar,short:transport.short,long:transport.long,ulong:transport.ulong};
- for(const[name,args]of Object.entries(abi.calls))local[name]=(...values)=>{
+ for(const[name,args]of Object.entries(abi.calls)){const legacy=(...values)=>{
   const value=name==='alloc'?environment.alloc(name,...values.map((v,i)=>convert[args[i]](v))):resolve(name)(...values.map((v,i)=>convert[args[i]](v)));
   const ret=ctypes.abiType(publicFunctions.functions[name]?.match(/^(.+?)\s*\(/)?.[1]??'int');
   return ret.includes('*')?text(value):ret==='void'?undefined:ctypes.size(ret)===8?(ret.startsWith('unsigned')?transport.ulong(value):transport.long(value)):typeof value==='boolean'?Number(value):value;
- };
+ };const strings=args.flatMap((type,i)=>type==='text'?[i]:[]);installNativeDependency(local,name,name,native,legacy,strings.length?values=>{for(const i of strings)if(typeof values[i]==='string')values[i]=text(values[i]);return values;}:undefined);}
  const formatArgs=(format,args)=>{
   const f=typeof format==='string'?format:memory.readString(text(format));
   const shape=[...f.matchAll(/%(?:[-+ #0]*\d*(?:\.\d+)?)?(l?[sdiucpxX%])/g)].filter(m=>m[1]!=='%').map(m=>m[1]==='s'?'p':m[1]==='ld'?'l':m[1]==='lu'?'j':['u','x','X'].includes(m[1])?'u':m[1]==='p'?'v':'i').join('');
   if(!abi.shapes.includes(shape))throw new Error('Review EAT format '+f);
   return args.map((v,i)=>shape[i]==='p'?text(v):shape[i]==='l'?transport.long(v):transport.int(v));
  };
- const window=(name,signature,...args)=>{const at=field('struct window_procs',environment.requireGlobal('windowprocs'),name);return functions.indirect(memory.view.getBigUint64(at,true),signature,...args);};
+ const window=(name,signature,...args)=>{if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke(name,signature,...args);const at=field('struct window_procs',environment.requireGlobal('windowprocs'),name);return functions.indirect(memory.view.getBigUint64(at,true),signature,...args);};
  Object.assign(local,{
-  moduleKey:environment,heap:()=>memory.HEAPU8,
+  nativeOwner:native,moduleKey:environment,heap:()=>memory.HEAPU8,
   global:i=>{const name=abi.globals[i];if(!name)throw new Error('Unknown EAT global '+i);return environment.requireGlobal(name);},
   storage:i=>{if(storage[i]===undefined)throw new Error('Unknown EAT storage '+i);return storage[i];},
   equipment:i=>{const name=abi.equipment[i];if(!name)throw new Error('Unknown EAT equipment '+i);return ctypes.load('struct obj *',environment.requireGlobal(name));},
@@ -68,13 +72,16 @@ export function enableEating(environment,layouts,hungerTable){
  initializeEat(local,L);
  const names=Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
  const parameters=Object.fromEntries(Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)).map(name=>[name,publicFunctions.functions[name].match(/^[^(]+\((.*)\)$/)[1].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')]));
- const prepare=(name,args)=>args.map((v,i)=>{const type=ctypes.abiType(parameters[name][i]);if(type.includes('*'))return text(v);if(type==='signed char'||type==='char')return transport.char(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);});
- environment.register('hero-hunger',Object.fromEntries(names.map(name=>[name,(...args)=>callEat(local,L,name,...prepare(name,args))])),local);
+ const nativeCast=createNativeAbiCaster(ctypes,transport,text);
+ const parameterCasts=Object.fromEntries(Object.entries(parameters).map(([name,types])=>[name,types.map(type=>nativeCast(type))]));
+ const prepare=(name,args)=>args.map((v,i)=>parameterCasts[name][i](v));
+ const bind=name=>{const call=(...args)=>callEat(local,L,name,...prepare(name,args));call.nativeState=native;call.nativeDirect=true;native.functions.set(name,call);return call;};
+ environment.register('hero-hunger',Object.fromEntries(names.map(name=>[name,bind(name)])),local);
  // Earlier construction groups keep their symbol ownership, while their EAT
  // hooks now execute with this same full source state and shared context.
  for(const[owner,hooks]of [['inventory-context',['food_disappears']],['object-nutrition',['obj_nutrition','eaten_stat']]]){
   const entry=environment.start(owner);
-  for(const name of hooks){if(entry.namespace[name]!==source[name])throw new Error('Unexpected earlier EAT hook '+owner+'.'+name);entry.namespace[name]=(...args)=>callEat(local,L,name,...prepare(name,args));}
+  for(const name of hooks){if(entry.namespace[name]!==source[name])throw new Error('Unexpected earlier EAT hook '+owner+'.'+name);entry.namespace[name]=bind(name);}
  }
  return {services:local,state:eatState(local,L),storage,call:(name,...args)=>callEat(local,L,name,...args),limitation:'Full original EAT owner connected; reached hunger/item/occupation policies require original-C acceptance.'};
 }

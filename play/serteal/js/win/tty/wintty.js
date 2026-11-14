@@ -1420,7 +1420,7 @@ function process_text_window(window, cw) { /* void */
     let cp;
 
     if (cw.type == NHW_TEXT && !cw.offx) {
-        /* c2js mirrors full-screen text-window backing clear. */
+        /* the window covers the whole screen */
         nomux_clear_screen();
     }
 
@@ -1439,10 +1439,8 @@ function process_text_window(window, cw) { /* void */
                 cl_eos();
             } else
                 term_clear_screen();
-
             if (cw.type == NHW_TEXT && !cw.offx)
                 nomux_clear_screen();
-
             n = 0;
         }
         tty_curs(window, 1, n++);
@@ -1580,8 +1578,6 @@ export function tty_display_nhwindow(
             } else
                 term_clear_screen();
             ttyDisplay.toplin = TOPLINE_EMPTY;
-
-            /* c2js keeps NOMUX full-screen clears explicit. */
             nomux_clear_screen();
         } else {
             if (WIN_MESSAGE != WIN_ERR)
@@ -2702,11 +2698,7 @@ export function tty_nhgetch() { /* int */
             resize_tty();
 
         program_state.getting_char++;
-
-        /* c2js always reads scripted tty input; stdin is not available. */
-        i = tgetch();
-        /* #else (#ifdef NH_C2JS_TTY_CAPTURE): not in this build */
-
+        i = tgetch(); /* the session's input; there is no stdin */
         program_state.getting_char--;
 
         if (resize_mesg[0]) {

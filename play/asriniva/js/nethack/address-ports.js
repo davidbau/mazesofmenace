@@ -1,3 +1,5 @@
+import {connectNativeDungeonWindows} from './native/dungeon-window-callbacks.js';
+import {connectNativeDisplayWindows} from './native/display-window-callbacks.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {compileNativeFieldPlans} from './native/address-fields.js';
 import {createAddressBindings} from '../c-runtime/address-bindings.js';
@@ -52,6 +54,8 @@ export function enableAddressPort(environment,name,{only,definition:providedDefi
         bind:key=>bind(key),
     });
     const local=binding.services,keys=binding.layout,resolve=binding.resolve;
+    if(nativeMode&&name==='display')connectNativeDisplayWindows(environment,local,schema);
+    if(nativeMode&&name==='dungeon')connectNativeDungeonWindows(environment,local,schema);
     local.nativeFieldPlans=compileNativeFieldPlans(environment,schema,ctypes);
     if(nativeMode){local.nativeOwner=nativeState;local.nativeModuleName=name;local.stackSave=()=>nativeState.depth?undefined:transport.stackSave();local.stackRestore=saved=>{if(saved!==undefined)transport.stackRestore(saved);};}
     let nativeInitialized=false;

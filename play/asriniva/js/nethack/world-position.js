@@ -1,3 +1,4 @@
+import {connectNativeMakemon} from './native/makemon-state.js';
 // Original terrain, candidate collection and position-selection policies.
 import {nativeSpatialFor} from './native/spatial-state.js';
 import {enableTeleport} from './teleport.js';
@@ -100,5 +101,6 @@ export function enableWorldPosition(environment,layouts,creation){
  environment.enableAddressPort('mkmaze',{only:['is_exclusion_zone']});
  environment.exposeAddressPort('dungeon',['has_ceiling','surface'].filter(name=>!environment.hasFunction(name)));
  environment.extend('monster-creation',{makemon_rnd_goodpos,m_initgrp});
+ connectNativeMakemon(environment,'monster-creation',['makemon_rnd_goodpos','m_initgrp']);
  return {environment:env,views,limitation:'Position-selection integration in progress; full world transitions, hero movement and recording remain separate.'};
 }

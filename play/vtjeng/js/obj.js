@@ -219,7 +219,8 @@ import {
     unpaid_cost,
 } from './shk.js';
 import { in_rooms } from './rooms.js';
-import { verbalize, youSee } from './pline.js';
+import { impossible_printer, verbalize, youSee } from './pline.js';
+import { ImpossibleCall, finish_steps } from './source_steps.js';
 import { set_voice } from './sounds.js';
 // encumber_msg() compares the old and new encumbrance after glob weight
 // changes. pickup.js imports from this file; both sides use the other's
@@ -326,6 +327,7 @@ import {
     MEAT_RING,
     MINERAL,
     MITHRIL,
+    OBJ_NAME,
     OILSKIN_SACK,
     OIL_LAMP,
     NODIR,
@@ -1130,13 +1132,24 @@ function lifecycleEnv(env = {}) {
 export function dealloc_obj(obj, env = {}) {
     const normalized = lifecycleEnv(env);
     if (obj.otyp === BOULDER) obj.next_boulder = 0;
-    if (obj.where !== OBJ_FREE && obj.where !== OBJ_LUAFREE) {
+    // mkobj.c dealloc_obj():2749-2751 reports an object freed twice through
+    // impossible() and returns; 2752-2759 panic for any other object that
+    // is not free or is still linked.
+    if (obj.where === OBJ_DELETED) {
+        note_unported('pline.c impossible');
+        return obj;
+    } else if (obj.where !== OBJ_FREE && obj.where !== OBJ_LUAFREE) {
         throw new Error(
             `dealloc_obj: object where=${obj.where}, expected free`,
         );
     }
     if (obj.nobj || obj.cobj)
         throw new Error('dealloc_obj: object is still linked');
+    // mkobj.c dealloc_obj():2760-2763
+    if (obj === hands_obj) {
+        note_unported('pline.c impossible');
+        return obj;
+    }
 
     // C calls timeout.c obj_stop_timers() here; the optional hook is a test
     // seam, and scripts/lifecycle-hook-defaults.test.mjs keeps js/ from
@@ -1693,8 +1706,11 @@ export function weight(obj, env = {}) {
     const type = objectType(obj, state);
     let wt = Math.trunc(type.oc_weight);
 
-    if (obj.quan < 1)
-        throw new RangeError(`weight: quantity ${obj.quan} for otyp ${obj.otyp}`);
+    // mkobj.c weight():1892-1896
+    if (obj.quan < 1) {
+        note_unported('pline.c impossible');
+        return 0;
+    }
     if (obj.globby) return Math.trunc(obj.owt);
 
     if (isContainer(obj) || obj.otyp === STATUE) {
@@ -1737,15 +1753,14 @@ export function weight(obj, env = {}) {
     return wt ? wt * Math.trunc(obj.quan) : Math.trunc((obj.quan + 1) / 2);
 }
 
-// Check the object type and quantity weight() would read, without applying
+// Check the object types weight() would read, without applying
 // an eaten-stat calculation. Callers use this before mutations that would be
 // difficult to roll back if weight() then threw.
 export function preflightWeight(obj, env = {}) {
     const normalized = objectEnv(env);
     objectType(obj, normalized.state);
-    if (obj.quan < 1)
-        throw new RangeError(`weight: quantity ${obj.quan} for otyp ${obj.otyp}`);
-    if (obj.globby) return;
+    // weight() reports a quantity below 1 and returns 0, as C does.
+    if (obj.quan < 1 || obj.globby) return;
 
     if (isContainer(obj) || obj.otyp === STATUE) {
         for (let contents = obj.cobj; contents; contents = contents.nobj)
@@ -2719,8 +2734,11 @@ export function mkobj(oclass, artif = false, env = {}) {
             ++otyp;
     }
 
-    if (catalog[otyp]?.oc_class !== oclass)
-        throw new Error(`mkobj: probability table selected ${otyp} for class ${oclass}`);
+    // mkobj.c mkobj():295-298
+    if (catalog[otyp]?.oc_class !== oclass || !OBJ_NAME(catalog[otyp], state)) {
+        note_unported('pline.c impossible');
+        otyp = bases[oclass];
+    }
     return mksobj(otyp, true, artif, normalized);
 }
 
@@ -2849,10 +2867,14 @@ export function obj_no_longer_held(obj, env = {}) {
 export function place_object(obj, x, y, env = {}) {
     const normalized = lifecycleEnv(env);
     const { state } = normalized;
+    // mkobj.c place_object():2309-2321 reports a spot that fails isok()
+    // through panic() when it lies outside the level arrays and through
+    // impossible() otherwise (column 0), and then places the object there.
     if (!Number.isInteger(x) || !Number.isInteger(y)
         || x < 0 || x >= COLNO || y < 0 || y >= ROWNO) {
         throw new RangeError(`place_object: off-map location <${x},${y}>`);
     }
+    if (!isok(x, y)) note_unported('pline.c impossible');
     if (obj.where !== OBJ_FREE)
         throw new Error(`place_object: object where=${obj.where}, expected free`);
     // C ref: mkobj.c place_object():2331-2334, `block_point(x, y)` for a
@@ -3096,17 +3118,21 @@ export function extract_nexthere(obj, head) {
     throw new Error('extract_nexthere: object lost');
 }
 
-// C ref: mkobj.c add_to_migration(). Transfers a free object to the
-// gm.migrating_objs chain, recording the level it came from.
-export function add_to_migration(obj, state = game) {
+// C ref: mkobj.c add_to_migration() (2697-2717), written once as
+// add_to_migration_steps() (js/source_steps.js). Transfers a free object to
+// the gm.migrating_objs chain, recording the level it came from. An unpaid
+// object is reported through impossible() first; the caller should have
+// changed it to stolen.
+function* add_to_migration_steps(obj, state) {
     if (obj.where !== OBJ_FREE)
         throw new Error(
             `add_to_migration: obj where=${obj.where}, not free`,
         );
 
-    // C: if (obj->unpaid) impossible("unpaid object migrating to another
-    // level? [%s]", simpleonames(obj)). The caller should have changed the
-    // unpaid item to stolen before this point.
+    if (obj.unpaid) {
+        yield new ImpossibleCall('unpaid object migrating to another level?'
+            + ` [${simpleonames(obj, state)}]`);
+    }
     obj.no_charge = 0; // was only relevant while inside a shop
 
     // lock picking context becomes stale if it's for this object
@@ -3119,6 +3145,19 @@ export function add_to_migration(obj, state = game) {
     obj.omigr_from_dnum = state.u.uz.dnum;
     obj.omigr_from_dlevel = state.u.uz.dlevel;
     state.gm.migrating_objs = obj;
+}
+
+// add_to_migration() for a caller that cannot wait: gap_impossible() records
+// the report as unported and the transfer goes on as in C.
+export function add_to_migration(obj, state = game) {
+    finish_steps(add_to_migration_steps(obj, state));
+}
+
+// add_to_migration() for a caller that can wait on the result: it prints
+// the report where C makes it.
+export function add_to_migration_async(obj, state = game, env = {}) {
+    return finish_steps(add_to_migration_steps(obj, state),
+        impossible_printer(state, env));
 }
 
 // C ref: invent.c g_at().

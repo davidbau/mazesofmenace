@@ -1,3 +1,4 @@
+import {nativeStateFor} from './native/state-bridge.js';
 // Original GETLINE input/editing/prompt policies on shared tty and game state.
 import abi from './terminal-input-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
@@ -9,7 +10,7 @@ export function enableTerminalInput(environment,layouts,{readKey}={}){
  const {services,memory,ctypes,functions,transport}=environment;
  const address=environment.address,text=value=>typeof value==='string'?services.literal(value):address(value);
  const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
- if(!environment.hasFunction('teleport_getch'))environment.register('terminal-key-input',{teleport_getch:()=>transport.int(readKey?readKey():services.getchar())});
+ if(!environment.hasFunction('teleport_getch')){const owner=nativeStateFor(environment),read=()=>transport.int(readKey?readKey():services.getchar());read.nativeState=owner;read.nativeDirect=true;read.nativePrepared=true;owner.functions.set('teleport_getch',read);environment.register('terminal-key-input',{teleport_getch:read});}
  const local=new Proxy(Object.create(services),{get:(o,key,receiver)=>Reflect.has(o,key)?Reflect.get(o,key,receiver):typeof key==='string'?(...args)=>environment.resolve(key)(...args.map(value=>value?.address??value)):undefined});
  const scalarCells=abi.scalars.map(name=>{try{return environment.requireGlobal(name);}catch(error){if(name!=='morc'||!error.message.startsWith('Unresolved standalone global '))throw error;return environment.allocateGlobal(name,1);}});
  const scalar=index=>{if(scalarCells[index]===undefined)throw new Error('Unknown GETLINE scalar '+index);return scalarCells[index];};
@@ -37,6 +38,7 @@ export function enableTerminalInput(environment,layouts,{readKey}={}){
  local.tty_clear_nhwindow=win=>resolve('tty_clear_nhwindow')(transport.int(win));
  for(const name of ['addtopl','putsyms','dumplogmsg'])local[name]=value=>resolve(name)(text(value));
  local.clear_nhwindow=win=>{
+  if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke('win_clear_nhwindow','vi',transport.int(win));
   const field=ctypes.record('struct window_procs').fields.win_clear_nhwindow;
   const callback=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+field.offset,true);
   return functions.indirect(callback,'vi',transport.int(win));

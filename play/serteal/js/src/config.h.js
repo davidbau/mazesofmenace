@@ -223,7 +223,7 @@ export const COMPRESS_EXTENSION = ".Z";
 /* #define COMPRESS "/usr/local/bin/gzip" *//* FSF gzip compression */
 /* #define COMPRESS_EXTENSION ".gz" *//* normal gzip extension */
 
-/* c2js keeps saves uncompressed in the JS VFS. */
+/* no external compression program: files are written uncompressed */
 
 /* # define ZLIB_COMP *//* ZLIB for compression */
 

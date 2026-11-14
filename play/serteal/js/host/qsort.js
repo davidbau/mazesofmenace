@@ -1,19 +1,16 @@
-// host/qsort.js - macOS's qsort(), in JS.
+// host/qsort.js - qsort() with the comparator call order of the reference C library.
 //
-// The reference recordings are made on macOS, whose C library sorts with
-// the FreeBSD qsort (Bentley & McIlroy's quicksort, with an insertion sort
-// for small or already partitioned arrays and heapsort when the recursion
-// depth runs out).  NetHack itself sorts through nh_deterministic_qsort()
-// (hacklib.c, recorder patch 002), which breaks ties by original index so
+// The algorithm is the FreeBSD qsort (Bentley & McIlroy's quicksort, with an
+// insertion sort for small or already partitioned arrays and heapsort when the
+// recursion depth runs out).  NetHack itself sorts through
+// nh_deterministic_qsort() (hacklib.c), which breaks ties by original index so
 // that every libc gives the same order for a consistent comparator.  This
-// port goes further and makes the same comparator calls, in the same order
-// and with the same arguments, as macOS's qsort, so even a comparator with
-// side effects (sortloot_cmp may discover objects) or an inconsistent one
-// behaves as on macOS.
+// module goes further and makes the same comparator calls, in the same order
+// and with the same arguments, as the reference qsort, so even a comparator
+// with side effects (sortloot_cmp may discover objects) or an inconsistent one
+// behaves the same.
 //
-// Transcribed from Apple's Libc (apple-oss-distributions/Libc, tags
-// Libc-1439.141.1 to Libc-1752.120.2, i.e. macOS 11 to 26; both files are the
-// same in all of them): stdlib/FreeBSD/qsort.c and stdlib/FreeBSD/heapsort.c.
+// Transcribed from FreeBSD's stdlib qsort.c and heapsort.c.
 // `base` is an address in the heap mem.HEAPU8 (re-read after every
 // comparison: the comparator may grow memory), `cmp(a, b)` receives two
 // element addresses (C `const void *`) and returns an int.  Swaps move whole

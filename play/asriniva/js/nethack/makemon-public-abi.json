@@ -42,14 +42,14 @@
     "pointer": 8
   },
   "sourceSha256": {
-    "scripts/export-standalone-makemon-public-abi.py": "09f58ef81199f0e8360c3750a70376cccb086859e9461124ffc35fe6f24947e0",
-    "js/standalone/monster-creation.js": "12a41b3c3dd3ddb4a972bfddddc86661fdb7160ae474a60f314192c11d0411ee",
-    "js/standalone/monster-selection.js": "59852afce6cedb762b2bb5f45b0ea6bb87d7c534badca1b978705081d2447275",
-    "js/nethack/bindings/makemon.js": "bf30619fe62376524023ca82bc69e892e6892ff29eb850403ab6024dd8aea129",
+    "scripts/export-standalone-makemon-public-abi.py": "fe90ec1a08ac9e66e3cc8b54898fc07f0a5f60cbab7b5504725e92bacea62459",
+    "js/nethack/monster-creation.js": "8e715bd6a5a223a7bd13b910faf7e6d6f19267b68ddfc37ffc7b4ab3a72655ab",
+    "js/nethack/monster-selection.js": "25288ecd79a908b08651c62a064d528a454675e5f714be0cb9d73147251f2d2e",
+    "js/nethack/bindings/makemon.js": "5777cfb56169226fc684aaa47cff580b99cae2bf8438b679eb6adaf20f630539",
     "js/ported/makemon.js": "49ca6dbcb437b36b93fd32e1c45ef0c7a23bc905859b3adeaf983237ed7673e5",
     "nethack-c/upstream/src/makemon.c": "04bb46b793cb7a724544ed5860f57116e4661ce5d052a1321d90dc0167d3ffc3",
     "nethack-c/wasm/tu-fragments/makemon-support.inc": "de19d3be6489c15b31b7e4832f5bb64f02cb645f16a0577efc99a17571237a93",
-    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
+    "js/nethack/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
   },
   "scope": "Additional native-typed source publics on existing monster-creation context. All previously owned MAKEMON entries and shared selection/private state preserved; registration alone is not behavior acceptance."
 }

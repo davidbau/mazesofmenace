@@ -38,7 +38,7 @@ export function enableGameWindows(environment,layouts){
   if(enabled&&callback&&(triggers&BigInt(layouts.sounds.SOUND_TRIGGER_ACHIEVEMENTS)))functions.indirect(callback,'viii',a,b,flags);
  };
  Object.defineProperty(context,'menuHeadingsAddress',{get:()=>ctypes.locate('struct instance_flags',environment.requireGlobal('iflags'),'menu_headings').at});
- for(const [name,field,signature]of [['create_nhwindow','win_create_nhwindow','ii'],['start_menu','win_start_menu','vij'],['end_menu','win_end_menu','vip'],['display_nhwindow','win_display_nhwindow','vii']])context[name]=(...args)=>{const f=ctypes.record('struct window_procs').fields[field],fn=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+f.offset,true);return functions.indirect(fn,signature,...args.map(v=>typeof v==='string'?services.literal(v):v));};
+ for(const [name,field,signature]of [['create_nhwindow','win_create_nhwindow','ii'],['start_menu','win_start_menu','vij'],['end_menu','win_end_menu','vip'],['display_nhwindow','win_display_nhwindow','vii']])context[name]=(...args)=>{if(environment.nativeWindowCallbacks)return environment.nativeWindowCallbacks.invoke(field,signature,...args.map(v=>typeof v==='string'?services.literal(v):v));const f=ctypes.record('struct window_procs').fields[field],fn=memory.view.getBigUint64(environment.requireGlobal('windowprocs')+f.offset,true);return functions.indirect(fn,signature,...args.map(v=>typeof v==='string'?services.literal(v):v));};
  environment.extend('game-startup',{init_sound_disp_gamewindows});
  return {sound:local,context,procs,nosound,limitation:'Pre-game window/sound startup integration in progress; full sound and game lifecycle require verification.'};
 }

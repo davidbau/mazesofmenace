@@ -1,20 +1,15 @@
-// host/time.js - clocks and the time zone of the recording environment.
+// host/time.js - clocks and the local time zone of the C library: US Eastern time.
 //
-// docs/recording-environment.md: the recorder ran with TZ=America/New_York
-// and a pinned wall clock (the session's `datetime`, "YYYYMMDDHHMMSS").
-// NetHack turns that string into a time_t with mktime() on a struct tm
-// copied from localtime(now), whose tm_isdst came from the real clock of
-// the recording machine; the sessions were recorded during daylight time,
-// so every pinned datetime was read as EDT (UTC-4), winter dates included.
-// It then renders times with localtime(), which applies the New York
+// A session's `datetime` ("YYYYMMDDHHMMSS") pins the wall clock.  NetHack turns that
+// string into a time_t with mktime() on a struct tm copied from localtime(now); the
+// session datetime is read as US Eastern daylight time (EDT, UTC-4), winter dates
+// included.  It then renders times with localtime(), which applies the New York
 // daylight-saving history.
 //
-// These are the C library's local-time functions for the port:
 //   localtime(t)  -> broken-down New York civil time of t (seconds)
-//   mktime(f)     -> seconds of the civil time f read as EDT (the recorder)
+//   mktime(f)     -> seconds of the civil time f read as EDT
 //   tz            -> tzset() values (timezone, daylight, std, dst names)
-// plus the UTC variants (a C library running with TZ=UTC, for a calendar.c
-// that does the New York conversion itself; see utc* below).
+//   clocksFor(datetime) -> the wall and monotonic clocks of a session
 //
 // The rules are the ones of tzdata's America/New_York since 1967:
 //   2007-      second Sunday of March .. first Sunday of November
@@ -24,11 +19,11 @@
 // switching at 02:00 local time; before 1967 standard time.
 
 const DAY = 86400;
-export const EST_OFFSET = -5 * 3600;
-export const EDT_OFFSET = -4 * 3600;
+const EST_OFFSET = -5 * 3600;
+const EDT_OFFSET = -4 * 3600;
 
 /** Days since 1970-01-01 of a proleptic Gregorian date (month 1-12). */
-export function daysFromCivil(year, month, day) {
+function daysFromCivil(year, month, day) {
   year -= month <= 2 ? 1 : 0;
   const era = Math.trunc((year >= 0 ? year : year - 399) / 400);
   const yoe = year - era * 400;
@@ -38,7 +33,7 @@ export function daysFromCivil(year, month, day) {
 }
 
 /** [year, month 1-12, day] of a day number. */
-export function civilFromDays(z) {
+function civilFromDays(z) {
   z += 719468;
   const era = Math.trunc((z >= 0 ? z : z - 146096) / 146097);
   const doe = z - era * 146097;
@@ -66,7 +61,7 @@ function epochOf(year, month, day, hour, minute, second, offset) {
 }
 
 /** Is t (seconds since the epoch) in New York daylight time? */
-export function newYorkDst(t) {
+function newYorkDst(t) {
   const shifted = t + EST_OFFSET;
   let days = Math.trunc(shifted / DAY);
   if (shifted < 0 && shifted % DAY) --days;
@@ -117,13 +112,13 @@ function fields(t, offset, isdst, zone) {
   };
 }
 
-/** localtime() of the recorder: New York civil time of t. */
+/** localtime(): New York civil time of t. */
 export function localtime(t) {
   const dst = newYorkDst(t);
   return fields(t, dst ? EDT_OFFSET : EST_OFFSET, dst ? 1 : 0, dst ? "EDT" : "EST");
 }
 
-/** mktime() of the recorder: the civil time f (fields may be out of range) read as EDT. */
+/** mktime(): the civil time f (fields may be out of range) read as EDT. */
 export function mktime(f) {
   return civilSeconds(f) - EDT_OFFSET;
 }
@@ -140,8 +135,8 @@ function civilSeconds(f) {
   return (daysFromCivil(year, mon + 1, 1) + f.mday - 1) * DAY + f.hour * 3600 + f.min * 60 + f.sec;
 }
 
-/** The pinned datetime "YYYYMMDDHHMMSS" as the recorder's time_t, or 0 if malformed. */
-export function recorderEpoch(datetime) {
+/** The pinned datetime "YYYYMMDDHHMMSS" read as EDT, as a time_t, or 0 if malformed. */
+export function sessionEpoch(datetime) {
   const m = /^(\d{4})(\d{2})(\d{2})(\d{2})(\d{2})(\d{2})$/.exec(String(datetime || ""));
   if (!m) return 0;
   const [year, month, day, hour, minute, second] = m.slice(1).map(Number);
@@ -152,18 +147,6 @@ export function recorderEpoch(datetime) {
   return epochOf(year, month, day, hour, minute, second, EDT_OFFSET);
 }
 
-// ---- UTC (boot.js timeZone "utc") -------------------------------------------------------
-
-export function utcLocaltime(t) {
-  return fields(t, 0, 0, "UTC");
-}
-
-export function utcMktime(f) {
-  return civilSeconds(f);
-}
-
-export const utcTz = Object.freeze({ timezone: 0, daylight: 0, std: "UTC", dst: "UTC" });
-
 // ---- clocks ---------------------------------------------------------------------------
 
 /**
@@ -173,7 +156,7 @@ export const utcTz = Object.freeze({ timezone: 0, daylight: 0, std: "UTC", dst: 
  * without one the wall clock is the real one.
  */
 export function clocksFor(datetime) {
-  const pinned = recorderEpoch(datetime);
+  const pinned = sessionEpoch(datetime);
   if (pinned) {
     const ms = pinned * 1000;
     return { now: () => ms, monotonic: () => 0 };

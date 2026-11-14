@@ -1,11 +1,14 @@
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
 // Source naming and artifact bookkeeping on the existing inventory heap.
 import languageAbi from './object-language-abi.json' with {type:'json'};
-import {callObjnam} from './bindings/objnam.js';
+import {callObjnam,objnamState} from './bindings/objnam.js';
 import * as objnam from '../ported/objnam.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as artifact from '../ported/artifact.js';
 import {oname,noveltitle,sir_Terry_novels} from '../ported/do_name.js';
 export function enableItemNaming(environment,layouts,{legacy,views}) {
+    const nativeOwner=nativeStateFor(environment);createNativeRecordViews(environment);
     const {services,transport,ctypes,memory}=environment,object=p=>views.record('struct obj',p);
     Object.assign(legacy,{
         advanceRecord:views.advance,shortArray:(p,n)=>views.array('short',p,n),
@@ -37,12 +40,14 @@ export function enableItemNaming(environment,layouts,{legacy,views}) {
     // Native OBJNAM imports raw strlen as memory64 size_t, not checked Strlen_.
     naming.strlen=value=>BigInt(services.strlen(typeof value==='string'?services.literal(value):environment.address(value)));
     const statics=Object.fromEntries(Object.entries(languageAbi.staticBuffers).map(([key,n])=>[key,environment.allocateGlobal('objnam.'+key,n)]));
-    Object.assign(naming,{Strlen_:(...args)=>environment.strutil('Strlen_',...args),staticStorage:name=>{if(!Object.hasOwn(statics,name))throw new Error('Unknown OBJNAM static '+name);return statics[name];},moduleKey:environment,global:i=>environment.requireGlobal(languageAbi.globals[i]),getBit:(p,i)=>{const[t,k]=languageAbi.bits[i];return ctypes.getField(t,environment.address(p),k,'unsigned int');},setBit:(p,i,v)=>{const[t,k]=languageAbi.bits[i];return ctypes.setField(t,environment.address(p),k,'unsigned int',v);},alloc:n=>environment.alloc('alloc',n),dupstr:p=>environment.alloc('dupstr',typeof p==='string'?services.literal(p):environment.address(p)),heap:()=>memory.HEAPU8,storage:i=>{if(i!==0)throw new Error('Unknown OBJNAM storage '+i);return buffers;}});
+    Object.assign(naming,{nativeOwner,nativeObjnamTypes:ctypes,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,Strlen_:(...args)=>environment.strutil('Strlen_',...args),staticStorage:name=>{if(!Object.hasOwn(statics,name))throw new Error('Unknown OBJNAM static '+name);return statics[name];},moduleKey:environment,global:i=>environment.requireGlobal(languageAbi.globals[i]),getBit:(p,i)=>{const[t,k]=languageAbi.bits[i];return ctypes.getField(t,environment.address(p),k,'unsigned int');},setBit:(p,i,v)=>{const[t,k]=languageAbi.bits[i];return ctypes.setField(t,environment.address(p),k,'unsigned int',v);},alloc:n=>environment.alloc('alloc',n),dupstr:p=>environment.alloc('dupstr',typeof p==='string'?services.literal(p):environment.address(p)),heap:()=>memory.HEAPU8,storage:i=>{if(i!==0)throw new Error('Unknown OBJNAM storage '+i);return buffers;}});
     // Original OBJNAM formatter callbacks use the same canonical function tokens
     // as callers such as EAT's native singular/safe_qbuf helpers.
     naming.callbackPointer=name=>{if(!['xname','cxname'].includes(name))throw new Error('Unknown OBJNAM formatter callback '+name);return environment.functionPointer(name,'pp');};
-    naming.callFormatter=(fn,obj)=>environment.functions.indirect(fn,'pp',environment.address(obj));
+    const formatters=new Map();
+    naming.callFormatter=(fn,obj)=>{const token=BigInt(fn);let callback=formatters.get(token);if(!callback){callback=environment.functions.typedCallback(token,'pp');formatters.set(token,callback);}const native=callback.prepareNativeEntry?.()??callback.nativeEntry??callback;if(native.nativeState===nativeOwner&&native.nativeDirect)return native(obj);return environment.functions.indirect(token,'pp',environment.address(obj));};
+    Object.defineProperty(naming,'nativeContext',{get:()=>objnamState(naming).environments.get(layouts.objnam)?.environment});
     const namingFunctions=Object.keys(objnam).filter(name=>typeof objnam[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
-    environment.register('japanese-item-names',Object.fromEntries(namingFunctions.map(name=>[name,(...args)=>{const result=callObjnam(naming,layouts.objnam,name,...args);return typeof result==='string'?services.literal(result):result?.address??result;}])));
+    environment.register('japanese-item-names',Object.fromEntries(namingFunctions.map(name=>{const fn=(...args)=>{const result=callObjnam(naming,layouts.objnam,name,...args);return typeof result==='string'?services.literal(result):result;};fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];})),naming);
     return {limitation:'Construction-time naming and random artifact bookkeeping; role/race-specific gifts, wielded artifact effects and naming UI require their actual owners.'};
 }

@@ -1,3 +1,4 @@
+import {connectNativeMakemon} from './native/makemon-state.js';
 // Existing random species selection and biological helpers. Header expansions
 // and static storage follow the original adapter; all selection policy stays
 // in MAKEMON/MON/MONDATA and dungeon policy stays in DUNGEON.
@@ -75,5 +76,6 @@ export function enableMonsterSelection(environment,layouts) {
     environment.exposeAddressPort('dungeon',['Is_special','level_difficulty','depth','builds_up','deepest_lev_reached']);
     const names=['rndmonst','rndmonst_adj','uncommon','align_shift','temperature_shift','wrong_elem_type','is_home_elemental'];
     environment.register('monster-selection',Object.fromEntries(names.map(name=>[name,makemon[name]])),env,{prepareArgs:(fn,args)=>{if(['align_shift','temperature_shift','wrong_elem_type','is_home_elemental'].includes(fn))args[0]=record('struct permonst',args[0]);return args;}});
-    return {environment:env,views,limitation:'Random species selection and biology helpers; full makemon placement, inventories, quest-specific owners and world interactions remain separate.'};
+    const native=connectNativeMakemon(environment,'monster-selection',names);
+    return {environment:env,views,native,limitation:'Random species selection and biology helpers; full makemon placement, inventories, quest-specific owners and world interactions remain separate.'};
 }

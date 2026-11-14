@@ -72,10 +72,7 @@ export function regex_error_desc(re, errbuf) { /* char * */
     } else {
         chars[errbuf + 0] = ord('\0');
 
-        /* c2js recorder Darwin regerror text */
-
         nhjs_regerror(re.err, re.re, errbuf, BUFSZ);
-
         if (!chars[errbuf + 0])
             strcpy(errbuf, _("unspecified regexp error"));
     }

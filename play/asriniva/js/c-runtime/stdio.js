@@ -5,6 +5,7 @@
 // array keeps its existing discard/rewind behavior outside freopen.
 import {VFSError,O_WRONLY,O_RDWR,O_CREAT,O_TRUNC,O_EXCL,O_APPEND,O_CLOEXEC,O_LARGEFILE} from './vfs.js';
 import {address} from './memory.js';
+import {CMemory} from './heap.js';
 import {scanFormatted} from './scanf.js';
 const sdkUtf8Decoder=new TextDecoder();
 // Pinned SDK libstrings.js TEXTDECODER=1/default-assertions UTF8ToString.
@@ -34,7 +35,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
     function stream(p){const f=files.get(address(p));if(!f)throw new VFSError('EBADF');return f;}
     function allocate(fd,mode=0,access='r+') {
         const p=memory.calloc(1,32);if(!p)throw new VFSError('ENOMEM');
-        files.set(p,{fd,eof:false,error:false,readable:access[0]==='r'||access.includes('+'),writable:access[0]!=='r'||access.includes('+'),unget:[],mode,capacity:mode===2?0:1024,buffer:0,ownsBuffer:true,readPos:0,readEnd:0,writeEnd:0});return p;
+        files.set(p,{fd,eof:false,error:false,readable:access[0]==='r'||access.includes('+'),writable:access[0]!=='r'||access.includes('+'),append:access[0]==='a',unget:[],mode,capacity:mode===2?0:1024,buffer:0,ownsBuffer:true,readPos:0,readEnd:0,writeEnd:0});return p;
     }
     function buffer(f){if(!f.buffer){f.buffer=memory.malloc(f.capacity);if(!f.buffer)throw new VFSError('ENOMEM');}return f.buffer;}
     function read(fd,p,n) {
@@ -50,6 +51,24 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
         validateDescriptor(fd);
         if(fd===1||fd===2)return hostWrite(fd,memory.readBytes(p,n));
         if(fd===0)throw new VFSError('EBADF');return filesystem.write(fd,memory.HEAPU8,p,n);
+    }
+    // Native strings/characters already own their bytes; no C scratch is needed.
+    function writeBytes(fd,bytes,offset,n) {
+        fd=Number(fd);
+        if(regular(fd))return filesystem.write(fd,bytes,offset,n);
+        validateDescriptor(fd);
+        if(fd===1||fd===2)return hostWrite(fd,bytes.slice(offset,offset+n));
+        if(fd===0)throw new VFSError('EBADF');return filesystem.write(fd,bytes,offset,n);
+    }
+    function readByte(fd) {
+        fd=Number(fd);
+        if(regular(fd)){const byte=new Uint8Array(1);return filesystem.read(fd,byte,0,1)?byte[0]:-1;}
+        validateDescriptor(fd);
+        if(fd===0){
+            if(readStdin){const bytes=readStdin(1);if(!(bytes instanceof Uint8Array)||bytes.length>1)throw new TypeError('readStdin must return Uint8Array no longer than the requested read');return bytes.length?bytes[0]:-1;}
+            return inputOffset<stdin.length?stdin[inputOffset++]:-1;
+        }
+        throw new VFSError('EBADF');
     }
     function flush(f) {
         let written=0;
@@ -83,6 +102,26 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
         }
         if(done<n){memory.memmove(buffer(f)+f.writeEnd,p+done,n-done);f.writeEnd+=n-done;}
         return n;
+    }
+
+    function fileWriteBytes(f,bytes) {
+        const n=bytes.length;if(!f.writable){f.error=true;return 0;}discardInput(f);
+        // Preserve the same musl buffering and last-newline split as fileWrite.
+        if(n>f.capacity-f.writeEnd){flush(f);return writeBytes(f.fd,bytes,0,n);}
+        let done=0;
+        if(f.mode===1){for(let i=n;i>0;i--)if(bytes[i-1]===10){flush(f);done=writeBytes(f.fd,bytes,0,i);if(done<i)return done;break;}}
+        if(done<n){const at=buffer(f)+f.writeEnd;memory.HEAPU8.set(bytes.subarray(done),at);f.writeEnd+=n-done;}
+        return n;
+    }
+    function fileReadByte(f) {
+        flush(f);if(!f.readable){f.error=true;return -1;}
+        if(f.unget.length)return f.unget.pop();
+        if(f.readPos<f.readEnd)return memory.HEAPU8[f.buffer+f.readPos++];
+        if(f.eof)return -1;
+        if(!f.capacity){const value=readByte(f.fd);if(value<0)f.eof=true;return value;}
+        const at=buffer(f),count=read(f.fd,at,f.capacity);f.readPos=0;f.readEnd=count;
+        if(!count){f.eof=true;return -1;}
+        return memory.HEAPU8[f.buffer+f.readPos++];
     }
 
     function operation(p,fn,failure,markError=true){let f;try{f=stream(p);return fn(f);}catch(error){if(markError&&f&&error instanceof VFSError)f.error=true;return fail(error,failure);}}
@@ -129,13 +168,13 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
         fread:(p,size,count,file)=>operation(file,f=>{size=Number(size);count=Number(count);if(!size||!count)return 0;return Math.floor(fileRead(f,p,size*count)/size);},0),
         fwrite:(p,size,count,file)=>operation(file,f=>{size=Number(size);count=Number(count);if(!size||!count)return 0;return Math.floor(fileWrite(f,p,size*count)/size);},0),
         // Buffered bytes need no scratch allocation; refill/error paths stay shared.
-        fgetc:p=>operation(p,f=>{if(f.readable&&!f.writeEnd){if(f.unget.length)return f.unget.pop();if(f.readPos<f.readEnd)return memory.HEAPU8[f.buffer+f.readPos++];if(f.eof)return -1;}const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{return fileRead(f,at,1)?memory.HEAPU8[at]:-1;}finally{memory.free(at);}},-1),
-        ungetc:(c,p)=>operation(p,f=>{if(Number(c)===-1)return -1;if(!f.readable){f.error=true;return -1;}if(f.unget.length>=8+f.readPos)return -1;f.eof=false;f.unget.push(Number(c)&255);return Number(c)&255;},-1),
+        fgetc:p=>operation(p,f=>{if(f.readable&&!f.writeEnd){if(f.unget.length)return f.unget.pop();if(f.readPos<f.readEnd)return memory.HEAPU8[f.buffer+f.readPos++];if(f.eof)return -1;}return fileReadByte(f);},-1),
+        ungetc:(c,p)=>operation(p,f=>{if(Number(c)===-1)return -1;if(!f.readable){f.error=true;return -1;}if(f.unget.length>=8+f.readPos)return -1;const byte=Number(c)&255,at=f.buffer+f.readPos-f.unget.length-1;if(f.buffer&&(!f.ownsBuffer||at>=f.buffer))memory.HEAPU8[at]=byte;f.eof=false;f.unget.push(byte);return byte;},-1),
         // Allocate the FILE buffer before obtaining a view: allocation may grow memory.
-        fputc:(c,p)=>operation(p,f=>{if(f.writable&&f.writeEnd<f.capacity){const byte=Number(c)&255;if(f.mode!==1||byte!==10){discardInput(f);const at=buffer(f)+f.writeEnd;memory.HEAPU8[at]=byte;f.writeEnd++;return Number(c)&255;}}const at=memory.malloc(1);if(!at)throw new VFSError('ENOMEM');try{memory.HEAPU8[at]=Number(c)&255;return fileWrite(f,at,1)===1?Number(c)&255:-1;}finally{memory.free(at);}},-1),
+        fputc:(c,p)=>operation(p,f=>{if(f.writable&&f.writeEnd<f.capacity){const byte=Number(c)&255;if(f.mode!==1||byte!==10){discardInput(f);const at=buffer(f)+f.writeEnd;memory.HEAPU8[at]=byte;f.writeEnd++;return Number(c)&255;}}const byte=Number(c)&255;return fileWriteBytes(f,Uint8Array.of(byte))===1?byte:-1;},-1),
         feof:p=>operation(p,f=>Number(f.eof),0),ferror:p=>operation(p,f=>Number(f.error),0),clearerr:p=>operation(p,f=>{f.eof=f.error=false;},undefined),
         fseek:(p,n,whence)=>operation(p,f=>{try{flush(f);}catch(e){f.error=true;throw e;}discardInput(f);seekDescriptor(f.fd,Number(n),Number(whence));f.eof=false;return 0;},-1,false),
-        ftell:p=>operation(p,f=>BigInt(seekDescriptor(f.fd,0,1)-f.readEnd+f.readPos-f.unget.length+f.writeEnd),-1n,false),
+        ftell:p=>operation(p,f=>BigInt(seekDescriptor(f.fd,0,f.append&&f.writeEnd?2:1)-f.readEnd+f.readPos-f.unget.length+f.writeEnd),-1n,false),
         captured(fd){if(fd!==1&&fd!==2)throw new RangeError('Unknown output fd');const parts=output[fd-1],bytes=new Uint8Array(parts.reduce((n,p)=>n+p.length,0));let at=0;for(const p of parts){bytes.set(p,at);at+=p.length;}return bytes;},
     };
     api.freopen=(path,mode,p)=>operation(p,f=>{
@@ -153,7 +192,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
             const replacement=stream(other);
             if(replacement.fd===f.fd)replacement.fd=-1;
             else try{duplicate(replacement.fd,f.fd);}catch(error){fail(error,0);api.fclose(other);api.fclose(p);return 0;}
-            f.readable=replacement.readable;f.writable=replacement.writable;f.eof=f.error=false;
+            f.readable=replacement.readable;f.writable=replacement.writable;f.append=replacement.append;f.eof=f.error=false;
             api.fclose(other);
         }
         return address(p);
@@ -163,7 +202,7 @@ export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readS
     api.creat=(path,mode)=>api.open(path,O_WRONLY|O_CREAT|O_TRUNC,mode);
     api.rewind=p=>{api.fseek(p,0,0);api.clearerr(p);};
     api.fgets=(p,n,file)=>{p=address(p);n=Number(n);if(n<=0)return 0;memory.bounds(p,n);let i=0;while(i<n-1){const c=api.fgetc(file);if(c===-1)break;memory.HEAPU8[p+i++]=c;if(c===10)break;}if(!i&&n>1)return 0;memory.HEAPU8[p+i]=0;return p;};
-    api.fputs=(str,p)=>{if(typeof str==='string'){const at=memory.cstring(str);try{return api.fputs(at,p);}finally{memory.free(at);}}const n=memory.strlen(address(str));return api.fwrite(str,1,n,p)===n?0:-1;};
+    api.fputs=(str,p)=>{if(typeof str==='string'){let bytes=CMemory.byteString(str);const end=bytes.indexOf(0);if(end>=0)bytes=bytes.subarray(0,end);const n=bytes.length;if(!n)return 0;return operation(p,f=>fileWriteBytes(f,bytes)===n?0:-1,-1);}const n=memory.strlen(address(str));return api.fwrite(str,1,n,p)===n?0:-1;};
     api.fprintf=(p,format,...args)=>{const value=libc.format(format,...args);return api.fputs(value,p)===-1?-1:value.length;};
     api.printf=(format,...args)=>api.fprintf(api.stdout,format,...args);api.puts=str=>api.fputs(str,api.stdout)===-1?-1:api.fputc(10,api.stdout);
     api.remove=p=>capture(()=>{const path=pathText(p);if(filesystem.isDir(filesystem.stat(path).mode))filesystem.rmdir(path);else filesystem.unlink(path);return 0;},-1);

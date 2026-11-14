@@ -84,18 +84,16 @@ export function isspace(c) { return c === 32 || (c >= 9 && c <= 13) ? 1 : 0; }
 export const __isspace = isspace;
 export function isprint(c) { return c >= 32 && c < 127 ? 1 : 0; }
 export function ispunct(c) { return isprint(c) && !isalnum(c) && c !== 32 ? 1 : 0; }
-export function iscntrl(c) { return (c >= 0 && c < 32) || c === 127 ? 1 : 0; }
-export function isxdigit(c) { return isdigit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102) ? 1 : 0; }
+function isxdigit(c) { return isdigit(c) || (c >= 65 && c <= 70) || (c >= 97 && c <= 102) ? 1 : 0; }
 export function tolower(c) { return isupper(c) ? c + 32 : c; }
 export function toupper(c) { return islower(c) ? c - 32 : c; }
 
 // ---- <stdlib.h> ---------------------------------------------------------------------------
 export function abs(x) { return x < 0 ? -x | 0 : x; }
 export function labs(x) { return x < 0 ? -x : x; }
-// atoi and atoll as macOS defines them: (int)strtol(s, NULL, 10) and strtoll(s, NULL, 10), so a
+// atoi and atoll are (int)strtol(s, NULL, 10) and strtoll(s, NULL, 10) with a 64-bit long, so a
 // value beyond the 64-bit range saturates (atoi: LONG_MAX -> -1, LONG_MIN -> 0 after the cast)
-// instead of wrapping; within it, atoi keeps the low 32 bits.  ("99999999999999999999 arrows"
-// is a wish for -1 arrows on macOS.)
+// instead of wrapping; within it, atoi keeps the low 32 bits.
 function decimalRun(s) { // -> [index of the first digit, index after the digits, negative]
   let i = 0, neg = false;
   while (isspace(uchars[s + i])) i++;
@@ -132,8 +130,8 @@ const residue_fprintf = residue("fprintf");
 // costs more than the game logic around them. A format qualifies when every conversion is
 // %d %i %u %c %s %p or %% with no flags, width, precision or length; anything else, and any
 // argument that is not a plain number (or a NULL %s), goes to the residue unchanged. Output
-// is byte for byte musl's for these conversions, which is also Darwin's, except %p: here it
-// is Darwin's ("0x" and the hex digits, "0x0" for NULL; musl prints NULL as "0").
+// is byte for byte musl's for these conversions, except %p, which prints "0x" and the hex
+// digits ("0x0" for NULL; musl prints NULL as "0").
 const D = 1, U = 2, C = 3, S = 4, P = 5;
 const plans = new Map();      // format text -> plan, or null (not simple)
 // A literal's address is reused by another text when the host rolls the runtime back to an
@@ -234,7 +232,6 @@ export const realloc = residue("realloc");
 export const free = residue("free");
 export const qsort = residue("qsort");
 export const strtol = residue("strtol");
-export const strtoul = residue("strtoul");
 export const atol = residue("atol");
 export const time = residue("time");
 export const exit = residue("exit");

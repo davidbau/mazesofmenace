@@ -48,6 +48,7 @@ import {
     VWALL,
 } from './const.js';
 import { isok } from './cmd_isok.js';
+import { panic } from './end.js';
 import {
     map_invisible, map_location, newsym, unset_seenv, xy_set_wall_state,
 } from './display.js';
@@ -102,15 +103,6 @@ import { fracture_rock } from './zap.js';
 import { make_grave } from './grave.js';
 import { coreRandom } from './rng.js';
 import { Blind, Deaf, Punished, Strangled } from './youprop.js';
-
-// Thrown where vault.c reaches vault-guard handling this port has not ported.
-export class UnsupportedVaultGuardError extends Error {
-    constructor(branch) {
-        super(`vault guard handling requires ${branch}`);
-        this.name = 'UnsupportedVaultGuardError';
-        this.branch = branch;
-    }
-}
 
 // C ref: vault.c vault_occupied() (244-253). `array` is one of the hero's room
 // strings, which js/rooms.js models as a zero-terminated array of room
@@ -953,7 +945,7 @@ async function gd_move_proceed(
 
     if ((nx !== ggx || ny !== ggy) || (grd.mx !== ggx || grd.my !== ggy)) {
         if (egrd.fcend >= FCSIZ) {
-            throw new Error('fakecorr overflow');
+            await panic('fakecorr overflow', state);
         }
         const fcp = egrd.fakecorr[egrd.fcend];
         fcp.fx = nx;

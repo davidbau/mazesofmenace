@@ -1,7 +1,7 @@
 /* nhjs_tty_api.c - session driver of the port.
  *
  * A segment runs the real sys/unix/unixmain.c main() (renamed
- * nhjs_unix_main) as `nethack -u <name>`, in the recorder's environment.
+ * nhjs_unix_main) as `nethack -u <name>`, in a fixed process environment.
  * The game is single threaded and synchronous:
  *
  *   - Keys are pulled one byte at a time from the JS host
@@ -24,9 +24,8 @@
 
 export const NHJS_RNG_LOG_PATH = "/rng.log";
 /*
- * Recorder environment (docs/recording-environment.md): HOME is the
- * harness's results directory and NetHack reads $HOME/.nethackrc.  The
- * path is visible in the options help pager, so it must be verbatim.
+ * HOME of the game's process; NetHack reads $HOME/.nethackrc.  The path
+ * is shown in the options help pager, so it is kept exactly as it is.
  */
 export const NHJS_HOME = "/Users/davidbau/git/mazesofmenace/teleport/maud/test/comparison/c-harness/results";
 
@@ -36,7 +35,7 @@ global_scalar("erase_char", char, ord('\x7f'));
 global_scalar("intr_char", char, ord('\x03'));
 global_scalar("kill_char", char, ord('\x15'));
 
-/* host callbacks (implemented by js/host/boot.js) */
+/* host callbacks (js/rt/port.js binds them to js/host/boot.js) */
 
     const NHJS_NOT_STARTED = 0;
     const NHJS_IN_MAIN = NHJS_NOT_STARTED + 1;
@@ -115,13 +114,13 @@ export function nhjs_session_init(seed_text, datetime,
     nhjs_rc[0] = nhjs_strdup(nethackrc);
     nhjs_argv[0] = nhjs_arg0;
     nhjs_argv[1] = nhjs_arg1;
-    nhjs_argv[2] = nhjs_strdup(name); /* `nethack -u <name>`, as recorded */
+    nhjs_argv[2] = nhjs_strdup(name); /* `nethack -u <name>` */
     nhjs_argv[3] = 0;
     nhjs_phase[0] = NHJS_NOT_STARTED;
     nhjs_key_index[0] = 0;
     nhjs_jump_active[0] = FALSE;
 
-    /* the recorder's environment; no USER/LOGNAME, so getlogin() fails */
+    /* the process environment; no USER/LOGNAME, so getlogin() fails */
     unsetenv(_("USER"));
     unsetenv(_("LOGNAME"));
     unsetenv(_("NETHACKOPTIONS"));
@@ -130,7 +129,7 @@ export function nhjs_session_init(seed_text, datetime,
     setenv(_("TZ"), _("UTC"), 1); /* calendar.c renders New York time itself */
     setenv(_("NETHACKDIR"), _("/"), 1);
     setenv(_("HACKDIR"), _("/"), 1);
-    setenv(_("MAIL"), _("/var/mail/nhjs"), 1); /* an empty spool, as on the recorder */
+    setenv(_("MAIL"), _("/var/mail/nhjs"), 1); /* an empty mail spool */
     setenv(_("NETHACK_RNGLOG"), _(NHJS_RNG_LOG_PATH), 1);
     setenv(_("NETHACK_RNGLOG_DISP"), _("1"), 1);
     setenv(_("NETHACK_NO_DELAY"), _("1"), 1);
@@ -143,8 +142,8 @@ export function nhjs_session_init(seed_text, datetime,
         unsetenv(_("NETHACK_FIXED_DATETIME"));
 }
 
-/* Game data files (dat/), then the playground and the recorder's
-   sysconf and $HOME/.nethackrc.  The JS host restores the files a
+/* Game data files (dat/), then the playground, sysconf and
+   $HOME/.nethackrc.  The JS host restores the files a
    previous segment left (saves, bones, record, ...) after this. */
 export function nhjs_install_data() { /* void */
     nhjs_install_data_files();
@@ -243,9 +242,9 @@ export function nhjs_tty_capture_boundary(kind, seq, anim, cx, cy,
 
 /*
  * getlock() from sys/unix/unixunix.c.  A lock left behind by an earlier
- * segment belongs to a process that no longer exists, so the recorder's
- * veryold() (built with INSURANCE: no size check) finds it stale once it
- * has read a pid from it, and the old game is erased without a prompt.
+ * segment belongs to a process that no longer exists, so veryold() (an
+ * INSURANCE build: no size check) finds it stale once it has read a pid
+ * from it, and the old game is erased without a prompt.
  */
 function nhjs_lock_is_stale(fq_lock) { /* boolean */
     const $frame = stack_frame(); try {
@@ -324,8 +323,8 @@ export function getwindowsz() { /* void */
 }
 
 /*
- * Terminal modes (sys/share/unixtty.c of the recorder).  The recorder's
- * stdin is not a terminal: every tcgetattr()/tcsetattr() fails and
+ * Terminal modes (sys/share/unixtty.c).  The game's stdin is not a
+ * terminal: every tcgetattr()/tcsetattr() fails and
  * silently does nothing, so the saved state `inittyb' stays all zero
  * except for the control characters that gettty() seeds.  Hence:
  *   gettty():  erase ^?, kill ^U, intr ^C; ospeed = speednum(0) = 0;

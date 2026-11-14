@@ -464,11 +464,11 @@ export function restore_light_sources(nhfp) { /* void */
 export function light_stats(hdrfmt, hdrbuf, count, size) { /* void */
     let ls;
 
-    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_light_source);
+    sprintf(hdrbuf, hdrfmt, NHJS_SIZEOF_light_source);
     count[0] = size[0] = 0;
     for (ls = gl.light_base; ls; ls = ls.next) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_light_source;
+        size[0] += NHJS_SIZEOF_light_source;
     }
 }
 
@@ -919,7 +919,7 @@ import {
 } from "./hack.h.js";
 import { release_data, update_file } from "./hack.h.macros.js";
 import { DEADMONSTER } from "./monst.h.macros.js";
-import { NHJS_LP64_SIZEOF_light_source } from "./nhjs_recorder_sizes.h.js";
+import { NHJS_SIZEOF_light_source } from "./nhjs_struct_sizes.h.js";
 import { OBJ_FREE } from "./obj.h.js";
 import { Is_candle, ignitable } from "./obj.h.macros.js";
 import { CANDELABRUM_OF_INVOCATION, GOLD_DRAGON_SCALE_MAIL, MAGIC_LAMP } from "./objects.h.js";

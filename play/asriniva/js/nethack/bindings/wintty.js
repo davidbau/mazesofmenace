@@ -1,3 +1,5 @@
+import {createNativeWintty} from '../native/wintty.js';
+import {createNativeScalarLocal} from '../native/scalar-local.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // WINTTY native pointer, layout and original C header representation only.
 // All original window, menu, input and status policy remains in wintty.js.
@@ -12,8 +14,11 @@ export function createWinttyEnvironment(services,L,state){
     const clean=memo(t=>t.replace(/\b(?:const|volatile)\b/g,'').replace(/\s+/g,' ').trim());
     const canonical=memo(t=>{t=clean(t);const seen=new Set();while(schema.aliases[t]&&!seen.has(t)){seen.add(t);const enumKey='enum_signed_'+t.replace(/\W+/g,'_').replace(/^_|_$/g,'');t=t.startsWith('enum ')&&L[enumKey]!==undefined?(Number(L[enumKey])?'int':'unsigned int'):clean(schema.aliases[t]);}return t;});
     const key=memo(t=>canonical(t).replace(/\W+/g,'_').replace(/^_|_$/g,''));
+    const native=services.nativeOwner?.nativeArena?services.nativeOwner:undefined,nativeRecords=native?.nativeRecords;
+    const nativeTypes=new Map(Object.keys(schema.records).map(type=>[canonical(type).replace(/^(struct |union )/,''),canonical(type)]));
+    const recordType=o=>nativeRecords?nativeTypes.get(nativeRecords.kindOf(o))??o.nativeType:o.nativeType;
     let dataView;
-    const dv=()=>{const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
+    const dv=()=>{if(native?.nativeArena)return native.nativeArena.view;const buffer=services.heap().buffer;if(dataView?.buffer!==buffer)dataView=new DataView(buffer);return dataView;};
     const raw=v=>CAdapter.unsignedPointer(v);
     const address=v=>typeof v==='number'&&Number.isSafeInteger(v)&&v>=0?(v===0?0:v):Number(raw(typeof v==='string'?services.literal(v):v));
     const isTable=v=>!!v&&typeof v==='object'&&!!v.table;
@@ -58,6 +63,7 @@ export function createWinttyEnvironment(services,L,state){
         return scalar(p,t,value,true);
     }
     function record(p,t){
+        if(nativeRecords){t=canonical(t);const result=nativeRecords.record(t,p);if(result)CAdapter.installStringAliases(result,schema.fieldAliases[t]??{},true);return result;}
         if(!raw(p))return 0;t=canonical(t);const at=raw(p),fields=schema.records[t];
         if(!fields)throw Error('WINTTY unreviewed native record '+t);
         return new Proxy({address:at>9007199254740991n?at:Number(at),nativeType:t},{
@@ -100,9 +106,9 @@ export function createWinttyEnvironment(services,L,state){
     C.store=(p,t,v)=>{if(isTable(p)){p.table[p.index]=v;return v;}return write(p,t,v);};
     C.reference=(p,t)=>({address:address(p),get value(){return C.deref(p,t);},set value(v){C.store(p,t,v);}});
     C.fieldRef=(o,f)=>{
-        f=schema.fieldAliases[o.nativeType]?.[f]??f;
-        const d=schema.records[o.nativeType]?.[f];
-        if(d&&!d.bit){const p=address(o)+Number(L['offset_'+key(o.nativeType)+'_'+f]);return schema.records[canonical(d.type)]?record(p,d.type):arrayType(d.type)?p:C.reference(p,d.type);}
+        f=schema.fieldAliases[recordType(o)]?.[f]??f;
+        const d=schema.records[recordType(o)]?.[f];
+        if(d&&!d.bit){const p=address(o)+Number(L['offset_'+key(recordType(o))+'_'+f]);return schema.records[canonical(d.type)]?record(p,d.type):arrayType(d.type)?p:C.reference(p,d.type);}
         return {get value(){return o[f];},set value(v){o[f]=v;}};
     };
     C.bump=(ref,delta,post,t)=>{const old=ref.value;ref.value=t.includes('*')?C.ptrAdd(old,delta,t.slice(0,t.lastIndexOf('*'))):typeof old==='bigint'?old+BigInt(delta):old+delta;return post?old:ref.value;};
@@ -114,7 +120,7 @@ export function createWinttyEnvironment(services,L,state){
         return t.includes('*')?ptr(p,t.slice(0,t.lastIndexOf('*'))):p;
     };
     C.argument=(v,t)=>t.includes('*')||arrayType(t)?C.castPointer(v,t):C.castScalar(v,t);
-    C.castScalar=(v,t)=>{t=canonical(t);const [n,s]=primitive[t]??[];if(!n)return v;const b=typeof v==='bigint'?v:BigInt(Math.trunc(Number(v)));return n===8?(s?BigInt.asIntN(64,BigInt(v)):BigInt.asUintN(64,BigInt(v))):Number(s?BigInt.asIntN(n*8,b):BigInt.asUintN(n*8,b));};
+    C.castScalar=(v,t)=>{t=canonical(t);const [n,s]=primitive[t]??[];if(!n)return v;if(native&&n!==8&&typeof v==='number'&&Number.isFinite(v)){const bits=n*8;return s?v<<(32-bits)>>(32-bits):n===4?v>>>0:v&((1<<bits)-1);}const b=typeof v==='bigint'?v:BigInt(Math.trunc(Number(v)));return n===8?(s?BigInt.asIntN(64,BigInt(v)):BigInt.asUintN(64,BigInt(v))):Number(s?BigInt.asIntN(n*8,b):BigInt.asUintN(n*8,b));};
     for(const [name,t]of Object.entries({char:'signed char',uchar:'unsigned char',short:'short',ushort:'unsigned short',int:'int',uint:'unsigned int',long:'long',ulong:'unsigned long'}))C[name]=v=>C.castScalar(v,t);
     for(const [k,v]of Object.entries(L))if(Number(L['constwidth_'+k])===8)C[k]=L['constsigned_'+k]?BigInt.asIntN(64,BigInt(v)):BigInt.asUintN(64,BigInt(v));
     C.float=Math.fround;C.double=Number;
@@ -129,7 +135,7 @@ export function createWinttyEnvironment(services,L,state){
     };
     C.localRecordArray=t=>tablePointer(Array.from({length:Number(arrayType(t)[2])},()=>({})),0,arrayType(t)[1]+arrayType(t)[3]);
     C.recordLocal=(t,initializer)=>{const p=services.stackAlloc(size(t));if(initializer)write(p,t,initializer);return record(p,t);};
-    C.scalarLocal=(t,initializer)=>{const p=services.stackAlloc(size(t));if(initializer!==undefined)write(p,t,initializer);return C.reference(p,t);};
+    C.scalarLocal=(t,initializer)=>{const kind={char:'Int8','signed char':'Int8',short:'Int16',int:'Int32'}[canonical(t)];if(native&&kind)return createNativeScalarLocal(initializer,kind,services.stackAlloc,dv,{uninitialized:initializer===undefined,requireLifetime:true});const p=services.stackAlloc(size(t));if(initializer!==undefined)write(p,t,initializer);return C.reference(p,t);};
     C.declareStatic=(name,t,initial)=>{
         if(state.statics.has(name))return;
         if(arrayType(t)){
@@ -167,6 +173,7 @@ export function createWinttyEnvironment(services,L,state){
         for(const[name,t]of Object.entries(dataTypes)){const index=Object.keys(schema.globals).indexOf(name);if(index<0)throw Error('WINTTY missing native catalogue '+name);pack(services.global(index),t,core[name+'_initial']);}
         state.initialized=true;
     }
+    if(native){C.nativeState=native;C.nativeNamespace=createNativeWintty(C);}
     return C;
 }
 export function initializeWintty(services,L){return callWintty(services,L,null);}
@@ -193,7 +200,7 @@ export function callWintty(services,L,name,...args){
     const previous=entry.slot.current;entry.slot.current=services;
     try{
         const saved=services.stackSave();
-        try{return name===null?undefined:withCEnvironment(entry.environment,()=>core[name](...args));}
+        try{if(name===null)return undefined;const C=entry.environment;if(!Object.hasOwn(C,'nativeNamespace'))return withCEnvironment(C,()=>core[name](...args));C.nativeState.enter();try{return C.nativeNamespace[name](...args);}finally{C.nativeState.leave();}}
         finally{services.stackRestore(saved);}
     }finally{entry.slot.current=previous;}
 }

@@ -153,7 +153,7 @@ import {
     maybe_finished_meal,
     reset_eat,
 } from './eat.js';
-import { UnsupportedVaultGuardError, gd_move, invault } from './vault.js';
+import { gd_move, invault } from './vault.js';
 import { fightm } from './mhitm.js';
 import {
     m_everyturn_effect,
@@ -1154,16 +1154,9 @@ async function advanceElapsedTurn(state) {
             // refuses. Preserve that output through the gameplay boundary.
             // The normal lethal monster arm reaches done_in_by() here; its
             // existing end.c boundary is converted only after the real killer
-            // and death entry are set. Below that entry, end.c really_done()
-            // settles with the level's shopkeepers, vault guard and priests
-            // through paybill(), paygd() and clearpriests(); paygd()'s
-            // unported arm raises UnsupportedVaultGuardError. The scan also
-            // reaches every owner elapsedTurnRefusals() names.
-            const liveScanRefusals = [
-                ...elapsedTurnRefusals(),
-                UnsupportedVaultGuardError,
-            ];
-            if (!liveScanRefusals.some((type) => error instanceof type))
+            // and death entry are set. The scan reaches every owner
+            // elapsedTurnRefusals() names.
+            if (!elapsedTurnRefusals().some((type) => error instanceof type))
                 throw error;
             const boundary = new UnsupportedTurnBoundaryError(error.message);
             boundary.reason = error.reason;
@@ -1277,6 +1270,10 @@ async function moveloop_core_body() {
         await makewish(g);
     }
 
+    // C ref: allmain.c:453. find_ac() comes before the vision recalculation
+    // below, so a wall_angle() impossible() that vision_recalc() prints
+    // flushes a status line that already shows the new AC.
+    find_ac(g);
     const hallucinating = Hallucination(g.u);
     const blind = Blind(g.u);
     // Keep the existing non-hallucinatory vision/region ordering. Hallucination
@@ -1293,7 +1290,6 @@ async function moveloop_core_body() {
     // Close the elapsed turn's display work before status calculation and
     // flushing can expose the completed frame.
     await emitGlyphUpdateNotices(g, { pline: ttyPline });
-    find_ac(g);
     // C ref: allmain.c moveloop_core() (474-485). When the hero cannot move
     // this input, hallucination repaints the visible monster/object/trap
     // layers and redraws the swallowed stomach. The latter bypasses newsym(),

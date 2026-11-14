@@ -198,6 +198,24 @@ const R193=NF.readers[193],W193=NF.writers[193],A193=NF.addresses[193];
 const R194=NF.readers[194],W194=NF.writers[194],A194=NF.addresses[194];
 const R195=NF.readers[195],W195=NF.writers[195],A195=NF.addresses[195];
 const R196=NF.readers[196],W196=NF.writers[196],A196=NF.addresses[196];
+const NWC0=C.nativeWindowCall("win_doprev_message","int (void)");
+const NWC1=C.nativeWindowCall("win_nhgetch","int (void)");
+const NWC2=C.nativeWindowCall("win_get_ext_cmd","int (void)");
+const NWC3=C.nativeWindowCall("win_create_nhwindow","winid (int)");
+const NWC4=C.nativeWindowCall("win_start_menu","void (winid, unsigned long)");
+const NWC5=C.nativeWindowCall("win_end_menu","void (winid, const char *)");
+const NWC6=C.nativeWindowCall("win_destroy_nhwindow","void (winid)");
+const NWC7=C.nativeWindowCall("win_clear_nhwindow","void (winid)");
+const NWC8=C.nativeWindowCall("win_putstr","void (winid, int, const char *)");
+const NWC9=C.nativeWindowCall("win_display_nhwindow","void (winid, boolean)");
+const NWC10=C.nativeWindowCall("win_wait_synch","void (void)");
+const NWC11=C.nativeWindowCall("win_nhbell","void (void)");
+const NWC12=C.nativeWindowCall("win_mark_synch","void (void)");
+const NWC13=C.nativeWindowCall("win_putmsghistory","void (const char *, boolean)");
+const NWC14=C.nativeWindowCall("win_exit_nhwindows","void (const char *)");
+const NWC15=C.nativeWindowCall("win_nh_poskey","int (coordxy *, coordxy *, int *)");
+const NWC16=C.nativeWindowCall("win_yn_function","char (const char *, const char *, char)");
+const NWC17=C.nativeWindowCall("win_can_suspend","boolean (void)");
 
 /* NetHack 5.0	cmd.c	$NHDT-Date: 1762680996 2025/11/09 01:36:36 $  $NHDT-Branch: NetHack-3.7 $:$NHDT-Revision: 1.755 $ */
 /* Copyright (c) Stichting Mathematisch Centrum, Amsterdam, 1985. */
@@ -294,7 +312,7 @@ const cmdnotavail=C=>C.literal("'%s' command not available.");
 /* the #prevmsg command */
 function doprev_message()
 {
-    C.callProc((R172(C.windowprocs)),"int (void)");
+    NWC0(R172(C.windowprocs));
     return 0;
 }
 
@@ -540,7 +558,7 @@ function pgetchar()
     /* courtesy of aeb@cwi.nl */
     let ch=0;
     if(R73(C.iflags)) return randomkey();
-    (ch=C.callProc((R169(C.windowprocs)),"int (void)"));
+    (ch=NWC1(R169(C.windowprocs)));
     return C.i8(ch);
 }
 
@@ -583,7 +601,7 @@ function doextcmd()
     let func;
     /* keep repeating until we don't run help or quit */
     do {
-        (idx=C.callProc((R174(C.windowprocs)),"int (void)"));
+        (idx=NWC2(R174(C.windowprocs)));
         if(Number(idx<0)) return 0;
         /* quit */
         (func=R62(C.extcmdlist+Number(idx)*C.sizes["struct ext_func_tab"]));
@@ -650,11 +668,11 @@ function doextlist()
     const headings=C.staticData("doextlist","headings",()=>[C.literal("Extended commands"),C.literal("Debugging Extended Commands")]);
     let clr=8;
     (C.cell((searchbuf+Number(0)*1),"char").value=C.i8(0));
-    (menuwin=C.callProc((R160(C.windowprocs)),"winid (int)",4));
+    (menuwin=NWC3(R160(C.windowprocs),4));
     while(redisplay) {
         (redisplay=(C.i8(0)));
         C.copyRecord(any,A37(C.cg),C.sizes["union any"]);
-        C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",menuwin,C.u64(0));
+        NWC4(R165(C.windowprocs),menuwin,C.u64(0));
         C.add_menu_str(menuwin,C.literal("Extended Commands List"));
         C.add_menu_str(menuwin,C.literal(""));
         C.variadic(4,buf,C.literal("Switch to %s commands that don't autocomplete"),(menumode?C.literal("including"):C.literal("excluding")));
@@ -731,7 +749,7 @@ function doextlist()
         }
         if(Number(!!(C.i32(C.cell(searchbuf,"char").value)&&Number(!(n))))) C.add_menu_str(menuwin,C.literal("no matches"));
  else doc_extcmd_flagstr(menuwin,0);
-        C.callProc((R166(C.windowprocs)),"void (winid, const char *)",menuwin,0);
+        NWC5(R166(C.windowprocs),menuwin,0);
         (n=C.select_menu(menuwin,1,selectedAddress));
         if(Number(n>0)) {
             switch(R17(A120(C.cell(selectedAddress,"struct mi *").value+Number(0)*C.sizes["struct mi"]))) {
@@ -775,7 +793,7 @@ function doextlist()
             (search=(C.i8(0)));
         }
     }
-    C.callProc((R163(C.windowprocs)),"void (winid)",menuwin);
+    NWC6(R163(C.windowprocs),menuwin);
     return 0;
     } finally {C.stackRestore(stackFrame); }
 }
@@ -835,8 +853,8 @@ function extcmd_via_menu()
             break;
         }
         /* otherwise... */
-        (win=C.callProc((R160(C.windowprocs)),"winid (int)",4));
-        C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",win,C.u64(0));
+        (win=NWC3(R160(C.windowprocs),4));
+        NWC4(R165(C.windowprocs),win,C.u64(0));
         C.variadic(7,fmtstr,C.literal("%%-%ds"),C.i32((biggest+15)));
         (C.cell((prompt+Number(0)*1),"char").value=C.i8(0));
         (wastoolong=(C.i8(0)));
@@ -880,9 +898,9 @@ function extcmd_via_menu()
             C.add_menu(win,C.nul_glyphinfo,any,R18(any),C.i8(0),0,clr,buf,0);
         }
         C.variadic(12,(C.literal("extcmd_via_menu")),856,prompt,BigInt((1*128)),C.literal("Extended Command: %s"),cbuf);
-        C.callProc((R166(C.windowprocs)),"void (winid, const char *)",win,prompt);
+        NWC5(R166(C.windowprocs),win,prompt);
         (n=C.select_menu(win,1,pick_listAddress));
-        C.callProc((R163(C.windowprocs)),"void (winid)",win);
+        NWC6(R163(C.windowprocs),win);
         if(Number(n==1)) {
             if(Number(matchlevel>(C.i32((128-2))))) {
                 C.free(C.cell(pick_listAddress,"struct mi *").value);
@@ -971,10 +989,10 @@ function enter_explore_mode()
         if(paranoid_query(C.i8((Number((C.u32((R69(C.flags)&C.u32(2))))!=C.u32(0)))),C.literal("Do you want to enter explore mode?"))) {
             (W66(C.flags,C.i8(1)));
             (W65(C.flags,C.i8(0)));
-            C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+            NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
             C.variadic(22,C.literal("are now in non-scoring explore mode."));
         } else {
-            C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+            NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
             C.variadic(23,C.literal("Continuing with %s."),oldmode);
         }
     }
@@ -1102,8 +1120,8 @@ function doterrain()
      *  a dump of the internal levl[][].typ codes w/ level flags, or
      *  a legend for the levl[][].typ codes dump
      */
-    (men=C.callProc((R160(C.windowprocs)),"winid (int)",4));
-    C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",men,C.u64(0));
+    (men=NWC3(R160(C.windowprocs),4));
+    NWC4(R165(C.windowprocs),men,C.u64(0));
     C.copyRecord(any,A37(C.cg),C.sizes["union any"]);
     (W17(any,1));
     C.add_menu(men,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,clr,C.literal("known map without monsters, objects, and traps"),1);
@@ -1121,9 +1139,9 @@ function doterrain()
             C.add_menu(men,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,clr,C.literal("legend of base-36 levl[][].typ codes"),0);
         }
     }
-    C.callProc((R166(C.windowprocs)),"void (winid, const char *)",men,C.literal("View which?"));
+    NWC5(R166(C.windowprocs),men,C.literal("View which?"));
     (n=C.select_menu(men,1,selAddress));
-    C.callProc((R163(C.windowprocs)),"void (winid)",men);
+    NWC6(R163(C.windowprocs),men);
     /*
      * n <  0: player used ESC to cancel;
      * n == 0: preselected entry was explicitly chosen and got toggled off;
@@ -1731,7 +1749,7 @@ function get_changed_key_binds(sbuf)
     let bind=R27(A91(C.gc));
     let keys=C.stackAlloc((1*256));
     C.memset(keys,0,C.u64((BigInt(1)*C.u64(256))));
-    if(Number(!(sbuf))) (win=C.callProc((R160(C.windowprocs)),"winid (int)",5));
+    if(Number(!(sbuf))) (win=NWC3(R160(C.windowprocs),5));
     /* commands bound to different key */
     while(bind) {
         (C.cell((keys+Number(R0(bind))*1),"unsigned char").value=C.u8(1));
@@ -1739,7 +1757,7 @@ function get_changed_key_binds(sbuf)
             if(Number((C.u32((R63(R3(bind))&C.u32(16384))))!=C.u32(0))) C.variadic(36,buf,C.literal("BIND=%s:%s(%s)%s"),key2txt(R0(bind),buf2),R60(R3(bind)),R2(bind),(sbuf?C.literal("\n"):C.literal("")));
  else C.variadic(37,buf,C.literal("BIND=%s:%s%s"),key2txt(R0(bind),buf2),R60(R3(bind)),(sbuf?C.literal("\n"):C.literal("")));
             if(sbuf) C.strbuf_append(sbuf,buf);
- else C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
+ else NWC8(R164(C.windowprocs),win,0,buf);
         }
         (bind=R4(bind));
     }
@@ -1749,12 +1767,12 @@ function get_changed_key_binds(sbuf)
         if(Number(!!(C.i32(R59(ec))&&Number(!(C.cell((keys+Number(R59(ec))*1),"unsigned char").value))))) {
             C.variadic(38,buf,C.literal("BIND=%s:nothing%s"),key2txt(R59(ec),buf2),(sbuf?C.literal("\n"):C.literal("")));
             if(sbuf) C.strbuf_append(sbuf,buf);
- else C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
+ else NWC8(R164(C.windowprocs),win,0,buf);
         }
     }
     if(Number(!(sbuf))) {
-        C.callProc((R162(C.windowprocs)),"void (winid, boolean)",win,(C.i8(1)));
-        C.callProc((R163(C.windowprocs)),"void (winid)",win);
+        NWC9(R162(C.windowprocs),win,C.i8(1));
+        NWC6(R163(C.windowprocs),win);
     }
     } finally {C.stackRestore(stackFrame); }
 }
@@ -1779,8 +1797,8 @@ function handler_rebind_keys_add(keyfirst)
         (key=C.u8(pgetchar()));
         if(Number(!!(Number(!(key))||Number(C.i32(key)==27)))) return;
     }
-    (win=C.callProc((R160(C.windowprocs)),"winid (int)",4));
-    C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",win,C.u64(0));
+    (win=NWC3(R160(C.windowprocs),4));
+    NWC4(R165(C.windowprocs),win,C.u64(0));
     C.copyRecord(any,A37(C.cg),C.sizes["union any"]);
     if(key) {
         let bind=cmdbind_get(key);
@@ -1804,9 +1822,9 @@ function handler_rebind_keys_add(keyfirst)
     }
     if(key) C.variadic(43,buf,C.literal("Bind '%s' to what command?"),key2txt(key,buf2));
  else C.variadic(44,buf,C.literal("Bind what command?"));
-    C.callProc((R166(C.windowprocs)),"void (winid, const char *)",win,buf);
+    NWC5(R166(C.windowprocs),win,buf);
     (npick=C.select_menu(win,1,picksAddress));
-    C.callProc((R163(C.windowprocs)),"void (winid)",win);
+    NWC6(R163(C.windowprocs),win);
     if(Number(npick>0)) {
         let prevcmd;
         let cmdstr=C.stackAlloc((1*256));
@@ -1862,8 +1880,8 @@ function handler_rebind_keys()
     let picksAddress=C.stackAlloc(8); C.cell(picksAddress,"struct mi *").value=0;
     let clr=8;
     redo_rebind: for(;;) {
-        (win=C.callProc((R160(C.windowprocs)),"winid (int)",4));
-        C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",win,C.u64(0));
+        (win=NWC3(R160(C.windowprocs),4));
+        NWC4(R165(C.windowprocs),win,C.u64(0));
         C.copyRecord(any,A37(C.cg),C.sizes["union any"]);
         (W17(any,1));
         C.add_menu(win,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,clr,C.literal("bind key to a command"),0);
@@ -1873,9 +1891,9 @@ function handler_rebind_keys()
             (W17(any,3));
             C.add_menu(win,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,clr,C.literal("view changed key binds"),0);
         }
-        C.callProc((R166(C.windowprocs)),"void (winid, const char *)",win,C.literal("Do what?"));
+        NWC5(R166(C.windowprocs),win,C.literal("Do what?"));
         (npick=C.select_menu(win,1,picksAddress));
-        C.callProc((R163(C.windowprocs)),"void (winid)",win);
+        NWC6(R163(C.windowprocs),win);
         if(Number(npick>0)) {
             (i=R17(A120(C.cell(picksAddress,"struct mi *").value)));
             C.free(C.cell(picksAddress,"struct mi *").value);
@@ -1902,8 +1920,8 @@ function handler_change_autocompletions()
     let clr=8;
     let ec;
     let buf=C.stackAlloc((1*256));
-    (win=C.callProc((R160(C.windowprocs)),"winid (int)",4));
-    C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",win,C.u64(0));
+    (win=NWC3(R160(C.windowprocs),4));
+    NWC4(R165(C.windowprocs),win,C.u64(0));
     C.copyRecord(any,A37(C.cg),C.sizes["union any"]);
     for((i=0);Number(i<C.cell(C.extcmdlist_length,"int").value);((i=C.i32((i+1)))-1)) {
         (ec=(C.extcmdlist+Number(i)*C.sizes["struct ext_func_tab"]));
@@ -1913,7 +1931,7 @@ function handler_change_autocompletions()
         C.variadic(51,buf,C.literal("%c %s: %s"),((C.u32((R63(ec)&C.u32(8192))))?42:32),R60(ec),R61(ec));
         C.add_menu(win,C.nul_glyphinfo,any,C.i8(0),C.i8(0),0,clr,buf,((C.u32((R63(ec)&C.u32(2))))?1:0));
     }
-    C.callProc((R166(C.windowprocs)),"void (winid, const char *)",win,C.literal("Which commands autocomplete?"));
+    NWC5(R166(C.windowprocs),win,C.literal("Which commands autocomplete?"));
     (n=C.select_menu(win,2,picksAddress));
     if(Number(n>=0)) {
         let j;
@@ -1936,7 +1954,7 @@ function handler_change_autocompletions()
         }
         if(Number(n>0)) C.free(C.cell(picksAddress,"struct mi *").value);
     }
-    C.callProc((R163(C.windowprocs)),"void (winid)",win);
+    NWC6(R163(C.windowprocs),win);
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -2177,7 +2195,7 @@ function keylist_putcmds(datawin,docount,incl_flags,excl_flags,keys_used)
             }
             if(Number((C.u32((R63(R3(bind))&C.u32(16384))))!=C.u32(0))) C.variadic(59,buf,C.literal("%-7s %-13s %s \"%s\""),key2txt(key,buf2),R60(R3(bind)),R61(R3(bind)),R2(bind));
  else C.variadic(60,buf,C.literal("%-7s %-13s %s"),key2txt(key,buf2),R60(R3(bind)),R61(R3(bind)));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+            NWC8(R164(C.windowprocs),datawin,0,buf);
             (C.cell((keys_used+Number(i)*1),"signed char").value=(C.i8(1)));
         }
     }
@@ -2197,7 +2215,7 @@ function keylist_putcmds(datawin,docount,incl_flags,excl_flags,keys_used)
         }
         /* '#'+20 for one column here == 7+' '+13 for two columns above */
         C.variadic(61,buf,C.literal("#%-20s %s"),R60(extcmd),R61(extcmd));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+        NWC8(R164(C.windowprocs),datawin,0,buf);
     }
     return count;
     } finally {C.stackRestore(stackFrame); }
@@ -2233,47 +2251,47 @@ function dokeylist()
             (C.cell((pfx_seen+Number(key)*4),"int").value=j);
         } else (spkey_gap=(C.i8(1)));
     }
-    (datawin=C.callProc((R160(C.windowprocs)),"winid (int)",5));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
+    (datawin=NWC3(R160(C.windowprocs),5));
+    NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
     C.variadic(62,buf,C.literal("%7s %s"),C.literal(""),C.literal("    Full Current Key Bindings List"));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+    NWC8(R164(C.windowprocs),datawin,0,buf);
     for((extcmd=C.extcmdlist);R60(extcmd);(extcmd=C.ptr((extcmd+Number(C.sizes["struct ext_func_tab"]))))) if(Number(!!(C.i32(spkey_gap)||Number(!(keylist_func_has_key(extcmd,keys_used)))))) {
         C.variadic(63,buf,C.literal("%7s %s"),C.literal(""),C.literal("(also commands with no key assignment)"));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+        NWC8(R164(C.windowprocs),datawin,0,buf);
         break;
     }
 
     /* directional keys */
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal("Directional keys:"));
+    NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
+    NWC8(R164(C.windowprocs),datawin,0,C.literal("Directional keys:"));
     show_direction_keys(datawin,C.i8(46),(C.i8(0)));
     /* '.'==self in direct'n grid */
     if(Number(!(R85(C.iflags)))) {
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal("Ctrl+<direction> will run in specified direction until something very"));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal("Ctrl+<direction> will run in specified direction until something very"));
         C.variadic(64,buf,C.literal("%7s %s"),C.literal(""),C.literal("interesting is seen."));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+        NWC8(R164(C.windowprocs),datawin,0,buf);
         C.strcpy(buf,C.literal("Shift"));
         /* append the rest below */
     } else {
         /* num_pad */
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
         C.strcpy(buf,C.literal("Meta"));
         /* append the rest next */
     }
     C.strcat(buf,C.literal("+<direction> will run in specified direction until you encounter"));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+    NWC8(R164(C.windowprocs),datawin,0,buf);
     C.variadic(65,buf,C.literal("%7s %s"),C.literal(""),C.literal("an obstacle."));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal("Miscellaneous keys:"));
+    NWC8(R164(C.windowprocs),datawin,0,buf);
+    NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
+    NWC8(R164(C.windowprocs),datawin,0,C.literal("Miscellaneous keys:"));
     for((i=0);R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);(i=C.i32((i+1)))) {
         if(Number(!!(C.i32(R33(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]))&&Number(!(R85(C.iflags)))))) continue;
         (j=R31(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
         (key=C.u8(C.cell((A29(A91(C.gc))+Number(j)*1),"char").value));
         if(Number(!!(Number(!!(C.i32(key)&&Number(!(C.cell((mov_seen+Number(key)*1),"signed char").value))))&&(Number(C.cell((pfx_seen+Number(key)*4),"int").value==j))))) {
             C.variadic(66,buf,C.literal("%-7s %s"),key2txt(key,buf2),R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+            NWC8(R164(C.windowprocs),datawin,0,buf);
         }
     }
     /* (see above) */
@@ -2282,7 +2300,7 @@ function dokeylist()
     C.variadic(67,buf,C.literal("%-7s"),key2txt(key,buf2));
     /* first of the keyless commands */
     C.strcat(buf,C.literal(" interrupt: break out of NetHack (SIGINT)"));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+    NWC8(R164(C.windowprocs),datawin,0,buf);
     /* keyless special key commands, if any */
     if(spkey_gap) {
         for((i=0);R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]);(i=C.i32((i+1)))) {
@@ -2294,29 +2312,29 @@ function dokeylist()
                 /* lines up with the other unassigned commands which use
                    "#%-20s ", but not with the other special keys */
                 C.variadic(69,(C.literal("dokeylist")),2976,buf,BigInt((1*256)),C.literal("%-21s %s"),buf2,R32(C.misc_keys+Number(i)*C.sizes["cmd_misc_key"]));
-                C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,buf);
+                NWC8(R164(C.windowprocs),datawin,0,buf);
             }
         }
     }
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
+    NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
     C.show_menu_controls(datawin,(C.i8(1)));
     if(keylist_putcmds(datawin,(C.i8(1)),8,(C.i32((C.i32((4|64))|1024))),keys_used)) {
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal("General commands:"));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal("General commands:"));
         keylist_putcmds(datawin,(C.i8(0)),8,(C.i32((C.i32((4|64))|1024))),keys_used);
     }
     if(keylist_putcmds(datawin,(C.i8(1)),0,C.i32((8|(C.i32((C.i32((4|64))|1024))))),keys_used)) {
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal("Game commands:"));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal("Game commands:"));
         keylist_putcmds(datawin,(C.i8(0)),0,C.i32((8|(C.i32((C.i32((4|64))|1024))))),keys_used);
     }
     if(Number(!!(C.i32(R65(C.flags))&&keylist_putcmds(datawin,(C.i8(1)),4,64,keys_used)))) {
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal(""));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",datawin,0,C.literal("Debug mode commands:"));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal(""));
+        NWC8(R164(C.windowprocs),datawin,0,C.literal("Debug mode commands:"));
         keylist_putcmds(datawin,(C.i8(0)),4,64,keys_used);
     }
-    C.callProc((R162(C.windowprocs)),"void (winid, boolean)",datawin,(C.i8(0)));
-    C.callProc((R163(C.windowprocs)),"void (winid)",datawin);
+    NWC9(R162(C.windowprocs),datawin,C.i8(0));
+    NWC6(R163(C.windowprocs),datawin);
     } finally {C.stackRestore(stackFrame); }
 }
 
@@ -2523,7 +2541,7 @@ function parseautocomplete(autocomplete,condition)
     }
     /* not a real extended command */
     C.variadic(77,C.literal("Bad autocomplete: invalid extended command '%s'."),autocomplete);
-    C.callProc((R168(C.windowprocs)),"void (void)");
+    NWC10(R168(C.windowprocs));
 }
 
 /* add changed autocompletions to the string buffer in config file format */
@@ -2843,7 +2861,7 @@ function rhack(key)
             /* if there's no command, there's nothing to do except reset */
             if(Number(!!(Number(!!(Number(!(key))||Number(key==C.i32(C.i8(255)))))||Number(key==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))))) {
                 if(Number(key==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))) (W81(C.iflags,R80(C.iflags)));
- else C.callProc((R171(C.windowprocs)),"void (void)");
+ else NWC11(R171(C.windowprocs));
                 /* don't perform next sanity check if player typed ESC for
                the current command, similar to handling for CMD_INSANE
                flag below (^P and ^R) */
@@ -3145,7 +3163,7 @@ function getdir(s)
                 }
             }
             /* remove the prompt string so caller won't have to */
-            C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+            NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
             if(redraw_cmd(dirsym)) {
                 /* ^R */
                 C.docrt_flags(C.docrtRefresh);
@@ -3264,22 +3282,22 @@ function show_direction_keys(win,centerchar,nodiag)
     if(Number(!(centerchar))) (centerchar=C.i8(32));
     if(nodiag) {
         C.variadic(90,buf,C.literal("             %s   "),C.visctrl(cmd_from_func(C.functionPointer("do_move_north"))));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("             |   "));
+        NWC8(R164(C.windowprocs),win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,C.literal("             |   "));
         C.variadic(91,buf,C.literal("          %s- %c -%s"),C.visctrl(cmd_from_func(C.functionPointer("do_move_west"))),C.i32(centerchar),C.visctrl(cmd_from_func(C.functionPointer("do_move_east"))));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("             |   "));
+        NWC8(R164(C.windowprocs),win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,C.literal("             |   "));
         C.variadic(92,buf,C.literal("             %s   "),C.visctrl(cmd_from_func(C.functionPointer("do_move_south"))));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,buf);
     } else {
         C.variadic(93,buf,C.literal("          %s  %s  %s"),C.visctrl(cmd_from_func(C.functionPointer("do_move_northwest"))),C.visctrl(cmd_from_func(C.functionPointer("do_move_north"))),C.visctrl(cmd_from_func(C.functionPointer("do_move_northeast"))));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("           \\ | / "));
+        NWC8(R164(C.windowprocs),win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,C.literal("           \\ | / "));
         C.variadic(94,buf,C.literal("          %s- %c -%s"),C.visctrl(cmd_from_func(C.functionPointer("do_move_west"))),C.i32(centerchar),C.visctrl(cmd_from_func(C.functionPointer("do_move_east"))));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("           / | \\ "));
+        NWC8(R164(C.windowprocs),win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,C.literal("           / | \\ "));
         C.variadic(95,buf,C.literal("          %s  %s  %s"),C.visctrl(cmd_from_func(C.functionPointer("do_move_southwest"))),C.visctrl(cmd_from_func(C.functionPointer("do_move_south"))),C.visctrl(cmd_from_func(C.functionPointer("do_move_southeast"))));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,buf);
     }
     ;
     } finally {C.stackRestore(stackFrame); }
@@ -3327,16 +3345,16 @@ function help_dir(sym,spkey,msg)
        for help at getdir() prompt forces cmdassist for this operation) */
     /* when 'cmdassist' is off and caller doesn't insist, do nothing */
     ((prefixhandling));
-    (win=C.callProc((R160(C.windowprocs)),"winid (int)",5));
+    (win=NWC3(R160(C.windowprocs),5));
     if(Number(!(win))) return (C.i8(0));
     if(C.cell(buf,"char").value) {
         /* show bad-prefix message instead of general invalid-direction one */
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
+        NWC8(R164(C.windowprocs),win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,C.literal(""));
     } else if(msg) {
         C.variadic(96,buf,C.literal("cmdassist: %s"),msg);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
+        NWC8(R164(C.windowprocs),win,0,buf);
+        NWC8(R164(C.windowprocs),win,0,C.literal(""));
     }
     if(Number(!!(Number(!(prefixhandling))&&(Number(!!(C.i32(C.letter(sym))||Number(C.i32(sym)==91))))))) {
         /* '[': old 'cmdhelp' showed ESC as ^[ */
@@ -3346,40 +3364,40 @@ function help_dir(sym,spkey,msg)
         /* 0-27 (note: 28-31 aren't applicable) */
         if(Number(!!(Number(((explain=C.dowhatdoes_core(ctrl,buf2)))!=0)&&(Number(!!(Number(!(C.strchr(wiz_only_list,C.i32(sym))))||C.i32(R65(C.flags)))))))) {
             C.variadic(97,buf,C.literal("Are you trying to use ^%c%s?"),C.i32(sym),(C.strchr(wiz_only_list,C.i32(sym))?C.literal(""):C.literal(" as specified in the Guidebook")));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,explain);
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("To use that command, hold down the <Ctrl> key as a shift"));
+            NWC8(R164(C.windowprocs),win,0,buf);
+            NWC8(R164(C.windowprocs),win,0,C.literal(""));
+            NWC8(R164(C.windowprocs),win,0,explain);
+            NWC8(R164(C.windowprocs),win,0,C.literal(""));
+            NWC8(R164(C.windowprocs),win,0,C.literal("To use that command, hold down the <Ctrl> key as a shift"));
             C.variadic(98,buf,C.literal("and press the <%c> key."),C.i32(sym));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
+            NWC8(R164(C.windowprocs),win,0,buf);
+            NWC8(R164(C.windowprocs),win,0,C.literal(""));
         }
     }
     C.variadic(99,buf,C.literal("Valid direction keys%s%s%s are:"),(C.i32(prefixhandling)?C.literal(" to "):C.literal("")),(C.i32(prefixhandling)?dothat:C.literal("")),((Number((R188(C.u))==C.PM_GRID_BUG))?C.literal(" in your current form"):C.literal("")));
-    C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
+    NWC8(R164(C.windowprocs),win,0,buf);
     show_direction_keys(win,C.i8((Number(!(prefixhandling))?46:32)),C.i8((Number((R188(C.u))==C.PM_GRID_BUG))));
     if(Number(!(prefixhandling))) {
         /* NOPICKUP: unlike the other prefix keys, 'm' allows up/down for
            stair traversal; we won't get here when "m<" or "m>" has been
            given but we include up and down for 'm'+invalid_direction;
            self is excluded as a viable direction for every prefix */
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("          <  up"));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("          >  down"));
+        NWC8(R164(C.windowprocs),win,0,C.literal(""));
+        NWC8(R164(C.windowprocs),win,0,C.literal("          <  up"));
+        NWC8(R164(C.windowprocs),win,0,C.literal("          >  down"));
         if(Number(!(prefixhandling))) {
             let selfi=(C.i32(R21(A91(C.gc)))?C.NHKF_GETDIR_SELF2:C.NHKF_GETDIR_SELF);
             C.variadic(100,buf,C.literal("       %4s  direct at yourself"),C.visctrl(C.cell((A29(A91(C.gc))+Number(selfi)*1),"char").value));
-            C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,buf);
+            NWC8(R164(C.windowprocs),win,0,buf);
         }
     }
     if(msg) {
         /* non-null msg means that this wasn't an explicit user request */
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal(""));
-        C.callProc((R164(C.windowprocs)),"void (winid, int, const char *)",win,0,C.literal("(Suppress this message with !cmdassist in config file.)"));
+        NWC8(R164(C.windowprocs),win,0,C.literal(""));
+        NWC8(R164(C.windowprocs),win,0,C.literal("(Suppress this message with !cmdassist in config file.)"));
     }
-    C.callProc((R162(C.windowprocs)),"void (winid, boolean)",win,(C.i8(0)));
-    C.callProc((R163(C.windowprocs)),"void (winid)",win);
+    NWC9(R162(C.windowprocs),win,C.i8(0));
+    NWC6(R163(C.windowprocs),win);
     return (C.i8(1));
     } finally {C.stackRestore(stackFrame); }
 }
@@ -3840,8 +3858,8 @@ function there_cmd_menu(x,y,mod)
     /*int dx = sgn(x - u.ux), dy = sgn(y - u.uy);*/
     let dx=C.i16(C.i32((C.i32(x)-C.i32(R177(C.u))))); let dy=C.i16(C.i32((C.i32(y)-C.i32(R178(C.u)))));
     let actAddress=C.stackAlloc(4); C.cell(actAddress,"int").value=C.MCMD_NOTHING;
-    (win=C.callProc((R160(C.windowprocs)),"winid (int)",4));
-    C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",win,C.u64(0));
+    (win=NWC3(R160(C.windowprocs),4));
+    NWC4(R165(C.windowprocs),win,C.u64(0));
     if((Number(!!(Number(C.i32((x))==C.i32(R177(C.u)))&&Number(C.i32((y))==C.i32(R178(C.u))))))) (K=C.i32(K+there_cmd_menu_self(win,x,y,actAddress)));
  else if((Number(C.dist2(((x)),((y)),R177(C.u),R178(C.u))<=2))) (K=C.i32(K+there_cmd_menu_next2u(win,x,y,mod,actAddress)));
  else (K=C.i32(K+there_cmd_menu_far(win,x,y,mod)));
@@ -3859,15 +3877,15 @@ function there_cmd_menu(x,y,mod)
         (npick=0);
         (ch=C.i8(0));
     } else if(Number(!!(Number(!!(Number(K==1)&&Number(C.cell(actAddress,"int").value!=C.MCMD_NOTHING)))&&Number(C.cell(actAddress,"int").value!=C.MCMD_TRAVEL)))) {
-        C.callProc((R163(C.windowprocs)),"void (winid)",win);
+        NWC6(R163(C.windowprocs),win);
         act_on_act(C.cell(actAddress,"int").value,dx,dy);
         return C.i8(0);
     } else {
-        C.callProc((R166(C.windowprocs)),"void (winid, const char *)",win,C.literal("What do you want to do?"));
+        NWC5(R166(C.windowprocs),win,C.literal("What do you want to do?"));
         (npick=C.select_menu(win,1,picksAddress));
         (ch=C.i8(27));
     }
-    C.callProc((R163(C.windowprocs)),"void (winid)",win);
+    NWC6(R163(C.windowprocs),win);
     if(Number(npick>0)) {
         (C.cell(actAddress,"int").value=R17(A120(C.cell(picksAddress,"struct mi *").value)));
         C.free(C.cell(picksAddress,"struct mi *").value);
@@ -4028,7 +4046,7 @@ function get_count(allowchars,inkey,maxcount,count,gc_flags)
             break;
         }
         if(Number(!!(Number(!!(Number(cnt>C.i64(9))||C.i32(backspaced)))||C.i32(echoalways)))) {
-            C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+            NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
             if(Number(!!(Number(!!(C.i32(backspaced)&&Number(!(cnt))))&&Number(!(showzero))))) {
                 C.variadic(118,qbuf,C.literal("Count: "));
             } else {
@@ -4036,13 +4054,13 @@ function get_count(allowchars,inkey,maxcount,count,gc_flags)
                 (backspaced=(C.i8(0)));
             }
             C.variadic(120,C.u32(4),C.literal("%s"),qbuf);
-            C.callProc((R167(C.windowprocs)),"void (void)");
+            NWC12(R167(C.windowprocs));
         }
     }
     if(Number(!!(C.i32(historicmsg)||(Number(!!(C.i32(conditionalmsg)&&Number(C.cell(count,"long").value!=first))))))) {
         C.variadic(121,qbuf,C.literal("Count: %ld "),C.cell(count,"long").value);
         key2txt(C.u8(key),C.eos(qbuf));
-        C.callProc((R175(C.windowprocs)),"void (const char *, boolean)",qbuf,(C.i8(0)));
+        NWC13(R175(C.windowprocs),qbuf,C.i8(0));
     }
     return C.i8(key);
     } finally {C.stackRestore(stackFrame); }
@@ -4076,7 +4094,7 @@ function parse()
     (W101(C.gl,R95(C.gc)));
     if(Number(foo==C.i32(C.cell((A29(A91(C.gc))+Number(C.NHKF_ESC)*1),"char").value))) {
         /* esc cancels count (TH) */
-        C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+        NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
         (W95(C.gc,C.i64(0)));
         (W101(C.gl,C.i64(0)));
     } else if(R98(C.gi)) {
@@ -4092,7 +4110,7 @@ function parse()
     (W103(C.gm,R95(C.gc)));
     if(R103(C.gm)) ((W103(C.gm,C.i64((R103(C.gm)-1n))))+1n);
     (W93(C.gc,foo));
-    C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+    NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
     (W82(C.iflags,C.i8(0)));
     return R93(C.gc);
 }
@@ -4129,7 +4147,7 @@ function end_of_input()
     /* don't save in tutorial */
     if(R145(C.program_state)) C.dosave0();
     if(R149(C.soundprocs)) C.callProc((R149(C.soundprocs)),"void (const char *)",C.literal("end_of_input"));
-    if(R79(C.iflags)) C.callProc((R159(C.windowprocs)),"void (const char *)",0);
+    if(R79(C.iflags)) NWC14(R159(C.windowprocs),0);
     C.clearlocks();
     C.nh_terminate(0);
     /*NOTREACHED*/
@@ -4148,7 +4166,7 @@ function readchar_core(x,y,mod)
         }
         if(C.cell(C.cell(C.readchar_queue,"char *").value,"char").value) (sym=C.i32(C.cell(((C.cell(C.readchar_queue,"char *").value=C.ptr((C.cell(C.readchar_queue,"char *").value+Number(1))))-Number(1)),"char").value));
  else if(R98(C.gi)) (sym=C.i32(pgetchar()));
- else (sym=C.callProc((R170(C.windowprocs)),"int (coordxy *, coordxy *, int *)",x,y,mod));
+ else (sym=NWC15(R170(C.windowprocs),x,y,mod));
         if(Number(sym==(C.i32((-1))))) {
             let cnt=20;
             /*
@@ -4323,11 +4341,11 @@ function yn_function_menu(query,resp,def,res)
     const stackFrame=C.stackSave();
     try {
     if(yn_menuable_resp(resp)) {
-        let win=C.callProc((R160(C.windowprocs)),"winid (int)",4);
+        let win=NWC3(R160(C.windowprocs),4);
         let selAddress=C.stackAlloc(8);
         let n;
         let keybuf=C.stackAlloc((1*128));
-        C.callProc((R165(C.windowprocs)),"void (winid, unsigned long)",win,C.u64(0));
+        NWC4(R165(C.windowprocs),win,C.u64(0));
         if(Number(resp==C.rightleftchars)) {
             yn_func_menu_opt(win,C.i8(114),C.literal("Right"),def);
             yn_func_menu_opt(win,C.i8(108),C.literal("Left"),def);
@@ -4340,9 +4358,9 @@ function yn_function_menu(query,resp,def,res)
         }
         if(Number(resp==C.ynaqchars)) yn_func_menu_opt(win,C.i8(97),C.literal("All"),def);
         if(Number(!!(Number(!!(Number(resp==C.ynqchars)||Number(resp==C.ynaqchars)))||Number(resp==C.hidespinchars)))) yn_func_menu_opt(win,C.i8(113),C.literal("Quit"),def);
-        C.callProc((R166(C.windowprocs)),"void (winid, const char *)",win,query);
+        NWC5(R166(C.windowprocs),win,query);
         (n=C.select_menu(win,1,selAddress));
-        C.callProc((R163(C.windowprocs)),"void (winid)",win);
+        NWC6(R163(C.windowprocs),win);
         if(Number(n>0)) {
             (C.cell(res,"char").value=R18(A120(C.cell(selAddress,"struct mi *").value+Number(0)*C.sizes["struct mi"])));
             /* two were selected? use the one that wasn't the default */
@@ -4352,7 +4370,7 @@ function yn_function_menu(query,resp,def,res)
             (C.cell(res,"char").value=def);
         }
         C.variadic(125,C.literal("%s %s"),query,key2txt(C.u8(C.cell(res,"char").value),keybuf));
-        C.callProc((R161(C.windowprocs)),"void (winid)",C.global("WIN_MESSAGE").value);
+        NWC7(R161(C.windowprocs),C.global("WIN_MESSAGE").value);
         return (C.i8(1));
     }
     return (C.i8(0));
@@ -4420,7 +4438,7 @@ function yn_function(query,resp,def,addcmdq)
         }
     } else {
         if(Number(!(yn_function_menu(query,resp,def,resAddress)))) {
-            (C.cell(resAddress,"char").value=C.callProc((R173(C.windowprocs)),"char (const char *, const char *, char)",query,resp,def));
+            (C.cell(resAddress,"char").value=NWC16(R173(C.windowprocs),query,resp,def));
         }
     }
     if(addcmdq) cmdq_add_key(C.CQ_REPEAT,C.cell(resAddress,"char").value);
@@ -4538,7 +4556,7 @@ function paranoid_query(be_paranoid,prompt)
 function dosuspend_core()
 {
     /* Does current window system support suspend? */
-    if(C.callProc((R176(C.windowprocs)),"boolean (void)")) {
+    if(NWC17(R176(C.windowprocs))) {
         let now=C.getnow();
         (W156(C.urealtime,C.i64(R156(C.urealtime)+C.timet_delta(now,R157(C.urealtime)))));
         (W157(C.urealtime,now));

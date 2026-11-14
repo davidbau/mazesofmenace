@@ -35,7 +35,7 @@ import { tin_details } from './eat.js';
 import { game } from './gstate.js';
 import { count_contents, currency } from './invent.js';
 import {
-    digit, dist2, encodeUtf8ByteString, eos, highc, lowc, mungspaces, ordin,
+    digit, dist2, textBytes, eos, highc, lowc, mungspaces, ordin,
     s_suffix, strcasecpy, strstri, truncateByteString,
     upstart,
     push_front, lcase, strncmpi,
@@ -84,7 +84,7 @@ import {
     TOWEL, T_SHIRT, VENOM_CLASS, WAND_CLASS, WEAPON_CLASS, WOODEN_HARP,
     YELLOW_DRAGON_SCALE_MAIL, YELLOW_DRAGON_SCALES,
     HORN_OF_PLENTY,
-    GOLD_PIECE, STRANGE_OBJECT,
+    GOLD_PIECE, NUM_OBJECTS, STRANGE_OBJECT,
 } from './objects.js';
 import {
     append_price_quote,
@@ -170,7 +170,7 @@ const DONAME_BODY_CAPACITY = BUFSZ - PREFIX - 1;
 // at eos-delta and therefore replaces that byte.
 function nameBodySpaceLeft(body, pointerOffset = 0) {
     return Math.max(0, DONAME_BODY_CAPACITY - pointerOffset
-        - encodeUtf8ByteString(body).length);
+        - textBytes(body).length);
 }
 
 export function concatNameBody(body, text, delta = 0, pointerOffset = 0) {
@@ -182,7 +182,7 @@ export function concatNameBody(body, text, delta = 0, pointerOffset = 0) {
 export function concatFormatNameBody(
     body, text, delta = 0, pointerOffset = 0, cachedSpaceLeft = null,
 ) {
-    const bodyLength = encodeUtf8ByteString(body).length;
+    const bodyLength = textBytes(body).length;
     const startLength = Math.max(0, bodyLength - delta);
     const start = truncateByteString(body, startLength);
     // append_price_quote() advances C's bp_eos without updating the cached
@@ -200,8 +200,8 @@ const DONAME_FOR_MENU = 4;
 // C ref: objnam.c xcalled():558–572. JavaScript returns the appended buffer;
 // siz includes the terminating NUL, and only the user-supplied suffix truncates.
 export function xcalled(buf, siz, pfx, sfx) {
-    const bufsiz = siz - 1 - encodeUtf8ByteString(buf).length;
-    const pfxlen = encodeUtf8ByteString(pfx).length + ' called '.length;
+    const bufsiz = siz - 1 - textBytes(buf).length;
+    const pfxlen = textBytes(pfx).length + ' called '.length;
     if (pfxlen > bufsiz)
         throw new RangeError(`xcalled: not enough room for prefix (${pfxlen} > ${bufsiz})`);
     return `${buf}${pfx} called ${truncateByteString(sfx, bufsiz - pfxlen)}`;
@@ -299,6 +299,26 @@ export function simple_typename(otyp, state = game) {
     const pp = bufp.indexOf(' (');
     /* strip the appended description */
     return pp >= 0 ? bufp.slice(0, pp) : bufp;
+}
+
+// C ref: objnam.c safe_typename() (310-330). A type name for debugging
+// feedback where the data may be suspect: an otyp out of range or without a
+// name gets "glorkum[otyp]" and its own impossible() report, which this
+// synchronous port records as unported; any other type is named as if fully
+// discovered.
+export function safe_typename(otyp, state = game) {
+    if (otyp < STRANGE_OBJECT || otyp >= NUM_OBJECTS
+        || !OBJ_NAME(state.objects[otyp], state)) {
+        note_unported('pline.c impossible');
+        return `glorkum[${otyp}]`;
+    }
+    /* force it to be treated as fully discovered */
+    const ocl = state.objects[otyp];
+    const save_nameknown = ocl.oc_name_known;
+    ocl.oc_name_known = 1;
+    const res = simple_typename(otyp, state);
+    ocl.oc_name_known = save_nameknown;
+    return res;
 }
 
 // C ref: objnam.c mimic_obj_name() (5606–5616).
@@ -728,10 +748,13 @@ export function just_an(str) {
         ? 'an ' : 'a ';
 }
 
-// C ref: objnam.c an(). C answers "an []" through impossible() for an empty
-// name; nothing in the port can supply one, so that stays a thrown error.
+// C ref: objnam.c an() (2145-2156). An empty or missing name is reported
+// through impossible() and answered with "an []".
 export function an(str) {
-    if (!str) throw new Error(`an() requires a name; got ${String(str)}`);
+    if (!str) {
+        note_unported('pline.c impossible');
+        return 'an []';
+    }
     const article = just_an(str);
     // C an() uses strncat(BUFSZ - 1 - Strlen(buf)); preserve its byte limit.
     const remaining = BUFSZ - 1 - Strlen_(article, 'an', 2154);
@@ -1038,7 +1061,7 @@ export function thesimpleoname(obj, state = game) {
 // The object is not permanently modified.
 export function short_oname(obj, func, altfunc, lenlimit, state = game) {
     let out = func(obj, state);
-    const byteLength = (value) => encodeUtf8ByteString(value).length;
+    const byteLength = (value) => textBytes(value).length;
     if (byteLength(out) <= lenlimit) return out;
 
     // C ref: objnam.c:2023-2063. The fixed local buffers hold eight bytes
@@ -1564,10 +1587,10 @@ export function singular(otmp, func, state) {
 // names, and treats a configured fruit as an ordinary noun unless an artifact
 // of that name deliberately lacks the article.
 export function the(str, state = game) {
+    // objnam.c the():2177-2180
     if (!str) {
-        // C's impossible() returns "the []" and carries on. Reaching it means
-        // a caller handed this an empty name, which is a defect here.
-        throw new Error('the(): empty name');
+        note_unported('pline.c impossible');
+        return 'the []';
     }
     if (lcase(str.slice(0, 4)) === 'the ')
         return lcase(str[0]) + str.slice(1);
@@ -1603,8 +1626,8 @@ export function the(str, state = game) {
                 } else if (namingIndex < 0) {
                     const length = Strlen_(str, 'the', 2220);
                     if (length >= 31) {
-                        const bytes = encodeUtf8ByteString(str).slice(0, length);
-                        const suffix = encodeUtf8ByteString(
+                        const bytes = textBytes(str).slice(0, length);
+                        const suffix = textBytes(
                             'Platinum Yendorian Express Card',
                         );
                         if (bytes.length >= suffix.length
@@ -1812,7 +1835,7 @@ function doname_base(
     case ARMOR_CLASS:
         if (base.startsWith('poisoned ') && obj.opoisoned) {
             base = base.slice('poisoned '.length);
-            bufferOffset += encodeUtf8ByteString('poisoned ').length;
+            bufferOffset += textBytes('poisoned ').length;
             modifiers.push('poisoned');
         }
         modifiers.push(...erosionWords(obj, state, ident.rknown));
@@ -2002,7 +2025,7 @@ function doname_base(
         words = unprefixedWords;
     }
 
-    const byteLength = encodeUtf8ByteString(words).length;
+    const byteLength = textBytes(words).length;
     if (byteLength > BUFSZ - 1)
         throw new RangeError('doname: long object description overflow.');
     const menuOffset = forMenu ? 4 : 0;
@@ -2146,7 +2169,7 @@ export function safe_qbuf(
     const qprefix = prefix == null ? '' : String(prefix);
     const qsuffix = suffix == null ? '' : String(suffix);
     const fallback = String(lastR);
-    const byteLength = (value) => encodeUtf8ByteString(value).length;
+    const byteLength = (value) => textBytes(value).length;
     let result = truncateByteString(qprefix, limit);
 
     if (byteLength(result) + byteLength(fallback) + byteLength(qsuffix)

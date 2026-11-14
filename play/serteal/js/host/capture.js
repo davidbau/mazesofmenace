@@ -1,25 +1,24 @@
-// host/capture.js - what the judge receives from a segment, whatever runs the game.
+// host/capture.js - the channels a segment produces: screens, cursors and animation
+// frames per step, plus the RNG log.
 //
 // The game's tty code builds the terminal image itself (win/tty/termcap.c
 // NOMUX capture) and hands it over at every input boundary ("input": the
 // game is about to read a key) and at every animation step ("anim").  This
-// module turns those into the judge's channels: screens, cursors and
-// animation frames per step, plus the RNG log, and keeps the bookkeeping
+// module turns those into the scored channels and keeps the bookkeeping
 // that interactive play rewinds (see host/snapshot.js).
 
-// The bytes the game reads for one UTF-16 unit of `moves`.  The reference
-// sessions were typed one byte per key: a unit below 0x100 is that byte
-// (Latin-1), with CR turned into LF as a tty would.  Anything above has no
-// single-byte form and is sent as UTF-8; a lone surrogate becomes U+FFFD.
-export function keyBytes(unit) {
+import { utf8Bytes } from "./utf8.js";
+
+// The bytes the game reads for one UTF-16 unit of `moves`: a key below 0x100 is one byte
+// (Latin-1), with CR turned into LF as a tty would.  Anything above has no single-byte form
+// and is sent as UTF-8; a lone surrogate becomes U+FFFD.
+function keyBytes(unit) {
   if (unit === 13) return [10];
   if (unit < 0x100) return [unit];
-  if (unit < 0x800) return [0xc0 | (unit >> 6), 0x80 | (unit & 0x3f)];
-  if (unit >= 0xd800 && unit <= 0xdfff) return [0xef, 0xbf, 0xbd];
-  return [0xe0 | (unit >> 12), 0x80 | ((unit >> 6) & 0x3f), 0x80 | (unit & 0x3f)];
+  return utf8Bytes(String.fromCharCode(unit));
 }
 
-/** Lines of the RNG log file as the judge compares them ("rn2(12)=5"). */
+/** Lines of the RNG log file as they are compared ("rn2(12)=5"). */
 export function splitRngLog(text) {
   return String(text || "")
     .split(/\r?\n/)
@@ -28,18 +27,19 @@ export function splitRngLog(text) {
 }
 
 /**
- * The recorder stores an empty screen, which the judge skips, only when each
- * of the first 24 lines holds nothing but spaces.  A screen of attribute or
- * charset codes around spaces is kept and compared like any other.
+ * A screen is blank, and not kept, only when each of the first 24 lines holds
+ * nothing but spaces.  A screen of attribute or charset codes around spaces is
+ * kept and compared like any other.
  */
-export function isBlankCapturedScreen(screen) {
+function isBlankCapturedScreen(screen) {
   return String(screen || "")
     .split("\n")
     .slice(0, 24)
     .every((line) => /^ *$/.test(line));
 }
 
-export function canonicalizeCapturedScreen(screen) {
+// runs of 5 or more spaces as cursor-forward sequences; no trailing empty lines
+function canonicalizeCapturedScreen(screen) {
   const lines = String(screen || "")
     .split("\n")
     .map((line) => line.replace(/ {5,}/g, (spaces) => `\x1b[${spaces.length}C`));
@@ -49,8 +49,8 @@ export function canonicalizeCapturedScreen(screen) {
 
 /**
  * Keys, screens, cursors and animation frames of one segment.
- * The recorder keeps the first moves.length + 1 input boundaries; the judge
- * drops blank screens but indexes animation frames by step.
+ * The first moves.length + 1 input boundaries are kept; blank screens are
+ * dropped, but animation frames are indexed by step.
  */
 export class CaptureLog {
   constructor(moves = "") {

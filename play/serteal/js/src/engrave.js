@@ -1570,11 +1570,11 @@ export function engr_stats(
     size) { /* void */
     let ep;
 
-    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_struct_engr);
+    sprintf(hdrbuf, hdrfmt, NHJS_SIZEOF_struct_engr);
     count[0] = size[0] = 0;
     for (ep = head_engr; ep; ep = ep.nxt_engr) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_struct_engr + ep.engr_alloc;
+        size[0] += NHJS_SIZEOF_struct_engr + ep.engr_alloc;
     }
 }
 
@@ -1727,7 +1727,7 @@ import {
 } from "./mondata.h.macros.js";
 import { MZ_HUGE } from "./monflag.h.js";
 import { PM_GHOUL } from "./monsters.h.js";
-import { NHJS_LP64_SIZEOF_struct_engr } from "./nhjs_recorder_sizes.h.js";
+import { NHJS_SIZEOF_struct_engr } from "./nhjs_struct_sizes.h.js";
 import { bimanual, is_blade, is_boots, is_wet_towel } from "./obj.h.macros.js";
 import {
     ATHAME, MAGIC_MARKER, TOWEL, WAN_CANCELLATION, WAN_COLD, WAN_CREATE_MONSTER, WAN_DEATH,

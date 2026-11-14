@@ -1,11 +1,18 @@
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
+import {compileNativeFieldPlans} from './native/address-fields.js';
 // Shared record/file/callback transport for unchanged DO lifecycle policies.
 import abi from './do-lifecycle-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as source from '../ported/do.js';
 import {callDo} from './bindings/do.js';
 
+const descriptorScalar=d=>d.t?{i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'}[d.t]:'void *';
+const nativeSchema={schema:Object.fromEntries(Object.entries(abi.schemas).map(([name,row])=>[name,{ctype:row.ctype,fields:row.fields.map(f=>({name:f.name,canonical:f.d.s||f.d.a?f.ctype:descriptorScalar(f.d),bit:f.bit}))}]))};
+export function createDoFieldPlans(environment){return compileNativeFieldPlans(environment,nativeSchema);}
 export function enableDoLifecycle(environment,layouts){
  const {services,ctypes,memory}=environment,L=layouts.do,address=environment.address;
+ const owner=nativeStateFor(environment);createNativeRecordViews(environment);
  const text=v=>typeof v==='string'?services.literal(v):address(v);
  const argumentsForBoundary=args=>args.map(v=>typeof v==='string'?services.literal(v):v?.address??v);
  const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
@@ -27,7 +34,7 @@ export function enableDoLifecycle(environment,layouts){
   const match=prototype.match(/^(.+?)\s*\((.*)\)$/);if(!match)throw new Error('Unknown DO callback prototype '+prototype);
   return[match[1],...match[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')].map(t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':/\b(float|double)\b/.test(t)?'d':ctypes.size(t)===8?'j':'i';}).join('');
  };
- Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,
+ Object.assign(local,{nativeOwner:owner,nativeFieldPlans:createDoFieldPlans(environment),moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,
   rectState:undefined,trackState:undefined,
   global:i=>{const row=abi.globals[i];if(!row)throw new Error('Unknown DO global '+i);return environment.requireGlobal(row.name);},
   read:(k,p,i)=>{const {type,f}=field(k,i);return f.d.a||f.d.s?BigInt(ctypes.locate(type,address(p),f.name).at):ctypes.getField(type,address(p),f.name,scalar(f.d));},
@@ -51,6 +58,7 @@ export function enableDoLifecycle(environment,layouts){
   return resolve(site.actual)(...packed);
  };
  const names=Object.keys(source).filter(name=>typeof source[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
- environment.register('do-lifecycle',Object.fromEntries(names.map(name=>[name,(...args)=>callDo(local,L,name,...args)])));
+ const entries=Object.fromEntries(names.map(name=>{const fn=(...args)=>callDo(local,L,name,...args);fn.nativeState=owner;fn.nativeDirect=true;fn.nativePrepared=true;owner.functions.set(name,fn);return[name,fn];}));
+ environment.register('do-lifecycle',entries,local);
  return{services:local,buffer,exports:names,limitation:'Original DO shared transport connected; checkpointing, level transitions, item actions and other lifecycle dependencies require actual providers and original-C acceptance.'};
 }

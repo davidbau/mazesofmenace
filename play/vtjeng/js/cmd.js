@@ -120,7 +120,6 @@ import { ballrelease, placebc, unplacebc } from './ball.js';
 import {
     dosearch,
     reveal_terrain,
-    UnsupportedSearchError,
 } from './detect.js';
 import {
     bot,
@@ -134,7 +133,6 @@ import {
     newsym,
     objnum_to_glyph,
     vobj_at,
-    UnsupportedTransientDisplayError,
 } from './display.js';
 import {
     dodown,
@@ -147,7 +145,7 @@ import {
     doremring, doputon, dotakeoff, dowear, ia_dotakeoff, remarm_swapwep,
     reset_remarm, doddoremarm,
 } from './do_wear.js';
-import { doclose, doforce, doopen, reset_pick, UnsupportedLockError } from './lock.js';
+import { doclose, doforce, doopen, reset_pick } from './lock.js';
 import {
     attacktype,
     can_breathe,
@@ -180,9 +178,8 @@ import {
     dodip,
     dip_into,
     split_mon,
-    UnsupportedQuaffError,
 } from './potion.js';
-import { dryup, UnsupportedFountainError } from './fountain.js';
+import { dryup } from './fountain.js';
 import { is_pool } from './dbridge.js';
 import {
     BOULDER,
@@ -244,7 +241,7 @@ import {
     strstri,
     strsubst,
     truncateByteString,
-    encodeUtf8ByteString,
+    textBytes,
     appendLongDigit,
     upstart,
     visctrl,
@@ -267,7 +264,6 @@ import {
     carrying,
     getobj,
     hands_obj,
-    UnsupportedFeatureDescriptionError,
 } from './invent.js';
 import {
     doattributes,
@@ -307,7 +303,6 @@ import {
     dowhatis,
 } from './pager.js';
 import { dopay } from './shk.js';
-import { UnsupportedVaultGuardError } from './vault.js';
 import { dofire, dothrow } from './dothrow.js';
 import { dosit } from './sit.js';
 import { clear_kickedloc, dokick } from './dokick.js';
@@ -334,16 +329,13 @@ import {
     test_move,
     u_maybe_impaired,
     NODIAG,
-    UnsupportedHeroMoveBoundaryError,
 } from './hack.js';
 import { nhgetch } from './input.js';
 import { doride, Punished } from './steed.js';
 import { done2, nh_terminate } from './end.js';
-import { UnsupportedAbilityChangeError } from './attrib.js';
-import { UnsupportedExperienceChangeError } from './exper.js';
 import { doread } from './read.js';
 import {
-    UnsupportedPolyselfError, dobreathe, dogaze, dohide, domindblast,
+    dobreathe, dogaze, dohide, domindblast,
     dopoly, doremove, dospinweb, dospit, dosummon,
 } from './polyself.js';
 import {
@@ -360,12 +352,11 @@ import {
     dotwoweapon,
     dowieldquiver,
     dowield,
-    UnsupportedWieldError,
     cantwield,
 } from './wield.js';
 import { coreRandom, rn1, rn2, rnd } from './rng.js';
 import { aggravate_steps } from './wizard.js';
-import { dotalk, UnsupportedChatError } from './sounds.js';
+import { dotalk } from './sounds.js';
 import {
     clearTtyMessageWindow,
     ttyCustomPline,
@@ -854,7 +845,7 @@ export async function yn_function(
 
     // cmd.c:5486-5491: the maximum acceptable length is QBUFSZ-1 bytes.
     // paniclog() appends the query to a log file, which a game cannot see.
-    if (encodeUtf8ByteString(query).length >= QBUFSZ) {
+    if (textBytes(query).length >= QBUFSZ) {
         note_unported('files.c paniclog');
         query = `${truncateByteString(query, QBUFSZ - 1 - 3)}...`;
     }
@@ -967,9 +958,9 @@ export async function paranoid_ynq(be_paranoid, prompt, accept_q, state = game) 
         let promptPrefix = '';
         let tryLimit = 6;
         do {
-            const k = encodeUtf8ByteString(promptPrefix).length + 1
-                + encodeUtf8ByteString(responseType).length;
-            if (encodeUtf8ByteString(pbuf).length + k > QBUFSZ - 1) {
+            const k = textBytes(promptPrefix).length + 1
+                + textBytes(responseType).length;
+            if (textBytes(pbuf).length + k > QBUFSZ - 1) {
                 const retained = QBUFSZ - 1 - k - 4;
                 pbuf = `${truncateByteString(pbuf, retained)}...?`;
             }
@@ -2850,17 +2841,11 @@ async function executeMovement(command, key, firstTime, state) {
     // rejected command for elapsed time.
     const newx = state.u.ux + dx;
     const newy = state.u.uy + dy;
-    try {
-        // domove_core() returns from carrying_too_much() (hack.c:2730-2731)
-        // before it reads the destination, so an overloaded or exhausted
-        // hero never reaches the arrival effects the preflight plans.
-        if (!carryingTooMuchToMove(state))
-            preflightDomoveDestination(newx, newy, state, run);
-    } catch (error) {
-        if (error instanceof UnsupportedHeroMoveBoundaryError)
-            resetCommandVars(state);
-        throw error;
-    }
+    // domove_core() returns from carrying_too_much() (hack.c:2730-2731)
+    // before it reads the destination, so an overloaded or exhausted hero
+    // never reaches the arrival effects the preflight plans.
+    if (!carryingTooMuchToMove(state))
+        preflightDomoveDestination(newx, newy, state, run);
 
     set_move_cmd(xytodir(dx, dy), run, state);
     state.context.move = 1;
@@ -2949,34 +2934,6 @@ function restoreParsedCommand(pending, state) {
 // preamble allmain.c moveloop() runs before its first moveloop_core().
 export function failClosedCommandRefusals() {
     return [
-        UnsupportedFeatureDescriptionError,
-        // end.c really_done() calls paygd() on every death, so a vault guard
-        // owed the hero's gold refuses below a killing blow. The hero's own
-        // command reaches that death through losehp(), and js/allmain.js
-        // converts the same class where a monster's attack reaches it.
-        UnsupportedVaultGuardError,
-        UnsupportedSearchError,
-        // lock.c pick_lock() stops inside doapply()'s lock-pick arm.
-        UnsupportedLockError,
-        // The `f` command's files: wield.c the branches ready_weapon()
-        // reaches when the swap-and-retry arm puts a launcher in the hero's
-        // hand, and display.c the one transient-glyph style bhit() never
-        // opens.
-        UnsupportedWieldError,
-        UnsupportedTransientDisplayError,
-        // Keep the experience/attribute refusal classes recognizable at this
-        // boundary. pluslvl() and setuhpmax() now handle their polymorphed
-        // branches, and ordinary level loss is implemented.
-        UnsupportedExperienceChangeError,
-        UnsupportedAbilityChangeError,
-        // potion.c dodrink()/dopotion()/peffects() still raises this for
-        // unported potion-effect arms. dodrink()'s unported void helpers use
-        // named note_unported gaps and continue in source order instead.
-        UnsupportedQuaffError,
-        // fountain.c drinkfountain(), dowaterdemon(), dipfountain(),
-        // and dryup() raise this for the fountain-effect arms this port
-        // leaves unported.
-        UnsupportedFountainError,
         // invent.c hold_another_object(), which makewish() calls unguarded,
         // raises it from its drop, artifact, Fumbling and autoquiver arms. A
         // wish heavy or numerous enough to push near_capacity() past
@@ -2985,18 +2942,6 @@ export function failClosedCommandRefusals() {
         // elapsedTurnRefusals() already lists the class, and the note
         // above says a class several paths can reach belongs in each.
         UnsupportedObjectOperationError,
-        // sounds.c dochat() reaches this for a shop's merchandise, for a
-        // steed, and for a monster on the target square, all three of which
-        // continue into a function this goal leaves unported.
-        UnsupportedChatError,
-        // polyself.c polymon(), break_armor(), drop_weapon(), and polyself()
-        // raise this for every form whose species-specific branches are not
-        // ported: dragon HP, golem HP, breakarm armor paths, horned/headless
-        // gear, forced weapon drops, iswere/isvamp/draconian gotos, random
-        // selection, and newman(). Each guard fires after getlin() has echoed
-        // the typed monster name and after the controlled-input loop has
-        // committed the species.
-        UnsupportedPolyselfError,
     ];
 }
 
@@ -5289,17 +5234,11 @@ export const DISPATCHED_COMMANDS = Object.freeze(
 );
 
 // C ref: the `(*func)()` call in rhack() and doextcmd(), for one extcmdlist[]
-// row. The refusal stands where C would call into a function this port lacks.
+// row. EXTCMD_FUNCTIONS holds every row but '#' and the two MOUSECMD rows,
+// which rhack() runs itself; scripts/command-dispatch-tables.test.mjs pins
+// that.
 async function callExtcmdFunction(entry, key, state) {
-    const func = EXTCMD_FUNCTIONS.get(entry.ef_funct);
-    if (!func) {
-        resetCommandVars(state);
-        throw new UnsupportedHeroCommandBoundaryError(
-            `${entry.ef_funct}() for the extended command '${entry.ef_txt}' is not ported`,
-            key,
-        );
-    }
-    return await func(key, state);
+    return await EXTCMD_FUNCTIONS.get(entry.ef_funct)(key, state);
 }
 
 // C ref: cmd.c doextcmd() (493-519). Only doextlist repeats the
@@ -5355,10 +5294,9 @@ async function doextcmd(key, state, onSelectedEntry = null) {
 const TIMED_OCCUPATION_FUNCTIONS = Object.freeze({ dosearch, donull });
 
 // C ref: cmd.c rhack(). Every bound row is dispatched here, through the arm
-// that names it or through EXTCMD_FUNCTIONS; a row whose function the port
-// lacks is refused by callExtcmdFunction(). On a fresh read parse() always
-// runs to completion first, so such a refusal comes only after get_count() has
-// consumed and echoed its digits and parse()'s closing
+// that names it or through EXTCMD_FUNCTIONS. On a fresh read parse() always
+// runs to completion first, so a refusal raised by the command comes only
+// after get_count() has consumed and echoed its digits and parse()'s closing
 // clear_nhwindow(WIN_MESSAGE) has cleared the row: it happens at the command
 // byte and never at a count digit, and it is retryable. A supplied nonzero key
 // (normally cmdKey during a repeat) is already logical input and retains the
@@ -6565,8 +6503,7 @@ export async function rhack(key, state = game, selectedPrefixEntry = null) {
         state.multi = 0;
     } catch (error) {
         retryableBoundary =
-            error instanceof UnsupportedHeroMoveBoundaryError
-            || error instanceof UnsupportedHeroCommandBoundaryError;
+            error instanceof UnsupportedHeroCommandBoundaryError;
         throw error;
     } finally {
         if (firstTime && !retryableBoundary)

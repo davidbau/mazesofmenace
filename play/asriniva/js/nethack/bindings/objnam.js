@@ -1,3 +1,5 @@
+import {createNativeObjnam} from '../native/objnam.js';
+import {createNativeScalarLocal} from '../native/scalar-local.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // OBJNAM native pointer, layout and original C header representation only.
 // The naming, grammar, wishes and buffer-pool policy remain in objnam.js.
@@ -8,15 +10,21 @@ const nativeReturns = {"Can_fall_thru":"boolean","CapitalMon":"boolean","Strlen_
 const states = new WeakMap();
 export function createObjnamEnvironment(services,L,state){
     const C=Object.assign(Object.create(services),L);
-    const clean=t=>t.replace(/\b(?:const|volatile)\b/g,'').replace(/\s+/g,' ').trim();
-    const canonical=t=>{t=clean(t);const seen=new Set();while(schema.aliases[t]&&!seen.has(t)){seen.add(t);t=clean(schema.aliases[t]);}return t;};
-    const key=t=>canonical(t).replace(/\W+/g,'_').replace(/^_|_$/g,'');
-    const dv=()=>CAdapter.currentDataView(services);
+    const native=services.nativeOwner?.nativeArena?services.nativeOwner:undefined,nativeRecords=native?.nativeRecords;
+    const memo=fn=>{const cache=new Map();return value=>{if(!cache.has(value))cache.set(value,fn(value));return cache.get(value);};};
+    const clean=memo(t=>t.replace(/\b(?:const|volatile)\b/g,'').replace(/\s+/g,' ').trim());
+    const canonical=memo(t=>{t=clean(t);const seen=new Set();while(schema.aliases[t]&&!seen.has(t)){seen.add(t);t=clean(schema.aliases[t]);}return t;});
+    const key=memo(t=>canonical(t).replace(/\W+/g,'_').replace(/^_|_$/g,''));
+    const dv=()=>native?native.nativeArena.view:CAdapter.currentDataView(services);
     const raw=v=>CAdapter.unsignedPointer(v);
-    const address=v=>Number(raw(typeof v==='string'?services.literal(v):v));
+    const address=v=>native&&typeof v==='number'&&Number.isSafeInteger(v)&&v>=0?v:Number(raw(typeof v==='string'?services.literal(v):v));
     const isTable=v=>!!v&&typeof v==='object'&&!!v.table;
+    const nativeTypes=new Map(Object.keys(schema.records).map(t=>[canonical(t).replace(/^(struct |union )/,''),canonical(t)]));
+    const coreTypes=native?new Set(Object.keys(schema.records).filter(t=>services.nativeObjnamTypes.isRecord(t))):undefined;
+    const recordType=o=>nativeTypes.get(nativeRecords?.kindOf(o))??o.nativeType;
+    const privateRecords=new Map(),privatePrototypes=new Map(),decorated=new WeakSet();
     const primitive={char:[1,true],'signed char':[1,true],'unsigned char':[1,false],short:[2,true],'unsigned short':[2,false],int:[4,true],'unsigned int':[4,false],long:[8,true],'unsigned long':[8,false],'long long':[8,true],'unsigned long long':[8,false]};
-    const arrayType=t=>clean(t).match(/^(.*?)\[([^\]]*)\](.*)$/);
+    const arrayType=memo(t=>clean(t).match(/^(.*?)\[([^\]]*)\](.*)$/));
     function size(t){
         t=canonical(t);const a=arrayType(t);
         if(a)return size(a[1]+a[3])*Number(a[2]);
@@ -36,6 +44,7 @@ export function createObjnamEnvironment(services,L,state){
     function ptr(p,t){
         if(isTable(p))return p;
         const a=arrayType(t);t=canonical(t);
+        if(native&&schema.records[t])return record(p,t);
         if(!raw(p))return 0;
         if(a)return address(p);
         return schema.records[t]?record(p,t):address(p);
@@ -55,6 +64,20 @@ export function createObjnamEnvironment(services,L,state){
         return scalar(p,t,value,true);
     }
     function record(p,t){
+        if(native){
+            t=canonical(t);const at=address(p);if(!at)return 0;
+            if(coreTypes.has(t)){const result=nativeRecords.record(t,p);if(!decorated.has(result)){CAdapter.installStringAliases(result,schema.fieldAliases[t]??{},true);decorated.add(result);}return result;}
+            const id=t+':'+at;if(privateRecords.has(id))return privateRecords.get(id);
+            let prototype=privatePrototypes.get(t);if(!prototype){
+                prototype={};const fields=schema.records[t];if(!fields)throw Error('OBJNAM unreviewed private record '+t);
+                for(const [name,d]of Object.entries(fields)){
+                    if(d.bit)throw Error('OBJNAM private bitfield requires compiler plan '+t+'.'+name);
+                    const offset=Number(L[key(t)+'_'+name]),type=canonical(d.type);
+                    Object.defineProperty(prototype,name,{get(){return read(this.address+offset,type);},set(value){write(this.address+offset,type,value);}});
+                }privatePrototypes.set(t,prototype);
+            }
+            const result=Object.assign(Object.create(prototype),{address:at,nativeType:t});privateRecords.set(id,result);return result;
+        }
         if(!raw(p))return 0;t=canonical(t);const at=raw(p),fields=schema.records[t];
         if(!fields)throw Error('OBJNAM unreviewed native record '+t);
         return new Proxy({address:at>BigInt(Number.MAX_SAFE_INTEGER)?at:Number(at),nativeType:t},{
@@ -97,9 +120,9 @@ export function createObjnamEnvironment(services,L,state){
     C.store=(p,t,v)=>{if(isTable(p)){p.table[p.index]=v;return v;}return write(p,t,v);};
     C.reference=(p,t)=>({address:address(p),get value(){return C.deref(p,t);},set value(v){C.store(p,t,v);}});
     C.fieldRef=(o,f)=>{
-        f=schema.fieldAliases[o.nativeType]?.[f]??f;
-        const d=schema.records[o.nativeType]?.[f];
-        if(d&&!d.bit){const p=address(o)+Number(L[key(o.nativeType)+'_'+f]);return schema.records[canonical(d.type)]?record(p,d.type):arrayType(d.type)?p:C.reference(p,d.type);}
+        const type=recordType(o);f=schema.fieldAliases[type]?.[f]??f;
+        const d=schema.records[type]?.[f];
+        if(d&&!d.bit){const p=address(o)+Number(L[key(type)+'_'+f]);return schema.records[canonical(d.type)]?record(p,d.type):arrayType(d.type)?p:C.reference(p,d.type);}
         return {get value(){return o[f];},set value(v){o[f]=v;}};
     };
     C.bump=(ref,delta,post,t)=>{const old=ref.value;ref.value=t.includes('*')?C.ptrAdd(old,delta,t.slice(0,t.lastIndexOf('*'))):typeof old==='bigint'?old+BigInt(delta):old+delta;return post?old:ref.value;};
@@ -111,7 +134,7 @@ export function createObjnamEnvironment(services,L,state){
         return t.includes('*')?ptr(p,t.slice(0,t.lastIndexOf('*'))):p;
     };
     C.argument=(v,t)=>t.includes('*')||arrayType(t)?C.castPointer(v,t):C.castScalar(v,t);
-    C.castScalar=(v,t)=>{t=canonical(t);const [n,s]=primitive[t]??[];if(!n)return v;const b=typeof v==='bigint'?v:BigInt(Math.trunc(Number(v)));return n===8?(s?BigInt.asIntN(64,BigInt(v)):BigInt.asUintN(64,BigInt(v))):Number(s?BigInt.asIntN(n*8,b):BigInt.asUintN(n*8,b));};
+    C.castScalar=(v,t)=>{t=canonical(t);const [n,s]=primitive[t]??[];if(!n)return v;if(native&&n<=4&&typeof v==='number'&&Number.isInteger(v)){if(n===4)return s?v|0:v>>>0;return s?v<<(32-n*8)>>(32-n*8):v&2**(n*8)-1;}const b=typeof v==='bigint'?v:BigInt(Math.trunc(Number(v)));return n===8?(s?BigInt.asIntN(64,BigInt(v)):BigInt.asUintN(64,BigInt(v))):Number(s?BigInt.asIntN(n*8,b):BigInt.asUintN(n*8,b));};
     for(const [name,t]of Object.entries({char:'signed char',uchar:'unsigned char',short:'short',ushort:'unsigned short',int:'int',uint:'unsigned int',long:'long',ulong:'unsigned long'}))C[name]=v=>C.castScalar(v,t);
     for(const [k,v]of Object.entries(L))if(Number(L['constwidth_'+k])===8)C[k]=L['constsigned_'+k]?BigInt.asIntN(64,BigInt(v)):BigInt.asUintN(64,BigInt(v));
     C.float=Math.fround;C.double=Number;
@@ -125,7 +148,7 @@ export function createObjnamEnvironment(services,L,state){
         return address(p);
     };
     C.recordLocal=(t,initializer)=>{const p=services.stackAlloc(size(t));if(initializer)write(p,t,initializer);return record(p,t);};
-    C.scalarLocal=(t,initializer)=>{const p=services.stackAlloc(size(t));if(initializer!==undefined)write(p,t,initializer);return C.reference(p,t);};
+    C.scalarLocal=(t,initializer)=>{const kind={char:'Int8','signed char':'Int8',short:'Int16',int:'Int32'}[canonical(t)];if(native&&kind)return createNativeScalarLocal(initializer,kind,services.stackAlloc,dv,{uninitialized:initializer===undefined});const p=services.stackAlloc(size(t));if(initializer!==undefined)write(p,t,initializer);return C.reference(p,t);};
     C.declareStatic=(name,t,initial)=>{
         if(state.statics.has(name))return;
         if(arrayType(t)){
@@ -153,6 +176,7 @@ export function createObjnamEnvironment(services,L,state){
         const table=tablePointer(rows,0,t);state.tables.set(name,table);C[name]=table;
     }
     C.object=p=>ptr(p,'struct obj');C.fruit=p=>ptr(p,'struct fruit');C.permonst=p=>ptr(p,'struct permonst');C.readData=p=>ptr(p,'struct _readobjnam_data');
+    if(native){C.nativeState=native;C.nativeNamespace=createNativeObjnam(C);}
     return C;
 }
 function stateFor(services){let state=states.get(services.moduleKey);if(!state){state={obufidx:0,statics:new Map(),tables:new Map(),environments:new WeakMap()};states.set(services.moduleKey,state);}return state;}
@@ -178,7 +202,7 @@ export function callObjnam(services,L,name,...args){
     const previous=entry.slot.current;entry.slot.current=services;
     try{
         const saved=services.stackSave();
-        try{return withCEnvironment(entry.environment,()=>core[name](...args));}
+        try{const C=entry.environment;if(!Object.hasOwn(C,'nativeNamespace'))return withCEnvironment(C,()=>core[name](...args));C.nativeState.enter();try{return C.nativeNamespace[name](...args);}finally{C.nativeState.leave();}}
         finally{services.stackRestore(saved);}
     }finally{entry.slot.current=previous;}
 }

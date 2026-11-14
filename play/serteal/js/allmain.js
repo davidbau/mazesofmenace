@@ -8,7 +8,7 @@
 
 import { game } from "./gstate.js";
 import { KEY_BINDINGS } from "./terminal.js";
-import { continueInteractiveGame } from "./jsmain.js";
+import { continueInteractiveGame, gameOnDisplay } from "./jsmain.js";
 
 function programState() {
   game.program_state = game.program_state || {};
@@ -22,9 +22,9 @@ export async function newgame() {
 export async function moveloop_core() {
   const display = game?.nhDisplay;
   if (!display) return;
-  const engine = display._nhjsInteractive?.game;
+  const engine = gameOnDisplay(display);
   if (!engine) {
-    display.putstr?.(0, 0, "Interactive C-to-JS engine is not attached yet.");
+    display.putstr?.(0, 0, "No game has been started on this display.");
     programState().gameover = false;
     return;
   }

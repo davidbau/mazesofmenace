@@ -20,8 +20,23 @@ export function createCmdEnvironment(services,layout,namespace) {
     schema.backings.forEach((row,i)=>{if(!row.name.includes('.')){const at=ptr(services.global(schema.globals.length+i));Object.defineProperty(env,row.name,{value:at});if(!(services.referenceData&&schema.publicData.includes(row.name)))fill(at,row.type,namespace.initializers[row.name](env));}});
     env.staticData=(owner,name,initializer)=>{const key=owner+'.'+name,index=schema.backings.findIndex(row=>row.name===key),row=schema.backings[index];if(index<0)throw Error('Review CMD local static '+key);const at=ptr(services.global(schema.globals.length+index));if(!initialized.has(key)){fill(at,row.type,initializer());initialized.add(key);}return at;};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review CMD varargs site');return services['var'+site](...args);};
-    env.callProc=(fn,prototype,...args)=>{const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error("Review CMD callback prototype "+prototype);return services["call"+i](fn,...args);};
-    if(services.nativeOwner){env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);env.nativeNamespace=createNativeAddressNamespace(env);}
+    env.callProc=(fn,prototype,...args)=>{const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error("Review CMD callback prototype "+prototype);if(prototype==='int (void)'&&fn?.nativeCommandFunction&&fn.nativeState===services.nativeOwner)return fn(...args);return services["call"+i](fn,...args);};
+    env.nativeWindowCall=(field,prototype)=>{
+        const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error('Review CMD native window prototype '+prototype);
+        const dispatch=services.nativeCommandWindowDispatch;
+        if(dispatch?.owner===services.nativeOwner&&typeof dispatch?.bind==='function')return dispatch.bind(field,prototype);
+        return (fn,...args)=>services['call'+i](fn,...args);
+    };
+    if(services.nativeOwner){env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+        const commandFunctions=services.nativeCommandFunctions;
+        if(commandFunctions?.owner===services.nativeOwner&&typeof commandFunctions?.view==='function'){
+            let index=0;for(const [kind,row]of Object.entries(schema.schema))for(const field of row.fields){
+                if(kind==='ext_func_tab'&&field.name==='ef_funct'){
+                    const read=env.nativeFields.readers[index];env.nativeFields.readers[index]=at=>commandFunctions.view(read(at));
+                }index++;
+            }
+        }
+        env.nativeNamespace=createNativeAddressNamespace(env);}
     return env;
 }
 // Runtime scope only: no source CMD algorithm or data.

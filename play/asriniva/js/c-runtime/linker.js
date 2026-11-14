@@ -7,7 +7,15 @@ export function createLinker({memory,transport,functions,services,ctypes,prototy
     function functionPointer(name,signature,invoke) {
         const previous=symbolPointers.get(name);
         if(previous){if(previous.signature!==signature)throw new Error('Conflicting C function prototype '+name);return previous.id;}
-        const id=functions.functionPointer(invoke??((...args)=>(resolveFunction??resolve)(name)(...args)),signature);
+        const callback=invoke??((...args)=>(resolveFunction??resolve)(name)(...args));
+        // A named callback can expose its initialized native implementation at
+        // the boundary where a game model adopts its stable function identity.
+        // Explicit callback overrides keep their own normalization/semantics.
+        if(!invoke){
+            const nativeEntry=prepare=>{const module=owners.get(name),entry=prepare&&module?start(module):modules.get(module),fn=entry?.namespace[name];return entry?.status==='ready'&&fn?.nativeDirect&&(!entry.prepareArgs||fn.nativePrepared)?fn:undefined;};
+            Object.defineProperties(callback,{nativeEntry:{get:()=>nativeEntry(false)},prepareNativeEntry:{value:()=>nativeEntry(true)}});
+        }
+        const id=functions.functionPointer(callback,signature);
         symbolPointers.set(name,{id,signature});return id;
     }
     function publishFunction(module,name){

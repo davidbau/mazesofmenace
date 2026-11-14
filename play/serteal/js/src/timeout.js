@@ -2569,11 +2569,11 @@ export function restore_timers(nhfp, range, adjust) { /* void */
 export function timer_stats(hdrfmt, hdrbuf, count, size) { /* void */
     let te;
 
-    sprintf(hdrbuf, hdrfmt, NHJS_LP64_SIZEOF_timer_element);
+    sprintf(hdrbuf, hdrfmt, NHJS_SIZEOF_timer_element);
     count[0] = size[0] = 0;
     for (te = gt.timer_base; te; te = te.next) {
         ++count[0];
-        size[0] += NHJS_LP64_SIZEOF_timer_element;
+        size[0] += NHJS_SIZEOF_timer_element;
     }
 }
 
@@ -2630,7 +2630,7 @@ import {
 import { G_EXTINCT, G_GENOD, G_UNIQ, MV_KNOWS_EGG, NEUTRAL } from "./monflag.h.js";
 import { M_AP_MONSTER } from "./monst.h.js";
 import { LOW_PM, NON_PM, PM_ARCHEOLOGIST, PM_GREEN_SLIME } from "./monsters.h.js";
-import { NHJS_LP64_SIZEOF_timer_element } from "./nhjs_recorder_sizes.h.js";
+import { NHJS_SIZEOF_timer_element } from "./nhjs_struct_sizes.h.js";
 import {
     BURIED_TOO, CONTAINED_TOO, MAX_EGG_HATCH_TIME, OBJ_BURIED, OBJ_CONTAINED, OBJ_FLOOR, OBJ_INVENT,
     OBJ_MIGRATING, OBJ_MINVENT,
