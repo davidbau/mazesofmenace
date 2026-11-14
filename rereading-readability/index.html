@@ -1,0 +1,319 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="description" content="Two weeks later: serteal wrote a new transpiler, and its port went from the least readable of the contestants to the most readable.">
+<meta name="theme-color" content="#f3e9cf">
+<title>Rereading Readability — Mazes of Menace</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=EB+Garamond:ital,wght@0,400;0,500;0,600;0,700;1,400;1,500;1,600&display=swap" rel="stylesheet">
+<style>
+:root {
+    --parchment:        #f9f7f1;
+    --parchment-dark:   #f0ece3;
+    --parchment-edge:   #d0c8b8;
+    --ink:              #2b2114;
+    --ink-soft:         #555;
+    --ink-faint:        #888;
+    --accent:           #6b2c2c;
+    --accent-dark:      #4a2020;
+    --rule:             #d0c8b8;
+    --font-serif:       'EB Garamond', 'Adobe Garamond Pro', Garamond, Georgia, serif;
+    --font-mono:        'DejaVu Sans Mono', 'Consolas', monospace;
+}
+
+* { margin: 0; padding: 0; box-sizing: border-box; }
+
+html { background: var(--parchment); }
+
+body {
+    color: var(--ink);
+    font-family: var(--font-serif);
+    font-size: 19px;
+    line-height: 1.62;
+    background: var(--parchment);
+    min-height: 100vh;
+    padding: 0;
+}
+
+main {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 4em 1.5em 6em;
+    position: relative;
+}
+
+/* Top nav */
+.topnav {
+    max-width: 42em;
+    margin: 0 auto;
+    padding: 1.4em 1.5em 0;
+    font-size: 0.92em;
+    color: var(--ink-faint);
+    font-style: italic;
+}
+.topnav a {
+    color: var(--accent);
+    text-decoration: none;
+}
+.topnav a:hover { text-decoration: underline; }
+
+/* Header */
+header.post-header {
+    text-align: center;
+    margin-bottom: 2.6em;
+    padding-bottom: 1.6em;
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+}
+header.post-header::after {
+    content: "";
+    display: block;
+    width: 40px;
+    height: 18px;
+    margin: 0.9em auto -1.7em;
+    background: var(--parchment);
+    /* fleuron-ish ornament: three dots */
+    background-image:
+        radial-gradient(circle at 8px 9px, var(--accent) 2px, transparent 2.5px),
+        radial-gradient(circle at 20px 9px, var(--accent) 2.5px, transparent 3px),
+        radial-gradient(circle at 32px 9px, var(--accent) 2px, transparent 2.5px);
+}
+header.post-header h1 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 2.4em;
+    line-height: 1.15;
+    color: var(--accent-dark);
+    letter-spacing: 0.005em;
+    margin-bottom: 0.45em;
+}
+header.post-header .byline {
+    font-style: italic;
+    color: var(--ink-soft);
+    font-size: 1.02em;
+}
+header.post-header .byline a { color: var(--ink-soft); }
+header.post-header .byline a:hover { color: var(--accent); }
+
+/* Body text */
+article p {
+    margin-bottom: 1.05em;
+    text-align: left;
+    hyphens: auto;
+}
+article p.lead {
+    font-size: 1.08em;
+    color: var(--ink-soft);
+    font-style: italic;
+}
+
+/* Headings */
+article h2 {
+    font-family: var(--font-serif);
+    font-weight: 600;
+    font-size: 1.55em;
+    color: var(--accent-dark);
+    margin: 2.2em 0 0.55em;
+    padding-bottom: 0.18em;
+    border-bottom: 1px solid var(--rule);
+    letter-spacing: 0.01em;
+}
+article h2 small {
+    font-style: italic;
+    font-weight: 400;
+    color: var(--ink-faint);
+    font-size: 0.7em;
+    margin-left: 0.4em;
+}
+
+/* Links */
+article a {
+    color: var(--accent);
+    text-decoration: none;
+    border-bottom: 1px dotted rgba(107,44,44,0.45);
+    transition: border-color 0.15s, background 0.15s;
+}
+article a:hover {
+    border-bottom-color: var(--accent);
+    background: rgba(107,44,44,0.06);
+}
+
+/* Emphasis */
+article strong { color: var(--ink); font-weight: 600; }
+article em { font-style: italic; }
+
+/* Blockquote */
+article blockquote {
+    margin: 1.4em 0;
+    padding: 0.8em 1.2em 0.8em 1.4em;
+    border-left: 3px solid var(--accent);
+    background: var(--parchment-dark);
+    color: var(--ink-soft);
+    font-style: italic;
+    font-size: 0.96em;
+}
+article blockquote p { margin-bottom: 0.6em; }
+article blockquote p:last-child { margin-bottom: 0; }
+article blockquote code { font-style: normal; }
+
+/* Inline + block code */
+article code {
+    font-family: var(--font-mono);
+    font-size: 0.85em;
+    color: var(--accent-dark);
+    background: var(--parchment-dark);
+    padding: 0.05em 0.35em;
+    border-radius: 2px;
+}
+article pre {
+    font-family: var(--font-mono);
+    font-size: 0.72em;
+    line-height: 1.45;
+    color: var(--ink);
+    background: var(--parchment-dark);
+    border: 1px solid var(--parchment-edge);
+    border-radius: 2px;
+    padding: 1em 1.2em;
+    margin: 1.5em 0 1.7em;
+    overflow-x: auto;
+}
+article pre code {
+    background: transparent;
+    padding: 0;
+    font-size: inherit;
+    color: inherit;
+}
+article pre b { font-weight: 600; }
+
+/* Lists */
+article ul, article ol {
+    margin: 0.6em 0 1.2em 1.4em;
+    padding-left: 0.4em;
+}
+article li { margin-bottom: 0.35em; }
+article ul li::marker { color: var(--accent); }
+
+/* Figures */
+article figure {
+    margin: 1.6em 0 1.8em;
+    text-align: center;
+}
+article figure img {
+    max-width: 100%;
+    height: auto;
+    border: 1px solid var(--parchment-edge);
+    box-shadow:
+        0 1px 0 rgba(255,255,255,0.5) inset,
+        0 6px 18px rgba(80, 50, 10, 0.18);
+    background: #fff;
+    border-radius: 2px;
+}
+article figure figcaption {
+    margin-top: 0.7em;
+    font-size: 0.92em;
+    font-style: italic;
+    color: var(--ink-faint);
+}
+
+/* Footer */
+footer.post-footer {
+    margin-top: 4em;
+    padding-top: 1.5em;
+    border-top: 1px solid var(--rule);
+    text-align: center;
+    font-style: italic;
+    color: var(--ink-faint);
+    font-size: 0.95em;
+}
+footer.post-footer a {
+    color: var(--accent);
+    text-decoration: none;
+}
+footer.post-footer a:hover { text-decoration: underline; }
+
+@media (max-width: 600px) {
+    body { font-size: 17px; }
+    header.post-header h1 { font-size: 1.9em; }
+    header.post-header-small h1 { font-size: 1.5em; }
+    main { padding: 2em 1em 4em; }
+}
+
+/* Smaller header for blog-post-scale articles (this one) */
+header.post-header-small {
+    margin-bottom: 1.8em;
+    padding-bottom: 1.0em;
+}
+header.post-header-small h1 {
+    font-size: 1.7em;
+    margin-bottom: 0.3em;
+}
+header.post-header-small::after {
+    margin: 0.6em auto -1.2em;
+}
+
+article figure { margin: 1.6em 0; }
+article figure img { width: 100%; height: auto; display: block; }
+article h3 { font-family: var(--font-serif); font-weight: 600; font-size: 1.2em; color: var(--accent-dark); margin: 1.8em 0 0.4em; }
+.tablewrap { overflow-x: auto; margin: 1.4em 0 1.6em; }
+article table { border-collapse: collapse; font-size: 0.82em; line-height: 1.35; margin: 0 auto; }
+article th, article td { padding: 0.35em 0.7em; border-bottom: 1px solid var(--rule); text-align: right; white-space: nowrap; }
+article th:first-child, article td:first-child { text-align: left; }
+article th { color: var(--accent-dark); font-weight: 600; border-bottom: 2px solid var(--parchment-edge); white-space: normal; }
+article ul.options { list-style: none; margin: 0.4em 0 1em 1em; }
+article ul.options li { margin-bottom: 0.15em; }
+</style>
+</head>
+<body>
+<nav class="topnav">
+    <a href="/">← Mazes of Menace</a>
+</nav>
+<main>
+<header class="post-header post-header-small">
+    <h1>Rereading Readability</h1>
+    <div class="byline">By <a href="https://davidbau.com/">David Bau</a> · November 14, 2026</div>
+</header>
+<article>
+<p class="lead">Two weeks ago I <a href="/reading-readability/">measured how readable the Teleport ports are</a> by asking a small model, Haiku, 500 questions about each codebase. <a href="https://github.com/serteal">serteal</a>'s port, the work of Alex Serrano, whom I wrote about in <a href="/first-mimic/">The First Mimic</a>, came in last, at 18%, about what you get by guessing. It was the output of a standard C-to-JavaScript transpiler, a wall of lookup tables and anonymous functions.</p>
+<p>Then Alex went away and wrote his own transpiler. I measured everyone's current submission again, with the same questions, the same budget and the same reader.</p>
+<h2>serteal</h2>
+<div class="tablewrap"><table>
+<thead><tr><th>Codebase</th><th>Comments removed</th><th>Comments kept</th><th>Screen parity</th></tr></thead>
+<tbody>
+<tr><td>C (original NetHack 5.0)</td><td>78.8</td><td>83.7</td><td>-</td></tr><tr><td><strong>serteal</strong></td><td><strong>78.1</strong></td><td><strong>81.8</strong></td><td><strong>100.0</strong></td></tr><tr><td>vtjeng</td><td>76.4</td><td>76.0</td><td>99.97</td></tr><tr><td>richie3366</td><td>72.9</td><td>75.3</td><td>98.6</td></tr><tr><td>daoa0601</td><td>71.9</td><td>75.1</td><td>98.6</td></tr><tr><td>jon-bell</td><td>74.4</td><td>74.0</td><td>99.2</td></tr><tr><td>lockwo</td><td>69.7</td><td>73.9</td><td>99.1</td></tr><tr><td>rohitgandikota</td><td>65.5</td><td>69.8</td><td>95.8</td></tr><tr><td>NoahBPeterson</td><td>64.8</td><td>67.9</td><td>99.98</td></tr>
+</tbody></table></div>
+<p>Scores are the percentage of the 500 questions answered correctly. Differences of a few points are within the noise.</p>
+<p>serteal went from 18% to 82%. Haiku now answers questions about serteal's port about as well as it answers them about the original NetHack C, and the port matches every screen we throw at it. It is the most readable contestant and the most faithful one, at the same time.</p>
+<figure><img src="img/rereading-readability.svg" alt="Screen parity against readability"></figure>
+<p>The red line is the Pareto frontier. Last time it was a staircase of ports trading one quality for the other. Now serteal is the whole frontier.</p>
+<h2>The transpiler</h2>
+<p>Readable output from a transpiler is usually not something you get. A C compiler does not care what the output looks like, and most C-to-JavaScript tools show it: the output is correct and nobody can read it. serteal's tool is called <code>nh2js</code>. It is about 7,500 lines, built on Clang's parser, and it emits one JavaScript file for each C file of NetHack, 249,000 lines of JavaScript against 250,000 lines of C.</p>
+<p>Looking through the source, a few choices stand out.</p>
+<p><strong>The JavaScript is the C, with edits.</strong> Most transpilers translate the program and print the result. <code>nh2js</code> keeps the original C text and changes only the tokens that have to change. <code>p-&gt;f</code> becomes <code>p.f</code>, <code>'c'</code> becomes <code>ord('c')</code>, and integer division gets a <code>Math.trunc</code>. Line N of the JavaScript is line N of the C. About half of the non-blank lines of the generated code are character-for-character identical to a line of the C source, and every comment survives, in place. Here is part of <code>onscary</code> in <code>monmove.c</code>, and the JavaScript:</p>
+<pre><code>return ((ep = sengr_at("Elbereth", x, y, TRUE)) != 0
+        &amp;&amp; (u_at(x, y)
+            || (Displaced &amp;&amp; mtmp-&gt;mux == x &amp;&amp; mtmp-&gt;muy == y)
+            || (ep-&gt;guardobjects &amp;&amp; vobj_at(x, y)))</code></pre>
+<pre><code>return ((ep = sengr_at(_("Elbereth"), x, y, TRUE)) != null
+        &amp;&amp; (u_at(x, y)
+            || (Displaced() &amp;&amp; mtmp.mux == x &amp;&amp; mtmp.muy == y)
+            || (ep.guardobjects &amp;&amp; vobj_at(x, y)))</code></pre>
+<p><strong>Every piece of syntax needs permission.</strong> The tool has a registry of more than a hundred rewrite rules, and each node of Clang's syntax tree has to be claimed by one of them. If any node in a function is not claimed, the function is not emitted by the clever path at all but falls back to a plain printer, and the fallbacks are reported. There is no way for an odd construct to slip through as a silent mistranslation. Each rule records where it fired, so the rarely used ones can be audited.</p>
+<p><strong>The runtime takes the mess.</strong> The reason most transpiled code looks the way it does is that C has pointers into raw memory and JavaScript does not. <code>nh2js</code> leaves the memory model to a runtime library. A pointer to a struct is a view over a heap, so <code>mtmp-&gt;data-&gt;mlet</code> is written <code>mtmp.data.mlet</code>, and two pointers are equal when the views are <code>==</code>. The generated code reads like the C because the runtime is the one that pretends to be the machine.</p>
+<p><strong>Macros stay macros.</strong> NetHack is full of them. When a macro call can be shown to behave the same as a function call, <code>nh2js</code> keeps it as a call to a same-named JavaScript function, with the body copied from the <code>#define</code>. You still read <code>is_lminion(mtmp)</code> and <code>ACURRSTR()</code>, not their expansions. When it cannot prove that, it expands the macro in place.</p>
+<p><strong>Gotos become structure.</strong> A forward <code>goto</code> becomes a labeled block and a <code>break</code>; a backward one becomes a labeled loop and a <code>continue</code>. Only the tangled cases get a dispatcher, and the label lines are reused so the line numbers do not move.</p>
+<p><strong>Numbers are wrapped only when they must be.</strong> The tool computes value ranges for integer expressions and adds <code>unsigned(...)</code> or a truncation only where C's arithmetic could actually give a different answer. Two linters check the output: one flags any number on a JavaScript line that the C line does not write, and one flags C truth values returned as bare JavaScript booleans.</p>
+<p>It is not entirely tidy. The tool still has to emit a stack frame for local arrays like <code>buf</code>, the goto dispatchers show up in a few big functions, and there are 1,900 such stack declarations in all. But the code a reader meets, function after function, is NetHack's own.</p>
+<p>Congratulations, Alex.</p>
+</article>
+
+<footer class="post-footer">
+    <a href="/">Mazes of Menace</a> · <a href="/leaderboard/">Leaderboard</a> · <a href="https://github.com/davidbau/teleport-contest">teleport-contest</a>
+</footer>
+
+</main>
+
+</body>
+</html>
