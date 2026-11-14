@@ -1,3 +1,7 @@
+import {genders as sourceGenders} from '../../ported/role.js';
+import nativeLayout from '../do-name-native-layout.json' with {type:'json'};
+import {createNativeDoName} from '../native/do_name.js';
+import {createNativeScalarLocal} from '../native/scalar-local.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // Native field/header-macro adapters; all original naming rules stay in do_name.js.
 import * as core from '../../ported/do_name.js';
@@ -8,14 +12,23 @@ export function initializeDoName(services){
  return state;
 }
 export function createDoNameEnvironment(services,L){
- const state=initializeDoName(services),raw=v=>CAdapter.unsignedPointer(v),address=v=>Number(raw(v));
- const view=()=>CAdapter.currentDataView(services),global=i=>address(services.global(i)),literal=v=>typeof v==='string'?services.literal(v):address(v);
- const int=v=>CAdapter.signedInt(v,true),uint=v=>typeof v==='bigint'?Number(BigInt.asUintN(32,v)):Number(v)>>>0;
+ const native=Reflect.has(services,'nativeOwner')&&services.nativeOwner?.nativeArena?services.nativeOwner:undefined,records=native?.nativeRecords;
+ if(native){
+  const types=services.nativeDoNameTypes;
+  for(const [key,type,path,width]of nativeLayout.fields){let at=0,current=type;
+   for(const part of path.split('.')){const row=types.locate(current,at,part);at=row.at;current=row.field.record??row.field.ctype.replace(new RegExp('\\s+'+part+'$'),'');}
+   if(Number(L[key])!==at||(width!==null&&types.size(current)!==width))throw Error('Review native DO_NAME field '+key);
+  }
+  for(const [key,type]of nativeLayout.sizes)if(Number(L[key])!==types.size(type))throw Error('Review native DO_NAME size '+key);
+ }
+ const state=initializeDoName(services),raw=v=>CAdapter.unsignedPointer(v),address=v=>native&&typeof(v?.address??v)==='number'&&(v?.address??v)>=0&&Number.isSafeInteger(v?.address??v)?v?.address??v:Number(raw(v));
+ const view=()=>native?native.nativeArena.view:CAdapter.currentDataView(services),global=i=>address(services.global(i)),literal=v=>typeof v==='string'?services.literal(v):address(v);
+ const int=v=>native&&typeof v==='number'&&Number.isInteger(v)?v|0:CAdapter.signedInt(v,true),uint=v=>typeof v==='bigint'?Number(BigInt.asUintN(32,v)):Number(v)>>>0;
  const scalar=(obj,key,at,type)=>Object.defineProperty(obj,key,{enumerable:true,get:()=>view()['get'+type](at(),true),set:v=>view()['set'+type](at(),type.includes('Big')?BigInt(v):Number(v),true)});
  const ptr=(obj,key,at,wrap=v=>Number(v))=>Object.defineProperty(obj,key,{enumerable:true,get:()=>wrap(view().getBigUint64(at(),true)),set:v=>view().setBigUint64(at(),raw(v),true)});
  const array=(at,stride,wrap)=>new Proxy({address:at},{get:(o,k)=>k==='address'?at:/^\d+$/.test(String(k))?wrap(at+Number(k)*stride):o[k]});
  const basic=p=>{const bits=raw(p);return{address:bits>BigInt(Number.MAX_SAFE_INTEGER)?bits:Number(bits)}};
- const monster=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const monster=p=>{if(native)return records.record('struct monst',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'data',()=>at+L.mon_data,permonst);
   ptr(out,'mextra',()=>at+L.mon_mextra,mextra);
   scalar(out,'m_id',()=>at+L.mon_m_id,'Uint32');
@@ -40,7 +53,7 @@ export function createDoNameEnvironment(services,L){
   Object.defineProperty(out,'msleeping',{get:()=>services.monsterBit(at,9),set:v=>services.setMonsterBit(at,9,v)});
   Object.defineProperty(out,'mcanmove',{get:()=>services.monsterBit(at,10),set:v=>services.setMonsterBit(at,10,v)});
   return out;};
- const object=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const object=p=>{if(native)return records.record('struct obj',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'nobj',()=>at+L.obj_nobj,object);
   scalar(out,'otyp',()=>at+L.obj_otyp,'Int16');
   scalar(out,'oclass',()=>at+L.obj_oclass,'Int8');
@@ -61,7 +74,7 @@ export function createDoNameEnvironment(services,L){
   Object.defineProperty(out,'odiluted',{get:()=>services.objectBit(at,7),set:v=>services.setObjectBit(at,7,v)});
   Object.defineProperty(out,'opoisoned',{get:()=>services.objectBit(at,8),set:v=>services.setObjectBit(at,8,v)});
   return out;};
- const permonst=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const permonst=p=>{if(native)return records.record('struct permonst',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   scalar(out,'mflags1',()=>at+L.pm_mflags1,'BigUint64');
   scalar(out,'mflags2',()=>at+L.pm_mflags2,'BigUint64');
   scalar(out,'geno',()=>at+L.pm_geno,'Uint16');
@@ -70,38 +83,38 @@ export function createDoNameEnvironment(services,L){
   scalar(out,'pmidx',()=>at+L.pm_pmidx,'Int32');
   out.pmnames=array(at+L.pm_pmnames,L.pointerSize,p=>Number(view().getBigUint64(p,true)));
   return out;};
- const objectClass=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const objectClass=p=>{if(native)return records.record('struct objclass',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'oc_uname',()=>at+L.cls_oc_uname,v=>Number(v));
   scalar(out,'oc_class',()=>at+L.cls_oc_class,'Int8');
   scalar(out,'oc_descr_idx',()=>at+L.cls_oc_descr_idx,'Int16');
   scalar(out,'oc_weight',()=>at+L.cls_oc_weight,'Uint32');
   Object.defineProperty(out,'oc_name_known',{get:()=>services.classBit(at,0)});
   return out;};
- const mextra=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const mextra=p=>{if(native)return records.record('struct mextra',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'mgivenname',()=>at+L.mextra_mgivenname,v=>Number(v));
   ptr(out,'ebones',()=>at+L.mextra_ebones,v=>Number(v));
   return out;};
- const oextra=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const oextra=p=>{if(native)return records.record('struct oextra',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'oname',()=>at+L.oextra_oname,v=>Number(v));
   return out;};
- const objdescr=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const objdescr=p=>{if(native)return records.record('struct objdescr',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'oc_name',()=>at+L.descr_oc_name,v=>Number(v));
   ptr(out,'oc_descr',()=>at+L.descr_oc_descr,v=>Number(v));
   return out;};
- const coord=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const coord=p=>{if(native)return records.record('struct nhcoord',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   scalar(out,'x',()=>at+L.coord_x,'Int16');
   scalar(out,'y',()=>at+L.coord_y,'Int16');
   return out;};
- const gender=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const gender=p=>{if(native)return records.record('struct Gender',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   ptr(out,'he',()=>at+L.gender_he,v=>Number(v));
   ptr(out,'him',()=>at+L.gender_him,v=>Number(v));
   ptr(out,'his',()=>at+L.gender_his,v=>Number(v));
   return out;};
- const command=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const command=p=>{if(native)return records.record('struct _cmd_queue',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   scalar(out,'typ',()=>at+L.command_typ,'Int32');
   scalar(out,'key',()=>at+L.command_key,'Int8');
   return out;};
- const dlevel=p=>{if(!raw(p))return 0;const out=basic(p),at=address(p);
+ const dlevel=p=>{if(native)return records.record('struct d_level',p);if(!raw(p))return 0;const out=basic(p),at=address(p);
   scalar(out,'dnum',()=>at+L.dlevel_dnum,'Int16');
   scalar(out,'dlevel',()=>at+L.dlevel_dlevel,'Int16');
   return out;};
@@ -113,7 +126,7 @@ export function createDoNameEnvironment(services,L){
  Object.defineProperty(env,'bufidx',{get:()=>state.bufidx,set:v=>state.bufidx=int(v)});
  for(const k of Object.keys(L))if(/^(M[12]_|W_|LL_)/.test(k))env[k]=BigInt(L[k]);
  for(const k of ['ghostnames','hcolors','hliquids','coynames','sir_Terry_novels'])env[k]=core[k].map(literal);
- const local=(size,init=0,type='Int32')=>{const at=services.stackAlloc(size),box={address:at};scalar(box,'value',()=>at,type);box.value=init;return box;};
+ const local=(size,init=0,type='Int32')=>{if(native)return createNativeScalarLocal(init,type,services.stackAlloc,view);const at=services.stackAlloc(size),box={address:at};scalar(box,'value',()=>at,type);box.value=init;return box;};
  env.shortLocal=v=>local(2,v,'Int16');env.charLocal=()=>local(1,0,'Int8');env.intPointer=p=>{if(!raw(p))return 0;const box=basic(p);scalar(box,'value',()=>address(p),'Int32');return box;};env.charPointerView=p=>{if(!raw(p))return 0;const box=basic(p);scalar(box,'value',()=>address(p),'Int8');return box;};
  const copy=(src,size)=>{const dst=services.stackAlloc(size);services.heap().copyWithin(dst,address(src),address(src)+size);return dst;};
  env.objectLocalCopy=obj=>object(copy(obj,L.objectSize));env.commandLocalCopy=p=>command(copy(p,L.commandSize));
@@ -121,12 +134,17 @@ export function createDoNameEnvironment(services,L){
  env.pointerField=(obj,key)=>{const at=address(obj)+L['cls_'+key],box={address:at};ptr(box,'value',()=>at);return box;};
  env.menuPointerLocal=()=>{const at=services.stackAlloc(L.pointerSize),box={address:at};view().setBigUint64(at,0n,true);Object.defineProperty(box,'value',{get:()=>{const p=Number(view().getBigUint64(at,true));return p?array(p,L.menuItemSize,p=>{const o={address:p,item:{address:p+L.menu_item}};scalar(o.item,'a_char',()=>p+L.menu_item,'Int8');return o;}):0;}});return box;};
  env.objectReference=(get,set)=>({get,set});env.object_from_map=(glyph,x,y,ref)=>{const cell=services.stackAlloc(L.pointerSize);view().setBigUint64(cell,raw(ref.get()),true);try{return services.object_from_map(glyph,x,y,cell);}finally{ref.set(object(view().getBigUint64(cell,true)));}};
+ if(native){
+  for(const [name,i,type]of [['u',0,'struct you'],['gy',1,'struct instance_globals_y'],['gi',2,'struct instance_globals_i'],['gu',3,'struct instance_globals_u'],['svp',4,'struct instance_globals_saved_p'],['flags',5,'struct flag'],['program_state',6,'struct sinfo'],['cg',7,'struct const_globals'],['svl',12,'struct instance_globals_saved_l']])env[name]=records.record(type,global(i));
+  for(const [name,i,type,length]of [['objects',8,'struct objclass',L.NUM_OBJECTS],['obj_descr',9,'struct objdescr',L.NUM_OBJECTS],['mons',10,'struct permonst',L.NUMMONS],['genders',11,'struct Gender',sourceGenders.length]])env[name]=records.value(type+'['+length+']',global(i));
+ }else{
  env.u=basic(global(0));for(const k of ['ux','uy'])scalar(env.u,k,()=>global(0)+L['u_'+k],'Int16');for(const k of ['umonnum','umonster'])scalar(env.u,k,()=>global(0)+L['u_'+k],'Int32');for(const k of ['ustuck','usteed'])ptr(env.u,k,()=>global(0)+L['u_'+k],monster);env.u.uz=dlevel(global(0)+L.u_uz);env.u.uconduct={};scalar(env.u.uconduct,'literate',()=>global(0)+L.literate,'BigInt64');for(const[i,k]of ['mfemale','uswallow','uundetected'].entries())Object.defineProperty(env.u,k,{get:()=>services.heroBit(i)});
  env.gy={youmonst:monster(global(1)+L.youmonst)};env.gi={};ptr(env.gi,'invent',()=>global(2)+L.invent,object);env.gu={urole:{name:{}}};for(const[k,f]of [['m','roleNameM'],['f','roleNameF']])ptr(env.gu.urole.name,k,()=>global(3)+L[f]);scalar(env.gu.urole,'mnum',()=>global(3)+L.roleMnum,'Int16');env.svp={plname:global(4)+L.plname};env.flags={};for(const k of ['female','lootabc'])scalar(env.flags,k,()=>global(5)+L[k],'Int8');env.program_state={};scalar(env.program_state,'gameover',()=>global(6)+L.gameover,'Int32');env.cg={zeroany:basic(global(7)+L.zeroany)};
  env.objects=array(global(8),L.objectClassSize,objectClass);env.obj_descr=array(global(9),L.objdescrSize,objdescr);env.mons=array(global(10),L.permonstSize,permonst);env.genders=array(global(11),L.genderSize,gender);
  env.svl={level:{monsters:array(global(12)+L.monsters,L.ROWNO*L.pointerSize,p=>array(p,L.pointerSize,p=>monster(view().getBigUint64(p,true))))}};
+ }
  for(const[i,k]of ['uwep','uswapwep'].entries())Object.defineProperty(env,k,{get:()=>object(services.equipment(i))});Object.defineProperty(env,'Role_switch',{get:()=>env.gu.urole.mnum});Object.defineProperty(env,'Upolyd',{get:()=>env.u.umonnum!==env.u.umonster});
- const prop=index=>{const p={address:global(0)+L.u_uprops+index*L.propSize};for(const k of ['intrinsic','extrinsic','blocked'])scalar(p,k,()=>p.address+L['prop_'+k],'BigInt64');return p;};
+ const prop=index=>{if(native)return env.u.uprops[index];const p={address:global(0)+L.u_uprops+index*L.propSize};for(const k of ['intrinsic','extrinsic','blocked'])scalar(p,k,()=>p.address+L['prop_'+k],'BigInt64');return p;};
  Object.defineProperty(env,'EHalluc_resistance',{get:()=>prop(L.HALLUC_RES).extrinsic,set:v=>prop(L.HALLUC_RES).extrinsic=v});
  for(const[name,key]of [['Blind','BLINDED'],['Deaf','DEAF'],['Hallucination','HALLUC'],['See_invisible','SEE_INVIS']])Object.defineProperty(env,name,{get(){const p=prop(L[key]);if(name==='Hallucination'){const r=prop(L.HALLUC_RES);return Number(Boolean(p.intrinsic&&!r.intrinsic&&!r.extrinsic));}if(name==='Deaf')return Number(Boolean(p.intrinsic||p.extrinsic||services.heroBit(3)));return Number(Boolean((p.intrinsic||p.extrinsic)&&(name!=='Blind'||!p.blocked)));}});
  env.c_obj_colors=Array.from({length:L.CLR_MAX},(_,i)=>services.objectColor(i));Object.defineProperty(env,'WIN_MESSAGE',{get:()=>services.winMessage()});Object.defineProperty(env,'Never_mind',{get:()=>services.commonString(0)});Object.defineProperty(env,'nul_glyphinfo',{get:()=>basic(services.nulGlyphInfo())});
@@ -140,16 +158,17 @@ export function createDoNameEnvironment(services,L){
  env.OBJ_DESCR=cls=>env.obj_descr[cls.oc_descr_idx].oc_descr;
  env.Is_astralevel=level=>{const target=dlevel(global(14)+L.astral_level);return Number(Boolean((target.dnum||target.dlevel)&&services.on_level(level,target)));};
  env.In_endgame=level=>Number(level.dnum===dlevel(global(14)+L.astral_level).dnum);
- env.getobj=(prompt,fn,flags)=>{const which=fn===core.name_ok?0:fn===core.call_ok?1:-1;if(which<0)throw Error('Unknown original DO_NAME getobj selector');return object(services.getobj(prompt,which,flags));};
- env.safe_qbuf=(out,prefix,suffix,obj,func1,func2,last)=>{if(func2!==services.simpleonames)throw Error('Unknown original DO_NAME secondary naming callback');const which=func1===services.xname?0:func1===core.docall_xname?1:-1;if(which<0)throw Error('Unknown original DO_NAME primary naming callback');return services.safe_qbuf(out,prefix,suffix,obj,which,last);};
+ env.getobj=(prompt,fn,flags)=>{const which=fn===(native?env.nativeNamespace:core).name_ok?0:fn===(native?env.nativeNamespace:core).call_ok?1:-1;if(which<0)throw Error('Unknown original DO_NAME getobj selector');return object(services.getobj(prompt,which,flags));};
+ env.safe_qbuf=(out,prefix,suffix,obj,func1,func2,last)=>{if(func2!==services.simpleonames)throw Error('Unknown original DO_NAME secondary naming callback');const which=func1===services.xname?0:func1===(native?env.nativeNamespace:core).docall_xname?1:-1;if(which<0)throw Error('Unknown original DO_NAME primary naming callback');return services.safe_qbuf(out,prefix,suffix,obj,which,last);};
  for(const k of ['newmextra','newoextra'])env[k]=(...args)=>(k==='newmextra'?mextra:oextra)(services[k](...args));
  env.BOGUSMONFILE=L.strings.BOGUSMONFILE;
  env.get_rnd_text=(file,out,rng,pad)=>{if(rng!==services.rn2_on_display_rng)throw Error('Unknown original DO_NAME display RNG identity');return services.get_rnd_text(file,out,pad);};
  env.strcmpi=(a,b)=>services.strncmpi(a,b,-1);
+ if(native){env.nativeState=native;env.nativeNamespace=createNativeDoName(env);}
  return env;
 }
 export function callDoName(services,layout,name,...args){const env=createDoNameEnvironment(services,layout),saved=services.stackSave();try{
  const mon0=['new_mgivenname','free_mgivenname','christen_monst','alreadynamed','x_monnam','l_monnam','mon_nam','noit_mon_nam','some_mon_nam','Monnam','noit_Monnam','Some_Monnam','noname_monnam','m_monnam','y_monnam','YMonnam','Adjmonnam','a_monnam','Amonnam','distant_monnam','mon_nam_too','monverbself','minimal_monnam','Mgender','mon_pmname','coyotename','christen_orc'];
  if(mon0.includes(name))args[0]=env.monster(args[0]);if(name==='mon_nam_too')args[1]=env.monster(args[1]);if(['new_oname','free_oname','safe_oname','do_oname','oname','name_ok','call_ok','docall_xname','docall','obj_pmname'].includes(name))args[0]=env.object(args[0]);if(name==='pmname')args[0]=env.permonst(args[0]);if(name==='noveltitle')args[0]=env.intPointer(args[0]);if(name==='lookup_novel')args[1]=env.intPointer(args[1]);
- const result=withCEnvironment(env,()=>core[name](...args));return typeof result==='string'?services.literal(result):result?.address??result;
+ const result=Object.hasOwn(env,'nativeNamespace')?(()=>{env.nativeState.enter();try{return env.nativeNamespace[name](...args);}finally{env.nativeState.leave();}})():withCEnvironment(env,()=>core[name](...args));return typeof result==='string'?services.literal(result):result?.address??result;
  }finally{services.stackRestore(saved);}}

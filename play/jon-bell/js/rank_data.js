@@ -167,19 +167,14 @@ export const ROLE_RANKS = [
 ];
 
 
-/* C ref: botl.c:298 xlev_to_rank — experience level (1..30) to rank index
- * (0..8).  NOT (xlev - 1) / 3, which is what js/cmd.js used; the two agree only
- * at levels 1 and 2, so a level-6 Wizard was a Conjurer there and is a
- * Thaumaturge in C. */
-export function xlev_to_rank(xlev) {
-    return (xlev <= 2) ? 0 : (xlev <= 30) ? Math.floor((xlev + 2) / 4) : 8;
-}
+import { xlev_to_rank } from './botl.js';
 
-/* C ref: botl.c:330 rank_of(lev, monnum, female).  Walks DOWN from
+/* C ref: botl.c:330 rank_of(lev, monnum, female), indexed by roles[] ORDINAL
+ * (not monnum; distinct from js/botl.js rank_of, hence the name).  Walks DOWN from
  * xlev_to_rank(lev), preferring the female string at each index when one
  * exists, so a role with a hole in its rank[] reuses the nearest filled entry;
  * falls back to the role's own name.f / name.m and finally "Player". */
-export function rank_of(roleIdx, lev, female) {
+export function rank_of_roleidx(roleIdx, lev, female) {
     const role = ROLE_RANKS[roleIdx | 0];
     if (!role) return 'Player';
     for (let i = xlev_to_rank(lev | 0); i >= 0; i--) {

@@ -4,7 +4,7 @@ import { game } from './gstate.js';
 import { BUFSZ, DEVTEAM_EMAIL } from './const.js';
 import { nh_sprintf } from './display.js';
 import { paniclog } from './files.js';
-import { set_msg_xy } from './cmd.js'; // relocate-fns
+import './cmd.js'; // relocate-fns
 import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body } from './display.js';
 import { msgtype_type } from './options.js'; // relocate-fns
 import { livelog_add } from './files.js'; // relocate-fns
@@ -204,4 +204,25 @@ export async function You_see(line, ...args) {
 export function pline_xy(x, y, msg, ...args) {
     set_msg_xy(x, y);
     return pline(msg, ...args);
+}
+
+export function free_youbuf() {
+    const gy = game.gy || {};
+    if (gy.you_buf)
+        gy.you_buf = null;
+    gy.you_buf_siz = 0;
+}
+
+/* `ordin` was a file-local `return "th"` stub captioned "unported helper for
+ * endmultishot", while js/mklev.js:10130 has carried the real hacklib.c:625
+ * body — dd==1 "st", dd==2 "nd", dd==3 "rd", the teens all "th" — exported, all
+ * along.  A file-local stub with the same name as a real export shadows it at
+ * every grep AND at every call site in this file, so endmultishot's line read
+ * "after the 1th arrow" where C says "1st".  Re-pointed at the real body. */
+/* C pline.c:93-97 — record the map coordinate owning the next message.
+ * The renderer does not currently consume this channel, but accessibility and
+ * message-origin consumers use the same state in the native runtime. */
+export function set_msg_xy(x, y) {
+    game.a11y = game.a11y || {};
+    game.a11y.msg_loc = { x: x | 0, y: y | 0 };
 }

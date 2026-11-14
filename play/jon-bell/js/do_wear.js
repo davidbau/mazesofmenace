@@ -1,6 +1,7 @@
 import { spoteffects } from './hack.js';
 import { gulp_blnd_check } from './mhitu.js';
-import { is_pool, is_pool_or_lava } from './look.js';
+import { is_pool } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { SWIMMING, WWALKING } from './const.js';
 import { pooleffects_drown, pooleffects_lava_effects, pooleffects_is_lava,
          pooleffects_is_swimmer, pooleffects_is_flyer } from './cmd.js';
@@ -15,7 +16,8 @@ import { movobj } from './hack.js';
 import { OBJ_INVENT, is_pit, is_hole, BUFSZ } from './const.js';
 import { impossible as equipment_impossible } from './pline.js';
 import { begin_burn, end_burn } from './timeout.js';
-import { artifact_light, arti_light_description } from './light.js';
+import { arti_light_description } from './light.js';
+import { artifact_light } from './artifact.js';
 import monAcPack from './makemon_ac.json' with { type: 'json' };
 const MONS_AC = monAcPack.ac;
 /* C mons[] rows (permonst); row[6] = mflags1.  Imported as a raw data pack for
@@ -40,33 +42,42 @@ import { pline, urgent_pline, livelog_printf } from './pline.js';
 import { You, You_cant, Your, You_feel } from './pline.js';
 import { LL_ALIGNMENT } from './const.js';
 import { aligns } from './roles.js';
-import { see_monsters, Sting_effects, retouch_object_hero, retouch_equipment } from './display.js';
+import { see_monsters, retouch_object_hero } from './display.js';
+import { Sting_effects, retouch_equipment } from './artifact.js';
 import { topl_park_cursor, putmsghistory } from './display.js';
 import { flush_screen, _topline_more_pending, _topl_stash_result, restore_command_topline } from './display.js';
 import { nhgetch } from './input.js';
-import { nomul, unmul, stop_occupation } from './allmain.js';
+import { stop_occupation } from './allmain.js';
+import { nomul, unmul } from './hack.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 import { discover_object, observe_object } from './o_init.js';
 import { exercise, change_luck, acurr, getAbase, C_ATTR_TO_DISP, adjalign } from './attrib.js';
 import { STR19, PROTECTION, INTRINSIC, Is_astralevel, A_CURRENT, A_ORIGINAL } from './const.js';
 import { PM_ARCHEOLOGIST, PM_HOBBIT, PM_MARILITH, PM_WINGED_GARGOYLE, PM_INCUBUS } from './pm.generated.js';
-import { float_vs_flight, obj_pmname, y_monnam, x_monnam, is_youmonst } from './mhitm.js';
+import { obj_pmname, is_youmonst } from './mhitm.js';
+import { y_monnam, x_monnam } from './do_name.js';
+import { float_vs_flight, body_part } from './polyself.js';
 import { breakarm, num_horns, can_be_strangled } from './mondata.js';
 import { ARTICLE_YOUR, SUPPRESS_SADDLE, SUPPRESS_HALLUCINATION } from './const.js';
-import { s_suffix } from './hacklib.js';
-import { hcolor, hliquid } from './mhitm.js';
+import { s_suffix, sgn } from './hacklib.js';
+import { hcolor } from './mhitm.js';
+import { hliquid } from './do_name.js';
 import { Breathless, region_danger, key2txt } from './cmd.js';
 import { curse } from './mkobj.js';
-import { update_inventory } from './inventory_refresh.js';
+import { update_inventory } from './invent.js';
 import { HALLUC, HALLUC_RES } from './const.js';
 /* C mondata.c:632 sliparm(ptr) — the real one, exported by js/makemon.js:462.
  * canwearobj's cantweararm(ptr) is breakarm(ptr) || sliparm(ptr) (mondata.h:133);
  * both halves are imported rather than re-derived here. */
-import { sliparm, permonstTemplate, summon_furies, trapname } from './makemon.js';
+import { sliparm, permonstTemplate, summon_furies } from './makemon.js';
+import { trapname } from './trap.js';
 import { which_armor } from './worn.js';
-import { canletgo } from './makemon.js';
-import { weapon_descr, touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
-import { cmdq_add_key, cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, carrying_stoning_corpse, Yname2, equip_ok, NH_BLACK } from './cmd.js';
+import { canletgo } from './do.js';
+import { touch_petrifies as corpse_touch_petrifies, mon_nam, m_at } from './uhitm.js';
+import { weapon_descr } from './weapon.js';
+import { cmdq_add_key, cmdq_pop, cmdq_peek, cmdq_clear, instapetrify as corpse_instapetrify, NH_BLACK } from './cmd.js';
+import { carrying_stoning_corpse } from './invent.js';
+import { Yname2 } from './objnam.js';
 import { setuwep, setuswapwep, setuqwep, empty_handed } from './wield.js';
 import { dropx } from './do.js';
 import { otense, makesingular, corpse_xname as petrify_corpse_xname, killer_xname as petrify_killer_xname, simpleonames as petrify_simpleonames } from './objnam.js';
@@ -91,25 +102,27 @@ function ParanoidRemove() {
 const PETRIFY_CORPSE = 265; /* objects.h CORPSE */
 /* C mkobj.c:1865 set_bknown() — the project's real one (js/mklev.js:11078).
  * mklev.js does not import this file, so there is no cycle. */
-import { set_bknown } from './mklev.js';
+import { set_bknown } from './mkobj.js';
 import { set_ustuck, rescham, restartcham } from './mon.js';
 import { sticks } from './dog.js';
 import { Can_fall_thru, on_level, has_ceiling } from './dungeon.js';
 import { self_invis_message, make_confused, make_hallucinated } from './potion.js';
-import { set_mimic_blocking } from './sit.js';
-import { paranoid_query } from './paranoid.js';
+import { set_mimic_blocking } from './display.js';
+import { paranoid_query } from './cmd.js';
 /* C do_wear.c:3258 obj_erode_type() / :3299 destroy_arm() read the objclass.h
  * material predicates.  js/mklev.js already owns the single copy of that set
  * (mkobj.c:2272-2298 + objnam.c:1195 erosion_matters); import them rather than
  * adding a fourth private transcription (js/trap.js and js/mklev.js each hold
  * one already, and the trap.js header records what a divergent copy cost). */
-import { erosion_matters, is_flammable, is_rottable, is_rustprone,
-         is_crackable, is_corrodeable, is_damageable } from './mklev.js';
+import { is_rustprone, is_crackable, is_corrodeable, is_damageable } from './mklev.js';
+import { erosion_matters } from './objnam.js';
+import { is_flammable, is_rottable } from './mkobj.js';
 /* C trap.c:171 await erode_obj() — the single shared body lives in js/trap.js next to
  * burnarmor/water_damage.  js/trap.js imports float_up/bimanual from this file,
  * so this closes an import cycle; both sides are hoisted function declarations
  * used only at call time, never at module-eval time. */
-import { erode_obj, dotrap, t_at, reset_utrap, fill_pit, buried_ball } from './trap.js';
+import { erode_obj, dotrap, t_at, reset_utrap, fill_pit } from './trap.js';
+import { buried_ball } from './dig.js';
 import { remove_worn_item } from './steal.js';
 /* C do_wear.c:3247 selftouch("You") — losing gloves means the wielded weapon
  * gets touched bare-handed.  js/trap.js:3260 is the single body. */
@@ -129,7 +142,9 @@ import { ERODE_NONE, ERODE_BURN, ERODE_RUST, ERODE_ROT, ERODE_CORRODE,
  * that stub is gone, so these calls reach the real implementations rather than a
  * seventeenth copy.  See _uwep_welded_dw() below for the one C guard cmd.js's
  * `welded` omits. */
-import { body_part, _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, surface, useup, getObjFromGetobj, learn_unseen_invent } from './cmd.js';
+import { _plineVFmt, _spoteffects_pickup as _spoteffects_pickup_fd, getObjFromGetobj } from './cmd.js';
+import { useup, learn_unseen_invent } from './invent.js';
+import { surface } from './dungeon.js';
 import { welded } from './wield.js';
 /* C's go.oldcap is ONE global (decl.h:741, BSS-zero at game start) and C has ONE
  * encumber_msg() (pickup.c:1978).  This file used to carry a SECOND body of it
@@ -138,7 +153,7 @@ import { welded } from './wield.js';
  * so the very first encumbrance crossing of a game printed nothing.  Re-export
  * js/weight.js's body (which keeps C's zero baseline) so both halves of the
  * port share one global, exactly as C does. */
-import { encumber_msg } from './weight.js';
+import { encumber_msg } from './pickup.js';
 import { near_capacity } from './hack.js';
 export { encumber_msg };
 import { make_glib, make_slimed } from './potion.js';
@@ -169,13 +184,13 @@ import { LEVITATION as LEVITATION_PROP, GLIB as GLIB_PROP, Upolyd, I_SPECIAL,
 import { UNCHANGING as UNCHANGING_PROP } from './const.js';
 /* C polyself.c poly_gender() — js/makemon.js:2112 is the ONE definition (do_wear.c
  * itself calls the same global function; not duplicating it here). */
-import { poly_gender } from './makemon.js';
+import { poly_gender } from './polyself.js';
 import { livelog_newform, set_uasmon, M1_CLING } from './polyself.js';
 function is_clinger(ptr) {
     const mf1 = (ptr && ptr.mflags1 != null) ? (ptr.mflags1 >>> 0) : _hero_mflags1_dw();
     return (mf1 & M1_CLING) !== 0;
 }
-import { dismount_steed as dismount_steed_fu } from './cmd.js';
+import { dismount_steed as dismount_steed_fu } from './steed.js';
 import { trycall } from './do.js';
 import { W_ARTI } from './const.js';
 import { Monnam as Monnam_fu } from './mcastu.js';
@@ -240,7 +255,7 @@ const SLEEPY_DW = 27;
 const TIMEOUT_DW = 0x00FFFFFF;
 /* `Your` used to be imported from js/vault.js:481, which is a throw-stub; the
  * real body is now declared in this file (C pline.c:380). */
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU } from './const.js';
 /* C ref: youprop.h:375-383 / prop.h — the property slots dragon_armor_handling
  * toggles as EXTRINSICS on the W_ARM bit. */
@@ -277,8 +292,10 @@ import { W_TOOL as W_TOOL_C, HEAD as HEAD_DW, FACE as FACE_DW } from './const.js
  * so conferring EBlinded below is what makes it fire.  vision.js imports only
  * gstate/const/display, so this closes no cycle. */
 import { vision_recalc } from './vision.js';
-import { dmgtype_fromattack } from './makemon.js';
+import { dmgtype_fromattack } from './mondata.js';
 import { float_down, float_up } from './trap.js'; // relocate-fns
+import { yname } from './objnam.js'; // relocate-fns
+export { yname } from './objnam.js'; // relocate-fns
 export { recalc_telepat_range } from './worn.js'; // relocate-fns
 export { float_up } from './trap.js'; // relocate-fns
 export { BP_LEG_DW, FLYING_PROP, Flying, Levitation, PROP_TIMEOUT, STEALTH_PROP, ensure_uprop, uprop_levitation_record }; // relocate-fns
@@ -326,10 +343,6 @@ const A_CHA = 5;
 /* GAUNTLETS_OF_POWER otyp 161 — see GAUNTLETS_OF_POWER_OTYP at do_wear.js:1338
  * (js/attrib.js:117 independently carries the same literal 161). */
 const GAUNTLETS_OF_POWER_OTYP_DW = 161;
-/* C-faithful sign function (hacklib.c sgn): -1, 0, or 1. */
-function sgn(n) {
-    return (n < 0) ? -1 : (n !== 0 ? 1 : 0);
-}
 /* C ref: objclass.h:193-212 — material property predicates.
  * These check objects[obj->otyp].oc_material via MKOBJ_OC_MATERIAL. */
 function objOcMaterial(otyp) {
@@ -496,7 +509,7 @@ export function reset_remarm() {
 }
 /* ECMD_* return codes — C ref: hack.h (cmd dispatch result flags). */
 const ECMD_CANCEL = 2;
-const ECMD_OK = 0;
+import { ECMD_OK } from './const.js';
 const ECMD_TIME = 1;
 /* C ref: do_wear.c:15 — c_that_[] = "that".  already_wearing() picks the
  * trailing punctuation by pointer identity ('!' when cc == c_that_, '.'
@@ -1561,7 +1574,7 @@ const LENSES_OTYP_DW = 232;
 export async function cursed_dw(otmp) {
     const u = game.u;
     if (!otmp) {
-        impossible('cursed without otmp');
+        impossible_do_wear('cursed without otmp');
         return false;
     }
     if (otmp === u.uwep ? welded(otmp) : otmp.cursed) {
@@ -1606,7 +1619,7 @@ async function select_off(otmp) {
     }
     if (otmp === u.uarmg) {
         if (welded(u.uwep)) {
-            await You(`are unable to take off your ${c_gloves} while wielding that ${is_sword(u.uwep) ? c_sword : c_weapon}.`);
+            await You(`are unable to take off your ${c_gloves} while wielding that ${is_sword_do_wear(u.uwep) ? c_sword : c_weapon}.`);
             set_bknown(u.uwep, 1);
             return 0;
         } else if (Glib_dw()) {
@@ -1633,7 +1646,7 @@ async function select_off(otmp) {
             buf = `remove your ${c_suit}`;
             why = u.uarm;
         } else if (welded(u.uwep) && bimanual(u.uwep)) {
-            buf = `release your ${is_sword(u.uwep) ? c_sword : u.uwep.otyp === BATTLE_AXE_DW ? c_axe : c_weapon}`;
+            buf = `release your ${is_sword_do_wear(u.uwep) ? c_sword : u.uwep.otyp === BATTLE_AXE_DW ? c_axe : c_weapon}`;
             why = u.uwep;
         }
         if (why) {
@@ -1725,8 +1738,18 @@ async function better_not_take_that_off(gloves) {
     return !(await paranoid_query(true, question));
 }
 /* C ref: you.h W_ARMOR — union of the seven body-armor worn masks. */
-const W_ARM_C = 0x001, W_ARMC_C = 0x002, W_ARMH_C = 0x004, W_ARMS_C = 0x008,
-      W_ARMG_C = 0x010, W_ARMF_C = 0x020, W_ARMU_C = 0x040;
+import { W_ARMC as W_ARMC_C, W_ARM as W_ARM_C, W_ARMU as W_ARMU_C, W_ARMS as W_ARMS_C, W_ARMH as W_ARMH_C, W_ARMG as W_ARMG_C, W_ARMF as W_ARMF_C } from './const.js';
+import { BUCT_BLESSED, BUCT_CURSED, BUCT_UNCURSED, BUCT_UNKNOWN, COIN_CLASS_C, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, INV_ORDER, OCLASS_ARMOR, OCLASS_NAME, OCLASS_RING, _BLINDFOLD_OTYP, _LENSES_OTYP, _MEAT_RING_OTYP, _TOWEL_OTYP, _hero_youmonst, _hprop, _kick_nolimbs, impossible_cmd, inventory_menu_legacy, is_sword, set_cursor, set_occupation, take_off_occ } from './cmd.js';
+import { count_categories } from './pickup.js';
+import { count_buc, count_unpaid, ggetobj, is_worn, wearing_armor } from './invent.js'; // relocate-fns
+import { menucolor_row } from './coloratt.js'; // relocate-fns
+import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
+import { ALL_FINISHED, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, GLIB, MENU_COMBINATION, MENU_FULL, MENU_TRADITIONAL, PICK_ANY, W_AMUL as W_AMUL_TO, W_ARMC as W_ARMC_TO, W_ARMF as W_ARMF_TO, W_ARMG as W_ARMG_TO, W_ARMH as W_ARMH_TO, W_ARMS as W_ARMS_TO, W_ARMU as W_ARMU_TO, W_ARM as W_ARM_TO, W_QUIVER as W_QUIVER_TO, W_RINGL as W_RINGL_TO, W_RINGR as W_RINGR_TO, W_SWAPWEP as W_SWAPWEP_TO, W_TOOL as W_TOOL_TO, W_WEP as W_WEP_TO } from './const.js'; // relocate-fns
+import { await_menu_key, docorner_blank_utf8_captures } from './display.js'; // relocate-fns
+import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
+import { makeplural as makeplural_objnam } from './objnam.js'; // relocate-fns
+import { add_valid_menu_class, allow_category, menu_class_present } from './pickup.js'; // relocate-fns
+import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 const W_ARMOR_C = W_ARM_C | W_ARMC_C | W_ARMH_C | W_ARMS_C | W_ARMG_C | W_ARMF_C | W_ARMU_C;
 /* C ref: do_wear.c count_worn_stuff() — collect the worn ARMOR pieces from the
  * real gi.invent chain (each carries an armor worn-mask bit).  Returns the list
@@ -1929,7 +1952,7 @@ export async function do_takeoff() {
     } else if (doff.what === W_TOOL) {
         if (!(await cursed_dw(u.ublindf))) await Blindf_off(u.ublindf);
     } else {
-        impossible('do_takeoff: taking off %lx', doff.what);
+        impossible_do_wear('do_takeoff: taking off %lx', doff.what);
     }
     doff.mask &= ~I_SPECIAL;
     return otmp;
@@ -2042,7 +2065,7 @@ const BATTLE_AXE_DW = 45;
 /* obj.h:299-303 is_elven_armor(otmp) — elven leather helm / mithril-coat /
  * cloak / shield / boots. */
 const ELVEN_ARMOR_OTYPS_DW = new Set([89, 127, 139, 153, 169]);
-/* obj.h:223-226 is_sword(otmp) — WEAPON_CLASS && oc_skill in
+/* obj.h:223-226 is_sword_do_wear(otmp) — WEAPON_CLASS && oc_skill in
  * [P_SHORT_SWORD(5) .. P_SABER(9)]: the contiguous otyp run 46..58
  * (short sword, elven/orcish/dwarvish short sword, scimitar, silver saber,
  * broadsword, elven broadsword, long sword, two-handed sword, katana,
@@ -2050,7 +2073,7 @@ const ELVEN_ARMOR_OTYPS_DW = new Set([89, 127, 139, 153, 169]);
 const SWORD_OTYP_LO_DW = 46, SWORD_OTYP_HI_DW = 58;
 const BIMANUAL_OTYPS_DW = new Set([45, 55, 57, 59, 60, 61, 62, 63, 64, 65, 66,
                                    67, 68, 69, 70, 71, 79, 261]);
-function is_sword(otmp) {
+function is_sword_do_wear(otmp) {
     return !!otmp && (otmp.oclass | 0) === WEAPON_CLASS_DW
         && (otmp.otyp | 0) >= SWORD_OTYP_LO_DW && (otmp.otyp | 0) <= SWORD_OTYP_HI_DW;
 }
@@ -2173,7 +2196,7 @@ export async function glibr() {
     }
     let obj = u.uswapwep;
     if (u.twoweap && obj) {
-        otherwep = is_sword(obj) ? c_sword : weapon_descr(obj);
+        otherwep = is_sword_do_wear(obj) ? c_sword : weapon_descr(obj);
         if (obj.quan > 1) otherwep = makeplural(otherwep);
         await pline(`Your ${otherwep} ${xfl ? 'also ' : ''}${otense(obj, 'slip')} from your ${
             righty ? 'left ' : 'right '}${body_part(HAND)}.`);
@@ -2186,7 +2209,7 @@ export async function glibr() {
     obj = u.uwep;
     if (obj && obj.otyp !== AKLYS && !welded(obj)) {
         const savequan = obj.quan;
-        let thiswep = is_sword(obj) ? c_sword : weapon_descr(obj);
+        let thiswep = is_sword_do_wear(obj) ? c_sword : weapon_descr(obj);
         if (otherwep && thiswep !== makesingular(otherwep)) otherwep = null;
         if (obj.quan > 1) {
             if (thiswep === 'food') obj.quan = 1;
@@ -2267,7 +2290,7 @@ export async function canwearobj(otmp, maskbox, noisy) {
     /* do_wear.c:2064-2069 */
     if (_uwep_welded_dw() && bimanual(u.uwep) && (is_suit(otmp) || is_shirt(otmp))) {
         if (noisy)
-            await pline(`You cannot do that while holding your ${is_sword(u.uwep) ? c_sword : c_weapon}.`);
+            await pline(`You cannot do that while holding your ${is_sword_do_wear(u.uwep) ? c_sword : c_weapon}.`);
         return false;
     }
 
@@ -2292,7 +2315,7 @@ export async function canwearobj(otmp, maskbox, noisy) {
         } else if (u.uwep && bimanual(u.uwep)) {
             if (noisy)
                 await pline(`You cannot wear a shield while wielding a two-handed ${
-                    is_sword(u.uwep) ? c_sword
+                    is_sword_do_wear(u.uwep) ? c_sword
                     : (u.uwep.otyp | 0) === BATTLE_AXE_DW ? c_axe
                       : c_weapon}.`);
             err++;
@@ -2343,7 +2366,7 @@ export async function canwearobj(otmp, maskbox, noisy) {
             err++;
         } else if (_uwep_welded_dw()) {
             if (noisy)
-                await pline(`You cannot wear gloves over your ${is_sword(u.uwep) ? c_sword : c_weapon}.`);
+                await pline(`You cannot wear gloves over your ${is_sword_do_wear(u.uwep) ? c_sword : c_weapon}.`);
             err++;
         } else if (Glib_dw()) {
             /* prevent slippery bare fingers from transferring to gloved fingers */
@@ -3200,7 +3223,7 @@ export function adj_abon(otmp, delta) {
 /* C ref: nethack-c/src/pline.c:587-637 — impossible() logs and RETURNS; it
  * never aborts.  stuck_ring's "neither left nor right" arm relies on falling
  * through to `return (struct obj *) 0`. */
-function impossible(_msg, ..._args) { }
+function impossible_do_wear(_msg, ..._args) { }
 /* C mondata.h:53 — #define nolimbs(ptr) (((ptr)->mflags1 & M1_NOLIMBS) == M1_NOLIMBS)
  * monflag.h:99 M1_NOLIMBS = 0x00006000L — a TWO-BIT composite (M1_NOHANDS
  * 0x2000 | 0x4000).  The test is `== M1_NOLIMBS`, i.e. BOTH bits set, NOT
@@ -3253,7 +3276,7 @@ export function stuck_ring(ring, otyp) {
 
     /* Check if ring is uleft or uright; if not, return null (error case). */
     if (ring !== u.uleft && ring !== u.uright) {
-        impossible("stuck_ring: neither left nor right?");
+        impossible_do_wear("stuck_ring: neither left nor right?");
         return null;
     }
 
@@ -4191,39 +4214,6 @@ export { You };
 
 export { Your };
 
-/* yname — C objnam.c:2359-2374.
- *   yname(obj) { s = cxname(obj);
- *                if (!carried(obj) || !obj_is_pname(obj)
- *                    || obj->oartifact >= ART_ORB_OF_DETECTION)
- *                    s = strcat(shk_your(nextobuf(), obj), s);
- *                return s; }
- * RNG-free on every arm.
- *
- * This was a throw-stub here AND at js/cmd.js:19318, which mattered because
- * js/cmd.js:6674 is `await You("smear royal jelly all over %s.", yname(eobj))`
- * — porting You() alone would have moved the abort one argument to the left,
- * exactly the failure recorded in the cmd.js:6537 comment. Both sites now
- * resolve to this body.
- *
- * Ownership uses the shared shk.c:5862-5873 helper, including shop bills,
- * monster inventory, and unique corpses. */
-export function yname(obj) {
-    const ART_ORB_OF_DETECTION = 21;
-    let owned = !!obj && (obj.where | 0) === OBJ_INVENT;
-    if (obj && !owned) {
-        for (let o = game.invent; o; o = o.nobj) {
-            if (o === obj) { owned = true; break; }
-        }
-    }
-    const name = cxname(obj); // C objnam.c:2361: name before ownership prefix.
-    // C objnam.c:2365-2366: most carried artifacts omit the possessive.
-    if (owned && obj_is_pname(obj) && obj.oartifact < ART_ORB_OF_DETECTION)
-        return name;
-    // Retain the inventory-chain fallback for objects without a where field.
-    const prefix = owned && obj.where == null && !obj.unpaid
-        ? 'your ' : ownership_prefix('', obj);
-    return (prefix + name).slice(0, BUFSZ - 1);
-}
 export { xname };
 /* C shk.c:5862 shk_your — forward to the canonical port in js/shk.js. */
 export const shk_your = ownership_prefix;
@@ -4233,4 +4223,434 @@ export function fingers_or_gloves(check_gloves) {
     if (check_gloves && uarmg)
         return gloves_simple_name(uarmg);
     return makeplural(body_part(FINGER));
+}
+
+/* C ref: do_wear.c:2696 select_off(otmp) — guards, then mark takeoff.mask. */
+async function select_off_cmd(otmp) {
+    const g = game;
+    const u = g.u || {};
+    if (!otmp) return 0;
+    g.context.takeoff = g.context.takeoff || { what: 0, mask: 0, delay: 0, disrobing: '' };
+    const doff = g.context.takeoff;
+    let why = null;
+    let buf = '';
+    if (otmp === u.uright || otmp === u.uleft) {
+        if (_kick_nolimbs(_hero_youmonst().data)) {
+            await pline('The ring is stuck.');
+            return 0;
+        }
+        if (welded(u.uwep) && (bimanual(u.uwep)
+            || otmp === (u.uhandedness === RIGHT_HANDED ? u.uright : u.uleft))) {
+            buf = `free a weapon ${body_part(HAND)}`;
+            why = u.uwep;
+        } else if (u.uarmg && (u.uarmg.cursed || _hprop(GLIB))) {
+            buf = `take off your ${_hprop(GLIB) ? 'slippery ' : ''}${gloves_simple_name(u.uarmg)}`;
+            why = !_hprop(GLIB) ? u.uarmg : {};
+        }
+        if (why) {
+            await You(`cannot ${buf} to remove the ring.`);
+            set_bknown(why, 1);
+            return 0;
+        }
+    }
+    if (otmp === u.uarmg && welded(u.uwep)) {
+        await You(`are unable to take off your gloves while wielding that ${is_sword(u.uwep) ? 'sword' : 'weapon'}.`);
+        set_bknown(u.uwep, 1);
+        return 0;
+    }
+    if (otmp === u.uarmg) { // C do_wear.c:2733-2740
+        if (_hprop(GLIB)) {
+            await pline(`${otmp.unpaid ? 'The' : 'Your'} ${gloves_simple_name(otmp)} are too slippery to take off.`);
+            return 0;
+        }
+        const corpse = carrying_stoning_corpse();
+        if (corpse && !u_safe_from_fatal_corpse(corpse, 0x02 | 0x04)
+            && !(await paranoid_query(true, `Take off your ${gloves_simple_name(otmp)} despite carrying a dead ${obj_pmname(corpse)}?`)))
+            return 0;
+    }
+    if (otmp === u.uarmf && u.utrap) { // C do_wear.c:2743-2753
+        if (u.utraptype === TT_BEARTRAP)
+            await pline(`The bear trap prevents you from pulling your ${body_part(FOOT)} out.`);
+        else if (u.utraptype === TT_INFLOOR)
+            await You(`are stuck in the ${surface(u.ux, u.uy)}, and cannot pull your ${makeplural_objnam(body_part(FOOT))} out.`);
+        if (u.utraptype === TT_BEARTRAP || u.utraptype === TT_INFLOOR)
+            return 0;
+    }
+    if (otmp === u.uarm || otmp === u.uarmu) {
+        why = null;
+        if (u.uarmc && u.uarmc.cursed) {
+            buf = `remove your ${cloak_simple_name(u.uarmc)}`;
+            why = u.uarmc;
+        } else if (otmp === u.uarmu && u.uarm && u.uarm.cursed) {
+            buf = 'remove your suit';
+            why = u.uarm;
+        } else if (welded(u.uwep) && bimanual(u.uwep)) {
+            buf = `release your ${is_sword(u.uwep) ? 'sword' : u.uwep.otyp === 45 /* BATTLE_AXE */ ? 'axe' : 'weapon'}`;
+            why = u.uwep;
+        }
+        if (why) {
+            await You(`cannot ${buf} to take off ${the(xname(otmp))}.`);
+            set_bknown(why, 1);
+            return 0;
+        }
+    }
+    if (!(otmp === u.uquiver || (otmp === u.uswapwep && !u.twoweap))) {
+        if (await cursed_dw(otmp)) return 0;
+    }
+    if (otmp === u.uarm) doff.mask |= W_ARM_TO;
+    else if (otmp === u.uarmc) doff.mask |= W_ARMC_TO;
+    else if (otmp === u.uarmf) doff.mask |= W_ARMF_TO;
+    else if (otmp === u.uarmg) doff.mask |= W_ARMG_TO;
+    else if (otmp === u.uarmh) doff.mask |= W_ARMH_TO;
+    else if (otmp === u.uarms) doff.mask |= W_ARMS_TO;
+    else if (otmp === u.uarmu) doff.mask |= W_ARMU_TO;
+    else if (otmp === u.uleft) doff.mask |= W_RINGL_TO;
+    else if (otmp === u.uright) doff.mask |= W_RINGR_TO;
+    else if (otmp === u.uamul) doff.mask |= W_AMUL_TO;
+    else if (otmp === u.ublindf) doff.mask |= W_TOOL_TO;
+    else if (otmp === u.uwep) doff.mask |= W_WEP_TO;
+    else if (otmp === u.uswapwep) doff.mask |= W_SWAPWEP_TO;
+    else if (otmp === u.uquiver) doff.mask |= W_QUIVER_TO;
+    else impossible_cmd('select_off: %s???', await doname(otmp));
+    return 0;
+}
+
+export async function doddoremarm() {
+    const g = game;
+    const u = g.u || {};
+    g.context = g.context || {};
+    const to = g.context.takeoff || {};
+    if (to.what || to.mask) {
+        /* C do_wear.c:3026-3029 — resume an interrupted disrobe. */
+        await You(`continue ${to.disrobing || ''}.`);
+        set_occupation(take_off_occ, to.disrobing || '', 0);
+        return ECMD_OK;
+    } else if (!u.uwep && !u.uswapwep && !u.uquiver && !u.uamul && !u.ublindf
+               && !u.uleft && !u.uright && !wearing_armor()) {
+        /* C do_wear.c:3032 */
+        await You('are not wearing anything.');
+        return ECMD_OK;
+    }
+    add_valid_menu_class(0); /* reset */
+    /* C do_wear.c:3036-3039: traditional selection can request a menu. */
+    let result = 0;
+    if (g.flags.menu_style !== MENU_TRADITIONAL
+        || (result = await ggetobj('take off', select_off_cmd, 0, false)) < -1)
+        await menu_remarm(result);
+    /* C do_wear.c:3041-3052 */
+    if (g.context.takeoff && g.context.takeoff.mask) {
+        const tk = g.context.takeoff;
+        tk.disrobing = ((tk.mask & ~W_WEAPONS) !== 0) ? 'disrobing' : 'disarming';
+        await take_off_occ();
+    }
+    /* The time is already accounted for in take_off() (do_wear.c:3053). */
+    return ECMD_OK;
+}
+
+/* C ref: do_wear.c:3090 menu_remarm(int retry) — reached from doddoremarm with
+ * retry == 0, so `all_worn_categories` starts TRUE and the MENU_FULL arm runs:
+ *
+ *     } else if (flags.menu_style == MENU_FULL) {
+ *         all_worn_categories = FALSE;
+ *         n = query_category("What type of things do you want to take off?",
+ *                            gi.invent, (WORN_TYPES | ALL_TYPES
+ *                                     | UNPAID_TYPES | BUCX_TYPES),
+ *                            &pick_list, PICK_ANY);
+ *
+ * Note which flags are ABSENT and what that costs on screen: no CHOOSE_ALL (so
+ * NO "A - Auto-select..." row and no hint line — unlike doddrop's menu), and no
+ * JUSTPICKED (no "P - ..." row).  WORN_TYPES is what makes ofilter = is_worn.
+ */
+async function menu_remarm(retry) {
+    const g = game;
+    const u = g.u || {};
+    if (!g.invent) return 0;   /* C pickup.c:1250 `if (!olist) return 0;` */
+    /* C do_wear.c:3096-3138: retry, partial, and combination skip the
+     * category menu.  The traditional prompt has retained its filters. */
+    if (retry || g.flags.menu_style !== MENU_FULL) {
+        let all = retry ? retry === -2 : true;
+        if (!retry && g.flags.menu_style === MENU_COMBINATION) {
+            const feedback = { value: 0 };
+            const i = await ggetobj('take off', select_off_cmd, 0, true, feedback);
+            if (feedback.value & ALL_FINISHED) return 0;
+            all = i === -2;
+        }
+        if ([...'uBUCX'].some(c => menu_class_present(c.charCodeAt(0)))) all = false;
+        const filter = o => is_worn(o) && (all || allow_category(o));
+        let eligible = false;
+        for (let o = g.invent; o; o = o.nobj) if (filter(o)) { eligible = true; break; }
+        if (!eligible) {
+            if (g.flags.menu_style !== MENU_COMBINATION)
+                await pline('There is nothing else you can remove or unwield.');
+            return 0;
+        }
+        const { selectedEntries = [] } = await inventory_menu_legacy({
+            title: 'What do you want to take off?', queryObjlist: true, pickAny: true, filter,
+        });
+        for (const entry of selectedEntries) await select_off_cmd(entry.obj);
+        return 0;
+    }
+
+
+    /* C pickup.c:1252-1285 — the do_* booleans, each a count_buc()/count_unpaid()
+     * over the SAME ofilter. */
+    const do_unpaid = count_unpaid(g.invent) > 0;
+    let num_buc_types = 0;
+    const do_blessed = count_buc(g.invent, BUCT_BLESSED, is_worn) > 0;
+    if (do_blessed) num_buc_types++;
+    const do_cursed = count_buc(g.invent, BUCT_CURSED, is_worn) > 0;
+    if (do_cursed) num_buc_types++;
+    const do_uncursed = count_buc(g.invent, BUCT_UNCURSED, is_worn) > 0;
+    if (do_uncursed) num_buc_types++;
+    const do_buc_unknown = count_buc(g.invent, BUCT_UNKNOWN, is_worn) > 0;
+    if (do_buc_unknown) num_buc_types++;
+
+    const ccount = count_categories(g.invent, true /* do_worn */);
+    /* C pickup.c:1287-1303 — "no point in actually showing a menu for a single
+     * category": query_category returns the single class WITHOUT opening a
+     * window, so no frame is painted and no key is read. */
+    if (ccount === 1 && !do_unpaid && num_buc_types <= 1) {
+        /* ...but it is not "no selection": pickup.c:1290-1302 hands back
+         * pick_list[0].a_int = the first ofilter-passing object's oclass, so
+         * menu_remarm (do_wear.c:3118-3120) add_valid_menu_class()es it and
+         * goes on to the second query_objlist menu. */
+        const first = (() => {
+            for (let o = g.invent; o; o = o.nobj)
+                if (is_worn(o)) return o;
+            return null;
+        })();
+        if (!first) return 0;
+        const sym = def_oc_syms_chars[first.oclass | 0] ?? '';
+        return await menu_remarm_objlist(new Set(['\0']),
+            [{ selector: '\0', gsym: sym }], false, 0);
+    }
+
+    /* C pickup.c:1313 show_a = ((qflags & ALL_TYPES) != 0 && ccount > 1). */
+    const show_a = ccount > 1;
+    const prompt = 'What type of things do you want to take off?';
+    const windowLines = [];
+    windowLines.push(menu_heading_text(prompt));  /* end_menu prompt, wintty.c:2688 */
+    windowLines.push('');
+    /* C pickup.c:1340-1348 — 'a', worded for do_worn. */
+    let invlet = 97; /* 'a' */
+    const rowIsSkipInvert = [];   /* parallel to `rows` below */
+    const rows = [];
+    const pushRow = (text, gsym, skipinvert) => {
+        windowLines.push(menucolor_row(text));
+        rows.push({ line: windowLines.length - 1, selector: text[0], gsym: gsym || '' });
+        rowIsSkipInvert.push(!!skipinvert);
+    };
+    if (show_a) {
+        pushRow(`${String.fromCharCode(invlet++)} - All worn and wielded types`,
+                '', true /* MENU_ITEMFLAGS_SKIPINVERT */);
+    }
+    /* C pickup.c:1350-1376 — one row per carried class that survives ofilter,
+     * in flags.inv_order, each carrying def_oc_syms[oclass].sym as its group
+     * accelerator and MENU_ITEMFLAGS_NONE (so it DOES take a bulk select). */
+    for (const oc of (g.flags.inv_order || INV_ORDER)) {
+        let any = false;
+        for (let o = g.invent; o; o = o.nobj) {
+            if ((o.oclass | 0) === oc && is_worn(o)) { any = true; break; }
+        }
+        if (!any) continue;
+        let name = OCLASS_NAME[oc] ?? '';
+        // C pickup.c:1362-1364, invent.c:4825-4836: let_to_name with showsym.
+        if (g.iflags?.menu_head_objsym)
+            name += ' '.repeat(Math.max(0, 7 - name.length))
+                + `  ('${def_oc_syms_chars[oc]}')`;
+        pushRow(`${String.fromCharCode(invlet++)} - ${name}`,
+                def_oc_syms_chars[oc] ?? '', false);
+    }
+    /* C pickup.c:1399-1402 — the blank separator, shared by the unpaid and BUC
+     * clusters.  menu_remarm passes no JUSTPICKED, so num_justpicked is 0 here
+     * and takes no part in the condition. */
+    if (do_unpaid || do_blessed || do_cursed || do_uncursed || do_buc_unknown)
+        windowLines.push('');
+    if (do_unpaid) pushRow('u - Unpaid items', '', true);
+    if (do_blessed) pushRow('B - Items known to be Blessed', '', true);
+    if (do_cursed) pushRow('C - Items known to be Cursed', '', true);
+    if (do_uncursed) pushRow('U - Items known to be Uncursed', '', true);
+    if (do_buc_unknown) pushRow('X - Items of unknown Bless/Curse status', '', true);
+    windowLines.push('(end)');
+
+    const maxLen = windowLines.reduce((max, ln) => {
+        const vis = ln.replace(/\x1b\[[0-9;]*m/g, '');
+        return Math.max(max, vis.length);
+    }, 0);
+    /* wintty.c:1927 — `!iflags.menu_overlay` drops the NHW_MENU to offx 0 (WIN_COL 1)
+     * and a cleared screen, however short it is. */
+    const WIN_COL = (g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0)
+        ? 1 : 80 - maxLen - 2;
+    const uac = u.uac ?? 0;
+    const endRow = windowLines.length - 1;
+    const endCursorCol = WIN_COL + 5 + 1;   /* WIN_COL + len('(end)') + 1 */
+
+    const selected = new Set();
+    const selCount = new Map();   /* selector -> curr.count (absent == -1) */
+    let titleErased = false;
+    const paintedLines = () => {
+        const painted = windowLines.slice();
+        for (const row of rows)
+            if (selected.has(row.selector))
+                painted[row.line] = painted[row.line].slice(0, 2)
+                                  + (selCount.has(row.selector) ? '#' : '+')
+                                  + painted[row.line].slice(3);
+        if (titleErased) painted[0] = '';
+        return painted;
+    };
+    const showMenu = async () => {
+        g._screen_output = WIN_COL === 1
+            ? paintedLines().map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
+            : build_window_screen(paintedLines(), WIN_COL, uac);
+        set_cursor(endCursorCol, endRow);
+    };
+    await showMenu();
+    const selectors = rows.map((r) => r.selector).join('');
+    const gaccStr = rows.map((r) => r.gsym).join('');
+    const menuEnd = await await_menu_key(showMenu, selectors, gaccStr, PICK_ANY,
+        (ch, cnt) => {
+            /* C wintty.c:1646-1695: this one-page category menu applies
+             * page/all select, deselect and invert through windows.c:1562. */
+            const bulk = ch === '.' || ch === ',' ? 'select'
+                : ch === '-' || ch === '\\' ? 'unselect'
+                : ch === '@' || ch === '~' ? 'invert' : null;
+            if (bulk) {
+                const mode = g.iflags?.menuinvertmode ?? 1;
+                for (let i = 0; i < rows.length; i++) {
+                    const sel = rows[i].selector, was = selected.has(sel);
+                    if (rowIsSkipInvert[i] && (mode === 2 || (mode === 1 && !was))) continue;
+                    if (bulk === 'select' || (bulk === 'invert' && !was)) selected.add(sel);
+                    else selected.delete(sel);
+                    selCount.delete(sel);
+                }
+                return;
+            }
+            const row = rows.find((r) => r.selector === ch)
+                     ?? rows.find((r) => r.gsym && r.gsym === ch);
+            if (!row) return;
+            /* C wintty.c toggle_menu_curr(.., counting, count) */
+            const sel = row.selector;
+            if (selected.has(sel)) {
+                if (cnt > 0) selCount.set(sel, cnt);
+                else { selected.delete(sel); selCount.delete(sel); }
+            } else if (cnt > 0) { selCount.set(sel, cnt); selected.add(sel); }
+            else if (cnt === -1) selected.add(sel);
+        },
+        /* C wintty.c:1700-1730 MENU_SEARCH — PICK_ANY, so it never finishes
+         * early, and the getlin's clear_nhwindow(WIN_MESSAGE) blanks row 0. */
+        async () => menu_search_case(
+            'ANY',
+            rows.map((r) => ({ str: windowLines[r.line], r })),
+            () => build_window_screen(paintedLines(), WIN_COL, uac).split('\n'),
+            (curr) => {
+                const selr = curr.r.selector;
+                if (selected.has(selr)) selected.delete(selr);
+                else selected.add(selr);
+            })
+            .then((fin) => { titleErased = true; return fin; }));
+    g._pending_message = '';
+    /* wintty.c:982,3684-3687: dismissing the offx > 0 category menu cl_end()s
+     * its rows from offx - 1 before row_refresh(); a cell whose physical paint
+     * was stale stays blank under the next menu. */
+    docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
+    /* wintty.c:982,3684-3687: the dismissed overlay's docorner() clears the
+     * corner before row_refresh() reprints gbuf. */
+    docorner_blank_utf8_captures(WIN_COL - 1, endRow + 2);
+    await flush_screen(1);
+
+    /* C do_wear.c:3126-3132 — query_objlist selects worn objects for select_off. */
+    /* C do_wear.c:3121-3124 — any of u/B/U/C/X selected clears
+     * all_worn_categories, so is_worn_by_type (is_worn && allow_category,
+     * pickup.c:609/540-591) filters instead of is_worn. */
+    /* C do_wear.c:3104-3105 — an empty selection (n == 0) returns 0. */
+    if (menuEnd === 27 || selected.size === 0) return 0;
+    return await menu_remarm_objlist(selected, rows, show_a, menuEnd);
+}
+
+/* C ref: do_wear.c:3121-3142 — the second half of menu_remarm: the
+ * query_objlist("What do you want to take off?") over worn objects, filtered
+ * by the classes/BUCX letters query_category picked. */
+async function menu_remarm_objlist(selected, rows, show_a, menuEnd) {
+    const g = game;
+    const hasUnpaid = selected.has('u');
+    const hasBuc = ['B', 'U', 'C', 'X'].some((ch) => selected.has(ch));
+    const allSelected = show_a && selected.has('a')
+        && !hasUnpaid && !hasBuc;
+    const selectedClasses = new Set();
+    for (const row of rows) {
+        if (!selected.has(row.selector) || !row.gsym) continue;
+        const oc = INV_ORDER.find((candidate) =>
+            (def_oc_syms_chars[candidate] ?? '') === row.gsym);
+        if (oc != null) selectedClasses.add(oc);
+    }
+    const filter = (obj) => {
+        if (!is_worn(obj)) return false;
+        if (allSelected) return true;
+        /* pickup.c:526-528 — no filter active matches nothing */
+        if (!selectedClasses.size && !hasUnpaid && !hasBuc) return false;
+        /* allow_category: class, unpaid and bucx filters are ANDed */
+        if (selectedClasses.size && !selectedClasses.has(obj.oclass | 0))
+            return false;
+        if (hasUnpaid && !obj.unpaid) return false;
+        if (hasBuc) {
+            let bucx;
+            if ((obj.oclass | 0) === COIN_CLASS_C)
+                bucx = g.flags?.goldX ? 'X' : 'U';
+            else
+                bucx = !obj.bknown ? 'X' : obj.blessed ? 'B'
+                    : obj.cursed ? 'C' : 'U';
+            if (!selected.has(bucx)) return false;
+        }
+        return true;
+    };
+    /* C pickup.c:1069-1070 SIGNAL_NOMENU; do_wear.c:3134-3135. */
+    let eligible = false;
+    for (let o = g.invent; o; o = o.nobj)
+        if (filter(o)) { eligible = true; break; }
+    if (!eligible) {
+        if (g.invent && g.flags.menu_style !== MENU_COMBINATION)
+            await pline('There is nothing else you can remove or unwield.');
+        return 0;
+    }
+    const { selectedEntries: takeoffPicks = [] } = await inventory_menu_legacy({
+        title: 'What do you want to take off?',
+        queryObjlist: true,
+        pickAny: true,
+        filter,
+    });
+    /* C do_wear.c:3140-3142 */
+    for (const entry of takeoffPicks)
+        await select_off_cmd(entry.obj);
+    return 0;
+}
+
+const _AMULET_CLASS = 5;
+
+export async function equip_ok(obj, removing, accessory) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    const W_ARMOR_MASK = W_ARM_C | W_ARMC_C | W_ARMH_C | W_ARMS_C | W_ARMG_C | W_ARMF_C | W_ARMU_C;
+    const W_ACCESSORY_MASK = 0x000F0000; /* W_AMUL|W_RINGL|W_RINGR|W_TOOL */
+    const oclass = obj.oclass | 0;
+    const otyp = obj.otyp | 0;
+    /* do_wear.c:3414 — ignore for putting on if already worn, removing if not. */
+    const is_worn = ((obj.owornmask | 0) & (W_ARMOR_MASK | W_ACCESSORY_MASK)) !== 0;
+    if (removing !== is_worn) return GETOBJ_EXCLUDE_INACCESS; /* do_wear.c:1728 */
+    /* do_wear.c:3419 — exclude most classes outright (except the few non-class
+     * wearables: meat ring, blindfold, towel, lenses). */
+    if (oclass !== OCLASS_ARMOR && oclass !== OCLASS_RING && oclass !== _AMULET_CLASS) {
+        if (otyp !== _MEAT_RING_OTYP && otyp !== _BLINDFOLD_OTYP
+            && otyp !== _TOWEL_OTYP && otyp !== _LENSES_OTYP)
+            return GETOBJ_EXCLUDE;
+    }
+    /* do_wear.c:3428 — armor with 'P'/'R' or accessory with 'W'/'T' → DOWNPLAY
+     * (selectable via ?* but not listed among the suggested letters). */
+    if (accessory !== (oclass !== OCLASS_ARMOR)) return GETOBJ_DOWNPLAY;
+    if (oclass === OCLASS_ARMOR && !removing) {
+        const dummymask = { mask: 0 };
+        if (!(await canwearobj(obj, dummymask, false)))
+            return GETOBJ_DOWNPLAY;
+    }
+    if (removing && !game.gi.item_action_in_progress && await inaccessible_equipment(obj, null, oclass === OCLASS_RING))
+        return GETOBJ_EXCLUDE_INACCESS; // C do_wear.c:3435-3439
+    return GETOBJ_SUGGEST;
 }

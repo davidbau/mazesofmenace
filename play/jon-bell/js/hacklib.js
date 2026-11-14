@@ -3,18 +3,7 @@
 // C ref: hacklib.c, dungeon.c helpers
 import { game } from './gstate.js';
 export { deepest_lev_reached, depth } from './dungeon.js'; // relocate-fns
-export function isok(x, y) {
-    const { COLNO, ROWNO } = await_const();
-    /* mirror nethack-c/src/cmd.c:5004 — returns int, not boolean */
-    return (x >= 1 && x <= COLNO - 1 && y >= 0 && y <= ROWNO - 1) ? 1 : 0;
-}
-// Lazy import to avoid circular deps
-let _const = null;
-function await_const() {
-    if (!_const)
-        _const = { COLNO: 80, ROWNO: 21 };
-    return _const;
-}
+export { isok } from './const.js';
 export function distmin(x1, y1, x2, y2) {
     return Math.max(Math.abs(x1 - x2), Math.abs(y1 - y2));
 }
@@ -588,4 +577,37 @@ export function tabexpand(sbuf) {
 export function isqrt(val) {
     if (val <= 0) return 0;
     return Math.trunc(Math.sqrt(val));
+}
+
+export function strstri(s1, s2) {
+    return String(s1 ?? '').toLowerCase().includes(String(s2 ?? '').toLowerCase());
+}
+
+// C hacklib.c:601 findword(): word of wordlen chars in a space-separated list.
+export function findword(list, word, wordlen, ignorecase) {
+    const w = word.slice(0, wordlen);
+    for (const p of list.split(' ')) {
+        if (!p) continue;
+        if (ignorecase ? p.toLowerCase() === w.toLowerCase() : p === w) return p;
+    }
+    return null;
+}
+
+/* ─── swapbits — C ref: hacklib.c:896-901 ─────────────────────────────── */
+export function swapbits(val, bita, bitb) {
+    const tmp = ((val >> bita) & 1) ^ ((val >> bitb) & 1);
+    return (val ^ ((tmp << bita) | (tmp << bitb)));
+}
+
+export function copynchars(dst, src, n) {
+    const s = (src == null) ? "" : String(src);
+    let i = 0;
+    let out = "";
+    n = n | 0;
+    /* end-of-JS-string is the '\0' terminator; an embedded '\0' terminates too */
+    while (n > 0 && i < s.length && s[i] !== "\0" && s[i] !== "\n") {
+        out += s[i++];
+        --n;
+    }
+    return out;
 }

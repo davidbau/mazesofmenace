@@ -1,23 +1,33 @@
+import { S_HUMAN_MLET } from './const.js';
 // @ts-nocheck
 // js/monmove.js — Monster movement support: distfleeck + set_apparxy + m_move.
 // C ref: nethack-c/src/monmove.c
 // @ts-nocheck — js sibling imports.
 import { HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS } from "./const.js";
 import { stop_occupation } from './allmain.js';
-import { rn2, rnd, rn1, d, pushRngLogEntry } from './rng.js';
+import { rn1, pushRngLogEntry } from './rng.js';
+import { rn2, rnd, d } from './rnd.js';
 import { game } from './gstate.js';
 import { place_monster } from './steed.js';
 import { PM_LEPRECHAUN, PM_VROCK, PM_KILLER_BEE, PM_QUEEN_BEE, PM_ROGUE } from './pm.generated.js';
 import { bare_artifactname, makeplural, an, xname, vtense } from './objnam.js';
-import { yname } from './do_wear.js';
+import { yname } from './objnam.js';
 import { acurr } from './attrib.js';
 import { money_cnt } from './hack.js';
-import { dist2, isok } from './hacklib.js';
-import { dog_move, mattackm, dogfood, mdisplacem } from './dogmove.js';
-import { dochug } from './dochug.js';
+import { dist2 } from './hacklib.js';
+import { isok } from './const.js';
+import { dog_move } from './dogmove.js';
+import { mattackm, mdisplacem } from './mhitm.js';
+import { dogfood } from './dog.js';
+import './dochug.js';
 import { gd_move } from './vault.js';
 import { attacktype } from './mondata.js';
-import { findgold, noattacks, tele_restrict, permonstTemplate, splitobj, check_gear_next_turn, find_defensive, use_defensive, onscary, grow_up, monflee_release_hero } from './makemon.js';
+import { tele_restrict } from './teleport.js';
+import { permonstTemplate, grow_up, monflee_release_hero } from './makemon.js';
+import { findgold } from './steal.js';
+import { noattacks } from './mondata.js';
+import { find_defensive, use_defensive } from './muse.js';
+import { check_gear_next_turn } from './mon.js';
 import { noteleport_level } from './teleport.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsizePack from './makemon_msize.json' with { type: 'json' };
@@ -34,27 +44,30 @@ import { OBJ_FLOOR, OBJ_DELETED, is_pit, IS_STWALL, IS_TREE, Is_rogue_level, NEE
 import { newsym, canspotmon, canseemon, topl_force_break_now, capture_flushed_cells, flush_pending_messages, _topline_more_pending, _more_never_dismissed, sensemon, Unaware, swallowed, Deaf } from './display.js';
 import { pline, Norep, You_hear, You_see } from './pline.js';
 import { cansee, vision_recalc, recalc_block_point, clear_path, couldsee } from './vision.js';
-import { curr_mon_load, max_mon_load, can_carry, could_reach_item, dmgtype,
-         obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real,
-         /* meatmetal (mon.c:1482) + delobj_core (invent.c:1446) */ obj_resists } from './dogmove.js';
-import { mksobj_at, is_rustprone, extract_from_minvent, resists_ston, obj_extract_self, is_organic } from './mklev.js';
+import { could_reach_item, dmgtype, obj_extract_floor, distant_obj_name, Monnam_dm, finish_meating as finish_meating_real, obj_resists } from './dogmove.js';
+import { curr_mon_load, max_mon_load, can_carry } from './mon.js';
+import { is_rustprone, extract_from_minvent, resists_ston, is_organic, splitobj } from './mklev.js';
+import { mksobj_at, obj_extract_self } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { sobj_at } from './invent.js';
 import { u_on_newpos, Is_special } from './dungeon.js';
 import { stairway_at, stairway_find_dir } from './stairs.js';
 import { upstart } from './hacklib.js';
-import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear } from './mon.js';
+import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear, M1_WALLWALK_MV } from './mon.js';
 import { is_pool as is_pool_mv2 } from './look.js';
 import { may_dig } from './hack.js';
-import { m_at, mon_nam, autoreturn_weapon } from './uhitm.js';
+import { m_at, mon_nam } from './uhitm.js';
+import { autoreturn_weapon } from './weapon.js';
 import { gettrack } from './track.js';
-import { artifact_light } from './light.js';
+import { artifact_light } from './artifact.js';
 /* C monmove.c:1844/1846 — m_move's tengu teleport arm calls both.  Both are
  * complete ports in js/teleport.js (which already imports this module; the
  * cycle is fine, they are hoisted function declarations). */
-import { rloc, mnexto } from './teleport.js';
+import { rloc } from './teleport.js';
+import { mnexto } from './mon.js';
 import { RLOC_MSG, has_edog, SHOPBASE } from './const.js';
-import { y_monnam, YMonnam, Adjmonnam, wakeup, Amonnam } from './mhitm.js';
+import { y_monnam, YMonnam, Adjmonnam, Amonnam } from './do_name.js';
+import { wakeup } from './mon.js';
 import { can_track, resist_conflict, can_blow, locomotion } from './mondata.js';
 import { acurrstr } from './dokick.js';
 import { delobj } from './invent.js';
@@ -63,10 +76,15 @@ import { monkilled_trap } from './trap.js';
 import { TELEPAT as TELEPAT_MV, HALF_SPDAM as HALF_SPDAM_MV, KILLED_BY_AN as KILLED_BY_AN_MV } from './const.js';
 import { see_wsegs, worm_nomove, worm_move } from './worm.js';
 import { ranged_attk_available, mhis_mon } from './mhitu.js';
-import { mon_wield_item, sticks } from './dog.js';
-import { is_pole, is_mines_prize, is_soko_prize, bill_dummy_object, mbodypart, verbalize, switch_terrain, coord_desc, notice_mon, set_msg_xy } from './cmd.js';
+import { sticks } from './dog.js';
+import { mon_wield_item } from './weapon.js';
+import { is_pole, is_mines_prize, is_soko_prize, mbodypart, verbalize } from './cmd.js';
+import { switch_terrain, notice_mon } from './hack.js';
+import { coord_desc } from './getpos.js';
+import { set_msg_xy } from './pline.js';
+import { bill_dummy_object } from './mkobj.js';
 import { mwelded } from './wield.js';
-import { is_pick, mdig_tunnel, mb_trapped } from './dig.js';
+import { is_pick, mdig_tunnel } from './dig.js';
 import { unpunish } from './read.js';
 import { fracture_rock } from './zap.js';
 /* C monflag.h:37 — MZ_LARGE is the first monster size subject to the
@@ -95,6 +113,10 @@ import { create_gas_cloud, visible_region_at, m_in_out_region } from './region.j
 import { ENV } from './hostenv.js';
 import { ACCESSIBLE, D_CLOSED, D_LOCKED, IS_DOOR } from './const.js'; // relocate-fns
 import { _surface_at } from './look.js'; // relocate-fns
+import { TRAPPED_DOOR } from './const.js'; // relocate-fns
+import { Deaf as Deaf_real, Unaware as Unaware_real } from './display.js'; // relocate-fns
+import { mondied } from './mon.js'; // relocate-fns
+import { pline_mon } from './pline.js'; // relocate-fns
 /* C pline.c:126-149,175-190: these messages carry a map location even
  * when the monster cannot be seen. The display pline does not add this prefix. */
 async function monmove_message(mon, text) {
@@ -224,7 +246,7 @@ export async function dissolve_bars(x, y) {
 }
 
 /* C ref: hack.h:49 — BOLT_LIM = 8; BOLT_LIM*BOLT_LIM = 64 */
-const BOLT_LIM = 8;
+import { BOLT_LIM } from './const.js';
 /* C ref: trap.h — SQKY_BOARD = 4 */
 const SQKY_BOARD_MV = 4;
 /* C ref: trap.c:3064-3067 trapnote names (12 musical notes) */
@@ -245,7 +267,44 @@ function is_axe_mdw(obj) {
 /* C ref: hack.h — PM_GRID_BUG index (NODIAG); hack.h:1419 NODIAG(monnum)=((monnum)==PM_GRID_BUG) */
 const PM_GRID_BUG = 116; /* from pm.generated.js PM_GRID_BUG = 116 */
 /* C ref: pm.generated.js */
-const PM_GREMLIN = 40;
+import { PM_GREMLIN } from './pm.generated.js';
+import { DISPLACED, IS_ALTAR, In_endgame, M_AP_FURNITURE, M_AP_OBJECT } from './const.js'; // relocate-fns
+import { Monnam } from './do_name.js'; // relocate-fns
+import { engr_at } from './engrave.js'; // relocate-fns
+import { G_UNIQ, Inhell, isRiderMndx, isVampshifter, mquaffmsg_Deaf } from './makemon.js'; // relocate-fns
+import { u_at } from './const.js';
+import { S_VAMPIRE } from './mondata.js'; // relocate-fns
+import { PM_ANGEL, PM_MINOTAUR } from './pm.generated.js'; // relocate-fns
+import { inhistemple } from './priest.js'; // relocate-fns
+import { mon_allowflags, mpickstuff } from './mon.js'; // relocate-fns
+import { pooleffects_grounded } from './cmd.js';
+import { disturb_buried_zombies, in_town } from './hack.js'; // relocate-fns
+import { AGGRAVATE_MONSTER as AGGRAVATE_MONSTER_DH, CONFLICT, D_WARNED, HALLUC as HALLUC_DH, HALLUC_RES as HALLUC_RES_DH, NEED_HTH_WEAPON, NEED_WEAPON, STEALTH as STEALTH_DH, STRAT_APPEARMSG, STRAT_GOAL, STRAT_GROUND, STRAT_HEAL, STRAT_MONSTR, STRAT_NONE, STRAT_PLAYER, STRAT_STRATMASK, engulfing_u } from './const.js'; // relocate-fns
+import { bury_an_obj, is_digging, watch_dig } from './dig.js'; // relocate-fns
+import { Deaf as Deaf_live_dc } from './display.js'; // relocate-fns
+import { In_W_tower_wz, m_canseeu } from './dochug.js'; // relocate-fns
+import { builds_up } from './dungeon.js'; // relocate-fns
+import { pending_death_is_final } from './end.js'; // relocate-fns
+import { wipe_engr_at } from './engrave.js'; // relocate-fns
+import { drain_pending_death_in_place } from './fastforward.js'; // relocate-fns
+import { g_at } from './invent.js'; // relocate-fns
+import { picking_lock } from './lock.js'; // relocate-fns
+import { is_demon, set_malign } from './makemon.js'; // relocate-fns
+import { castmu } from './mcastu.js'; // relocate-fns
+import { expels_gu, mattacku, mon_mattk_raw, noattacks_mndx } from './mhitu.js'; // relocate-fns
+import { demon_talk } from './minion.js'; // relocate-fns
+import { mdrop_obj_md } from './mklev.js'; // relocate-fns
+import { angry_guards, m_respond, mnearto, unstuck, wake_msg } from './mon.js'; // relocate-fns
+import { find_misc, find_offensive, use_misc } from './muse.js'; // relocate-fns
+import { PM_ETTIN as PM_ETTIN_DH, PM_JABBERWOCK as PM_JABBERWOCK_DH, PM_LEPRECHAUN as PM_LEPRECHAUN_DH, PM_WATCHMAN as PM_WATCHMAN_DH, PM_WATCH_CAPTAIN as PM_WATCH_CAPTAIN_DH } from './pm.generated.js'; // relocate-fns
+import { quest_stat_check } from './quest.js'; // relocate-fns
+import { mon_has_amulet } from './sit.js'; // relocate-fns
+import { rloc_to } from './teleport.js'; // relocate-fns
+import { select_rwep } from './weapon.js'; // relocate-fns
+import { cuss } from './wizard.js'; // relocate-fns
+import { worm_hitu_segs } from './worm.js'; // relocate-fns
+export { mon_allowflags } from './mon.js'; // relocate-fns
+export { ALLOW_BARS_MV, ALLOW_M_MV, ALLOW_ROCK_MV, ALLOW_SSM_MV, ALLOW_TRAPS_MV, ALLOW_U_MV, CORPSE_OTYP_MV, M1_NEEDPICK_MDW, M1_NOHANDS_MV, M1_TUNNEL_MDW, M1_UNSOLID_MV, M2_ROCKTHROW_MV, MZ_SMALL_MV, NOTONL_MV, OPENDOOR_MV, PM_LIZARD_MV, SHOPBASE_MV, UNLOCKDOOR_MV, _MONS_MSIZE_MV, _MONS_MV, _conflict_mv, _is_rider_mv, _m_can_break_boulder_mv, _noteleport_level_mv, acidic_mv, is_vampshifter, touch_petrifies_mv }; // relocate-fns
 /* C ref: pm.generated.js — for m_postmove_effect */
 const PM_HEZROU = 296;
 const PM_STEAM_VORTEX = 110;
@@ -425,7 +484,6 @@ const ALLOW_M_MV      = 0x00080000;
 const ALLOW_TM_MV     = 0x00100000;  /* ALLOW_TM — can attack tame monsters */
 const ALLOW_MDISP_MV  = 0x00001000;
 const ALLOW_TRAPS_MV  = 0x00020000;
-const ALLOW_SANCT_MV  = 0x20000000;
 const ALLOW_SSM_MV    = 0x40000000;
 const NOTONL_MV       = 0x00200000;
 const OPENDOOR_MV     = 0x00400000;  /* mfndpos.h OPENDOOR — mover can open a closed door */
@@ -462,7 +520,6 @@ const PM_IRON_GOLEM_MV = 259;
  * m_can_break_boulder.  BOULDER is otyp 475 everywhere (objects.h:1619); there is
  * no separate "search-item" object numbering. */
 const ALLOW_ROCK_MV = 0x02000000;
-const M1_WALLWALK_MV = 0x00000008;   /* monflag.h M1_WALLWALK → passes_walls */
 const M2_ROCKTHROW_MV = 0x08000000;  /* monflag.h M2_ROCKTHROW → throws_rocks */
 const BOULDER_FLOOR_OTYP_MV = 475;   /* live BOULDER otyp (mklev.js:160) */
 /* C ref: monst.c — the Riders (Death/Pestilence/Famine).  is_rider() (mondata.h)
@@ -536,77 +593,6 @@ export function _passes_bars_mv(mtmp) {
     return passes_bars ? ALLOW_BARS_MV : 0;
 }
 
-export function mon_allowflags(mtmp) {
-    const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
-    const mrow = (mndx >= 0 && mndx < _MONS_MV.length) ? _MONS_MV[mndx] : null;
-    const mlet = mrow ? (mrow[0] | 0) : -1;
-    const mf1 = mrow ? (mrow[6] >>> 0) : 0;
-    const mf2 = mrow ? (mrow[7] >>> 0) : 0;
-    const msize = (mndx >= 0 && mndx < _MONS_MSIZE_MV.length) ? (_MONS_MSIZE_MV[mndx] | 0) : MZ_SMALL_MV;
-
-    let allowflags = 0;
-    /* C: can_open = !(nohands(mtmp->data) || verysmall(mtmp->data)) */
-    const can_open = !((mf1 & M1_NOHANDS_MV) || (msize < MZ_SMALL_MV));
-    /* C: can_unlock = ((can_open && monhaskey(mtmp, TRUE)) || mtmp->iswiz
-                        || is_rider(mtmp->data)) */
-    const can_unlock = ((can_open && monhaskey(mtmp, true)) || !!mtmp.iswiz
-                        || _is_rider_mv(mndx));
-    /* C: doorbuster = is_giant(mtmp->data) */
-    const doorbuster = !!(mf2 & M2_GIANT_MAF);
-    /* C: can_tunnel = (tunnels(mtmp->data) && !Is_rogue_level(&u.uz)) */
-    let can_tunnel = !!(mf1 & M1_TUNNEL_MDW) && !Is_rogue_level(game.u?.uz);
-    /* C mon.c:2072-2076 — same criteria as m_move(): don't tunnel if hostile
-     * and close enough to prefer a weapon. */
-    if (can_tunnel && (mf1 & M1_NEEDPICK_MDW)
-        && ((!(mtmp.mpeaceful | 0) || _conflict_mv())
-            && dist2(mtmp.mx | 0, mtmp.my | 0, mtmp.mux | 0, mtmp.muy | 0) <= 8))
-        can_tunnel = false;
-
-    if (mtmp.mtame)
-        allowflags |= ALLOW_M_MV | ALLOW_TRAPS_MV | ALLOW_SANCT_MV | ALLOW_SSM_MV;
-    else if (mtmp.mpeaceful)
-        allowflags |= ALLOW_SANCT_MV | ALLOW_SSM_MV;
-    else
-        allowflags |= ALLOW_U_MV;
-    /* C: if (Conflict && !resist_conflict(mtmp)) — resist_conflict draws
-     * rnd(20), so the Conflict guard is load-bearing on the RNG axis. */
-    if (_conflict_mv() && !resist_conflict(mtmp))
-        allowflags |= ALLOW_U_MV;
-    if (mtmp.isshk)
-        allowflags |= ALLOW_SSM_MV;
-    if (mtmp.ispriest)
-        allowflags |= ALLOW_SSM_MV | ALLOW_SANCT_MV;
-    if (mf1 & M1_WALLWALK_MV)
-        allowflags |= (ALLOW_ROCK_MV | ALLOW_WALL_MAF);
-    if ((mf2 & M2_ROCKTHROW_MV) || _m_can_break_boulder_mv(mtmp, mndx))
-        allowflags |= ALLOW_ROCK_MV;
-    if (can_tunnel)
-        allowflags |= ALLOW_DIG_MAF;
-    if (doorbuster)
-        allowflags |= BUSTDOOR_MAF;
-    if (can_open)
-        allowflags |= OPENDOOR_MV;
-    if (can_unlock)
-        allowflags |= UNLOCKDOOR_MV;
-    /* C: passes_bars(mtmp->data) && (mtmp != u.ustuck || unsolid(youmonst)
-     *                                || verysmall(youmonst)) */
-    if (_passes_bars_mv(mtmp) && (mtmp !== (game.u?.ustuck ?? null) || _u_squeezable_mv()))
-        allowflags |= ALLOW_BARS_MV;
-    /* C mon.c:2110-2113: the is_displacer → ALLOW_MDISP arm is compiled out
-     * by #if 0 in C; mfndpos() handles displacers itself. */
-    if ((mf2 & M2_MINION_MAF) || _is_rider_mv(mndx))
-        allowflags |= ALLOW_SANCT_MV;
-    /* C: is_unicorn(mtmp->data) && !noteleport_level(mtmp) → NOTONL */
-    if (mlet === S_UNICORN_MAF && (mf2 & M2_JEWELS_MAF) && !_noteleport_level_mv(mtmp, mndx))
-        allowflags |= NOTONL_MV;
-    if ((mf2 & M2_HUMAN_MAF) || mndx === PM_MINOTAUR_MAF)
-        allowflags |= ALLOW_SSM_MV;
-    if (((mf2 & M2_UNDEAD_MAF) && mlet !== S_GHOST_MAF) || is_vampshifter(mtmp))
-        allowflags |= NOGARLIC_MAF;
-
-    /* C mfndpos.h:27-29: NOGARLIC is positive 0x80000000 in a long. */
-    return allowflags >>> 0;
-}
 
 /* C monmove.c:581-651 mind_blast — a mind flayer unleashes a mind blast. */
 export async function mind_blast(mtmp) {
@@ -663,20 +649,6 @@ export async function mind_blast(mtmp) {
         }
     }
 }
-/* C ref: mfndpos.h — the bits mon_allowflags sets that had no local name yet. */
-const ALLOW_WALL_MAF = 0x04000000;
-const ALLOW_DIG_MAF  = 0x08000000;
-const BUSTDOOR_MAF   = 0x01000000;
-const NOGARLIC_MAF   = 0x80000000 | 0;   /* int32 — mfndpos never tests it */
-/* C ref: monflag.h / defsym.h — mondata predicates mon_allowflags calls. */
-const M2_GIANT_MAF  = 0x00002000;
-const M2_MINION_MAF = 0x00001000;
-const M2_HUMAN_MAF  = 0x00000008;
-const M2_UNDEAD_MAF = 0x00000002;
-const M2_JEWELS_MAF = 0x20000000;   /* likes_gems(), the is_unicorn() filter */
-const S_UNICORN_MAF = 21;
-const S_GHOST_MAF   = 54;
-const PM_MINOTAUR_MAF = 177;
 
 /* C macro Conflict (hack.h) — the hero's conflict property, read the same way
  * js/mklev.js:11128 reads it. Kept as a helper so mon_allowflags' two uses
@@ -684,10 +656,6 @@ const PM_MINOTAUR_MAF = 177;
 function _conflict_mv() {
     const p = game.u?.uprops?.[CONFLICT_MAF];
     return !!(p && (p.intrinsic || p.extrinsic));
-}
-/* C mon.c:2111: a held monster can pass bars when the hero fits too. */
-function _u_squeezable_mv() {
-    return !!(game.youmonst.data.mflags1 & M1_UNSOLID_MV) || game.youmonst.data.msize < MZ_SMALL_MV;
 }
 /* C: noteleport_level(mtmp) — js/makemon.js's port reads mon.data (the
  * materialized permonst), which live monst objects do not carry, so hand it the
@@ -3138,8 +3106,6 @@ const PM_CHICKATRICE_MV = 9, PM_COCKATRICE_MV = 10;
 const PM_LIZARD_MV = 326;
 /* C mondata.h:88 acidic(ptr) = (ptr->mflags1 & M1_ACID); monflag.h:112. */
 const M1_ACID_MV = 0x08000000;
-/* C defsym.h S_NYMPH = 14 (same value js/dogmove.js:249 and js/mhitm.js:82 use). */
-const S_NYMPH_MV = 14;
 /* C mkroom.h:20 SHOPBASE — the "any shop" wildcard js/shk.js in_rooms takes. */
 const SHOPBASE_MV = 14;
 function _mons_row_mv(mndx) {
@@ -3154,78 +3120,6 @@ function acidic_mv(mndx) {
     return !!(row && ((row[6] >>> 0) & M1_ACID_MV));
 }
 
-export async function mpickstuff(mtmp) {
-    /* C:1853-1854 prevent shopkeepers from leaving the door of their shop */
-    if ((mtmp.isshk | 0) && inhishop(mtmp))
-        return false;
-    /* C:1857-1859 non-tame monsters normally don't go shopping */
-    if (!(mtmp.mtame | 0)
-        && (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE_MV)[0] | 0)
-        && rn2(25))
-        return false;
-    /* C:1861-1863 item in a pool, but monster can't swim */
-    if (!could_reach_item(mtmp, mtmp.mx | 0, mtmp.my | 0))
-        return false;
-
-    let otmp2;
-    for (let otmp = game.level?.levelObjects?.[mtmp.mx | 0]?.[mtmp.my | 0];
-         otmp; otmp = otmp2) {
-        otmp2 = otmp.nexthere;
-
-        /* C:1868-1871 avoid special items; once hero picks them up, they'll
-         * cease being special, becoming eligible for normal pickup.  The
-         * Mines' End luckstone sat under a dwarf and was taken here. */
-        if (is_mines_prize(otmp) || is_soko_prize(otmp))
-            continue;
-
-        /* C:1873-1874 Nymphs take everything.  Most monsters don't pick up
-         * corpses. */
-        if (mon_would_take_item(mtmp, otmp)) {
-            const _ptr = mtmp.data;
-            const _mlet = (_ptr && (_ptr.mlet | 0)) || 0;
-            const _cnm = (otmp.corpsenm ?? -1) | 0;
-            /* C:1876-1881 — let a handful of corpse types thru to can_carry() */
-            if ((otmp.otyp | 0) === CORPSE_OTYP_MV && _mlet !== S_NYMPH_MV
-                && !touch_petrifies_mv(_cnm)
-                && _cnm !== PM_LIZARD_MV
-                && !acidic_mv(_cnm))
-                continue;
-            /* C:1882-1883 */
-            if (!await can_touch_safely(mtmp, otmp))
-                continue;
-            /* C:1884-1886 */
-            const carryamt = can_carry(mtmp, otmp);
-            if (carryamt === 0)
-                continue;
-            /* C:1887-1891 handle cases where the critter can only get some.
-             * splitobj() -> nextoid() -> next_ident() fires rnd(2)
-             * (mkobj.c:522), so a partial take is NOT RNG-free. */
-            let otmp3 = otmp;
-            if (carryamt !== ((otmp.quan ?? 1) | 0))
-                otmp3 = (await splitobj(otmp, carryamt));
-            /* C:1892-1901 — distant_name()'s side effects run even when the
-             * message is not printed, so it is called before the extract. */
-            if (cansee(mtmp.mx | 0, mtmp.my | 0)) {
-                const otmpname = await distant_obj_name(otmp); /* mon.c:1895 names otmp, not otmp3 */
-                if (game.flags?.verbose) { /* C mon.c:1897 tests truthiness */
-                    /* C mon.c:1897 pline_mon(mtmp, ...) = set_msg_xy(mx, my) + vpline */
-                    set_msg_xy(mtmp.mx | 0, mtmp.my | 0);
-                    void pline(`${Monnam_dm(mtmp)} picks up ${otmpname}.`);
-                }
-            }
-            /* C:1901, mkobj.c:2508-2522 — extraction also adjusts corpse
-             * timers when taking a corpse off ice. */
-            obj_extract_self(otmp3);
-            /* C:1903 mpickobj(mtmp, otmp3) — may merge and free otmp3 */
-            void (await mpickobj(mtmp, otmp3));
-            /* C:1904-1905 let them try to equip it on the next turn */
-            check_gear_next_turn(mtmp);
-            newsym(mtmp.mx | 0, mtmp.my | 0);
-            return true; /* C:1907 pick only one object */
-        }
-    }
-    return false;
-}
 
 /* C ref: monmove.c:2140-2183 can_hide_under_obj(obj).
  * Returns TRUE if a mon can hide under the obj.
@@ -3582,14 +3476,14 @@ export function m_avoid_soko_push_loc(mtmp, nx, ny) {
     const dy = ((ny | 0) - (u.uy | 0)) | 0;
     if ((((dx * dx) + (dy * dy)) | 0) !== 4) return false;
 
-    /* C: sobj_at(BOULDER, nx + sgn(u.ux - nx), ny + sgn(u.uy - ny)) */
-    const boulder_x = ((nx | 0) + sgn(((u.ux | 0) - (nx | 0)) | 0)) | 0;
-    const boulder_y = ((ny | 0) + sgn(((u.uy | 0) - (ny | 0)) | 0)) | 0;
+    /* C: sobj_at(BOULDER, nx + sgn_monmove(u.ux - nx), ny + sgn_monmove(u.uy - ny)) */
+    const boulder_x = ((nx | 0) + sgn_monmove(((u.ux | 0) - (nx | 0)) | 0)) | 0;
+    const boulder_y = ((ny | 0) + sgn_monmove(((u.uy | 0) - (ny | 0)) | 0)) | 0;
 
     return !!sobj_at(BOULDER, boulder_x, boulder_y);
 }
 
-function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
+function sgn_monmove(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 
 // C ref: dogmove.c:146-153 cursed_object_at(x,y) — local copy (matches the
 // existing multi-copy convention for small predicates in this codebase, e.g.
@@ -3754,4 +3648,1254 @@ export function accessible(x, y) {
     if (!lev) return false;
     const levtyp = _surface_at(lev);
     return !!(ACCESSIBLE(levtyp) && !closed_door(x, y));
+}
+
+export async function mb_trapped(mtmp, canseeit) {
+    if (game.flags?.verbose) {
+        if (canseeit && !_dig_unaware())
+            await pline_mon(mtmp, "KABOOM!!  You see a door explode.");
+        else if (!_dig_deaf())
+            await You_hear(`a ${(mdistu_dig(mtmp) > 7 * 7) ? 'distant' : 'nearby'} explosion.`);
+    }
+    wake_nearto(mtmp.mx, mtmp.my, 7 * 7);
+    mtmp.mstun = 1;
+    mtmp.mhp -= rnd(15);
+    if ((mtmp.mhp | 0) < 1) {
+        await mondied(mtmp);
+        if ((mtmp.mhp | 0) < 1)
+            return true;
+        /* will get here if lifesaved */
+    }
+    mon_learns_traps(mtmp, TRAPPED_DOOR);
+    return false;
+}
+
+/* C ref: mondata.h mdistu(mon) == distu(mon->mx, mon->my) — squared distance
+ * from the hero.  Same local shape js/monmove.js:2012 uses. */
+function mdistu_dig(mon) {
+    const dx = (mon.mx | 0) - (game.u?.ux | 0), dy = (mon.my | 0) - (game.u?.uy | 0);
+    return dx * dx + dy * dy;
+}
+
+/* C youprop.h:399 / pline.c:435 — use display.js's canonical Unaware
+ * predicate so trapped-door explosions say "You dream..." while the hero is
+ * asleep or paralyzed, instead of silently forcing the conscious branch. */
+function _dig_unaware() { return !!Unaware_real(); }
+
+function _dig_deaf() { return !!Deaf_real(); } /* youprop.h Deaf: HDeaf timeout (faint sets it, eat.c:3421) */
+
+export function onscary(x, y, mtmp) {
+    const auditory_scare = (x === 0 && y === 0);
+    const magical_scare = !auditory_scare;
+    const mdat = mtmp.data || permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
+    const mndx = (mtmp.mnum ?? mtmp.mndx ?? 0) | 0;
+
+    /* creatures who are directly resistant to any type of scaring:
+       Rodney, lawful minions, Angels, the Riders */
+    if ((mtmp.iswiz | 0) || _onscary_is_lminion(mtmp, mdat) || mndx === PM_ANGEL
+        || isRiderMndx(mndx))
+        return false;
+
+    /* creatures who are directly resistant to magical scaring based on the
+       mere presence of something at a location: humans etc.  uniques have
+       ascended their base monster instincts */
+    if (magical_scare
+        && ((mdat.mlet | 0) === S_HUMAN_MLET || _onscary_unique_corpstat(mdat)))
+        return false;
+
+    /* creatures who resist scaring under particular circumstances:
+       shopkeepers inside their own shop, priests inside their own temple */
+    if (((mtmp.isshk | 0) && inhishop(mtmp))
+        || ((mtmp.ispriest | 0) && inhistemple(mtmp)))
+        return false;
+
+    if (auditory_scare)
+        return true;
+
+    /* should this still be true for defiled/molochian altars? */
+    const loc = game.level?.at ? game.level.at(x, y) : null;
+    if (loc && IS_ALTAR(loc.typ | 0)
+        && ((mdat.mlet | 0) === S_VAMPIRE || isVampshifter(mtmp)))
+        return true;
+
+    /* the scare monster scroll doesn't have any of the below restrictions,
+       being its own source of power */
+    if (sobj_at(SCR_SCARE_MONSTER_OTYP, x, y))
+        return true;
+
+    /*
+     * Creatures who don't (or can't) fear a written Elbereth: all the above
+     * plus shopkeepers (even if poly'd into non-human), vault guards (also
+     * even if poly'd), blind or peaceful monsters, humans and elves, and
+     * minotaurs.
+     *
+     * If the player isn't actually on the square OR the player's image isn't
+     * displaced to the square, no protection is being granted.
+     *
+     * Elbereth doesn't work in Gehennom, the Elemental Planes, or the Astral
+     * Plane; the influence of the Valar only reaches so far.
+     */
+    const ep = _onscary_sengr_at('Elbereth', x, y, true);
+    return !!(ep
+        && (u_at(x, y)
+            || (_onscary_Displaced() && mtmp.mux === x && mtmp.muy === y)
+            || (ep.guardobjects && _onscary_vobj_at(x, y)))
+        && !((mtmp.isshk | 0) || (mtmp.isgd | 0) || !(mtmp.mcansee | 0)
+             || (mtmp.mpeaceful | 0)
+             || mndx === PM_MINOTAUR
+             || Inhell() || In_endgame(game.u?.uz)));
+}
+
+/* C monst.h:281 is_lminion(mon) — is_minion(mon->data) && mon_aligntyp(mon)
+ * == A_LAWFUL.  mon_aligntyp lives in js/priest.js and importing it here
+ * would close a makemon<->priest module cycle (priest.js already imports
+ * newmextra/set_malign/which_armor from this file), so the three-line body of
+ * priest.c's mon_aligntyp is reproduced, exactly as js/mcastu.js:725-732
+ * already reproduces this same pair. */
+const M2_MINION_OS = 0x00001000;   /* monflag.h M2_MINION */
+
+const A_NONE_OS = -128, A_CHAOTIC_OS = -1, A_NEUTRAL_OS = 0, A_LAWFUL_OS = 1;
+
+function _onscary_mon_aligntyp(mon, mdat) {
+    const algn = (mon.ispriest && mon.mextra?.epri) ? mon.mextra.epri.shralign
+               : (mon.isminion && mon.mextra?.emin) ? mon.mextra.emin.min_align
+                                                    : ((mdat || mon.data)?.maligntyp | 0);
+    if (algn === A_NONE_OS)
+        return A_NONE_OS;
+    return (algn > 0) ? A_LAWFUL_OS : (algn < 0) ? A_CHAOTIC_OS : A_NEUTRAL_OS;
+}
+
+function _onscary_is_lminion(mon, mdat) {
+    /* C monst.h:281 is_lminion(mon) reads mon->data, which is ALWAYS set in C.
+     * A live js/ monst has only .mnum/.mndx (js/mklev.js mfndpos:15127 carries
+     * the same note), so reading mon.data alone answered "not a minion" for
+     * every live monster.  Take the caller's materialized mdat. */
+    const d = mdat || mon.data;
+    return !!(d && ((d.mflags2 | 0) & M2_MINION_OS) !== 0
+              && _onscary_mon_aligntyp(mon, d) === A_LAWFUL_OS);
+}
+
+/* C mondata.h:174 unique_corpstat(ptr) — (ptr->geno & G_UNIQ) != 0. */
+function _onscary_unique_corpstat(ptr) { return (((ptr?.geno) | 0) & G_UNIQ) !== 0; }
+
+/* C objects.h SCR_SCARE_MONSTER otyp (js/mkobj.js:20 and js/teleport.js:825
+ * carry the same literal). */
+const SCR_SCARE_MONSTER_OTYP = 326;
+
+/* C engrave.c:1520-1531 sengr_at(s, x, y, strict) — engr_at() plus the
+ * HEADSTONE / engr_time / text tests.  Returns the engraving (truthy) or null.
+ *
+ * The live store (js/mklev.js make_engr_at, :4817) keeps only
+ * `{ text, engr_type }`, so engr_time reads 0 — always <= svm.moves, which is
+ * C's behaviour for any engraving already finished; and `guardobjects` is
+ * absent, i.e. 0, C's default for everything except a des.engraving() that
+ * asked for it.  Neither is guessed at: both take C's value for the records
+ * this store actually holds. */
+function _onscary_sengr_at(s, x, y, strict) {
+    const ep = engr_at(x, y);
+    if (ep && (ep.engr_type | 0) !== HEADSTONE_ENGR
+        && (ep.engr_time | 0) <= (game.moves | 0)) {
+        /* C engr_txt[actual_text]; this store spells it `text`. */
+        const txt = String(ep.text ?? '');
+        if (strict ? txt.toLowerCase() === String(s).toLowerCase()
+                   : txt.indexOf(s) >= 0)
+            return ep;
+    }
+    return null;
+}
+
+const HEADSTONE_ENGR = 6;   /* C engrave.h:31 #define HEADSTONE 6 */
+
+/* C youprop.h:204 Displaced — (HDisplaced || EDisplaced), i.e. the DISPLACED
+ * property, read the same way every other uprops consumer in js/ reads one. */
+function _onscary_Displaced() {
+    const p = game.u?.uprops?.[DISPLACED];
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)));
+}
+
+/* C hack.c vobj_at(x, y) — the topmost object of the pile at (x,y). */
+function _onscary_vobj_at(x, y) {
+    const col = game.level?.levelObjects?.[x];
+    return col ? (col[y] ?? null) : null;
+}
+
+function monflee_flees_light(mon) {
+    if (!mon || (mon.data ? (mon.data.pmidx | 0) : (mon.mnum | 0)) !== PM_GREMLIN)
+        return false;
+    const u = game.u || {};
+    const uwep = u.uwep || null, uarm = u.uarm || null;
+    if (!((uwep && uwep.lamplit && artifact_light(uwep))
+          || (uarm && uarm.lamplit && artifact_light(uarm))))
+        return false;
+    return !!mon.mcansee && !!couldsee(mon.mx | 0, mon.my | 0);
+}
+
+export async function monflee(mtmp, fleetime, first, fleemsg) {
+    if (!mtmp)
+        return;
+    /* C monmove.c:469-471: if (DEADMONSTER(mtmp)) return;
+     * DEADMONSTER(mon) is (mon)->mhp < 1 (mondata.h). */
+    if ((mtmp.mhp | 0) < 1)
+        return;
+
+    /* C monmove.c:473-474 */
+    await monflee_release_hero(mtmp);
+
+    /* C monmove.c:476 */
+    if (!first || !mtmp.mflee) {
+        let ft = fleetime | 0;
+        /* C monmove.c:477-486 — "don't lose untimed scare" */
+        if (!ft) {
+            mtmp.mfleetim = 0;
+        } else if (!mtmp.mflee || mtmp.mfleetim) {
+            ft += (mtmp.mfleetim | 0);
+            if (ft === 1)
+                ft++;
+            mtmp.mfleetim = Math.min(ft, 127) >>> 0;
+        }
+
+        /* C monmove.c:487-489 */
+        const apt = (mtmp.m_ap_type | 0) & M_AP_TYPMASK; /* M_AP_TYPE(mtmp) */
+        if (!mtmp.mflee && fleemsg && canseemon(mtmp)
+            && apt !== M_AP_FURNITURE && apt !== M_AP_OBJECT) {
+            /* C monmove.c:490-519.  "unfortunately we can't distinguish between
+             * temporary sleep and temporary paralysis, so both conditions
+             * receive the same alternate message" */
+            const mmove = mtmp.data ? (mtmp.data.mmove | 0) : 0;
+            if (!mtmp.mcanmove || !mmove) {
+                /* C monmove.c:494-495 */
+                await pline_mon(mtmp, `${Adjmonnam(mtmp, 'immobile')} seems to flinch.`);
+            } else if (monflee_flees_light(mtmp)) {
+                /* C monmove.c:496-514: only Unaware skips rn2(10).
+                 * Deaf is tested after the draw, including after a drum. */
+                if (Unaware()) {
+                    await pline_mon(mtmp, `${Monnam(mtmp)} is frightened.`);
+                } else if (rn2(10) || mquaffmsg_Deaf()) {
+                    const uwep = game.u?.uwep;
+                    const uarm = game.u?.uarm;
+                    const source = uwep && artifact_light(uwep)
+                        ? bare_artifactname(uwep)
+                        : uarm && artifact_light(uarm)
+                            ? yname(uarm) : '[its imagination?]';
+                    await pline_mon(mtmp, `${Monnam(mtmp)} flees from the painful light of ${source}.`);
+                } else {
+                    await verbalize('Bright light!'); /* C monmove.c:514 */
+                }
+            } else {
+                /* C monmove.c:517-518 — ordinary flight message. */
+                await pline_mon(mtmp, `${Monnam(mtmp)} turns to flee.`);
+            }
+        }
+
+        /* C monmove.c:524-527 */
+        if (mtmp.data && (mtmp.data.pmidx | 0) === PM_VROCK && !mtmp.mspec_used) {
+            mtmp.mspec_used = 75 + rn2(25);
+            create_gas_cloud(mtmp.mx | 0, mtmp.my | 0, 5, 8);
+        }
+
+        /* C monmove.c:529 */
+        mtmp.mflee = 1;
+    }
+    /* C monmove.c:531-532: ignore recently-stepped spaces when made to flee */
+    mon_track_clear(mtmp);
+}
+
+/* C youprop.h:120 Hallucination = (HHallucination && !Halluc_resistance),
+ * Halluc_resistance = (HHalluc_resistance || EHalluc_resistance) — the same
+ * live uprops expression js/display.js:_hallucinating_dsp() uses.  NOT
+ * `game.Hallucination`, which has no writer anywhere in js/. */
+function _hallucinating_dh() {
+    const up = game.u?.uprops;
+    if (!up) return false;
+    const hp = up[HALLUC_DH], hrp = up[HALLUC_RES_DH];
+    if (!hp || !(hp.intrinsic | 0)) return false;
+    return !(hrp && ((hrp.intrinsic | 0) || (hrp.extrinsic | 0)));
+}
+
+/* C monst.h:255 `mon_offmap(mon)`: migrated and detached monsters are no
+ * longer valid targets for the post-move distance calculation.  In particular,
+ * use_defensive() may take a monster through stairs from m_move()'s cnt==0
+ * arm.  C returns from dochug() before the recalc in that case. */
+function mon_offmap_dh(mtmp) {
+    return !mtmp || (mtmp.mstate | 0) !== 0;
+}
+
+const DEADMONSTER_dc = (m) => (m.mhp | 0) <= 0;
+
+/* C mondata.h:82 can_teleport(ptr) — ((ptr)->mflags1 & M1_TPORT) != 0L.
+ * monflag.h:110 M1_TPORT = 0x02000000. */
+const M1_TPORT = 0x02000000;
+
+function can_teleport_dh(mtmp) {
+    const ptr = mtmp.data || permonstTemplate((mtmp.mnum ?? mtmp.mndx ?? 0) | 0);
+    return !!(((ptr && ptr.mflags1) | 0) & M1_TPORT);
+}
+
+/* C noteleport_level(mtmp) — js/makemon.js's port reads mon.data, which a live
+ * monst may not carry; same resolution js/monmove.js:517 _noteleport_level_mv
+ * already uses. */
+function _noteleport_level_dh(mtmp) {
+    const mndx = (mtmp.mnum ?? mtmp.mndx ?? 0) | 0;
+    return !!noteleport_level(mtmp.data ? mtmp
+                              : { ...mtmp, data: permonstTemplate(mndx) });
+}
+
+/* C monmove.c:1187 leppie_stash: after teleporting away, a
+ * leprechaun which cannot see the hero can drop and bury its gold. */
+export async function leppie_stash(mtmp) {
+    const lvl = game.level;
+    if (!lvl)
+        return;
+    const mndx = (mtmp.mnum ?? mtmp.mndx ?? 0) | 0;
+    if (mndx !== PM_LEPRECHAUN_DH)
+        return;
+    if ((mtmp.mhp | 0) < 1)       /* DEADMONSTER(mtmp) */
+        return;
+    if (m_canseeu(mtmp))
+        return;
+    if (in_rooms(mtmp.mx | 0, mtmp.my | 0, SHOPBASE).length)
+        return;
+    if ((lvl.at(mtmp.mx | 0, mtmp.my | 0)?.typ | 0) !== ROOM)
+        return;
+    if (t_at(mtmp.mx | 0, mtmp.my | 0))
+        return;
+    if (!rn2(4))
+        return;
+    const carriedGold = findgold(mtmp.minvent);
+    if (!carriedGold)
+        return;
+    await mdrop_obj_md(mtmp, carriedGold, false);
+    const floorGold = g_at(mtmp.mx, mtmp.my);
+    if (floorGold)
+        await bury_an_obj(floorGold, null);
+}
+
+/* C macro Conflict (hack.h) — the hero's conflict property, read exactly as
+ * js/monmove.js:494 _conflict_mv() reads it. */
+function _conflict_dch() {
+    const p = game.u?.uprops?.[CONFLICT];
+    return !!(p && (p.intrinsic || p.extrinsic));
+}
+
+/* C defsym.h MONSYM indices for mlet comparisons. */
+const S_LEPRECHAUN = 12; /* MONSYM(12, 'l', LEPRECHAUN, ...) */
+
+/* C monflag.h mflags2 bits. */
+const M2_WANDER = 0x00800000; /* is_wanderer — wanders randomly */
+
+/* C monst.h STRAT_* strategy flags.  (STRAT_NONE/HEAL/GROUND/MONSTR/PLAYER/
+ * STRATMASK/GOAL/APPEARMSG come from const.js, imported above.) */
+const STRAT_ARRIVE = 0x40000000;
+
+const STRAT_WAITFORU = 0x20000000;
+
+const STRAT_CLOSE = 0x10000000;
+
+const STRAT_WAITMASK = (STRAT_CLOSE | STRAT_WAITFORU);
+
+/* MONS row layout (from makemon_mons.json), 10 fields wide, per
+ * js/makemon.js:1199 permonstTemplate(): [0]=mlet, [5]=mresists,
+ * [6]=mflags1, [7]=mflags2, [8]=mflags3.  The mattk[] array is NOT in this
+ * table at all — it lives in js/mhitu.js MON_MATTK, read via mon_mattk_raw(). */
+const MONS = /** @type {number[][]} */ (monsPack.mons);
+
+/* C monattk.h attack/damage-type constants.  These are compared against the
+ * RAW C-numbered mattk rows returned by mon_mattk_raw(), so they must carry
+ * C's numbering, not any JS-local renumbering. */
+const AT_WEAP = 254;   /* C monattk.h:28 — uses weapon */
+
+const AT_MAGC = 255;   /* C monattk.h:29 — uses magic spell(s) */
+
+const AD_CLRC = 240;   /* C monattk.h:87 — random clerical spell */
+
+const AD_SPEL = 241;   /* C monattk.h:88 — random magic spell */
+
+/* C monattk.h:12 AT_NONE — terminates the active attack series. */
+const AT_NONE = 0;
+
+/* C mhitu.h return value. */
+const M_ATTK_HIT = 0x01;
+
+/* C permonst.h:48 — number of attack slots per monster. */
+const NATTK = 6;
+
+/** C mondata.h is_wanderer(ptr) — (ptr->mflags2 & M2_WANDER) != 0 */
+function is_wanderer_mndx(mndx) {
+    return mndx >= 0 && mndx < MONS.length && (MONS[mndx][7] & M2_WANDER) !== 0;
+}
+
+/** C mondata.c:130 attacktype(ptr, atyp) — does this species have an atyp
+ *  attack?  attacktype_fordmg(ptr, atyp, AD_ANY), i.e. the aatyp test alone.
+ *  Reads the RAW C-numbered rows from mon_mattk_raw(), same as the AT_MAGC
+ *  scan above. */
+function attacktype_mndx(mndx, atyp) {
+    const attks = mon_mattk_raw(mndx);
+    if (!attks) return false;
+    for (let i = 0; i < NATTK; i++) {
+        const a = (i < attks.length) ? attks[i] : null;
+        if (a && (a[0] | 0) === atyp) return true;
+    }
+    return false;
+}
+
+/** C mondata.h is_mind_flayer(ptr) — PM_MIND_FLAYER or PM_MASTER_MIND_FLAYER */
+const PM_MIND_FLAYER = 48;
+
+const PM_MASTER_MIND_FLAYER = 49;
+
+function is_mind_flayer_mndx(mndx) {
+    return mndx === PM_MIND_FLAYER || mndx === PM_MASTER_MIND_FLAYER;
+}
+
+/* distfleeck / set_apparxy / m_move are now statically imported from
+ * monmove.js at the top of this file (the prior top-level dynamic import +
+ * stub fallback predated monmove.js landing and hid the call graph from the
+ * static wire-graph). */
+/* C mondata.h is_watch(ptr) — the Minetown Watch: a watchman or a watch
+ * captain.  (C spells it as two mons[] pointer comparisons.) */
+function is_watch_mndx(mndx) {
+    return mndx === PM_WATCHMAN_DH || mndx === PM_WATCH_CAPTAIN_DH;
+}
+
+/* C ref: monmove.c:175-199 watch_on_duty(mtmp).
+ *
+ * The rn2(3) is the point: C rolls it on EVERY dochug of a peaceful, sighted
+ * watchman who can see the hero and whose next step is in town, whether or not
+ * the hero is doing anything wrong.  Both arms behind it are named, not faked:
+ * the lock-picking arm's second offence and watch_dig()'s both end in
+ * angry_guards(), which is a throwing stub in js/dokick.js, and watch_dig()
+ * (dig.c) has no js/ body at all. */
+async function watch_on_duty(mtmp) {
+    const g = game;
+    const u = g.u || {};
+    if (!(mtmp.mpeaceful | 0))
+        return;
+    if (!in_town(((u.ux | 0) + (u.dx | 0)) | 0, ((u.uy | 0) + (u.dy | 0)) | 0))
+        return;
+    if (!(mtmp.mcansee | 0) || !m_canseeu(mtmp))
+        return;
+    if (rn2(3))
+        return;
+    const px = { value: 0 }, py = { value: 0 };
+    if (picking_lock(px, py)) {
+        const loc = g.level?.at(px.value, py.value);
+        if (loc && IS_DOOR(loc.typ | 0) && ((loc.doormask | 0) & D_LOCKED)) {
+            if (couldsee(mtmp.mx | 0, mtmp.my | 0)) {
+                /* C monmove.c:184-192 — warn once, then arrest on a repeated
+                 * attempt.  D_WARNED lives on the door's looted flags. */
+                if ((loc.looted | 0) & D_WARNED) {
+                    await mon_yells(mtmp, "Halt, thief!  You're under arrest!");
+                    await angry_guards(!!Deaf_live_dc());
+                } else {
+                    await mon_yells(mtmp, 'Hey, stop picking that lock!');
+                    loc.looted = (loc.looted | 0) | D_WARNED;
+                }
+                await stop_occupation();
+            }
+        }
+    } else if (is_digging()) {
+        /* C monmove.c:194-197 — watch_dig(mtmp, digging.pos, FALSE). */
+        const pos = g.context?.digging?.pos || { x: u.ux | 0, y: u.uy | 0 };
+        await watch_dig(mtmp, pos.x | 0, pos.y | 0, false);
+    }
+}
+
+function m_arrival(mon) {
+    mon.mstrategy &= ~STRAT_ARRIVE;
+    return -1;
+}
+
+export async function dochug(mtmp) {
+    if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
+        pushRngLogEntry(`^dh_enter[id=${mtmp?.m_id ?? 0} mndx=${mtmp?.mndx ?? mtmp?.mnum ?? -1} xy=${mtmp?.mx ?? 0},${mtmp?.my ?? 0} can=${mtmp?.mcanmove ?? 0} sleep=${mtmp?.msleeping ?? 0} strat=${mtmp?.mstrategy ?? 0}]`);
+    if (!mtmp)
+        return 0;
+    const initialData = mtmp.data; /* C monmove.c:702: mdat survives polymorph during m_move. */
+    /* C monmove.c:726 — STRAT_ARRIVE branch (calls m_arrival, may return). */
+    if (mtmp.mstrategy & STRAT_ARRIVE) {
+        const res = m_arrival(mtmp);
+        if (res >= 0)
+            return res;
+    }
+    if (((mtmp.mstrategy | 0) & STRAT_WAITFORU)
+        && (m_canseeu(mtmp) || (mtmp.mhp | 0) < (mtmp.mhpmax | 0))) {
+        mtmp.mstrategy = ((mtmp.mstrategy | 0) & ~STRAT_WAITFORU) >>> 0;
+    }
+    /* C monmove.c:737 — quest_stat_check(mtmp) (quest.c:514). */
+    quest_stat_check(mtmp);
+    if (!(mtmp.mcanmove | 0) || ((mtmp.mstrategy | 0) & STRAT_WAITMASK)) {
+        if (_hallucinating_dh())
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+        if ((mtmp.mcanmove | 0) && ((mtmp.mstrategy | 0) & STRAT_CLOSE)
+            && !(mtmp.msleeping | 0)
+            && monnear(mtmp, game.u?.ux | 0, game.u?.uy | 0))
+            await _quest_talk_dh(mtmp);
+        return 0;
+    }
+    if ((mtmp.msleeping | 0) && !disturb_dh(mtmp)) {
+        if (_hallucinating_dh())
+            newsym(mtmp.mx | 0, mtmp.my | 0);
+        return 0;
+    }
+    /* C monmove.c:755 — not frozen or sleeping: wipe out texts written in the
+     * dust at the monster's square.  wipe_engr_at(mx, my, 1, FALSE); for a
+     * non-DUST/non-BLOOD engraving this fires rn2(1 + 50/(cnt+1)) = rn2(26). */
+    wipe_engr_at(mtmp.mx | 0, mtmp.my | 0, 1, false);
+    /* C monmove.c:759 — confused monsters get unconfused with small probability. */
+    if (mtmp.mconf | 0) {
+        if (!rn2(50))
+            mtmp.mconf = 0;
+    }
+    /* C monmove.c:763 — stunned monsters get un-stunned with larger probability. */
+    if (mtmp.mstun | 0) {
+        if (!rn2(10))
+            mtmp.mstun = 0;
+    }
+    if ((mtmp.mflee | 0) && !rn2(40) && can_teleport_dh(mtmp)
+        && !(mtmp.iswiz | 0) && !_noteleport_level_dh(mtmp)) {
+        if (await rloc(mtmp, RLOC_MSG))
+            await leppie_stash(mtmp);
+        return 0;
+    }
+    /* C monmove.c:752-755 — some monsters have special abilities;
+     * m_respond gaze can kill medusa. */
+    await m_respond(mtmp);
+    if (DEADMONSTER_dc(mtmp))
+        return 1;
+    /* C monmove.c:781 — fleeing monsters might regain courage. */
+    if ((mtmp.mflee | 0) && !(mtmp.mfleetim | 0) && mtmp.mhp === mtmp.mhpmax) {
+        if (!rn2(25))
+            mtmp.mflee = 0;
+    }
+    /* C monmove.c:763-767 — cease conflict-induced swallow/grab if conflict
+     * has ended.  Releasing the hero uses up the monster's turn. */
+    {
+        const us = game.u && game.u.ustuck;
+        if (us && (us === mtmp || (us.m_id != null && us.m_id === mtmp.m_id))
+            && (mtmp.mpeaceful | 0) && !(mtmp.mconf | 0) && !_conflict_dch()) {
+            await monflee_release_hero(mtmp);
+            return 0;
+        }
+    }
+    /*
+     * PHASE TWO: Special Movements and Actions
+     */
+    /* C monmove.c:800 — set_apparxy(mtmp) before distfleeck. */
+    set_apparxy(mtmp);
+    /* C monmove.c:781-788 — "Monsters that want to acquire things may teleport,
+     * so do it before inrange is set.  This costs a turn only if mstate is
+     * set."
+     *     if (is_covetous(mdat)) {
+     *         (void) tactics(mtmp);
+     *         if (mtmp->mstate) return 0;
+     *         set_apparxy(mtmp);
+     *     }
+     * The comment this replaces read "L14: is_covetous / tactics not ported;
+     * skip" — and tactics() DRAWS rn2(5) (wizard.c:413) for every covetous
+     * monster on STRAT_NONE, so skipping it ran the stream one call ahead of
+     * C's from the first covetous monster onward. */
+    if (is_covetous_wz(mtmp.data)) {
+        await tactics_wz(mtmp);
+        /* tactics -> mnexto -> deal_with_overcrowding */
+        if (mtmp.mstate | 0)
+            return 0;
+        set_apparxy(mtmp);
+    }
+    /* C monmove.c:813 — distfleeck(mtmp, &inrange, &nearby, &scared).
+     * Always fires rn2(5) for bravegremlin. */
+    let { inrange, nearby, scared } = await distfleeck(mtmp);
+    if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
+        pushRngLogEntry(`^dh_pre[id=${mtmp?.m_id ?? 0} moved=${inrange}/${nearby}/${scared}]`);
+    if (find_defensive(mtmp, false)) {
+        if ((await use_defensive(mtmp)) !== 0)
+            return 1;
+    } else if (find_misc(mtmp)) {
+        if (await use_misc(mtmp) !== 0)
+            return 1;
+    }
+    /* C monmove.c:802-831 — Demonic Blackmail! */
+    if (nearby && ((permonstTemplate(mtmp.mndx ?? mtmp.mnum ?? 0)?.msound | 0) === 33 /* MS_BRIBE */)
+        && (mtmp.mpeaceful | 0) && !(mtmp.mtame | 0) && !game.u.uswallow) {
+        if (mtmp.mux !== game.u.ux || mtmp.muy !== game.u.uy) {
+            await pline(`${cansee(mtmp.mux, mtmp.muy) ? Monnam_dm(mtmp) : 'It'} whispers at thin air.`);
+            const uPtr = ((game.u.umonnum | 0) > 0 && game.u.mtimedone) ? permonstTemplate(game.u.umonnum) : null;
+            if (uPtr && is_demon(uPtr)) {
+                if (!tele_restrict(mtmp))
+                    await rloc(mtmp, RLOC_MSG);
+            } else {
+                mtmp.minvis = mtmp.perminvis = 0;
+                if (canseemon(mtmp))
+                    set_msg_xy(mtmp.mx, mtmp.my);
+                await pline(`${Amonnam(mtmp)} gets angry!`);
+                mtmp.mpeaceful = 0;
+                set_malign(mtmp);
+            }
+        } else if (await demon_talk(mtmp))
+            return 1; /* you paid it off */
+    }
+    const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    if (is_watch_mndx(mndx)) {
+        await watch_on_duty(mtmp);
+    } else if (is_mind_flayer_mndx(mndx) && !rn2(20)) {
+        /* C monmove.c:853-855 — mind_blast(mtmp), then recompute apparent target/flags. */
+        await mind_blast(mtmp);
+        set_apparxy(mtmp);
+        ({ inrange, nearby, scared } = await distfleeck(mtmp));
+    }
+    {
+        /* C monmove.c:843 attacktype(mdat, AT_WEAP) — same mattk walk the
+         * PHASE-FOUR ranged test at line 441 already uses. */
+        const hasWeapAttk = attacktype_mndx(mndx, AT_WEAP);
+        const dmx = (mtmp.mx | 0) - (mtmp.mux | 0);
+        const dmy = (mtmp.my | 0) - (mtmp.muy | 0);
+        if ((!(mtmp.mpeaceful | 0) || _conflict_dch()) && inrange
+            && (dmx * dmx + dmy * dmy) <= 8 && hasWeapAttk) {
+            /* C monmove.c:846: mw_tmp = MON_WEP(mtmp) — monst.h's mw slot. */
+            const mw_tmp = mtmp.mw || null;
+            /* "The scared check is necessary.  Otherwise a monster that is one
+             * square near the player but fleeing into a wall would keep
+             * switching between pick-axe and weapon.  If monster is stuck in a
+             * trap, prefer ranged weapon (wielding is done in thrwmu)." */
+            if (!(scared && mw_tmp && is_pick(mw_tmp))
+                && (mtmp.weapon_check | 0) === NEED_WEAPON
+                && !((mtmp.mtrapped | 0) && !nearby && await select_rwep(mtmp))) {
+                mtmp.weapon_check = NEED_HTH_WEAPON;
+                if (await mon_wield_item(mtmp) !== 0)
+                    return 0;
+            }
+        }
+    }
+    // C monmove.c:865-878: eating uses the move before ordinary movement.
+    const meal = await mon_eat_before_move(mtmp);
+    if (meal >= 0) return meal;
+    const mlet = (mndx >= 0 && mndx < MONS.length && MONS[mndx][0]) | 0;
+    /*
+     * C monmove.c:904-909 big condition with embedded RNG calls (short-circuit).
+     * C evaluates the condition left-to-right with short-circuit; RNG calls inside
+     * are only fired when the condition has not yet been determined.
+     *
+     * earlyTrue: condition is TRUE before any RNG — mirrors the first five elements:
+     *   !nearby || mflee || scared || mconf || mstun
+     * When earlyTrue, C skips the embedded RNG calls entirely.
+     *
+     * Note: mpeaceful (tame pets) is the LAST element; tame+nearby+no-flee still
+     * reaches the RNG terms, but earlyTrue=true for tame+!nearby (short-circuits).
+     */
+    const earlyTrue = !(nearby) || !!(mtmp.mflee | 0) || !!(scared)
+        || !!(mtmp.mconf | 0) || !!(mtmp.mstun | 0);
+    let condTrue = earlyTrue;
+    if (!earlyTrue) {
+        /* C monmove.c:905 — (mtmp->minvis && !rn2(3)) */
+        if ((mtmp.minvis | 0) && !rn2(3)) condTrue = true;
+        /* C monmove.c:913: a nearby leprechaun prefers movement when
+         * the hero has no gold and it has gold (or wins the random choice).
+         * Preserve short-circuit order: either inventory can suppress rn2. */
+        if (!condTrue && mlet === S_LEPRECHAUN && !findgold(game.invent)) {
+            if (findgold(mtmp.minvent) || rn2(2)) condTrue = true;
+        }
+        if (!condTrue && is_wanderer_mndx(mndx)) {
+            if (!rn2(4)) condTrue = true;
+        }
+        if (!condTrue && _conflict_dch() && !(mtmp.iswiz | 0))
+            condTrue = true;
+        /* C monmove.c:909 — (!mtmp->mcansee && !rn2(4)) */
+        if (!condTrue && !(mtmp.mcansee | 0)) {
+            if (!rn2(4)) condTrue = true;
+        }
+        /* C monmove.c:909 — mtmp->mpeaceful (tame or peaceful monsters) */
+        if (!condTrue && (mtmp.mpeaceful | 0)) condTrue = true;
+    }
+    /*
+     * C monmove.c:904-909 — movement block entered when condTrue.
+     * Tame pets: always enter (mpeaceful=1 or !nearby or other flags).
+     * Non-tame: enter when condTrue (not nearby, fleeing, etc.).
+     *
+     * C monmove.c:932-934: m_move(mtmp, 0)
+     * C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck(recalc)
+     */
+    /* C monmove.c:715 — status starts at MMOVE_NOTHING (0). */
+    const MMOVE_NOTHING = 0;
+    const MMOVE_MOVED = 1;
+    const MMOVE_DIED = 2;
+    const MMOVE_DONE = 3;
+    const MMOVE_NOMOVES = 4;
+    let status = MMOVE_NOTHING;
+    let panicattk = false;
+    let moved = false; /* tracks whether the movement block ran */
+    /* The post-movement inrange/scared used by PHASE FOUR — initialized from
+     * the pre-movement distfleeck (line ~106) and overwritten by the recalc
+     * if the monster actually entered the movement block. */
+    let pf_inrange = inrange;
+    let pf_scared = scared;
+    /* C's distfleeck writes all three out-params; the MMOVE_MOVED
+     * ranged-after-move test at monmove.c:970 reads the RECALCULATED nearby. */
+    let pf_nearby = nearby;
+    if (mtmp.mtame | 0) {
+        /* Tame pets: always enter move block (condTrue guaranteed by mpeaceful or !nearby) */
+        /* C monmove.c:917-930: undirected spell cast */
+        if (!(mtmp.mspec_used | 0)) {
+            const dx = (mtmp.mx | 0) - (game.u.ux | 0);
+            const dy = (mtmp.my | 0) - (game.u.uy | 0);
+            if (dx * dx + dy * dy <= 49) {
+                /* C monmove.c:921-922 — walk mdat->mattk[0..NATTK-1].  The real
+                 * per-mndx attack table is mon_mattk_raw() (js/mhitu.js
+                 * MON_MATTK) in C monattk.h numbering; the MONS row above
+                 * carries no mattk[] fields at all (it is 10 wide).  Trailing
+                 * slots are the implicit {AT_NONE, AD_PHYS, 0, 0}. */
+                const attks = mon_mattk_raw(mndx);
+                if (attks) {
+                    for (let i = 0; i < NATTK; i++) {
+                        const a = (i < attks.length) ? attks[i] : null;
+                        const aatyp = a ? (a[0] | 0) : AT_NONE;
+                        const adtyp = a ? (a[1] | 0) : 0;
+                        if (aatyp === AT_MAGC && (adtyp === AD_SPEL || adtyp === AD_CLRC)) {
+                            const attk = { aatyp, adtyp, damn: a[2] | 0, damd: a[3] | 0 };
+                            if ((await castmu(mtmp, attk, false, false)) & M_ATTK_HIT) {
+                                status = MMOVE_DONE;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        /* C monmove.c:932-934: m_move(mtmp, 0) */
+        moved = true;
+        if (!status) {
+            status = await m_move(mtmp, 0);
+        }
+        /* C monmove.c:912-915: a defensive escape from m_move() can migrate
+         * the monster.  Do not run distfleeck() on its former map state. */
+        if (mon_offmap_dh(mtmp)) return 1;
+        /* C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck(recalc)
+         * Recalc fires rn2(5) again. MMOVE_DIED=2. */
+        if (status !== MMOVE_DIED) {
+            const rc = await distfleeck(mtmp); /* C: recalculate distfleeck after m_move */
+            if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
+                pushRngLogEntry(`^dh_post[id=${mtmp?.m_id ?? 0} status=${status}]`);
+            pf_inrange = rc.inrange; pf_scared = rc.scared; pf_nearby = rc.nearby;
+        }
+        if (status === MMOVE_DIED) return 1;
+    } else if (condTrue) {
+        if (!(mtmp.mspec_used | 0)) {
+            const dx = (mtmp.mx | 0) - (game.u.ux | 0);
+            const dy = (mtmp.my | 0) - (game.u.uy | 0);
+            if (dx * dx + dy * dy <= 49) {
+                /* C monmove.c:921-922 — walk mdat->mattk[0..NATTK-1].  The real
+                 * per-mndx attack table is mon_mattk_raw() (js/mhitu.js
+                 * MON_MATTK) in C monattk.h numbering; the MONS row above
+                 * carries no mattk[] fields at all (it is 10 wide).  Trailing
+                 * slots are the implicit {AT_NONE, AD_PHYS, 0, 0}. */
+                const attks = mon_mattk_raw(mndx);
+                if (attks) {
+                    for (let i = 0; i < NATTK; i++) {
+                        const a = (i < attks.length) ? attks[i] : null;
+                        const aatyp = a ? (a[0] | 0) : AT_NONE;
+                        const adtyp = a ? (a[1] | 0) : 0;
+                        if (aatyp === AT_MAGC && (adtyp === AD_SPEL || adtyp === AD_CLRC)) {
+                            const attk = { aatyp, adtyp, damn: a[2] | 0, damd: a[3] | 0 };
+                            if ((await castmu(mtmp, attk, false, false)) & M_ATTK_HIT) {
+                                status = MMOVE_DONE;
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        moved = true;
+        if (!status) {
+            status = await m_move(mtmp, 0);
+        }
+        /* C monmove.c:912-915 — check this before the post-move recalc. */
+        if (mon_offmap_dh(mtmp)) return 1;
+        if (status === MMOVE_DIED) return 1;
+        /* C monmove.c:940-941: if (status != MMOVE_DIED) distfleeck recalc. */
+        const rc = await distfleeck(mtmp);
+        if (typeof process !== 'undefined' && ENV?.FF_DH_TRACE)
+            pushRngLogEntry(`^dh_post[id=${mtmp?.m_id ?? 0} status=${status}]`);
+        pf_inrange = rc.inrange; pf_scared = rc.scared; pf_nearby = rc.nearby;
+    }
+    /* When condTrue is false (hostile monster adjacent and able to attack),
+     * the movement block is skipped entirely (status stays MMOVE_NOTHING) and
+     * the pre-movement inrange/scared carry into PHASE FOUR — matching C. */
+
+    if (moved) {
+        switch (status) {
+            case MMOVE_NOMOVES:
+                if (pf_scared) panicattk = true;
+                /* C monmove.c:943-946 FALLTHRU into NOTHING/DONE: the
+                 * hallucination newsym below still runs for a monster with
+                 * no valid squares (a queen bee boxed in on her jelly). */
+                // falls through
+            case MMOVE_NOTHING:
+            case MMOVE_DONE:
+                if (mtmp.isgd && (DEADMONSTER_dc(mtmp) || !mtmp.mx))
+                    return 1; /* C monmove.c:925-927: the guard vanished. */
+                /* C monmove.c:961-964, inside this same switch arm:
+                 *     /_ During hallucination, monster appearance should
+                 *        still change - even if it doesn't move. _/
+                 *     if (Hallucination)
+                 *         newsym(mtmp->mx, mtmp->my);
+                 * RNG-free on the scored stream and invisible to a sober hero,
+                 * but a hallucinating one re-rolls the glyph on every newsym,
+                 * so this is a DISPLAY-stream draw per non-moving monster per
+                 * turn.  Omitted, the port's display stream ran short by one
+                 * draw for each such monster. */
+                if (_hallucinating_dh())
+                    newsym(mtmp.mx | 0, mtmp.my | 0);
+                break;
+            case MMOVE_MOVED:
+                /* C monmove.c:936-938: if confused grabber has wandered off, let go. */
+                if (game.u && mtmp === game.u.ustuck
+                    && dist2(mtmp.mx | 0, mtmp.my | 0, game.u.ux | 0, game.u.uy | 0) > 2)
+                    await unstuck(mtmp);
+                /* C monmove.c:967-968: a grounded monster's footsteps can
+                 * accelerate nearby buried-zombie timers. */
+                if (pooleffects_grounded(initialData))
+                    disturb_buried_zombies(mtmp.mx | 0, mtmp.my | 0);
+                /* C monmove.c:966-967 helpless(mon) = msleeping || !mcanmove —
+                 * "maybe it stepped on a trap and fell asleep". */
+                if ((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0))
+                    return 0;
+                /* C monmove.c:970-975 — "Monsters can move and then shoot on
+                 * the same turn; our hero can't."  A monster that moved and is
+                 * NOT adjacent still gets its attack set, if it has something
+                 * to use at range.  This break (to PHASE FOUR) was the missing
+                 * wire: a cobra that slithered a square closer never reached
+                 * mattacku, so its AT_SPIT never ran.  The || short-circuits in
+                 * C's order, so find_offensive is only consulted when the
+                 * cheaper two tests fail. */
+                if (!pf_nearby
+                    && (ranged_attk_available(mtmp)
+                        || attacktype_mndx(mndx, AT_WEAP)
+                        || find_offensive(mtmp)))
+                    break;
+                /* C monmove.c:979-981: engulfing_u → return mattacku. */
+                if (engulfing_u(mtmp))
+                    return await mattacku(mtmp);
+                return 0;
+            default:
+                break;
+        }
+    }
+
+    const u = game.u || {};
+    const heroHp = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
+    if (status !== MMOVE_DONE
+        && (!(mtmp.mpeaceful | 0) || (_conflict_dch() && !resist_conflict(mtmp)))) {
+        if (((pf_inrange && !pf_scared) || panicattk)
+            && !noattacks_mndx(mndx)
+            && heroHp > 0) {
+            if (await mattacku(mtmp))
+                return 1; /* monster died (e.g. exploded) */
+        }
+        /* C monmove.c:973-976 — a long worm's tail segments next to the hero
+         * each get another mattacku (worm.c:344-362 wormhitu). */
+        if (mtmp.wormno) {
+            for (const [wx, wy] of worm_hitu_segs(mtmp)) {
+                const ddx = wx - (u.ux | 0), ddy = wy - (u.uy | 0);
+                if (ddx * ddx + ddy * ddy < 3)
+                    if (await mattacku(mtmp))
+                        return 1; /* your passive ability killed the worm */
+            }
+        }
+    }
+    /* C's done() never returns (end.c:1023): a hero killed by mattacku above
+     * ends the game before quest_talk()/cuss() (monmove.c:979-984) can run.
+     * This port defers the death to the command boundary, so stop here. */
+    if (pending_death_is_final())
+        return 0;
+    /* In wizard/explore mode done() opens "Die?" and RETURNS on 'n'
+     * (end.c:1068-1117), so quest_talk()/cuss() follow it: run the deferred
+     * death interaction now rather than at the pass boundary. */
+    if (game._pendingDeath)
+        await drain_pending_death_in_place();
+    /* C monmove.c:979-981 — "special speeches for quest monsters":
+     *     if (!helpless(mtmp) && nearby) quest_talk(mtmp);
+     * helpless(mon) is monst.h:249 msleeping || !mcanmove.  `nearby` is the
+     * RECALCULATED one (pf_nearby), the same value the ranged-attack test above
+     * reads. */
+    if (!((mtmp.msleeping | 0) || !(mtmp.mcanmove | 0)) && pf_nearby)
+        await _quest_talk_dh(mtmp);
+    /* C monmove.c:983-986 — extra emotional attack for vile monsters. */
+    const mdat = mtmp.data || permonstTemplate(mndx);
+    if (pf_inrange && (mdat?.msound | 0) === 34 && !(mtmp.mpeaceful | 0)
+        && couldsee(mtmp.mx | 0, mtmp.my | 0) && !(mtmp.minvis | 0)
+        && !rn2(5))
+        cuss(mtmp);
+    return 0;
+}
+
+/* C quest.c:494 quest_talk(mtmp).  The body lives in js/cmd.js (this port's
+ * quest.c host); reached through a cached dynamic import so dochug.js does not
+ * add a static edge into cmd.js, matching js/questpgr.js's `_cmdmod` idiom. */
+let _dh_cmdmod = null;
+
+async function _quest_talk_dh(mtmp) {
+    if (!_dh_cmdmod)
+        _dh_cmdmod = await import('./cmd.js');
+    await _dh_cmdmod.quest_talk(mtmp);
+}
+
+/* C monmove.c:325-358 disturb(mtmp) — "wake up a monster".
+ *
+ *   if (couldsee(mtmp->mx, mtmp->my) && mdistu(mtmp) <= 100
+ *       && (!Stealth || (mtmp->data == &mons[PM_ETTIN] && rn2(10)))
+ *       && (!(mtmp->data->mlet == S_NYMPH
+ *             || mtmp->data == &mons[PM_JABBERWOCK]
+ *             || mtmp->data->mlet == S_LEPRECHAUN) || !rn2(50))
+ *       && (Aggravate_monster
+ *           || (mtmp->data->mlet == S_DOG || mtmp->data->mlet == S_HUMAN)
+ *           || (!rn2(7) && M_AP_TYPE(mtmp) != M_AP_FURNITURE
+ *               && M_AP_TYPE(mtmp) != M_AP_OBJECT))) {
+ *       wake_msg(mtmp, !mtmp->mpeaceful);
+ *       mtmp->msleeping = 0;
+ *       return 1;
+ *   }
+ *   return 0;
+ *
+ * NOTE the v5 shape: there is no `Is_rogue_level` term (that is 3.7) and the
+ * rn2(7) clause carries the mimic-appearance guard.  RNG order matters — the
+ * rn2(10) fires ONLY under Stealth, the rn2(50) ONLY for the three hard-to-wake
+ * classes, and the rn2(7) is short-circuited away by Aggravate_monster or by a
+ * dog/human mlet. */
+const S_NYMPH_DH = 14, S_LEPRECHAUN_DH = 12, S_DOG_DH = 4, S_HUMAN_DH = 53;
+
+const M_AP_FURNITURE_DH = 1, M_AP_OBJECT_DH = 2; /* C monst.h:52-55 */
+
+function _uprop_on_dh(idx) {
+    const p = game.u?.uprops?.[idx];
+    return !!(p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0));
+}
+
+function disturb_dh(mtmp) {
+    const u = game.u || {};
+    const mx = mtmp.mx | 0, my = mtmp.my | 0;
+    if (!couldsee(mx, my))
+        return 0;
+    /* C mondata.h mdistu(mon) = dist2(mon->mx, mon->my, u.ux, u.uy). */
+    const dx = mx - (u.ux | 0), dy = my - (u.uy | 0);
+    if (dx * dx + dy * dy > 100)
+        return 0;
+    const ptr = mtmp.data || {};
+    const mndx = (ptr.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
+    const mlet = ptr.mlet | 0;
+    if (_uprop_on_dh(STEALTH_DH) && !(mndx === PM_ETTIN_DH && rn2(10)))
+        return 0;
+    if ((mlet === S_NYMPH_DH || mndx === PM_JABBERWOCK_DH
+         || mlet === S_LEPRECHAUN_DH) && rn2(50))
+        return 0;
+    if (!_uprop_on_dh(AGGRAVATE_MONSTER_DH)
+        && !(mlet === S_DOG_DH || mlet === S_HUMAN_DH)
+        && !(!rn2(7) && (mtmp.m_ap_type | 0) !== M_AP_FURNITURE_DH
+             && (mtmp.m_ap_type | 0) !== M_AP_OBJECT_DH))
+        return 0;
+    wake_msg(mtmp, !(mtmp.mpeaceful | 0));
+    mtmp.msleeping = 0;
+    return 1;
+}
+
+/* C monflag.h:159-168 */
+const M3_WANTSAMUL_WZ = 0x0001, M3_WANTSBELL_WZ = 0x0002,
+      M3_WANTSBOOK_WZ = 0x0004, M3_WANTSCAND_WZ = 0x0008,
+      M3_WANTSARTI_WZ = 0x0010, M3_COVETOUS_WZ = 0x001f;
+
+/* objects.h ordinals, cross-checked against js/oc_name_data.js by name (the
+ * same table js/mhitm.js:2993 reads AMULET_OF_YENDOR=213 from). */
+const AMULET_OF_YENDOR_WZ = 213, BELL_OF_OPENING_WZ = 263,
+      CANDELABRUM_OF_INVOCATION_WZ = 262, SPE_BOOK_OF_THE_DEAD_WZ = 409;
+
+/* C obj.h:271 any_quest_artifact(o) = ((o)->oartifact >= ART_ORB_OF_DETECTION);
+ * artilist.h ordinal 21 (js/objnam.js:2827 spells the same literal). */
+const ART_ORB_OF_DETECTION_WZ = 21;
+
+/* monsters.h ordinal, confirmed against js/makemon_mons.json row 285's
+ * mflags3 = 0x25f (the only row wanting all five artifacts). */
+const PM_WIZARD_OF_YENDOR_WZ = 285;
+
+/* C mondata.h is_covetous(ptr) — (ptr)->mflags3 & M3_COVETOUS.  js/makemon.js
+ * :5117 has the same body but does not export it. */
+function is_covetous_wz(ptr) {
+    return (((ptr && ptr.mflags3) | 0) & M3_COVETOUS_WZ) !== 0;
+}
+
+/* C wizard.c:141 which_arti(mask) */
+function which_arti_wz(mask) {
+    switch (mask) {
+    case M3_WANTSAMUL_WZ: return AMULET_OF_YENDOR_WZ;
+    case M3_WANTSBELL_WZ: return BELL_OF_OPENING_WZ;
+    case M3_WANTSCAND_WZ: return CANDELABRUM_OF_INVOCATION_WZ;
+    case M3_WANTSBOOK_WZ: return SPE_BOOK_OF_THE_DEAD_WZ;
+    default: break; /* 0 signifies quest artifact */
+    }
+    return 0;
+}
+
+/* C wizard.c:163 mon_has_arti(mtmp, otyp) — otyp 0 means "any quest artifact" */
+function mon_has_arti_wz(mtmp, otyp) {
+    for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj) {
+        if (otyp) {
+            if ((otmp.otyp | 0) === otyp)
+                return true;
+        } else if ((otmp.oartifact | 0) >= ART_ORB_OF_DETECTION_WZ)
+            return true;
+    }
+    return false;
+}
+
+/* C wizard.c:182 other_mon_has_arti(mtmp, otyp) */
+function other_mon_has_arti_wz(mtmp, otyp) {
+    for (let m = game.fmon; m; m = m.nmon)
+        if (m !== mtmp && mon_has_arti_wz(m, otyp))
+            return m;
+    return null;
+}
+
+function on_ground_wz(otyp) {
+    for (let otmp = game.fobj; otmp; otmp = otmp.nobj) {
+        if (otyp) {
+            if ((otmp.otyp | 0) === otyp)
+                return otmp;
+        } else if ((otmp.oartifact | 0) >= ART_ORB_OF_DETECTION_WZ)
+            return otmp;
+    }
+    return null;
+}
+
+/* C wizard.c:214 you_have(mask) — the u.uhave bitfields. */
+function you_have_wz(mask) {
+    const uh = game.u?.uhave;
+    if (!uh) return false;
+    switch (mask) {
+    case M3_WANTSAMUL_WZ: return !!uh.amulet;
+    case M3_WANTSBELL_WZ: return !!uh.bell;
+    case M3_WANTSCAND_WZ: return !!uh.menorah;
+    case M3_WANTSBOOK_WZ: return !!uh.book;
+    case M3_WANTSARTI_WZ: return !!uh.questart;
+    default: break;
+    }
+    return false;
+}
+
+/* C wizard.c:236 target_on(mask, mtmp) — sets mtmp->mgoal and returns the
+ * STRAT_* word, or STRAT_NONE.  `M_Wants(mask)` is wizard.c:139
+ * `(mtmp->data->mflags3 & (mask))`. */
+function target_on_wz(mask, mtmp) {
+    if (!((((mtmp.data && mtmp.data.mflags3) | 0) & mask)))
+        return STRAT_NONE;
+    const otyp = which_arti_wz(mask);
+    if (!mon_has_arti_wz(mtmp, otyp)) {
+        let otmp, mtmp2;
+        if (you_have_wz(mask)) {
+            mtmp.mgoal = { x: game.u.ux | 0, y: game.u.uy | 0 };
+            return (STRAT_PLAYER | mask) >>> 0;
+        } else if ((otmp = on_ground_wz(otyp)) != null) {
+            mtmp.mgoal = { x: otmp.ox | 0, y: otmp.oy | 0 };
+            return (STRAT_GROUND | mask) >>> 0;
+        } else if ((mtmp2 = other_mon_has_arti_wz(mtmp, otyp)) != null
+                   /* when seeking the Amulet, avoid targeting the Wizard or
+                      temple priests (to protect Moloch's high priest) */
+                   && (otyp !== AMULET_OF_YENDOR_WZ
+                       || (!(mtmp2.iswiz | 0) && !inhistemple(mtmp2)))) {
+            mtmp.mgoal = { x: mtmp2.mx | 0, y: mtmp2.my | 0 };
+            return (STRAT_MONSTR | mask) >>> 0;
+        }
+    }
+    mtmp.mgoal = { x: 0, y: 0 };
+    return STRAT_NONE;
+}
+
+/* C wizard.c:268 strategy(mtmp) — RNG-free. */
+function strategy_wz(mtmp) {
+    let strat, dstrat;
+
+    if (!is_covetous_wz(mtmp.data)
+        /* perhaps a shopkeeper has been polymorphed into a master lich; we
+           don't want it teleporting to the stairs to heal because that will
+           leave its shop untended */
+        || ((mtmp.isshk | 0) && inhishop(mtmp))
+        /* likewise for temple priests */
+        || ((mtmp.ispriest | 0) && inhistemple(mtmp)))
+        return STRAT_NONE;
+
+    /* C wizard.c:283 `switch ((mtmp->mhp * 3) / mtmp->mhpmax)` — C integer
+     * division, so the bands are 0..3. */
+    switch (Math.trunc(((mtmp.mhp | 0) * 3) / (mtmp.mhpmax | 0))) {
+    case 3:
+        dstrat = STRAT_NONE;
+        break;
+    case 2:
+        dstrat = STRAT_HEAL;
+        break;
+    case 1: /* the wiz is less cautious */
+        if ((mtmp.data.pmidx | 0) !== PM_WIZARD_OF_YENDOR_WZ)
+            return STRAT_HEAL;
+        dstrat = STRAT_HEAL; /* C FALLTHRU into case 2 */
+        break;
+    case 0: /* panic time - mtmp is almost snuffed */
+    default:
+        return STRAT_HEAL;
+    }
+
+    if (game.svc?.context?.made_amulet)
+        if ((strat = target_on_wz(M3_WANTSAMUL_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+
+    if (game.u?.uevent?.invoked) {
+        if ((strat = target_on_wz(M3_WANTSARTI_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+        if ((strat = target_on_wz(M3_WANTSBOOK_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+        if ((strat = target_on_wz(M3_WANTSBELL_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+        if ((strat = target_on_wz(M3_WANTSCAND_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+    } else {
+        if ((strat = target_on_wz(M3_WANTSBOOK_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+        if ((strat = target_on_wz(M3_WANTSBELL_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+        if ((strat = target_on_wz(M3_WANTSCAND_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+        if ((strat = target_on_wz(M3_WANTSARTI_WZ, mtmp)) !== STRAT_NONE)
+            return strat;
+    }
+    return dstrat;
+}
+
+/* C wizard.c:331 choose_stairs(&sx, &sy, dir) — RNG-free; leaves the output
+ * coordinates alone when no stairway is found.  The stairway_find_type_dir()
+ * walk is C stairs.c:88-95 over gs.stairs = game.stairs. */
+function choose_stairs_wz(out, dir) {
+    const stdir = builds_up(game.u?.uz) ? dir : !dir;
+    const findTypeDir = (isladder, up) => {
+        for (let t = game.stairs; t; t = t.next)
+            if (!!t.isladder === !!isladder && !!t.up === !!up)
+                return t;
+        return null;
+    };
+    let stway = findTypeDir(false, stdir);
+    if (!stway) {
+        /* no stairs; look for ladder in that direction */
+        stway = findTypeDir(true, stdir);
+        if (!stway) {
+            /* no ladder either; look for branch stairs or ladder any way */
+            for (stway = game.stairs; stway; stway = stway.next)
+                if ((stway.tolev?.dnum | 0) !== (game.u?.uz?.dnum | 0))
+                    break;
+            if (!stway) {
+                stway = findTypeDir(false, !stdir);
+                if (!stway)
+                    stway = findTypeDir(true, !stdir);
+            }
+        }
+    }
+    if (stway) { out.x = stway.sx | 0; out.y = stway.sy | 0; }
+}
+
+/* C wizard.c:369 tactics(mtmp) — returns 1 when the monster used its move.
+ * C's switch falls THROUGH from STRAT_HEAL into STRAT_NONE (wizard.c:409-411
+ * FALLTHROUGH), which is why the two arms are if-chained rather than a JS
+ * switch: only the healmon and mnearto-failure paths return early. */
+async function tactics_wz(mtmp) {
+    const u = game.u;
+    const strat = strategy_wz(mtmp);
+    let sx = 0, sy = 0, mx, my;
+
+    mtmp.mstrategy =
+        (((mtmp.mstrategy | 0) & (STRAT_WAITMASK | STRAT_APPEARMSG)) | strat) >>> 0;
+
+    if (strat === STRAT_HEAL) { /* hide and recover */
+        mx = mtmp.mx | 0; my = mtmp.my | 0;
+
+        if (u.uswallow && u.ustuck === mtmp) {
+            /* C wizard.c:381 expels(mtmp, mtmp->data, TRUE): the real body is
+             * expels_gu (mhitu.c:264-306); unstuck() draws rnd(2), mnexto()
+             * the collect_coords ladder. */
+            await expels_gu(mtmp, mtmp.data?.pmidx ?? mtmp.mnum, true);
+        }
+
+        /* if wounded, hole up on or near the stairs (to block them) */
+        {
+            const cc = { x: sx, y: sy };
+            choose_stairs_wz(cc, ((mtmp.m_id | 0) % 2) !== 0);
+            sx = cc.x; sy = cc.y;
+        }
+        mtmp.mavenge = 1; /* covetous monsters attack while fleeing */
+        if (In_W_tower_wz(mx, my, u.uz)
+            || ((mtmp.iswiz | 0) && !sx && !mon_has_amulet(mtmp))) {
+            if (!noteleport_level(mtmp)
+                && !rn2(3 + Math.trunc((mtmp.mhp | 0) / 10)))
+                await rloc(mtmp, RLOC_MSG);
+        } else if (sx && (mx !== sx || my !== sy)) {
+            if (!noteleport_level(mtmp)
+                && !await mnearto(mtmp, sx, sy, true, RLOC_MSG)) {
+                /* couldn't move to the target spot for some reason, so stay
+                   where we are (don't actually need rloc_to() because mtmp is
+                   still on the map at <mx,my>... */
+                await rloc_to(mtmp, mx, my);
+                return 0;
+            }
+            mx = mtmp.mx | 0; my = mtmp.my | 0; /* update cached location */
+        }
+        /* if you're not around, cast healing spells */
+        if (dist2(mx, my, u.ux | 0, u.uy | 0) > (BOLT_LIM * BOLT_LIM))
+            if ((mtmp.mhp | 0) <= (mtmp.mhpmax | 0) - 8) {
+                healmon(mtmp, rnd(8), 0);
+                return 1;
+            }
+        /* C FALLTHROUGH into STRAT_NONE */
+    }
+    if (strat === STRAT_HEAL || strat === STRAT_NONE) { /* harass */
+        if (!noteleport_level(mtmp) && !rn2(!(mtmp.mflee | 0) ? 5 : 33))
+            await mnexto(mtmp, RLOC_MSG);
+        return 0;
+    }
+    /* default: kill, maim, pillage! */
+    {
+        const where = (strat & STRAT_STRATMASK) >>> 0;
+        const tx = mtmp.mgoal?.x | 0, ty = mtmp.mgoal?.y | 0;
+        const targ = (strat & STRAT_GOAL) >>> 0;
+        let otmp;
+
+        if (!targ || !isok(tx, ty)) /* simply wants you to close */
+            return 0;
+        if (noteleport_level(mtmp) && !monnear(mtmp, tx, ty))
+            return 0;
+        if (u_at(tx, ty) || where === STRAT_PLAYER) {
+            /* player is standing on it (or has it) */
+            mx = mtmp.mx | 0; my = mtmp.my | 0;
+            if (noteleport_level(mtmp)
+                || !await mnearto(mtmp, tx, ty, false, RLOC_MSG))
+                await rloc_to(mtmp, mx, my); /* no room? stay put */
+            return 0;
+        }
+        if (where === STRAT_GROUND) {
+            if (!m_at(tx, ty)
+                || ((mtmp.mx | 0) === tx && (mtmp.my | 0) === ty)) {
+                /* teleport to it and pick it up */
+                await rloc_to(mtmp, tx, ty); /* clean old pos */
+
+                if ((otmp = on_ground_wz(which_arti_wz(targ))) != null) {
+                    if (cansee(mtmp.mx | 0, mtmp.my | 0))
+                        await pline(`${Monnam_dm(mtmp)} picks up ${(await distant_obj_name(otmp))}.`);
+                    obj_extract_floor(otmp);
+                    await mpickobj(mtmp, otmp);
+                    return 1;
+                }
+                return 0;
+            }
+            /* a monster is standing on it - cause some trouble */
+            if (!rn2(5) && !noteleport_level(mtmp))
+                await mnexto(mtmp, RLOC_MSG);
+            return 0;
+        }
+        /* a monster has it - 'port beside it. */
+        mx = mtmp.mx | 0; my = mtmp.my | 0;
+        if (!noteleport_level(mtmp)
+            && !await mnearto(mtmp, tx, ty, false, RLOC_MSG))
+            await rloc_to(mtmp, mx, my); /* no room? stay put */
+        return 0;
+    }
 }

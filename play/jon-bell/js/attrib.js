@@ -2,7 +2,8 @@
 // attrib.js — Attribute exercise and abuse tracking.
 // C ref: nethack-c/src/attrib.c — exercise(), exerper(), exerchk().
 // @ts-nocheck — js sibling imports.
-import { rn2, rn1, rnd, pushRngLogEntry } from './rng.js';
+import { rn1, pushRngLogEntry } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { game } from './gstate.js';
 import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER, HVY_ENCUMBER, EXT_ENCUMBER, Upolyd,
     FIRE_RES, COLD_RES, SLEEP_RES, SHOCK_RES, POISON_RES, SEE_INVIS, WARNING, SEARCHING, INFRAVISION,
@@ -14,13 +15,14 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, MOD_ENCUMBER, HV
 import { Unaware, see_monsters, flush_pending_messages } from './display.js';
 import { pline } from './pline.js';
 import { impossible } from './pline.js';
-import { encumber_msg, encumber_msg_sync } from './weight.js';
+import { encumber_msg_sync } from './weight.js';
+import { encumber_msg } from './pickup.js';
 import { near_capacity } from './hack.js';
 import { aligns } from './roles.js';
 import { uasmon_maxStr } from './polyself.js';
 import { permonstTemplate } from './makemon.js';
 import { losehp } from './hack.js';
-import { add_weapon_skill, lose_weapon_skill } from './uhitm.js';
+import { add_weapon_skill, lose_weapon_skill } from './weapon.js';
 /* The shared mons[] / mattk[] tables, imported the same way js/dochug.js,
  * js/m_initweap.js, js/do_wear.js and js/fastforward.js already import them —
  * adj_erinys() below mutates rows in place, which is exactly what C's
@@ -42,7 +44,7 @@ const A_WIS = 2;
 const A_DEX = 3;
 const A_CON = 4;
 const A_CHA = 5;
-const A_MAX = 6;
+import { A_MAX } from './const.js';
 /* u.acurr.a[] and u.amax.a[] are stored in DISPLAY order by init_attr()
  * in u_init.js: [St=0, Dx=1, Co=2, In=3, Wi=4, Ch=5].  Every function
  * that accesses those arrays via a C constant (A_STR=0 … A_CHA=5) must
@@ -144,7 +146,7 @@ export function acurr(u, i) {
  * redist_attr, exerchk): a polymorphed hero's Str cap stays at the form's
  * uasmon_maxStr() after rehumanizing (C never restores AMAX(STR)), so a later
  * gain is clamped to it and prints "already as strong as you can get". */
-const RACE_ATTRMAX = [
+export const RACE_ATTRMAX = [
     /* hum */ [118, 18, 18, 18, 18, 18],
     /* elf */ [18, 20, 20, 18, 16, 18],
     /* dwa */ [118, 16, 16, 20, 20, 16],
@@ -737,8 +739,6 @@ export function setuhpmax(newmax, even_when_polyd) {
     }
 }
 const ART_NONARTIFACT = 0;
-/* C artifact.h — the ART_ enum terminator; artilist[] indices run 0..33. */
-const AFTER_LAST_ARTIFACT = 34;
 const ARTILIST_SPFX = [
     0x00000000, /*  0 (dummy element, ART_NONARTIFACT)         */
     0x00000297, /*  1 Excalibur                                */
@@ -936,12 +936,6 @@ const ARTILIST_INVPROP = [
     74,  /* 32 The Orb of Fate            LEV_TELE */
     75,  /* 33 The Eye of the Aethiopica  CREATE_PORTAL */
 ];
-/* C artifact.c:513 spec_m2(otmp) — artilist[oartifact].mtype, 0 for a
- * non-artifact.  (C dereferences get_artifact()'s always-non-NULL return, so
- * the dummy row's 0 is what a non-artifact yields.) */
-export function spec_m2(otmp) {
-    return ARTILIST_MTYPE[get_artifact(otmp)] | 0;
-}
 /* Column accessors, so js/cmd.js's set_artifact_intrinsic() reads the same
  * table these do rather than carrying a third copy of artilist[]. */
 export function arti_spfx(artidx) { return ARTILIST_SPFX[artidx] | 0; }
@@ -949,29 +943,13 @@ export function arti_cspfx(artidx) { return ARTILIST_CSPFX[artidx] | 0; }
 export function arti_defn_adtyp(artidx) { return ARTILIST_DEFN_ADTYP[artidx] | 0; }
 export function arti_cary_adtyp(artidx) { return ARTILIST_CARY_ADTYP[artidx] | 0; }
 export function arti_inv_prop(artidx) { return ARTILIST_INVPROP[artidx] | 0; }
-export { get_artifact, ART_NONARTIFACT };
+export { ART_NONARTIFACT };
 /* C artifact.h:34 */
 export const SPFX_LUCK = 0x00080000;
 /* C objects.h — LUCKSTONE; == 470, confirmed by the same C build that produced
  * the spfx column above. */
 export const LUCKSTONE = 470;
 
-/* C ref: nethack-c/src/artifact.c:180-193 get_artifact(struct obj *obj)
- *   if (obj) { int artidx = (int) obj->oartifact;
- *              if (artidx > 0 && artidx < AFTER_LAST_ARTIFACT)
- *                  return &artilist[artidx]; }
- *   return &artilist[ART_NONARTIFACT];
- * C returns a pointer; JS returns the INDEX, so callers compare against
- * ART_NONARTIFACT exactly where C compares against &artilist[ART_NONARTIFACT]. */
-function get_artifact(obj) {
-    if (obj) {
-        const artidx = obj.oartifact | 0;
-        /* skip 0, 1st artifact at 1 */
-        if (artidx > 0 && artidx < AFTER_LAST_ARTIFACT)
-            return artidx;
-    }
-    return ART_NONARTIFACT;
-}
 
 /* spec_ability() lives in artifact.c; single port in js/artifact.js */
 import { spec_ability } from './artifact.js';
@@ -979,6 +957,9 @@ export { spec_ability };
 
 /* confers_luck() lives in artifact.c; single port in js/artifact.js */
 import { confers_luck } from './artifact.js';
+import { NUM_ROLES } from './roles.js'; // relocate-fns
+import { ROLE_ATTRBASE } from './u_init.js'; // relocate-fns
+import { carrying } from './invent.js'; // relocate-fns
 export { confers_luck };
 /* C attrib.c:422 int stone_luck(boolean include_uncursed) — compute net luck bonus.
  * Loops through hero inventory chain (gi.invent), accumulates blessed-blessed/uncursed
@@ -1224,4 +1205,147 @@ export function acurrstr(u = game.u) {
 /* C attrib.c:317-408 poisoned(reason, typ, pkiller, fatal, thrown_weapon) */
 export async function poisoned(reason, typ, pkiller, fatal, thrown_weapon) {
     return await poisoned_real(reason, typ, pkiller, fatal, thrown_weapon);
+}
+
+/* ── Attribute distribution tables (attrib.c + role.c) ────────────────── */
+/**
+ * C ref: role.c roles[].attrdist — attribute distribution weights for
+ * rnd_attr() (attrib.c:682).  Order: Str, Int, Wis, Dex, Con, Cha.
+ * Must sum to 100 per role (C comment: "sum must be 100").
+ */
+const ROLE_ATTRDIST = [
+    /* Arc */ [20, 20, 20, 10, 20, 10],
+    /* Bar */ [30, 6, 7, 20, 30, 7],
+    /* Cav */ [30, 6, 7, 20, 30, 7],
+    /* Hea */ [15, 20, 20, 15, 25, 5],
+    /* Kni */ [30, 15, 15, 10, 20, 10],
+    /* Mon */ [25, 10, 20, 20, 15, 10],
+    /* Pri */ [15, 10, 30, 15, 20, 10],
+    /* Rog */ [20, 10, 10, 30, 20, 10],
+    /* Ran */ [30, 10, 10, 20, 20, 10],
+    /* Sam */ [30, 10, 8, 30, 14, 8],
+    /* Tou */ [15, 10, 10, 15, 30, 20],
+    /* Val */ [30, 6, 7, 20, 30, 7],
+    /* Wiz */ [10, 30, 10, 20, 20, 10],
+];
+
+/** C ref: role.c races[].attrmin — minimum attributes by race (all 3). */
+const RACE_ATTRMIN_VAL = 3;
+
+/**
+ * C ref: attrib.c:682 rnd_attr() — return a random attribute index weighted
+ * by role's attrdist, consuming rn2(100).
+ * Returns A_MAX (6) if rn2 lands beyond the distribution (shouldn't happen
+ * if attrdist sums to 100, but mirrors C's loop termination).
+ */
+function rnd_attr(initrole) {
+    let x = rn2(100);
+    const dist = (initrole >= 0 && initrole < ROLE_ATTRDIST.length)
+        ? ROLE_ATTRDIST[initrole] : null;
+    if (!dist)
+        return A_MAX;
+    for (let i = 0; i < A_MAX; ++i) {
+        x -= dist[i];
+        if (x < 0)
+            return i;
+    }
+    return A_MAX; /* C: returns i=A_MAX if loop ends; treated as skip in caller */
+}
+
+/**
+ * C ref: attrib.c:699 init_attr_role_redist(np, addition) — distribute np
+ * points across random attributes, respecting attrmin/attrmax.
+ * addition=TRUE: add points (stop when np>0 condition fails or tryct>=100).
+ * addition=FALSE: remove points.
+ * Returns leftover np.
+ */
+function init_attr_role_redist(abase, np, addition, initrole, initrace) {
+    let tryct = 0;
+    const adj = addition ? 1 : -1;
+    const attrmax = (initrace >= 0 && initrace < RACE_ATTRMAX.length)
+        ? RACE_ATTRMAX[initrace] : RACE_ATTRMAX[0];
+    const attrmin = RACE_ATTRMIN_VAL;
+    while ((addition ? (np > 0) : (np < 0)) && tryct < 100) {
+        const i = rnd_attr(initrole);
+        if (i >= A_MAX
+            || (addition ? (abase[i] >= attrmax[i]) : (abase[i] <= attrmin))) {
+            tryct++;
+            continue;
+        }
+        tryct = 0;
+        abase[i] += adj;
+        np -= adj;
+    }
+    return np;
+}
+
+/**
+ * C ref: attrib.c:723 init_attr(75) — set abase/amax from attrbase, then
+ * redistribute leftover via rnd_attr RNG.
+ * Writes to g.u.acurr.a[] and g.u.amax.a[].
+ */
+export function init_attr(np) {
+    const g = game;
+    g.u = g.u || {};
+    const u = g.u;
+    g.flags = g.flags || {};
+    const initrole = (g.flags.initrole ?? -1) | 0;
+    const initrace = (g.flags.initrace ?? -1) | 0;
+    const rOk = initrole >= 0 && initrole < NUM_ROLES;
+    const attrbase = rOk ? ROLE_ATTRBASE[initrole] : [7, 7, 7, 7, 7, 7];
+    const abase = new Array(A_MAX);
+    for (let i = 0; i < A_MAX; i++) {
+        abase[i] = attrbase[i];
+        np -= attrbase[i];
+    }
+    /* distribute leftover */
+    np = init_attr_role_redist(abase, np, true, initrole, initrace);
+    /* if we went over, remove */
+    np = init_attr_role_redist(abase, np, false, initrole, initrace);
+    /* Permute C-order [str,int,wis,dex,con,cha] → display order [str,dex,con,int,wis,cha]
+     * to match the existing convention in display.js bot() and mapstate.js.
+     * display.js: a[0]=St a[1]=Dx a[2]=Co a[3]=In a[4]=Wi a[5]=Ch
+     * (A_STR=0 → display[0], A_DEX=3 → display[1], A_CON=4 → display[2],
+     *  A_INT=1 → display[3], A_WIS=2 → display[4], A_CHA=5 → display[5]) */
+    const disp = [
+        abase[0], /* display[0]=St ← C[A_STR=0] */
+        abase[3], /* display[1]=Dx ← C[A_DEX=3] */
+        abase[4], /* display[2]=Co ← C[A_CON=4] */
+        abase[1], /* display[3]=In ← C[A_INT=1] */
+        abase[2], /* display[4]=Wi ← C[A_WIS=2] */
+        abase[5], /* display[5]=Ch ← C[A_CHA=5] */
+    ];
+    u.acurr = u.acurr || {};
+    u.amax = u.amax || {};
+    u.acurr.a = disp.slice();
+    u.amax.a = disp.slice();
+}
+
+// C attrib.c:764 — preserve shared adjustment effects and C attribute order.
+export function vary_init_attr() {
+    const u = game.u;
+    const cToDisplay = [0, 3, 4, 1, 2, 5];
+    for (let i = 0; i < A_MAX; i++) {
+        if (!rn2(20)) {
+            const xd = rn2(7) - 2;
+            adjattrib(i, xd, true);
+            const di = cToDisplay[i];
+            if (u.acurr.a[di] < u.amax.a[di])
+                u.amax.a[di] = u.acurr.a[di];
+        }
+    }
+}
+
+export function set_moreluck() {
+    const u = game.u || (game.u = {});
+    const LUCKADD = 3;
+    const LUCKSTONE = 470;
+    const luckbon = stone_luck(true) | 0;
+
+    if (!luckbon && !carrying(LUCKSTONE))
+        u.moreluck = 0;
+    else if (luckbon >= 0)
+        u.moreluck = LUCKADD;
+    else
+        u.moreluck = -LUCKADD;
 }

@@ -26,14 +26,14 @@ import { NEUTRAL, MIN_QUEST_LEVEL, BUFSZ, A_LAWFUL, NHW_MENU, NHW_TEXT } from '.
  * is_quest_artifact() lives in js/objnam.js (js/cmd.js's same-named export is a
  * throwing stub — the file-local-stub-shadows-real-port shape). */
 import { OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, Has_contents } from './const.js';
-import { is_quest_artifact, makesingular, makeplural as _makeplural,
-         an as _an, An as _An } from './objnam.js';
+import { makesingular, makeplural as _makeplural, an as _an, An as _An } from './objnam.js';
 import { rank_of } from './botl.js';
 import { putmsghistory } from './display.js';
 import { roles as ROLES } from './roles.js';
 import { nhlib_load_toplevel_rng } from './nhlib.js';
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { QUEST_CUSS_TEXT } from './mcastu.js';
+import { MS_GUARDIAN, impossible_objnam } from './objnam.js'; // relocate-fns
 
 /* C monflag.h M2_PNAME — "the " is omitted for a proper-name monster. */
 const M2_PNAME = 0x00080000;
@@ -82,7 +82,7 @@ const ROLE_INTERMED = [
  * space — the monsPack row order — so those values are not reusable here;
  * reusing them named the Monk leader for a Samurai.  Verified: every one of the
  * 13 rows round-trips through monPmname() to the role.c monster.) */
-const ROLE_LDRNUM = [
+export const ROLE_LDRNUM = [
     344, // Arc PM_LORD_CARNARVON
     345, // Bar PM_PELIAS
     346, // Cav PM_SHAMAN_KARNOV
@@ -97,7 +97,7 @@ const ROLE_LDRNUM = [
     355, // Val PM_NORN
     356, // Wiz PM_NEFERET_THE_GREEN
 ];
-const ROLE_GUARDNUM = [
+export const ROLE_GUARDNUM = [
     369, // Arc PM_STUDENT
     370, // Bar PM_CHIEFTAIN
     371, // Cav PM_NEANDERTHAL
@@ -112,7 +112,7 @@ const ROLE_GUARDNUM = [
     381, // Val PM_WARRIOR
     382, // Wiz PM_APPRENTICE
 ];
-const ROLE_NEMNUM = [
+export const ROLE_NEMNUM = [
     357, // Arc PM_MINION_OF_HUHETOTL
     358, // Bar PM_THOTH_AMON
     359, // Cav PM_CHROMATIC_DRAGON
@@ -4150,4 +4150,108 @@ export async function stinky_nemesis() {
     if (pos < 0) pos = text.indexOf('toxic');
     return pos >= 0 && (text.indexOf(' gas', pos) >= 0
                        || text.indexOf(' fumes', pos) >= 0);
+}
+
+// ── quest_info constants (C monflag.h) ────────────────────────────────────────
+// MS_LEADER, MS_NEMESIS, MS_GUARDIAN correspond to quest role values.
+const MS_LEADER   = 36; /* your class leader */
+
+const MS_NEMESIS  = 37; /* your nemesis */
+
+const _ROLE_QUESTARTI = [
+    21, /* 0 Arc: ART_ORB_OF_DETECTION */
+    22, /* 1 Bar: ART_HEART_OF_AHRIMAN */
+    23, /* 2 Cav: ART_SCEPTRE_OF_MIGHT */
+    24, /* 3 Hea: ART_STAFF_OF_AESCULAPIUS */
+    25, /* 4 Kni: ART_MAGIC_MIRROR_OF_MERLIN */
+    26, /* 5 Mon: ART_EYES_OF_THE_OVERWORLD */
+    27, /* 6 Pri: ART_MITRE_OF_HOLINESS */
+    29, /* 7 Rog: ART_MASTER_KEY_OF_THIEVERY */
+    28, /* 8 Ran: ART_LONGBOW_OF_DIANA */
+    30, /* 9 Sam: ART_TSURUGI_OF_MURAMASA */
+    31, /* 10 Tou: ART_YENDORIAN_EXPRESS_CARD */
+    32, /* 11 Val: ART_ORB_OF_FATE */
+    33, /* 12 Wiz: ART_EYE_OF_THE_AETHIOPICA */
+];
+
+export function is_quest_artifact(otmp) {
+    /* C: `otmp->oartifact == gu.urole.questarti`.  This used to index
+     * _ROLE_QUESTARTI by game.urole.mnum, which role_init() sets to the role's
+     * PM_ index (331 for Archeologist), so the bounds test failed and every
+     * object was answered "not the quest artifact".  quest_info(0) is the same
+     * lookup off flags.initrole and is already the port's one spelling of it. */
+    const questarti = quest_info(0) | 0;
+    return !!(otmp && (otmp.oartifact | 0) === questarti && questarti !== 0);
+}
+
+// ── quest_info (nethack-c/src/questpgr.c:30-46) ──────────────────────────────
+// C: short quest_info(int typ)
+// Returns the monster number (PM_* enum) for a given quest role type.
+// typ == 0 → quest artifact index
+// typ == MS_LEADER → leader monster number
+// typ == MS_NEMESIS → nemesis monster number
+// typ == MS_GUARDIAN → guardian monster number
+export function quest_info(typ) {
+    const roleIx = (game.flags?.initrole ?? -1) | 0;
+
+    switch (typ) {
+    case 0:
+        /* quest artifact index (ART_* enum) */
+        if (roleIx >= 0 && roleIx < _ROLE_QUESTARTI.length)
+            return _ROLE_QUESTARTI[roleIx] | 0;
+        return 0;
+    case MS_LEADER:
+        if (roleIx >= 0 && roleIx < ROLE_LDRNUM.length)
+            return ROLE_LDRNUM[roleIx] | 0;
+        return 0;
+    case MS_NEMESIS:
+        if (roleIx >= 0 && roleIx < ROLE_NEMNUM.length)
+            return ROLE_NEMNUM[roleIx] | 0;
+        return 0;
+    case MS_GUARDIAN:
+        if (roleIx >= 0 && roleIx < ROLE_GUARDNUM.length)
+            return ROLE_GUARDNUM[roleIx] | 0;
+        return 0;
+    default:
+        /* C questpgr.c:42-44: the default arm calls impossible() and then
+         * FALLS OUT of the switch to the function's trailing `return 0;`.
+         * impossible() logs and returns (pline.c:587-637) — it does not
+         * abort, so throwing here was wrong. */
+        impossible_objnam("quest_info(%d)", typ);
+        return 0;
+    }
+}
+
+// ── deliver_splev_message (C questpgr.c:653-664) ────────────────────────────
+// C:
+//   void deliver_splev_message(void) {
+//       /* there's no provision for delivering via window instead of pline */
+//       if (gl.lev_message) {
+//           deliver_by_pline(gl.lev_message);
+//           free((genericptr_t) gl.lev_message);
+//           gl.lev_message = NULL;
+//       }
+//   }
+//
+// `gl.lev_message` (decl.h:567, in the `gl` "globals starting with l" struct)
+// is a PLAIN GLOBAL, not a member of struct level: it is appended to by
+// lspo_message() (sp_lev.c:3081, the des.message() Lua binding) while a special
+// level is being loaded, cleared by clear_level_structures() (mklev.c:931), and
+// consumed exactly once here on arrival.  js/sp_lev.js:lspo_message writes the
+// same global (game.lev_message) — it previously wrote game.level.lev_message,
+// a different path from the one this function reads, so even an unstubbed
+// deliver_by_pline would have found nothing.
+//
+// KNOWN GAP (outside this task's file scope): C also clears gl.lev_message in
+// clear_level_structures() (mklev.c:931-934).  js/mklev.js:4103's port replaces
+// game.level wholesale but does not clear game.lev_message, so a message
+// generated for a level that is never arrived at would leak to the next
+// generated level.  goto_level always generates-then-arrives, so the leak is
+// not reachable today; the one-line fix belongs in js/mklev.js.
+export async function deliver_splev_message() {
+    if (game.lev_message) {
+        await deliver_by_pline(game.lev_message);
+        /* C: free(gl.lev_message); gl.lev_message = NULL; */
+        game.lev_message = null;
+    }
 }

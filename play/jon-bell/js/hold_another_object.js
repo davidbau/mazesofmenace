@@ -54,7 +54,9 @@ import { observe_object } from './o_init.js';
 import { obfree } from './shk.js';
 import { globby_bill_fixup } from './shk.js';
 import { picked_container } from './dokick.js';
-import { mergable, prinv, reorder_invent, freeinv, obj_extract_self_general, inv_cnt, carry_obj_effects, addinv_core1, addinv_core2 } from './cmd.js';
+import { obj_extract_self_general } from './cmd.js';
+import { inv_cnt } from './hack.js';
+import { mergable, prinv, reorder_invent, freeinv, carry_obj_effects, addinv_core1, addinv_core2 } from './invent.js';
 import { setuqwep } from './wield.js';
 import { hero_breaks, hitfloor, throwing_weapon } from './dothrow.js';
 import { dropx, dropy } from './do.js';
@@ -75,7 +77,8 @@ import {
 import { P_SKILL } from './skills.js';
 import { oid_price_adjustment } from './shk.js';
 import { onbill } from './shk.js';
-import { oname, obj_typename } from './objnam.js';
+import { obj_typename } from './objnam.js';
+import { oname } from './do_name.js';
 /* C youprop.h Blind — js/vision.js's is the ONE live spelling in this port
  * (js/ball.js:425 records why: two file-local copies read the STRING key
  * `uprops.BLINDED` while every writer indexes numerically, so they were
@@ -86,8 +89,8 @@ import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { setnotworn, setworn } from './worn.js';
 import { impossible } from './pline.js';
 import { touch_artifact_youmonst, _pickup_burden_level } from './wizcmds.js';
-import { place_object, remove_object, dealloc_obj, start_glob_timeout } from './mklev.js';
-import { update_inventory } from './inventory_refresh.js';
+import { place_object, remove_object, dealloc_obj, start_glob_timeout } from './mkobj.js';
+import { update_inventory } from './invent.js';
 import { obj_merge_light_sources } from './light.js';
 import { obj_stop_timers, stop_timer, start_timer } from './timeout.js';
 import { SHRINK_GLOB, TIMER_OBJECT, ALTAR } from './const.js';
@@ -98,13 +101,6 @@ export { COIN_CLASS, _uprop_on }; // relocate-fns
 const COIN_CLASS = 12, WEAPON_CLASS = 2, TOOL_CLASS = 6, GEM_CLASS = 13;
 /* include/hack.h:458-461 encumbrance levels (MOD_ENCUMBER = "stressed"). */
 const MOD_ENCUMBER = 2;
-/* include/skills.h:64,95 — P_RIDING = 37, P_BASIC = 2. */
-const P_RIDING = 37, P_BASIC = 2;
-/* include/monattk.h:19 AT_HUGS. */
-const AT_HUGS = 7;
-/* include/monflag.h:85,89,92,93,182 and defsym.h:309 MONSYM(13,...,S_MIMIC). */
-const M1_FLY = 0x00000001, M1_CLING = 0x00000010, M1_HIDE = 0x00000100;
-const MZ_HUGE = 4, S_MIMIC = 13;
 /* include/skills.h — P_BOW 20, P_CROSSBOW 22, P_DART 23, P_BOOMERANG 25. */
 const P_BOW = 20, P_CROSSBOW = 22, P_DART = 23, P_BOOMERANG = 25;
 
@@ -117,57 +113,9 @@ function _uprop_on(idx) {
     const p = game.u?.uprops?.[idx];
     return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
 }
-/* C youprop.h Levitation / Flying. */
-function Levitation() { return _uprop_on(LEVITATION); }
-function Flying() {
-    // C youprop.h:253: a flying steed confers flight unless BFlying blocks it.
-    const u = game.u, p = u?.uprops?.[FLYING];
-    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)
-        || ((u?.usteed?.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */))
-        && !(p?.blocked | 0);
-}
 
-function _hero_data() {
-    const ym = game.youmonst;
-    return (ym && ym.data) ? ym.data : null;
-}
 
-/* C mondata.h:38-45.  is_hider/is_clinger/is_flyer are single mflags1 bits;
- * ceiling_hider adds the S_MIMIC exclusion on the clinger half.  An absent
- * permonst (a partially-seeded replay world) reads as "no flags", which is the
- * same convention js/eat.js is_clinger and js/mhitu.js nohands_mu use. */
-function is_hider(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_HIDE) !== 0; }
-function is_clinger(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_CLING) !== 0; }
-function is_flyer(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_FLY) !== 0; }
-function ceiling_hider(ptr) {
-    return is_hider(ptr)
-        && ((is_clinger(ptr) && (ptr?.mlet | 0) !== S_MIMIC) || is_flyer(ptr));
-}
 
-export function can_reach_floor(check_pit) {
-    const u = game.u || {};
-    const youdata = _hero_data();
-
-    if (u.uswallow
-        || (u.ustuck && !sticks(youdata)
-            && attacktype(u.ustuck.data, AT_HUGS))
-        || (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))))
-        return false;
-    if (u.usteed && P_SKILL(P_RIDING) < P_BASIC)
-        return false;
-    if (u.uundetected && ceiling_hider(youdata))
-        return false;
-
-    if (Flying() || (youdata && (youdata.msize | 0) >= MZ_HUGE))
-        return true;
-
-    if (check_pit) {
-        const t = t_at(u.ux | 0, u.uy | 0);
-        if (t && (uteetering_at_seen_pit(t) || uescaped_shaft(t)))
-            return false;
-    }
-    return true;
-}
 
 
 

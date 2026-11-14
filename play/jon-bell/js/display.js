@@ -1,3 +1,4 @@
+import { hcolor } from './do_name.js';
 // @ts-nocheck
 // display.js — Map rendering and terminal output.
 // C ref: display.c — newsym, show_glyph, docrt, cls, flush_screen.
@@ -75,7 +76,10 @@ import { collectScreenDescriptionClasses as collectDescriptionClasses } from './
 import { is_pool } from './look.js';
 import { PM_HUMAN, PM_ELF } from './pm.generated.js';
 import * as pmNumbers from './pm.generated.js';
-import { waterbody_name, key2txt, invocation_pos, recalc_mapseen_rooms, set_msg_xy } from './cmd.js';
+import { key2txt, recalc_mapseen_rooms } from './cmd.js';
+import { invocation_pos } from './hack.js';
+import { set_msg_xy } from './pline.js';
+import { waterbody_name } from './pager.js';
 import { On_stairs } from './stairs.js';
 import { strNsubst, fuzzymatch } from './hacklib.js';
 import { Inhell } from './makemon.js';
@@ -93,7 +97,7 @@ import monAcPack from './makemon_ac.json' with { type: 'json' };
 import monMattkPack from './makemon_mattk.json' with { type: 'json' };
 import { observe_object } from './o_init.js';
 import { sticks } from './dog.js';
-import { can_reach_floor } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { SEE_INVIS, TELEPAT, DETECT_MONSTERS, INVIS, INTRINSIC, I_SPECIAL, BOLT_LIM, PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { MAX_TYPE, TT_LAVA, TT_BURIEDBALL } from './const.js';
 import { W_QUIVER, W_SWAPWEP, W_BALL, W_SADDLE, DISMOUNT_THROWN } from './const.js';
@@ -130,23 +134,26 @@ const PM_TENGU_DISP = 55;
  * js/makemon_pmnames.json[330] = "long worm tail" and cross-checked against
  * js/pm.generated.js:333 PM_LONG_WORM_TAIL = 330. */
 const PM_LONG_WORM_TAIL_DISP = 330;
-import { engr_at, engravings_list } from './mklev.js';
+import { engravings_list } from './mklev.js';
+import { engr_at } from './engrave.js';
 import { acurr } from './attrib.js';
 import { A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA } from './const.js';
 import { CORPSTAT_GENDER, CORPSTAT_FEMALE } from './const.js';
 import { t_at } from './trap.js';
 import { visible_region_at } from './region.js';
-import { is_pool_or_lava } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 /* C rnd.c:64 rn2_on_display_rng — the DISP isaac64 context, deliberately NOT
  * the scored stream (js/rng.js:239).  Used by swallow_to_glyph's what_mon. */
-import { rn2_on_display_rng, cosmic_display_push_owner as cosmic_push_owner_real, cosmic_display_pop_owner as cosmic_pop_owner_real, pushRngLogEntry, getRngLog } from './rng.js';
+import { cosmic_display_push_owner as cosmic_push_owner_real, cosmic_display_pop_owner as cosmic_pop_owner_real, pushRngLogEntry, getRngLog } from './rng.js';
+import { rn2_on_display_rng } from './rnd.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
 import { near_capacity } from './hack.js';
 import { describe_level_buf, on_level } from './dungeon.js';
-import { update_inventory, hcolor, is_youmonst } from './mhitm.js';
+import { update_inventory, is_youmonst } from './mhitm.js';
 import { ARTILIST, otense, helm_simple_name, bare_artifactname } from './objnam.js';
-import { weapon_type, weapon_descr, mon_nam } from './uhitm.js';
+import { mon_nam } from './uhitm.js';
+import { weapon_type, weapon_descr } from './weapon.js';
 import { bimanual } from './do_wear.js';
 import { humanoid } from './makemon.js';
 import { P_QUARTERSTAFF, P_MORNING_STAR, P_POLEARMS, P_UNICORN_HORN, P_LANCE } from './const.js';
@@ -159,16 +166,20 @@ import { routeTag } from './route_telemetry.js';
 import { unconscious } from './trap.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { KILLED_BY, HALF_PHDAM, LOW_PM, RUN_CRAWL } from './const.js';
-import { rnd as _rt_rnd } from './rng.js';
+import { rnd as _rt_rnd } from './rnd.js';
 import { touch_artifact_youmonst as _rt_touch_artifact_youmonst, bane_applies_hero as _rt_bane_applies_hero } from './wizcmds.js';
-import { hates_silver as _rt_hates_silver } from './makemon.js';
+import { hates_silver as _rt_hates_silver } from './mondata.js';
 import { which_armor as _rt_which_armor } from './worn.js';
 import { losehp as _rt_losehp } from './hack.js';
 import { is_ice, db_under_typ } from './dbridge.js';
 import { exercise as _rt_exercise, arti_cary_adtyp, arti_cspfx, arti_inv_prop } from './attrib.js';
 import { W_ARTI, LAST_PROP } from './const.js';
-import { arti_invoke as _rt_arti_invoke } from './artifact.js';
-import { coord_desc as _rt_coord_desc, yname as _rt_yname, freeinv as _rt_freeinv, surface as _rt_surface, dismount_steed as _rt_dismount_steed } from './cmd.js';
+import { arti_invoke } from './artifact.js';
+import { yname as _rt_yname } from './cmd.js';
+import { coord_desc as _rt_coord_desc } from './getpos.js';
+import { freeinv as _rt_freeinv } from './invent.js';
+import { dismount_steed as _rt_dismount_steed } from './steed.js';
+import { surface as _rt_surface } from './dungeon.js';
 import { hitfloor as _rt_hitfloor } from './dothrow.js'; /* a2_dothrow_16: dothrow audit fns in js/dothrow.js */
 import { dropx as _rt_dropx, maybe_lvltport_feedback as _rt_maybe_lvltport_feedback } from './do.js';
 import { killer_xname as _rt_killer_xname, Tobjnam as _rt_Tobjnam } from './objnam.js';
@@ -774,8 +785,8 @@ function _wall_symbol_glyph(key, decMode) {
         return { ch: ' ', color: wallColor, dec: false };
     /* C dat/symbols `start: plain` (lines 43-54): S_tlcorn..S_trwall are '+',
      * every other symbol keeps its default. */
-    if (!decMode && !rogue_graphics()
-        && String(gs?.symset?.[PRIMARYSET]?.name ?? '').toLowerCase() === 'plain'
+    if (!decMode
+        && String(gs?.symset?.[rogue_graphics() ? 1 : PRIMARYSET]?.name ?? '').toLowerCase() === 'plain'
         && _PLAIN_PLUS.has(key))
         return { ch: '+', color: wallColor, dec: false };
     /* C dat/symbols:242-263 IBMgraphics — plain 7-bit letters (see
@@ -1993,11 +2004,11 @@ export function reglyph_darkroom() {
             // '#' + CLR_WHITE↔NO_COLOR color flip with cmap 22↔23.
             if (!dark_room) {
                 if (_rg_is_cmap(rg, S_CORR_C) && loc.waslit) {
-                    Object.assign(rg, _feel_cmap_glyph(S_LITCORR_C));
+                    Object.assign(rg, cmap_glyph(S_LITCORR_C));
                 }
             } else {
                 if (_rg_is_cmap(rg, S_LITCORR_C) && !cansee(x, y)) {
-                    Object.assign(rg, _feel_cmap_glyph(S_CORR_C));
+                    Object.assign(rg, cmap_glyph(S_CORR_C));
                 }
             }
 
@@ -2008,7 +2019,7 @@ export function reglyph_darkroom() {
                 // can also paint 'z' (IBM) or blank under the current options.
                 if (_rg_is_cmap(rg, S_DARKROOM_C)) {
                     if (loc.waslit) {
-                        loc.remembered_glyph = _feel_cmap_glyph(S_ROOM_C);
+                        loc.remembered_glyph = cmap_glyph(S_ROOM_C);
                     } else {
                         // → GLYPH_NOTHING: ' ' NO_COLOR
                         rg.ch = _nothing_ch();
@@ -3180,10 +3191,10 @@ export function unmap_object(x, y) {
             /* turn remembered dark room squares dark */
             if (!loc.waslit && loc.typ === ROOM) {
                 if (_rg_is_cmap(loc.remembered_glyph, S_ROOM_C))
-                    loc.remembered_glyph = _feel_cmap_glyph(S_STONE_C);
+                    loc.remembered_glyph = cmap_glyph(S_STONE_C);
             }
         } else {
-            loc.remembered_glyph = _feel_cmap_glyph(S_STONE_C);
+            loc.remembered_glyph = cmap_glyph(S_STONE_C);
         }
     }
 }
@@ -3947,105 +3958,10 @@ function _oos_warning_monster(x, y) {
  * live; re-exported through this module's own name so see_monsters() below is
  * unchanged. */
 
-// C artifact.c:2427-2462; artilist.h gives only these three artifacts a color.
-export function glow_color(arti) {
-    const color = arti === 5 ? CLR_RED
-        : (arti === 6 || arti === 7) ? CLR_BRIGHT_BLUE : NO_COLOR;
-    return hcolor(clr2colorname(color));
-}
 
-export function glow_verb(count, ingsfx) {
-    const verb = count > 12 ? 'gleam' : count > 4 ? 'glimmer'
-        : count > 0 ? 'flicker' : 'quiver';
-    return verb + (ingsfx ? 'ing' : '');
-}
 
-export function Sting_effects(cnt) {
-    /* C artifact.c:2466-2507.  Sting, Orcrist, and Grimtooth all use the
-     * weapon's warning intrinsic.  Messages track blindness toggles and
-     * strength changes across C's three thresholds (1, 5, 13 monsters).
-     * This is display-only and consumes no scored RNG. */
-    const wep = game.u?.uwep;
-    const arti = wep?.oartifact | 0;
-    if (arti !== 5 && arti !== 6 && arti !== 7)
-        return;
 
-    const oldCount = game.warn_obj_cnt | 0;
-    const oldStrength = oldCount > 12 ? 3 : oldCount > 4 ? 2 : oldCount > 0 ? 1 : 0;
-    const newStrength = cnt > 12 ? 3 : cnt > 4 ? 2 : cnt > 0 ? 1 : 0;
-    const name = bare_artifactname(wep);
-    const pluralVerb = (verb) => otense(wep, verb);
 
-    if (cnt === -1 && oldCount > 0) {
-        /* Blindness toggled: continue the existing glow, with quiver while
-         * blind, so the eventual stop message has the matching verb. */
-        void pline(`${name} is ${glow_verb(_disp_Blind() ? 0 : oldCount, true)}.`);
-    } else if (newStrength > 0 && newStrength !== oldStrength) {
-        /* C artifact.c:2482 — goto_level() -> docrt() -> see_monsters() ->
-         * Sting_effects(): deliver a pending "You materialize on a different
-         * level" first so the start-glowing message comes after it. */
-        void _rt_maybe_lvltport_feedback();
-        if (!_disp_Blind()) {
-            // C artifact.c:2487-2490 only chooses a glow color when sighted.
-            const color = glow_color(arti);
-            const punctuation = newStrength > oldStrength ? '!' : '.';
-            void pline(`${name} ${pluralVerb(glow_verb(cnt, false))} ${color}${punctuation}`);
-        } else if (oldStrength === 0) {
-            void pline(`${name} ${pluralVerb(glow_verb(0, false))} slightly.`);
-        }
-    } else if (cnt === 0 && oldCount > 0) {
-        void pline(`${name} stops ${glow_verb(_disp_Blind() ? 0 : oldCount, true)}.`);
-    }
-}
-
-/* C artifact.c:2709-2749 count_surround_traps(): count locations, including
- * the hero's square, but ignore traps already shown in the glyph buffer. */
-function count_surround_traps(x, y) {
-    let count = 0;
-    for (let dx = x - 1; dx < x + 2; ++dx) {
-        for (let dy = y - 1; dy < y + 2; ++dy) {
-            if (!isok(dx, dy)) continue;
-            const loc = game.level.at(dx, dy);
-            // C glyph_is_trap(glyph_at(dx, dy)): inspect the displayed class.
-            if (loc.disp_cls === GLYPHCLS_TRAP) continue;
-            if (t_at(dx, dy)) {
-                ++count;
-                continue;
-            }
-            if (IS_DOOR(loc.typ) && (loc.doormask & D_TRAPPED)) {
-                ++count;
-                continue;
-            }
-            for (let o = vobj_at(dx, dy); o; o = o.nexthere) {
-                // C obj.h Is_container: LARGE_BOX through BAG_OF_TRICKS.
-                if (o.otyp >= 214 && o.otyp <= 220 && o.otrapped) {
-                    ++count;
-                    break;
-                }
-            }
-        }
-    }
-    return count;
-}
-
-/* C artifact.c:2753-2770 mkot_trap_warn(), called at allmain.c:351. */
-const ART_MASTER_KEY_OF_THIEVERY = 29;
-function u_wield_art(art) {
-    return !!(game.u?.uwep && (game.u.uwep.oartifact | 0) === art);
-}
-export async function mkot_trap_warn() {
-    const u = game.u;
-    if (!u.uarmg && u_wield_art(ART_MASTER_KEY_OF_THIEVERY)) {
-        const heat = ['cool', 'slightly warm', 'warm', 'very warm',
-                      'hot', 'very hot', 'like fire'];
-        const ntraps = count_surround_traps(u.ux, u.uy);
-        if (ntraps !== (game.mkot_trap_warn_count || 0))
-            await pline(`The Key feels ${heat[Math.min(ntraps, heat.length - 1)]}${ntraps > 3 ? '!' : '.'}`);
-        game.mkot_trap_warn_count = ntraps;
-    } else {
-        game.mkot_trap_warn_count = 0;
-    }
-}
 
 // ── see_monsters ──
 // C ref: display.c:1520-1564 see_monsters
@@ -8267,12 +8183,28 @@ export async function tty_getlin_recall(text) {
      * The wrap test is `n0 = strlen(bp) >= CO` on C's stored bytes, where the
      * farlook glyph pad is 8 literal spaces (pager.c:1271-1273); this port's
      * ESC[8C compression makes .length 4 shorter, so measure visual columns —
-     * the same units C's strlen counts here — not raw .length. */
-    g._topl_recall_hardwrap = !(_topl_visualLen(text) > 79 && !text.includes('\n') && !g._getlin_hist?.has(text));
+     * the same units C's strlen counts here — not raw .length.
+     * The LIVE "query buffer" line is a getlin line too: getline.c:81-82
+     * rebuilds gt.toplines with plain strcpy/strcat before every read, so it
+     * never passes through update_topl either and redotoplin's putsyms()
+     * hard-wraps it (topl.c:121-142).  It equals the _topl_prompt_written
+     * saved above (both getlin twins set it to query + " " + buffer), and it
+     * is only filed in _getlin_hist at getlin EXIT — mid-read it must be
+     * recognised by identity (df-x82f6ccc048 step 50). */
+    g._topl_recall_hardwrap = !(_topl_visualLen(text) > 79 && !text.includes('\n')
+                                && !g._getlin_hist?.has(text) && text !== written);
     g._pending_message = g._topl_history_recall = text;
     try {
         if (text.includes('\n') || _topl_visualLen(text) > TOPL_CO - 1) {
-            const morc = await force_more(text, 16);
+            /* alreadyPainted: redotoplin (topl.c:121-142) has no WIN_STOP guard —
+             * only the pline pipeline's update_topl/addtopl/tty_display_nhwindow
+             * consult it — so a page recalled right after an ESC dismissed the
+             * previous one still paints and reads (the ESC's own xwaitforspace
+             * read ran BEFORE more() set the bit, getline.c:239 vs topl.c:232;
+             * the next read clears it, wintty.c:4065).  df-x82f6ccc048 step 51:
+             * ^P, ESC, then the second "need two initially" recall must paint
+             * "...? [yes|no] #saveopti--More--". */
+            const morc = await force_more(text, 16, true);
             /* more() -> docorner(1, cury + 1, 0) homes and clears row 0. */
             g._pending_message = '';
             await flush_screen(1);
@@ -11704,6 +11636,8 @@ function _topl_stop_clear_after_more() {
 // caller that must wait for a synchronous helper's un-awaited pline().
 async function _pline_stop() {
     const g = game;
+    if (g && (g._topl_win_stop || g._topl_win_stop_armed))
+        return;
     const task = (async () => {
         await force_more(g._pending_message, undefined, true);
         _topl_stop_clear_after_more();
@@ -11886,7 +11820,11 @@ export async function await_menu_key(rerender, selectors, gacc, how, onToggle, s
         /* A key outside `resp` is bell+re-read INSIDE xwaitforspace (getline.c:
          * 250-254), so process_menu_window's loop never turns over and a live
          * count survives it (wintty.c:1396 reset_count stays FALSE). */
-        if (!resp.includes(ch)) reset_count = false;
+        /* ...unless xwaitforspace accepted it: getline.c:243 `c == x` takes the
+         * tty's dismiss_more key (ESC sets it to 1, i.e. ^A) as morc, so that
+         * key DOES turn the loop over and lets the count lapse. */
+        if (!resp.includes(ch)
+            && !(rawc !== 0 && rawc === (game._ttyDismissMore | 0))) reset_count = false;
         /* consumed, page unchanged (or a toggle the caller models itself) */
         if (onToggle && how === PICK_ANY && resp.includes(ch))
             await onToggle(ch, counting && count > 0 ? count : -1);
@@ -13968,7 +13906,7 @@ export function feel_location(x, y) {
                 /* C: flags.dark_room && iflags.use_color && !Is_rogue_level →
                  * S_darkroom (display.c:836-843); otherwise S_room or S_stone. */
                 const dark = _darkroom_paints() && !Is_rogue_level(game.u?.uz);
-                const glyph = _feel_cmap_glyph(dark ? S_DARKROOM_C
+                const glyph = cmap_glyph(dark ? S_DARKROOM_C
                     : (lev.waslit ? S_ROOM_C : S_STONE_C));
                 lev.remembered_glyph = glyph;
                 show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, _glyph_attr(glyph),
@@ -14059,7 +13997,7 @@ function _rg_is_boulder(rg) {
 
 /* C's feel_location/unmap_object assign cmap glyphs, retaining their identity
  * even when a symset or !color makes two of them look the same. */
-function _feel_cmap_glyph(cmap) {
+function cmap_glyph(cmap) {
     let cell = cmap_to_glyph_disp(cmap)
         ?? { ch: defsym_char(cmap), color: _CMAP_COLORS[cmap] ?? NO_COLOR, dec: false };
     if (rogue_ibm_terrain()) {
@@ -14096,7 +14034,7 @@ function _feel_cmap_glyph(cmap) {
              attr: _glyph_attr({ ...cell, cmap }) };
 }
 // C detect.c:2257: terrain views use the same cmap glyph as map memory.
-export { _feel_cmap_glyph as cmap_glyph };
+export { cmap_glyph };
 
 /* C display.c:1096,1754: newsym and docrt both show the stored glyph
  * through map_glyphinfo, resolving its paint in the current symbol set. */
@@ -14158,7 +14096,7 @@ function _remembered_glyph_cell(rg) {
     if ((rg.cls === GLYPHCLS_CMAP || rg.cls === undefined)
         && Number.isInteger(rg.cmap) && rg.cmap >= 0
         && !rg.wallSymbol && !rg.nothing) {
-        const cell = _feel_cmap_glyph(rg.cmap);
+        const cell = cmap_glyph(rg.cmap);
         /* C display.h altar_to_glyph encodes alignment as well as cmap.
          * This cell model retains that variant in its remembered color. */
         return { ...rg, ...cell, color: rg.cmap === S_ALTAR_C ? rg.color : cell.color };
@@ -14171,12 +14109,12 @@ function _rg_is_cmap(rg, cmap) {
         return false;
     if (Number.isInteger(rg.cmap))
         return rg.cmap === cmap;
-    const glyph = _feel_cmap_glyph(cmap);
+    const glyph = cmap_glyph(cmap);
     return rg.ch === glyph.ch && rg.color === glyph.color && !!rg.decgfx === !!glyph.decgfx;
 }
 
 function _feel_show_cmap(x, y, cmap) {
-    const glyph = _feel_cmap_glyph(cmap);
+    const glyph = cmap_glyph(cmap);
     game.level.at(x, y).remembered_glyph = glyph;
     show_glyph_cell(x, y, glyph.ch, glyph.color, glyph.decgfx, _glyph_attr(glyph),
                     glyph.cls, false, null, null, null, cmap);
@@ -15053,13 +14991,21 @@ function _map_location(x, y, show) {
 }
 
 // ── tmp_at support ──
-export const DISP_BEAM = -1;
+import { DISP_BEAM } from './const.js';
+export { DISP_BEAM };
 const DISP_ALL = -2;
 export const DISP_TETHER = -3;
 export const DISP_FLASH = -4;
 const DISP_ALWAYS = -5;
 export const DISP_CHANGE = -6;
-export const DISP_END = -7;
+import { DISP_END } from './const.js';
+import { block_point } from './vision.js'; // relocate-fns
+import { Sting_effects } from './artifact.js'; // relocate-fns
+export { Sting_effects, glow_color, glow_verb, retouch_equipment } from './artifact.js'; // relocate-fns
+export { vobj_at }; // relocate-fns
+export { wizcustom_glyphids } from './glyphs.js'; // relocate-fns
+export { _darkroom_alias_blank }; // relocate-fns
+export { DISP_END };
 export const DISP_FREEMEM = -8;
 const BACKTRACK = -1;
 const TMP_AT_MAX_GLYPHS = COLNO * 2;
@@ -15235,7 +15181,7 @@ export function tmp_at(x, y) {
         if (!_tglyph)
             tmp = tgfirst;
         else /* nested effect; we need dynamic memory */
-            tmp = alloc(/* sizeof *tmp */);
+            tmp = alloc_display(/* sizeof *tmp */);
         tmp.prev = _tglyph;
         _tglyph = tmp;
         _tglyph.sidx = 0;
@@ -15345,7 +15291,7 @@ export function tmp_at(x, y) {
     }
 }
 
-function alloc(_size) {
+function alloc_display(_size) {
     /* C's `alloc(sizeof *tmp)` is malloc typed by the struct it is cast to, and
      * this file's ONLY call site is display.c:1222 `(struct tmp_glyph *)
      * alloc(sizeof *tmp)`.  C's struct carries `coord saved[TMP_AT_MAX_GLYPHS]`
@@ -15573,112 +15519,12 @@ export function under_water(mode = 0) {
     game._under_water_lasty = u.uy | 0;
 }
 
-export async function cast_chain_lightning() {
-    const { _zhitm } = await import('./zap.js');
-    const { defended, wakeup } = await import('./mhitm.js');
-    const { m_at, mon_nam, exclam, xkilled, XKILL_GIVEMSG } = await import('./uhitm.js');
-    const { xdir, ydir } = await import('./const.js');
-    const u = game.u;
-    const N_DIRS = 8, LIMIT = 100, MR_ELEC = 0x10, AD_ELEC = 6;
-    const BZ_U_SPELL = (bztyp) => 10 + (bztyp);
-    const resists_elec = (m) => ((((m.data ? m.data.mresists : 0) | m.mextrinsics | m.mintrinsics) & MR_ELEC) !== 0);
-    const cell = (x, y) => (game.level && typeof game.level.at === 'function')
-        ? game.level.at(x, y) : game.level.locations[x]?.[y];
-    const POS = (x, y) => {
-        if (!isok(x, y)) return false;
-        const l = cell(x, y), t = l.typ;
-        return (t > DOOR) || t === POOL || t === MOAT || t === DRAWBRIDGE_UP || t === LAVAPOOL
-            || (IS_DOOR(t) && !((l.doormask | 0) & (D_CLOSED | D_LOCKED)));
-    };
-    const halluc = !!(u.uprops?.[HALLUC]?.intrinsic)
-        && !(u.uprops?.[HALLUC_RES]?.intrinsic || u.uprops?.[HALLUC_RES]?.extrinsic);
-    const clq = { q: [], head: 0, displayed_beam: halluc ? rn2_on_display_rng(6) : (AD_ELEC - 1) };
-    const DIR_LEFT = (d) => (d + N_DIRS - 1) % N_DIRS;
-    const DIR_RIGHT2 = (d) => (d + 2) % N_DIRS;
-    const propagate_chain_lightning = (zap0) => {
-        const zap = { ...zap0 };
-        zap.x += xdir[zap.dir];
-        zap.y += ydir[zap.dir];
-        if (clq.q.length >= LIMIT) return;
-        if (!POS(zap.x, zap.y)) return;
-        const mon = m_at(zap.x, zap.y);
-        if (mon && mon.mpeaceful) return;
-        if (mon && !resists_elec(mon) && !defended(mon, AD_ELEC)) zap.strength = 3;
-        else if (mon) zap.strength = 0;
-        if (!mon && !zap.strength) return;
-        for (const z of clq.q) if (z.x === zap.x && z.y === zap.y) return;
-        clq.q.push(zap);
-        tmp_at(DISP_CHANGE, zapdir_to_glyph(xdir[zap.dir], ydir[zap.dir], clq.displayed_beam));
-        tmp_at(zap.x, zap.y);
-    };
-    if (u.uswallow) return;
-    tmp_at(DISP_BEAM, zapdir_to_glyph(0, 1, clq.displayed_beam));
-    for (let dir = 0; dir < N_DIRS; dir++)
-        propagate_chain_lightning({ dir, x: u.ux, y: u.uy, strength: 2 });
-    nh_delay_output();
-    while (clq.head < clq.q.length) {
-        const delay_tail = clq.q.length;
-        while (clq.head < delay_tail) {
-            const zap = { ...clq.q[clq.head++] };
-            const mon = m_at(zap.x, zap.y);
-            if (mon) {
-                const _bp = game.gb?.bhitpos ?? game.bhitpos;
-                game.notonhead = (mon.mx !== _bp?.x || mon.my !== _bp?.y);
-                /* C spell.c:1039-1040 uses the shared impact position, even
-                 * though this spell never updates it to the current zap. */
-                const bhitpos = game.gb?.bhitpos || game.bhitpos || { x: 0, y: 0 };
-                (game.gn ||= {}).notonhead = (mon.mx !== bhitpos.x || mon.my !== bhitpos.y);
-                /* C spell.c:1041 BZ_U_SPELL(AD_ELEC - 1) */
-                const dmg = await _zhitm(mon, BZ_U_SPELL(AD_ELEC - 1), 2);
-                if (dmg) {
-                    /* C spell.c:1049 xkilled(mon, XKILL_GIVEMSG) */
-                    if ((mon.mhp | 0) < 1) await xkilled(mon, XKILL_GIVEMSG);
-                    else {
-                        await pline(`You shock ${mon_nam(mon)}${exclam(dmg)}`);
-                        if (!canseemon(mon) && !game.gn.notonhead) map_invisible(zap.x, zap.y);
-                    }
-                } else if (canseemon(mon)) {
-                    await pline(`${mon_nam(mon).replace(/^./, (c) => c.toUpperCase())} resists.`);
-                }
-                if ((mon.mhp | 0) >= 1) {
-                    game.context.forcefight = (game.context.forcefight | 0) + 1;
-                    await wakeup(mon, false);
-                    game.context.forcefight--;
-                }
-            }
-            if (!zap.strength) continue;
-            zap.strength--;
-            propagate_chain_lightning(zap);
-            if (zap.strength < 2) zap.strength = 0;
-            else if ((u.uen | 0) > 0) {
-                if (!(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0)))
-                    && game._botlStaleUen === undefined)
-                    game._botlStaleUen = u.uen | 0;
-                u.uen--;
-            }
-            zap.dir = DIR_LEFT(zap.dir);
-            propagate_chain_lightning(zap);
-            zap.dir = DIR_RIGHT2(zap.dir);
-            propagate_chain_lightning(zap);
-        }
-        nh_delay_output();
-    }
-    nh_delay_output();
-    nh_delay_output();
-    tmp_at(DISP_END, 0);
-}
 
 /* C artifact.c:2503-2578 retouch_object() for the hero. */
 const BELL_OF_OPENING = 263;
 const SILVER = 14;
 const RING_CLASS = 4;
 const WAND_CLASS = 11;
-const TOOL_CLASS = 6;
-const LEASH = 236;
-const LARGE_BOX = 214;
-const BAG_OF_TRICKS = 220;
-const _Is_container = (o) => ((o.otyp | 0) >= LARGE_BOX && (o.otyp | 0) <= BAG_OF_TRICKS);
-const _Has_contents = (o) => !!o.cobj;
 
 export async function retouch_object_hero(obj, loseit) {
     /* C artifact.c:2514-2516: even silver-hating forms may do the ritual. */
@@ -15745,66 +15591,7 @@ export async function retouch_object_hero(obj, loseit) {
     return 0;
 }
 
-/* C artifact.c:2596-2635 untouchable(). */
-async function untouchable_hero(obj, drop) {
-    const u = game.u;
-    const wearmask = ~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL);
-    if (!obj) return false;
-    /* C artifact.c:2608-2613: some items in use don't have any wornmask setting */
-    const beingworn = (obj.owornmask & wearmask) !== 0
-        || ((obj.oclass | 0) === TOOL_CLASS
-            && (!!obj.lamplit
-                || ((obj.otyp | 0) === LEASH && !!obj.leashmon)
-                || (_Is_container(obj) && _Has_contents(obj))));
-    /* carryeffect/invoked: get_artifact(obj) != ART_NONARTIFACT, artifact.c:2610-2616 */
-    const art = obj.oartifact | 0;
-    const carryeffect = art > 0 && (arti_cary_adtyp(art) !== 0 || arti_cspfx(art) !== 0);
-    const ip = art > 0 ? arti_inv_prop(art) : 0;
-    const invoked = ip > 0 && ip <= LAST_PROP
-        && ((u.uprops?.[ip]?.extrinsic | 0) & W_ARTI) !== 0;
-    if (!(beingworn || carryeffect || invoked)) return false;
-    if (await retouch_object_hero(obj, drop)) return false;
-    /* C artifact.c:2630-2631: reverse invocation if retouch left the object
-     * carried.  Dropping it already reverses invocation through freeinv(). */
-    if (invoked) {
-        for (let carried = game.invent; carried; carried = carried.nobj) {
-            if (carried === obj) {
-                await _rt_arti_invoke(obj);
-                break;
-            }
-        }
-    }
-    return true;
-}
 
-/* C artifact.c:2640-2705 retouch_equipment(dropflag): 0 none, 1 all, 2 weapon. */
-export async function retouch_equipment(dropflag) {
-    const u = game.u;
-    const had_gloves = !!u.uarmg;
-    const had_rings = Number(!!u.uleft) + Number(!!u.uright);
-    if (!_rt_nesting++) _rt_clear_bypasses();
-    let dropit = dropflag > 0;
-    try {
-        if (u.twoweap && u.uswapwep) { _rt_bypass_obj(u.uswapwep); await untouchable_hero(u.uswapwep, dropit); }
-        if (u.uwep) { _rt_bypass_obj(u.uwep); await untouchable_hero(u.uwep, dropit); }
-        // C artifact.c:2674-2680: a saddle is checked without dropping it.
-        const saddle = u.usteed && _rt_which_armor(u.usteed, W_SADDLE);
-        if (saddle && await untouchable_hero(saddle, false))
-            await _rt_dismount_steed(DISMOUNT_THROWN);
-        dropit = dropflag === 1;
-        let obj;
-        while ((obj = _rt_nxt_unbypassed_obj(game.invent)) !== null && obj !== undefined)
-            await untouchable_hero(obj, dropit);
-        if (had_rings !== Number(!!u.uleft) + Number(!!u.uright)
-            && u.uarmg && u.uarmg.cursed)
-            _rt_uncurse(u.uarmg);
-        if (had_gloves && !u.uarmg)
-            await _rt_selftouch('After losing your gloves, you');
-    } finally {
-        if (!--_rt_nesting) _rt_clear_bypasses();
-    }
-}
-let _rt_nesting = 0;
 
 /* C rumors.c:94 init_rumors(), using the compiled file in the data bundle.
  * Keep the offsets and failed-init sentinel shared with getrumor(). */
@@ -16060,98 +15847,6 @@ export function glyphid_number(id) {
     return glyphid_table().findIndex(gm => gm.id?.toLowerCase() === key);
 }
 
-export function wizcustom_glyphids(menu) {
-    const glyphs = glyphid_table();
-
-    /* symbols.c parse_sym_line -> glyphs.c glyphrep_to_custom_map_entries:
-     * S_ lines match a glyph family; G_ lines override a single glyph.
-     * Read the bundled symset, just as the symbol loader does. */
-    const byId = new Map(glyphs.map(g => [g.id?.toLowerCase(), g]));
-    const bySymbol = new Map();
-    for (const gm of glyphs) {
-        if (gm.customidx === null) continue;
-        const key = symbol_name(gm.customidx)?.toLowerCase();
-        if (!bySymbol.has(key)) bySymbol.set(key, []);
-        bySymbol.get(key).push(gm);
-    }
-    const set = gs.symset[PRIMARYSET] || {};
-    let active = false;
-    for (const raw of (dat_content('symbols') || '').split('\n')) {
-        const line = raw.replace(/\s+#.*$/, '').trim();
-        const start = /^(?:start|begin)\s*:\s*(.*)$/i.exec(line);
-        if (start) { active = start[1].toLowerCase() === set.name?.toLowerCase(); continue; }
-        if (/^finish\b/i.test(line)) { active = false; continue; }
-        const match = active && /^([GS]_\w+)\s*[:=]\s*([^/]*)\/?(.*)$/i.exec(line);
-        if (!match) continue;
-        const key = match[1].toLowerCase();
-        const targets = key.startsWith('g_') ? [byId.get(key)].filter(Boolean)
-            : set.handling === 5 ? (bySymbol.get(key) || []) : [];
-        const u = /^U\+([0-9a-f]+)/i.exec(match[2].trim());
-        const color = match[3].trim() && rgbstr_to_int32(match[3].trim());
-        for (const gm of targets) {
-            if (u && set.handling === 5) gm.u = parseInt(u[1], 16);
-            if (color !== '' && color !== -1) gm.customcolor = color || 0x1000000;
-        }
-    }
-    /* OPTIONS=glyph:G_name/r-g-b entries filed by glyphrep_to_custom_map_entries.
-     * Only apply_customizations (glyphs.c:562-567, from initoptions_finish or
-     * reset_customcolors) copies them into glyphmap[]; optfn_glyph
-     * (options.c:1836) only files them, so an in-game glyph:S_x/r-g-b shows
-     * the colour last applied, not the filed one. */
-    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[2]?.details; d && set.handling === 5; d = d.next) {
-        const urep = d.content?.urep, gm = urep && glyphs[urep.glyphidx];
-        if (gm && urep.u?.utf32ch) gm.u = urep.u.utf32ch;
-    }
-    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[3]?.details; d; d = d.next) {
-        const cc = d.content?.ccolor, gm = cc && glyphs[cc.glyphidx];
-        if (gm && cc.applied !== undefined) gm.customcolor = cc.applied;
-    }
-    /* glyphs.c:645-731 shuffle_customizations (run from moveloop once the
-     * customizations above are pending): each object glyph takes the
-     * customization filed under its oc_descr_idx, so a gem whose description
-     * randomize_gem_colors copied (fluorite -> diamond's "white") shares it. */
-    const descrIdx = game._objDescrIdx || {};
-    for (const off of glyphs.objOffsets) {
-        const no = MKOBJ_OC_CLASS.length, tmp = [], duplicate = [];
-        for (let i = 0; i < no; i++) {
-            const idx = Number.isInteger(descrIdx[i]) ? descrIdx[i] : i;
-            const src = glyphs[off + idx];
-            if (duplicate[idx] !== undefined) {
-                tmp[i] = { ...tmp[duplicate[idx]] };
-            } else {
-                tmp[i] = { u: src.u, customcolor: src.customcolor };
-                if (src.u || src.customcolor) {
-                    duplicate[idx] = i;
-                    src.u = 0;
-                    src.customcolor = 0;
-                }
-            }
-        }
-        for (let i = 0; i < no; i++) Object.assign(glyphs[off + i], tmp[i]);
-    }
-    const unicode = (game._gm_customsymbols ?? game.iflags.customsymbols) !== false;
-    const colors = game.iflags.customcolors !== false;
-    const useColor = (game._gm_use_color ?? game.iflags.use_color) !== false;
-    for (let glyphnum = 0; glyphnum < glyphs.length; glyphnum++) {
-        const gm = glyphs[glyphnum];
-        const u = unicode ? gm.u : 0, color = colors ? gm.customcolor : 0;
-        if (!gm.id || (!u && !color)) continue;
-        let sym = primary_showsym(gm.symidx);
-        if (gm.symidx === 20 && !game._symsetDarkroomPending)
-            sym = primary_showsym(_darkroom_alias_blank() ? SYM_OFFSETS.X : 19);
-        let clr = useColor ? gm.color : NO_COLOR;
-        if (gm.symidx === 23 && sym === primary_showsym(22) && useColor) clr = CLR_WHITE;
-        const bufa = `[${String(glyphnum).padStart(4, '0')}] ${gm.id.padEnd(44)}`;
-        const bufb = `'\\${String(sym).padStart(3, '0')}' ${String(clr).padStart(2, '0')}`;
-        const bufc = color.toString(16).padStart(11, '0');
-        let bufu = '';
-        if (u) {
-            const bytes = new TextEncoder().encode(String.fromCodePoint(u));
-            bufu = 'U+' + u.toString(16).padStart(4, '0') + [...bytes].map(b => ` <${b}>`).join('');
-        }
-        menu.add_menu(glyphnum + 1, 0, 0, `${bufa} ${bufb} ${bufc} ${bufu}`);
-    }
-}
 
 /* C ref: display.c:3180 — check_pos: returns 'which' if pos implies unfinished exterior */
 function check_pos(x, y, which) {
@@ -16434,4 +16129,71 @@ export function nomuxOverflowCursor(bytes) {
     if (!bytes) return null;
     const int32 = (o) => (bytes[o] | (bytes[o + 1] << 8) | (bytes[o + 2] << 16) | (bytes[o + 3] << 24));
     return int32(0) ? [int32(8), int32(4), 1] : null;
+}
+
+export function magic_map_background(loc, x, y, show = false) {
+    if (!loc) return;
+    const tg = terrain_glyph(loc, x, y, true);
+    /* C display.c:251-253 retains the terrain glyph identity; preserve its
+     * MG_BW_LAVA/ICE/SINK metadata (2890-2915) when mapping it into memory. */
+    let rg = { ch: tg.ch, color: tg.color, decgfx: tg.dec, cmap: tg.cmap, wallSymbol: tg.wallSymbol,
+               bwspec: tg.bwspec };
+    /* C: if (!cansee(x,y) && !lev->waslit) — dark-room / dark-corridor correction. */
+    if (!cansee(x, y) && !loc.waslit) {
+        const S_stone = 0, S_room = 19, S_darkroom = 20, S_litcorr = 23;
+        const darkRoomOn = !!(game.flags?.dark_room && game.iflags?.use_color);
+        // C display.c:244-247 tests glyph identity, including IBM/custom symbols.
+        if (loc.typ === ROOM && rg.cmap === S_room) {
+            rg = darkRoomOn
+                ? cmap_glyph(Is_rogue_level(game.u?.uz) ? S_stone : S_darkroom)
+                : { ch: ' ', color: NO_COLOR, decgfx: false, nothing: true };
+        }
+        if (loc.typ === CORR && rg.cmap === S_litcorr) {
+            const dark = terrain_glyph(loc, x, y);
+            rg = { ch: dark.ch, color: dark.color, decgfx: dark.dec, cmap: dark.cmap };
+        }
+    }
+    /* C display.c:250-252 only replaces unexplored/cmap memory
+     * (glyph_is_unexplored(lev->glyph) || glyph_is_cmap(lev->glyph)). Objects and
+     * invisible-monster markers survive magic mapping. Trap and engraving
+     * glyphs are in C's cmap range; legacy terrain memory has no cls. */
+    const rememberedClass = loc.remembered_glyph?.cls;
+    if (game.level?.flags?.hero_memory
+        && !loc.remembered_glyph?.nothing
+        && (rememberedClass == null || rememberedClass === 'unexplored' || rememberedClass === GLYPHCLS_CMAP
+            || rememberedClass === GLYPHCLS_TRAP || rememberedClass === GLYPHCLS_ENGR))
+        loc.remembered_glyph = { ...rg, cls: GLYPHCLS_CMAP };
+    /* C display.c:253-254 — `if (show) show_glyph(x, y, glyph);`  The glyph
+     * keeps its cmap identity in gbuf: a blank S_air cell on the Plane of Water
+     * must still read as cmap S_air to glyph_at() (pager.c lookat "air"). */
+    if (show)
+        show_glyph_cell(x, y, rg.ch, rg.color, !!rg.decgfx,
+                        /* MG_BW_ICE/LAVA/SINK (display.c:2894-2916) depends on the live symbols;
+                         * show_glyph_cell derives it from the cmap, as _glyph_attr does for memory. */
+                        0, rg.nothing ? 'nothing' : GLYPHCLS_CMAP,
+                        false, null, null, null, rg.cmap ?? null);
+    update_lastseentyp(x, y);
+}
+
+/* stub: Your — side-effect only */
+/* Your: LOCAL EMPTY STUB DELETED — see import above. */
+/* see_monsters: LOCAL EMPTY STUB DELETED — re-pointed to js/display.js's real
+ * body (display.c:1520 see_monsters()). */
+/* C display.c:1582 set_mimic_blocking — refresh light blocking for invisible
+ * mimics when See_invisible changes. */
+export function set_mimic_blocking() {
+    const u = game.u || {};
+    const p = u.uprops?.[SEE_INVIS];
+    const seeInvisible = !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if (!mon.minvis) continue;
+        const apType = (mon.m_ap_type | 0) & 7;
+        const app = mon.mappearance | 0;
+        const blocker = (apType === 2 && app === 475)
+            || (apType === 1 && (app === 16 || app === 15 || app < 12 || app === 18));
+        if (blocker) {
+            if (seeInvisible) block_point(mon.mx | 0, mon.my | 0);
+            else unblock_point(mon.mx | 0, mon.my | 0);
+        }
+    }
 }

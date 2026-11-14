@@ -2,7 +2,7 @@
 import { COLNO, ROWNO, STONE, W_EAST, W_NORTH, W_RANDOM, W_SOUTH, W_WEST, isok } from './const.js';
 import { newsym_force } from './display.js';
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { match_maptyps, random_wdir } from './sp_lev.js';
 
 /** C ref: selvar.c set_selection_floodfillchk — module-global setter

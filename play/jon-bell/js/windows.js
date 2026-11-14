@@ -211,6 +211,9 @@ export async function getlin(prompt) {
             if (!_saved_suppress) {
                 const line = prompt + ' ';
                 tty_getlin_history(line);
+                /* getline.c:81 gt.toplines ("query ") enters the ring verbatim,
+                 * never update_topl-wrapped: recall hard-wraps it (topl.c:121-142). */
+                (g._getlin_hist ||= new Set()).add(line);
             }
             return '\x1b'; /* ESC sentinel — C sets buf[0]='\033' */
         }

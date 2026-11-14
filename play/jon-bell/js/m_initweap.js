@@ -6,18 +6,19 @@
 // @ts-nocheck
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { game } from './gstate.js';
 import { Is_rogue_level, Is_earthlevel, A_LAWFUL, OBJ_MINVENT, ONAME_RANDOM } from './const.js';
-import { oname } from './objnam.js';
+import { oname } from './do_name.js';
 import { hard_helmet } from './do_wear.js';
 import { curse } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { weight } from './weight.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
 import { PM_ABBOT, PM_ACOLYTE, PM_APPRENTICE, PM_ARCHEOLOGIST, PM_ATTENDANT, PM_BALROG, PM_CAPTAIN, PM_CHIEFTAIN, PM_DISPATER, PM_DWARF, PM_ETTIN, PM_ELVENKING, PM_FOREST_CENTAUR, PM_GUIDE, PM_HIGH_PRIEST, PM_HOBBIT, PM_HORNED_DEVIL, PM_HUNTER, PM_LIEUTENANT, PM_NEANDERTHAL, PM_NINJA, PM_ORCUS, PM_OGRE_KING, PM_OGRE_LORD, PM_PAGE, PM_PRIEST, PM_ROSHI, PM_SALAMANDER, PM_SERGEANT, PM_SOLDIER, PM_STUDENT, PM_THUG, PM_WATCHMAN, PM_WATCH_CAPTAIN, PM_WARRIOR, PM_WIZARD, PM_YEENOGHU, PM_GOBLIN, PM_MORDOR_ORC, PM_URUK_HAI, PM_ORC_SHAMAN, PM_ORC_CAPTAIN, } from './pm.generated.js';
+import { MONS, monMlet, monsndx } from './makemon.js';
 /** @typedef {[number, number, number, number, number, number, number, number, number]} MonRow */
-const MONS = /** @type {MonRow[]} */ (monsPack.mons);
 const MONS_MSOUND = /** @type {number[]} */ (monMsoundPack.msound);
 /* C monflag.h:51-56 enum mon_sounds. */
 const MS_LEADER = 36;
@@ -58,8 +59,6 @@ const M2_LORD = 0x00000400;
 const M2_PRINCE = 0x00000800;
 const M2_NASTY = 0x02000000;
 const M2_STRONG = 0x04000000;
-const WEAPON_CLASS = 2; /* objclass.h */
-const ARMOR_CLASS = 3;  /* objects.h:88 generic armor class [3] */
 /* weapons (WEAPON_CLASS otyp — order matches js/mkobj_data.js OBJECTS_INIT) */
 const ARROW = 18;
 const ELVEN_ARROW = 19;
@@ -179,12 +178,6 @@ const POT_PARALYSIS = 301;
 const POT_SLEEPING = 314;
 const SCR_EARTH = 340;
 /** @param {{ mndx?: number, mnum?: number }} mtmp */
-function monsndx(mtmp) {
-    return (mtmp.mndx ?? mtmp.mnum) | 0;
-}
-function monMlet(mndx) {
-    return MONS[mndx][0] | 0;
-}
 function monDifficulty(mndx) {
     return MONS[mndx][2] | 0;
 }
@@ -194,38 +187,38 @@ function monMflags1(mndx) {
      * (see js/makemon.js monMflags1, same convention). */
     return MONS[mndx][6] | 0;
 }
-function monMflags2(mndx) {
+function monMflags2_m_initweap(mndx) {
     return MONS[mndx][7] | 0;
 }
 function monAlign(mndx) {
     return MONS[mndx][4] | 0;
 }
 function isMercenary(mndx) {
-    return (monMflags2(mndx) & M2_MERC) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_MERC) !== 0;
 }
 function isElfMndx(mndx) {
-    return (monMflags2(mndx) & M2_ELF) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_ELF) !== 0;
 }
 function isDwarfMndx(mndx) {
-    return (monMflags2(mndx) & M2_DWARF) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_DWARF) !== 0;
 }
 function humanoidMndx(mndx) {
     return (monMflags1(mndx) & M1_HUMANOID) !== 0;
 }
 function isStrong(mndx) {
-    return (monMflags2(mndx) & M2_STRONG) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_STRONG) !== 0;
 }
 function isLordMndx(mndx) {
-    return (monMflags2(mndx) & M2_LORD) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_LORD) !== 0;
 }
 function isPrinceMndx(mndx) {
-    return (monMflags2(mndx) & M2_PRINCE) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_PRINCE) !== 0;
 }
 function extraNastyMndx(mndx) {
-    return (monMflags2(mndx) & M2_NASTY) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_NASTY) !== 0;
 }
 function isDemonMndx(mndx) {
-    return (monMflags2(mndx) & M2_DEMON) !== 0;
+    return (monMflags2_m_initweap(mndx) & M2_DEMON) !== 0;
 }
 /** C permonst.msound (MS_*) per MON() row — js/makemon_msound.json, the same
  * pack js/makemon.js MONS_MSOUND reads (gen-mons-msound.mjs). */
@@ -272,7 +265,7 @@ function isPriestMndx(mndx) {
 function isGuardianMndx(mndx) {
     return monMsound(mndx) === MS_GUARDIAN;
 }
-function sgn(x) {
+function sgn_m_initweap(x) {
     return (x > 0) - (x < 0);
 }
 function blessObj(o) {
@@ -403,90 +396,13 @@ function _add_to_minv(mtmp, obj) {
     obj.nobj = mtmp.minvent ?? null;
     mtmp.minvent = obj;
 }
-/* C monst.h:281 is_lminion(mon): is_minion(mon->data) &&
- * mon_aligntyp(mon) == A_LAWFUL; priest.c:280 gives EPRI precedence over EMIN. */
-function _is_lminion(mtmp) {
-    const mndx = monsndx(mtmp);
-    if ((monMflags2(mndx) & 0x00001000) === 0) /* M2_MINION */
-        return false;
-    const algn = (mtmp.ispriest && mtmp.mextra?.epri) ? mtmp.mextra.epri.shralign
-        : (mtmp.isminion && mtmp.mextra?.emin)
-        ? mtmp.mextra.emin.min_align : (MONS[mndx][4] | 0);
-    return algn > 0;
-}
-const CANDELABRUM_OF_INVOCATION = 262;
-const BELL_OF_OPENING = 263;
-const SPE_BOOK_OF_THE_DEAD = 409;
-const P_SHORT_SWORD = 5;
-const P_SABER = 9;
+import { CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING } from './objclass_ranges.js';
+import { mongets } from './makemon.js'; // relocate-fns
+export { mongets } from './makemon.js'; // relocate-fns
+export { S_DEMON, isPrinceMndx, monMflags2_m_initweap }; // relocate-fns
 
-/* C mondata.h:157 is_mplayer(ptr) */
-function _is_mplayer(ptr) {
-    const pmi = typeof ptr === 'number' ? ptr : ((ptr?.pmidx ?? ptr?.mnum) | 0);
-    return pmi >= PM_ARCHEOLOGIST && pmi <= PM_WIZARD;
-}
 
-/* C obj.h:223 is_sword(otmp) */
-function _is_sword(otmp) {
-    if (!otmp || (otmp.oclass | 0) !== WEAPON_CLASS) return false;
-    const sk = MKOBJ_OC_SKILL[otmp.otyp | 0] | 0;
-    return sk >= P_SHORT_SWORD && sk <= P_SABER;
-}
 
-export async function mongets(mtmp, otyp, mksobjFn) {
-    if (!otyp)
-        return null;
-    const otmp = await mksobjFn(otyp, true, false);
-    /* C makemon.c:2189-2192 — demons never get blessed objects.  Without it a
-     * demon's blessed misc potion of invisibility skips you_aggravate()
-     * (muse.c:2477-2479, cursed only). */
-    if (otmp && monMlet(monsndx(mtmp)) === S_DEMON) {
-        if (otmp.blessed)
-            await curse(otmp);
-    } else if (otmp && _is_lminion(mtmp)) {
-        /* C makemon.c:2193-2199 — lawful minions don't get cursed, bad, or
-         * rusting objects. */
-        otmp.cursed = false;
-        if ((otmp.spe | 0) < 0)
-            otmp.spe = 0;
-        otmp.oerodeproof = 1;
-        otmp.oeroded = otmp.oeroded2 = 0;
-    } else if (otmp && _is_mplayer(mtmp?.data ?? monsndx(mtmp)) && _is_sword(otmp)) {
-        /* C makemon.c:2200-2202 */
-        otmp.spe = 3 + rn2(4);
-    }
-
-    /* C makemon.c:2204-2214 */
-    if (otmp) {
-        if (otmp.otyp === CANDELABRUM_OF_INVOCATION) {
-            otmp.spe = 0;
-            otmp.age = 0;
-            otmp.lamplit = 0;
-            otmp.blessed = otmp.cursed = false;
-        } else if (otmp.otyp === BELL_OF_OPENING) {
-            otmp.spe = 0;
-            otmp.blessed = otmp.cursed = false;
-        } else if (otmp.otyp === SPE_BOOK_OF_THE_DEAD) {
-            otmp.blessed = otmp.cursed = false;
-        }
-    }
-
-    /* C makemon.c:2218-2223 — princes do not tolerate inferior gear.
-     * This adjustment is after the demon/minion/mplayer special cases in C
-     * and before mpickobj; it is stateful because weapon damage reads spe. */
-    if (otmp && isPrinceMndx(monsndx(mtmp))) {
-        if ((otmp.oclass | 0) === WEAPON_CLASS && (otmp.spe | 0) < 1)
-            otmp.spe = 1;
-        else if ((otmp.oclass | 0) === ARMOR_CLASS && (otmp.spe | 0) < 0)
-            otmp.spe = 0;
-    }
-    /* C makemon.c:2224 — mpickobj → add_to_minv */
-    /* C makemon.c:2224-2227 — mpickobj() merges into an existing stack
-     * (add_to_minv, mkobj.c:2655) and returns nonzero when otmp was freed. */
-    if (otmp && await mpickobj(mtmp, otmp))
-        return null;
-    return otmp || null;
-}
 /**
  * C makemon.c:150–160 m_initthrow — mksobj + quan + mpickobj (add_to_minv).
  * @param {{ minvent?: any }} mtmp
@@ -684,11 +600,11 @@ export async function mInitweap(mtmp, mksobjFn) {
                 const typ = rn2(3) ? LONG_SWORD : SILVER_MACE;
                 const nam = (typ === LONG_SWORD) ? 'Sunsword' : 'Demonbane';
                 let otmpW = await mksobjFn(typ, false, false);
-                /* C makemon.c:339-340 sgn(mtmp->isminion ? EMIN(mtmp)->min_align
+                /* C makemon.c:339-340 sgn_m_initweap(mtmp->isminion ? EMIN(mtmp)->min_align
                  *                                       : ptr->maligntyp) */
                 const mal = (mtmp.isminion && mtmp.mextra?.emin)
                     ? (mtmp.mextra.emin.min_align | 0) : monAlign(mndx);
-                if ((!rn2(20) || isLordMndx(mndx)) && sgn(mal) === A_LAWFUL) {
+                if ((!rn2(20) || isLordMndx(mndx)) && sgn_m_initweap(mal) === A_LAWFUL) {
                     if (otmpW)
                         otmpW = await oname(otmpW, nam, ONAME_RANDOM);
                 }

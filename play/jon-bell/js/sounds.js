@@ -3,22 +3,26 @@ import { canspotmon, map_invisible, GLYPHCLS_MON } from './display.js';
 import { pline } from './pline.js';
 import { helpless } from './mhitm.js';
 import { Monnam } from './mcastu.js';
-import { verbalize } from './cmd.js';
+import { verbalize } from './pline.js';
 import { PM_GECKO, PM_LONG_WORM, PM_ORACLE } from './pm.generated.js';
 import { body_part } from './cmd.js'; // relocate-fns
 import { BEEHIVE, COURT, EPRI, HAIR, HEAD, MORGUE, NECK, ROOMOFFSET, S_ANT, ZOO } from './const.js'; // relocate-fns
 import { canseemon as canseemon_ff } from './display.js'; // relocate-fns
-import { Hallucination, dosounds } from './fastforward.js'; // relocate-fns
+import { Hallucination } from './fastforward.js'; // relocate-fns
 import { vtense } from './objnam.js'; // relocate-fns
 import { You_hear } from './pline.js'; // relocate-fns
 import { halu_gname } from './pray.js'; // relocate-fns
 import { inhistemple, temple_occupied } from './priest.js'; // relocate-fns
-import { rn2 } from './rng.js'; // relocate-fns
+import { rn2 } from './rnd.js'; // relocate-fns
 import { cansee as cansee_ff } from './vision.js'; // relocate-fns
-import { nomul } from './allmain.js'; // relocate-fns
+import { nomul } from './hack.js'; // relocate-fns
 import { adjalign, exercise } from './attrib.js'; // relocate-fns
 import { midnight, night } from './calendar.js'; // relocate-fns
-import { ALGN_SINNED, MS_ANIMAL, MS_DJINNI, MS_GUARDIAN, MS_NEMESIS, MS_SILENT, OCLASS_WEAPON, SPE_NOVEL_OTYP, STATUE_OTYP, SetVoice, Your, _EDOG_local, _Role_if_PM_HEALER, _Underwater, _cmd_Hallucination, _fl_pmidx, _glyph_at as glyph_at, _haseyes, _helpless_mon, _hero_Deaf, _hero_youmonst, _quest_status, _um_mhis, _uprop_active, create_nhwindow, currency, destroy_nhwindow, display_nhwindow, freeinv, incr_itimeout_prop, inv_cnt, is_weptool, merge_choice, nothing_happens, pline_The, putstr, quest_chat, record_achievement, which_armor } from './cmd.js'; // relocate-fns
+import { ALGN_SINNED, MS_ANIMAL, MS_DJINNI, MS_GUARDIAN, MS_NEMESIS, MS_SILENT, OCLASS_WEAPON, SPE_NOVEL_OTYP, STATUE_OTYP, SetVoice, Your, _EDOG_local, _Role_if_PM_HEALER, _Underwater, _cmd_Hallucination, _fl_pmidx, _glyph_at as glyph_at, _haseyes, _helpless_mon, _hero_Deaf, _hero_youmonst, _quest_status, _um_mhis, _uprop_active, create_nhwindow, destroy_nhwindow, display_nhwindow, incr_itimeout_prop, is_weptool, nothing_happens, pline_The, putstr, which_armor } from './cmd.js';
+import { inv_cnt } from './hack.js';
+import { currency, freeinv, merge_choice } from './invent.js';
+import { quest_chat } from './quest.js';
+import { record_achievement } from './insight.js'; // relocate-fns
 import { money_cnt } from './hack.js'; // relocate-fns
 import { ACH_ORCL, A_WIS, BOLT_LIM, CLAIRVOYANT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FROMOUTSIDE, FULL_MOON, Has_contents, INTRINSIC, IRONBARS, IS_WALL, In_endgame, LL_CONDUCT, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, NHW_MENU, PROTECTION, SDOOR, STRAT_WAITMASK, TEMPLE, Upolyd, W_ARMH as W_ARMH_TO, isok } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, canseemon, glyph_is_invisible_at } from './display.js'; // relocate-fns
@@ -30,35 +34,45 @@ import { obj_extract_self } from './dokick.js'; // relocate-fns
 import { yn_function } from './cmd.js'; // relocate-fns
 import { upstart } from './hacklib.js'; // relocate-fns
 import { addinv } from './invent.js'; // relocate-fns
-import { getdir } from './lock.js'; // relocate-fns
+import { getdir } from './cmd.js'; // relocate-fns
 import { accessible } from './monmove.js'; // relocate-fns
-import { humanoid as _th_humanoid, findgold, monPmname, permonstTemplate, poly_gender, splitobj } from './makemon.js'; // relocate-fns
+import { humanoid as _th_humanoid, monPmname, permonstTemplate, splitobj } from './makemon.js';
+import { findgold } from './steal.js';
+import { poly_gender } from './polyself.js'; // relocate-fns
 import { is_lminion as _sn_is_lminion, perceives as _th_perceives } from './mcastu.js';
 import { cuss as _sn_cuss, aggravate } from './wizard.js'; // relocate-fns
 import { could_seduce as could_seduce_mu, doseduce as doseduce_mu, mhis_mon } from './mhitu.js'; // relocate-fns
 import { demon_talk as _sn_demon_talk } from './minion.js'; // relocate-fns
-import { BY_ORACLE, add_to_minv, in_rooms } from './mklev.js';
+import { BY_ORACLE } from './mklev.js';
+import { add_to_minv } from './mkobj.js';
+import { in_rooms } from './hack.js';
 import { inside_shop } from './shk.js';
 import { outoracle, outrumor } from './rumors.js'; // relocate-fns
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js'; // relocate-fns
 import { wake_nearto, Soundeffect } from './mon.js'; // relocate-fns
 import { same_race } from './mondata.js'; // relocate-fns
-import { an, doname, genus, helm_simple_name, quest_info } from './objnam.js'; // relocate-fns
+import { an, doname, helm_simple_name } from './objnam.js';
+import { genus } from './mon.js';
+import { quest_info } from './questpgr.js'; // relocate-fns
 import { livelog_printf } from './pline.js'; // relocate-fns
 import { PM_BABY_SILVER_DRAGON, PM_DEATH, PM_HUMAN_WERERAT, PM_PRISONER, PM_RAVEN, PM_SILVER_DRAGON, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_WATER_DEMON, PM_WINTER_WOLF, PM_WINTER_WOLF_CUB, PM_WOLF } from './pm.generated.js'; // relocate-fns
 import { has_shrine, p_coaligned } from './priest.js'; // relocate-fns
 import { rn1 } from './rng.js'; // relocate-fns
-import { shk_chat, contained_cost as shk_contained_cost, currency as shk_currency, get_cost as shk_get_cost, get_pricing_units as shk_get_pricing_units, inhishop as shk_inhishop, shop_keeper as shk_shop_keeper, shop_object } from './shk.js'; // relocate-fns
+import { shk_chat, contained_cost, get_cost, get_pricing_units, inhishop, shop_keeper, shop_object } from './shk.js'; // relocate-fns
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js'; // relocate-fns
 import { t_at } from './trap.js'; // relocate-fns
-import { m_at, mon_nam, more_experienced, newexplevel } from './uhitm.js'; // relocate-fns
+import { m_at, mon_nam, more_experienced } from './uhitm.js';
+import { newexplevel } from './exper.js'; // relocate-fns
 import { couldsee } from './vision.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
 import { PLNMSG_GROWL } from './const.js'; // relocate-fns
 import { Deaf } from './display.js'; // relocate-fns
 import { Monnam_mm, xm_Hallucination } from './mhitm.js'; // relocate-fns
+import { u_have_novel } from './invent.js'; // relocate-fns
+import { mplayer_talk } from './mplayer.js'; // relocate-fns
+import { doconsult } from './rumors.js'; // relocate-fns
+export { _money2mon }; // relocate-fns
 
-export { dosounds };
 
 /* C monflag.h / mondata.h constants and helpers */
 const M1_FLY = 0x00000001;
@@ -550,30 +564,7 @@ export async function dotalk() {
     return domonnoise(mtmp);
 }
 
-function u_have_novel() {
-    for (let o = game.invent; o; o = o.nobj)
-        if (o.otyp === SPE_NOVEL_OTYP) return o;
-    return null;
-}
 
-/* C mplayer.c:355-379; called by sounds.c:1028 for hostile endgame players. */
-async function mplayer_talk(mtmp) {
-    const same_class_msg = [
-        "I can't win, and neither will you!",
-        "You don't deserve to win!",
-        'Mine should be the honor, not yours!',
-    ];
-    const other_class_msg = [
-        'The low-life wants to talk, eh?',
-        'Fight, scum!',
-        'Here is what I have to say!',
-    ];
-    if (mtmp.mpeaceful)
-        return;
-    SetVoice(mtmp, 0, 80, 0);
-    await verbalize('Talk? -- %s', _fl_pmidx(mtmp) === game.urole.mnum
-        ? same_class_msg[rn2(3)] : other_class_msg[rn2(3)]);
-}
 
 /* C sounds.c:479-516 whimper(mtmp).  The leash check reaches this
  * synchronously, so keep the sound/message path synchronous like yelp(). */
@@ -843,261 +834,9 @@ async function _money2mon(mon, amount) {
     return amount;
 }
 
-/* C ref: minion.c bribe(mtmp, prompt) — getlin the amount, sscanf "%ld",
- * then hand the gold over with money2mon().  Returns the amount paid. */
-async function _bribe(mtmp, prompt) {
-    const umoney = money_cnt(game.invent);
-    const buf = await getlin(prompt);
-    const m = /^\s*([+-]?\d+)/.exec(buf || '');
-    let offer = m ? parseInt(m[1], 10) : 0;
-    if (offer < 0) {
-        await pline(`You try to shortchange ${mon_nam(mtmp)}, but fumble.`);
-        return 0;
-    } else if (offer === 0) {
-        await pline('You refuse.');
-        return 0;
-    } else if (offer >= umoney) {
-        await pline(`You give ${mon_nam(mtmp)} all your gold.`);
-        offer = umoney;
-    } else {
-        await pline(`You give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`);
-    }
-    await _money2mon(mtmp, offer);
-    if (game.disp) game.disp.botl = true;
-    return offer;
-}
 
-/* C ref: shk.c money2u(mon, amount) — monster's gold to the hero (shk.js's copy
- * is module-private).  invlet_basic is 52. */
-async function _money2u_priest(mon, amount) {
-    let mongold = findgold(mon.minvent);
-    if (amount <= 0 || !mongold || (mongold.quan | 0) < amount)
-        return;
-    if ((mongold.quan | 0) > amount)
-        mongold = await splitobj(mongold, amount);
-    obj_extract_self(mongold);
-    if (!(await merge_choice(game.invent, mongold)) && inv_cnt(false) >= 52) {
-        await pline('You have no room for the gold!');
-        await dropy(mongold);
-    } else {
-        await addinv(mongold);
-        if (game.disp) game.disp.botl = true;
-    }
-}
 
-/* C ref: priest.c:561-745 priest_talk(priest) — domonnoise()'s MS_PRIEST arm.
- * Not exported from priest.js (which has no body for it), so it lives here. */
-async function priest_talk(priest) {
-    const g = game;
-    const u = g.u;
-    const coaligned = p_coaligned(priest);
-    const strayed = (u.ualign.record | 0) < 0;
-    const epri = EPRI(priest);
 
-    /* KMH, conduct */
-    u.uconduct = u.uconduct || {};
-    const prevGnostic = u.uconduct.gnostic | 0;
-    u.uconduct.gnostic = prevGnostic + 1;
-    if (!prevGnostic)
-        livelog_printf(LL_CONDUCT, 'rejected atheism by consulting with %s', mon_nam(priest));
-
-    if (priest.mflee || (!priest.ispriest && coaligned && strayed)) {
-        await pline(`${Monnam(priest)} doesn't want anything to do with you!`);
-        priest.mpeaceful = 0;
-        return;
-    }
-
-    /* priests don't chat unless peaceful and in their own temple */
-    if (!inhistemple(priest) || !priest.mpeaceful || _helpless_mon(priest)) {
-        const cranky_msg = [
-            'Thou wouldst have words, eh?  I\'ll give thee a word or two!',
-            'Talk?  Here is what I have to say!',
-            'Pilgrim, I would speak no longer with thee.'
-        ];
-        if (_helpless_mon(priest)) {
-            await pline(`${Monnam(priest)} breaks out of ${_um_mhis(priest)} reverie!`);
-            priest.mfrozen = priest.msleeping = 0;
-            priest.mcanmove = 1;
-        }
-        priest.mpeaceful = 0;
-        SetVoice(priest, 0, 80, 0);
-        await verbalize(cranky_msg[rn2(3)]);
-        return;
-    }
-
-    /* you desecrated the temple and now you want to chat? */
-    const troom = in_rooms(priest.mx | 0, priest.my | 0, TEMPLE);
-    if (priest.mpeaceful && troom && troom.length && !has_shrine(priest)) {
-        SetVoice(priest, 0, 80, 0);
-        await verbalize('Begone!  Thou desecratest this holy place with thy presence.');
-        priest.mpeaceful = 0;
-        return;
-    }
-    if (!money_cnt(g.invent)) {
-        if (coaligned && !strayed) {
-            const pmoney = money_cnt(priest.minvent);
-            if (pmoney > 0) {
-                const bits = _uprop_active('HALLUC') ? currency(pmoney)
-                           : (pmoney === 1) ? 'bit' : 'bits';
-                await pline(`${Monnam(priest)} gives you ${pmoney === 1 ? 'one ' : 'two '}${bits} for an ale.`);
-                await _money2u_priest(priest, pmoney > 1 ? 2 : 1);
-            } else
-                await pline(`${Monnam(priest)} preaches the virtues of poverty.`);
-            exercise(A_WIS, true);
-        } else
-            await pline(`${Monnam(priest)} is not interested.`);
-        return;
-    } else {
-        /* randomized donation base; more gold on hand raises it */
-        const cheapskate = (epri ? (epri.cheapskate_count | 0) : 0);
-        const suggested = ((u.ulevelpeak | 0) ? (u.ulevelpeak | 0) : 1)
-                          * rn1(101, 150 + cheapskate * 40);
-        let quan = Math.trunc(money_cnt(g.invent) / (suggested * 3));
-        if (quan < 1)
-            quan = 1;
-        const buf = `How much will you offer (suggested: ${suggested * quan} or ${suggested * quan * 2})?`;
-        if (g.flags && g.flags.debug)
-            await pline(`${Monnam(priest)} asks you for a contribution for the temple (base ${suggested}).`);
-        else
-            await pline(`${Monnam(priest)} asks you for a contribution for the temple.`);
-        let offer = await _bribe(priest, buf);
-        if (offer === 0) {
-            SetVoice(priest, 0, 80, 0);
-            await verbalize('Thou shalt regret thine action!');
-            if (coaligned)
-                adjalign(-1);
-            if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
-        } else if (offer < suggested * quan) {
-            if (money_cnt(g.invent) > offer * 2) {
-                SetVoice(priest, 0, 80, 0);
-                await verbalize('Cheapskate.');
-                if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
-            } else {
-                SetVoice(priest, 0, 80, 0);
-                await verbalize('I thank thee for thy contribution.');
-                /* give player some token */
-                exercise(A_WIS, true);
-            }
-        } else if (offer < suggested * quan * 2) {
-            SetVoice(priest, 0, 80, 0);
-            await verbalize('Thou art indeed a pious individual.');
-            if (money_cnt(g.invent) < offer * 2) {
-                if (coaligned && (u.ualign.record | 0) <= ALGN_SINNED)
-                    adjalign(1);
-            }
-            await verbalize('I bestow upon thee a blessing.');
-            const amt = Math.trunc(500 * offer / suggested);
-            incr_itimeout_prop(u.uprops[CLAIRVOYANT], rn1(amt, amt));
-        } else if (offer < suggested * quan * 3) {
-            let orig_ublessed = u.ublessed | 0;
-            const prot = u.uprops[PROTECTION];
-            /* u.ublessed is only active when Protection is enabled via
-               something other than worn gear */
-            if (!((prot.intrinsic | 0) & INTRINSIC)) {
-                prot.intrinsic = (prot.intrinsic | 0) | FROMOUTSIDE;
-                orig_ublessed = -1; /* force "rewarded" message */
-            }
-            for (; offer >= (2 * suggested); offer -= (2 * suggested)) {
-                if (!(u.ublessed | 0))
-                    u.ublessed = rn1(3, 2);
-                else if ((u.ublessed | 0) < 20
-                         && ((u.ublessed | 0) < 9 || !rn2(u.ublessed | 0)))
-                    u.ublessed = (u.ublessed | 0) + 1;
-            }
-            SetVoice(priest, 0, 80, 0);
-            if ((u.ublessed | 0) > orig_ublessed)
-                await verbalize('Thou hast been rewarded for thy devotion.');
-            else
-                await verbalize('Thy selfless generosity is deeply appreciated.');
-        } else {
-            SetVoice(priest, 0, 80, 0);
-            await verbalize('Thy selfless generosity is deeply appreciated.');
-            if (money_cnt(g.invent) < offer * 2 && coaligned) {
-                if (strayed && ((g.moves | 0) - (u.ucleansed | 0)) > 5000) {
-                    u.ualign.record = 0; /* cleanse thee */
-                    u.ucleansed = g.moves | 0;
-                } else {
-                    adjalign(2);
-                }
-            }
-        }
-    }
-}
-
-async function doconsult(oracl) {
-    const g = game;
-    const u = g.u;
-    const minor_cost = 50, major_cost = 500 + 50 * (u.ulevel | 0);
-    let u_pay;
-    g.multi = 0;
-    const umoney = money_cnt(g.invent);
-    if (!oracl) {
-        await pline('There is no one here to consult.');
-        return ECMD_OK;
-    } else if (!oracl.mpeaceful) {
-        await pline('%s is in no mood for consultations.', Monnam(oracl));
-        return ECMD_OK;
-    } else if (!umoney) {
-        await pline('You have no gold.');
-        return ECMD_OK;
-    }
-    let qbuf = `"Wilt thou settle for a minor consultation?" (${minor_cost} ${currency(minor_cost)})`;
-    const ans = await yn_function(qbuf, 'ynq', 'q');
-    if (ans === 'y') {
-        if (umoney < minor_cost) {
-            await pline("You don't even have enough gold for that!");
-            return ECMD_OK;
-        }
-        u_pay = minor_cost;
-    } else if (ans === 'n') {
-        const oc = g.oracle_cnt;
-        if (umoney <= minor_cost || oc === 1 || (g.oracle_flg | 0) < 0) {
-            /* C rumors.c:731-733 returns without clearing WIN_MESSAGE;
-             * tty_yn_function leaves this prompt painted (topl.c:544-548),
-             * just as on the other consultation cancellation paths. */
-            g._topl_sticky = `${qbuf} [ynq] (q)`;
-            return ECMD_OK;
-        }
-        qbuf = `"Then dost thou desire a major one?" (${major_cost} ${currency(major_cost)})`;
-        if ((await yn_function(qbuf, 'yn', 'n')) !== 'y') {
-            /* C rumors.c:733-737 returns without clear_nhwindow, so the
-             * answered prompt stays physically on the topline (tty leaves
-             * TOPLINE_NON_EMPTY); keep it painted via the sticky fallback. */
-            g._topl_sticky = `${qbuf} [yn] (n)`;
-            return ECMD_OK;
-        }
-        u_pay = umoney < major_cost ? umoney : major_cost;
-    } else {
-        /* C rumors.c:719-721: 'q'/default returns with no clear_nhwindow, so
-         * the answered prompt stays on the topline (as for the major prompt). */
-        g._topl_sticky = `${qbuf} [ynq] (q)`;
-        return ECMD_OK;
-    }
-    await _money2mon(oracl, u_pay);
-    if (g.disp) g.disp.botl = true;
-    u.uevent = u.uevent || {};
-    if (!u.uevent.major_oracle && !u.uevent.minor_oracle)
-        record_achievement(ACH_ORCL);
-    let add_xpts = 0;
-    if (u_pay === minor_cost) {
-        await outrumor(1, BY_ORACLE); /* C rumors.c:746 */
-        if (!u.uevent.minor_oracle)
-            add_xpts = Math.trunc(u_pay / (u.uevent.major_oracle ? 25 : 10));
-        u.uevent.minor_oracle = true;
-    } else {
-        const cheapskate = u_pay < major_cost;
-        await outoracle(cheapskate, true); /* C rumors.c:755 */
-        if (!cheapskate && !u.uevent.major_oracle)
-            add_xpts = Math.trunc(u_pay / (u.uevent.minor_oracle ? 25 : 10));
-        u.uevent.major_oracle = true;
-        exercise(A_WIS, !cheapskate);
-    }
-    if (add_xpts) {
-        more_experienced(add_xpts, Math.trunc(u_pay / 50));
-        await newexplevel();
-    }
-    return ECMD_TIME;
-}
 
 export async function domonnoise(mtmp) {
     const g = game;
@@ -1552,85 +1291,17 @@ export async function domonnoise(mtmp) {
     return ECMD_TIME;
 }
 
-const COIN_CLASS = 12; /* objclass.h */
+import { COIN_CLASS } from './shk.js';
+import { g_at } from './invent.js'; // relocate-fns
+import { ANY_SHOP, BARRACKS, DEAF, Is_astralevel, Is_oracle_level, VAULT } from './const.js'; // relocate-fns
+import { _more_never_dismissed, _more_pages_exceed_input, _topline_more_pending, flush_pending_messages } from './display.js'; // relocate-fns
+import { search_special } from './mkroom.js'; // relocate-fns
+import { noisy_shop, tended_shop } from './shk.js'; // relocate-fns
+import { gd_sound, vault_occupied } from './vault.js'; // relocate-fns
+import { priest_talk } from './priest.js'; // relocate-fns
+import { price_quote } from './shk.js'; // relocate-fns
 
-/* C shk.c:5407 price_quote() and :5469 shk_embellish(). */
-async function price_quote(first) {
-    const g = game;
-    /* C shk.c:5416 shkp = shop_keeper(inside_shop(u.ux, u.uy)). */
-    const shkp = shk_shop_keeper(inside_shop(g.u.ux | 0, g.u.uy | 0));
-    if (!shkp || !shk_inhishop(shkp)) return;
-    const rows = [];
-    let lastCost = 0, lastContents = false;
-    for (let o = first; o; o = o.nexthere) {
-        if ((o.oclass | 0) === COIN_CLASS) continue;
-        let cost = (o.no_charge || o === game.u?.uball || o === game.u?.uchain)
-            ? 0 : shk_get_cost(o, shkp);
-        let contents = !cost;
-        if (Has_contents(o)) cost += shk_contained_cost(o, shkp, 0, false, false);
-        if (o.globby) cost *= shk_get_pricing_units(o);
-        if (!cost) contents = false; /* C shk.c:5437: "no charge" resets contentsonly */
-        lastCost = cost; lastContents = contents;
-        const price = cost ? `${cost} ${shk_currency(cost)}${(o.quan | 0) > 1 ? ' each' : ''}` : 'no charge';
-        rows.push(`${contents ? 'the contents of ' : ''}${(await doname(o))}, ${price}`);
-    }
-    if (rows.length > 1) {
-        const win = create_nhwindow(NHW_MENU);
-        putstr(win, 0, 'Fine goods for sale:'); putstr(win, 0, '');
-        for (const row of rows) putstr(win, 0, row);
-        await display_nhwindow(win, true); destroy_nhwindow(win);
-        return;
-    }
-    if (rows.length === 1) {
-        const o = first;
-        if (!lastCost) {
-            /* C shk.c:5449-5453: "<doname(obj)>, no charge" */
-            SetVoice(shkp, 0, 80, 0);
-            await verbalize('%s!', upstart(rows[0]));
-        } else {
-            /* C shk.c:5456: doname's tin_variety draw precedes the quote RNG. */
-            const base = `${lastContents ? 'the contents of ' : ''}${(await doname(o))}`;
-            /* C arg order (observed): currency(cost) is drawn before shk_embellish */
-            const cur = shk_currency(lastCost);
-            const embellish = lastContents ? '.' : shk_embellish(o, lastCost);
-            /* C shk.c:5458 SetVoice(shkp, 0, 80, 0) */
-            SetVoice(shkp, 0, 80, 0);
-            await verbalize('%s, price %ld %s%s%s', upstart(base), lastCost, cur,
-                (o.quan | 0) > 1 ? ' each' : '', embellish);
-        }
-    }
-}
 
-/* C shk.c:5469 shk_embellish(itm, cost) — draws rn2(3), then rn2(5) on the hit arm. */
-function shk_embellish(itm, cost) {
-    if (!rn2(3)) {
-        let choice = rn2(5);
-        if (choice === 0)
-            choice = cost < 100 ? 1 : cost < 500 ? 2 : 3;
-        switch (choice) {
-        case 4: {
-            if (cost < 10)
-                break;
-            const o = itm.oclass | 0;
-            if (o === 7 /* FOOD_CLASS */)
-                return ", gourmets' delight!";
-            if (game._oc_name_known?.[itm.otyp | 0]
-                ? MKOBJ_OC_MAGIC[itm.otyp | 0]
-                : (o === 5 /* AMULET */ || o === 4 /* RING */ || o === 11 /* WAND */
-                   || o === 8 /* POTION */ || o === 9 /* SCROLL */ || o === 10 /* SPBOOK */))
-                return ", painstakingly developed!";
-            return ", superb craftsmanship!";
-        }
-        case 3: return ', finest quality.';
-        case 2: return ', an excellent choice.';
-        case 1: return ', a real bargain.';
-        default: break;
-        }
-    } else if (itm.oartifact) {
-        return ', one of a kind!';
-    }
-    return '.';
-}
 
 
 /* C sounds.c:351-394: use cmd.js's shared growl_sound(mtmp) verb table. */
@@ -1704,5 +1375,214 @@ export function yelp(mtmp) {
         if (game.context?.run)
             nomul(0);
         wake_nearto(mtmp.mx | 0, mtmp.my | 0, (data.mlevel | 0) * 12);
+    }
+}
+
+/* C ref: mkroom.h:83 ROOM_INDEX(x) == ((int) ((x) - svr.rooms)) — the room's
+ * index within svr.rooms[].  The port stores rooms in an array, so pointer
+ * arithmetic becomes the array index. */
+function ROOM_INDEX(croom) {
+    return (game.level?.rooms ?? []).indexOf(croom);
+}
+
+/* C ref: sounds.c:318 `strchr(u.ushops, (int) (ROOM_INDEX(sroom)+ROOMOFFSET))`
+ * — u.ushops is a char[5] of the shop room numbers the hero currently occupies.
+ * The port stores it as a JS string of those raw char codes (mapstate_schema
+ * 'hero.ushops', strSlot); js/shk.js:929 reads its first byte the same way, so
+ * this is that read generalised to strchr's whole-buffer membership test. */
+function _ushops_has(roomch) {
+    const us = game.u?.ushops;
+    if (!us) return false;
+    const want = roomch | 0;
+    if (typeof us === 'string') {
+        for (let i = 0; i < us.length; i++)
+            if (us.charCodeAt(i) === want) return true;
+        return false;
+    }
+    if (Array.isArray(us))
+        return us.some((c) => (typeof c === 'string' ? c.charCodeAt(0) : (c | 0)) === want);
+    return (us | 0) === want;
+}
+
+/* get_iter_mons (mklev.js) for predicates that pline: C's pline blocks inside
+ * the callback (a MSGTYPE=stop page holds the program), so the walk awaits. */
+async function get_iter_mons_aw(bfunc) {
+    for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
+        next = mtmp.nmon;
+        if ((mtmp.mhp | 0) < 1 || (mtmp.mstate | 0) !== 0)
+            continue;
+        if (await bfunc(mtmp))
+            return mtmp;
+    }
+    return null;
+}
+
+/* dungeon.h Is_sanctum(lev) = on_level(lev, &sanctum_level) */
+function _is_sanctum(uz) {
+    const s = game?.sanctum_level;
+    return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
+}
+
+export async function dosounds() {
+    game._inDosounds = true;
+    try { await dosounds_body(); } finally { game._inDosounds = false; }
+}
+
+async function dosounds_body() {
+    const lf = game.level && game.level.flags;
+    if (!lf)
+        return;
+    const _u = game.u || {};
+    if ((_u.HDeaf | 0) || !!(_u.uprops?.[DEAF]?.intrinsic | 0)
+        || !!(_u.uprops?.[DEAF]?.extrinsic | 0)
+        || (_u.uroleplay && _u.uroleplay.deaf)
+        || (game.flags && game.flags.acoustics === false)
+        || (_u.uswallow | 0) || (_u.uinwater | 0))
+        return;
+    /* C sounds.c:210 — hallu = Hallucination ? 1 : 0.  For fountain/sink/swamp
+     * it only shifts the message INDEX (the rn2 bound is unchanged), but in the
+     * vault branch below it selects the switch CASE, so it must be computed. */
+    const hallu = Hallucination() ? 1 : 0;
+    if (lf.nfountains && !rn2(400)) {
+        const fountain_msg = [
+            "bubbling water.", "water falling on coins.",
+            "the splashing of a naiad.", "a soda fountain!",
+        ];
+        await You_hear(fountain_msg[rn2(3) + hallu]);
+    }
+    if (lf.nsinks && !rn2(300)) {
+        /* C sounds.c:220-224 — You_hear1(sink_msg[rn2(2) + hallu]). */
+        const sink_msg = [
+            "a slow drip.", "a gurgling noise.", "dishes being washed!",
+        ];
+        await You_hear(sink_msg[rn2(2) + hallu]);
+    }
+    if (lf.has_court && !rn2(200)) {
+        /* C sounds.c:226-229 — `if (get_iter_mons(throne_mon_sound)) return;`;
+         * falls through to has_swamp when no qualifying monster exists. */
+        if (await get_iter_mons_aw(throne_mon_sound))
+            return;
+    }
+    if (lf.has_swamp && !rn2(200)) {
+        /* C sounds.c:230-236 — You1(swamp_msg[rn2(2) + hallu]).  Note C uses
+         * You1 (prefix "You "), not You_hear1: the strings carry their own
+         * "hear"/"smell" verb. */
+        const swamp_msg = [
+            "hear mosquitoes!", "smell marsh gas!", /* so it's a smell... */
+            "hear Donald Duck!",
+        ];
+        await pline("You " + swamp_msg[rn2(2) + hallu]);
+        return; /* C: unconditional return after swamp sound (sounds.c:236) */
+    }
+    if (lf.has_vault && !rn2(200)) {
+        const sroom = search_special(VAULT);
+        if (!sroom) {
+            /* strange ... */
+            lf.has_vault = 0;
+            return;
+        }
+        if (gd_sound()) {
+            switch (rn2(2) + hallu) {
+            case 1: {
+                let gold_in_vault = false;
+
+                for (let vx = sroom.lx | 0; vx <= (sroom.hx | 0); vx++)
+                    for (let vy = sroom.ly | 0; vy <= (sroom.hy | 0); vy++)
+                        if (g_at(vx, vy))
+                            gold_in_vault = true;
+                /* C: ROOM_INDEX(sroom) is the pointer offset of sroom within
+                 * svr.rooms[]; the port's equivalent is its array index. */
+                if (vault_occupied(game.u.urooms)
+                    !== (ROOM_INDEX(sroom) + ROOMOFFSET)) {
+                    if (gold_in_vault) {
+                        await You_hear(!hallu
+                                 ? "someone counting gold coins."
+                                 : "the quarterback calling the play.");
+                    } else {
+                        /* C: Soundeffect(se_someone_searching, 30) — audio
+                         * only, no screen or RNG effect. */
+                        await You_hear("someone searching.");
+                    }
+                    break;
+                }
+            }
+            /* FALLTHRU (C sounds.c:265-266) */
+            case 0:
+                /* C: Soundeffect(se_guards_footsteps, 30) — audio only. */
+                await You_hear("the footsteps of a guard on patrol.");
+                if (_topline_more_pending()
+                    && (_more_never_dismissed() || _more_pages_exceed_input()))
+                    await flush_pending_messages();
+                break;
+            case 2:
+                await You_hear("Ebenezer Scrooge!");
+                break;
+            }
+        }
+        return; /* C sounds.c:277 */
+    }
+    if (lf.has_beehive && !rn2(200)) {
+        if (await get_iter_mons_aw(beehive_mon_sound))
+            return;
+    }
+    if (lf.has_morgue && !rn2(200)) {
+        /* C sounds.c:282-285 — the callback's rn2(2) is conditional on a
+         * live undead or vampire-shifter in the morgue. */
+        if (await get_iter_mons_aw(morgue_mon_sound))
+            return;
+    }
+    if (lf.has_barracks && !rn2(200)) {
+        /* C sounds.c:286-308 — first mercenary in a barracks that is asleep
+         * or beyond the fifth counted one draws rn2(3)+hallu and returns;
+         * otherwise fall through to has_zoo. */
+        const barracks_msg = [
+            "blades being honed.", "loud snoring.", "dice being thrown.",
+            "General MacArthur!",
+        ];
+        let count = 0;
+        if (await get_iter_mons_aw(async (mtmp) => {
+            if ((((mtmp.data?.mflags2) | 0) & 0x00000200) !== 0 /* is_mercenary */
+                && mon_in_room(mtmp, BARRACKS)
+                && ((mtmp.msleeping | 0) || ++count > 5)) {
+                await You_hear(barracks_msg[rn2(3) + (Hallucination() ? 1 : 0)]);
+                return true;
+            }
+            return false;
+        }))
+            return;
+    }
+    if (lf.has_zoo && !rn2(200)) {
+        if (await get_iter_mons_aw(zoo_mon_sound))
+            return;
+    }
+    if (lf.has_shop && !rn2(200)) {
+        const sroom = search_special(ANY_SHOP);
+        if (!sroom) {
+            /* strange... */
+            lf.has_shop = 0;
+            return;
+        }
+        if (tended_shop(sroom) && !_ushops_has(ROOM_INDEX(sroom) + ROOMOFFSET)) {
+            /* C sounds.c:319-323 — static shop_msg[3]. */
+            const shop_msg = [
+                "someone cursing shoplifters.",
+                "the chime of a cash register.",
+                "Neiman and Marcus arguing!",
+            ];
+            /* C pline.c You_hear1(str) — You_hear with a literal string. */
+            await You_hear(shop_msg[rn2(2) + hallu]);
+            noisy_shop(sroom);
+        }
+        return; /* C sounds.c:328 */
+    }
+    if (lf.has_temple && !rn2(200)
+        && !(Is_astralevel(game.u?.uz) || _is_sanctum(game.u?.uz))) {
+        /* C sounds.c:330-334 */
+        if (await get_iter_mons_aw(temple_priest_sound))
+            return;
+    }
+    if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
+        if (await get_iter_mons_aw(oracle_sound))
+            return;
     }
 }

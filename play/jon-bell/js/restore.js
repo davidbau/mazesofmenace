@@ -1,10 +1,11 @@
-import { encumber_msg } from './weight.js';
+import { encumber_msg } from './pickup.js';
 import { object_runtime_rest_snapshot } from './o_init.js';
 import { bubbles_rest_snapshot, bubbles_copy_snapshot, mazexy } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
 import { worms_rest_snapshot } from './worm.js';
-import { role_init } from './roles.js';
-import { peaceMinded, set_malign, olfaction } from './makemon.js';
+import { role_init } from './role.js';
+import { peaceMinded, set_malign } from './makemon.js';
+import { olfaction } from './mondata.js';
 // restore.js — C ref: nethack-c/src/restore.c
 //
 // TWO halves of restore.c live here, at two different scopes:
@@ -17,11 +18,12 @@ import { peaceMinded, set_malign, olfaction } from './makemon.js';
 
 import { game } from './gstate.js';
 import { init_rect } from './rect.js';
-import { align_str } from './cmd.js';
+import { align_str } from './insight.js';
 import { setuwep } from './wield.js';
-import { rnd } from './rng.js';
+import { rnd } from './rnd.js';
 import { obj_no_longer_held } from './do.js';
-import { rest_engravings, _gm_migrating } from './mklev.js';
+import { _gm_migrating } from './mklev.js';
+import { rest_engravings } from './engrave.js';
 import { In_hell, Is_branchlev, on_level, assign_level, ledger_no } from './dungeon.js';
 import { stairway_add } from './stairs.js';
 import { deltrap } from './trap.js';
@@ -48,6 +50,7 @@ import { phase_of_the_moon, friday_13th, getnow, time_from_yyyymmddhhmmss } from
 import { impossible } from './pline.js';
 import { minimal_monnam } from './do_name.js';
 import { describe_level_buf } from './dungeon.js';
+import { TRICKED } from './const.js'; // relocate-fns
 
 /* C ref: mondata.h:90 hides_under(ptr) — ((ptr)->mflags1 & M1_CONCEAL). */
 const M1_CONCEAL = 0x00000080; /* C monflag.h:101 */
@@ -952,4 +955,28 @@ export async function restore_preamble() {
     g.context = g.context || {};
     g.context.move = 0;
     g.program_state.in_moveloop = 1;
+}
+
+/* C restore.c:1035 trickery(reason) */
+export async function trickery(reason) {
+    await pline('Strange, this map is not as I remember it.');
+    await pline('Somebody is trying some trickery here...');
+    await pline('This game is void.');
+    if (!game.svk) game.svk = {};
+    if (!game.svk.killer) game.svk.killer = {};
+    game.svk.killer.name = reason || '';
+    const { done } = await import('./end.js');
+    await done(TRICKED);
+}
+
+// C ref: restore.c:1484-1507 lookup_id_mapping(unsigned int gid, unsigned int *nidp)
+export function lookup_id_mapping(gid, nidp) {
+    const idmap = game && game._id_map;
+    if (idmap && typeof idmap.has === 'function' && idmap.has(gid)) {
+        const nid = idmap.get(gid) >>> 0;
+        if (nidp && typeof nidp === 'object')
+            nidp.value = nid;
+        return true;
+    }
+    return false;
 }

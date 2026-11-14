@@ -10,18 +10,22 @@ import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { wizard } from './gstate.js'; // relocate-fns
 import { dist2, distmin } from './hacklib.js'; // relocate-fns
 import { ENV } from './hostenv.js'; // relocate-fns
-import { mongets } from './m_initweap.js'; // relocate-fns
+import { mongets } from './makemon.js'; // relocate-fns
 import { Inhell, is_ndemon, levelDifficulty, mkclass, mkclassAligned, permonstTemplate, set_malign } from './makemon.js'; // relocate-fns
-import { A_NONE, CHEST, CORPSE, FOOD_CLASS, GOLD_PIECE, LARGE_BOX, LUMP_OF_ROYAL_JELLY, MM_ASLEEP, MM_NOGRP, PM_GHOST, PM_SOLDIER, PM_WRAITH, RANDOM_CLASS, SPBOOK_CLASS, STATUE, S_DEMON, S_GIANT, S_GNOME, S_KOBOLD, S_ORC, S_TROLL, S_VAMPIRE, S_ZOMBIE, WAND_CLASS, _shtypes, add_to_container, del_engr_at, make_grave, makemon, mk_tt_object, mkgold, mkobj, mkobj_at, mksobj, mksobj_at, occupied, topologize, weight } from './mklev.js'; // relocate-fns
+import { A_NONE, CHEST, CORPSE, FOOD_CLASS, GOLD_PIECE, LARGE_BOX, LUMP_OF_ROYAL_JELLY, MM_ASLEEP, MM_NOGRP, PM_GHOST, PM_SOLDIER, PM_WRAITH, RANDOM_CLASS, SPBOOK_CLASS, STATUE, S_DEMON, S_GIANT, S_GNOME, S_KOBOLD, S_ORC, S_TROLL, S_VAMPIRE, S_ZOMBIE, WAND_CLASS, _shtypes, occupied, topologize, weight } from './mklev.js';
+import { add_to_container, mk_tt_object, mkgold, mkobj, mkobj_at, mksobj, mksobj_at } from './mkobj.js';
+import { makemon } from './makemon.js';
+import { del_engr_at, make_grave } from './engrave.js'; // relocate-fns
 import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
 import { PM_COCKATRICE, PM_ELECTRIC_EEL, PM_GIANT_EEL, PM_KILLER_BEE, PM_LEPRECHAUN, PM_PIRANHA, PM_QUEEN_BEE } from './pm.generated.js'; // relocate-fns
 import { priestini } from './priest.js'; // relocate-fns
-import { pushRngLogEntry, rn1, rn2, rnd } from './rng.js'; // relocate-fns
-import { induced_align } from './sp_lev.js'; // relocate-fns
+import { pushRngLogEntry, rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js'; // relocate-fns
+import { induced_align } from './dungeon.js'; // relocate-fns
 import { t_at } from './trap.js'; // relocate-fns
 import { level_difficulty } from './dungeon.js'; // relocate-fns
 import { sobj_at } from './invent.js'; // relocate-fns
-import { makemon as mklev_makemon } from './mklev.js'; // relocate-fns
+import { makemon as mklev_makemon } from './makemon.js'; // relocate-fns
 import { enexto_out as enexto } from './teleport.js'; // relocate-fns
 import { revive } from './zap.js'; // relocate-fns
 import { AIR, BLCORNER, BRCORNER, CLOUD, CROSSWALL, DBWALL, DOOR, DRAWBRIDGE_DOWN, FOUNTAIN, GRAVE, HWALL, IRONBARS, LADDER, LAVAPOOL, LAVAWALL, SINK, STAIRS, STONE, TDWALL, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER } from './const.js'; // relocate-fns

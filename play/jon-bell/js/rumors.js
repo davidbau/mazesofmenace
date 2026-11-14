@@ -7,11 +7,20 @@ import { is_fainted } from './eat.js';
 import { game } from './gstate.js';
 import { BY_COOKIE, BY_ORACLE, BY_PAPER, _Blind_mk } from './mklev.js';
 import { impossible as lifecycle_impossible, pline } from './pline.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { BUFSZ } from './const.js'; // relocate-fns
 import { dat_content } from './dat_source.js'; // relocate-fns
 import { rumor_couldnt_open_file, rumor_fgets } from './display.js'; // relocate-fns
 import { xcrypt } from './hacklib.js'; // relocate-fns
+import { yn_function } from './cmd.js';
+import { currency } from './invent.js';
+import { record_achievement } from './insight.js'; // relocate-fns
+import { ACH_ORCL, ECMD_OK, ECMD_TIME } from './const.js'; // relocate-fns
+import { money_cnt } from './hack.js'; // relocate-fns
+import { Monnam } from './mcastu.js'; // relocate-fns
+import { _money2mon } from './sounds.js'; // relocate-fns
+import { more_experienced } from './uhitm.js';
+import { newexplevel } from './exper.js'; // relocate-fns
 
 /* C rumors.c:114 `static const char *cookie_marker = "[cookie] "` — makedefs
    tags the fortune-cookie-only rumors with this prefix.  17 of the 397 false
@@ -330,4 +339,79 @@ export async function others_check(ftype, fname, out) {
         if (entrycount > 3) out.push(' ...');
         out.push(xbuf);
     }
+}
+
+export async function doconsult(oracl) {
+    const g = game;
+    const u = g.u;
+    const minor_cost = 50, major_cost = 500 + 50 * (u.ulevel | 0);
+    let u_pay;
+    g.multi = 0;
+    const umoney = money_cnt(g.invent);
+    if (!oracl) {
+        await pline('There is no one here to consult.');
+        return ECMD_OK;
+    } else if (!oracl.mpeaceful) {
+        await pline('%s is in no mood for consultations.', Monnam(oracl));
+        return ECMD_OK;
+    } else if (!umoney) {
+        await pline('You have no gold.');
+        return ECMD_OK;
+    }
+    let qbuf = `"Wilt thou settle for a minor consultation?" (${minor_cost} ${currency(minor_cost)})`;
+    const ans = await yn_function(qbuf, 'ynq', 'q');
+    if (ans === 'y') {
+        if (umoney < minor_cost) {
+            await pline("You don't even have enough gold for that!");
+            return ECMD_OK;
+        }
+        u_pay = minor_cost;
+    } else if (ans === 'n') {
+        const oc = g.oracle_cnt;
+        if (umoney <= minor_cost || oc === 1 || (g.oracle_flg | 0) < 0) {
+            /* C rumors.c:731-733 returns without clearing WIN_MESSAGE;
+             * tty_yn_function leaves this prompt painted (topl.c:544-548),
+             * just as on the other consultation cancellation paths. */
+            g._topl_sticky = `${qbuf} [ynq] (q)`;
+            return ECMD_OK;
+        }
+        qbuf = `"Then dost thou desire a major one?" (${major_cost} ${currency(major_cost)})`;
+        if ((await yn_function(qbuf, 'yn', 'n')) !== 'y') {
+            /* C rumors.c:733-737 returns without clear_nhwindow, so the
+             * answered prompt stays physically on the topline (tty leaves
+             * TOPLINE_NON_EMPTY); keep it painted via the sticky fallback. */
+            g._topl_sticky = `${qbuf} [yn] (n)`;
+            return ECMD_OK;
+        }
+        u_pay = umoney < major_cost ? umoney : major_cost;
+    } else {
+        /* C rumors.c:719-721: 'q'/default returns with no clear_nhwindow, so
+         * the answered prompt stays on the topline (as for the major prompt). */
+        g._topl_sticky = `${qbuf} [ynq] (q)`;
+        return ECMD_OK;
+    }
+    await _money2mon(oracl, u_pay);
+    if (g.disp) g.disp.botl = true;
+    u.uevent = u.uevent || {};
+    if (!u.uevent.major_oracle && !u.uevent.minor_oracle)
+        record_achievement(ACH_ORCL);
+    let add_xpts = 0;
+    if (u_pay === minor_cost) {
+        await outrumor(1, BY_ORACLE); /* C rumors.c:746 */
+        if (!u.uevent.minor_oracle)
+            add_xpts = Math.trunc(u_pay / (u.uevent.major_oracle ? 25 : 10));
+        u.uevent.minor_oracle = true;
+    } else {
+        const cheapskate = u_pay < major_cost;
+        await outoracle(cheapskate, true); /* C rumors.c:755 */
+        if (!cheapskate && !u.uevent.major_oracle)
+            add_xpts = Math.trunc(u_pay / (u.uevent.minor_oracle ? 25 : 10));
+        u.uevent.major_oracle = true;
+        exercise(A_WIS, !cheapskate);
+    }
+    if (add_xpts) {
+        more_experienced(add_xpts, Math.trunc(u_pay / 50));
+        await newexplevel();
+    }
+    return ECMD_TIME;
 }

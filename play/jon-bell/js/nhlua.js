@@ -14,6 +14,18 @@ import { nhlib_load_toplevel_rng } from './nhlib.js';
 import { registerStaticReset } from './statics.js';
 import { AIR, BLCORNER, BRCORNER, CLOUD, CORR, CROSSWALL, DBWALL, DOOR, FOUNTAIN, HWALL, ICE, INVALID_TYPE, IRONBARS, LAVAPOOL, LAVAWALL, MATCH_WALL, MAX_TYPE, MOAT, POOL, ROOM, SCORR, SDOOR, SINK, STONE, TDWALL, THRONE, TLCORNER, TLWALL, TRCORNER, TREE, TRWALL, TUWALL, VWALL, WATER } from './const.js'; // relocate-fns
 import { get_coord } from './sp_lev.js'; // relocate-fns
+import { impossible_cmd } from './cmd.js';
+import { freeinv, useupall } from './invent.js'; // relocate-fns
+import { LEVITATION } from './const.js'; // relocate-fns
+import { init_uhunger } from './eat.js'; // relocate-fns
+import { copy_you } from './game.js'; // relocate-fns
+import { addinv_nomerge } from './invent.js'; // relocate-fns
+import { update_inventory } from './invent.js'; // relocate-fns
+import { extract_nobj } from './mkobj.js'; // relocate-fns
+import { pline } from './pline.js'; // relocate-fns
+import { obfree } from './shk.js'; // relocate-fns
+import { MAXSPELL } from './spell.js'; // relocate-fns
+import { setnotworn, setworn } from './worn.js'; // relocate-fns
 
 // Existing version-query boundary; its throwaway version-only Lua state is
 // still represented by nhlib's top-level RNG helper, independently of core.
@@ -380,4 +392,93 @@ export function get_table_mapchr(args, name) {
     if (typ === INVALID_TYPE)
         throw new Error('Erroneous map char');
     return typ;
+}
+
+// C nhlua.c:1722. Save by value only what C stores by value. Inventory and
+// monster pointers retain their identity; all inventory effects use the
+// shared C-shaped helpers in their original order.
+export async function nhl_gamestate(reststate = false) {
+    const g = game, gg = g.gg;
+    let wornmask, otmp;
+
+    if (reststate && gg.gmst_stored) {
+        const cur_uz = { ...g.u.uz }, cur_uz0 = { ...g.u.uz0 };
+
+        g.moves = gg.gmst_moves;
+        g._botlPaintedMoves = null;
+        await pline(`Resetting time to move #${g.moves}.`);
+        gg.gmst_moves = 0;
+
+        g._lastinvnr = 51;
+        while (g.invent)
+            await useupall(g.invent);
+        /* float_down()'s botl flush (trap.c:4054) runs inside the useupall loop,
+         * so the status shown at the "You float gently" --More-- already lacks
+         * Lev even though the rest of the painted hero predates the memcpy. */
+        g._tutorialLevSnap = { ...g.u.uprops?.[LEVITATION] };
+        while ((otmp = gg.gmst_invent) != null) {
+            wornmask = otmp.owornmask;
+            otmp.owornmask = 0;
+            extract_nobj(otmp, gg, 'gmst_invent');
+            await addinv_nomerge(otmp);
+            if (wornmask)
+                await setworn(otmp, wornmask);
+        }
+        if (!gg.gmst_ubak || !gg.gmst_disco || !gg.gmst_mvitals)
+            throw new Error('nhl_gamestate: missing saved state');
+        copy_you(gg.gmst_ubak, g.u);
+        g._disco = Object.fromEntries(Object.entries(gg.gmst_disco).map(([k, v]) => [k, v.slice()]));
+        g.mvitals = Object.fromEntries(Object.entries(gg.gmst_mvitals).map(([k, v]) => [k, { ...v }]));
+        // objects[].oc_name_known is not part of svd.disco. C retains the
+        // current knowledge bits, but frees every player-assigned type name.
+        for (const otyp of Object.keys(g._oc_uname || {}))
+            delete g._oc_uname[otyp];
+        g.u.uz = cur_uz;
+        g.u.uz0 = cur_uz0;
+        init_uhunger();
+        await free_tutorial();
+        gg.gmst_stored = false;
+        g.spl_book = gg.gmst_spl_book.map(v => ({ ...v }));
+    } else if (!reststate && !gg.gmst_stored) {
+        gg.gmst_moves = g.moves;
+        while ((otmp = g.invent) != null) {
+            wornmask = otmp.owornmask;
+            setnotworn(otmp);
+            freeinv(otmp);
+            otmp.owornmask = wornmask;
+            otmp.nobj = gg.gmst_invent;
+            gg.gmst_invent = otmp;
+        }
+        g._lastinvnr = 51;
+        gg.gmst_ubak = copy_you(g.u);
+        gg.gmst_disco = Object.fromEntries(Object.entries(g._disco || {}).map(([k, v]) => [k, v.slice()]));
+        gg.gmst_mvitals = Object.fromEntries(Object.entries(g.mvitals || {}).map(([k, v]) => [k, { ...v }]));
+        gg.gmst_spl_book = Array.from({ length: MAXSPELL + 1 }, (_, i) => ({
+            sp_id: g.spl_book?.[i]?.sp_id || 0,
+            sp_lev: g.spl_book?.[i]?.sp_lev || 0,
+            sp_know: g.spl_book?.[i]?.sp_know || 0,
+        }));
+        g.spl_book = Array.from({ length: MAXSPELL + 1 }, () => ({ sp_id: 0, sp_lev: 0, sp_know: 0 }));
+        gg.gmst_stored = true;
+    } else {
+        impossible_cmd('nhl_gamestate: inconsistent state (%s vs %s)',
+            reststate ? 'restore' : 'save', gg.gmst_stored ? 'already stored' : 'not stored');
+    }
+    update_inventory();
+    return 0;
+}
+
+// C nhlua.c:1809. This releases dynamic storage, not the stored flag, clock,
+// or inline spell array. On normal restore the inventory has already moved.
+export async function free_tutorial() {
+    const gg = game.gg;
+    let otmp;
+    while ((otmp = gg.gmst_invent) != null) {
+        extract_nobj(otmp, gg, 'gmst_invent');
+        otmp.owornmask = 0;
+        await obfree(otmp, null);
+    }
+    gg.gmst_ubak = null;
+    gg.gmst_disco = null;
+    gg.gmst_mvitals = null;
 }

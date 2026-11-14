@@ -48,12 +48,6 @@ import { count_bind_keys } from './cmd.js'; // relocate-fns
 /* C ref: src/symbols.c:376 known_handling[] */
 const KNOWN_HANDLING = ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'];
 
-/* C ref: options.c:8735 term_for_boolean — booleanterms[value][termpref]. */
-const BOOLEAN_TERMS = [
-    ['false', 'off', 'disabled', 'excluded from build'],
-    ['true', 'on', 'enabled', 'included'],
-];
-const TERMPREF = { Term_False: 0, Term_Off: 1, Term_Disabled: 2, Term_Excluded: 3 };
 
 export const LONGEST_OPTION_NAME = 23;
 
@@ -329,8 +323,3 @@ export const DOSET_OTHERS = [
     { name: "status highlight rules", sel: true, val: () => `(${count_status_hilites()} currently set)` },
 ];
 
-/* C ref: options.c:8735 term_for_boolean(idx, b). */
-export function term_for_boolean(row, value) {
-    const i = TERMPREF[row.term] || 0;
-    return BOOLEAN_TERMS[value ? 1 : 0][i];
-}

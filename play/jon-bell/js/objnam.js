@@ -1,3 +1,4 @@
+import { ARMOR_CLASS, TOOL_CLASS, WEAPON_CLASS } from './const.js';
 import { is_unpaid, unpaid_cost, get_cost_of_shop_item, record_price_quote, append_price_quote, currency, obfree, delete_contents } from './shk.js';
 import { alter_cost, shk_your } from './shk.js'; // C do_name.c:410
 import { lookup_novel, mon_pmname } from './do_name.js';
@@ -20,36 +21,31 @@ import { COST_CONTENTS, BURN_OBJECT, ZOMBIFY_MON, TIMER_OBJECT, otrapped_of, GLI
 //   1. rnd_otyp_by_namedesc: rn2(maxprob) when name match needed
 //   2. mksobj: rnd(2) @ next_ident, then class-specific init RNG
 //   3. makewish end: rn2(100) for u.ublesscnt (zap.c:6414)
-import { impossible_sync, glow_color, glow_verb } from './display.js';
+import { impossible_sync } from './display.js';
+import { glow_color, glow_verb } from './artifact.js';
 import { pline, livelog_printf } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { weight } from './weight.js';
 import { yn_function } from './cmd.js';
 import { WT_IRON_BALL_INCR, LL_CONDUCT, LL_ARTIFACT } from './const.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { game, wizard, discover } from './gstate.js';
 import { clong } from './integer.js';
 import { def_char_to_objclass } from './drawing.js';
-import { mksobj, mkobj, place_object, OC_USES_KNOWN, set_corpsenm, rnd_class } from './mklev.js';
+import { OC_USES_KNOWN, PM_HUMAN } from './mklev.js';
+import { mksobj, mkobj, place_object, set_corpsenm } from './mkobj.js';
 import { Can_fall_thru } from './dungeon.js';
 import { eos, lowc, highc, letter, mungspaces, digit, ordin } from './hacklib.js';
 import { can_be_hatched, zombie_form } from './mon.js';
-import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING,
-         PM_GRAY_DRAGON, PM_YELLOW_DRAGON,
-         PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE,
-         PM_ABBOT, PM_ACOLYTE, PM_HUNTER, PM_THUG, PM_ROSHI, PM_GUIDE,
-         PM_APPRENTICE, PM_WARRIOR, PM_ARCHEOLOGIST, PM_BARBARIAN,
-         PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CLERIC, PM_RANGER,
-         PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_WIZARD, PM_VALKYRIE, PM_HUMAN,
-         PM_ELF, PM_DWARF, PM_GNOME, PM_ORC, PM_MAIL_DAEMON } from './pm.generated.js';
+import { PM_LONG_WORM, PM_LONG_WORM_TAIL, PM_GRAY_OOZE, PM_BLACK_PUDDING, PM_GRAY_DRAGON, PM_YELLOW_DRAGON, PM_STUDENT, PM_CHIEFTAIN, PM_NEANDERTHAL, PM_ATTENDANT, PM_PAGE, PM_ABBOT, PM_ACOLYTE, PM_HUNTER, PM_THUG, PM_ROSHI, PM_GUIDE, PM_APPRENTICE, PM_WARRIOR, PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_HEALER, PM_KNIGHT, PM_MONK, PM_CLERIC, PM_RANGER, PM_ROGUE, PM_SAMURAI, PM_TOURIST, PM_WIZARD, PM_VALKYRIE, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC, PM_MAIL_DAEMON } from './pm.generated.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OC_CLASS } from './mkobj_data.js';
 import { getObjName } from './o_init.js';
 import { OC_NAME } from './oc_name_data.js';
 import { OC_DESCR } from './oc_descr_data.js';
 import { OC_CHARGED, OC_COST } from './oc_cost_data.js';
 import { hard_helmet, oc_armcat, doffing, donning } from './do_wear.js';
-import { the_unique_pm, permonstTemplate, monPmname, trapname,
-         /* C mondata.c:920 name_to_mon — readobjnam's "<obj> of <monster>" arm. */
-         name_to_mon } from './makemon.js';
+import { permonstTemplate, monPmname } from './makemon.js';
+import { name_to_mon } from './mondata.js';
+import { trapname } from './trap.js';
 import { s_suffix } from './mhitm.js';
 import { name_to_monplus } from './mondata.js';
 /* P_BOW/P_SHURIKEN (skills.h:43,48) bound is_poisonable()'s oc_skill window
@@ -70,15 +66,19 @@ import { NEUTRAL, ONAME, has_oname, BLINDED, P_BOW, P_SHURIKEN,
          is_hole, M_AP_TYPE, M_AP_OBJECT } from './const.js';
 import { impossible_, maketrap, t_at, deltrap, reset_utrap } from './trap.js';
 import { feel_newsym, docrt } from './display.js';
-import { fire_damage_chain, water_damage_chain, pooleffects, switch_terrain, set_uinwater,
-         waterbody_name, ice_descr, pooleffects_is_lava as is_lava } from './cmd.js';
+import { pooleffects_is_lava as is_lava } from './cmd.js';
+import { pooleffects, switch_terrain, set_uinwater } from './hack.js';
+import { fire_damage_chain, water_damage_chain } from './trap.js';
+import { waterbody_name, ice_descr } from './pager.js';
 import { untwoweapon } from './wield.js';
 import { set_artifact_intrinsic } from './artifact.js';
-import { make_grave, del_engr_at, count_level_features } from './mklev.js';
+import { count_level_features } from './mklev.js';
+import { make_grave, del_engr_at } from './engrave.js';
 import { inside_shop } from './shk.js';
 import { fix_wall_spines } from './mkmaze.js';
 import { recalc_block_point } from './vision.js';
-import { is_pool, is_pool_or_lava } from './look.js';
+import { is_pool } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { is_ice } from './engrave.js';
 import { spot_stop_timers } from './timeout.js';
 import { start_melt_ice_timeout } from './zap.js';
@@ -90,7 +90,8 @@ import { FOUNTAIN, THRONE, SINK, POOL, MOAT, WATER, LAVAPOOL, LAVAWALL, ICE, ICE
          A_CHAOTIC, A_NEUTRAL, A_LAWFUL, A_NONE, IS_WALL, IS_GRAVE, IS_FOUNTAIN, IS_SINK, IS_DOOR,
          Align2amask, TT_LAVA, MELT_ICE_AWAY, IS_FURNITURE, Is_rogue_level, LADDER, STAIRS,
          W_NONDIGGABLE, W_NONPASSWALL, HALLUC_RES, LEVITATION, FLYING, isok, COLNO, ROWNO } from './const.js';
-import { update_inventory, noit_mon_nam } from './mhitm.js';
+import { noit_mon_nam } from './do_name.js';
+import { update_inventory } from './invent.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_MERGE, MKOBJ_OC_MAGIC,
          MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
 /* observe_object() lives in o_init.c, i.e. js/o_init.js — import the ONE
@@ -117,10 +118,12 @@ import { begin_burn, peek_timer, start_timer } from './timeout.js';
  * gstate/const/display, so this edge closes no cycle back into objnam.js. */
 import { cansee as cansee_on } from './vision.js';
 import { BOGUSMON_LINES } from './bogusmon_data.js';
-import { mons_cnutrit, obj_nutrition } from './food_props.js';
+import { mons_cnutrit } from './food_props.js';
+import { obj_nutrition } from './eat.js';
 import { counter_were } from './were.js';
-import { artifact_light, arti_light_description } from './light.js';
-import { qt_pager, com_pager, deliver_by_pline } from './questpgr.js';
+import { arti_light_description } from './light.js';
+import { artifact_light } from './artifact.js';
+import { qt_pager, com_pager, deliver_by_pline, ROLE_LDRNUM, ROLE_NEMNUM, ROLE_GUARDNUM } from './questpgr.js';
 
 /* C ref: nethack-c/src/pline.c:587-637 impossible(const char *s, ...) — it
  * logs to the message window / paniclog and RETURNS; it never aborts.  Callers
@@ -129,7 +132,7 @@ import { qt_pager, com_pager, deliver_by_pline } from './questpgr.js';
  * so this must NOT throw.  Modelled as a no-op: pline is async in this port
  * while these callers are sync, so the message itself is not emitted (same
  * disclosed incompleteness as the other seven copies in js/). */
-function impossible(_msg, ..._args) { }
+function impossible_objnam(_msg, ..._args) { }
 
 export const PREFIX = 80; /* C objnam.c:9 #define PREFIX 80 */
 const TRUE = true;
@@ -138,7 +141,7 @@ const FALSE = false;
 // C objnam.c:123-135: PREFIX bounds the reserved space before an object name.
 function strprepend(s, pref) {
     if (pref.length > PREFIX) {
-        impossible('PREFIX too short (for %d).', pref.length);
+        impossible_objnam('PREFIX too short (for %d).', pref.length);
         return s;
     }
     const ptr = obufPool().results.get(s);
@@ -202,15 +205,12 @@ function obufCasecpy(ptr, text) {
  * readobjnam's `d->oclass`; ILLOBJ_CLASS is 1, not 0. */
 const RANDOM_CLASS   = 0;
 const ILLOBJ_CLASS   = 1;
-const WEAPON_CLASS   = 2;
 /* u_init.c object-table indices; u_init.js keeps these private, so retain
  * named local aliases until that module exposes its canonical table. */
 const LAND_MINE_OTYP  = 243;
 const BEARTRAP_OTYP   = 244;
-const ARMOR_CLASS    = 3;
 const RING_CLASS     = 4;
 const AMULET_CLASS   = 5;
-const TOOL_CLASS     = 6;
 const FOOD_CLASS     = 7;
 const POTION_CLASS   = 8;
 const SCROLL_CLASS   = 9;
@@ -225,13 +225,13 @@ const COIN_CLASS     = 12;
 const GOLD_PIECE_OTYP = 438;
 const GEM_CLASS      = 13;
 const ROCK_CLASS     = 14;
-const BALL_CLASS     = 15; /* defsym.h:482 OBJCLASS(15, '0', BALL,  ...) */
-const CHAIN_CLASS    = 16; /* defsym.h:483 OBJCLASS(16, '_', CHAIN, ...) */
+export const BALL_CLASS     = 15; /* defsym.h:482 OBJCLASS(15, '0', BALL,  ...) */
+export const CHAIN_CLASS    = 16; /* defsym.h:483 OBJCLASS(16, '_', CHAIN, ...) */
 const VENOM_CLASS    = 17; /* defsym.h:484 OBJCLASS(17, '.', VENOM, ...) */
 const MAXOCLASSES    = 18; /* fencepost past last valid class */
 
 // ── Key otyp constants ────────────────────────────────────────────────────────
-const STRANGE_OBJECT    = 0;   /* C: STRANGE_OBJECT = 0 */
+export const STRANGE_OBJECT    = 0;   /* C: STRANGE_OBJECT = 0 */
 const SCALE_MAIL        = 130; /* base "scale mail" armor (oc_prob 66) */
 const POT_WATER         = 322;
 const SCR_BLANK_PAPER   = 365;
@@ -339,34 +339,6 @@ function _is_male_pm(P)   { return ((P?.mflags2 | 0) & M2_MALE_OBJNAM) !== 0; }
 function _is_female_pm(P) { return ((P?.mflags2 | 0) & M2_FEMALE_OBJNAM) !== 0; }
 function _is_neuter_pm(P) { return ((P?.mflags2 | 0) & M2_NEUTER_OBJNAM) !== 0; }
 function _is_were_pm(P)   { return ((P?.mflags2 | 0) & M2_WERE_OBJNAM) !== 0; }
-/* C mon.c:470 genus() — a quest guardian's species, or (mode 1) its role. */
-export function genus(mndx, mode) {
-    const g = (a, b) => (mode ? a : b);
-    switch (mndx) {
-    case PM_STUDENT: return g(PM_ARCHEOLOGIST, PM_HUMAN);
-    case PM_CHIEFTAIN: return g(PM_BARBARIAN, PM_HUMAN);
-    case PM_NEANDERTHAL: return g(PM_CAVEMAN, PM_HUMAN);
-    case PM_ATTENDANT: return g(PM_HEALER, PM_HUMAN);
-    case PM_PAGE: return g(PM_KNIGHT, PM_HUMAN);
-    case PM_ABBOT: return g(PM_MONK, PM_HUMAN);
-    case PM_ACOLYTE: return g(PM_CLERIC, PM_HUMAN);
-    case PM_HUNTER: return g(PM_RANGER, PM_HUMAN);
-    case PM_THUG: return g(PM_ROGUE, PM_HUMAN);
-    case PM_ROSHI: return g(PM_SAMURAI, PM_HUMAN);
-    case PM_GUIDE: return g(PM_TOURIST, PM_HUMAN);
-    case PM_APPRENTICE: return g(PM_WIZARD, PM_HUMAN);
-    case PM_WARRIOR: return g(PM_VALKYRIE, PM_HUMAN);
-    default: {
-        const f2 = permonstTemplate(mndx)?.mflags2 | 0;
-        if (f2 & 0x08) return PM_HUMAN;
-        if (f2 & 0x10) return PM_ELF;
-        if (f2 & 0x20) return PM_DWARF;
-        if (f2 & 0x40) return PM_GNOME;
-        if (f2 & 0x80) return PM_ORC;
-    }
-    }
-    return mndx;
-}
 function _is_human_pm(P)  { return ((P?.mflags2 | 0) & M2_HUMAN_OBJNAM) !== 0; }
 /* C svm.mvitals[mndx].mvflags, restricted to the two bits this file tests.
  * mklev.js:1393 composes it the same way: the STATIC G_NOCORPSE bit comes from
@@ -391,24 +363,11 @@ const ROLE_IDX_ARCHEOLOGIST = 0;
 const ROLE_IDX_PRIEST       = 6;  /* PM_CLERIC */
 const ROLE_IDX_SAMURAI      = 9;
 
-// ── quest_info constants (C monflag.h) ────────────────────────────────────────
-// MS_LEADER, MS_NEMESIS, MS_GUARDIAN correspond to quest role values.
-const MS_LEADER   = 36; /* your class leader */
-const MS_NEMESIS  = 37; /* your nemesis */
 const MS_GUARDIAN = 38; /* your leader's guards */
 
 // ── quest role arrays (C role.c) ──────────────────────────────────────────────
 // urole[].ldrnum, neminum, guardnum per role (0=Archeologist..12=Wizard).
 // These are directly from C role.c role struct initialization.
-const ROLE_LDRNUM = [
-    344, 345, 346, 347, 348, 349, 350, 352, 351, 353, 354, 355, 356,
-];
-const ROLE_NEMNUM = [
-    357, 358, 359, 360, 361, 362, 363, 365, 364, 366, 352, 367, 368,
-];
-const ROLE_GUARDNUM = [
-    369, 370, 371, 372, 373, 374, 375, 377, 376, 379, 380, 381, 382,
-];
 
 // ── wrpsym / wrp tables (objnam.c:2515-2525) ─────────────────────────────────
 // Used to detect class-name prefixes/suffixes in wish strings.
@@ -594,66 +553,6 @@ export function _artifact_origin(arti, aflags) {
 
 
 
-/* C do_name.c:79-133 oname(obj, name, oflgs) — assign a custom name to an
- * object, promoting it to an artifact when the name matches artilist[].
- * RNG-free.
- *
- * C's `lth` is the C string length INCLUDING the NUL, and it is used only as a
- * truthiness test plus the new_oname() allocation size, so JS keeps it as a
- * count and never allocates. */
-export async function oname(obj, name, oflgs) {
-    const via_naming = (oflgs & ONAME_VIA_NAMING) !== 0;
-    const skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
-    let nm = (name == null) ? '' : String(name);
-    let lth = nm.length ? nm.length + 1 : 0;
-
-    if (lth > PL_PSIZ) {
-        lth = PL_PSIZ;
-        nm = nm.slice(0, PL_PSIZ - 1); /* strncpy(buf, name, PL_PSIZ-1) + NUL */
-    }
-    /* If named artifact exists in the game, do not create another.
-       Also trying to create an artifact shouldn't de-artifact
-       it (e.g. Excalibur from prayer). In this case the object
-       will retain its current name. */
-    if ((obj.oartifact | 0) || (lth && exist_artifact(obj.otyp, nm)))
-        return obj;
-
-    if (!obj.oextra)
-        obj.oextra = {};
-    obj.oextra.oname = lth ? nm : undefined;
-
-    if (lth)
-        artifact_exists(obj, nm, true, oflgs);
-    if (obj.oartifact | 0) {
-        /* C do_name.c:402-404: can't dual-wield with an artifact secondary. */
-        if (obj === game.u.uswapwep)
-            await untwoweapon();
-        /* activate warning if you've just named your weapon "Sting" */
-        if (obj === game.u.uwep)
-            set_artifact_intrinsic(obj, true, W_WEP_D); // C do_name.c:406-407
-        /* if obj is owned by a shop, increase your bill */
-        if (obj.unpaid)
-            await alter_cost(obj, 0);
-        if (via_naming) {
-            /* violate illiteracy conduct since successfully wrote arti-name */
-            const uc = (game.u.uconduct = game.u.uconduct || {});
-            const wasLiterate = (uc.literate | 0);
-            uc.literate = wasLiterate + 1;
-            if (!wasLiterate)
-                livelog_printf(LL_CONDUCT | LL_ARTIFACT,
-                               'became literate by naming %s',
-                               bare_artifactname(obj));
-            else
-                livelog_printf(LL_ARTIFACT,
-                               'chose %s to be named "%s"',
-                               ansimpleoname(obj), bare_artifactname(obj));
-        }
-    }
-    /* C: carried(o) == (o->where == OBJ_INVENT) */
-    if (obj.where === OBJ_INVENT && !skip_inv_update)
-        update_inventory();
-    return obj;
-}
 
 // C questpgr.c:66-70 is_quest_artifact(otmp) -> (otmp->oartifact == gu.urole.questarti)
 // gu.urole.questarti is the role's quest artifact, an ART_ enum == 1-based artilist
@@ -664,30 +563,6 @@ export async function oname(obj, name, oflgs) {
 // game.urole.mnum is 331, not 0.
 /* artilist.h: first quest artifact; obj.h any_quest_artifact() bound. */
 const ART_ORB_OF_DETECTION = 21;
-const _ROLE_QUESTARTI = [
-    21, /* 0 Arc: ART_ORB_OF_DETECTION */
-    22, /* 1 Bar: ART_HEART_OF_AHRIMAN */
-    23, /* 2 Cav: ART_SCEPTRE_OF_MIGHT */
-    24, /* 3 Hea: ART_STAFF_OF_AESCULAPIUS */
-    25, /* 4 Kni: ART_MAGIC_MIRROR_OF_MERLIN */
-    26, /* 5 Mon: ART_EYES_OF_THE_OVERWORLD */
-    27, /* 6 Pri: ART_MITRE_OF_HOLINESS */
-    29, /* 7 Rog: ART_MASTER_KEY_OF_THIEVERY */
-    28, /* 8 Ran: ART_LONGBOW_OF_DIANA */
-    30, /* 9 Sam: ART_TSURUGI_OF_MURAMASA */
-    31, /* 10 Tou: ART_YENDORIAN_EXPRESS_CARD */
-    32, /* 11 Val: ART_ORB_OF_FATE */
-    33, /* 12 Wiz: ART_EYE_OF_THE_AETHIOPICA */
-];
-export function is_quest_artifact(otmp) {
-    /* C: `otmp->oartifact == gu.urole.questarti`.  This used to index
-     * _ROLE_QUESTARTI by game.urole.mnum, which role_init() sets to the role's
-     * PM_ index (331 for Archeologist), so the bounds test failed and every
-     * object was answered "not the quest artifact".  quest_info(0) is the same
-     * lookup off flags.initrole and is already the port's one spelling of it. */
-    const questarti = quest_info(0) | 0;
-    return !!(otmp && (otmp.oartifact | 0) === questarti && questarti !== 0);
-}
 
 // ── Object name table ─────────────────────────────────────────────────────────
 // Each entry: { otyp, name, descr }
@@ -2966,7 +2841,7 @@ export function armor_simple_name(armor) {
         return shirt_simple_name(armor);
     default: {
         const result = simpleonames(armor);
-        impossible("unknown armor category (%s => %u)", result, armcat);
+        impossible_objnam("unknown armor category (%s => %u)", result, armcat);
         return result;
     }
     }
@@ -3012,43 +2887,6 @@ export function bare_artifactname(obj) {
     }
 }
 
-// ── quest_info (nethack-c/src/questpgr.c:30-46) ──────────────────────────────
-// C: short quest_info(int typ)
-// Returns the monster number (PM_* enum) for a given quest role type.
-// typ == 0 → quest artifact index
-// typ == MS_LEADER → leader monster number
-// typ == MS_NEMESIS → nemesis monster number
-// typ == MS_GUARDIAN → guardian monster number
-export function quest_info(typ) {
-    const roleIx = (game.flags?.initrole ?? -1) | 0;
-
-    switch (typ) {
-    case 0:
-        /* quest artifact index (ART_* enum) */
-        if (roleIx >= 0 && roleIx < _ROLE_QUESTARTI.length)
-            return _ROLE_QUESTARTI[roleIx] | 0;
-        return 0;
-    case MS_LEADER:
-        if (roleIx >= 0 && roleIx < ROLE_LDRNUM.length)
-            return ROLE_LDRNUM[roleIx] | 0;
-        return 0;
-    case MS_NEMESIS:
-        if (roleIx >= 0 && roleIx < ROLE_NEMNUM.length)
-            return ROLE_NEMNUM[roleIx] | 0;
-        return 0;
-    case MS_GUARDIAN:
-        if (roleIx >= 0 && roleIx < ROLE_GUARDNUM.length)
-            return ROLE_GUARDNUM[roleIx] | 0;
-        return 0;
-    default:
-        /* C questpgr.c:42-44: the default arm calls impossible() and then
-         * FALLS OUT of the switch to the function's trailing `return 0;`.
-         * impossible() logs and returns (pline.c:587-637) — it does not
-         * abort, so throwing here was wrong. */
-        impossible("quest_info(%d)", typ);
-        return 0;
-    }
-}
 
 
 // ── genders (C role.c:688-694) ────────────────────────────────────────────────
@@ -4038,7 +3876,7 @@ export function killer_xname(obj) {
 }
 
 const M2_PNAME = 0x00080000;
-function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
+export function type_is_pname(ptr) { return (ptr.mflags2 & M2_PNAME) !== 0; }
 
 // C: objnam.c:1821-1919 — corpse_xname
 export function corpse_xname(otmp, adjective, cxn_flags) {
@@ -4451,7 +4289,7 @@ function _xname_arm(obj, c, bufptr = null) {
         if (typ === SLIME_MOLD) {
             const f = fruit_from_indx(obj.spe | 0);
             if (!f) {
-                impossible('Bad fruit #%d?', obj.spe);
+                impossible_objnam('Bad fruit #%d?', obj.spe);
                 buf = 'fruit';
             } else {
                 buf = f.fname;
@@ -5296,6 +5134,20 @@ import { W_ARM as W_ARM_D, W_ARMC as W_ARMC_D, W_ARMH as W_ARMH_D,
          W_BALL as W_BALL_D, W_CHAIN as W_CHAIN_D, WARN_OF_MON as WARN_OF_MON_D } from './const.js';
 import { artifact_exists, artifact_name, artiname, exist_artifact, nartifact_exist, permapoisoned } from './artifact.js'; // relocate-fns
 import { chrcasecpy, fuzzymatch, strncmpi } from './hacklib.js'; // relocate-fns
+import './do_wear.js'; // relocate-fns
+import { shk_your as ownership_prefix } from './shk.js'; // relocate-fns
+import { is_quest_artifact } from './questpgr.js'; // relocate-fns
+import { oname } from './do_name.js'; // relocate-fns
+import { genus } from './mon.js'; // relocate-fns
+import { G_UNIQ, PM_HIGH_CLERIC, PM_WIZARD_OF_YENDOR } from './makemon.js'; // relocate-fns
+import { rn1 } from './rng.js'; // relocate-fns
+import { Has_contents, QBUFSZ } from './const.js'; // relocate-fns
+import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
+import { and_its_contents } from './shk.js'; // relocate-fns
+export { genus } from './mon.js'; // relocate-fns
+export { oname } from './do_name.js'; // relocate-fns
+export { deliver_splev_message, is_quest_artifact, quest_info } from './questpgr.js'; // relocate-fns
+export { MS_GUARDIAN, impossible_objnam }; // relocate-fns
 export { artiname } from './artifact.js'; // relocate-fns
 export { _arti_exists_bit, _artiexist, _startsWithThe }; // relocate-fns
 const HAND_D = 6; /* body_part.h HAND */
@@ -5319,8 +5171,8 @@ function _xname_flags_body(obj, cxn_flags, side_effects) {
     if (obj.oartifact && obj.dknown) {
         const a = obj.oartifact | 0, info = _artiexist()[a];
         if (!info?.found) {
-            if (a < 1 || a > ARTILIST.length) impossible('found_artifact: invalid artifact index! (%d)', a);
-            else if (!_arti_exists_bit(a)) impossible("found_artifact: artifact doesn't exist yet? (%d)", a);
+            if (a < 1 || a > ARTILIST.length) impossible_objnam('found_artifact: invalid artifact index! (%d)', a);
+            else if (!_arti_exists_bit(a)) impossible_objnam("found_artifact: artifact doesn't exist yet? (%d)", a);
             else if (info === true) _artiexist()[a] = { exists: 1, found: 1 };
             else info.found = 1;
             const where = obj.where === OBJ_FLOOR_ON ? (inside_shop(obj.ox, obj.oy) ? ' in a shop' : ' on the floor')
@@ -5647,39 +5499,6 @@ export function thesimpleoname(obj) {
     return obufResult(ptr, result);
 }
 
-// ── deliver_splev_message (C questpgr.c:653-664) ────────────────────────────
-// C:
-//   void deliver_splev_message(void) {
-//       /* there's no provision for delivering via window instead of pline */
-//       if (gl.lev_message) {
-//           deliver_by_pline(gl.lev_message);
-//           free((genericptr_t) gl.lev_message);
-//           gl.lev_message = NULL;
-//       }
-//   }
-//
-// `gl.lev_message` (decl.h:567, in the `gl` "globals starting with l" struct)
-// is a PLAIN GLOBAL, not a member of struct level: it is appended to by
-// lspo_message() (sp_lev.c:3081, the des.message() Lua binding) while a special
-// level is being loaded, cleared by clear_level_structures() (mklev.c:931), and
-// consumed exactly once here on arrival.  js/sp_lev.js:lspo_message writes the
-// same global (game.lev_message) — it previously wrote game.level.lev_message,
-// a different path from the one this function reads, so even an unstubbed
-// deliver_by_pline would have found nothing.
-//
-// KNOWN GAP (outside this task's file scope): C also clears gl.lev_message in
-// clear_level_structures() (mklev.c:931-934).  js/mklev.js:4103's port replaces
-// game.level wholesale but does not clear game.lev_message, so a message
-// generated for a level that is never arrived at would leak to the next
-// generated level.  goto_level always generates-then-arrives, so the leak is
-// not reachable today; the one-line fix belongs in js/mklev.js.
-export async function deliver_splev_message() {
-    if (game.lev_message) {
-        await deliver_by_pline(game.lev_message);
-        /* C: free(gl.lev_message); gl.lev_message = NULL; */
-        game.lev_message = null;
-    }
-}
 
 // ── deliver_by_pline (C questpgr.c:421-435) ─────────────────────────────────
 // C:
@@ -6044,4 +5863,179 @@ async function wizterrainwish(bp, d) {
     if (madeterrain || badterrain)
         return hands_obj;
     return null;
+}
+
+export function Yname2(obj) {
+    const s = yname(obj);
+    /* C highc(*s) — upper-case the FIRST character only. */
+    return s ? (s.charAt(0).toUpperCase() + s.slice(1)) : s;
+}
+
+/* yname — C objnam.c:2359-2374.
+ *   yname(obj) { s = cxname(obj);
+ *                if (!carried(obj) || !obj_is_pname(obj)
+ *                    || obj->oartifact >= ART_ORB_OF_DETECTION)
+ *                    s = strcat(shk_your(nextobuf(), obj), s);
+ *                return s; }
+ * RNG-free on every arm.
+ *
+ * This was a throw-stub here AND at js/cmd.js:19318, which mattered because
+ * js/cmd.js:6674 is `await You("smear royal jelly all over %s.", yname(eobj))`
+ * — porting You() alone would have moved the abort one argument to the left,
+ * exactly the failure recorded in the cmd.js:6537 comment. Both sites now
+ * resolve to this body.
+ *
+ * Ownership uses the shared shk.c:5862-5873 helper, including shop bills,
+ * monster inventory, and unique corpses. */
+export function yname(obj) {
+    const ART_ORB_OF_DETECTION = 21;
+    let owned = !!obj && (obj.where | 0) === OBJ_INVENT;
+    if (obj && !owned) {
+        for (let o = game.invent; o; o = o.nobj) {
+            if (o === obj) { owned = true; break; }
+        }
+    }
+    const name = cxname(obj); // C objnam.c:2361: name before ownership prefix.
+    // C objnam.c:2365-2366: most carried artifacts omit the possessive.
+    if (owned && obj_is_pname(obj) && obj.oartifact < ART_ORB_OF_DETECTION)
+        return name;
+    // Retain the inventory-chain fallback for objects without a where field.
+    const prefix = owned && obj.where == null && !obj.unpaid
+        ? 'your ' : ownership_prefix('', obj);
+    return (prefix + name).slice(0, BUFSZ - 1);
+}
+
+/* C objnam.c:1121 the_unique_pm(ptr) — TRUE if "the <name>" (unique, not pname).
+ * pname monsters are unique but described as "Name" not "the Name" → FALSE. */
+export function the_unique_pm(ptr) {
+    if (type_is_pname(ptr))
+        return false;
+    let uniq = (ptr.geno & G_UNIQ) ? true : false;
+    if (ptr.pmidx === PM_HIGH_CLERIC || ptr.pmidx === PM_LONG_WORM_TAIL)
+        uniq = false;
+    if (ptr.pmidx === PM_WIZARD_OF_YENDOR)
+        uniq = true;
+    return uniq;
+}
+
+const P_NONE = 0;
+
+function obj_oc_skill(otyp) {
+    return MKOBJ_OC_SKILL[otyp | 0] | 0;
+}
+
+function is_weptool(otmp) {
+    return (otmp.oclass | 0) === TOOL_CLASS && obj_oc_skill(otmp.otyp) !== P_NONE;
+}
+
+export function erosion_matters(otmp) {
+    const oc = otmp.oclass | 0;
+    if (oc === TOOL_CLASS)
+        return is_weptool(otmp);
+    if (oc === WEAPON_CLASS || oc === ARMOR_CLASS || oc === BALL_CLASS || oc === CHAIN_CLASS)
+        return true;
+    return false;
+}
+
+// C ref: objnam.c rnd_class (5401–5417)
+export function rnd_class(first, last) {
+    // C objnam.c:5407-5418: singleton and reversed ranges consume no RNG.
+    if (last <= first) return first === last ? first : STRANGE_OBJECT;
+    let sum = 0;
+    for (let i = first; i <= last; i++)
+        sum += MKOBJ_OC_PROB[i] | 0;
+    if (!sum)
+        return rn1(last - first + 1, first);
+    let x = rnd(sum);
+    for (let i = first; i <= last; i++) {
+        x -= MKOBJ_OC_PROB[i];
+        if (x <= 0)
+            return i;
+    }
+    return STRANGE_OBJECT; // C objnam.c:5418
+}
+
+/* C objnam.c:2313 paydoname: the billing menu supplies its own price. */
+export async function paydoname(obj) {
+    const flags = game.iflags ||= {};
+    const savedKnown = obj.cknown;
+    const savedWeight = flags.wizweight;
+    const hasContents = Has_contents(obj);
+    if (hasContents) obj.cknown = 0;
+    let name;
+    try {
+        flags.wizweight = false;
+        flags.suppress_price = (flags.suppress_price | 0) + 1;
+        try {
+            name = (await doname(obj));
+        } finally {
+            --flags.suppress_price;
+            flags.wizweight = savedWeight;
+        }
+        if (hasContents) {
+            if (!obj.no_charge) {
+                if (name.startsWith('an ')) name = name.slice(3);
+                else if (name.startsWith('a ')) name = name.slice(2);
+                name = (obj.unpaid ? 'an unpaid ' : 'your ') + name;
+            }
+            if (!obj.cknown) {
+                if (obj.unpaid) {
+                    if (name.length + and_its_contents.length < BUFSZ - PREFIX)
+                        name += and_its_contents;
+                } else name = 'the contents of ' + name;
+            }
+        }
+        return name;
+    } finally {
+        obj.cknown = savedKnown;
+    }
+}
+
+/* C objnam.c:5623-5698 safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc,
+ * lastR) — "construct a query prompt string, based around an object name,
+ * which is guaranteed to fit within [QBUFSZ]". C writes into the caller's
+ * buffer in place and supports qbuf === qprefix (a partially-filled buffer,
+ * C:5654-5660); both of this file's call sites pass the same string as qbuf
+ * and qprefix (`safe_qbuf(qbuf, qbuf, ...)`), and since JS strings are
+ * immutable the qbuf===qprefix branch and the qprefix-copy branch compute the
+ * identical result, so they collapse to one branch here. The three
+ * impossible() sanity checks (C:5646-5653) report an oversized prefix,
+ * prefix plus suffix, or prefix plus filler plus suffix. Await the shared
+ * diagnostic before truncating the prompt, as C does.
+ * short_oname is the real objnam.js port, imported above as short_oname_shk.
+ * RNG-free throughout. */
+export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, fn1, fn2, thatthose) {
+    const lenlimit = QBUFSZ - 1;
+    const len_qpfx = qprefix ? qprefix.length : 0;
+    const len_qsfx = qsuffix ? qsuffix.length : 0;
+    const len_lastR = thatthose.length;
+
+    if (len_qpfx > lenlimit)
+        await lifecycle_impossible("safe_qbuf: prefix too long (%u characters).", len_qpfx);
+    else if (len_qpfx + len_qsfx > lenlimit)
+        await lifecycle_impossible("safe_qbuf: suffix too long (%u + %u characters).", len_qpfx, len_qsfx);
+    else if (len_qpfx + len_lastR + len_qsfx > lenlimit)
+        await lifecycle_impossible("safe_qbuf: filler too long (%u + %u + %u characters).",
+                   len_qpfx, len_lastR, len_qsfx);
+
+    let buf = qprefix ? String(qprefix).slice(0, lenlimit) : '';
+    let len = buf.length;
+
+    if (len + len_lastR + len_qsfx > lenlimit) {
+        /* C:5670-5681 — too long; skip formatting, last resort output truncated */
+        if (len < lenlimit) {
+            buf = (buf + thatthose).slice(0, lenlimit);
+            len = buf.length;
+            if (qsuffix && len < lenlimit)
+                buf = (buf + qsuffix).slice(0, lenlimit);
+        }
+    } else {
+        /* C:5682-5694 — suffix and last resort are guaranteed to fit */
+        len += len_qsfx; /* include the pending suffix */
+        const bufp = await short_oname(obj, fn1, fn2, lenlimit - len);
+        buf += (len + bufp.length <= lenlimit) ? bufp : thatthose;
+        if (qsuffix)
+            buf += qsuffix;
+    }
+    return buf;
 }

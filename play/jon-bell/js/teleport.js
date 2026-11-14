@@ -1,38 +1,41 @@
 // @ts-nocheck
 // teleport.c — collect_coords, enexto_core (C ref: teleport.c:86-275, 578-713).
 // @ts-nocheck — js sibling imports.
-import { rn2, rnd, pushRngLogEntry } from './rng.js';
+import { BOULDER } from './const.js';
+import { pushRngLogEntry } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { discover_object } from './o_init.js';
-import { onscary } from './makemon.js';
+import { onscary } from './monmove.js';
 import { db_under_typ } from './dbridge.js';
 /* C ref: dungeon.c on_level/In_tutorial — domagicportal's landed-from-another-
  * portal check and its tutorial-exit arm. */
 import { on_level, In_tutorial, assign_level } from './dungeon.js';
-import { ledger_no } from './bones.js';
+import { ledger_no } from './dungeon.js';
 /* C ref: potion.c:106 make_stunned — domagicportal's dizzy-on-arrival stun. */
 import { make_stunned } from './potion.js';
 /* C ref: do.c:2076 schedule_goto — domagicportal defers the actual level
  * change to the end of the turn, same as level_tele (js/cmd.js:11421). */
-import { invocation_message, number_leashed, may_passwall, notice_all_mons } from './cmd.js';
+import { invocation_message, may_passwall, notice_all_mons } from './hack.js';
+import { number_leashed } from './apply.js';
 import { schedule_goto } from './do.js';
-import { update_inventory } from './inventory_refresh.js';
-const LEASH = 236; /* objects.h LEASH, as js/cmd.js LEASH_OTYP */
+import { update_inventory } from './invent.js';
+import { LEASH } from './apply.js';
 import { yn_function } from './cmd.js';
 import { ROWNO, COLNO, ZAP_POS, ACCESSIBLE, D_CLOSED, D_LOCKED, DOOR, isok, u_at, TELEDS_TELEPORT, RLOC_MSG, TEMPLE, engulfing_u, STRAT_APPEARMSG, NO_TRAP_FLAGS, BOLT_LIM, IS_ALTAR, IS_STWALL, W_NONPASSWALL, MON_FLOOR, POOL, MOAT, WATER, DRAWBRIDGE_UP, DB_UNDER, DB_MOAT, DB_LAVA, LAVAPOOL, LAVAWALL, MM_IGNOREWATER, MM_IGNORELAVA, GP_CHECKSCARY, GP_ALLOW_U, GP_AVOID_MONPOS, LR_MONGEN, LR_TELE, LR_UPTELE, LR_DOWNTELE, FIRE_RES, NO_MM_FLAGS, IS_WATERWALL, In_endgame, Is_astralevel, Is_juiblex_level, MON_DETACH, MON_OBLITERATE, MON_ENDGAME_MIGR } from './const.js';
 import { game } from './gstate.js';
 import { You_feel, pline_mon } from './pline.js';
-import { registerStaticReset } from './statics.js';
 import { newsym, see_monsters, shieldeff, docrt, force_more_from_cls, force_more_pages, debugpline } from './display.js';
 import { vision_recalc } from './vision.js';
-import { nomul } from './allmain.js';
+import { nomul } from './hack.js';
 import { Warning, canspotmon, sensemon, canseemon, _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { pline } from './pline.js';
-import { Monnam } from './mcastu.js';
-import { Amonnam, m_monnam } from './mhitm.js';
-import { You } from './eat.js';
+import { Monnam } from './do_name.js';
+import { Amonnam, m_monnam } from './do_name.js';
+import { You } from './pline.js';
 import { spot_time_left } from './timeout.js';
 import { is_ice, sengr_at } from './engrave.js';
-import { in_rooms, engr_at } from './mklev.js';
+import { engr_at } from './engrave.js';
+import { in_rooms } from './hack.js';
 import { sobj_at } from './invent.js';
 import { u_on_newpos } from './dungeon.js';
 import { somexyspace } from './mkroom.js';
@@ -41,37 +44,37 @@ import { set_ustuck, maybe_unhide_at, mongone } from './mon.js';
 import { search_special } from './mkroom.js';
 import { vault_occupied, findgd, uleftvault } from './vault.js';
 /* C ref: trap.c:1700 deltrap — the once-trap is consumed on use. */
-import { deltrap } from './trap.js';
+import { deltrap, unconscious } from './trap.js';
 /* C ref: track.c:23 settrack — tele_trap's fixed-destination arm. */
 import { settrack } from './track.js';
 /* C ref: hack.h MON_AT/m_at — tele_trap's fixed-destination arm. */
 import { m_at } from './uhitm.js';
 /* C ref: mkroom.h VAULT, youprop.h ANTIMAGIC slot. */
 import { VAULT, ANTIMAGIC, MELT_ICE_AWAY, MAX_TYPE } from './const.js';
-import { m_into_limbo, unstuck, mon_leaving_level } from './dog.js';
+import { m_into_limbo, unstuck, mon_leaving_level } from './mon.js';
 import { m_unleash } from './apply.js';
 import { mdrop_special_objs } from './steal.js';
 import { yelp } from './sounds.js';
 import { impossible, place_monster } from './steed.js';
 import { impossible as rloc_impossible } from './pline.js';
-import { set_mon_data } from './makemon.js';
+import { set_mon_data } from './mondata.js';
 import { GP_ALLOW_XY, IS_SINK } from './const.js';
-import { dosinkfall } from './spoteffects.js';
+import { dosinkfall } from './hack.js';
 import { PASSES_WALLS } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { hideunder } from './mon.js';
 import { reset_utrap } from './trap.js';
-import { switch_terrain } from './cmd.js';
+import { switch_terrain } from './hack.js';
 /* C mon.c:4056 mnearto -> goodpos(newx, newy, mtmp, 0) — the FULL goodpos
  * (js/trap.js goodpos), not this file's goodpos_full, which enexto_core
  * uses for its candidate filter. */
-import { goodpos as goodpos_tp } from './trap.js';
 import { mon_nam } from './uhitm.js';
-import { m_in_air, permonstTemplate, Inhell } from './makemon.js';
+import { permonstTemplate, Inhell } from './makemon.js';
+import { m_in_air } from './mon.js';
 import { mon_aligntyp, inhistemple as inhistemple_real } from './priest.js';
 import { worm_seg_at, remove_worm as remove_worm_real, place_worm_tail_randomly as place_worm_tail_randomly_real } from './worm.js';
-import { dotrap, t_at, mintrap, fill_pit, seetrap, clamp_hole_destination,
-         buried_ball_to_punishment } from './trap.js';
+import { dotrap, t_at, mintrap, fill_pit, seetrap, clamp_hole_destination } from './trap.js';
+import { buried_ball_to_punishment } from './dig.js';
 /* ── imports for mlevel_tele_trap / teleport_pet (below) ── */
 import { migrate_to_level } from './dog.js';        /* C dog.c:886 */
 import { mon_has_amulet } from './wizard.js';        /* C mon.c mon_has_amulet */
@@ -86,7 +89,9 @@ import { near_capacity, spoteffects_mon_underfoot } from './hack.js';
 /* C ref: hack.c:3375 spoteffects -> pickup(1).  cmd.js <-> teleport.js is
  * already a cycle (cmd.js imports teleds from here); `export async function`
  * declarations hoist, so the binding is live by the time teleds runs. */
-import { _spoteffects_pickup, check_special_room, pooleffects, random_teleport_level, get_level } from './cmd.js';
+import { _spoteffects_pickup } from './cmd.js';
+import { check_special_room, pooleffects } from './hack.js';
+import { get_level } from './dungeon.js';
 import { OBJ_FREE, OBJ_INVENT, SLT_ENCUMBER } from './const.js';
 /* C ref: obj.h:332 carried(o) := ((o)->where == OBJ_INVENT).  Same one-liner
  * js/ball.js keeps file-locally; both are the macro, not a stand-in. */
@@ -107,8 +112,8 @@ import { VIBRATING_SQUARE, is_pit, is_hole } from './const.js';
 /* C ref: getpos.c:771 getpos() — scrolltele's cursor-driven destination pick
  * (teleport.c:892).  Lives in js/cmd.js alongside the rest of the getpos
  * machinery (truncate_to_map, movecmd, the farlook descriptions). */
-import { getpos } from './cmd.js';
-import { noit_mon_nam } from './mhitm.js';
+import { getpos } from './getpos.js';
+import { noit_mon_nam } from './do_name.js';
 import { learnscroll } from './read.js';
 /* C potion.c:260 make_blinded — canonical transient-blindness transition. */
 import { make_blinded } from './zap.js';
@@ -116,20 +121,55 @@ import { ENV } from './hostenv.js';
 import { closed_door as closed_door_vr } from './monmove.js';
 import { cansee as cansee_vr, recalc_block_point as recalc_block_point_vr } from './vision.js';
 import { You_hear as You_hear_vr, You_see as You_see_vr } from './pline.js';
-import { mb_trapped as mb_trapped_vr } from './dig.js';
+import { mb_trapped as mb_trapped_vr } from './monmove.js';
 import { D_TRAPPED as D_TRAPPED_VR, D_NODOOR as D_NODOOR_VR } from './const.js';
 import { upstart as upstart_vr } from './hacklib.js';
-import { newcham as newcham_vr } from './mon.js';
+import { newcham } from './mon.js';
 import { expels_gu as expels_gu_vr } from './mhitu.js';
-import { set_msg_xy as set_msg_xy_vr } from './cmd.js';
+import { set_msg_xy as set_msg_xy_vr } from './pline.js';
 import { uunstick as uunstick_vr } from './polyself.js';
-import { x_monnam as x_monnam_vr } from './mhitm.js';
+import { x_monnam as x_monnam_vr } from './do_name.js';
 import { nonliving as nonliving_vr } from './makemon.js';
 import { Unaware as Unaware_vr } from './display.js';
 import { ismnum as ismnum_vr, G_GENOD as G_GENOD_VR, NON_PM as NON_PM_VR, ARTICLE_THE as ARTICLE_THE_VR, ARTICLE_A as ARTICLE_A_VR, SUPPRESS_INVISIBLE as SUPPRESS_INVISIBLE_VR, AUGMENT_IT as AUGMENT_IT_VR, SUPPRESS_NAME as SUPPRESS_NAME_VR, SUPPRESS_IT as SUPPRESS_IT_VR } from './const.js';
 import { M2_LORD, is_demon, is_dprince } from './makemon.js'; // relocate-fns
 import { get_iter_mons } from './mon.js'; // relocate-fns
 import { On_W_tower_level } from './dungeon.js'; // relocate-fns
+import { SHOPBASE } from './const.js'; // relocate-fns
+import { flooreffects } from './do.js'; // relocate-fns
+import { obj_extract_self } from './dokick.js'; // relocate-fns
+import { revive_corpse } from './do.js';
+import { place_object } from './mkobj.js'; // relocate-fns
+import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js'; // relocate-fns
+import { rn1 } from './rng.js'; // relocate-fns
+import { costly_adjacent, addtobill as shk_addtobill, subfrombill } from './shk.js'; // relocate-fns
+import './trap.js'; // relocate-fns
+import { next_to_u } from './apply.js'; // relocate-fns
+import { next_to_u as next_to_u_real } from './apply.js'; // relocate-fns
+import { acurr, exercise } from './attrib.js'; // relocate-fns
+import { Confusion_hero, Role_if, SetVoice, UTOTYPE_NONE, _ADDINV_AMULET_OF_YENDOR, _Flying, _Levitation, _You_feel, _invlet_constant, _pd_chr_u_on_lvl, _pd_depth, _pd_unreachable_level, check_capacity_sync as check_capacity, set_cursor } from './cmd.js';
+import { u_locomotion } from './hack.js';
+import { addinv_core1, addinv_core2, prinv, reorder_invent } from './invent.js'; // relocate-fns
+import { menucolor_text } from './coloratt.js'; // relocate-fns
+import { build_window_screen, menu_search_case, menu_search_docorner, tty_window_offx } from './com_pager.js'; // relocate-fns
+import { A_STR, A_WIS, DIED, ECMD_OK, ECMD_TIME, FORCETRAP, I_SPECIAL, In_mines, In_quest, In_sokoban, Is_knox_level, LEVEL_TELEP, NO_KILLER_PREFIX, PICK_ONE, TELEPORT, TELEP_TRAP } from './const.js'; // relocate-fns
+import { DEFAULT_MENU_CMDS, flush_screen, force_more, status_r1_menu_docrt } from './display.js'; // relocate-fns
+import { dunlevs_in_dungeon, lev_by_name, print_branch, single_level_branch, surface } from './dungeon.js'; // relocate-fns
+import { morehungry } from './eat.js'; // relocate-fns
+import { done } from './end.js'; // relocate-fns
+import { wizard } from './gstate.js'; // relocate-fns
+import { nhgetch } from './input.js'; // relocate-fns
+import { mksobj } from './mkobj.js'; // relocate-fns
+import { SPBOOK_META } from './o_init_data.js'; // relocate-fns
+import { You_cant, Your, impossible as real_impossible, verbalize } from './pline.js'; // relocate-fns
+import { PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js'; // relocate-fns
+import { rnl } from './rnd.js'; // relocate-fns
+import { u_left_shop } from './shk.js'; // relocate-fns
+import { MAXSPELL, known_spell, num_spells, spelleffects } from './spell.js'; // relocate-fns
+import { level_tele_trap_u } from './trap.js'; // relocate-fns
+import { TtyMenu, menu_heading_text } from './tty_menu.js'; // relocate-fns
+import { getlin } from './windows.js'; // relocate-fns
+export { next_to_u } from './apply.js'; // relocate-fns
 /* C ref: include/hack.h flag bits for collect_coords() */
 export const CC_NO_FLAGS = 0x00;
 export const CC_INCL_CENTER = 0x01;
@@ -634,22 +674,6 @@ function Stunned(u) {
 }
 
 
-/* C ref: trap.c:6756-6767 unconscious() —
- *     if (gm.multi >= 0) return FALSE;
- *     return (u.usleep || (gn.nomovemsg && (..."You awake"/"You regain con"/
- *                                            "You are consci")));
- * gm.multi is game.multi in this port (js/allmain.js nomul/unmul). */
-function unconscious() {
-    const g = game;
-    if ((g.multi | 0) >= 0)
-        return false;
-    if (g.u && g.u.usleep)
-        return true;
-    const nmm = g.nomovemsg;
-    return !!(nmm && (nmm.startsWith('You awake')
-                      || nmm.startsWith('You regain con')
-                      || nmm.startsWith('You are consci')));
-}
 
 export async function scrolltele(scroll) {
     const g = game, u = g.u;
@@ -757,44 +781,6 @@ export async function scrolltele(scroll) {
 /* C ref: teleport.c:840-845 tele — teleport via a non-scroll method. */
 export async function tele() {
     await scrolltele(null);
-}
-/* C ref: apply.c:888-916 mleashed_next2u + next_to_u — a leashed monster that
- * is not adjacent is pulled next to the hero via mnexto() (enexto's
- * collect_coords shuffle: RNG); if it is STILL not adjacent a cursed leash
- * holds (returns TRUE, i.e. next_to_u() FALSE), otherwise the leash goes
- * slack.  Returns FALSE if any leashed monster is stuck far away, or if the
- * steed carries the Amulet. */
-export async function next_to_u() {
-    for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
-        next = mtmp.nmon; /* C mon.c:4550: mnexto can migrate this monster. */
-        if (mtmp.mhp <= 0 || (mtmp.mstate | 0))
-            continue;
-        if (!mtmp.mleashed)
-            continue;
-        const u = game.u;
-        const next2u = () => dist2(mtmp.mx | 0, mtmp.my | 0, u.ux | 0, u.uy | 0) <= 2;
-        if (!next2u())
-            await mnexto(mtmp, RLOC_NOMSG);
-        if (!next2u()) {
-            let otmp = game.invent;
-            while (otmp && !((otmp.otyp | 0) === LEASH && (otmp.leashmon | 0) === (mtmp.m_id | 0)))
-                otmp = otmp.nobj;
-            if (!otmp) {
-                await rloc_impossible('leashed-unleashed mon?');
-                return false;
-            }
-            if (otmp.cursed)
-                return false;
-            mtmp.mleashed = 0;
-            otmp.leashmon = 0;
-            update_inventory();
-            await pline(`You feel ${(number_leashed() > 1) ? 'a' : 'the'} leash go slack.`);
-        }
-    }
-    /* C 924-926: no pack mules for the Amulet */
-    if (game.u.usteed && mon_has_amulet(game.u.usteed))
-        return false;
-    return true;
 }
 
 /* C ref: teleport.c:772-783 vault_tele — the "once" teleport trap's
@@ -988,182 +974,15 @@ export function enexto_out(xx, yy, mdat) {
  * monster to the preceding plane.  This is deliberately stateful and keeps
  * the one C RNG draw used to throttle the "besieged" message. */
 /* C mon.c:3880 `static long msgmv`: process-lifetime, NOT saved with the game. */
-let msgmv = 0;
-registerStaticReset('teleport.js: elemental_clog msgmv (mon.c:3880)', () => { msgmv = 0; });
-export async function elemental_clog(mon) {
-    const u = game.u || {};
-    if (!In_endgame(u.uz))
-        return;
-    const last = msgmv;
-    if (!last || ((game.moves | 0) - last) > 200) {
-        if (!last || rn2(2))
-            await You_feel('besieged.');
-        msgmv = game.moves | 0;
-    }
+import { msgmv, set_msgmv } from './mon.js';
+import { MAGICAL_BREATHING, SWIMMING, WWALKING } from './const.js'; // relocate-fns
+import { is_lava } from './dbridge.js'; // relocate-fns
+import { accessible as accessible_mv, closed_door as closed_door_mv } from './monmove.js'; // relocate-fns
+import { _GP_M1_AMORPHOUS, _GP_M1_AMPHIBIOUS, _GP_M1_SWIM, _GP_M2_ROCKTHROW, _gp_Fire_resistance, _gp_Flying, _gp_Is_waterlevel, _gp_Levitation, _gp_Upolyd, _gp_is_pool, _gp_is_waterwall, _gp_is_youmonst, _gp_m_at, _gp_m_in_air, _gp_passes_walls, _gp_uprop_he } from './trap.js'; // relocate-fns
+export { mnexto } from './mon.js'; // relocate-fns
+export { MIGR_RANDOM_MTT, S_ELEMENTAL_MTT, amorphous, is_rider_tp, ledger_no_tp }; // relocate-fns
 
-    let foreign = null, home = null, weakest = null, other = null, pet = null;
-    let weakestLevel = 0;
-    for (let cur = game.fmon; cur; cur = cur.nmon) {
-        if (cur === mon || (cur.mhp | 0) <= 0 || ((cur.mx | 0) === 0 && (cur.my | 0) === 0))
-            continue;
-        if (mon_has_amulet(cur) || !ok_to_obliterate_tp(cur))
-            continue;
-        if ((cur.data?.mlet | 0) === S_ELEMENTAL_MTT) {
-            if (!is_home_elemental(cur.data)) {
-                if (!foreign) foreign = cur;
-            } else if (!home) home = cur;
-        } else if (!cur.mtame) {
-            const level = (cur.m_lev ?? cur.mlevel ?? cur.mlvl ?? 0) | 0;
-            if (!weakestLevel || level < weakestLevel) {
-                weakestLevel = level;
-                weakest = cur;
-            } else if (!other) {
-                other = cur;
-            }
-        } else if (!pet) {
-            pet = cur;
-            break; // C stops after finding the first pet.
-        }
-    }
-    const victim = foreign || home || weakest || other || pet;
-    if (victim) {
-        const x = victim.mx | 0, y = victim.my | 0;
-        victim.mstate = ((victim.mstate | 0) | MON_OBLITERATE) >>> 0;
-        await mongone(victim);
-        await rloc_to(mon, x, y);
-    } else if (!Is_astralevel(u.uz)) {
-        const dest = { dnum: u.uz?.dnum | 0, dlevel: ((u.uz?.dlevel | 0) - 1) | 0 };
-        mon.mstate = ((mon.mstate | 0) | MON_ENDGAME_MIGR) >>> 0;
-        if (mon.mx) {
-            await unstuck(mon);
-            await mdrop_special_objs(mon);
-        }
-        await migrate_to_level(mon, ledger_no_tp(dest), MIGR_RANDOM_MTT, null);
-    }
-}
 
-function ok_to_obliterate_tp(mon) {
-    /* C mon.c:3863-3875: preserve uniquely important or attached monsters. */
-    const pm = mon.data;
-    const n = pm?.pmidx ?? pm?.mnum;
-    return (n | 0) !== PM_WIZARD_OF_YENDOR
-        && !is_rider(pm)
-        && !mon.mextra?.emin && !mon.mextra?.epri && !mon.mextra?.eshk
-        && mon !== game.u?.ustuck && mon !== game.u?.usteed;
-}
-
-/* C mon.c:3985 deal_with_overcrowding(mtmp). */
-export async function deal_with_overcrowding(mtmp) {
-    /* debugpline1 (lint.h:61): shown only when debugcore() admits mon.c;
-     * m_monnam is EXACT_NAME, so building the argument draws nothing. */
-    if (In_endgame(game.u?.uz)) {
-        await debugpline('mon.c', 'overcrowding: elemental_clog on %s', m_monnam(mtmp));
-        await elemental_clog(mtmp);
-    } else {
-        await debugpline('mon.c', 'overcrowding: sending %s into limbo', m_monnam(mtmp));
-        await m_into_limbo(mtmp);
-    }
-}
-/* C mon.c:3955 mnexto(mtmp, rlocflags) — "make monster mtmp next to you (if
- * possible); might place monst on far side of a wall or boulder". */
-export async function mnexto(mtmp, rlocflags) {
-    const u = game.u;
-    if (mtmp === u.usteed) {
-        /* Keep your steed in sync with you instead */
-        mtmp.mx = u.ux | 0;
-        mtmp.my = u.uy | 0;
-        return;
-    }
-    const mm = enexto_out(u.ux | 0, u.uy | 0, mtmp.data);
-    if (!mm || !isok(mm.x, mm.y)) {
-        await deal_with_overcrowding(mtmp);
-        return;
-    }
-    /* C mon.c:3971-3979: wizard-mode 'montelecontrol' option; enexto()'s
-     * value for mm is the default, savemm keeps the player from choosing the
-     * hero's location and then overriding the invalid-spot prompt. */
-    if ((game.iflags?.mon_telecontrol || game.iflags?.montelecontrol)) {
-        const savemm = { x: mm.x, y: mm.y };
-        if (!(await control_mon_tele(mtmp, mm, rlocflags, false))) {
-            mm.x = savemm.x;
-            mm.y = savemm.y;
-        }
-    }
-    await rloc_to_flag(mtmp, mm.x, mm.y, rlocflags);
-}
-/* C mon.c:3997-4017 maybe_mnexto(mtmp) — "like mnexto() but requires
- * destination to be directly accessible".  Unlike mnexto it never falls back
- * to deal_with_overcrowding: a failed enexto() or 20 exhausted tries simply
- * leaves the monster where it was, which is exactly how kick_monster's caller
- * detects "it did not dodge" (it re-reads mtmp->mx/my after the call).
- *
- * RNG-BEARING, and the loop is the reason: enexto_out() runs collect_coords,
- * which shuffles rings 1..3, so EACH of the up-to-20 tries draws.  A candidate
- * that is not couldsee() (or is a diagonal for a grid bug) is rejected and the
- * whole enexto is re-run — the draws are not deduplicated. */
-export async function maybe_mnexto(mtmp) {
-    const u = game.u;
-    const ptr = mtmp.data;
-    const diagok = !NODIAG_TP((ptr && (ptr.pmidx ?? ptr.mnum)) | 0);
-    let tryct = 20;
-
-    do {
-        const mm = enexto_out(u.ux | 0, u.uy | 0, ptr);
-        if (!mm)
-            return;
-        if (couldsee(mm.x, mm.y)
-            /* don't move grid bugs diagonally */
-            && (diagok || mm.x === (mtmp.mx | 0) || mm.y === (mtmp.my | 0))) {
-            /* [this doesn't honor the 'montelecontrol' option] */
-            await rloc_to(mtmp, mm.x, mm.y);
-            return;
-        }
-    } while (--tryct > 0);
-}
-/* C hack.h:1414 NODIAG(monnum) = ((monnum) == PM_GRID_BUG) */
-function NODIAG_TP(monnum) { return (monnum | 0) === PM_GRID_BUG_TP; }
-const PM_GRID_BUG_TP = 116; /* js/pm.generated.js PM_GRID_BUG */
-/* C mon.c:4031 mnearto(mtmp, x, y, move_other, rlocflags) — 2 if another
- * monster was displaced, 1 on success, 0 on failure. */
-export async function mnearto(mtmp, x, y, move_other, rlocflags) {
-    let othermon = null;
-    let res = 1;
-
-    if ((mtmp.mx | 0) === x && (mtmp.my | 0) === y && m_at(x, y) === mtmp)
-        return res;
-
-    if (move_other && (othermon = m_at(x, y)) != null) {
-        /* take othermon off the map; it might end up immediately returning
-           but for the moment it is leaving */
-        await mon_leaving_level(othermon);
-        othermon.mx = 0; othermon.my = 0; /* 'othermon' is not on the map */
-        othermon.mstate = ((othermon.mstate | 0) | MON_OFFMAP_TP) >>> 0;
-    }
-
-    let newx = x, newy = y;
-    if (!goodpos_tp(newx, newy, mtmp, 0)) {
-        /* "Actually we have real problems if enexto ever fails." */
-        const mm = enexto_out(newx, newy, mtmp.data);
-        if (!mm || !isok(mm.x, mm.y)) {
-            if (othermon)
-                await deal_with_overcrowding(othermon);
-            return 0;
-        }
-        newx = mm.x; newy = mm.y;
-    }
-    /* [this doesn't honor the 'montelecontrol' option] */
-    await rloc_to_flag(mtmp, newx, newy, rlocflags);
-
-    if (move_other && othermon) {
-        res = 2; /* moving another monster out of the way */
-        /* 'move_other'==FALSE this time; fail rather than recurse */
-        if (!await mnearto(othermon, x, y, false, rlocflags))
-            await deal_with_overcrowding(othermon);
-    }
-    return res;
-}
-/* C monst.h:59 MON_OFFMAP. */
-const MON_OFFMAP_TP = 0x01;
 
 export async function rloc_to(mtmp, x, y) {
     await rloc_to_core(mtmp, x, y, RLOC_NOMSG);
@@ -1400,7 +1219,7 @@ function control_teleport(ptr) {
 }
 
 /* local copy: is_rider (from js/mklev.js, not exported) */
-function is_rider(ptr) {
+function is_rider_tp(ptr) {
     const n = ptr?.pmidx ?? ptr?.mnum ?? ptr?.mndx;
     return (n | 0) === 311 || (n | 0) === 312 || (n | 0) === 313;
 }
@@ -1418,7 +1237,6 @@ const S_EEL = 57;
 const S_HUMAN = 53;
 const S_VAMPIRE = 48;
 const S_ANGEL = 27;
-const BOULDER = 475;
 /* otyp of the scare monster scroll. objects.h enumerates the scrolls in
  * source order starting at SCR_ENCHANT_ARMOR: enchant armor 323, destroy
  * armor 324, confuse monster 325, scare monster 326, remove curse 327,
@@ -1539,7 +1357,7 @@ export function goodpos_onscary(x, y, mptr) {
        onscary(), this permonst-only test has no Angel/lawful-minion arm. */
     const mlet = mptr.mlet | 0;
     if (mlet === S_HUMAN || mlet === S_ANGEL
-        || is_rider(mptr) || unique_corpstat_local(mptr))
+        || is_rider_tp(mptr) || unique_corpstat_local(mptr))
         return false;
     /* onscary() checks for vampshifted vampire bats/fog clouds/wolves too */
     const lev = game.level?.at(x, y);
@@ -2115,7 +1933,7 @@ export async function u_teleport_mon(mtmp, give_feedback) {
         await unstuck(mtmp);
         if (!await rloc(mtmp, RLOC_MSG))
             await m_into_limbo(mtmp);
-    } else if ((is_rider(mtmp.data) || control_teleport(mtmp.data))
+    } else if ((is_rider_tp(mtmp.data) || control_teleport(mtmp.data))
                && rn2(13) && enexto(cc, game.u.ux, game.u.uy, mtmp.data)) {
         await rloc_to(mtmp, cc.x, cc.y);
     } else {
@@ -2125,83 +1943,7 @@ export async function u_teleport_mon(mtmp, give_feedback) {
     return true;
 }
 
-/* C mon.c:2890-2985 vamprises() — a vampire in bat/fog/wolf form that "dies"
- * reverts to vampire instead.  If it was engulfing the hero, expels() (the
- * mnexto ring shuffle + spoteffects) runs first, then newcham back to the
- * vampire.  Returns TRUE when the monster rose (mondead() then returns early).
- */
-const S_GHOST_VR = 54; /* C defsym.h S_GHOST */
-/* C mondata.h noncorporeal(ptr) */
-function noncorporeal_vr(ptr) { return (ptr.mlet | 0) === S_GHOST_VR; }
 
-export async function vamprises(mtmp) {
-    const mndx = mtmp.cham | 0;
-    if (!ismnum_vr(mndx) || mndx === ((mtmp.data?.pmidx ?? mtmp.mnum) | 0)
-        || ((game.mvitals?.[mndx]?.mvflags | 0) & G_GENOD_VR))
-        return false;
-    const u = game.u;
-    const ptr = mtmp.data;
-    const noncorp = noncorporeal_vr(ptr);
-    const amorph = amorphous(ptr);
-    const specMon = nonliving_vr(ptr) || noncorp || amorph;
-    const specDeath = !!game.gd?.disintegested || noncorp || amorph;
-    const unaware = Unaware_vr();
-    const x0 = mtmp.mx | 0, y0 = mtmp.my | 0;
-    const action = (unaware ? 'you dream that ' : '')
-        + x_monnam_vr(mtmp, ARTICLE_THE_VR, specMon ? null : 'seemingly dead',
-                      SUPPRESS_INVISIBLE_VR | AUGMENT_IT_VR, false)
-        + ' ' + (unaware ? '' : 'suddenly ')
-        + (specDeath ? 'reconstitutes' : 'transforms') + ' and rises as';
-    mtmp.mcanmove = 1;
-    mtmp.mfrozen = 0;
-    /* set_mon_min_mhpmax(mtmp, 10) */
-    if ((mtmp.mhpmax | 0) < (mtmp.m_lev | 0) + 1) mtmp.mhpmax = (mtmp.m_lev | 0) + 1;
-    if ((mtmp.mhpmax | 0) < 10) mtmp.mhpmax = 10;
-    mtmp.mhp = mtmp.mhpmax;
-    if (u.ustuck === mtmp) {
-        if (u.uswallow)
-            await expels_gu_vr(mtmp, (ptr.pmidx ?? mtmp.mnum) | 0, false);
-        else
-            await uunstick_vr();
-    }
-    if (!await newcham_vr(mtmp, mndx, 0 /* NO_NC_FLAGS */))
-        return (mtmp.mhp | 0) > 0;
-    mtmp.cham = ((mtmp.data?.pmidx ?? mtmp.mnum) | 0) === mndx ? NON_PM_VR : mndx;
-    if (canspotmon(mtmp)) {
-        await pline_mon(mtmp, upstart_vr(action) + ' '
-            + x_monnam_vr(mtmp, ARTICLE_A_VR, null,
-                          SUPPRESS_NAME_VR | SUPPRESS_IT_VR | SUPPRESS_INVISIBLE_VR, false) + '!');
-        game.vamp_rise_msg = true;
-    }
-    /* mon.c:2949-2975: a revived vampire on a closed door spot smashes it */
-    if (closed_door_vr(x0, y0)) {
-        const lev = game.level.at(x0, y0);
-        const trapped = ((lev.doormask | 0) & D_TRAPPED_VR) !== 0;
-        const seeit = cansee_vr(x0, y0);
-
-        set_msg_xy_vr(x0, y0); /* You()/pline() will reset this */
-        if (!seeit)
-            await You_hear_vr('%s.', trapped ? 'an explosion' : 'a door being smashed');
-        else if (!canspotmon(mtmp))
-            await You_see_vr('%s.', trapped ? 'a door exploding' : 'a door being smashed');
-        else if (!unaware)
-            await pline(trapped ? 'The door is smashed and it explodes!' : 'The door is smashed.');
-        set_msg_xy_vr(0, 0); /* in case none of the messages was delivered */
-
-        lev.doormask = D_NODOOR_VR;
-        recalc_block_point_vr(x0, y0);
-        if (trapped) {
-            const save_verbose = game.flags.verbose;
-            game.flags.verbose = false;
-            const trap_killed = await mb_trapped_vr(mtmp, seeit);
-            game.flags.verbose = save_verbose;
-            if (trap_killed && canspotmon(mtmp) && !unaware)
-                await pline_mon(mtmp, `${Monnam(mtmp)} is destroyed!`);
-        }
-    }
-    newsym(x0, y0);
-    return true;
-}
 
 const M3_COVETOUS = 0x001f;
 
@@ -2261,4 +2003,1404 @@ export async function tele_to_rnd_pet() {
     const y = (pet.my | 0) + rn2(3) - 1;
     if (isok(x, y) && teleok(x, y, false))
         await teleds(x, y, TELEDS_TELEPORT);
+}
+
+function _rloco_on_W_tower_level(lev) {
+    if (!lev)
+        return false;
+    const g = game;
+    const same = (a) => !!(a && (a.dnum | 0) === (lev.dnum | 0)
+                            && (a.dlevel | 0) === (lev.dlevel | 0));
+    return same(g.wiz1_level) || same(g.wiz2_level) || same(g.wiz3_level);
+}
+
+/* C ref: shk.c:5368-5381 — canonical helper also handles stored shk_x/shk_y. */
+function _rloco_costly_adjacent(shkp, x, y) {
+    return costly_adjacent(shkp, x, y);
+}
+
+/* First entry of in_rooms(x, y, typewanted), or 0 if the list is empty --
+ * mirrors C's `*in_rooms(...)` (in_rooms returns a room-number string; the
+ * leading char is the "primary" room, 0 == none). */
+function _rloco_room0(x, y, typewanted) {
+    const rooms = in_rooms(x, y, typewanted);
+    return rooms && rooms.length ? (rooms[0] | 0) : 0;
+}
+
+/* True iff nonzero room `roomno` appears anywhere in in_rooms(x, y,
+ * typewanted)'s list -- mirrors C's `strchr(in_rooms(...), roomno)` (a room
+ * number of 0 never matches, same as every call site's own `h &&`/`oo &&`
+ * guard ahead of it). */
+function _rloco_room_has(x, y, typewanted, roomno) {
+    if (!roomno)
+        return false;
+    const rooms = in_rooms(x, y, typewanted);
+    return !!(rooms && rooms.includes(roomno));
+}
+
+/* C ref: mondata.h is_rider(ptr), used by teleport.c:2107. */
+function _rloco_is_rider(obj) {
+    const n = obj?.corpsenm | 0;
+    return n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE;
+}
+
+const RLOCO_CORPSE = 265; /* objects[].otyp CORPSE -- same literal js/dig.js,
+                              js/dog.js and js/hold_another_object.js each use
+                              locally for this otyp. */
+
+/* C ref: teleport.c:2101-2181 rloco(obj) — false if the object is gone.
+ * Await billing and its messages before placing the object, as C does. */
+export async function rloco(obj) {
+    /* teleport.c:2107-2110 -- a Rider corpse revives instead of relocating;
+     * C returns FALSE when revival consumes the object. */
+    if ((obj.otyp | 0) === RLOCO_CORPSE && _rloco_is_rider(obj)) {
+        if (await revive_corpse(obj))
+            return false;
+    }
+
+    obj_extract_self(obj);
+    const otx = obj.ox | 0;
+    const oty = obj.oy | 0;
+    const dndest = game.dndest || {};
+    const restrictedFall = (otx === 0 && dndest.lx);
+
+    let tx, ty;
+    let tryLimit = 4000;
+    for (;;) {
+        tx = rn1(COLNO - 3, 2);
+        ty = rn2(ROWNO);
+        if (!--tryLimit)
+            break;
+        if (!goodpos(tx, ty, null, 0))
+            continue;
+        if (restrictedFall) {
+            const inDn = within_bounded_area(tx, ty, dndest.lx, dndest.ly, dndest.hx, dndest.hy);
+            const inNear = dndest.nlx
+                ? within_bounded_area(tx, ty, dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy)
+                : false;
+            if (!inDn || inNear)
+                continue;
+        }
+        if (dndest.nlx && _rloco_on_W_tower_level(game.u?.uz)) {
+            const nowIn = within_bounded_area(tx, ty, dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy);
+            const wasIn = within_bounded_area(otx, oty, dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy);
+            if (nowIn !== wasIn)
+                continue;
+        }
+        break;
+    }
+
+    if (await flooreffects(obj, tx, ty, 'fall')) {
+        if (!(otx === 0 && oty === 0))
+            newsym(otx, oty);
+        return false;
+    } else if (otx === 0 && oty === 0) {
+        /* fell through a trap door; no update of old loc needed */
+    } else {
+        const shkp = await find_objowner(obj, otx, oty);
+        const objinshop = !!(shkp && costly_spot(otx, oty));
+        const onboundary = !!(shkp && _rloco_costly_adjacent(shkp, otx, oty));
+
+        if (objinshop || (obj.unpaid && onboundary)) {
+            const u = game.u || {};
+            const h = _rloco_room0(u.ux | 0, u.uy | 0, SHOPBASE);
+            const oo = _rloco_room0(otx, oty, 0);
+            const hinshop = !!(h && _rloco_room_has(shkp.mx | 0, shkp.my | 0, 0, h));
+
+            if (hinshop && costly_spot(tx, ty) && oo && _rloco_room_has(tx, ty, 0, oo)) {
+                if (obj.unpaid)
+                    await subfrombill(obj, shkp);
+            } else if (hinshop && _rloco_costly_adjacent(shkp, tx, ty)
+                       && oo && _rloco_room_has(tx, ty, 0, oo)) {
+                if (!obj.unpaid) {
+                    // C teleport.c:2174: finish billing before place_object().
+                    await shk_addtobill(obj, false, false, false);
+                }
+            } else {
+                await stolen_value(obj, otx, oty, false, false);
+            }
+        }
+
+        newsym(otx, oty);
+    }
+
+    place_object(obj, tx, ty);
+    newsym(tx, ty);
+    return true;
+}
+
+// C ref: dungeon.c:3286 dooverview() — the '^O' (C('o')) overview command.
+//   dooverview → show_overview(0, 0) (dungeon.c:3296) builds an NHW_MENU listing
+//   each visited dungeon level (traverse_mapseenchn → print_mapseen,
+//   dungeon.c:3508).  The menu is PICK_NONE for a normal #overview (why==0), so
+//   nothing is selectable and ESC/space dismisses it.  No turn, no RNG.
+//
+//   with no interesting features discovered yet, so the menu is exactly:
+//     "The Dungeons of Doom:"        ← dungeon header (printdun, dunlev_ureached
+//                                       == entry_lev so plain "%s:", dungeon.c:3534)
+//     "Level 1: <- You are here."    ← level entry (final==0 → no TAB; on_level
+//                                       → " <- You are here.", dungeon.c:3554/3566)
+//     "(end)"
+//   The level entry is a non-accelerator menu item, so the tty menu indents it
+//   by the 3-char accelerator field; the header and "(end)" are flush at the
+//   window's left column (WIN_COL=41, matching the recorded reference).
+// C ref: dungeon.c:3530-3545 dungeon header; dungeon.c:3548-3576 level line.
+// C ref: teleport.c:917-1029 dotelecmd() — C('t') / ^T "teleport around the
+// level"; 'm ^T' chooses among several teleport modes.
+//
+//   if (!wizard)
+//       return dotele(FALSE) ? ECMD_TIME : ECMD_OK;
+//   ...
+//   if (!iflags.menu_requested) {
+//       ignore_restrictions = TRUE;
+//   } else { ...the four-way tport-mode menu... }
+//   res = dotele(ignore_restrictions);
+//   HTeleportation = save_HTele; ETeleportation = save_ETele;
+//   ...
+//   return res ? ECMD_TIME : ECMD_OK;
+//
+// `wizard` global (js/options.js:62-63 → flags.debug).  With no 'm' prefix,
+// iflags.menu_requested is FALSE, so the menu is skipped and ignore_restrictions
+// is TRUE — dotele(TRUE) — which is what makes scrolltele's teleport-control
+// branch (teleport.c:872 `|| wizard`) fire and prompt for a destination.
+//
+// The saved/restored HTeleportation/ETeleportation are untouched on this path
+// (only the 'm'-prefix menu arms write them), and `added`/`hidden` stay
+// NOOP_SPELL, so the whole restore tail is a no-op here.
+//
+// dotele(break_the_rules=FALSE) (teleport.c:1033):
+//   trap = t_at(u.ux,u.uy); if (trap && !trap->tseen) trap = 0;
+//   ...trap handling (no trap at the hero tile here)...
+//   if (!trap && !break_the_rules) {
+//     if (!Teleportation || (u.ulevel < (Role_if(PM_WIZARD)?8:12)
+//                            && !can_teleport(youmonst.data))) {
+//       knownsp = known_spell(SPE_TELEPORT_AWAY);
+//       castit  = (knownsp >= spe_Fresh && !Confusion);
+//       if (!castit && !break_the_rules) {
+//         You("%s.", (!Teleportation ? ((knownsp != spe_Unknown)
+//                       ? "can't cast that spell" : "don't know that spell")
+//                     : "are not able to teleport at will"));
+//         return 0;  // ECMD_OK — no turn, no RNG
+//       }
+//     }
+//   }
+// = [Force Bolt, Sleep] with no Teleport Away), this is RNG-free and prints
+// "You don't know that spell." then returns ECMD_OK.
+const SPE_TELEPORT_AWAY = 400;
+
+export async function dotelecmd() {
+    const g = game;
+    const tprop = g.u.uprops[TELEPORT], savedTele = { intrinsic: tprop.intrinsic, extrinsic: tprop.extrinsic };
+    let hiddenSpell = null, savedSpell;
+    // C ref: teleport.c:930-932 — `if (!wizard) return dotele(FALSE) ? ...`.
+    // iflags.menu_requested is FALSE without the 'm' prefix, so the wizard arm
+    // reduces to ignore_restrictions = TRUE; dotele(TRUE).
+    const wizard = !!(g.flags && g.flags.debug);
+    let ignore_restrictions = wizard;
+    if (wizard && g.iflags && g.iflags.menu_requested) {
+        // C ref: teleport.c:937-995 — 'm ^T' picks among the teleport modes.
+        const tports = [
+            ['n', 'normal ^T on demand; no spell, obey restrictions'],
+            ['s', 'via spellcast; no intrinsic teleport'],
+            ['t', 'try ^T without having it; no spell'],
+            ['w', 'debug mode; ignore restrictions'],
+        ];
+        const menu = new TtyMenu({
+            overlay: !(g.iflags.menu_overlay === false || g.iflags.menu_overlay === 0) /* wintty.c:1927 */ });
+        for (const [let_, desc] of tports)
+            menu.add_menu(let_.charCodeAt(0), let_, 0, desc, false, let_ === 'w');
+        menu.end_menu('Which way do you want to teleport?');
+        const { count, picks } = await menu.select_menu(PICK_ONE);
+        let tmode;
+        if (count > 0) {
+            tmode = String.fromCharCode(picks[0]);
+            if (count > 1 && tmode === 'w')
+                tmode = String.fromCharCode(picks[1]);
+        } else if (count === 0) {
+            tmode = 'w'; /* preselected one explicitly chosen and toggled off */
+        } else { /* ESC */
+            return ECMD_OK;
+        }
+        // C teleport.c:997-998; spell.c:1749-1753 hides at NO_SPELL.
+        if (tmode === 's' || tmode === 't') tprop.intrinsic = tprop.extrinsic = 0;
+        if (tmode === 'n' || tmode === 't') {
+            if (tmode === 'n') tprop.intrinsic |= I_SPECIAL;
+            hiddenSpell = (g.spl_book || []).slice(0, num_spells()).find(sb => sb.sp_id === SPE_TELEPORT_AWAY);
+            if (hiddenSpell) { savedSpell = { ...hiddenSpell }; hiddenSpell.sp_id = 0; }
+        }
+        // C spell.c:1735-1740: temporarily add a fresh spell, preserving the sentinel.
+        if (tmode === 's' && known_spell(SPE_TELEPORT_AWAY) === 0) {
+            const spl = g.spl_book || (g.spl_book = []), i = num_spells();
+            if (i === MAXSPELL) await real_impossible('tport_spell: spellbook full');
+            else {
+                hiddenSpell = spl[i] || (spl[i] = { sp_id: 0, sp_lev: 0, sp_know: 0 }); savedSpell = { ...hiddenSpell };
+                Object.assign(hiddenSpell, { sp_id: SPE_TELEPORT_AWAY, sp_lev: 6, sp_know: 20000 });
+            }
+        }
+        ignore_restrictions = (tmode === 'w');
+    }
+    const res = await dotele(ignore_restrictions);
+    if (wizard) Object.assign(tprop, savedTele); // C teleport.c:1019-1023 restores properties and spell.
+    if (hiddenSpell) Object.assign(hiddenSpell, savedSpell);
+    // C ref: teleport.c:1024 `return res ? ECMD_TIME : ECMD_OK`.
+    //
+    // This used to be `if (!res) g.context.move = 0;`, justified by "context.move
+    // is 1 coming in (allmain.c:540), so ECMD_TIME is the no-op".  That holds on
+    // the C('t') KEY chain and is FALSE on the '#'-name chain: doextcmd() sets
+    // g.context.move = 0 before its dispatch ladder, so a one-sided write left
+    // ECMD_TIME reading as ECMD_OK there and '#teleport' would have consumed no
+    // turn.  Write both arms; on the key chain `= 1` is the same no-op the old
+    // comment claimed for its own branch.
+    g.context.move = res ? 1 : 0;
+    return res ? ECMD_TIME : ECMD_OK;
+}
+
+// C ref: teleport.c:1032-1157 dotele(boolean break_the_rules) — the ^T body.
+// Returns C's int: 1 = a turn was used (ECMD_TIME), 0 = none (ECMD_OK).
+export async function dotele(break_the_rules) {
+    const g = game;
+    const u = g.u || {};
+    // C ref: teleport.c:1040-1042 — an unseen trap does not count.
+    let trap = t_at(u.ux, u.uy);
+    if (trap && !trap.tseen)
+        trap = null;
+    // teleport "Jump in?" y_n, and the "you jump onto the teleportation trap"
+    // message.
+    let trap_once = false;
+    if (trap) {
+        if (trap.ttyp === LEVEL_TELEP && trap.tseen) {
+            if ((await yn_function('There is a level teleporter here. Trigger it?', 'yn', 'n')) === 'y') {
+                await level_tele_trap_u(trap, FORCETRAP);
+                return 1;
+            }
+            trap = null;
+        } else if (trap.ttyp === TELEP_TRAP) {
+            trap_once = !!trap.once; /* trap may get deleted, save this */
+            if (trap.once) {
+                await pline('This is a vault teleport, usable once only.');
+                if ((await yn_function('Jump in?', 'yn', 'n')) === 'n') {
+                    trap = null;
+                } else {
+                    deltrap(trap);
+                    newsym(u.ux, u.uy);
+                }
+            }
+            if (trap)
+                await You(`${u_locomotion('jump')} onto the teleportation trap.`);
+        } else {
+            trap = null;
+        }
+    }
+    if (!trap && !break_the_rules) {
+        // C ref: teleport.c:1069-1139 — the restriction checks (intrinsic /
+        // teleport-away spell / hunger / strength / energy / carry capacity).
+        // null means the intrinsic checks passed; an integer is a final result.
+        const restricted = await _dotele_restricted();
+        if (restricted !== null) return restricted;
+    }
+    // C ref: teleport.c:1145-1156.  next_to_u_real() (apply.c:918-928) is
+    //   `!get_iter_mons(mleashed_next2u) && !(u.usteed && mon_has_amulet(u.usteed))`
+    // the Amulet), so the shudder_for_moment arm is unreachable.
+    // C ref: teleport.c:1143-1153 — vault_tele / fixed teledest / plain tele().
+    // C ref: teleport.c:1150-1151 `iflags.travelcc.x = iflags.travelcc.y = 0;
+    // tele();`.  The note that stood here called the clear "a no-op in this
+    // port ... the only writer of iflags.travelcc in C is dotravel()'s accepted
+    // destination (cmd.c:6019), whose getpos target pick is unported".  That was
+    // true when written and is not now: dotravel() below is a full port and DOES
+    // write iflags.travelcc from its accepted pick.  With the clear still
+    // missing, a travel destination survived every later teleport and the NEXT
+    // '_' opened its cursor on the stale cache instead of on the hero.
+    // <33,9> with ',' (travelcc := <33,9>), step 676 teleports with ^T, and at
+    // step 714 C opens the travel cursor on the hero at <22,6> while this port
+    // opened it at <32,10>, the stale staircase.
+    if (!(await next_to_u_real())) {
+        await You('shudder for a moment.');
+        return 0;
+    }
+    if (trap && trap_once) {
+        await vault_tele();
+    } else if (trap && isok(trap.teledest?.x, trap.teledest?.y)) {
+        await teleds(trap.teledest.x, trap.teledest.y, TELEDS_TELEPORT);
+    } else {
+        g.iflags = g.iflags || {};
+        if (!g.iflags.travelcc)
+            g.iflags.travelcc = { x: 0, y: 0 };
+        g.iflags.travelcc.x = g.iflags.travelcc.y = 0;
+        await tele();
+    }
+    await next_to_u_real();
+    /* dotele() applies its hunger penalty after tele() returns.  Mark this
+     * command so allmain preserves that later pline across the post-rhack
+     * channel handoff even when tele() left an earlier message channel live. */
+    game._teleportResultPublished = true;
+    // C ref: teleport.c:1155 `if (!trap) morehungry(100);`
+    if (!trap)
+        await morehungry(100);
+    return 1;
+}
+
+// C ref: teleport.c:1069-1141 — intrinsic and spell teleport restrictions.
+// Split out of dotele() so the wizard path
+// above reads as C's single `if (!trap && !break_the_rules)` skip; null continues.
+async function _dotele_restricted() {
+    const g = game;
+    const u = g.u || {};
+    {
+        // !Teleportation intrinsic/extrinsic (level-1 Wizard has none).
+        const TELEPORT = 46; // prop.h TELEPORT
+        const tprop = u.uprops && u.uprops[TELEPORT];
+        const Teleportation = !!(tprop && (tprop.intrinsic || tprop.extrinsic));
+        // C teleport.c:1072-1073,1104-1141: intrinsic teleport at will.
+        const atwill = u.ulevel >= (Role_if(_FL_PM_WIZARD) ? 8 : 12)
+            || !!(permonstTemplate(u.umonnum)?.mflags1 & 0x02000000 /* M1_TPORT */);
+        // C ref: teleport.c:1080 spe_Fresh; spell.h: spe_Fresh = 1
+        const spe_Fresh = 1;
+        // C ref: teleport.c:1097-1098 energy = 5 * spellev(SPE_TELEPORT_AWAY);
+        const FIRST_SPELL = 366; // objects.h: first shuffled spellbook in SPBOOK_META.
+        const energy = 5 * SPBOOK_META[SPE_TELEPORT_AWAY - FIRST_SPELL].level;
+        const knownsp = known_spell(SPE_TELEPORT_AWAY);
+        const castit = !(Teleportation && atwill) && knownsp >= spe_Fresh && !Confusion_hero();
+        if ((Teleportation && atwill) || castit) {
+            const cantdoit = u.uhunger <= 10 ? 'are too weak from hunger'
+                : acurr(u, A_STR) < 4 ? 'lack the strength' : u.uen < energy ? 'lack the energy' : null;
+            if (cantdoit) { await You(`${cantdoit} ${castit ? 'for a teleport spell' : 'to teleport'}.`); return 0; }
+            if (check_capacity('Your concentration falters from carrying so much.')) return 1;
+            if (castit) { exercise(A_WIS, true); return ((await spelleffects(SPE_TELEPORT_AWAY, true, false)) & ECMD_TIME) ? 1 : 0; }
+            u.uen -= energy;
+            return null; // Restrictions passed; continue dotele() at next_to_u().
+        }
+        // u.ulevel < 8 for a Wizard and !can_teleport(youmonst) → enter spell branch.
+        if (!Teleportation || !atwill) {
+            // known_spell(SPE_TELEPORT_AWAY): scan spl_book for the spell otyp.
+            // spe_Unknown unless found.  spl_book entries store sp_id (otyp).
+            const known = knownsp !== 0;
+            // castit = (knownsp >= spe_Fresh && !Confusion).  Not known → castit FALSE.
+            // !castit && !break_the_rules → print the failure message, return ECMD_OK.
+            const msg = !Teleportation
+                ? (known ? "can't cast that spell" : "don't know that spell")
+                : 'are not able to teleport at will';
+            await pline(`You ${msg}.`);
+            return 0; // C ref: teleport.c:1085 `return 0` — ECMD_OK, no turn
+        }
+    }
+    return 0;
+}
+
+// C ref: dungeon.c:2169 unplaced_floater(dptr) — TRUE only for an unplaced Fort
+// Ludios (knox) whose branch end1 floats off the top of the dungeon tree
+// (end1.dnum == n_dgns).
+function _pd_unplaced_floater(dnum, branches) {
+    const g = game;
+    const knoxDnum = g.knox_level ? g.knox_level.dnum : -1;
+    if (dnum !== knoxDnum) return false;
+    const n_dgns = g._n_dgns | 0;
+    for (const br of (branches || []))
+        if (br.end1.dnum === n_dgns && br.end2.dnum === dnum) return true;
+    return false;
+}
+
+/* C invent.c:1104 addinv(obj) -> addinv_core0(obj, NULL, TRUE), scoped to the
+ * one caller this port has for it: level_tele()'s endgame-prerequisite Amulet
+ * (teleport.c:1243).  That object is fresh out of mksobj(), so every arm
+ * addinv_core0 runs BEFORE the insert is a no-op on it — it is not in a shop
+ * (no_charge already 0), has no contents, was not thrown (how_lost LOST_NONE),
+ * and merges with nothing (the Amulet of Yendor is unique, and merged() would
+ * need a same-otyp stack).  What is left is assigninvlet() + the insert +
+ * addinv_core1/2, and those are what is ported here.
+ * The insert: under flags.invlet_constant (fixinv, C default On) C puts the
+ * object at the HEAD and then reorder_invent() sorts the chain by invlet, so a
+ * chain that was already in letter order comes back in letter order with the
+ * new object in its letter's place.  That is what the sorted insert below
+ * produces, without needing reorder_invent's full comparator. */
+/* The invlet-ordered insert shared by both of _levtele_addinv's arms — C's
+ * `obj->nobj = gi.invent; gi.invent = obj;` head-insert followed by
+ * reorder_invent() (invent.c:1117-1121), collapsed to a sorted insert because
+ * a chain that is already in letter order comes back in letter order. */
+function _levtele_invent_insert(obj) {
+    const g = game;
+    /* Was a hand-rolled sorted insert whose comparator sent '$' and '#' to the
+     * TAIL; C's inv_rank (invent.c:731, `invlet ^ 040`) sends them to the HEAD
+     * ('#'=0x03, '$'=0x04, then 'a'..'z'=0x41..0x5A, then 'A'..'Z').  Do what C
+     * does instead of approximating it.
+     * C invent.c:1117-1124 — the head insert + reorder is only the
+     * `flags.invlet_constant || !prev` arm; under !fixinv a non-empty chain
+     * gets the object appended at its END, which is where obj_to_let()'s
+     * reassign() then letters it (a full pack: NOINVSYM '#'). */
+    if (_invlet_constant() || !g.invent) {
+        obj.nobj = g.invent ?? null;
+        g.invent = obj;
+        if (_invlet_constant())
+            reorder_invent();
+    } else {
+        let prev = g.invent;
+        while (prev.nobj) prev = prev.nobj;
+        prev.nobj = obj;
+        obj.nobj = null;
+    }
+}
+
+function _levtele_addinv(obj) {
+    const g = game;
+    /* C invent.c:694 assigninvlet(obj) — the a-zA-Z scan starting just AFTER
+     * gl.lastinvnr and wrapping, NOT from 'a'.  Same walk as
+     * js/pickup_container.js _addinv and js/u_init.js _assigninvlet_ini; a
+     * freed letter is only reused once the cursor wraps back onto it. */
+    const inuse = new Array(52).fill(false);
+    for (let o = g.invent; o; o = o.nobj) {
+        if (o === obj || o.invlet == null) continue;
+        const i = o.invlet | 0;
+        if (97 <= i && i <= 122) inuse[i - 97] = true;
+        else if (65 <= i && i <= 90) inuse[i - 65 + 26] = true;
+        /* C invent.c:715-716 — `if (i == otmp->invlet) otmp->invlet = 0;`
+         * another object already holds this letter, so it is not ours to keep. */
+        if (i === (obj.invlet | 0)) obj.invlet = 0;
+    }
+    const _keep = obj.invlet | 0;
+    if (_keep && ((97 <= _keep && _keep <= 122) || (65 <= _keep && _keep <= 90))) {
+        addinv_core1(obj);
+        obj.where = 3; /* obj.h OBJ_INVENT */
+        _levtele_invent_insert(obj);
+        /* C invent.c:1142 — addinv_core0's common added: tail. */
+        obj.pickup_prev = 1;
+        addinv_core2(obj);
+        return obj;
+    }
+    const last = (g._lastinvnr ?? 51) | 0;
+    let i;
+    for (i = last + 1; i !== last; i++) {
+        if (i === 52) { i = -1; continue; }
+        if (!inuse[i]) break;
+    }
+    obj.invlet = inuse[i] ? 0x23 /* NOINVSYM '#' */ : (i < 26 ? (97 + i) : (65 + i - 26));
+    g._lastinvnr = i;
+    /* C invent.c:959 addinv_core1(obj) — carrying side effects; for the Amulet
+     * this is `u.uhave.amulet = 1` + record_achievement(ACH_AMUL), and C runs it
+     * BEFORE the chain insert. */
+    addinv_core1(obj);
+    obj.where = 3; /* obj.h OBJ_INVENT */
+    _levtele_invent_insert(obj);
+    /* C invent.c:1142 — addinv_core0's common added: tail. */
+    obj.pickup_prev = 1;
+    /* C invent.c:1024 addinv_core2(obj) — the luckstone/Archeologist-label arm;
+     * neither fires for the Amulet, but C runs it and so does this. */
+    addinv_core2(obj);
+    return obj;
+}
+
+// Render print_dungeon's menu, run the PICK_ONE paging loop, and return the
+// selection.  Returns { newlev, dnum, dlevel } on a pick (newlev = depth), or
+// null on ESC / no selection.  Consumes NO RNG (pure menu).
+async function print_dungeon_menu() {
+    const g = game;
+    /* C ref: wintty.c tty_display_nhwindow(NHW_MENU) — a pending topline
+     * message is paged with --More-- before the menu overlays it
+     * (level_tele_trap's "You step onto a level teleport trap!" then the
+     * levTport_menu, dungeon.c:2369-2370). */
+    if (g._pending_message) {
+        await flush_screen(1);
+        if (g._pending_message) await force_more(g._pending_message);
+    }
+    const dungeonsFull = g._dungeons_full || [];
+    const n_dgns = g._n_dgns | 0;
+    // C ref: fixup_level_locations() (dungeon.c:1142-1156) floats the knox branch
+    // entrance (end1.dnum := n_dgns).  We apply this on a LOCAL copy so the shared
+    // game._dungeon_branches (used by mklev) is untouched; print_branch then skips
+    // the knox branch in its parent dungeon and unplaced_floater() recognizes it.
+    const branches = (g._dungeon_branches || []).map(br => ({ ...br,
+        end1: { ...br.end1 }, end2: { ...br.end2 } }));
+    // ...but ONLY while it is still floating.  fixup_level_locations floats the
+    // knox entrance at level-generation time and mk_knox_portal() rebinds it to a
+    // real level as soon as the portal is placed (js/mklev.js:10616 clears the
+    // flag), after which C's print_branch prints it in its parent dungeon like
+    // any other branch.  Forcing the float unconditionally moved that line into
+    // "Floating branches" -- the same defect print_dungeon_text()'s end1_dnum()
+    // below already documents, in reverse.
+    // reads "h -   Portal to Fort Ludios: 20" between "rogue: 16" and
+    // "medusa: 24", and this port omitted the row -- which re-lettered every
+    for (const br of branches)
+        if (br.end1_floating)
+            br.end1.dnum = n_dgns;
+    // sp_levchn sorted by dnum then ascending dlevel (C add_level keeps the chain
+    // ordered; print_dungeon filters per-dnum and relies on ascending dlevel).
+    const spLevchn = (g._sp_levchn || []).slice().sort((a, b) =>
+        (a.dlevel.dnum - b.dlevel.dnum) || (a.dlevel.dlevel - b.dlevel.dlevel));
+
+    // lchoices bookkeeping (dungeon.c struct lchoice): per selectable/skipped
+    // entry, the destination (dlevel,dnum,playerlev) and the assigned menuletter.
+    const lchoices = { lev: [], dgn: [], playerlev: [], idx: 0, menuletter: 'a' };
+    const lines = [];          // rendered menu line strings (each w/ left margin)
+    const accel = new Map();   // menuletter char → lchoices index (selectable only)
+    /* C ref: wintty.c:1416-1425 — `rp = resp` is RESET on every page display and
+     * the selector scan only walks page_start..page_end, so a menu's accept set
+     * is PER PAGE.  Keep line-index → selector so the key loop can rebuild it. */
+    const lineAccel = [];      // lines[] index → menuletter char (selectable only)
+    const deadAccel = [];      // same, for cannotreach rows (letter consumed, no identifier)
+    /* C ref: wintty.c:2591-2605 tty_add_menu — a selectable entry's STORED str,
+     * which is what MENU_SEARCH's pmatchi() matches (wintty.c:1714), is
+     * "%c - %s" built from the ch tport_menu passes (dungeon.c:2226, the
+     * lchoices menuletter) and the entry text.  The window's own one-column
+     * left margin is a rendering detail and is NOT part of it. */
+    const mlist = [];          // { str, idx } in add_menu call order
+
+    const nextLetter = () => {
+        const cur = lchoices.menuletter;
+        lchoices.menuletter = (cur === 'z') ? 'A' : String.fromCharCode(cur.charCodeAt(0) + 1);
+        return cur;
+    };
+    // C ref: tport_menu (dungeon.c:2198) — append a level entry to the menu.
+    const tport_menu = (entry, lvl_p, cannotreach) => {
+        lchoices.lev[lchoices.idx] = lvl_p.dlevel;
+        lchoices.dgn[lchoices.idx] = lvl_p.dnum;
+        lchoices.playerlev[lchoices.idx] = _pd_depth(lvl_p, dungeonsFull);
+        const letter = nextLetter();
+        if (cannotreach) {
+            // not selectable but still consumes a menuletter; the tty renders a
+            // non-accelerator line by positioning the cursor past the leading
+            // blanks (margin + 4-space pad + entry's own leading blanks) with a
+            // CSI cursor-forward, then the visible text — matching the recorded
+            // "\x1b[NCknox: 18" form (a literal-space line would mismatch byte-
+            /* C wintty.c:2614 tty_add_menu stores item->selector = ch even for
+             * this identifier-less row, so its letter is in resp. */
+            deadAccel[lines.length] = letter;
+            const full = ' ' + '    ' + entry;
+            const lead = full.length - full.replace(/^ +/, '').length;
+            const text = menucolor_text(full.slice(lead), full); /* windows.c:1803 add_menu */
+            lines.push(lead > 0 ? `\x1b[${lead}C${text}` : text);
+        } else {
+            accel.set(letter, lchoices.idx);
+            lineAccel[lines.length] = letter;
+            lines.push(` ${letter} - ${menucolor_text(entry)}`); /* windows.c:1803 add_menu */
+            mlist.push({ str: `${letter} - ${entry}`, idx: lchoices.idx });
+        }
+        lchoices.idx++;
+    };
+    // Title line (start_menu).
+    lines.push(` ${menu_heading_text('Level teleport to where:')}`);
+    lines.push('');
+
+    for (let i = 0; i < n_dgns; i++) {
+        const dptr = dungeonsFull[i];
+        if (!dptr) continue;
+        // C dungeon.c:2309 — `if (bymenu && In_endgame(&u.uz) && i != astral_level.dnum)
+        // continue;`: from an elemental plane the menu lists ONLY the Planes.
+        if (In_endgame(g.u?.uz) && i !== g.astral_level?.dnum) continue;
+        const unplaced = _pd_unplaced_floater(i, branches);
+        const descr = unplaced ? 'depth' : 'level';
+        const nlev = dptr.num_dunlevs | 0;
+        let buf;
+        if (nlev > 1)
+            buf = `${dptr.dname}: ${descr}s ${dptr.depth_start} to ${dptr.depth_start + nlev - 1}`;
+        else
+            buf = `${dptr.dname}: ${descr} ${dptr.depth_start}`;
+        // Most entrances are uninteresting (entry_lev == 1).
+        if (dptr.entry_lev !== 1) {
+            if (dptr.entry_lev === nlev)
+                buf += ', entrance from below';
+            else
+                buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
+        }
+        // add_menu_heading — left margin + reverse video.
+        lines.push(` ${menu_heading_text(buf)}` /* wintty.c:2688 */);
+
+        let last_level = 0;
+        for (const slev of spLevchn) {
+            if (slev.dlevel.dnum !== i) continue;
+            print_branch(0, i, last_level, slev.dlevel.dlevel, true, tport_menu, branches, dungeonsFull, null);
+            let lbuf = `${_pd_chr_u_on_lvl(slev.dlevel)} ${slev.proto}: ${_pd_depth(slev.dlevel, dungeonsFull)}`;
+            if (Is_stronghold(slev.dlevel))
+                lbuf += ` (tune ${g._tune || ''})`;
+            tport_menu(lbuf, slev.dlevel, _pd_unreachable_level(slev.dlevel, unplaced));
+            last_level = slev.dlevel.dlevel;
+        }
+        // branches after the last special level (MAXLEVEL upper bound).
+        print_branch(0, i, last_level, 127 /* MAXLEVEL */, true, tport_menu, branches, dungeonsFull, null);
+    }
+
+    // ── tty PICK_ONE paging loop (end_menu/select_menu) ──
+    // Footer " (P of N)" on screen row 23; pages hold up to 23 content rows.
+    const SCREEN_ROWS = 24;
+    const PER_PAGE = SCREEN_ROWS - 1; /* 23 content rows; indicator on row 23 */
+    const pages = [];
+    for (let i = 0; i < lines.length; i += PER_PAGE)
+        pages.push(lines.slice(i, i + PER_PAGE));
+    const npages = pages.length;
+    const pageHasLetter = (pageIdx, ch) => {
+        const start = pageIdx * PER_PAGE;
+        const end = Math.min(start + PER_PAGE, lines.length);
+        for (let i = start; i < end; i++)
+            if (lineAccel[i] === ch) return true;
+        return false;
+    };
+
+    const _dismissMenu = async () => {
+        /* tty_destroy_nhwindow() clears WIN_MESSAGE before the dungeon is
+         * redrawn; that also makes gp.prevmsg no longer the prior wait line,
+         * so the next Norep() may print it again. */
+        game._prevmsg = null;
+        /* wintty.c:981-982 erase_menu_or_text(): an overlay window (offx > 0)
+         * is erased by docorner(), which neither docrt()s nor sets botlx, so
+         * the status line keeps whatever it last painted (a travel's frozen
+         * T:) until the next real bot(). */
+        if (overlayLines) return;
+        /* windows.c:1856-1864: select_menu() holds gb.bot_disabled across the
+         * dismissing docrt() too, so a pline raised inside it (see_monsters ->
+         * newsym impossible) flushes with bot() declining. */
+        const _docrtBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try { await docrt(); } finally { g._bot_disabled = _docrtBotDisabled; }
+        status_r1_menu_docrt();
+        /* docrt_flags cls() sets botlx, so the first bot() rewrites every status
+         * field AFTER the map's seen-stone row-20 blanks were printed. */
+        game._r1botAfterMap = game.level;
+        game._r1textOver = game.level;
+        /* C windows.c:1856-1864 select_menu() runs the window port with
+         * gb.bot_disabled set, and tty_select_menu dismisses the window itself
+         * (wintty.c tty_select_menu -> tty_dismiss_nhwindow ->
+         * erase_menu_or_text: docrt(); flush_screen(1)).  That flush prints the
+         * map, map row 20 included, while bot() returns early (botl.c:255)
+         * leaving botlx set; the next bot() then rewrites status row 1 in full
+         * over map row 20 (display.js _status_row1_map_overlay).  A level
+         * change in between repaints via goto_level's docrt, which clears it. */
+        game._r1textOver = true;
+        /* C wintty.c:978-979: publish the redrawn map before returning
+         * from menu dismissal. windows.c:1859-1863 still disables bot(). */
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await flush_screen(1);
+        } finally {
+            g._bot_disabled = savedBotDisabled;
+        }
+    };
+
+    let pageIdx = 0;
+    let row0Erased = false;
+    /* C ref: wintty.c:1908-1927 tty_display_nhwindow + tty_end_menu — a menu
+     * whose longest line is narrow is NOT full-width: the window is placed at
+     * offx = cols - maxcol - 1 (maxcol = longest str + 2) as an overlay, every
+     * row painted from offx+1, and a single page ends with "(end) " (wintty.c:
+     * 2749), never "(N of M)".  Only the one-page case is modelled here (the
+     * multi-page full-width frames below are verified against recordings).
+     * Non-selectable rows are stored here as ESC[nC + text; the overlay
+     * compositor wants those leading blanks as spaces, and the one-space left
+     * margin every row carries is the column offx itself. */
+    let overlayLines = null, overlayCol = 0;
+    if (npages === 1) {
+        const stripped = lines.map((ln) => {
+            const m = /^\x1b\[(\d+)C/.exec(ln);
+            const t = m ? ' '.repeat(Math.max(0, +m[1])) + ln.slice(m[0].length) : ln;
+            return t.replace(/^ /, '');
+        });
+        const wl = [...stripped, '(end)'];
+        const col = tty_window_offx(wl, 'end');
+        if (col > 1) { overlayLines = wl; overlayCol = col; }
+    }
+    const overlayRows = () => {
+        const rows = build_window_screen(
+            row0Erased ? ['', ...overlayLines.slice(1)] : overlayLines,
+            overlayCol, g.u?.uac ?? 0).split('\n');
+        return row0Erased ? menu_search_docorner(rows) : rows;
+    };
+    const pageRows = () => {
+        if (overlayLines) {
+            const rows = overlayRows();
+            return { rows, indicator: '(end)', indicatorRow: overlayLines.length - 1 };
+        }
+        const pageLines = pages[pageIdx] || [''];
+        const indicator = ` (${pageIdx + 1} of ${npages})`;
+        const rows = [];
+        for (let r = 0; r < pageLines.length; r++) rows.push(pageLines[r]);
+        const indicatorRow = (pageIdx === npages - 1) ? pageLines.length : (SCREEN_ROWS - 1);
+        while (rows.length < indicatorRow) rows.push('');
+        rows.push(indicator);
+        if (row0Erased && rows.length) { rows[0] = ''; menu_search_docorner(rows); }
+        return { rows, indicator, indicatorRow };
+    };
+    const _pick = async (idx) => {
+        await _dismissMenu();
+        return {
+            newlev: lchoices.playerlev[idx],
+            dnum: lchoices.dgn[idx],
+            dlevel: lchoices.lev[idx],
+            overlay: !!overlayLines,
+        };
+    };
+    // C wintty.c:1395-1399,1570-1613: ESC cancels an active count first.
+    let count = 0n, counting = false, resetCount = true;
+    while (true) {
+        if (resetCount) { count = 0n; counting = false; }
+        else resetCount = true;
+        const { rows, indicator, indicatorRow } = pageRows();
+        g._screen_output = rows.join('\n');
+        if (overlayLines) set_cursor(overlayCol + '(end)'.length + 1, indicatorRow);
+        else set_cursor(indicator.length, indicatorRow);
+        g._pending_message = '';
+
+        const key = await nhgetch();
+        const ch = (key >= 32 && key < 127) ? String.fromCharCode(key) : '';
+        if (key >= 48 && key <= 57) {
+            count = count * 10n + BigInt(key - 48);
+            if (count > 9223372036854775807n) continue; // AppendLongDigit overflow
+            if (count !== 0n) { counting = true; resetCount = false; }
+            continue;
+        }
+        if (key === 27 && counting) continue;
+        if (key === 27 /* ESC */) { await _dismissMenu(); return null; } // MENU_CANCEL
+        /* C ref: wintty.c:1616-1620 —
+         *     case '\0': case '\n': case '\r': finished = TRUE; break;
+         * CR/LF COMMIT the menu wherever it is; they are not page keys.  With
+         * nothing selected in a PICK_ONE menu that is select_menu returning 0,
+         * i.e. no pick.  This site folded them in with space, so an Enter on a
+         * non-final page turned the page instead of ending the menu. */
+        if (key === 10 || key === 13) {
+            await _dismissMenu();
+            return null;
+        }
+        if (key === 32 /* ' ' */ || ch === '>') {
+            if (npages > 0 && pageIdx !== npages - 1) { pageIdx++; row0Erased = false; continue; }
+            if (key === 32) { await _dismissMenu(); return null; }
+            continue;   /* '>' on the last page: consumed, page unchanged */
+        }
+        if (ch === '<') {   /* MENU_PREVIOUS_PAGE */
+            if (npages > 0 && pageIdx !== 0) { pageIdx--; row0Erased = false; }
+            continue;
+        }
+        if (ch === '^') {   /* MENU_FIRST_PAGE */
+            if (npages > 0 && pageIdx !== 0) { pageIdx = 0; row0Erased = false; }
+            continue;
+        }
+        if (ch === '|') {   /* MENU_LAST_PAGE */
+            if (npages > 0 && pageIdx !== npages - 1) { pageIdx = npages - 1; row0Erased = false; }
+            continue;
+        }
+        /* C wintty.c:1424,1755 + dungeon.c:2372-2374: a cannotreach row's letter is
+         * still in resp; PICK_ONE finishes with an a_int == 0 item, so
+         * idx = -1 and lchoices.playerlev[-1] (the stack byte before the array)
+         * is read; the recording shows it as 0, i.e. no teleport. */
+        if (ch && !pageHasLetter(pageIdx, ch)) {
+            const s0 = pageIdx * PER_PAGE, e0 = Math.min(s0 + PER_PAGE, lines.length);
+            for (let i = s0; i < e0; i++)
+                if (deadAccel[i] === ch) { await _dismissMenu(); return null; }
+        }
+        if (ch && pageHasLetter(pageIdx, ch)) {
+            const idx = accel.get(ch);
+            return await _pick(idx);
+        }
+        if (key === 0x3a /* ':' MENU_SEARCH */) {
+            let picked = -1;
+            const finished = await menu_search_case(
+                'ONE', mlist,
+                () => pageRows().rows,
+                (curr) => { picked = curr.idx; });
+            row0Erased = true;
+            if (finished && picked >= 0) return await _pick(picked);
+            continue;
+        }
+        // C getline.c:250-254: rejected keys stay inside xwaitforspace(),
+        // preserving the count until a key in resp reaches the menu switch.
+        if (!(DEFAULT_MENU_CMDS + ' 0123456789\x1b\n\r').includes(String.fromCharCode(key)))
+            resetCount = false;
+        // any other key: re-render the same page (tty rings the bell).
+    }
+}
+
+export function random_teleport_level() {
+    const g = game;
+    const u = g.u || {};
+    const _dgn = (g.dungeons || [])[u.uz?.dnum ?? 0] || { depth_start: 1, num_dunlevs: 30 };
+    const dunlevs_in_dungeon = (_dgn.num_dunlevs | 0);
+    const depth_start = _dgn.depth_start;
+    const cur_depth = depth(u.uz) | 0;
+
+    /* C teleport.c:2196 — [the endgame case can only occur in wizard mode].
+     * single_level_branch(lev) is Is_knox(lev) (dungeon.c). */
+    if (!rn2(5) || Is_knox_level(u.uz) || In_endgame(u.uz))
+        return cur_depth;
+
+    let min_depth, max_depth;
+    if (In_quest(u.uz)) {
+        /* C teleport.c:2223-2231 */
+        let bottom = dunlevs_in_dungeon;
+        const qlocate_depth = g.qlocate_level.dlevel;
+        if (_dgn.dunlev_ureached < qlocate_depth)
+            bottom = qlocate_depth;
+        min_depth = depth_start;
+        max_depth = bottom + (depth_start - 1);
+    } else {
+        /* C teleport.c:2233-2237 */
+        min_depth = 1;
+        max_depth = dunlevs_in_dungeon + (depth_start - 1);
+        /* can't reach Sanctum if the invocation hasn't been performed */
+        if (Inhell() && !(g.u?.uevent?.invoked))
+            max_depth -= 1;
+    }
+
+    /* C teleport.c:2239-2241 — range is 1 to current+3, current not counting. */
+    let nlev = rn2(cur_depth + 3 - min_depth) + min_depth;
+    if (nlev >= cur_depth)
+        nlev++;
+
+    if (nlev > max_depth) {
+        nlev = max_depth;
+        /* C teleport.c:2245 — teleport up if already on bottom. */
+        if (Is_botlevel(u.uz))
+            nlev -= rnd(3);
+    }
+    if (nlev < min_depth) {
+        nlev = min_depth;
+        if (nlev === cur_depth) {
+            nlev += rnd(3);
+            if (nlev > max_depth)
+                nlev = max_depth;
+        }
+    }
+    return nlev;
+}
+
+// C ref: teleport.c:1165 level_tele() — the level-teleport body.
+// Ported scope: wizard-mode path (wizard=TRUE → Teleport_control||wizard branch)
+// with a number, a special-level name, or the '?' menu (print_dungeon).
+// The non-wizard involuntary path, confusion, and "*" random paths are stubbed
+// The wizard branch is: getlin prompt → parse → get_level → schedule_goto, or
+// for "?": print_dungeon → schedule_goto(newlevel) with force_dest.
+// Returns ECMD_OK (no turn consumed by the command itself; turn is consumed by
+// the level transition happening via deferred_goto after rhack returns).
+export async function level_tele() {
+    const g = game;
+    const u = g.u || (g.u = {});
+    // The overview-menu flag is per levelport: a stale one from an earlier '?'
+    // levelport whose monster-teleport prompt never ran blanked the status rows
+    // under a later typed-name levelport.
+    g._levtele_menu = false;
+    // C teleport.c:1176-1186 — the debug fuzzer picks a random connected
+    // dungeon/level and schedules the goto without prompting.
+    if (g.iflags?.debug_fuzzer) {
+        const newlevel = { dnum: 0, dlevel: 0 };
+        do {
+            newlevel.dnum = rn2(g._n_dgns);
+        } while (newlevel.dnum === g.astral_level.dnum
+                 || g.dungeons[newlevel.dnum].flags?.unconnected
+                 || !g.dungeons[newlevel.dnum].num_dunlevs);
+        newlevel.dlevel = 1 + rn2(dunlevs_in_dungeon(newlevel));
+        u.ucamefrom = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
+        schedule_goto(newlevel, 0 /* UTOTYPE_NONE */, null, null);
+        return;
+    }
+    // C teleport.c:1185-1189 — carrying the Amulet, in the endgame or in
+    // Sokoban, a non-wizard hero cannot levelport at all.
+    if ((u.uhave?.amulet || In_endgame(u.uz) || In_sokoban(u.uz)) && !wizard()) {
+        await _You_feel('very disoriented for a moment.');
+        return;
+    }
+    // C teleport.c:1190 — if (Teleport_control && !Stunned) || wizard)
+    // In wizard mode we always take this branch; skip the else/random path.
+    {
+        // C teleport.c:1194 — Strcpy(qbuf, "To what level do you want to teleport?")
+        const qbuf = 'To what level do you want to teleport?';
+        let trycnt = 0;
+        let newlev = 0;
+        let buf = '';
+        // C teleport.c:1172 — boolean force_dest = FALSE; set TRUE on the '?' menu
+        // path so post-loop validation is skipped and the menu's (dnum,dlevel) is
+        // used directly (no get_level relativization).
+        let force_dest = false;
+        let menuNewlevel = null;
+        // C's `goto random_levtport` (teleport.c:1214/1217/1256/1324) jumps out of
+        // the controlled-teleport branch into the involuntary one at :1293.  A
+        // goto out of a loop has no JS spelling, so it is a flag read after the
+        // do/while and again at the newlev==0 arm.
+        let goto_random = false;
+        // C teleport.c:1190 — the prompt branch needs (Teleport_control &&
+        // !Stunned) || wizard; #exploremode clears wizard, so such a hero
+        // falls through to the involuntary random_levtport arm.
+        {
+            const upr = u.uprops || [];
+            const tc = upr[TELEPORT_CONTROL];
+            const hasTc = !!(tc && ((tc.intrinsic | 0) || (tc.extrinsic | 0)));
+            const stun = (upr[STUNNED]?.intrinsic | 0) !== 0;
+            if (!((hasTc && !stun) || wizard()))
+                goto_random = true;
+        }
+        if (!goto_random) do {
+            // C teleport.c:1203 — if (++trycnt == 2) Strcat(qbuf, " [type a number, name, or ? for a menu]")
+            // C teleport.c:1195-1201 — wizard mode 'm ^V' skips the getlin on the
+            // first pass and goes straight to levTport_menu.
+            let viaMenu = false;
+            if (g.iflags.menu_requested) {
+                g.iflags.menu_requested = false;
+                viaMenu = wizard();
+            }
+            trycnt++;
+            // C teleport.c:1212 — getlin(qbuf, buf)
+            const prompt = (trycnt >= 2)
+                ? (qbuf + (wizard() ? ' [type a number, name, or ? for a menu]' : ' [type a number or name]'))
+                : qbuf;
+            if (viaMenu) buf = '?';
+            else buf = await getlin(prompt);
+            // C teleport.c:1213 — if (!strcmp(buf, "*")) goto random_levtport
+            if (buf === '*') { goto_random = true; break; }
+            // C teleport.c:1215-1217:
+            //     } else if (Confusion && rnl(5)) {
+            //         pline("Oops...");
+            //         goto random_levtport;
+            //     }
+            // This arm used to be skipped outright under the comment "wizard
+            // counterexample: the Tourist quaffs a cursed potion of confusion at
+            // step 157 and level-teleports at step 164, so C draws rnl(5)=3 here
+            // (the segment's first RNG divergence once the regen fix landed) and
+            // — the roll being non-zero — throws the requested "2" away and takes
+            // the RANDOM destination, landing on Dlvl 3.  This port typed "2",
+            // got Dlvl 2, and so never generated the level the rest of the
+            // rnl() is luck-adjusted; Luck is 0 here so it consumes one leaf.
+            if (!viaMenu && Confusion_hero() && rnl(5)) {
+                await pline('Oops...');
+                goto_random = true;
+                break;
+            }
+            // C teleport.c:1218 — else if (!strcmp(buf, "\033")) return  (ESC cancel)
+            /* An empty Return is an invalid destination and loops back to the
+             * getlin prompt in C; only ESC cancels level teleport. */
+            if (buf === '\x1b') {
+                /* C level_tele() is void; the ^V handler's ECMD_OK maps to move=0 in rhack */
+                return;
+            }
+            // C teleport.c:1221 — if (wizard && !strcmp(buf, "?")) → levTport_menu.
+            // print_dungeon(TRUE, &destlev, &destdnum); if !newlev return.
+            // Else newlevel = {destdnum, destlev}; force_dest = TRUE; fall through.
+            if (wizard() && buf === '?') {
+                const sel = await print_dungeon_menu();
+                /* the full-screen overview menu left rows 22-23 blank (tty menu
+                 * overdraw); a typed number leaves the status painted */
+                /* wintty.c:981-982: an overlay menu (offx > 0) is erased by
+                 * docorner(), which leaves the status rows painted. */
+                g._levtele_menu = !sel?.overlay;
+                if (!sel || !sel.newlev) {
+                    // C: if (!newlev) return;  (ESC / no selection cancels)
+                    return;
+                }
+                menuNewlevel = { dnum: sel.dnum, dlevel: sel.dlevel };
+                newlev = sel.newlev;
+                // C teleport.c:1234-1246 — the ENDGAME PREREQUISITE.  A wizard
+                // who picks an Elemental Plane off this menu without already
+                // holding the Amulet is handed one, because the endgame arrival
+                // code assumes it.  C's own comment: "ordinarily we'd use
+                // hold_another_object() for something like this, but we don't
+                // want fumbling or already full pack to interfere".
+                //     if (In_endgame(&newlevel) && !In_endgame(&u.uz)) {
+                //         if (!u.uhave.amulet
+                //             && (amu = mksobj(AMULET_OF_YENDOR, TRUE, FALSE)) != 0) {
+                //             amu = addinv(amu);
+                //             prinv("Endgame prerequisite:", amu, 0L);
+                //         }
+                //     }
+                // This block was absent, and it is NOT display-only: mksobj()
+                // draws three leaves (next_ident rnd(2), mksobj_init rn2(10),
+                // 30061..30063, at its step 99 'L' pick of `fire: -3`.
+                if (In_endgame(menuNewlevel) && !In_endgame(g.u?.uz)) {
+                    const uh = (g.u.uhave || (g.u.uhave = {}));
+                    if (!uh.amulet) {
+                        const amu = await mksobj(_ADDINV_AMULET_OF_YENDOR, true, false);
+                        if (amu) {
+                            _levtele_addinv(amu);
+                            await prinv('Endgame prerequisite:', amu, 0);
+                            /* pline.c: prinv's pline runs flush_screen(1) -> bot(),
+                             * repainting the status rows the menu dismissal blanked */
+                            g._levtele_menu = false;
+                        }
+                    }
+                }
+                force_dest = true;
+                break;
+            }
+            // C teleport.c:1248 — (newlev = lev_by_name(buf)) == 0 → newlev = atoi(buf)
+            // lev_by_name returns 0 for a numeric string.
+            // atoi() is (int)strtol(): strtol saturates at LONG_MAX/LONG_MIN
+            // (64-bit), then the int cast keeps the low 32 bits (so an
+            // over-long digit string becomes -1 and falls into the
+            // "high above the clouds" arm).
+            const _atoi = (str) => {
+                const m = /^\s*([+-]?\d+)/.exec(str);
+                if (!m) return 0;
+                let v = BigInt(m[1]);
+                const lmax = (1n << 63n) - 1n, lmin = -(1n << 63n);
+                if (v > lmax) v = lmax; else if (v < lmin) v = lmin;
+                return Number(BigInt.asIntN(32, v));
+            };
+            newlev = lev_by_name(buf) || _atoi(buf);
+        } while (!newlev && !(buf.length > 0 && (buf[0] === '-' ? (buf.length > 1 && buf[1] >= '0' && buf[1] <= '9') : (buf[0] >= '0' && buf[0] <= '9'))) && trycnt < 10);
+        // C teleport.c:1254 — if (newlev == 0) { if trycnt>=10 goto random; ynq "Go to Nowhere" ... }
+        if (newlev === 0 && trycnt >= 10)
+            goto_random = true;
+        /* C teleport.c:1258-1281 — "no dungeon escape via this route" */
+        if (newlev === 0 && !goto_random) {
+            if ((await yn_function('Go to Nowhere.  Are you sure?', 'ynq', 'q', true)) !== 'y') {
+                /* tty_yn_function leaves the prompt painted (TOPLINE_NON_EMPTY) */
+                g._topl_sticky = 'Go to Nowhere.  Are you sure? [ynq] (q)';
+                return;
+            }
+            await You(`${((g.youmonst?.data?.msound | 0) === 0 && !!g.youmonst?.data) ? 'writhe' : 'scream'} in agony as your body begins to warp...`);
+            if (g._pending_message)
+                await force_more(g._pending_message);
+            await You('cease to exist.');
+            if (g.invent)
+                await Your(`possessions land on the ${surface(u.ux, u.uy)} with a thud.`);
+            const gk = g.svk || (g.svk = {});
+            gk.killer = gk.killer || {};
+            gk.killer.format = NO_KILLER_PREFIX;
+            gk.killer.name = 'committed suicide';
+            await done(DIED);
+            await pline('An energized cloud of dust begins to coalesce.');
+            await Your(`body rematerializes${g.invent ? ', and you gather up all your possessions' : ''}.`);
+            return;
+        }
+        // C teleport.c:1277-1281 — if in Knox and the requested level > 0, stay put.
+        if (single_level_branch(g.u.uz) && newlev > 0 && !force_dest) {
+            await You('shudder for a moment.');
+            return;
+        }
+        // C teleport.c:1380 — else if (force_dest) { /* wizard mode menu; no
+        // further validation needed */ ; }  The menu already produced a concrete
+        // (dnum,dlevel); use it directly and skip get_level relativization.
+        // C teleport.c:1379-1423 — the destination cascade.  This used to be
+        // `newlevel = get_level(newlev)` with only the force_dest arm in front
+        // of it, which silently dropped C's find_hell() arm: a wizard-mode
+        // request for a depth at or past the bottom of the Dungeons of Doom
+        // teleports to the VALLEY OF THE DEAD, not to the deepest Dungeons of
+        // with num_dunlevs 26: C goes 1 + 26 <= 30 → find_hell → Gehennom
+        // dlevel 1 (Dlvl 27, "You arrive at the Valley of the Dead..."), while
+        // get_level's own beyond-the-end clamp (dungeon.c:1810-1813) returned
+        // dlevel = num_dunlevs = 26.
+        const _dgn_of = (uz) => (g.dungeons || [])[uz?.dnum ?? 0]
+                                || { depth_start: 1, num_dunlevs: 30 };
+        // C dungeon.h:143 — dunlevs_in_dungeon(lev) is dungeons[dnum].num_dunlevs.
+        const dunlevs_in_dungeon = (uz) => (_dgn_of(uz).num_dunlevs | 0);
+        if (!goto_random && In_quest(u.uz) && newlev > 0)
+            newlev = newlev + (_dgn_of(u.uz).depth_start | 0) - 1;
+        // C teleport.c:1293-1298, the involuntary branch / `random_levtport:`
+        // label.  Reached here only via one of C's gotos out of the controlled
+        // branch above (Confusion, "*", or ten failed prompts); the whole
+        // controlled-only block C skips over — the newlev==0 "Go to Nowhere"
+        // arm, single_level_branch, and the In_quest relativization — is
+        // correctly not run for it.
+        if (goto_random) {
+            newlev = random_teleport_level();
+            if (newlev === depth(u.uz)) {
+                // C teleport.c:1296 You1(shudder_for_moment).
+                await You('shudder for a moment.');
+                return;
+            }
+        }
+        /* C teleport.c:1300-1306 — buried ball, then a leashed pet that
+         * cannot be pulled adjacent holds the hero back (unless force_dest);
+         * next_to_u() itself prints "You feel the leash go slack." */
+        if (u.utrap && (u.utraptype | 0) === TT_BURIEDBALL)
+            await buried_ball_to_punishment();
+        if (!(await next_to_u_real()) && !force_dest) {
+            await You('shudder for a moment.');
+            return;
+        }
+        if (In_endgame(u.uz)) {
+            const llimit = dunlevs_in_dungeon(u.uz);
+            if (newlev >= 0 || newlev <= -llimit) {
+                await You_cant('get there from here.');
+                return;
+            }
+            schedule_goto({ dnum: (u.uz?.dnum ?? 0), dlevel: llimit + newlev },
+                          UTOTYPE_NONE, null, null);
+            return;
+        }
+        /* C teleport.c:1293-1377 — a negative controlled destination from
+         * an ordinary dungeon means escape above the clouds, rather than a
+         * same-level get_level() refusal.  In wizard/debug mode the
+         * non-flying arm still asks the normal death question; declining it
+         * returns the hero to the surface and schedules dlevel 0. */
+        let newlevel;
+        let escape_by_flying = null;
+        let death_survived = false;
+        const gk = g.svk || (g.svk = {});
+        const killer = gk.killer || (gk.killer = {});
+        killer.name = ''; // C teleport.c:1320: still alive, so far.
+        if (newlev < 0 && !force_dest) {
+            // C teleport.c:1326-1332: settle shop bills before leaving.
+            if (u.ushops0) {
+                g.in_mklev = true;
+                await u_left_shop(u.ushops0, true);
+                u.ushops0 = u.ushops = '';
+                g.in_mklev = false;
+            }
+            if (newlev <= -10) {
+                await You('arrive in heaven.');
+                SetVoice(null, 0, 80, 0 /* voice_deity */);
+                await verbalize("Thou art early, but we'll admit thee.");
+                killer.format = NO_KILLER_PREFIX;
+                killer.name = 'went to heaven prematurely';
+            } else if (newlev === -9) {
+                await _You_feel('deliriously happy.');
+                await pline('(In fact, you\'re on Cloud 9!)');
+            } else {
+                await You('are now high above the clouds...');
+            }
+            if (killer.name) {
+                // C teleport.c:1350: arrival in heaven is pending.
+            } else if (_Levitation())
+                escape_by_flying = 'float gently down to earth';
+            else if (_Flying())
+                escape_by_flying = 'fly down to the ground';
+            else {
+                /* C's death path acknowledges the preceding topline before
+                 * adding the fall warning, leaving the cloud message on its
+                 * own --More-- frame. */
+                if (g._pending_message)
+                    await force_more(g._pending_message);
+                await pline("Unfortunately, you don't know how to fly.");
+                if (g._pending_message)
+                    await force_more(g._pending_message);
+                await You('plummet a few thousand feet to your death.');
+                killer.name = `teleported out of the dungeon and fell to ${g.flags.female ? 'her' : 'his'} death`;
+                killer.format = NO_KILLER_PREFIX;
+            }
+            if (killer.name) {
+                /* C teleport.c:1370-1374 sets the death location to heaven
+                 * or the surface before done(DIED), then restores u.uz. */
+                const saved_uz = { dnum: u.uz?.dnum | 0, dlevel: u.uz?.dlevel | 0 };
+                u.uz = { dnum: 0, dlevel: newlev <= -10 ? -10 : 0 };
+                await done(DIED);
+                u.uz = saved_uz;
+                death_survived = true;
+                escape_by_flying = 'find yourself back on the surface';
+            }
+            if (escape_by_flying) {
+                if (death_survived) {
+                    /* done() stores its wizard-mode acknowledgement as a
+                     * result line; C's single topline joins that line to the
+                     * surface message before the next page. */
+                    g._resultMessage = null;
+                    g._pending_message = `OK, so you don't die.  You ${escape_by_flying}.`;
+                    await force_more(g._pending_message);
+                    g._pending_message = '';
+                } else {
+                    await You(`${escape_by_flying}.`);
+                }
+            }
+            newlevel = { dnum: 0, dlevel: 0 };
+        }
+        let deepest = 0;
+        if (newlevel) {
+            /* escape path above already selected the surface destination */
+        } else if (force_dest && menuNewlevel) {
+            // C teleport.c:1385-1387 — wizard mode menu; no further validation.
+            newlevel = menuNewlevel;
+        } else if ((u.uz?.dnum ?? 0) === (g.medusa_level?.dnum ?? -1)
+                   && newlev >= (_dgn_of(u.uz).depth_start | 0)
+                                + dunlevs_in_dungeon(u.uz)) {
+            // C teleport.c:1388-1390 — find_hell(&newlevel), dungeon.c:1949-1953:
+            //   lev->dnum = valley_level.dnum; lev->dlevel = 1;
+            newlevel = { dnum: g.valley_level?.dnum ?? (u.uz?.dnum ?? 0),
+                         dlevel: 1 };
+        } else {
+            // C teleport.c:1392-1423.
+            const qbranch = In_quest(u.uz) ? g.qstart_level
+                          : In_mines(u.uz) ? g.mineend_level
+                            : g.sanctum_level;
+            deepest = qbranch
+                ? ((_dgn_of(qbranch).depth_start | 0)
+                   + dunlevs_in_dungeon(qbranch) - 1)
+                : 0;
+            if (!wizard() && Inhell() && !(u.uevent?.invoked)
+                && newlev >= deepest) {
+                newlev = deepest - 1;
+                await pline('Sorry...');
+            }
+            // C teleport.c:1411-1412 — no teleporting out of the quest dungeon.
+            if (In_quest(u.uz) && newlev < depth(g.qstart_level))
+                newlev = depth(g.qstart_level);
+            // C teleport.c:1417 — get_level(&newlevel, newlev)
+            newlevel = get_level(newlev);
+            // C teleport.c:1419-1423 — the request resolved to the level the
+            // hero is already on, and it was not a request for that depth.
+            // C dungeon.c on_level(a, b) — same dnum AND same dlevel; inlined
+            // (this file carries no on_level import).
+            if (newlevel.dnum === (u.uz?.dnum ?? 0)
+                && newlevel.dlevel === (u.uz?.dlevel ?? 0)
+                && newlev !== depth(u.uz)) {
+                await You_cant(`get there from ${(newlev > deepest) ? 'anywhere' : 'here'}.`);
+                return;
+            }
+        }
+        // C teleport.c:1426-1428 — schedule_goto(newlevel, UTOTYPE_NONE, NULL, verbose ? msg : NULL)
+        const post_msg = (g.flags?.verbose !== false && !death_survived)
+            ? 'You materialize on a different level!' : null;
+        schedule_goto(newlevel, UTOTYPE_NONE, null, post_msg);
+    }
+    // ECMD_OK — level_tele itself does NOT consume a game turn (schedule_goto defers it).
+    // The turn is consumed by the level transition in deferred_goto (goto_level → mklev).
+    // However, the C rhack context for wiz_level_tele is ECMD_OK (returns 0), so
+    // context.move stays 0 here (the turn counter and movemon fire in goto_level's
+    // level entry, not from this command's context.move).
+}
+
+function _gp_same_mon(a, b) {
+    if (!a || !b) return false;
+    if (a === b) return true;
+    if (typeof a !== 'object' || typeof b !== 'object') return false;
+    return a.m_id != null && b.m_id != null && (a.m_id | 0) === (b.m_id | 0);
+}
+
+/* C ref: hack.c:914-919 may_passwall(x,y). */
+function _gp_may_passwall(x, y) {
+    return may_passwall(x, y);
+}
+
+const _GP_S_EEL = 57; /* defsym.h:362 MONSYM(57, ';', EEL, S_EEL, ...) */
+
+function _gp_is_swimmer(mdat) { return ((mdat?.mflags1 | 0) & _GP_M1_SWIM) !== 0; }
+
+function _gp_amorphous(mdat) { return ((mdat?.mflags1 | 0) & _GP_M1_AMORPHOUS) !== 0; }
+
+function _gp_throws_rocks(mdat) { return ((mdat?.mflags2 | 0) & _GP_M2_ROCKTHROW) !== 0; }
+
+/* C ref: mondata.h likes_lava(ptr) — pointer identity against
+ * mons[PM_FIRE_ELEMENTAL] / mons[PM_SALAMANDER], ported on the form index. */
+function _gp_likes_lava(mdat) {
+    const pm = mdat?.pmidx | 0;
+    return pm === PM_FIRE_ELEMENTAL || pm === PM_SALAMANDER;
+}
+
+function _gp_goodpos_onscary(x, y, mptr) {
+    return goodpos_onscary(x, y, mptr);
+}
+
+/* C ref: mkmaze.c:317-331 is_exclusion_zone(type, x, y), reached from goodpos()
+ * under GP_AVOID_MONPOS with type == LR_MONGEN.  js/sp_lev.js's des.exclusion
+ * pushes onto game.exclusion_zones; this is the same walk js/mklev.js
+ * lregion_is_exclusion_zone() and js/sp_lev.js both carry, kept local for the
+ * same reason they are (neither copy is exported). */
+function _gp_is_exclusion_zone(type, x, y) {
+    for (const ez of (game.exclusion_zones || [])) {
+        const typeMatches =
+            (type === LR_DOWNTELE && (ez.zonetype === LR_DOWNTELE || ez.zonetype === LR_TELE))
+            || (type === LR_UPTELE && (ez.zonetype === LR_UPTELE || ez.zonetype === LR_TELE))
+            || type === ez.zonetype;
+        if (typeMatches && x >= ez.lx && x <= ez.hx && y >= ez.ly && y <= ez.hy)
+            return true;
+    }
+    return false;
+}
+
+/* ---------------------------------------------------------------------------
+ * goodpos — is (x,y) a good position for mtmp?  (mtmp == NULL: for an object.)
+ * C ref: nethack-c/src/teleport.c:85-185
+ *   boolean goodpos(coordxy x, coordxy y, struct monst *mtmp, mmflags_nht gpflags)
+ * RNG: one rn2(13), and only on the S_EEL branch.
+ *
+ * NOTE (duplication, flagged): js/teleport.js carries a second port of this
+ * same C function as the module-private goodpos_full().  The three differences
+ * once listed here are reconciled there: accessible_local() reads
+ * SURFACE_AT (db_under_typ), is_pool_local() has is_moat()'s DRAWBRIDGE_UP/
+ * DB_MOAT arm, and goodpos_onscary is the faithful teleport.c:52-76 port.
+ * closed_door()/accessible() are spelled closed_door_mv/accessible_mv here.
+ * ---------------------------------------------------------------------------
+ */
+export function goodpos(x, y, mtmp, gpflags) {
+    let mdat = null;
+    const ignorewater = ((gpflags & MM_IGNOREWATER) !== 0),
+          ignorelava = ((gpflags & MM_IGNORELAVA) !== 0),
+          checkscary = ((gpflags & GP_CHECKSCARY) !== 0),
+          allow_u = ((gpflags & GP_ALLOW_U) !== 0),
+          avoid_monpos = ((gpflags & GP_AVOID_MONPOS) !== 0);
+
+    if (!isok(x, y))
+        return false;
+
+    /* in many cases, we're trying to create a new monster, which
+     * can't go on top of the player or any existing monster. */
+    if (!allow_u) {
+        const u = game.u || {};
+        if (u_at(x, y) && !_gp_is_youmonst(mtmp)
+            && (!_gp_same_mon(mtmp, u.ustuck) || !u.uswallow)
+            && (!u.usteed || !_gp_same_mon(mtmp, u.usteed)))
+            return false;
+    }
+
+    if (_gp_m_at(x, y) && avoid_monpos)
+        return false;
+
+    if (mtmp) {
+        const mtmp2 = _gp_m_at(x, y);
+
+        /* Be careful with long worms: a worm can't be placed in its own
+         * location, period (C overdoes the check a little bit). */
+        if (mtmp2 && (!_gp_same_mon(mtmp2, mtmp) || mtmp.wormno))
+            return false;
+
+        mdat = mtmp.data;
+        if (_gp_is_pool(x, y) && !ignorewater) {
+            /* [what about Breathless?] */
+            if (_gp_is_youmonst(mtmp))
+                return !!(_gp_Swimming() || _gp_Amphibious()
+                          || (!_gp_Is_waterlevel()
+                              && !_gp_is_waterwall(x, y)
+                              /* water on the Plane of Water has no surface
+                                 so there's no way to be on or above that */
+                              && (_gp_Levitation() || _gp_Flying()
+                                  || _gp_Wwalking())));
+            else
+                return !!(_gp_is_swimmer(mdat)
+                          || (!_gp_Is_waterlevel()
+                              && !_gp_is_waterwall(x, y)
+                              && _gp_m_in_air(mtmp)));
+        } else if ((mdat?.mlet | 0) === _GP_S_EEL && rn2(13) && !ignorewater) {
+            return false;
+        } else if (is_lava(x, y) && !ignorelava) {
+            /* 3.6.3: floating eye can levitate over lava but it avoids
+               that due the effect of the heat causing it to dry out */
+            if ((mdat?.pmidx | 0) === PM_FLOATING_EYE)
+                return false;
+            else if (_gp_is_youmonst(mtmp)) {
+                const uarmf = game.u?.uarmf;
+                return !!(_gp_Levitation() || _gp_Flying()
+                          || (_gp_Fire_resistance() && _gp_Wwalking()
+                              && uarmf && uarmf.oerodeproof)
+                          || (_gp_Upolyd() && _gp_likes_lava(game.youmonst?.data)));
+            } else
+                return !!(_gp_m_in_air(mtmp) || _gp_likes_lava(mdat));
+        }
+        if (_gp_passes_walls(mdat) && _gp_may_passwall(x, y))
+            return true;
+        if (_gp_amorphous(mdat) && closed_door_mv(x, y))
+            return true;
+        /* avoid onscary() if caller has specified that restriction */
+        if (checkscary && (mtmp.m_id ? onscary(x, y, mtmp)
+                                     : _gp_goodpos_onscary(x, y, mdat)))
+            return false;
+    }
+    if (!accessible_mv(x, y)) {
+        if (!(_gp_is_pool(x, y) && ignorewater)
+            && !(is_lava(x, y) && ignorelava))
+            return false;
+    }
+    /* skip boulder locations for most creatures */
+    if (sobj_at(BOULDER, x, y) && (!mdat || !_gp_throws_rocks(mdat)))
+        return false;
+    /* pretend GP_AVOID_MONPOS == monster creation */
+    if (avoid_monpos && _gp_is_exclusion_zone(LR_MONGEN, x, y))
+        return false;
+
+    return true;
+}
+
+function _gp_Wwalking() {
+    return _gp_uprop_he(WWALKING) && !_gp_Is_waterlevel();
+}
+
+function _gp_Swimming() {
+    const usteed = game.u?.usteed;
+    return !!(_gp_uprop_he(SWIMMING)
+              || (usteed && _gp_is_swimmer(usteed.data || {})));
+}
+
+function _gp_Amphibious() {
+    if (_gp_uprop_he(MAGICAL_BREATHING)) return true;
+    const pm = game.youmonst?.data;
+    return !!pm && ((pm.mflags1 | 0) & _GP_M1_AMPHIBIOUS) !== 0;
 }

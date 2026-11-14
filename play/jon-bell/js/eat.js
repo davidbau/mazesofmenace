@@ -2,7 +2,8 @@
 // eat.ts — Hunger and digestion.
 // C ref: nethack-c/src/eat.c — gethungry (line 3163), newuhs (line 3363).
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd, d } from './rnd.js';
 import { Blind as hero_Blind, vision_recalc } from './vision.js';
 import { ORGANISER_IS_MACOS } from './platform_identity.js';
 import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
@@ -10,12 +11,14 @@ import { PM_KILLER_BEE, PM_QUEEN_BEE, PM_STONE_GOLEM, PM_DWARF,
 import { FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES, STONE_RES, SICK_RES, TELEPORT, TELEPORT_CONTROL, TELEPAT, STUNNED, DISPLACED } from './const.js';
 import { PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER, PM_PYROLISK,
          PM_LITTLE_DOG, PM_DOG, PM_LARGE_DOG, PM_KITTEN, PM_HOUSECAT, PM_LARGE_CAT } from './pm.generated.js';
-import { permonstTemplate, olfaction, monPmname, splitobj, attacktype_fordmg, levelDifficulty, monflee } from './makemon.js';
+import { permonstTemplate, monPmname, splitobj, levelDifficulty } from './makemon.js';
+import { olfaction, attacktype_fordmg } from './mondata.js';
+import { monflee } from './monmove.js';
 import { mon_set_minvis } from './worn.js';
 import { same_race, defended } from './mondata.js';
-import { monstone } from './dogmove.js';
+import { monstone } from './mon.js';
 import { game, wizard, discover } from './gstate.js';
-import { paranoid_query } from './paranoid.js';
+import { paranoid_query } from './cmd.js';
 import { BUFSZ, PARANOID_EATING, PARANOID_DIE, LL_LIFESAVE } from './const.js';
 import { formatkiller } from './topten.js';
 import { obj_stop_timers, fall_asleep } from './timeout.js';
@@ -24,21 +27,24 @@ import { OBJ_FREE, OBJ_INVENT, OBJ_DELETED, SELL_NORMAL, SELL_DONTSELL } from '.
 const BEARTRAP = 244;
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import corpseData from './eat_corpse_data.json' with { type: 'json' };
-import { FOOD_PROPS, obj_nutrition } from './food_props.js';
+import { FOOD_PROPS } from './food_props.js';
 import { impossible_sync, debugpline } from './display.js';
-import { is_rottable } from './mklev.js';
-import { inv_cnt, reorder_invent, rounddiv } from './cmd.js';
+import { is_rottable } from './mkobj.js';
+import { inv_cnt, rounddiv } from './hack.js';
+import { reorder_invent } from './invent.js';
 import { set_itimeout, incr_itimeout } from './potion.js';
 import { pline_The } from './pline.js';
 import { touch_artifact_youmonst } from './wizcmds.js';
-import { canseemon, canspotmon, newsym, Unaware, Deaf as hero_Deaf, retouch_equipment, flush_pending_messages, _topl_merge_result, _topl_joins_snapshot, _topl_stash_result, _topl_record_join, capture_painted_frame_with_status, _topl_more_pages } from './display.js';
+import { canseemon, canspotmon, newsym, Unaware, Deaf as hero_Deaf, flush_pending_messages, _topl_merge_result, _topl_joins_snapshot, _topl_stash_result, _topl_record_join, capture_painted_frame_with_status, _topl_more_pages } from './display.js';
+import { retouch_equipment } from './artifact.js';
 import { bot } from './botl.js';
 import { pline, You, You_hear, You_feel, You_cant, livelog_printf, urgent_pline } from './pline.js';
 import { stop_occupation } from './allmain.js';
-import { is_pool_or_lava } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { end_running } from './hack.js';
 import { PM_ELF as PM_ELF_EAT } from './pm.generated.js';
-import { BY_COOKIE, mksobj, obj_extract_self, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
+import { BY_COOKIE, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } from './mklev.js';
+import { mksobj, obj_extract_self } from './mkobj.js';
 import { getrumor, outrumor } from './rumors.js';
 import { eos } from './hacklib.js';
 import { discover_object } from './o_init.js';
@@ -47,12 +53,15 @@ import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER,
  * body in this port; js/cmd.js:14406.  eat.js<->cmd.js is already a proven
  * circular import (js/potion.js<->js/cmd.js is the same shape) — safe because
  * nothing here calls it at module-evaluation time. */
-import { getObjFromGetobj, costly_alteration, costly_spot, obj_extract_self_general, useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './cmd.js';
+import { getObjFromGetobj, costly_alteration, costly_spot, obj_extract_self_general } from './cmd.js';
+import { useup, useupf, freeinv as freeinv_real, carrying as carrying_real } from './invent.js';
 import { wield_tool } from './wield.js';
-import { sellobj_state, safe_qbuf, safe_qbuf as safe_qbuf_real } from './shk.js';
-import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './cmd.js';
+import { sellobj_state } from './shk.js';
+import { safe_qbuf, safe_qbuf as safe_qbuf_real } from './objnam.js';
+import { g_at, will_feel_cockatrice as will_feel_cockatrice_real } from './invent.js';
 import { flush_screen, restore_occupation_topline, restore_command_topline, force_more, topl_park_cursor, _pline_flush_frame_record, pline_flush_point, msgtype_suppressed, msgtype_is_stop } from './display.js';
-import { more_experienced, newexplevel } from './uhitm.js';
+import { more_experienced } from './uhitm.js';
+import { newexplevel } from './exper.js';
 import { pluslvl } from './exper.js';
 import { nhgetch } from './input.js';
 import { savelife, deadhero, pending_death_is_final, do_death_sequence, done as done_end, delayed_killer } from './end.js';
@@ -68,7 +77,7 @@ import { reset_utrap, selftouch, t_at, deltrap } from './trap.js';
  * same {dnum, dlevel} shape this expects (js/dig.js:115, js/allmain.js:332,
  * js/cmd.js:9202). No cycle: js/dungeon.js does not import js/eat.js. */
 import { on_level } from './dungeon.js';
-import { can_reach_floor } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { addinv_nomerge as addinv_nomerge_real } from './invent.js';
 import { BLINDED, CONFUSION, HALLUC, HALLUC_RES, LEVITATION, SICK, VOMITING,
          EXPL_FIERY, STONED, UNCHANGING, SICK_ALL, FROMOUTSIDE, INTRINSIC, INVIS as INVIS_PROP, SEE_INVIS as SEE_INVIS_PROP, TIMEOUT, LAST_PROP, AGGRAVATE_MONSTER,
@@ -110,45 +119,49 @@ import { acurrstr } from './dokick.js';
 import { makeplural, the, yobjnam, otense,
          doname, thesimpleoname, ansimpleoname,
          killer_xname } from './objnam.js';
-import { the_unique_pm } from './makemon.js';
-import { rndmonnam } from './do_name.js';
+import { the_unique_pm } from './objnam.js';
+import { rndmonnam, Monnam } from './do_name.js';
 import { observe_object } from './o_init.js';
 import { hcolor, is_youmonst } from './mhitm.js';
 import { poly_when_stoned as poly_when_stoned_eat } from './mondata.js';
 import { is_were, you_unwere, set_ulycn, were_beastie } from './were.js';
 import { PM_WERERAT, PM_WEREJACKAL, PM_WEREWOLF } from './pm.generated.js';
-import { polymon, rehumanize, still_chewing, polyself } from './polyself.js';
+import { polymon, rehumanize, polyself } from './polyself.js';
+import { still_chewing } from './hack.js';
 import { toggle_displacement } from './do_wear.js';
 import { fingers_or_gloves } from './do_wear.js';
-import { b_trapped } from './lock.js';
+import { b_trapped } from './trap.js';
 import { NO_PART, FIXED_ABIL, NOSE, HAND, LIGHT_HEADED } from './const.js';
-import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, vomit, make_slimed } from './potion.js';
+import { self_invis_message, make_hallucinated, make_glib, make_vomiting, make_sick, make_slimed } from './potion.js';
 /* C cmd.c:206 set_occupation(fn, txt, xtime) — js/cmd.js holds the one body;
  * js/lock.js already imports it the same way (cmd.js -> eat.js is an existing
  * edge, and this closes it, so the import is used LAZILY inside start_tin's
  * tail rather than at module scope). */
-import { set_occupation, instapetrify as instapetrify_eat, useup as useup_eat, verbalize, pooleffects_breathless, surface } from './cmd.js';
+import { set_occupation, instapetrify as instapetrify_eat, verbalize, pooleffects_breathless } from './cmd.js';
+import { useup as useup_eat } from './invent.js';
+import { surface } from './dungeon.js';
 import { welded } from './wield.js';
 import { dropx, dropy, heal_legs, donull } from './do.js';
-import { weight, encumber_msg as encumber_msg_real } from './weight.js';
+import { weight } from './weight.js';
+import { encumber_msg as encumber_msg_real } from './pickup.js';
 import { near_capacity } from './hack.js';
-import { obj_here } from './cmd.js';
+import { obj_here } from './invent.js';
 import { losehp } from './hack.js';
 import { obj_resists, make_blinded } from './zap.js';
 import { explode } from './explode.js';
-import { Monnam } from './mcastu.js';
 import { mon_nam } from './uhitm.js';
 import { s_suffix } from './mhitm.js';
 import { SICK_VOMITABLE } from './const.js';
 import { corpse_xname, CXN_SINGULAR, CXN_PFX_THE, CXN_ARTICLE, xname as xname_eat, singular, objName, Tobjnam as Tobjnam_eat, an as an_eat } from './objnam.js';
-import { mondied } from './makemon.js';
+import { mondied } from './mon.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
 import { obj_is_pname, getObjDescr } from './objnam.js';
 import { Ring_gone } from './do_wear.js';
 import { float_up } from './trap.js';
-import { set_mimic_blocking } from './sit.js';
+import { set_mimic_blocking } from './display.js';
 import { see_monsters, curs_on_u, retouch_object_hero } from './display.js';
-import { revive_corpse, set_bknown } from './mklev.js';
+import { revive_corpse } from './do.js';
+import { set_bknown } from './mkobj.js';
 import { rescham } from './mon.js';
 import { perceives } from './mcastu.js';
 import { change_sex } from './polyself.js';
@@ -157,24 +170,35 @@ import { unpunish } from './read.js';
 import { o_unleash } from './apply.js';
 import { remove_worn_item } from './steal.js';
 import { uwepgone, uqwepgone, uswapwepgone } from './wield.js';
-import { useupall, dismount_steed, body_part } from './cmd.js';
+import { body_part } from './cmd.js';
+import { useupall } from './invent.js';
+import { dismount_steed } from './steed.js';
 import { trycall } from './do.js';
 import { vault_gd_watching } from './vault.js';
 import { SLEEPY, M_AP_NOTHING, M_AP_OBJECT, DISMOUNT_FELL, GD_EATGOLD, STOMACH } from './const.js';
 
 import { PM_FIRE_ELEMENTAL, PM_RUST_MONSTER, PM_GHOUL, PM_GELATINOUS_CUBE, PM_STALKER, PM_FLESH_GOLEM, PM_LEATHER_GOLEM, PM_ACID_BLOB } from './pm.generated.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj } from './invent.js';
 import { Has_contents } from './const.js';
 /* C you.h:562  #define u_at(x,y) ((x) == u.ux && (y) == u.uy).  This file
  * carried a local `function u_at(x, y) { return true; }` shadow, which made
  * eat.c:3644's resume test unconditionally true. */
 import { u_at, M_AP_TYPE } from './const.js';
-import { unmul, nomul } from './allmain.js';
+import { unmul, nomul } from './hack.js';
 import { assigninvlet, carrying, feel_cockatrice, getobj, will_feel_cockatrice } from './invent.js'; // relocate-fns
 import { encumber_msg } from './pickup.js'; // relocate-fns
 import { check_capacity } from './hack.js'; // relocate-fns
 import { tinnable } from './apply.js'; // relocate-fns
+import { CORPSE_OTYP_FP, mons_cnutrit, oc_nutrition } from './food_props.js'; // relocate-fns
+import { ALTAR } from './const.js'; // relocate-fns
+import { is_ice } from './engrave.js'; // relocate-fns
+import { cantvomit } from './mondata.js'; // relocate-fns
+import { Your } from './pline.js'; // relocate-fns
+import { _uprop } from './potion.js'; // relocate-fns
+import { altar_wrath } from './pray.js'; // relocate-fns
+import { melt_ice_zap, ubreatheu } from './zap.js'; // relocate-fns
+export { PM_STALKER_E }; // relocate-fns
 export { _cnutritE }; // relocate-fns
 export { slime_dialogue, stoned_dialogue } from './timeout.js'; // relocate-fns
 export { PM_GREEN_SLIME_E, _eat_Blind, _eat_Hallucination, _uprop_on, make_stoned }; // relocate-fns
@@ -367,7 +391,7 @@ async function accessory_has_effect(otmp) {
 async function eataccessory(otmp) {
     const u = game.u, typ = otmp.otyp | 0;
     const prop = MKOBJ_OC_OPROP[typ] | 0;
-    const oldprop = _uprop(prop).intrinsic | 0;
+    const oldprop = _uprop_eat(prop).intrinsic | 0;
     if (otmp === u.uleft || otmp === u.uright) {
         await Ring_gone(otmp);
         if (u.uhp <= 0) return;
@@ -421,11 +445,11 @@ async function eataccessory(otmp) {
         await choke(otmp);
         break;
     case AMULET_OF_RESTFUL_SLEEP: {
-        const newnap = rnd(100), oldnap = _uprop(SLEEPY).intrinsic & TIMEOUT;
+        const newnap = rnd(100), oldnap = _uprop_eat(SLEEPY).intrinsic & TIMEOUT;
         if (!_has_fromoutside(SLEEPY)) await accessory_has_effect(otmp);
         _give_fromoutside(SLEEPY);
         if (newnap < oldnap || oldnap === 0)
-            _uprop(SLEEPY).intrinsic = (_uprop(SLEEPY).intrinsic & ~TIMEOUT) | newnap;
+            _uprop_eat(SLEEPY).intrinsic = (_uprop_eat(SLEEPY).intrinsic & ~TIMEOUT) | newnap;
         break;
     }
     case RIN_SUSTAIN_ABILITY:
@@ -441,7 +465,7 @@ async function eataccessory(otmp) {
         case RIN_SEE_INVISIBLE:
             set_mimic_blocking();
             see_monsters();
-            if (_uprop_on(INVIS_PROP) && !oldprop && !_uprop(SEE_INVIS_PROP).extrinsic
+            if (_uprop_on(INVIS_PROP) && !oldprop && !_uprop_eat(SEE_INVIS_PROP).extrinsic
                 && !perceives(game.youmonst.data) && !hero_Blind()) {
                 newsym(u.ux, u.uy);
                 await pline('Suddenly you can see yourself.');
@@ -449,7 +473,7 @@ async function eataccessory(otmp) {
             }
             break;
         case RIN_INVISIBILITY:
-            if (!oldprop && !_uprop(INVIS_PROP).extrinsic && !_uprop(INVIS_PROP).blocked
+            if (!oldprop && !_uprop_eat(INVIS_PROP).extrinsic && !_uprop_eat(INVIS_PROP).blocked
                 && !_uprop_on(SEE_INVIS_PROP) && !hero_Blind()) {
                 newsym(u.ux, u.uy);
                 await pline(`Your body takes on a ${_eat_Hallucination() ? 'normal' : 'strange'} transparency...`);
@@ -460,7 +484,7 @@ async function eataccessory(otmp) {
             await rescham();
             break;
         case RIN_LEVITATION: // timed, not permanent
-            _uprop(LEVITATION).intrinsic = oldprop;
+            _uprop_eat(LEVITATION).intrinsic = oldprop;
             if (!_uprop_on(LEVITATION)) {
                 await float_up();
                 _incr_uprop_itimeout(LEVITATION, d(10, 20));
@@ -1927,7 +1951,7 @@ function _consume_oeaten(o, n) {
     if (!_obj_nutrition(o)) {
         const typ = o.otyp | 0;
         const item = typ === CORPSE_OTYP ? 'corpse' : typ === EGG_OTYP ? 'egg' : typ === TIN_OTYP ? 'tin' : null;
-        impossible(`oeaten: attempting to set 0 nutrition food (${item ? `${item} [${o.corpsenm}]` : typ}) partially eaten`);
+        impossible_eat(`oeaten: attempting to set 0 nutrition food (${item ? `${item} [${o.corpsenm}]` : typ}) partially eaten`);
         return;
     }
     if (n > 0) o.oeaten = (o.oeaten >>> 0) >>> n;
@@ -1964,7 +1988,7 @@ function _zero_victual() {
 function _recalc_wt() {
     const piece = _victual().piece;
     if (!piece) {
-        impossible('recalc_wt without piece');
+        impossible_eat('recalc_wt without piece');
         return;
     }
     piece.owt = weight(piece);
@@ -4126,7 +4150,7 @@ function temp_givit(type, ptr) {
 }
 
 /* C prop.h:139 FROMOUTSIDE.  givit's grants are `H<prop> |= FROMOUTSIDE`. */
-function _uprop(idx) {
+function _uprop_eat(idx) {
     const u = game.u;
     if (!u) return null;
     u.uprops = u.uprops || {};
@@ -4134,16 +4158,16 @@ function _uprop(idx) {
     return u.uprops[idx];
 }
 function _has_fromoutside(idx) {
-    return !!((_uprop(idx)?.intrinsic | 0) & FROMOUTSIDE);
+    return !!((_uprop_eat(idx)?.intrinsic | 0) & FROMOUTSIDE);
 }
 function _give_fromoutside(idx) {
-    const p = _uprop(idx);
+    const p = _uprop_eat(idx);
     if (p) p.intrinsic = (p.intrinsic | 0) | FROMOUTSIDE;
 }
 /* C `incr_itimeout(&u.uprops[idx].intrinsic, incr)` (potion.c:83-86): the
  * real port takes a {value} box for C's `long *`. */
 function _incr_uprop_itimeout(idx, incr) {
-    const p = _uprop(idx);
+    const p = _uprop_eat(idx);
     if (!p) return;
     const which = { value: p.intrinsic | 0 };
     incr_itimeout(which, incr);
@@ -4295,49 +4319,6 @@ export async function corpse_intrinsic(ptr) {
     return prop;
 }
 
-/* C mon.c:1766-1830 mon_givit(mtmp, ptr) — convey one resistance from a
- * corpse to a monster.  Keep this beside corpse_intrinsic so both consumers
- * use the same reservoir-sampling and should_givit rolls. */
-export async function mon_givit(mtmp, ptr) {
-    if (!mtmp || !ptr) return;
-
-    /* C computes prop before its special STALKER arm. */
-    const prop = await corpse_intrinsic(ptr);
-    const vis = canseemon(mtmp);
-    if ((mtmp.mhp | 0) <= 0) return;
-    if ((ptr.pmidx | 0) === PM_STALKER_E) {
-        if (!(mtmp.perminvis | 0) || (mtmp.invis_blkd | 0)) {
-            const oldname = Monnam(mtmp);
-            mon_set_minvis(mtmp, false);
-            if (vis) {
-                const effect = !canspotmon(mtmp) ? 'vanishes'
-                    : (mtmp.invis_blkd | 0) ? 'seems to flicker'
-                    : 'becomes invisible';
-                await pline_mon_eat(mtmp, '%s %s.', oldname, effect);
-            }
-        }
-        mtmp.mstun = 1;
-        return;
-    }
-    if (!prop || !should_givit(prop, ptr)) return;
-
-    /* C mon.c:1735-1755 mon_give_prop gives pets only FIRE/COLD/SLEEP/DISINT/
-     * SHOCK/POISON resistance; any other intrinsic is ignored. */
-    const props = {
-        [FIRE_RES]: [0x01, 'shivers slightly.'],
-        [COLD_RES]: [0x02, 'looks quite warm.'],
-        [SLEEP_RES]: [0x04, 'looks wide awake.'],
-        [DISINT_RES]: [0x08, 'looks very firm.'],
-        [SHOCK_RES]: [0x10, 'crackles with static electricity.'],
-        [POISON_RES]: [0x20, 'looks healthy.'],
-    };
-    const entry = props[prop];
-    if (!entry) return;
-    const [bit, suffix] = entry;
-    const innate = ((mtmp.data?.mresists | 0) | (mtmp.mintrinsics | 0)) & bit;
-    mtmp.mintrinsics = (mtmp.mintrinsics | 0) | bit;
-    if (vis && !innate) await pline_mon_eat(mtmp, '%s %s', Monnam(mtmp), suffix);
-}
 
 /* C eat.c:3961 Finish_digestion(void) — ga.afternmv for the digest timer
  * (uhitm.c:5101). The hero swallowed a monster whole and has finished it. */
@@ -4390,8 +4371,8 @@ export async function cpostfx(pm) {
     case PM_STALKER:
         /* C eat.c:1164-1175 */
         {
-            const inv = _uprop(INVIS_PROP);
-            const sinv = _uprop(SEE_INVIS_PROP);
+            const inv = _uprop_eat(INVIS_PROP);
+            const sinv = _uprop_eat(SEE_INVIS_PROP);
             /* Invis = (HInvis || EInvis) && !BInvis (youprop.h) */
             const Invis = (((inv.intrinsic | 0) || (inv.extrinsic | 0)) && !(inv.blocked | 0));
             if (!Invis) {
@@ -4517,7 +4498,7 @@ export async function cpostfx(pm) {
         /* C eat.c:1227-1235 — toggles intrinsic Fast (INTRINSIC = FROMOUTSIDE|FROMRACE|FROMEXPER). */
         await _emit_eat_pline('Your velocity suddenly seems very uncertain!');
         {
-            const fast = _uprop(FAST_PROP);
+            const fast = _uprop_eat(FAST_PROP);
             if ((fast.intrinsic | 0) & INTRINSIC) {
                 fast.intrinsic = (fast.intrinsic | 0) & ~INTRINSIC;
                 await _emit_eat_pline('You seem slower.');
@@ -4823,7 +4804,7 @@ export async function floorfood(verb, corpsecheck) {
     } else if (corpsecheck === 2) {
         otmp = await getobj(verb, tin_ok, GETOBJ_NOFLAGS);
     } else {
-        impossible("floorfood: unknown request (%s)", verb);
+        impossible_eat("floorfood: unknown request (%s)", verb);
         otmp = null;
     }
     if (otmp && corpsecheck && !(offering && otmp.oclass === AMULET_CLASS)) {
@@ -4899,7 +4880,7 @@ export function tin_ok(obj) {
         return GETOBJ_EXCLUDE_SELECTABLE;
     return GETOBJ_SUGGEST;
 }
-function impossible(_fmt, ..._args) { /* no-op — see note above */ }
+function impossible_eat(_fmt, ..._args) { /* no-op — see note above */ }
 
 const BEAR_TRAP = 5; /* trap type */
 const TT_BEARTRAP = 1; /* utraptype */
@@ -4923,3 +4904,61 @@ const Breathless = () => !!((_uprop_word(MAGICAL_BREATHING)?.intrinsic | 0)
                             || pooleffects_breathless(game.youmonst?.data));
 const ynqchars = "ynq";
 const hands_obj = { /* special hands object for eating iron bars */ };
+
+/* C eat.c:325 obj_nutrition(otmp):
+ *   nut = (otmp->otyp == CORPSE) ? mons[otmp->corpsenm].cnutrit
+ *         : otmp->globby ? otmp->owt
+ *         : objects[otmp->otyp].oc_nutrition;
+ */
+export function obj_nutrition(otmp) {
+    if ((otmp.otyp | 0) === CORPSE_OTYP_FP)
+        return mons_cnutrit(otmp.corpsenm | 0);
+    if (otmp.globby) return otmp.owt | 0;
+    return oc_nutrition(otmp.otyp | 0);
+}
+
+const AT_BREA = 12;          /* monattk.h — breath, ranged */
+
+const AD_ACID = 8;           /* monattk.h — acid */
+
+const M1_ACID = 0x08000000;  /* monflag.h:112 — acidic to eat */
+
+/* C mondata.h acidic(ptr) — (((ptr)->mflags1 & M1_ACID) != 0L) */
+function acidic(ptr) { return ((ptr?.mflags1 >>> 0) & M1_ACID) !== 0; }
+
+/* C ref: eat.c:3735-3785 vomit(void). */
+export async function vomit() {
+    const g = game;
+    const u = g.u;
+    let spewed = false;
+    if (cantvomit(g.youmonst?.data)) {
+        /* C deliberately does not cure food poisoning in this arm. */
+        await Your('jaw gapes convulsively.');
+    } else {
+        if ((_uprop(SICK).intrinsic | 0) && ((u.usick_type | 0) & SICK_VOMITABLE) !== 0)
+            await make_sick(0n, null, true, SICK_VOMITABLE);
+        if ((u.uhs | 0) >= FAINTING)
+            await Your(`${body_part(STOMACH)} heaves convulsively!`);
+        else
+            spewed = true;
+    }
+    if ((g.multi | 0) >= -2) {
+        nomul(-2);
+        g.multi_reason = 'vomiting';
+        g.nomovemsg = 'You can move again.';
+    }
+    if (spewed) {
+        const data = g.youmonst?.data;
+        const mattk = attacktype_fordmg(data, AT_BREA, AD_ACID);
+        if (mattk) {
+            await You('breathe acid on yourself...');
+            await ubreatheu(mattk);
+        }
+        const x = u.ux | 0, y = u.uy | 0;
+        const loc = g.level?.at?.(x, y) || g.level?.locations?.[x]?.[y];
+        if ((loc?.typ | 0) === ALTAR)
+            await altar_wrath(x, y);
+        if (acidic(data) && is_ice(x, y))
+            await melt_ice_zap(x, y, 'Your stomach acid melts straight through the ice!');
+    }
+}

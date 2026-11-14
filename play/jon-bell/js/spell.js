@@ -13,14 +13,15 @@ import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { cast_chain_lightning, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
+import { shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
 import { pline } from './pline.js';
-import { rn2, rnd, rn1 } from './rng.js';
-import { d } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
+import { d } from './rnd.js';
 import { mkinvokearea, SPBOOK_CLASS } from './mklev.js';
 import { CANDELABRUM_OF_INVOCATION, BELL_OF_OPENING } from './objclass_ranges.js';
 import { ACH_INVK } from './const.js';
-import { record_achievement } from './cmd.js';
+import { record_achievement } from './insight.js';
 import { build_window_screen, tty_window_offx, menu_search_getlin } from './com_pager.js';
 import { pmatchi } from './strutil.js';
 import { menucolor_text } from './coloratt.js';
@@ -28,8 +29,9 @@ import { CORR, DOOR, ROOM, NO_SPELL, UNKNOWN_SPELL, CONFUSION, STUNNED, TIMEOUT,
     ECMD_OK, ECMD_TIME, ECMD_FAIL, CMDQ_KEY, CQ_REPEAT } from './const.js';
 import { acurr as acurr_real, poison_strdmg } from './attrib.js';
 import { POISON_RES, KILLED_BY_AN, ANTIMAGIC, FACE } from './const.js';
-import { nomul, stop_occupation } from './allmain.js';
-import { makemon } from './mklev.js';
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
+import { makemon } from './makemon.js';
 import { On_stairs } from './stairs.js';
 import { iter_mons } from './mon.js';
 import { set_malign, permonstTemplate } from './makemon.js';
@@ -37,8 +39,12 @@ import { mkundead } from './mkroom.js';
 import { PM_MASTER_LICH, PM_NALFESHNEE } from './pm.generated.js';
 import { NO_MINVENT } from './const.js';
 import { tamedog } from './dog.js';
-import { monflee } from './makemon.js';
-import { invocation_pos, useup, jump, body_part, cmdq_pop, cmdq_add_key, getpos, getpos_sethilite } from './cmd.js';
+import { monflee } from './monmove.js';
+import { body_part, cmdq_pop, cmdq_add_key } from './cmd.js';
+import { invocation_pos } from './hack.js';
+import { getpos, getpos_sethilite } from './getpos.js';
+import { jump } from './apply.js';
+import { useup } from './invent.js';
 import { walk_path } from './dothrow.js';
 import { trycall } from './do.js';
 import { explode } from './explode.js';
@@ -49,7 +55,7 @@ import { distmin } from './hacklib.js';
 import { isok, Is_waterlevel, ZAP_POS, IS_DOOR, D_ISOPEN, EXPL_FIERY, EXPL_FROSTY } from './const.js';
 import { yn_function } from './cmd.js';
 import { MENU_TRADITIONAL } from './const.js';
-import { check_capacity } from './cmd.js';
+import { check_capacity_sync as check_capacity } from './cmd.js';
 import { morehungry } from './eat.js';
 import { aggravate } from './wizard.js';
 import { tele } from './teleport.js';
@@ -58,19 +64,20 @@ import { make_blinded } from './zap.js';
  * empty body.  Import the real one directly. */
 import { make_confused, make_stunned, eyecount } from './potion.js';
 import { freehand } from './engrave.js';
-import { can_chant } from './makemon.js';
+import { can_chant } from './mondata.js';
 import { CLR_WHITE } from './terminal.js';
 import { exercise } from './attrib.js';
 import { discover_object, observe_object } from './o_init.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { use_skill } from './uhitm.js';
+import { use_skill } from './weapon.js';
 /* percent_success's is_metallic() (spell.c:2190-2208) needs objects[].oc_material
  * for the worn-armour slots; ARMOR_DATA is the generated ARMOR_CLASS slice of
  * the C objects table and armorIsMetallic() is objclass.h:194 restated. */
 import { ARMOR_DATA, armorIsMetallic } from './armor_data.js';
 import { weight } from './weight.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
-import { ubuzz, zap_dig } from './zap.js';
+import { ubuzz } from './zap.js';
+import { zap_dig } from './dig.js';
 /* ── spelleffects() effect-dispatch surface ─────────────────────────────────
  * spell.c:1385 spelleffects() does not *emulate* the spell; it builds a pseudo
  * object and hands it to the same wand/scroll/potion machinery a real item
@@ -78,23 +85,24 @@ import { ubuzz, zap_dig } from './zap.js';
  * from dozap()/doread()/dopotion() but NOT from docast() — the cast path had
  * its own RNG-consumption stand-in instead.  These imports are what make the
  * real bodies live from a cast. */
-import { mksobj, set_bknown as set_bknown_real } from './mklev.js';
+import { mksobj, set_bknown as set_bknown_real } from './mkobj.js';
 import { zapyourself, weffects } from './zap.js';
 import { seffects } from './read.js';
 import { peffects, healup, make_slimed } from './potion.js';
 import { obfree, check_unpaid_usage } from './shk.js';
 import { losehp } from './hack.js';
 import { update_inventory } from './mhitm.js';
-import { getdir } from './lock.js';
+import { getdir } from './cmd.js';
 import { NO_KILLER_PREFIX, CLOUD, IS_TREE, IS_STWALL } from './const.js';
 import { Blind } from './vision.js';
 import { find_ac } from './do_wear.js';
-import { hcolor, hliquid } from './mhitm.js';
+import { hcolor } from './mhitm.js';
+import { hliquid } from './do_name.js';
 import { an, Tobjnam as Tobjnam_real, getObjDescr, makeplural } from './objnam.js';
 import { fall_asleep } from './timeout.js';
 import { EYE, ERODE_CORRODE, EF_GREASE, EF_VERBOSE } from './const.js';
 import { erode_obj } from './trap.js';
-import { dmgtype_fromattack } from './makemon.js';
+import { dmgtype_fromattack } from './mondata.js';
 import { PM_FOG_CLOUD, PM_AIR_ELEMENTAL } from './pm.generated.js';
 /* C spell.c:1570 dispatches directly to dog.c:137 make_familiar(). */
 import { make_familiar } from './dog.js';
@@ -105,9 +113,12 @@ import { SPINE, DISP_BEAM, DISP_END } from './const.js';
 import { tmp_at, docorner_blank_utf8_captures } from './display.js';
 import { msgtype_suppressed } from './display.js'; // relocate-fns
 import { _Confusion, _bump_literate, _makeknown, set_cursor, topline_more_loop } from './read.js'; // relocate-fns
-import { rnl } from './rng.js'; // relocate-fns
+import { rnl } from './rnd.js'; // relocate-fns
 import { more_experienced } from './uhitm.js'; // relocate-fns
 import { isqrt } from './hacklib.js'; // relocate-fns
+import { DRAWBRIDGE_UP, D_CLOSED, D_LOCKED, HALLUC, HALLUC_RES, LAVAPOOL, MOAT, POOL } from './const.js'; // relocate-fns
+import { DISP_CHANGE, canseemon, map_invisible, nh_delay_output, zapdir_to_glyph } from './display.js'; // relocate-fns
+import { rn2_on_display_rng } from './rnd.js'; // relocate-fns
 
 // ── Object-type constants ────────────────────────────────────────────────────
 const SPBOOK_FIRST_OTYP = 366; // SPE_DIG = FIRST_SPELL
@@ -1636,13 +1647,14 @@ async function dospellmenu_render_and_read(prompt, headingRaw, items, how) {
             /* C wintty.c:1114 toggle_menu_curr: a counted pick of an already
              * selected entry keeps it selected (only records the count). */
             return { count: hit.sel && !(counting && count > 0) ? 0 : 1, picked: hit.a_int };
-        if (how === 'PICK_NONE')
+        if (how === 'PICK_NONE') {
             /* C ref: a PICK_NONE picklist is display-only — any other key just
              * re-reads (the dismiss keys above already returned).  A key
              * outside resp (wintty.c:1533-1535) is swallowed inside
              * xwaitforspace, so a live count survives it. */
             if (!'^><|.,@~'.includes(ch)) reset_count = false;
             continue;
+        }
         /* Unrecognised accelerator: bell, no redraw, read again. */
         reset_count = false;
     }
@@ -2756,4 +2768,99 @@ export function losespells() {
             nzap--;
         }
     }
+}
+
+export async function cast_chain_lightning() {
+    const { _zhitm } = await import('./zap.js');
+    const { defended, wakeup } = await import('./mhitm.js');
+    const { m_at, mon_nam, exclam, xkilled, XKILL_GIVEMSG } = await import('./uhitm.js');
+    const { xdir, ydir } = await import('./const.js');
+    const u = game.u;
+    const N_DIRS = 8, LIMIT = 100, MR_ELEC = 0x10, AD_ELEC = 6;
+    const BZ_U_SPELL = (bztyp) => 10 + (bztyp);
+    const resists_elec = (m) => ((((m.data ? m.data.mresists : 0) | m.mextrinsics | m.mintrinsics) & MR_ELEC) !== 0);
+    const cell = (x, y) => (game.level && typeof game.level.at === 'function')
+        ? game.level.at(x, y) : game.level.locations[x]?.[y];
+    const POS = (x, y) => {
+        if (!isok(x, y)) return false;
+        const l = cell(x, y), t = l.typ;
+        return (t > DOOR) || t === POOL || t === MOAT || t === DRAWBRIDGE_UP || t === LAVAPOOL
+            || (IS_DOOR(t) && !((l.doormask | 0) & (D_CLOSED | D_LOCKED)));
+    };
+    const halluc = !!(u.uprops?.[HALLUC]?.intrinsic)
+        && !(u.uprops?.[HALLUC_RES]?.intrinsic || u.uprops?.[HALLUC_RES]?.extrinsic);
+    const clq = { q: [], head: 0, displayed_beam: halluc ? rn2_on_display_rng(6) : (AD_ELEC - 1) };
+    const DIR_LEFT = (d) => (d + N_DIRS - 1) % N_DIRS;
+    const DIR_RIGHT2 = (d) => (d + 2) % N_DIRS;
+    const propagate_chain_lightning = (zap0) => {
+        const zap = { ...zap0 };
+        zap.x += xdir[zap.dir];
+        zap.y += ydir[zap.dir];
+        if (clq.q.length >= LIMIT) return;
+        if (!POS(zap.x, zap.y)) return;
+        const mon = m_at(zap.x, zap.y);
+        if (mon && mon.mpeaceful) return;
+        if (mon && !resists_elec(mon) && !defended(mon, AD_ELEC)) zap.strength = 3;
+        else if (mon) zap.strength = 0;
+        if (!mon && !zap.strength) return;
+        for (const z of clq.q) if (z.x === zap.x && z.y === zap.y) return;
+        clq.q.push(zap);
+        tmp_at(DISP_CHANGE, zapdir_to_glyph(xdir[zap.dir], ydir[zap.dir], clq.displayed_beam));
+        tmp_at(zap.x, zap.y);
+    };
+    if (u.uswallow) return;
+    tmp_at(DISP_BEAM, zapdir_to_glyph(0, 1, clq.displayed_beam));
+    for (let dir = 0; dir < N_DIRS; dir++)
+        propagate_chain_lightning({ dir, x: u.ux, y: u.uy, strength: 2 });
+    nh_delay_output();
+    while (clq.head < clq.q.length) {
+        const delay_tail = clq.q.length;
+        while (clq.head < delay_tail) {
+            const zap = { ...clq.q[clq.head++] };
+            const mon = m_at(zap.x, zap.y);
+            if (mon) {
+                const _bp = game.gb?.bhitpos ?? game.bhitpos;
+                game.notonhead = (mon.mx !== _bp?.x || mon.my !== _bp?.y);
+                /* C spell.c:1039-1040 uses the shared impact position, even
+                 * though this spell never updates it to the current zap. */
+                const bhitpos = game.gb?.bhitpos || game.bhitpos || { x: 0, y: 0 };
+                (game.gn ||= {}).notonhead = (mon.mx !== bhitpos.x || mon.my !== bhitpos.y);
+                /* C spell.c:1041 BZ_U_SPELL(AD_ELEC - 1) */
+                const dmg = await _zhitm(mon, BZ_U_SPELL(AD_ELEC - 1), 2);
+                if (dmg) {
+                    /* C spell.c:1049 xkilled(mon, XKILL_GIVEMSG) */
+                    if ((mon.mhp | 0) < 1) await xkilled(mon, XKILL_GIVEMSG);
+                    else {
+                        await pline(`You shock ${mon_nam(mon)}${exclam(dmg)}`);
+                        if (!canseemon(mon) && !game.gn.notonhead) map_invisible(zap.x, zap.y);
+                    }
+                } else if (canseemon(mon)) {
+                    await pline(`${mon_nam(mon).replace(/^./, (c) => c.toUpperCase())} resists.`);
+                }
+                if ((mon.mhp | 0) >= 1) {
+                    game.context.forcefight = (game.context.forcefight | 0) + 1;
+                    await wakeup(mon, false);
+                    game.context.forcefight--;
+                }
+            }
+            if (!zap.strength) continue;
+            zap.strength--;
+            propagate_chain_lightning(zap);
+            if (zap.strength < 2) zap.strength = 0;
+            else if ((u.uen | 0) > 0) {
+                if (!(game.disp && ((game.disp.botl | 0) || (game.disp.botlx | 0)))
+                    && game._botlStaleUen === undefined)
+                    game._botlStaleUen = u.uen | 0;
+                u.uen--;
+            }
+            zap.dir = DIR_LEFT(zap.dir);
+            propagate_chain_lightning(zap);
+            zap.dir = DIR_RIGHT2(zap.dir);
+            propagate_chain_lightning(zap);
+        }
+        nh_delay_output();
+    }
+    nh_delay_output();
+    nh_delay_output();
+    tmp_at(DISP_END, 0);
 }

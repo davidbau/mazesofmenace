@@ -2,7 +2,8 @@
 // C ref: exper.c newpw(), pluslvl(), attrib.c newhp() for u.ulevel==0 and level-up.
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
 import { u_init_misc } from './u_init.js';
-import { rnd, rn1, rn2 } from './rng.js';
+import { rn1 } from './rng.js';
+import { rnd, rn2 } from './rnd.js';
 import { game } from './gstate.js';
 import { clong, LONG_MAX } from './integer.js';
 import './exper_pure.js';
@@ -10,13 +11,13 @@ import { PM_WIZARD } from './pm.generated.js';
 import { flush_screen } from './display.js';
 import { pline, livelog_printf } from './pline.js';
 import { adjabil, minuhpmax, setuhpmax, acurr, newhp } from './attrib.js';
-import { Goodbye } from './roles.js';
+import { Goodbye } from './role.js';
 import { monhp_per_lvl } from './makemon.js';
 import { KILLED_BY, DIED, LL_MINORAC, Upolyd, DRAIN_RES, A_WIS } from './const.js';
 /* C exper.c:358-360 — pluslvl records the rank achievement.  Both helpers live
  * in insight.c; this port hosts the insight.c block in js/cmd.js. */
-import { achieve_rank, record_achievement, count_achievements } from './cmd.js';
-import { xlev_to_rank } from './rank_data.js';
+import { achieve_rank, record_achievement, count_achievements } from './insight.js';
+import { xlev_to_rank } from './botl.js';
 /* rehumanize is async because its urgent message must cross the display
  * command boundary.  Keep losexp async all the way through its Upolyd arm;
  * fire-and-forget here used to leave a polymorphed hero dead until a later
@@ -441,7 +442,10 @@ export async function losexp(drainer) {
     if (g.disp) g.disp.botl = 1; /* SET_BOTL */
 }
 
-const MAXULEV = 30; // C: nethack-c/include/global.h
+import { MAXULEV } from './const.js'; // C: include/global.h
+import { PM_MAIL_DAEMON } from './pm.generated.js'; // relocate-fns
+import { AD_BLND_UH, AD_DRLI_UH, AD_PHYS_UH, AD_SLIM_UH, AD_STON_UH, AD_WRAP_UH, AT_BUTT_UH, AT_MAGC_UH, AT_WEAP_UH, MONS_MATTK, NATTK_UH, NORMAL_SPEED_UH, S_EEL_UH, _MONS } from './uhitm.js'; // relocate-fns
+import { find_mac } from './worn.js'; // relocate-fns
 
 const LARGEST_INT = 32767; // C: nethack-c/include/global.h
 
@@ -517,4 +521,116 @@ export function rndexp(gaining, ulevel, uexp) {
             result = uexp;
     }
     return result;
+}
+
+const M2_NASTY_UH = 0x02000000; /* C monflag.h:147 M2_NASTY */
+
+const M1_AMPHIBIOUS_UH = 0x00080000; /* C monflag.h M1_AMPHIBIOUS */
+
+const MAGICAL_BREATHING_IDX_UH = 52; /* C prop.h MAGICAL_BREATHING */
+
+/* C mondata.h:120 extra_nasty(ptr) */
+function _extra_nasty_uh(row) { return ((row[7] | 0) & M2_NASTY_UH) !== 0; }
+
+/* C worn.c:717-736 find_mac — canonical port imported from worn.js */
+/* C Amphibious := Breathless || amphibious(youmonst.data); the same read
+ * js/teleport.js:1060 Amphibious_hero() uses. */
+function _Amphibious_uh() {
+    const p = game.u?.uprops?.[MAGICAL_BREATHING_IDX_UH];
+    if (p && ((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0))
+        return true;
+    const d = game.youmonst?.data;
+    return !!d && ((d.mflags1 | 0) & M1_AMPHIBIOUS_UH) !== 0;
+}
+
+export function experience(mtmp, nk) {
+    const mndx = (mtmp?.mndx ?? mtmp?.mnum ?? -1) | 0;
+    const row = (mndx >= 0 && mndx < _MONS.length) ? _MONS[mndx] : null;
+    if (!row)
+        return 1;
+    const attk = MONS_MATTK[mndx] || [];
+    const mlev = mtmp.m_lev | 0;
+    let i, tmp2;
+    let tmp = 1 + mlev * mlev;
+
+    /* C exper.c:91-93 — for higher ac values, give extra experience */
+    if ((i = find_mac(mtmp)) < 3)
+        tmp += (7 - i) * ((i < 0) ? 2 : 1);
+
+    /* C exper.c:95-97 — for very fast monsters, give extra experience.
+     * permonst.mmove is MONS column [9] (see the row-layout note above). */
+    const mmove = row[9] | 0;
+    if (mmove > NORMAL_SPEED_UH)
+        tmp += (mmove > Math.trunc(3 * NORMAL_SPEED_UH / 2)) ? 5 : 3;
+
+    /* C exper.c:99-108 — for each "special" attack type give extra experience */
+    for (i = 0; i < NATTK_UH; i++) {
+        tmp2 = attk[i] ? (attk[i].aatyp | 0) : 0;
+        if (tmp2 > AT_BUTT_UH) {
+            if (tmp2 === AT_WEAP_UH)
+                tmp += 5;
+            else if (tmp2 === AT_MAGC_UH)
+                tmp += 10;
+            else
+                tmp += 3;
+        }
+    }
+
+    /* C exper.c:110-127 — for each "special" damage type give extra experience */
+    for (i = 0; i < NATTK_UH; i++) {
+        const a = attk[i];
+        tmp2 = a ? (a.adtyp | 0) : 0;
+        if (tmp2 > AD_PHYS_UH && tmp2 < AD_BLND_UH)
+            tmp += 2 * mlev;
+        else if (tmp2 === AD_DRLI_UH || tmp2 === AD_STON_UH || tmp2 === AD_SLIM_UH)
+            tmp += 50;
+        else if (tmp2 !== AD_PHYS_UH)
+            tmp += mlev;
+        /* extra heavy damage bonus */
+        if (a && ((a.damd | 0) * (a.damn | 0)) > 23)
+            tmp += mlev;
+        if (tmp2 === AD_WRAP_UH && (row[0] | 0) === S_EEL_UH && !_Amphibious_uh())
+            tmp += 1000;
+    }
+
+    /* C exper.c:129-131 — for certain "extra nasty" monsters, give even more */
+    if (_extra_nasty_uh(row))
+        tmp += (7 * mlev);
+
+    /* C exper.c:133-135 — for higher level monsters, an additional bonus */
+    if (mlev > 8)
+        tmp += 50;
+
+    /* C exper.c:137-140 (MAIL_STRUCTURES) — mail daemons put up no fight. */
+    if (mndx === PM_MAIL_DAEMON)
+        tmp = 1;
+
+    /* C exper.c:141-163 — reduce experience awarded for repeated killings of
+     * "the same monster" (revived/cloned only). */
+    if (mtmp.mrevived || mtmp.mcloned) {
+        let n = nk | 0;
+        for (i = 0, tmp2 = 20; n > tmp2 && tmp > 1; ++i) {
+            tmp = Math.trunc((tmp + 1) / 2);
+            n -= tmp2;
+            if (i & 1)
+                tmp2 += 20;
+        }
+    }
+
+    return tmp;
+}
+
+/* C ref: exper.c:305 newexplevel(void) — decide whether the hero levels up.
+ *   if (u.ulevel < MAXULEV && u.uexp >= newuexp(u.ulevel)) pluslvl(TRUE);
+ * pluslvl(TRUE) consumes RNG (newhp/newpw); for sub-threshold kills (e.g. a fox
+ * giving 4xp to a level-1 hero who needs 20) it is NOT called, so no RNG fires.
+ * C ref: exper.c:305-317. */
+export async function newexplevel() {
+    const u = game.u;
+    if (!u) return;
+    const ulevel = (u.ulevel | 0);
+    const threshold = newuexp(ulevel); /* BigInt */
+    if (ulevel < MAXULEV && clong(u.uexp) >= threshold) {
+        await pluslvl(true);
+    }
 }

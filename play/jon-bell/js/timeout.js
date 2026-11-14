@@ -10,30 +10,41 @@ import { RANGE_GLOBAL, NHF_BONESFILE, TIMER_LEVEL, TIMER_OBJECT, TIMER_NONE,
 import { rot_organic, rot_corpse } from './dig.js';
 import { game } from './gstate.js';
 import { eatfood } from './eat.js';
-import { COLNO, ROWNO, CLOUD, RLOC_NOMSG, MELT_ICE_AWAY, DRAWBRIDGE_DOWN, DB_ICE, DB_UNDER } from './const.js';
-import { rn2, rn1, d } from './rng.js';
+import { COLNO, ROWNO, CLOUD, MELT_ICE_AWAY, DRAWBRIDGE_DOWN, DB_ICE, DB_UNDER } from './const.js';
+import { rn1 } from './rng.js';
+import { rn2, d } from './rnd.js';
 import { pline, You_hear, You_feel, urgent_pline } from './pline.js';
 import { impossible } from './pline.js';
 import { buzz, Monnam } from './mcastu.js';
-import { rider_revival_time, is_rider_pm, makemon, revive_corpse, set_corpsenm, dealloc_obj } from './mklev.js';
+import { is_rider_pm } from './mklev.js';
+import { revive_corpse } from './do.js';
+import { rider_revival_time, set_corpsenm, dealloc_obj } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { ing_suffix } from './hacklib.js';
 import { hideunder, zombie_form, dealloc_mextra, maybe_unhide_at } from './mon.js';
-import { permonstTemplate, container_weight, emits_light, name_to_mon } from './makemon.js';
-import { enexto_out, rloc } from './teleport.js';
+import { permonstTemplate, container_weight, emits_light } from './makemon.js';
+import { name_to_mon } from './mondata.js';
+import { enexto_out, rloc, RLOC_NOMSG } from './teleport.js';
 import { tamedog } from './dog.js';
 import { make_familiar } from './dog.js';
 import { cansee } from './vision.js';
-import { m_monnam, a_monnam } from './mhitm.js';
+import { m_monnam, a_monnam } from './do_name.js';
 import { locomotion, big_to_little, little_to_big } from './mondata.js';
 import { makeplural, an, xname, the, simpleonames, doname } from './objnam.js';
 import { newsym, canseemon, Deaf, impossible_sync } from './display.js';
 import { You_see } from './pline.js';
-import { figurine_location_checks, useup, useupall, obj_extract_self_general, verbalize, Yname2, set_msg_xy } from './cmd.js';
+import { obj_extract_self_general, verbalize } from './cmd.js';
+import { figurine_location_checks } from './apply.js';
+import { useup, useupall } from './invent.js';
+import { set_msg_xy } from './pline.js';
+import { Yname2 } from './objnam.js';
 import { obfree } from './dokick.js';
-import { is_ice } from './dbridge.js';
-import { m_at, setmnotwielded } from './uhitm.js';
+import { is_ice } from './engrave.js';
+import { m_at } from './uhitm.js';
+import { setmnotwielded } from './weapon.js';
 import { is_pool } from './look.js';
-import { s_suffix, dist2, isok } from './hacklib.js';
+import { s_suffix, dist2 } from './hacklib.js';
+import { isok } from './const.js';
 import { cry_sound } from './sounds.js';
 import { Blind } from './vision.js';
 import { Norep } from './pline.js';
@@ -41,7 +52,8 @@ import { hcolor } from './mhitm.js';
 import { melt_ice_zap } from './zap.js';
 import { find_ac } from './do_wear.js';
 import { remove_worn_item } from './steal.js';
-import { encumber_msg, weight } from './weight.js';
+import { weight } from './weight.js';
+import { encumber_msg } from './pickup.js';
 import { near_capacity } from './hack.js';
 import { Shk_Your } from './shk.js';
 import { polymon } from './polyself.js';
@@ -50,12 +62,14 @@ import { PM_GREEN_SLIME } from './pm.generated.js';
 import { LS_MONSTER, I_SPECIAL, TIMEOUT, LOW_PM, TURNED_SLIME, GENOCIDED, KILLED_BY,
          NO_KILLER_PREFIX, PLNMSG_OK_DONT_DIE } from './const.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
-import { new_light_source, del_light_source, artifact_light, arti_light_radius, candle_light_range } from './light.js';
+import { new_light_source, del_light_source, arti_light_radius, candle_light_range } from './light.js';
+import { artifact_light } from './artifact.js';
 import { monst_to_any } from './hack.js';
 import { get_obj_location } from './zap.js';
 import { update_inventory } from './mhitm.js';
-import { nomul, stop_occupation } from './allmain.js';
-import { rnd } from './rng.js';
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
+import { rnd } from './rnd.js';
 import {
     INVULNERABLE, STONED, SLIMED, STRANGLED, SICK, STUNNED, CONFUSION, HALLUC,
     BLINDED, DEAF, VOMITING, GLIB, WOUNDED_LEGS, SLEEPY, TELEPORT, POLYMORPH,
@@ -882,7 +896,7 @@ function curmoves() {
 // alloc(size) (alloc.c) — struct allocator; JS has no sizeof/malloc model, so
 // a fresh field-less object stands in for the C allocation, same pattern as
 // js/region.js's local alloc(_size) stub.
-function alloc(_size) { return {}; }
+function alloc_timeout(_size) { return {}; }
 
 // Sfi_ulong/Sfi_int/Sfi_fe (savefile.h) — libc-level save-file field readers;
 // no JS save-file byte model exists, so these are faithful no-op stubs
@@ -891,78 +905,7 @@ function Sfi_ulong(nhfp, val, name) { return val; }
 function Sfi_int(nhfp, val, name) { return val; }
 function Sfi_fe(nhfp, curr, name) { return curr; }
 
-/* C ref: timeout.c:1965-1978 timeout_funcs[NUM_TIME_FUNCS] — the
- * per-timeout-type dispatch table { timeout proc, cleanup proc, name }, indexed
- * by the ROT_ORGANIC..MELT_ICE_AWAY enum in include/timeout.h.
- *
- * The handlers are read through arrow wrappers rather than referenced directly
- * so the table can be built at module-evaluation time without forcing the
- * imported bindings out of TDZ — js/dig.js imports start_timer from here, so
- * the two modules form a cycle and whichever loads second would otherwise see
- * an uninitialised binding.
- * The expiration time must reach callbacks such as burn_object: it determines
- * whether to show a warning or silently catch up after time spent away. */
-/* C ref: do.c:2248-2295 revive_mon(). */
-async function revive_mon(arg) {
-    const body = arg?.a_obj;
-    if (!body) return;
-    /* C do.c:2258-2274: a displacer's corpse bumps the monster on its square
-     * away with rloc() before reviving. */
-    const mptr = permonstTemplate(body.corpsenm | 0);
-    const M3_DISPLACES = 0x0400;
-    if (mptr && ((mptr.mflags3 | 0) & M3_DISPLACES) && (body.where | 0) === OBJ_FLOOR) {
-        const x = body.ox | 0, y = body.oy | 0;
-        const mtmp = m_at(x, y);
-        if (mtmp && (game.level?.flags?.stasis_until | 0) < (game.moves | 0)) {
-            const notice_it = canseemon(mtmp);
-            const monname = Monnam(mtmp);
-            if (await rloc(mtmp, RLOC_NOMSG)) {
-                if (notice_it && !canseemon(mtmp))
-                    await pline(`${monname} vanishes.`);
-                else if (!notice_it && canseemon(mtmp))
-                    await pline(`${Monnam(mtmp)} appears.`);
-                else if (notice_it && dist2(mtmp.mx, mtmp.my, x, y) > 2)
-                    await pline(`${monname} teleports.`);
-            }
-        }
-    }
-    if (!(await revive_corpse(body))) {
-        let when, action;
-        const rider = is_rider_pm(body.corpsenm | 0);
-        if (rider && rn2(99)) { /* Rider usually tries again */
-            action = REVIVE_MON;
-            when = rider_revival_time(body, true);
-        } else { /* rot this corpse away */
-            if (!obj_has_timer(body, ROT_CORPSE))
-                await You_feel(`${rider ? 'much ' : ''}less hassled.`); // C do.c:2286
-            action = ROT_CORPSE;
-            when = d(5, 50) - ((game.moves | 0) - (body.age | 0));
-            if (when < 1) when = 1;
-        }
-        if (!obj_has_timer(body, action))
-            start_timer(when, TIMER_OBJECT, action, arg);
-    }
-}
 
-/* C ref: do.c:2297-2316 zombify_mon(). */
-async function zombify_mon(arg, timeout) {
-    const body = arg?.a_obj;
-    if (!body) return;
-    const zmon = zombie_form(permonstTemplate(body.corpsenm | 0));
-    if (zmon !== NON_PM && !(((game.mvitals?.[zmon]?.mvflags) | 0) & G_GENOD)) {
-        if (body.oextra) {
-            body.oextra.omid = 0;
-            if ('oextra_omid' in body) body.oextra_omid = 0;
-            // C do.c:2307 -> mkobj.c:134-135 frees the saved monster's mextra.
-            if (body.oextra.omonst) dealloc_mextra(body.oextra.omonst);
-            body.oextra.omonst = null;
-        }
-        set_corpsenm(body, zmon);
-        await revive_mon(arg, timeout);
-    } else {
-        await rot_corpse(arg, timeout);
-    }
-}
 
 const timeout_funcs = [
     { f: (arg, timeout) => rot_organic(arg, timeout), cleanup: 0, name: 'rot_organic' },
@@ -1123,7 +1066,7 @@ export function start_timer(when, kind, func_index, arg) {
     }
 
     const svt = stimer();
-    gnu = alloc(/* sizeof(timer_element) */);
+    gnu = alloc_timeout(/* sizeof(timer_element) */);
     gnu.next = null;
     gnu.tid = svt.timer_id++;
     gnu.timeout = curmoves() + (when | 0);
@@ -1384,7 +1327,7 @@ export function spot_time_left(x, y, func_index) {
  * `a_long` is spelled out so the chain-walk comparisons above can test both
  * arms of the union without an undefined-vs-undefined false match between an
  * object timer and a level timer. */
-import { obj_to_any } from './cmd.js';
+import { obj_to_any } from './hack.js';
 import { exercise } from './attrib.js'; // relocate-fns
 import { A_DEX, DEAF as DEAF_PROP, FAST as FAST_PROP, KILLED_BY_AN, M_AP_MONSTER, SLIMED as SLIMED_PROP, WOUNDED_LEGS as WOUNDED_LEGS_PROP } from './const.js'; // relocate-fns
 import { heal_legs } from './do.js'; // relocate-fns
@@ -1396,6 +1339,21 @@ import { shrinking_glob_gone } from './mkobj.js'; // relocate-fns
 import { ECMD_OK } from './const.js'; // relocate-fns
 import { displayLookWindow } from './look-window.js'; // relocate-fns
 import { any_visible_region, region_stats_snapshot } from './region.js'; // relocate-fns
+import { _fumble_hallucinating } from './allmain.js'; // relocate-fns
+import { acurr } from './attrib.js'; // relocate-fns
+import { body_part, confdir, instapetrify } from './cmd.js'; // relocate-fns
+import { ACCESSIBLE, ARTICLE_THE, DISMOUNT_FELL, FROMOUTSIDE, Is_waterlevel, PLNMSG_ONE_ITEM_HERE, SUPPRESS_SADDLE, W_SADDLE } from './const.js'; // relocate-fns
+import * as PROPS from './const.js'; // relocate-fns
+import { is_pool_or_lava } from './dbridge.js'; // relocate-fns
+import { dismount_steed } from './dog.js'; // relocate-fns
+import { hurtle } from './dothrow.js'; // relocate-fns
+import { surface } from './dungeon.js'; // relocate-fns
+import { upstart } from './hacklib.js'; // relocate-fns
+import { monPmname } from './makemon.js'; // relocate-fns
+import { x_monnam } from './do_name.js'; // relocate-fns
+import { PM_CHICKATRICE, PM_COCKATRICE, PM_GRID_BUG } from './pm.generated.js'; // relocate-fns
+import { which_armor } from './worn.js'; // relocate-fns
+import { revive_mon, zombify_mon } from './do.js'; // relocate-fns
 export { burn_carried }; // relocate-fns
 
 // C ref: timeout.c:2698-2714 restore_timers(NHFILE *nhfp, int range, long adjust)
@@ -1412,7 +1370,7 @@ export function restore_timers(nhfp, range, adjust) {
     /* restore elements */
     count = Sfi_int(nhfp, count, "timer-timer_count");
     while (count-- > 0) {
-        curr = alloc(/* sizeof(timer_element) */);
+        curr = alloc_timeout(/* sizeof(timer_element) */);
         curr = Sfi_fe(nhfp, curr, "timer");
         if (ghostly)
             curr.timeout += adjust;
@@ -1940,4 +1898,182 @@ export async function wiz_timeout_queue() {
     }
     await displayLookWindow(lines); /* NHW_MENU corner window (timeout.c:2049) */
     return ECMD_OK;
+}
+
+/* C timeout.c:1009-1016 — prevent an egg from hatching by cancelling its
+ * object timer.  The timer API owns the timed-count bookkeeping. */
+export function kill_egg(obj) {
+    if (obj)
+        stop_timer(HATCH_EGG, obj_to_any(obj));
+}
+
+/* C timeout.c:354 SIZE(levi_texts) */
+const SIZE_LEVI_TEXTS = 2;
+
+/* C timeout.c:347-378 — the last two warnings before timed descent. */
+export async function levitation_dialogue() {
+    const u = game.u;
+    const p = u.uprops[LEVITATION];
+    const timeout = (p.intrinsic | 0) & TIMEOUT;
+    if (p.extrinsic)
+        return;
+    const poolOrLava = is_pool_or_lava(u.ux, u.uy);
+    if (!ACCESSIBLE(game.level?.at(u.ux, u.uy)?.typ ?? 0) && !poolOrLava)
+        return;
+    const i = Math.trunc((timeout - 1) / 2);
+    if ((timeout % 2) && i > 0 && i <= SIZE_LEVI_TEXTS) {
+        if (i === 2) {
+            await pline('You float slightly lower.');
+        } else {
+            const danger = poolOrLava && !Is_waterlevel(u.uz);
+            await urgent_pline(`You wobble unsteadily ${danger ? 'over' : 'in'} the ${danger ? surface(u.ux, u.uy) : 'air'}.`);
+        }
+        await stop_occupation();
+    }
+}
+
+/* C mbodypart() part index (hack.h BP_* enum): FOOT.  js/cmd.js body_part()
+ * takes the same index; 5 is the value its own local FOOT const carries. */
+const FOOT_AM = 5;
+
+/* objects[] index of "corpse", from js/oc_name_data.js's OC_NAME table —
+ * objects.h is an X-macro file with no `#define CORPSE` text to grep. */
+const CORPSE_AM = 265;
+
+/* objects.h ROCK */
+const ROCK = 474;
+
+export async function slip_or_trip() {
+    const g = game;
+    const u = g.u;
+    /* C hack.c vobj_at(x,y) — the head of the tile's nexthere chain. */
+    let otmp = (g.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0]) ?? null;
+    const on_foot = !u.usteed;
+    if (otmp && on_foot && !u.uinwater && is_pool(u.ux | 0, u.uy | 0))
+        otmp = null;
+    if (otmp && on_foot) {
+        /* C timeout.c:1232-1247 — trip over something in particular. The PLNMSG_ONE_ITEM_HERE pronoun arm reads g.iflags.last_msg, matching C timeout.c:1240. */
+        const oneItem = (g.iflags?.last_msg | 0) === PLNMSG_ONE_ITEM_HERE;
+        let what;
+        if (oneItem) {
+            what = (otmp.quan | 0) === 1
+                ? 'it' : (_fumble_hallucinating() ? 'they' : 'them');
+        } else if ((otmp.dknown | 0) || !Blind()) {
+            what = (await doname(otmp));
+        } else {
+            /* C timeout.c:1238-1246 — when the top object is unseen,
+             * identify a visible rock if present, otherwise say “something”. */
+            let rock = null;
+            for (let o = otmp; o; o = o.nexthere) {
+                if ((o.otyp | 0) === ROCK) {
+                    rock = o;
+                    break;
+                }
+            }
+            what = rock ? ((rock.quan | 0) === 1 ? 'a rock' : 'some rocks')
+                        : 'something';
+        }
+        if (_fumble_hallucinating()) {
+            const cap = upstart(what);
+            await pline(`Egads!  ${cap} bite${(!otmp || (otmp.quan | 0) === 1) ? 's' : ''} your ${body_part(FOOT_AM)}!`);
+        } else {
+            await pline(`You trip over ${what}.`);
+        }
+        /* C timeout.c:1256-1261 — a bare-footed hero who trips over a
+         * cockatrice/chickatrice corpse petrifies immediately. */
+        if (!u.uarmf && (otmp.otyp | 0) === CORPSE_AM
+            && ((otmp.corpsenm | 0) === PM_COCKATRICE
+                || (otmp.corpsenm | 0) === PM_CHICKATRICE)
+            && !((u.uprops?.[STONE_RES]?.intrinsic | 0)
+                 || (u.uprops?.[STONE_RES]?.extrinsic | 0))) {
+            // C sets the name even when instapetrify turns a golem to stone.
+            const killer = (g.svk ||= {}).killer ||= { id: 0, format: 0, name: '', next: null };
+            killer.name = `tripping over ${an(monPmname(otmp.corpsenm, PROPS.NEUTRAL))} corpse`;
+            await instapetrify(killer.name);
+        }
+        return;
+    }
+    const HFumbling = (u.uprops?.[FUMBLING]?.intrinsic | 0);
+    if ((HFumbling & FROMOUTSIDE) || (is_ice(u.ux | 0, u.uy | 0) && !rn2(3))) {
+        /* C timeout.c:1262-1298 — the ice branch. */
+        const slipslide = rn2(2) ? 'slip' : 'slide';
+        const currentlyIce = is_ice(u.ux | 0, u.uy | 0);
+        /* C timeout.c:1271-1284 — the message names the steed when mounted,
+         * then a non-cursed saddle may throw the rider. */
+        if (on_foot) {
+            await pline(`You ${slipslide}${currentlyIce ? ' on' : ' off'} the ice.`);
+        } else {
+            /* C uses upstart(x_monnam(steed, ARTICLE_THE, ...,
+             * SUPPRESS_SADDLE, FALSE)); retain its naming and hallucination
+             * behavior rather than reading the raw mname field. */
+            const rawSteedName = x_monnam(u.usteed, ARTICLE_THE, null,
+                                         SUPPRESS_SADDLE, false);
+            const steedName = upstart(rawSteedName);
+            await pline(`${steedName} ${slipslide}${currentlyIce ? 's on' : 's off'} the ice.`);
+            const saddle = which_armor(u.usteed, W_SADDLE);
+            const extrinsicFumbling = u.uprops?.[FUMBLING]?.extrinsic | 0;
+            const iceOnly = !(extrinsicFumbling || (HFumbling & ~FROMOUTSIDE));
+            if ((!saddle || !saddle.cursed)
+                && (!iceOnly || !rn2(3))) {
+                await pline('You lose your balance.');
+                await dismount_steed(DISMOUNT_FELL);
+                return;
+            }
+            /* If a cursed saddle holds the rider, C continues to the ordinary
+             * slip-risk test below. */
+        }
+        if (!rn2(10 + (acurr(u, A_DEX) | 0))) {
+            /* C timeout.c:1294-1298 — force a confused direction, then hurtle
+             * unless that direction would simply return to the square occupied
+             * before this move.  confdir() owns the canonical direction RNG. */
+            const ux0 = u.ux0 | 0;
+            const uy0 = u.uy0 | 0;
+            if ((u.umonnum | 0) !== PM_GRID_BUG)
+                confdir(true);
+            if ((u.ux | 0) + (u.dx | 0) !== ux0
+                || (u.uy | 0) + (u.dy | 0) !== uy0)
+                await hurtle(u.dx | 0, u.dy | 0, 1, false);
+        }
+        return;
+    }
+    if (!on_foot) {
+        /* C timeout.c:1321-1340 — a mounted hero fumbles in the saddle.
+         * A cursed saddle keeps the rider mounted and consumes no message
+         * RNG beyond the switch; otherwise the fall dismounts afterward. */
+        const saddle = which_armor(u.usteed, W_SADDLE);
+        if (!saddle || !saddle.cursed) {
+            switch (rn2(4)) {
+            case 1:
+                await pline(`Your ${makeplural(body_part(FOOT_AM))} slip out of the stirrups.`);
+                break;
+            case 2:
+                await pline('You let go of the reins.');
+                break;
+            case 3:
+                await pline('You bang into the saddle-horn.');
+                break;
+            default:
+                await pline('You slide to one side of the saddle.');
+                break;
+            }
+            await dismount_steed(DISMOUNT_FELL);
+        }
+        return;
+    }
+    /* C timeout.c:1300-1317 — `switch (rn2(4)`. */
+    const halluc = _fumble_hallucinating();
+    switch (rn2(4)) {
+    case 1:
+        await pline(`You trip over your own ${halluc ? 'elbow' : makeplural(body_part(FOOT_AM))}.`);
+        break;
+    case 2:
+        await pline(`You slip ${halluc ? 'on a banana peel' : 'and nearly fall'}.`);
+        break;
+    case 3:
+        await pline('You flounder.');
+        break;
+    default:
+        await pline('You stumble.');
+        break;
+    }
 }

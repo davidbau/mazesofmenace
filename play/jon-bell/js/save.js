@@ -8,7 +8,9 @@ import { pline, There } from './pline.js';
 import { TRICKED, VISITED, RANGE_LEVEL, MON_DETACH, OBJ_FREE, W_BALL, W_CHAIN } from './const.js';
 import { setworn } from './worn.js';
 import { save_light_sources, lights_save_snapshot, dangling_light_check } from './light.js';
-import { save_engravings, clear_level_structures, dobjsfree } from './mklev.js';
+import { clear_level_structures } from './mklev.js';
+import { dobjsfree } from './mkobj.js';
+import { save_engravings } from './engrave.js';
 import { maxledgerno } from './dungeon.js';
 import { dmonsfree } from './mon.js';
 import { forget_temple_entry } from './priest.js';
@@ -447,4 +449,13 @@ export function saved_state_for(body) {
     } catch {
         return null;
     }
+}
+
+/* C save.c:1077 freedynamicdata — release the saved role-option strings
+ * (save.c:1131) and process-local wish history (save.c:1136) before exit. */
+export async function freedynamicdata() {
+    const { freeroleoptvals } = await import('./options.js');
+    freeroleoptvals(); // C save.c:1131, before wish_history_flush().
+    const { wish_history_flush } = await import('./zap.js');
+    wish_history_flush();
 }

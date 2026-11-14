@@ -4,25 +4,28 @@ import { Mgender } from './do_name.js';
 // C ref: were.c
 
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { monster_nearby } from './allmain.js';
+import { rn2 } from './rnd.js';
+import { monster_nearby } from './hack.js';
 import { night } from './calendar.js';
 import { canseemon } from './display.js';
 import { FULL_MOON, HALLUC, HALLUC_RES, PROT_FROM_SHAPE_CHANGERS,
     POLYMORPH_CONTROL, STUNNED, UNCHANGING, PARANOID_WERECHANGE, DEAF, NEUTRAL,
     LOW_PM, NO_MM_FLAGS } from './const.js';
-import { rn1, rnd } from './rng.js';
+import { rn1 } from './rng.js';
+import { rnd } from './rnd.js';
 import { newsym } from './display.js';
 import { pline, You_hear, You_feel } from './pline.js';
 import { impossible } from './pline.js';
 import { set_uasmon, rehumanize } from './polyself.js';
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
-import { paranoid_query } from './paranoid.js';
+import { paranoid_query } from './cmd.js';
 import { an } from './objnam.js';
-import { set_mon_data, permonstTemplate, monPmname, monflee, onscary, monnear } from './makemon.js';
+import { permonstTemplate, monPmname, monnear } from './makemon.js';
+import { set_mon_data } from './mondata.js';
+import { monflee, onscary } from './monmove.js';
 import { polymon } from './polyself.js';
-import { makemon } from './mklev.js';
+import { makemon } from './makemon.js';
 import { healmon, wake_nearto } from './mon.js'; /* C mon.c:4402 */
 import { Monnam } from './mcastu.js';
 import { mon_break_armor } from './worn.js';

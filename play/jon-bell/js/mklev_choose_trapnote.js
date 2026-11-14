@@ -1,7 +1,7 @@
 // trap.c — choose_trapnote (3097-3098).
 // C ref: trap.c choose_trapnote — pick an unused squeaky-board note on the level.
 // @ts-nocheck — trap list is loosely typed in gstate.
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { game } from './gstate.js';
 import { SQKY_BOARD } from './const.js';
 /**

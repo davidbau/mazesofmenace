@@ -2,7 +2,7 @@ import { free_oname } from './do_name.js';
 import { disturb_grave, u_wipe_engr } from './engrave.js';
 import { is_ice as is_ice_real } from './engrave.js';
 // @ts-nocheck
-import { credit_report } from './shk_credit.js';
+import { credit_report } from './shk.js';
 // dokick.js — Kicking non-door terrain handler.
 // C ref: nethack-c/src/dokick.c:972-1253 kick_nondoor()
 //        nethack-c/src/dokick.c:863-878 kick_dumb()
@@ -13,10 +13,11 @@ import { credit_report } from './shk_credit.js';
 // mirror C's exact call ordering.
 import { game } from './gstate.js';
 import { on_level } from './dungeon.js';
-import { update_inventory } from './inventory_refresh.js';
+import { update_inventory } from './invent.js';
 import { abuse_dog } from './dog.js';
 import { Is_juiblex_level as Is_juiblex_level_real } from './const.js';
-import { rn2, rnd, rn1, rnl } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd, rnl } from './rnd.js';
 import { newsym, flush_pending_messages, canseemon, tmp_at, DISP_FLASH, DISP_END, obj_to_glyph, impossible_sync } from './display.js';
 import { pline, You_hear } from './pline.js';
 import { impossible } from './pline.js';
@@ -36,7 +37,7 @@ import { recalc_block_point, unblock_point, cansee, couldsee } from './vision.js
 import { D_WARNED, MON_FLOOR, ESHK } from './const.js';
 import { PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js';
 import { mon_yells } from './monmove.js';
-import { in_town } from './cmd.js';
+import { in_town } from './hack.js';
 import { exercise, acurr, acurrstr, change_luck, adjalign as adjalign_dk } from './attrib.js';
 import { HALLUC, SHOPBASE, SDOOR, SCORR, CORR, ROOM, STAIRS, LADDER, IRONBARS, DOOR, D_NODOOR, D_ISOPEN, D_BROKEN, D_TRAPPED, D_LOCKED, IS_THRONE, IS_ALTAR, IS_FOUNTAIN, IS_GRAVE, IS_SINK, IS_TREE, IS_STWALL, IS_DOOR, ECMD_TIME, ECMD_CANCEL, ECMD_OK, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, LAVAPOOL, LAVAWALL, DBWALL, A_STR, A_DEX, A_CON, A_WIS, A_LAWFUL, KILLED_BY, G_GONE, T_LOOTED, TREE_LOOTED, TREE_SWARM, S_LPUDDING, S_LDWASHER, LA_DOWN, MM_NOMSG, MM_MALE, MM_FEMALE, MM_ANGRY, DB_UNDER, DB_ICE, DB_LAVA, DB_MOAT, STONE, ICE, IS_WATERWALL, IS_DRAWBRIDGE, IS_WALL, W_NONDIGGABLE, isok, DB_DIR, DB_WEST, DB_EAST, DB_SOUTH, DB_NORTH, NON_PM, MIGR_NOWHERE, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_NOBREAK, MIGR_NOSCATTER, MIGR_TO_SPECIES, ONAME, has_oname, has_mgivenname, In_mines, Is_stronghold, In_endgame, Is_botlevel, Has_contents, N_DIRS, xdir, ydir,
 is_hole, TRAPDOOR, NO_TRAP_FLAGS } from './const.js';
@@ -50,7 +51,7 @@ import { TELEPORT, SEE_INVIS, POISON_RES, COLD_RES, SHOCK_RES, FIRE_RES,
          INTRINSIC, DEAF } from './const.js';
 import { OC_COST } from './oc_cost_data.js';
 import { PM_SOLDIER, PM_SERGEANT, PM_LIEUTENANT, PM_CAPTAIN } from './pm.generated.js';
-import { wakeup } from './mhitm.js';
+import { wakeup } from './mon.js';
 import { sink_backs_up } from './fountain.js';
 import { finish_meating } from './dogmove.js';
 import { verbalize } from './cmd.js';
@@ -66,25 +67,33 @@ import { PM_KILLER_BEE, PM_BLACK_PUDDING, PM_ARCHEOLOGIST, PM_SAMURAI, PM_WIZARD
  * pm.generated.js (a 3.7-vs-5.0 role-swap name, see js/mhitu.js's own
  * PM_AMOROUS_DEMON_MU local const for the identical reason) so it is a local
  * constant here too, matching mnum 290 used consistently elsewhere in js/. */
-import { hcolor, hliquid, You } from './mhitm.js';
+import { hcolor } from './mhitm.js';
+import { hliquid } from './do_name.js';
+import { You } from './pline.js';
 const PM_AMOROUS_DEMON_DK = 290;
-import { m_at, do_attack, overexertion } from './uhitm.js';
-import { MONS_CWT, wipe_engr_at, place_object, makemon, mkgold } from './mklev.js';
+import { m_at, do_attack } from './uhitm.js';
+import { overexertion } from './hack.js';
+import { MONS_CWT } from './mklev.js';
+import { place_object, mkgold } from './mkobj.js';
+import { makemon } from './makemon.js';
+import { wipe_engr_at } from './engrave.js';
 import { maybe_unhide_at, wake_nearto, wake_nearby } from './mon.js';
-import { stackobj } from './sp_lev.js';
-import { poly_gender } from './makemon.js';
+import { stackobj } from './invent.js';
+import { poly_gender } from './polyself.js';
 import { book_disappears as spell_book_disappears } from './spell.js';
 /* C mkobj.c:458-503 splitobj(obj, num) — the one body lives in js/makemon.js
  * (this repo's mkobj.c splitobj/nextoid host); scatter()'s object-stack
  * splitting loop needs it. */
-import { splitobj, attacktype_fordmg } from './makemon.js';
+import { splitobj } from './makemon.js';
+import { attacktype_fordmg } from './mondata.js';
 /* C mon.c:3997 maybe_mnexto() and mon.c noteleport_level() — kick_monster's
  * dodge arm (dokick.c:268-283). */
-import { maybe_mnexto } from './teleport.js';
+import { maybe_mnexto } from './mon.js';
 import { set_apparxy } from './monmove.js';
 import { m_in_out_region } from './region.js';
 import { noteleport_level } from './teleport.js';
-import { permonstTemplate, monflee } from './makemon.js';
+import { permonstTemplate } from './makemon.js';
+import { monflee } from './monmove.js';
 import { enexto_out } from './teleport.js';
 // C shk.c:1166 is_unpaid() — the ONE implementation lives in js/shk.js, which
 // is this repo's shk.c host module and the module the auto-generated replay
@@ -99,7 +108,8 @@ import { costly_gold } from "./shk.js";
 import { shkcatch } from './shk.js';
 import { is_pick } from './dig.js';
 import { stairway_at } from './stairs.js';
-import { remove_worn_item, rloco } from './steal.js';
+import { remove_worn_item } from './steal.js';
+import { rloco } from './teleport.js';
 import { ismnum } from './const.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 /* C dokick.c:1912-1935 otransit_msg's namers.  Imported by name from
@@ -110,18 +120,23 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { Tobjnam, corpse_xname, otense, CXN_PFX_THE, makeplural } from './objnam.js';
 /* objects.h FOOD() CORPSE -- the otyp corpse_xname()/cxname() switch on. */
 const CORPSE_DK = 265;
-import { dealloc_obj, add_to_minv } from './mklev.js';
+import { dealloc_obj, add_to_minv } from './mkobj.js';
 import { food_disappears } from './eat.js';
 import { t_at, deltrap, water_damage } from './trap.js';
 import { ER_NOTHING } from './const.js';
-import { can_reach_floor } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { fracture_rock, break_statue } from './zap.js';
 import { deadhero, do_death_sequence } from './end.js';
-import { ok_to_quest, _delobj_useupf as delobj_core, currency as cmd_currency, snuff_candle } from './cmd.js';
+import { snuff_candle } from './apply.js';
+import { _delobj_useupf as delobj_core, currency as cmd_currency } from './invent.js';
+import { ok_to_quest } from './quest.js';
 import { altar_wrath } from './pray.js';
 import { breaktest, breakmsg, breakobj, thitmonst } from './dothrow.js';
 import { set_wounded_legs } from './do.js';
-import { surface, showdamage, body_part, Yname2 } from './cmd.js';
+import { showdamage } from './hack.js';
+import { surface } from './dungeon.js';
+import { body_part } from './polyself.js';
+import { Yname2 } from './objnam.js';
 import { hurtle } from './dothrow.js';
 import { RIGHT_SIDE } from './const.js';
 import { UNCHANGING } from './const.js';
@@ -137,31 +152,40 @@ import { FUMBLING, W_ARMF, P_NONE, P_MARTIAL_ARTS, NATTK,
          ARTICLE_A, SUPPRESS_SADDLE, M_AP_TYPE, Upolyd } from './const.js';
 import { PM_SHADE } from './pm.generated.js';
 import { canspotmon, map_invisible, unmap_invisible, unmap_object, glyph_is_invisible_at, glyph_is_warning_at, save_glyph_cell, restore_glyph_cell } from './display.js';
-import { attack_checks, mon_nam, special_dmgval, use_skill } from './uhitm.js';
-import { shade_miss, passive, killed, seemimic, check_caitiff, x_monnam, wakeup_attack } from './mhitm.js';
+import { attack_checks, mon_nam } from './uhitm.js';
+import { special_dmgval, use_skill } from './weapon.js';
+import { wakeup_attack } from './mhitm.js';
+import { x_monnam } from './do_name.js';
+import { killed, seemimic } from './mon.js';
+import { shade_miss, passive, check_caitiff } from './uhitm.js';
 import { christen_monst } from './do_name.js';
 /* rndorcname — the one real port (do_name.c:1538-1555); replaces the local
  * no-RNG stub that used to shadow it.  See the note above christen_orc(). */
-import { rndorcname } from './mhitm.js';
+import { rndorcname } from './do_name.js';
 /* The two mkobj.c migration constructors; see the re-export note further down. */
-import { add_to_migration, mksobj_migr_to_species } from './mklev.js';
+import { add_to_migration, mksobj_migr_to_species } from './mkobj.js';
 import { stairway_find_from as stairway_find_from_real } from './stairs.js';
 import { setmangry, angry_guards } from './mon.js';
 import { weight } from './weight.js';
 import { weight_cap, inv_weight } from './hack.js';
-import { goodpos, chest_trap, activate_statue_trap, mintrap } from './trap.js';
+import { chest_trap, activate_statue_trap, mintrap } from './trap.js';
+import { goodpos } from './teleport.js';
 import { closed_door } from './monmove.js';
-import { find_trap, impact_disturbs_zombies } from './cmd.js';
+import { impact_disturbs_zombies } from './hack.js';
+import { find_trap } from './detect.js';
 import { hero_breaks } from './dothrow.js';
-import { breakchestlock, b_trapped } from './lock.js';
+import { breakchestlock } from './lock.js';
+import { b_trapped } from './trap.js';
 import { FOOT, AIR, CLOUD, IS_POOL } from './const.js';
 import { find_objowner, costly_adjacent } from './shk.js';
 import { doname, singular } from './objnam.js';
 import { LEG, TT_PIT, is_pit, WEB, STATUE_TRAP, ZAP_POS } from './const.js';
 import { obj_resists } from './zap.js';
-import { useup } from './cmd.js';
+import { useup } from './invent.js';
 export { is_unpaid, in_rooms, shop_keeper };
-import { del_engr_at as del_engr_at_dk, mksobj_at, mksobj, obj_extract_self, rnd_class } from './mklev.js';
+import { rnd_class } from './objnam.js';
+import { mksobj_at, mksobj, obj_extract_self } from './mkobj.js';
+import { del_engr_at as del_engr_at_dk } from './engrave.js';
 import { mpickobj } from './steal.js';
 import { sobj_at } from './invent.js';
 /* C mkobj.c:1977-1987 rnd_treefruit_at(x, y) — the one real body lives in
@@ -175,7 +199,7 @@ import { feel_newsym, feel_location } from './display.js';
 import { flooreffects } from './do.js';
 /* C mthrowu.c:325-431 ohitmon(mtmp, otmp, range, verbose) — thrown/scattered
  * object hits a MONSTER.  The one body lives in js/mhitu.js. */
-import { ohitmon } from './mhitu.js';
+import { ohitmon } from './mthrowu.js';
 /* C mthrowu.c:74-146 thitu(tlev, dam, objp, name) — thrown/scattered object
  * hits the HERO.  The one body lives in js/trap.js (ported for the dart/arrow
  * trap-missile call sites; its own note says the general "plain hit" tail it
@@ -184,7 +208,7 @@ import { ohitmon } from './mhitu.js';
 import { fall_through } from './trap.js';
 import { thitu } from './mthrowu.js';
 /* C weapon.c:262-... dmgval(otmp, mon) — the one body lives in js/uhitm.js. */
-import { dmgval } from './uhitm.js';
+import { dmgval } from './weapon.js';
 /* C objnam.c xname(obj) / An(str) — the one bodies live in js/objnam.js;
  * js/shk.js's own `xname` is a wrong twin (xname_flags_shk with a different
  * arg), so import by explicit path rather than trust an ambient name. */
@@ -204,12 +228,23 @@ import { u_at, HALF_PHDAM } from './const.js';
 import { inside_shop } from './shk.js';
 import { hideunder } from './mon.js';
 /* C allmain.c nomul(nval) / stop_occupation() — the one bodies. */
-import { nomul, stop_occupation } from './allmain.js';
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
 import { find_drawbridge, is_drawbridge_wall, is_ice, is_pool } from './dbridge.js'; // relocate-fns
 import { losehp } from './hack.js'; // relocate-fns
 import { currency, delobj } from './invent.js'; // relocate-fns
 import { breaks } from './dothrow.js'; // relocate-fns
 import { scatter } from './explode.js'; // relocate-fns
+import { upstart } from './hacklib.js';
+import { _hero_youmonst, _kick_nolimbs, _st_Wounded_legs, _st_slithy, _uprop_active, kick_steed_cmd, verysmall_cmd, yn_function } from './cmd.js'; // relocate-fns
+import { ECMD_FAIL, SLT_ENCUMBER, TT_BEARTRAP, TT_WEB } from './const.js'; // relocate-fns
+import { _topl_stash_result, force_more } from './display.js'; // relocate-fns
+import { legs_in_no_shape } from './do.js'; // relocate-fns
+import { near_capacity } from './hack.js'; // relocate-fns
+import { getdir } from './cmd.js'; // relocate-fns
+import { You_cant, Your } from './pline.js'; // relocate-fns
+import { christen_orc } from './do_name.js'; // relocate-fns
+export { christen_orc } from './do_name.js'; // relocate-fns
 export { _KO_BOULDER_OTYP, _KO_COIN_CLASS, _KO_EGG_OTYP, _KO_GLASS_MATERIAL, _dk_Maybe_Half_Phys, _km_bigmonst }; // relocate-fns
 export { breaks } from './dothrow.js'; // relocate-fns
 export { _Blind_dk }; // relocate-fns
@@ -2201,36 +2236,6 @@ export async function ship_object(otmp, x, y, shop_floor_obj) {
 /* Unported helper stubs — these must throw; stubbing with no-op breaks state invariants. */
 export { obj_extract_self } from './mklev.js';
 export { add_to_minv } from './mklev.js';
-function upstart(s) { if (s && s.length > 0) { const c = s.charCodeAt(0); return ((c >= 97 && c <= 122) ? String.fromCharCode(c - 32) : s.charAt(0)) + s.slice(1); } return s; }
-export function christen_orc(mtmp, gang, other) {
-    const BUFSZ = 256;
-    /* C do_name.c:1560 `orcname = rndorcname(buf2)` — a `char buf2[BUFSZ]`,
-     * i.e. non-NULL, so the name-building loop always runs.  js/mhitm.js's port
-     * tests `s !== null && s !== undefined` (an empty C buffer is ""), so the
-     * argument is load-bearing: calling it bare skips the loop and drops
-     * 2*iend-1 draws. */
-    let orcname = rndorcname("");
-    let sz = orcname.length;
-    if (gang)
-        sz += gang.length + 4; /* sizeof " of " - sizeof "" = 4 */
-    else if (other)
-        sz += other.length;
-
-    if (sz < BUFSZ) {
-        let nameit = false;
-        let buf;
-        if (gang) {
-            buf = upstart(orcname) + " of " + upstart(gang);
-            nameit = true;
-        } else if (other) {
-            buf = upstart(orcname) + other;
-            nameit = true;
-        }
-        if (nameit)
-            mtmp = christen_monst(mtmp, buf);
-    }
-    return mtmp;
-}
 export { Shknam }; // C shknam.c:843 — canonical body lives in js/shknam.js
 /* add_to_migration (C mkobj.c:2697-2717) and mksobj_migr_to_species
  * (C mkobj.c:252-266) live in js/mklev.js, this port's mkobj.c host — next to
@@ -2550,3 +2555,125 @@ function _Deaf_dk() {
         || (!!dp && !!((dp.intrinsic | 0) || (dp.extrinsic | 0)) && !(dp.blocked | 0));
 }
 export { ghitm };
+
+const _KICK_S_LIZARD = 58;   /* defsym.h:364 MONSYM(58, ':', LIZARD, S_LIZARD) */
+
+const _KICK_BOULDER = 475;   /* objects.h BOULDER — cmd.js:4721's BOULDER_OTYP */
+
+export async function dokick() {
+    const g = game;
+    const u = g.u = g.u || {};
+    const ym = _hero_youmonst().data;
+    let no_kick = false;
+
+    /* C dokick.c:1265-1315 — the no_kick prelude, in C's order. */
+    if (_kick_nolimbs(ym) || _st_slithy(ym)) {
+        await You("have no legs to kick with.");
+        no_kick = true;
+    } else if (verysmall_cmd(ym)) {
+        await You("are too small to do any kicking.");
+        no_kick = true;
+    } else if (u.usteed) {
+        /* C dokick.c:1271-1278 — yn_function then kick_steed. */
+        const answer = await yn_function('Kick your steed?', 'yn', 'y', true);
+        if (answer === 'y') {
+            await pline(`You kick ${mon_nam(u.usteed)}.`);
+            await kick_steed_cmd();
+            return ECMD_TIME;
+        }
+        /* C topl.c:544-548 leaves this one-line prompt painted on return.
+         * A declined kick prints nothing; retain TOPLINE_NON_EMPTY until
+         * the next input read, without joining subsequent plines to it. */
+        g._topl_sticky = 'Kick your steed? [yn] (y)';
+        return ECMD_OK;
+    } else if (_st_Wounded_legs()) {
+        await legs_in_no_shape("kicking", false);
+        no_kick = true;
+    } else if (near_capacity() > SLT_ENCUMBER) {
+        await Your("load is too heavy to balance yourself for a kick.");
+        no_kick = true;
+    } else if ((ym?.mlet | 0) === _KICK_S_LIZARD) {
+        await Your("legs cannot kick effectively.");
+        no_kick = true;
+    } else if (u.uinwater && !rn2(2)) {
+        await Your("slow motion kick doesn't hit anything.");
+        no_kick = true;
+    } else if (u.utrap) {
+        no_kick = true;
+        switch (u.utraptype | 0) {
+        case TT_PIT:
+            if (!_uprop_active('PASSES_WALLS'))
+                await pline("There's not enough room to kick down here.");
+            else
+                no_kick = false;
+            break;
+        case TT_WEB:
+        case TT_BEARTRAP:
+            await You_cant("move your %s!", body_part(LEG));
+            break;
+        default:
+            break;
+        }
+    } else if (sobj_at(_KICK_BOULDER, u.ux, u.uy) && !_uprop_active('PASSES_WALLS')) {
+        await pline("There's not enough room to kick in here.");
+        no_kick = true;
+    }
+
+    if (no_kick) {
+        if (g._pending_message)
+            await force_more(g._pending_message);
+        g.context.move = 0; /* ECMD_FAIL — no turn */
+        // C ref: dokick.c:1315 — `return ECMD_FAIL;`.  The scored dispatch
+        // reads g.context.move (set above), not this return value; the
+        return ECMD_FAIL;
+    }
+
+    // C ref: dokick.c:1318-1319 `if (!getdir((char *) 0)) return ECMD_CANCEL;`.
+    // getdir() is the shared, C-faithful implementation (js/lock.js:453,
+    // already imported above) that resolves the direction key through
+    // movecmd()'s LIVE command-binding table — the same mechanism a bound/
+    // and, on a successful non-'.'/'s' direction, draws confdir()'s RNG
+    // (Confusion && !rn2(5), hack.c u_maybe_impaired) exactly as C's own
+    // getdir() tail does.
+    //
+    // This body used to hand-roll its own read: a bare nhgetch() plus a
+    // static DIR_DX/DIR_DY table (cmd.js:417-418, plain vi-keys only) and no
+    // number_pad/rogue-level option changes what a keystroke means — every
+    // here — and the missing confdir() call left a single rn2(5) draw
+    // unconsumed on every confused-hero kick (residual: 1 draw, e.g. board
+    // record dokick#21: C draws one rn2, this port drew none, yet every
+    if (!(await getdir(null))) {
+        g.context.move = 0;
+        return ECMD_CANCEL;
+    }
+    // C ref: dokick.c:1320 — if (!u.dx && !u.dy) return ECMD_CANCEL.  Catches
+    // the '.'/'s' self-direction case, which getdir() above already reduced
+    // to dx=dy=dz=0.
+    if (!g.u.dx && !g.u.dy) {
+        g.context.move = 0;
+        return ECMD_CANCEL;
+    }
+    // C ref: decl.c:436 — gk.kickedloc is a global struct, always memory-backed
+    // (BSS zero-init) even before newgame() runs; C can never see it undefined.
+    // js/allmain.js:397 sets game.kickedloc = {x:0,y:0} once at the start of a
+    // the time dokick() runs (dokick_resolve, js/dokick.js:1104, writes
+    // g.kickedloc.x/.y unconditionally, exactly as C's dokick.c:1325 does).
+    // Guard it here too so dokick() carries the same global-availability
+    // guarantee C has, rather than depending on a prior newgame() call having
+    // run in whatever context invokes it.
+    if (!g.kickedloc) g.kickedloc = { x: 0, y: 0 };
+    // C ref: dokick.c:1322+ — resolve the kick by what's at the target square.
+    // dokick_resolve mirrors the C dokick() tail (avrg_attrib, the 5-test
+    // terrain dispatch, kick_door / kick_nondoor / kick_dumb / kick_ouch) and
+    // draws the same RNG in the same order as C.  It sets g.context.move.
+    g.context.move = 1; /* a real kick consumes a turn (ECMD_TIME) by default */
+    const kickResult = await dokick_resolve();
+    if (g.context.move && g._pending_message) {
+        _topl_stash_result();
+    }
+    // C ref: dokick.c:1322-1471 — dokick_resolve mirrors the whole tail
+    // (maybe_kick_monster decline, pool/lava splash, kick_object, kick_door /
+    // kick_nondoor) and already computes the same ECMD_* value C's tail
+    // so dokick()'s own return matches C the way the earlier guards now do.
+    return kickResult;
+}

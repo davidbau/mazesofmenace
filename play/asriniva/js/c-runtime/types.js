@@ -2,7 +2,7 @@ import {address} from './memory.js';
 // Measured C field access used by adapters which previously called generated
 // read/write helpers. The adapter supplies canonical scalar types.
 export function createCTypes(memory,metadata,bitfields,aliases={}) {
-    const scalars={'char':'Int8','signed char':'Int8','unsigned char':'Uint8','short':'Int16','unsigned short':'Uint16','int':'Int32','unsigned int':'Uint32','unsigned':'Uint32','long':'BigInt64','unsigned long':'BigUint64','long long':'BigInt64','unsigned long long':'BigUint64','float':'Float32','double':'Float64'};
+    const scalars={'bool':'Uint8','_Bool':'Uint8','char':'Int8','signed char':'Int8','unsigned char':'Uint8','short':'Int16','unsigned short':'Uint16','int':'Int32','unsigned int':'Uint32','unsigned':'Uint32','long':'BigInt64','unsigned long':'BigUint64','long long':'BigInt64','unsigned long long':'BigUint64','float':'Float32','double':'Float64'};
     // Declarations are fixed for this type environment; no memory views are cached.
     const canonicalTypes=new Map(),typeSizes=new Map(),recordNames=new Map();
     function canonical(type){
@@ -37,6 +37,7 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
         if(type.includes('*'))return 8;
         if(type.startsWith('enum ')){if(!metadata.enums[type])throw new Error('Unmeasured C enum '+type);return metadata.enums[type].size;}
         if(scalars[type])return Number(scalars[type].match(/\d+/)[0])/8;
+        if(metadata.opaqueScalars?.[type])return metadata.opaqueScalars[type].size;
         return record(type).size;
     }
     const scalarLoads=new Map(Object.entries(scalars).map(([name,scalar])=>[name,'get'+scalar]));
@@ -60,6 +61,7 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
     function store(type,at,value) {
         type=canonical(type);at=address(at);memory.bounds(at,size(type));
         if(type.includes('[')){memory.memmove(at,address(value),size(type));return;}
+        if(type==='bool'||type==='_Bool'){memory.view.setUint8(at,Number(Number(value?.address??value)!==0));return;}
         if(type.includes('*')){memory.view.setBigUint64(at,BigInt.asUintN(64,BigInt(value?.address??value??0)),true);return;}
         if(type.startsWith('enum ')){const item=metadata.enums[type];memory.view['set'+(item.signed?'Int':'Uint')+item.size*8](at,Number(BigInt.asUintN(item.size*8,BigInt(value))),true);return;}
         const scalar=scalars[type];
@@ -81,6 +83,7 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
         const name=recordName(type),definition=recordDefinition(name),field=definition.fields[key];
         if(!field)throw new Error('Unmeasured C field '+type+'.'+key);
         const pos=address(at)+field.offset;
+        if(field.storageType)return load(field.storageType,pos);
         if(field.record)return BigInt(pos);
         if(field.bits!==undefined)return bitfields.get(Object.prototype.propertyIsEnumerable.call(definition,'type')?definition.type:name,key,at);
         return load(scalar,pos);
@@ -89,6 +92,7 @@ export function createCTypes(memory,metadata,bitfields,aliases={}) {
         const name=recordName(type),definition=recordDefinition(name),field=definition.fields[key];
         if(!field)throw new Error('Unmeasured C field '+type+'.'+key);
         const pos=address(at)+field.offset;
+        if(field.storageType)return store(field.storageType,pos,value);
         if(field.record)return memory.memmove(pos,address(value),record(field.record).size);
         if(field.bits!==undefined)return bitfields.set(Object.prototype.propertyIsEnumerable.call(definition,'type')?definition.type:name,key,at,value);
         return store(scalar,pos,value);

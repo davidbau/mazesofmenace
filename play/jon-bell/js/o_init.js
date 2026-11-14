@@ -8,7 +8,8 @@
 import { game, wizard } from './gstate.js';
 import { yn_function } from './cmd.js';
 import { maxledgerno } from './dungeon.js';
-import { rn2, pushRngLogEntry } from './rng.js';
+import { pushRngLogEntry } from './rng.js';
+import { rn2 } from './rnd.js';
 import { exercise } from './attrib.js';
 import { gem_learned } from './shk.js';
 import { MKOBJ_OC_PROB, MKOBJ_SVB_BASES, MKOBJ_OCLASS_PROB_TOTALS, MKOBJ_OC_CLASS, MKOBJ_OC_COLOR, } from './mkobj_data.js';
@@ -34,19 +35,21 @@ import { OC_DESCR } from './oc_descr_data.js';
 import { Japanese_item_name, getObjDescr } from './objnam.js';
 /* prop.h HALLUC / HALLUC_RES — the two slots youprop.h:116-120's
  * Hallucination macro reads.  See _observe_hallucinating() below. */
-import { HALLUC, HALLUC_RES } from './const.js';
-import { TtyMenu, PICK_ONE, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
+import { HALLUC, HALLUC_RES, PICK_ONE } from './const.js';
+import { TtyMenu, ATR_NONE, menu_heading_attr_text } from './tty_menu.js';
 import { display_text_window } from './com_pager.js';
 import { flush_screen, raw_print_wait, impossible_sync } from './display.js';
 import { pline } from './pline.js';
 import { impossible } from './pline.js';
 import { config_error_add } from './cfgfiles.js';
 import { OC_USES_KNOWN } from './mklev.js';
-import { ARTILIST, quest_info, simple_typename } from './objnam.js';
+import { ARTILIST, simple_typename } from './objnam.js';
+import { quest_info } from './questpgr.js';
 import { ARTI_PROPS, ARTI_GIFT_ROLE } from './wizcmds.js';
 import { A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, BUFSZ } from './const.js';
-import { update_inventory } from './inventory_refresh.js';
-import { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, OCLASS_NAME, INV_ORDER, align_str } from './cmd.js';
+import { update_inventory } from './invent.js';
+import { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, OCLASS_NAME, INV_ORDER } from './cmd.js';
+import { align_str } from './insight.js';
 
 /* C ref: include/objects.h:80-108 — MARKER(FIRST_OBJECT, LAST_GENERIC + 1),
  * with LAST_GENERIC == GENERIC_VENOM, the seventeenth and last GENERIC() row.
@@ -532,6 +535,13 @@ import { ENV } from './hostenv.js';
 import { display_text_window as _display_text_window } from './com_pager.js'; // relocate-fns
 import { ECMD_OK } from './const.js'; // relocate-fns
 import { objName as _objName_full } from './objnam.js'; // relocate-fns
+import { set_cursor } from './cmd.js'; // relocate-fns
+import { build_window_screen } from './com_pager.js'; // relocate-fns
+import { await_menu_key, docrt } from './display.js'; // relocate-fns
+import { docall } from './do_name.js'; // relocate-fns
+import { You } from './do_wear.js'; // relocate-fns
+import { objtyp_is_callable } from './do_name.js'; // relocate-fns
+import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 /* Fixed (non-shuffled) descriptions for weapons, from WEAPON_TABLE; null when
  * the type is outside the weapon range or has no description (NoDes). */
 function _fixedDescrOf(otyp) {
@@ -860,4 +870,117 @@ export async function dodiscovered() {
     await flush_screen(1);
     /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
     return ECMD_OK;
+}
+
+/* C ref: o_init.c:1128-1213 rename_disco() — the nameable subset of the
+ * discoveries list as a PICK_ONE menu, then docall() on a dummy object of the
+ * picked type.  disco[] is walked per class in flags.inv_order, filtered by
+ * interesting_to_discover() and objtyp_is_callable(); each class with a
+ * surviving row gets a heading.  Selector letters run a-z then A-Z across the
+ * headings (tty add_menu auto-assignment, wintty.c).  Single-page only. */
+export async function rename_disco() {
+    const g = game;
+    const lines = [menu_heading_text('Pick an object type to name'), ''];
+    const picks = {};
+    const pickItems = [];
+    let ct = 0, mn = 0;
+    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
+    const disco = g._disco || {};
+    for (const oclass of (g.flags?.inv_order || INV_ORDER)) { /* C:1143 flags.inv_order */
+        const list = disco[oclass];
+        if (!list) continue;
+        let prev_class = oclass + 1; /* C:1149 forced different from oclass */
+        for (const dis of list) {
+            if (!dis || !_interesting_to_discover(dis))
+                continue;                           /* C:1154 */
+            ct++;
+            if (!objtyp_is_callable(dis))
+                continue;                           /* C:1157 */
+            mn++;
+            if (oclass !== prev_class) {
+                lines.push(menu_heading_text(OCLASS_NAME[oclass])); /* C:1162 */
+                prev_class = oclass;
+            }
+            /* letter assigned after paging (tty_end_menu restarts at 'a' per page) */
+            pickItems.push({ row: lines.length, otyp: dis, oclass });
+            lines.push(`\0 - ${_disco_append_price_quote(_disco_typename(dis), dis)}`);
+        }
+    }
+    if (ct === 0) {
+        await You("haven't discovered anything yet...");   /* C:1177 */
+        return;
+    }
+    if (mn === 0) {
+        await pline('None of your discoveries can be assigned names...'); /* C:1179 */
+        return;
+    }
+    const maxLen = lines.reduce((mx, ln) =>
+        Math.max(mx, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
+    /* wintty.c:1908 H2344_BROKEN: offx = min(min(82, cols/2), cols - maxcol - 1);
+     * a menu whose content rows + 1 reach 24 (lines.length >= 23, wintty.c
+     * cw->maxrow >= rows - 1; C rename_disco itself makes no paging
+     * decision, o_init.c:1185 end_menu) or one too wide
+     * for an overlay drops to offx 0 and is paged at 23 content rows with
+     * process_menu_window's "(%d of %d)" footer (wintty.c:1537-1539). */
+    const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
+    const fullScreen = lines.length + 1 >= SCREEN_ROWS || 78 - maxLen <= 1;
+    const pageCount = fullScreen ? Math.ceil(lines.length / PAGE_CONTENT) : 1;
+    /* wintty.c tty_end_menu: auto selectors a-z,A-Z restart on every page */
+    const perPage = {};
+    for (const it of pickItems) {
+        const pg = fullScreen ? Math.floor(it.row / PAGE_CONTENT) : 0;
+        const letter = letters[perPage[pg] = (perPage[pg] || 0) + 1, perPage[pg] - 1];
+        picks[pg + ':' + letter] = { otyp: it.otyp, oclass: it.oclass };
+        lines[it.row] = letter + lines[it.row].slice(1);
+    }
+    let pageIdx = 0;
+    const WIN_COL = fullScreen ? 0 : Math.min(41, 80 - maxLen - 2);
+    const pageSel = () => Object.keys(picks)
+        .filter((key) => Number(key.split(':')[0]) === (fullScreen ? pageIdx : 0))
+        .map((key) => key.split(':')[1]).join('');
+    const show = async () => {
+        if (fullScreen) {
+            const pageLines = lines.slice(pageIdx * PAGE_CONTENT, (pageIdx + 1) * PAGE_CONTENT);
+            const morestr = pageCount > 1 ? `(${pageIdx + 1} of ${pageCount})` : '(end) ';
+            const rows = new Array(SCREEN_ROWS).fill('');
+            for (let i = 0; i < pageLines.length; i++) rows[i] = ` ${pageLines[i]}`;
+            rows[pageLines.length] = ` ${morestr}`;
+            g._screen_output = rows.join('\n');
+            g._pending_message = '';
+            set_cursor(1 + morestr.length, pageLines.length);
+            return;
+        }
+        const screen = build_window_screen([...lines, '(end)'], WIN_COL, g.u?.uac ?? 0);
+        g._screen_output = screen;
+        g._pending_message = '';
+        set_cursor(WIN_COL + '(end)'.length + 1, lines.length);
+    };
+    await show();
+    let k;
+    for (;;) {
+        k = await await_menu_key(show, pageSel(), '', PICK_ONE);
+        /* wintty.c process_menu_window: space / '>' next page, '<' previous;
+         * space on the last page finishes the menu. */
+        if (fullScreen && (k === 32 || k === 62) && pageIdx < pageCount - 1) { pageIdx++; await show(); continue; }
+        if (fullScreen && k === 60 && pageIdx > 0) { pageIdx--; await show(); continue; }
+        break;
+    }
+    g._pending_message = '';
+    if (fullScreen) {
+        /* wintty.c:971-978 erase_menu_or_text: an offx 0 window is dismissed by
+         * docrt(), which re-rolls every hallucinated cell (display RNG) and
+         * leaves both status rows blank until the next bot(). */
+        await docrt();
+        g._statusBlankAfterDocrt = true;
+        if (g.disp) g.disp.botlx = 1;
+        g._status1WholeNext = true;
+    }
+    const pick = picks[(fullScreen ? pageIdx : 0) + ':' + String.fromCharCode(k)];
+    if (!pick) return;                              /* C:1188 STRANGE_OBJECT */
+    const odummy = {                                /* C:1192-1200 */
+        otyp: pick.otyp, oclass: pick.oclass, quan: 1,
+        known: OC_USES_KNOWN[pick.otyp] ? 0 : 1,
+        dknown: 1,
+    };
+    await docall(odummy);
 }

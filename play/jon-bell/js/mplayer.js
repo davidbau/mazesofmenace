@@ -1,8 +1,12 @@
 // mplayer.js — C ref: mplayer.c.
 import { COLNO, ROWNO } from './const.js';
 import { _PM_ARCHEOLOGIST, _PM_WIZARD, mkMplayer, permonstTemplate } from './makemon.js';
-import { rn1, rnd } from './rng.js';
-import { goodpos } from './trap.js';
+import { rn1 } from './rng.js';
+import { rnd } from './rnd.js';
+import { goodpos } from './teleport.js';
+import { SetVoice, _fl_pmidx, verbalize } from './cmd.js'; // relocate-fns
+import { game } from './gstate.js'; // relocate-fns
+import { rn2 } from './rnd.js'; // relocate-fns
 
 /**
  * C mplayer.c:326-353 create_mplayers(num, special) — create `num` monster-players
@@ -38,4 +42,23 @@ export async function create_mplayers(num, special, cbs) {
         await mkMplayer(pm, x, y, special, cbs);
         num--;
     }
+}
+
+/* C mplayer.c:355-379; called by sounds.c:1028 for hostile endgame players. */
+export async function mplayer_talk(mtmp) {
+    const same_class_msg = [
+        "I can't win, and neither will you!",
+        "You don't deserve to win!",
+        'Mine should be the honor, not yours!',
+    ];
+    const other_class_msg = [
+        'The low-life wants to talk, eh?',
+        'Fight, scum!',
+        'Here is what I have to say!',
+    ];
+    if (mtmp.mpeaceful)
+        return;
+    SetVoice(mtmp, 0, 80, 0);
+    await verbalize('Talk? -- %s', _fl_pmidx(mtmp) === game.urole.mnum
+        ? same_class_msg[rn2(3)] : other_class_msg[rn2(3)]);
 }

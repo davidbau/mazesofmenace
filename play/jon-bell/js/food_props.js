@@ -77,15 +77,4 @@ export function mons_cnutrit(mndx) {
     return (m >= 0 && m < MONS_CNUTRIT.length) ? (MONS_CNUTRIT[m] | 0) : 0;
 }
 
-/* C eat.c:325 obj_nutrition(otmp):
- *   nut = (otmp->otyp == CORPSE) ? mons[otmp->corpsenm].cnutrit
- *         : otmp->globby ? otmp->owt
- *         : objects[otmp->otyp].oc_nutrition;
- */
-export function obj_nutrition(otmp) {
-    if ((otmp.otyp | 0) === CORPSE_OTYP_FP)
-        return mons_cnutrit(otmp.corpsenm | 0);
-    if (otmp.globby) return otmp.owt | 0;
-    return oc_nutrition(otmp.otyp | 0);
-}
 

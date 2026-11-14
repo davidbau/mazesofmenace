@@ -1,25 +1,29 @@
 // @ts-nocheck
 import { game } from './gstate.js';
-import { rn2, rnd, rn1, d } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd, d } from './rnd.js';
 import { newsym, canseemon } from './display.js';
 import { pline, Norep } from './pline.js';
 import { cansee, Blind } from './vision.js';
 import { exercise, acurr } from './attrib.js';
 import { resist, zapyourself, ubuzz, flash_str, AD_COLD, AD_FIRE } from './zap.js';
-import { onscary, monflee } from './makemon.js';
-import { x_monnam, sleep_monst, slept_monst, Amonnam } from './mhitm.js';
+import { onscary, monflee } from './monmove.js';
+import { sleep_monst, slept_monst } from './mhitm.js';
+import { x_monnam, Amonnam } from './do_name.js';
 import { can_blow } from './mondata.js';
 import { Monnam } from './mcastu.js';
-import { a_monnam } from './mhitm.js';
+import { a_monnam } from './do_name.js';
 import { impossible } from './steed.js';
 import { discover_object } from './o_init.js';
 import { yn_function } from './cmd.js';
 import { getlin } from './windows.js';
 import { thesimpleoname, Tobjnam, an, the, xname } from './objnam.js';
-import { yname } from './do_wear.js';
+import { yname } from './objnam.js';
 import { dist2, mungspaces, highc } from './hacklib.js';
 import { tamedog } from './dog.js';
-import { consume_obj_charge, Yname2, record_achievement, align_str } from './cmd.js';
+import { consume_obj_charge } from './invent.js';
+import { record_achievement, align_str } from './insight.js';
+import { Yname2 } from './objnam.js';
 import { desecrate_altar } from './pray.js';
 import { find_drawbridge } from './dbridge.js';
 import {
@@ -32,16 +36,18 @@ import {
     ACH_TUNE, STRAT_WAITMASK, BZ_OFS_AD, KILLED_BY,
 } from './const.js';
 import { MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
-import { fillholetyp_, liquid_flow_, close_drawbridge, open_drawbridge } from './dig.js';
+import { fillholetyp_, liquid_flow_ } from './dig.js';
+import { close_drawbridge, open_drawbridge } from './dbridge.js';
 import { cvt_sdoor_to_door } from './detect.js';
 import { set_utrap } from './trap.js';
 import { maketrap, t_at, reset_utrap, selftouch } from './trap.js';
-import { obj_extract_self, in_rooms, mselftouch_nc } from './mklev.js';
+import { in_rooms, mselftouch_nc } from './mklev.js';
+import { obj_extract_self } from './mkobj.js';
 import { sobj_at } from './invent.js';
 import { add_damage } from './shk.js';
 import { flooreffects } from './do.js';
-import { rnl } from './rng.js';
-import { xkilled } from './uhitm.js';
+import { rnl } from './rnd.js';
+import { xkilled } from './mon.js';
 import { mon_nam } from './uhitm.js';
 import { You_hear, You_see, You, You_cant } from './pline.js';
 import { unblock_point, recalc_block_point } from './vision.js';
@@ -49,14 +55,15 @@ import { is_pit, has_mgivenname, ROOM, SHOPBASE, XKILL_NOMSG,
          ARTICLE_THE, SUPPRESS_SADDLE, NO_KILLER_PREFIX, TT_PIT, TT_BURIEDBALL,
          LEVITATION, FLYING, FUMBLING, HALF_PHDAM, Upolyd } from './const.js';
 import { PM_ARCHEOLOGIST } from './pm.generated.js';
-import { wakeup_attack, seemimic } from './mhitm.js';
+import { wakeup_attack } from './mhitm.js';
+import { seemimic } from './mon.js';
 import { m_at } from './uhitm.js';
 import { set_levltyp } from './mkmaze.js';
 import { M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER,
          STONE, SCORR, CORR, DOOR, SDOOR, D_NODOOR,
          FOUNTAIN, SINK, ALTAR, GRAVE, THRONE, PIT, AM_SANCTUM, AM_MASK, Amask2align } from './const.js';
 import { altarmask_at } from './pray.js';
-import { getdir } from './lock.js';
+import { getdir } from './cmd.js';
 import { losehp } from './hack.js';
 import { Soundeffect } from './mon.js';
 

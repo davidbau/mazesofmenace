@@ -2,18 +2,22 @@
 // Split into pre-mklev and post-mklev phases.
 // The mklev RNG calls are now consumed by the real mklev.js implementation.
 //
-import { rn2, rnd, d, rn1, rnl, pushRngLogEntry } from "./rng.js";
-import { dochug, m_canseeu } from "./dochug.js";
+import { rn1, pushRngLogEntry } from "./rng.js";
+import { rn2, rnd, d, rnl } from './rnd.js';
+import { m_canseeu } from "./dochug.js";
+import { dochug } from './monmove.js';
 import monsPack from "./makemon_mons.json" with { type: "json" };
 import { gethungry, morehungry, Popeye } from "./eat.js";
-import { make_confused, make_stunned, vomit } from "./potion.js";
+import { make_confused, make_stunned } from "./potion.js";
+import { vomit } from './eat.js';
 import { cantvomit } from './mondata.js';
 import { age_spells } from "./spell.js";
 import { exerchk, exercise, acurr, spec_ability } from "./attrib.js";
-import { overexert_hp } from "./uhitm.js";
+import { overexert_hp } from './hack.js';
 import { t_at, registerTrapMksobj, activate_statue_trap } from "./trap.js";
 import { clear_bypasses, m_dowear } from './worn.js';
-import { Warning, mkot_trap_warn, newsym, feel_location, feel_newsym, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages } from "./display.js";
+import { Warning, newsym, feel_location, feel_newsym, flush_screen, _topl_merge_result, _topl_joins_snapshot, _topline_more_pending, _more_never_dismissed, _more_pages_exceed_input, flush_pending_messages } from "./display.js";
+import { mkot_trap_warn } from './artifact.js';
 import { pline, urgent_pline, You_hear } from './pline.js';
 /* Runtime-only edge, same rule as the allmain/monmove/mklev imports below:
  * end.js does not import this module, so the cycle is one-directional and
@@ -21,20 +25,26 @@ import { pline, urgent_pline, You_hear } from './pline.js';
 import { do_death_sequence } from "./end.js";
 import { MON_MIGRATING, TIMEOUT, JUMPING, FROMOUTSIDE, REGENERATION, SLEEPY, MAGICAL_BREATHING, ENERGY_REGENERATION, HALF_PHDAM, DEAF, VOMITING, STRANGLED, A_STR, SICK, SICK_NONVOMITABLE, CONFUSION, STUNNED, FAINTING, A_WIS, A_CON, A_DEX, MOD_ENCUMBER, EXT_ENCUMBER, MAXULEV, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, VAULT, ANY_SHOP, ZOO, MORGUE, BARRACKS, NECK, HEAD, HAIR, ROOMOFFSET, HALLUC, HALLUC_RES, WM_MASK, D_NODOOR, D_CLOSED, D_LOCKED, Is_rogue_level, Is_oracle_level, Upolyd, Is_waterlevel, Is_airlevel } from "./const.js";
 import { is_pool } from "./look.js";
-import { can_reach_floor } from "./hold_another_object.js";
+import { can_reach_floor } from './engrave.js';
 import { u_wipe_engr } from "./engrave.js";
 /* nomul: C detect.c:2049/2058 calls it from dosearch0 when a hidden door or
  * passage is found (hack.c:4068).  allmain.js does not import fastforward.js
  * back through this edge at module-init time, and nomul is a hoisted function
  * declaration called only at runtime, so this cycle resolves. */
-import { nomul, stop_occupation, interrupt_multi } from "./allmain.js";
+import { stop_occupation, interrupt_multi } from "./allmain.js";
+import { nomul } from './hack.js';
 import { night, phase_of_the_moon, friday_13th } from './calendar.js';
-import { warnreveal, obj_here, pooleffects_breathless, body_part, check_leash, cmdq_clear, find_trap, set_msg_xy } from "./cmd.js";
+import { pooleffects_breathless, body_part, cmdq_clear } from "./cmd.js";
+import { check_leash } from './apply.js';
+import { obj_here } from './invent.js';
+import { set_msg_xy } from './pline.js';
+import { warnreveal, find_trap } from './detect.js';
 import { halu_gname } from './pray.js';
 import { vtense } from "./objnam.js";
 import { rehumanize, polyself, set_uasmon } from "./polyself.js";
 import { you_were } from "./were.js";
-import { tele, next_to_u } from "./teleport.js";
+import { tele } from "./teleport.js";
+import { next_to_u } from './apply.js';
 import { TELEPORT, POLYMORPH, UNCHANGING, NON_PM, POLY_NOFLAGS, CQ_CANNED, CQ_REPEAT, ismnum, STATUE_TRAP } from "./const.js";
 import { search_special } from "./mkroom.js";
 import { inhistemple, temple_occupied } from "./priest.js";
@@ -74,19 +84,21 @@ function _m_next2u_ff(mon) {
     const dx = (mon.mx | 0) - (u.ux | 0), dy = (mon.my | 0) - (u.uy | 0);
     return (dx * dx + dy * dy) <= 2;
 }
-import { amulet } from "./sit.js";
+import { amulet } from './wizard.js';
 import { gd_sound, vault_occupied, invault, gd_move } from "./vault.js";
 import { consumeDungeonInitRng } from "./dungeon_rng.js";
 import { consumeQuestNemesisGenderRng, consumeRolePantheonPickRng, ROLE_HAS_LGOD, } from "./role_init_rng.js";
-import { NUM_ROLES, resolveRandomChargenInit, role_init, ROLE_GODS } from "./roles.js";
+import { NUM_ROLES, resolveRandomChargenInit, ROLE_GODS } from "./roles.js";
+import { role_init } from './role.js';
 import { consumeUInitMiscHeroInitRng } from "./exper.js";
 import { randomize_gem_colors, init_objects, shuffle_all } from "./o_init.js";
 import { u_init_inventory_attrs } from "./u_init.js";
-import { wipe_engr_at } from "./mklev.js";
+import { wipe_engr_at } from './engrave.js';
 import { upstart } from './hacklib.js';
 import { mhe } from "./makemon.js";
 import { hcolor } from "./mhitm.js";
-import { mksobj, mkobj, makemon, place_object } from "./mklev.js";
+import { mksobj, mkobj, place_object } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { make_corpse, wake_nearto, minliquid } from './mon.js';
 /* dosounds()'s shop branch (sounds.c:313-329) needs tended_shop/inhishop, which
  * live in js/shk.js.  shk.js does not import this module, so the edge is safe;
@@ -95,7 +107,7 @@ import { make_corpse, wake_nearto, minliquid } from './mon.js';
  * dereferenced at call time, never at module-init time. */
 import { tended_shop, inhishop } from "./shk.js";
 import { game } from "./gstate.js";
-import { fightm } from "./dogmove.js";
+import { fightm } from './mhitm.js';
 /* C macro Conflict (youprop.h:218) := HConflict || EConflict, i.e.
  * u.uprops[CONFLICT].{intrinsic,extrinsic}.  Same reader js/monmove.js
  * _conflict_mv() and js/dogmove.js _conflict_dm() use. */
@@ -109,7 +121,7 @@ import { near_capacity } from './hack.js';
 import { settrack } from "./track.js";
 import { dist2 as dist2_ff } from "./hacklib.js";
 import { depth as dungeon_depth } from './dungeon.js';
-import { intervene } from './cmd.js';
+import { intervene } from './wizard.js';
 
 import { nhlib_com_pager_rng } from "./nhlib.js";
 import { ENV } from './hostenv.js';
@@ -117,7 +129,6 @@ import { do_storms } from './timeout.js';
 /* C ref: nethack-c-v5/upstream/src/role.c roles[] [lgod, ngod, cgod].  The
  * table itself now lives with roles[] in js/roles.js (ROLE_GODS) so role_init()
  * and this legacy replay arm cannot drift apart. */
-const ROLE_GODS_FF = ROLE_GODS;
 /**
  * C ref: role.c:2063-2085 — populate urole.lgod/ngod/cgod from the pantheon role,
  * then store on game.u for display by com_pager_legacy (questpgr.c convert_arg 'd').
@@ -125,6 +136,7 @@ const ROLE_GODS_FF = ROLE_GODS;
  * the pantheon randrole() picks.  pantheon is the final role index chosen.
  */
 function applyPantheonGods(initrole, pantheon) {
+    const ROLE_GODS_FF = ROLE_GODS;
     const g = game;
     if (initrole < 0 || initrole >= NUM_ROLES) return;
     const effectivePantheon = (pantheon >= 0 && pantheon < NUM_ROLES) ? pantheon : initrole;
@@ -680,223 +692,22 @@ function Hallucination() {
 }
 
 
-/* C ref: mkroom.h:83 ROOM_INDEX(x) == ((int) ((x) - svr.rooms)) — the room's
- * index within svr.rooms[].  The port stores rooms in an array, so pointer
- * arithmetic becomes the array index. */
-function ROOM_INDEX(croom) {
-    return (game.level?.rooms ?? []).indexOf(croom);
-}
-
-/* C ref: sounds.c:318 `strchr(u.ushops, (int) (ROOM_INDEX(sroom)+ROOMOFFSET))`
- * — u.ushops is a char[5] of the shop room numbers the hero currently occupies.
- * The port stores it as a JS string of those raw char codes (mapstate_schema
- * 'hero.ushops', strSlot); js/shk.js:929 reads its first byte the same way, so
- * this is that read generalised to strchr's whole-buffer membership test. */
-function _ushops_has(roomch) {
-    const us = game.u?.ushops;
-    if (!us) return false;
-    const want = roomch | 0;
-    if (typeof us === 'string') {
-        for (let i = 0; i < us.length; i++)
-            if (us.charCodeAt(i) === want) return true;
-        return false;
-    }
-    if (Array.isArray(us))
-        return us.some((c) => (typeof c === 'string' ? c.charCodeAt(0) : (c | 0)) === want);
-    return (us | 0) === want;
-}
 
 
-import { g_at } from './cmd.js'; // C invent.c:1613: share the first-coin traversal.
+
+import { g_at } from './invent.js'; // C invent.c:1613: share the first-coin traversal.
 import { beehive_mon_sound, mon_in_room, morgue_mon_sound, oracle_sound, temple_priest_sound, throne_mon_sound, zoo_mon_sound } from './sounds.js'; // relocate-fns
 import { maybe_generate_rnd_mon, regen_hp, regen_pw, u_calc_moveamt } from './allmain.js'; // relocate-fns
 import { mcalcmove } from './mon.js'; // relocate-fns
 import { noisy_shop } from './shk.js'; // relocate-fns
+import { dosounds } from './sounds.js'; // relocate-fns
+export { dosounds } from './sounds.js'; // relocate-fns
 export { mcalcmove } from './mon.js'; // relocate-fns
 export { MONS, S_EEL_FF, UNENCUMBERED, _uasmon_mlet }; // relocate-fns
 export { Hallucination }; // relocate-fns
 
-/* get_iter_mons (mklev.js) for predicates that pline: C's pline blocks inside
- * the callback (a MSGTYPE=stop page holds the program), so the walk awaits. */
-async function get_iter_mons_aw(bfunc) {
-    for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
-        next = mtmp.nmon;
-        if ((mtmp.mhp | 0) < 1 || (mtmp.mstate | 0) !== 0)
-            continue;
-        if (await bfunc(mtmp))
-            return mtmp;
-    }
-    return null;
-}
 
-/* dungeon.h Is_sanctum(lev) = on_level(lev, &sanctum_level) */
-function _is_sanctum(uz) {
-    const s = game?.sanctum_level;
-    return !!uz && !!s && uz.dnum === s.dnum && uz.dlevel === s.dlevel;
-}
 
-export async function dosounds() {
-    game._inDosounds = true;
-    try { await dosounds_body(); } finally { game._inDosounds = false; }
-}
-async function dosounds_body() {
-    const lf = game.level && game.level.flags;
-    if (!lf)
-        return;
-    const _u = game.u || {};
-    if ((_u.HDeaf | 0) || !!(_u.uprops?.[DEAF]?.intrinsic | 0)
-        || !!(_u.uprops?.[DEAF]?.extrinsic | 0)
-        || (_u.uroleplay && _u.uroleplay.deaf)
-        || (game.flags && game.flags.acoustics === false)
-        || (_u.uswallow | 0) || (_u.uinwater | 0))
-        return;
-    /* C sounds.c:210 — hallu = Hallucination ? 1 : 0.  For fountain/sink/swamp
-     * it only shifts the message INDEX (the rn2 bound is unchanged), but in the
-     * vault branch below it selects the switch CASE, so it must be computed. */
-    const hallu = Hallucination() ? 1 : 0;
-    if (lf.nfountains && !rn2(400)) {
-        const fountain_msg = [
-            "bubbling water.", "water falling on coins.",
-            "the splashing of a naiad.", "a soda fountain!",
-        ];
-        await You_hear(fountain_msg[rn2(3) + hallu]);
-    }
-    if (lf.nsinks && !rn2(300)) {
-        /* C sounds.c:220-224 — You_hear1(sink_msg[rn2(2) + hallu]). */
-        const sink_msg = [
-            "a slow drip.", "a gurgling noise.", "dishes being washed!",
-        ];
-        await You_hear(sink_msg[rn2(2) + hallu]);
-    }
-    if (lf.has_court && !rn2(200)) {
-        /* C sounds.c:226-229 — `if (get_iter_mons(throne_mon_sound)) return;`;
-         * falls through to has_swamp when no qualifying monster exists. */
-        if (await get_iter_mons_aw(throne_mon_sound))
-            return;
-    }
-    if (lf.has_swamp && !rn2(200)) {
-        /* C sounds.c:230-236 — You1(swamp_msg[rn2(2) + hallu]).  Note C uses
-         * You1 (prefix "You "), not You_hear1: the strings carry their own
-         * "hear"/"smell" verb. */
-        const swamp_msg = [
-            "hear mosquitoes!", "smell marsh gas!", /* so it's a smell... */
-            "hear Donald Duck!",
-        ];
-        await pline("You " + swamp_msg[rn2(2) + hallu]);
-        return; /* C: unconditional return after swamp sound (sounds.c:236) */
-    }
-    if (lf.has_vault && !rn2(200)) {
-        const sroom = search_special(VAULT);
-        if (!sroom) {
-            /* strange ... */
-            lf.has_vault = 0;
-            return;
-        }
-        if (gd_sound()) {
-            switch (rn2(2) + hallu) {
-            case 1: {
-                let gold_in_vault = false;
-
-                for (let vx = sroom.lx | 0; vx <= (sroom.hx | 0); vx++)
-                    for (let vy = sroom.ly | 0; vy <= (sroom.hy | 0); vy++)
-                        if (g_at(vx, vy))
-                            gold_in_vault = true;
-                /* C: ROOM_INDEX(sroom) is the pointer offset of sroom within
-                 * svr.rooms[]; the port's equivalent is its array index. */
-                if (vault_occupied(game.u.urooms)
-                    !== (ROOM_INDEX(sroom) + ROOMOFFSET)) {
-                    if (gold_in_vault) {
-                        await You_hear(!hallu
-                                 ? "someone counting gold coins."
-                                 : "the quarterback calling the play.");
-                    } else {
-                        /* C: Soundeffect(se_someone_searching, 30) — audio
-                         * only, no screen or RNG effect. */
-                        await You_hear("someone searching.");
-                    }
-                    break;
-                }
-            }
-            /* FALLTHRU (C sounds.c:265-266) */
-            case 0:
-                /* C: Soundeffect(se_guards_footsteps, 30) — audio only. */
-                await You_hear("the footsteps of a guard on patrol.");
-                if (_topline_more_pending()
-                    && (_more_never_dismissed() || _more_pages_exceed_input()))
-                    await flush_pending_messages();
-                break;
-            case 2:
-                await You_hear("Ebenezer Scrooge!");
-                break;
-            }
-        }
-        return; /* C sounds.c:277 */
-    }
-    if (lf.has_beehive && !rn2(200)) {
-        if (await get_iter_mons_aw(beehive_mon_sound))
-            return;
-    }
-    if (lf.has_morgue && !rn2(200)) {
-        /* C sounds.c:282-285 — the callback's rn2(2) is conditional on a
-         * live undead or vampire-shifter in the morgue. */
-        if (await get_iter_mons_aw(morgue_mon_sound))
-            return;
-    }
-    if (lf.has_barracks && !rn2(200)) {
-        /* C sounds.c:286-308 — first mercenary in a barracks that is asleep
-         * or beyond the fifth counted one draws rn2(3)+hallu and returns;
-         * otherwise fall through to has_zoo. */
-        const barracks_msg = [
-            "blades being honed.", "loud snoring.", "dice being thrown.",
-            "General MacArthur!",
-        ];
-        let count = 0;
-        if (await get_iter_mons_aw(async (mtmp) => {
-            if ((((mtmp.data?.mflags2) | 0) & 0x00000200) !== 0 /* is_mercenary */
-                && mon_in_room(mtmp, BARRACKS)
-                && ((mtmp.msleeping | 0) || ++count > 5)) {
-                await You_hear(barracks_msg[rn2(3) + (Hallucination() ? 1 : 0)]);
-                return true;
-            }
-            return false;
-        }))
-            return;
-    }
-    if (lf.has_zoo && !rn2(200)) {
-        if (await get_iter_mons_aw(zoo_mon_sound))
-            return;
-    }
-    if (lf.has_shop && !rn2(200)) {
-        const sroom = search_special(ANY_SHOP);
-        if (!sroom) {
-            /* strange... */
-            lf.has_shop = 0;
-            return;
-        }
-        if (tended_shop(sroom) && !_ushops_has(ROOM_INDEX(sroom) + ROOMOFFSET)) {
-            /* C sounds.c:319-323 — static shop_msg[3]. */
-            const shop_msg = [
-                "someone cursing shoplifters.",
-                "the chime of a cash register.",
-                "Neiman and Marcus arguing!",
-            ];
-            /* C pline.c You_hear1(str) — You_hear with a literal string. */
-            await You_hear(shop_msg[rn2(2) + hallu]);
-            noisy_shop(sroom);
-        }
-        return; /* C sounds.c:328 */
-    }
-    if (lf.has_temple && !rn2(200)
-        && !(Is_astralevel(game.u?.uz) || _is_sanctum(game.u?.uz))) {
-        /* C sounds.c:330-334 */
-        if (await get_iter_mons_aw(temple_priest_sound))
-            return;
-    }
-    if (Is_oracle_level(game.u?.uz) && !rn2(400)) {
-        if (await get_iter_mons_aw(oracle_sound))
-            return;
-    }
-}
 export const dosounds_rng = dosounds;
 /* C ref: allmain.c:413 u_wipe_engr condition — rn2(40 + ACURR(A_DEX)*3).
  * ACURR(A_DEX) = clamp(u.abon.a[DEX] + u.atemp.a[DEX] + u.acurr.a[DEX], 3, 25)

@@ -1,25 +1,31 @@
 // artifact.js — C ref: artifact.c.
-import { ART_NONARTIFACT, arti_cary_adtyp, arti_cspfx, arti_defn_adtyp, arti_inv_prop, arti_spfx, exercise, get_artifact, spec_m2, LUCKSTONE, SPFX_LUCK } from './attrib.js';
-import { AD_COLD_ART, AD_DISN_ART, AD_DRLI_ART, AD_DRST_ART, AD_ELEC_ART, AD_FIRE_ART, AD_MAGM_ART, ART_SUNSWORD, BLND_RES_ART, CRYSTAL_BALL_OTYP, DEADMONSTER, ENERGY_REGENERATION_ART, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HALF_PHDAM_ART, HALF_SPDAM_ART, LAST_PROP_ART, MS_NEMESIS, OTYP_ARROW, PROTECTION_ART, REGENERATION_ART, Role_if, SPFX_EREGEN_ART, SPFX_ESP_ART, SPFX_HALRES_ART, SPFX_HPHDAM_ART, SPFX_HSPDAM_ART, SPFX_PROTECT_ART, SPFX_REFLECT_ART, SPFX_REGEN_ART, SPFX_SEARCH_ART, SPFX_STLTH_ART, SPFX_TCTRL_ART, SPFX_WARN_ART, SPFX_XRAY_ART, W_WEP_C, Your, _Blind_cmd, _IA_BELL_OF_OPENING_OTYP, _You_feel, _hero_Blind, _is_demon, _ld_carried, _retouch_ag, _retouch_dmg, _uprop_active, do_blinding_ray, enlightenment_menu, getObjFromGetobj, invocation_pos, ledger_no_cmd, level_tele, spelleffects, tty_menu_pick_one_ext, untrap_at, use_crystal_ball, verbalize } from './cmd.js';
+import { ART_NONARTIFACT, arti_cary_adtyp, arti_cspfx, arti_defn_adtyp, arti_inv_prop, arti_spfx, exercise, LUCKSTONE, SPFX_LUCK } from './attrib.js';
+import { AD_COLD_ART, AD_DISN_ART, AD_DRLI_ART, AD_DRST_ART, AD_ELEC_ART, AD_FIRE_ART, AD_MAGM_ART, ART_SUNSWORD, BLND_RES_ART, CRYSTAL_BALL_OTYP, DEADMONSTER, ENERGY_REGENERATION_ART, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HALF_PHDAM_ART, HALF_SPDAM_ART, LAST_PROP_ART, MS_NEMESIS, OTYP_ARROW, PROTECTION_ART, REGENERATION_ART, Role_if, SPFX_EREGEN_ART, SPFX_ESP_ART, SPFX_HALRES_ART, SPFX_HPHDAM_ART, SPFX_HSPDAM_ART, SPFX_PROTECT_ART, SPFX_REFLECT_ART, SPFX_REGEN_ART, SPFX_SEARCH_ART, SPFX_STLTH_ART, SPFX_TCTRL_ART, SPFX_WARN_ART, SPFX_XRAY_ART, W_WEP_C, Your, _Blind_cmd, _IA_BELL_OF_OPENING_OTYP, _You_feel, _hero_Blind, _is_demon, _ld_carried, _retouch_ag, _retouch_dmg, _uprop_active, enlightenment_menu, getObjFromGetobj, ledger_no_cmd, spelleffects, tty_menu_pick_one_ext, untrap_at, verbalize } from './cmd.js';
+import { invocation_pos } from './hack.js';
+import { do_blinding_ray } from './apply.js';
+import { level_tele } from './teleport.js';
+import { use_crystal_ball } from './detect.js';
 import { ANTIMAGIC, A_CON, BLINDED, COLD_RES, CONFLICT, DISINT_RES, DRAIN_RES, ECMD_CANCEL, ECMD_OK, ECMD_TIME, FIRE_RES, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, HALLUC, INVIS, I_SPECIAL, In_endgame, In_quest, KILLED_BY, LEVITATION, MAGICENLIGHTENMENT, MIGR_RANDOM, POISON_RES, REFLECTING, SEARCHING, SHOCK_RES, SICK, SICK_ALL, SLIMED, STEALTH, TELEPAT, TELEPORT_CONTROL, TIMEOUT, Upolyd, WARNING, WARN_OF_MON, W_ART, W_ARTI as W_ARTI_FW, isok, nothing_seems_to_happen } from './const.js';
 import * as _PROPIDS from './const.js';
 import { force_more, newsym, see_monsters } from './display.js';
 import { pline } from './pline.js';
 import { goto_level } from './do.js';
-import { xname, yname } from './do_wear.js';
+import { xname } from './objnam.js';
+import { yname } from './objnam.js';
 import { recalc_telepat_range } from './worn.js';
 import { float_down, float_up } from './trap.js';
-import { mdrop_special_objs, migrate_to_level, unstuck } from './dog.js';
+import { mdrop_special_objs, migrate_to_level } from './dog.js';
+import { unstuck } from './mon.js';
 import { losehp } from './hack.js';
 import { throwit } from './dothrow.js';
 import { game } from './gstate.js';
 import { depth } from './dungeon.js';
 import { hold_another_object } from './invent.js';
-import { update_inventory } from './inventory_refresh.js';
+import { update_inventory } from './invent.js';
 import { spoteffects } from './hack.js';
-import { getdir } from './lock.js';
+import { getdir } from './cmd.js';
 import { Inhell } from './makemon.js';
-import { bcsign, mksobj } from './mklev.js';
+import { bcsign, mksobj } from './mkobj.js';
 import { getrumor } from './rumors.js';
 import { On_stairs } from './stairs.js';
 import { Tobjnam as _objnam_Tobjnam, aobjnam, killer_xname, otense, the } from './objnam.js';
@@ -27,10 +33,11 @@ import { impossible as real_impossible } from './pline.js';
 import { PM_GREMLIN, PM_TOURIST } from './pm.generated.js';
 import { make_hallucinated, make_sick, make_slimed } from './potion.js';
 import { charge_ok, litroom, recharge, seffects } from './read.js';
-import { d, rn2, rnd, rnz } from './rng.js';
+import { d, rn2, rnd, rnz } from './rnd.js';
 import { spell_skilltype } from './spell.js';
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js';
-import { next_to_u as next_to_u_real, u_teleport_mon } from './teleport.js';
+import { u_teleport_mon } from './teleport.js';
+import { next_to_u as next_to_u_real } from './apply.js';
 import { couldsee } from './vision.js';
 import { weight } from './weight.js';
 import { bane_applies_hero, touch_artifact_youmonst } from './wizcmds.js';
@@ -40,6 +47,49 @@ import { ARTILIST, _arti_exists_bit, _artiexist, _artifact_origin, _startsWithTh
 import { fuzzymatch } from './hacklib.js'; // relocate-fns
 import { OC_COST } from './oc_cost_data.js'; // relocate-fns
 import { MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js'; // relocate-fns
+import { ARTILIST_MTYPE } from './attrib.js'; // relocate-fns
+import { _ARTI_GIFT_INFO, _mk_artifact_by_align } from './cmd.js'; // relocate-fns
+import { is_youmonst } from './mhitm.js'; // relocate-fns
+import { A_NONE, ONAME_NO_FLAGS, touch_artifact_mon, uroleMnum } from './mklev.js'; // relocate-fns
+import { ARTI_GEN_SPE, ARTI_NOGEN } from './objnam.js';
+import { oname } from './do_name.js'; // relocate-fns
+import { ARTI_PROPS } from './wizcmds.js'; // relocate-fns
+import { _Levitation } from './cmd.js'; // relocate-fns
+import { GOLD_DRAGON_SCALES, GOLD_DRAGON_SCALE_MAIL } from './light.js'; // relocate-fns
+import { nomul } from './hack.js'; // relocate-fns
+import { body_part, mbodypart } from './cmd.js'; // relocate-fns
+import { CONFUSION, STONE_RES, STUNNED, engulfing_u, ismnum } from './const.js'; // relocate-fns
+import { canspotmon, map_invisible, shieldeff } from './display.js'; // relocate-fns
+import { Monnam, hcolor, mon_nam } from './do_name.js'; // relocate-fns
+import { sticks } from './dog.js'; // relocate-fns
+import { losexp } from './exper.js'; // relocate-fns
+import { s_suffix, upstart } from './hacklib.js'; // relocate-fns
+import { monhp_per_lvl, nonlivingMon, permonstTemplate } from './makemon.js'; // relocate-fns
+import { healmon, set_ustuck, wake_nearto } from './mon.js'; // relocate-fns
+import { Resists_Elem, attacktype, defended, resists_drli } from './mondata.js'; // relocate-fns
+import { monflee } from './monmove.js'; // relocate-fns
+import { observe_object } from './o_init.js'; // relocate-fns
+import { The, distant_name, vtense } from './objnam.js'; // relocate-fns
+import { You, pline_The } from './pline.js'; // relocate-fns
+import { PM_JABBERWOCK as PM_JABBERWOCK_UH, PM_WATER_ELEMENTAL } from './pm.generated.js'; // relocate-fns
+import { healup, make_confused, make_stunned } from './potion.js'; // relocate-fns
+import { impossible } from './steed.js'; // relocate-fns
+import { burn_away_slime as burn_away_slime_real } from './timeout.js'; // relocate-fns
+import { ignite_items as ignite_items_real } from './trap.js'; // relocate-fns
+import { AD_DRLI_UH, AD_PHYS_UH, AD_STON_UH, ARTI_SPEC, AT_MAGC_UH, Antimagic_uh, M2_UNDEAD, M2_WERE_UH, MZ_LARGE, SHADE_GLARE_SILVER_MAT, _AC_ART_STORMBRINGER, _hero_resists, _uh_Blind, _xk_hallu, resists_poison_uh, sh_resists_ston, sr_oc_material } from './uhitm.js'; // relocate-fns
+import { cansee } from './vision.js'; // relocate-fns
+import { artifact_alignment } from './wizcmds.js'; // relocate-fns
+import { cancel_monst, destroy_items_mon as destroy_items_mon_zap, destroy_items as destroy_items_zap, probe_monster, resist } from './zap.js'; // relocate-fns
+import { clr2colorname } from './coloratt.js'; // relocate-fns
+import { DISMOUNT_THROWN, D_TRAPPED, IS_DOOR, LAST_PROP, W_ARTI, W_BALL, W_QUIVER, W_SADDLE, W_SWAPWEP } from './const.js'; // relocate-fns
+import { GLYPHCLS_TRAP, _disp_Blind, retouch_object_hero, vobj_at } from './display.js'; // relocate-fns
+import { maybe_lvltport_feedback as _rt_maybe_lvltport_feedback } from './do.js'; // relocate-fns
+import { uncurse as _rt_uncurse } from './mkobj.js'; // relocate-fns
+import { bare_artifactname } from './objnam.js'; // relocate-fns
+import { dismount_steed as _rt_dismount_steed } from './steed.js'; // relocate-fns
+import { CLR_BRIGHT_BLUE, CLR_RED, NO_COLOR } from './terminal.js'; // relocate-fns
+import { selftouch as _rt_selftouch, t_at } from './trap.js'; // relocate-fns
+import { bypass_obj as _rt_bypass_obj, clear_bypasses as _rt_clear_bypasses, nxt_unbypassed_obj as _rt_nxt_unbypassed_obj, which_armor as _rt_which_armor } from './worn.js'; // relocate-fns
 
 /* C ref: artifact.c:2275-2293 arti_speak() — a speaking artifact (SPFX_SPEAK) whispers
  * a rumor.  doapply's tail (apply.c:4421-4423) calls it for any applied artifact. */
@@ -940,3 +990,955 @@ export function protects(otmp, being_worn) {
     return ((arti_cspfx(arti) & SPFX_PROTECT) !== 0
             || (being_worn && (arti_spfx(arti) & SPFX_PROTECT) !== 0));
 }
+
+/* C artifact.h — the ART_ enum terminator; artilist[] indices run 0..33. */
+const AFTER_LAST_ARTIFACT = 34;
+
+/* C artifact.c:513 spec_m2(otmp) — artilist[oartifact].mtype, 0 for a
+ * non-artifact.  (C dereferences get_artifact()'s always-non-NULL return, so
+ * the dummy row's 0 is what a non-artifact yields.) */
+export function spec_m2(otmp) {
+    return ARTILIST_MTYPE[get_artifact(otmp)] | 0;
+}
+
+/* C ref: nethack-c/src/artifact.c:180-193 get_artifact(struct obj *obj)
+ *   if (obj) { int artidx = (int) obj->oartifact;
+ *              if (artidx > 0 && artidx < AFTER_LAST_ARTIFACT)
+ *                  return &artilist[artidx]; }
+ *   return &artilist[ART_NONARTIFACT];
+ * C returns a pointer; JS returns the INDEX, so callers compare against
+ * ART_NONARTIFACT exactly where C compares against &artilist[ART_NONARTIFACT]. */
+export function get_artifact(obj) {
+    if (obj) {
+        const artidx = obj.oartifact | 0;
+        /* skip 0, 1st artifact at 1 */
+        if (artidx > 0 && artidx < AFTER_LAST_ARTIFACT)
+            return artidx;
+    }
+    return ART_NONARTIFACT;
+}
+
+function mka_poison_tail(o) {
+    if (o && permapoisoned(o))
+        o.opoisoned = 1;
+    return o;
+}
+
+export async function mk_artifact(otmp, alignment, max_giftvalue, adjust_spe) {
+    const by_align = (alignment !== A_NONE);
+    if (by_align)
+        return _mk_artifact_by_align(alignment, max_giftvalue, otmp, adjust_spe);
+    const o_typ = otmp ? (otmp.otyp | 0) : 0;
+    /* C: unique = !by_align && otmp && objects[o_typ].oc_unique.  An oc_unique
+     * base type suppresses the whole eligible scan.  game._oc_unique is the
+     * same table js/eat.js:2014 reads; absent means "not unique", which is
+     * correct for every weapon/armor otyp these call sites can produce. */
+    const unique = !!(otmp && game._oc_unique && game._oc_unique[o_typ]);
+
+    /* C artifact.c:190-251 — gather eligible artifacts.  On the !by_align path
+     * the loop body reduces to the three skips plus `a->otyp == o_typ`; the
+     * alignment/race/Role_if half is by_align-only, and the
+     * `a->gift_value > max_giftvalue && !Role_if(a->role)` skip is dead here
+     * because every call site passes max_giftvalue = 99 and the largest
+     * gift_value in artilist.h is 12. */
+    const eligible = [];
+    for (let m = 1; m <= ARTILIST.length; m++) {
+        if (_arti_exists_bit_local(m))
+            continue;
+        if (ARTI_NOGEN.has(m) || unique)
+            continue;
+        if (_ARTI_GIFT_INFO[m][3] > max_giftvalue
+            && _ARTI_GIFT_INFO[m][1] !== uroleMnum())
+            continue;
+        if (ARTILIST[m - 1].otyp === o_typ)
+            eligible.push(m);
+    }
+
+    if (!eligible.length)
+        return mka_poison_tail(otmp); /* C:299-310 — nothing appropriate; return the original */
+
+    /* C artifact.c:259 — m = eligible[rn2(n)] */
+    const m = eligible[rn2(eligible.length)];
+    const a = ARTILIST[m - 1];
+    /* C:280 — prevent erosion from generating */
+    otmp.oeroded = otmp.oeroded2 = 0;
+    /* C:281-284 — oname() promotes it (artifact_exists -> artifact_origin with
+     * the ONAME_RANDOM default), then C re-asserts oartifact and re-runs
+     * artifact_origin(otmp, ONAME_RANDOM), including when oname returns early. */
+    await oname(otmp, a.name, ONAME_NO_FLAGS);
+    otmp.oartifact = m;
+    _artifact_origin(otmp, ONAME_RANDOM);
+    if (adjust_spe) {
+        /* C:285-297 — clamped into the "normal" range. */
+        const new_spe = (otmp.spe | 0) + (ARTI_GEN_SPE[m] | 0);
+        if (new_spe >= -10 && new_spe < 10)
+            otmp.spe = new_spe;
+    }
+    return mka_poison_tail(otmp);
+}
+
+/* C artifact.c:344 artiexist[m].exists, via the same game._artiexist store
+ * js/objnam.js writes (an entry is either the legacy `true` or a full origin
+ * record; both mean "exists"). */
+function _arti_exists_bit_local(m) {
+    const e = (game._artiexist || {})[m];
+    return !!e && (e === true || !!e.exists);
+}
+
+export async function touch_artifact(otmp, mtmp) {
+    const arti = (otmp && (otmp.oartifact | 0)) || 0;
+    /* C artifact.c:910-915 get_artifact(obj); ART_NONARTIFACT → return 1. */
+    if (!arti) return true;
+    const oart = ARTI_PROPS[arti];
+    if (!oart) return true;
+
+    /* C artifact.c:917 yours = (mon == &gy.youmonst). */
+    if (is_youmonst(mtmp))
+        return !!await touch_artifact_youmonst(otmp);
+
+    return touch_artifact_mon(otmp, mtmp);
+}
+
+/* C artifact.c:2243 finesse_ahriman(obj): will freeing this object from
+ * inventory cause levitation to end?  Probes ahead on a copy of the
+ * LEVITATION prop, restoring it before returning. */
+export function finesse_ahriman(obj) {
+    const u = game.u;
+    const oart = get_artifact(obj);
+    const p = u.uprops?.[LEVITATION];
+    if (!_Levitation() || oart === ART_NONARTIFACT
+        || arti_inv_prop(oart) !== LEVITATION || !((p.extrinsic | 0) & W_ARTI_FW))
+        return false;
+    const save = { intrinsic: p.intrinsic, extrinsic: p.extrinsic, blocked: p.blocked };
+    /* arti_invoke(off) -> float_down() clears I_SPECIAL|TIMEOUT & W_ARTI */
+    p.intrinsic = (p.intrinsic | 0) & ~(I_SPECIAL | TIMEOUT);
+    p.extrinsic = (p.extrinsic | 0) & ~W_ARTI_FW;
+    const result = !_Levitation();
+    Object.assign(p, save);
+    return result;
+}
+
+/* C ref: artifact.c defends(adtyp, otmp) / defends_when_carried(adtyp, otmp).
+ * Both are one line over get_artifact(otmp), which is
+ *   ((obj && obj->oartifact) ? &artilist[(int) obj->oartifact] : 0)
+ * so a non-artifact answers FALSE without consulting any table.  The two adtyp
+ * columns come from js/attrib.js, which parsed them out of
+ * nethack-c-v5/upstream/include/artilist.h's A() X-macro and validated the
+ * parse against the compiled spfx column — see the provenance note there.
+ *
+ * These were throw-stubs; resists_prop() below calls BOTH of them, guarded only
+ * by obj->oartifact, so a hero wielding or carrying ANY artifact and asked for
+ * a resistance halted the run.  No RNG on either side. */
+export function defends(adtyp, obj) {
+    const a = obj ? (obj.oartifact | 0) : 0;
+    if (a)
+        return arti_defn_adtyp(a) === (adtyp | 0);
+    /* C artifact.c:644-681 if (Is_dragon_armor(otmp)): Is_dragon_mail
+     * (GRAY_DRAGON_SCALE_MAIL 101..YELLOW 110) converts to scales
+     * (GRAY_DRAGON_SCALES 111..YELLOW 120; shimmering is #if 0 in v5
+     * objects.h).  AD_MAGM 1 -> gray, AD_HALU 36 -> GOLD_DRAGON_SCALES,
+     * AD_FIRE 2 -> RED_DRAGON_SCALES, ... per monattk.h. */
+    let otyp = obj ? (obj.otyp | 0) : 0;
+    if (otyp >= 101 && otyp <= 110)
+        otyp += 10;
+    else if (otyp < 111 || otyp > 120)
+        return false;
+    switch (adtyp | 0) {
+    case 1:  return otyp === 111;
+    case 36: return otyp === 112;
+    case 2:  return otyp === 114;
+    case 3:  return otyp === 115;
+    case 7:
+    case 33: return otyp === 119;
+    case 4:
+    case 14: return otyp === 116;
+    case 5:
+    case 15: return otyp === 117;
+    case 6:
+    case 13: return otyp === 118;
+    case 8:
+    case 18: return otyp === 120;
+    default: return false;
+    }
+}
+
+const LIGHT_W_ARM = 0x00000001; /* prop.h W_ARM */
+
+export function artifact_light(obj) {
+    if (obj && ((obj.otyp | 0) === GOLD_DRAGON_SCALE_MAIL
+                || (obj.otyp | 0) === GOLD_DRAGON_SCALES)
+        && ((obj.owornmask | 0) & LIGHT_W_ARM) !== 0)
+        return true;
+
+    return !!obj && (obj.oartifact | 0) === ART_SUNSWORD;
+}
+
+/* C artifact.c:626 attacks() — use the attack column, not the defense or
+ * carried-resistance column. get_artifact supplies the non-artifact sentinel. */
+export function attacks(adtyp, otmp) {
+    const weap = get_artifact(otmp);
+    if (weap !== ART_NONARTIFACT)
+        return ARTI_SPEC[weap].adtyp === adtyp;
+    return false;
+}
+
+/* C artifact.h:21,35-40 */
+const SPFX_ATTK_UH   = 0x00000040;
+
+const SPFX_DMONS_UH  = 0x00100000;
+
+const SPFX_DCLAS_UH  = 0x00200000;
+
+const SPFX_DFLAG1_UH = 0x00400000;
+
+const SPFX_DFLAG2_UH = 0x00800000;
+
+const SPFX_DALIGN_UH = 0x01000000;
+
+const SPFX_DBONUS_UH = 0x01F00000;
+
+/* C monattk.h:42-58.  AD_PHYS_UH / AD_DRLI_UH / AD_STON_UH are already declared
+ * further down this file (the mhitm_ad_* block) and are reused here. */
+const AD_MAGM_UH = 1, AD_FIRE_UH = 2, AD_COLD_UH = 3,
+      AD_ELEC_UH = 6, AD_DRST_UH = 7, AD_STUN_UH = 12;
+
+/* C align.h — A_NONE is the "no alignment" sentinel artilist[] uses. */
+const A_NONE_UH = -128;
+
+/* C ref: artifact.c:1009-1064 spec_applies(weap, mtmp).  `mtmp === null` is
+ * this file's existing convention for "the defender is the hero"
+ * (js/mhitu.js:4028 calls hitval that way), i.e. C's `mtmp == &gy.youmonst`,
+ * and `mndx` is then u.umonnum. */
+function spec_applies(arti, mtmp, mndx) {
+    const spfx = arti.spfx | 0;
+
+    if (!(spfx & (SPFX_DBONUS_UH | SPFX_ATTK_UH)))
+        return (arti.adtyp | 0) === AD_PHYS_UH;
+
+    const yours = !mtmp || is_youmonst(mtmp);
+    const ptr = mtmp?.data || (yours ? permonstTemplate(mndx ?? game.u.umonnum) : null);
+    if (!ptr)
+        return false;
+
+    if (spfx & SPFX_DMONS_UH) {
+        return (ptr.pmidx | 0) === (arti.mtype | 0);
+    } else if (spfx & SPFX_DCLAS_UH) {
+        return (arti.mtype | 0) === (ptr.mlet | 0);
+    } else if (spfx & SPFX_DFLAG1_UH) {
+        return (((ptr.mflags1 >>> 0) & (arti.mtype >>> 0)) !== 0);
+    } else if (spfx & SPFX_DFLAG2_UH) {
+        /* C artifact.c:1027-1030 and role.c races[].selfmask. */
+        const selfmask = [0x8, 0x10, 0x20, 0x40, 0x80][game.flags?.initrace ?? 0] || 0;
+        return (((ptr.mflags2 >>> 0) & (arti.mtype >>> 0)) !== 0)
+               || (yours && ((!Upolyd(game.u) && (selfmask & arti.mtype) !== 0)
+                   || (((arti.mtype & M2_WERE_UH) !== 0)
+                       && ismnum(game.u.ulycn))));
+    } else if (spfx & SPFX_DALIGN_UH) {
+        return yours ? ((game.u?.ualign?.type | 0) !== artifact_alignment(ARTI_SPEC.indexOf(arti)))
+                     : ((ptr.maligntyp | 0) === A_NONE_UH
+                        || Math.sign(ptr.maligntyp | 0) !== artifact_alignment(ARTI_SPEC.indexOf(arti)));
+    } else if (spfx & SPFX_ATTK_UH) {
+        if (defended(yours ? game.youmonst : mtmp, arti.adtyp | 0))
+            return false;
+
+        switch (arti.adtyp | 0) {
+        case AD_FIRE_UH:
+            return !(yours ? _hero_resists(FIRE_RES) : Resists_Elem(mtmp, FIRE_RES));
+        case AD_COLD_UH:
+            return !(yours ? _hero_resists(COLD_RES) : Resists_Elem(mtmp, COLD_RES));
+        case AD_MAGM_UH:
+        case AD_STUN_UH:
+            /* THE ONE RNG DRAW IN THIS FUNCTION (artifact.c:1049). */
+            return !(yours ? Antimagic_uh() : (rn2(100) < (ptr.mr | 0)));
+        case AD_ELEC_UH:
+            return !(yours ? _hero_resists(SHOCK_RES) : Resists_Elem(mtmp, SHOCK_RES));
+        case AD_DRST_UH:
+            /* artifact.c:1050 `resists_poison(mtmp)` = monst.h:277
+             * Resists_Elem(mon, POISON_RES); resists_poison_uh below is
+             * exactly that call (mondata.c:129 full body, worn/carried/
+             * wielded arms included). */
+            return !(yours ? _hero_resists(POISON_RES) : resists_poison_uh(mtmp));
+        case AD_DRLI_UH:
+            return !(yours ? _hero_resists(DRAIN_RES) : resists_drli(mtmp));
+        case AD_STON_UH:
+            /* artifact.c:1054 `resists_ston(mtmp)` = monst.h:279
+             * Resists_Elem(mon, STONE_RES); sh_resists_ston forwards to
+             * js/mklev.js resists_ston, which is exactly that call. */
+            return !(yours ? _hero_resists(STONE_RES) : sh_resists_ston(mtmp));
+        default:
+            impossible("Weird weapon special attack.");
+        }
+    }
+    return false;
+}
+
+/* C ref: artifact.c:1075-1088 spec_abon(otmp, mon) — "special attack bonus".
+ *   const struct artifact *weap = get_artifact(otmp);
+ *   if (weap != &artilist[ART_NONARTIFACT]
+ *       && weap->attk.damn && spec_applies(weap, mon))
+ *       return rnd((int) weap->attk.damn);
+ *   return 0;
+ * The `weap->attk.damn &&` short-circuit matters: it keeps spec_applies (and
+ * its rn2(100)) from running at all for an artifact with no to-hit die. */
+export function spec_abon(otmp, mtmp, mndx) {
+    const artidx = (otmp?.oartifact | 0);
+    if (artidx <= 0 || artidx >= ARTI_SPEC.length)
+        return 0;
+    const weap = ARTI_SPEC[artidx];
+    if (weap.damn && spec_applies(weap, mtmp, mndx))
+        return rnd(weap.damn | 0);
+    return 0;
+}
+
+let gs_spec_dbon_applies = false;
+
+/* artilist[] ordinal of Grimtooth, the one artifact whose damage bonus
+ * deliberately bypasses spec_applies() (artifact.c:1099-1102). */
+const ART_GRIMTOOTH_UH = 5;
+
+export function spec_dbon(otmp, mtmp, mndx, tmp) {
+    const artidx = (otmp?.oartifact | 0);
+    const weap = (artidx > 0 && artidx < ARTI_SPEC.length)
+        ? ARTI_SPEC[artidx] : null;
+
+    if (!weap
+        || ((weap.adtyp | 0) === AD_PHYS_UH && (weap.damn | 0) === 0
+            && (weap.damd | 0) === 0))
+        gs_spec_dbon_applies = false;
+    else if (artidx === ART_GRIMTOOTH_UH)
+        gs_spec_dbon_applies = true;
+    else
+        gs_spec_dbon_applies = spec_applies(weap, mtmp, mndx);
+
+    if (gs_spec_dbon_applies)
+        return (weap.damd | 0) ? rnd(weap.damd | 0) : Math.max(tmp | 0, 1);
+    return 0;
+}
+
+/* C ref: artifact.c:626-634 attacks(adtyp, otmp) and artifact.c:515-523
+ * spec_ability(otmp, abil) — both are "get_artifact(), then read one column",
+ * and both answer FALSE for a non-artifact. */
+function arti_attacks(adtyp, otmp) {
+    const artidx = (otmp?.oartifact | 0);
+    if (artidx <= 0 || artidx >= ARTI_SPEC.length)
+        return false;
+    return (ARTI_SPEC[artidx].adtyp | 0) === (adtyp | 0);
+}
+
+/* C artifact.h:22,24 */
+const SPFX_DRLI_UH   = 0x00000100;
+
+const SPFX_BEHEAD_UH = 0x00000400;
+
+export async function artifact_hit(magr, mdef, otmp, dmg, dieroll, mdefMndx = -1) {
+    /* C artifact.c:1454-1455. Legacy nulls denote the hero, except a null
+     * attacker against the hero is an unattended weapon (dothrow.c).
+     * Also accept the actual youmonst used by other combat helpers. */
+    const youdefend = !mdef || is_youmonst(mdef);
+    const youattack = is_youmonst(magr) || (!magr && !youdefend);
+    mdefMndx = mdef?.data?.pmidx ?? (youdefend ? game.u.umonnum : mdefMndx);
+    if (youattack) magr = null;
+    if (youdefend) mdef = null;
+    const vis = (!youattack && magr && cansee(magr.mx | 0, magr.my | 0))
+        || (!youdefend && mdef && cansee(mdef.mx | 0, mdef.my | 0))
+        || (youattack && engulfing_u(mdef) && !_uh_Blind());
+    const realizesDamage = youdefend || vis
+        || (youattack && mdef === game.u?.ustuck);
+    const hittee = youdefend ? 'you' : mon_nam(mdef);
+
+    /* artifact.c:1470 — "The following takes care of most of the damage".
+     * Runs BEFORE every arm below, including the ones that return early.
+     * `mdefMndx` is the hero's u.umonnum when mdef is null (youdefend). */
+    dmg = (dmg | 0) + spec_dbon(otmp, mdef, mdefMndx, dmg | 0);
+
+    if (youattack && youdefend) {
+        impossible('attacking yourself with weapon?');
+        return { dmg, special: false };
+    }
+    if (arti_attacks(AD_FIRE_UH, otmp)) {
+        if (realizesDamage) {
+            const verb = !gs_spec_dbon_applies ? 'hits'
+                : ((mdefMndx | 0) === PM_WATER_ELEMENTAL
+                   ? 'vaporizes part of' : 'burns');
+            await pline_The("fiery blade %s %s%c", verb, hittee,
+                            !gs_spec_dbon_applies ? '.' : '!');
+        }
+        if (!rn2(4)) {
+            const itemdmg = youdefend
+                ? await destroy_items_zap(true, AD_FIRE_UH, dmg)
+                : (await destroy_items_mon_zap(mdef, AD_FIRE_UH, dmg));
+            if (!youdefend)
+                dmg += itemdmg;
+            // C artifact.c:1495 uses mdef->minvent even for youmonst;
+            // the hero's carried inventory is a separate chain (gi.invent).
+            await ignite_items_real(youdefend ? game.youmonst?.minvent : mdef.minvent);
+        }
+        if (youdefend)
+            await burn_away_slime_real();
+        return { dmg, special: realizesDamage };
+    }
+    if (arti_attacks(AD_COLD_UH, otmp)) {
+        if (realizesDamage)
+            await pline_The("ice-cold blade %s %s%c",
+                            !gs_spec_dbon_applies ? 'hits' : 'freezes', hittee,
+                            !gs_spec_dbon_applies ? '.' : '!');
+        if (!rn2(4)) {
+            const itemdmg = youdefend
+                ? await destroy_items_zap(true, AD_COLD_UH, dmg)
+                : (await destroy_items_mon_zap(mdef, AD_COLD_UH, dmg));
+            if (!youdefend)
+                dmg += itemdmg;
+        }
+        return { dmg, special: realizesDamage };
+    }
+    if (arti_attacks(AD_ELEC_UH, otmp)) {
+        if (realizesDamage)
+            await pline_The("massive hammer hits%s %s%c",
+                            !gs_spec_dbon_applies ? '' : '!  Lightning strikes',
+                            hittee, !gs_spec_dbon_applies ? '.' : '!');
+        if (gs_spec_dbon_applies) {
+            const wakeTarget = youdefend ? game.u : mdef;
+            wake_nearto(wakeTarget.ux ?? wakeTarget.mx,
+                        wakeTarget.uy ?? wakeTarget.my, 4 * 4);
+        }
+        if (!rn2(5)) {
+            const itemdmg = youdefend
+                ? await destroy_items_zap(true, AD_ELEC_UH, dmg)
+                : (await destroy_items_mon_zap(mdef, AD_ELEC_UH, dmg));
+            if (!youdefend)
+                dmg += itemdmg;
+        }
+        return { dmg, special: realizesDamage };
+    }
+    if (arti_attacks(AD_MAGM_UH, otmp)) {
+        /* artifact.c:1527-1535 */
+        if (realizesDamage)
+            await pline_The("imaginary widget hits%s %s%c",
+                            !gs_spec_dbon_applies
+                                ? '' : '!  A hail of magic missiles strikes',
+                            hittee, !gs_spec_dbon_applies ? '.' : '!');
+        return { dmg, special: realizesDamage };
+    }
+
+    /* artifact.c:1538-1541 */
+    if (arti_attacks(AD_STUN_UH, otmp) && dieroll <= MB_MAX_DIEROLL_UH) {
+        const mb = await Mb_hit(magr, mdef, otmp, dmg, dieroll, vis, hittee);
+        return { dmg: mb.dmg, special: mb.result };
+    }
+
+    if (!gs_spec_dbon_applies)
+        return { dmg, special: false };
+
+    /* artifact.c:1550-1644 — "We really want 'on a natural 20' but Nethack does
+     * it in reverse from AD&D."  Tsurugi 30, Vorpal Blade 18 (artilist index). */
+    if (spec_ability(otmp, SPFX_BEHEAD_UH)) {
+        const M1_NOHEAD_UH = 0x00008000, M1_AMORPHOUS_UH = 0x00000004;
+        const S_GHOST_UH = 54;
+        const hasHead = (ptr) => !((ptr.mflags1 | 0) & M1_NOHEAD_UH);
+        const noncorpAmorph = (ptr) => (ptr.mlet | 0) === S_GHOST_UH
+            || !!((ptr.mflags1 | 0) & M1_AMORPHOUS_UH);
+        const notonhead = !!(game.gn && game.gn.notonhead);
+        const uhp = () => (Upolyd(game.u) ? game.u.mh : game.u.uhp) | 0;
+        let wepdesc;
+        if (is_art(otmp, 30) && (dieroll | 0) === 1) {
+            wepdesc = 'The razor-sharp blade';
+            if (youattack && engulfing_u(mdef)) {
+                await pline(`You slice ${mon_nam(mdef)} wide open!`);
+                return { dmg: 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH, special: true };
+            }
+            if (!youdefend) {
+                /* allow normal cutworm() call to add extra damage */
+                if (notonhead)
+                    return { dmg, special: false };
+                if ((mdef.data.msize | 0) >= MZ_LARGE) {
+                    if (youattack)
+                        await pline(`You slice deeply into ${mon_nam(mdef)}!`);
+                    else if (vis)
+                        await pline(`${Monnam(magr)} cuts deeply into ${hittee}!`);
+                    return { dmg: dmg * 2, special: true };
+                }
+                dmg = 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH;
+                await pline(`${wepdesc} cuts ${mon_nam(mdef)} in half!`);
+                observe_object(otmp);
+                return { dmg, special: true };
+            }
+            const ydata = game.youmonst.data;
+            if ((ydata.msize | 0) >= MZ_LARGE) {
+                await pline(`${magr ? Monnam(magr) : wepdesc} cuts deeply into you!`);
+                return { dmg: dmg * 2, special: true };
+            }
+            dmg = 2 * uhp() + FATAL_DAMAGE_MODIFIER_UH;
+            await pline(`${wepdesc} cuts you in half!`);
+            observe_object(otmp);
+            return { dmg, special: true };
+        } else if (is_art(otmp, 18)
+                   && ((dieroll | 0) === 1
+                       || (mdefMndx | 0) === PM_JABBERWOCK_UH)) {
+            const behead_msg = ['%s beheads %s!', '%s decapitates %s!'];
+            if (youattack && engulfing_u(mdef))
+                return { dmg, special: false };
+            wepdesc = 'Vorpal Blade';
+            if (!youdefend) {
+                if (!hasHead(mdef.data) || notonhead || game.u.uswallow) {
+                    if (youattack)
+                        await pline(`Somehow, you miss ${mon_nam(mdef)} wildly.`);
+                    else if (vis)
+                        await pline(`Somehow, ${mon_nam(magr)} misses wildly.`);
+                    return { dmg: 0, special: !!(youattack || vis) };
+                }
+                if (noncorpAmorph(mdef.data)) {
+                    await pline(`${wepdesc} slices through ${s_suffix(mon_nam(mdef))} ${mbodypart(mdef, 11 /* NECK */)}.`);
+                    return { dmg, special: true };
+                }
+                dmg = 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH;
+                const fmt = behead_msg[rn2(2)]; /* ROLL_FROM(behead_msg) */
+                await pline(fmt.replace('%s', wepdesc).replace('%s', mon_nam(mdef)));
+                if (_xk_hallu() && !game.flags?.female)
+                    await pline("Good job Henry, but that wasn't Anne.");
+                observe_object(otmp);
+                return { dmg, special: true };
+            }
+            const ydata = game.youmonst.data;
+            if (!hasHead(ydata)) {
+                await pline(`Somehow, ${magr ? mon_nam(magr) : wepdesc} misses you wildly.`);
+                return { dmg: 0, special: true };
+            }
+            if (noncorpAmorph(ydata)) {
+                await pline(`${wepdesc} slices through your ${body_part(11 /* NECK */)}.`);
+                return { dmg, special: true };
+            }
+            dmg = 2 * uhp() + FATAL_DAMAGE_MODIFIER_UH;
+            const fmt = behead_msg[rn2(2)];
+            await pline(fmt.replace('%s', wepdesc).replace('%s', 'you'));
+            observe_object(otmp);
+            return { dmg, special: true };
+        }
+    }
+
+    if (spec_ability(otmp, SPFX_DRLI_UH)) {
+        /* artifact.c:1645-1720. `life` names the message noun; nonliving
+         * targets (golems, vortices) get "animating force" instead. */
+        const life = nonlivingMon(mdefMndx) ? 'animating force' : 'life';
+
+        if (!youdefend) {
+            const m_lev = mdef.m_lev | 0;
+            const mhpmax0 = mdef.mhpmax | 0;
+            let drain = monhp_per_lvl(mdef); /* usually 1d8 */
+
+            /* "stop draining HP if it drops too low (still drains level;
+             * also caller still inflicts regular weapon damage)" */
+            if (mhpmax0 - drain <= m_lev)
+                drain = (mhpmax0 > m_lev) ? (mhpmax0 - (m_lev + 1)) : 0;
+
+            if (vis) {
+                /* call distant_name() for possible side-effects even if the
+                 * result won't be printed, exactly as C's comment says. */
+                const otmpname = await distant_name(otmp, xname);
+                if (is_art(otmp, _AC_ART_STORMBRINGER))
+                    await pline_The('%s blade draws the %s from %s!',
+                               hcolor(NH_BLACK_UH), life, mon_nam(mdef));
+                else
+                    await pline('%s draws the %s from %s!', The(otmpname), life,
+                          mon_nam(mdef));
+            }
+            if ((mdef.m_lev | 0) === 0) {
+                /* losing a level when at 0 is fatal */
+                dmg = 2 * (mdef.mhp | 0) + FATAL_DAMAGE_MODIFIER_UH;
+            } else {
+                dmg += drain;
+                mdef.mhpmax = mhpmax0 - drain;
+                mdef.m_lev = m_lev - 1;
+            }
+
+            if (drain > 0) {
+                /* drain: was target's damage, now heal attacker by half */
+                drain = ((drain + 1) / 2) | 0; /* drain/2 rounded up */
+                if (youattack)
+                    healup(drain, 0, false, false);
+                else
+                    healmon(magr, drain, 0);
+            }
+            return { dmg, special: vis };
+        } else { /* youdefend — not reached from do_attack's call site */
+            const oldhpmax = game.u.uhpmax | 0;
+
+            if (_uh_Blind()) {
+                await pline('You feel an %s drain your %s!',
+                            is_art(otmp, _AC_ART_STORMBRINGER)
+                                ? 'unholy blade' : 'object', life);
+            } else {
+                const otmpname = await distant_name(otmp, xname);
+                if (is_art(otmp, _AC_ART_STORMBRINGER))
+                    await pline_The('%s blade drains your %s!',
+                                    hcolor(NH_BLACK_UH), life);
+                else
+                    await pline('%s drains your %s!', The(otmpname), life);
+            }
+            /* C artifact.c:1708 — finish level loss (including death or life
+             * saving at level 1) before artifact_hit returns to its caller. */
+            await losexp('life drainage');
+            if (magr && (magr.mhp | 0) < (magr.mhpmax | 0))
+                healmon(magr, (Math.abs(oldhpmax - (game.u.uhpmax | 0)) + 1) / 2 | 0, 0);
+            return { dmg, special: true };
+        }
+    }
+
+    /* artifact.c:1721 */
+    return { dmg, special: false };
+}
+
+/* C ref: artifact.c:1252-1440 Mb_hit(magr, mdef, mb, dmgptr, dieroll, vis,
+ * hittee) — Magicbane's special effects.  `dmg` is C's *dmgptr, returned in
+ * `{dmg, result}`.  probe_monster() (zap.c:626) is unported: its
+ * non-empty-minvent arm throws rather than guessing. */
+async function Mb_hit(magr, mdef, mb, dmg, dieroll, vis, hittee) {
+    const youdefend = !mdef;
+    const youattack = !magr && !youdefend;
+    const u = game.u;
+    let resisted = false, do_stun, do_confuse, result = false;
+    let scare_dieroll = (MB_MAX_DIEROLL_UH / 2) | 0;
+    const spe = mb.spe | 0;
+
+    if (spe >= 3)
+        scare_dieroll = (scare_dieroll / (1 << ((spe / 3) | 0))) | 0;
+    if (!gs_spec_dbon_applies)
+        dieroll += 1;
+
+    do_stun = (Math.max(spe, 0) < rn2(gs_spec_dbon_applies ? 11 : 7));
+
+    let attack_indx = 0; /* MB_INDEX_PROBE */
+    dmg += rnd(4);
+    if (do_stun) {
+        attack_indx = 1; /* STUN */
+        dmg += rnd(4);
+    }
+    if (dieroll <= scare_dieroll) {
+        attack_indx = 2; /* SCARE */
+        dmg += rnd(4);
+    }
+    if (dieroll <= ((scare_dieroll / 2) | 0)) {
+        attack_indx = 3; /* CANCEL */
+        dmg += rnd(4);
+    }
+
+    const MB_VERB = [["probe", "stun", "scare", "cancel"],
+                     ["prod", "amaze", "tickle", "purge"]];
+    const verb = MB_VERB[_xk_hallu() ? 1 : 0][attack_indx];
+    if (youattack || youdefend || vis) {
+        result = true;
+        await pline_The("magic-absorbing blade %s %s!",
+                        vtense(null, verb), hittee);
+        if (attack_indx === 0 && !canspotmon(youdefend ? game.youmonst : mdef))
+            map_invisible(youdefend ? u.ux : mdef.mx, youdefend ? u.uy : mdef.my);
+    }
+
+    switch (attack_indx) {
+    case 3: { /* CANCEL */
+        const old_mdat = youdefend ? game.youmonst.data : mdef.data;
+        if (!await cancel_monst(youdefend ? game.youmonst : mdef, mb,
+                                youattack, false, false)) {
+            resisted = true;
+        } else {
+            do_stun = false;
+            if (youdefend) {
+                if (game.youmonst.data !== old_mdat)
+                    dmg = 0; /* rehumanized, so no more damage */
+                if ((u.uenmax | 0) > 0) {
+                    u.uenmax--;
+                    if ((u.uen | 0) > 0)
+                        u.uen--;
+                    game.disp && (game.disp.botl = true);
+                    await You("lose magical energy!");
+                }
+            } else {
+                if (mdef.data !== old_mdat)
+                    hittee = mon_nam(mdef);
+                if ((mdef.data?.pmidx | 0) === PM_CLAY_GOLEM_UH)
+                    mdef.mhp = 1; /* cancelled clay golems will die */
+                if (youattack && attacktype(mdef.data, AT_MAGC_UH)) {
+                    u.uenmax++;
+                    if (u.uenmax > u.uenpeak)
+                        u.uenpeak = u.uenmax;
+                    u.uen++;
+                    game.disp && (game.disp.botl = true);
+                    await You("absorb magical energy!");
+                }
+            }
+        }
+        break;
+    }
+    case 2: /* SCARE */
+        if (youdefend) {
+            if (Antimagic_uh()) {
+                resisted = true;
+            } else {
+                nomul(-3);
+                game.multi_reason = "being scared stiff";
+                game.nomovemsg = "";
+                if (magr && magr === u.ustuck && sticks(game.youmonst.data)) {
+                    set_ustuck(null);
+                    await You("release %s!", mon_nam(magr));
+                }
+            }
+        } else {
+            if (rn2(2) && await resist(mdef, WEAPON_CLASS_UH, 0, NOTELL_UH))
+                resisted = true;
+            else
+                await monflee(mdef, 3, false, (mdef.mhp | 0) > dmg);
+        }
+        if (!resisted)
+            do_stun = false;
+        break;
+    case 1: /* STUN */
+        do_stun = true;
+        break;
+    case 0: /* PROBE */
+        if (youattack && (spe === 0 || !rn2(3 * Math.abs(spe)))) {
+            await pline_The("%s is insightful.", verb);
+            await probe_monster(mdef);
+        }
+        break;
+    }
+    if (do_stun) {
+        if (youdefend) {
+            const ps = u.uprops[STUNNED] || (u.uprops[STUNNED] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+            make_stunned(((ps.intrinsic | 0) & TIMEOUT) + 3, false);
+        } else
+            mdef.mstun = 1;
+        if (attack_indx === 1)
+            do_stun = false;
+    }
+    do_confuse = !rn2(12);
+    if (do_confuse) {
+        if (youdefend) {
+            const pc = u.uprops[CONFUSION] || (u.uprops[CONFUSION] = { intrinsic: 0, extrinsic: 0, blocked: 0 });
+            make_confused(((pc.intrinsic | 0) & TIMEOUT) + 4, false);
+        } else
+            mdef.mconf = 1;
+    }
+
+    const fakename = youdefend ? "You" : "Someone"; /* decl.c c_fakename */
+    if (youattack || youdefend || vis) {
+        hittee = upstart(hittee);
+        if (resisted) {
+            await pline("%s %s!", hittee, vtense(fakename, "resist"));
+            shieldeff(youdefend ? u.ux : mdef.mx, youdefend ? u.uy : mdef.my);
+        }
+        if ((do_stun || do_confuse) && (game.flags?.verbose ?? true)) {
+            let buf = '';
+            if (do_stun)
+                buf += "stunned";
+            if (do_stun && do_confuse)
+                buf += " and ";
+            if (do_confuse)
+                buf += "confused";
+            await pline("%s %s %s%s", hittee, vtense(fakename, "are"), buf,
+                        (do_stun && do_confuse) ? '!' : '.');
+        }
+    }
+    return { dmg, result };
+}
+
+const PM_CLAY_GOLEM_UH = 256; /* pm.generated.js PM_CLAY_GOLEM */
+
+const WEAPON_CLASS_UH = 2; /* objclass.h WEAPON_CLASS */
+
+const NOTELL_UH = 0; /* const.js NOTELL */
+
+/* C artifact.c:63 FATAL_DAMAGE_MODIFIER — enough to guarantee xkilled(). */
+const FATAL_DAMAGE_MODIFIER_UH = 200;
+
+/* C decl.c:17 c_color_names.c_black. */
+const NH_BLACK_UH = 'black';
+
+/* C artifact.c:1241 — "rolls above this aren't magical". */
+const MB_MAX_DIEROLL_UH = 8;
+
+export function shade_glare(obj) {
+    if (!obj)
+        return false;
+    /* C artifact.c:560-561: any silver object is effective */
+    if (sr_oc_material(obj.otyp | 0) === SHADE_GLARE_SILVER_MAT)
+        return true;
+    /* C artifact.c:563-566: non-silver artifacts with bonus against undead */
+    const arti = get_artifact(obj);
+    if (arti !== ART_NONARTIFACT && (arti_spfx(arti) & SPFX_DFLAG2_UH) && (spec_m2(obj) === M2_UNDEAD))
+        return true;
+    return false;
+}
+
+// C artifact.c:2427-2462; artilist.h gives only these three artifacts a color.
+export function glow_color(arti) {
+    const color = arti === 5 ? CLR_RED
+        : (arti === 6 || arti === 7) ? CLR_BRIGHT_BLUE : NO_COLOR;
+    return hcolor(clr2colorname(color));
+}
+
+export function glow_verb(count, ingsfx) {
+    const verb = count > 12 ? 'gleam' : count > 4 ? 'glimmer'
+        : count > 0 ? 'flicker' : 'quiver';
+    return verb + (ingsfx ? 'ing' : '');
+}
+
+export function Sting_effects(cnt) {
+    /* C artifact.c:2466-2507.  Sting, Orcrist, and Grimtooth all use the
+     * weapon's warning intrinsic.  Messages track blindness toggles and
+     * strength changes across C's three thresholds (1, 5, 13 monsters).
+     * This is display-only and consumes no scored RNG. */
+    const wep = game.u?.uwep;
+    const arti = wep?.oartifact | 0;
+    if (arti !== 5 && arti !== 6 && arti !== 7)
+        return;
+
+    const oldCount = game.warn_obj_cnt | 0;
+    const oldStrength = oldCount > 12 ? 3 : oldCount > 4 ? 2 : oldCount > 0 ? 1 : 0;
+    const newStrength = cnt > 12 ? 3 : cnt > 4 ? 2 : cnt > 0 ? 1 : 0;
+    const name = bare_artifactname(wep);
+    const pluralVerb = (verb) => otense(wep, verb);
+
+    if (cnt === -1 && oldCount > 0) {
+        /* Blindness toggled: continue the existing glow, with quiver while
+         * blind, so the eventual stop message has the matching verb. */
+        void pline(`${name} is ${glow_verb(_disp_Blind() ? 0 : oldCount, true)}.`);
+    } else if (newStrength > 0 && newStrength !== oldStrength) {
+        /* C artifact.c:2482 — goto_level() -> docrt() -> see_monsters() ->
+         * Sting_effects(): deliver a pending "You materialize on a different
+         * level" first so the start-glowing message comes after it. */
+        void _rt_maybe_lvltport_feedback();
+        if (!_disp_Blind()) {
+            // C artifact.c:2487-2490 only chooses a glow color when sighted.
+            const color = glow_color(arti);
+            const punctuation = newStrength > oldStrength ? '!' : '.';
+            void pline(`${name} ${pluralVerb(glow_verb(cnt, false))} ${color}${punctuation}`);
+        } else if (oldStrength === 0) {
+            void pline(`${name} ${pluralVerb(glow_verb(0, false))} slightly.`);
+        }
+    } else if (cnt === 0 && oldCount > 0) {
+        void pline(`${name} stops ${glow_verb(_disp_Blind() ? 0 : oldCount, true)}.`);
+    }
+}
+
+/* C artifact.c:2709-2749 count_surround_traps(): count locations, including
+ * the hero's square, but ignore traps already shown in the glyph buffer. */
+function count_surround_traps(x, y) {
+    let count = 0;
+    for (let dx = x - 1; dx < x + 2; ++dx) {
+        for (let dy = y - 1; dy < y + 2; ++dy) {
+            if (!isok(dx, dy)) continue;
+            const loc = game.level.at(dx, dy);
+            // C glyph_is_trap(glyph_at(dx, dy)): inspect the displayed class.
+            if (loc.disp_cls === GLYPHCLS_TRAP) continue;
+            if (t_at(dx, dy)) {
+                ++count;
+                continue;
+            }
+            if (IS_DOOR(loc.typ) && (loc.doormask & D_TRAPPED)) {
+                ++count;
+                continue;
+            }
+            for (let o = vobj_at(dx, dy); o; o = o.nexthere) {
+                // C obj.h Is_container: LARGE_BOX through BAG_OF_TRICKS.
+                if (o.otyp >= 214 && o.otyp <= 220 && o.otrapped) {
+                    ++count;
+                    break;
+                }
+            }
+        }
+    }
+    return count;
+}
+
+/* C artifact.c:2753-2770 mkot_trap_warn(), called at allmain.c:351. */
+const ART_MASTER_KEY_OF_THIEVERY = 29;
+
+function u_wield_art(art) {
+    return !!(game.u?.uwep && (game.u.uwep.oartifact | 0) === art);
+}
+
+export async function mkot_trap_warn() {
+    const u = game.u;
+    if (!u.uarmg && u_wield_art(ART_MASTER_KEY_OF_THIEVERY)) {
+        const heat = ['cool', 'slightly warm', 'warm', 'very warm',
+                      'hot', 'very hot', 'like fire'];
+        const ntraps = count_surround_traps(u.ux, u.uy);
+        if (ntraps !== (game.mkot_trap_warn_count || 0))
+            await pline(`The Key feels ${heat[Math.min(ntraps, heat.length - 1)]}${ntraps > 3 ? '!' : '.'}`);
+        game.mkot_trap_warn_count = ntraps;
+    } else {
+        game.mkot_trap_warn_count = 0;
+    }
+}
+
+const TOOL_CLASS = 6;
+
+const LEASH = 236;
+
+const LARGE_BOX = 214;
+
+const BAG_OF_TRICKS = 220;
+
+const _Is_container = (o) => ((o.otyp | 0) >= LARGE_BOX && (o.otyp | 0) <= BAG_OF_TRICKS);
+
+const _Has_contents = (o) => !!o.cobj;
+
+/* C artifact.c:2596-2635 untouchable(). */
+async function untouchable_hero(obj, drop) {
+    const u = game.u;
+    const wearmask = ~(W_QUIVER | (u.twoweap ? 0 : W_SWAPWEP) | W_BALL);
+    if (!obj) return false;
+    /* C artifact.c:2608-2613: some items in use don't have any wornmask setting */
+    const beingworn = (obj.owornmask & wearmask) !== 0
+        || ((obj.oclass | 0) === TOOL_CLASS
+            && (!!obj.lamplit
+                || ((obj.otyp | 0) === LEASH && !!obj.leashmon)
+                || (_Is_container(obj) && _Has_contents(obj))));
+    /* carryeffect/invoked: get_artifact(obj) != ART_NONARTIFACT, artifact.c:2610-2616 */
+    const art = obj.oartifact | 0;
+    const carryeffect = art > 0 && (arti_cary_adtyp(art) !== 0 || arti_cspfx(art) !== 0);
+    const ip = art > 0 ? arti_inv_prop(art) : 0;
+    const invoked = ip > 0 && ip <= LAST_PROP
+        && ((u.uprops?.[ip]?.extrinsic | 0) & W_ARTI) !== 0;
+    if (!(beingworn || carryeffect || invoked)) return false;
+    if (await retouch_object_hero(obj, drop)) return false;
+    /* C artifact.c:2630-2631: reverse invocation if retouch left the object
+     * carried.  Dropping it already reverses invocation through freeinv(). */
+    if (invoked) {
+        for (let carried = game.invent; carried; carried = carried.nobj) {
+            if (carried === obj) {
+                await arti_invoke(obj);
+                break;
+            }
+        }
+    }
+    return true;
+}
+
+/* C artifact.c:2640-2705 retouch_equipment(dropflag): 0 none, 1 all, 2 weapon. */
+export async function retouch_equipment(dropflag) {
+    const u = game.u;
+    const had_gloves = !!u.uarmg;
+    const had_rings = Number(!!u.uleft) + Number(!!u.uright);
+    if (!_rt_nesting++) _rt_clear_bypasses();
+    let dropit = dropflag > 0;
+    try {
+        if (u.twoweap && u.uswapwep) { _rt_bypass_obj(u.uswapwep); await untouchable_hero(u.uswapwep, dropit); }
+        if (u.uwep) { _rt_bypass_obj(u.uwep); await untouchable_hero(u.uwep, dropit); }
+        // C artifact.c:2674-2680: a saddle is checked without dropping it.
+        const saddle = u.usteed && _rt_which_armor(u.usteed, W_SADDLE);
+        if (saddle && await untouchable_hero(saddle, false))
+            await _rt_dismount_steed(DISMOUNT_THROWN);
+        dropit = dropflag === 1;
+        let obj;
+        while ((obj = _rt_nxt_unbypassed_obj(game.invent)) !== null && obj !== undefined)
+            await untouchable_hero(obj, dropit);
+        if (had_rings !== Number(!!u.uleft) + Number(!!u.uright)
+            && u.uarmg && u.uarmg.cursed)
+            _rt_uncurse(u.uarmg);
+        if (had_gloves && !u.uarmg)
+            await _rt_selftouch('After losing your gloves, you');
+    } finally {
+        if (!--_rt_nesting) _rt_clear_bypasses();
+    }
+}
+
+let _rt_nesting = 0;

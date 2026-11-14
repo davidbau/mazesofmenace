@@ -1,7 +1,7 @@
 // @ts-nocheck
 // role_init_rng.js — RNG consumed during C role_init() before init_dungeons().
 // C ref: role.c — pantheon pick, quest nemesis gender.
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { NUM_ROLES } from './roles.js';
 /** C roles[].lgod — only Priest uses borrowed pantheon (role.c ~285). */
 export const ROLE_HAS_LGOD = [

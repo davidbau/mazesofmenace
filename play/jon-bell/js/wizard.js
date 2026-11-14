@@ -7,16 +7,31 @@ import { helpless } from './mhitm.js';
 import { wake_nearto } from './mon.js';
 import { pline, verbalize } from './pline.js';
 import { com_pager } from './questpgr.js';
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { In_endgame, Is_rogue_level, MM_NOCOUNTBIRTH, MM_NOMSG, G_EXTINCT } from './const.js'; // relocate-fns
-import { Inhell, permonstTemplate, role_maligntyp, set_malign } from './makemon.js'; // relocate-fns
-import { G_HELL_NC, G_NOHELL_NC, MONS_ROWS, PM_ARCHON_NC, S_DEMON, discard_minvent, makemon, monsym_isupper_nc, mvitals_genod_nc } from './mklev.js'; // relocate-fns
+import { Inhell, permonstTemplate, role_maligntyp, set_malign, G_UNIQ } from './makemon.js'; // relocate-fns
+import { G_HELL_NC, G_NOHELL_NC, MONS_ROWS, PM_ARCHON_NC, S_DEMON, monsym_isupper_nc, mvitals_genod_nc } from './mklev.js';
+import { discard_minvent } from './mkobj.js';
+import { makemon } from './makemon.js'; // relocate-fns
 import { mongone } from './mon.js'; // relocate-fns
 import { attacktype, big_to_little } from './mondata.js'; // relocate-fns
-import { rnd } from './rng.js'; // relocate-fns
-import { monster_census, msummon } from './sit.js'; // relocate-fns
+import { rnd } from './rnd.js'; // relocate-fns
+import { monster_census, msummon } from './minion.js'; // relocate-fns
 import { enexto_out } from './teleport.js'; // relocate-fns
 import { SetVoice } from './cmd.js';
+import { MAGIC_PORTAL } from './const.js'; // relocate-fns
+import { Tobjnam } from './objnam.js'; // relocate-fns
+import { You } from './pline.js'; // relocate-fns
+import { unmakemon } from './makemon.js'; // relocate-fns
+import { NH_BLACK, _hero_Deaf } from './cmd.js'; // relocate-fns
+import { Is_astralevel, LARGEST_INT, MM_NOWAIT, STRAT_WAITMASK } from './const.js'; // relocate-fns
+import { Unaware as wizard_Unaware } from './display.js'; // relocate-fns
+import { mon_arrive, mon_catchup_elapsed_time } from './dog.js'; // relocate-fns
+import { hcolor } from './mhitm.js'; // relocate-fns
+import { PM_WIZARD_OF_YENDOR } from './pm.generated.js'; // relocate-fns
+import { rn1 } from './rng.js'; // relocate-fns
+import { rndcurse } from './sit.js'; // relocate-fns
+import { Blind as _vision_Blind } from './vision.js'; // relocate-fns
 
 /* C questpgr.c:624 com_pager() directly imported from ./questpgr.js */
 
@@ -54,7 +69,7 @@ export function mon_has_special(mtmp) {
 }
 
 // DEADMONSTER macro: #define DEADMONSTER(mon) ((mon)->mhp < 1)
-function DEADMONSTER(mon) {
+export function DEADMONSTER(mon) {
     return (mon.mhp | 0) < 1;
 }
 
@@ -101,7 +116,7 @@ const random_malediction = [
 // channel exists — see js/mapstate_game_bridge.js). The only ground truth
 // the replay carries is the hero's actual invent chain, so derive the same
 // boolean the cache would hold by scanning it for the unique amulet otyp.
-const AMULET_OF_YENDOR = 213;
+export const AMULET_OF_YENDOR = 213;
 
 function uhaveAmulet() {
     if (game.u?.uhave?.amulet)
@@ -245,25 +260,7 @@ export function pick_nasty(difcap) {
     return res;
 }
 
-const G_UNIQ = 0x1000;
 
-/* C makemon.c:1514 unmakemon(mon, mmflags) — undo a makemon() that the caller
- * does not want after all; always returns null. */
-async function unmakemon(mon, mmflags) {
-    const countbirth = ((mmflags | 0) & MM_NOCOUNTBIRTH) === 0;
-    const mndx = (mon.mnum ?? mon.mndx ?? 0) | 0;
-    const mv = game.mvitals ? (game.mvitals[mndx] ||= { born: 0, died: 0, mvflags: 0 }) : null;
-    if (mv) {
-        if (countbirth && mv.born > 0 && mv.born < 255)
-            mv.born -= 1;
-        if ((MONS_ROWS[mndx][3] | 0) & G_UNIQ) /* C makemon.c:1528 */
-            mv.mvflags &= ~G_EXTINCT; /* C makemon.c:1529 */
-    }
-    mon.mhp = 0; /* let discard_minvent() know that mon isn't being kept */
-    await discard_minvent(mon, true);
-    await mongone(mon);
-    return null;
-}
 
 export async function nasty(summoner) {
     const u = game.u;
@@ -393,4 +390,171 @@ export function mon_has_amulet(mtmp) {
             return 1;
     }
     return 0;
+}
+
+function distu(x, y) {
+    const u = game.u || {};
+    const dx = (u.ux | 0) - (x | 0);
+    const dy = (u.uy | 0) - (y | 0);
+    return dx * dx + dy * dy;
+}
+
+function m_next2u(mtmp) {
+    const u = game.u || {};
+    return Math.abs((mtmp.mx | 0) - (u.ux | 0)) <= 1
+        && Math.abs((mtmp.my | 0) - (u.uy | 0)) <= 1;
+}
+
+/* ---------------------------------------------------------------------------
+ * amulet — If you've found the Amulet, make the Wizard appear after some time.
+ * Also, give hints about portal locations, if amulet is worn/wielded.
+ * C ref: nethack-c/src/wizard.c:60
+ * ---------------------------------------------------------------------------
+ */
+export async function amulet() {
+    const u = game.u || {};
+    const gf = game;
+
+    /* Check if the amulet is worn or wielded */
+    let amu = u.uamul;
+    if (!amu || (amu.otyp | 0) !== AMULET_OF_YENDOR) {
+        amu = u.uwep;
+        if (!amu || (amu.otyp | 0) !== AMULET_OF_YENDOR)
+            amu = null;
+    }
+    if (amu && !rn2(15)) {
+        for (let ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
+            if (ttmp.ttyp === MAGIC_PORTAL) {
+                let du = distu(ttmp.tx, ttmp.ty);
+                if (du <= 9)
+                    pline("%s hot!", Tobjnam(amu, "feel"));
+                else if (du <= 64)
+                    pline("%s very warm.", Tobjnam(amu, "feel"));
+                else if (du <= 144)
+                    pline("%s warm.", Tobjnam(amu, "feel"));
+                /* else, the amulet feels normal */
+                break;
+            }
+        }
+    }
+
+    /* C wizard.c:89 — `if (!svc.context.no_of_wizards) return;`.  In js/ the
+     * C svc.context.no_of_wizards counter lives on game.context (makemon +1,
+     * wizdeadorgone -1); game.svc.context is a different mirror object
+     * (current_fruit, made_amulet, ...) that never carries it, so reading it
+     * here returned early every turn and the wizard-wake rn2(40) (wizard.c:95)
+     * was never drawn once a sleeping Wizard reached the hero's level. */
+    if (!gf.context || !gf.context.no_of_wizards)
+        return;
+    /* find Wizard, and wake him if necessary */
+    for (let mtmp = gf.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (mtmp.iswiz && mtmp.msleeping && !rn2(40)) {
+            mtmp.msleeping = 0;
+            if (!m_next2u(mtmp))
+                await You(
+      "get the creepy feeling that somebody noticed your taking the Amulet.");
+            return;
+        }
+    }
+}
+
+/* C wizard.c:784-808 — periodic harassment after killing the Wizard or
+ * performing the invocation. Astral excludes cases 0 and 5, so its selector
+ * is rnd(4), not rn2(6). */
+export async function intervene() {
+    const which = Is_astralevel(game.u.uz) ? rnd(4) : rn2(6);
+    switch (which) {
+    case 0:
+    case 1:
+        await pline((wizard_Unaware() ? 'You dream that you feel ' : 'You feel ')
+                    + 'vaguely nervous.');
+        break;
+    case 2:
+        if (!_vision_Blind())
+            await You('notice a %s glow surrounding you.', hcolor(NH_BLACK));
+        await rndcurse();
+        break;
+    case 3:
+        aggravate();
+        break;
+    case 4:
+        await nasty(null);
+        break;
+    case 5:
+        await resurrect();
+        break;
+    }
+}
+
+/* C wizard.c:814-822 — also called when a living Wizard leaves the dungeon.
+ * Later removals decrement the count but do not restart an existing timer. */
+export function wizdeadorgone() {
+    game.context.no_of_wizards = (game.context.no_of_wizards | 0) - 1;
+    const u = game.u;
+    if (!u.uevent.udemigod) {
+        u.uevent.udemigod = 1;
+        u.udg_cnt = rn1(250, 50);
+    }
+}
+
+export async function resurrect() {
+    const g = game, u = g.u;
+    let mtmp = null;
+    let verb = 'kill';
+
+    if (!(g.context?.no_of_wizards | 0)) {
+        /* make a new Wizard */
+        mtmp = await makemon(PM_WIZARD_OF_YENDOR,
+                                   u.ux | 0, u.uy | 0, MM_NOWAIT);
+        /* affects experience; he's not coming back from a corpse but is
+           subject to repeated killing like a revived corpse */
+        if (mtmp)
+            mtmp.mrevived = 1;
+    } else {
+        /* look for a migrating Wizard (wizard.c:729-758) */
+        verb = 'elude';
+        let prev = null;
+        while ((mtmp = prev ? prev.nmon : g.migrating_mons) != null) {
+            let elapsed;
+            if (mtmp.iswiz
+                /* if he has the Amulet, he won't bring it to you */
+                && !mon_has_amulet(mtmp)
+                && (elapsed = (g.moves | 0) - (mtmp.mlstmv | 0)) > 0) {
+                mon_catchup_elapsed_time(mtmp, elapsed);
+                if (elapsed >= LARGEST_INT)
+                    elapsed = LARGEST_INT - 1;
+                elapsed = Math.trunc(elapsed / 50);
+                if (mtmp.msleeping && rn2(elapsed + 1))
+                    mtmp.msleeping = 0;
+                if (mtmp.mfrozen === 1) /* would unfreeze on next move */
+                    mtmp.mfrozen = 0, mtmp.mcanmove = 1;
+                if (!helpless(mtmp)) {
+                    if (prev) prev.nmon = mtmp.nmon;
+                    else g.migrating_mons = mtmp.nmon;
+                    await mon_arrive(mtmp, -1); /* -1: Wiz_arrive (dog.c) */
+                    /* mx: mon_arrive() might have sent mtmp into limbo */
+                    if (!mtmp.mx)
+                        mtmp = null;
+                    break;
+                }
+            }
+            prev = mtmp;
+        }
+    }
+
+    if (mtmp) {
+        mtmp.mstrategy = (mtmp.mstrategy | 0) & ~STRAT_WAITMASK;
+        mtmp.mtame = 0;
+        mtmp.mpeaceful = 0;
+        set_malign(mtmp);
+        /* C wizard.c:774; Deaf includes HDeaf and roleplay deafness
+         * (youprop.h:125), as read by the shared helper. */
+        if (!_hero_Deaf()) {
+            await pline('A voice booms out...');
+            SetVoice(mtmp, 0, 80, 0);
+            await verbalize(`So thou thought thou couldst ${verb} me, fool.`);
+        }
+    }
 }

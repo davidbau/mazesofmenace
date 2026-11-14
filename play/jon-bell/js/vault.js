@@ -1,5 +1,5 @@
 import { verbalize } from './pline.js';
-import { Mgender } from './do_name.js';
+import { Mgender, Monnam } from './do_name.js';
 // vault.js — port of nethack-c/src/vault.c (vault and guard logic).
 //
 // Cardinal Rule 1: the C source is the truth. This module is a faithful,
@@ -23,45 +23,52 @@ import {
     RLOC_ERR, RLOC_MSG, OBJ_MINVENT, OBJ_INVENT,
     ARTICLE_A, STRANGLED,
 } from './const.js';
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { m_carrying } from './mthrowu.js';
 
 const TIN_WHISTLE = 245; /* objects.h tin whistle (u_init.js:719) */
 import { PM_GUARD, PM_CROESUS } from './pm.generated.js';
 import { newmextra, set_malign, mhe, monPmname } from './makemon.js';
 import { pmname } from './do_name.js';
-import { newegd, makemon, make_grave, place_object, remove_object, obj_extract_self } from './mklev.js';
+import { place_object, remove_object, obj_extract_self } from './mkobj.js';
+import { makemon } from './makemon.js';
+import { make_grave } from './engrave.js';
 import { xy_set_wall_state } from './display.js';
 import { mungspaces } from './hacklib.js';
 import { mongone, setmangry } from './mon.js';
 import { mon_track_clear } from './monmove.js'; /* C monmove.c:90 */
 import { relobj } from './steal.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj } from './invent.js';
 import { on_level } from './dungeon.js';
 import { contained_gold, currency } from './shk.js';
 import { an, makeplural, simpleonames, mimic_obj_name } from './objnam.js';
 import { upstart } from './hacklib.js';
 import { in_rooms } from './hack.js';
-import { g_at, um_dist, set_msg_xy } from './cmd.js';
+import { um_dist } from './apply.js';
+import { g_at } from './invent.js';
+import { set_msg_xy } from './pline.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { freeinv } from './cmd.js';
+import { freeinv } from './invent.js';
 import { add_to_minv, obfree } from './dokick.js';
-import { mnexto, rloc, enexto_out, tele } from './teleport.js';
-import { m_at, mon_wield_item } from './uhitm.js';
+import { rloc, enexto_out, tele } from './teleport.js';
+import { mnexto } from './mon.js';
+import { m_at } from './uhitm.js';
+import { mon_wield_item } from './weapon.js';
 import { place_monster } from './steed.js';
-import { del_engr_at } from './mklev.js';
+import { del_engr_at } from './engrave.js';
 import { t_at, deltrap } from './trap.js';
-import { sticks as sticks_real, m_into_limbo } from './dog.js';
-import { noit_mon_nam } from './mhitm.js';
-import { Monnam } from './mcastu.js';
+import { sticks as sticks_real } from './dog.js';
+import { m_into_limbo } from './mon.js';
+import { noit_mon_nam } from './do_name.js';
 import { is_fainted } from './eat.js';
 import { reset_faint } from './eat.js';
 import { unblock_point, block_point, recalc_block_point, cansee, couldsee, Blind } from './vision.js';
 import { spot_stop_timers } from './timeout.js';
-import { stop_occupation, nomul, unmul } from './allmain.js';
+import { stop_occupation } from './allmain.js';
+import { nomul, unmul } from './hack.js';
 import { getlin } from './windows.js';
 import { adjalign } from './attrib.js';
-import { noit_Monnam, Some_Monnam, x_monnam } from './mhitm.js';
+import { noit_Monnam, Some_Monnam, x_monnam } from './do_name.js';
 import { yelp } from './sounds.js';
 import { pronoun_gender } from './mondata.js';
 import { fracture_rock } from './zap.js';
@@ -94,7 +101,7 @@ function strcmpi(s1, s2) {
     }
     return 0;
 }
-function strncmpi(s1, s2, n) {
+function strncmpi_vault(s1, s2, n) {
     s1 = String(s1 ?? ''); s2 = String(s2 ?? '');
     for (let i = 0; i < n; i++) {
         if (!s2[i]) return (s1[i] !== undefined) ? 1 : 0;
@@ -106,7 +113,7 @@ function strncmpi(s1, s2, n) {
 }
 /* C ref: pline.c impossible() — a paniclog line in C; js/steed.js:118 carries
  * the same empty body. */
-function impossible(_msg) { /* paniclog only; no screen output in this port */ }
+function impossible_vault(_msg) { /* paniclog only; no screen output in this port */ }
 /* C ref: monst.h:250 — #define DEADMONSTER(mon) ((mon)->mhp < 1) */
 function DEADMONSTER(mon) { return (mon.mhp | 0) < 1; }
 
@@ -132,7 +139,7 @@ export function vault_occupied(array) {
 /* C vault.c:255-278 — the hero teleported out while a guard was active. */
 export async function uleftvault(grd) {
     if (!grd || !grd.isgd || DEADMONSTER(grd)) {
-        impossible("escaping vault without guard?");
+        impossible_vault("escaping vault without guard?");
         return;
     }
     if ((money_cnt(game.invent) || hidden_gold(true))
@@ -328,7 +335,7 @@ async function find_guard_dest(guard, out) {
         }
     }
     /* C: impossible("Not a single corridor on this level?"); tele(); */
-    impossible("Not a single corridor on this level?");
+    impossible_vault("Not a single corridor on this level?");
     await tele();
     return false;
 }
@@ -531,7 +538,7 @@ export async function invault() {
 
         if ((u.ualign?.type | 0) === A_LAWFUL
             /* ignore trailing text, in case player includes rank */
-            && strncmpi(buf, game.plname, String(game.plname || '').length) !== 0) {
+            && strncmpi_vault(buf, game.plname, String(game.plname || '').length) !== 0) {
             adjalign(-1); /* Liar! */
         }
 
@@ -650,7 +657,6 @@ export async function invault() {
     }
 }
 
-export { newegd }; /* one C-faithful body lives in js/mklev.js (vault.c:23-33) */
 
 /* C ref: vault.c:203-215 findgd() — the fmon scan.
  *
@@ -711,6 +717,7 @@ export function findgd() {
 import { Your } from './do_wear.js';
 import { sticks } from './mondata.js'; // relocate-fns
 import { assign_level } from './dungeon.js'; // relocate-fns
+import { mpickgold } from './mon.js'; // relocate-fns
 export { Your };
 export { currency } from './cmd.js';
 export { freeinv }; /* C invent.c:1403 — single port in js/cmd.js */
@@ -1010,29 +1017,7 @@ async function gd_letknow(grd) {
           : `You are confronted by ${name}.`);
 }
 
-/* C objclass.h:28 enum obj_material_types */
-const GOLD = 15;
 
-/* C mon.c:1827-1842 mpickgold() — consume the coin pile at the monster's square
- * and put it on the monster inventory chain. */
-async function mpickgold(grd) {
-    const gold = g_at(grd.mx | 0, grd.my | 0);
-    if (!gold)
-        return;
-    const mat_idx = game._objMaterials?.[gold.otyp] ?? MKOBJ_OC_MATERIAL[gold.otyp];
-    obj_extract_self(gold);
-    await add_to_minv(grd, gold);
-    if (cansee(grd.mx | 0, grd.my | 0)) {
-        if (game.flags.verbose && !grd.isgd) {
-            // C pline.c:138-151 pline_mon(): set message origin, then pline.
-            set_msg_xy(grd === game.youmonst ? 0 : grd.mx,
-                       grd === game.youmonst ? 0 : grd.my);
-            await pline('%s picks up some %s.', Monnam(grd),
-                        mat_idx === GOLD ? 'gold' : 'money');
-        }
-        newsym(grd.mx | 0, grd.my | 0);
-    }
-}
 
 /* C vault.c:632-644 move_gold() — return loose coins on the vault boundary
  * to a random square inside the vault room. */
@@ -1056,7 +1041,7 @@ async function gd_pick_corridor_gold(grd, goldx, goldy) {
     if (underHero) {
         const gold = g_at(goldx | 0, goldy | 0);
         if (!gold) {
-            impossible("vault guard: no gold at hero's feet?");
+            impossible_vault("vault guard: no gold at hero's feet?");
             return;
         }
         const guardDist = (guardx - game.u.ux) ** 2 + (guardy - game.u.uy) ** 2;
@@ -1489,4 +1474,27 @@ export function vault_summon_gd() {
         return;
     if (findgd()) return;
     u.uinvault = VAULT_GUARD_TIME - 1;
+}
+
+/* C ref: vault.c:23-33 newegd(mtmp).  The C body memsets struct egd to zero and
+ * then sets parentmid = mtmp->m_id -- which at makemon.c:1238 is still 0,
+ * because m_id is not assigned until :1253.  The zeroed members are spelled out
+ * here (mextra.h:77-90) so a reader of EGD(mon) sees C's initial values rather
+ * than `undefined`; fakecorr is FCSIZ == ROWNO + COLNO entries. */
+export function newegd(mtmp) {
+    if (!mtmp.mextra)
+        mtmp.mextra = newmextra();
+    if (!mtmp.mextra.egd) {
+        const fakecorr = [];
+        for (let i = 0; i < (ROWNO + COLNO); i++)
+            fakecorr.push({ fx: 0, fy: 0, ftyp: 0, flags: 0 });
+        mtmp.mextra.egd = {
+            parentmid: mtmp.m_id | 0,
+            fcbeg: 0, fcend: 0, vroom: 0,
+            gdx: 0, gdy: 0, ogx: 0, ogy: 0,
+            gdlevel: { dnum: 0, dlevel: 0 },
+            warncnt: 0, dropgoldcnt: 0, gddone: 0, witness: 0,
+            fakecorr,
+        };
+    }
 }

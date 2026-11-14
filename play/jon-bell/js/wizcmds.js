@@ -3,16 +3,16 @@
 // C ref: nethack-c/src/wizcmds.c — wiz_level_change() and related.
 // Hand-maintained JS (not tsc-emitted). Sibling imports from js/*.js.
 import { u_safe_from_fatal_corpse } from './pickup.js';
-import { olfaction } from './makemon.js';
-import { erosion_matters } from './mklev.js';
+import { olfaction } from './mondata.js';
+import { erosion_matters } from './objnam.js';
 import { mungspaces } from './hacklib.js';
 import { usmellmon } from './mon.js';
 import { body_part, cmdq_pop, doprev_message } from './cmd.js';
 import { ARM, ECMD_CANCEL, UTOTYPE_NONE, Is_stronghold, Is_botlevel, CMDQ_KEY } from './const.js';
-import { getdir } from './lock.js';
+import { getdir } from './cmd.js';
 import { map_invisible, GLYPHCLS_MON, GLYPHCLS_INVIS, display_migrating_mons } from './display.js';
 import { game, wizard } from './gstate.js';
-import { reassign } from './inventory_refresh.js';
+import { reassign } from './invent.js';
 import { COLNO, NATTK } from './const.js';
 const IN_SIGHT_BIT = 0x2; /* vision.h IN_SIGHT */
 import { s_suffix as _ta_s_suffix } from './hacklib.js';
@@ -35,8 +35,9 @@ import { FIRST_OBJECT } from './o_init.js';
 import { pluslvl, losexp } from './exper.js';
 import { wish_history_add, wish_history_menu, wish_history_has } from './zap.js';
 import { findit } from './detect.js';
-import { rn2, d, rnd } from './rng.js';
-import { quest_info, readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
+import { rn2, d, rnd } from './rnd.js';
+import { readobjnam, hands_obj, getObjDescr, xname_scroll, xname_spellbook, xname_amulet, xname_armor, xname_weapon, xname_oname_tail, xname, the, The, aobjnam, Tobjnam, doname as doname_real } from './objnam.js';
+import { quest_info } from './questpgr.js';
 import { artiname } from './artifact.js';
 import { discover_object, observe_object } from './o_init.js';
 import { stagger_verb, encumber_msg_sync, weight } from './weight.js';
@@ -44,12 +45,14 @@ import { near_capacity } from './hack.js';
 import { exercise, ARTILIST_MTYPE } from './attrib.js';
 import { losehp } from './hack.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
-import { hates_silver, name_to_mon, name_to_monclass, permonstTemplate, monPmname, set_malign, mkclass, rndmonst, splitobj } from './makemon.js';
-import { makemon, engravings_list } from './mklev.js';
+import { permonstTemplate, monPmname, set_malign, mkclass, rndmonst, splitobj } from './makemon.js';
+import { hates_silver, name_to_mon, name_to_monclass } from './mondata.js';
+import { engravings_list } from './mklev.js';
+import { makemon } from './makemon.js';
 import { newcham, mongone } from './mon.js';
 import { count_wsegs } from './worm.js';
 import { tamedog, migrate_to_level, panic } from './dog.js';
-import { monster_census } from './sit.js';
+import { monster_census } from './minion.js';
 import { MM_NOMSG, MIGR_RANDOM } from './const.js';
 import { put_saddle_on_mon } from './steed.js';
 import { is_pool } from './look.js';
@@ -63,15 +66,21 @@ import monsPack from './makemon_mons.json' with { type: 'json' };
  * TRUE)); it lives in js/cmd.js, which already imports this file — the cycle is
  * the tree's norm (20+ modules import from cmd.js) and both sides are hoisted
  * function declarations, so the binding resolves at call time. */
-import { get_level, y_n_default, addinv_core2, reorder_invent, inv_cnt, freeinv, getpos, addinv_core1, carry_obj_effects, obj_to_let, mergable as mergable_real } from './cmd.js';
+import { y_n_default } from './cmd.js';
+import { inv_cnt } from './hack.js';
+import { getpos } from './getpos.js';
+import { addinv_core2, reorder_invent, freeinv, addinv_core1, carry_obj_effects, obj_to_let, mergable as mergable_real } from './invent.js';
+import { get_level } from './dungeon.js';
 import { setuqwep } from './wield.js';
 import { hitfloor, hurtle, mhurtle } from './dothrow.js';
 import { dropx, dropy } from './do.js';
-import { place_object, remove_object } from './mklev.js';
+import { place_object, remove_object } from './mkobj.js';
 import { upstart } from './hacklib.js';
-import { m_at, mon_nam, xkilled, XKILL_NOMSG } from './uhitm.js';
-import { x_monnam } from './mhitm.js';
-import { nonliving, mondied } from './makemon.js';
+import { m_at, mon_nam, XKILL_NOMSG } from './uhitm.js';
+import { xkilled } from './mon.js';
+import { x_monnam } from './do_name.js';
+import { nonliving } from './makemon.js';
+import { mondied } from './mon.js';
 import { ARTICLE_YOUR, ARTICLE_THE, ARTICLE_A, SUPPRESS_IT,
          SUPPRESS_HALLUCINATION, SUPPRESS_SADDLE, has_mgivenname } from './const.js';
 import { dmonsfree } from './mon.js';
@@ -80,11 +89,12 @@ import { flip_level, flip_level_rnd } from './sp_lev.js';
 import { docrt } from './display.js';
 import { done, ynq } from './end.js';
 import { yn_function } from './cmd.js';
-import { paranoid_query } from './paranoid.js';
+import { paranoid_query } from './cmd.js';
 import { DIED } from './const.js';
 import { PM_SAMURAI } from './pm.generated.js';
-import { bury_objs } from './zap.js';
-import { can_reach_floor, is_missile, ammo_and_launcher } from './hold_another_object.js';
+import { bury_objs } from './dig.js';
+import { is_missile, ammo_and_launcher } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { addinv_core0 } from './invent.js';
 import { obfree } from './shk.js';
 import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
@@ -92,7 +102,7 @@ import { A_WIS, KILLED_BY, ANTIMAGIC, HALF_PHDAM, LOW_PM, ECMD_OK, MM_MINVIS,
          LL_CONDUCT, LL_WISH, LL_ARTIFACT, Upolyd } from './const.js';
 import { _artifact_origin } from './objnam.js';
 import { ONAME_WISH, ONAME_KNOW_ARTI, ONAME_SKIP_INVUPD, ONAME, has_oname } from './const.js';
-import { oname } from './objnam.js';
+import { oname } from './do_name.js';
 
 /* C wizcmds.c:1113-1693 — #stats uses native allocation sizes rather than
  * JavaScript object sizes. These are the ABI values of the frozen C build. */
@@ -713,149 +723,11 @@ const _WISH_CLASS_NOUN = { 4: 'ring', 8: 'potion', 9: 'scroll', 10: 'spellbook',
 function _wish_xname_named_tail(otmp, phrase) {
     return xname_oname_tail(otmp, phrase);
 }
-/* C objclass.h COIN_CLASS = 12 (js/objnam.js:81 says the same). */
-const COIN_CLASS_WZ = 12;
-async function _wish_doname(otmp, quanOverride) {
-    const savequan = otmp.quan;
-    if (quanOverride != null)
-        otmp.quan = quanOverride | 0;
-    try {
-        return await doname_real(otmp);
-    } finally {
-        otmp.quan = savequan;
-    }
-}
-async function _wish_mergable(into, obj) {
-    return await mergable_real(into, obj);
-}
 
-function _wish_merged_reconcile(into, obj) {
-    let discovered = false;
-    if ((obj.known | 0) !== (into.known | 0)) {
-        into.known = 1;
-        discovered = true;
-    }
-    if ((obj.rknown | 0) !== (into.rknown | 0)) {
-        into.rknown = 1;
-        if (into.oerodeproof) discovered = true;
-    }
-    if ((obj.bknown | 0) !== (into.bknown | 0)) {
-        into.bknown = 1;
-        if (!_wish_role_is_priest()) discovered = true;
-    }
-    return discovered;
-}
 
-/* C you.h:247 Role_if(X) is gu.urole.mnum == X; the Priest role index is 6
- * (role.c), read the way hold_another_object.js _Role_if reads it. */
-const _WISH_ROLE_PRIEST = 6;
-function _wish_role_is_priest() {
-    const ir = ((game.flags?.initrole ?? -1) | 0);
-    if (ir >= 0) return ir === _WISH_ROLE_PRIEST;
-    return (((game.urole && game.urole.mnum) ?? -1) | 0) === _WISH_ROLE_PRIEST;
-}
 
-/* C ref: pickup.c:1972 encumber_msg() — the load-change line.  Returns the
- * message string (or null) for an oldcap→newcap transition.  RNG-free.  Mirrors
- * cmd.js _encumber_msg_text / do_wear.js encumber_msg. */
-function _wish_encumber_text(oldcap, newcap) {
-    if (oldcap < newcap) {
-        switch (newcap) {
-        case 1: return 'Your movements are slowed slightly because of your load.';
-        case 2: return 'You rebalance your load.  Movement is difficult.';
-        case 3: return `You ${stagger_verb()} under your heavy load.  Movement is very hard.`;
-        default: return `You ${newcap === 4 ? 'can barely' : "can't even"} move a handspan with this load!`;
-        }
-    } else if (oldcap > newcap) {
-        switch (newcap) {
-        case 0: return 'Your movements are now unencumbered.';
-        case 1: return 'Your movements are only slowed slightly by your load.';
-        case 2: return 'You rebalance your load.  Movement is still difficult.';
-        case 3: return `You ${stagger_verb()} under your load.  Movement is still very hard.`;
-        default: return null;
-        }
-    }
-    return null;
-}
 
-async function _wish_encumber_msg(paintedCap, prinvLine) {
-    const g = game;
-    const newcap = near_capacity();
-    /* C pickup.c:1980-1982: the comparison is against the GLOBAL go.oldcap, which
-     * only encumber_msg() writes — not the pre-addinv near_capacity().  A capacity
-     * change no encumber_msg() saw (e.g. arriving on the Plane of Water) leaves
-     * go.oldcap stale, and the wish's encumber_msg then reports it.  paintedCap
-     * (the pre-addinv capacity) is only what the last bot() painted. */
-    const oldcap = (g.u?._oldcap ?? 0) | 0;
-    if (g.u) g.u._oldcap = newcap; /* C: go.oldcap = newcap at encumber_msg tail */
-    if (oldcap === newcap) return;
-    const msg = _wish_encumber_text(oldcap, newcap);
-    if (!msg) return;
-    const _botlOwed = !!(g.disp && (g.disp.botl || g.disp.botlx)) || g._wishBotlOwedAtPrinv === true;
-    g._wishBotlOwedAtPrinv = false;
-    let prev = g._resultMessage;
-    if (g._topl_win_stop) {
-        /* topl.c:257 skip: the pline is buffered in gt.toplines, never painted
-         * or paged (:262-270 join, :289-291 replace). */
-        const hidden = String(g._topl_win_stop_buf || '');
-        g._topl_win_stop_buf = (hidden && hidden.length + 2 + msg.length < TOPL_LIMIT)
-            ? hidden + '  ' + msg : msg;
-    } else if (prev) {
-        /* C topl.c:262-274: addinv's plines, prinv, and encumber_msg share
-         * one topline. Fold the live prefix in before recording this join;
-         * otherwise it overwrites the prefix's per-pline page boundaries. */
-        if (g._pending_message) {
-            prev = _topl_merge_result(g._pending_message, prev);
-            g._pending_message = '';
-        }
-        const joined = prev + '  ' + msg;
-        _topl_record_join(prev, joined);
-        g._resultMessage = joined;
-        if (prinvLine) {
-            const f = capture_painted_frame();
-            if (f) {
-                /* C invent.c addinv_core1: gold sets disp.botl, so the prinv
-                 * pline's flush_screen runs bot() with the POST-add capacity
-                 * (the $ field is already updated; so is the cap). */
-                const _goldPrinv = prinvLine.startsWith('$ - ');
-                /* Likewise when disp.botl was ALREADY set before the prinv
-                 * (touch_artifact's blast -> losehp, artifact.c touch_artifact
-                 * / hack.c losehp: disp.botl = TRUE): the prinv pline's
-                 * flush_screen (wintty.c tty_display_nhwindow -> bot()) paints
-                 * the post-addinv capacity before encumber_msg runs. */
-                const _postCap = _goldPrinv || _botlOwed;
-                f.cap = (_postCap ? newcap : paintedCap) | 0;
-                f.mmExit = g._movemonExitSeq | 0;
-                g._pickupEncPreFrame = f;
-                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : paintedCap) | 0, prinvText: prinvLine,
-                    /* the status row as of the last bot(): taken before SET_BOTL below */
-                    botl: _postCap ? undefined : capture_pre_movemon_botl() };
-            }
-        }
-    } else {
-        g._resultMessage = msg;
-    }
-    /* C pickup.c:1992: SET_BOTL() comes AFTER the pline, so the join recorded
-     * above (the pline's own flush_screen) paints the OLD status line. */
-    if (g.disp) g.disp.botl = true;
-}
 
-/* C youprop.h:103 Blind := ((HBlinded || EBlinded) && !BBlinded), i.e.
- * u.uprops[BLINDED].{intrinsic,extrinsic,blocked} — the same expression
- * js/vision.js Blind(), js/objnam.js _Blind() and the botl "Blind" condition
- * read.  Local rather than imported from js/vision.js because importing that
- * module here would pull the vision recalc into the wizard-command graph; the
- * expression is three fields and it is spelled identically in five files
- * already.  No RNG. */
-const BLINDED_WIZ = 15; /* const.js BLINDED */
-function _wish_Blind() {
-    const u = game.u;
-    if (!u)
-        return false;
-    const bp = u.uprops && u.uprops[BLINDED_WIZ];
-    return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
-           && !(bp.blocked | 0);
-}
 
 /* C youprop.h:120 Hallucination := (HHallucination && !Halluc_resistance);
  * HALLUC is property 23, HALLUC_RES 24 (const.js). */
@@ -866,45 +738,9 @@ function _wish_Hallu() {
            && !(rp && ((rp.intrinsic | 0) || (rp.extrinsic | 0)));
 }
 
-/* C youprop.h:135 Fumbling := (HFumbling || EFumbling).  Unlike Blind, the
- * property has no blocked arm: blocked is not part of C's Fumbling macro. */
-function _wish_Fumbling() {
-    const fp = game.u?.uprops?.[FUMBLING];
-    return !!fp && !!((fp.intrinsic | 0) || (fp.extrinsic | 0));
-}
 
-/* C invent.c:2861 obj_to_let(), called by prinv()'s xprname (invent.c:2888):
- * forwards to the shared port in js/cmd.js. */
-function _wish_obj_to_let(obj) {
-    return obj_to_let(obj).charCodeAt(0);
-}
 
-function _wish_drop_spec(obj) {
-    const g = game, u = g.u || {};
-    const airOrWater = Is_airlevel(u.uz) || Is_waterlevel(u.uz);
-    const wishedCorpse = (obj.otyp | 0) === 265 && !!obj.wishedfor;
-    const verb = (Is_airlevel(u.uz) || u.uinwater) ? 'slip'
-        : wishedCorpse ? 'materialize' : 'drop';
-    const celltyp = g.level?.locations?.[u.ux | 0]?.[u.uy | 0]?.typ | 0;
-    const fmt = u.uswallow ? 'Oops!  %s out of your reach!'
-        : (airOrWater || celltyp < IRONBARS || celltyp >= ICE)
-            ? 'Oops!  %s away from you!'
-            : !wishedCorpse ? 'Oops!  %s to the floor!'
-                : 'Careful! %s on the floor!';
-    return { fmt, arg: The(aobjnam(obj, verb)) };
-}
 
-async function _wish_drop_overburdened(obj, dropSpec) {
-    const u = game.u || {};
-    await pline(dropSpec.fmt.replace('%s', dropSpec.arg));
-    obj.nomerge = 0;
-    if (can_reach_floor(true) || u.uswallow)
-        await dropx(obj);
-    else {
-        freeinv(obj);
-        await hitfloor(obj, false);
-    }
-}
 
 import { merged as merged_glob } from './invent.js';
 /* options.c:3297 burdentype[]: the option may hold the level's name. */
@@ -917,370 +753,13 @@ export function _pickup_burden_level(v) {
     }
     return v | 0;
 }
-async function _wish_addinv_prinv(otmp, dropSpec) {
-    const g = game;
 
-    /* C ref: hold_another_object snapshots go.oldcap before addinv; encumber_msg
-     * compares near_capacity() to it after the object is in inventory.  RNG-free. */
-    const _oldcap = near_capacity();
-    const _pickupBurden = _pickup_burden_level(g.flags?.pickup_burden);
-    const _dropCap = Math.max(_oldcap, _pickupBurden);
-    const _oquan = (otmp.quan ?? 1) | 0;
 
-    /* observe_object itself carries C's o_init.c:447 `!Hallucination` and
-     * FIRST_OBJECT guards: a hallucinating hero's wish leaves dknown unset, so a
-     * known-type tool still prints its appearance ("a glass orb"). */
-    if (!_wish_Blind() && (otmp.otyp | 0) >= 0)
-        observe_object(otmp); /* RNG-free */
 
-    if (_wish_Fumbling()) {
-        otmp.nomerge = 1;
-        otmp = (await addinv_core0(otmp, null, false));
-        await _wish_drop_overburdened(otmp, dropSpec);
-        return;
-    }
 
-    if ((otmp.otyp | 0) === 265 && !u_safe_from_fatal_corpse(otmp, 0x0F) && otmp.wishedfor) {
-        otmp.wishedfor = 0;
-        otmp = (await addinv_core0(otmp, null, false));
-        await _wish_drop_overburdened(otmp, dropSpec);
-        return;
-    }
 
-    /* C invent.c:1108-1114 addinv_core0 — merge into the first mergable stack
-     * (reusing its invlet) before falling back to a new letter.  When merged,
-     * the wished object's quantity folds into the existing node and NO new
-     * invlet is consumed; C still prinv()s, but with the surviving (merged)
-     * object and its existing letter. */
-    /* C invent.c:1100-1114 — merge with the quiver in preference to any other
-     * inventory slot, then the chain; each test is a full mergable() call
-     * (async only on the never-taken unpaid path). */
-    let _wmerge = null;
-    if (g.u?.uquiver && (await _wish_mergable(g.u.uquiver, otmp))) {
-        _wmerge = g.u.uquiver;
-    } else {
-        for (let o = g.invent; o; o = o.nobj) {
-            if (await _wish_mergable(o, otmp)) { _wmerge = o; break; }
-        }
-    }
-    for (let o = _wmerge; o; o = null) {
-        if (o) {
-            /* C invent.c:1082 addinv_core0 — addinv_core1(obj) runs BEFORE the
-             * merge loop, so merged gold still sets disp.botl and the prinv
-             * pline's flush_screen runs bot() (repainting T: too). */
-            await addinv_core1(otmp);
-            /* C invent.c:856-875 — reconcile knowledge dimensions; if a real
-             * discovery happened, C fires the comparison pline
-             * (invent.c:934-942, otmp->where==OBJ_INVENT and neither
-             * how_lost==LOST_THROWN — both true for a wished stack already held). */
-            let discovered = false;
-            const oquan = ((otmp.quan ?? 1) | 0); /* prinv's quan arg = wished obj's quan */
-            if (otmp.globby) {
-                /* invent.c:928-931 — globs absorb (pudding_merge_message +
-                 * obj_absorb) instead of adding quantity. */
-                await merged_glob({ o }, { o: otmp });
-            } else {
-            /* C invent.c:820-834 merged() — approximate age, weighted by the
-             * PRE-merge quantities (skipped for lit objects and globs; globs
-             * took the branch above).  Without it a wished food stack kept
-             * the old age and doeat skipped/ran the rn2(7) rot roll
-             * (eat.c:3028-3031) differently from C. */
-            if (!otmp.lamplit && ((o.quan ?? 1) | 0) + oquan)
-                o.age = Math.trunc((((o.age | 0) * ((o.quan ?? 1) | 0))
-                    + ((otmp.age | 0) * oquan)) / (((o.quan ?? 1) | 0) + oquan));
-            o.quan = ((o.quan ?? 1) | 0) + oquan;
-            /* C invent.c:838-842 merged(): recompute the combined stack's
-             * weight before knowledge reconciliation and encumbrance checks. */
-            o.owt = weight(o);
-            /* C invent.c:838-839 — merged() clears bknown on merged gold
-             * before comparing the id dimensions (:871) */
-            if ((o.oclass | 0) === COIN_CLASS_WZ) o.bknown = 0;
-            /* C invent.c:843-844 — an unnamed survivor inherits the incoming
-             * stack's name before the merged stack is displayed. */
-            if (!has_oname(o) && has_oname(otmp))
-                await oname(o, ONAME(otmp), ONAME_SKIP_INVUPD);
-            /* C invent.c:852-854 merged(): the folded-in object's timers are
-             * stopped ("follows lights"); otherwise a corpse timer keeps
-             * pointing at a freed object and save_timers_level panics. */
-            if (otmp.timed)
-                obj_stop_timers(otmp);
-            discovered = _wish_merged_reconcile(o, otmp);
-            }
-            /* C invent.c:851-854 merged(): stop the absorbed stack's timers. */
-            if (otmp.timed && !otmp.globby)
-                obj_stop_timers(otmp);
-            if (discovered) {
-                /* C invent.c:941: prinv's following message joins this pline
-                 * when topl.c:262-264's width check leaves room for --More--. */
-                await pline('You learn more about your items by comparing them.');
-            }
-            /* C invent.c:944 -> shk.c:1254-1264: merging frees the incoming
-             * stack and preserves its o_id if it has a higher price adjustment.
-             * Globs already free the absorbed object in obj_absorb. */
-            if (!otmp.globby)
-                await obfree(otmp, o);
-            const _c2msgs = [];
-            o.pickup_prev = 1;
-            addinv_core2(o, _c2msgs);
-            let _c2last = _c2msgs.pop();
-            for (const m of _c2msgs)
-                await force_more(m);
-            if (_c2last && (inv_cnt(false) > 52
-                || (((o.otyp | 0) !== 471 || !o.cursed)
-                    && near_capacity() > _dropCap))) {
-                await force_more(_c2last);
-                _c2last = undefined;
-            }
-            if (inv_cnt(false) > 52
-                || (((o.otyp | 0) !== 471 || !o.cursed)
-                    && near_capacity() > _dropCap)) {
-                let dropped = o;
-                if (o.quan > _oquan)
-                    dropped = (await splitobj(o, _oquan));
-                await _wish_drop_overburdened(dropped, dropSpec);
-                return;
-            }
-            /* C invent.c:1282-1286 hold_another_object — autoquiver fills an empty quiver. */
-            if (game.flags?.autoquiver && !game.u.uquiver && !o.owornmask
-                && (is_missile(o) || ammo_and_launcher(o, game.u.uwep)
-                    || ammo_and_launcher(o, game.u.uswapwep)))
-                await setuqwep(o);
-            let prinvLine = null;
-            if (o.invlet) {
-                _wish_obj_to_let(o);
-                const total_of = (oquan > 0 && oquan < (o.quan | 0));
-                const dot = total_of ? '' : '.';
-                /* prinv prints the merged stack with quan=oquan (xprname's quan
-                 * arg), not the merged total. */
-                const totalbuf = (total_of && g.flags?.verbose) ? ` (${o.quan | 0} in total).` : '';
-                prinvLine = `${String.fromCharCode(o.invlet | 0)} - ${(await _wish_doname(o, oquan))}${dot}${totalbuf}`;
-                if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
-                    await force_more(_c2last);
-                    _c2last = undefined;
-                }
-                if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-            _wish_prinv_flush_record(_c2last || g._resultMessage, prinvLine);
-        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-                g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
-                    : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
-                _wish_prinv_owns_stop(prinvLine);
-                _c2last = undefined;
-            }
-            if (_c2last) await force_more(_c2last);
-            await _wish_encumber_msg(_oldcap, prinvLine);
-            return;
-        }
-    }
 
-    if ((otmp.oclass | 0) === COIN_CLASS_WZ) {
-        otmp.invlet = 0x24; /* GOLD_SYM '$' */
-        g._botlGoldStale = undefined;
-    } else {
-        const inuse = new Array(52).fill(false);
-        for (let obj = g.invent; obj; obj = obj.nobj) {
-            if (obj === otmp) continue;
-            const i = obj.invlet | 0;
-            if (97 <= i && i <= 122) inuse[i - 97] = true;        /* a-z */
-            else if (65 <= i && i <= 90) inuse[i - 65 + 26] = true; /* A-Z */
-            /* C: if (i == otmp->invlet) otmp->invlet = 0; */
-            if (i === (otmp.invlet | 0)) otmp.invlet = 0;
-        }
-        /* C: if otmp already holds a valid a-zA-Z letter, keep it. */
-        const cur = otmp.invlet | 0;
-        if (cur && ((97 <= cur && cur <= 122) || (65 <= cur && cur <= 90))) {
-            /* keep otmp.invlet */
-        } else {
-            const last = (g._lastinvnr ?? 51) | 0;
-            let i;
-            for (i = last + 1; i !== last; i++) {
-                if (i === 52) { i = -1; continue; }
-                if (!inuse[i]) break;
-            }
-            otmp.invlet = inuse[i] ? 0x23 /*NOINVSYM '#'*/ : (i < 26 ? (97 + i) : (65 + i - 26));
-            g._lastinvnr = i;
-        }
-    }
-    /* C invent.c:1082 addinv_core0 — addinv_core1(obj) runs first on every path:
-     * u.uhave.amulet = 1 + record_achievement(ACH_AMUL) etc.  Without it a
-     * wished Amulet never arms allmain.c:446's "bestowing a wish" block. */
-    await addinv_core1(otmp);
-    otmp.where = OBJ_INVENT_WIZ;
-    const fixedLetters = g.flags?.invlet_constant ?? true;
-    if (fixedLetters || !g.invent) {
-        otmp.nobj = g.invent ?? null;
-        g.invent = otmp;
-        if (fixedLetters) reorder_invent();
-    } else {
-        let prev = g.invent;
-        while (prev.nobj) prev = prev.nobj;
-        prev.nobj = otmp;
-        otmp.nobj = null;
-    }
-    const _core2msgs = [];
-    otmp.pickup_prev = 1;
-    addinv_core2(otmp, _core2msgs);
-    carry_obj_effects(otmp); /* C invent.c:1144 (cursed figurine timer) */
-    /* C invent.c:1040's pline is committed and paged HERE rather than inside
-     * addinv_core2: prinv's own pline is what more()s it in C, and this port's
-     * prinv line goes through game._resultMessage, which does not page a
-     * predecessor.  Same treatment invent.c:941's compare-items line already
-     * gets in the merge branch above. */
-    /* C has ONE topline: refusal messages a fifth-try wish left standing
-     * ("Nothing fitting...", "That's enough tries!") are still gt.toplines
-     * when invent.c:1040's pline arrives, so they page IN FRONT of it
-     * (topl.c:257-301).  Fold them ahead of the decipher line, keeping their
-     * message boundaries, instead of leaving them to be dropped. */
-    if (_core2msgs.length && g._pending_message) {
-        const _pend = g._pending_message;
-        _core2msgs[0] = _topl_merge_result(_pend, _core2msgs[0],
-                                           _topl_joins_snapshot(_pend) || undefined);
-        g._pending_message = '';
-    }
-    let _c2last = _core2msgs.pop();
-    for (const m of _core2msgs)
-        await force_more(m);
-    if (inv_cnt(false) > 52
-        || (((otmp.otyp | 0) !== 471 || !otmp.cursed)
-            && near_capacity() > _dropCap)) {
-        if (_c2last) await force_more(_c2last);
-        await _wish_drop_overburdened(otmp, dropSpec);
-        return;
-    }
-    /* C invent.c:1282-1286 hold_another_object — autoquiver fills an empty quiver. */
-    if (game.flags?.autoquiver && !game.u.uquiver && !otmp.owornmask
-        && (is_missile(otmp) || ammo_and_launcher(otmp, game.u.uwep)
-            || ammo_and_launcher(otmp, game.u.uswapwep)))
-        await setuqwep(otmp);
-    /* C invent.c:2889 prinv — "<invlet> - <doname>." on the topline. */
-    let prinvLine = null;
-    if (otmp.invlet) {
-        _wish_obj_to_let(otmp);
-        prinvLine = `${String.fromCharCode(otmp.invlet | 0)} - ${(await _wish_doname(otmp))}.`;
-        if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
-            await force_more(_c2last);
-            _c2last = undefined;
-        }
-        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-            _wish_prinv_flush_record(_c2last || g._resultMessage, prinvLine);
-        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-                g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
-                    : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
-        _wish_prinv_owns_stop(prinvLine);
-        _c2last = undefined;
-    }
-    if (_c2last) await force_more(_c2last);
-    await _wish_encumber_msg(_oldcap, prinvLine);
-}
 
-/* C topl.c:232-234 + :257: an ESC at the decipher page force_more()d just
- * above sets WIN_STOP inside prinv's OWN update_topl, after its skip sample,
- * so prinv still paints (:300) but every later pline of this wish --
- * encumber_msg's "Your movements are slowed slightly because of your load."
- * (pickup.c:1979) -- is skipped: no paint, no more().  _topl_more only ARMS
- * the bit; pline() turns it live in its owner, and prinv bypasses pline(). */
-function _wish_prinv_owns_stop(prinvLine) {
-    const g = game;
-    if (!g._topl_win_stop_armed) return;
-    g._topl_win_stop_armed = false;
-    g._topl_win_stop = true;
-    g._topl_win_stop_buf = prinvLine;
-}
-
-/* C topl.c:262-265 update_topl(): prinv's pline joins the standing
- * TOPLINE_NEED_MORE topline ("You decipher the label on your scroll.") when
- * n0 + strlen(gt.toplines) + 3 < CO - 8, and only pages (more()) when it does
- * not.  Returns true when the deferred message must be paged now. */
-function _wish_core2_pages(deferred, prinvLine) {
-    return !prinvLine || (deferred.length + 2 + prinvLine.length) >= TOPL_LIMIT;
-}
-
-/* C invent.c prinv -> pline.c:274-277: prinv's vpline() flushes the screen
- * BEFORE update_topl() more()s the line standing ahead of it, so a page that
- * prinv raises freezes the map as of here -- before allmain.c:454-470's
- * Warning see_monsters() paints a wished artifact's warnings.  This path
- * publishes prinv through _resultMessage, not pline(), and makewish merges
- * any standing _pending_message ahead of it; key the frame where that puts
- * prinv's boundary.  `head` is the text joined in front of prinvLine. */
-function _wish_prinv_flush_record(head, prinvLine) {
-    /* the flush below runs bot() and clears disp.botl; remember whether it was
-     * owed (touch_artifact's blast losehp) so encumber_msg sees the post-add cap */
-    game._wishBotlOwedAtPrinv = !!(game.disp && (game.disp.botl || game.disp.botlx)); /* flush_screen: botl || botlx (display.c:2286) */
-    const pend = game._pending_message ? String(game._pending_message) : '';
-    const before = (pend ? pend.length + 2 : 0) + (head ? String(head).length + 2 : 0);
-    /* C pline.c:266-272 vpline(): prinv's pline recalculates vision before its
-     * flush_screen, so a wished lit candle/lamp (begin_burn set
-     * vision_full_recalc) lights its surroundings in the --More-- frame. */
-    if (game.vision_full_recalc) vision_recalc(0);
-    if (!before)
-        return;
-    pline_flush_point();
-    _pline_flush_frame_record(before - 2, prinvLine);
-}
-
-/* C ref: zap.c:6160 #define MAXWISHTRY 5 */
-const MAXWISHTRY = 5;
-
-/* C ref: flag.h iflags.cmdassist — defaults TRUE (options.c), cleared only by
- * "!cmdassist" in the config file.  Same reading js/lock.js's cmdassist_on()
- * does for help_dir; duplicated rather than imported because lock.js already
- * imports from this file's import graph and the value is one field read. */
-function _wish_cmdassist_on() {
-    const v = game.iflags?.cmdassist;
-    return v === undefined ? true : !!v;
-}
-
-/* C ref: zap.c:6190-6221 wishcmdassist(int triesleft) — the "enter 'help' for
- * assistance" text window.  create_nhwindow(NHW_TEXT) + putstr per line +
- * display_nhwindow(win, TRUE); tty paints it full-screen with a --More-- per
- * 23-row page, which is what display_text_window() models.
- *
- *     retry_info[] = "If you specify an unrecognized object name %s%s time%s,"
- *     cardinals[]  = { "zero", "one", "two", "three", "four", "five" }
- *     Sprintf(buf, retry_info,
- *             (triesleft >= 0 && triesleft < SIZE(cardinals))
- *                ? cardinals[triesleft] : too_many,
- *             (triesleft < MAXWISHTRY) ? " more" : "",
- *             plur(triesleft));
- *
- * plur(x) is hack.h:1245 `(((x) == 1L) ? "" : "s")`.
- * DISPLAY-CHANNEL ONLY: no RNG. */
-const WISHINFO_LINES = [
-    'Wish details:',
-    '',
-    'Enter the name of an object, such as "potion of monster detection",',
-    '"scroll labeled README", "elven mithril-coat", or "Grimtooth"',
-    '(without the quotes).',
-    '',
-    'For object types which come in stacks, you may specify a plural name',
-    'such as "potions of healing", or specify a count, such as "1000 gold',
-    'pieces", although that aspect of your wish might not be granted.',
-    '',
-    'You may also specify various prefix values which might be used to',
-    'modify the item, such as "uncursed" or "rustproof" or "+1".',
-    'Most modifiers shown when viewing your inventory can be specified.',
-    '',
-    "You may specify 'nothing' to explicitly decline this wish.",
-];
-const WISH_CARDINALS = ['zero', 'one', 'two', 'three', 'four', 'five'];
-
-async function wishcmdassist(triesleft) {
-    const lines = WISHINFO_LINES.slice();
-    /* C zap.c:6203-6204 — the wishless-conduct note, shown while no wish has
-     * been granted yet.  u.uconduct.wishes is bumped below in makewish(). */
-    if (!(game.u?.uconduct?.wishes | 0))
-        lines.push('Doing so will preserve \'wishless\' conduct.');
-    lines.push('');
-    const cardinal = (triesleft >= 0 && triesleft < WISH_CARDINALS.length)
-        ? WISH_CARDINALS[triesleft] : 'too many';
-    lines.push(`If you specify an unrecognized object name ${cardinal}`
-               + `${triesleft < MAXWISHTRY ? ' more' : ''}`
-               + ` time${triesleft === 1 ? '' : 's'},`);
-    lines.push('a randomly chosen item will be granted.');
-    lines.push('');
-    if (_wish_cmdassist_on())
-        lines.push('(Suppress this assistance with !cmdassist in your config file.)');
-    await display_text_window(lines);
-}
 
 /* C wiz_show_stats() (wizcmds.c:1616).  The port keeps the C chain order and
  * output policy, while charging the frozen native ABI sizes above. */
@@ -1457,201 +936,6 @@ export async function wiz_show_stats() {
     return ECMD_OK;
 }
 
-/* THE one makewish().  C has a single makewish() (zap.c:6307) shared by every
- * wish source: wiz_wish (wizcmds.c:38), the wand of wishing (zap.c:2578), the
- * throne (sit.c:110 and sit.c:251), the Amulet's first-pickup wish
- * (allmain.c:507), a resumed wish (allmain.c:241) and mongrantswish
- * (potion.c:2811).  Exported so js/zap.js's zapnodir() resolves to this body
- * instead of the throw-stub it used to carry. */
-export async function makewish() {
-    const g = game;
-    if (g.context) g.context.resume_wish = 0; // C zap.c:6323
-    const oldWisharti = g.u?.uconduct?.wisharti | 0; // C zap.c:6321: before readobjnam().
-
-    /* C zap.c:6317 `struct obj otmp, nothing;` + zap.c:6323
-     *     nothing = cg.zeroobj;   [lint suppression; only its address matters]
-     * — the "wished for 'nothing'" sentinel is an ADDRESS, distinct both from
-     * NULL and from any real object.  This port passed `null` for it, which
-     * collapsed C's THREE readobjnam outcomes (an object / the nothing sentinel
-     * / NULL = no such object) into two.  A fresh object literal restores the
-     * distinction: it is `===`-comparable and can never be a mksobj result. */
-    const nothing = {};
-
-    /* C zap.c:6319-6320: if (flags.verbose) You("may wish for an object.");
-     * wiz_wish (wizcmds.c:35-40) clears flags.verbose around its call, so the
-     * Ctrl+W path prints nothing; the wand / throne / Amulet paths do print. */
-    if (g.flags && g.flags.verbose)
-        await pline('You may wish for an object.');
-
-    /* C zap.c:6316-6376 — the `retry:` loop.  tries counts REFUSED wishes only;
-     * the "help" arm re-prompts without incrementing it. */
-    let otmp = null;
-    let tries = 0;
-    let wishedText = '';
-    for (;;) {
-        let promptbuf = 'For what do you wish';
-        if (_wish_cmdassist_on() && tries > 0)
-            promptbuf += " (enter 'help' for assistance)";
-        promptbuf += '?';
-
-        let buf;
-        if (g.iflags?.menu_requested && wish_history_has() && tries === 0)
-            buf = (await wish_history_menu()) ?? '';
-        else
-            buf = await getlin(promptbuf);
-
-        // C zap.c:6337-6341: defer an interrupted wish until the terminal returns.
-        if (g.iflags?.term_gone) {
-            if (!g.iflags.debug_fuzzer)
-                g.context.resume_wish = 1;
-            return;
-        }
-
-        /* C zap.c:6343: (void) mungspaces(buf);
-         * C zap.c:6344-6350:
-         *     if (buf[0] == '\033') buf[0] = '\0';
-         *     else if (!strcmpi(buf, "help")) { wishcmdassist(MAXWISHTRY - tries);
-         *                                       buf[0] = '\0'; goto retry; } */
-        const wishstr = (buf === '\x1b') ? '' : buf.trim().replace(/\s+/g, ' ');
-        if (wishstr.toLowerCase() === 'help') {
-            await wishcmdassist(MAXWISHTRY - tries);
-            continue;
-        }
-
-        /* C zap.c:6360: otmp = readobjnam(buf, &nothing) */
-        otmp = await readobjnam(wishstr || null, nothing);
-
-        /* C zap.c:6361-6368:
-         *     if (!otmp) {
-         *         pline("Nothing fitting that description exists in the game.");
-         *         if (++tries < MAXWISHTRY) goto retry;
-         *         pline1(thats_enough_tries);
-         *         otmp = readobjnam((char *) 0, (struct obj *) 0);
-         *         if (!otmp) return;
-         *     }
-         * The final readobjnam(NULL, NULL) is the `goto any` entry — a random
-         * class via rn2(SIZEOF_WRPSYM) then mkobj — i.e. after five refusals C
-         * grants the random object it was withholding.  This port granted that
-         * random object on the FIRST refusal and never printed a word. */
-        if (!otmp) {
-            await pline('Nothing fitting that description exists in the game.');
-            if (++tries < MAXWISHTRY)
-                continue;
-            /* decl.c:42 c_thats_enough_tries = "That's enough tries!" */
-            await pline("That's enough tries!");
-            otmp = await readobjnam(null, null);
-            if (!otmp)
-                return; /* C: for safety; should never happen */
-        } else if (otmp === nothing) {
-            /* C zap.c:6369-6373 — explicitly declined the wish. */
-            livelog_printf(LL_WISH, 'declined to make a wish');
-            return;
-        } else if (otmp === hands_obj) {
-            wish_history_add(wishstr);
-            /* C zap.c:6373-6377 — terrain success: no object to hold,
-             * no wish-conduct increment, and no ublesscnt adjustment.
-             * DEBUG wish-history storage is not yet modeled by makewish. */
-            return;
-        }
-        wishedText = wishstr;
-        wish_history_add(wishstr);
-        break;
-    }
-
-    // C zap.c:6381-6384: a granted artifact wish is already known to the hero.
-    if (otmp.oartifact)
-        _artifact_origin(otmp, ONAME_WISH | ONAME_KNOW_ARTI);
-
-    const _wishPendingSrc = g._pending_message;
-    const _wishPendingJoins = _topl_joins_snapshot(_wishPendingSrc);
-
-    /* C zap.c:6437: hold_another_object(otmp, ...) — when the wished object is
-     * an artifact, invent.c:1208 hold_another_object calls touch_artifact()
-     * (artifact.c:908) on the hero before the object is added to inventory.
-     * That is where the rn2(4) blast roll happens, and it must precede the
-     * rn1(100,50) below (Cardinal Rule 2: RNG order).  Non-artifact wishes
-     * consume no RNG here.  We model only touch_artifact's RNG; the
-     * inventory/encumbrance bookkeeping consumes none. */
-    /* C zap.c:6387-6397: readobjnam() increments wisharti even for an
-     * artifact already wished for; only its first transition breaks conduct.
-     * Preserve that event's text and flags for the chronicle. */
-    if (otmp) {
-        const _u = g.u || (g.u = {});
-        _u.uconduct = _u.uconduct || {};
-        const oldWishes = _u.uconduct.wishes | 0;
-        const wisharti = _u.uconduct.wisharti | 0;
-        const artifactFlag = oldWisharti < wisharti ? LL_ARTIFACT : 0;
-        const possessive = g.flags?.female ? 'her' : 'his';
-        const wish = `"${wishedText}", got "${(await _wish_doname(otmp))}"`;
-        if (!oldWishes) {
-            gamelog_add(LL_CONDUCT | LL_WISH | artifactFlag, g.moves | 0,
-                `made ${possessive} first wish - ${wish}`);
-        } else if (!oldWisharti && wisharti) {
-            gamelog_add(LL_CONDUCT | LL_WISH | LL_ARTIFACT, g.moves | 0,
-                `made ${possessive} first artifact wish - ${wish}`);
-        } else {
-            gamelog_add(LL_WISH | artifactFlag, g.moves | 0, `wished for ${wish}`);
-        }
-        _u.uconduct.wishes = (_u.uconduct.wishes | 0) + 1;
-    }
-
-    /* C zap.c:6402-6419 evaluates both strings passed to
-     * hold_another_object before that helper observes, touches, or merges the
-     * object.  Keep the rendered argument immutable so an overburdened wish
-     * cannot disclose an appearance learned during addinv(). */
-    /* C zap.c:6401-6402 */
-    if (otmp && (otmp.otyp | 0) === 265 /* CORPSE */ && !u_safe_from_fatal_corpse(otmp, 0x0F /* st_all */))
-        otmp.wishedfor = 1;
-    const _wishDropSpec = otmp ? _wish_drop_spec(otmp) : null;
-
-    let _wishRefused = false;
-    if (otmp && (otmp.oartifact | 0)) {
-        if (!_wish_Blind())
-            observe_object(otmp); /* o_init.c:447 skips under Hallucination */
-        /* C invent.c:1218-1231 */
-        const wasUpolyd = Upolyd(g.u);
-        place_object(otmp, g.u.ux | 0, g.u.uy | 0);
-        const canTouch = await touch_artifact_youmonst(otmp);
-        /* C invent.c:1232-1238: a blast which ends polymorph also loses
-         * the hero's grip; the artifact never enters inventory. */
-        const lostGrip = canTouch && wasUpolyd && !Upolyd(g.u);
-        if (lostGrip)
-            await pline(_wishDropSpec.fmt.replace('%s', _wishDropSpec.arg));
-        remove_object(otmp);
-        if (!canTouch || lostGrip) {
-            await dropy(otmp);
-            _wishRefused = true;
-        }
-    }
-
-    if (otmp && !_wishRefused && (otmp.oclass | 0) !== 0) {
-        const blastMsg = g._touch_artifact_blast_msg;
-        if (blastMsg) {
-            g._touch_artifact_blast_msg = null;
-            await pline(blastMsg);
-        }
-        await _wish_addinv_prinv(otmp, _wishDropSpec);
-    }
-
-    if (g._pending_message && g._resultMessage) {
-        const _pj = (g._pending_message === _wishPendingSrc)
-            ? _wishPendingJoins : _topl_joins_snapshot(g._pending_message);
-        g._resultMessage = _topl_merge_result(
-            g._pending_message, g._resultMessage, _pj || undefined);
-        g._pending_message = '';
-    }
-
-    /* C zap.c:6438: u.ublesscnt += rn1(100, 50)  = rn2(100)+50 */
-    if (!g.u) g.u = {};
-    g.u.ublesscnt = (g.u.ublesscnt | 0) + rn2(100) + 50;
-
-    /* NOTE: C's makewish() never touches svc.context.move.  "A wish costs no
-     * turn" is wiz_wish's ECMD_OK return (wizcmds.c:42), not a property of
-     * makewish — the wand of wishing (zap.c:2578) DOES consume the zap's turn.
-     * The `g.context.move = 0` that used to live here is therefore set by
-     * wiz_wish() below, where C puts it. */
-    return otmp;
-}
 
 /* C ref: wizcmds.c:32-43 wiz_wish(void)
  * Wizard-mode Ctrl+W wish command.  Sets flags.verbose=FALSE, calls
@@ -1760,6 +1044,37 @@ import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' }; // re
 import { init_rumors, others_check } from './rumors.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
 import { makemap_prepost } from './cmd.js'; // relocate-fns
+import { mstrength } from './mondata.js'; // relocate-fns
+import { impossible } from './pline.js'; // relocate-fns
+import { does_block, get_viz_clear } from './vision.js'; // relocate-fns
+import { INV_ORDER, MAGIC_PORTAL, PICKINV_CLASS_HEADER, TTY_MENU_ROWS, Warn_of_mon_prop, _Blind_cmd, _invlet_constant, _observe_in_qsort_order, _on_W_tower_level, _pd_br_string, _pd_chr_u_on_lvl, _pd_depth, _pickinv_item_text, _sortloot_within_class, create_nhwindow, destroy_nhwindow, display_nhwindow, incr_itimeout_prop, putstr, set_cursor } from './cmd.js';
+import { pooleffects } from './hack.js';
+import { fully_identify_obj, invletter_value, prinv } from './invent.js';
+import { level_tele } from './teleport.js'; // relocate-fns
+import { visctrl as _binds_visctrl } from './cmd_binds.js';
+import { cmd_from_func as _binding_cmd_from_func } from './cmd.js'; // relocate-fns
+import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
+import { BLINDED, CONFUSION, DEAF, FIRE_RES, FLYING, GLIB, HALLUC, HALLUC_RES, In_endgame, In_sokoban, Is_earthlevel, Is_firelevel as Is_firelevel_cmd, Is_knox_level, LEVITATION, PICK_NONE, PROT_FROM_SHAPE_CHANGERS, RIGHT_HANDED, SICK, SICK_NONVOMITABLE, SICK_VOMITABLE, SLIMED, STONE, STONED, STUNNED, TIMEOUT, VOMITING, WARN_OF_MON, WWALKING, gs } from './const.js'; // relocate-fns
+import { capture_painted_frame_with_status, docorner_blank_utf8_captures, force_more_pages, map_engraving, map_trap, menu_entry_page } from './display.js';
+import { wizcustom_glyphids } from './glyphs.js'; // relocate-fns
+import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
+import { Invocation_lev as Invocation_lev_dgn, at_dgn_entrance, on_level, print_branch } from './dungeon.js'; // relocate-fns
+import { may_dig } from './hack.js'; // relocate-fns
+import { identify_pack } from './invent.js'; // relocate-fns
+import { sp_levchn_lookup } from './mklev.js'; // relocate-fns
+import { rescham } from './mon.js'; // relocate-fns
+import { makeplural as makeplural_objnam, not_fully_identified } from './objnam.js'; // relocate-fns
+import { map_menu_cmd } from './options.js'; // relocate-fns
+import { PM_GRID_BUG } from './pm.generated.js'; // relocate-fns
+import { float_vs_flight } from './polyself.js'; // relocate-fns
+import { make_deaf, make_glib, make_hallucinated, make_sick, make_slimed, make_stoned, make_stunned, make_vomiting } from './potion.js'; // relocate-fns
+import { do_mapping } from './detect.js'; // relocate-fns
+import { TtyMenu, menu_heading_text } from './tty_menu.js'; // relocate-fns
+import { get_feature_notice_ver } from './version.js'; // relocate-fns
+import { make_blinded } from './zap.js'; // relocate-fns
+import { makewish } from './zap.js'; // relocate-fns
+export { makewish } from './zap.js'; // relocate-fns
+export { OBJ_INVENT_WIZ }; // relocate-fns
 export { makemap_prepost } from './cmd.js'; // relocate-fns
 export { getlin } from './windows.js'; // relocate-fns
 
@@ -2059,58 +1374,7 @@ export async function wiz_rumor_check() {
     return ECMD_OK;
 }
 
-/* C mondata.c:501 mstrength_ranged_attk() */
-function mstrength_ranged_attk(mattk) {
-    const atk_mask = (1 << 12 /* AT_BREA */) | (1 << 10 /* AT_SPIT */) | (1 << 15 /* AT_GAZE */);
-    for (let i = 0; i < NATTK; i++) {
-        const j = mattk[i].aatyp;
-        if (j >= 254 /* AT_WEAP */ || (j < 32 && (atk_mask & (1 << j)) !== 0))
-            return true;
-    }
-    return false;
-}
 
-/* C mondata.c:428 mstrength(ptr) — rows from makemon_{mons,ac,mattk,pmnames}.json */
-function mstrength(mndx) {
-    const row = monsPack.mons[mndx], ac = monAcPack.ac[mndx];
-    const mattk = monMattkPack.mattk[mndx], name = monPmnamesPack.pmnames[mndx][2];
-    const geno = row[3], mflags2 = row[7] >>> 0, mmove = row[9];
-    let tmp = row[1], n;
-    if (tmp > 49) /* special fixed hp monster */
-        tmp = Math.trunc(2 * (tmp - 6) / 4);
-    n = (geno & 0x0080 /* G_SGROUP */) ? 1 : 0;
-    n += ((geno & 0x0040 /* G_LGROUP */) ? 1 : 0) << 1;
-    if (mstrength_ranged_attk(mattk)) n++;
-    n += (ac < 4) ? 1 : 0;
-    n += (ac < 0) ? 1 : 0;
-    n += (mmove >= 18) ? 1 : 0;
-    for (let i = 0; i < NATTK; i++) {
-        const tmp2 = mattk[i].aatyp;
-        n += (tmp2 > 0) ? 1 : 0;
-        n += (tmp2 === 255 /* AT_MAGC */) ? 1 : 0;
-        n += (tmp2 === 254 /* AT_WEAP */ && (mflags2 & 0x04000000 /* M2_STRONG */)) ? 1 : 0;
-        if (tmp2 === 13 /* AT_EXPL */) {
-            const tmp3 = mattk[i].adtyp;
-            n += (tmp3 === 3 /* AD_COLD */ || tmp3 === 2 /* AD_FIRE */) ? 3
-                : (tmp3 === 6 /* AD_ELEC */) ? 5 : 0;
-        }
-    }
-    for (let i = 0; i < NATTK; i++) {
-        const tmp2 = mattk[i].adtyp;
-        if (tmp2 === 15 || tmp2 === 18 || tmp2 === 7 || tmp2 === 30
-            || tmp2 === 31 || tmp2 === 29) /* DRLI STON DRST DRDX DRCO WERE */
-            n += 2;
-        else if (name !== "grid bug")
-            n += (tmp2 !== 0 /* AD_PHYS */) ? 1 : 0;
-        n += (mattk[i].damd * mattk[i].damn > 23) ? 1 : 0;
-    }
-    if (name === "leprechaun") n -= 2;
-    if (name === "killer bee" || name === "soldier ant") n += 2;
-    if (n === 0) tmp -= 1;
-    else if (n < 6) tmp += Math.trunc(n / 3) + 1;
-    else tmp += Math.trunc(n / 2);
-    return (tmp >= 0) ? tmp : 0;
-}
 
 /* C wizcmds.c:1790 wiz_mon_diff() — #wizmondiff; NHW_TEXT, ECMD_OK, no turn/RNG. */
 export async function wiz_mon_diff() {
@@ -2134,4 +1398,1370 @@ export async function wiz_mon_diff() {
         out.push("No monster difficulty discrepancies were detected.");
     await display_text_window(out);
     return ECMD_OK;
+}
+
+// C ref: wizcmds.c:1449-1458 levl_sanity_check()
+export async function levl_sanity_check() {
+    if (game.u.uinwater) return; /* Underwater uses different vision */
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            if ((does_block(x, y) ? 1 : 0) !== (get_viz_clear(x, y) ? 1 : 0))
+                await impossible('levl[%i][%i] vision blocking', x, y);
+        }
+    }
+}
+
+/* C ref: invent.c:3078 `static struct obj wizid_fakeobj;` — the sentinel the
+ * wizid menu's '_' entry carries in any.a_obj, distinguishing "identify
+ * everything" (identify_pack) from a specific item (identify). */
+const WIZID_ALL = { _wizid_fakeobj: true };
+
+// ── C ref: wizcmds.c:49 wiz_identify() — the #wizidentify command. ────────────
+//
+//   if (wizard) {
+//       iflags.override_ID = (int) cmd_from_func(wiz_identify);
+//       if (!iflags.override_ID) iflags.override_ID = C('I');
+//       (void) display_inventory((char *) 0, FALSE);
+//       iflags.override_ID = 0;
+//   } else
+//       pline(unavailcmd, ecname_from_fn(wiz_identify));
+//   return ECMD_OK;
+//
+// override_ID being non-zero is what makes display_pickinv() take its `wizid`
+// arm (invent.c:3221-3252): the menu's title line is "Debug Identify", its
+// entries are the NOT-fully-identified items only (invent.c:3274 — `if (wizid
+// && !not_fully_identified(otmp)) continue`), and when there is nothing left to
+// identify the whole window is
+//       Debug Identify
+//       (all items are permanently identified already)
+// plus the "(end)" footer.  RNG-free throughout.
+//
+// arm in doextcmd's dispatch chain, so JS painted the bare map there.
+export async function wiz_identify() {
+    const g = game;
+    if (!(g.flags && g.flags.debug)) {
+        /* C cmd.c:157 unavailcmd = "Unavailable command '%s'.", filled from
+         * ecname_from_fn(wiz_identify) = ef_txt, which has NO leading '#'. */
+        await pline("Unavailable command 'wizidentify'.");
+        return ECMD_OK;
+    }
+    g.iflags = g.iflags || {};
+    const _savedOverrideID = g.iflags.override_ID;
+    g.iflags.override_ID = _binding_cmd_from_func('wiz_identify') || 9; /* C('I') */
+    try {
+    const items = [];
+    for (let o = g.invent; o; o = o.nobj)
+        items.push(o);
+    /* C invent.c:3136-3143 — n == 0 (empty pack) exits before any window is
+     * built: pline("%s.", not_carrying_anything); return 0. */
+    if (!items.length) {
+        await pline('Not carrying anything.');
+        return ECMD_OK;
+    }
+    /* C invent.c:3146-3147 display_pickinv(): `if (!flags.invlet_constant)
+     * reassign();` -- re-letter the pack before the menu is built. */
+    if (!_invlet_constant()) reassign();
+    /* C invent.c:3207 — display_pickinv sorts the whole pack (filter is null for
+     * wizid; not_fully_identified is applied per object at invent.c:3274), and
+     * sortloot_cmp's loot_classify() runs `if (!Blind) observe_object(obj)`
+     * (invent.c:170) on every compared object, setting dknown (e.g. on water
+     * whose otyp trap.c:4832 just reset it) before the filter looks. */
+    // Full sorting below performs classification and naming once (invent.c:3207).
+    if (g.flags.sortloot !== 'i' && g.flags.sortloot !== 'f' && g.flags.sortpack !== false
+        && !_Blind_cmd() && items.length > 1) {
+        _observe_in_qsort_order(items);
+    }
+    /* C invent.c:3176-3207: full sorting uses SORTLOOT_LOOT even without
+     * sortpack, and sorts the whole inventory before the wizid filter. */
+    let sortedItems = items;
+    if (g.flags.sortloot === 'f')
+        sortedItems = _sortloot_within_class(items, null);
+    const unid = sortedItems.filter((o) => not_fully_identified(o));
+    if (unid.length) {
+        const PLUR = unid.length > 1 ? 's' : '';
+        const windowLines = [
+            `Debug Identify -- unidentified or partially identified item${PLUR}`,
+        ];
+        /* C invent.c:3244-3250 — the '_' entry.  iflags.override_ID carries the
+         * ^I accelerator wiz_identify stuffed into it; visctrl(C('I')) is "^I".
+         * MENU_ITEMFLAGS_SKIPINVERT only affects the highlight, not the text. */
+        let sel = `select ${unid.length === 1 ? 'it' : 'any or all of them'}`
+                + ' to permanently identify';
+        if (unid.length > 1)
+            sel += ` (${_binds_visctrl(g.iflags.override_ID)} for all)`;
+        windowLines.push(`_ - ${sel}`);
+        /* selection payload per rendered line; null for headings/title. */
+        const lineObj = [null, WIZID_ALL];
+        const wizGlyph = new Map();
+        const hand = (g.u?.uhandedness === RIGHT_HANDED) ? 'right' : 'left';
+        /* C invent.c:3274 `if (wizid && !not_fully_identified(otmp)) continue;`
+         * — only unidentified items are listed, but the class walk is the same
+         * flags.inv_order one every other menu in this file uses. */
+        /* C invent.c:3176,3289-3299: !sortpack omits class headings;
+         * sortloot:full still retains the description order computed above. */
+        const flatWiz = g.flags?.sortpack === false;
+        /* C invent.c:3071,3334-3339: configured pack order, then venom. */
+        const wizClasses = flatWiz ? [-1] : (g.flags?.inv_order || INV_ORDER).concat(17);
+        for (const oclass of wizClasses) {
+            const group = flatWiz
+                ? (g.flags.sortloot === 'f' ? unid : unid.slice().sort((x, y) =>
+                    invletter_value(x.invlet | 0) - invletter_value(y.invlet | 0)))
+                : unid.filter((it) => (it.oclass | 0) === oclass);
+            if (!group.length) continue;
+            if (!flatWiz)
+            windowLines.push(menu_heading_text(PICKINV_CLASS_HEADER[oclass]));
+            if (!flatWiz)
+            lineObj.push(null);
+            for (const obj of group) {
+                const og = {};
+                let txt = await _pickinv_item_text(obj, hand, false, og);
+                /* C wintty.c:1383-1390,1475-1483 show_obj_syms: the object
+                 * glyph replaces the "-" separator; menu_objsyms:conditional
+                 * (bit 4) suppresses it when the menu has class headings. */
+                if (g.iflags?.use_menu_glyphs
+                    && (!((g.iflags.menuobjsyms | 0) & 4) || flatWiz)) {
+                    const gc = g.iflags?.use_color === false ? 8 : og.color | 0;
+                    const sym = og.ch;
+                    const symTxt = gc === 0 ? `\x1b[${(g.iflags?.wc2_darkgray ?? true) ? 90 : 34}m${sym}\x1b[39m`
+                        : (gc >= 1 && gc <= 6) ? `\x1b[${30 + gc}m${sym}\x1b[39m`
+                        : (gc >= 9 && gc <= 15) ? `\x1b[${90 + gc - 8}m${sym}\x1b[39m` : sym;
+                    wizGlyph.set(obj, symTxt);
+                    txt = txt.replace(/^(.) - /, (_m, c) => `${c} ${symTxt} `);
+                }
+                windowLines.push(txt);
+                lineObj.push(obj);
+            }
+        }
+        /* C wintty.c:1921-1922: select_menu's display_nhwindow pages a pline
+         * raised while the entries were formatted (doname's objnam.c:129
+         * "PREFIX too short") before the menu is drawn. */
+        await menu_entry_page();
+        /* C wintty.c tty_end_menu/process_menu_window — a menu with more than
+         * rows-1 lines is multi-page: it goes full-screen (offx = 0, cleared
+         * screen per page) with a "(n of N)" footer, instead of the right-aligned
+         * overlay.  Selectors are the objects' own invlets (add_menu's ch). */
+        /* wintty.c:1925-1928 — `!iflags.menu_overlay` forces the same offx 0,
+         * cleared-screen window however short the menu is. */
+        const wizNoOverlay = g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
+        /* wintty.c:1924 — single page maxrow = nitems + 1 ("(end)" row), so a
+         * menu of rows-1 lines already satisfies maxrow >= rows. */
+        const wizMaxLen = Math.max(...windowLines.map((ln) =>
+            ln.replace(/\x1b\[[0-9;]*m/g, '').length), '(end)'.length);
+        if (wizNoOverlay || windowLines.length + 1 >= TTY_MENU_ROWS || 78 - wizMaxLen <= 1) {
+            const stripSgr = (s) => s.replace(/\x1b\[[0-9;]*m/g, '');
+            const plist = windowLines.map((ln, i) => {
+                const o = lineObj[i];
+                if (!o) return { str: stripSgr(ln), selectable: false, inverse: i > 0 };
+                return { str: ln.slice(4 + (wizGlyph.has(o) ? wizGlyph.get(o).length - 1 : 0)), glyphTxt: wizGlyph.get(o), selectable: true,
+                         selector: ln[0], groupacc: o === WIZID_ALL ? String.fromCharCode(g.iflags.override_ID) : def_oc_syms_chars[o.oclass], payload: o };
+            });
+            const picked = await tty_menu_pick_any(plist, '', { noPrompt: true });
+            /* windows.c:1859-1863 keeps bot disabled during select_menu's
+             * dismissal; wintty.c:978-979 redraws AND flushes the map, and the
+             * first bot() after it (BL_RESET) rewrites status row 1 whole —
+             * same sequence as wiz_intrinsic. */
+            {
+                const savedBotDisabled = g._bot_disabled;
+                g._bot_disabled = true;
+                try {
+                    await docrt();
+                    await flush_screen(1);
+                } finally { g._bot_disabled = savedBotDisabled; }
+                g._status1WholeNext = true;
+                g._r1botAfterMap = g.level;
+            }
+            if (picked && picked.length) {
+                g.iflags.override_ID = 0;
+                const sel = new Set(picked.map((p) => p.item.payload));
+                /* C invent.c:3393-3405 walks selected[] in menu order
+                 * (tty_select_menu returns cw->mlist order), not pack order. */
+                for (const o of lineObj) {
+                    if (!o || !sel.has(o)) continue;
+                    if (o === WIZID_ALL) {
+                        await identify_pack(0, false);
+                        break;
+                    }
+                    if (not_fully_identified(o)) {
+                        fully_identify_obj(o);
+                        await prinv(null, o, 0);
+                    }
+                }
+            }
+            g._pending_message = g._pending_message || '';
+            await flush_screen(1);
+            return ECMD_OK;
+        }
+        windowLines.push('(end)');
+        lineObj.push(null);
+        const uacW = g.u?.uac ?? 0;
+        const maxLenW = windowLines.reduce((mx, ln) =>
+            Math.max(mx, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
+        const WIN_COL_W = Math.min(41, 78 - maxLenW);
+        const endRowW = windowLines.length - 1;
+        const endCursorColW = WIN_COL_W + 5 + 1; /* WIN_COL + len("(end)") + 1 */
+        /* C wintty.c set_item_state() — '-' unselected, '+' selected (a count
+         * would make it '#'; nothing in this menu attaches one). */
+        const selected = new Set();
+        /* C ref: win/tty/getline.c:213 — tty_getlin's closing
+         * clear_nhwindow(WIN_MESSAGE) blanks the WHOLE of screen row 0,
+         * including the window's own title text at column WIN_COL, and
+         * process_menu_window only repaints a page when page_start is reset,
+         * so within ONE select_menu() call the title never comes back. */
+        let titleErased = false;
+        const frameRows = () => {
+            const rows = windowLines.slice();
+            for (let i = 0; i < lineObj.length; i++) {
+                const o = lineObj[i];
+                if (o && selected.has(o))
+                    rows[i] = wizGlyph.has(o)
+                        ? rows[i].replace(` ${wizGlyph.get(o)} `, ' + ')
+                        : rows[i].replace(' - ', ' + ');
+            }
+            if (titleErased) rows[0] = '';
+            return build_window_screen(rows, WIN_COL_W, uacW).split('\n');
+        };
+        const repaint = () => {
+            g._screen_output = frameRows().join('\n');
+            set_cursor(endCursorColW, endRowW);
+        };
+        const accel = new Map();          /* keycode -> payload */
+        accel.set(0x5f /* '_' */, WIZID_ALL);
+        accel.set(g.iflags.override_ID /* visctrl'd group accelerator */, WIZID_ALL);
+        for (const o of unid) accel.set(o.invlet | 0, o);
+        /* C ref: wintty.c:2596-2600 tty_add_menu — a selectable entry's stored
+         * str is "%c - %s", which is what MENU_SEARCH's pmatchi() matches
+         * against (wintty.c:1714).  lineObj[] already marks which rendered rows
+         * are selectable, and those rows ARE that string. */
+        const mlist = [];
+        for (let i = 0; i < lineObj.length; i++)
+            if (lineObj[i]) mlist.push({ str: windowLines[i], payload: lineObj[i] });
+        let cancelled = false;
+        for (;;) {
+            repaint();
+            const raw = await nhgetch();
+            const k = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
+            if (k === 27) { g._ttyDismissMore = 1; cancelled = true; break; }  /* ESC — n = -1 */
+            if (k === 32 || k === 10 || k === 13) break;      /* single page: done */
+            /* C wintty.c:1650-1699: PAGE and ALL affect the same entries
+             * in this single-page menu.  The fake all-items row carries
+             * SKIPINVERT (invent.c:3250); windows.c:1562 governs bulk changes. */
+            const bulk = k === 46 || k === 44 ? 'select'
+                : k === 45 || k === 92 ? 'unselect'
+                : k === 64 || k === 126 ? 'invert' : null;
+            if (bulk) {
+                for (const o of lineObj) {
+                    if (!o) continue;
+                    const mode = g.iflags.menuinvertmode ?? 1;
+                    if (o === WIZID_ALL && (mode === 2
+                        || (mode === 1 && !selected.has(o)))) continue;
+                    if (bulk === 'select') selected.add(o);
+                    else if (bulk === 'unselect' || selected.has(o)) selected.delete(o);
+                    else selected.add(o);
+                }
+                continue;
+            }
+            // invent.c:3321-3327; wintty.c:1739-1747: class keys invert the group.
+            const group = unid.filter(o => def_oc_syms_chars[o.oclass]?.charCodeAt(0) === k);
+            if (!accel.has(k) && group.length) {
+                for (const o of group) {
+                    if (selected.has(o)) selected.delete(o); else selected.add(o);
+                }
+                continue;
+            }
+            const payload = accel.get(k);
+            if (payload) {
+                if (selected.has(payload)) selected.delete(payload);
+                else selected.add(payload);
+                continue;
+            }
+            if (k === 58 /* ':' MENU_SEARCH */) {
+                /* C ref: wintty.c:1700-1730.  PICK_ANY, so every match toggles
+                 * and the menu stays up. */
+                await menu_search_case('ANY', mlist, frameRows, (curr) => {
+                    if (selected.has(curr.payload)) selected.delete(curr.payload);
+                    else selected.add(curr.payload);
+                });
+                titleErased = true;
+                continue;
+            }
+        }
+        /* wintty.c:982: select_menu dismisses the corner before identification. */
+        docorner_blank_utf8_captures(WIN_COL_W - 1, windowLines.length + 1);
+        /* C invent.c:3383-3407 — with n > 0 and wizid: override_ID is cleared
+         * first (so the recursive perm_invent redraw does not re-filter), then
+         * the fake "all" object runs identify_pack(0, FALSE) and any other
+         * selection runs identify(otmp) == fully_identify_obj + prinv. */
+        if (!cancelled && selected.size) {
+            /* C invent.c:3389 — "identifying items will update perm_invent,
+             * calling this routine recursively, and we don't want the nested
+             * call to filter on unID'd items": override_ID is cleared BEFORE
+             * identify_pack/identify, so the prinv line those print is named
+             * with the object's real knowledge flags. */
+            g.iflags.override_ID = 0;
+            /* C invent.c:3393-3405 walks selected[] in menu order
+             * (tty_select_menu returns cw->mlist order), not pack order. */
+            for (const o of lineObj) {
+                if (!o || !selected.has(o)) continue;
+                if (o === WIZID_ALL) {
+                    await identify_pack(0, false);
+                    break;
+                }
+                if (not_fully_identified(o)) {
+                    fully_identify_obj(o);
+                    await prinv(null, o, 0);
+                }
+            }
+        }
+        /* After dismiss: erase the window back to the map-only view (docorner). */
+        g._pending_message = g._pending_message || '';
+        await flush_screen(1);
+        return ECMD_OK;
+    }
+    /* C invent.c:3227-3236 — Sprintf(prompt, "Debug Identify") with no
+     * " -- unidentified..." suffix (unid_cnt == 0), then the one add_menu_str. */
+    const windowLines = [
+        'Debug Identify',
+        '(all items are permanently identified already)',
+    ];
+    windowLines.push('(end)');
+    const maxLen = windowLines.reduce((max, ln) =>
+        Math.max(max, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
+    const WIN_COL = 80 - maxLen - 2;
+    const endRow = windowLines.length - 1;
+    const endCursorCol = WIN_COL + 5 + 1; /* WIN_COL + len("(end)") + 1 */
+    /* C ref: getline.c:213 — a MENU_SEARCH's tty_getlin ends with
+     * clear_nhwindow(WIN_MESSAGE), which blanks screen row 0 for the rest of
+     * this select_menu() call (the page is not repainted). */
+    let titleErased = false;
+    const frameRows = () =>
+        build_window_screen(titleErased ? ['', ...windowLines.slice(1)] : windowLines,
+                            WIN_COL, g.u?.uac ?? 0).split('\n');
+    const repaint = () => {
+        g._screen_output = frameRows().join('\n');
+        set_cursor(endCursorCol, endRow);
+    };
+    repaint();
+    /* C: select_menu(win, PICK_ANY, &selected).  The window has no selectable
+     * entry, so the tty loop ignores everything that is not a paging/dismiss
+     * key; ESC cancels, ' ' finishes the (single) page, '\n'/'\r' commit. */
+    for (;;) {
+        const keyCode = await nhgetch();
+        /* C win/tty/getline.c:245-247 — the ESC leaves dismiss_more at 1 for a
+         * later --More--, same xwaitforspace(resp) as the selectable branch. */
+        if (keyCode === 27)
+            g._ttyDismissMore = 1;
+        if (keyCode === 27 || keyCode === 32 || keyCode === 10 || keyCode === 13)
+            break;
+        if (keyCode === 58 /* ':' MENU_SEARCH */) {
+            /* C ref: wintty.c:1700-1730 — how is PICK_ANY, not PICK_NONE, so
+             * the tty_getlin DOES open even though this window has nothing
+             * selectable for pmatchi to find.  The prompt frame is a real,
+             * different screen; only the match loop is a no-op. */
+            await menu_search_case('ANY', [], frameRows, () => {});
+            titleErased = true;
+        }
+        repaint();
+    }
+    /* After dismiss: erase the window back to the map-only view (docorner). */
+    docorner_blank_utf8_captures(WIN_COL - 1, windowLines.length + 1);
+    g._pending_message = '';
+    await flush_screen(1);
+    } finally {
+        /* C ref: wizcmds.c:54 `iflags.override_ID = 0;` — restored on every
+         * exit from the command, including the ones this port takes by throw. */
+        g.iflags.override_ID = _savedOverrideID ?? 0;
+    }
+    /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
+    return ECMD_OK;
+}
+
+async function tty_menu_pick_any(mlist, prompt, opts = {}) {
+    const g = game;
+    /* C wintty.c tty_end_menu — prompt first, then a blank, then the items.
+     * opts.noPrompt: the caller supplies its own title line (add_menu_str) and
+     * ended the menu with no prompt, so nothing is prepended. */
+    const lines = opts.noPrompt ? [...mlist] : [
+        { str: prompt, selectable: false, inverse: true },
+        { str: '', selectable: false },
+        ...mlist,
+    ];
+    /* C: lmax = min(52, ttyDisplay->rows - 1); npages = (nitems + lmax-1)/lmax */
+    const lmax = Math.min(52, TTY_MENU_ROWS - 1);
+    const npages = Math.max(1, Math.ceil(lines.length / lmax));
+    /* C: selector letters restart at 'a' on every page and are consumed ONLY by
+     * selectable entries ("if (curr->identifier.a_void && !curr->selector)"). */
+    let menu_ch = 'a';
+    for (let n = 0; n < lines.length; n++) {
+        if (n % lmax === 0)
+            menu_ch = 'a';
+        const it = lines[n];
+        if (it.selectable && !it.selector) {
+            it.selector = menu_ch;
+            menu_ch = (menu_ch === 'z') ? 'A'
+                : String.fromCharCode(menu_ch.charCodeAt(0) + 1);
+        }
+        if (it.selectable) {
+            it.selected = !!it.selected;
+            if (it.count == null) it.count = -1;
+        }
+    }
+    const pageOf = (p) => lines.slice(p * lmax, (p + 1) * lmax);
+    /* C wintty.c set_item_state() — the INCREMENTAL one-character repaint after
+     * a toggle: '+' for a plain selection, '#' when a count is attached.  The
+     * full-page draw in process_menu_window uses '*' rather than '+' for a
+     * plain selection ("all selected: '*' vs count selected: '#'"), so the two
+     * paths genuinely differ and the mark has to be per-item state, not a
+     * function of `selected` alone. */
+    const set_item_state = (it) => {
+        it.mark = !it.selected ? '-' : (it.count === -1 ? '+' : '#');
+    };
+    const draw_item_state = (it) => {
+        it.mark = !it.selected ? (it.glyphTxt ?? '-') : (it.count === -1 ? '*' : '#');
+    };
+    /* C process_menu_window's per-line paint: putchar(' ') then the item's str,
+     * with the attribute starting at str[0] for a header/prompt line and at
+     * str[4] for a "%c - %s" menu line. */
+    const renderLine = (it) => {
+        if (!it.selectable) {
+            /* tty_end_menu's prompt spacer is an empty tty menu string.  It
+             * advances to the next row without painting the leading column;
+             * headers and real menu strings do paint that column. */
+            if (!it.str)
+                return '';
+            /* `inverse` marks the end_menu prompt (tty_end_menu, wintty.c:2688,
+             * drawn with tty_menu_promptstyle) and add_menu_heading lines
+             * (windows.c:1816) — both come from iflags.menu_headings, kept in
+             * sync by adjust_menu_promptstyle (allmain.c:728, options.c:5790),
+             * so style them with it, not a literal SGR 7.  Byte-identical to
+             * \x1b[7m under the default {NO_COLOR, ATR_INVERSE}. */
+            return it.inverse ? ` ${menu_heading_text(it.str)}` : ` ${it.str}`;
+        }
+        return ` ${it.selector} ${it.mark} ${it.str}`;
+    };
+    /* C ref: getline.c:213 — a MENU_SEARCH's tty_getlin ends with
+     * clear_nhwindow(WIN_MESSAGE), which blanks SCREEN row 0.  This menu is
+     * full-screen (offx == 0), so screen row 0 is the current page's first
+     * item row, and process_menu_window only repaints when page_start is reset
+     * — i.e. on a page change, which is what clears the flag below. */
+    let titleErased = false;
+    const frameRows = (page) => {
+        const pageLines = pageOf(page);
+        const rows = pageLines.map(renderLine);
+        /* C: Sprintf(cw->morestr, "(%d of %d)", curr_page+1, npages) when
+         * npages > 1, else "(end) "; dmore() puts it at column 1 of the row
+         * just past the last item and leaves the cursor after it. */
+        const footer = (npages > 1)
+            ? `(${page + 1} of ${npages})` : '(end)';
+        rows.push(` ${footer}`);
+        if (titleErased) rows[0] = '';
+        return { rows, footer };
+    };
+    const render = (page) => {
+        const { rows, footer } = frameRows(page);
+        g._screen_output = rows.join('\n');
+        /* tty_end_menu: the single-page morestr is "(end) " — trailing blank counts. */
+        set_cursor(footer.length + 1 + (npages > 1 ? 0 : 1), rows.length - 1);
+        g._pending_message = '';
+    };
+
+    let curr_page = 0, need_draw = true;
+    let counting = false, count = 0, reset_count = true;
+    let finished = false, cancelled = false;
+    while (!finished) {
+        if (reset_count) { counting = false; count = 0; } else reset_count = true;
+        if (need_draw) {
+            /* C: `if (!page_start)` — a page change repaints the whole screen
+             * (term_clear_screen for a full-screen menu), so a title row a
+             * MENU_SEARCH's getlin erased comes back here and nowhere else. */
+            titleErased = false;
+            for (const it of pageOf(curr_page))
+                if (it.selectable) draw_item_state(it);
+            need_draw = false;
+        }
+        render(curr_page);
+        const rawRead = await nhgetch();
+        const rawch = (rawRead >= 0 && rawRead < 128) ? String.fromCharCode(rawRead) : '';
+        const page = pageOf(curr_page);
+        /* C: an explicit page selector wins over any mapped menu command
+         * (MENU_EXPLICIT_CHOICE), so test the selectors first. */
+        const hit = page.find((it) => it.selectable && it.selector === rawch);
+        /* C wintty.c toggle_menu_curr() */
+        const toggle_menu_curr = (it) => {
+            if (it.selected) {
+                if (counting && count > 0) it.count = count;
+                else { it.selected = false; it.count = -1; }
+            } else if (counting && count > 0) {
+                it.count = count; it.selected = true;
+            } else if (!counting) {
+                it.selected = true;
+            }
+            set_item_state(it);
+        };
+        if (hit) {
+            toggle_menu_curr(hit);
+            continue;
+        }
+        /* C wintty.c:1739-1747: group accelerators invert matching entries
+         * across the entire menu, including entries on other pages. */
+        const group = lines.filter(it => it.selectable && it.groupacc && it.groupacc === rawch);
+        if (group.length) {
+            for (const it of group) toggle_menu_curr(it);
+            continue;
+        }
+        /* C wintty.c:1560 — non-explicit keys drive the switch through
+         * map_menu_cmd() (BINDINGS alias -> its command's key). */
+        const key = map_menu_cmd(rawRead);
+        const ch = (key >= 0 && key < 128) ? String.fromCharCode(key) : '';
+        if (ch >= '0' && ch <= '9') {
+            count = count * 10 + (key - 48);
+            if (count !== 0) { counting = true; reset_count = false; }
+            continue;
+        }
+        switch (key) {
+        case 27: /* '\033' — cancel from counting, or cancel the menu */
+            if (!counting) {
+                for (const it of lines)
+                    if (it.selectable) { it.selected = false; it.count = -1; }
+                cancelled = true;
+                finished = true;
+            }
+            break;
+        case 0: case 10: case 13: /* '\0' / '\n' / '\r' — commit */
+            finished = true;
+            break;
+        case 32: /* ' ' — next page, or finish on the last page */
+        case 62: /* MENU_NEXT_PAGE '>' — next page only */
+            if (curr_page !== npages - 1) { curr_page++; need_draw = true; }
+            else if (key === 32) finished = true;
+            break;
+        case 60: /* MENU_PREVIOUS_PAGE '<' */
+            if (curr_page !== 0) { curr_page--; need_draw = true; }
+            break;
+        case 94: /* MENU_FIRST_PAGE '^' */
+            if (curr_page !== 0) { curr_page = 0; need_draw = true; }
+            break;
+        case 124: /* MENU_LAST_PAGE '|' */
+            if (curr_page !== npages - 1) { curr_page = npages - 1; need_draw = true; }
+            break;
+        case 44: /* MENU_SELECT_PAGE ',' — set_all_on_page */
+            for (const it of page)
+                if (it.selectable && !it.selected) { it.selected = true; set_item_state(it); }
+            break;
+        case 92: /* MENU_UNSELECT_PAGE '\\' — unset_all_on_page */
+            for (const it of page)
+                if (it.selectable && it.selected) { it.selected = false; it.count = -1; set_item_state(it); }
+            break;
+        case 126: /* MENU_INVERT_PAGE '~' — invert_all_on_page */
+            for (const it of page) {
+                if (!it.selectable) continue;
+                if (it.selected) { it.selected = false; it.count = -1; }
+                else it.selected = true;
+                set_item_state(it);
+            }
+            break;
+        case 46: /* MENU_SELECT_ALL '.' */
+            /* C: set_all_on_page() first (those need screen updating), then the
+             * rest of the list with no repaint. */
+            for (const it of page)
+                if (it.selectable && !it.selected) { it.selected = true; set_item_state(it); }
+            for (const it of lines)
+                if (it.selectable && !it.selected) it.selected = true;
+            break;
+        case 45: /* MENU_UNSELECT_ALL '-' */
+            for (const it of page)
+                if (it.selectable && it.selected) { it.selected = false; it.count = -1; set_item_state(it); }
+            for (const it of lines)
+                if (it.selectable && it.selected) { it.selected = false; it.count = -1; }
+            break;
+        case 64: /* MENU_INVERT_ALL '@' */
+            for (const it of page) {
+                if (!it.selectable) continue;
+                if (it.selected) { it.selected = false; it.count = -1; }
+                else it.selected = true;
+                set_item_state(it);
+            }
+            for (const it of lines) {
+                if (!it.selectable || page.includes(it)) continue;
+                if (it.selected) { it.selected = false; it.count = -1; }
+                else it.selected = true;
+            }
+            break;
+        case 58: /* MENU_SEARCH ':' */
+            /* C ref: wintty.c:1700-1730 — tty_getlin("Search for:", tmpbuf),
+             * "*%s*", then pmatchi() over the WHOLE mlist (not just this page)
+             * toggling every selectable hit.  This driver is PICK_ANY, so it
+             * never finishes early.  What pmatchi sees is what tty_add_menu
+             * STORED, "%c - %s" (wintty.c:2596-2600) — the selector and a
+             * literal " - ", never the '*'/'+'/'#' the page is drawn with. */
+            if (await menu_search_case(
+                    'ANY',
+                    lines.filter((it) => it.selectable)
+                         .map((it) => ({ str: `${it.selector} - ${it.str}`, it })),
+                    () => frameRows(curr_page).rows,
+                    (curr) => toggle_menu_curr(curr.it)))
+                finished = true;
+            titleErased = true;
+            break;
+        default:
+            /* C: tty_nhbell() — unacceptable input, screen unchanged.
+             * getline.c:250-254 xwaitforspace(resp) swallows a key outside resp
+             * inside the wait, so a pending count survives it (reset_count
+             * stays FALSE); only keys in resp reach the switch and reset it. */
+            if (key !== (g._ttyDismissMore | 0)
+                && '<>^|,\\~.-@:'.indexOf(String.fromCharCode(key & 0xff)) < 0)
+                reset_count = false;
+            break;
+        }
+    }
+    if (cancelled)
+        return null;
+    return lines.filter((it) => it.selectable && it.selected)
+        .map((it) => ({ item: it, count: it.count }));
+}
+
+// ── C ref: wizcmds.c:949 wiz_intrinsic() — the #wizintrinsic command. ─────────
+//
+//   if (wizard) {
+//       win = create_nhwindow(NHW_MENU); start_menu(win, MENU_BEHAVE_STANDARD);
+//       if (iflags.cmdassist) add_menu_str(win, "[Precede any selection ...]");
+//       for (i = 0; (propname = property_by_index(i, &p)) != 0; ++i) {
+//           if (p == HALLUC_RES) continue;
+//           if (p == FIRE_RES) add_menu_str(win, "--");
+//           any.a_int = i + 1;
+//           oldtimeout = u.uprops[p].intrinsic & TIMEOUT;
+//           if (oldtimeout) Sprintf(buf, "%-27s [%li]", propname, oldtimeout);
+//           else Sprintf(buf, "%s", propname);
+//           add_menu(win, ..., &any, 0, 0, ATR_NONE, clr, buf, ...);
+//       }
+//       end_menu(win, "Which intrinsics?");
+//       n = select_menu(win, PICK_ANY, &pick_list);
+//       destroy_nhwindow(win);
+//       for (j = 0; j < n; ++j) { ...incr_itimeout + feedback per property... }
+//       docrt();
+//   } else
+//       pline(unavailcmd, ecname_from_fn(wiz_intrinsic));
+//   return ECMD_OK;
+//
+// no arm in doextcmd's dispatch chain, so JS painted the bare map across all six
+// menu frames and then dropped the two intrinsics the second invocation grants.
+// The second one is the load-bearing half: it puts a 30-turn timeout on FAST,
+// and Very_fast moves the hero's per-turn rn2(3) from allmain.c:135 to
+// allmain.c:131 for the next thirty turns.
+//
+// THE cmdassist SUBTITLE: drawn when iflags.cmdassist is on, which is the
+// blank, 21 entries] with no subtitle, in the organiser's recording and in a
+// moves carry `Odfamango\n>efjq\x1b` — an Options-menu visit at step 234 —
+// and its own frames prove the toggle: step 245 renders `j - cmdassist   [X]`
+// and step 248, after the 'j' at step 247, renders `j - cmdassist   [ ]`.
+// Appending `OPTIONS=cmdassist` to the rc could never have undone that, which
+// is why that control came back negative too.
+//
+// subtitle there: step 162 is [prompt, blank, SUBTITLE, 21 entries] with
+// #wizintrinsic window.
+//
+// js/optmenu.js:618 is where a toggle WOULD write through to
+// game.iflags.cmdassist (its doset_data row is box "iflags", fld "cmdassist"),
+export async function wiz_intrinsic() {
+    const g = game;
+    g.context = g.context || {};
+    g.context.move = 0; /* ECMD_OK — the command costs no turn either way */
+    if (!(g.flags && g.flags.debug)) {
+        /* C cmd.c:157 unavailcmd = "Unavailable command '%s'.", filled from
+         * ecname_from_fn(wiz_intrinsic) = ef_txt, which has NO leading '#'. */
+        await pline("Unavailable command 'wizintrinsic'.");
+        return;
+    }
+    const u = g.u || (g.u = {});
+    if (!u.uprops) u.uprops = {};
+    const mlist = [];
+    if (game.iflags?.cmdassist !== false)
+        mlist.push({ str: '[Precede any selection with a count to increment by other than 30.]',
+                     selectable: false });
+    for (let i = 0; ; i++) {
+        const [p, propname] = property_by_index(i);
+        if (propname == null)
+            break;                                  /* C: the { 0, 0 } terminator */
+        if (p === HALLUC_RES)
+            continue;                               /* wizcmds.c:975 */
+        if (p === FIRE_RES)
+            mlist.push({ str: '--', selectable: false }); /* wizcmds.c:981 */
+        /* HDeaf lives in the flat u.HDeaf slot on the live path (music.js drum,
+         * allmain.js nh_timeout_deaf), not in uprops[DEAF].intrinsic. */
+        const oldtimeout = (((u.uprops[p]?.intrinsic | 0)
+                             | (p === DEAF ? (u.HDeaf | 0) : 0)) & TIMEOUT);
+        /* C: Sprintf(buf, "%-27s [%li]", propname, oldtimeout) */
+        const buf = oldtimeout
+            ? `${propname.padEnd(27)} [${oldtimeout}]`
+            : propname;
+        mlist.push({ str: buf, selectable: true, propIdx: i, prop: p });
+    }
+    const picks = await tty_menu_pick_any(mlist, 'Which intrinsics?');
+    /* C: destroy_nhwindow(win) — the tty dismisses a full-screen menu by
+     * redrawing the map underneath it. */
+    /* windows.c:1859-1863 keeps bot disabled during select_menu's dismissal;
+     * wintty.c:978-979 redraws AND flushes the map before status can repaint. */
+    const savedBotDisabled = g._bot_disabled;
+    g._bot_disabled = true;
+    /* docrt's cls() (display.c:1748,2198) blanks the status rows and bot() is
+     * disabled, so a notice_all_mons --More-- raised inside docrt pages over
+     * blank status rows (same latch as tty_menu.js's dismissal). */
+    g._statusBlankAfterDocrt = true;
+    try {
+        await docrt();
+        await flush_screen(1);
+    } finally { g._bot_disabled = savedBotDisabled; }
+    g._status1WholeNext = true;
+    g._r1botAfterMap = g.level; /* same ordering as _dismissMenu: bot() rewrites row 1 after the map */
+    /* The physical frame the closing docrt()'s --More-- will page over.
+     * C wizcmds.c:1098 docrt() -> display.c:1748 cls() -> display.c:2196
+     *     display_nhwindow(WIN_MESSAGE, FALSE);   <- wintty.c:1874-1875 more()
+     *     disp.botlx = TRUE;                      <- only AFTER that more()
+     * so nothing repaints between the last pline and that page: the physical
+     * screen still holds whatever the last flush_screen()/bot() put there.
+     * Which arm that was is decided per iteration, below; null means "the arm
+     * repainted", i.e. render live. */
+    let frozenPaint = null;
+    for (const pick of (picks || [])) {
+        const p = pick.item.prop;
+        const propname = property_by_index(pick.item.propIdx)[1];
+        const prop = u.uprops[p] || (u.uprops[p] = { intrinsic: 0, extrinsic: 0 });
+        /* stands in for C's `goto def_feedback` (wizcmds.c:1065, 1073, 1076) —
+         * WARN_OF_MON jumps into the default arm and GLIB falls through to it. */
+        let def_feedback = false;
+        /* C has ONE HDeaf; here it can live in the flat u.HDeaf (menu builder above). */
+        const oldtimeout = ((prop.intrinsic | 0) | (p === DEAF ? (u.HDeaf | 0) : 0)) & TIMEOUT;
+        /* C: amt = (count == -1L) ? DEFAULT_TIMEOUT_INCR : count; if (amt <= 0) continue */
+        const amt = (pick.count === -1) ? DEFAULT_TIMEOUT_INCR : (pick.count | 0);
+        if (amt <= 0)
+            continue;
+        let newtimeout = oldtimeout + amt;
+        /* C wizcmds.c:1015-1021 — sickness/sliming/stoning never get EXTENDED. */
+        if (p === SICK || p === SLIMED || p === STONED) {
+            if (oldtimeout > 0 && newtimeout > oldtimeout)
+                newtimeout = oldtimeout;
+        }
+        /* C wizcmds.c:1023-1088 — the per-property arm.  Everything that needs a
+         * make_*() this port does not carry is surfaced rather than guessed: each
+         * of those arms has its own message (and SICK has its own rn2(2)), so a
+         * silent fallthrough to the `default` arm would print the wrong topline
+         * AND, for SICK, drop an RNG call. */
+        /* make_sick (potion.c:150-163) plines "You feel deathly sick." BEFORE
+         * set_itimeout(&Sick)/u.usick_type/disp.botl, so SICK is STALE too. */
+        const armLeavesStatusStale = (p === BLINDED || p === STUNNED
+                                      || p === SICK);
+        let postArmPaint = null;
+        /* An earlier arm's frozen frame is still what the terminal holds: no
+         * flush_screen() runs between arms (make_stunned's SET_BOTL waits for
+         * the next pline), so re-capturing here would act as a flush and
+         * latch the earlier arm's Stun into _lastPaintedBotl, which the
+         * closing page then shows. */
+        const preArmPaint = armLeavesStatusStale
+            ? (frozenPaint || capture_painted_frame_with_status()) : null;
+        switch (p) {
+        case BLINDED:
+            make_blinded(newtimeout, true);
+            break;
+        /* C wizcmds.c:1030 make_confused() is #if 0'd out — CONFUSION uses the
+         * `default` arm "because make_confused() only gives feedback when
+         * confusion is ending".  Do not add a case for it. */
+        case DEAF:
+            /* C wizcmds.c:1033 make_deaf(newtimeout, TRUE) */
+            await make_deaf(newtimeout, true);
+            break;
+        case HALLUC:
+            /* C wizcmds.c:1036 make_hallucinated(newtimeout, TRUE, 0L) */
+            await make_hallucinated(newtimeout, true, 0);
+            break;
+        case SICK: {
+            /* C wizcmds.c:1039-1040:
+             *     typ = !rn2(2) ? SICK_VOMITABLE : SICK_NONVOMITABLE;
+             *     make_sick(newtimeout, wizintrinsic, TRUE, typ);
+             * This rn2(2) is the caller's; make_sick() then draws a SECOND one
+             * inside exercise(A_CON, FALSE) (attrib.c:509) whenever the hero
+             * ends up Sick.  `wizintrinsic` is the literal "#wizintrinsic",
+             * which make_sick() string-compares to pick KILLED_BY over
+             * KILLED_BY_AN (potion.c:185-186). */
+            const typ = !rn2(2) ? SICK_VOMITABLE : SICK_NONVOMITABLE;
+            await make_sick(newtimeout, WIZINTRINSIC, true, typ);
+            break;
+        }
+        case SLIMED:
+            /* C wizcmds.c:1042-1045:
+             *     Sprintf(buf, fmt, !Slimed ? "" : " still", "turning into slime");
+             *     make_slimed(newtimeout, buf);
+             * fmt is "You are%s %s." (wizcmds.c:953) and the Slimed test is read
+             * BEFORE the setter runs. */
+            await make_slimed(newtimeout,
+                `You are${!(prop.intrinsic | 0) ? '' : ' still'} turning into slime.`);
+            break;
+        case STONED:
+            /* C wizcmds.c:1047-1051 make_stoned(newtimeout, buf, KILLED_BY,
+             *                                   wizintrinsic) */
+            await make_stoned(newtimeout,
+                `You are${!(prop.intrinsic | 0) ? '' : ' still'} turning into stone.`,
+                KILLED_BY, WIZINTRINSIC);
+            break;
+        case STUNNED:
+            /* C wizcmds.c:1053 make_stunned(newtimeout, TRUE) */
+            make_stunned(newtimeout, true);
+            break;
+        case VOMITING: {
+            /* C wizcmds.c:1055-1059 — note talk is FALSE and the message is
+             * plined by the CALLER afterwards, unlike every sibling arm. */
+            const vomMsg = `You are${!(prop.intrinsic | 0) ? '' : ' still'} vomiting.`;
+            await make_vomiting(newtimeout, false);
+            await pline(vomMsg);
+            break;
+        }
+        case WARN_OF_MON:
+            /* C wizcmds.c:1061-1067 — seed the warned-of species, then
+             *     goto def_feedback;
+             * i.e. WARN_OF_MON DOES get incr_itimeout() and the "Timeout for"
+             * pline.  The `Sprintf`-free arm is modelled with def_feedback
+             * below because JS has no goto. */
+            if (!Warn_of_mon_prop(u)) {
+                const warntype = g.context.warntype = g.context.warntype || {};
+                warntype.speciesidx = PM_GRID_BUG;
+                warntype.species = permonstTemplate(PM_GRID_BUG);
+            }
+            def_feedback = true;
+            break;
+        case GLIB:
+            /* C wizcmds.c:1069-1074 — make_glib() does its own set_itimeout, so
+             * the shared feedback tail must NOT incr_itimeout() again; C
+             * expresses that as `if (p != GLIB)` inside def_feedback.  The
+             * FALLTHROUGH into `default` is why GLIB still gets the pline. */
+            make_glib(newtimeout);
+            /* FALLTHROUGH */
+        default:
+            def_feedback = true;
+            break;
+        }
+        if (def_feedback) {
+            /* C wizcmds.c:1076-1084  def_feedback:
+             *     if (p != GLIB)
+             *         incr_itimeout(&u.uprops[p].intrinsic, amt);
+             *     disp.botl = TRUE;
+             *     pline("Timeout for %s %s %d.", propname,
+             *           oldtimeout ? "increased by" : "set to", amt); */
+            if (p !== GLIB)
+                incr_itimeout_prop(prop, amt);
+            g.disp = g.disp || {};
+            g.disp.botl = 1;
+            await pline(`Timeout for ${propname} `
+                + `${oldtimeout ? 'increased by' : 'set to'} ${amt}.`);
+            /* float_vs_flight() runs only after this pline (wizcmds.c:1086-1088),
+             * so the bot() above painted Flying not yet blocked by Levitation:
+             * C's page reads "Fly Lev", the post-fixup state reads "Lev". */
+            /* rescham() likewise queues revealed mimic glyphs after the pline
+             * (wizcmds.c:1083-1084; mon.c:4409-4426).  cls() pages the message
+             * before flushing those glyphs, retaining the disguised map. */
+            if (p === LEVITATION || p === FLYING || p === PROT_FROM_SHAPE_CHANGERS)
+                postArmPaint = capture_painted_frame_with_status();
+        }
+        /* The LAST arm decides: a later repainting arm discharges an earlier
+         * arm's freeze, exactly as its bot() would in C. */
+        /* A BLINDED arm that merely extends a running blindness (potion.c:
+         * xtime && old) neither plines nor flags botl, so it discharges
+         * nothing: the physical frame an earlier stale arm froze stays. */
+        /* make_deaf (potion.c:450-456) flags botl and speaks only when
+         * (xtime != 0) ^ (old != 0); extending a running deafness is silent. */
+        if (((p === BLINDED && (oldtimeout | 0) !== 0)
+             || (p === DEAF && (oldtimeout | 0) !== 0 && (newtimeout | 0) !== 0))
+            && frozenPaint) {
+            /* keep the earlier arm's frozen frame */
+        } else
+            frozenPaint = armLeavesStatusStale ? preArmPaint : postArmPaint;
+        /* C wizcmds.c:1086-1094 — the post-arm fixups.  Note C's `else if`: a
+         * property is never both LEVITATION/FLYING and
+         * PROT_FROM_SHAPE_CHANGERS, but the shape is preserved. */
+        if (p === LEVITATION || p === FLYING)
+            float_vs_flight();
+        else if (p === PROT_FROM_SHAPE_CHANGERS)
+            await rescham();
+        if ((p === WWALKING || p === LEVITATION || p === FLYING) && u.uinwater)
+            await pooleffects(false);
+    }
+    /* C display.c:1740 runs vision_recalc(2) before cls() pages the
+     * message window.  That recalculation can announce newly sensed
+     * monsters (vision.c:856), and its pline flushes the darkened map.
+     * docrt(true) records cls()'s page and physical frame at that point. */
+    const pendingAtCls = g._pending_message || '';
+    await docrt(true);
+    /* docrt()'s own diagnostics (see_monsters -> newsym() impossible(),
+     * display.c:930-935) are plined AFTER cls()'s more(): the last of them
+     * stands on the topline instead of being paged (topl.c:300). */
+    const postCls = !!pendingAtCls
+        && String(g._pending_message).startsWith(pendingAtCls + '  ');
+    let standing = false;
+    if (g._pending_message) {
+        /* Page the topline over the frame C's physical terminal still holds --
+         * see frozenPaint above.  Null on every arm that repainted, so those
+         * pages stay byte-identical. */
+        const savedSnap = g._paintedSnapshot;
+        if (frozenPaint) g._paintedSnapshot = frozenPaint;
+        standing = !!await force_more_pages(g._pending_message, true, false,
+                                            postCls ? pendingAtCls : null);
+        if (frozenPaint) g._paintedSnapshot = savedSnap || null;
+    }
+    if (!standing) g._pending_message = '';
+    /* C wizcmds.c:1092-1094: docrt() then return -- no flush_screen here;
+     * the moveloop's own flush (after see_monsters) paints the frame. */
+}
+
+/* C ref: wizcmds.c:958 #define DEFAULT_TIMEOUT_INCR 30 */
+const DEFAULT_TIMEOUT_INCR = 30;
+
+/* C ref: wizcmds.c:950  static const char wizintrinsic[] = "#wizintrinsic".
+ * Load-bearing, not decorative: make_sick() strcmp()s the cause against this
+ * exact string to choose KILLED_BY over KILLED_BY_AN (potion.c:185-186). */
+const WIZINTRINSIC = "#wizintrinsic";
+
+async function print_dungeon_text() {
+    const g = game;
+    const dungeonsFull = g._dungeons_full || [];
+    const n_dgns = g._n_dgns | 0;
+    const branches = g._dungeon_branches || [];
+    const end1_dnum = (br) => (br.end1_floating ? n_dgns : (br.end1.dnum | 0));
+    /* C add_level (dungeon.c:544) keeps svs.sp_levchn ordered by dnum, then by
+     * ascending dlevel within a dnum. */
+    const spLevchn = (g._sp_levchn || []).slice().sort((a, b) =>
+        (a.dlevel.dnum - b.dlevel.dnum) || (a.dlevel.dlevel - b.dlevel.dlevel));
+
+    const win = create_nhwindow(3 /* NHW_MENU */);
+
+    for (let i = 0; i < n_dgns; i++) {
+        const dptr = dungeonsFull[i];
+        if (!dptr) continue;
+        /* C:2309-2310's `bymenu && In_endgame(&u.uz)` filter is bymenu-only. */
+        const unplaced = _pd_unplaced_floater_txt(i, branches, end1_dnum);
+        const descr = unplaced ? 'depth' : 'level';
+        const nlev = dptr.num_dunlevs | 0;
+        let buf;
+        if (nlev > 1)
+            buf = `${dptr.dname}: ${makeplural_objnam(descr)} ${dptr.depth_start}`
+                + ` to ${dptr.depth_start + nlev - 1}`;
+        else
+            buf = `${dptr.dname}: ${descr} ${dptr.depth_start}`;
+        /* C:2323-2329 — "Most entrances are uninteresting." */
+        if ((dptr.entry_lev | 0) !== 1) {
+            if ((dptr.entry_lev | 0) === nlev)
+                buf += ', entrance from below';
+            else
+                buf += `, entrance on ${dptr.depth_start + dptr.entry_lev - 1}`;
+        }
+        putstr(win, 0, buf);
+
+        let last_level = 0;
+        for (const slev of spLevchn) {
+            if (slev.dlevel.dnum !== i) continue;
+            print_branch(win, i, last_level, slev.dlevel.dlevel, false, null, branches, dungeonsFull, end1_dnum);
+            let lbuf = `${_pd_chr_u_on_lvl(slev.dlevel)} ${slev.proto}: `
+                + `${_pd_depth(slev.dlevel, dungeonsFull)}`;
+            if (Is_stronghold(slev.dlevel))
+                lbuf += ` (tune ${g._tune || ''})`;
+            putstr(win, 0, lbuf);
+            last_level = slev.dlevel.dlevel;
+        }
+        print_branch(win, i, last_level, 127 /* MAXLEVEL */, false, null, branches, dungeonsFull, end1_dnum);
+    }
+
+    /* C:2384-2396 — floating branches (an unplaced Fort Ludios). */
+    let first = true;
+    for (const br of branches) {
+        if (end1_dnum(br) === n_dgns) {
+            if (first) {
+                putstr(win, 0, '');
+                putstr(win, 0, 'Floating branches');
+                first = false;
+            }
+            const dnameEnd2 = (dungeonsFull[br.end2.dnum] || {}).dname || '';
+            putstr(win, 0, `   ${_pd_br_string(br.type)} to ${dnameEnd2}`);
+        }
+    }
+
+    /* C:2398-2433 — "I hate searching for the invocation pos while debugging." */
+    const uz = g.u?.uz || { dnum: 0, dlevel: 0 };
+    if (Invocation_lev_dgn(uz)) {
+        putstr(win, 0, '');
+        putstr(win, 0, `Invocation position @ (${g.svi.inv_pos.x | 0},`
+            + `${g.svi.inv_pos.y | 0}), hero @ (${g.u?.ux | 0},${g.u?.uy | 0})`);
+    } else {
+        let buf = '';
+        let trap = null;
+        for (let t = g.ftrap; t; t = t.ntrap)
+            if ((t.ttyp | 0) === MAGIC_PORTAL) { trap = t; break; }
+        if (trap)
+            buf = `Portal @ (${trap.tx | 0},${trap.ty | 0}), `
+                + `hero @ (${g.u?.ux | 0},${g.u?.uy | 0})`;
+        /* C:2422-2425 — only expect a portal on these levels. */
+        else if (Is_earthlevel(uz) || Is_waterlevel(uz) || Is_firelevel_cmd(uz)
+                 || Is_airlevel(uz) || on_level(uz, g.qstart_level)
+                 || _pd_at_dgn_entrance('The Quest', branches, dungeonsFull, end1_dnum)
+                 || Is_knox_level(uz))
+            buf = 'No portal found.';
+        if (buf) {
+            putstr(win, 0, '');
+            putstr(win, 0, buf);
+        }
+    }
+
+    await display_nhwindow(win, true);
+    destroy_nhwindow(win);
+    return 0;
+}
+
+/* C ref: dungeon.c:2175 unplaced_floater(dptr) — TRUE only for the Fort Ludios
+ * dungeon while its branch entrance still floats.  The bymenu twin above takes
+ * a pre-floated branch copy; this one reads the `end1_floating` flag instead. */
+function _pd_unplaced_floater_txt(dnum, branches, end1_dnum) {
+    const g = game;
+    const knoxDnum = g.knox_level ? g.knox_level.dnum : -1;
+    if (dnum !== knoxDnum) return false;
+    const n_dgns = g._n_dgns | 0;
+    for (const br of (branches || []))
+        if (end1_dnum(br) === n_dgns && br.end2.dnum === dnum) return true;
+    return false;
+}
+
+/* C ref: dungeon.c:1897 at_dgn_entrance(s) — on_level(&u.uz, &dungeon_branch(s)->end1).
+ * dungeon_branch(s) (dungeon.c:1878) finds the branch whose end2 dungeon is
+ * named s; C panics when there is none, which cannot happen for "The Quest". */
+function _pd_at_dgn_entrance(dname, branches, dungeonsFull, end1_dnum) {
+    return at_dgn_entrance(dname);
+}
+
+/* C ref: wizcmds.c:1934 wiz_custom() — #wizcustom. */
+export async function wiz_custom() {
+    if (!wizard()) return ECMD_OK;
+    const g = game;
+    const menu = new TtyMenu();
+    menu.add_menu_heading('    glyph  glyph identifier                        '
+                          + '     sym   clr customcolor unicode utf8');
+    /* wizcmds.c:1952-1962: symset name (or "default"), ", active" when the
+     * primary set is current, ", handler=<known_handling>" when set. */
+    const set = gs.symset[0] || {};
+    wizcustom_glyphids(menu);
+    let bufa = `#wizcustom: colorcount=${(g.iflags.colorcount ?? 256) | 0} ${set.name ? set.name : 'default'}`;
+    if (set.name) bufa += ', active';
+    if (set.handling) bufa += ', handler=' + ['UNKNOWN', 'IBM', 'DEC', 'CURS', 'MAC', 'UTF8'][set.handling];
+    menu.end_menu(bufa);
+    await menu.select_menu(PICK_NONE);
+    await docrt(); /* wizcmds.c:1980 */
+    return ECMD_OK;
+}
+
+/* C ref: wizcmds.c:218 wiz_where() — the #wizwhere command.
+ *     if (wizard) (void) print_dungeon(FALSE, (schar *) 0, (xint16 *) 0);
+ *     else pline(unavailcmd, ecname_from_fn(wiz_where));
+ *     return ECMD_OK;
+ * cmd.c:1999 flags it IFBURIED | AUTOCOMPLETE | WIZMODECMD with no key, so the
+ * name chain (doextcmd) is the only way in. */
+export async function wiz_where() {
+    /* `wizard` is a FUNCTION (js/gstate.js:19), so the bare `if (wizard)` that
+     * stood here was ALWAYS TRUE and the else arm was dead — fn-truthy-lint's
+     * HARD class, the same defect c5dd49a6 removed from wiz_genesis. */
+    if (wizard()) {
+        await print_dungeon_text();
+    } else {
+        /* C wizcmds.c:223 pline(unavailcmd, ecname_from_fn(wiz_where)) —
+         * ecname_from_fn returns extcmdlist[].ef_txt, which carries NO leading
+         * '#'.  The recordings show `Unavailable command 'wizlevelport'.` for
+         * the sibling command, so this text was wrong by one character. */
+        await pline("Unavailable command 'wizwhere'.");
+    }
+    return ECMD_OK;
+}
+
+export async function wiz_level_tele() {
+    if (wizard())
+        await level_tele();
+    else
+        await pline("Unavailable command 'wizlevelport'.");
+    /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
+    return ECMD_OK;
+}
+
+// C ref: wizcmds.c:176 wiz_map() — the "wizmap" command, bound to C('f')
+// (Ctrl+F) at cmd.c:1982 and reachable by name as '#wizmap'.  WIZMODECMD: in
+// wizard (playmode:debug) mode it reveals traps/engravings then calls
+// do_mapping() (detect.c:1423), whose only RNG is exercise(A_WIS, TRUE) →
+// rn2(19) [detect.c:1444, attrib.c:509].  Returns ECMD_OK — no turn consumed.
+// Mirrors the other wiz-command dispatches (^V/^W), which assume wizard mode
+//
+// C wizcmds.c:184-190 — BEFORE do_mapping(), wiz_map marks every trap on the
+// level seen and maps its glyph, and maps every engraving:
+//     for (t = gf.ftrap; t; t = t->ntrap) { t->tseen = 1; map_trap(t, TRUE); }
+//     for (ep = head_engr; ep; ep = ep->nxt_engr) map_engraving(ep, TRUE);
+// This is what makes do_mapping's show_map_spot trap branch (detect.c:1407
+// `t_at(x,y) && t->tseen`) fire — without it the magic-mapped background
+// overwrites every trap cell and the level shows no traps at all.  Both loops
+// are RNG-free (display channel only), so the leaf stream is unchanged.
+// HConfusion/HHallucination are saved+cleared around the call in C;
+// do_mapping() here already passes cnf=0 and no hallucination glyph
+// substitution exists on this path, so the save/restore is a no-op.
+export async function wiz_map() {
+    if (!wizard()) {
+        await pline("Unavailable command 'wizmap'.");
+        return ECMD_OK;
+    }
+    const _wizConfProp = game.u?.uprops?.[CONFUSION];
+    const _wizHalluProp = game.u?.uprops?.[HALLUC];
+    const _wizConfSaved = _wizConfProp?.intrinsic ?? 0;
+    const _wizHalluSaved = _wizHalluProp?.intrinsic ?? 0;
+    if (_wizConfProp) _wizConfProp.intrinsic = 0;
+    if (_wizHalluProp) _wizHalluProp.intrinsic = 0;
+    game.a11y ??= {};
+    game.a11y.mon_notices_blocked = (game.a11y.mon_notices_blocked || 0) + 1; // wizcmds.c:183
+    try {
+        for (let t = game.ftrap; t; t = t.ntrap) {
+            t.tseen = 1;
+            map_trap(t, 1);
+        }
+        for (const ep of engravings_list())
+            map_engraving(ep, 1);
+        await do_mapping();
+    } finally {
+        game.a11y.mon_notices_blocked--; // wizcmds.c:193 notice_mon_on()
+        if (_wizConfProp) _wizConfProp.intrinsic = _wizConfSaved;
+        if (_wizHalluProp) _wizHalluProp.intrinsic = _wizHalluSaved;
+    }
+    /* C wizcmds.c:192-200 leaves do_mapping()'s messages on the topline,
+     * including any wall_angle() diagnostics raised while revealing terrain. */
+    /* C: this handler returns ECMD_OK on every path; rhack() maps it. */
+    return ECMD_OK;
+}
+
+/* C ref: cmd.c:1072 `const char *levltyp[MAX_TYPE + 2]` — the terrain-type
+ * names, indexed by levl[][].typ.  Entry MAX_TYPE (37) is not a real terrain
+ * type; wiz_map_levltyp() uses it for undiggable stone.  Entry 38 is the empty
+ * padding string that makes SIZE(levltyp) even, and wiz_levltyp_legend()'s
+ * `last = SIZE(levltyp) & ~1` drops it again whenever the real count is odd
+ * (which it is: 38 real entries, so `last` is 38 and index 38 is never read).
+ * Kept in C's order because BOTH readers below derive their letter from the
+ * INDEX, not from the string. */
+const levltyp = [
+    "stone", "vertical wall", "horizontal wall", "top-left corner wall",
+    "top-right corner wall", "bottom-left corner wall",
+    "bottom-right corner wall", "cross wall", "tee-up wall", "tee-down wall",
+    "tee-left wall", "tee-right wall", "drawbridge wall", "tree",
+    "secret door", "secret corridor", "pool", "moat", "water",
+    "drawbridge up", "lava pool", "lava wall", "iron bars", "door",
+    "corridor", "room", "stairs", "ladder", "fountain", "throne", "sink",
+    "grave", "altar", "ice", "drawbridge down", "air", "cloud",
+    /* not a real terrain type, but used for undiggable stone
+       by wiz_map_levltyp() */
+    "unreachable/undiggable",
+    /* padding in case the number of entries above is odd */
+    "",
+];
+
+/* wizcmds.c:706-711's int-to-char conversion, shared by wiz_map_levltyp() (on
+ * levl[x][y].typ) and wiz_levltyp_legend() (on the levltyp[] index), which is
+ * why C's legend carries the comment "same int-to-char conversion". */
+function _levltyp_base36(n) {
+    return n < 10 ? String.fromCharCode(48 + n)             /* '0' + n      */
+         : n < 36 ? String.fromCharCode(97 + n - 10)        /* 'a' + n - 10 */
+                  : String.fromCharCode(65 + n - 36);       /* 'A' + n - 36 */
+}
+
+function _wiz_map_levltyp_dsc() {
+    const g = game;
+    const uz = g.u?.uz;
+    const lf = g.level?.flags || {};
+    const slev = sp_levchn_lookup(uz);
+    let dsc = `D:${uz?.dnum | 0},L:${uz?.dlevel | 0}`;
+    /* [dungeon branch features currently omitted] */
+    /* special level features */
+    if (slev) {
+        dsc += ` "${slev.proto}"`;
+        /* special level flags (note: dungeon.def doesn't set `maze' or `hell'
+           for any specific levels so those never show up) */
+        if (slev.flags?.maze_like) dsc += ' mazelike';
+        if (slev.flags?.hellish) dsc += ' hellish';
+        if (slev.flags?.town) dsc += ' town';
+        if (slev.flags?.rogue_like) dsc += ' roguelike';
+        /* alignment currently omitted to save space */
+    }
+    /* level features.  C prints defsyms[S_fountain].sym / defsyms[S_sink].sym,
+     * and defsym.h:133-134 gives BOTH of them '{' — the two counts really are
+     * spelled the same way and are told apart only by their order. */
+    if (lf.nfountains) dsc += ` {:${lf.nfountains | 0}`;
+    if (lf.nsinks) dsc += ` {:${lf.nsinks | 0}`;
+    if (lf.has_vault) dsc += ' vault';
+    if (lf.has_shop) dsc += ' shop';
+    if (lf.has_temple) dsc += ' temple';
+    if (lf.has_court) dsc += ' throne';
+    if (lf.has_zoo) dsc += ' zoo';
+    if (lf.has_morgue) dsc += ' morgue';
+    if (lf.has_barracks) dsc += ' barracks';
+    if (lf.has_beehive) dsc += ' hive';
+    if (lf.has_swamp) dsc += ' swamp';
+    /* level flags */
+    if (lf.noteleport) dsc += ' noTport';
+    if (lf.hardfloor) dsc += ' noDig';
+    if (lf.nommap) dsc += ' noMMap';
+    if (!lf.hero_memory) dsc += ' noMem';
+    if (lf.shortsighted) dsc += ' shortsight';
+    if (lf.graveyard) dsc += ' graveyard';
+    if (lf.is_maze_lev) dsc += ' maze';
+    if (lf.is_cavernous_lev) dsc += ' cave';
+    if (lf.arboreal) dsc += ' tree';
+    if (lf.sokoban_rules) dsc += ' sokoban-rules';   /* C rm.h:538 Sokoban */
+    /* non-flag info; probably should include dungeon branching
+       checks (extra stairs and magic portals) here */
+    if (Invocation_lev_dgn(uz)) dsc += ' invoke';
+    if (_on_W_tower_level(uz)) dsc += ' tower';
+    /* append a branch identifier for completeness' sake */
+    const dnum = uz?.dnum | 0;
+    if (dnum === 0) dsc += ' dungeon';
+    else if (dnum === (g.mines_dnum | 0)) dsc += ' mines';
+    else if (In_sokoban(uz)) dsc += ' sokoban';
+    else if (dnum === (g.quest_dnum | 0)) dsc += ' quest';
+    else if (Is_knox_level(uz)) dsc += ' ludios';
+    else if (dnum === 1) dsc += ' gehennom';
+    else if (dnum === (g.tower_dnum | 0)) dsc += ' vlad';
+    else if (In_endgame(uz)) dsc += ' endgame';
+    else {
+        /* somebody's added a dungeon branch we're not expecting */
+        let brname = g.dungeons?.[dnum]?.dname;
+        if (!brname) brname = 'unknown';
+        if (brname.slice(0, 4).toLowerCase() === 'the ') brname = brname.slice(4);
+        dsc += ` ${brname}`;
+    }
+    /* limit the line length to map width */
+    if (dsc.length >= COLNO) dsc = dsc.slice(0, COLNO - 1); /* truncate */
+    return dsc;
+}
+
+export async function wiz_map_levltyp() {
+    const g = game;
+    const lines = [];
+    /* map row 0, levl[][0], is drawn on the second line of tty screen */
+    lines.push('');  /* tty only: blank top line */
+    for (let y = 0; y < ROWNO; y++) {
+        /* map column 0, levl[0][], is off the left edge of the screen;
+           it should always have terrain type "undiggable stone" */
+        let row = '';
+        for (let x = 1; x < COLNO; x++) {
+            const terrain = g.level?.at(x, y)?.typ | 0;
+            /* assumes there aren't more than 10+26+26 terrain types */
+            row += (terrain === STONE && !may_dig(x, y)) ? '*'
+                                                        : _levltyp_base36(terrain);
+        }
+        if ((g.level?.at(0, y)?.typ | 0) !== STONE || may_dig(0, y))
+            row += '!';
+        lines.push(row);
+    }
+    lines.push(_wiz_map_levltyp_dsc());
+    await display_text_window(lines);
+}
+
+/* C ref: wizcmds.c:838-877 wiz_levltyp_legend() — "explanation of base-36
+ * output from wiz_map_levltyp()", i.e. menu entry 6.  Another NHW_TEXT window.
+ *
+ * Two columns: the left holds levltyp[0..last/2-1] and the right
+ * levltyp[last/2..last-1], emitted a pair at a time.  `last` is
+ * SIZE(levltyp) & ~1 == 38, so the padding entry at index 38 is never read and
+ * the ' ' case of C's `!*dsc` arm is unreachable — it is transliterated anyway
+ * because the table is C's and a future terrain type would make the count odd
+ * again.  RNG-free. */
+export async function wiz_levltyp_legend() {
+    const lines = ['#terrain encodings:', ''];
+    /* TODO: include tab-separated variant for win32 */
+    const fmt = (c, dsc) => ` ${c} - ${dsc.padEnd(28)}`;   /* C: " %c - %-28s" */
+    let buf = '';
+    /* output in pairs, left hand column holds [0],[1],...,[N/2-1]
+       and right hand column holds [N/2],[N/2+1],...,[N-1];
+       N ('last') will always be even, and may or may not include
+       the empty string entry to pad out the final pair, depending
+       upon how many other entries are present in levltyp[] */
+    const last = levltyp.length & ~1;
+    for (let i = 0; i < last / 2; ++i)
+        for (let j = i; j < last; j += last / 2) {
+            const dsc = levltyp[j];
+            const c = !dsc ? ' '
+                    : dsc.slice(0, 11) === 'unreachable' ? '*'
+                      /* same int-to-char conversion as wiz_map_levltyp() */
+                      : _levltyp_base36(j);
+            buf += fmt(c, dsc);
+            if (j > i) {
+                lines.push(buf);
+                buf = '';
+            }
+        }
+    await display_text_window(lines);
+}
+
+/* C wizcmds.c:549-564 wiz_fuzzer(); flag.h:239-243 debug_fuzzer_states. */
+export async function wiz_fuzzer() {
+    if (BigInt(game.flags.suppress_alert || 0) < get_feature_notice_ver('3.7.0')) {
+        await pline('The fuzz tester will make NetHack execute random keypresses.');
+        await pline('There is no conventional way out of this mode.');
+    }
+    if (await paranoid_query(true, 'Do you want to start fuzz testing?')) {
+        game.iflags.debug_fuzzer =
+            (await y_n_default('Do you want to call panic() after impossible()?', 'n')) === 'n'
+                ? 2 : 1;
+    }
+    return ECMD_OK;
+}
+
+/* C ref: wizcmds.c:70-105 makemap_unmakemon(mtmp, migratory) — un-create one
+ * monster of the level being replaced so the new incarnation may remake it. */
+async function makemap_unmakemon(mtmp, migratory) {
+    const g = game;
+    const ndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
+    const mv = ndx >= 0 && g.mvitals ? (g.mvitals[ndx] ||= { born: 0, died: 0, mvflags: 0 }) : null;
+    if (mv) {
+        /* G_UNIQ = 0x1000 (monflag.h) */
+        if (mtmp.data && (mtmp.data.geno & 0x1000))
+            mv.mvflags &= ~0x01; /* ~G_EXTINCT */
+        if (mv.born)
+            mv.born--;
+    }
+    if (mtmp.isgd) {
+        mtmp.isgd = 0; /* fall through to mongone() */
+    } else if ((mtmp.mhp | 0) < 1) {
+        return; /* DEADMONSTER: already set to be discarded */
+    }
+    /* wizcmds.c:91-93 setpaid() for a shk on this level: private to js/shk.js, RNG-free. */
+    if (migratory) {
+        mtmp.mstate = ((mtmp.mstate | 0) | 0x01 /* MON_OFFMAP */)
+            & ~(0x04 | 0x08 | 0x40); /* ~(MIGRATING|LIMBO|ENDGAME_MIGR) */
+        mtmp.nmon = g.fmon;
+        g.fmon = mtmp;
+    }
+    await mongone(mtmp);
+}
+
+/* C ref: wizcmds.c:109-153 makemap_remove_mons(void) */
+export async function makemap_remove_mons() {
+    const g = game;
+    const { keepdogs } = await import('./dog.js');
+    await keepdogs(true);
+    let nxt;
+    for (let mtmp = g.fmon; mtmp; mtmp = nxt) {
+        nxt = mtmp.nmon;
+        if ((mtmp.mhp | 0) < 1)
+            continue;
+        await makemap_unmakemon(mtmp, false);
+    }
+    const { on_level } = await import('./dungeon.js');
+    let mprev = null;
+    for (let mtmp = g.migrating_mons; mtmp; ) {
+        const e = mtmp.mextra;
+        if (e && ((mtmp.isshk && e.eshk && on_level(g.u.uz, e.eshk.shoplevel))
+                  || (mtmp.ispriest && e.epri && on_level(g.u.uz, e.epri.shrlevel))
+                  || (mtmp.isgd && e.egd && on_level(g.u.uz, e.egd.gdlevel)))) {
+            const nx = mtmp.nmon;
+            if (mprev) mprev.nmon = nx; else g.migrating_mons = nx;
+            await makemap_unmakemon(mtmp, true);
+            mtmp = nx;
+        } else {
+            mprev = mtmp;
+            mtmp = mtmp.nmon;
+        }
+    }
+    await dmonsfree();
 }

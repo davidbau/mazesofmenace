@@ -6,8 +6,15 @@ import { config_error_add } from './cfgfiles.js';
 import { gs, H_UTF8, SYM_PCHAR, SYM_OC, SYM_MON } from './const.js';
 import { glyphid_table, glyph_is_monster, glyph_to_mon, glyph_is_object, glyph_to_obj, glyph_to_explosion, NUM_OBJECTS, MON_MLET, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
 import { LOADSYMS, customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbols.js';
-import { rgbstr_to_int32 as rgbstr_to_int32_real } from './coloratt.js';
+import { rgbstr_to_int32 } from './coloratt.js';
 import { set_map_u } from './utf8map.js'; // relocate-fns
+import { PRIMARYSET } from './const.js'; // relocate-fns
+import { dat_content } from './dat_source.js'; // relocate-fns
+import { _darkroom_alias_blank } from './display.js'; // relocate-fns
+import { MKOBJ_OC_CLASS } from './mkobj_data.js'; // relocate-fns
+import { SYM_OFFSETS, primary_showsym, symbol_name } from './symbols.js'; // relocate-fns
+import { CLR_WHITE, NO_COLOR } from './terminal.js'; // relocate-fns
+import { set_map_customcolor } from './coloratt.js'; // relocate-fns
 
 /* C ref: display.h MAX_GLYPH — total glyph count; glyphs.c keeps
  * glyph_map glyphmap[MAX_GLYPH] with per-glyph custom color overrides. */
@@ -443,11 +450,6 @@ function zero_symset_customization() {
     return { customization_name: null, count: 0, custtype: 0, details: null, details_end: null };
 }
 
-/* C coloratt.c: set_map_customcolor — install the glyph's custom nhcolor. */
-export function set_map_customcolor(gm, nhcolor) {
-    if (!gm) return;
-    gm.customcolor = nhcolor | 0;
-}
 
 export function apply_customizations(which_set, docustomize) {
     if (!Array.isArray(gs.sym_customizations)) {
@@ -593,7 +595,6 @@ function glyph_find_core(id, findwhat) {
     }
     return 1;
 }
-function rgbstr_to_int32(s) { return rgbstr_to_int32_real(s); }
 
 /* C glyphs.c:484-528 and utf8map.c:148-210: update or append a glyph entry. */
 function add_custom_glyph_entry(name, glyphidx, which_set, custtype, value) {
@@ -726,4 +727,97 @@ export function glyphrep_to_custom_map_entries(op, glyphptr) {
     to_custom_symbol_find.callback = to_custom_symset_entry_callback;
     reslt = glyph_find_core(c_glyphid, to_custom_symbol_find);
     return reslt;
+}
+
+export function wizcustom_glyphids(menu) {
+    const glyphs = glyphid_table();
+
+    /* symbols.c parse_sym_line -> glyphs.c glyphrep_to_custom_map_entries:
+     * S_ lines match a glyph family; G_ lines override a single glyph.
+     * Read the bundled symset, just as the symbol loader does. */
+    const byId = new Map(glyphs.map(g => [g.id?.toLowerCase(), g]));
+    const bySymbol = new Map();
+    for (const gm of glyphs) {
+        if (gm.customidx === null) continue;
+        const key = symbol_name(gm.customidx)?.toLowerCase();
+        if (!bySymbol.has(key)) bySymbol.set(key, []);
+        bySymbol.get(key).push(gm);
+    }
+    const set = gs.symset[PRIMARYSET] || {};
+    let active = false;
+    for (const raw of (dat_content('symbols') || '').split('\n')) {
+        const line = raw.replace(/\s+#.*$/, '').trim();
+        const start = /^(?:start|begin)\s*:\s*(.*)$/i.exec(line);
+        if (start) { active = start[1].toLowerCase() === set.name?.toLowerCase(); continue; }
+        if (/^finish\b/i.test(line)) { active = false; continue; }
+        const match = active && /^([GS]_\w+)\s*[:=]\s*([^/]*)\/?(.*)$/i.exec(line);
+        if (!match) continue;
+        const key = match[1].toLowerCase();
+        const targets = key.startsWith('g_') ? [byId.get(key)].filter(Boolean)
+            : set.handling === 5 ? (bySymbol.get(key) || []) : [];
+        const u = /^U\+([0-9a-f]+)/i.exec(match[2].trim());
+        const color = match[3].trim() && rgbstr_to_int32(match[3].trim());
+        for (const gm of targets) {
+            if (u && set.handling === 5) gm.u = parseInt(u[1], 16);
+            if (color !== '' && color !== -1) gm.customcolor = color || 0x1000000;
+        }
+    }
+    /* OPTIONS=glyph:G_name/r-g-b entries filed by glyphrep_to_custom_map_entries.
+     * Only apply_customizations (glyphs.c:562-567, from initoptions_finish or
+     * reset_customcolors) copies them into glyphmap[]; optfn_glyph
+     * (options.c:1836) only files them, so an in-game glyph:S_x/r-g-b shows
+     * the colour last applied, not the filed one. */
+    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[2]?.details; d && set.handling === 5; d = d.next) {
+        const urep = d.content?.urep, gm = urep && glyphs[urep.glyphidx];
+        if (gm && urep.u?.utf32ch) gm.u = urep.u.utf32ch;
+    }
+    for (let d = gs.sym_customizations?.[PRIMARYSET]?.[3]?.details; d; d = d.next) {
+        const cc = d.content?.ccolor, gm = cc && glyphs[cc.glyphidx];
+        if (gm && cc.applied !== undefined) gm.customcolor = cc.applied;
+    }
+    /* glyphs.c:645-731 shuffle_customizations (run from moveloop once the
+     * customizations above are pending): each object glyph takes the
+     * customization filed under its oc_descr_idx, so a gem whose description
+     * randomize_gem_colors copied (fluorite -> diamond's "white") shares it. */
+    const descrIdx = game._objDescrIdx || {};
+    for (const off of glyphs.objOffsets) {
+        const no = MKOBJ_OC_CLASS.length, tmp = [], duplicate = [];
+        for (let i = 0; i < no; i++) {
+            const idx = Number.isInteger(descrIdx[i]) ? descrIdx[i] : i;
+            const src = glyphs[off + idx];
+            if (duplicate[idx] !== undefined) {
+                tmp[i] = { ...tmp[duplicate[idx]] };
+            } else {
+                tmp[i] = { u: src.u, customcolor: src.customcolor };
+                if (src.u || src.customcolor) {
+                    duplicate[idx] = i;
+                    src.u = 0;
+                    src.customcolor = 0;
+                }
+            }
+        }
+        for (let i = 0; i < no; i++) Object.assign(glyphs[off + i], tmp[i]);
+    }
+    const unicode = (game._gm_customsymbols ?? game.iflags.customsymbols) !== false;
+    const colors = game.iflags.customcolors !== false;
+    const useColor = (game._gm_use_color ?? game.iflags.use_color) !== false;
+    for (let glyphnum = 0; glyphnum < glyphs.length; glyphnum++) {
+        const gm = glyphs[glyphnum];
+        const u = unicode ? gm.u : 0, color = colors ? gm.customcolor : 0;
+        if (!gm.id || (!u && !color)) continue;
+        let sym = primary_showsym(gm.symidx);
+        if (gm.symidx === 20 && !game._symsetDarkroomPending)
+            sym = primary_showsym(_darkroom_alias_blank() ? SYM_OFFSETS.X : 19);
+        let clr = useColor ? gm.color : NO_COLOR;
+        if (gm.symidx === 23 && sym === primary_showsym(22) && useColor) clr = CLR_WHITE;
+        const bufa = `[${String(glyphnum).padStart(4, '0')}] ${gm.id.padEnd(44)}`;
+        const bufb = `'\\${String(sym).padStart(3, '0')}' ${String(clr).padStart(2, '0')}`;
+        const bufc = color.toString(16).padStart(11, '0');
+        let bufu = '';
+        if (u) {
+            const bytes = new TextEncoder().encode(String.fromCodePoint(u));
+            bufu = 'U+' + u.toString(16).padStart(4, '0') + [...bytes].map(b => ` <${b}>`).join('');
+        }
+        menu.add_menu(glyphnum + 1, 0, 0, `${bufa} ${bufb} ${bufc} ${bufu}`);
+    }
 }

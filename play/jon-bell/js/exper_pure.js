@@ -12,6 +12,6 @@
 // JavaScript Number can't represent the full range of C `long` exactly for
 // some of the upper-bound values (mul by 10_000_000 against lev=...) so we
 // use BigInt throughout for return values.
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { clong } from './integer.js';
 export { newuexp, rndexp } from './exper.js'; // relocate-fns

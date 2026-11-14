@@ -2,7 +2,8 @@
 // C options.c: key-text parsing, RC bindings and number_pad's do_set/get_val
 // arms. Mutable bindings remain owned by cmd_binds.js, not by an RC overlay.
 import { game } from './gstate.js';
-import { bind_key, bind_mousebtn, bind_specialkey, reset_commands, visctrl } from './cmd_binds.js';
+import { visctrl } from './cmd_binds.js';
+import { bind_key, bind_mousebtn, bind_specialkey, reset_commands } from './cmd.js';
 import { config_error_add } from './cfgfiles.js';
 import { EXTCMDLIST } from './cmd_extcmd_data.js';
 import { def_char_to_objclass } from './drawing.js';

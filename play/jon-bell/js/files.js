@@ -10,7 +10,7 @@ import { pline } from './pline.js';
 import { bones_filename } from './bones.js'; // relocate-fns
 import { decode_save_graph, encode_save_graph } from './save_graph.js'; // relocate-fns
 import { vfsDeleteFile } from './storage.js'; // relocate-fns
-import { rn2 } from './rng.js'; // relocate-fns
+import { rn2 } from './rnd.js'; // relocate-fns
 import { pmatch } from './strutil.js'; // relocate-fns
 import { saved_state_for, savefile_name } from './save.js'; // relocate-fns
 

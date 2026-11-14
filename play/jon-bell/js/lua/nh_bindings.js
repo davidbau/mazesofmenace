@@ -1,5 +1,5 @@
 
-import { rn2 as _rn2 } from '../rng.js';
+import { rn2 as _rn2 } from '../rnd.js';
 
 /**
  * nh.rn2(range) → integer in [0, range-1]

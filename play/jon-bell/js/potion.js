@@ -2,24 +2,29 @@
 // potion.js — Potion subsystem + fountain interactions.
 // C ref: nethack-c/src/potion.c, nethack-c/src/fountain.c
 import { game, wizard, discover } from './gstate.js';
-import { ledger_no } from './bones.js';
+import { ledger_no } from './dungeon.js';
 import { You, Your, You_feel } from './pline.js';
-import { a_monnam } from './mhitm.js';
-import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, toggle_blindness, M1_NOEYES_ZAP, resist, bhitm, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
+import { a_monnam } from './do_name.js';
+import { _blind_prop, _Blind, _BlindedTimeout, _set_HBlinded, _Halluc, M1_NOEYES_ZAP, resist, bhitm, poly_obj, obj_unpolyable, ubreatheu, melt_ice_zap } from './zap.js';
 import { explode, explode_oil } from './explode.js';
 import { spoteffects } from './hack.js';
 import { nothing_happens, nothing_seems_to_happen } from './const.js';
-import { getobj_cmdq_drain, prinv, enlightenment, fire_damage, cmdq_peek, cmdq_pop, cmdq_clear, useup, SetVoice, check_unpaid } from './cmd.js';
+import { getobj_cmdq_drain, cmdq_peek, cmdq_pop, cmdq_clear, SetVoice } from './cmd.js';
+import { check_unpaid } from './shk.js';
+import { prinv, useup } from './invent.js';
+import { fire_damage } from './trap.js';
+import { enlightenment } from './insight.js';
 import { discover_artifact } from './artifact.js';
 import { CQ_CANNED, ECMD_FAIL, SHOPBASE, CMDQ_KEY, CMDQ_USER_INPUT } from './const.js';
 import { EXPL_FIERY } from './const.js';
 import { RIGHT_HANDED, STRANGLED, A_STR, ismnum, BOLT_LIM, Upolyd } from './const.js';
 import { set_levltyp } from './mkmaze.js';
 import { SINK, GRAVE, THRONE, T_LOOTED, AM_NONE, Align2amask } from './const.js';
-import { make_grave } from './mklev.js';
+import { make_grave } from './engrave.js';
 import { In_hell } from './dungeon.js';
 import { an } from './objnam.js';
-import { rn2, rnd, d, rn1, rnl } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd, d, rnl } from './rnd.js';
 import { PM_HEALER, PM_ROCK_MOLE, PM_WOODCHUCK, PM_PONY, PM_HORSE, PM_WARHORSE, PM_LONG_WORM } from './pm.generated.js';
 import { PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js';
 import { COLD_RES } from './const.js';
@@ -27,7 +32,7 @@ import monPmnamesPack from './makemon_pmnames.json' with { type: 'json' };
 import { note_lone_pline_frame, flush_screen, pline_flush_point, newsym, force_more, force_more_pages, force_more_lone_frame, canspotmon, canseemon, map_invisible, getobj_never_mind } from './display.js';
 import { display_message_window } from './display.js';
 import { bot } from './botl.js';
-import { pline, You_see, You_hear } from './pline.js';
+import { pline, You_see, You_hear, impossible } from './pline.js';
 import { unmap_object, glyph_is_invisible_at, tmp_at } from './display.js';
 import { DISP_ALWAYS, DISP_END } from './const.js';
 import { monstseesu as monstseesu_real } from './mcastu.js';
@@ -37,7 +42,8 @@ import { COLNO, ROWNO, INVIS } from './const.js';
 import { _topl_joins_snapshot, _topl_merge_result } from './display.js';
 import { set_bc } from './ball.js';
 import { topl_park_cursor, _topl_stash_result, putmsghistory, restore_command_topline } from './display.js';
-import { key2txt, mime_action, pair_of, readchar, yn_function } from './cmd.js';
+import { key2txt, pair_of, readchar, yn_function } from './cmd.js';
+import { mime_action } from './invent.js';
 import { cls, docrt, display_self, map_object, GLYPHCLS_OBJ, pager_boulder_symbol, pager_showsyms } from './display.js';
 import { def_oc_syms_chars } from './drawing.js';
 import { SchroedingersBox } from './pickup_container.js';
@@ -45,32 +51,38 @@ import { map_monst } from './detect.js';
 import { unconstrain_map, map_redisplay } from './detect.js';
 /* make_hallucinated()'s "changed" block (potion.c:415-433). */
 import { see_monsters, see_objects, see_traps, swallowed, under_water, under_ground } from './display.js';
-import { set_mimic_blocking } from './sit.js';
+import { set_mimic_blocking } from './display.js';
 /* make_sick()/make_stoned()/make_slimed() call the delayed-killer list on every
  * invocation (end.c:1706-1756). */
 import { delayed_killer, find_delayed_killer, dealloc_killer } from './end.js';
 /* potion.c:417 eatmupdate() — the mimic-an-orange message fixup. */
 import { eatmupdate } from './eat.js';
-import { stagger_verb, weight, encumber_msg } from './weight.js';
+import { stagger_verb, weight } from './weight.js';
+import { encumber_msg } from './pickup.js';
 import { near_capacity } from './hack.js';
 import { nhgetch } from './input.js';
 /* C ref: invent.c:2093 silly_thing(word, otmp) — shared with the 'W'/'P'
  * getobj path rather than re-derived. */
-import { silly_thing_dw, inaccessible_equipment, hard_helmet, yname } from './do_wear.js';
+import { silly_thing_dw, inaccessible_equipment, hard_helmet } from './do_wear.js';
+import { yname, Yname2 } from './objnam.js';
 import { float_up } from './trap.js';
 import { getlin } from './windows.js';
-import { nomul } from './allmain.js';
+import { nomul } from './hack.js';
 import { fall_asleep } from './timeout.js';
-import { mkgold, bcsign, makemon, mkobj, mkobj_at, mksobj_at, rnd_class, mksobj, dealloc_obj } from './mklev.js';
+import { rnd_class } from './objnam.js';
+import { mkgold, bcsign, mkobj, mkobj_at, mksobj_at, mksobj, dealloc_obj } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { healmon, wake_nearto } from './mon.js';
 import { obj_resists } from './zap.js';
 import { bless, unbless, curse, uncurse } from './mkobj.js';
 import { livelog_printf } from './pline.js';
 import { LL_ARTIFACT, LL_CONDUCT } from './const.js';
-import { unfixable_trouble_count, body_part as body_part_cmd, ceiling } from './cmd.js';
+import { body_part as body_part_cmd } from './cmd.js';
+import { unfixable_trouble_count } from './apply.js';
+import { ceiling } from './dungeon.js';
 import { altar_wrath } from './pray.js';
 import { heal_legs, doup } from './do.js';
-import { reassign } from './inventory_refresh.js';
+import { reassign } from './invent.js';
 import { WOUNDED_LEGS } from './const.js';
 /* C potion.c:904,908,2062 — observed sleep resistance uses its own mask. */
 import { M_SEEN_SLEEP } from './const.js';
@@ -80,9 +92,11 @@ import { EYE, FINGER, HAND, LEG, ARM, STOMACH, FACE, FOOT } from './const.js';
  * from js/mhitu.js, where it was an exported empty body. */
 import { unconscious } from './trap.js';
 import { is_fainted } from './eat.js';
-import { hliquid, hcolor, monstunseesu, x_monnam, update_inventory, wakeup_attack, sleep_monst, slept_monst, killed, is_youmonst } from './mhitm.js';
+import { hcolor, monstunseesu, update_inventory, wakeup_attack, sleep_monst, slept_monst, is_youmonst } from './mhitm.js';
+import { hliquid, x_monnam } from './do_name.js';
+import { killed } from './mon.js';
 import { stagger, Resists_Elem, mon_hates_blessings, defended } from './mondata.js';
-import { float_vs_flight } from './mhitm.js';
+import { float_vs_flight } from './polyself.js';
 import { monkilled_trap } from './trap.js';
 import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
          ROOM, ALTAR, IS_FOUNTAIN, FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES } from './const.js';
@@ -90,7 +104,8 @@ import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROS
 import { DEAF, SICK, SICK_RES, STONED, VOMITING, GLIB, SLIMED, KILLED_BY_AN,
          M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK } from './const.js';
 import { getObjDescr, fruitname, docall_xname_potion, cxname, the, The, xname, otense, vtense } from './objnam.js';
-import { short_oname, simpleonames, thesimpleoname, oname } from './objnam.js';
+import { short_oname, simpleonames, thesimpleoname } from './objnam.js';
+import { oname } from './do_name.js';
 import { exist_artifact, artiname } from './artifact.js';
 import { ONAME_VIA_DIP, ONAME_KNOW_ARTI } from './const.js';
 import { gloves_simple_name } from './objnam.js';
@@ -101,19 +116,22 @@ import { MKOBJ_OC_CLASS } from './mkobj_data.js';
 
 import { getObjName, discover_object, observe_object, objdescr_is } from './o_init.js';
 import './lock.js';
-import { surface as surface_cmd, body_part, reorder_invent } from './cmd.js';
+import { body_part } from './cmd.js';
+import { reorder_invent } from './invent.js';
+import { surface as surface_cmd } from './dungeon.js';
 import { trycall } from './do.js';
-import { attacktype_fordmg, splitobj, mhe } from './makemon.js';
+import { splitobj, mhe } from './makemon.js';
+import { attacktype_fordmg } from './mondata.js';
 import { mhis_mon } from './mhitu.js';
 import { is_ice } from './engrave.js';
-import { can_reach_floor } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { hold_another_object } from './invent.js';
 import { pooleffects_is_swimmer as is_swimmer } from './cmd.js';
 import { rider_cant_reach } from './steed.js';
 import { P_SKILL } from './skills.js';
 import { P_RIDING, P_BASIC } from './const.js';
-import { obj_extract_self } from './mklev.js';
-import { freeinv, useupall } from './cmd.js';
+import { obj_extract_self } from './mkobj.js';
+import { freeinv, useupall } from './invent.js';
 import { _pickup_burden_level } from './wizcmds.js';
 import { Tobjnam, Yobjnam2, aobjnam } from './objnam.js';
 import { makeplural, makeplural as makeplural_objnam } from './objnam.js';
@@ -125,15 +143,17 @@ import { NOTELL, ARTICLE_THE, SUPPRESS_IT, SUPPRESS_SADDLE, has_mgivenname,
 import { PM_SEWER_RAT, PM_WATER_ELEMENTAL, PM_LICHEN, PM_GREEN_SLIME,
          PM_GREMLIN, PM_IRON_GOLEM, PM_PESTILENCE,
          PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { paralyze_monst } from './dogmove.js';
+import { paralyze_monst } from './mhitm.js';
 import { polyself } from './polyself.js';
 import { create_gas_cloud, gas_cloud_at } from './region.js';
-import { getobj_redo_menu, in_town, compactify, doname_body, getpos, getObjFromGetobj,
-         costly_alteration } from './cmd.js';
+import { getobj_redo_menu, doname_body, getObjFromGetobj, costly_alteration } from './cmd.js';
+import { in_town } from './hack.js';
+import { getpos } from './getpos.js';
+import { compactify } from './invent.js';
 import { cansee, couldsee } from './vision.js';
 import { water_damage, erode_obj } from './trap.js';
 import { is_pool } from './look.js';
-import { waterbody_name } from './cmd.js';
+import { waterbody_name } from './pager.js';
 import { ER_DESTROYED } from './const.js';
 import { fingers_or_gloves } from './do_wear.js';
 import { t_at, delfloortrap } from './trap.js';
@@ -142,7 +162,8 @@ import { do_clear_area, do_clear_area_async } from './vision.js';
 import { distmin, dist2, s_suffix } from './hacklib.js';
 import { depth } from './dungeon.js';
 import { nexttodoor } from './mkroom.js';
-import { del_engr_at, in_rooms } from './mklev.js';
+import { in_rooms } from './mklev.js';
+import { del_engr_at } from './engrave.js';
 import { sobj_at } from './invent.js';
 import { level_difficulty } from './dungeon.js';
 import { stairway_at } from './stairs.js';
@@ -159,19 +180,20 @@ import { shop_keeper, subfrombill, alter_cost } from './shk.js';
 import { PLNMSG_OBJ_GLOWS, COST_UNCURS, COST_UNBLSS } from './const.js';
 import { PM_WATCHMAN as PM_WATCHMAN_POT,
          PM_WATCH_CAPTAIN as PM_WATCH_CAPTAIN_POT } from './pm.generated.js';
-import { water_damage_chain } from './cmd.js';
+import { water_damage_chain } from './trap.js';
 import { POOL, u_at, M_AP_TYPE, M_AP_OBJECT, MCORPSENM, NON_PM, Has_contents } from './const.js';
 import { mintrap } from './trap.js';
 /* js/pm.generated.js carries 3.7 spellings in places, so the index is verified
  * by NAME against js/makemon_pmnames.json[68] === 'water nymph'. */
 import { PM_WATER_NYMPH, PM_WATER_DEMON, PM_WATER_MOCCASIN } from './pm.generated.js';
-import { monflee } from './makemon.js';
+import { monflee } from './monmove.js';
 import { new_were, set_ulycn } from './were.js';
 import { you_were as you_were_real, you_unwere as you_unwere_real } from './were.js';
 /* C fountain.c:44 — dowatersnakes()'s hallucinatory plural is
  * makeplural(rndmonnam(NULL)); both live outside this file. */
 import { rndmonnam } from './do_name.js';
-import { more_experienced, newexplevel, m_at } from './uhitm.js';
+import { more_experienced, m_at } from './uhitm.js';
+import { newexplevel } from './exper.js';
 /* C potion.c:1116 peffect_gain_level() -> exper.c:319 pluslvl(FALSE) and
  * exper.c:250 rndexp(TRUE).  Both bodies already exist; only the potion->effect
  * dispatch was missing (js/potion.js's otyp ladder had no POT_GAIN_LEVEL arm,
@@ -186,7 +208,7 @@ import { PM_DJINNI } from './pm.generated.js';
 import { In_endgame, In_sokoban } from './const.js';
 import { In_W_tower_wz } from './dochug.js';
 import { stairway_find_special_dir } from './stairs.js';
-import { get_level as get_level_potion } from './cmd.js';
+import { get_level as get_level_potion } from './dungeon.js';
 import { goto_level } from './do.js';
 /* C zap.c:2527 do_enlightenment_effect() -> insight.c:383
  * enlightenment(MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS) — the MENU form.  Its
@@ -195,13 +217,16 @@ import { goto_level } from './do.js';
 import { enlightenment_menu } from './cmd.js';
 import { MAGICENLIGHTENMENT, ENL_GAMEINPROGRESS, A_INT, A_CHA } from './const.js';
 import { PM_GHOST, PM_TENGU, PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
-import { set_malign, findgold, dmgtype_fromattack, mcureblindness } from './makemon.js';
+import { set_malign } from './makemon.js';
+import { findgold } from './steal.js';
+import { dmgtype_fromattack } from './mondata.js';
+import { mcureblindness } from './muse.js';
 import { mon_set_minvis, which_armor } from './worn.js';
 import { split_mon_ml } from "./mklev.js";
 import { mongone } from './mon.js';
 import { tamedog } from './dog.js';
 import { Monnam } from './mcastu.js';
-import { makewish } from './wizcmds.js';
+import { makewish } from './zap.js';
 /* C eat.c:3363 newuhs() — the single C body lives at js/eat.js:203.  Imported
  * rather than redeclared so this file's three call sites resolve to it (see the
  * comment at the former local stub below). */
@@ -370,119 +395,8 @@ async function y_n(question) {
     }
     return answer;
 }
-export async function monster_detect(otmp, mclass) {
-    const g = game;
-    const u = g.u;
-    /* C detect.c:809-816 — DEADMONSTER(mon) is (mon)->mhp < 1; the isgd test
-     * skips a vault guard that has been moved off-map. */
-    let mcnt = 0;
-    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
-            continue;
-        ++mcnt;
-        break;
-    }
-    if (!mcnt) {
-        /* C detect.c:818-823 — only an object source gets the consolation
-         * message; the fountain (otmp == NULL) is silent here. */
-        if (otmp)
-            await strange_feeling(otmp, _hallucination()
-                ? 'You get the heebie jeebies.' : 'You feel threatened.');
-        return 1;
-    }
-    let woken = false;
-    /* C detect.c:826 — read BEFORE unconstrain_map() clears it. */
-    const swallowed = u.uswallow;
-    /* C display.c:2064-2072 cls() opens with display_nhwindow(WIN_MESSAGE, FALSE):
-     * a standing topline (e.g. "You peer into the glass orb...") gets its --More--. */
-    if (g._pending_message)
-        await force_more(g._pending_message);
-    await cls();
-    const unconstrained = !!(u.uinwater || u.uburied || u.uswallow);
-    g.iflags = g.iflags || {};
-    g.iflags.save_uinwater = u.uinwater; u.uinwater = 0;
-    g.iflags.save_uburied = u.uburied; u.uburied = 0;
-    g.iflags.save_uswallow = u.uswallow; u.uswallow = 0;
-    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
-            continue;
-        /* C detect.c:833-836: '~' detects long worms as well as their tails. */
-        const S_WORM_TAIL = 59; /* defsym.h */
-        if (!mclass || (mtmp.data && mtmp.data.mlet === mclass)
-            || ((mtmp.mnum ?? mtmp.mndx ?? mtmp.data?.pmidx) === PM_LONG_WORM
-                && mclass === S_WORM_TAIL))
-            map_monst(mtmp, true);
-        /* C detect.c:838-842 — a CURSED detector wakes the helpless. */
-        if (otmp && otmp.cursed && (mtmp.msleeping || mtmp.mfrozen
-                                    || !mtmp.mcanmove)) {
-            mtmp.msleeping = 0;
-            mtmp.mfrozen = 0;
-            mtmp.mcanmove = 1;
-            woken = true;
-        }
-    }
-    if (!swallowed)
-        display_self();
-    await pline('You sense the presence of monsters.');
-    if (woken)
-        await pline('Monsters sense the presence of you.');
-    if ((otmp && otmp.blessed) && !unconstrained) {
-        await force_more(g._pending_message);
-    } else {
-        /* C detect.c:855-859 — one-shot detection: let the player move the
-         * cursor around with autodescribe feedback.  EDetect_monsters gets
-         * I_SPECIAL for the duration so canspotself()/senseself() and the
-         * monster-visibility tests treat every monster as sensed while the
-         * cursor is being moved. */
-        const p = _detect_monsters_uprop(u);
-        p.extrinsic = (p.extrinsic | 0) | I_SPECIAL;
-        g.iflags = g.iflags || {};
-        const savedTerrainmode = g.iflags.terrainmode;
-        g.iflags.terrainmode = TER_DETECT | TER_MON;
-        /* detect.c:112-117 browse_map: autodescribe forced on, then restored */
-        const save_autodescribe = g.iflags.autodescribe;
-        g.iflags.autodescribe = true;
-        try {
-            /* browse_map: dummy_pos starts on the hero's own square. */
-            await getpos({ x: u.ux, y: u.uy }, false, 'monster of interest');
-        } finally {
-            g.iflags.terrainmode = savedTerrainmode;
-            g.iflags.autodescribe = save_autodescribe;
-            p.extrinsic = (p.extrinsic | 0) & ~I_SPECIAL;
-        }
-    }
-    if (g._pending_message) {
-        const morc = await force_more(g._pending_message);
-        /* detect.c:859 map_redisplay -> display.c:2196 cls flushes WIN_MESSAGE.
-         * This more() has no incoming update_topl owner: ESC's WIN_STOP is
-         * already live for the next pline (topl.c:232-235,257), including
-         * monster messages during the crystal ball's remaining busy turns. */
-        if (morc === 27 && g._topl_win_stop_armed) {
-            g._topl_win_stop_armed = false;
-            g._topl_win_stop = true;
-            g._topl_win_stop_buf = g._topl_last_more_committed;
-        }
-    }
-    /* docrt() -> cls() -> tty_clear_nhwindow(WIN_MAP) is clear_screen(), which
-     * blanks the physical topline too: getpos's exit left the autodescribe /
-     * "Move cursor to ..." text standing (msg_given FALSE), and C's frame after
-     * the '.' pick shows an empty row 0. */
-    g._topl_sticky = null;
-    /* C detect.c:85-90 reconstrain_map(), then docrt(), then the restored
-     * Underwater / buried view (detect.c:94-102 map_redisplay). */
-    u.uinwater = g.iflags.save_uinwater; g.iflags.save_uinwater = 0;
-    u.uburied = g.iflags.save_uburied; g.iflags.save_uburied = 0;
-    u.uswallow = g.iflags.save_uswallow; g.iflags.save_uswallow = 0;
-    await docrt();
-    if (u.uinwater)
-        under_water(2);
-    if (u.uburied)
-        under_ground(2);
-    return 0;
-}
 /* C detect.c:35-36 TER_DETECT / TER_MON (flag.h terrainmode bits). */
-const TER_MON = 0x08;
-const TER_DETECT = 0x20;
+import { TER_MON, TER_DETECT } from './const.js';
 /* u.uprops[DETECT_MONSTERS] — the slot js/display.js:1356 reads through
  * _uprop(DETECT_MONSTERS) for senseself()/Detect_monsters.  Created on demand
  * so the |= I_SPECIAL below lands on the same object the reader sees. */
@@ -636,48 +550,7 @@ export async function dopotion_unported(otmp) {
     return ECMD_TIME;
 }
 
-const AT_BREA = 12;          /* monattk.h — breath, ranged */
-const AD_ACID = 8;           /* monattk.h — acid */
-const M1_ACID = 0x08000000;  /* monflag.h:112 — acidic to eat */
-/* C mondata.h acidic(ptr) — (((ptr)->mflags1 & M1_ACID) != 0L) */
-function acidic(ptr) { return ((ptr?.mflags1 >>> 0) & M1_ACID) !== 0; }
 
-/* C ref: eat.c:3735-3785 vomit(void). */
-export async function vomit() {
-    const g = game;
-    const u = g.u;
-    let spewed = false;
-    if (cantvomit(g.youmonst?.data)) {
-        /* C deliberately does not cure food poisoning in this arm. */
-        await Your('jaw gapes convulsively.');
-    } else {
-        if ((_uprop(SICK).intrinsic | 0) && ((u.usick_type | 0) & SICK_VOMITABLE) !== 0)
-            await make_sick(0n, null, true, SICK_VOMITABLE);
-        if ((u.uhs | 0) >= FAINTING)
-            await Your(`${body_part(STOMACH)} heaves convulsively!`);
-        else
-            spewed = true;
-    }
-    if ((g.multi | 0) >= -2) {
-        nomul(-2);
-        g.multi_reason = 'vomiting';
-        g.nomovemsg = 'You can move again.';
-    }
-    if (spewed) {
-        const data = g.youmonst?.data;
-        const mattk = attacktype_fordmg(data, AT_BREA, AD_ACID);
-        if (mattk) {
-            await You('breathe acid on yourself...');
-            await ubreatheu(mattk);
-        }
-        const x = u.ux | 0, y = u.uy | 0;
-        const loc = g.level?.at?.(x, y) || g.level?.locations?.[x]?.[y];
-        if ((loc?.typ | 0) === ALTAR)
-            await altar_wrath(x, y);
-        if (acidic(data) && is_ice(x, y))
-            await melt_ice_zap(x, y, 'Your stomach acid melts straight through the ice!');
-    }
-}
 /* youprop.h property macros, in the shape js/vision.js:19 Blind() uses:
  * intrinsic|extrinsic set and not blocked.  Kept local (as this file's existing
  * Hallucination reads already are) rather than imported, to avoid a new cycle. */
@@ -2881,12 +2754,12 @@ async function potion_dip(obj, potion) {
                    || (!obj.oeroded && !obj.oeroded2)) {
             /* C potion.c:2663-2668 — uses up the potion, doesn't set greased. */
             if (!_potion_Blind())
-                await pline(`${_Yname2(obj)} ${otense(obj, 'gleam')} with an oily sheen.`);
+                await pline(`${Yname2(obj)} ${otense(obj, 'gleam')} with an oily sheen.`);
             else
-                await pline(`${_Yname2(obj)} ${otense(obj, 'feel')} oily.`);
+                await pline(`${Yname2(obj)} ${otense(obj, 'feel')} oily.`);
         } else {
             /* C potion.c:2670-2679 — oil removes rust and corrosion. */
-            await pline(`${_Yname2(obj)} ${otense(obj, !_potion_Blind() ? 'are' : 'feel')} less `
+            await pline(`${Yname2(obj)} ${otense(obj, !_potion_Blind() ? 'are' : 'feel')} less `
                 + `${(obj.oeroded && obj.oeroded2) ? 'corroded and rusty'
                     : obj.oeroded ? 'rusty' : 'corroded'}.`);
             if ((obj.oeroded | 0) > 0) obj.oeroded = (obj.oeroded | 0) - 1;
@@ -2927,10 +2800,10 @@ async function potion_dip(obj, potion) {
             obj.age = 0;
         }
         if ((obj.age | 0) > 1000) {
-            await pline(`${_Yname2(obj)} ${otense(obj, 'are')} full.`);
+            await pline(`${Yname2(obj)} ${otense(obj, 'are')} full.`);
             potion.in_use = false; /* didn't go poof */
         } else {
-            await pline(`You fill ${_yname_dip(obj)} with oil.`);
+            await pline(`You fill ${yname(obj)} with oil.`);
             check_unpaid(potion); /* C potion.c:2709 — Yendorian Fuel Tax */
             /* C potion.c:2720-2723 — burns more efficiently in a lamp. */
             obj.age = (obj.age | 0)
@@ -2941,7 +2814,7 @@ async function potion_dip(obj, potion) {
         }
         if (potion.dknown) discover_object(POT_OIL, true, true, true);
         obj.spe = 1;
-        /* update_inventory() — display bookkeeping, no RNG. */
+        update_inventory(); /* C potion.c:2722: publish the refuelled lamp. */
         return ECMD_TIME;
     }
 
@@ -3047,6 +2920,10 @@ function _is_weptool(o) {
 import { permapoisoned } from './artifact.js';
 import { dipfountain, dipsink, drinkfountain, drinksink, floating_above, wash_hands } from './fountain.js'; // relocate-fns
 import { cantvomit, monstseesu } from './mondata.js'; // relocate-fns
+import { learn_unseen_invent } from './invent.js'; // relocate-fns
+import { INFRAVISION, TELEPAT, WARN_OF_MON, W_WEP } from './const.js'; // relocate-fns
+import { Sting_effects } from './artifact.js'; // relocate-fns
+import { vision_recalc } from './vision.js'; // relocate-fns
 export { dipfountain, dogushforth, drinkfountain, dryup, sink_backs_up } from './fountain.js'; // relocate-fns
 export { COIN_CLASS, POTION_CLASS, POT_ACID, POT_FRUIT_JUICE, POT_GAIN_ENERGY, POT_GAIN_LEVEL, POT_LEVITATION, POT_MONSTER_DETECTION, POT_OBJECT_DETECTION, POT_OIL, POT_POLYMORPH, POT_WATER, Poison_resistance, You_feel, _C_ATTR_TO_DISP, _getAbase, _getAexe, _getAmax, _gush_m_at, _hallucination, _mongrantswish, _potion_Blind, _potion_Deaf, _potion_Hallucination, _prop_active, _unchanging, _uprop, breathless, haseyes, makeplural, y_n }; // relocate-fns
 /* C obj.h:264 is_poisonable(otmp) —
@@ -3073,17 +2950,6 @@ function _is_rustprone(otmp) { return _oc_material_dip(otmp) === IRON_MAT; }
 function _is_corrodeable(otmp) {
     const m = _oc_material_dip(otmp);
     return m === COPPER_MAT || m === IRON_MAT;
-}
-/* C objnam.c yname(obj) / Yname2(obj) — the shk_your simplification js/
- * already uses everywhere (js/do_wear.js:2919, js/cmd.js Shk_Your): carried →
- * "your ", otherwise "the ".  Yname2 is yname with the first letter capped. */
-function _yname_dip(obj) {
-    const owned = !!obj && (obj.where | 0) === 3 /* OBJ_INVENT */;
-    return (owned ? 'your ' : 'the ') + cxname(obj);
-}
-function _Yname2(obj) {
-    const s = _yname_dip(obj);
-    return s ? s[0].toUpperCase() + s.slice(1) : s;
 }
 /* C decl.h NH_ORANGE / NH_RED are the plain color strings; js/mhitm.js
  * hcolor(colorpref) returns colorpref verbatim when not hallucinating. */
@@ -3138,7 +3004,7 @@ function drink_ok(obj) {
 // C potion.c:2379 — the item-action route selects the queued potion first.
 export async function dip_into() {
     if (!cmdq_peek(CQ_CANNED)) {
-        impossible('dip_into: where is potion?');
+        await impossible('dip_into: where is potion?');
         return ECMD_FAIL;
     }
     drink_ok_extra = 0;
@@ -3154,39 +3020,6 @@ export async function dip_into() {
     return potion_dip(obj, potion);
 }
 
-/* C ref: potion.c:2269 dodip() — the #dip command. */
-/* C do.c:404-456 polymorph_sink(void): sink -> fountain/throne/altar/grave. */
-export async function polymorph_sink() {
-    const u = game.u;
-    const loc = game.level?.at(u.ux, u.uy);
-    if (!loc || loc.typ !== SINK) return;
-    const sinklooted = (loc.looted | 0) !== 0;
-    loc.flags = loc.looted = 0;
-    let sym;
-    switch (rn2(4)) {
-    case 0: default:
-        sym = 'fountain'; set_levltyp(u.ux, u.uy, FOUNTAIN); loc.blessedftn = 0;
-        if (sinklooted) loc.flags = 1; /* SET_FOUNTAIN_LOOTED */
-        break;
-    case 1:
-        sym = 'opulent throne'; set_levltyp(u.ux, u.uy, THRONE);
-        if (sinklooted) loc.looted = T_LOOTED;
-        break;
-    case 2: {
-        sym = 'altar'; set_levltyp(u.ux, u.uy, ALTAR);
-        const algn = rn2(3) - 1; /* drawn before the Inhell test, as C does */
-        loc.altarmask = (In_hell(u.uz) && rn2(3)) ? AM_NONE : Align2amask(algn);
-        break;
-    }
-    case 3:
-        sym = 'room'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null);
-        if (loc.typ === GRAVE) sym = 'grave'; /* C do.c:444-445 */
-        break;
-    }
-    if (loc.typ !== ROOM) await pline(`The sink transforms into ${an(sym)}!`);
-    else await pline('The sink vanishes.');
-    newsym(u.ux, u.uy);
-}
 
 
 
@@ -3674,13 +3507,13 @@ export async function potionbreathe(obj) {
     case POT_GAIN_ABILITY:
         if (obj.cursed) {
             if (!breathless(g.youmonst.data)) {
-                pline("Ulch!  That potion smells terrible!");
+                await pline("Ulch!  That potion smells terrible!");
             } else if (haseyes(g.youmonst.data)) {
                 let eyes = body_part(EYE);
                 if (eyecount(g.youmonst.data) !== 1) {
                     eyes = makeplural(eyes);
                 }
-                Your("%s %s!", eyes, vtense(eyes, "sting"));
+                await Your("%s %s!", eyes, vtense(eyes, "sting"));
             }
             break;
         } else {
@@ -3720,6 +3553,7 @@ export async function potionbreathe(obj) {
             cureblind = true;
         if (cureblind) {
             make_blinded(0, !u.ucreamed);
+            if (g._blockingPline) await g._blockingPline;
             await make_deaf(0, true);
         }
         exercise(A_CON, true);
@@ -3743,21 +3577,21 @@ export async function potionbreathe(obj) {
         }
         break;
     case POT_HALLUCINATION:
-        You("have a momentary vision.");
+        await You("have a momentary vision.");
         break;
     case POT_CONFUSION:
     case POT_BOOZE:
         if (!((u.uprops?.[CONFUSION]?.intrinsic | 0)))
-            You_feel("somewhat dizzy.");
+            await You_feel("somewhat dizzy.");
         /* C potion.c:2031  make_confused(itimeout_incr(HConfusion, rnd(5)), FALSE)
          * — itimeout_incr (pure), NOT incr_itimeout.  HConfusion is
          * u.uprops[CONFUSION].intrinsic (youprop.h:83). */
-        make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0, rnd(5)), false);
+        await make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0, rnd(5)), false);
         break;
     case POT_INVISIBILITY:
         if (!_potion_Blind() && !_prop_active(INVIS)) {
             kn++;
-            pline("For an instant you %s!",
+            await pline("For an instant you %s!",
                   _prop_active(SEE_INVIS) ? "could see right through yourself"
                                   : "couldn't see yourself");
         }
@@ -3765,30 +3599,30 @@ export async function potionbreathe(obj) {
     case POT_PARALYSIS:
         kn++;
         if (!_free_action()) {
-            pline("%s seems to be holding you.", "Something");
+            await pline("%s seems to be holding you.", "Something");
             nomul(-rnd(5));
             g.multi_reason = "frozen by a potion";
             g.nomovemsg = You_can_move_again;
             exercise(A_DEX, false);
         } else
-            You("stiffen momentarily.");
+            await You("stiffen momentarily.");
         break;
     case POT_SLEEPING:
         kn++;
         if (!_free_action() && !_prop_active(SLEEP_RES)) {
-            You_feel("rather tired.");
+            await You_feel("rather tired.");
             nomul(-rnd(5));
             g.multi_reason = "sleeping off a magical draught";
             g.nomovemsg = You_can_move_again;
             exercise(A_DEX, false);
         } else {
-            You("yawn.");
+            await You("yawn.");
             monstseesu(M_SEEN_SLEEP);
         }
         break;
     case POT_SPEED:
         if (!_potion_Fast())
-            Your("knees seem more flexible now.");
+            await Your("knees seem more flexible now.");
         /* C potion.c:2068  incr_itimeout(&HFast, rnd(5)) — mutating, on the
          * property word itself.  _fastrec(u).intrinsic is a plain number in this module (see
          * make_fast() below and the peffect_speed test at line ~1089), so wrap
@@ -3803,7 +3637,7 @@ export async function potionbreathe(obj) {
     case POT_BLINDNESS:
         if (!_potion_Blind() && !_Unaware()) {
             kn++;
-            pline("It suddenly gets dark.");
+            await pline("It suddenly gets dark.");
         }
         /* C potion.c:2078  make_blinded(itimeout_incr(BlindedTimeout, rnd(5)), FALSE)
          * — itimeout_incr (pure), NOT incr_itimeout.  youprop.h:93
@@ -3814,7 +3648,7 @@ export async function potionbreathe(obj) {
             /* C decl.h:40 + hack.h:272 + decl.c:48 — `vision_clears` is
              * c_common_strings.c_vision_clears, whose value is
              * "vision quickly clears.", NOT "vision clears." */
-            Your1("vision quickly clears.");
+            await Your1("vision quickly clears.");
         break;
     case POT_WATER:
         if (u.umonnum === PM_GREMLIN) {
@@ -3872,8 +3706,6 @@ const SPE_DETECT_TREASURE = 394;
 const SPE_DETECT_MONSTERS = 373;
 const SPE_HASTE_SELF = 388;
 const SPE_LEVITATION = 390;
-
-function impossible(_fmt, ..._args) { /* no-op — see note above */ }
 
 
 async function peffect_restore_ability(otmp) {
@@ -3987,14 +3819,6 @@ async function peffect_booze(otmp) {
         g.multi = -rnd(15);
         g.nomovemsg = 'You awake with a headache.';
     }
-}
-export async function do_enlightenment_effect() {
-    await pline('You feel self-knowledgeable...');
-    /* C zap.c:2528: a MSGTYPE-hidden pline leaves no message to page. */
-    await display_message_window();
-    await enlightenment_menu(MAGICENLIGHTENMENT);
-    await pline('The feeling subsides.');
-    await exercise(A_WIS, true);
 }
 /* C potion.c:794-808 peffect_enlightenment(struct obj *otmp).
  * The body was `function peffect_enlightenment(otmp) {}` and dodrink()'s otyp
@@ -4189,274 +4013,12 @@ async function peffect_monster_detection(otmp) {
     await exercise(A_WIS, true);
     return 0;
 }
-function _observe_recursively_det(obj) {
-    observe_object(obj);
-    if (Has_contents(obj)) {
-        for (let o = obj.cobj; o; o = o.nobj)
-            _observe_recursively_det(o);
-    }
-}
-/* C ref: detect.c:214-227 o_in(obj, oclass) */
-function _o_in_det(obj, oclass) {
-    if (!oclass) return null;
-    if ((obj.oclass | 0) === oclass) return obj;
-    if (Has_contents(obj) && !SchroedingersBox(obj)) {
-        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
-            if ((otmp.oclass | 0) === oclass) return otmp;
-            if (Has_contents(otmp)) {
-                const temp = _o_in_det(otmp, oclass);
-                if (temp) return temp;
-            }
-        }
-    }
-    return null;
-}
-/* C ref: detect.c:260-306 check_map_spot(x, y, oclass, material) — handles
- * both ALL_CLASSES (!oclass) and class-specific detection. */
-function _check_map_spot_alldetect(x, y, oclass = 0) {
-    const g = game;
-    const loc = g.level && g.level.at ? g.level.at(x, y) : null;
-    if (oclass) {
-        const rg = loc && loc.remembered_glyph;
-        if (!rg || rg.cls !== GLYPHCLS_OBJ)
-            return false;
-        if (Number.isInteger(rg.otyp) ? (MKOBJ_OC_CLASS[rg.otyp] | 0) !== oclass
-            : rg.ch !== def_oc_syms_chars[oclass])
-            return false;
-        for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
-            if (_o_in_det(otmp, oclass))
-                return false;
-        const mtmp = m_at(x, y);
-        if (mtmp)
-            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
-                if (_o_in_det(otmp, oclass))
-                    return false;
-        return true;
-    }
-    if (!loc || loc.disp_cls !== GLYPHCLS_OBJ)
-        return false;
-    const hasFloorObj = !!(g.level && g.level.levelObjects
-                            && g.level.levelObjects[x] && g.level.levelObjects[x][y]);
-    if (hasFloorObj)
-        return false;
-    const mtmp = m_at(x, y);
-    return !(mtmp && mtmp.minvent);
-}
-/* C ref: detect.c:311-330 clear_stale_map(!class ? ALL_CLASSES : class, 0). RNG-free. */
-function _clear_stale_map_alldetect(oclass = 0) {
-    let change_made = false;
-    for (let zx = 1; zx < COLNO; zx++) {
-        for (let zy = 0; zy < ROWNO; zy++) {
-            if (_check_map_spot_alldetect(zx, zy, oclass)) {
-                unmap_object(zx, zy);
-                change_made = true;
-            }
-        }
-    }
-    return change_made;
-}
 /* C ref: detect.c:35-36 (flag.h) TER_OBJ 0x04 — see TER_MON/TER_DETECT above. */
-const TER_OBJ = 0x04;
-const ROCK_CLASS_DET = 14, SCROLL_CLASS_DET = 9;
-const _DET_OC_NAMES = [null, 'illegal objects', 'weapons', 'armor', 'rings', 'amulets',
-    'tools', 'food', 'potions', 'scrolls', 'spellbooks', 'wands', 'coins', 'rocks',
-    'large stones', 'iron balls', 'chains', 'venoms'];
-/* C objects.h GOLD_PIECE otyp — same value js/makemon.js:1404's local
- * GOLD_PIECE_OTYP carries (MKOBJ_SVB_BASES[COIN_CLASS]=438); this file's own
- * name to avoid importing a non-exported local from another module. */
-const GOLD_PIECE_OTYP_DET = 438;
-/* C ref: detect.c:603-788 object_detect(detector, class).
- *
- * Returns 1 ("nothing detected"), 0 ("something detected").
- * RNG: rnd(10) once per monster whose minvent contains gold (the mapping
- * loop's "usually more than 1" roll, detect.c:766) — clear_stale_map and
- * the counting loop draw nothing.  exercise(A_WIS, TRUE) is the CALLER's
- * draw (peffect_object_detection), not this function's — matches C, where
- * object_detect() itself never calls exercise(). */
-async function object_detect(detector, oclass) {
-    const g = game;
-    const u = g.u;
-    if (oclass < 0 || oclass >= 18 /* MAXOCLASSES */) {
-        /* C detect.c:619 reports an impossible class and resets class to 0
-         * (after impossible()) and continues into normal detection. */
-        oclass = 0;
-    }
-    const is_cursed = !!(detector && detector.cursed);
-    const do_dknown = !!(detector
-        && (detector.oclass === POTION_CLASS || detector.oclass === SPBOOK_CLASS)
-        && detector.blessed);
-    let ct = 0, ctu = 0;
-    let otmp = null;
-
-    /* C detect.c:628-637: boulder symbol check and stuff string */
-    const sym = oclass ? def_oc_syms_chars[oclass] : 0;
-    const bouldersym = g.symbolOverrides?.S_boulder ? pager_boulder_symbol()
-        : String.fromCharCode(pager_showsyms()?.[192 /* SYM_OFF_X + SYM_BOULDER */] || 96);
-    const boulder = (sym && sym === bouldersym) ? ROCK_CLASS_DET : 0;
-    const confused = ((u.uprops?.[CONFUSION]?.intrinsic | 0) || (u.uprops?.[CONFUSION]?.extrinsic | 0)) !== 0;
-    let stuff = (_hallucination() || (confused && oclass === SCROLL_CLASS_DET))
-        ? 'something' : (oclass ? _DET_OC_NAMES[oclass] : 'objects');
-    if (boulder && oclass !== ROCK_CLASS_DET)
-        stuff += ' and/or large stones';
-
-    if (do_dknown) {
-        for (let o = g.invent; o; o = o.nobj)
-            _observe_recursively_det(o);
-    }
-    for (let o = g.fobj; o; o = o.nobj) {
-        if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder)) {
-            if (u_at(o.ox, o.oy)) ctu++; else ct++;
-        }
-        if (do_dknown) _observe_recursively_det(o);
-    }
-    for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
-        if (!oclass || _o_in_det(o, oclass)) {
-            if (u_at(o.ox, o.oy)) ctu++; else ct++;
-        }
-        if (do_dknown) _observe_recursively_det(o);
-    }
-
-    if (u.usteed) {
-        u.usteed.mx = u.ux;
-        u.usteed.my = u.uy;
-    }
-
-    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
-            continue;
-        for (let o = mtmp.minvent; o; o = o.nobj) {
-            if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder))
-                ct++;
-            if (do_dknown) _observe_recursively_det(o);
-        }
-        /* C detect.c:668-676 — the `break` exits the OUTER mtmp loop the
-         * instant ANY monster is a cursed-detector mimic-of-object or
-         * carries gold.  Ported as-is (Cardinal Rule 1: port the bug). */
-        if ((is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT
-             && (!oclass || oclass === (MKOBJ_OC_CLASS[mtmp.mappearance | 0] | 0)))
-            || (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS))) {
-            ct++;
-            break;
-        }
-    }
-
-    const stale = _clear_stale_map_alldetect(oclass);
-    if (!stale && !ct) {
-        if (!ctu) {
-            if (detector)
-                await strange_feeling(detector, 'You feel a lack of something.');
-            return 1;
-        }
-        await You(`sense ${stuff} nearby.`);
-        return 0;
-    }
-
-    if (g._pending_message)
-        await force_more(g._pending_message);
-    await cls();
-    unconstrain_map();
-    for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
-        if (!oclass || (otmp = _o_in_det(o, oclass)) !== null) {
-            if (oclass) {
-                if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
-                map_object(otmp, 1);
-            } else {
-                map_object(o, 1);
-            }
-        }
-    }
-    for (let x = 1; x < COLNO; x++) {
-        for (let y = 0; y < ROWNO; y++) {
-            for (let o = g.level?.levelObjects?.[x]?.[y]; o; o = o.nexthere) {
-                if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
-                    || (otmp = _o_in_det(o, boulder)) !== null) {
-                    if (oclass || boulder) {
-                        if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
-                        map_object(otmp, 1);
-                    } else {
-                        map_object(o, 1);
-                    }
-                    break;
-                }
-            }
-        }
-    }
-    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
-            continue;
-        for (let o = mtmp.minvent; o; o = o.nobj) {
-            if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
-                || (otmp = _o_in_det(o, boulder)) !== null) {
-                if (!oclass && !boulder)
-                    otmp = o;
-                otmp.ox = mtmp.mx;
-                otmp.oy = mtmp.my;
-                map_object(otmp, 1);
-                break;
-            }
-        }
-        if (is_cursed && M_AP_TYPE(mtmp) === M_AP_OBJECT
-            && (!oclass || oclass === (MKOBJ_OC_CLASS[mtmp.mappearance | 0] | 0))) {
-            /* set_mimic_sym() (js/mklev.js) stores the disguise species flat on
-             * the monster, not in mextra; has_mcorpsenm() is MCORPSENM != NON_PM. */
-            const mcn = (MCORPSENM(mtmp) !== NON_PM) ? MCORPSENM(mtmp) : (mtmp.mcorpsenm ?? NON_PM);
-            const corpsenm = (mcn !== NON_PM) ? mcn : PM_TENGU;
-            map_object({ otyp: mtmp.mappearance | 0, quan: 1,
-                          ox: mtmp.mx, oy: mtmp.my, corpsenm }, 1);
-        } else if (findgold(mtmp.minvent) && (!oclass || oclass === COIN_CLASS)) {
-            map_object({ otyp: GOLD_PIECE_OTYP_DET, oclass: COIN_CLASS,
-                          quan: rnd(10), ox: mtmp.mx, oy: mtmp.my }, 1);
-        }
-    }
-
-    /* C detect.c:775-778 tests the displayed glyph, including objects mapped
-     * from a steed's inventory or the buried-object chain. */
-    let ter_typ = TER_DETECT | TER_OBJ;
-    const heroHasObjGlyph = g.level?.at(u.ux, u.uy)?.disp_cls === GLYPHCLS_OBJ;
-    if (!heroHasObjGlyph) {
-        newsym(u.ux, u.uy);
-        ter_typ |= TER_MON;
-    }
-    await You(`detect the ${ct ? 'presence' : 'absence'} of ${stuff}.`);
-
-    /* C detect.c:782-785 — `if (!ct) display_nhwindow(WIN_MAP, TRUE); else
-     * browse_map(ter_typ, "object");`  display_nhwindow(WIN_MAP,...) is not
-     * reachable from this module (private to js/cmd.js); browse_map's own
-     * body is just a getpos() autodescribe pass (mirrors monster_detect's
-     * inline copy above).  The absence arm only acknowledges the message. */
-    if (!ct) {
-        await force_more(g._pending_message);
-    } else {
-        g.iflags = g.iflags || {};
-        g.iflags.terrainmode = ter_typ;
-        /* detect.c:112-117 browse_map: autodescribe forced on, then restored */
-        const save_autodescribe = g.iflags.autodescribe;
-        g.iflags.autodescribe = true;
-        try {
-            await getpos({ x: u.ux, y: u.uy }, false, 'object');
-        } finally {
-            g.iflags.terrainmode = 0;
-            g.iflags.autodescribe = save_autodescribe;
-        }
-    }
-
-    if (g._pending_message) {
-        const morc = await force_more(g._pending_message);
-        /* No incoming update_topl owns this more(): ESC's WIN_STOP
-         * (topl.c:232-235) is live for the turn's later monster plines. */
-        if (morc === 27 && g._topl_win_stop_armed) {
-            g._topl_win_stop_armed = false;
-            g._topl_win_stop = true;
-            g._topl_win_stop_buf = g._topl_last_more_committed;
-        }
-    }
-    /* docrt() -> cls() -> clear_nhwindow(WIN_MAP) blanks the physical topline
-     * too, so browse_map's standing getpos autodescribe line is gone
-     * (detect.c:787, display.c:2196; same as monster_detect above). */
-    g._topl_sticky = null;
-    await map_redisplay();
-    return 0;
-}
+import { TER_OBJ } from './const.js';
+import { monster_detect, object_detect } from './detect.js'; // relocate-fns
+import { do_enlightenment_effect } from './zap.js'; // relocate-fns
+export { vomit } from './eat.js'; // relocate-fns
+export { SPBOOK_CLASS, _detect_monsters_uprop, strange_feeling }; // relocate-fns
 /* C ref: detect.c:955-960 peffect_object_detection(struct obj *otmp).
  * Returns 1 ("nothing detected"), 0 ("something detected" — the caller then
  * draws exercise(A_WIS, TRUE), matching object_detect() itself NOT drawing
@@ -4902,7 +4464,7 @@ export async function peffects(otmp) {
         await peffect_polymorph(otmp);
         break;
     default:
-        impossible("What a funny potion! (%u)", otmp.otyp);
+        await impossible("What a funny potion! (%u)", otmp.otyp);
         return 0;
     }
     return -1;
@@ -5095,3 +4657,28 @@ export function make_blinded(xtime, talk) {
     }
 }
 
+
+export function toggle_blindness() {
+    const up = game.u?.uprops;
+    const Stinging = game.u?.uwep && ((up?.[WARN_OF_MON]?.extrinsic | 0) & W_WEP);
+    game.disp = game.disp || {};
+    game.disp.botl = 1;                 /* SET_BOTL */
+    game.vision_full_recalc = 1;
+    vision_recalc(0);
+    /* C potion.c:349-350 — `if (Blind_telepat || Infravision || Stinging)
+     * see_monsters();`.  A hero seeing by infravision loses those monsters the
+     * moment sight goes: vision_recalc's blind arm only repaints IN_SIGHT
+     * cells, and an infravisible monster in a dark spot is COULD_SEE only. */
+    {
+        const has = (p) => !!(up?.[p]?.intrinsic || up?.[p]?.extrinsic);
+        if (has(TELEPAT) || has(INFRAVISION) || Stinging)
+            see_monsters();
+    }
+    // C potion.c:359-360: keep the eventual stop message consistent with sight.
+    if (Stinging)
+        Sting_effects(-1);
+    /* C potion.c:362-363 — "update dknown flag for inventory picked up while
+     * blind": `if (!Blind) learn_unseen_invent();`. */
+    if (!_Blind())
+        learn_unseen_invent();
+}

@@ -25,7 +25,8 @@ import { optfn_suppress_alert_set } from './feature_alert.js';
 import { optfn_number_pad_set, set_misc_menu_command } from './cmd_config.js';
 import { parseautocomplete } from './cmd.js';
 import { config_error_add } from './cfgfiles.js';
-import { str2role, str2race, str2gend, str2align, setrolefilter, gr as roleGlobals } from './roles.js';
+import { gr as roleGlobals } from './roles.js';
+import { str2role, str2race, str2gend, str2align, setrolefilter } from './role.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { sym_val_real, apply_pending_s_utf8, symset_defined_in_file, SYM_OFFSETS } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
@@ -38,7 +39,10 @@ import { pline } from './pline.js';
 import { optfn_sortdiscoveries_set, get_sortdisco } from './o_init.js';
 // C options.c:6768 match_optname compares names case-insensitively; keep
 // the native storage field (for example, flags.goldX) from the matched row.
-const booleanStorage = new Map(DOSET_BOOLS.map(row => [row.name.toLowerCase(), row]));
+let booleanStorage;
+function getBooleanStorage() {
+    return booleanStorage ??= new Map(DOSET_BOOLS.map(row => [row.name.toLowerCase(), row]));
+}
 const MAXOCLASSES = 18; /* objclass.h:141 */
 
 /* C ref: options.c:3308-3390 optfn_pickup_types(do_set), the config-file arm.
@@ -1271,6 +1275,16 @@ export function parseNethackrc(rc) {
                     config_error_add("deprecated %sprayconfirm option takes no parameters (found '%s')",
                                      menunegated ? '!' : '', pcop);
                 } else {
+                    /* C options.c:2872-2884: COMPLAIN_ABOUT_PRAYCONFIRM is
+                     * #define'd unconditionally (options.c:20, #undef'd at
+                     * :10221), so the no-value arm files the deprecation with
+                     * the pending config-error report and keeps going.
+                     * allopt[optidx].name is "paranoid_confirmation" —
+                     * optlist.h:555-558 carries "prayconfirm" as its alias,
+                     * which is how parseoptions matched the name. */
+                    config_error_add("%sprayconfirm option is deprecated; switching to %s:%cpray",
+                                     menunegated ? '!' : '', 'paranoid_confirmation',
+                                     menunegated ? '-' : '+');
                     const existing = (result.flags.paranoia_bits != null)
                         ? result.flags.paranoia_bits
                         : PARANOID_CONFIRMATION_DEFAULT_BITS;
@@ -1461,6 +1475,12 @@ export function parseNethackrc(rc) {
                         else if (sk === 'a') fl.end_around = sneg ? 0 : inum;
                         else if (sk === 'o') fl.end_own = !(sneg || !inum);
                         else if (sk === 'n') { fl.end_top = fl.end_around = 0; fl.end_own = false; }
+                        /* C options.c:3719-3726: '-' followed by a digit is the
+                         * negative-value error, else FALLTHROUGH to Unknown. */
+                        if (sk === '-' && /^\d/.test(op[1] || '')) {
+                            config_error_add('Values for %s:top and %s:around must not be negative', dupName, dupName);
+                            break;
+                        }
                         if (!/^[taon]/i.test(op[0] || '')) { config_error_add("Unknown %s parameter '%s'", dupName, op); break; }
                         op = op.replace(/^[@-Za-z]+/, '').replace(/^ +/, '').replace(/^\//, '');
                     }
@@ -1649,8 +1669,8 @@ export function parseNethackrc(rc) {
             let stripped = negated ? trimmed.slice(1) : trimmed;
             // C options.c:5192-5244 optfn_boolean: parameters select the
             // boolean value; storage still uses the option's native address.
-            if (boolRow && booleanStorage.has(boolRow[0].toLowerCase())) {
-                if (booleanStorage.get(boolRow[0].toLowerCase()).wizNoFuz)
+            if (boolRow && getBooleanStorage().has(boolRow[0].toLowerCase())) {
+                if (getBooleanStorage().get(boolRow[0].toLowerCase()).wizNoFuz)
                     continue;
                 negated = menunegated;
                 stripped = boolRow[0];
@@ -1977,7 +1997,7 @@ export function parseNethackrc(rc) {
                 else {
                     // Use the same native NHOPTB storage as the in-game menu.
                     // In particular !cmdassist belongs to iflags, not flags.
-                    const row = booleanStorage.get(lname);
+                    const row = getBooleanStorage().get(lname);
                     /* C options.c:5211 optfn_boolean: go.opt_initial && setwhere ==
                      * set_wiznofuz -> optn_err; debug_hunger/debug_mongen/
                      * debug_overwrite_stairs cannot come from the config file. */
@@ -2113,32 +2133,35 @@ import { get_configfile } from './cfgfiles.js';
 import { game } from './gstate.js';
 import { display_text_window } from './com_pager.js';
 /* rnd — C options.c:8274's fruit-id overflow guard is this file's only draw. */
-import { rnd, rn2 } from './rng.js';
+import { rnd, rn2 } from './rnd.js';
 /* C options.c:8194 makesingular(), :8204-8212 OBJ_NAME over the FOOD_CLASS
  * range, :8230-8236 name_to_mon()/ismnum() — fruitadd's user_specified name
  * rewrite reads all four. */
 import { makesingular, makeplural, objName, fruit_from_name as fruit_from_name_real } from './objnam.js';
-import { name_to_mon } from './makemon.js';
+import { name_to_mon } from './mondata.js';
 import { ROLE_NONE, gs, ismnum, RUN_TPORT, RUN_LEAP, RUN_STEP, RUN_CRAWL,
     PARANOID_BONES, ROLE_RACEMASK, ROLE_GENDMASK } from './const.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { list_vanquished_set_vanq_order } from './cmd.js'; // relocate-fns
-import { cmd_from_func, reset_commands, update_rest_on_space, visctrl } from './cmd_binds.js'; // relocate-fns
+import { cmd_from_func, reset_commands, update_rest_on_space } from './cmd.js';
+import { visctrl } from './hacklib.js'; // relocate-fns
 import { number_pad_value } from './cmd_config.js'; // relocate-fns
 import { clr2colorname } from './coloratt.js'; // relocate-fns
 import { build_window_screen, menu_search_case, menu_search_docorner } from './com_pager.js'; // relocate-fns
 import { PL_FSIZ, ECMD_OK, Is_rogue_level, MENU_COMBINATION, MENU_TRADITIONAL } from './const.js'; // relocate-fns
 import { OPTMENUHELP, dlb_file_lines } from './dispfile.js'; // relocate-fns
 import { dec_mode, docrt, flush_screen, force_more, new_status_window, newclipping, status_reassess } from './display.js'; // relocate-fns
-import { DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME, term_for_boolean } from './doset_data.js'; // relocate-fns
+import { DOSET_COMPOUNDS, DOSET_OTHERS, LONGEST_OPTION_NAME } from './doset_data.js'; // relocate-fns
 import { def_oc_syms_chars } from './drawing.js'; // relocate-fns
 import { strsubst } from './hacklib.js'; // relocate-fns
 import { nhgetch } from './input.js'; // relocate-fns
-import { update_inventory } from './inventory_refresh.js'; // relocate-fns
+import { update_inventory } from './invent.js'; // relocate-fns
 import { menutype } from './menustyle.js'; // relocate-fns
 import { choose_disco_sort } from './o_init.js'; // relocate-fns
 import './options_runtime.js'; // relocate-fns
-import { drainTopline, handler_change_autocompletions, handler_rebind_keys, query_attr_one, query_color, set_cursor } from './optmenu.js';
+import { drainTopline, query_attr_one, set_cursor } from './optmenu.js';
+import { query_color } from './coloratt.js';
+import { handler_change_autocompletions, handler_rebind_keys } from './cmd.js';
 import { status_hilite_menu } from './botl.js'; // relocate-fns
 import { assign_graphics, load_primary_symset_from_file, clear_symsetentry } from './symbols.js'; // relocate-fns
 import { classifyTerrain } from './terrain-status.js'; // relocate-fns
@@ -2148,16 +2171,18 @@ import { ECMD_FAIL, PRIMARYSET, STONE, WC_PERM_INVENT, SYM_BOULDER } from './con
 import { reglyph_darkroom, reset_glyphmap, use_last_flush_snapshot } from './display.js';
 import { bot, check_gold_symbol, reset_status_hilites } from './botl.js'; // relocate-fns
 import { reset_customcolors } from './glyphs.js'; // relocate-fns
-import { reassign } from './inventory_refresh.js'; // relocate-fns
+import { reassign } from './invent.js'; // relocate-fns
 import { do_init, do_set, get_cnf_val, get_val, option_value, optn_err, optn_ok, optn_silenterr, set_option_value } from './options_runtime.js'; // relocate-fns
 import { parsesymbols, switch_symbols } from './symbols.js'; // relocate-fns
 import { classifyTerrain as classify_terrain } from './terrain-status.js'; // relocate-fns
-import { bind_key, bind_mousebtn, bind_specialkey } from './cmd_binds.js'; // relocate-fns
+import { bind_key, bind_mousebtn, bind_specialkey } from './cmd.js'; // relocate-fns
 import { default_menu_cmd_info, trimspaces } from './cmd_config.js'; // relocate-fns
 import { cond_menu, count_status_hilites, match_str2conditionbitmask, parse_cond_option } from './botl.js'; // relocate-fns
 import { menu_search_getlin, tty_window_offx } from './com_pager.js'; // relocate-fns
 import { pmatchi } from './strutil.js'; // relocate-fns
 import { sanitize_name } from './bones.js'; // relocate-fns
+import { reset_customsymbols } from './utf8map.js'; // relocate-fns
+import { _pad_l, _pad_r } from './pager.js'; // relocate-fns
 export { sanitize_name } from './bones.js'; // relocate-fns
 export { CONDTESTS, cond_enabled_arr }; // relocate-fns
 const FOOD_CLASS = 7;
@@ -2365,7 +2390,7 @@ export function init_fruit_chain() {
  * body (all four arms, including the two makesingular() fallbacks) lives in
  * js/objnam.js; this only adapts its out-parameter to the {f, highest_fid}
  * shape the callers below use. */
-function fruit_from_name(fname) {
+function fruit_from_name_options(fname) {
     _ffruit();
     const hf = { value: 0 };
     const f = fruit_from_name_real(fname, false, hf);
@@ -2470,7 +2495,7 @@ export function fruitadd(str, replace_fruit, user_specified) {
         g.flags.made_fruit = true;
     }
 
-    const { f, highest_fid } = fruit_from_name(altname || name);
+    const { f, highest_fid } = fruit_from_name_options(altname || name);
     if (f) {
         /* C options.c:8284-8285 nonew: */
         if (user_specified) {
@@ -2518,10 +2543,10 @@ export function optfn_fruit_set(op) {
         return null;
     /* C options.c:1727-1743 — !go.opt_initial. */
     {
-        const { f, highest_fid } = fruit_from_name(op);
+        const { f, highest_fid } = fruit_from_name_options(op);
         if (!f) {
             if (!(g.flags && g.flags.made_fruit))
-                forig = fruit_from_name(g.pl_fruit || 'slime mold').f;
+                forig = fruit_from_name_options(g.pl_fruit || 'slime mold').f;
             if (!forig && highest_fid >= 100) {
                 /* C: config_error_add("Doing that so many times isn't very
                  * fruitful."); return optn_ok — pl_fruit is NOT changed. */
@@ -2727,10 +2752,13 @@ const PAGES = [
 
 // flag default-on table (defaults match optlist.h Off/On).  A boolean's
 // displayed value is game.flags[flag] if defined, else its default.
-const _SIMPLE_STORAGE = new Map(DOSET_BOOLS.map((r) => [r.name, r]));
+let simpleStorage;
+function getSimpleStorage() {
+    return simpleStorage ??= new Map(DOSET_BOOLS.map((r) => [r.name, r]));
+}
 
 function simpleBox(entry) {
-    const row = _SIMPLE_STORAGE.get(entry.name);
+    const row = getSimpleStorage().get(entry.name);
     if (!row) return { obj: (game.flags || (game.flags = {})), fld: entry.flag };
     let o = game;
     for (const part of row.box.split('.')) {
@@ -5155,14 +5183,6 @@ export function can_set_perm_invent() {
     return true;
 }
 
-/* C utf8map.c reset_customsymbols(): free_all_glyphmap_u() then
- * apply_customizations(gc.currentgraphics, do_custom_symbols). The symbol
- * loader retains the Unicode definitions; display applies this enabled state
- * when resolving them instead of allocating per-glyph u entries. */
-function reset_customsymbols() {
-    game._gm_customsymbols = game.iflags.customsymbols !== false;
-    if (game._gm_customsymbols) apply_pending_s_utf8();
-}
 
 export async function reset_needed_visuals() {
     const go = game.go;
@@ -5605,3 +5625,122 @@ export function nh_getenv(name) {
 }
 
 export function sym_val() { return 0; }
+
+/* C ref: options.c:8094-8104 get_menu_cmd_key(ch) — remap a MENU_* default key
+ * through gm.mapped_menu_op/gm.mapped_menu_cmds (filled by BINDINGS=key:menu_*
+ * and MENUCOMMAND lines); this wrapper keeps the string-char calling form. */
+function get_menu_cmd_key_cmd(ch) {
+    const r = get_menu_cmd_key(ch.charCodeAt(0));
+    return typeof r === 'number' ? String.fromCharCode(r) : r;
+}
+
+/* C ref: wintype.h:151-163 — the default menu command keys. */
+const MENU_FIRST_PAGE = '^', MENU_LAST_PAGE = '|',
+      MENU_NEXT_PAGE = '>', MENU_PREVIOUS_PAGE = '<',
+      MENU_SELECT_ALL = '.', MENU_UNSELECT_ALL = '-', MENU_INVERT_ALL = '@',
+      MENU_SELECT_PAGE = ',', MENU_UNSELECT_PAGE = '\\', MENU_INVERT_PAGE = '~',
+      MENU_SEARCH = ':',
+      MENU_SHIFT_RIGHT = '}', MENU_SHIFT_LEFT = '{';
+
+/* C ref: options.c:332-356 default_menu_cmd_info[] — the menu commands
+ * dokeylist()/show_menu_controls(dolist=TRUE) list, in table order. */
+const DEFAULT_MENU_CMD_INFO = [
+    { name: 'menu_next_page',     cmd: MENU_NEXT_PAGE,     desc: 'Go to next page' },
+    { name: 'menu_previous_page', cmd: MENU_PREVIOUS_PAGE, desc: 'Go to previous page' },
+    { name: 'menu_first_page',    cmd: MENU_FIRST_PAGE,    desc: 'Go to first page' },
+    { name: 'menu_last_page',     cmd: MENU_LAST_PAGE,     desc: 'Go to last page' },
+    { name: 'menu_select_all',    cmd: MENU_SELECT_ALL,    desc: 'Select all items in entire menu' },
+    { name: 'menu_invert_all',    cmd: MENU_INVERT_ALL,    desc: 'Invert selection for all items' },
+    { name: 'menu_deselect_all',  cmd: MENU_UNSELECT_ALL,  desc: 'Unselect all items in entire menu' },
+    { name: 'menu_select_page',   cmd: MENU_SELECT_PAGE,   desc: 'Select all items on current page' },
+    { name: 'menu_invert_page',   cmd: MENU_INVERT_PAGE,   desc: "Invert current page's selections" },
+    { name: 'menu_deselect_page', cmd: MENU_UNSELECT_PAGE, desc: 'Unselect all items on current page' },
+    { name: 'menu_search',        cmd: MENU_SEARCH,        desc: 'Search and invert matching items' },
+    { name: 'menu_shift_right',   cmd: MENU_SHIFT_RIGHT,   desc: 'Pan current page to right (perm_invent only)' },
+    { name: 'menu_shift_left',    cmd: MENU_SHIFT_LEFT,    desc: 'Pan current page to left (perm_invent only)' },
+];
+
+export function show_menu_controls(dolist) {
+    const hardcoded = [
+        { key: 'Return', desc: 'Accept current choice(s) and dismiss menu' },
+        { key: 'Enter',  desc: 'Same as Return' },
+        { key: 'Space',  desc: 'If not on last page, advance one page;' },
+        { key: '     ',  desc: 'when on last page, treat like Return' },
+        { key: 'Escape', desc: 'Cancel menu without making any choice(s)' },
+    ];
+    const mc_fmt = (a, b, c) => `${_pad_r(a, 8)}     ${_pad_l(b, 6)} ${c}`;
+    const mc_altfmt = (a, b, c) => `${_pad_r(a, 9)}  ${_pad_l(b, 6)} ${c}`;
+    const has_menu_shift = false;   /* wc2_supported("menu_shift") — see above */
+    const win = [];
+    let fmt, arg;
+
+    win.push('Menu control keys:');
+    if (dolist) {
+        /* '?i' key-bindings help — dokeylist's caller.  Not reached by the
+         * help menu's item 'l'; ported with dokeylist. */
+        fmt = (a, b, c) => `${a}${_pad_l(b, 7)} ${c}`;
+        for (const mc of DEFAULT_MENU_CMD_INFO) {
+            if ((mc.cmd === MENU_SHIFT_RIGHT || mc.cmd === MENU_SHIFT_LEFT)
+                && !has_menu_shift)
+                continue;
+            win.push(fmt('', visctrl(get_menu_cmd_key_cmd(mc.cmd).charCodeAt(0)), mc.desc));
+        }
+        arg = '';   /* no extra prefix for 'dolist' */
+    } else {
+        win.push('');
+        win.push(mc_altfmt('', 'Whole', 'Current'));
+        win.push(mc_altfmt('', ' Menu', ' Page'));
+        win.push(mc_fmt('Select',
+                        visctrl(get_menu_cmd_key_cmd(MENU_SELECT_ALL).charCodeAt(0)),
+                        visctrl(get_menu_cmd_key_cmd(MENU_SELECT_PAGE).charCodeAt(0))));
+        win.push(mc_fmt('Invert',
+                        visctrl(get_menu_cmd_key_cmd(MENU_INVERT_ALL).charCodeAt(0)),
+                        visctrl(get_menu_cmd_key_cmd(MENU_INVERT_PAGE).charCodeAt(0))));
+        win.push(mc_fmt('Deselect',
+                        visctrl(get_menu_cmd_key_cmd(MENU_UNSELECT_ALL).charCodeAt(0)),
+                        visctrl(get_menu_cmd_key_cmd(MENU_UNSELECT_PAGE).charCodeAt(0))));
+        win.push('');
+        win.push(mc_fmt('Go to',
+                        visctrl(get_menu_cmd_key_cmd(MENU_NEXT_PAGE).charCodeAt(0)),
+                        'Next page'));
+        win.push(mc_fmt('', visctrl(get_menu_cmd_key_cmd(MENU_PREVIOUS_PAGE).charCodeAt(0)),
+                        'Previous page'));
+        win.push(mc_fmt('', visctrl(get_menu_cmd_key_cmd(MENU_FIRST_PAGE).charCodeAt(0)),
+                        'First page'));
+        win.push(mc_fmt('', visctrl(get_menu_cmd_key_cmd(MENU_LAST_PAGE).charCodeAt(0)),
+                        'Last page'));
+        if (has_menu_shift) {
+            win.push(mc_fmt('Pan view',
+                            visctrl(get_menu_cmd_key_cmd(MENU_SHIFT_RIGHT).charCodeAt(0)),
+                            'Right (perm_invent only)'));
+            win.push(mc_fmt('', visctrl(get_menu_cmd_key_cmd(MENU_SHIFT_LEFT).charCodeAt(0)),
+                            'Left'));
+        }
+        win.push('');
+        win.push(mc_fmt('Search', visctrl(get_menu_cmd_key_cmd(MENU_SEARCH).charCodeAt(0)),
+                        'Exter a target string and invert all matching entries'));
+        /* separator before hardcoded */
+        win.push('');
+        fmt = (a, b, c) => `${_pad_r(a, 9)}  ${_pad_l(b, 8)} ${c}`;
+        arg = 'Other ';   /* prefix for the first hardcoded[] entry, then reset */
+    }
+    for (const xcp of hardcoded) {
+        win.push(fmt(arg, xcp.key, xcp.desc));
+        arg = '';
+    }
+    return win;
+}
+
+/* C ref: options.c:8735 term_for_boolean — booleanterms[value][termpref]. */
+const BOOLEAN_TERMS = [
+    ['false', 'off', 'disabled', 'excluded from build'],
+    ['true', 'on', 'enabled', 'included'],
+];
+
+const TERMPREF = { Term_False: 0, Term_Off: 1, Term_Disabled: 2, Term_Excluded: 3 };
+
+/* C ref: options.c:8735 term_for_boolean(idx, b). */
+export function term_for_boolean(row, value) {
+    const i = TERMPREF[row.term] || 0;
+    return BOOLEAN_TERMS[value ? 1 : 0][i];
+}

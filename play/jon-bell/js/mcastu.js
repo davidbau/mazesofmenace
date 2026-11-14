@@ -6,26 +6,27 @@ import { Mgender } from './do_name.js';
 // js/mcastu.js — port of nethack-c/src/mcastu.c (scaffold: functions are added here
 
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, d } from './rnd.js';
 import { com_pager as quest_com_pager } from './questpgr.js';
 import { canseemon, canspotmon, Unaware, map_invisible, newsym, shieldeff, debugpline } from './display.js';
 import { debugcore } from './files.js';
-import { noit_Monnam } from './mhitm.js';
+import { noit_Monnam } from './do_name.js';
 import { pline, Norep } from './pline.js';
 import { You } from './eat.js';
 import { mon_nam, Monnam } from './uhitm.js';
-import { nomul } from './allmain.js';
+import { nomul } from './hack.js';
 import { is_waterwall } from './dbridge.js';
 /* mcast_lightning's leaves.  destroy_items and flashburn are exported from
  * js/zap.js (their C home is zap.c); ureflects' one real body is js/makemon.js
  * (js/mhitu.js:217 and js/mhitm.js:235 are constant-FALSE stubs of it). */
 import { destroy_items, flashburn } from './zap.js';
-import { ureflects } from './makemon.js';
+import { ureflects } from './muse.js';
 import { lined_up } from './mthrowu.js';
 import { couldsee, cansee } from './vision.js';
 import { M_ATTK_MISS, M_ATTK_HIT, u_at, A_LAWFUL, EMIN, ismnum, MALE, FEMALE, NEUTRAL, NUM_MGENDERS, STRAT_WAITFORU, STRAT_APPEARMSG, SLIMED, MM_NOWAIT, HEADSTONE } from './const.js';
 import { an } from './objnam.js';
-import { the_unique_pm, permonstTemplate } from './makemon.js';
+import { permonstTemplate } from './makemon.js';
+import { the_unique_pm } from './objnam.js';
 import { pmname } from './do_name.js';
 import { mon_set_minvis } from './worn.js';
 import { mon_aligntyp } from './priest.js';
@@ -60,12 +61,14 @@ import { deadhero } from './end.js';
 import { drain_pending_death_in_place } from './fastforward.js';
 import { rehumanize } from './polyself.js';
 /* C polyself.c:2129 body_part(part) = mbodypart(&gy.youmonst, part). */
-import { body_part, set_msg_xy, SetVoice } from './cmd.js';
+import { body_part, SetVoice } from './cmd.js';
+import { set_msg_xy } from './pline.js';
 import { make_slimed } from './potion.js';
 
 // monattk.h attack-damage types used by castmu.
-const AD_MAGM = 1, AD_FIRE = 2, AD_COLD = 3, AD_SLEE = 4, AD_DISN = 5,
-    AD_ELEC = 6, AD_DRST = 7, AD_ACID = 8, AD_CLRC = 240, AD_SPEL = 241;
+const AD_FIRE = 2, AD_COLD = 3, AD_SLEE = 4, AD_DISN = 5,
+    AD_ELEC = 6, AD_DRST = 7, AD_CLRC = 240, AD_SPEL = 241;
+import { AD_ACID, AD_MAGM } from './zap.js';
 
 // worn.h monster speed values (mon->permspeed).
 const MSLOW = 1, MFAST = 2;
@@ -262,22 +265,6 @@ export const QUEST_CUSS_TEXT = {
         "\"I should fart in thy direction, but it might improve thy smell!\"",
     ],
 };
-export async function mon_spell_hits_spot(_mtmp, adtyp, _x, _y) {
-    if (adtyp === AD_MAGM || adtyp === AD_ACID) {
-        /* C zap.c:5509-5516 — engraving clobber. */
-        const e = engr_at(_x, _y);
-        if (e && e.text != null)
-            wipe_engr_at(_x, _y, String(e.text || '').length + d(6, 6), true);
-    }
-    if (adtyp >= AD_MAGM && adtyp <= AD_ACID) {
-        /* C zap.c:5528 — monster spells use the negative spell encoding. */
-        await zap_over_floor(_x, _y, -(10 + ((adtyp | 0) - 1)),
-            { v: false }, true, 0);
-        return;
-    }
-    /* C zap.c:5530 — impossible("Unsupported damage type (%d) ...") */
-    impossible('Unsupported damage type (%d) for mon_spell_hits_spot.', adtyp);
-}
 /* Preserve mcastu's historical public API while sharing display.c's body. */
 export { shieldeff };
 export { monstseesu, monstunseesu };
@@ -289,7 +276,8 @@ const HEAD_MC = 8;                    /* hack.h body-part index (js/cmd.js:35893
  * spell that did damage halted the run the moment mattacku's AT_MAGC case was
  * wired.  Re-exported rather than re-derived (js/mhitm.js:170 holds a THIRD,
  * silent-no-op copy — fleet-feedback work, not this target's). */
-import { mdamageu, ignite_items } from './mhitu.js';
+import { mdamageu } from './mhitu.js';
+import { ignite_items } from './trap.js';
 import { helpless } from './mhitm.js';
 export { mdamageu };
 /* C mondata.h:81 perceives(ptr) — ((ptr)->mflags1 & M1_SEE_INVIS) != 0L.
@@ -379,7 +367,7 @@ const KILLED_BY_MC = 1;               /* hack.h killer.format */
 export async function mcast_clone_wiz(mtmp) {
     const g = game, u = g.u || {};
     if (!mtmp?.iswiz || (g.context?.no_of_wizards | 0) !== 1) {
-        impossible('bad wizard cloning?');
+        impossible_mcastu('bad wizard cloning?');
         return;
     }
     await pline('Double Trouble...');
@@ -490,7 +478,7 @@ export function mcast_disappear(mtmp) {
         if (cansee(mtmp.mx, mtmp.my) && !canspotmon(mtmp))
             map_invisible(mtmp.mx, mtmp.my);
     } else {
-        impossible('no reason for monster to cast disappear spell?');
+        impossible_mcastu('no reason for monster to cast disappear spell?');
     }
 }
 export function mcast_stun_you(dmg) {
@@ -612,10 +600,12 @@ export async function mcast_lightning(mtmp, dmg) {
     return dmg;
 }
 import { mkclass, set_malign } from './makemon.js';
-import { makemon, mksobj, engr_at, wipe_engr_at } from './mklev.js';
+import { mksobj } from './mkobj.js';
+import { makemon } from './makemon.js';
+import { engr_at, wipe_engr_at } from './engrave.js';
 import { upstart } from './hacklib.js';
 import { add_to_minv } from './dokick.js';
-import { monster_census } from './sit.js';
+import { monster_census } from './minion.js';
 import { enexto_out } from './teleport.js';
 import { tp_sensemon } from './display.js';
 import { You_hear } from './pline.js';
@@ -631,6 +621,8 @@ import { PM_WIZARD_OF_YENDOR as PM_WIZARD_OF_YENDOR_MC, PM_HUMAN as PM_HUMAN_WA,
 import { PROT_FROM_SHAPE_CHANGERS as PROT_FROM_SHAPE_CHANGERS_MC } from './const.js';
 import { aggravate, has_aggravatables } from './wizard.js'; // relocate-fns
 import { burn_away_slime } from './timeout.js'; // relocate-fns
+import { mon_spell_hits_spot } from './zap.js'; // relocate-fns
+export { impossible_mcastu }; // relocate-fns
 export { burn_away_slime } from './timeout.js'; // relocate-fns
 export { aggravate } from './wizard.js'; // relocate-fns
 export { Deaf, is_minion }; // relocate-fns
@@ -809,7 +801,7 @@ export function mcast_blind_you() {
             /* C: Your1(vision_clears) — decl.c:48 "vision quickly clears." */
             pline('Your vision quickly clears.');
     } else {
-        impossible('no reason for monster to cast blindness spell?');
+        impossible_mcastu('no reason for monster to cast blindness spell?');
     }
 }
 
@@ -891,7 +883,7 @@ export function mcast_open_wounds(dmg) {
 // impossible() — C ref: pline.c debug-assertion logger; never alters game
 // state. No-op mirrors the established convention for this helper elsewhere
 // in the codebase (e.g. js/display.js's local impossible()).
-function impossible(_msg, ..._args) { }
+function impossible_mcastu(_msg, ..._args) { }
 
 
 export { Monnam };
@@ -1017,11 +1009,11 @@ function spell_would_be_useless(mtmp, spellnum) {
 // port; the sibling spell effects are genuinely unreached, stubbed per the
 async function mcast_spell(mtmp, dmg, spellnum) {
     if (dmg < 0) {
-        impossible('monster cast spell (%d) with negative dmg (%d)?', spellnum, dmg);
+        impossible_mcastu('monster cast spell (%d) with negative dmg (%d)?', spellnum, dmg);
         return;
     }
     if (dmg === 0 && !is_undirected_spell(spellnum)) {
-        impossible('cast directed wizard spell (%d) with dmg=0?', spellnum);
+        impossible_mcastu('cast directed wizard spell (%d) with dmg=0?', spellnum);
         return;
     }
     switch (spellnum) {
@@ -1105,7 +1097,7 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = mcast_open_wounds(dmg);
         break;
     default:
-        impossible('mcastu: invalid magic spell (%d)', spellnum);
+        impossible_mcastu('mcastu: invalid magic spell (%d)', spellnum);
         dmg = 0;
         break;
     }
@@ -1137,7 +1129,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
                 if (!is_undirected_spell(spellnum)
                     || spell_would_be_useless(mtmp, spellnum)) {
                     if (foundyou)
-                        impossible("spellcasting monster found you and doesn't know it?");
+                        impossible_mcastu("spellcasting monster found you and doesn't know it?");
                     return M_ATTK_MISS;
                 }
                 break;
@@ -1203,7 +1195,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
     if (!foundyou) {
         dmg = 0;
         if (mattk.adtyp !== AD_SPEL && mattk.adtyp !== AD_CLRC) {
-            impossible(
+            impossible_mcastu(
                 '%s casting non-hand-to-hand version of hand-to-hand spell %d?',
                 Monnam(mtmp), mattk.adtyp);
             return M_ATTK_MISS;
@@ -1268,7 +1260,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
 }
 
 // ── helpers needed by buzzmu (ported elsewhere but imported inline) ──
-function sgn(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
+function sgn_mcastu(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 
 // ── BZ_ macros from zap.h ──
 function BZ_VALID_ADTYP(adtyp) { return adtyp >= 1 && adtyp <= 8; }
@@ -1297,7 +1289,7 @@ export async function buzzmu(mtmp, mattk) {
                   flash_str(BZ_OFS_AD(mattk.adtyp), false));
         game.gb.buzzer = mtmp;
         await buzz(BZ_M_SPELL(BZ_OFS_AD(mattk.adtyp)), mattk.damn | 0,
-                   mtmp.mx, mtmp.my, sgn(game.gt.tbx), sgn(game.gt.tby));
+                   mtmp.mx, mtmp.my, sgn_mcastu(game.gt.tbx), sgn_mcastu(game.gt.tby));
         game.gb.buzzer = 0;
         return M_ATTK_HIT;
     }

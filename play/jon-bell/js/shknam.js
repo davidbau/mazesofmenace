@@ -8,23 +8,27 @@ import { game } from './gstate.js';
 import { distmin } from './hacklib.js';
 import { depth as depth_of_level } from './dungeon.js';
 import { mkclass, newmextra, permonstTemplate, set_malign } from './makemon.js';
-import { CORPSE, EGG, FOOD_CLASS, GOLD_PIECE, NON_PM, PM_LICHEN, SPE_NOVEL, TIN, VEGETARIAN_CLASS_SHK, _shkgeneral, _shkrings, _shktools, _shkwands, _shtypes, make_engr_at, makemon, mkobj_at, mksobj, mksobj_at, vegetarian, weight } from './mklev.js';
+import { CORPSE, EGG, FOOD_CLASS, GOLD_PIECE, NON_PM, PM_LICHEN, SPE_NOVEL, TIN, VEGETARIAN_CLASS_SHK, _shkgeneral, _shkrings, _shktools, _shkwands, _shtypes, vegetarian, weight } from './mklev.js';
+import { mkobj_at, mksobj, mksobj_at } from './mkobj.js';
+import { makemon } from './makemon.js';
+import { make_engr_at } from './engrave.js';
 import { mpickobj } from './steal.js';
 import { inside_shop } from './shk.js';
 import { MKOBJ_OC_CLASS, MKOBJ_OC_PROB, MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
 import { mongone } from './mon.js';
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { shop_keeper } from './shk.js';
 import { in_rooms } from './hack.js';
 import { rloc } from './teleport.js';
 import { mon_learns_traps } from './mondata.js';
 import { m_at } from './uhitm.js';
 import { ESHK, HALLUC, HALLUC_RES, SHOPBASE } from './const.js'; // relocate-fns
-import { noit_mon_nam } from './mhitm.js';
+import { noit_mon_nam } from './do_name.js';
 import { highc } from './hacklib.js'; // relocate-fns
 import { shtype_row, shkname_halluc_pick } from './mklev.js'; // relocate-fns
-import { _cmd_Hallucination, in_town } from './cmd.js'; // relocate-fns
+import { _cmd_Hallucination } from './cmd.js';
+import { in_town } from './hack.js'; // relocate-fns
 import { letter } from './hacklib.js'; // relocate-fns
 
 // ── shknam.c port ─────────────────────────────────────────────────────────────

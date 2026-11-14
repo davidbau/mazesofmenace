@@ -1,4 +1,4 @@
-import { reroll_menu } from './cmd.js';
+import { reroll_menu } from './invent.js';
 import { u_init_inventory_attrs } from './u_init.js';
 import { nhlib_com_pager_rng } from './nhlib.js';
 // @ts-nocheck
@@ -18,7 +18,7 @@ import { UNCHANGING, STRANGLED, DIED, KILLED_BY, STONED, SLIMED, STONING, TURNED
 import { done as done_end, find_delayed_killer, dealloc_killer } from './end.js';
 import { nh_timeout_spell_protection, nh_timeout_gallop, nh_timeout_sickness_killer, nh_timeout_silent_properties, run_timers, timer_sanity_check, fall_asleep, slimed_to_death, done_timeout } from './timeout.js';
 import { deferred_decor } from './pickup.js';
-import { useup } from './cmd.js';
+import { useup } from './invent.js';
 import { decrement_property_timeout, timeout_terrain_property,
     terrain_timeout_dialogues } from './terrain_timeout.js';
 import { FIRE_RES, COLD_RES, DISINT_RES, SHOCK_RES, POISON_RES, ACID_RES,
@@ -33,11 +33,14 @@ import { l_nhcore_call, NHCORE_START_NEW_GAME, NHCORE_MOVELOOP_TURN,
     nh_callback_run, NHCB_END_TURN } from './nhlua.js';
 import { sink_into_lava } from './trap.js';
 import { clear_bypasses } from './worn.js';
-import { notice_all_mons, pooleffects, rhack, check_special_room, domove, timed_occupation, cmdq_clear, cmdq_peek, body_part, surface, confdir, instapetrify, runmode_delay_output, take_off_occ, dolookaround_cmd } from './cmd.js';
+import { rhack, timed_occupation, cmdq_clear, cmdq_peek, body_part, confdir, instapetrify, take_off_occ, dolookaround_cmd } from './cmd.js';
+import { notice_all_mons, pooleffects, check_special_room, domove, runmode_delay_output } from './hack.js';
+import { surface } from './dungeon.js';
 import { prayer_done } from './pray.js';
 import { hurtle } from './dothrow.js';
 import { deferred_goto, schedule_goto, heal_legs, wipeoff } from './do.js';
-import { is_pool, is_pool_or_lava } from './look.js';
+import { is_pool } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { lookaround, end_running } from './hack.js';
 import { reset_glyphmap, docrt, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { bot, timebot, status_eval_next_unhilite } from './botl.js';
@@ -45,15 +48,16 @@ import { pline, urgent_pline, Norep } from './pline.js';
 import { vision_recalc, vision_reset, init_vision_globals, does_block, get_viz_clear } from './vision.js';
 import { fastforward_pre_mklev, fastforward_post_mklev, fastforward_step, fastforward_fill_mineralize, fmon_dochug_dispatch, NORMAL_SPEED, FF_FAITHFUL, ff_movemon_phase, ff_head_phase, ff_head_phase_pre, ff_head_phase_post, vomiting_dialogue_ff, sickness_dialogue_ff, choke_dialogue_ff } from './fastforward.js';
 import { makedog, dismount_steed, panic } from './dog.js';
-import { mnexto } from './teleport.js';
+import { mnexto } from './mon.js';
 import { RLOC_NOMSG } from './const.js';
-import { x_monnam } from './mhitm.js';
+import { x_monnam } from './do_name.js';
 import { initrack } from './track.js';
 import { emitMapstate } from './mapstate.js';
 import { roles, races } from './roles.js';
 import { PM_GRID_BUG, PM_GREEN_SLIME } from './pm.generated.js';
 import { u_init_skills_discoveries } from './u_init.js';
-import { rn1, rn2, rnd, pushRngLogEntry } from './rng.js';
+import { rn1, pushRngLogEntry } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 /* C ref: allmain.c:325 — run_regions() in the once-per-turn upkeep block. */
 import { run_regions } from './region.js';
 import { LL_ACHIEVE, UTOTYPE_NONE, WOUNDED_LEGS, VOMITING, SLEEPY, SLEEP_RES, TIMEOUT, INVULNERABLE, FAST, CONFUSION, STUNNED, CQ_CANNED, CQ_REPEAT, FUMBLING, FROMOUTSIDE, LEVITATION, FLYING, HALLUC, HALLUC_RES, A_DEX, TELEPAT, FAINTING, CLAIRVOYANT, In_endgame, Is_waterlevel, ACCESSIBLE, W_SADDLE, DISMOUNT_FELL } from './const.js';
@@ -85,34 +89,7 @@ import { pline_flush_point, under_water, under_ground, recorder_localtime } from
 import { spoteffects } from './hack.js';
 import { PM_COCKATRICE, PM_CHICKATRICE } from './pm.generated.js';
 
-// C ref: mkobj.c:3250-3275 insane_obj_bits() via objlist_sanity(invent) only.
-// container walks and the other per-object checks are not ported.  fmt_ptr's
-// host address cannot be reproduced; o_id stands in for it.
-async function obj_sanity_check() {
-    for (let obj = game.invent; obj; obj = obj.nobj) {
-        const o_in_use = obj.in_use | 0, o_bypass = obj.bypass | 0;
-        const o_nomerge = obj.nomerge | 0;
-        if (!(o_in_use || o_bypass || o_nomerge)) continue;
-        const infobuf = 'flagged' + (o_in_use ? ' in_use' : '')
-            + (o_bypass ? ' bypass' : '') + (o_nomerge ? ' nomerge' : '');
-        game.iflags.override_ID = (game.iflags.override_ID | 0) + 1;
-        const objnm = await doname(obj);
-        game.iflags.override_ID--;
-        await impossible('%s obj %s %s: %s', infobuf,
-                         '0x' + (obj.o_id | 0).toString(16), 'invent', objnm);
-    }
-}
 
-// C ref: wizcmds.c:1449-1458 levl_sanity_check()
-async function levl_sanity_check() {
-    if (game.u.uinwater) return; /* Underwater uses different vision */
-    for (let y = 0; y < ROWNO; y++) {
-        for (let x = 1; x < COLNO; x++) {
-            if ((does_block(x, y) ? 1 : 0) !== (get_viz_clear(x, y) ? 1 : 0))
-                await impossible('levl[%i][%i] vision blocking', x, y);
-        }
-    }
-}
 
 function ffRunTrace(tag, fields = '') {
     if (typeof process !== 'undefined' && ENV?.FF_RUNTRACE === '1') {
@@ -152,9 +129,9 @@ export async function seer_turn_check() {
  * The real bodies, in the files that own them — NOT another file-local copy of
  * Warning()/Blind(), which this tree already has too many of. */
 import { see_monsters, see_objects, see_traps, Warning, Warn_of_mon, swallowed, newsym } from './display.js';
-import { set_mimic_blocking } from './sit.js';
+import { set_mimic_blocking } from './display.js';
 import { topl_force_break_after, capture_flushed_cells } from './display.js';
-import { makewish } from './wizcmds.js';
+import { makewish } from './zap.js';
 import { Blind } from './vision.js';
 /* C timeout.c:156-164 BLINDED slice — the accessors that read and write the
  * SAME u.uprops[BLINDED] object make_blinded()/Blind() use (js/zap.js:355-390). */
@@ -168,7 +145,7 @@ import { any_visible_region } from './region.js';
 function _Unblind_telepat() {
     return !!(game.u?.uprops?.[TELEPAT]?.extrinsic | 0);
 }
-import { isok } from './hacklib.js';
+import { isok } from './const.js';
 import { reset_justpicked, pickup } from './pickup.js';
 import { unconscious } from './trap.js';
 import { change_luck, acurr, stone_luck, adjattrib, exercise } from './attrib.js';
@@ -181,13 +158,13 @@ import { monPmname } from './makemon.js';
 import { Upolyd as _Upolyd } from './const.js';
 import { is_ice } from './engrave.js';
 import { wake_nearto } from './mon.js';
-import { onscary } from './makemon.js';
+import { onscary } from './monmove.js';
 import { which_armor } from './worn.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
 import { raw_print } from './rawterm.js';
 import { get_configfile, config_error_secure } from './cfgfiles.js';
-import { dobjsfree, clear_splitobjs } from './mklev.js';
+import { dobjsfree, clear_splitobjs } from './mkobj.js';
 import { see_nearby_monsters } from './mon.js';
 import { maybe_shuffle_customizations } from './glyphs.js';
 import { topl_force_break_now, force_more_pages, raw_print_wait_one } from './display.js';
@@ -197,8 +174,14 @@ import { A_INT, A_WIS, ENERGY_REGENERATION, EXT_ENCUMBER, HALF_PHDAM, HVY_ENCUMB
 import { MONS, S_EEL_FF, _uasmon_mlet } from './fastforward.js';
 import { mcalcmove } from './mon.js'; // relocate-fns
 import { depth as dungeon_depth } from './dungeon.js'; // relocate-fns
-import { makemon } from './mklev.js'; // relocate-fns
+import { makemon } from './makemon.js'; // relocate-fns
 import { msgtype_type } from './options.js';
+import { obj_sanity_check } from './mkobj.js'; // relocate-fns
+import { levl_sanity_check } from './wizcmds.js'; // relocate-fns
+import { levitation_dialogue, slip_or_trip } from './timeout.js'; // relocate-fns
+import { monster_nearby, nomul, unmul } from './hack.js'; // relocate-fns
+export { monster_nearby, nomul, unmul } from './hack.js'; // relocate-fns
+export { _fumble_hallucinating }; // relocate-fns
 export { friday_13th, getnow, hhmmss, midnight, night, phase_of_the_moon, yyyymmdd } from './calendar.js'; // relocate-fns
 
 // ── calendar.c port (subset): getnow/getlt/phase_of_the_moon/friday_13th ──
@@ -967,30 +950,6 @@ function run_tport_botl() {
     }
 }
 
-export function nomul(nval) {
-    const g = game;
-    const cur = (g.multi | 0);
-    if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
-        const st = (new Error().stack || '').split('\n').slice(2, 5)
-            .map((l) => (l.match(/\/(js\/[a-z_0-9]+\.js:\d+)/) || [, '?'])[1]).join(' <- ');
-        pushRngLogEntry(`^ml_nomul[nval=${nval} cur=${cur} moves=${g.moves | 0} from=${st}]`);
-    }
-    if (cur < nval)
-        return;
-    if (g.disp && cur >= 0)
-        g.disp.botl = 1;
-    if (g.u) {
-        g.u.uinvulnerable = false;
-        g.u.usleep = 0;
-    }
-    g.multi = nval | 0;
-    if (nval === 0) {
-        g.multi_reason = null;
-        g.multireasonbuf = '';
-    }
-    end_running(true);
-    cmdq_clear(CQ_CANNED);
-}
 export function interrupt_multi(msg) {
     const g = game;
     const ctx = g.context || {};
@@ -1045,96 +1004,6 @@ export async function stop_occupation() {
     cmdq_clear(CQ_CANNED);
 }
 
-// C ref: hack.c:4085 unmul(msg_override) — fires when a multi<0 countdown
-// completes. Sets gm.multi=0, prints nomovemsg, clears multi_reason, then runs
-// ga.afternmv (the scheduled callback) exactly once, clearing it first.
-// afternmv is stored as a string tag (the faithful JS analogue of C's function
-// pointer); we dispatch it through afternmv_dispatch().  The armor *_off
-// callbacks are RNG-free (do_wear.c:909 Armor_off etc.).
-export async function unmul(msg_override) {
-    const g = game;
-    /* C hack.c:4179 `disp.botl = TRUE;` — the whole status line (T: included, even
-     * while a run suppresses time_botl) repaints at the nomovemsg pline's flush. */
-    (g.disp ||= {}).botl = 1;
-    g.multi = 0;
-    if (msg_override != null)
-        g.nomovemsg = msg_override;
-    else if (g.nomovemsg == null || g.nomovemsg === 0) /* C's NULL (steal.c:550 `= 0`) */
-        g.nomovemsg = 'You can move again.';
-    /* C hack.c:4185 `if (*gn.nomovemsg)` — non-empty, which is exactly JS
-     * string truthiness once the null case above is handled. */
-    if (g.nomovemsg) {
-        const _survived = g.nomovemsg.slice(0, 18).toLowerCase() === 'you survived that ';
-        await pline(g.nomovemsg);
-        /* C hack.c:4192-4194 — follow "You survived that attempt" with the current
-         * form when polymorphed (Ugender: you.h:555). */
-        if (_Upolyd(g.u) && _survived) {
-            const _ug = (g.u.mfemale ? 1 : 0);
-            await pline(`You are ${an(monPmname(g.u.umonnum | 0, _ug))}.`);
-        }
-    }
-    g.nomovemsg = null;
-    /* C hack.c:4197 — unmul clears u.usleep (set by fall_asleep, timeout.c:972;
-     * a stale value made mattacku's mhitu.c:940 "combat awakens you" rn2(10)
-     * fire for a woken hero). */
-    if (g.u) g.u.usleep = 0;
-    /* C hack.c:4198 `gm.multi_reason = NULL, gm.multireasonbuf[0] = '\0';` */
-    g.multi_reason = null;
-    g.multireasonbuf = '';
-    /* C ref: hack.c:4200-4207 — clear afternmv BEFORE calling it. */
-    if (g.afternmv) {
-        const tag = g.afternmv;
-        g.afternmv = null;
-        await afternmv_dispatch(tag);
-    }
-}
-/* afternmv string-tag → callback dispatch (faithful analogue of the C
- * ga.afternmv function pointer). Stage 1: armor *_off callbacks only.
- * Returns each callback result so unmul awaits messages, terrain effects,
- * and any death/lifesaving caused by removing protection. */
-async function afternmv_dispatch(tag) {
-    switch (tag) {
-        case 'eatmdone': return (await import('./eat.js')).eatmdone();
-        case 'stealarm':   return stealarm_mu(); /* steal.c:165 */
-        case 'unstolenarm': return unstolenarm(); /* steal.c:146 */
-        case 'Finish_digestion': return Finish_digestion(); /* eat.c:3961 */
-        case 'Armor_off':  return Armor_off();
-        case 'Shield_off': return Shield_off();
-        case 'Helmet_off': return Helmet_off();
-        case 'Gloves_off': return Gloves_off();
-        case 'Boots_off':  return Boots_off();
-        case 'Cloak_off':  return Cloak_off();
-        case 'Shirt_off':  return Shirt_off();
-        /* Donning (*_on) callbacks — Stage 4 (do_wear.c:887 Armor_on et al.).
-         * RNG-free AC/intrinsic recompute, fired by unmul when the dressing
-         * countdown (nomul(-oc_delay)) completes. */
-        case 'Armor_on':   return Armor_on();
-        case 'Shield_on':  return Shield_on();
-        case 'Helmet_on':  return Helmet_on();
-        case 'Gloves_on':  return Gloves_on();
-        case 'Boots_on':   return Boots_on();
-        case 'Cloak_on':   return Cloak_on();
-        case 'Shirt_on':   return Shirt_on();
-        /* prayer_done — C ref: pray.c:2276, scheduled by dopray()'s nomul(-3).
-         * Fired by unmul when the 3-turn praying countdown completes. */
-        case 'prayer_done': return prayer_done();
-        /* Hear_again — C ref: eat.c:1800, scheduled by rottenfood()'s
-         * nomul(-rnd(10)) knockout arm (eat.c:1850).  Draws rn2(2) when the
-         * unconsciousness countdown completes. */
-        case 'Hear_again': return Hear_again();
-        /* stealarm — C ref: steal.c:165, scheduled by steal()'s armor arm. */
-        case 'stealarm': return (await import('./mhitu.js')).stealarm();
-        case 'unfaint': {
-            Hear_again();
-            if ((game.u.uhs | 0) > FAINTING)
-                game.u.uhs = FAINTING;
-            await stop_occupation();
-            if (game.disp) game.disp.botl = 1;
-            return undefined;
-        }
-        default: return undefined;
-    }
-}
 /* C allmain.c:453-470 — the once-per-moveloop_core display tail.  A
  * faithful_moveloop_turn() can itself contain several iterations of C's
  * hero-can't-move do/while, so callers invoke this once per emulated
@@ -2444,30 +2313,7 @@ async function nh_timeout_fast() {
         await pline(`${Unaware() ? 'You dream that you feel' : 'You feel'} yourself slow down${Fast ? ' a bit' : ''}.`);
 }
 
-/* C timeout.c:354 SIZE(levi_texts) */
-const SIZE_LEVI_TEXTS = 2;
 
-/* C timeout.c:347-378 — the last two warnings before timed descent. */
-async function levitation_dialogue() {
-    const u = game.u;
-    const p = u.uprops[LEVITATION];
-    const timeout = (p.intrinsic | 0) & TIMEOUT;
-    if (p.extrinsic)
-        return;
-    const poolOrLava = is_pool_or_lava(u.ux, u.uy);
-    if (!ACCESSIBLE(game.level?.at(u.ux, u.uy)?.typ ?? 0) && !poolOrLava)
-        return;
-    const i = Math.trunc((timeout - 1) / 2);
-    if ((timeout % 2) && i > 0 && i <= SIZE_LEVI_TEXTS) {
-        if (i === 2) {
-            await pline('You float slightly lower.');
-        } else {
-            const danger = poolOrLava && !Is_waterlevel(u.uz);
-            await urgent_pline(`You wobble unsteadily ${danger ? 'over' : 'in'} the ${danger ? surface(u.ux, u.uy) : 'air'}.`);
-        }
-        await stop_occupation();
-    }
-}
 
 /* C timeout.c:794-803: timed levitation expiration. */
 async function nh_timeout_levitation() {
@@ -2590,148 +2436,6 @@ function Deaf_am() {
               || (u.uroleplay?.deaf ? 1 : 0));
 }
 
-/* C mbodypart() part index (hack.h BP_* enum): FOOT.  js/cmd.js body_part()
- * takes the same index; 5 is the value its own local FOOT const carries. */
-const FOOT_AM = 5;
-/* objects[] index of "corpse", from js/oc_name_data.js's OC_NAME table —
- * objects.h is an X-macro file with no `#define CORPSE` text to grep. */
-const CORPSE_AM = 265;
-/* objects.h ROCK */
-const ROCK = 474;
-async function slip_or_trip() {
-    const g = game;
-    const u = g.u;
-    /* C hack.c vobj_at(x,y) — the head of the tile's nexthere chain. */
-    let otmp = (g.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0]) ?? null;
-    const on_foot = !u.usteed;
-    if (otmp && on_foot && !u.uinwater && is_pool(u.ux | 0, u.uy | 0))
-        otmp = null;
-    if (otmp && on_foot) {
-        /* C timeout.c:1232-1247 — trip over something in particular. The PLNMSG_ONE_ITEM_HERE pronoun arm reads g.iflags.last_msg, matching C timeout.c:1240. */
-        const oneItem = (g.iflags?.last_msg | 0) === PLNMSG_ONE_ITEM_HERE;
-        let what;
-        if (oneItem) {
-            what = (otmp.quan | 0) === 1
-                ? 'it' : (_fumble_hallucinating() ? 'they' : 'them');
-        } else if ((otmp.dknown | 0) || !Blind()) {
-            what = (await doname(otmp));
-        } else {
-            /* C timeout.c:1238-1246 — when the top object is unseen,
-             * identify a visible rock if present, otherwise say “something”. */
-            let rock = null;
-            for (let o = otmp; o; o = o.nexthere) {
-                if ((o.otyp | 0) === ROCK) {
-                    rock = o;
-                    break;
-                }
-            }
-            what = rock ? ((rock.quan | 0) === 1 ? 'a rock' : 'some rocks')
-                        : 'something';
-        }
-        if (_fumble_hallucinating()) {
-            const cap = upstart(what);
-            await pline(`Egads!  ${cap} bite${(!otmp || (otmp.quan | 0) === 1) ? 's' : ''} your ${body_part(FOOT_AM)}!`);
-        } else {
-            await pline(`You trip over ${what}.`);
-        }
-        /* C timeout.c:1256-1261 — a bare-footed hero who trips over a
-         * cockatrice/chickatrice corpse petrifies immediately. */
-        if (!u.uarmf && (otmp.otyp | 0) === CORPSE_AM
-            && ((otmp.corpsenm | 0) === PM_COCKATRICE
-                || (otmp.corpsenm | 0) === PM_CHICKATRICE)
-            && !((u.uprops?.[STONE_RES]?.intrinsic | 0)
-                 || (u.uprops?.[STONE_RES]?.extrinsic | 0))) {
-            // C sets the name even when instapetrify turns a golem to stone.
-            const killer = (g.svk ||= {}).killer ||= { id: 0, format: 0, name: '', next: null };
-            killer.name = `tripping over ${an(monPmname(otmp.corpsenm, PROPS.NEUTRAL))} corpse`;
-            await instapetrify(killer.name);
-        }
-        return;
-    }
-    const HFumbling = (u.uprops?.[FUMBLING]?.intrinsic | 0);
-    if ((HFumbling & FROMOUTSIDE) || (is_ice(u.ux | 0, u.uy | 0) && !rn2(3))) {
-        /* C timeout.c:1262-1298 — the ice branch. */
-        const slipslide = rn2(2) ? 'slip' : 'slide';
-        const currentlyIce = is_ice(u.ux | 0, u.uy | 0);
-        /* C timeout.c:1271-1284 — the message names the steed when mounted,
-         * then a non-cursed saddle may throw the rider. */
-        if (on_foot) {
-            await pline(`You ${slipslide}${currentlyIce ? ' on' : ' off'} the ice.`);
-        } else {
-            /* C uses upstart(x_monnam(steed, ARTICLE_THE, ...,
-             * SUPPRESS_SADDLE, FALSE)); retain its naming and hallucination
-             * behavior rather than reading the raw mname field. */
-            const rawSteedName = x_monnam(u.usteed, ARTICLE_THE, null,
-                                         SUPPRESS_SADDLE, false);
-            const steedName = upstart(rawSteedName);
-            await pline(`${steedName} ${slipslide}${currentlyIce ? 's on' : 's off'} the ice.`);
-            const saddle = which_armor(u.usteed, W_SADDLE);
-            const extrinsicFumbling = u.uprops?.[FUMBLING]?.extrinsic | 0;
-            const iceOnly = !(extrinsicFumbling || (HFumbling & ~FROMOUTSIDE));
-            if ((!saddle || !saddle.cursed)
-                && (!iceOnly || !rn2(3))) {
-                await pline('You lose your balance.');
-                await dismount_steed(DISMOUNT_FELL);
-                return;
-            }
-            /* If a cursed saddle holds the rider, C continues to the ordinary
-             * slip-risk test below. */
-        }
-        if (!rn2(10 + (acurr(u, A_DEX) | 0))) {
-            /* C timeout.c:1294-1298 — force a confused direction, then hurtle
-             * unless that direction would simply return to the square occupied
-             * before this move.  confdir() owns the canonical direction RNG. */
-            const ux0 = u.ux0 | 0;
-            const uy0 = u.uy0 | 0;
-            if ((u.umonnum | 0) !== PM_GRID_BUG)
-                confdir(true);
-            if ((u.ux | 0) + (u.dx | 0) !== ux0
-                || (u.uy | 0) + (u.dy | 0) !== uy0)
-                await hurtle(u.dx | 0, u.dy | 0, 1, false);
-        }
-        return;
-    }
-    if (!on_foot) {
-        /* C timeout.c:1321-1340 — a mounted hero fumbles in the saddle.
-         * A cursed saddle keeps the rider mounted and consumes no message
-         * RNG beyond the switch; otherwise the fall dismounts afterward. */
-        const saddle = which_armor(u.usteed, W_SADDLE);
-        if (!saddle || !saddle.cursed) {
-            switch (rn2(4)) {
-            case 1:
-                await pline(`Your ${makeplural(body_part(FOOT_AM))} slip out of the stirrups.`);
-                break;
-            case 2:
-                await pline('You let go of the reins.');
-                break;
-            case 3:
-                await pline('You bang into the saddle-horn.');
-                break;
-            default:
-                await pline('You slide to one side of the saddle.');
-                break;
-            }
-            await dismount_steed(DISMOUNT_FELL);
-        }
-        return;
-    }
-    /* C timeout.c:1300-1317 — `switch (rn2(4)`. */
-    const halluc = _fumble_hallucinating();
-    switch (rn2(4)) {
-    case 1:
-        await pline(`You trip over your own ${halluc ? 'elbow' : makeplural(body_part(FOOT_AM))}.`);
-        break;
-    case 2:
-        await pline(`You slip ${halluc ? 'on a banana peel' : 'and nearly fall'}.`);
-        break;
-    case 3:
-        await pline('You flounder.');
-        break;
-    default:
-        await pline('You stumble.');
-        break;
-    }
-}
 /* C youprop.h:151 Hallucination — (HHallucination && !Halluc_resistance),
  * read the same numeric-index way js/attrib.js exerper() reads it. */
 function _fumble_hallucinating() {
@@ -2817,62 +2521,6 @@ function _merge_countdown_pline() {
     g._pending_message = '';
 }
 
-// C ref: hack.c:4022 monster_nearby(void) — TRUE if a hostile, spottable,
-// non-helpless monster occupies one of the 8 squares adjacent to the hero.
-// moveloop_core (allmain.c:563) calls this after the occupation callback; if it
-// returns TRUE the occupation is interrupted (stop_occupation()).  This is what
-// turn 15 and breaks the `learn` occupation before its delay counts to 0.
-const M1_HIDE = 0x00000100; /* monflag.h */
-export function monster_nearby() {
-    const g = game;
-    const u = g.u || {};
-    const ux = u.ux | 0, uy = u.uy | 0;
-    const hallu = _fumble_hallucinating();
-    for (let x = ux - 1; x <= ux + 1; x++) {
-        for (let y = uy - 1; y <= uy + 1; y++) {
-            if (!isok(x, y) || (x === ux && y === uy))
-                continue;
-            const mtmp = m_at(x, y);
-            if (!mtmp)
-                continue;
-            // The faithful/fastforward monster roster carries the species index
-            // (mnum/mndx), not a full permonst pointer — resolve flags by mndx.
-            /* C allmain.c:563 -> monster_nearby() tests mtmp->data; a
-             * polymorphed monster's current form can differ from mndx. */
-            const mndx = (mtmp.data?.pmidx ?? mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
-            // C: skip mimicked furniture/objects (M_AP_FURNITURE/OBJECT).
-            const apType = (mtmp.m_ap_type | 0) & 0x7; // M_AP_TYPE
-            if (apType === 1 /* M_AP_FURNITURE */ || apType === 2 /* M_AP_OBJECT */)
-                continue;
-            // C: hostile-and-can-attack (or hallucinating).  noattacks_mndx is
-            // the mndx-keyed form of noattacks(mtmp->data).
-            if (!(hallu || (!mtmp.mpeaceful && !noattacks_mndx(mndx))))
-                continue;
-            // C hack.c:4121: is_hider tests the current form's M1_HIDE bit.
-            if (mtmp.mundetected
-                && ((mtmp.data?.mflags1 ?? monsPack.mons[mndx]?.[6] ?? 0) & M1_HIDE))
-                continue;
-            // C: not helpless (asleep/frozen).  Our roster tracks mcanmove.
-            if (!mtmp.mcanmove || mtmp.msleeping)
-                continue;
-            // C hack.c:4123: !onscary(u.ux, u.uy, mtmp) — a monster scared by
-            // the hero's square (Elbereth, scare monster) does not interrupt.
-            if (onscary(ux, uy, mtmp))
-                continue;
-            // C: canspotmon — hero can see or sense it.
-            if (!canspotmon(mtmp))
-                continue;
-            if (typeof process !== 'undefined' && ENV && ENV.FF_MLTRACE === '1') {
-                pushRngLogEntry(`^ml_near[x=${x | 0} y=${y | 0} mndx=${mndx | 0}`
-                    + ` peaceful=${mtmp.mpeaceful ? 1 : 0} canmove=${mtmp.mcanmove === false ? 0 : 1}`
-                    + ` frozen=${mtmp.mfrozen | 0} sleeping=${mtmp.msleeping | 0}`
-                    + ` moves=${g.moves | 0} multi=${g.multi | 0}]`);
-            }
-            return true;
-        }
-    }
-    return false;
-}
 
 // C ref: allmain.c:755 stop_occupation() — the learn-occupation interrupt path.
 // Clears the occupation and prints "You stop studying." (go.occtxt = "studying").

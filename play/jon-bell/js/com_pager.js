@@ -10,7 +10,7 @@
 // Does NOT import from display.js — render_map_row is inlined below.
 import { game } from './gstate.js';
 import { nhgetch } from './input.js';
-import { rank_of, role_index_by_name } from './rank_data.js';
+import { rank_of_roleidx, role_index_by_name } from './rank_data.js';
 import { COLNO, ROWNO, A_STR, A_INT, A_WIS, A_DEX, A_CON, A_CHA, gs, PRIMARYSET, H_UTF8 } from './const.js';
 import { acurr } from './attrib.js';
 import { describe_level_buf } from './dungeon.js';
@@ -974,7 +974,7 @@ function _cp_rank_of(ulevel, roleName, female) {
     const idx = role_index_by_name(roleName);
     if (idx < 0)
         return null;
-    return rank_of(idx, ulevel, female);
+    return rank_of_roleidx(idx, ulevel, female);
 }
 /* C wintty.c:5216-5240: status keeps its field highlights under a menu. */
 function _statusLine1() { return botl_frozen_status_line(1) ?? _status_sgr(_statusLine1Raw()); }

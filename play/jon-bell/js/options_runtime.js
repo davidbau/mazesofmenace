@@ -10,11 +10,11 @@ import { docrt, reglyph_darkroom, reset_glyphmap, force_more, status_reassess, u
 import { bot, check_gold_symbol } from './botl.js';
 import { pline } from './pline.js';
 import { vision_recalc } from './vision.js';
-import { update_rest_on_space } from './cmd_binds.js';
+import { update_rest_on_space } from './cmd.js';
 import { classifyTerrain as classify_terrain } from './terrain-status.js';
 import { parsesymbols, switch_symbols } from './symbols.js';
 import { reset_customcolors } from './glyphs.js';
-import { reassign, update_inventory } from './inventory_refresh.js';
+import { reassign, update_inventory } from './invent.js';
 import { determine_ambiguities } from './options.js'; // relocate-fns
 export { determine_ambiguities, optfn_boolean, parseoptions, toggle_bool_option } from './options.js'; // relocate-fns
 

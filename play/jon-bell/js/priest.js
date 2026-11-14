@@ -14,11 +14,14 @@ import { EPRI, EMIN, TEMPLE, NOTONL, ALLOW_M, ALLOW_ROCK, IS_ROOM, ROOMOFFSET,
 import { PM_DEATH, PM_FAMINE, PM_PESTILENCE, PM_PRIEST, PM_HIGH_PRIEST } from './pm.generated.js';
 import { newmextra } from './makemon.js';
 /* newemin's C home is minion.c:17; js/sit.js carries that file's ports. */
-import { newemin } from './sit.js';
-import { rn2, rn1 } from './rng.js';
+import { newemin } from './minion.js';
+import { rn1 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { dist2 } from './hacklib.js';
-import { _allow_rock_mv, _can_open_mv, _passes_bars_mv, m_break_boulder_mv, m_move_aggress, mon_allowflags } from './monmove.js';
-import { makemon, mkobj, mksobj } from './mklev.js';
+import { _allow_rock_mv, _can_open_mv, _passes_bars_mv, m_break_boulder_mv, m_move_aggress } from './monmove.js';
+import { mon_allowflags } from './mon.js';
+import { mkobj, mksobj } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { mpickobj } from './steal.js';
 import { online2 } from './hacklib.js';
 import { mfndpos, monnear, mongone, setmangry } from './mon.js';
@@ -27,14 +30,15 @@ import { set_malign } from './makemon.js';
 import { which_armor } from './worn.js';
 import { mon_learns_traps } from './mondata.js';
 import { rloc } from './teleport.js';
-import { mongets } from './m_initweap.js';
+import { mongets } from './makemon.js';
 import { newsym } from './display.js';
 import { couldsee } from './vision.js';
 import { m_at } from './uhitm.js';
 import { mon_pmname, rndmonnam,
          bogon_is_pname } from './do_name.js';
 import { just_an } from './objnam.js';
-import { check_special_room, ALGN_SINNED } from './cmd.js';
+import { ALGN_SINNED } from './cmd.js';
+import { check_special_room } from './hack.js';
 import { halu_gname } from './pray.js';
 import { inhishop } from './shk.js';
 import { in_rooms } from './hack.js';
@@ -51,7 +55,8 @@ function _hero_invis_priest(u) {
 import { Your } from './do_wear.js';
 import { mon_nam } from './uhitm.js';
 import { mattacku } from './mhitu.js';
-import { wakeup, AD_ELEC, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC } from './mhitm.js';
+import { AD_ELEC, PM_ALIGNED_CLERIC, PM_HIGH_CLERIC } from './mhitm.js';
+import { wakeup } from './mon.js';
 import { resist_conflict } from './mondata.js';
 
 /**
@@ -392,6 +397,34 @@ import { buzz, BZ_M_SPELL, is_minion } from './mcastu.js'; // relocate-fns
 import { linedup } from './mthrowu.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { a_gname_at } from './pray.js'; // relocate-fns
+import { nomul } from './hack.js'; // relocate-fns
+import { SetVoice, _Is_sanctum, _You_feel, _goto_level_You, _helpless_mon, _hero_Deaf, _uprop_active } from './cmd.js';
+import { record_achievement } from './insight.js'; // relocate-fns
+import { ACH_TMPL, In_endgame } from './const.js'; // relocate-fns
+import { canseemon, canspotmon } from './display.js'; // relocate-fns
+import { You } from './do_wear.js'; // relocate-fns
+import { permonstTemplate } from './makemon.js'; // relocate-fns
+import { Monnam } from './mcastu.js'; // relocate-fns
+import { makemon as mklev_makemon } from './makemon.js'; // relocate-fns
+import { verbalize } from './pline.js'; // relocate-fns
+import { PM_GHOST } from './pm.generated.js'; // relocate-fns
+import { body_part } from './polyself.js'; // relocate-fns
+import { d } from './rnd.js'; // relocate-fns
+import { mapseen_temple } from './dungeon.js'; // relocate-fns
+import { adjalign } from './attrib.js'; // relocate-fns
+import { _um_mhis, incr_itimeout_prop } from './cmd.js';
+import { inv_cnt } from './hack.js';
+import { currency, merge_choice } from './invent.js'; // relocate-fns
+import { CLAIRVOYANT, FROMOUTSIDE, INTRINSIC, LL_CONDUCT, PROTECTION } from './const.js'; // relocate-fns
+import { dropy } from './do.js'; // relocate-fns
+import { obj_extract_self } from './dokick.js'; // relocate-fns
+import { money_cnt } from './hack.js'; // relocate-fns
+import { addinv } from './invent.js'; // relocate-fns
+import { splitobj } from './makemon.js';
+import { findgold } from './steal.js'; // relocate-fns
+import { livelog_printf } from './pline.js'; // relocate-fns
+import { _money2mon } from './sounds.js'; // relocate-fns
+import { getlin } from './windows.js'; // relocate-fns
 
 /* C ref: hack.c:3497-3559 in_rooms(x, y, typewanted).  The file-local throwing
  * stub that used to sit here SHADOWED a real port: js/shk.js already carries the
@@ -837,4 +870,321 @@ export async function ghod_hitsu(priest) {
     if (game.gb) game.gb.buzzer = oldBuzzer;
     game.gc_current_wand = oldWand;
     exercise(A_WIS, false);
+}
+
+const SPINE = 12;
+
+const ALGN_DEVOUT = 14;   /* better than fervent (9..13) */
+
+
+export async function intemple(roomno) {
+    const g = game;
+    const u = g.u || (g.u = {});
+    let priest, mtmp;
+    let epri_p;
+    let shrined, sanctum, can_speak;
+    let this_time, other_time;   /* which epri_p field to write */
+    let msg1, msg2;
+
+    /* don't do anything if hero is already in the room */
+    if (temple_occupied(u.urooms0 || ''))
+        return;
+
+    if ((priest = findpriest(roomno)) != null) {
+        /* tended */
+        record_achievement(ACH_TMPL);
+
+        epri_p = EPRI(priest);
+        shrined = has_shrine(priest);
+        sanctum = (((priest.mndx ?? priest.mnum) | 0) === PM_HIGH_PRIEST
+                   && (_Is_sanctum(u.uz) || In_endgame(u.uz)));
+        can_speak = !_helpless_mon(priest);
+        const Deaf = _hero_Deaf();
+        const moves = (g.moves ?? 0) | 0;
+        if (can_speak && !Deaf && moves >= ((epri_p.intone_time | 0))) {
+            const save_priest = priest.ispriest;
+
+            /* don't reveal the altar's owner upon temple entry in
+               the endgame; for the Sanctum, the next message names
+               Moloch so suppress the "of Moloch" for him here too */
+            if (sanctum && !_uprop_active('HALLUC'))
+                priest.ispriest = 0;
+            await pline('%s intones:',
+                        canseemon(priest) ? Monnam(priest) : 'A nearby voice');
+            priest.ispriest = save_priest;
+            epri_p.intone_time = moves + d(10, 500); /* ~2505 */
+            /* make sure that we don't suppress entry message when
+               we've just given its "priest intones" introduction */
+            epri_p.enter_time = 0;
+        }
+        msg1 = msg2 = null;
+        if (sanctum && _Is_sanctum(u.uz)) {
+            if (priest.mpeaceful) {
+                /* first time inside */
+                msg1 = 'Infidel, you have entered Moloch\'s Sanctum!';
+                msg2 = 'Be gone!';
+                priest.mpeaceful = 0;
+                /* became angry voluntarily; no penalty for attacking him */
+                set_malign(priest);
+            } else {
+                /* repeat visit, or attacked priest before entering */
+                msg1 = 'You desecrate this place by your presence!';
+            }
+        } else if (moves >= ((epri_p.enter_time | 0))) {
+            msg1 = `Pilgrim, you enter a ${!shrined ? 'desecrated' : 'sacred'} place!`;
+        }
+        if (msg1 && can_speak && !_hero_Deaf()) {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize(msg1);
+            if (msg2)
+                await verbalize(msg2);
+            epri_p.enter_time = moves + d(10, 100); /* ~505 */
+        }
+        if (!sanctum) {
+            const record = (u.ualign?.record | 0);
+            if (!shrined || !p_coaligned(priest) || record <= ALGN_SINNED) {
+                msg1 = 'have a%s forbidding feeling...';
+                msg2 = (!shrined || !p_coaligned(priest)) ? '' : ' strange';
+                this_time = 'hostile_time';
+                other_time = 'peaceful_time';
+            } else {
+                msg1 = 'experience %s sense of peace.';
+                msg2 = (record >= ALGN_DEVOUT) ? 'a' : 'an unusual';
+                this_time = 'peaceful_time';
+                other_time = 'hostile_time';
+            }
+            /* give message if we haven't seen it recently or
+               if alignment update has caused it to switch from
+               forbidding to sense-of-peace or vice versa */
+            if (moves >= (epri_p[this_time] | 0)
+                || (epri_p[other_time] | 0) >= (epri_p[this_time] | 0)) {
+                await _goto_level_You(msg1, msg2);
+                epri_p[this_time] = moves + d(10, 20); /* ~55 */
+                /* avoid being tricked by the RNG:  switch might have just
+                   happened and previous random threshold could be larger */
+                if ((epri_p[this_time] | 0) <= (epri_p[other_time] | 0))
+                    epri_p[other_time] = (epri_p[this_time] | 0) - 1;
+            }
+        }
+        /* recognize the Valley of the Dead and Moloch's Sanctum
+           once hero has encountered the temple priest on those levels */
+        mapseen_temple(priest);
+    } else {
+        /* untended */
+
+        switch (rn2(4)) {
+        case 0:
+            await You('have an eerie feeling...');
+            break;
+        case 1:
+            await _You_feel('like you are being watched.');
+            break;
+        case 2:
+            await pline('A shiver runs down your %s.', body_part(SPINE));
+            break;
+        default:
+            break; /* no message; unfortunately there's no
+                      EPRI(priest)->eerie_time available to
+                      make sure we give one the first time */
+        }
+        if (!rn2(5)
+            && (mtmp = await mklev_makemon(permonstTemplate(PM_GHOST), u.ux, u.uy,
+                                           MM_NOMSG)) != null) {
+            const ngen = (g.mvitals?.[PM_GHOST]?.born | 0);
+            if (canspotmon(mtmp))
+                await pline('A%s ghost appears next to you%s',
+                            ngen < 5 ? 'n enormous' : '',
+                            ngen < 10 ? '!' : '.');
+            else
+                await _goto_level_You('sense a presence close by!');
+            mtmp.mpeaceful = 0;
+            set_malign(mtmp);
+            if (g.flags?.verbose)
+                await _goto_level_You('are frightened to death, and unable to move.');
+            nomul(-3);
+            g.multi_reason = 'being terrified of a ghost';
+            g.nomovemsg = 'You regain your composure.';
+        }
+    }
+}
+
+/* C ref: minion.c bribe(mtmp, prompt) — getlin the amount, sscanf "%ld",
+ * then hand the gold over with money2mon().  Returns the amount paid. */
+async function _bribe(mtmp, prompt) {
+    const umoney = money_cnt(game.invent);
+    const buf = await getlin(prompt);
+    const m = /^\s*([+-]?\d+)/.exec(buf || '');
+    let offer = m ? parseInt(m[1], 10) : 0;
+    if (offer < 0) {
+        await pline(`You try to shortchange ${mon_nam(mtmp)}, but fumble.`);
+        return 0;
+    } else if (offer === 0) {
+        await pline('You refuse.');
+        return 0;
+    } else if (offer >= umoney) {
+        await pline(`You give ${mon_nam(mtmp)} all your gold.`);
+        offer = umoney;
+    } else {
+        await pline(`You give ${mon_nam(mtmp)} ${offer} ${currency(offer)}.`);
+    }
+    await _money2mon(mtmp, offer);
+    if (game.disp) game.disp.botl = true;
+    return offer;
+}
+
+/* C ref: shk.c money2u(mon, amount) — monster's gold to the hero (shk.js's copy
+ * is module-private).  invlet_basic is 52. */
+async function _money2u_priest(mon, amount) {
+    let mongold = findgold(mon.minvent);
+    if (amount <= 0 || !mongold || (mongold.quan | 0) < amount)
+        return;
+    if ((mongold.quan | 0) > amount)
+        mongold = await splitobj(mongold, amount);
+    obj_extract_self(mongold);
+    if (!(await merge_choice(game.invent, mongold)) && inv_cnt(false) >= 52) {
+        await pline('You have no room for the gold!');
+        await dropy(mongold);
+    } else {
+        await addinv(mongold);
+        if (game.disp) game.disp.botl = true;
+    }
+}
+
+/* C ref: priest.c:561-745 priest_talk(priest) — domonnoise()'s MS_PRIEST arm.
+ * Not exported from priest.js (which has no body for it), so it lives here. */
+export async function priest_talk(priest) {
+    const g = game;
+    const u = g.u;
+    const coaligned = p_coaligned(priest);
+    const strayed = (u.ualign.record | 0) < 0;
+    const epri = EPRI(priest);
+
+    /* KMH, conduct */
+    u.uconduct = u.uconduct || {};
+    const prevGnostic = u.uconduct.gnostic | 0;
+    u.uconduct.gnostic = prevGnostic + 1;
+    if (!prevGnostic)
+        livelog_printf(LL_CONDUCT, 'rejected atheism by consulting with %s', mon_nam(priest));
+
+    if (priest.mflee || (!priest.ispriest && coaligned && strayed)) {
+        await pline(`${Monnam(priest)} doesn't want anything to do with you!`);
+        priest.mpeaceful = 0;
+        return;
+    }
+
+    /* priests don't chat unless peaceful and in their own temple */
+    if (!inhistemple(priest) || !priest.mpeaceful || _helpless_mon(priest)) {
+        const cranky_msg = [
+            'Thou wouldst have words, eh?  I\'ll give thee a word or two!',
+            'Talk?  Here is what I have to say!',
+            'Pilgrim, I would speak no longer with thee.'
+        ];
+        if (_helpless_mon(priest)) {
+            await pline(`${Monnam(priest)} breaks out of ${_um_mhis(priest)} reverie!`);
+            priest.mfrozen = priest.msleeping = 0;
+            priest.mcanmove = 1;
+        }
+        priest.mpeaceful = 0;
+        SetVoice(priest, 0, 80, 0);
+        await verbalize(cranky_msg[rn2(3)]);
+        return;
+    }
+
+    /* you desecrated the temple and now you want to chat? */
+    const troom = in_rooms(priest.mx | 0, priest.my | 0, TEMPLE);
+    if (priest.mpeaceful && troom && troom.length && !has_shrine(priest)) {
+        SetVoice(priest, 0, 80, 0);
+        await verbalize('Begone!  Thou desecratest this holy place with thy presence.');
+        priest.mpeaceful = 0;
+        return;
+    }
+    if (!money_cnt(g.invent)) {
+        if (coaligned && !strayed) {
+            const pmoney = money_cnt(priest.minvent);
+            if (pmoney > 0) {
+                const bits = _uprop_active('HALLUC') ? currency(pmoney)
+                           : (pmoney === 1) ? 'bit' : 'bits';
+                await pline(`${Monnam(priest)} gives you ${pmoney === 1 ? 'one ' : 'two '}${bits} for an ale.`);
+                await _money2u_priest(priest, pmoney > 1 ? 2 : 1);
+            } else
+                await pline(`${Monnam(priest)} preaches the virtues of poverty.`);
+            exercise(A_WIS, true);
+        } else
+            await pline(`${Monnam(priest)} is not interested.`);
+        return;
+    } else {
+        /* randomized donation base; more gold on hand raises it */
+        const cheapskate = (epri ? (epri.cheapskate_count | 0) : 0);
+        const suggested = ((u.ulevelpeak | 0) ? (u.ulevelpeak | 0) : 1)
+                          * rn1(101, 150 + cheapskate * 40);
+        let quan = Math.trunc(money_cnt(g.invent) / (suggested * 3));
+        if (quan < 1)
+            quan = 1;
+        const buf = `How much will you offer (suggested: ${suggested * quan} or ${suggested * quan * 2})?`;
+        if (g.flags && g.flags.debug)
+            await pline(`${Monnam(priest)} asks you for a contribution for the temple (base ${suggested}).`);
+        else
+            await pline(`${Monnam(priest)} asks you for a contribution for the temple.`);
+        let offer = await _bribe(priest, buf);
+        if (offer === 0) {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Thou shalt regret thine action!');
+            if (coaligned)
+                adjalign(-1);
+            if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
+        } else if (offer < suggested * quan) {
+            if (money_cnt(g.invent) > offer * 2) {
+                SetVoice(priest, 0, 80, 0);
+                await verbalize('Cheapskate.');
+                if (epri) epri.cheapskate_count = (epri.cheapskate_count | 0) + 1;
+            } else {
+                SetVoice(priest, 0, 80, 0);
+                await verbalize('I thank thee for thy contribution.');
+                /* give player some token */
+                exercise(A_WIS, true);
+            }
+        } else if (offer < suggested * quan * 2) {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Thou art indeed a pious individual.');
+            if (money_cnt(g.invent) < offer * 2) {
+                if (coaligned && (u.ualign.record | 0) <= ALGN_SINNED)
+                    adjalign(1);
+            }
+            await verbalize('I bestow upon thee a blessing.');
+            const amt = Math.trunc(500 * offer / suggested);
+            incr_itimeout_prop(u.uprops[CLAIRVOYANT], rn1(amt, amt));
+        } else if (offer < suggested * quan * 3) {
+            let orig_ublessed = u.ublessed | 0;
+            const prot = u.uprops[PROTECTION];
+            /* u.ublessed is only active when Protection is enabled via
+               something other than worn gear */
+            if (!((prot.intrinsic | 0) & INTRINSIC)) {
+                prot.intrinsic = (prot.intrinsic | 0) | FROMOUTSIDE;
+                orig_ublessed = -1; /* force "rewarded" message */
+            }
+            for (; offer >= (2 * suggested); offer -= (2 * suggested)) {
+                if (!(u.ublessed | 0))
+                    u.ublessed = rn1(3, 2);
+                else if ((u.ublessed | 0) < 20
+                         && ((u.ublessed | 0) < 9 || !rn2(u.ublessed | 0)))
+                    u.ublessed = (u.ublessed | 0) + 1;
+            }
+            SetVoice(priest, 0, 80, 0);
+            if ((u.ublessed | 0) > orig_ublessed)
+                await verbalize('Thou hast been rewarded for thy devotion.');
+            else
+                await verbalize('Thy selfless generosity is deeply appreciated.');
+        } else {
+            SetVoice(priest, 0, 80, 0);
+            await verbalize('Thy selfless generosity is deeply appreciated.');
+            if (money_cnt(g.invent) < offer * 2 && coaligned) {
+                if (strayed && ((g.moves | 0) - (u.ucleansed | 0)) > 5000) {
+                    u.ualign.record = 0; /* cleanse thee */
+                    u.ucleansed = g.moves | 0;
+                } else {
+                    adjalign(2);
+                }
+            }
+        }
+    }
 }

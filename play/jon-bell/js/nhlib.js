@@ -2,7 +2,7 @@
 // nhlib.lua — Lua library loaded into themes (nethack-c/dat/nhlib.lua).
 // RNG paths here use the game's Lua/core PRNG (rng.c lua context parity: core ISAAC).
 // @ts-nocheck — sibling import from hand-maintained js/rng.js.
-import { rn2, rnz } from './rng.js';
+import { rn2, rnz } from './rnd.js';
 import { game } from './gstate.js';
 import { G_GONE } from './const.js';
 import { DRY, NO_LOC_WARN } from './sp_lev_loc.js';

@@ -5,7 +5,7 @@
 // Only RNG call: rn2(rect_cnt) in rnd_rect().
 import { game } from './gstate.js';
 import { COLNO, ROWNO } from './const.js';
-import { rn2 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { impossible_sync as impossible } from './display.js';
 const XLIM = 4;
 const YLIM = 3;

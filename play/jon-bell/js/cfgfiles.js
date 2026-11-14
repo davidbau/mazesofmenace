@@ -3,13 +3,16 @@
 // C ref: nethack-c-v5/upstream/src/cfgfiles.c.
 import { pline } from './pline.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { game } from './gstate.js';
-import { rn2 } from './rng.js';
-import { str2role } from './roles.js';
+import { rn2 } from './rnd.js';
+import { str2role } from './role.js';
 import { WIZKIT_MAX } from './const.js';
 import { LuaTable } from './lua/interp.js';
 import './cmd_binds.js';
 import { sha1Hex } from './sha1.js';
 import { config_error_handler } from './cmd_binds.js'; // relocate-fns
+import { paranoid_query } from './cmd.js'; // relocate-fns
+import { ECMD_OK } from './const.js'; // relocate-fns
+import { get_feature_notice_ver } from './version.js'; // relocate-fns
 
 /* tty synchronization is unnecessary for the replay terminal. */
 function wait_synch() { }
@@ -264,7 +267,7 @@ export function read_config_file(filename, src) {
     if (!(fp = fopen_config_file(filename, src)))
         return false;
     /* begin detection of duplicate configfile options */
-    reset_duplicate_opt_detection();
+    reset_duplicate_opt_detection_cfgfiles();
     free_config_sections();
     if (!globalThis.iflags) globalThis.iflags = {};
     globalThis.iflags.parse_config_file_src = src;
@@ -274,7 +277,7 @@ export function read_config_file(filename, src) {
 
     free_config_sections();
     /* turn off detection of duplicate configfile options */
-    reset_duplicate_opt_detection();
+    reset_duplicate_opt_detection_cfgfiles();
     return rv;
 }
 
@@ -525,11 +528,33 @@ export function config_line_error(origbuf) {
     }
     return 'Unknown config statement';
 }
-function reset_duplicate_opt_detection() { /* no-op stub */ }
+function reset_duplicate_opt_detection_cfgfiles() { /* no-op stub */ }
 function fclose(fp) { /* no-op stub */ }
 
 export function config_error_add(...args) {
     if (!config_error_handler)
         throw new Error('configuration-error reporting is not initialized');
     config_error_handler(...args);
+}
+
+// Symbolic C function-pointer bridge. These entries expose their real ECMD
+// results; the remaining legacy command adapters are in dispatch_command.
+/* C ref: cfgfiles.c:169 do_write_config_file() — #saveoptions.  The sandbox has
+ * no filesystem (the fopen/fwrite arm), so only the message/prompt sequence is
+ * ported; the recording shows C reaches the prompt and returns ECMD_OK. */
+export async function do_write_config_file() {
+    const g = game;
+    const configfile = get_configfile();
+    if (!configfile) {
+        await pline('Strange, could not figure out config file name.');
+        return ECMD_OK;
+    }
+    if (BigInt(g.flags.suppress_alert || 0) < get_feature_notice_ver('3.7.0')) {
+        await pline('Warning: saveoptions is highly experimental!');
+        await pline('Some settings are not saved!');
+        await pline('All manual customization and comments are removed from the file!');
+    }
+    if (!(await paranoid_query(true, `Overwrite config file ${configfile}?`)))
+        return ECMD_OK;
+    return ECMD_OK;
 }

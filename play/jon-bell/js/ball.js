@@ -22,26 +22,29 @@ import { game } from './gstate.js';
 import { is_pool } from './dbridge.js';
 import { dist2, distmin } from './hacklib.js';
 import { near_capacity } from './hack.js';
-import { nomul } from './allmain.js';
+import { nomul } from './hack.js';
 import { newsym, map_object, Unaware } from './display.js';
 import { pline } from './pline.js';
 import { Blind } from './vision.js';
-import { freeinv, body_part } from './cmd.js';
+import { body_part } from './cmd.js';
+import { freeinv } from './invent.js';
 import { welded, setuwep, setuswapwep, setuqwep } from './wield.js';
 import { omon_adj } from './dothrow.js';
 import { set_wounded_legs } from './do.js';
 import { t_at, deltrap, reset_utrap, fill_pit } from './trap.js';
 import { find_mac } from './worn.js';
 import { spoteffects } from './hack.js';
-import { remove_object, obj_extract_self, place_object } from './mklev.js';
+import { remove_object, obj_extract_self, place_object } from './mkobj.js';
 import { maybe_unhide_at, Soundeffect } from './mon.js';
-import { Yname2 } from './cmd.js';
+import { Yname2 } from './objnam.js';
 import { flooreffects } from './do.js';
-import { rn1, rn2, rnd } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { You, Your, hard_helmet, encumber_msg } from './do_wear.js';
 import { xname } from './do_wear.js';
 import { losehp } from './hack.js';
-import { hmon as hmon_real, hliquid } from './mhitm.js';
+import { hliquid } from './do_name.js';
+import { hmon as hmon_real, hmon } from './uhitm.js';
 import { m_at as monster_at } from './uhitm.js';
 import { impossible } from './steed.js';
 import { impossible as bc_impossible } from './pline.js';
@@ -60,7 +63,6 @@ import {
     TT_INFLOOR, TT_BURIEDBALL, TT_PIT, TT_WEB, TT_LAVA, TT_BEARTRAP,
     LEFT_SIDE, RIGHT_SIDE,
 } from './const.js';
-import { hmon } from './uhitm.js'; // relocate-fns
 import { movobj } from './hack.js'; // relocate-fns
 
 const se_destroy_web = 77;

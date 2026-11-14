@@ -3,10 +3,11 @@ import { is_ice } from './dbridge.js';
 // Ported from nethack-c/src/mkmaze.c:77-140
 
 import { game } from './gstate.js';
-import { ledger_no } from './bones.js';
-import { get_level } from './cmd.js';
+import { ledger_no } from './dungeon.js';
+import { get_level } from './dungeon.js';
 import { unplacebc_and_covet_placebc, lift_covet_and_placebc } from './ball.js';
-import { rn2, rnd, pushRngLogEntry } from './rng.js';
+import { pushRngLogEntry } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import {
     STONE, MAX_TYPE, SDOOR, AIR, ICE,
     LADDER, STAIRS,
@@ -24,21 +25,23 @@ import {
     SPACE_POS, VIBRATING_SQUARE, MAX_BMASK,
 } from './const.js';
 import { load_special } from './sp_lev.js';
-import { obj_ice_effects, count_level_features } from './mklev.js';
-import { place_object, remove_object } from './mklev.js';
+import { count_level_features } from './mklev.js';
+import { obj_ice_effects } from './mkobj.js';
+import { place_object, remove_object } from './mkobj.js';
 import { u_on_newpos, dunlevs_in_dungeon } from './dungeon.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj } from './invent.js';
 import { newsym, dec_mode } from './display.js';
 import { pline } from './pline.js';
 import { impossible } from './pline.js';
 import { t_at } from './trap.js';
 import { remove_worm } from './worm.js';
-import { mnearto, mnexto, elemental_clog } from './teleport.js';
+import { mnearto, mnexto, elemental_clog } from './mon.js';
 import { MON_BUBBLEMOVE, DEAF } from './const.js';
 /* The makemaz maze fallback (mkmaze.c:1197-1222) and populate_maze
  * (mkmaze.c:1095-1124) call these; all are C mklev.c/mkobj.c bodies that
  * already live in js/mklev.js. */
-import { mkstairs, place_branch, mktrap, mkgold, mkobj_at, mksobj_at, occupied } from './mklev.js';
+import { mkstairs, place_branch, mktrap, occupied } from './mklev.js';
+import { mkgold, mkobj_at, mksobj_at } from './mkobj.js';
 import { In_hell } from './dungeon.js';
 import { stairway_find_dir } from './stairs.js';
 import { Is_branchlev, describe_level_buf } from './dungeon.js';
@@ -56,7 +59,7 @@ import { distmin } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { rloc } from './teleport.js';
 import { spot_stop_timers } from './timeout.js';
-import { dealloc_monst } from './dog.js';
+import { dealloc_monst } from './mon.js';
 import { rn1 } from './rng.js';
 import { Is_firelevel } from './const.js';
 import { create_gas_cloud, clear_heros_fault } from './region.js';
@@ -67,10 +70,13 @@ import { CLR_GRAY, CLR_CYAN, CLR_BRIGHT_BLUE } from './terminal.js';
 /* stolen_booty() and its statics (C mkmaze.c:712-889) — see the block at the
  * end of this file.  Every one of these is the file's ONE real port; nothing
  * here is a local stand-in. */
-import { makemon, mksobj, mkobj, dealloc_obj, mksobj_migr_to_species } from './mklev.js';
+import { mksobj, mkobj, dealloc_obj, mksobj_migr_to_species } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { upstart } from './hacklib.js';
-import { add_to_minv, christen_orc } from './dokick.js';
-import { rndorcname, christen_monst } from './mhitm.js';
+import { add_to_minv } from './dokick.js';
+import { christen_orc } from './do_name.js';
+import { christen_monst } from './mhitm.js';
+import { rndorcname } from './do_name.js';
 import { set_malign } from './makemon.js';
 import { weight } from './weight.js';
 import { migrate_to_level } from './dog.js';
@@ -82,13 +88,23 @@ import { PM_ORC, PM_ORC_SHAMAN, PM_ORC_CAPTAIN } from './pm.generated.js';
 import { MM_NONAME, MIGR_RANDOM, MIGR_LEFTOVERS, has_mgivenname } from './const.js';
 import { ENV } from './hostenv.js';
 import { CROSSWALL, DBWALL, IS_STWALL, IS_WALL, Is_earthlevel, LR_DOWNTELE, LR_TELE, LR_UPTELE, LR_PORTAL, LR_UPSTAIR, LR_DOWNSTAIR, LR_BRANCH, VWALL, W_NONPASSWALL } from './const.js'; // relocate-fns
-import { mkportal } from './sp_lev.js';
-import { m_into_limbo } from './dog.js'; // relocate-fns
+import './sp_lev.js';
+import { m_into_limbo } from './mon.js'; // relocate-fns
 import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
 import { deltrap } from './trap.js'; // relocate-fns
 import { is_pool, pooleffects_Swimming } from './cmd.js'; // relocate-fns
 import { dmonsfree } from './mon.js'; // relocate-fns
 import { Invocation_lev } from './dungeon.js'; // relocate-fns
+import { CORPSTAT_NONE, In_quest, Is_stronghold } from './const.js'; // relocate-fns
+import { find_level, on_level } from './dungeon.js'; // relocate-fns
+import { rndmonnum } from './mkobj.js'; // relocate-fns
+import { mk_tt_object, mkcorpstat, set_corpsenm } from './mkobj.js'; // relocate-fns
+import { somex, somey } from './mkroom.js'; // relocate-fns
+import { poly_when_stoned } from './mondata.js'; // relocate-fns
+import { PM_CLERIC } from './pm.generated.js'; // relocate-fns
+import { Is_medusa_level, MONS_ROWS, STATUE, _pm_of } from './sp_lev.js'; // relocate-fns
+import { maketrap } from './trap.js';
+import { goodpos } from './teleport.js'; // relocate-fns
 export { dmonsfree } from './mon.js'; // relocate-fns
 
 // CAN_OVERWRITE_TERRAIN — rm.h:339-340
@@ -1861,4 +1877,251 @@ export async function water_friction() {
     }
     if (eff)
         await pline("Water turbulence affects your movements.");
+}
+
+// C ref: dungeon.c:1464-1473 Is_branchlev(). js/mklev.js's own copy
+// (function is_branchlev(), module-local, not exported) can't be imported
+function splev_is_branchlev(uz) {
+    const brlist = game._dungeon_branches || game.branches;
+    if (!brlist || !uz)
+        return null;
+    for (const br of brlist) {
+        /* Same end1_floating skip as js/mklev.js is_branchlev(): a floating
+         * branch's still-declared end1 is not a real placement. */
+        if (!br?.end1_floating
+            && br?.end1?.dnum === uz.dnum && br?.end1?.dlevel === uz.dlevel)
+            return br;
+        if (br?.end2?.dnum === uz.dnum && br?.end2?.dlevel === uz.dlevel)
+            return br;
+    }
+    return null;
+}
+
+// C ref: mkmaze.c:1458-1474 mkportal(). The one body in js/ — small and
+// self-contained (maketrap + dst wiring), needed as a
+// put_lregion_here/place_branch callee. C's debug_fuzzer branch is skipped
+// place_branch(), whose BR_PORTAL arm used to fall through doing nothing.
+export async function mkportal(x, y, todnum, todlevel) {
+    // maketrap is async only because C's STATUE_TRAP arm reaches makemon
+    // (js/trap.js maketrap header).  C's mkportal (mkmaze.c:1458) is
+    // synchronous; awaiting here preserves the C statement order.
+    const ttmp = await maketrap(x, y, MAGIC_PORTAL);
+    if (!ttmp) {
+        await impossible("portal on top of portal?");
+        return;
+    }
+    ttmp.dst.dnum = todnum;
+    ttmp.dst.dlevel = todlevel;
+}
+
+const MR_STONE = 0x80;
+
+/* C mondata.h:14 — #define pm_resistance(ptr, typ) (((ptr)->mresists & (typ)) != 0)
+ * MONS row column [5] is mresists (js/makemon.js:1271 permonstTemplate). */
+function pm_resistance(mndx, typ) {
+    const row = MONS_ROWS[mndx | 0];
+    return row ? (((row[5] | 0) & typ) !== 0) : false;
+}
+
+// C ref: mkmaze.c:569-704 fixup_special(). gl.lregions is game._lregions —
+// populated by lspo_stair/lspo_region/lspo_branch/lspo_teleport_region,
+// all four of which are ported and real (see above), so this loop is live
+// for any level whose des-file declares a stair/branch/portal levregion
+// (e.g. nethack-c/dat/Tou-strt.lua's branch region at (68,14,68,14)). The
+// medusa/cleric-quest/stronghold/baalzebub/mines-ransacked tail is a
+// straight port of the C if/else-if chain using already-real predicates
+// (Is_waterlevel/Is_airlevel/Is_stronghold/In_quest/on_level); the branches
+// whose bodies need genuinely unported machinery (setup_waterlevel, the
+// medusa statue placement, baalz_fixup, stolen_booty) still throw rather
+// than guess at their behavior — none of those conditions are true for
+// tut-1/tut-2 (verified against keystone-spec-phase3-wiring.md §1.8 and
+// nethack-c/dat/dungeon.lua's Tutorial stanza: "unconnected", no branches
+// entry, not medusa/stronghold/baalzebub/mines) so none of those throws
+export async function fixup_special() {
+    const uz = game.u?.uz;
+    if (Is_waterlevel(uz) || Is_airlevel(uz)) {
+        if (game.level)
+            game.level.flags.hero_memory = 0;
+        /* C mkmaze.c:585-588 — `svl.level.flags.hero_memory = 0;
+         * setup_waterlevel();`.  js/mkmaze.js carries the AIR half of the
+         * bubble subsystem (see its header for what the WATER half still
+         * omits); this used to throw, which is what kept `air` and `water`
+         * out of js/mklev.js's LOADER_READY. */
+        await setup_waterlevel();
+        /* NO early return: C falls through into the lregion loop below (its
+         * own comment says the water level "has to be set up BEFORE calling
+         * place_lregions etc."). */
+    }
+
+    const lregions = game._lregions || [];
+    let added_branch = false;
+    for (const r of lregions) {
+        switch (r.rtype) {
+        case LR_BRANCH:
+            added_branch = true;
+            await place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+                          r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+                          r.rtype, null);
+            break;
+        case LR_PORTAL: {
+            // C ref: mkmaze.c:588-596 — resolve the destination d_level
+            // before falling into place_it.  Two forms: the "chutes and
+            // ladders" numeric one (rname is a bare digit string → same
+            // dungeon, that dlevel) and the named one, which is
+            // find_level(rname)->dlevel.
+            //
+            // C dungeon.c:300-307 find_level() is a strcmpi scan of
+            // svs.sp_levchn by proto — no RNG, no state change.  It was
+            // stubbed out here as "unused by any quest-file levregion",
+            // blocking six protos from LOADER_READY (air/earth/fire/water
+            // chain to each other, fakewiz1 → wizard3, wizard3 → fakewiz1),
+            const rname = r.rname || '';
+            let lev;
+            if (rname && rname[0] >= '0' && rname[0] <= '9') {
+                lev = { dnum: uz?.dnum ?? 0, dlevel: parseInt(rname, 10) };
+            } else {
+                const sp = find_level(rname);
+                // C dereferences sp unconditionally; a missing proto is a
+                // NULL deref there, so a throw is the faithful outcome and
+                // never a silent wrong destination.
+                if (!sp)
+                    throw new Error('find_level("' + rname + '"): no such proto in sp_levchn');
+                lev = { dnum: sp.dlevel.dnum, dlevel: sp.dlevel.dlevel };
+            }
+            await place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+                          r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+                          r.rtype, lev);
+            break;
+        }
+        case LR_UPSTAIR:
+        case LR_DOWNSTAIR:
+            await place_lregion(r.inarea.x1, r.inarea.y1, r.inarea.x2, r.inarea.y2,
+                          r.delarea.x1, r.delarea.y1, r.delarea.x2, r.delarea.y2,
+                          r.rtype, null);
+            break;
+        case LR_TELE:
+        case LR_UPTELE:
+        case LR_DOWNTELE:
+            // C ref: mkmaze.c:610-627 — save the region outlines for
+            // u_on_rndspot() in mklev.js consumes these arrival regions.
+            if (r.rtype === LR_TELE || r.rtype === LR_UPTELE) {
+                game.updest = game.updest || {};
+                game.updest.lx = r.inarea.x1;
+                game.updest.ly = r.inarea.y1;
+                game.updest.hx = r.inarea.x2;
+                game.updest.hy = r.inarea.y2;
+                game.updest.nlx = r.delarea.x1;
+                game.updest.nly = r.delarea.y1;
+                game.updest.nhx = r.delarea.x2;
+                game.updest.nhy = r.delarea.y2;
+            }
+            if (r.rtype === LR_TELE || r.rtype === LR_DOWNTELE) {
+                game.dndest = game.dndest || {};
+                game.dndest.lx = r.inarea.x1;
+                game.dndest.ly = r.inarea.y1;
+                game.dndest.hx = r.inarea.x2;
+                game.dndest.hy = r.inarea.y2;
+                game.dndest.nlx = r.delarea.x1;
+                game.dndest.nly = r.delarea.y1;
+                game.dndest.nhx = r.delarea.x2;
+                game.dndest.nhy = r.delarea.y2;
+            }
+            break;
+        }
+    }
+
+    if (!added_branch && splev_is_branchlev(uz)) {
+        // C ref: mkmaze.c:640-643 — place dungeon branch if not placed
+        // above. Unreachable for tut-1/tut-2 (Tutorial is "unconnected" in
+        // nethack-c/dat/dungeon.lua, no branches entry points at it); this
+        // is place_lregion's !lx path, which throws on the x==0 place_branch
+        // sub-case if ever actually hit.
+        await place_lregion(0, 0, 0, 0, 0, 0, 0, 0, LR_BRANCH, null);
+    }
+
+    if (Is_medusa_level(uz)) {
+        /* C mkmaze.c:652 — the first room defined on the medusa level. */
+        const croom = (game.level?.rooms ?? [])[0];
+        if (croom) {
+            let otmp;
+            /* C mkmaze.c:653 */
+            for (let tryct = rnd(4); tryct; tryct--) {
+                const x = somex(croom);
+                const y = somey(croom);
+                if (goodpos(x, y, null, 0)) {
+                    let tryct2 = 0;
+                    otmp = (await mk_tt_object(STATUE, x, y));
+                    while (++tryct2 < 100 && otmp
+                           && (poly_when_stoned(_pm_of(otmp.corpsenm | 0))
+                               || pm_resistance(otmp.corpsenm | 0, MR_STONE))) {
+                        /* set_corpsenm() handles weight too */
+                        set_corpsenm(otmp, rndmonnum());
+                    }
+                }
+            }
+
+            /* C mkmaze.c:670-676 */
+            if (rn2(2)) {
+                const sx = somex(croom), sy = somey(croom);
+                otmp = (await mk_tt_object(STATUE, sx, sy));
+            } else {
+                /* Medusa statues don't contain books */
+                const sx = somex(croom), sy = somey(croom);
+                otmp = (await mkcorpstat(STATUE, null, null, sx, sy, CORPSTAT_NONE));
+            }
+            /* C mkmaze.c:677-684 — same rejection loop, guards in the other
+             * order (pm_resistance first); order is immaterial to the RNG but
+             * kept as C writes it. */
+            if (otmp) {
+                let tryct = 0;
+                while (++tryct < 100
+                       && (pm_resistance(otmp.corpsenm | 0, MR_STONE)
+                           || poly_when_stoned(_pm_of(otmp.corpsenm | 0)))) {
+                    /* set_corpsenm() handles weight too */
+                    set_corpsenm(otmp, rndmonnum());
+                }
+            }
+        }
+    } else {
+        // C mkmaze.c:686 `else if (Role_if(PM_CLERIC) && In_quest(&u.uz))`.
+        // Role_if(X) is `gu.urole.mnum == X` (you.h:247); PM_CLERIC is the
+        // PLAYER-ROLE Priest, mons[] index 337 (js/pm.generated.js, added
+        // monster-only "aligned cleric" at index 275, which keeps the name
+        // PM_PRIEST). js/roles.js:612 sets `game.urole.mnum =
+        // ROLE_PM_MNUM[ROLE]`, i.e. the real PM_ index, so on the scored
+        // path a Priest character reads game.urole.mnum === 337 (PM_CLERIC),
+        // never 275 (PM_PRIEST) — comparing against PM_PRIEST here made this
+        // branch permanently unreachable. Same (urole.mnum ?? u.umonnum)
+        // fallback js/dokick.js:330 already uses — Role_if itself
+        // (js/potion.js:946) is an unconditional throw stub and must NOT be
+        const roleMnum = (game.urole?.mnum ?? game.u?.umonnum ?? -1) | 0;
+        if (roleMnum === PM_CLERIC && In_quest(uz)) {
+            if (game.level)
+                game.level.flags.graveyard = 1;
+        } else if (Is_stronghold(uz)) {
+            if (game.level)
+                game.level.flags.graveyard = 1;
+        } else if (uz && game.baalzebub_level && on_level(uz, game.baalzebub_level)) {
+            /* C mkmaze.c:693 baalz_fixup() — the insect-leg wallification
+             * fixup for Baalzebub's lair; ported in js/mkmaze.js. */
+            await baalz_fixup();
+        } else if (uz && uz.dnum === game.mines_dnum && game.ransacked) {
+            /* C mkmaze.c:694-695 stolen_booty() — orctown's fled orc gang and
+             * the loot it took.  Ported in js/mkmaze.js (this file's fixup_special
+             * is the C mkmaze.c one; the port lives next to check_ransacked(),
+             * which is what sets game.ransacked). */
+            await stolen_booty();
+        }
+    }
+
+    // C: (sp = Is_special(&u.uz)) != 0 && sp->flags.town — deliberately NOT
+    // exported); we're already inside load_special for an allowlisted
+    const spHit = uz && (game._sp_levchn || []).find(
+        sl => sl.dlevel.dnum === uz.dnum && sl.dlevel.dlevel === uz.dlevel);
+    if (spHit && spHit.flags && spHit.flags.town) {
+        if (game.level)
+            game.level.flags.has_town = 1;
+    }
+
+    game._lregions = [];
 }

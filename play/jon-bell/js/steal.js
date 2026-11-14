@@ -1,25 +1,12 @@
 // steal.c — stealing and removal of worn items.
 // C ref: steal.c:212 remove_worn_item
 
-import { rn1, rn2 } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { game } from './gstate.js';
 import { s_suffix } from './hacklib.js';
-import {
-    cancel_don,
-    donning,
-    Ring_gone,
-    Amulet_off,
-    Blindf_off,
-    Armor_off,
-    Boots_off,
-    Cloak_off,
-    Gloves_off,
-    Helmet_off,
-    Shield_off,
-    Shirt_off,
-    bimanual,
-    yname,
-} from './do_wear.js';
+import { cancel_don, donning, Ring_gone, Amulet_off, Blindf_off, Armor_off, Boots_off, Cloak_off, Gloves_off, Helmet_off, Shield_off, Shirt_off, bimanual } from './do_wear.js';
+import { yname } from './objnam.js';
 import {
     W_ARMOR,
     W_AMUL,
@@ -48,8 +35,8 @@ import {
     I_SPECIAL,
     HAND,
 } from './const.js';
-import { artifact_light } from './light.js';
-import { update_inventory } from './inventory_refresh.js';
+import { artifact_light } from './artifact.js';
+import { update_inventory } from './invent.js';
 import { OBJ_DELETED } from './const.js';
 import { setworn, setnotworn } from './worn.js';
 export { setworn } from './worn.js';
@@ -57,22 +44,27 @@ import { newsym } from './display.js';
 import { pline } from './pline.js';
 import { Blind, cansee } from './vision.js';
 import { canspotmon, canseemon } from './display.js';
-import { Monnam } from './mcastu.js';
-import { Some_Monnam } from './mhitm.js';
+import { Monnam } from './do_name.js';
+import { Some_Monnam } from './do_name.js';
 import { is_fainted } from './eat.js';
 import { unpunish } from './read.js';
 import { unconscious } from './trap.js';
-import { findgold } from './makemon.js';
+import './makemon.js';
 import { droppables } from './dogmove.js';
 import { extract_from_minvent } from './worn.js';
 import { obfree } from './dokick.js';
-import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense, is_quest_artifact } from './objnam.js';
+import { simpleonames, Tobjnam, armor_simple_name, makeplural, otense } from './objnam.js';
+import { is_quest_artifact } from './questpgr.js';
 import { end_burn } from './timeout.js';
-import { goodpos } from './trap.js';
-import { obj_extract_self, remove_object, place_object, mdrop_obj_md, revive_corpse, touch_artifact_mon } from './mklev.js';
-import { freeinv, body_part } from './cmd.js';
+import { goodpos } from './teleport.js';
+import { mdrop_obj_md, touch_artifact_mon } from './mklev.js';
+import { revive_corpse } from './do.js';
+import { remove_object, place_object } from './mkobj.js';
+import { obj_extract_self } from './dokick.js';
+import { body_part } from './cmd.js';
+import { freeinv } from './invent.js';
 import { flooreffects } from './do.js';
-import { encumber_msg } from './weight.js';
+import { encumber_msg } from './pickup.js';
 import { find_objowner, costly_spot, costly_adjacent, inhishop, subfrombill, shop_keeper, addtobill as shk_addtobill, stolen_value } from './shk.js';
 import { in_rooms } from './hack.js';
 import { within_bounded_area } from './rect.js';
@@ -91,15 +83,50 @@ import { PM_DEATH, PM_FAMINE, PM_PESTILENCE } from './pm.generated.js';
  * here or there calls across the cycle during module evaluation. */
 import { obj_resists } from './zap.js';
 import { uqwepgone, uswapwepgone, uwepgone } from './wield.js'; // relocate-fns
-import { carry_obj_effects, count_unpaid } from './cmd.js'; // relocate-fns
+import { carry_obj_effects, count_unpaid } from './invent.js'; // relocate-fns
 import { engulfing_u } from './const.js'; // relocate-fns
 import { mon_pmname } from './do_name.js'; // relocate-fns
 import { snuff_light_source } from './light.js'; // relocate-fns
-import { Has_contents, MPICKOBJ_AT_ENGL, add_to_minv, obj_sheds_light_mp, unknow_object } from './mklev.js'; // relocate-fns
+import { Has_contents, MPICKOBJ_AT_ENGL, obj_sheds_light_mp } from './mklev.js';
+import { unknow_object } from './mkobj.js';
+import { add_to_minv } from './dokick.js'; // relocate-fns
 import { attacktype } from './mondata.js'; // relocate-fns
 import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
 import { Blind as Blind_pickup } from './vision.js'; // relocate-fns
 import { skinback } from './polyself.js'; // relocate-fns
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js'; // relocate-fns
+import { o_unleash } from './apply.js'; // relocate-fns
+import { ARMOR_DATA as ARMOR_DATA_MU } from './armor_data.js'; // relocate-fns
+import { inv_cnt as inv_cnt_mu } from './hack.js';
+import { freeinv as freeinv_mu } from './invent.js'; // relocate-fns
+import { ADORNED as ADORNED_MU, LEFT_RING as LEFT_RING_MU, PLNMSG_MON_TAKES_OFF_ITEM as PLNMSG_MON_TAKES_OFF_ITEM_MU, RIGHT_HANDED as RIGHT_HANDED_MU, RIGHT_RING as RIGHT_RING_MU, TT_BURIEDBALL, W_ACCESSORY as W_ACCESSORY_MU, W_ARMG as W_ARMG_MU, W_ARMOR as W_ARMOR_MU, W_WEAPONS as W_WEAPONS_MU } from './const.js'; // relocate-fns
+import { canspotmon as canspotmon_disp } from './display.js'; // relocate-fns
+import { armor_simple_name_dw as armor_simple_name_mu, bimanual as bimanual_mu, doffing as doffing_mu, stop_donning } from './do_wear.js'; // relocate-fns
+import { can_carry as can_carry_mu } from './mon.js'; // relocate-fns
+import { maybe_finished_meal as maybe_finished_meal_mu } from './eat.js'; // relocate-fns
+import { strsubst } from './hacklib.js'; // relocate-fns
+import { Adjmonnam as Adjmonnam_mu, Some_Monnam as Some_Monnam_mu } from './do_name.js'; // relocate-fns
+import { BOULDER_MU, Blind_mu, CORPSE_MK, _conflict_mu, _kb_uball, doname_mu, is_animal_mu, stealarm_mu, touch_petrifies_mk } from './mhitu.js'; // relocate-fns
+import { monnear } from './mon.js'; // relocate-fns
+import { yname as yname_mu } from './objnam.js'; // relocate-fns
+import { impossible as impossible_breath, urgent_pline as urgent_pline_disp } from './pline.js'; // relocate-fns
+import { shop_keeper as shop_keeper_real, subfrombill as subfrombill_real } from './shk.js'; // relocate-fns
+import { openholdingtrap as openholdingtrap_mu } from './trap.js'; // relocate-fns
+import { minstapetrify as minstapetrify_mu } from './trap.js'; // relocate-fns
+import { encumber_msg as encumber_msg_mu } from './pickup.js'; // relocate-fns
+import { welded } from './wield.js'; // relocate-fns
+import { rloco } from './teleport.js'; // relocate-fns
+import { mbodypart } from './cmd.js'; // relocate-fns
+import { FLYING, FOOT, LEVITATION, RLOC_MSG } from './const.js'; // relocate-fns
+import { y_monnam } from './do_name.js'; // relocate-fns
+import { money_cnt } from './hack.js'; // relocate-fns
+import { g_at } from './invent.js'; // relocate-fns
+import { GOLD_PIECE_OTYP } from './makemon.js'; // relocate-fns
+import { splitobj } from './mkobj.js'; // relocate-fns
+import { monflee } from './monmove.js'; // relocate-fns
+import { OC_COST } from './oc_cost_data.js'; // relocate-fns
+import { rloc, tele_restrict } from './teleport.js'; // relocate-fns
 const ROCK_CLASS = 14; // C objclass.h: boulders and statues
 
 /**
@@ -163,7 +190,7 @@ export async function remove_worn_item(obj, unchain_ball) {
     if (obj.owornmask & W_ARMOR) {
         // C: if (obj == uskin) { impossible(...); skinback(TRUE); }
         if (obj === game.u.uskin) {
-            impossible("Removing embedded scales?");
+            impossible_steal("Removing embedded scales?");
             await skinback(true);
         }
 
@@ -315,7 +342,7 @@ export async function maybe_absorb_item(mon, obj, ochance, achance) {
 /* C ref: nethack-c/src/pline.c:587-637 — impossible() logs and RETURNS; it
  * never aborts.  C's uskin arm calls impossible() and then continues into
  * skinback(TRUE). */
-function impossible(_msg, ..._args) { }
+function impossible_steal(_msg, ..._args) { }
 
 
 
@@ -345,14 +372,15 @@ export async function relobj(mtmp, show, is_pet) {
     /* vault guard's gold goes away rather than be dropped... */
     if (mtmp.isgd && (otmp = findgold(mtmp.minvent)) !== null) {
         if (canspotmon(mtmp))
-            pline("%s gold %s.", s_suffix(Monnam(mtmp)),
-                  canseemon(mtmp) ? "vanishes" : "seems to vanish");
+            await pline("%s gold %s.", s_suffix(Monnam(mtmp)),
+                        canseemon(mtmp) ? "vanishes" : "seems to vanish");
         obj_extract_self(otmp);
         await obfree(otmp, null);
     } /* isgd && has gold */
 
     while ((otmp = (is_pet ? droppables(mtmp) : mtmp.minvent)) !== null) {
-        await mdrop_obj(mtmp, otmp, is_pet && flags.verbose);
+        /* C steal.c:893: is_pet && flags.verbose (the user's verbose option). */
+        await mdrop_obj(mtmp, otmp, is_pet && !!game.flags?.verbose);
     }
 
     if (show && cansee(omx, omy))
@@ -392,129 +420,12 @@ export async function mdrop_special_objs(mon) {
 }
 
 
-function _rloco_on_W_tower_level(lev) {
-    if (!lev)
-        return false;
-    const g = game;
-    const same = (a) => !!(a && (a.dnum | 0) === (lev.dnum | 0)
-                            && (a.dlevel | 0) === (lev.dlevel | 0));
-    return same(g.wiz1_level) || same(g.wiz2_level) || same(g.wiz3_level);
-}
 
-/* C ref: shk.c:5368-5381 — canonical helper also handles stored shk_x/shk_y. */
-function _rloco_costly_adjacent(shkp, x, y) {
-    return costly_adjacent(shkp, x, y);
-}
 
-/* First entry of in_rooms(x, y, typewanted), or 0 if the list is empty --
- * mirrors C's `*in_rooms(...)` (in_rooms returns a room-number string; the
- * leading char is the "primary" room, 0 == none). */
-function _rloco_room0(x, y, typewanted) {
-    const rooms = in_rooms(x, y, typewanted);
-    return rooms && rooms.length ? (rooms[0] | 0) : 0;
-}
 
-/* True iff nonzero room `roomno` appears anywhere in in_rooms(x, y,
- * typewanted)'s list -- mirrors C's `strchr(in_rooms(...), roomno)` (a room
- * number of 0 never matches, same as every call site's own `h &&`/`oo &&`
- * guard ahead of it). */
-function _rloco_room_has(x, y, typewanted, roomno) {
-    if (!roomno)
-        return false;
-    const rooms = in_rooms(x, y, typewanted);
-    return !!(rooms && rooms.includes(roomno));
-}
 
-/* C ref: mondata.h is_rider(ptr), used by teleport.c:2107. */
-function _rloco_is_rider(obj) {
-    const n = obj?.corpsenm | 0;
-    return n === PM_DEATH || n === PM_FAMINE || n === PM_PESTILENCE;
-}
 
-const RLOCO_CORPSE = 265; /* objects[].otyp CORPSE -- same literal js/dig.js,
-                              js/dog.js and js/hold_another_object.js each use
-                              locally for this otyp. */
 
-/* C ref: teleport.c:2101-2181 rloco(obj) — false if the object is gone.
- * Await billing and its messages before placing the object, as C does. */
-export async function rloco(obj) {
-    /* teleport.c:2107-2110 -- a Rider corpse revives instead of relocating;
-     * C returns FALSE when revival consumes the object. */
-    if ((obj.otyp | 0) === RLOCO_CORPSE && _rloco_is_rider(obj)) {
-        if (await revive_corpse(obj))
-            return false;
-    }
-
-    obj_extract_self(obj);
-    const otx = obj.ox | 0;
-    const oty = obj.oy | 0;
-    const dndest = game.dndest || {};
-    const restrictedFall = (otx === 0 && dndest.lx);
-
-    let tx, ty;
-    let tryLimit = 4000;
-    for (;;) {
-        tx = rn1(COLNO - 3, 2);
-        ty = rn2(ROWNO);
-        if (!--tryLimit)
-            break;
-        if (!goodpos(tx, ty, null, 0))
-            continue;
-        if (restrictedFall) {
-            const inDn = within_bounded_area(tx, ty, dndest.lx, dndest.ly, dndest.hx, dndest.hy);
-            const inNear = dndest.nlx
-                ? within_bounded_area(tx, ty, dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy)
-                : false;
-            if (!inDn || inNear)
-                continue;
-        }
-        if (dndest.nlx && _rloco_on_W_tower_level(game.u?.uz)) {
-            const nowIn = within_bounded_area(tx, ty, dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy);
-            const wasIn = within_bounded_area(otx, oty, dndest.nlx, dndest.nly, dndest.nhx, dndest.nhy);
-            if (nowIn !== wasIn)
-                continue;
-        }
-        break;
-    }
-
-    if (await flooreffects(obj, tx, ty, 'fall')) {
-        if (!(otx === 0 && oty === 0))
-            newsym(otx, oty);
-        return false;
-    } else if (otx === 0 && oty === 0) {
-        /* fell through a trap door; no update of old loc needed */
-    } else {
-        const shkp = await find_objowner(obj, otx, oty);
-        const objinshop = !!(shkp && costly_spot(otx, oty));
-        const onboundary = !!(shkp && _rloco_costly_adjacent(shkp, otx, oty));
-
-        if (objinshop || (obj.unpaid && onboundary)) {
-            const u = game.u || {};
-            const h = _rloco_room0(u.ux | 0, u.uy | 0, SHOPBASE);
-            const oo = _rloco_room0(otx, oty, 0);
-            const hinshop = !!(h && _rloco_room_has(shkp.mx | 0, shkp.my | 0, 0, h));
-
-            if (hinshop && costly_spot(tx, ty) && oo && _rloco_room_has(tx, ty, 0, oo)) {
-                if (obj.unpaid)
-                    await subfrombill(obj, shkp);
-            } else if (hinshop && _rloco_costly_adjacent(shkp, tx, ty)
-                       && oo && _rloco_room_has(tx, ty, 0, oo)) {
-                if (!obj.unpaid) {
-                    // C teleport.c:2174: finish billing before place_object().
-                    await shk_addtobill(obj, false, false, false);
-                }
-            } else {
-                await stolen_value(obj, otx, oty, false, false);
-            }
-        }
-
-        newsym(otx, oty);
-    }
-
-    place_object(obj, tx, ty);
-    newsym(tx, ty);
-    return true;
-}
 
 /* obj_resists — MODULE-LOCAL STUB DELETED.  C ref: zap.c:1458-1472.  This file
  * carried `function obj_resists(obj, a, b) { return false; }`, which shadowed
@@ -555,9 +466,6 @@ export async function rloco(obj) {
  * 's — "Juiblex", no, but "the gnome lords" after a plural Monnam does. */
 
 
-function flags() {
-    return { verbose: false };
-}
 
 const MPICKOBJ_LOST_NONE = 0, MPICKOBJ_LOST_THROWN = 1;
 
@@ -626,4 +534,438 @@ export async function mpickobj(mtmp, otmp) {
         snuff_light_source(mtmp.mx, mtmp.my);
 
     return freed_otmp;
+}
+
+/* C mondata.h throws_rocks(ptr) — M2_ROCKTHROW. */
+const M2_ROCKTHROW_MU = 0x08000000; /* monflag.h; mirrors js/makemon.js:3612 */
+
+function throws_rocks_mu(mdat) { return ((mdat?.mflags2 | 0) & M2_ROCKTHROW_MU) !== 0; }
+
+/* C youprop.h Adornment — the EXTRINSIC mask only (a ring of adornment is worn,
+ * never intrinsic), which is what steal.c:405/408 tests against LEFT_RING /
+ * RIGHT_RING to find which hand carries it. */
+function Adornment_mu() { return game.u?.uprops?.[ADORNED_MU]?.extrinsic | 0; }
+
+const S_NYMPH_ = 14;       /* monsym.h — matches js/makemon.js:1890 */
+
+const COIN_CLASS_ = 12;
+
+/* objects.h is an X-macro file, so both otyps are verified by NAME against
+ * js/oc_name_data.js: OC_NAME[236] === 'leash', OC_NAME[475] === 'boulder'. */
+const LEASH_MU = 236;
+
+export async function worn_item_removal(mon, obj) {
+    const g = game;
+    let objbuf = await doname_mu(obj);
+
+    const strip_art = objbuf.startsWith('the ') ? 4
+                    : objbuf.startsWith('an ') ? 3
+                      : objbuf.startsWith('a ') ? 2
+                        : 0;
+    if (strip_art) {
+        /* C:313 — "an iron chain (attached to you)" becomes "the ...", not
+         * "your ...", when the caller passed uchain. */
+        objbuf = ((obj === g.u.uchain) ? 'the ' : 'your ') + objbuf.slice(strip_art);
+    }
+    objbuf = objbuf.replace(' (being worn)', '');
+    objbuf = objbuf.replace(' (alternate weapon; not wielded)', '');
+    /* C:316-318 — p = strstri(objbuf, " (on ") is CASE-INSENSITIVE, then
+     * strsubst(p + 2, "on", "from") replaces the first case-sensitive "on"
+     * at or after p + 2. */
+    const p = objbuf.toLowerCase().indexOf(' (on ');
+    if (p >= 0 && (objbuf.startsWith('left ', p + 5)
+                   || objbuf.startsWith('right ', p + 5)))
+        objbuf = objbuf.slice(0, p + 2) + strsubst(objbuf.slice(p + 2), 'on', 'from');
+
+    const verb = ((obj.owornmask | 0) & W_WEAPONS_MU) ? 'disarms'
+               : ((obj.owornmask | 0) & W_ACCESSORY_MU) ? 'removes'
+                 : 'takes off';
+    await pline(`${Some_Monnam_mu(mon)} ${verb} ${objbuf}.`);
+    (g.iflags ||= {}).last_msg = PLNMSG_MON_TAKES_OFF_ITEM_MU;
+    /* removal might trigger more messages (due to loss of Lev|Fly) */
+    await remove_worn_item(obj, true);
+}
+
+export async function steal(mtmp, objnambuf) {
+    const g = game, u = g.u;
+    const was_punished = !!_kb_uball();
+    let otmp, tmp, named = 0, retrycnt = 0;
+    const monkey_business = is_animal_mu(mtmp.data);
+    const seen = canspotmon_disp(mtmp);
+
+    if (objnambuf)
+        objnambuf.s = '';
+    /* C:352 — true if successful on the first of two attacks. */
+    if (!monnear(mtmp, u.ux, u.uy))
+        return 0;
+
+    /* C:361 — remember the name NOW: stealing a worn item can drop the hero
+     * into water, or remove the Eyes of the Overworld, either of which changes
+     * whether the thief is visible by the time the message is printed. */
+    let Monnambuf = Some_Monnam_mu(mtmp);
+
+    /* C:365-367 — food being eaten may be used up but not yet removed from
+     * inventory; don't steal that. */
+    if (g.occupation)
+        await maybe_finished_meal_mu(false);
+
+
+    const nothing_to_steal = async () => {
+        const punished = !!(u.uball || _kb_uball());
+        const is_buried_ball = !!(u.utrap && u.utraptype === TT_BURIEDBALL);
+        if (!monkey_business && punished && rn2(4)) {
+            const chain = u.uchain || g.uchain;
+            if (chain)
+                await worn_item_removal(mtmp, chain);
+            return 1; /* C falls through to the common flee return. */
+        } else if (!monkey_business && is_buried_ball && !rn2(4)) {
+            await pline(`${Monnambuf} takes off your unseen chain.`);
+            const noticed = { value: false };
+            await openholdingtrap_mu(game.youmonst, noticed);
+            return 1; /* C's nothing_to_steal label returns immediately. */
+        }
+        if (Blind_mu())
+            await pline('Somebody tries to rob you, but finds nothing to steal.');
+        else if (inv_cnt_mu(true) > inv_cnt_mu(false))
+            await pline(`${Monnambuf} tries to rob you, but isn't interested in gold.`);
+        else
+            await pline(`${Monnambuf} tries to rob you, but there is nothing to steal!`);
+        return 1; /* let her flee */
+    };
+    /* C steal.c:476-490 — an animal that cannot overcome a cursed/welded
+     * item, or cannot carry it, gives up.  This is also the target of the
+     * second boulder retry (the `cant_take:` label), so keep the message and
+     * its final flee-roll in one helper. */
+    const cant_take = async () => {
+        const how = ['steal', 'snatch', 'grab', 'take'];
+        const verb = how[rn2(how.length)];
+        const worn = !!((otmp.owornmask | 0) & W_ARMOR_MU);
+        const what = worn ? `your ${armor_simple_name_mu(otmp)}` : yname_mu(otmp);
+        await pline(`${Monnambuf} tries to ${verb} ${what} but gives up.`);
+        return rn2(Math.trunc(inv_cnt_mu(false) / 5) + 2) ? 0 : 1;
+    };
+    const icnt = inv_cnt_mu(false); /* don't include gold */
+    if (!icnt || (icnt === 1 && u.uskin))
+        return await nothing_to_steal();
+
+    /* C:403-411 — a ring of adornment targets a worn ring directly, skipping
+     * the weighted pick (and its rn2). */
+    let gotobj = false;
+    if (monkey_business || u.uarmg) {
+        ; /* skip ring special cases */
+    } else if (Adornment_mu() & LEFT_RING_MU) {
+        otmp = u.uleft;
+        gotobj = true;
+    } else if (Adornment_mu() & RIGHT_RING_MU) {
+        otmp = u.uright;
+        gotobj = true;
+    }
+
+    if (!gotobj) {
+      for (;;) { /* C's `retry:` label */
+        tmp = 0;
+        for (otmp = g.invent; otmp; otmp = otmp.nobj)
+            if ((!u.uarm || otmp !== u.uarmc) && otmp !== u.uskin
+                && otmp.oclass !== COIN_CLASS_)
+                tmp += ((otmp.owornmask | 0) & (W_ARMOR_MU | W_ACCESSORY_MU)) ? 5 : 1;
+        /* C:421's zero-weight case jumps to nothing_to_steal.  This can
+         * occur when inventory contains only skin/excluded objects, even
+         * though icnt was nonzero; do not consume an RNG draw or throw. */
+        if (!tmp)
+            return await nothing_to_steal();
+        tmp = rn2(tmp);
+        for (otmp = g.invent; otmp; otmp = otmp.nobj)
+            if ((!u.uarm || otmp !== u.uarmc) && otmp !== u.uskin
+                && otmp.oclass !== COIN_CLASS_) {
+                tmp -= ((otmp.owornmask | 0) & (W_ARMOR_MU | W_ACCESSORY_MU)) ? 5 : 1;
+                if (tmp < 0)
+                    break;
+            }
+        if (!otmp) {
+            await impossible_breath('Steal fails!');
+            return 0;
+        }
+
+        /* C:432-447 — the "can't take X while wearing Y" substitutions. */
+        if ((otmp === u.uleft || otmp === u.uright) && u.uarmg)
+            otmp = u.uarmg;
+        if (otmp === u.uarmg && u.uwep)
+            otmp = u.uwep;
+        else if (otmp === u.uarm && u.uarmc)
+            otmp = u.uarmc;
+        else if (otmp === u.uarmu && u.uarmc)
+            otmp = u.uarmc;
+        else if (otmp === u.uarmu && u.uarm)
+            otmp = u.uarm;
+
+        if (otmp.o_id === g.stealoid)
+            return 0;
+        if (otmp.otyp === BOULDER_MU && !throws_rocks_mu(mtmp.data)) {
+            if (!retrycnt++)
+                continue; /* C: goto retry */
+            return cant_take(); /* C: goto cant_take */
+        }
+        break;
+    }
+    }
+
+    /* C:449-450 `gotobj:` */
+    if (otmp.o_id === g.stealoid)
+        return 0;
+    /* C steal.c:465-490 — animals cannot overcome cursed stickiness (or
+     * welded rings) and cannot take objects beyond their carrying capacity.
+     * Quiver and an inactive secondary weapon are not really worn for this
+     * test, while the ball is effectively worn because its curse is implicit. */
+    if (monkey_business) {
+        let ostuck;
+        if (otmp === u.uball)
+            ostuck = true;
+        else if (otmp === u.uquiver || (otmp === u.uswapwep && !u.twoweap))
+            ostuck = false;
+        else
+            ostuck = !!(((otmp.cursed | 0) && (otmp.owornmask | 0))
+                || (otmp === ((u.uhandedness === RIGHT_HANDED_MU) ? u.uright : u.uleft)
+                    && welded_mu(u.uwep))
+                || (otmp === ((u.uhandedness === RIGHT_HANDED_MU) ? u.uleft : u.uright)
+                    && welded_mu(u.uwep)
+                    && bimanual_mu(u.uwep)));
+        if (ostuck || can_carry_mu(mtmp, otmp) === 0)
+            return cant_take();
+    }
+    if (otmp.otyp === LEASH_MU && otmp.leashmon) {
+        if (monkey_business && otmp.cursed)
+            return cant_take();
+        o_unleash(otmp);
+    }
+
+    const was_doffing = doffing_mu(otmp);
+    /* C steal.c:499-501 — stop donning/doffing now so that afternmv won't be
+     * clobbered below; stop_occupation doesn't handle donning/doffing. */
+    const olddelay = await stop_donning(otmp);
+    await stop_occupation();
+
+    if ((otmp.owornmask | 0) & (W_ARMOR_MU | W_ACCESSORY_MU)) {
+        /* objclass.h's class ids come from the OBJCLASS() X-macro table
+         * (include/defsym.h:466-478), not from a greppable enum:
+         *   2 WEAPON  3 ARMOR  4 RING  5 AMULET  6 TOOL  7 FOOD  12 COIN */
+        switch (otmp.oclass) {
+        case 6:  /* TOOL_CLASS */
+        case 5:  /* AMULET_CLASS */
+        case 4:  /* RING_CLASS */
+        case 7:  /* FOOD_CLASS -- meat ring */
+            await worn_item_removal(mtmp, otmp);
+            break;
+        case 3: {  /* ARMOR_CLASS — C steal.c:513-560 */
+            /* C:514-516 —
+             *     armordelay = objects[otmp->otyp].oc_delay;
+             *     if (olddelay > 0 && olddelay < armordelay)
+             *         armordelay = olddelay;
+             * `olddelay` is stop_donning()'s return and is 0 on every path this
+             * port can reach (nothing tracks a partially-donned item — see the
+             * note above), so the clamp cannot fire here. */
+            const _row = ARMOR_DATA_MU[otmp.otyp | 0];
+            let armordelay = _row ? (_row.delay | 0) : 0;
+            if (olddelay > 0 && olddelay < armordelay)
+                armordelay = olddelay;
+            /* C:517 `if (monkey_business || unresponsive())`.  monkey_business
+             * is already refused above (it throws), and unresponsive() is
+             * `gm.multi >= 0 ? FALSE : (unconscious() || is_fainted() || ...)`
+             * — this port has no multi < 0 state at a monster's attack, so the
+             * seduction branch is the one C takes. */
+            if (monkey_business || unresponsive()) {
+                /* C:517-523 — animals lack the patience for slow armor; this
+                 * is the rn2(10) @steal(steal.c:521).  olddelay is 0 here. */
+                if (armordelay >= 1 && !olddelay && rn2(10))
+                    return cant_take();
+                await worn_item_removal(mtmp, otmp);
+                break;
+            }
+            const curssv = otmp.cursed;
+            otmp.cursed = 0;
+            /* C:527 slowly = (armordelay >= 1 || gm.multi < 0) */
+            const slowly = (armordelay >= 1) || ((game.multi | 0) < 0);
+            if (game.flags?.female) {
+                await urgent_pline_disp(`${!seen ? 'She' : Monnambuf} charms you.  You gladly ${
+                    curssv ? 'let her take'
+                    : !slowly ? 'hand over'
+                    : was_doffing ? 'continue removing'
+                    : 'start removing'} your ${armor_simple_name_mu(otmp)}.`);
+            } else {
+                await urgent_pline_disp(`${!seen ? 'She' : Adjmonnam_mu(mtmp, 'beautiful')} seduces you and ${
+                    curssv ? 'helps you to take'
+                    : !slowly ? 'you take'
+                    : was_doffing ? 'you continue taking'
+                    : 'you start taking'} off your ${armor_simple_name_mu(otmp)}.`);
+            }
+            ++named;
+            /* C:551-553 — set multi for later on. */
+            nomul(-armordelay);
+            game.multi_reason = 'taking off clothes';
+            game.nomovemsg = 0;
+            await remove_worn_item(otmp, true);
+            otmp.cursed = curssv;
+            if ((game.multi | 0) < 0) {
+                /* C:556-559 — the undressing takes real turns; the theft
+                 * itself is finished later by afternmv = stealarm.  This port
+                 * has no afternmv channel, so the continuation is NOT
+                 * fabricated: record the ids C records and return 0, which is
+                 * C's own return value on this path.  The gap is the delayed
+                 * completion, not this branch. */
+                g.stealoid = otmp.o_id;
+                g.stealmid = mtmp.m_id;
+                g.afternmv = 'stealarm';
+                return 0;
+            }
+            break;
+        }
+        default:
+            await impossible_breath('Tried to steal a strange worn thing. [%d]', otmp.oclass);
+            break;
+        }
+        /* C steal.c:559-562 — hero's blindfold might have just been stolen;
+         * if so, replace cached "Someone" or "Something" with Monnam. */
+        if (!seen && canspotmon_disp(mtmp))
+            Monnambuf = Monnam(mtmp);
+    } else if (otmp.owornmask | 0) {
+        const item = (otmp === (u.uball || g.uball) && (u.uchain || g.uchain))
+            ? (u.uchain || g.uchain) : otmp;
+        await worn_item_removal(mtmp, item);
+        if ((otmp.owornmask | 0) & W_WEAPONS_MU)
+            await remove_worn_item(otmp, false);
+    }
+
+    /* C:566 — do this before removing it from inventory. */
+    if (objnambuf)
+        objnambuf.s = yname_mu(otmp);
+    /* C:569-570 — set mavenge so knights don't take an alignment penalty for
+     * retaliating. */
+    if (!_conflict_mu() && !(was_punished && !_kb_uball()))
+        mtmp.mavenge = 1;
+    if (otmp.unpaid) {
+        const shops = g.u?.ushops || '';
+        const shkp = shops.length ? shop_keeper_real(shops[0]) : null;
+        await subfrombill_real(otmp, shkp);
+    }
+    await freeinv_mu(otmp);
+
+    /* C:578-581 — if worn_item_removal just spoke and nothing has spoken since,
+     * shorten "<mon> stole <item>" to "She stole <item>". */
+    if ((g.iflags?.last_msg | 0) === PLNMSG_MON_TAKES_OFF_ITEM_MU
+        && (mtmp.data?.mlet | 0) === S_NYMPH_)
+        ++named;
+    await urgent_pline_disp(`${named ? 'She' : Monnambuf} stole ${(await doname_mu(otmp))}.`);
+    await encumber_msg_mu();
+    const could_petrify = otmp.otyp === CORPSE_MK && touch_petrifies_mk(otmp.corpsenm);
+    otmp.how_lost = 3 /* LOST_STOLEN (obj.h:484) */;
+    await mpickobj(mtmp, otmp);
+    if (could_petrify && !(mtmp.misc_worn_check & W_ARMG_MU)) {
+        await minstapetrify_mu(mtmp, true);
+        return -1;
+    }
+    /* C steal.c:591 — `return (gm.multi < 0) ? 0 : 1;` a hero left helpless
+     * (savelife's multi = -1 after a declined death) gets no flee/rloc. */
+    return ((game.multi | 0) < 0) ? 0 : 1;
+}
+
+/* C ref: steal.c:165-208 stealarm(void) — the afternmv continuation scheduled by
+ * steal()'s armor arm (steal.c:556-560) once the undressing countdown ends. */
+export async function stealarm() {
+    /* One C stealarm(); the body is stealarm_mu() above (allmain.js reaches
+     * the afternmv continuation under both names). */
+    return stealarm_mu();
+}
+
+function welded_mu(obj) {
+    return !!welded(obj);
+}
+
+function _hero_uprop_on(idx) {
+    const p = game.u?.uprops?.[idx];
+    return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !((p.blocked | 0));
+}
+
+function _slithy(ptr) { return !!(((ptr?.mflags1 | 0) & 0x00080000)); }
+
+/* C youprop.h:253-255 Flying —
+ *     ((HFlying || EFlying || (u.usteed && is_flyer(u.usteed->data))) && !BFlying)
+ * A hero riding a flying steed (e.g. a saddled dragon) is Flying; the
+ * steed clause is what makes stealgold() say "beneath your <steed>'s feet". */
+const M1_FLY_SG = 0x00000001; /* monflag.h M1_FLY */
+function _hero_flying() {
+    const p = game.u?.uprops?.[FLYING];
+    const steed = game.u?.usteed;
+    return !!(((p?.intrinsic | 0) || (p?.extrinsic | 0)
+               || (steed && ((steed.data?.mflags1 | 0) & M1_FLY_SG)))
+              && !(p?.blocked | 0));
+}
+
+/** C steal.c findgold — walk argchain (inclusive) via ->nobj, return the first
+ *  GOLD_PIECE obj, or null at end. Faithful transliteration:
+ *    struct obj *findgold(struct obj *argchain){
+ *      struct obj *chain=argchain;
+ *      while(chain && chain->otyp != GOLD_PIECE) chain=chain->nobj;
+ *      return chain; } */
+export function findgold(argchain) {
+    let chain = argchain;
+    while (chain && chain.otyp !== GOLD_PIECE_OTYP) chain = chain.nobj;
+    return chain;
+}
+
+/* C: nethack-c/src/steal.c:57 stealgold */
+export async function stealgold(mtmp) {
+    let fgold = g_at(game.u.ux, game.u.uy);
+    let ygold;
+    let tmp;
+    let who, whose, what;
+
+    while (fgold && fgold.otyp !== GOLD_PIECE_OTYP)
+        fgold = fgold.nexthere;
+
+    /* Do you have real gold? */
+    ygold = findgold(game.invent);
+
+    if (fgold && (!ygold || fgold.quan > ygold.quan || !rn2(5))) {
+        obj_extract_self(fgold);
+        await add_to_minv(mtmp, fgold);
+        newsym(game.u.ux, game.u.uy);
+        if (game.u.usteed) {
+            who = game.u.usteed;
+            whose = s_suffix(y_monnam(who));
+            what = makeplural(mbodypart(who, FOOT));
+        } else {
+            who = game.youmonst;
+            whose = "your";
+            what = makeplural(body_part(FOOT));
+        }
+        /* [ avoid "between your rear regions" :-] */
+        if (_slithy(who.data))
+            what = "coils";
+        /* reduce "rear hooves/claws" to "hooves/claws" */
+        if (what.startsWith("rear "))
+            what = what.substring(5);
+        // C steal.c:91-98: finish the message before teleporting or fleeing.
+        await pline("%s quickly snatches some gold from %s %s %s!", Monnam(mtmp),
+              (_hero_uprop_on(LEVITATION) || _hero_flying()) ? "beneath" : "between", whose, what);
+        if (!ygold || !rn2(5)) {
+            if (!tele_restrict(mtmp))
+                await rloc(mtmp, RLOC_MSG);
+            await monflee(mtmp, 0, false, false);
+        }
+    } else if (ygold) {
+        const gold_price = OC_COST[GOLD_PIECE_OTYP] | 0;
+        tmp = Math.trunc((somegold(money_cnt(game.invent)) + gold_price - 1) / gold_price);
+        tmp = Math.min(tmp, ygold.quan);
+        if (tmp < ygold.quan)
+            ygold = (await splitobj(ygold, tmp));
+        else
+            setnotworn(ygold);
+        freeinv(ygold);
+        await add_to_minv(mtmp, ygold);
+        // C steal.c:109-113: a message stop precedes the thief's relocation.
+        await pline("Your purse feels lighter.");
+        if (!tele_restrict(mtmp))
+            await rloc(mtmp, RLOC_MSG);
+        await monflee(mtmp, 0, false, false);
+        if (game.disp) game.disp.botl = 1;
+    }
 }

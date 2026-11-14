@@ -7,14 +7,15 @@ import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
 import { helm_simple_name } from './objnam.js';
 import { SYM_OFFSETS, primary_showsym } from './symbols.js';
-import { weapon_descr, weapon_type } from './uhitm.js';
+import { weapon_descr, weapon_type } from './weapon.js';
 import { near_capacity } from './hack.js';
 import { attrnames, clr2colorname, match_str2clr } from './coloratt.js'; // relocate-fns
 import { display_text_window } from './com_pager.js'; // relocate-fns
 import { status_held_rows, gather_condition_hilite_lines, _condbitmask2str, status_xp_percent_changing } from './display.js'; // relocate-fns
 import { trimspaces } from './hacklib.js'; // relocate-fns
 import { status_fieldname } from './options.js'; // relocate-fns
-import { HL_ATTRBITS, drainTopline, query_attr_one, query_color } from './optmenu.js'; // relocate-fns
+import { HL_ATTRBITS, drainTopline, query_attr_one } from './optmenu.js';
+import { query_color } from './coloratt.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { ROLE_RANKS, role_index_by_name } from './rank_data.js'; // relocate-fns
 import { ATR_NONE, PICK_ANY, PICK_ONE, TtyMenu } from './tty_menu.js'; // relocate-fns

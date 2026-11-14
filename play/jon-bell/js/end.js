@@ -28,7 +28,8 @@
 // keystrokes be consumed by the prompt instead of leaking to rhack.
 import { game, wizard, discover } from './gstate.js';
 import { clong, nowrap_add } from './integer.js';
-import { savebones, no_bones_level, ledger_no } from './bones.js';
+import { savebones, no_bones_level } from './bones.js';
+import { ledger_no } from './dungeon.js';
 import { launch_in_progress, force_launch_placement } from './trap.js';
 import { force_more, force_more_lone_frame, flush_screen, _topl_joins_committed, _topl_more_pages, _topline_more_pending, capture_painted_frame_with_status, capture_flushed_cells, impossible_sync } from './display.js';
 import { yn_function_menu, randomkey, readchar, keyhelp_compress_str } from './cmd.js';
@@ -42,11 +43,11 @@ import { cmdq_pop, cmdq_clear, cmdq_add_key, cmdq_add_ec, key2txt, Role_if } fro
 import { CQ_CANNED, CQ_REPEAT, CMDQ_KEY, CMDQ_USER_INPUT, QBUFSZ, PLNMSG_UNKNOWN, ECMD_OK, STONED, SLIMED } from './const.js';
 import { PLNMSG_OK_DONT_DIE } from './const.js';
 import { nhgetch } from './input.js';
-import { paranoid_query } from './paranoid.js';
+import { paranoid_query } from './cmd.js';
 // WRITE-ONLY route-attribution telemetry (inert unless NH_ROUTE_TELEMETRY=1 —
 import { routeTag } from './route_telemetry.js';
 import { acurr, minuhpmax, setuhpmax } from './attrib.js';
-import { rn2, d } from './rng.js';
+import { rn2, d } from './rnd.js';
 import { A_CON, A_CURRENT, A_ORIGINAL, Upolyd, DIED, CHOKING, STARVING, DROWNING, BURNING, DISSOLVED, STONING, TURNED_SLIME, QUIT, GENOCIDED, PANICKED, TRICKED, ESCAPED, ASCENDED, LIFESAVED, KILLED_BY, NO_KILLER_PREFIX, BASICENLIGHTENMENT, MAGICENLIGHTENMENT, ENL_GAMEOVERALIVE, ENL_GAMEOVERDEAD, PARANOID_QUIT, PARANOID_DIE, PARANOID_BONES } from './const.js';
 import { KILLED_BY_AN, MALE, FEMALE, In_quest, In_endgame, Is_astralevel } from './const.js';
 import { dunlev, Is_branchlev, maxledgerno, single_level_branch } from './dungeon.js';
@@ -59,15 +60,18 @@ import { DOMOVE_WALK, DOMOVE_RUSH } from './const.js';
 import { shkname } from './dokick.js';
 import { free_oname } from './do_name.js';
 import { paybill, finish_paybill, currency, obfree } from './shk.js';
-import { m_monnam } from './mhitm.js';
+import { m_monnam } from './do_name.js';
 import { expels_gu } from './mhitu.js';
-import { unstuck, sticks, keepdogs } from './dog.js';
+import { sticks, keepdogs } from './dog.js';
+import { unstuck } from './mon.js';
 import { mon_nam } from './uhitm.js';
-import { monPmname, pmname, the_unique_pm, adjLev, zombie_maker } from './makemon.js';
+import { monPmname, pmname, adjLev } from './makemon.js';
+import { the_unique_pm } from './objnam.js';
+import { zombie_maker } from './mon.js';
 import { PM_HOUSECAT } from './pm.generated.js';
 import { exit_nhwindows, raw_print } from './rawterm.js';
 import { topten, formatkiller } from './topten.js';
-import { nomul } from './allmain.js';
+import { nomul } from './hack.js';
 import { yyyymmdd, getnow, night, midnight } from './calendar.js';
 import { paniclog } from './files.js';
 import { depth, deepest_lev_reached } from './dungeon.js';
@@ -87,12 +91,15 @@ import { money_cnt } from './hack.js';
 /* C end.c:1306's grave block: mk_named_object(CORPSE, ...) is mkcorpstat +
  * oname (mkobj.c:2253), and make_grave is engrave.c:1686.  Both bodies already
  * existed; only this caller was missing. */
-import { mkcorpstat, make_grave, place_object, mksobj, STATUE } from './mklev.js';
-import { stackobj } from './sp_lev.js';
+import { STATUE } from './mklev.js';
+import { mkcorpstat, place_object, mksobj } from './mkobj.js';
+import { make_grave } from './engrave.js';
+import { stackobj } from './invent.js';
 import { accessible } from './monmove.js';
 import { isok, OBJ_FREE } from './const.js';
 import { lift_covet_and_placebc } from './ball.js';
-import { oname, an, the_unique_obj, xname, thesimpleoname, doname_with_price } from './objnam.js';
+import { an, the_unique_obj, xname, thesimpleoname, doname_with_price } from './objnam.js';
+import { oname } from './do_name.js';
 import { arti_cost, artiname } from './artifact.js';
 import { OC_NAME } from './oc_name_data.js';
 import { OC_COST } from './oc_cost_data.js';
@@ -109,19 +116,22 @@ const CORPSE_END = 265;        /* objects.h CORPSE otyp */
 import { hidden_gold, paygd } from './vault.js';
 import { clearpriests } from './priest.js';
 import { DISCLOSURE_OPTIONS, END_DISCLOSE_DEFAULT } from './options.js';
-import { enlightenment, list_vanquished, list_genocided, show_conduct, count_achievements, show_overview, display_inventory } from './cmd.js';
-import { SchroedingersBox, observe_quantum_cat } from './pickup_container.js';
-import { set_cknown_lknown } from './cmd.js';
+import { display_inventory } from './invent.js';
+import { show_overview } from './dungeon.js';
+import { enlightenment, list_vanquished, list_genocided, show_conduct, count_achievements } from './insight.js';
+import { SchroedingersBox } from './pickup_container.js';
+import { observe_quantum_cat } from './pickup.js';
+import { set_cknown_lknown } from './invent.js';
 import { discover_object } from './o_init.js';
 /* objects.h AMULET_OF_LIFE_SAVING — otyp 202 (js/oc_name_data.js OC_NAME[202];
  * js/makemon.js:1315 and js/monmove.js:953 carry the same literal). */
 const AMULET_OF_LIFE_SAVING_END = 202;
 import { adjattrib } from './attrib.js';
-import { useup } from './cmd.js';
+import { useup } from './invent.js';
 import { endmultishot } from './dothrow.js';
 /* C do.c:2076 schedule_goto — done2's abandon_tutorial arm records the deferred
  * return to u.ucamefrom; allmain's moveloop executes it via deferred_goto(). */
-import { record_achievement } from './cmd.js';
+import { record_achievement } from './insight.js';
 import { schedule_goto } from './do.js';
 import { ACH_UWIN, ACH_BLND, ACH_NUDE } from './const.js';
 import { Blind, vision_recalc } from './vision.js';
@@ -131,6 +141,9 @@ import { build_window_screen, tty_window_offx } from './com_pager.js'; // reloca
 import { flush_pending_messages, topl_force_break_now } from './display.js'; // relocate-fns
 import { the } from './objnam.js'; // relocate-fns
 import { Is_container, _Upstart, _sortloot, set_cursor } from './pickup_container.js'; // relocate-fns
+import { dlb_cleanup } from './dlb.js'; // relocate-fns
+import { perm_invent_toggled } from './invent.js'; // relocate-fns
+import { freedynamicdata } from './save.js'; // relocate-fns
 export { yn_function } from './cmd.js'; // relocate-fns
 export { _yn_prompt }; // relocate-fns
 export { ynq };
@@ -166,15 +179,6 @@ function fixup_death(how) {
     }
 }
 
-function perm_invent_toggled(negated) {
-    const g = game;
-    if (!g.iflags?.window_inited)
-        return;
-    if (negated) {
-        if (g.WIN_INVEN != null)
-            g.WIN_INVEN = null;
-    }
-}
 
 // C end.c:850-902 — shared by really_done() and save.c:dosave0().
 export async function done_object_cleanup() {
@@ -2435,15 +2439,6 @@ async function really_done(how) {
     }
 }
 
-/* C save.c:1077 freedynamicdata — release the saved role-option strings
- * (save.c:1131) and process-local wish history (save.c:1136) before exit. */
-async function freedynamicdata() {
-    const { freeroleoptvals } = await import('./options.js');
-    freeroleoptvals(); // C save.c:1131, before wish_history_flush().
-    const { wish_history_flush } = await import('./zap.js');
-    wish_history_flush();
-}
-function dlb_cleanup() {}
 
 // C end.c:1680-1692 nh_terminate. The process adapter catches this terminal exception.
 export async function nh_terminate(status, reason = 'game over') {

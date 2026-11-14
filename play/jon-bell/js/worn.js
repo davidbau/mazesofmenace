@@ -6,7 +6,7 @@ import { MKOBJ_OC_OPROP, MKOBJ_OC_MERGE } from './mkobj_erosion_meta.js';
 import './trap.js';
 import { is_weptool, monstunseesu } from './mhitm.js';
 import { cvt_prop_to_mseenres, raceptr } from './mondata.js';
-import { update_inventory } from './inventory_refresh.js';
+import { update_inventory } from './invent.js';
 import { set_twoweap } from './wield.js';
 import { set_artifact_intrinsic } from './artifact.js';
 import { impossible } from './pline.js';
@@ -17,7 +17,11 @@ import {
     W_BALL, W_CHAIN, W_SADDLE, I_SPECIAL, INVIS, CLAIRVOYANT, BLINDED,
 } from './const.js';
 import { ARMOR_DATA } from './armor_data.js'; // relocate-fns
-import { Yname2, can_ride, instapetrify as instapetrify_real, obj_extract_self_general as obj_extract_self, set_msg_xy as set_msg_xy_trap, surface } from './cmd.js'; // relocate-fns
+import { instapetrify as instapetrify_real, obj_extract_self_general as obj_extract_self } from './cmd.js';
+import { can_ride } from './steed.js';
+import { set_msg_xy as set_msg_xy_trap } from './pline.js';
+import { surface } from './dungeon.js';
+import { Yname2 } from './objnam.js'; // relocate-fns
 import { ACID_RES, ANTIMAGIC, COLD_RES, DISINT_RES, DISMOUNT_FELL, DISPLACED, FAST, FIRE_RES, FLYING, FUMBLING, JUMPING, LEVITATION, NON_PM, POISON_RES, PROTECTION, REFLECTING, SEE_INVIS, SHOCK_RES, SLEEP_RES, STEALTH, STONE_RES, TELEPAT, WWALKING } from './const.js'; // relocate-fns
 import { canseemon, newsym } from './display.js'; // relocate-fns
 import { obj_no_longer_held } from './do.js'; // relocate-fns
@@ -26,13 +30,15 @@ import { bimanual } from './do_wear.js'; // relocate-fns
 import { dismount_steed } from './dog.js'; // relocate-fns
 import { You } from './eat.js'; // relocate-fns
 import { s_suffix as _s_suffix } from './hacklib.js'; // relocate-fns
-import { arti_light_description, arti_light_radius, artifact_light } from './light.js'; // relocate-fns
-import { check_gear_next_turn, sliparm as sliparm_real } from './makemon.js';
+import { arti_light_description, arti_light_radius } from './light.js';
+import { artifact_light } from './artifact.js'; // relocate-fns
+import { sliparm as sliparm_real } from './makemon.js';
+import { check_gear_next_turn } from './mon.js';
 import { pmname } from './do_name.js';
 import { can_saddle } from './steed.js'; // relocate-fns
 import { Monnam } from './mcastu.js'; // relocate-fns
 import { hcolor, s_suffix } from './mhitm.js'; // relocate-fns
-import { place_object } from './mklev.js'; // relocate-fns
+import { place_object } from './mkobj.js'; // relocate-fns
 import { curse as _mdw_curse } from './mkobj.js'; // relocate-fns
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { breakarm, num_horns, pronoun_gender } from './mondata.js'; // relocate-fns
@@ -40,11 +46,12 @@ import { discover_object } from './o_init.js'; // relocate-fns
 import { an, cloak_simple_name, distant_name, doname, otense, simpleonames } from './objnam.js'; // relocate-fns
 import { You_hear, pline, pline_mon, impossible as trap_impossible } from './pline.js'; // relocate-fns
 import { PM_AIR_ELEMENTAL, PM_CHICKATRICE, PM_COCKATRICE, PM_GRAY_DRAGON, PM_LONG_WORM } from './pm.generated.js'; // relocate-fns
-import { rnl } from './rng.js'; // relocate-fns
+import { rnl } from './rnd.js'; // relocate-fns
 import { begin_burn, end_burn } from './timeout.js'; // relocate-fns
 import { Monnam_t, OBJ_MINVENT_TR, _IMM_S_VORTEX, _MDW_MFAST, _MDW_MZ_HUMAN, _WORN_MZ_HUGE, _which_armor, selftouch_Stone_resistance, sgn } from './trap.js';
 import { m_useup } from './mthrowu.js'; // relocate-fns
-import { mon_nam, mwepgone } from './uhitm.js'; // relocate-fns
+import { mon_nam } from './uhitm.js';
+import { mwepgone } from './weapon.js'; // relocate-fns
 import { cansee, vision_recalc } from './vision.js'; // relocate-fns
 import { learnwand } from './zap.js'; // relocate-fns
 import { impossible_sync } from './display.js'; // relocate-fns

@@ -11,9 +11,11 @@
 
 import { check_unpaid_usage } from './shk.js';
 import { game } from './gstate.js';
-import { rn1, rn2, rnd } from './rng.js';
-import { goodpos } from './trap.js';
-import { is_pool, is_pool_or_lava } from './look.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
+import { goodpos } from './teleport.js';
+import { is_pool } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { Is_airlevel, Is_waterlevel, CLOUD, IS_FOUNTAIN, IS_AIR, ACCESSIBLE, isok, COLNO, ROWNO, NO_MM_FLAGS } from './const.js';
 import { db_under_typ, is_ice } from './dbridge.js';
 import { impossible } from './pline.js';
@@ -32,30 +34,53 @@ import { getlin } from './windows.js';
 import { zappable, zapnodir, learnwand, make_blinded } from './zap.js';
 import { resists_blnd } from './mondata.js';
 import { yn_function } from './cmd.js';
-import { getObjFromGetobj, body_part, surface as surface_real, ceiling, Yname2, yname, is_blade, pooleffects_is_lava as is_lava } from './cmd.js';
+import { getObjFromGetobj, body_part, yname, is_blade, pooleffects_is_lava as is_lava } from './cmd.js';
+import { surface as surface_real, ceiling } from './dungeon.js';
+import { Yname2 } from './objnam.js';
 import { dry_a_towel } from './weapon.js';
 import { welded } from './wield.js';
 import { is_art } from './artifact.js';
 import { bimanual, is_boots } from './do_wear.js';
 import { Yobjnam2, doname, xname, Tobjnam, otense } from './objnam.js';
-import { useup, check_capacity } from './cmd.js';
+import { check_capacity_sync as check_capacity } from './cmd.js';
+import { useup } from './invent.js';
 import { altar_wrath } from './pray.js';
 import { GETOBJ_PROMPT, HAND, FINGERTIP } from './const.js';
 import { exercise } from './attrib.js';
 import { more_experienced } from './exper.js';
 import { object_tough } from './o_init.js';
 import { splitobj } from './makemon.js';
-import { obj_extract_self, move_engr_at } from './mklev.js';
+import { move_engr_at } from './mklev.js';
+import { obj_extract_self } from './mkobj.js';
 import { hold_another_object } from './invent.js';
-import { prinv } from './cmd.js';
-import { update_inventory } from './inventory_refresh.js';
-import { can_reach_floor } from './hold_another_object.js';
-import { make_engr_at, del_engr_at, engr_at, wipe_engr_at, random_engraving, engravings_list, makemon } from './mklev.js';
+import { prinv } from './invent.js';
+import { update_inventory } from './invent.js';
+import './hold_another_object.js';
+import { engravings_list } from './mklev.js';
+import { makemon } from './makemon.js';
 import { xcrypt } from './hacklib.js';
 import { DUST, ENGRAVE, BURN, MARK, ENGR_BLOOD, HEADSTONE, A_WIS,
          ECMD_OK, ECMD_CANCEL, ECMD_FAIL, ECMD_TIME, ICE, IS_ALTAR, BUFSZ,
          DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DEAF, DB_ICE, DB_UNDER, BLINDED, CONFUSION, STUNNED, HALLUC, HALLUC_RES } from './const.js';
 import { surface } from './dungeon.js'; // relocate-fns
+import { FLYING, LEVITATION } from './const.js'; // relocate-fns
+import { sticks } from './dog.js'; // relocate-fns
+import { _uprop_on } from './hold_another_object.js'; // relocate-fns
+import { attacktype } from './mondata.js'; // relocate-fns
+import { P_SKILL } from './skills.js'; // relocate-fns
+import { t_at, uescaped_shaft, uteetering_at_seen_pit } from './trap.js'; // relocate-fns
+import { GRAVE, N_ENGRAVE, ROOM } from './const.js'; // relocate-fns
+import { ENGRAVE_CHUNK_SIZE, ENGRAVE_LINES, ENGRAVE_OFFSETS, EPITAPH_CHUNK_SIZE, EPITAPH_LINES, EPITAPH_OFFSETS } from './engrave_data.js'; // relocate-fns
+import { ENV } from './hostenv.js'; // relocate-fns
+import { _engr_map, engr_reset_text_pointers, get_rnd_line_from_section } from './mklev.js'; // relocate-fns
+import { set_levltyp } from './mkmaze.js'; // relocate-fns
+import { pushRngLogEntry } from './rng.js'; // relocate-fns
+import { getrumor } from './rumors.js'; // relocate-fns
+import { nomul } from './hack.js'; // relocate-fns
+import { _result_append_join, _uprop_active } from './cmd.js'; // relocate-fns
+import { _topl_stash_result, flush_pending_messages, force_more, Unaware as wizard_Unaware } from './display.js'; // relocate-fns
+import { impossible as real_impossible } from './pline.js'; // relocate-fns
+import { routeTag } from './route_telemetry.js'; // relocate-fns
 
 /* ── object class numbers (objclass.h OBJCLASS enum) ─────────────────────────── */
 const ILLOBJ_CLASS = 1;
@@ -240,7 +265,7 @@ async function u_can_engrave() {
 
 /* mungspaces — invent.c.  Convert tabs to spaces, collapse runs of spaces to one,
  * and strip leading/trailing spaces.  C ref: hacklib.c mungspaces(). */
-function mungspaces(s) {
+function mungspaces_engrave(s) {
     return s.replace(/\t/g, ' ').replace(/ +/g, ' ').replace(/^ +| +$/g, '');
 }
 
@@ -725,7 +750,7 @@ export async function doengrave() {
     const qbuf = `What do you want to ${de.everb} the ${de.eloc} here?`;
     let line = await getlin(qbuf);
     if (line === '\x1b') line = ''; /* ESC → empty (handled as Never mind below) */
-    de.ebuf = mungspaces(line);
+    de.ebuf = mungspaces_engrave(line);
 
     /* C engrave.c:1196-1199 — count of non-space chars. */
     let len = 0;
@@ -1077,7 +1102,468 @@ function sfiEngr(_nhfp, _ep, _tag) {
      * stream exists. */
 }
 
-/* C engrave.c:1585-1615: restore into the same engraving store as engr_at().
- * The runtime save representation is mklev's Map snapshot; share its restore
- * rather than treating the unwired NHFILE reader as an empty engraving list. */
-export { rest_engravings } from './mklev.js';
+
+/* include/skills.h:64,95 — P_RIDING = 37, P_BASIC = 2. */
+const P_RIDING = 37, P_BASIC = 2;
+
+/* include/monattk.h:19 AT_HUGS. */
+const AT_HUGS = 7;
+
+/* include/monflag.h:85,89,92,93,182 and defsym.h:309 MONSYM(13,...,S_MIMIC). */
+const M1_FLY = 0x00000001, M1_CLING = 0x00000010, M1_HIDE = 0x00000100;
+
+const MZ_HUGE = 4, S_MIMIC = 13;
+
+/* C youprop.h Levitation / Flying. */
+function Levitation() { return _uprop_on(LEVITATION); }
+
+function Flying() {
+    // C youprop.h:253: a flying steed confers flight unless BFlying blocks it.
+    const u = game.u, p = u?.uprops?.[FLYING];
+    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0)
+        || ((u?.usteed?.data?.mflags1 | 0) & 0x00000001 /* M1_FLY */))
+        && !(p?.blocked | 0);
+}
+
+function _hero_data() {
+    const ym = game.youmonst;
+    return (ym && ym.data) ? ym.data : null;
+}
+
+/* C mondata.h:38-45.  is_hider/is_clinger/is_flyer are single mflags1 bits;
+ * ceiling_hider adds the S_MIMIC exclusion on the clinger half.  An absent
+ * permonst (a partially-seeded replay world) reads as "no flags", which is the
+ * same convention js/eat.js is_clinger and js/mhitu.js nohands_mu use. */
+function is_hider(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_HIDE) !== 0; }
+
+function is_clinger(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_CLING) !== 0; }
+
+function is_flyer(ptr) { return (((ptr?.mflags1 | 0) >>> 0) & M1_FLY) !== 0; }
+
+function ceiling_hider(ptr) {
+    return is_hider(ptr)
+        && ((is_clinger(ptr) && (ptr?.mlet | 0) !== S_MIMIC) || is_flyer(ptr));
+}
+
+export function can_reach_floor(check_pit) {
+    const u = game.u || {};
+    const youdata = _hero_data();
+
+    if (u.uswallow
+        || (u.ustuck && !sticks(youdata)
+            && attacktype(u.ustuck.data, AT_HUGS))
+        || (Levitation() && !(Is_airlevel(u.uz) || Is_waterlevel(u.uz))))
+        return false;
+    if (u.usteed && P_SKILL(P_RIDING) < P_BASIC)
+        return false;
+    if (u.uundetected && ceiling_hider(youdata))
+        return false;
+
+    if (Flying() || (youdata && (youdata.msize | 0) >= MZ_HUGE))
+        return true;
+
+    if (check_pit) {
+        const t = t_at(u.ux | 0, u.uy | 0);
+        if (t && (uteetering_at_seen_pit(t) || uescaped_shaft(t)))
+            return false;
+    }
+    return true;
+}
+
+// C ref: engrave.c make_engr_at — create engraving at coordinates
+export function make_engr_at(x, y, text, pristine, epoch, engr_type) {
+    if (text != null) { // C engrave.c:420-436 also stores empty strings.
+        /* C engrave.c:427-436 — the engraving carries THREE copies of its text
+         * (actual / remembered / pristine), all initialised to `s`, and the
+         * pristine copy is overwritten with `pristine_s` only when that
+         * argument is non-NULL:
+         *     for (i = 0; i < text_states; ++i) Strcpy(ep->engr_txt[i], s);
+         *     if (havepristine) Strcpy(ep->engr_txt[pristine_text], pristine_s);
+         * so a NULL pristine_s means "pristine == actual", NOT "no pristine".
+         * This store discarded the argument entirely, which made read_engr_at's
+         * endpunct test (engrave.c:390-395) unanswerable — see _reveal_text in
+         * js/cmd.js.
+         *
+         * `off` is C's `ep->engr_txt[actual_text] - engr_text_space(ep)`: the
+         * pristine copy is indexed at the actual text's ORIGINAL buffer offset,
+         * and wipe_engr_at advances that pointer past leading spaces it has
+         * rubbed out.  Zero at creation, maintained below.
+         *
+         * C engrave.c:452 `ep->engr_type = (e_type > 0) ? e_type : rnd(N_ENGRAVE - 1);`
+         * — a non-positive e_type is not "default to DUST", it is "pick one of the
+         * N_ENGRAVE-1 non-HEADSTONE types at random" (rnd draws real RNG).  The one
+         * live caller of this arm is zap_map's WAN_POLYMORPH/SPE_POLYMORPH engraving
+         * rewrite (zap.c:3651-3656, `make_engr_at(x, y, etxt, pristinebuf,
+         * svm.moves, 0)`), confirmed against the board: every make_engr_at record
+         * with e_type===0 (5 of 300) consumes exactly one RNG draw in [1,5], every
+         * other record consumes zero.  This store previously silently defaulted a
+         * falsy engr_type to DUST and drew no RNG at all — draws that zap.js's own
+         * (still-unported) polymorph arm will need the day it lands. */
+        const et = engr_type | 0;
+        _engr_map.set(`${x},${y}`, { text, remembered: text,
+                                     pristine: pristine ?? text, off: 0,
+                                     engr_time: epoch | 0,
+                                     engr_type: (et > 0) ? et : rnd(N_ENGRAVE - 1) });
+    }
+}
+
+// C ref: engrave.c wipe_engr_at — degrade engraving at coordinates (engrave.c:271)
+export function wipe_engr_at(x, y, cnt, magical) {
+    const ep = _engr_map.get(`${x},${y}`);
+    if (!ep)
+        return;
+    if (ep.engr_type === HEADSTONE)
+        return;
+    if (ep.nowipeout)
+        return;
+    // C: if (ep->engr_type != BURN || is_ice(x,y) || (magical && !rn2(2)))
+    const isBurn = (ep.engr_type === BURN);
+    let doWipe;
+    if (!isBurn) {
+        doWipe = true;
+    }
+    else if (is_ice(x, y)) {
+        doWipe = true;
+    }
+    else if (magical && !rn2(2)) {
+        doWipe = true;
+    }
+    else {
+        doWipe = false;
+    }
+    if (!doWipe)
+        return;
+    // C engrave.c:279-282: if (ep->engr_type != DUST && ep->engr_type != ENGR_BLOOD) cnt = rn2(...) ? 0 : 1
+    if (ep.engr_type !== DUST && ep.engr_type !== ENGR_BLOOD) {
+        cnt = rn2(1 + Math.trunc(50 / (cnt + 1))) ? 0 : 1;
+        // debugpline1("actually eroding %d characters", cnt);
+    }
+    const newText = wipeout_text(ep.text, cnt, 0);
+    // C: trim leading spaces, delete engraving if empty
+    const trimmed = newText.replace(/^ +/, '');
+    if (!trimmed) {
+        _engr_map.delete(`${x},${y}`);
+    }
+    else {
+        /* C engrave.c:284-285 `while (ep->engr_txt[actual_text][0] == ' ')
+         * ep->engr_txt[actual_text]++;` — the pointer ADVANCES, it does not
+         * shift the buffer, so the pristine copy stays aligned to the original
+         * offsets and `off` is how far the actual text has moved. */
+        ep.off = (ep.off | 0) + (newText.length - trimmed.length);
+        ep.text = trimmed;
+    }
+}
+
+/* C rumors.c MD_PAD_RUMORS — expected padded line length handed to
+   get_rnd_line() by every rumor/engrave/epitaph caller. */
+const MD_PAD_RUMORS = 60;
+
+/* C rumors.c:523 couldnt_open_file(fname) — omitted; EPITAPH_LINES is an in-memory table */
+function get_rnd_text_epitaph() {
+    return get_rnd_line_from_section(EPITAPH_LINES, EPITAPH_OFFSETS, EPITAPH_CHUNK_SIZE, rn2, MD_PAD_RUMORS);
+}
+
+export function make_grave(x, y, text) {
+    const loc = game.level?.at(x, y);
+    const graveTrace = typeof process !== 'undefined' && ENV?.FF_GRAVE_TRACE === '1';
+    if (graveTrace)
+        pushRngLogEntry(`^grave_try[xy=${x | 0},${y | 0} typ=${loc?.typ ?? -1} trap=${t_at(x, y) ? 1 : 0}]`);
+    if (!loc || (loc.typ !== ROOM && loc.typ !== GRAVE) || t_at(x, y))
+        return;
+    if (!set_levltyp(x, y, GRAVE))
+        return;
+    del_engr_at(x, y);
+    if (text == null)
+        text = get_rnd_text_epitaph();
+    make_engr_at(x, y, text, null, 0, HEADSTONE);
+}
+
+// C ref: rumors.c get_rnd_text(ENGRAVEFILE, ...) — pick a random engraving text.
+// Consumes rn2(ENGRAVE_CHUNK_SIZE). Returns the selected engraving text.
+function get_rnd_text_engrave() {
+    return get_rnd_line_from_section(ENGRAVE_LINES, ENGRAVE_OFFSETS, ENGRAVE_CHUNK_SIZE, rn2, MD_PAD_RUMORS);
+}
+
+// C ref: engrave.c rubouts[] — partial rubout table for character degradation.
+const rubouts = [
+    { from: 'A', to: '^' },
+    { from: 'B', to: 'Pb[' },
+    { from: 'C', to: '(' },
+    { from: 'D', to: '|)[' },
+    { from: 'E', to: '|FL[_' },
+    { from: 'F', to: '|-' },
+    { from: 'G', to: 'C(' },
+    { from: 'H', to: '|-' },
+    { from: 'I', to: '|' },
+    { from: 'K', to: '|<' },
+    { from: 'L', to: '|_' },
+    { from: 'M', to: '|' },
+    { from: 'N', to: '|\\' },
+    { from: 'O', to: 'C(' },
+    { from: 'P', to: 'F' },
+    { from: 'Q', to: 'C(' },
+    { from: 'R', to: 'PF' },
+    { from: 'T', to: '|' },
+    { from: 'U', to: 'J' },
+    { from: 'V', to: '/\\' },
+    { from: 'W', to: 'V/\\' },
+    { from: 'Z', to: '/' },
+    { from: 'b', to: '|' },
+    { from: 'd', to: 'c|' },
+    { from: 'e', to: 'c' },
+    { from: 'g', to: 'c' },
+    { from: 'h', to: 'n' },
+    { from: 'j', to: 'i' },
+    { from: 'k', to: '|' },
+    { from: 'l', to: '|' },
+    { from: 'm', to: 'nr' },
+    { from: 'n', to: 'r' },
+    { from: 'o', to: 'c' },
+    { from: 'q', to: 'c' },
+    { from: 'w', to: 'v' },
+    { from: 'y', to: 'v' },
+    { from: ':', to: '.' },
+    { from: ';', to: ',:' },
+    { from: ',', to: '.' },
+    { from: '=', to: '-' },
+    { from: '+', to: '-|' },
+    { from: '*', to: '+' },
+    { from: '@', to: '0' },
+    { from: '0', to: 'C(' },
+    { from: '1', to: '|' },
+    { from: '6', to: 'o' },
+    { from: '7', to: '/' },
+    { from: '8', to: '3o' },
+];
+
+// C ref: engrave.c wipeout_text — degrade cnt characters in engr string (seed=0 uses rn2).
+export function wipeout_text(engr, cnt, seed, rngFn = rn2) {
+    const chars = engr.split('');
+    const lth = chars.length;
+    if (!lth || cnt <= 0)
+        return engr;
+    while (cnt-- > 0) {
+        let nxt, use_rubout;
+        if (!seed) {
+            nxt = rngFn(lth);
+            use_rubout = rngFn(4);
+        }
+        else {
+            /* C keeps this as an unsigned int.  Math.imul is required here:
+             * multiplying a 32-bit seed by 31 wraps before C takes the
+             * BUFSZ-1 modulus.  Plain JS multiplication would silently lose
+             * that wrap for seeds above 2^27. */
+            seed >>>= 0;
+            nxt = seed % lth;
+            seed = Math.imul(seed, 31) >>> 0;
+            seed %= (BUFSZ - 1); // C engrave.c:141 seed %= (BUFSZ - 1)
+            use_rubout = seed & 3;
+        }
+        if (chars[nxt] === ' ')
+            continue;
+        if ('?.,\'`-|_'.indexOf(chars[nxt]) >= 0) {
+            chars[nxt] = ' ';
+            continue;
+        }
+        let i = rubouts.length;
+        if (use_rubout) {
+            for (i = 0; i < rubouts.length; i++) {
+                if (chars[nxt] === rubouts[i].from) {
+                    const wipeto = rubouts[i].to;
+                    const ln = wipeto.length;
+                    /* In C the seeded path advances the same local seed
+                     * again; it does not consume the global RNG tape. */
+                    if (seed) {
+                        seed = Math.imul(seed, 31) >>> 0;
+                        seed %= (BUFSZ - 1); // C engrave.c:166 seed %= (BUFSZ - 1)
+                    }
+                    const j = seed ? seed % ln : rngFn(ln);
+                    chars[nxt] = wipeto[j];
+                    break;
+                }
+            }
+        }
+        if (i === rubouts.length)
+            chars[nxt] = '?';
+    }
+    // trim trailing spaces
+    let result = chars.join('');
+    result = result.replace(/ +$/, '');
+    return result;
+}
+
+// C ref: engrave.c random_engraving — pick a random engraving text and apply wipeout.
+// Consumes rn2(4); if 0 uses ENGRAVEFILE else uses getrumor(0,...).
+export async function random_engraving() {
+    let pristine;
+    if (!rn2(4)) {
+        pristine = get_rnd_text_engrave();
+    }
+    else {
+        /* C engrave.c:57 — getrumor(0, pristine_copy, TRUE): graffiti must
+           never be a fortune-cookie rumor. */
+        const rumor = await getrumor(0, true);
+        if (rumor && rumor.length > 0) {
+            pristine = rumor;
+        }
+        else {
+            pristine = get_rnd_text_engrave();
+        }
+    }
+    const text = wipeout_text(pristine, Math.trunc(pristine.length / 4), 0);
+    return { text, pristine };
+}
+
+// C ref: engrave.c:462 del_engr_at(x,y) — delete any engraving at (x,y).
+export function del_engr_at(x, y) {
+    _engr_map.delete(`${x},${y}`);
+}
+
+// C ref: engrave.c engr_at — look up engraving record at (x,y).
+// Returns the engraving object {text, engr_type} or null.
+// display.js newsym uses this to render S_engroom / S_engrcorr glyphs.
+export function engr_at(x, y) {
+    return _engr_map.get(`${x},${y}`) ?? null;
+}
+
+// C engrave.c:1550-1582 save_engravings(nhfp)
+function Sfo_unsigned(nhfp, val, name) { /* savefile libc stub */ }
+
+function update_file(nhfp) { return !!(nhfp && (nhfp.mode & 3)); }
+
+export function save_engravings(nhfp) {
+    engr_reset_text_pointers();
+    if (nhfp && update_file(nhfp)) {
+        // C engrave.c:1575-1577 — write end-of-list terminator
+        const no_more_engr = 0;
+        Sfo_unsigned(nhfp, no_more_engr, "engraving-engr_alloc");
+    }
+    return new Map(_engr_map);
+}
+
+export function rest_engravings(saved) {
+    _engr_map.clear();
+    if (saved)
+        for (const [k, ep] of saved) {
+            /* C engrave.c:1610-1613 rest_engravings(): re-advance the actual and
+             * remembered text pointers past leading spaces; `off` is how far. */
+            const text = ep.text.replace(/^ +/, '');
+            _engr_map.set(k, { ...ep, text,
+                               engr_time: game.moves | 0,
+                               off: (ep.off | 0) + (ep.text.length - text.length),
+                               remembered: (ep.remembered ?? ep.text).replace(/^ +/, '') });
+        }
+}
+
+// C ref: win/tty/topl.c's --More-- combine-vs-force-page decision (topl.c
+// message forces --More-- iff it is NOT the last pline in its immediate
+// same-step chain, OR a full redraw is still pending before the player's
+// next genuinely free keystroke, OR the message itself is too long to fit
+// one topline row and word-wraps (the winning 'not-last-or-pending-redraw-
+// keystone-spec-wrap-paging.md). The C callsite itself is IDENTICAL at
+// every occurrence — the tty layer alone decides — so this helper takes
+// the structural facts the CALLER already knows (chain position, pending-
+// redraw) plus the message text itself (for the wrap check) rather than
+// the call site baking in caller-identity knowledge (e.g. "am I the
+// arrival call?").
+const _PLINE_PAGED_WRAP_CAPACITY = 79;
+
+async function _pline_paged(msg, last, redrawPending) {
+    const wouldWrap = msg.length > _PLINE_PAGED_WRAP_CAPACITY;
+    const _committed = (game && (game._pending_message || game._resultMessage)) || '';
+    if (_committed.length > 0) {
+        if (game._pending_message && game._pending_message.length > 0)
+            await pline(msg);
+        else
+            _result_append_join(game, msg);
+        return;
+    }
+    if (last && !redrawPending && wouldWrap) {
+        /* tty/topl.c:257,274,300: the incoming update_topl sampled skip
+         * before the preceding more() set WIN_STOP.  Its redotoplin still
+         * draws, and a wrapped line calls more() unconditionally (:139-140).
+         * Let pline consume the armed bit before paging that painted line. */
+        await pline(msg);
+        if (game._pending_message === msg) await force_more(msg, undefined, true);
+        /* topl.c:257,274,300: this message sampled skip before the previous
+         * line's more().  Publish it through pline's armed-STOP handling;
+         * redotoplin:139-140 then pages its own wrapped text even after ESC. */
+        await pline(msg);
+        await flush_pending_messages();
+    } else if (!last || redrawPending || wouldWrap) {
+        routeTag('_pline_paged', msg); /* telemetry only; inert when env unset */
+        await force_more(msg);
+    } else {
+        await pline(msg);
+    }
+}
+
+/* C ref: engrave.c:397 — the SECOND pline of read_engr_at:
+ *   You("%s: \"%s\"%s", Blind ? "feel the words" : "read", et, endpunct)
+ * where endpunct is "" only when the text already ends in '.', '!' or '?'.
+ * Factored out of read_engr_at's body because the FIRST pline's page/join
+ * decision needs this string's LENGTH before it is printed (update_topl's
+ * `n0 + strlen(gt.toplines) + 3 < CO - 8` test). */
+function _reveal_text(ep) {
+    const _Blind = _uprop_active(BLINDED);
+    const _et = ep.text.slice(0, 232); // C engrave.c:375-385
+    const _elen = _et.length;
+    const _pristine = (ep.pristine != null) ? ep.pristine : _et;
+    const _off = ep.off | 0;
+    let _endpunct = '';
+    const _last = _et[_elen - 1];
+    if (_elen < 2
+        || !(_pristine[_off + _elen - 1] === _last
+             && (_last === '.' || _last === '!' || _last === '?')))
+        _endpunct = '.';
+    return `You ${_Blind ? 'feel the words' : 'read'}: "${_et}"${_endpunct}`;
+}
+
+export async function read_engr_at(x, y, redrawPending = false) {
+    const ep = engr_at(x, y);
+    /* C engrave.c:320 — eloc is computed from surface(x,y), including
+     * graves/headstones, before selecting the engraving message. */
+    const eloc = surface(x, y);
+    if (ep && ep.text && ep.text[0]) {
+        const _isIce = is_ice(x, y);
+        let msg = null;
+        const _blindNow = _uprop_active(BLINDED);
+        switch (ep.engr_type) {
+        case DUST: if (!_blindNow) msg = `Something is written here in the ${_isIce ? 'frost' : 'dust'}.`; break;
+        case ENGRAVE: case HEADSTONE: if (!_blindNow || can_reach_floor(true)) msg = `Something is engraved here on the ${eloc}.`; break;
+        case BURN: if (!_blindNow || can_reach_floor(true)) msg = `Some text has been ${_isIce ? 'melted' : 'burned'} into the ${eloc} here.`; break;
+        case MARK: if (!_blindNow) msg = `There's some graffiti on the ${eloc} here.`; break;
+        case ENGR_BLOOD: if (!_blindNow) msg = `You ${wizard_Unaware() ? 'dream that you see' : 'see'} a message scrawled in blood here.`; break;
+        default: await real_impossible('Something is written in a very strange way.'); msg = ''; break;
+        }
+        if (msg !== null) {
+            const _joins = (_reveal_text(ep).length + msg.length + 3) < (80 - 8);
+            const _arrivalPages = redrawPending && !_joins;
+            if (msg) await _pline_paged(msg, _joins || !_arrivalPages, _arrivalPages);
+            /* C ref: engrave.c:397 — SECOND pline of read_engr_at:
+             * the literal text reveal.  You("%s: \"%s\"%s",
+             * (Blind) ? "feel the words" : "read", et, endpunct).
+             * For the tut-1 arrival engraving (not Blind, elen=25,
+             * last char 'l' not in ".!?"), endpunct="." and
+             * prefix="read", yielding "You read: \"...\"." This is
+             * the LAST pline of the chain, so whether it pages
+             * depends on redrawPending — see keystone-spec-
+             * paging-fix.md (arrival pages; mid-walk does not). */
+            {
+                const _reveal = _reveal_text(ep);
+                await _pline_paged(_reveal, true, _arrivalPages);
+                if (game.program_state?.in_moveloop | 0)
+                    _topl_stash_result();
+            }
+            /* C engrave.c:396-399 — a sensed engraving becomes remembered at
+             * the moment it is read.  Keep this separate from `text`: wiping
+             * later changes the actual engraving but must not rewrite the
+             * remembered snapshot used by /e. */
+            ep.remembered = ep.text;
+            ep.eread = 1;
+            ep.erevealed = 1;
+            if ((game.context?.run | 0) > 0)
+                nomul(0);
+        }
+    }
+}

@@ -1,3 +1,4 @@
+import {parseCPrototype} from './prototypes.js';
 // Synchronous symbols, globals, initialization and calls for translated C.
 // Application declarations and dependency scope are supplied by the provider.
 import {address} from './memory.js';
@@ -23,10 +24,9 @@ export function createLinker({memory,transport,functions,services,ctypes,prototy
         const entry=modules.get(module),invoke=(...args)=>invokeEntry(entry,module,name,args),prototype=prototypes[name];
         Object.defineProperty(invoke,'nativeEntry',{get(){const fn=entry.namespace[name];return fn?.nativeDirect?fn:undefined;}});
         if(prototype)Object.defineProperty(invoke,'address',{get(){
-            const match=prototype.match(/^(.+?)\s*\((.*)\)$/);if(!match)throw new Error('Unknown C function address prototype '+name);
-            const args=[];let depth=0,start=0;for(let i=0;i<match[2].length;i++){const ch=match[2][i];if(ch==='('||ch==='[')depth++;else if(ch===')'||ch===']')depth--;else if(ch===','&&!depth){args.push(match[2].slice(start,i).trim());start=i+1;}}args.push(match[2].slice(start).trim());
-            const code=t=>{t=ctypes.canonical(t);if(t.includes('*')||t.includes('['))return'p';if(t==='void')return'v';if(t==='...')throw new Error('Variadic C callback address requires an explicit ABI '+name);if(t==='double')return'd';if(t==='float')return'f';if(t.startsWith('struct ')||t.startsWith('union '))throw new Error('C aggregate callback address requires an explicit ABI '+name);return ctypes.size(t)===8?'j':'i';};
-            return functionPointer(name,[match[1],...args.filter(t=>t&&t!=='void')].map(code).join(''));
+            let parsed;try{parsed=parseCPrototype(prototype);}catch(error){throw new Error('Unknown C function address prototype '+name+': '+error.message);}
+            const code=t=>{t=ctypes.canonical(t);if(t.includes('*')||t.includes('['))return'p';if(t==='void')return'v';if(t==='...')throw new Error('Variadic C callback address requires an explicit ABI '+name);if(t==='double')return'd';if(t==='float')return'f';if(t.startsWith('struct ')||t.startsWith('union ')||ctypes.isRecord?.(t))throw new Error('C aggregate callback address requires an explicit ABI '+name);const width=ctypes.size(t);if(![1,2,4,8].includes(width))throw new Error('C extended scalar callback address requires an explicit ABI '+name);return width===8?'j':'i';};
+            return functionPointer(name,[parsed.result,...parsed.parameters].map(code).join(''));
         }});
         services[name]=invoke;
     }

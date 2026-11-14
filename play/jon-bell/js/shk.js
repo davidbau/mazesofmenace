@@ -4,23 +4,24 @@
 
 import { verbalize } from './pline.js';
 import { menucolor_text } from './coloratt.js';
-import { y_monnam as y_monnam_shk, a_monnam } from './mhitm.js';
+import { y_monnam as y_monnam_shk, a_monnam } from './do_name.js';
 import { growl, yelp } from './sounds.js';
 import { pronoun_gender } from './mondata.js';
 import { game } from './gstate.js';
-import { x_monnam as x_monnam_shk } from './mhitm.js';
+import { x_monnam as x_monnam_shk } from './do_name.js';
 import { locomotion } from './mondata.js';
 import { ARTICLE_THE as ARTICLE_THE_SHK, ANY_SHOP, Upolyd } from './const.js';
 import { search_special } from './mkroom.js';
 import { makeplural } from './objnam.js';
 import { W_SWAPWEP, W_QUIVER, DISPLACED, EYE } from './const.js';
-import { make_happy_shoppers, migrate_to_level, mdrop_special_objs } from './dog.js';
+import { migrate_to_level, mdrop_special_objs } from './dog.js';
 import { sensemon } from './display.js';
 import { MIGR_APPROX_XY } from './const.js';
 import { ansimpleoname } from './objnam.js';
 import { stop_occupation } from './allmain.js';
 import { picking_at } from './lock.js';
-import { dochug, m_canseeu } from './dochug.js';
+import { m_canseeu } from './dochug.js';
+import { dochug } from './monmove.js';
 import { newobj } from './game.js';
 import { topl_park_cursor, force_more, impossible_sync } from './display.js';
 import { pline, You_hear, Norep, pline_The, There, You_cant, Your } from './pline.js';
@@ -29,23 +30,27 @@ import { pline, You_hear, Norep, pline_The, There, You_cant, Your } from './plin
  * existing contracts until their own closure is migrated. */
 import { You as You_real } from './do_wear.js';
 import { canspotmon, canseemon, canseemon as canseemon_real } from './display.js';
-import { shtype_name, makemon, next_ident, mksobj, del_engr_at } from './mklev.js';
+import { shtype_name } from './mklev.js';
+import { next_ident, mksobj } from './mkobj.js';
+import { makemon } from './makemon.js';
+import { del_engr_at } from './engrave.js';
 import { mpickobj } from './steal.js';
 import { highc } from './hacklib.js';
 import { angry_guards, mongone, Soundeffect } from './mon.js';
-import { is_demon, poly_gender } from './makemon.js';
+import { is_demon } from './makemon.js';
+import { poly_gender } from './polyself.js';
 import { is_pick } from './dig.js';
 import { ECMD_OK, ECMD_CANCEL, ECMD_TIME, ESHK, SHARED, SHARED_PLUS, NO_ROOM, COLNO, ROWNO, IS_DOOR, IS_ROOM, IS_WALL, SHOPBASE, CANDLESHOP, D_BROKEN, D_CLOSED, BILLSZ, Has_contents, isok, u_at, ROOMOFFSET, RLOC_MSG, DEAF, INVIS, FAST, PASSES_WALLS, QBUFSZ, BUFSZ, LL_ACHIEVE, G_GONE, MM_NOMSG, CONFLICT, REPAIR_DELAY, BOLT_LIM, ZAP_POS, D_LOCKED, LANDMINE, BEAR_TRAP, PIT, SPIKED_PIT, HOLE, ACH_SHOP, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER, DETECT_MONSTERS, OBJ_FREE, OBJ_INVENT, OBJ_ONBILL, OBJ_FLOOR, OBJ_CONTAINED, OBJ_BURIED, OBJ_MINVENT } from './const.js';
 import { get_obj_location } from './zap.js';
 import { PM_GRID_BUG, PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_MAIL_DAEMON, PM_ROGUE, PM_KEYSTONE_KOP, PM_KOP_SERGEANT, PM_KOP_LIEUTENANT, PM_KOP_KAPTAIN } from './pm.generated.js';
 import { has_mgivenname, MGIVENNAME } from './const.js';
-import { goodpos } from './trap.js';
+import { goodpos } from './teleport.js';
 import { t_at, deltrap } from './trap.js';
 import { block_point } from './vision.js';
 import { newsym, map_invisible } from './display.js';
 import { weight } from './weight.js';
 import { OC_WEIGHT } from './oc_weight.generated.js';
-import { trapname } from './makemon.js';
+import { trapname } from './trap.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 /* C ref: hack.c:4478 money_cnt — the single ported implementation lives in
  * js/com_pager.js; re-used here rather than the `return 0` stub this file
@@ -57,23 +62,30 @@ import { money_cnt } from './hack.js';
  * RLOC_ERR bit, and rloc_to_core() masks against the real bit layout.  The two
  * values that used to be declared locally here (0 and 1) were wrong on both
  * counts and made every rlocflags test in this file misfire. */
-import { rloc_to_flag, RLOC_NOMSG, mnexto, mnearto, enexto_out } from './teleport.js';
+import { rloc_to_flag, RLOC_NOMSG, enexto_out } from './teleport.js';
+import { mnexto, mnearto } from './mon.js';
 import { dist2, s_suffix } from './hacklib.js';
 import { Monnam as Monnam_chat } from './mcastu.js';
-import { place_object, remove_object, add_to_container, newomid } from './mklev.js';
+import { place_object, remove_object, add_to_container, newomid } from './mkobj.js';
 import { online2 } from './hacklib.js';
 import { cansee } from './vision.js';
 import { holetime } from './dig.js';
-import { carrying, count_unpaid, currency, um_dist, mbodypart as mbodypart_real, body_part as body_part_real, merge_choice, inv_cnt, getpos, record_achievement, check_special_room } from './cmd.js';
+import { mbodypart as mbodypart_real, body_part as body_part_real } from './cmd.js';
+import { inv_cnt, check_special_room } from './hack.js';
+import { getpos } from './getpos.js';
+import { um_dist } from './apply.js';
+import { carrying, count_unpaid, currency, merge_choice } from './invent.js';
+import { record_achievement } from './insight.js';
 import { dropy, obj_no_longer_held } from './do.js';
-import { xprname as xprname_cmd, dbase_display_window as dbase_display_window_cmd } from './cmd.js';
+import { dbase_display_window as dbase_display_window_cmd } from './cmd.js';
+import { xprname as xprname_cmd } from './invent.js';
 import { addinv } from './invent.js';
 import { mattacku } from './mhitu.js';
 import { m_at } from './uhitm.js';
-import { can_carry } from './dogmove.js';
+import { can_carry } from './mon.js';
 import { resist_conflict } from './mondata.js';
 import { move_special } from './priest.js';
-import { rn2 as rn2_shk, rnd as rnd_shk } from './rng.js';
+import { rn2 as rn2_shk, rnd as rnd_shk } from './rnd.js';
 import { depth as depth_shk } from './dungeon.js';
 import { builds_up, on_level } from './dungeon.js';
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
@@ -82,7 +94,7 @@ import monArmedPack from './makemon_mons_armed.json' with { type: 'json' };
 import monMsoundPack from './makemon_msound.json' with { type: 'json' };
 import { OC_COST, OC_CHARGED } from './oc_cost_data.js';
 import { OC_NAME } from './oc_name_data.js';
-import { xname, the as the_shk, The as The_shk, thesimpleoname, simpleonames, simpleonames as simpleonames_real, short_oname as short_oname_shk, PREFIX } from './objnam.js';
+import { xname, the as the_shk, The as The_shk, thesimpleoname, simpleonames, simpleonames as simpleonames_real, short_oname, PREFIX } from './objnam.js';
 import { arti_cost } from './artifact.js';
 /* C attrib.c acurr(i) — ACURR(A_CHA) in get_cost(). */
 import { acurr, adjalign, adjalign as adjalign_real } from './attrib.js';
@@ -90,8 +102,10 @@ import { exercise } from './attrib.js';
 /* ── dopay()'s itemized-billing dependencies (C shk.c:1743-2300) ──────────
  * Every name below is the SHARED ported body, not a re-derivation; the
  * pay path is the first caller in this file for each. */
-import { doname, doname as doname_pay } from './objnam.js';
-import { splitobj, findgold, permonstTemplate, the_unique_pm } from './makemon.js';
+import { doname } from './objnam.js';
+import { splitobj, permonstTemplate } from './makemon.js';
+import { findgold } from './steal.js';
+import { the_unique_pm } from './objnam.js';
 /* C shk.c:4275 corpsenm_price_adj()'s three inputs — eat.c's
  * intrinsic_possible(), mons[].cnutrit, and the eleven prop.h ids. */
 import { intrinsic_possible, food_disappears } from './eat.js';
@@ -105,7 +119,8 @@ import { mons_cnutrit } from './food_props.js';
 import { ismnum, FIRE_RES, SLEEP_RES, COLD_RES, DISINT_RES, SHOCK_RES,
          POISON_RES, ACID_RES, STONE_RES, TELEPORT, TELEPORT_CONTROL,
          TELEPAT } from './const.js';
-import { freeinv, obj_extract_self_general as obj_extract_self } from './cmd.js';
+import { obj_extract_self_general as obj_extract_self } from './cmd.js';
+import { freeinv } from './invent.js';
 /* Both payment extraction sites need mkobj.c's ownership dispatcher:
  * shopkeeper change is OBJ_MINVENT and consumed bill items are OBJ_ONBILL.
  * dokick.js's same-named partial only walks the migrating-object chain. */
@@ -113,7 +128,8 @@ import { GEM_CLASS, CANDELABRUM_OF_INVOCATION } from './objclass_ranges.js';
 import { MAT_GLASS as GLASS } from './armor_data.js';
 import { add_to_minv, shkname as shkname_real } from './dokick.js';
 import { remove_worn_item } from './steal.js';
-import { dealloc_obj, shtype_row } from './mklev.js';
+import { shtype_row } from './mklev.js';
+import { dealloc_obj } from './mkobj.js';
 import { update_inventory } from './mhitm.js';
 import { hidden_gold } from './vault.js';
 import { flush_screen } from './display.js';
@@ -133,7 +149,7 @@ import { You_feel } from './pline.js';
 import { sobj_at } from './invent.js';
 import { unplacebc, placebc } from './ball.js';
 import { obj_typename } from './objnam.js';
-import { bill_dummy_object } from './cmd.js';
+import { bill_dummy_object } from './mkobj.js';
 
 // SELL_NORMAL constant from hack.h:1070
 const SELL_NORMAL = 0;
@@ -195,20 +211,6 @@ function m_next2u(m) {
     return dist2(m.mx | 0, m.my | 0, u.ux | 0, u.uy | 0) <= 2;
 }
 
-/* C invent.c:1587 o_on(id, objchn) — the object with that o_id anywhere on the
- * chain, recursing into containers. */
-function o_on(id, objchn) {
-    for (let o = objchn; o; o = o.nobj) {
-        if ((o.o_id >>> 0) === (id >>> 0))
-            return o;
-        if (Has_contents(o)) {
-            const temp = o_on(id, o.cobj);
-            if (temp)
-                return temp;
-        }
-    }
-    return null;
-}
 
 /* C shk.c:2777 find_oid(id) — locate an object by o_id across every list the
  * game keeps.  gm.migrating_objs / gm.mydogs / level.buriedobjlist have no
@@ -389,41 +391,6 @@ async function money2u(mon, amount) {
 }
 
 
-/* C objnam.c:2313 paydoname: the billing menu supplies its own price. */
-async function paydoname(obj) {
-    const flags = game.iflags ||= {};
-    const savedKnown = obj.cknown;
-    const savedWeight = flags.wizweight;
-    const hasContents = Has_contents(obj);
-    if (hasContents) obj.cknown = 0;
-    let name;
-    try {
-        flags.wizweight = false;
-        flags.suppress_price = (flags.suppress_price | 0) + 1;
-        try {
-            name = (await doname_pay(obj));
-        } finally {
-            --flags.suppress_price;
-            flags.wizweight = savedWeight;
-        }
-        if (hasContents) {
-            if (!obj.no_charge) {
-                if (name.startsWith('an ')) name = name.slice(3);
-                else if (name.startsWith('a ')) name = name.slice(2);
-                name = (obj.unpaid ? 'an unpaid ' : 'your ') + name;
-            }
-            if (!obj.cknown) {
-                if (obj.unpaid) {
-                    if (name.length + and_its_contents.length < BUFSZ - PREFIX)
-                        name += and_its_contents;
-                } else name = 'the contents of ' + name;
-            }
-        }
-        return name;
-    } finally {
-        obj.cknown = savedKnown;
-    }
-}
 
 /* C shk.c:3420 shk_names_obj(shkp, obj, fmt, amt, arg) — the "You bought <obj>
  * for <amt> gold pieces." line, with the shopkeeper identifying ordinary
@@ -647,7 +614,8 @@ async function menu_pick_pay_items(ibillct, ibill) {
              * MENU_ITEMFLAGS_SKIPMENUCOLORS (windows.c:1820-1832), so the
              * headings stay plain — same funnel as pickup_container's
              * query_objlist. */
-            out.push(`${e.selector} ${e.mark} ${menucolor_text(e.text)}`);
+            /* a selected marker is coloured too (wintty.c:1449 colours from char 2 of a selected row) */
+            out.push(`${e.selector} ${e.mark === '-' ? e.mark : menucolor_text(e.mark, e.text)} ${menucolor_text(e.text)}`);
         }
         for (let i = 0; i < out.length; i++) {
             let col = 0;
@@ -925,9 +893,9 @@ async function dopayobj(shkp, bp, obj, which, itemize, unseen) {
             // C shk.c:2269 and objnam.c:2303: Doname2 capitalizes only
             // singular purchases; plural purchases retain doname's case.
             const namer = quan === 1 ? async (item) => {
-                const name = await doname_pay(item);
+                const name = await doname(item);
                 return highc(name.charAt(0)) + name.slice(1);
-            } : doname_pay;
+            } : doname;
             const qbuf = await safe_qbuf('', '', qsfx, obj, namer,
                                    ansimpleoname,
                                    (quan === 1) ? 'that' : 'those');
@@ -1647,7 +1615,7 @@ export async function sellobj(obj, x, y) {
             let qbuf = Sprintf("Will you accept %ld %s in credit for ", tmpcr,
                                 currency(tmpcr));
             record_price_quote(obj.otyp, Math.trunc(tmpcr / obj.quan), false);
-            qbuf = (await safe_qbuf(qbuf, qbuf, "?", obj, doname_pay, thesimpleoname,
+            qbuf = (await safe_qbuf(qbuf, qbuf, "?", obj, doname, thesimpleoname,
                              (obj.quan === 1) ? "that" : "those"));
             c = await yn_function_shk(qbuf, 'ynaq', 'y');
             /* C topl.c:536-548 — the answered prompt stays painted until the
@@ -1767,7 +1735,7 @@ export async function sellobj(obj, x, y) {
                           offer, "");
             break;
         default:
-            impossible("invalid sell response");
+            impossible_shk("invalid sell response");
         }
     }
 }
@@ -1867,23 +1835,6 @@ export function contained_gold(obj, even_if_unknown) {
         }
     }
     return value;
-}
-export function count_contents(container, nested, quantity, everything, newdrop) {
-    let shoppy = false;
-    if (!everything && !newdrop) {
-        let top = container;
-        while ((top.where | 0) === OBJ_CONTAINED && top.ocontainer) top = top.ocontainer;
-        const loc = _get_obj_location_shk(top, 0);
-        if ((top.where | 0) === OBJ_FLOOR && loc) shoppy = costly_spot(loc.x, loc.y);
-    }
-    let count = 0;
-    for (let ot = container?.cobj; ot; ot = ot.nobj) {
-        if (nested && Has_contents(ot))
-            count += count_contents(ot, nested, quantity, everything, newdrop);
-        if (everything || ot.unpaid || (shoppy && !ot.no_charge))
-            count += quantity ? ot.quan : 1;
-    }
-    return count;
 }
 
 /* C shk.c:3713 stolen_container().  This is deliberately separate from
@@ -2084,54 +2035,6 @@ export function append_price_quote(buf, eos, otyp,
     }
     return buf;
 }
-/* C objnam.c:5623-5698 safe_qbuf(qbuf, qprefix, qsuffix, obj, func, altfunc,
- * lastR) — "construct a query prompt string, based around an object name,
- * which is guaranteed to fit within [QBUFSZ]". C writes into the caller's
- * buffer in place and supports qbuf === qprefix (a partially-filled buffer,
- * C:5654-5660); both of this file's call sites pass the same string as qbuf
- * and qprefix (`safe_qbuf(qbuf, qbuf, ...)`), and since JS strings are
- * immutable the qbuf===qprefix branch and the qprefix-copy branch compute the
- * identical result, so they collapse to one branch here. The three
- * impossible() sanity checks (C:5646-5653) report an oversized prefix,
- * prefix plus suffix, or prefix plus filler plus suffix. Await the shared
- * diagnostic before truncating the prompt, as C does.
- * short_oname is the real objnam.js port, imported above as short_oname_shk.
- * RNG-free throughout. */
-export async function safe_qbuf(qbuf, qprefix, qsuffix, obj, fn1, fn2, thatthose) {
-    const lenlimit = QBUFSZ - 1;
-    const len_qpfx = qprefix ? qprefix.length : 0;
-    const len_qsfx = qsuffix ? qsuffix.length : 0;
-    const len_lastR = thatthose.length;
-
-    if (len_qpfx > lenlimit)
-        await lifecycle_impossible("safe_qbuf: prefix too long (%u characters).", len_qpfx);
-    else if (len_qpfx + len_qsfx > lenlimit)
-        await lifecycle_impossible("safe_qbuf: suffix too long (%u + %u characters).", len_qpfx, len_qsfx);
-    else if (len_qpfx + len_lastR + len_qsfx > lenlimit)
-        await lifecycle_impossible("safe_qbuf: filler too long (%u + %u + %u characters).",
-                   len_qpfx, len_lastR, len_qsfx);
-
-    let buf = qprefix ? String(qprefix).slice(0, lenlimit) : '';
-    let len = buf.length;
-
-    if (len + len_lastR + len_qsfx > lenlimit) {
-        /* C:5670-5681 — too long; skip formatting, last resort output truncated */
-        if (len < lenlimit) {
-            buf = (buf + thatthose).slice(0, lenlimit);
-            len = buf.length;
-            if (qsuffix && len < lenlimit)
-                buf = (buf + qsuffix).slice(0, lenlimit);
-        }
-    } else {
-        /* C:5682-5694 — suffix and last resort are guaranteed to fit */
-        len += len_qsfx; /* include the pending suffix */
-        const bufp = await short_oname_shk(obj, fn1, fn2, lenlimit - len);
-        buf += (len + bufp.length <= lenlimit) ? bufp : thatthose;
-        if (qsuffix)
-            buf += qsuffix;
-    }
-    return buf;
-}
 /* C ref: shk.c:3149-3195 set_cost — amount paid when the shop buys the
  * complete object.  All arithmetic is integer C arithmetic. */
 export function set_cost(obj, shkp) {
@@ -2263,16 +2166,16 @@ export function oid_price_adjustment(obj, oid) {
     return res;
 }
 /* C objnam.c:1751 doname(obj) — the real general port lives in js/objnam.js
- * (doname_base(obj, 0)) and is already imported into this file as doname_pay
+ * (doname_base(obj, 0)) and is already imported into this file as doname
  * for the itemized-buying path (see the header note, C shk.c:2311
- * paydoname()). doname_pay IS doname (that import applies no flags), so
+ * paydoname()). doname IS doname (that import applies no flags), so
  * re-point rather than re-derive. js/eat.js's `doname` is a `return "thing"`
  * partial and is NOT what this points to. */
-export { doname_pay as doname };
+export { doname };
 /* C objnam.c thesimpleoname, simpleonames, xname — the real general ports
  * live in js/objnam.js and are re-exported directly. */
 export { xname, thesimpleoname, simpleonames };
-function impossible(_fmt, ..._args) { /* no-op — see note above */ }
+function impossible_shk(_fmt, ..._args) { /* no-op — see note above */ }
 
 /* CORPSE_SHK (objects.h CORPSE = 265) is declared once below (contained_cost
  * area); function declarations here are hoisted and only run after module
@@ -2609,7 +2512,7 @@ export async function make_happy_shk(shkp, silentkops) { // C shk.c:1395-1436
     pacify_shk(shkp, false);
     eshkp.following = eshkp.robbed = 0;
     if (game.urole.mnum !== PM_ROGUE)
-        adjalign_real(sgn(game.u.ualign.type));
+        adjalign_real(sgn_shk(game.u.ualign.type));
     if (!inhishop(shkp)) {
         const shk_nam = shkname(shkp);
         let vanished = canseemon(shkp);
@@ -2678,7 +2581,7 @@ export function add_damage(x, y, cost) {
     }
 
     /* Create new damage entry */
-    const tmp_dam = alloc(/* sizeof damage */);
+    const tmp_dam = alloc_shk(/* sizeof damage */);
     tmp_dam.when = g.moves;
     tmp_dam.place = { x: x, y: y };
     tmp_dam.cost = cost;
@@ -2719,7 +2622,7 @@ export async function shopdig(fall) {
     if (!inhishop(shkp)) {
         if ((game.urole?.mnum | 0) === PM_KNIGHT) {
             await You_feel('like a common thief.');
-            adjalign_real(-sgn(u.ualign?.type | 0));
+            adjalign_real(-sgn_shk(u.ualign?.type | 0));
         }
         return;
     }
@@ -2768,7 +2671,7 @@ export async function shopdig(fall) {
     }
     if ((game.urole?.mnum | 0) === PM_KNIGHT) {
         await You_feel('like a common thief.');
-        adjalign_real(-sgn(u.ualign?.type | 0));
+        adjalign_real(-sgn_shk(u.ualign?.type | 0));
     }
 }
 /* C ref: shk.c:4850 fix_shop_damage() */
@@ -3371,12 +3274,12 @@ export async function pay_for_damage(dmgstr, cant_mollify) {
             growl(shkp);
         }
         hot_pursuit(shkp);
-        adjalign(-sgn(u.ualign.type));
+        adjalign(-sgn_shk(u.ualign.type));
     }
 }
 
 /* stubs for unported helpers */
-function alloc(_size) { return {}; }
+function alloc_shk(_size) { return {}; }
 /* C ref: shk.c:1051-1079 shop_keeper(rmno) — the resident of rooms[rmno-3],
  * or Null.  C takes a `char`; JS callers pass either the numeric room number
  * (from in_rooms) or a one-character string (from u.ushops, which C stores as
@@ -3917,8 +3820,8 @@ function set_repo_loc(shkp) {
            move in one more space" */
         ox = (eshkp.shk_x ?? eshkp.shk?.x) | 0;
         oy = (eshkp.shk_y ?? eshkp.shk?.y) | 0;
-        ox += sgn(ox - (eshkp.shd?.x | 0));
-        oy += sgn(oy - (eshkp.shd?.y | 0));
+        ox += sgn_shk(ox - (eshkp.shd?.x | 0));
+        oy += sgn_shk(oy - (eshkp.shd?.y | 0));
     }
     g.repo.location.x = ox;
     g.repo.location.y = oy;
@@ -3973,7 +3876,7 @@ async function rob_shop(shkp) {
                    total, currency(total), s_suffix(shkname(shkp)),
                    shtype_name((eshkp.shoptype | 0) - SHOPBASE));
     if (((game.urole?.mnum | 0) !== (PM_ROGUE | 0)))
-        adjalign_real(-sgn(game.u?.ualign?.type | 0));
+        adjalign_real(-sgn_shk(game.u?.ualign?.type | 0));
     hot_pursuit(shkp);
     return true;
 }
@@ -4052,7 +3955,7 @@ export async function remote_burglary(x, y) {
 /* C ref: pline.c verbalize(fmt,...) — a quoted spoken line on the topline.
  * C's vpline is reached through verbalize's own '"%s"' wrapper, so the
  * rendered text is the message in double quotes. */
-function SetVoice(_shkp, _a, _b, _c) { }
+import { SetVoice } from './cmd.js';
 /* C ref: shk.c:1361-1377 rile_shk(shkp) — make the shopkeeper angry and add
  * the one-time aggravation surcharge to every billed item. */
 function rile_shk(shkp) {
@@ -4220,7 +4123,7 @@ function monMflags2_fp(mndx) {
 
 
 // C bones.c:276-277 uses do.c:893 obj_no_longer_held, including billing.
-import { artifact_light as artifact_light_real } from './light.js';
+import { artifact_light as artifact_light_real } from './artifact.js';
 import { end_burn as end_burn_fp } from './timeout.js';
 import { Shknam, saleable, shkname } from './shknam.js'; // relocate-fns
 import { drop_upon_death } from './bones.js'; // relocate-fns
@@ -4229,6 +4132,19 @@ import { wake_nearto } from './mon.js'; // relocate-fns
 import { impossible as bill_impossible } from './pline.js'; // relocate-fns
 import { in_rooms } from './hack.js'; // relocate-fns
 import { unleash_all } from './apply.js'; // relocate-fns
+import { PM_WATCHMAN, PM_WATCH_CAPTAIN } from './pm.generated.js'; // relocate-fns
+import { count_contents, o_on } from './invent.js'; // relocate-fns
+import { paydoname, safe_qbuf } from './objnam.js'; // relocate-fns
+import { create_nhwindow, destroy_nhwindow, display_nhwindow, putstr } from './cmd.js'; // relocate-fns
+import { NHW_MENU } from './const.js'; // relocate-fns
+import { upstart } from './hacklib.js'; // relocate-fns
+import { rn2 } from './rnd.js'; // relocate-fns
+import { shkname as dokick_shkname } from './dokick.js'; // relocate-fns
+import { You } from './pline.js'; // relocate-fns
+export { safe_qbuf } from './objnam.js'; // relocate-fns
+export { and_its_contents }; // relocate-fns
+export { count_contents } from './invent.js'; // relocate-fns
+export { _get_obj_location_shk }; // relocate-fns
 export { in_rooms } from './hack.js'; // relocate-fns
 export { COIN_CLASS, monMflags2_fp }; // relocate-fns
 
@@ -4363,7 +4279,7 @@ function SET_BOTL() {
     if (game.disp) game.disp.botl = 1;
 }
 function wait_synch() { }
-function sgn(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
+function sgn_shk(n) { return n > 0 ? 1 : n < 0 ? -1 : 0; }
 /* C ref: rm.h MON_AT(x,y) — (m_at(x,y) != 0) for a live monster. */
 function MON_AT(x, y) { return m_at(x, y) != null; }
 /* C display.h:117-120 _canseemon macro / display.c:200 canseemon(mon) —
@@ -5363,4 +5279,202 @@ export function inside_shop(x, y) {
     if (rno < ROOMOFFSET || loc.edge || !room || (room.rtype | 0) < SHOPBASE)
         return NO_ROOM;
     return rno;
+}
+
+/* C shk.c:1440-1445.  Returning shopkeepers can dismiss the Kops after a
+ * robbery has been settled.  The helper is deliberately synchronous and
+ * RNG-free: retain the C ordering (angry shopkeeper check, then Kops removal
+ * and watch pacification). */
+export async function make_happy_shoppers(silentkops) {
+    let angry = false;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if ((mon.mhp | 0) <= 0 || !mon.isshk)
+            continue;
+        if (!mon.mpeaceful) {
+            angry = true;
+            break;
+        }
+    }
+    if (angry)
+        return;
+
+    let visibleKops = 0;
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        if ((mon.mhp | 0) <= 0 || mon.data?.mlet !== 37) /* S_KOP */
+            continue;
+        if (canspotmon(mon))
+            visibleKops++;
+        await mongone(mon);
+    }
+    if (visibleKops && !silentkops)
+        await pline('The Kop%s (disappointed) vanish%s into thin air.',
+              visibleKops === 1 ? '' : 's', visibleKops === 1 ? 'es' : '');
+
+    /* C mon.c:5758 pacify_guards(): is_watch() monsters become peaceful. */
+    for (let mon = game.fmon; mon; mon = mon.nmon) {
+        const pm = mon.mndx ?? mon.data?.pmidx ?? mon.data?.mndx;
+        if ((mon.mhp | 0) > 0 && (mon.mstate | 0) === 0
+            && (pm === PM_WATCHMAN || pm === PM_WATCH_CAPTAIN))
+            mon.mpeaceful = 1;
+    }
+}
+
+// C shk.c:630 credit_snap indices
+const BEFORE = 0, NOW = 1;
+
+/* C shk.c:628 credit_report: snapshot credit, debit and loan around an
+ * operation, then report the first applicable change in that order. */
+export async function credit_report(shkp, idx, silent) {
+    const eshk = ESHK(shkp);
+    const snapshots = game._credit_report_snapshots
+        ||= [[0, 0, 0], [0, 0, 0]];
+    if (!idx) {
+        snapshots[BEFORE] = [0, 0, 0];
+        snapshots[NOW] = [0, 0, 0];
+    } else {
+        idx = NOW;
+    }
+    snapshots[idx] = [eshk.credit || 0, eshk.debit || 0, eshk.loan || 0];
+    if (idx && !silent) {
+        const [before, now] = snapshots;
+        let amount = 0, message = 'debt has increased';
+        if (now[0] < before[0]) {
+            amount = before[0] - now[0];
+            message = 'credit has been reduced';
+        } else if (now[1] > before[1]) {
+            amount = now[1] - before[1];
+        } else if (now[2] > before[2]) {
+            amount = now[2] - before[2];
+        }
+        if (amount)
+            await pline(`Your ${message} by ${amount} ${currency(amount)}.`);
+    }
+}
+
+// C shk.c:5740 check_unpaid — normal charge usage of an unpaid item.
+export function check_unpaid(obj) { return check_unpaid_usage(obj, false); }
+
+/* C shk.c:5407 price_quote() and :5469 shk_embellish(). */
+export async function price_quote(first) {
+    const g = game;
+    /* C shk.c:5416 shkp = shop_keeper(inside_shop(u.ux, u.uy)). */
+    const shkp = shop_keeper(inside_shop(g.u.ux | 0, g.u.uy | 0));
+    if (!shkp || !inhishop(shkp)) return;
+    const rows = [];
+    let lastCost = 0, lastContents = false;
+    for (let o = first; o; o = o.nexthere) {
+        if ((o.oclass | 0) === COIN_CLASS) continue;
+        let cost = (o.no_charge || o === game.u?.uball || o === game.u?.uchain)
+            ? 0 : get_cost(o, shkp);
+        let contents = !cost;
+        if (Has_contents(o)) cost += contained_cost(o, shkp, 0, false, false);
+        if (o.globby) cost *= get_pricing_units(o);
+        if (!cost) contents = false; /* C shk.c:5437: "no charge" resets contentsonly */
+        lastCost = cost; lastContents = contents;
+        const price = cost ? `${cost} ${currency(cost)}${(o.quan | 0) > 1 ? ' each' : ''}` : 'no charge';
+        rows.push(`${contents ? 'the contents of ' : ''}${(await doname(o))}, ${price}`);
+    }
+    if (rows.length > 1) {
+        const win = create_nhwindow(NHW_MENU);
+        putstr(win, 0, 'Fine goods for sale:'); putstr(win, 0, '');
+        for (const row of rows) putstr(win, 0, row);
+        await display_nhwindow(win, true); destroy_nhwindow(win);
+        return;
+    }
+    if (rows.length === 1) {
+        const o = first;
+        if (!lastCost) {
+            /* C shk.c:5449-5453: "<doname(obj)>, no charge" */
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize('%s!', upstart(rows[0]));
+        } else {
+            /* C shk.c:5456: doname's tin_variety draw precedes the quote RNG. */
+            const base = `${lastContents ? 'the contents of ' : ''}${(await doname(o))}`;
+            /* C arg order (observed): currency(cost) is drawn before shk_embellish */
+            const cur = currency(lastCost);
+            const embellish = lastContents ? '.' : shk_embellish(o, lastCost);
+            /* C shk.c:5458 SetVoice(shkp, 0, 80, 0) */
+            SetVoice(shkp, 0, 80, 0);
+            await verbalize('%s, price %ld %s%s%s', upstart(base), lastCost, cur,
+                (o.quan | 0) > 1 ? ' each' : '', embellish);
+        }
+    }
+}
+
+/* C shk.c:5469 shk_embellish(itm, cost) — draws rn2(3), then rn2(5) on the hit arm. */
+function shk_embellish(itm, cost) {
+    if (!rn2(3)) {
+        let choice = rn2(5);
+        if (choice === 0)
+            choice = cost < 100 ? 1 : cost < 500 ? 2 : 3;
+        switch (choice) {
+        case 4: {
+            if (cost < 10)
+                break;
+            const o = itm.oclass | 0;
+            if (o === 7 /* FOOD_CLASS */)
+                return ", gourmets' delight!";
+            if (game._oc_name_known?.[itm.otyp | 0]
+                ? MKOBJ_OC_MAGIC[itm.otyp | 0]
+                : (o === 5 /* AMULET */ || o === 4 /* RING */ || o === 11 /* WAND */
+                   || o === 8 /* POTION */ || o === 9 /* SCROLL */ || o === 10 /* SPBOOK */))
+                return ", painstakingly developed!";
+            return ", superb craftsmanship!";
+        }
+        case 3: return ', finest quality.';
+        case 2: return ', an excellent choice.';
+        case 1: return ', a real bargain.';
+        default: break;
+        }
+    } else if (itm.oartifact) {
+        return ', one of a kind!';
+    }
+    return '.';
+}
+
+/* C ref: shk.c:989 shop_debt(eshkp) — itemized debit plus the open bill. */
+function shop_debt(eshkp) {
+    let debt = eshkp.debit | 0;
+    const bill = eshkp.bill_p || eshkp.bill || [];
+    for (let i = 0; i < (eshkp.billct | 0); i++) {
+        const bp = bill[i];
+        if (bp) debt += (bp.price | 0) * (bp.bquan | 0);
+    }
+    return debt;
+}
+
+/* C ref: shk.c:1003 shopper_financial_report() — called in response to the
+ * '$' command. */
+export async function shopper_financial_report() {
+    const g = game;
+    const u = g.u || {};
+    const rmno = inside_shop(u.ux | 0, u.uy | 0) | 0;
+    let this_shkp = rmno >= ROOMOFFSET ? shop_keeper(rmno) : null;
+    const eshk0 = this_shkp ? ESHK(this_shkp) : null;
+    if (eshk0 && !((eshk0.credit | 0) || shop_debt(eshk0))) {
+        await You('have no credit or debt in here.');
+        this_shkp = null; /* skip first pass */
+    }
+    /* pass 0: report for the shop we're currently in, if any;
+       pass 1: report for all other shops on this level. */
+    for (let pass = this_shkp ? 0 : 1; pass <= 1; pass++) {
+        /* C shk.c:1018 next_shkp(fmon, FALSE) — also re-applies an angry
+         * shopkeeper's missing surcharge (rile_shk), which a bare fmon walk
+         * skipped. */
+        for (let shkp = next_shkp(g.fmon, false); shkp;
+             shkp = next_shkp(shkp.nmon, false)) {
+            if (((shkp !== this_shkp) ? 1 : 0) ^ pass)
+                continue;
+            const eshkp = ESHK(shkp);
+            let amt;
+            if ((amt = eshkp.credit | 0) !== 0)
+                await You(`have ${amt} ${currency(amt)} credit at ${s_suffix(dokick_shkname(shkp))} ${shtype_name((eshkp.shoptype | 0) - SHOPBASE)}.`);
+            else if (shkp === this_shkp)
+                await You('have no credit in here.');
+            if ((amt = shop_debt(eshkp)) !== 0)
+                await You(`owe ${dokick_shkname(shkp)} ${amt} ${currency(amt)}.`);
+            else if (shkp === this_shkp)
+                await You("don't owe any gold here.");
+        }
+    }
 }

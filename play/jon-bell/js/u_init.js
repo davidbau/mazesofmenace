@@ -4,14 +4,15 @@
 // attrib.c — newhp (line 1086), init_attr (line 723), init_uhunger (eat.c:126);
 // exper.c — newpw (line 45); role.c — roles[].hpadv/enadv/attrbase/initrecord.
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
-import { rn2, rnd, rne } from './rng.js';
+import { rn2, rnd, rne } from './rnd.js';
 import { RIGHT_HANDED, LEFT_HANDED, P_NUM_SKILLS, P_UNSKILLED,
     W_ARM, W_ARMC, W_ARMH, W_ARMS, W_ARMG, W_ARMF, W_ARMU } from './const.js';
 import { PM_ARCHEOLOGIST, PM_BARBARIAN, PM_CAVEMAN, PM_CAVEMAN as PM_CAVE_DWELLER, PM_HEALER, PM_KNIGHT, PM_MONK,
     PM_CLERIC, PM_ROGUE, PM_RANGER, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_WIZARD,
     PM_HUMAN, PM_ELF, PM_DWARF, PM_GNOME, PM_ORC } from './pm.generated.js';
 import { setworn } from './worn.js';
-import { useupall, is_ammo } from './cmd.js';
+import { is_ammo } from './cmd.js';
+import { useupall } from './invent.js';
 import { setuwep, setuswapwep, setuqwep, set_twoweap } from './wield.js';
 import { initialspell, num_spells, spell_skilltype, MAXSPELL } from './spell.js';
 import { OC_DESCR } from './oc_descr_data.js';
@@ -38,7 +39,8 @@ import { find_ac, bimanual, is_shield, is_helmet, is_gloves, is_shirt,
     is_cloak, is_boots, is_suit } from './do_wear.js';
 import { discover_object } from './o_init.js';
 import { MKOBJ_OC_SKILL, MKOBJ_OC_MAGIC } from './mkobj_erosion_meta.js';
-import { OC_USES_KNOWN, dealloc_obj, mksobj, mkobj } from './mklev.js';
+import { OC_USES_KNOWN } from './mklev.js';
+import { dealloc_obj, mksobj, mkobj } from './mkobj.js';
 import { MKOBJ_OC_CLASS, MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { NON_PM, A_CHAOTIC, A_CON, JUMPING, BLINDED, FROMOUTSIDE, LAST_PROP, NO_SPELL } from './const.js';
 import { ROLE_PM_MNUM } from './roles.js'; // relocate-fns
@@ -394,145 +396,18 @@ export async function u_init_skills_discoveries() {
     find_ac();
 }
 
-/* ── Attribute distribution tables (attrib.c + role.c) ────────────────── */
-/**
- * C ref: role.c roles[].attrdist — attribute distribution weights for
- * rnd_attr() (attrib.c:682).  Order: Str, Int, Wis, Dex, Con, Cha.
- * Must sum to 100 per role (C comment: "sum must be 100").
- */
-const ROLE_ATTRDIST = [
-    /* Arc */ [20, 20, 20, 10, 20, 10],
-    /* Bar */ [30, 6, 7, 20, 30, 7],
-    /* Cav */ [30, 6, 7, 20, 30, 7],
-    /* Hea */ [15, 20, 20, 15, 25, 5],
-    /* Kni */ [30, 15, 15, 10, 20, 10],
-    /* Mon */ [25, 10, 20, 20, 15, 10],
-    /* Pri */ [15, 10, 30, 15, 20, 10],
-    /* Rog */ [20, 10, 10, 30, 20, 10],
-    /* Ran */ [30, 10, 10, 20, 20, 10],
-    /* Sam */ [30, 10, 8, 30, 14, 8],
-    /* Tou */ [15, 10, 10, 15, 30, 20],
-    /* Val */ [30, 6, 7, 20, 30, 7],
-    /* Wiz */ [10, 30, 10, 20, 20, 10],
-];
 /**
  * C ref: role.c races[].attrmax — maximum attribute by race.
  * STR18 = 18 means human-style 18/xx (max abase = 18), 118 = exceptional str cap (18/100).
  * We store the raw C attrmax values.
  * Order: hum, elf, dwa, gno, orc; attrs: Str, Int, Wis, Dex, Con, Cha.
  */
-const RACE_ATTRMAX = [
-    /* hum */ [118, 18, 18, 18, 18, 18],
-    /* elf */ [18, 20, 20, 18, 16, 18],
-    /* dwa */ [118, 16, 16, 20, 20, 16],
-    /* gno */ [68, 19, 18, 18, 18, 18],
-    /* orc */ [68, 16, 16, 18, 18, 16],
-];
-/** C ref: role.c races[].attrmin — minimum attributes by race (all 3). */
-const RACE_ATTRMIN_VAL = 3;
+import { RACE_ATTRMAX } from './attrib.js';
 /** A_STR=0, A_INT=1, A_WIS=2, A_DEX=3, A_CON=4, A_CHA=5; A_MAX=6. */
-const A_MAX = 6;
+import { A_MAX } from './const.js';
+import { init_attr, vary_init_attr } from './attrib.js'; // relocate-fns
+export { init_attr, vary_init_attr } from './attrib.js'; // relocate-fns
 const A_STR = 0;
-/**
- * C ref: attrib.c:682 rnd_attr() — return a random attribute index weighted
- * by role's attrdist, consuming rn2(100).
- * Returns A_MAX (6) if rn2 lands beyond the distribution (shouldn't happen
- * if attrdist sums to 100, but mirrors C's loop termination).
- */
-function rnd_attr(initrole) {
-    let x = rn2(100);
-    const dist = (initrole >= 0 && initrole < ROLE_ATTRDIST.length)
-        ? ROLE_ATTRDIST[initrole] : null;
-    if (!dist)
-        return A_MAX;
-    for (let i = 0; i < A_MAX; ++i) {
-        x -= dist[i];
-        if (x < 0)
-            return i;
-    }
-    return A_MAX; /* C: returns i=A_MAX if loop ends; treated as skip in caller */
-}
-/**
- * C ref: attrib.c:699 init_attr_role_redist(np, addition) — distribute np
- * points across random attributes, respecting attrmin/attrmax.
- * addition=TRUE: add points (stop when np>0 condition fails or tryct>=100).
- * addition=FALSE: remove points.
- * Returns leftover np.
- */
-function init_attr_role_redist(abase, np, addition, initrole, initrace) {
-    let tryct = 0;
-    const adj = addition ? 1 : -1;
-    const attrmax = (initrace >= 0 && initrace < RACE_ATTRMAX.length)
-        ? RACE_ATTRMAX[initrace] : RACE_ATTRMAX[0];
-    const attrmin = RACE_ATTRMIN_VAL;
-    while ((addition ? (np > 0) : (np < 0)) && tryct < 100) {
-        const i = rnd_attr(initrole);
-        if (i >= A_MAX
-            || (addition ? (abase[i] >= attrmax[i]) : (abase[i] <= attrmin))) {
-            tryct++;
-            continue;
-        }
-        tryct = 0;
-        abase[i] += adj;
-        np -= adj;
-    }
-    return np;
-}
-/**
- * C ref: attrib.c:723 init_attr(75) — set abase/amax from attrbase, then
- * redistribute leftover via rnd_attr RNG.
- * Writes to g.u.acurr.a[] and g.u.amax.a[].
- */
-export function init_attr(np) {
-    const g = game;
-    g.u = g.u || {};
-    const u = g.u;
-    g.flags = g.flags || {};
-    const initrole = (g.flags.initrole ?? -1) | 0;
-    const initrace = (g.flags.initrace ?? -1) | 0;
-    const rOk = initrole >= 0 && initrole < NUM_ROLES;
-    const attrbase = rOk ? ROLE_ATTRBASE[initrole] : [7, 7, 7, 7, 7, 7];
-    const abase = new Array(A_MAX);
-    for (let i = 0; i < A_MAX; i++) {
-        abase[i] = attrbase[i];
-        np -= attrbase[i];
-    }
-    /* distribute leftover */
-    np = init_attr_role_redist(abase, np, true, initrole, initrace);
-    /* if we went over, remove */
-    np = init_attr_role_redist(abase, np, false, initrole, initrace);
-    /* Permute C-order [str,int,wis,dex,con,cha] → display order [str,dex,con,int,wis,cha]
-     * to match the existing convention in display.js bot() and mapstate.js.
-     * display.js: a[0]=St a[1]=Dx a[2]=Co a[3]=In a[4]=Wi a[5]=Ch
-     * (A_STR=0 → display[0], A_DEX=3 → display[1], A_CON=4 → display[2],
-     *  A_INT=1 → display[3], A_WIS=2 → display[4], A_CHA=5 → display[5]) */
-    const disp = [
-        abase[0], /* display[0]=St ← C[A_STR=0] */
-        abase[3], /* display[1]=Dx ← C[A_DEX=3] */
-        abase[4], /* display[2]=Co ← C[A_CON=4] */
-        abase[1], /* display[3]=In ← C[A_INT=1] */
-        abase[2], /* display[4]=Wi ← C[A_WIS=2] */
-        abase[5], /* display[5]=Ch ← C[A_CHA=5] */
-    ];
-    u.acurr = u.acurr || {};
-    u.amax = u.amax || {};
-    u.acurr.a = disp.slice();
-    u.amax.a = disp.slice();
-}
-// C attrib.c:764 — preserve shared adjustment effects and C attribute order.
-export function vary_init_attr() {
-    const u = game.u;
-    const cToDisplay = [0, 3, 4, 1, 2, 5];
-    for (let i = 0; i < A_MAX; i++) {
-        if (!rn2(20)) {
-            const xd = rn2(7) - 2;
-            adjattrib(i, xd, true);
-            const di = cToDisplay[i];
-            if (u.acurr.a[di] < u.amax.a[di])
-                u.amax.a[di] = u.acurr.a[di];
-        }
-    }
-}
 
 /** C otyp constants derived from nethack-c/include/objects.h sequence. */
 /* --- Weapons --- */

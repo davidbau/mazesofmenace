@@ -4,13 +4,15 @@
 import { game } from './gstate.js';
 import { CONFLICT, STRAT_APPEARMSG } from './const.js';
 import { PM_ANGEL } from './pm.generated.js';
-import { rn1, rnd, d } from './rng.js';
+import { rn1 } from './rng.js';
+import { rnd, d } from './rnd.js';
 import { mon_has_amulet } from './sit.js';
 import { is_dprince, is_demon, set_malign, Inhell } from './makemon.js';
 import { tele_restrict, rloc } from './teleport.js';
 import { money_cnt } from './hack.js';
 import { is_fainted, reset_faint } from './eat.js';
-import { nomul, unmul, stop_occupation } from './allmain.js';
+import { stop_occupation } from './allmain.js';
+import { nomul, unmul } from './hack.js';
 import { money2mon, currency } from './shk.js';
 import { getlin } from './windows.js';
 import { acurr } from './attrib.js';
@@ -18,7 +20,7 @@ import { A_CHA, RLOC_MSG, LL_UMONST } from './const.js';
 import { canseemon } from './display.js';
 import { livelog_printf } from './pline.js';
 import { mon_nam } from './uhitm.js';
-import { x_monnam, Amonnam } from './mhitm.js';
+import { x_monnam, Amonnam } from './do_name.js';
 import { newsym, canspotmon, Deaf } from './display.js';
 import { pline, You_feel } from './pline.js';
 import { Blind } from './vision.js';
@@ -29,11 +31,11 @@ import { mk_roamer } from './priest.js';
 import { enexto_out } from './teleport.js';
 import { permonstTemplate } from './makemon.js';
 import { which_armor } from './worn.js';
-import { mksobj } from './mklev.js';
+import { mksobj } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { mongone } from './mon.js';
-import { select_hwep } from './uhitm.js';
-import { mongets } from './m_initweap.js';
+import { select_hwep } from './weapon.js';
+import { mongets } from './makemon.js';
 import { m_dowear } from './worn.js';
 import { bless } from './mkobj.js';
 
@@ -130,8 +132,19 @@ export async function gain_guardian_angel() {
 }
 
 /* C minion.c:255 — #define Athome (Inhell && (mtmp->cham == NON_PM)) */
-const S_DEMON = 56;
-const NON_PM = -1;
+export const S_DEMON = 56;
+import { NON_PM } from './const.js';
+import { A_CHAOTIC, A_NEUTRAL, A_NONE, EMIN, G_GONE, MM_EMIN, MM_NOMSG } from './const.js'; // relocate-fns
+import { show_transient_light, transient_light_cleanup } from './light.js'; // relocate-fns
+import { is_ndemon, mkclass, mkclassAligned, newmextra } from './makemon.js'; // relocate-fns
+import monsPack from './makemon_mons.json' with { type: 'json' }; // relocate-fns
+import { is_lminion } from './mcastu.js'; // relocate-fns
+import { makemon } from './makemon.js'; // relocate-fns
+import { PM_AIR_ELEMENTAL, PM_ARCHON, PM_BONE_DEVIL, PM_DEMOGORGON, PM_EARTH_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_JUIBLEX, PM_ORCUS, PM_SKELETON, PM_WATER_ELEMENTAL, PM_WIZARD_OF_YENDOR, PM_YEENOGHU, PM_YELLOW_LIGHT } from './pm.generated.js'; // relocate-fns
+import { G_UNIQ } from './read.js'; // relocate-fns
+import { rn2 } from './rnd.js'; // relocate-fns
+import { M2_DEMON, M2_PRINCE, _ENV_T } from './sit.js'; // relocate-fns
+import { DEADMONSTER } from './wizard.js'; // relocate-fns
 const sgn = (x) => (x > 0) - (x < 0);
 function u_wield_art_mn(art) {
     const uwep = game.u?.uwep;
@@ -246,4 +259,179 @@ export function free_emin(mtmp) {
     if (mtmp.mextra && mtmp.mextra.emin)
         mtmp.mextra.emin = null;
     mtmp.isminion = 0;
+}
+
+/* C minion.c:391-439.  These selectors deliberately retain their retry loops:
+ * mkclass_aligned and the gone/alignment checks each consume RNG in C. */
+function dprince(atyp) {
+    const inEndgame = !!(game.u?.uz && game.astral_level
+                          && game.u.uz.dnum === game.astral_level.dnum);
+    for (let tries = inEndgame ? 0 : 20; tries > 0; --tries) {
+        const pm = PM_ORCUS + rn1(PM_DEMOGORGON + 1 - PM_ORCUS, 0);
+        const v = game.mvitals?.[pm];
+        const d = permonstTemplate(pm);
+        if (!((v?.mvflags | 0) & G_GONE) /* C minion.c:397 */
+            && (atyp === A_NONE || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
+            return pm;
+    }
+    return dlord(atyp);
+}
+
+export function dlord(atyp) {
+    const inEndgame = !!(game.u?.uz && game.astral_level
+                          && game.u.uz.dnum === game.astral_level.dnum);
+    for (let tries = inEndgame ? 0 : 20; tries > 0; --tries) {
+        const pm = PM_JUIBLEX + rn1(PM_YEENOGHU + 1 - PM_JUIBLEX, 0);
+        const v = game.mvitals?.[pm];
+        const d = permonstTemplate(pm);
+        if (!((v?.mvflags | 0) & G_GONE)
+            && (atyp === A_NONE || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
+            return pm;
+    }
+    return ndemon(atyp);
+}
+
+const S_ANGEL = 27;
+
+export function lminion() {
+    for (let tries = 0; tries < 20; ++tries) {
+        const pm = mkclass(S_ANGEL, 0);
+        if (pm !== null && pm !== NON_PM
+            && !(permonstTemplate(pm).mflags2 & M2_LORD))
+            return pm;
+    }
+    return NON_PM;
+}
+
+/* C minion.c:419-426 llord */
+function llord() {
+    if (!(game.mvitals?.[PM_ARCHON]?.mvflags & G_GONE))
+        return PM_ARCHON;
+    return lminion(); /* approximate */
+}
+
+const S_LIGHT = 25; /* defsym.h MONSYM(25, 'y', LIGHT, S_LIGHT) */
+
+export async function msummon(mon) {
+    const ptr = mon?.data || permonstTemplate(PM_WIZARD_OF_YENDOR);
+    const ART_DEMONBANE = 12;
+    /* C minion.c:69-74: Demonbane prevents summoning before any RNG. */
+    if (mon && game.u.uwep?.oartifact === ART_DEMONBANE && (ptr.mflags2 & M2_DEMON)) {
+        if (canseemon(mon)) await pline('%s looks puzzled for a moment.', Monnam(mon));
+        return 0;
+    }
+    /* C minion.c:76-82: a priest or minion carries its own alignment; any
+     * other species keeps A_NONE (the Wizard), which dprince()/dlord() read
+     * as "any alignment".  Math.sign(A_NONE) is -1 and would reject every
+     * prince of the other sign. */
+    const atyp = (mon?.ispriest && mon.mextra?.epri) ? mon.mextra.epri.shralign
+        : (mon?.isminion && mon.mextra?.emin) ? mon.mextra.emin.min_align
+        : ptr.maligntyp === A_NONE ? A_NONE : Math.sign(ptr.maligntyp | 0);
+    let dtype = NON_PM, cnt = 0;
+    const princeOrWizard = ((ptr.mflags2 & M2_DEMON) && (ptr.mflags2 & M2_PRINCE))
+        || ptr.pmidx === PM_WIZARD_OF_YENDOR;
+    if (princeOrWizard) {
+        dtype = !rn2(20) ? dprince(atyp) : !rn2(4) ? dlord(atyp) : ndemon(atyp);
+        cnt = dtype !== NON_PM && !rn2(4) && is_ndemon(permonstTemplate(dtype)) ? 2 : 1;
+    } else if ((ptr.mflags2 & M2_DEMON) && (ptr.mflags2 & M2_LORD)) {
+        dtype = !rn2(50) ? dprince(atyp) : !rn2(20) ? dlord(atyp) : ndemon(atyp);
+        cnt = dtype !== NON_PM && !rn2(4) && is_ndemon(permonstTemplate(dtype)) ? 2 : 1;
+    } else if ((ptr.pmidx | 0) === PM_BONE_DEVIL) {
+        dtype = PM_SKELETON; cnt = 1;
+    } else if (is_ndemon(ptr)) {
+        dtype = !rn2(20) ? dlord(atyp) : !rn2(6) ? ndemon(atyp) : (ptr.pmidx | 0);
+        cnt = 1;
+    } else if (is_lminion(mon)) { /* monst.h:281; mon is non-null here (the Wizard takes the first arm) */
+        dtype = (ptr.mflags2 & M2_LORD) && !rn2(20) ? llord()
+            : ((ptr.mflags2 & M2_LORD) || !rn2(6)) ? lminion() : (ptr.pmidx | 0);
+        cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
+    } else if ((ptr.pmidx | 0) === PM_ANGEL) {
+        if (rn2(6)) dtype = PM_ANGEL;
+        else if (atyp === A_NEUTRAL)
+            dtype = [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)];
+        else if (atyp === A_CHAOTIC || atyp === A_NONE) dtype = ndemon(atyp);
+        cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
+    }
+    if (dtype === NON_PM) return 0;
+    /* C minion.c:137-148 — sanity checks */
+    if (cnt > 1 && (permonstTemplate(dtype).geno & G_UNIQ)) cnt = 1;
+    if ((game.mvitals?.[dtype]?.mvflags & G_GONE) !== 0) {
+        dtype = ndemon(atyp);
+        if (dtype === NON_PM) return 0;
+    }
+    /* C:152 — "some candidates can generate a group of monsters, so simple
+       count of non-null makemon() result is not sufficient" */
+    const census = monster_census(false);
+    let result = 0, xlight = false;
+    while (cnt-- > 0) {
+        const m = await makemon(dtype, game.u.ux | 0, game.u.uy | 0, MM_EMIN | MM_NOMSG);
+        if (m) {
+            result++;
+            /* C:159-167 — an angel's alignment should match the summoner */
+            if (dtype === PM_ANGEL) {
+                m.isminion = 1;
+                newemin(m);
+                m.mextra.emin.min_align = atyp;
+                m.mextra.emin.renegade = ((atyp !== game.u.ualign.type) ^ !m.mpeaceful) ? 1 : 0;
+            }
+            if (m.data.mlet === S_ANGEL && !Blind()) { /* C minion.c:162-170 */
+                await show_transient_light(null, m.mx, m.my);
+                xlight = true;
+            }
+            if (cnt === 0 && canseemon(m)) {
+                const d = m.data, k = d.mlet === S_ANGEL ? PM_ANGEL : d.mlet === S_LIGHT ? PM_YELLOW_LIGHT /* mondata.c:1452-1454 */ : (d.pmidx | 0);
+                const [cloud, what] = _ENV_T[k] || ['cloud', 'smoke'];
+                await pline(`${Amonnam(m)} appears in a ${cloud} of ${what}!`);
+            }
+        }
+    }
+    if (xlight) await transient_light_cleanup(); /* C minion.c:183-188 */
+    /* C:190-192 */
+    if (result) result = monster_census(false) - census;
+    return result;
+}
+
+const M2_LORD = 0x00000400;
+
+const MONS = /** @type {any[]} */ (monsPack.mons);
+
+export function ndemon(atyp) {
+    const ptr = mkclassAligned(S_DEMON, 0, atyp);
+    if (ptr === null || ptr === NON_PM)
+        return NON_PM;
+    const mflags2 = MONS[ptr][7] | 0;
+    const is_demon = (mflags2 & M2_DEMON) !== 0;
+    const is_lord = (mflags2 & M2_LORD) !== 0;
+    const is_prince = (mflags2 & M2_PRINCE) !== 0;
+    if (is_demon && !is_lord && !is_prince)
+        return ptr;
+    return NON_PM;
+}
+
+/* ---------------------------------------------------------------------------
+ * newemin — allocate and init emin (minion extended data)
+ * C ref: nethack-c-v5/upstream/src/minion.c:17-26
+ * ---------------------------------------------------------------------------
+ */
+export function newemin(mtmp) {
+    if (!mtmp.mextra)
+        mtmp.mextra = newmextra();
+    if (!EMIN(mtmp)) {
+        mtmp.mextra.emin = { min_align: 0, renegade: 0, parentmid: mtmp.m_id };
+    }
+}
+
+export function monster_census(spotted) {
+    let count = 0;
+
+    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+        if (DEADMONSTER(mtmp))
+            continue;
+        if (mtmp.isgd && mtmp.mx === 0)
+            continue;
+        if (spotted && !canspotmon(mtmp))
+            continue;
+        ++count;
+    }
+    return count;
 }

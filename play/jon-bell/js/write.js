@@ -1,20 +1,24 @@
 // write.js — C ref: write.c.
 import { exercise } from './attrib.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, OCLASS_SCROLL, OCLASS_SPBOOK, Role_if, You_cant, Your, _cmd_Hallucination, _hero_Blind, _hero_nohands, _uprop_active, check_unpaid, getObjFromGetobj, makeknown, useup, ysimple_name } from './cmd.js';
+import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, OCLASS_SCROLL, OCLASS_SPBOOK, Role_if, You_cant, Your, _cmd_Hallucination, _hero_Blind, _hero_nohands, _uprop_active, getObjFromGetobj, makeknown, ysimple_name } from './cmd.js';
+import { check_unpaid } from './shk.js';
+import { useup } from './invent.js';
 import { A_WIS, ECMD_CANCEL, ECMD_OK, ECMD_TIME, GETOBJ_NOFLAGS, LL_CONDUCT, MAXULEV } from './const.js';
 import { dropx } from './do.js';
 import { You, fingers_or_gloves } from './do_wear.js';
 import { game } from './gstate.js';
 import { mungspaces, upstart } from './hacklib.js';
 import { hold_another_object } from './invent.js';
-import { update_inventory } from './inventory_refresh.js';
-import { bcsign, mksobj, wipeout_text } from './mklev.js';
+import { update_inventory } from './invent.js';
+import { bcsign, mksobj } from './mkobj.js';
+import { wipeout_text } from './engrave.js';
 import { MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { observe_object } from './o_init.js';
 import { objName as _objName_full, The as _objnam_The, Tobjnam as _objnam_Tobjnam, an, aobjnam, getObjDescr } from './objnam.js';
 import { livelog_printf, pline } from './pline.js';
 import { PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js';
-import { rn1, rn2, rnl } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnl } from './rnd.js';
 import { obfree } from './shk.js';
 import { known_spell } from './spell.js';
 import { getlin } from './windows.js';

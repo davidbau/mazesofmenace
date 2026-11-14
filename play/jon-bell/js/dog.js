@@ -1,6 +1,6 @@
 // @ts-nocheck
 import { pline_mon } from './pline.js';
-import { ledger_no } from './bones.js';
+import { ledger_no } from './dungeon.js';
 import { In_W_tower_wz } from './dochug.js';
 // dog.c — Starting pet and pet AI helpers.
 // C ref: nethack-c/src/dog.c
@@ -13,7 +13,8 @@ import { savefile_name } from './save.js';
 import { nhgetch } from './input.js'; /* was an undeclared global: every pline() call in this file threw ReferenceError when reached */
 import { LL_CONDUCT } from './const.js';
 import { mon_pmname } from './do_name.js';
-import { rn2, rnd, rn1, pushRngLogEntry } from './rng.js';
+import { rn1, pushRngLogEntry } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { game } from './gstate.js';
 import { NON_PM, MM_EDOG, NO_MINVENT, W_SADDLE, In_endgame, OBJ_FREE, OBJ_FLOOR, EDOG, MIGR_RANDOM, MIGR_APPROX_XY, MIGR_EXACT_XY, MIGR_STAIRS_UP, MIGR_STAIRS_DOWN, MIGR_LADDER_UP, MIGR_LADDER_DOWN, MIGR_SSTAIRS, MIGR_PORTAL, MIGR_WITH_HERO, MIGR_LEFTOVERS, MON_LIMBO, STRAT_ARRIVE, RLOC_NOMSG, COLNO, ROWNO, ROOMOFFSET, MAGIC_PORTAL,
          AGGRAVATE_MONSTER as AGGRAVATE_MONSTER_DOG, CONFLICT as CONFLICT_DOG,
@@ -30,11 +31,12 @@ import { Upolyd, M_AP_TYPE, M_AP_NOTHING, M_AP_MONSTER } from './const.js';
 export { del_light_source, monst_to_any } from './light.js';
 import { del_light_source } from './light.js';
 import { monst_to_any } from './hack.js';
-import { discard_minvent as discard_minvent_real } from './mklev.js';
+import { discard_minvent as discard_minvent_real } from './mkobj.js';
 import { stairway_find_from, stairway_find_dir } from './stairs.js';
 import { somexy } from './mkroom.js';
-import { set_ustuck as set_ustuck_dog, restore_cham, mongone, monnear } from './mon.js';
-import { enexto_core, mnexto, mnearto, rloc_to, rloc } from './teleport.js';
+import { set_ustuck, restore_cham, mongone, monnear } from './mon.js';
+import { enexto_core, rloc_to, rloc } from './teleport.js';
+import { mnexto, mnearto } from './mon.js';
 import { put_saddle_on_mon, impossible, place_monster } from './steed.js';
 import { newMonHp, assignMakemonFemale, peaceMinded, permonstTemplate, propagate, newmextra, emits_light, humanoid } from './makemon.js';
 import { acurr } from './attrib.js';
@@ -44,7 +46,8 @@ import { isok, Has_contents, MON_MIGRATING, MAX_NUM_WORMS } from './const.js';
 import { within_bounded_area } from './rect.js';   /* C rect.c */
 import { newsym, force_more_from_cls, docrt } from './display.js';    /* C display.c */
 import { remove_worm, wormgone, count_wsegs } from './worm.js';
-import { helpless, seemimic, update_inventory } from './mhitm.js';
+import { helpless, update_inventory } from './mhitm.js';
+import { seemimic } from './mon.js';
 import { mon_has_amulet } from './wizard.js';
 import { yelp, growl } from './sounds.js';
 import { levl_follower, pronoun_gender, sticks } from './mondata.js';
@@ -64,13 +67,8 @@ import { set_residency, make_happy_shk } from './shk.js';
 import { in_rooms } from './hack.js'; /* C shk.c:1395/1907 */
 import { mon_track_clear } from './monmove.js';      /* C monmove.c:90 */
 import { get_wormno, initworm } from './worm.js';    /* C worm.c:95/119 */
-/* C monattk.h attack/damage-type constants, in C's numbering — they are
- * compared against the RAW C-numbered mattk rows (js/mhitu.js MON_MATTK via
- * mon_mattk_raw), so a JS-local renumbering selects the wrong branch. */
-const AT_HUGS = 7;     /* C monattk.h:20 — crushing bearhug */
-const AT_ENGL = 11;    /* C monattk.h:22 — engulf */
+import { AT_ENGL } from './const.js';
 const AT_WEAP = 254;   /* C monattk.h:28 — uses weapon */
-const AD_STCK = 19;    /* C monattk.h:60 — sticks to you */
 import { dmgtype as _dmgtype_real, finish_meating } from './dogmove.js';
 /* mklev.js holds the real healmon (mon.c:1080); js/monmove.js and js/mhitm.js
  * each carry a stub of the same name — import the live one explicitly. */
@@ -78,7 +76,10 @@ import { healmon } from './mon.js';
 /* C dog.c:271-274 — makedog's own call, on the starting pet, before christening.
  * see_monster_closeup's real body is js/mklev.js:10320 (C mon.c:5971). */
 import { see_monster_closeup } from './mon.js';
-import { carrying, body_part, set_msg_xy, dismount_steed } from './cmd.js';
+import { body_part } from './cmd.js';
+import { carrying } from './invent.js';
+import { dismount_steed } from './steed.js';
+import { set_msg_xy } from './pline.js';
 const EXPENSIVE_CAMERA = 229;
 /* C spellbook object type SPE_CREATE_FAMILIAR = 401 (objects.h X-macro; not
  * greppable, matches the value already duplicated at js/spell.js:75,
@@ -87,13 +88,13 @@ const SPE_CREATE_FAMILIAR_DOG = 401;
 import { attacktype as _attacktype_real } from './mondata.js';
 import { canseemon, canspotmon } from './display.js';   /* C display.c */
 import { cansee } from './vision.js';                   /* C vision.c */
-import { place_object } from './mklev.js';
+import { place_object } from './mkobj.js';
 import { wake_nearto } from './mon.js'; /* C sounds.c / mkobj.c */
 import { ismnum, has_edog, HALLUC, HALLUC_RES } from './const.js'; /* monst.h/mextra.h/youprop.h */
 import { the, xname, Tobjnam, an } from './objnam.js';  /* C objnam.c */
 import { Monnam } from './mcastu.js';                   /* C do_name.c (js home) */
 import { s_suffix } from './mhitm.js';                  /* C hacklib.c */
-import { dogfood, dog_eat } from './dogmove.js';        /* C dog.c / dogmove.c */
+import { dog_eat } from './dogmove.js';        /* C dog.c / dogmove.c */
 import { night } from './calendar.js';                   /* C calendar.c:223 */
 import { redraw_worm } from './worm.js';                /* C worm.c:989 */
 /* ── make_familiar()'s callees (C dog.c:103-215).  makemon is the real,
@@ -101,7 +102,7 @@ import { redraw_worm } from './worm.js';                /* C worm.c:989 */
  * makedog() which builds a monster inline without it.  set_malign and
  * christen_monst are aliased to distinguish the real implementations from
  * this file's local helpers. ── */
-import { makemon } from './mklev.js';
+import { makemon } from './makemon.js';
 import { minliquid } from './mon.js';        /* C makemon.c / mon.c:1116 */
 import { is_pool } from './look.js';                    /* C dbridge.c:46 */
 import { christen_monst } from './mhitm.js';            /* C do_name.c:132 */
@@ -530,7 +531,7 @@ export async function discard_migrations() {
 }
 
 /* C: static struct monst *failed_arrivals = 0; */
-let failed_arrivals = null;
+import { failed_arrivals, set_failed_arrivals } from './mon.js';
 
 /* C enum arrival */
 const Before_you = 0;
@@ -547,7 +548,7 @@ const After_you = 2;
 export async function losedogs() {
     let mtmp;
     let dismissKops = 0, xyloc;
-    failed_arrivals = null;
+    set_failed_arrivals(null);
 
     /* check for returning shk(s) */
     for (mtmp = game.migrating_mons; mtmp; mtmp = mtmp.nmon) {
@@ -628,7 +629,7 @@ export async function losedogs() {
 
     /* failed_arrivals → m_into_limbo */
     while ((mtmp = failed_arrivals) != null) {
-        failed_arrivals = mtmp.nmon;
+        set_failed_arrivals(mtmp.nmon);
         mtmp.nmon = game.fmon;
         game.fmon = mtmp;
         await m_into_limbo(mtmp);
@@ -723,8 +724,8 @@ function DEADMONSTER(mtmp) {
 /* C monflag.h:108/114/115 — read from the 5.0 header, not inherited from a
  * sibling file (js/eat.js and js/dogmove.js each keep private copies). */
 const M1_REGEN = 0x00800000;
-const M1_CARNIVORE = 0x20000000;
-const M1_HERBIVORE = 0x40000000;
+export const M1_CARNIVORE = 0x20000000;
+export const M1_HERBIVORE = 0x40000000;
 
 export function mon_catchup_elapsed_time(mtmp, nmv) {
     const LARGEST_INT = 32767; /* C global.h — sizeof(int) guard value */
@@ -809,43 +810,6 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
     mtmp.mlstmv = game.moves | 0;
 }
 
-/* C shk.c:1440-1445.  Returning shopkeepers can dismiss the Kops after a
- * robbery has been settled.  The helper is deliberately synchronous and
- * RNG-free: retain the C ordering (angry shopkeeper check, then Kops removal
- * and watch pacification). */
-export async function make_happy_shoppers(silentkops) {
-    let angry = false;
-    for (let mon = game.fmon; mon; mon = mon.nmon) {
-        if ((mon.mhp | 0) <= 0 || !mon.isshk)
-            continue;
-        if (!mon.mpeaceful) {
-            angry = true;
-            break;
-        }
-    }
-    if (angry)
-        return;
-
-    let visibleKops = 0;
-    for (let mon = game.fmon; mon; mon = mon.nmon) {
-        if ((mon.mhp | 0) <= 0 || mon.data?.mlet !== 37) /* S_KOP */
-            continue;
-        if (canspotmon(mon))
-            visibleKops++;
-        await mongone(mon);
-    }
-    if (visibleKops && !silentkops)
-        await pline('The Kop%s (disappointed) vanish%s into thin air.',
-              visibleKops === 1 ? '' : 's', visibleKops === 1 ? 'es' : '');
-
-    /* C mon.c:5758 pacify_guards(): is_watch() monsters become peaceful. */
-    for (let mon = game.fmon; mon; mon = mon.nmon) {
-        const pm = mon.mndx ?? mon.data?.pmidx ?? mon.data?.mndx;
-        if ((mon.mhp | 0) > 0 && (mon.mstate | 0) === 0
-            && (pm === PM_WATCHMAN || pm === PM_WATCH_CAPTAIN))
-            mon.mpeaceful = 1;
-    }
-}
 
 /* C stairs.c:50-61 stairway_find(fromdlev). */
 function stairway_find_arrive(fromdlev) {
@@ -1041,17 +1005,6 @@ export async function mon_arrive(mtmp, when) {
     }
     mtmp.mstate &= ~MON_STILL_ARRIVING;
 }
-/* C mon.c:3834-3861 m_into_limbo() -> migrate_mon(): release the hero and
- * rescue special inventory before migrating an on-map monster. */
-export async function m_into_limbo(mtmp) {
-    const target_lev = ledger_no(game.u?.uz);
-    mtmp.mstate = (mtmp.mstate | 0) | MON_LIMBO;
-    if (mtmp.mx) {
-        await unstuck(mtmp);
-        await mdrop_special_objs(mtmp);
-    }
-    await migrate_to_level(mtmp, target_lev, MIGR_APPROX_XY, null);
-}
 
 /* C ref: nethack-c/src/mon.c:2634-2659 dealloc_mextra(struct monst *m)
  *
@@ -1067,66 +1020,9 @@ export async function m_into_limbo(mtmp) {
  * NULL in C.  mcorpsenm is set to NON_PM before the mextra itself is dropped
  * (C does it too, even though the struct is about to be released — port the
  * write, Cardinal Rule 1). */
-export function dealloc_mextra(m) {
-    const x = m.mextra;
-    if (x) {
-        if (x.mgivenname)
-            x.mgivenname = null;
-        if (x.egd)
-            x.egd = null;
-        if (x.epri)
-            x.epri = null;
-        if (x.eshk)
-            x.eshk = null;
-        if (x.emin)
-            x.emin = null;
-        if (x.edog)
-            x.edog = null;
-        if (x.ebones)
-            x.ebones = null;
-        x.mcorpsenm = NON_PM; /* C: no allocation to release */
-        m.mextra = null;
-    }
-}
+import { dealloc_mextra } from './mon.js';
+export { dealloc_mextra };
 
-/* C ref: nethack-c/src/mon.c:2661-2677 dealloc_monst(struct monst *mon)
- *
- *     char buf[QBUFSZ];
- *     buf[0] = '\0';
- *     if (mon->nmon) { describe_level(buf, 2);
- *                      panic("dealloc_monst with nmon on %s", buf); }
- *     if (mon->mextra) dealloc_mextra(mon);
- *     *mon = cg.zeromonst;
- *     free((genericptr_t) mon);
- *
- * The local `buf` and describe_level() exist only to decorate the panic
- * message, so they are folded into the throw.  `*mon = cg.zeromonst` is the
- * documented "clear out of date information contained in the about-to-become
- * stale memory" write: cg.zeromonst is the file-scope all-zero struct monst
- * (nethack-c/src/decl.c), so every field becomes 0 / NULL.  JS cannot free(),
- * so the zeroing IS the whole observable effect — it is what stops a caller
- * that still holds the pointer (C: dangling; JS: live object) from reading
- * stale field values.  Zeroing is done in place on the caller's object rather
- * than by rebinding, mirroring the C struct assignment through the pointer. */
-export function dealloc_monst(mon) {
-    // C mon.c:2680-2683: linked monsters must not be cleared or freed.
-    if (mon.nmon)
-        throw new Error(`dealloc_monst with nmon on ${describe_level_buf(2)}`);
-    if (mon.mextra)
-        dealloc_mextra(mon);
-    /* C: *mon = cg.zeromonst */
-    for (const k of Object.keys(mon)) {
-        const v = mon[k];
-        if (v === null || typeof v === 'object' || typeof v === 'function')
-            mon[k] = null;   /* pointer / struct member → NULL */
-        else if (typeof v === 'string')
-            mon[k] = '';     /* char array member → all-NUL */
-        else if (typeof v === 'boolean')
-            mon[k] = false;
-        else
-            mon[k] = 0;      /* scalar / bitfield member → 0 */
-    }
-}
 /* discard_minvent: LOCAL throwing stub DELETED — use mklev.js's canonical
  * mkobj.c:2527 implementation at the keepdogs() call site above. */
 
@@ -1306,19 +1202,6 @@ export async function panic(_msg) {
     const { nh_terminate } = await import('./end.js');
     await nh_terminate(1, 'panic');
 }
-async function ledger_to_dnum(ledgerno) {
-    const dgns = game.dungeons || [];
-    for (let i = 0; i < dgns.length; i++) {
-        const start = dgns[i]?.ledger_start | 0;
-        if (start < ledgerno && ledgerno <= start + (dgns[i]?.num_dunlevs | 0))
-            return i;
-    }
-    await panic(`level number out of range [ledger_to_dnum(${ledgerno})]`);
-    return 0;
-}
-async function ledger_to_dlev(ledgerno) {
-    return ledgerno - (game.dungeons?.[await ledger_to_dnum(ledgerno)]?.ledger_start | 0);
-}
 
 /* C dungeon.c:1923 In_W_tower(x, y, lev) — is (x,y) inside the Wizard's tower
  * proper on a tower level?  On_W_tower_level(lev) (dungeon.h) is
@@ -1331,80 +1214,7 @@ function In_W_tower_dog(x, y, lev) {
     return In_W_tower_wz(x, y, lev);
 }
 
-/* C mon_leaving_level removes map occupancy before repainting, while leaving
- * fmon linkage and mx/my intact for its callers. _mapRemoved represents that
- * distinction in this port's chain-based map lookups; placement clears it. */
-export async function mon_leaving_level(mon) {
-    const mx = mon.mx | 0, my = mon.my | 0;
-    const onmap = isok(mx, my) && m_at(mx, my) === mon;
 
-    mon.mtrapped = 0;
-    await unstuck(mon); /* mon is not swallowing or holding you nor held by you */
-
-    /* C mon.c:2706-2711: worm -> remove_worm (which clears the head's
-     * square too), else remove_monster(mx, my).  This port's
-     * remove_monster() is the _mapRemoved marker (js/worm.js remove_monster);
-     * it is set on both arms so the head stays off m_at() either way. */
-    if (onmap || (mon.isgd && mx === 0 && my === 0)) {
-        mon._mapRemoved = true; /* remove_monster(mx, my) */
-        if (mon.wormno)
-            remove_worm(mon);
-    }
-
-    if (onmap) {
-        mon.mundetected = 0; /* for migration */
-        // C unhides departing mimics before pit effects and the final redraw.
-        if (M_AP_TYPE(mon) !== M_AP_NOTHING && M_AP_TYPE(mon) !== M_AP_MONSTER)
-            seemimic(mon);
-        /* C mon.c:2723 — "if mon is pinned by a boulder, removing mon lets
-         * boulder drop". */
-        await fill_pit(mx, my);
-        newsym(mx, my);
-    }
-    /* C mon.c:2728 — forget a remembered polearm target. */
-    if (game.context?.polearm && game.context.polearm.hitmon === mon)
-        game.context.polearm.hitmon = null;
-}
-
-/* C ref: mon.c:2561-2592 relmon(mon, monst_list).
- *
- * Take `mon` off the map and out of fmon, then (optionally) push it onto
- * another monster list. C passes `struct monst **monst_list`; JS callers
- * name the destination slot ('mydogs', 'migrating_mons', or the private
- * 'failed_arrivals') or pass null for an orphan. The private slot remains
- * module-owned; it is not an alias of game.migrating_mons. */
-async function relmon(mon, monst_list) {
-    if (!game.fmon)
-        throw new Error('relmon: no fmon available.'); /* C: panic() */
-
-    /* take 'mon' off the map */
-    await mon_leaving_level(mon);
-
-    /* remove 'mon' from the 'fmon' list */
-    if (mon === game.fmon) {
-        game.fmon = mon.nmon;
-    } else {
-        let mtmp = null;
-        for (mtmp = game.fmon; mtmp; mtmp = mtmp.nmon)
-            if (mtmp.nmon === mon) {
-                mtmp.nmon = mon.nmon;
-                break;
-            }
-        if (!mtmp)
-            throw new Error('relmon: mon not in list.'); /* C: panic() */
-    }
-
-    if (monst_list === 'failed_arrivals') {
-        mon.nmon = failed_arrivals;
-        failed_arrivals = mon;
-    } else if (monst_list) {
-        /* insert into gm.mydogs or gm.migrating_mons */
-        mon.nmon = game[monst_list] ?? null;
-        game[monst_list] = mon;
-    } else {
-        mon.nmon = null; /* orphan has no next monster */
-    }
-}
 
 /* C ref: dog.c:728-763 mon_leave(struct monst *mtmp) — returns the worm
  * segment count, which migrate_to_level stashes in the overloaded wormno
@@ -1490,7 +1300,7 @@ export async function migrate_to_level(mtmp, tolev, xyloc, cc) {
     if (emits_light(mtmp.data))
         vision_recalc(0);
 }
-export { mon_leave, relmon };
+export { mon_leave };
 /* mondata.c:53 attacktype — expose the canonical mhitm predicate rather than
  * retaining a false-returning shadow for external callers. */
 /* weapon.c:797 mon_wield_item — was an empty-body stub here (returning
@@ -1502,11 +1312,25 @@ export { mon_leave, relmon };
 /* `export { x } from 'm'` is an INDIRECT export: it re-exports the name but
  * declares nothing in this module's scope, so tamedog()'s own call below still
  * read an undeclared global.  Import it, then export the local binding. */
-import { mon_wield_item, m_at } from './uhitm.js';
+import { m_at } from './uhitm.js';
+import { mon_wield_item } from './weapon.js';
 import { ENV } from './hostenv.js';
 import { free_emin } from './minion.js'; // relocate-fns
 import { m_unleash } from './apply.js'; // relocate-fns
 import { expels } from './mhitu.js'; // relocate-fns
+import { ledger_to_dlev, ledger_to_dnum } from './dungeon.js'; // relocate-fns
+import { make_happy_shoppers } from './shk.js'; // relocate-fns
+import { otrapped_of } from './const.js'; // relocate-fns
+import { ACCFOOD, APPORT, BALL_CLASS, CADAVER, CHAIN_CLASS, CORPSE_OTYP, DOGFOOD, FOOD_CLASS, LUMP_OF_ROYAL_JELLY_OTYP, MANFOOD, PM_FIRE_ELEMENTAL_DM, PM_SALAMANDER_DM, S_GOLEM, S_LIGHT_C, S_VORTEX, UNDEF, _MONS, _is_elf, _mf1, _mf2, _mlet, _noncorporeal, haseyes_dm, is_rider_dm, ismnum_js, objects_material_dm } from './dogmove.js'; // relocate-fns
+import { dmgtype_fromattack } from './mondata.js'; // relocate-fns
+import { ROCK_CLASS, is_rustprone, resists_ston, slimeproof } from './mklev.js'; // relocate-fns
+import { Resists_Elem, mon_hates_silver, same_race } from './mondata.js'; // relocate-fns
+import { find_pmmonst } from './monmove.js'; // relocate-fns
+import { PM_CHICKATRICE, PM_COCKATRICE, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_GELATINOUS_CUBE, PM_GHOUL, PM_KILLER_BEE, PM_PYROLISK, PM_RUST_MONSTER, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER } from './pm.generated.js'; // relocate-fns
+import { is_quest_artifact } from './questpgr.js'; // relocate-fns
+import { obj_resists } from './zap.js'; // relocate-fns
+import { dealloc_monst, m_into_limbo, relmon, unstuck } from './mon.js'; // relocate-fns
+export { m_into_limbo, mon_leaving_level, relmon, unstuck } from './mon.js'; // relocate-fns
 export { m_unleash } from './apply.js'; // relocate-fns
 export { pline_mon }; // relocate-fns
 export { mon_wield_item };
@@ -1531,65 +1355,6 @@ export function newedog(mtmp) {
     }
 }
 export { sticks } from './mondata.js'; // C mondata.c:654; preserve existing imports.
-export async function unstuck(mtmp, skipDocrt = false) {
-    const u = game.u;
-    const stuck = u && u.ustuck;
-    const same = !!(stuck && mtmp
-        && (stuck === mtmp
-            || (stuck.m_id != null && mtmp.m_id != null
-                && (stuck.m_id | 0) === (mtmp.m_id | 0))));
-    if (!same) {
-        return;
-    }
-    const ptr = mtmp.data;
-    const swallowed = u.uswallow | 0;
-    set_ustuck_dog(null);
-    if (swallowed) {
-        game.mswallower = null;
-        u.ux = mtmp.mx;
-        u.uy = mtmp.my;
-        if (u.uball && u.uchain && ((u.uchain.where | 0) !== OBJ_FLOOR))
-            await placebc();
-        game.vision_full_recalc = 1;
-        /* C mon.c:3455 docrt() -> cls() -> display_nhwindow(WIN_MESSAGE, FALSE)
-         * (display.c:2196) pages a pending topline with --More-- first
-         * ("You destroy the dust vortex!--More--"). */
-        /* skipDocrt: js/mhitu.js expels() pages and repaints itself at C's
-         * position right after this call (mhitu.js:6177-6240). */
-        if (!skipDocrt) {
-            /* A direct You() writer (eat.js) parks the standing topline in the
-             * result channel; it is the same gt.toplines cls() must page. */
-            if (!game._pending_message && game._resultMessage) {
-                game._pending_message = game._resultMessage;
-                game._resultMessage = null;
-                game._resultMessageJoins = null;
-            }
-            if (game._pending_message && game._topl_win_stop) {
-                /* topl.c:150 more() is a no-op under a live WIN_STOP, but docrt()'s
-                 * cls() still empties the message window (wintty.c:1048-1055), so the
-                 * line left by the ESC'd page is wiped, not re-shown. */
-                game._pending_message = null;
-            } else if (game._pending_message) {
-                const morc = await force_more_from_cls(String(game._pending_message));
-                /* topl.c more():232-235 — this page is raised by cls(), not by an
-                 * owner message's update_topl, so ESC's WIN_STOP is live at once
-                 * for every following message (until an urgent one clears it). */
-                if (morc === 27 && game._topl_win_stop_armed) {
-                    game._topl_win_stop_armed = false;
-                    game._topl_win_stop = true;
-                }
-            }
-            await docrt();
-        }
-    }
-    if (!skipDocrt) {
-        const hold = _dmgtype_real(ptr, AD_STCK)
-            || _attacktype_real(ptr, AT_ENGL)
-            || _attacktype_real(ptr, AT_HUGS);
-        if (!(mtmp.mspec_used | 0) && hold)
-            mtmp.mspec_used = rnd(2);
-    }
-}
 
 export function update_mlstmv() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
@@ -1743,4 +1508,320 @@ export async function tamedog(mtmp, obj, givemsg) {
         await mon_wield_item(mtmp);
     }
     return true;
+}
+
+/* C objects[] indices used by dogfood's default TABU checks. */
+const AMULET_OF_STRANGULATION_OTYP = 203;
+
+const RIN_SLOW_DIGESTION_OTYP = 193;
+
+/* -----------------------------------------------------------------------
+ * dogfood — C ref: dog.c:997-1095
+ * Returns quality of food for a pet (lower = better).
+ * Calls obj_resists (rn2(100)) for each non-special object.
+ * ----------------------------------------------------------------------- */
+/* FOOD otyp constants (C objects.h ordering; CORPSE=265 anchors the block). */
+const TRIPE_RATION_OTYP      = 264;
+
+const EGG_OTYP               = 266;
+
+const MEATBALL_OTYP          = 267;
+
+const MEAT_STICK_OTYP        = 268;
+
+const ENORMOUS_MEATBALL_OTYP = 269;
+
+const MEAT_RING_OTYP         = 270;
+
+const GLOB_OF_GREEN_SLIME_OTYP = 273;
+
+const APPLE_OTYP             = 277;
+
+const BANANA_OTYP            = 281;
+
+const CARROT_OTYP            = 282;
+
+const CLOVE_OF_GARLIC_OTYP   = 284;
+
+const SLIME_MOLD_OTYP        = 285;
+
+const TIN_OTYP               = 296;
+
+const POISON  = 5;
+
+const TABU    = 7;
+
+/* ── Corpse-species classification predicates — C ref dog.c:1067-1087 ──
+ * Operate on the corpse's species (fptr = &mons[corpsenm]) and, for cannibalism,
+ * the pet's own species (mptr).  No RNG.  Constants from monflag.h / defsym.h.
+ */
+const M1_ACID      = 0x08000000;
+
+const M1_POIS      = 0x10000000;
+
+const M1_HUMANOID  = 0x00020000;
+
+const M2_UNDEAD    = 0x00000002;
+
+/* Monster class symbols (defsym.h MONSYM order; matches _MONS[i][0] mlet). */
+const S_BLOB       = 2;
+
+const S_JELLY      = 10;
+
+const S_KOBOLD_C   = 11;
+
+const S_ORC_C      = 15;
+
+const S_ELEMENTAL  = 31;
+
+const S_FUNGUS     = 32;
+
+const S_OGRE       = 41;
+
+const S_YETI       = 51;
+
+/* Special PM indices (canonical pm.generated.js order; same as _MONS). */
+const PM_LIZARD_C  = 326;
+
+const PM_LICHEN_C  = 158;
+
+const PM_STALKER_C = 153;       /* "stalker" — the only non-vegan S_ELEMENTAL */
+
+const PM_FLESH_GOLEM_C = 255;   /* flesh golem — non-vegan S_GOLEM */
+
+const PM_LEATHER_GOLEM_C = 253; /* leather golem — non-vegan S_GOLEM */
+
+/* C mondata.h predicates over a species index. */
+function _acidic(mndx)      { return (_mf1(mndx) & M1_ACID) !== 0; }
+
+function _poisonous(mndx)   { return (_mf1(mndx) & M1_POIS) !== 0; }
+
+function _humanoid(mndx)    { return (_mf1(mndx) & M1_HUMANOID) !== 0; }
+
+function _is_undead(mndx)   { return (_mf2(mndx) & M2_UNDEAD) !== 0; }
+
+/* C mondata.h vegan(ptr): blob/jelly/fungus/vortex/light, S_ELEMENTAL (not stalker),
+ * S_GOLEM (not flesh/leather golem), or noncorporeal. */
+function _vegan(mndx) {
+    const let_ = _mlet(mndx);
+    return let_ === S_BLOB || let_ === S_JELLY || let_ === S_FUNGUS
+        || let_ === S_VORTEX || let_ === S_LIGHT_C
+        || (let_ === S_ELEMENTAL && mndx !== PM_STALKER_C)
+        || (let_ === S_GOLEM && mndx !== PM_FLESH_GOLEM_C && mndx !== PM_LEATHER_GOLEM_C)
+        || _noncorporeal(mndx);
+}
+
+/* C obj.h polyfood(obj): a corpse/egg/tin whose corpsenm can be polymorphed into
+ * (pm_to_cham) or whose attacks include AD_POLY (obj.h:321-324).  Callers only
+ * reach this for CORPSE, so ofood(obj) holds. */
+const M2_SHAPESHIFTER_DM = 0x00004000;
+
+const AD_POLY_DM = 43;
+
+function _polyfood_corpse(cn) {
+    if (cn < 0 || cn >= _MONS.length)
+        return false;
+    /* pm_to_cham(cn) != NON_PM: M2_SHAPESHIFTER (mon.c:516-528) */
+    if ((_mf2(cn) & M2_SHAPESHIFTER_DM) !== 0)
+        return true;
+    return !!dmgtype_fromattack(permonstTemplate(cn), AD_POLY_DM, -1);
+}
+
+/* C mondata.c:770-871: sharing a monster class alone does not imply kinship. */
+function _same_race(m1, m2) {
+    return same_race(permonstTemplate(m1), permonstTemplate(m2));
+}
+
+const ROT_ICE_ADJUSTMENT = 2;
+
+function peek_at_iced_corpse_age_js(otmp, moves) {
+    let retval = otmp.age | 0;
+    if ((otmp.otyp | 0) === CORPSE_OTYP && otmp.on_ice) {
+        const age = moves - (otmp.age | 0);
+        retval += Math.trunc(age * (ROT_ICE_ADJUSTMENT - 1) / ROT_ICE_ADJUSTMENT);
+    }
+    return retval;
+}
+
+/* C const: ismnum(x) — valid monster index (0 <= x < NUMMONS). */
+export function dogfood(mtmp, obj) {
+    if (otrapped_of(obj) && !Resists_Elem(mtmp, 6 /* POISON_RES */))
+        return POISON;
+    /* C dog.c:1004:
+     *     if (is_quest_artifact(obj) || obj_resists(obj, 0, 95))
+     * The `is_quest_artifact(obj) ||` operand was MISSING here, and it is not a
+     * redundant predicate: obj_resists (zap.c:1458) draws rn2(100) unconditionally
+     * for an ordinary object, so when the object IS the role's quest artifact C
+     * short-circuits and that draw never happens, while this port fired it.  Same
+     * shape as the befriend_with_obj fix (a031e370): an omitted operand in front of
+     * an RNG-CONSUMING sibling is an RNG-sequence defect, not just a predicate one.
+     * is_quest_artifact is js/objnam.js's single C-faithful body (questpgr.c:66-70). */
+    if (is_quest_artifact(obj) || obj_resists(obj, 0, 95))
+        return obj.cursed ? TABU : APPORT;
+
+    /* Classification after obj_resists (no further RNG below).
+     * C dog.c:1009-1135 switch(obj->oclass). */
+    const oclass = obj.oclass | 0;
+    if (oclass === FOOD_CLASS) {
+        /* Determine herbivore/carnivore from MONS mflags1 (column 6). */
+        const mndx = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+        const mf1 = (mndx >= 0 && mndx < _MONS.length) ? (_MONS[mndx][6] | 0) : 0;
+        const herbi = !!(mf1 & M1_HERBIVORE);
+        const carni = !!(mf1 & M1_CARNIVORE);
+        const otyp = obj.otyp | 0;
+        /* C dog.c:1017-1023 — fptr = mons[corpsenm] for CORPSE/TIN/EGG; a Rider
+         * corpse is TABU, and a c*ckatrice/Medusa corpse or egg is POISON to a pet
+         * that is not stone resistant.  (flesh_petrifies, mondata.h:203.)  Missing
+         * here, a fresh cockatrice corpse read CADAVER and the dog_goal scan took
+         * the preferred-food arm instead of C's rn2(8) apport arm. */
+        if (otyp === CORPSE_OTYP || otyp === EGG_OTYP || otyp === TIN_OTYP) {
+            const fxp = (obj.corpsenm ?? -1) | 0;
+            if (otyp === CORPSE_OTYP && ismnum_js(fxp) && is_rider_dm({ pmidx: fxp }))
+                return TABU;
+            if ((otyp === CORPSE_OTYP || otyp === EGG_OTYP) && ismnum_js(fxp)
+                && (fxp === PM_COCKATRICE || fxp === PM_CHICKATRICE || fxp === PM_MEDUSA)
+                && !resists_ston(mtmp))
+                return POISON;
+        }
+        if (otyp === LUMP_OF_ROYAL_JELLY_OTYP && mndx === PM_KILLER_BEE)
+            return find_pmmonst(5 /* PM_QUEEN_BEE */) ? TABU : DOGFOOD;
+        /* C dog.c:1033-1034 — neither carni nor herbi: APPORT (or UNDEF if cursed) */
+        if (!carni && !herbi)
+            return (obj.cursed | 0) ? UNDEF : APPORT;
+        /* C dog.c:1037 — starving: a starving tame pet (mhpmax_penalty set). */
+        const edog = (mtmp.mtame && mtmp.mextra?.edog) ? mtmp.mextra.edog : null;
+        const starving = !!(mtmp.mtame && !(mtmp.isminion | 0) && edog && (edog.mhpmax_penalty | 0));
+        /* C dog.c:1040 — only temporarily blind pets benefit from carrots. */
+        const mblind = !(mtmp.mcansee | 0) && haseyes_dm(mtmp.data);
+        /* C dog.c:1043-1053 — ghouls prefer old corpses and unhatchable eggs and
+         * regard every other food as TABU (so dog_goal's `otyp > gg.gtyp` test
+         * skips it; a ghoul pet never takes the ACCFOOD goal arm). */
+        if (mndx === PM_GHOUL) {
+            const fxg = (obj.corpsenm ?? -1) | 0;
+            if (otyp === CORPSE_OTYP)
+                return ((obj.on_ice ? peek_at_iced_corpse_age_js(obj, (game.moves ?? 0) | 0) : (obj.age | 0)) + 50
+                        <= ((game.moves ?? 0) | 0)
+                        && !(fxg === PM_LIZARD_C || fxg === PM_LICHEN_C)) ? DOGFOOD
+                    : (starving && !(ismnum_js(fxg) && _vegan(fxg))) ? ACCFOOD
+                        : POISON;
+            if (otyp === EGG_OTYP)
+                return ((((game.moves ?? 0) | 0) - (obj.age | 0)) > 2 * 200 /* MAX_EGG_HATCH_TIME */)
+                    ? CADAVER : starving ? ACCFOOD : POISON;
+            return TABU;
+        }
+
+        /* C dog.c:1056-1111 switch(obj->otyp): */
+        switch (otyp) {
+        case TRIPE_RATION_OTYP:
+        case MEATBALL_OTYP:
+        case MEAT_RING_OTYP:
+        case MEAT_STICK_OTYP:
+        case ENORMOUS_MEATBALL_OTYP:
+            /* C dog.c:1057-1062 */
+            return carni ? DOGFOOD : MANFOOD;
+        case EGG_OTYP:
+            /* C dog.c:1061-1064; likes_fire (mondata.h:196-198) is a
+             * species test, independent of fire resistance. */
+            if (obj.corpsenm === PM_PYROLISK
+                && ![PM_FIRE_VORTEX, PM_FLAMING_SPHERE,
+                     PM_FIRE_ELEMENTAL_DM, PM_SALAMANDER_DM].includes(mndx))
+                return POISON;
+            return carni ? CADAVER : MANFOOD;
+        case CORPSE_OTYP: {
+            /* C dog.c:1067-1087 — corpse classification, ported bug-for-bug.
+             * fptr = &mons[corpsenm] (the corpse species); mptr = mtmp->data (pet).
+             * No RNG fired here; all RNG already consumed by obj_resists above. */
+            const fx = (obj.corpsenm ?? -1) | 0; /* CORPSE → corpsenm */
+            const fxValid = ismnum_js(fx);
+            const moves = (game.moves ?? 0) | 0;
+            const corpseAge = (obj.on_ice ? peek_at_iced_corpse_age_js(obj, moves) : (obj.age | 0));
+            const mlet_pet = _mlet(mndx);
+            /* C dog.c:1068-1073 — reject rot or unresisted acid/poison. */
+            if ((corpseAge + 50 <= moves
+                 && !(fx === PM_LIZARD_C || fx === PM_LICHEN_C)
+                 && mlet_pet !== S_FUNGUS)
+                || (fxValid && _acidic(fx) && !Resists_Elem(mtmp, 7 /* ACID_RES */))
+                || (fxValid && _poisonous(fx) && !Resists_Elem(mtmp, 6 /* POISON_RES */)))
+                return POISON;
+            /* C dog.c:1076 — polyfood corpse, smart tame pet, not starving → MANFOOD. */
+            else if (_polyfood_corpse(fx) && (mtmp.mtame | 0) > 1 && !starving)
+                return MANFOOD;
+            /* C dog.c:1078 — vegan corpse: herbivore eats it (CADAVER), else MANFOOD. */
+            else if (fxValid && _vegan(fx))
+                return herbi ? CADAVER : MANFOOD;
+            /* C dog.c:1082-1085 — cannibalism: humanoid pet, same race, not undead and
+             * corpse not kobold/orc/ogre class → starving carnivore non-elf: ACCFOOD else TABU. */
+            else if (_humanoid(mndx) && fxValid && _same_race(mndx, fx)
+                     && (!_is_undead(mndx) && _mlet(fx) !== S_KOBOLD_C
+                         && _mlet(fx) !== S_ORC_C && _mlet(fx) !== S_OGRE))
+                return (starving && carni && !_is_elf(mndx)) ? ACCFOOD : TABU;
+            /* C dog.c:1087 — default: carnivore → CADAVER, else MANFOOD. */
+            else
+                return carni ? CADAVER : MANFOOD;
+        }
+        case GLOB_OF_GREEN_SLIME_OTYP:
+            /* C dog.c:1086-1088: avoid sliming unless starving or immune. */
+            return (starving || slimeproof(mtmp.data)) ? ACCFOOD : POISON;
+        case TIN_OTYP:
+            /* C dog.c:1095-1096: metallivorous(mptr). */
+            return (mf1 & 0x80000000 /* M1_METALLIVORE */) ? ACCFOOD : MANFOOD;
+        case APPLE_OTYP:
+            /* C dog.c:1097-1098 */
+            return herbi ? DOGFOOD : (starving ? ACCFOOD : MANFOOD);
+        case CARROT_OTYP:
+            /* C dog.c:1099-1100 */
+            return (herbi || mblind) ? DOGFOOD : (starving ? ACCFOOD : MANFOOD);
+        case BANANA_OTYP:
+            /* C dog.c:1099-1104: herbivorous apes prefer bananas. */
+            return (_mlet(mndx) === S_YETI && herbi) ? DOGFOOD
+                : (herbi || starving) ? ACCFOOD : MANFOOD;
+        case CLOVE_OF_GARLIC_OTYP:
+            /* C dog.c:1089: is_undead(mptr) || is_vampshifter(mon). */
+            return (_is_undead(mndx) || mtmp.cham === PM_VAMPIRE
+                    || mtmp.cham === PM_VAMPIRE_LORD || mtmp.cham === PM_VLAD_THE_IMPALER)
+                ? TABU : (herbi || starving) ? ACCFOOD : MANFOOD;
+        case LUMP_OF_ROYAL_JELLY_OTYP:
+            /* C dog.c:1025-1031 KILLER_BEE special handled at top in C; for other
+             * pets it falls through to default below. */
+            /* fallthrough to default */
+        default:
+            /* C dog.c:1107-1111 */
+            if (starving)
+                return ACCFOOD;
+            return (otyp > SLIME_MOLD_OTYP)
+                ? (carni ? ACCFOOD : MANFOOD)
+                : (herbi ? ACCFOOD : MANFOOD);
+        }
+    }
+    if (oclass === ROCK_CLASS) {
+        /* C: ROCK_CLASS → UNDEF */
+        return UNDEF;
+    }
+    /* C default (non-FOOD, non-ROCK):
+     * Check for special TABUs before the generic fetch classification.
+     * Check for silver hatred, gelatinous cube, metallivorous — stub: skip
+     * Key rule: if (!obj->cursed && oclass != BALL && oclass != CHAIN) → APPORT
+     *           else FALLTHROUGH to ROCK_CLASS → UNDEF
+     * C ref: dog.c:1127-1134 */
+    if ((obj.otyp | 0) === AMULET_OF_STRANGULATION_OTYP
+        || (obj.otyp | 0) === RIN_SLOW_DIGESTION_OTYP)
+        return TABU;
+    /* C dog.c:1127-1141 — silver hater, gelatinous cube, metallivore. */
+    const _mat = objects_material_dm(obj.otyp | 0);
+    if (mon_hates_silver(mtmp) && _mat === 14 /* SILVER */)
+        return TABU;
+    const _mnd = (mtmp.mndx ?? mtmp.mnum ?? 0) | 0;
+    if (_mnd === PM_GELATINOUS_CUBE && _mat <= 8 /* is_organic: <= WOOD */)
+        return ACCFOOD;
+    const _mf1 = (_mnd >= 0 && _mnd < _MONS.length) ? (_MONS[_mnd][6] >>> 0) : 0;
+    /* metallivorous: M1_METALLIVORE 0x80000000; is_metallic: IRON..MITHRIL */
+    if ((_mf1 & 0x80000000) && _mat >= 11 && _mat <= 17
+        && (is_rustprone(obj) || _mnd !== PM_RUST_MONSTER)) {
+        /* Non-rustproofed ferrous-based metals are preferred. */
+        return (is_rustprone(obj) && !(obj.oerodeproof | 0)) ? DOGFOOD : ACCFOOD;
+    }
+    if (!(obj.cursed | 0) && oclass !== BALL_CLASS && oclass !== CHAIN_CLASS) {
+        return APPORT; /* C: uncursed non-ball/chain/rock → pet fetches it */
+    }
+    return UNDEF; /* C: cursed or ball/chain → UNDEF (same as ROCK_CLASS) */
 }

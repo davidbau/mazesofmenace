@@ -27,11 +27,11 @@ import {
     BURIED_TOO, CONTAINED_TOO, u_at, PLNMSG_OBJ_GLOWS,
 } from './const.js';
 import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
-import { place_object, remove_object } from './mklev.js';
+import { place_object, remove_object } from './mkobj.js';
 import { flush_screen, canseemon, canspotmon, map_invisible, impossible_sync } from './display.js';
 import { pline } from './pline.js';
-import { Yname2 } from './cmd.js';
-import { obj_to_any as pointer_to_any } from './cmd.js';
+import { Yname2 } from './objnam.js';
+import { obj_to_any as pointer_to_any } from './hack.js';
 import { xname, otense, simpleonames } from './objnam.js';
 import { impossible } from './pline.js';
 /* end_burn — obj_merge_light_sources's src != dest arm (light.c:812).  This is
@@ -54,7 +54,7 @@ let light_base = null;
 
 // C ref: light.c:373 `#define mon_is_local(mon) ((mon)->mx > 0)`
 // (mon->mx == 0 implies migrating).
-function mon_is_local(mon) { return (mon?.mx | 0) > 0; }
+function mon_is_local_light(mon) { return (mon?.mx | 0) > 0; }
 
 function ls_obj_is_local(obj) {
     return (obj.where | 0) === OBJ_DELETED ? false : obj_is_local(obj);
@@ -311,7 +311,7 @@ export async function save_light_sources(range) {
             is_global = !ls_obj_is_local(curr.id.a_obj);
             break;
         case LS_MONSTER:
-            is_global = !mon_is_local(curr.id.a_monst);
+            is_global = !mon_is_local_light(curr.id.a_monst);
             break;
         default:
             is_global = false;
@@ -357,7 +357,7 @@ export function lights_save_snapshot() {
     const local = [], global = [];
     for (let ls = light_base; ls; ls = ls.next) {
         const isGlobal = ls.type === LS_OBJECT ? !ls_obj_is_local(ls.id.a_obj)
-            : ls.type === LS_MONSTER ? !mon_is_local(ls.id.a_monst) : false;
+            : ls.type === LS_MONSTER ? !mon_is_local_light(ls.id.a_monst) : false;
         (isGlobal ? global : local).push(ls);
     }
     return { local, global };
@@ -395,16 +395,10 @@ export function lights_rest_snapshot(saved) {
  * otyps from js/oc_name_data.js OC_NAME: 102 "gold dragon scale mail",
  * 112 "gold dragon scales".  ART_SUNSWORD 20 (js/mklev.js:353). */
 const GOLD_DRAGON_SCALE_MAIL = 102, GOLD_DRAGON_SCALES = 112;
-const ART_SUNSWORD = 20;
-const LIGHT_W_ARM = 0x00000001; /* prop.h W_ARM */
-export function artifact_light(obj) {
-    if (obj && ((obj.otyp | 0) === GOLD_DRAGON_SCALE_MAIL
-                || (obj.otyp | 0) === GOLD_DRAGON_SCALES)
-        && ((obj.owornmask | 0) & LIGHT_W_ARM) !== 0)
-        return true;
-
-    return !!obj && (obj.oartifact | 0) === ART_SUNSWORD;
-}
+import { ART_SUNSWORD } from './cmd.js';
+import { artifact_light } from './artifact.js'; // relocate-fns
+export { artifact_light } from './artifact.js'; // relocate-fns
+export { GOLD_DRAGON_SCALES, GOLD_DRAGON_SCALE_MAIL }; // relocate-fns
 
 /* C ref: light.c:771-775 obj_is_burning().  Keep this predicate separate
  * from obj_sheds_light(): callers such as in_container() use it to decide

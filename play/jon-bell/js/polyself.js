@@ -18,7 +18,8 @@ import { There, pline_The } from './pline.js';
 //   d(mlvl,8)            new-form maxHP    polyself.c:868
 import { FROMRACE, WARN_OF_MON, NO_KILLER_PREFIX } from './const.js';
 import { VIA_WINDOWPORT } from './display.js';
-import { rn2, rnd, rn1, rnl, d } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd, rnl, d } from './rnd.js';
 import { game } from './gstate.js';
 import { PM_FLESH_GOLEM, PM_IRON_GOLEM, PM_COCKATRICE, PM_CHICKATRICE, PM_STONE_GOLEM, PM_FLAMING_SPHERE, PM_FIRE_VORTEX, PM_GREEN_SLIME } from './pm.generated.js';
 function touch_petrifies(pd) { const i = pd?.pmidx | 0; return i === PM_COCKATRICE || i === PM_CHICKATRICE; }
@@ -26,19 +27,25 @@ import { newsym, see_monsters, flush_screen, _topl_stash_result, _topl_merge_res
 import { pline, urgent_pline } from './pline.js';
 import { impossible } from './pline.js';
 import { exercise, acurr, getAbase, getAmax, C_ATTR_TO_DISP, redist_attr, adjabil, setuhpmax } from './attrib.js';
-import { the_unique_pm, permonstTemplate, monPmname, name_to_mon, name_to_monclass, mkclass, dmgtype_fromattack, sliparm, attacktype_fordmg, set_mon_data, is_home_elemental } from './makemon.js';
+import { permonstTemplate, monPmname, mkclass, sliparm, is_home_elemental } from './makemon.js';
+import { name_to_mon, name_to_monclass, dmgtype_fromattack, attacktype_fordmg, set_mon_data } from './mondata.js';
+import { the_unique_pm } from './objnam.js';
 import { getlin } from './windows.js';
-import { mksobj, mkclass_poly_nc, set_bknown } from './mklev.js';
+import { mkclass_poly_nc } from './mklev.js';
+import { mksobj, set_bknown } from './mkobj.js';
 import { mungspaces } from './hacklib.js';
 import { valid_vampshiftform, set_ustuck, setmangry, hideunder, egg_type_from_parent } from './mon.js';
 import * as cmdNS from './cmd.js';
-import { mnexto } from './teleport.js';
+import { mnexto } from './mon.js';
 import { rndexp } from './exper.js';
 import { newhp, newpw } from './exper.js';
 import {
     find_ac, donning, encumber_msg, Shield_off, Armor_gone, Boots_off, Blindf_off, Cloak_off, Gloves_off, Helmet_off, worn_invent_obj, cancel_don,
 } from './do_wear.js';
-import { useup, could_twoweap, surface, ceiling, waterbody_name, yname, You_cant, youhiding_enlightenment } from './cmd.js';
+import { could_twoweap, yname, You_cant, youhiding_enlightenment } from './cmd.js';
+import { useup } from './invent.js';
+import { surface, ceiling } from './dungeon.js';
+import { waterbody_name } from './pager.js';
 import { instapetrify } from './trap.js';
 import { welded, untwoweapon } from './wield.js';
 import { dropx } from './do.js';
@@ -47,14 +54,16 @@ import { losehp } from './hack.js';
 import { end_burn, learn_egg_type } from './timeout.js';
 import { make_sick, make_stoned, make_slimed, make_glib } from './potion.js';
 import { newuhs } from './eat.js';
-import { artifact_light, arti_light_radius, new_light_source, del_light_source } from './light.js';
+import { arti_light_radius, new_light_source, del_light_source } from './light.js';
+import { artifact_light } from './artifact.js';
 import { maybe_adjust_light } from './mkobj.js';
 import { monst_to_any } from './hack.js';
 import { emits_light } from './makemon.js';
 import { setworn } from './worn.js';
 import { racial_exception } from './worn.js';
 import { uwepgone as _uwepgone, uswapwepgone as _uswapwepgone } from './wield.js';
-import { weapon_descr, MONS_NAMES } from './uhitm.js';
+import { MONS_NAMES } from './uhitm.js';
+import { weapon_descr } from './weapon.js';
 import { an, the, cloak_simple_name, helm_simple_name, cxname, vtense, makeplural, simple_typename, simpleonames, ansimpleoname, otense } from './objnam.js';
 import { observe_object, discover_object } from './o_init.js';
 import { MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL, MKOBJ_OC_OPROP } from './mkobj_erosion_meta.js';
@@ -75,40 +84,48 @@ import {
     MAGICAL_BREATHING,
     IS_FOUNTAIN, STAIRS, BZ_OFS_AD, BZ_U_BREATH,
 } from './const.js';
-import { getdir, b_trapped } from './lock.js';
-import { ubuzz, ubreatheu, make_blinded, set_HBlinded, bury_objs } from './zap.js';
+import { getdir } from './cmd.js';
+import { b_trapped } from './trap.js';
+import { ubuzz, ubreatheu, make_blinded, set_HBlinded } from './zap.js';
+import { bury_objs } from './dig.js';
 /* C hack.h Blind — the same reader the status line and vision_recalc use. */
 import { Blind as Blind_vis, couldsee } from './vision.js';
-import { nomul, unmul } from './allmain.js';
+import { nomul, unmul } from './hack.js';
 import { deadhero, do_death_sequence, done, find_delayed_killer, dealloc_killer } from './end.js';
 import { yn_function } from './cmd.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { dmgtype } from './dogmove.js';
-import { float_vs_flight, update_inventory, hliquid, Some_Monnam } from './mhitm.js';
+import { update_inventory } from './mhitm.js';
+import { hliquid, Some_Monnam } from './do_name.js';
 import { breakarm, num_horns, defended, poly_when_stoned, can_be_strangled, attacktype } from './mondata.js';
 import { is_pool } from './look.js';
 /* Shared trap timer/status bookkeeping (C trap.c:set_utrap). */
 import { unpunish } from './read.js';
 import { set_utrap } from './trap.js';
-import { buried_ball_to_freedom, reset_utrap, selftouch, t_at, deltrap, maketrap, dotrap, feeltrap } from './trap.js';
+import { reset_utrap, selftouch, t_at, deltrap, maketrap, dotrap, feeltrap } from './trap.js';
+import { buried_ball_to_freedom } from './dig.js';
 import { On_stairs } from './stairs.js';
-import { is_pool_or_lava } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { spoteffects } from './hack.js';
 import { mon_nam } from './uhitm.js';
-import { expels_gu, destroy_items, ignite_items } from './mhitu.js';
+import { expels_gu, destroy_items } from './mhitu.js';
+import { ignite_items } from './trap.js';
 import { Monnam, perceives } from "./mcastu.js";
-import { helpless, killed, y_monnam, l_monnam } from './mhitm.js';
+import { helpless } from './mhitm.js';
+import { y_monnam, l_monnam } from './do_name.js';
+import { killed } from './mon.js';
 import { Resists_Elem } from './mondata.js';
 import { s_suffix } from './hacklib.js';
-import { nonliving, poly_gender } from './makemon.js';
-import { retouch_equipment, status_reassess } from './display.js';
+import { nonliving } from './makemon.js';
+import { status_reassess } from './display.js';
+import { retouch_equipment } from './artifact.js';
 import { rank_of } from './botl.js';
 import { livelog_printf } from './pline.js';
 import { LL_MINORAC, LL_CONDUCT } from './const.js';
-import { dismount_steed as dismount_steed_real } from './cmd.js';
+import { dismount_steed as dismount_steed_real } from './steed.js';
 import { add_damage, pay_for_damage } from './shk.js';
 import { in_rooms } from './hack.js';
-import { may_dig as may_dig_look } from './hack.js';
+import { may_dig } from './hack.js';
 import { watch_dig } from './dig.js';
 import { morehungry } from './eat.js';
 import { dissolve_bars } from './monmove.js';
@@ -119,7 +136,7 @@ import { block_point } from './vision.js';
 import { sobj_at } from './invent.js';
 import { closed_door } from './monmove.js';
 import { LS_MONSTER, IS_OBSTRUCTED, IS_TREE, IS_WALL, IS_DOOR, DOOR, SDOOR, D_BROKEN, D_NODOOR, D_TRAPPED, ROOM, CORR, SHOPBASE, SHOP_DOOR_COST, DISMOUNT_POLY, IRONBARS } from './const.js';
-import { set_mimic_blocking } from './sit.js';
+import { set_mimic_blocking } from './display.js';
 import { sticks } from './dog.js';
 import { were_summon, were_beastie } from './were.js';
 import {
@@ -142,6 +159,11 @@ import {
     PM_JELLYFISH, PM_KRAKEN, PM_RAVEN, PM_KI_RIN, PM_ROTHE,
 } from './pm.generated.js';
 import { youhiding } from './insight.js'; // relocate-fns
+import { BOLT_LIM, FROMOUTSIDE, STEALTH } from './const.js'; // relocate-fns
+import { mindless, wakeup_attack } from './mhitm.js'; // relocate-fns
+import { golemhp } from './makemon.js'; // relocate-fns
+import { isNeuterMndx, monMflags1 } from './makemon.js'; // relocate-fns
+export { still_chewing } from './hack.js'; // relocate-fns
 export { M1_CLING, M1_FLY, M_AP_FURNITURE_local, M_AP_NOTHING_local, M_AP_OBJECT_local, S_EEL, _hides_under, an }; // relocate-fns
 
 // ── attrib indices (attrib.h) ────────────────────────────────────────────────
@@ -1016,7 +1038,7 @@ async function drop_weapon(alone) {
 const M1_CLING = 0x00000010;             /* monflag.h:89 — can cling to ceiling */
 const M1_NOHANDS = 0x00002000;
 const M1_NOHEAD = 0x00008000;
-const M1_HUMANOID = 0x00020000;
+export const M1_HUMANOID = 0x00020000;
 const M1_SLITHY = 0x00080000;
 const MZ_SMALL = 1;
 const MZ_HUGE = 4;
@@ -1128,26 +1150,6 @@ async function skinback_poly(silently = false) {
     return true;
 }
 
-const PM_STRAW_GOLEM_PS = 249, PM_PAPER_GOLEM_PS = 250, PM_ROPE_GOLEM_PS = 251;
-const PM_GOLD_GOLEM_PS = 252, PM_LEATHER_GOLEM_PS = 253, PM_WOOD_GOLEM_PS = 254;
-const PM_FLESH_GOLEM_PS = 255, PM_CLAY_GOLEM_PS = 256, PM_STONE_GOLEM_PS = 257;
-const PM_GLASS_GOLEM_PS = 258, PM_IRON_GOLEM_PS = 259;
-function golemhp(type) {
-    switch (type | 0) {
-    case PM_STRAW_GOLEM_PS:   return 20;
-    case PM_PAPER_GOLEM_PS:   return 20;
-    case PM_ROPE_GOLEM_PS:    return 30;
-    case PM_LEATHER_GOLEM_PS: return 40;
-    case PM_GOLD_GOLEM_PS:    return 60;
-    case PM_WOOD_GOLEM_PS:    return 50;
-    case PM_FLESH_GOLEM_PS:   return 40;
-    case PM_CLAY_GOLEM_PS:    return 70;
-    case PM_STONE_GOLEM_PS:   return 100;
-    case PM_GLASS_GOLEM_PS:   return 80;
-    case PM_IRON_GOLEM_PS:    return 120;
-    default: return 0;
-    }
-}
 
 
 // C polyself.c:272 change_sex() — flip hero gender (RNG-free).  Called from
@@ -2637,132 +2639,7 @@ export async function dohide() {
 // ── stubs for unported dohide helpers ──
 function plur(x) { return (x === 1) ? "" : "s"; }
 
-const M1_METALLIVORE = 0x80000000; /* monflag.h */
-/* C hack.h:80 #define SHOP_WALL_DMG (10L * ACURRSTR) */
-function SHOP_WALL_DMG() { return 10 * acurrstr(game.u); }
 
-// C hack.c:647-824 still_chewing(): boulders take priority over their terrain.
-export async function still_chewing(x, y) {
-    const g = game;
-    const u = g.u;
-    const lev = g.level.at(x, y);
-    const boulder = sobj_at(475 /* BOULDER */, x, y);
-    const resetDig = () => {
-        g.context.digging = { pos: { x: 0, y: 0 }, level: null, down: false,
-            chew: false, warned: false, effort: 0 };
-    };
-    g.context = g.context || {};
-    if (!g.context.digging) resetDig();
-    const d = g.context.digging;
-    if (d.down) { resetDig(); }
-    const dg = g.context.digging;
-    const obstructed = IS_OBSTRUCTED(lev.typ);
-    const metallivore = ((g.youmonst.data.mflags1 | 0) & M1_METALLIVORE) !== 0; /* metallivorous() */
-    if (!boulder && ((obstructed && !may_dig_look(x, y))
-        || (lev.typ === IRONBARS && (lev.wall_info & W_NONDIGGABLE)))) {
-        await pline('You hurt your teeth on the %s.'.replace('%s',
-            lev.typ === IRONBARS ? 'bars' : IS_TREE(lev.typ) ? 'tree' : 'hard stone'));
-        nomul(0);
-        return true;
-    }
-    if (lev.typ === IRONBARS && metallivore && u.uhunger > 1500) {
-        await pline('You are too full to eat the bars.');
-        nomul(0);
-        return true;
-    }
-    // C hack.c:669-674 / 689-698 / 713-716: iron bars are "bar" in the start
-    // message and "bars" in the continue message (C ref hack.c:703-716).
-    const isbars = lev.typ === IRONBARS;
-    const what = boulder ? 'boulder' : IS_TREE(lev.typ) ? 'tree' : obstructed ? 'rock' : isbars ? 'bar' : 'door';
-    const udaminc = u.udaminc | 0;
-    if (!dg.chew || dg.pos.x !== x || dg.pos.y !== y
-        || !dg.level || dg.level.dnum !== u.uz.dnum || dg.level.dlevel !== u.uz.dlevel) {
-        dg.down = false;
-        dg.chew = true;
-        dg.warned = false;
-        dg.pos = { x, y };
-        dg.level = { dnum: u.uz.dnum, dlevel: u.uz.dlevel };
-        dg.effort = (obstructed && !IS_TREE(lev.typ) ? 30 : 60) + udaminc;
-        await pline(`You start chewing ${(boulder || IS_TREE(lev.typ) || isbars) ? 'on a' : 'a hole in the'} ${what}.`);
-        await watch_dig(null, x, y, false);
-        return true;
-    }
-    dg.effort = (dg.effort | 0) + 30 + udaminc;
-    if (dg.effort <= 100) {
-        if (g.flags?.verbose)
-            await pline(`You ${dg.chew ? 'continue' : 'begin'} chewing on the ${!boulder && isbars ? 'bars' : what}.`);
-        dg.chew = true;
-        await watch_dig(null, x, y, false);
-        return true;
-    }
-    // Okay, you've chewed through something
-    if (!(u.uconduct.food | 0))
-        livelog_printf(LL_CONDUCT, 'ate for the first time, by chewing through %s',
-            boulder ? 'a boulder' : IS_TREE(lev.typ) ? 'a tree' : obstructed ? 'rock' : isbars ? 'iron bars' : 'a door');
-    u.uconduct.food = (u.uconduct.food | 0) + 1;
-    u.uhunger = (u.uhunger | 0) + rnd(20); /* hack.c:735 — a GAIN, not morehungry */
-    let digtxt = null, dmgtxt = null;
-    if (boulder) {
-        await cmdNS._delobj_useupf(boulder);
-        await pline('You eat the boulder.');
-        if (obstructed || closed_door(x, y) || sobj_at(475 /* BOULDER */, x, y)) {
-            block_point(x, y);
-            resetDig();
-            return true;
-        }
-    } else if (IS_WALL(lev.typ)) {
-        if (in_rooms(x, y, SHOPBASE).length) {
-            add_damage(x, y, SHOP_WALL_DMG());
-            dmgtxt = 'damage';
-        }
-        digtxt = 'chew a hole in the wall.';
-        if (g.level.flags.is_maze_lev) {
-            lev.typ = ROOM;
-        } else if (g.level.flags.is_cavernous_lev && !cmdNS.in_town(x, y)) {
-            lev.typ = CORR;
-        } else {
-            lev.typ = DOOR;
-            lev.doormask = D_NODOOR;
-        }
-    } else if (IS_TREE(lev.typ)) {
-        digtxt = 'chew through the tree.';
-        lev.typ = ROOM;
-    } else if (isbars) {
-        if (metallivore) await morehungry(-OC_WEIGHT[477 /* HEAVY_IRON_BALL */]);
-        digtxt = u.ux === x && u.uy === y ? 'devour the iron bars.' : 'eat through the bars.';
-        await dissolve_bars(x, y);
-    } else if (lev.typ === SDOOR) {
-        if ((lev.doormask | 0) & D_TRAPPED) {
-            lev.doormask = D_NODOOR;
-            await b_trapped('secret door', NO_PART);
-        } else {
-            digtxt = 'chew through the secret door.';
-            lev.doormask = D_BROKEN;
-        }
-        lev.typ = DOOR;
-    } else if (IS_DOOR(lev.typ)) {
-        if (in_rooms(x, y, SHOPBASE).length) {
-            add_damage(x, y, SHOP_DOOR_COST);
-            dmgtxt = 'break';
-        }
-        if ((lev.doormask | 0) & D_TRAPPED) {
-            lev.doormask = D_NODOOR;
-            await b_trapped('door', NO_PART);
-        } else {
-            digtxt = 'chew through the door.';
-            lev.doormask = D_BROKEN;
-        }
-    } else { /* STONE or SCORR */
-        digtxt = 'chew a passage through the rock.';
-        lev.typ = CORR;
-    }
-    recalc_block_point(x, y);
-    newsym(x, y);
-    if (digtxt) await pline(`You ${digtxt}`);
-    if (dmgtxt) await pay_for_damage(dmgtxt, false);
-    resetDig();
-    return false;
-}
 
 /* C ref: hack.h:129-150 enum bodypart_types — indices into mbodypart()'s
  * name tables (polyself.c:1972-2146). */
@@ -2968,4 +2845,212 @@ export function ugolemeffects(damtype, dam) {
         pline('Strangely, you feel better than before.');
         exercise(A_STR, true);
     }
+}
+
+/* ---------------------------------------------------------------------------
+ * domindblast — C ref: nethack-c/src/polyself.c:1881-1926
+ * Mind-flayer polymorph attack: psychic blast on nearby monsters.
+ * Uses RNG: rn2(2), rn2(10), rnd(15) — path-dependent based on conditions.
+ * State changes: u.uen -= 10, monsters may die, botl updated.
+ * ---------------------------------------------------------------------------
+ */
+export async function domindblast() {
+    const u = game.u;
+    if (!u) return ECMD_OK;
+
+    if ((u.uen | 0) < 10) {
+        pline("You concentrate but lack the energy to maintain doing so.");
+        return ECMD_OK;
+    }
+
+    /* Deduct energy and mark bottom line for update */
+    u.uen -= 10;
+    /* SET_BOTL() — mark display botl for update */
+    if (game.disp) game.disp.botl = 1;
+
+    pline("You concentrate.");
+    pline("A wave of psychic energy pours out.");
+
+    /* Iterate through all monsters on level (C polyself.c:1908-1911: advance with nmon) */
+    let nmon;
+    for (let mtmp = game.fmon; mtmp; mtmp = nmon) {
+        nmon = mtmp.nmon;
+        let u_sen;
+        let dmg;
+
+        /* Skip dead monsters */
+        if ((mtmp.mhp | 0) < 1)
+            continue;
+
+        /* Skip monsters too far away (distance > BOLT_LIM squared) */
+        if (mdistu(mtmp) > ((BOLT_LIM | 0) * (BOLT_LIM | 0)))
+            continue;
+
+        /* Skip peaceful monsters */
+        if (mtmp.mpeaceful)
+            continue;
+
+        /* Skip mindless monsters */
+        if (mindless(mtmp.data))
+            continue;
+
+        /* Check if we sense this monster via telepathy */
+        /* u_sen = telepathic(mtmp->data) && !mtmp->mcansee */
+        u_sen = telepathic(mtmp.data) && !mtmp.mcansee;
+
+        /* Main condition: sense via telepathy OR telepathic with 50% chance OR hit 10% */
+        /* if (u_sen || (telepathic(mtmp->data) && rn2(2)) || !rn2(10)) */
+        if (u_sen || (telepathic(mtmp.data) && rn2(2)) || !rn2(10)) {
+            dmg = rnd(15);
+
+            /* Wake up the monster; make hostile only if it survives */
+            await wakeup_attack(mtmp, (dmg > (mtmp.mhp | 0)) ? 1 : 0);
+
+            /* Display message */
+            const mon_type = u_sen ? "telepathy"
+                : telepathic(mtmp.data) ? "latent telepathy"
+                : "mind";
+            /* C polyself.c:1916 You("lock in on %s %s.", s_suffix(mon_nam(mtmp)),
+             * <mon_type>) — pline() takes one formatted string, so interpolate.
+             * Passing the args positionally (as this line did) rendered the raw
+             * "%s" conversions onto the topline. */
+            pline(`You lock in on ${s_suffix(mon_nam(mtmp))} ${mon_type}.`);
+
+            /* Apply damage */
+            mtmp.mhp -= dmg;
+
+            /* Kill if dead */
+            if ((mtmp.mhp | 0) < 1)
+                await killed(mtmp);
+        }
+    }
+
+    return ECMD_TIME;
+}
+
+/* Helper: mdistu — distance squared from hero to monster */
+function mdistu(mon) {
+    const u = game.u;
+    if (!u) return 9999;
+    const dx = (u.ux | 0) - (mon.mx | 0);
+    const dy = (u.uy | 0) - (mon.my | 0);
+    return (dx * dx + dy * dy) | 0;
+}
+
+/* Helper: telepathic — check if monster is telepathic */
+function telepathic(mdata) {
+    if (!mdata) return false;
+    const pmidx = (mdata.pmidx | 0);
+    /* Floating eye, mind flayer, or master mind flayer */
+    return pmidx === 28 || pmidx === 48 || pmidx === 49;  /* PM_FLOATING_EYE, PM_MIND_FLAYER, PM_MASTER_MIND_FLAYER */
+}
+
+/* Ensure a uprops[p] record exists.  C's u.uprops[] is a dense, zero-initialized
+ * array (struct prop uprops[LAST_PROP+1]), so every BFlying/BLevitation/BStealth
+ * read and read-modify-write below is well-defined in C even when nothing has
+ * ever set the property.  The JS replay stores uprops sparsely, so materialize
+ * the zero record first — same convention as do_wear.js ensure_uprop(). */
+function _ensure_uprop(p) {
+    const u = game.u;
+    if (!u.uprops) u.uprops = {};
+    if (!u.uprops[p])
+        u.uprops[p] = { intrinsic: 0, extrinsic: 0, blocked: 0 };
+    return u.uprops[p];
+}
+
+/* is_flyer(ptr) — C mondata.h:19 macro: ((ptr)->mflags1 & M1_FLY) != 0 */
+const M1_FLY_STEED = 0x00000001;
+
+function is_flyer(data) {
+    return ((data?.mflags1 | 0) & M1_FLY_STEED) !== 0;
+}
+
+export function float_vs_flight() {
+    const u = game.u;
+    const TT_PIT_VAL = 2;
+
+    _ensure_uprop(LEVITATION);
+    _ensure_uprop(FLYING);
+
+    const stuck_in_floor = (u.utrap | 0) && ((u.utraptype | 0) !== TT_PIT_VAL);
+
+
+    const hLevit = (u.uprops[LEVITATION].intrinsic | 0);
+    const eLevit = (u.uprops[LEVITATION].extrinsic | 0);
+    const hFlying = (u.uprops[FLYING].intrinsic | 0);
+    const eFlying = (u.uprops[FLYING].extrinsic | 0);
+
+    if ((hLevit || eLevit) || ((hFlying || eFlying) && stuck_in_floor)) {
+        /* BFlying |= I_SPECIAL */
+        u.uprops[FLYING].blocked = (u.uprops[FLYING].blocked | 0) | I_SPECIAL;
+    } else {
+        /* BFlying &= ~I_SPECIAL */
+        u.uprops[FLYING].blocked = ((u.uprops[FLYING].blocked | 0) & ~I_SPECIAL) | 0;
+    }
+
+    /* being trapped on the ground overrides floating */
+    if ((hLevit || eLevit) && stuck_in_floor) {
+        /* BLevitation |= I_SPECIAL */
+        u.uprops[LEVITATION].blocked = (u.uprops[LEVITATION].blocked | 0) | I_SPECIAL;
+    } else {
+        /* BLevitation &= ~I_SPECIAL */
+        u.uprops[LEVITATION].blocked = ((u.uprops[LEVITATION].blocked | 0) & ~I_SPECIAL) | 0;
+    }
+
+    /* riding blocks stealth unless hero+steed fly */
+    steed_vs_stealth();
+
+    /* SET_BOTL */
+    if (game.disp) {
+        game.disp.botl = 1;
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * steed_vs_stealth — C ref: nethack-c/src/polyself.c:158-164
+ * Updates stealth blocked bit based on mounted status and flying.
+ * No RNG calls, state changes only to u.uprops[STEALTH].blocked.
+ * ---------------------------------------------------------------------------
+ */
+export function steed_vs_stealth() {
+    const u = game.u;
+
+    _ensure_uprop(LEVITATION);
+    _ensure_uprop(FLYING);
+    _ensure_uprop(STEALTH);
+
+    const hFlying = (u.uprops[FLYING].intrinsic | 0);
+    const eFlying = (u.uprops[FLYING].extrinsic | 0);
+    const bFlying = (u.uprops[FLYING].blocked | 0);
+    const hLevit = (u.uprops[LEVITATION].intrinsic | 0);
+    const eLevit = (u.uprops[LEVITATION].extrinsic | 0);
+    const bLevit = (u.uprops[LEVITATION].blocked | 0);
+
+    /* Flying macro: (HFlying || EFlying || is_flyer) && !BFlying */
+    const Flying = ((hFlying || eFlying) || (u.usteed && is_flyer(u.usteed.data))) && !bFlying;
+    /* Levitation macro: (HLevitation || ELevitation) && !BLevitation */
+    const Levitation = (hLevit || eLevit) && !bLevit;
+
+    if (u.usteed && !Flying && !Levitation) {
+        /* BStealth |= FROMOUTSIDE */
+        u.uprops[STEALTH].blocked = (u.uprops[STEALTH].blocked | 0) | FROMOUTSIDE;
+    } else {
+        /* BStealth &= ~FROMOUTSIDE */
+        u.uprops[STEALTH].blocked = ((u.uprops[STEALTH].blocked | 0) & ~FROMOUTSIDE) | 0;
+    }
+}
+
+export function poly_gender() {
+    const mndx = (game.u && game.u.umonnum != null) ? (game.u.umonnum | 0) : null;
+    const female = game.flags?.female ? 1 : 0;
+    if (mndx == null || mndx < 0)
+        return female;
+    /* C mondata.h:65 humanoid(ptr) = (ptr->mflags1 & M1_HUMANOID) != 0L.
+     * Spelled `humanoidMndx` rather than `humanoid` because this scope only has
+     * an mndx, not a permonst-shaped ptr, and a local `humanoid` here shadows
+     * this module's own humanoid(ptr) helper (same mask, ptr call convention). */
+    const humanoidMndx = (monMflags1(mndx) & M1_HUMANOID) !== 0;
+    if (isNeuterMndx(mndx) || !humanoidMndx)
+        return 2;
+    return female;
 }

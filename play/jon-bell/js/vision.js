@@ -20,7 +20,7 @@ import { pushRngLogEntry } from './rng.js';
  * binding is resolved by the time _blocks() first runs. */
 import { visible_region_at } from './region.js';
 import { ENV } from './hostenv.js';
-import { notice_all_mons } from './cmd.js';
+import { notice_all_mons } from './hack.js';
 const COULD_SEE = 0x1;
 const IN_SIGHT = 0x2;
 let _visionTraceSeq = 0;

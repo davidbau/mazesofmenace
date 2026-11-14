@@ -1,3 +1,4 @@
+import {genders as sourceGenders} from '../ported/role.js';
 // Original EXPLODE policies, one native-shaped context on the shared game heap.
 import abi from './explode-abi.json' with {type:'json'};
 import * as source from '../ported/explode.js';
@@ -9,7 +10,7 @@ export function enableExplode(environment,layouts){
  const{services,memory,ctypes,transport,functions}=environment,address=environment.address,L={...layouts.explode,...abi.constants};
  for(const[k,v]of Object.entries(abi.layout))if(layouts.explode[k]!==v)throw new Error('Review EXPLODE ABI '+k);
  const text=v=>typeof v==='string'?services.literal(v):address(v),resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n);
- const typeOf=n=>n==='u'?'struct you':n==='flags'?'struct flag':n==='iflags'?'struct instance_flags':n==='disp'?'struct display_hints':n==='objects'?'struct objclass[NUM_OBJECTS]':n==='genders'?'struct Gender[3]':n.startsWith('sv')?'struct instance_globals_saved_'+n.slice(2):/^g[a-z]$/.test(n)?'struct instance_globals_'+n.slice(1):null;
+ const typeOf=n=>n==='u'?'struct you':n==='flags'?'struct flag':n==='iflags'?'struct instance_flags':n==='disp'?'struct display_hints':n==='objects'?'struct objclass[NUM_OBJECTS]':n==='genders'?`struct Gender[${sourceGenders.length}]`:n.startsWith('sv')?'struct instance_globals_saved_'+n.slice(2):/^g[a-z]$/.test(n)?'struct instance_globals_'+n.slice(1):null;
  function locate(type,p,path){for(const key of path.split('.')){const e=ctypes.locate(type,p,key);p=e.at;type=e.field.ctype.replace(new RegExp('\\b'+key+'$'),'').trim();}return{at:p,type};}
  const global=p=>{const[n,...rest]=p.split('.');return rest.length?locate(typeOf(n),environment.requireGlobal(n),rest.join('.')).at:environment.requireGlobal(n);};
  const read=(type,p,k)=>{const f=ctypes.record(type).fields[k];return ctypes.getField(type,address(p),k,f.bits!==undefined?'unsigned int':f.ctype.replace(new RegExp('\\b'+k+'$'),'').trim());};

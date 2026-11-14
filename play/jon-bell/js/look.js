@@ -1,6 +1,6 @@
 import { displayLookWindow } from './look-window.js';
 import { ECMD_OK, ECMD_TIME, HAND } from './const.js';
-import { trapname } from './makemon.js';
+import { trapname } from './trap.js';
 // @ts-nocheck
 // look.js — `:` (dolook) and look_here implementation.
 //
@@ -19,7 +19,7 @@ import { trapname } from './makemon.js';
 
 import { game } from './gstate.js';
 import { hide_unhide_msgtypes, MSGTYP_MASK_REP_SHOW } from './options.js';
-import { nomul } from './allmain.js';
+import { nomul } from './hack.js';
 import { impossible } from './pline.js';
 import { classifyTerrain, invalidateTerrainStatus } from './terrain-status.js';
 import { mon_visible, canspotmon, time_botl_run_ended } from './display.js';
@@ -49,12 +49,12 @@ import { s_suffix } from './hacklib.js';
 import { m_at } from './uhitm.js';
 import { is_safemon } from './display.js';
 import { mon_nam } from './uhitm.js';
-import { engr_at } from './mklev.js';
+import { engr_at } from './engrave.js';
 import { stairway_at, stairs_description } from './stairs.js';
 /* hliquid: C do_name.c:1479 — the hallucination-substituted liquid word used by
  * avoid_moving_on_liquid's mention_walls feedback.  Hoisted function
  * declaration, so the mhitm <-> look module cycle cannot leave it in TDZ. */
-import { Amonnam, hliquid } from './mhitm.js';
+import { Amonnam, hliquid } from './do_name.js';
 import { poly_when_stoned } from './mondata.js';
 import { visible_region_at, reg_damg } from './region.js';
 import { pushRngLogEntry } from './rng.js';
@@ -68,8 +68,12 @@ import { ENV } from './hostenv.js';
  * mhitm.js; mbodypart is a hoisted function declaration, so the cycle cannot
  * leave it in TDZ at call time (look_here only runs after both modules have
  * finished evaluating). */
-import { force_decor, mbodypart, body_part, set_msg_xy, instapetrify, display_minventory,
-         dfeature_at as _cmd_dfeature_at, pooleffects_is_flyer, surface, read_engr_at } from './cmd.js';
+import { mbodypart, body_part, instapetrify, pooleffects_is_flyer } from './cmd.js';
+import { force_decor } from './pickup.js';
+import { display_minventory, dfeature_at as _cmd_dfeature_at } from './invent.js';
+import { set_msg_xy } from './pline.js';
+import { read_engr_at } from './engrave.js';
+import { surface } from './dungeon.js';
 export { _surface_at, _surface_lk, read_engr_at }; // relocate-fns
 export { end_running } from './hack.js'; // relocate-fns
 export { _is_lava_local, _is_pool_local }; // relocate-fns
@@ -277,6 +281,7 @@ export function is_door_mappear(mon) {
 // is_lava: LAVAPOOL, LAVAWALL, or a drawbridge with lava underneath.
 export { is_pool } from './dbridge.js';
 import { is_pool } from './dbridge.js';
+export { is_pool_or_lava } from './dbridge.js'; // relocate-fns
 /* Pre-existing file-local spelling, kept so this file's own call sites and the
  * two comments in mklev.js/teleport.js that cite it by name still resolve. */
 const _is_pool_local = is_pool;
@@ -288,9 +293,6 @@ function _is_lava_local(x, y) {
     if (typ === LAVAPOOL || typ === LAVAWALL) return true;
     return typ === DRAWBRIDGE_UP
         && ((lev.drawbridgemask | 0) & DB_UNDER) === DB_LAVA;
-}
-export function is_pool_or_lava(x, y) {
-    return _is_pool_local(x, y) || _is_lava_local(x, y);
 }
 
 

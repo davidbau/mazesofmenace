@@ -1,3 +1,4 @@
+import { ROLE_ALIGNMASK, ROLE_GENDMASK, ROLE_NONE, ROLE_RACEMASK } from './const.js';
 // @ts-nocheck
 // chargen_ui.js — Render the C chargen UI frames (copyright + askname + role/race/gender/align menus).
 //
@@ -49,9 +50,7 @@ import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt } from './display.js';
 import { pmatchi } from './strutil.js';
 import { map_menu_cmd } from './options.js';
-import { str2role, str2race, str2gend, str2align, setrolefilter as setrolefilter_shared,
-         ok_role as ok_role_shared, ok_align as ok_align_shared, ok_race as ok_race_shared, ok_gend as ok_gend_shared,
-         validrace, validgend, validalign, randrace, randgend, randalign } from './roles.js';
+import { str2role, str2race, str2gend, str2align, setrolefilter as setrolefilter_shared, ok_role as ok_role_shared, ok_align as ok_align_shared, ok_race as ok_race_shared, ok_gend as ok_gend_shared, validrace, validgend, validalign, randrace, randgend, randalign } from './role.js';
 import { clearrolefilter, gotrolefilter, ok_align, ok_gend, ok_race, ok_role, plnamesuffix, rigid_role_checks, setrolefilter } from './role.js'; // relocate-fns
 export { ALIGNS, GENDERS, RACES, ROLES, ROLE_ALIGNMASK, ROLE_GENDMASK, ROLE_NONE, ROLE_RACEMASK, RSF_ALGNMNT, RSF_GENDER, RSF_RACE, RSF_ROLE, RSF_filter, rfilter }; // relocate-fns
 
@@ -95,9 +94,6 @@ const MH_ELF    = 0x0010;
 const MH_DWARF  = 0x0020;
 const MH_GNOME  = 0x0040;
 const MH_ORC    = 0x0080;
-const ROLE_RACEMASK  = 0x0ff8;
-const ROLE_GENDMASK  = 0xf000;
-const ROLE_ALIGNMASK = 0x0007;
 const ROLE_MALE   = 0x1000;
 const ROLE_FEMALE = 0x2000;
 const AM_LAWFUL   = 0x0004;
@@ -146,7 +142,6 @@ const ALIGNS = [
     { adj: 'chaotic', allow: AM_CHAOTIC },
 ];
 
-const ROLE_NONE = -1;
 const ROLE_RANDOM = -2;   // include/you.h:253
 const PICK_RANDOM = 0;
 const PICK_RIGID  = 1;
@@ -168,11 +163,15 @@ const RSF_ROLE = 1, RSF_RACE = 2, RSF_GENDER = 3, RSF_ALGNMNT = 4,
 
 // One object with roles.js's gr.rfilter (C has a single gr.rfilter), so the
 // role.c ok_*/setrolefilter port in roles.js is the only body.
-const rfilter = roleGlobals.rfilter;
+let rfilter;
+export function getRfilter() {
+    return rfilter ??= roleGlobals.rfilter;
+}
 
 
-function resetRfilter() { clearrolefilter(RSF_filter); }
-resetRfilter();
+// roles.js creates the filter already cleared. Bind it on first use, after
+// module initialization; each chargen entry still performs its per-game reset.
+function resetRfilter() { getRfilter(); clearrolefilter(RSF_filter); }
 
 
 
@@ -507,6 +506,7 @@ function buildExtras(state, menuKind) {
 // C ref: role.c:1841-1848 — the role entry is disabled when every OTHER role
 // has been filtered out, so the filter has forced this one.
 function forcedRole(state) {
+    const rfilter = getRfilter();
     const f = state.role;
     let i = 0;
     for (; i < ROLES.length; i++)
@@ -515,6 +515,7 @@ function forcedRole(state) {
     return null;
 }
 function forcedRace(state) {
+    const rfilter = getRfilter();
     if (state.role >= 0) {
         const mask = ROLES[state.role].allow & ROLE_RACEMASK;
         if (mask === MH_HUMAN) return { constrainer: 'role', value: 'human' };
@@ -527,6 +528,7 @@ function forcedRace(state) {
     return null;
 }
 function forcedGender(state) {
+    const rfilter = getRfilter();
     if (state.role >= 0) {
         const mask = ROLES[state.role].allow & ROLE_GENDMASK;
         if (mask === ROLE_MALE)   return { constrainer: 'role', value: 'male' };
@@ -539,6 +541,7 @@ function forcedGender(state) {
     return null;
 }
 function forcedAlign(state) {
+    const rfilter = getRfilter();
     if (state.role >= 0) {
         const mask = ROLES[state.role].allow & ROLE_ALIGNMASK;
         if (mask === AM_LAWFUL)  return { constrainer: 'role', value: 'lawful'  };
@@ -1812,6 +1815,7 @@ function asknameFilter(ch, ct) {
 
 
 export async function playChargen(ctx) {
+    const rfilter = getRfilter();
     const rn2 = ctx.rn2;
     const read = ctx.read;
     // gr.rfilter is a process global that C zeroes once at startup; this

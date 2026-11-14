@@ -38,9 +38,9 @@ import { weight } from './weight.js';
 // across segment changes.
 //
 // @ts-nocheck — js sibling imports.
-import { rn2, rnd } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { game, wizard } from './gstate.js';
-import { paranoid_query } from './paranoid.js';
+import { paranoid_query } from './cmd.js';
 import { vfsReadFile, vfsWriteFile, vfsDeleteFile } from './storage.js';
 import { savelev } from './save.js';
 import { encode_save_graph, decode_save_graph } from './save_graph.js';
@@ -61,11 +61,13 @@ import { in_rooms } from './hack.js';
 import { cant_revive } from './read.js';
 import { pline } from './pline.js';
 import { fruitadd } from './options.js';
-import { the, xname, oname, is_quest_artifact } from './objnam.js';
+import { the, xname } from './objnam.js';
+import { oname } from './do_name.js';
+import { is_quest_artifact } from './questpgr.js';
 import { exist_artifact, artifact_exists } from './artifact.js';
 import { LEAVESTATUE, CORPSTAT_NONE, NO_MINVENT, INTRINSIC, ismnum, MON_FLOOR } from './const.js';
 import { roles, races } from './roles.js';
-import { dismount_steed } from './cmd.js';
+import { dismount_steed } from './steed.js';
 import { update_mlstmv } from './dog.js';
 import { DISMOUNT_BONES } from './const.js';
 import { clear_bypasses } from './worn.js';
@@ -99,16 +101,6 @@ const PUBLISH_BONES_FILE = true;
 const PM_GHOST = 287;          /* pm.h — same constant js/mklev.js:207 holds */
 const MM_NONAME = 0x00000040;  /* js/const.js:2147 */
 
-/* C dungeon.c ledger_no(&u.uz) — the absolute cross-branch level index, the
- * same key js/save.js savelev() and js/restore.js getlev() use.  All
- * callers share this port of dungeon.c:1376-1379, including the xint16 cast. */
-export function ledger_no(uz) {
-    const dgn = game.dungeons?.[uz?.dnum | 0];
-    const jingle = game.context?.jingle || ''; // C's dungeons[-1].ledger_start aliases context.jingle for wished portals.
-    const start = (uz?.dnum | 0) === -1
-        ? (jingle.charCodeAt(0) || 0) | ((jingle.charCodeAt(1) || 0) << 8) : dgn?.ledger_start | 0;
-    return (((uz?.dlevel | 0) + start) << 16) >> 16;
-}
 
 function dgn_boneid(dnum) {
     const dname = game._dungeons_full?.[dnum | 0]?.dname;
@@ -303,20 +295,26 @@ async function resetobjs(ochain, restore) {
 import { fix_shop_damage, goodfruit_fp as goodfruit, inside_shop, tended_shop } from './shk.js';
 import { unleash_all } from './apply.js';
 import { create_bonesfile, delete_bonesfile, open_bonesfile } from './files.js'; // relocate-fns
-import { freeinv, is_mines_prize, is_soko_prize } from './cmd.js'; // relocate-fns
+import { is_mines_prize, is_soko_prize } from './cmd.js';
+import { freeinv } from './invent.js'; // relocate-fns
 import { isok, u_at } from './const.js'; // relocate-fns
 import { obj_no_longer_held } from './do.js'; // relocate-fns
-import { can_carry } from './dogmove.js'; // relocate-fns
-import { artifact_light as artifact_light_real, obj_is_burning } from './light.js'; // relocate-fns
+import { can_carry } from './mon.js'; // relocate-fns
+import { obj_is_burning } from './light.js';
+import { artifact_light as artifact_light_real } from './artifact.js'; // relocate-fns
 import monArmedPack from './makemon_mons_armed.json' with { type: 'json' }; // relocate-fns
-import { add_to_container, place_object, obj_extract_self, dealloc_obj, set_corpsenm, free_omonst } from './mklev.js'; // relocate-fns
-import { rn2 as rn2_shk } from './rng.js'; // relocate-fns
+import { add_to_container, place_object, obj_extract_self, dealloc_obj, set_corpsenm, free_omonst } from './mkobj.js'; // relocate-fns
+import { rn2 as rn2_shk } from './rnd.js'; // relocate-fns
 import { COIN_CLASS, goodfruit_fp, monMflags2_fp } from './shk.js'; // relocate-fns
 import { end_burn as end_burn_fp } from './timeout.js'; // relocate-fns
 import { m_at } from './uhitm.js'; // relocate-fns
 import { MAGIC_PORTAL } from './const.js'; // relocate-fns
 import { depth, maxledgerno } from './dungeon.js'; // relocate-fns
 import { discover } from './gstate.js'; // relocate-fns
+import { trickery } from './restore.js'; // relocate-fns
+import { newmextra } from './makemon.js'; // relocate-fns
+import { ledger_no } from './dungeon.js'; // relocate-fns
+export { ledger_no } from './dungeon.js'; // relocate-fns
 export { bones_filename }; // relocate-fns
 
 async function fixuporacle(oracle) {
@@ -621,17 +619,6 @@ async function pline1(line) {
     await pline(line);
 }
 
-/* C restore.c:1035 trickery(reason) */
-async function trickery(reason) {
-    await pline('Strange, this map is not as I remember it.');
-    await pline('Somebody is trying some trickery here...');
-    await pline('This game is void.');
-    if (!game.svk) game.svk = {};
-    if (!game.svk.killer) game.svk.killer = {};
-    game.svk.killer.name = reason || '';
-    const { done } = await import('./end.js');
-    await done(TRICKED);
-}
 
 async function getbones_load(f) {
     const g = game;
@@ -1001,4 +988,11 @@ export function sanitize_name(namebuf, strip_8th_bit = ((game.windowprocs?.name 
             out += String.fromCharCode(ch);
     }
     return out;
+}
+
+export function newebones(mtmp) {
+    if (!mtmp.mextra)
+        mtmp.mextra = newmextra();
+    if (!mtmp.mextra.ebones)
+        mtmp.mextra.ebones = { parentmid: mtmp.m_id };
 }

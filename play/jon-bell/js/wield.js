@@ -1,22 +1,29 @@
 // wield.js — C ref: wield.c.
 import { arti_speak, is_art } from './artifact.js';
 import { exercise } from './attrib.js';
-import { ART_OGRESMASHER, ART_SNICKERSNEE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, LOADSTONE, OCLASS_COIN, OCLASS_TOOL, OCLASS_WEAPON, OTYP_AKLYS, Shk_Your, TWOWEAPOK, W_ARMC_C, W_ARMF_C, W_ARMG_C, W_ARMH_C, W_ARMS_C, W_ARMU_C, W_ARM_C, W_QUIVER_C, W_SWAPWEP_C, W_WEP_C, Yname2, You_cant, Your, _Blind_cmd, _IA_BELL_OF_OPENING_OTYP, _doswapweapon, _ensure_ranger_weapons, _hero_youmonst, _invlet_constant, _retouch_ag, _retouch_dmg, _the_str, _uprop_active, _weapon_prinv_line, _wep_worn_phrase, _wt_bimanual, _wt_cantwield, _wt_ready_weapon, _wt_sameObj, _ynq_cmd, ammoTypes_includes, ammo_and_launcher, bimanual_tw, body_part, cmdq_add_int, cmdq_add_key, compactify, could_twoweap, freeinv, getObjFromGetobj, getobj_cmdq_drain, getobj_get_count, getobj_redo_menu, instapetrify, inv_cnt, invocation_pos, is_ammo, is_launcher, is_missile, is_plural_obj, is_pole, is_sword, is_weptool, is_wet_towel, key2txt, pair_of, plur, prinv, readchar, set_cursor, splittable, sr_touch_petrifies_ptr, u_wield_art, will_weld } from './cmd.js';
+import { ART_OGRESMASHER, ART_SNICKERSNEE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, LOADSTONE, OCLASS_COIN, OCLASS_TOOL, OCLASS_WEAPON, OTYP_AKLYS, Shk_Your, TWOWEAPOK, W_ARMC_C, W_ARMF_C, W_ARMG_C, W_ARMH_C, W_ARMS_C, W_ARMU_C, W_ARM_C, W_QUIVER_C, W_SWAPWEP_C, W_WEP_C, You_cant, _Blind_cmd, _IA_BELL_OF_OPENING_OTYP, _doswapweapon, _ensure_ranger_weapons, _hero_youmonst, _invlet_constant, _retouch_ag, _retouch_dmg, _the_str, _uprop_active, _weapon_prinv_line, _wep_worn_phrase, _wt_bimanual, _wt_cantwield, _wt_ready_weapon, _wt_sameObj, _ynq_cmd, ammoTypes_includes, ammo_and_launcher, bimanual_tw, body_part, cmdq_add_int, cmdq_add_key, could_twoweap, getObjFromGetobj, getobj_cmdq_drain, getobj_get_count, getobj_redo_menu, instapetrify, is_ammo, is_launcher, is_missile, is_plural_obj, is_pole, is_sword, is_weptool, is_wet_towel, key2txt, pair_of, plur, readchar, set_cursor, sr_touch_petrifies_ptr, u_wield_art, will_weld } from './cmd.js';
+import { inv_cnt, invocation_pos } from './hack.js';
+import { compactify, freeinv, prinv, splittable } from './invent.js';
+import { Your } from './pline.js';
+import { Yname2 } from './objnam.js';
 import { A_CON, CQ_REPEAT, ECMD_CANCEL, ECMD_FAIL, ECMD_OK, ECMD_TIME, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, KILLED_BY, RIGHT_HANDED, Upolyd } from './const.js';
 import { _pline_flush_frame_record, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, flush_screen, force_more, getobj_never_mind, putmsghistory, rebuild_screen_output } from './display.js';
 import { bot } from './botl.js';
 import { pline } from './pline.js';
 import { dropx } from './do.js';
-import { You, reset_remarm, xname, yname } from './do_wear.js';
+import { You, reset_remarm, xname } from './do_wear.js';
+import { yname } from './objnam.js';
 import { shkname as dokick_shkname } from './dokick.js';
 import { losehp } from './hack.js';
 import { game } from './gstate.js';
 import { addinv_nomerge } from './invent.js';
 import { nhgetch } from './input.js';
-import { reassign, update_inventory } from './inventory_refresh.js';
-import { arti_light_description, arti_light_radius, artifact_light } from './light.js';
-import { CORPSE, humanoid, permonstTemplate, splitobj, unsplitobj } from './makemon.js';
-import { clear_splitobjs, set_bknown } from './mklev.js';
+import { reassign, update_inventory } from './invent.js';
+import { arti_light_description, arti_light_radius } from './light.js';
+import { artifact_light } from './artifact.js';
+import { CORPSE, humanoid, permonstTemplate, splitobj } from './makemon.js';
+import { unsplitobj } from './mkobj.js';
+import { clear_splitobjs, set_bknown } from './mkobj.js';
 import { inside_shop } from './shk.js';
 import { On_stairs } from './stairs.js';
 import { MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
@@ -31,6 +38,18 @@ import { W_ACCESSORY, W_ARMOR, W_SADDLE } from './const.js';
 const invlet_basic = 52;
 import { Tobjnam } from './objnam.js'; // relocate-fns
 import { Blind } from './vision.js'; // relocate-fns
+import { _restrict_name, body_part as body_part_fr, costly_alteration, body_part as food_body_part } from './cmd.js';
+import { useupall as useupall_cmd } from './invent.js'; // relocate-fns
+import { COST_DECHNT, COST_DEGRD, HAND as HAND_FR, ONAME, has_oname } from './const.js'; // relocate-fns
+import { hcolor } from './do_name.js'; // relocate-fns
+import { hcolor as hcolor_real } from './mhitm.js'; // relocate-fns
+import { uncurse as _uncurse } from './mkobj.js'; // relocate-fns
+import { an, makeplural, simpleonames } from './objnam.js'; // relocate-fns
+import { NH_BLACK, NH_BLUE, SCROLL_CLASS_OC, WEAPON_CLASS_OC, _Blind, _Hallucination, _is_weptool, _makeknown, _strange_feeling } from './read.js'; // relocate-fns
+import { rn2 } from './rnd.js'; // relocate-fns
+import { alter_cost as _alter_cost } from './shk.js'; // relocate-fns
+import { weight } from './weight.js';
+import { encumber_msg } from './pickup.js'; // relocate-fns
 
 /* C ref: wield.c:294 ready_ok(struct obj *obj) — the getobj() callback for
  * doquiver_core().  NOTE what it never returns: GETOBJ_EXCLUDE.  Every carried
@@ -1254,3 +1273,176 @@ export async function uqwepgone() {
         update_inventory();
     }
 }
+
+const TIN_OPENER = 239;
+
+const WORM_TOOTH = 42;
+
+const CRYSKNIFE = 43;
+
+const STRANGE_OBJECT = 0;
+
+const ART_MAGICBANE = 8; /* artilist.h artifact ordinal */
+
+/* C obj.h — `#define erodeable_wep(o) (is_weptool(o) || (o)->oclass == WEAPON_CLASS
+ *                                      || is_wep_artifact...)`; the shape C
+ * actually ships is erosion_matters() restricted to the weapon side, which
+ * js/mklev.js already exports.  will_weld(optr) is
+ *     ((optr)->cursed && (erodeable_wep(optr) || (optr)->otyp == TIN_OPENER)) */
+function _will_weld(obj) {
+    return !!obj.cursed
+        && (((obj.oclass | 0) === WEAPON_CLASS_OC || _is_weptool(obj))
+            /* wield.c:61-63 erodeable_wep also covers the punishment ball/chain */
+            || (obj.otyp | 0) === 477 /* HEAVY_IRON_BALL */
+            || (obj.otyp | 0) === 478 /* IRON_CHAIN */
+            || (obj.otyp | 0) === TIN_OPENER);
+}
+
+export async function chwepon(otmp, amount) {
+    const g = game;
+    const uwep = g.u?.uwep;
+    const Blind = _Blind();
+    const color = hcolor((amount < 0) ? NH_BLACK : NH_BLUE);
+    let otyp = STRANGE_OBJECT;
+
+    /* C wield.c:925-946 — nothing enchantable wielded. */
+    if (!uwep || ((uwep.oclass | 0) !== WEAPON_CLASS_OC && !_is_weptool(uwep))) {
+        let buf;
+        if (amount >= 0 && uwep && _will_weld(uwep)) { /* cursed tin opener */
+            if (!Blind) {
+                buf = `${Yobjnam2(uwep, 'glow')} with ${an(hcolor_amber())} aura.`;
+                uwep.bknown = _Hallucination() ? 0 : 1; /* ok to bypass set_bknown() */
+            } else {
+                /* cursed tin opener is wielded in right hand */
+                buf = `Your right ${body_part_fr(HAND_FR)} tingles.`;
+            }
+            await _uncurse(uwep);
+            update_inventory(); /* C wield.c:938 */
+        } else {
+            buf = `Your ${makeplural(body_part_fr(HAND_FR))} `
+                + `${(amount >= 0) ? 'twitch' : 'itch'}.`;
+        }
+        await _strange_feeling(otmp, buf); /* pline()+docall()+useup() */
+        exercise(A_DEX, amount >= 0);
+        return 0;
+    }
+
+    if (otmp && (otmp.oclass | 0) === SCROLL_CLASS_OC)
+        otyp = otmp.otyp | 0;
+
+    /* C wield.c:951-988 — the worm tooth <-> crysknife transformations. */
+    if ((uwep.otyp | 0) === WORM_TOOTH && amount >= 0) {
+        const multiple = (uwep.quan | 0) > 1;
+        /* order: message, transformation, shop handling */
+        await Your(`%s %s much sharper now.`, simpleonames(uwep),
+                  multiple ? 'fuse, and become' : 'is');
+        uwep.otyp = CRYSKNIFE;
+        uwep.oerodeproof = 0;
+        if (multiple) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (uwep.cursed)
+            await _uncurse(uwep);
+        if (uwep.unpaid)
+            await _alter_cost(uwep, 0);
+        if (otyp !== STRANGE_OBJECT)
+            _makeknown(otyp);
+        if (multiple)
+            encumber_msg();
+        return 1;
+    } else if ((uwep.otyp | 0) === CRYSKNIFE && amount < 0) {
+        const multiple = (uwep.quan | 0) > 1;
+        /* order matters: message, shop handling, transformation */
+        await Your(`%s %s much duller now.`, simpleonames(uwep),
+                  multiple ? 'fuse, and become' : 'is');
+        await costly_alteration(uwep, COST_DEGRD);
+        uwep.otyp = WORM_TOOTH;
+        uwep.oerodeproof = 0;
+        if (multiple) {
+            uwep.quan = 1;
+            uwep.owt = weight(uwep);
+        }
+        if (otyp !== STRANGE_OBJECT && otmp.bknown)
+            _makeknown(otyp);
+        if (multiple)
+            encumber_msg();
+        return 1;
+    }
+
+    /* C wield.c:990-996 — a named artifact resists disenchantment. */
+    const wepname = has_oname(uwep) ? ONAME(uwep) : '';
+    if (amount < 0 && (uwep.oartifact | 0) && _restrict_name(uwep, wepname)) {
+        if (!Blind)
+            await pline(`${Yobjnam2(uwep, 'faintly glow')} ${color}.`);
+        return 1;
+    }
+
+    /* C wield.c:997-1010 — soft upper/lower limit on uwep->spe. */
+    if ((((uwep.spe | 0) > 5 && amount >= 0)
+         || ((uwep.spe | 0) < -5 && amount < 0))
+        && rn2(3)) {
+        if (!Blind)
+            await pline(`${Yobjnam2(uwep, 'violently glow')} ${color} `
+                        + `for a while and then ${otense(uwep, 'evaporate')}.`);
+        else
+            await pline(`${Yobjnam2(uwep, 'evaporate')}.`);
+        await useupall_cmd(uwep); /* let all of them disappear */
+        return 1;
+    }
+
+    /* C wield.c:1011-1020 — the feedback pline, and the scroll's self-ID. */
+    if (!Blind) {
+        const xtime = (amount * amount === 1) ? 'moment' : 'while';
+        await pline(`${Yobjnam2(uwep, amount === 0 ? 'violently glow' : 'glow')} `
+                    + `${color} for a ${xtime}.`);
+        if (otyp !== STRANGE_OBJECT && uwep.known
+            && (amount > 0 || (amount < 0 && otmp.bknown)))
+            _makeknown(otyp);
+    }
+    if (amount < 0)
+        await costly_alteration(uwep, COST_DECHNT);
+    uwep.spe = (uwep.spe | 0) + amount;
+    if (amount > 0) {
+        if (uwep.cursed)
+            await _uncurse(uwep);
+        /* update shop bill to reflect new higher price */
+        if (uwep.unpaid)
+            await _alter_cost(uwep, 0);
+    }
+
+    /* C wield.c:1036-1039; obj.h u_wield_art tests the primary weapon. */
+    if ((uwep.oartifact | 0) === ART_MAGICBANE && (uwep.spe | 0) >= 0) {
+        await Your('right %s %sches!', food_body_part(HAND_FR),
+                   amount > 1 && (uwep.spe | 0) > 1 ? 'flin' : 'it');
+    }
+
+    if ((uwep.spe | 0) > 5
+        && (_is_elven_weapon(uwep) || uwep.oartifact || !rn2(7))) {
+        await pline(`${Yobjnam2(uwep, 'suddenly vibrate')} unexpectedly.`);
+    }
+
+    return 1;
+}
+
+/* C objects.h ELVEN_* weapons — is_elven_weapon() (obj.h) is an otyp membership
+ * test over the elven weapon run.  JS otyps coincide with C's below 366. */
+const _ELVEN_WEAPON_OTYPS = new Set([
+    19 /* ELVEN_ARROW */, 28 /* ELVEN_SPEAR */, 35 /* ELVEN_DAGGER */,
+    47 /* ELVEN_SHORT_SWORD */, 53 /* ELVEN_BROADSWORD */, 84 /* ELVEN_BOW */,
+]);
+
+function _is_elven_weapon(obj) {
+    return _ELVEN_WEAPON_OTYPS.has(obj.otyp | 0);
+}
+
+/* C wield.c:931, do_name.c:1461-1466: hallucination still draws a color
+ * before strange_feeling() replaces the tin opener's aura message. */
+function hcolor_amber() {
+    return hcolor_real('amber');
+}
+
+/* ── Scroll/spell otyp constants for identify (objects.h) ──────────────────────
+ * SCR_MAGIC_MAPPING = 337 (see above); identify is the scroll immediately
+ * before it → SCR_IDENTIFY = 336.  The spellbook of identify is SPE_IDENTIFY. */
+const A_DEX = 3; /* attrib.h A_DEX */

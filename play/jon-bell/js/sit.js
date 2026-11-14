@@ -28,13 +28,14 @@
  */
 import { game, wizard } from './gstate.js';
 import { Blind } from './vision.js';
-import { EYE, HEAD, FROMOUTSIDE } from './const.js';
+import { EYE, HEAD, FROMOUTSIDE, SEE_INVIS } from './const.js';
 import { PM_CYCLOPS, PM_FLOATING_EYE } from './pm.generated.js';
-import { body_part } from './cmd.js';
+import { body_part } from './polyself.js';
 import { vtense } from './objnam.js';
 import { PM_NINJA } from './pm.generated.js';
 import { block_point, unblock_point, cansee } from './vision.js';
-import { rn2, rnd, rn1 } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { In_V_tower, NON_PM, MAGIC_PORTAL, EMIN, CONFUSION, HALLUC, HALLUC_RES, ACID_RES, SHOCK_RES, DRAIN_RES, BLINDED, SEE_INVIS as SEE_INVIS_PROP, TELEPAT as TELEPAT_PROP, TIMEOUT, MM_ANGRY, MM_EMIN, MM_NOMSG, G_GONE, G_GENOD, LOW_PM, G_EXTINCT, NO_MINVENT, A_NONE, A_CON, A_NEUTRAL, A_CHAOTIC } from './const.js';
 import { PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE_VORTEX, PM_FREEZING_SPHERE, PM_STEAM_VORTEX, PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE, PM_EARTH_ELEMENTAL, PM_DUST_VORTEX, PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE, PM_YELLOW_LIGHT, NUMMONS, PM_ARCHON, PM_ANGEL, PM_BONE_DEVIL, PM_JUIBLEX, PM_YEENOGHU, PM_ORCUS, PM_DEMOGORGON, PM_WIZARD_OF_YENDOR, PM_SKELETON, PM_SAMURAI, PM_HIGH_PRIEST as PM_HIGH_CLERIC } from './pm.generated.js';
 
@@ -45,7 +46,8 @@ function _hero_resists(prop) {
 /* make_confused's C home is potion.c:88; the file-local copy below it replaced
  * was an empty body, so neither throne arm could confuse the hero. */
 import { make_confused, make_glib, make_sick } from './potion.js';
-import { mkclass, mkclassAligned, newmextra, name_to_mon, name_to_monclass, permonstTemplate, is_ndemon, monPmname } from './makemon.js';
+import { mkclass, mkclassAligned, newmextra, permonstTemplate, is_ndemon, monPmname } from './makemon.js';
+import { name_to_mon, name_to_monclass } from './mondata.js';
 import { canseemon, canspotmon, map_background, newsym, newsym_force, see_monsters, force_more, Deaf } from './display.js';
 import { pline, livelog_printf, urgent_pline } from './pline.js';
 import { LL_CONDUCT, LL_GENOCIDE, UNCHANGING, POLY_REVERT, POLY_NOFLAGS, UTOTYPE_NONE, SICK_ALL } from './const.js';
@@ -56,7 +58,7 @@ const S_VAMPIRE = 48, voice_throne = 0x0010;
 /* C mondata.h:213 is_vampire(ptr) */
 function is_vampire(ptr) { return (ptr.mlet | 0) === S_VAMPIRE; }
 import { PM_VAMPIRE, PM_VAMPIRE_LORD as PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER } from './pm.generated.js';
-import { do_mapping } from './read.js';
+import { do_mapping } from './detect.js';
 import { identify_pack } from './invent.js';
 /* rndcurse()'s leaves, each from the file that holds its one real body.  The
  * aliases exist because this file already carries same-named LOCAL stubs
@@ -66,40 +68,35 @@ import { identify_pack } from './invent.js';
  * rather than quietly inheriting the stubs. */
 /* C sit.c:582 uses You()->pline immediately; the deferred eat.js You()
  * leaves the aura in _resultMessage and paints it on a later frame. */
-import { You as You_rc } from './do_wear.js';
-import { Tobjnam, Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, quest_info, an } from './objnam.js';
+import { You as You_rc } from './pline.js';
+import { Tobjnam, Tobjnam as Tobjnam_rc, Yobjnam2, makeplural, an } from './objnam.js';
+import { quest_info } from './questpgr.js';
 import { curse, unbless } from './mkobj.js';
 import { spec_ability, adjattrib, change_luck, exercise } from './attrib.js';
-import { hcolor, Amonnam } from './mhitm.js';
-import { update_inventory } from './mhitm.js';
+import { hcolor } from './mhitm.js';
+import { Amonnam } from './do_name.js';
+import { update_inventory } from './invent.js';
 import { which_armor } from './worn.js';
-import { shieldeff as shieldeff_rc, Monnam, is_lminion } from './mcastu.js';
+import { shieldeff as shieldeff_rc, is_lminion } from './mcastu.js';
+import { Monnam } from './do_name.js';
 import { aggravate } from './wizard.js';
 import { show_transient_light, transient_light_cleanup } from './light.js';
 /* tele's C home is teleport.c:840. */
 import { tele } from './teleport.js';
 /* makewish's C home is wizcmds.c:38; the throne sources are sit.c:110/251. */
-import { makewish } from './wizcmds.js';
+import { makewish } from './zap.js';
 import { getlin } from './windows.js';
 import { rndmonst } from './makemon.js';
 import { adjalign as adjalign_sit } from './attrib.js';
-import { verbalize, list_genocided, SetVoice } from './cmd.js';
+import { verbalize, SetVoice } from './cmd.js';
+import { list_genocided } from './insight.js';
 import { DEAF } from './const.js';
 
-const G_GENO = 0x20, G_NOCORPSE = 0x10, G_UNIQ = 0x1000;
-const REALLY = 1, PLAYER = 2, ONTHRONE = 4;
-const S_invisible = 35;
-const M2_HUMAN = 0x00000008;
+import { G_UNIQ } from './read.js';
 const M2_DEMON = 0x00000100;
-const M2_PNAME = 0x00080000;
-const thats_enough_tries = "That's enough tries!";
-function pline1(msg) { return pline(msg); }
-function is_human(ptr) { return ((ptr?.mflags2 | 0) & M2_HUMAN) !== 0; }
-function is_demon(ptr) { return ((ptr?.mflags2 | 0) & M2_DEMON) !== 0; }
-function type_is_pname(ptr) { return ((ptr?.mflags2 | 0) & M2_PNAME) !== 0; }
 /* makemon's C home is makemon.c:1338; the real port lives in js/mklev.js
  * (NOT js/makemon.js — that file only has makemonDomesticSaddle). */
-import { makemon } from './mklev.js';
+import { makemon } from './makemon.js';
 import { courtmon as courtmon_real } from './mkroom.js';
 import { upstart } from './hacklib.js';
 import { kill_genocided_monsters, mongone } from './mon.js';
@@ -115,7 +112,7 @@ import { seffects } from './read.js';
  * exported and is arity-broken (`function Your(_fmt, _a)` takes only ONE
  * variadic arg); js/read.js's and js/cmd.js's are file-local, not exported.
  * do_wear.js's is the real, general-purpose, exported one. */
-import { Your, You } from './do_wear.js';
+import { Your, You } from './pline.js';
 import { W_SADDLE } from './const.js';
 /* make_blinded's C home is potion.c:267.  js/mhitu.js also carries a
  * same-named `export function make_blinded(_dur, _vis) { }`, verified NOT
@@ -146,8 +143,7 @@ const A_MAX = 6;
  * KILLED_BY_AN / KILLED_BY — death cause flags (C: hack.h)
  * ---------------------------------------------------------------------------
  */
-const KILLED_BY_AN = 0;
-const KILLED_BY = 1;
+import { KILLED_BY, KILLED_BY_AN } from './const.js';
 /* ---------------------------------------------------------------------------
  * Stub helpers — side-effects not yet ported; no RNG inside these stubs
  * unless explicitly noted.  All side-effect helpers here are zero-RNG shims;
@@ -183,305 +179,7 @@ export async function take_gold() {
 /* makewish: LOCAL EMPTY STUB DELETED — see import above. */
 /* makemon: LOCAL EMPTY STUB DELETED — see import above. */
 
-/* C read.c:2638 do_class_genocide().  Reached from seffect_genocide when the
- * scroll is blessed (read.c:1735); js/read.js must call this (out of file).
- * Includes conduct logging and polymorphed self-genocide (read.c:2674-2816). */
-export async function do_class_genocide() {
-    const MS_LEADER = 36, MS_NEMESIS = 37, MS_GUARDIAN = 38;
-    const mvitals = (game.mvitals ||= []);
-    const vit = (i) => (mvitals[i] ||= { born: 0, died: 0, mvflags: 0 });
-    const roleM = game.urole?.mnum | 0, raceM = game.urace?.mnum | 0;
-    let gameover = false;
-    let feel_dead = 0, ll_done = 0;
-    for (let j = 0; ; j++) {
-        if (j >= 5) {
-            await pline("That's enough tries!");
-            return;
-        }
-        let prompt = 'What class of monsters do you want to genocide?';
-        if (j > 0)
-            prompt += game.iflags?.cmdassist === false
-                ? " [enter '?' to see previous genocides]"
-                : " [enter the symbol or name representing a class, or '?']";
-        let buf = String(await getlin(prompt));
-        buf = buf.replace(/\s+/g, ' ').trim();
-        if (!buf) {
-            await pline('%s.', (j + 1 < 5)
-                ? 'Type letter (or punctuation) or name used for a class of monsters or \'none\''
-                : 'No class of monsters specified');
-            continue;
-        }
-        if (buf[0] === '\x1b' || /^(?:none|'none'|nothing)$/i.test(buf)) {
-            livelog_printf(LL_GENOCIDE, 'declined to perform class genocide');
-            return;
-        }
-        /* C read.c:2678-2682: "?" runs #genocided, then re-prompts */
-        if (buf === '?' || buf === "'?'") {
-            await list_genocided(0x67 /* 'g' */, false);
-            --j; /* don't count this iteration as one of the tries */
-            continue;
-        }
-        let cls = name_to_monclass(buf, null);
-        cls = (cls && typeof cls === 'object') ? (cls.mclass ?? cls.class ?? 0) : (cls | 0);
-        let i;
-        if (cls === 0 && (i = name_to_mon(buf, -1)?.mntmp ?? NON_PM) !== NON_PM)
-            cls = permonstTemplate(i).mlet;
-        let immunecnt = 0, gonecnt = 0, goodcnt = 0;
-        for (i = LOW_PM; i < NUMMONS; i++) {
-            const t = permonstTemplate(i);
-            if (t.mlet === cls) {
-                if (!(t.geno & G_GENO)) immunecnt++;
-                else if (vit(i).mvflags & G_GENOD) gonecnt++;
-                else goodcnt++;
-            }
-        }
-        if (!goodcnt && cls !== permonstTemplate(roleM)?.mlet
-            && cls !== permonstTemplate(raceM)?.mlet) {
-            if (gonecnt) await pline('All such monsters are already nonexistent.');
-            else if (immunecnt || cls === S_invisible)
-                await You("aren't permitted to genocide such monsters.");
-            else if (wizard() && buf[0] === '*') {
-                /* C read.c:2706-2717 */
-                let n = 0;
-                for (let mtmp = game.fmon, nx; mtmp; mtmp = nx) {
-                    nx = mtmp.nmon;
-                    if ((mtmp.mhp | 0) < 1) continue;
-                    await mongone(mtmp);
-                    n++;
-                }
-                await pline('Eliminated %d monster%s.', n, n === 1 ? '' : 's');
-                return;
-            } else
-                await pline('That %s does not represent any monster.',
-                    buf.length === 1 ? 'symbol' : 'response');
-            continue;
-        }
-        for (i = LOW_PM; i < NUMMONS; i++) {
-            const t = permonstTemplate(i);
-            if (t.mlet !== cls) continue;
-            const nam = makeplural(t.pmnames[2]);
-            if (i === roleM || i === raceM
-                || ((t.geno & G_GENO) && !(vit(i).mvflags & G_GENOD))) {
-                if (!ll_done++) {
-                    const sym = '?abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ@ \'&;:~]'[cls];
-                    const prior = Object.entries(mvitals).some(([n, v]) => n >= LOW_PM && n < NUMMONS && (v?.mvflags & G_GENOD));
-                    if (!prior) livelog_printf(LL_CONDUCT | LL_GENOCIDE, 'performed %s first genocide (class %c)', game.flags?.female ? 'her' : 'his', sym);
-                    else livelog_printf(LL_GENOCIDE, 'genocided class %c', sym);
-                }
-                vit(i).mvflags |= (G_GENOD | G_NOCORPSE);
-                await kill_genocided_monsters();
-                update_inventory();
-                await pline('Wiped out all %s.', nam);
-                const hero = game.youmonst;
-                if (Upolyd(game.u) && [PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER].includes(hero?.cham)
-                    && hero.data.mlet !== 48 && (i === game.u.umonnum || i === hero.cham))
-                    await polyself(POLY_REVERT);
-                if (Upolyd(game.u) && i === game.u.umonnum) {
-                    game.u.mh = -1;
-                    if (_hero_resists(UNCHANGING)) {
-                        if (!feel_dead++) await urgent_pline('You die.');
-                        gameover = true;
-                    } else await rehumanize();
-                }
-                if (i === roleM || i === raceM) {
-                    game.u.uhp = -1;
-                    if (Upolyd(game.u)) {
-                        if (!feel_dead++) await pline('You feel %s inside.', udeadinside());
-                    } else {
-                        if (!feel_dead++) await urgent_pline('You die.');
-                        gameover = true;
-                    }
-                }
-            } else if (vit(i).mvflags & G_GENOD) {
-                if (!gameover) await pline('%s are already nonexistent.', upstart(nam));
-            } else if (!gameover) {
-                const snd = t.msound;
-                if ((snd !== MS_LEADER || quest_info(MS_LEADER) === i)
-                    && (snd !== MS_NEMESIS || quest_info(MS_NEMESIS) === i)
-                    && (snd !== MS_GUARDIAN || quest_info(MS_GUARDIAN) === i)
-                    && (i !== PM_NINJA || game.urole?.mnum === PM_SAMURAI)) {
-                    const named = type_is_pname(t);
-                    const uniq = !!(t.geno & G_UNIQ) && i !== PM_HIGH_CLERIC;
-                    await You("aren't permitted to genocide %s%s.",
-                        (uniq && !named) ? 'the ' : '',
-                        (uniq || named) ? t.pmnames[2] : nam);
-                }
-            }
-        }
-        if (gameover || game.u.uhp === -1) {
-            game.__bridge__ ||= {};
-            game.__bridge__['killer.name'] = 'scroll of genocide';
-            const killer = (game.svk ||= {}).killer ||= { id: 0, format: 0, name: '', next: null };
-            killer.format = KILLED_BY_AN;
-            killer.name = 'scroll of genocide';
-            if (gameover) await done(GENOCIDED);
-        }
-        return;
-    }
-}
 
-/* C read.c:2826 do_genocide().  The class menu is a separate C helper; this
- * covers the ordinary type-selection path used by scrolls and thrones. */
-export async function do_genocide(flags = 1) {
-    const really = (flags & REALLY) !== 0;
-    const onThrone = (flags & ONTHRONE) !== 0;
-    // C read.c:2838-2843: confused reading selects the base hero type
-    // directly, even while polymorphed, without asking for a monster name.
-    let selected = (flags & PLAYER) ? game.u.umonster : null;
-    let killPlayer0 = (flags & PLAYER) !== 0;
-    for (let i = 0; selected === null; i++) {
-        /* C read.c:2846-2853 */
-        if (i >= 5) {
-            /* cursed effect => no free pass (unless rndmonst() fails) */
-            if (!(flags & REALLY)) {
-                const r = rndmonst();
-                if (r != null) { selected = r; break; }
-            }
-            await pline1(thats_enough_tries);
-            return false;
-        }
-        let prompt = 'What type of monster do you want to genocide?';
-        if (i > 0)
-            prompt += ` [enter ${game.iflags?.cmdassist === false
-                ? "'?' to see previous genocides"
-                : "the name of a type of monster, or '?'"}]`;
-        const buf = String(await getlin(prompt)).replace(/\s+/g, ' ').trim();
-        if (!buf) {
-            await pline('%s.', (i + 1 < 5)
-                ? "Type the name of a type of monster or 'none'"
-                : 'No type of monster specified');
-            continue;
-        }
-        if (buf[0] === '\x1b' || /^(?:none|'none'|nothing)$/i.test(buf)) {
-            if (!(flags & REALLY)) {
-                const r = rndmonst();
-                if (r != null) { selected = r; break; }
-            }
-            livelog_printf(LL_GENOCIDE, 'declined to perform genocide');
-            return false;
-        }
-        if (buf === '?' || buf === "'?'") {
-            await list_genocided(0x67 /* 'g' */, false);
-            --i;
-            continue;
-        }
-        const result = name_to_mon(buf, -1);
-        const mndx = result?.mntmp ?? NON_PM;
-        const vital0 = mndx >= LOW_PM && mndx < NUMMONS ? (game.mvitals ||= [])[mndx] : null;
-        if (mndx < LOW_PM || mndx >= NUMMONS || (vital0 && (vital0.mvflags & G_GENOD))) {
-            await pline('Such creatures %s exist in this world.',
-                (mndx < LOW_PM || mndx >= NUMMONS) ? 'do not' : 'no longer');
-            continue;
-        }
-        const ptr0 = permonstTemplate(mndx);
-        // C read.c:2897-2900: revert a vampire's shifted form first.
-        const hero = game.youmonst;
-        if (Upolyd(game.u) && [PM_VAMPIRE, PM_VAMPIRE_LEADER, PM_VLAD_THE_IMPALER].includes(hero?.cham)
-            && hero?.data?.mlet !== 48 /* S_VAMPIRE */
-            && (mndx === game.u.umonnum || mndx === hero.cham))
-            await polyself(POLY_REVERT);
-        if (mndx === (game.urole?.mnum | 0) || mndx === (game.urace?.mnum | 0)) {
-            killPlayer0 = true;
-            selected = mndx;
-            break;
-        }
-        const aln = Math.sign(game.u?.ualign?.type | 0);
-        if (is_human(ptr0)) adjalign_sit(-aln);
-        if (is_demon(ptr0)) adjalign_sit(aln);
-        if (!(ptr0.geno & G_GENO)) {
-            if (!Deaf()) {
-                if (game.flags?.verbose !== false)
-                    await pline('A thunderous voice booms through the caverns:');
-                SetVoice(null, 0, 80, 0 /* voice_deity */);
-                await verbalize('No, mortal!  That will not be done.');
-            }
-            continue;
-        }
-        if (_hero_resists(UNCHANGING) && mndx === game.u.umonnum) killPlayer0 = true;
-        selected = mndx;
-        break;
-    }
-
-    const data = permonstTemplate(selected);
-    if (!really) {
-        /* C read.c:2996-3014 — cursed scroll: no genocide, create monsters */
-        let cnt = 0;
-        const census0 = monster_census(false);
-        const v0 = (game.mvitals ||= [])[selected] ||= { born: 0, died: 0, mvflags: 0 };
-        if (!(data.geno & G_UNIQ) && !(v0.mvflags & (G_GENOD | G_EXTINCT))) {
-            for (let n = rn1(3, 4); n > 0; n--) {
-                if (!await makemon(selected, game.u.ux | 0, game.u.uy | 0, NO_MINVENT | MM_NOMSG))
-                    break;
-                ++cnt;
-                if (v0.mvflags & G_EXTINCT) break;
-            }
-        }
-        if (cnt) {
-            cnt = monster_census(false) - census0;
-            let nm = data.pmnames[2];
-            if ((game.u?.uprops?.[HALLUC]?.intrinsic | 0) && !_hero_resists(HALLUC_RES)) {
-                const roleName = game.urole.name;
-                nm = Upolyd(game.u) ? monPmname(game.u.umonnum, game.flags?.female ? 1 : 0)
-                    : ((game.flags?.female && roleName.f) || roleName.m).replace(/^./, c => c.toLowerCase());
-            }
-            await pline('Sent in %s%s.', (cnt > 1) ? 'some ' : '',
-                (cnt > 1) ? makeplural(nm) : an(nm));
-        } else {
-            await pline('Nothing happens.');
-        }
-        return true;
-    }
-    /* C permits genocide of the player's role or race, and of the current
-     * polymorph form; Unchanging makes genocide of that form fatal. */
-    const current = game.youmonst?.data?.pmidx ?? game.u?.umonnum;
-    const killPlayer = killPlayer0;
-    // C read.c:2955-2961: count existing genocides before setting G_GENOD.
-    if (!Object.entries(game.mvitals || {}).some(([i, v]) => i >= LOW_PM && i < NUMMONS && (v?.mvflags | 0) & G_GENOD))
-        livelog_printf(LL_CONDUCT | LL_GENOCIDE, 'performed %s first genocide (%s)',
-            game.flags?.female ? 'her' : 'his', makeplural(data.pmnames[2]));
-    else
-        livelog_printf(LL_GENOCIDE, 'genocided %s', makeplural(data.pmnames[2]));
-    const vital = game.mvitals[selected] ||= { born: 0, died: 0, mvflags: 0 };
-    vital.mvflags |= G_GENOD | G_NOCORPSE;
-    /* C read.c:2936-2966: which/buf selection, then makeplural unless the
-     * prefix starts with 'a' ("all "). */
-    let which = 'all ';
-    let buf;
-    if ((game.u?.uprops?.[HALLUC]?.intrinsic | 0) && !_hero_resists(HALLUC_RES)) {
-        if (Upolyd(game.u)) {
-            buf = monPmname(game.u.umonnum, game.flags?.female ? 1 : 0);
-        } else {
-            const nm = game.urole?.name;
-            buf = (game.flags?.female && nm?.f) ? nm.f : nm?.m;
-            buf = buf ? buf.charAt(0).toLowerCase() + buf.slice(1) : buf;
-        }
-    } else {
-        buf = data?.pmnames?.[2] || 'such monsters';
-        if ((data.geno & G_UNIQ) && selected !== PM_HIGH_CLERIC)
-            which = !type_is_pname(data) ? 'the ' : '';
-    }
-    await pline('Wiped out %s%s.', which, (which.charAt(0) !== 'a') ? buf : makeplural(buf));
-    // C read.c:2967-2995: resolve hero death before monster/inventory cleanup.
-    if (killPlayer) {
-        game.u.uhp = -1;
-        game.svk ||= {};
-        const killer = game.svk.killer ||= { id: 0, format: 0, name: '', next: null };
-        killer.format = (flags & PLAYER) ? KILLED_BY : KILLED_BY_AN;
-        killer.name = (flags & PLAYER) ? 'genocidal confusion'
-            : (flags & ONTHRONE) ? 'imperious order' : 'scroll of genocide';
-        if (Upolyd(game.u) && selected !== current) {
-            delayed_killer(POLYMORPH, killer.format, killer.name);
-            await pline('You feel %s inside.', udeadinside());
-        } else {
-            await done(GENOCIDED);
-        }
-    } else if (selected === current) {
-        await rehumanize();
-    }
-    await kill_genocided_monsters();
-    update_inventory();
-    return true;
-}
 /* make_blinded: LOCAL EMPTY STUB DELETED — see import above. */
 /* `function rndcurse() { }` — LOCAL EMPTY STUB DELETED.  sit.c:143's throne
  * effect and mcastu.c:833's MCAST_CURSE_ITEMS are the SAME C function, and this
@@ -509,28 +207,6 @@ function SET_BOTL() {
 /* C pline.c:386 You_feel(line) — preserve the throne-effect feedback. */
 import { You_feel, pline_The } from './pline.js';
 import { find_hell } from './dungeon.js'; // relocate-fns
-/* stub: Your — side-effect only */
-/* Your: LOCAL EMPTY STUB DELETED — see import above. */
-/* see_monsters: LOCAL EMPTY STUB DELETED — re-pointed to js/display.js's real
- * body (display.c:1520 see_monsters()). */
-/* C display.c:1582 set_mimic_blocking — refresh light blocking for invisible
- * mimics when See_invisible changes. */
-export function set_mimic_blocking() {
-    const u = game.u || {};
-    const p = u.uprops?.[SEE_INVIS];
-    const seeInvisible = !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
-    for (let mon = game.fmon; mon; mon = mon.nmon) {
-        if (!mon.minvis) continue;
-        const apType = (mon.m_ap_type | 0) & 7;
-        const app = mon.mappearance | 0;
-        const blocker = (apType === 2 && app === 475)
-            || (apType === 1 && (app === 16 || app === 15 || app < 12 || app === 18));
-        if (blocker) {
-            if (seeInvisible) block_point(mon.mx | 0, mon.my | 0);
-            else unblock_point(mon.mx | 0, mon.my | 0);
-        }
-    }
-}
 
 /* C prop.h INTRINSIC — (TIMEOUT_RAW|FROMEXPER|FROMRACE) == 0x07000000. */
 const INTRINSIC = 0x07000000;
@@ -545,7 +221,6 @@ const POISON_RES = 6;
 const TELEPAT = 30;
 const COLD_RES = 2;
 const INVIS = 40;
-const SEE_INVIS = 29;
 const FAST = 64;
 const STEALTH = 42;
 const PROTECTION = 59;
@@ -687,51 +362,6 @@ async function _attrcurse_body(u) {
     }
     return ret;
 }
-/* C minion.c:391-439.  These selectors deliberately retain their retry loops:
- * mkclass_aligned and the gone/alignment checks each consume RNG in C. */
-function dprince(atyp) {
-    const inEndgame = !!(game.u?.uz && game.astral_level
-                          && game.u.uz.dnum === game.astral_level.dnum);
-    for (let tries = inEndgame ? 0 : 20; tries > 0; --tries) {
-        const pm = PM_ORCUS + rn1(PM_DEMOGORGON + 1 - PM_ORCUS, 0);
-        const v = game.mvitals?.[pm];
-        const d = permonstTemplate(pm);
-        if (!((v?.mvflags | 0) & G_GONE) /* C minion.c:397 */
-            && (atyp === A_NONE || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
-            return pm;
-    }
-    return dlord(atyp);
-}
-export function dlord(atyp) {
-    const inEndgame = !!(game.u?.uz && game.astral_level
-                          && game.u.uz.dnum === game.astral_level.dnum);
-    for (let tries = inEndgame ? 0 : 20; tries > 0; --tries) {
-        const pm = PM_JUIBLEX + rn1(PM_YEENOGHU + 1 - PM_JUIBLEX, 0);
-        const v = game.mvitals?.[pm];
-        const d = permonstTemplate(pm);
-        if (!((v?.mvflags | 0) & G_GONE)
-            && (atyp === A_NONE || Math.sign(d.maligntyp | 0) === Math.sign(atyp)))
-            return pm;
-    }
-    return ndemon(atyp);
-}
-const S_ANGEL = 27;
-export function lminion() {
-    for (let tries = 0; tries < 20; ++tries) {
-        const pm = mkclass(S_ANGEL, 0);
-        if (pm !== null && pm !== NON_PM
-            && !(permonstTemplate(pm).mflags2 & M2_LORD))
-            return pm;
-    }
-    return NON_PM;
-}
-/* C minion.c:419-426 llord */
-function llord() {
-    if (!(game.mvitals?.[PM_ARCHON]?.mvflags & G_GONE))
-        return PM_ARCHON;
-    return lminion(); /* approximate */
-}
-const S_LIGHT = 25; /* defsym.h MONSYM(25, 'y', LIGHT, S_LIGHT) */
 /* C mondata.c:1449 msummon_environ */
 const _ENV = (n, c, w) => n.forEach(k => { _ENV_T[k] = [c, w]; });
 const _ENV_T = {};
@@ -739,84 +369,6 @@ _ENV([PM_WATER_DEMON, PM_AIR_ELEMENTAL, PM_WATER_ELEMENTAL, PM_FOG_CLOUD, PM_ICE
 _ENV([PM_STEAM_VORTEX], 'cloud', 'steam'); _ENV([PM_ENERGY_VORTEX, PM_SHOCKING_SPHERE], 'shower', 'sparks');
 _ENV([PM_EARTH_ELEMENTAL, PM_DUST_VORTEX], 'cloud', 'dust'); _ENV([PM_FIRE_ELEMENTAL, PM_FIRE_VORTEX, PM_FLAMING_SPHERE], 'ball', 'flame');
 _ENV([PM_ANGEL, PM_YELLOW_LIGHT], 'flash', 'light');
-export async function msummon(mon) {
-    const ptr = mon?.data || permonstTemplate(PM_WIZARD_OF_YENDOR);
-    const ART_DEMONBANE = 12;
-    /* C minion.c:69-74: Demonbane prevents summoning before any RNG. */
-    if (mon && game.u.uwep?.oartifact === ART_DEMONBANE && (ptr.mflags2 & M2_DEMON)) {
-        if (canseemon(mon)) await pline('%s looks puzzled for a moment.', Monnam(mon));
-        return 0;
-    }
-    /* C minion.c:76-82: a priest or minion carries its own alignment; any
-     * other species keeps A_NONE (the Wizard), which dprince()/dlord() read
-     * as "any alignment".  Math.sign(A_NONE) is -1 and would reject every
-     * prince of the other sign. */
-    const atyp = (mon?.ispriest && mon.mextra?.epri) ? mon.mextra.epri.shralign
-        : (mon?.isminion && mon.mextra?.emin) ? mon.mextra.emin.min_align
-        : ptr.maligntyp === A_NONE ? A_NONE : Math.sign(ptr.maligntyp | 0);
-    let dtype = NON_PM, cnt = 0;
-    const princeOrWizard = ((ptr.mflags2 & M2_DEMON) && (ptr.mflags2 & M2_PRINCE))
-        || ptr.pmidx === PM_WIZARD_OF_YENDOR;
-    if (princeOrWizard) {
-        dtype = !rn2(20) ? dprince(atyp) : !rn2(4) ? dlord(atyp) : ndemon(atyp);
-        cnt = dtype !== NON_PM && !rn2(4) && is_ndemon(permonstTemplate(dtype)) ? 2 : 1;
-    } else if ((ptr.mflags2 & M2_DEMON) && (ptr.mflags2 & M2_LORD)) {
-        dtype = !rn2(50) ? dprince(atyp) : !rn2(20) ? dlord(atyp) : ndemon(atyp);
-        cnt = dtype !== NON_PM && !rn2(4) && is_ndemon(permonstTemplate(dtype)) ? 2 : 1;
-    } else if ((ptr.pmidx | 0) === PM_BONE_DEVIL) {
-        dtype = PM_SKELETON; cnt = 1;
-    } else if (is_ndemon(ptr)) {
-        dtype = !rn2(20) ? dlord(atyp) : !rn2(6) ? ndemon(atyp) : (ptr.pmidx | 0);
-        cnt = 1;
-    } else if (is_lminion(mon)) { /* monst.h:281; mon is non-null here (the Wizard takes the first arm) */
-        dtype = (ptr.mflags2 & M2_LORD) && !rn2(20) ? llord()
-            : ((ptr.mflags2 & M2_LORD) || !rn2(6)) ? lminion() : (ptr.pmidx | 0);
-        cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
-    } else if ((ptr.pmidx | 0) === PM_ANGEL) {
-        if (rn2(6)) dtype = PM_ANGEL;
-        else if (atyp === A_NEUTRAL)
-            dtype = [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)];
-        else if (atyp === A_CHAOTIC || atyp === A_NONE) dtype = ndemon(atyp);
-        cnt = dtype !== NON_PM && !rn2(4) && !(permonstTemplate(dtype).mflags2 & M2_LORD) ? 2 : 1;
-    }
-    if (dtype === NON_PM) return 0;
-    /* C minion.c:137-148 — sanity checks */
-    if (cnt > 1 && (permonstTemplate(dtype).geno & G_UNIQ)) cnt = 1;
-    if ((game.mvitals?.[dtype]?.mvflags & G_GONE) !== 0) {
-        dtype = ndemon(atyp);
-        if (dtype === NON_PM) return 0;
-    }
-    /* C:152 — "some candidates can generate a group of monsters, so simple
-       count of non-null makemon() result is not sufficient" */
-    const census = monster_census(false);
-    let result = 0, xlight = false;
-    while (cnt-- > 0) {
-        const m = await makemon(dtype, game.u.ux | 0, game.u.uy | 0, MM_EMIN | MM_NOMSG);
-        if (m) {
-            result++;
-            /* C:159-167 — an angel's alignment should match the summoner */
-            if (dtype === PM_ANGEL) {
-                m.isminion = 1;
-                newemin(m);
-                m.mextra.emin.min_align = atyp;
-                m.mextra.emin.renegade = ((atyp !== game.u.ualign.type) ^ !m.mpeaceful) ? 1 : 0;
-            }
-            if (m.data.mlet === S_ANGEL && !Blind()) { /* C minion.c:162-170 */
-                await show_transient_light(null, m.mx, m.my);
-                xlight = true;
-            }
-            if (cnt === 0 && canseemon(m)) {
-                const d = m.data, k = d.mlet === S_ANGEL ? PM_ANGEL : d.mlet === S_LIGHT ? PM_YELLOW_LIGHT /* mondata.c:1452-1454 */ : (d.pmidx | 0);
-                const [cloud, what] = _ENV_T[k] || ['cloud', 'smoke'];
-                await pline(`${Amonnam(m)} appears in a ${cloud} of ${what}!`);
-            }
-        }
-    }
-    if (xlight) await transient_light_cleanup(); /* C minion.c:183-188 */
-    /* C:190-192 */
-    if (result) result = monster_census(false) - census;
-    return result;
-}
 /* seffects: LOCAL EMPTY STUB DELETED — see import above.  Its call site
  * (special_throne_effect case 10) needs a real `fake_spellbook` argument now,
  * built below — see that case for the C reference. */
@@ -1060,7 +612,7 @@ export async function throne_sit_effect() {
             case 4:
                 /* No RNG — full heal + status effects */
                 await You_feel("much, much better!"); /* C sit.c:84 */
-                if (Upolyd(u)) {
+                if (Upolyd_sit(u)) {
                     if ((u.mh | 0) >= (u.mhmax | 0) - 5)
                         u.mhmax = (u.mhmax | 0) + 4;
                     u.mh = u.mhmax;
@@ -1241,11 +793,11 @@ export async function throne_sit_effect() {
     }
 }
 /* ---------------------------------------------------------------------------
- * Upolyd — C you.h:554 macro: (u.umonnum != u.umonster).  NOT u.mtimedone,
+ * Upolyd_sit — C you.h:554 macro: (u.umonnum != u.umonster).  NOT u.mtimedone,
  * which is you.h:422, the poly TIMER; potion.c:1326 tests both together.
  * ---------------------------------------------------------------------------
  */
-function Upolyd(u) {
+function Upolyd_sit(u) {
     return !!u && (u.umonnum | 0) !== (u.umonster | 0);
 }
 
@@ -1260,24 +812,10 @@ function Upolyd(u) {
  * mflags2 is MONS[ptr][7] (permonst row column map; see js/makemon.js).
  * ---------------------------------------------------------------------------
  */
-const S_DEMON = 56;          /* C monsym.h S_DEMON */
-const M2_LORD = 0x00000400;
+import { S_DEMON } from './minion.js'; /* C monsym.h S_DEMON */
 const M2_PRINCE = 0x00000800;
-const MONS = /** @type {any[]} */ (monsPack.mons);
-export function ndemon(atyp) {
-    const ptr = mkclassAligned(S_DEMON, 0, atyp);
-    if (ptr === null || ptr === NON_PM)
-        return NON_PM;
-    const mflags2 = MONS[ptr][7] | 0;
-    const is_demon = (mflags2 & M2_DEMON) !== 0;
-    const is_lord = (mflags2 & M2_LORD) !== 0;
-    const is_prince = (mflags2 & M2_PRINCE) !== 0;
-    if (is_demon && !is_lord && !is_prince)
-        return ptr;
-    return NON_PM;
-}
 
-const AMULET_OF_YENDOR = 213; /* C objects.h — unique amulet otyp */
+import { AMULET_OF_YENDOR } from './wizard.js'; /* C objects.h — unique amulet otyp */
 /* C ref: wizard.c:105 mon_has_amulet(mtmp) — forwarded to canonical js/wizard.js body */
 export { mon_has_amulet } from './wizard.js';
 
@@ -1292,101 +830,42 @@ export { mon_has_amulet } from './wizard.js';
  * command-result channel deliberately chosen for THAT call site — this one
  * (attrcurse/amulet) wants an immediate pline instead, matching C's plain
  * You() -> pline() shape. */
-function DEADMONSTER(mtmp) { return (mtmp.mhp | 0) < 1; }
-function distu(x, y) {
-    const u = game.u || {};
-    const dx = (u.ux | 0) - (x | 0);
-    const dy = (u.uy | 0) - (y | 0);
-    return dx * dx + dy * dy;
-}
-function m_next2u(mtmp) {
-    const u = game.u || {};
-    return Math.abs((mtmp.mx | 0) - (u.ux | 0)) <= 1
-        && Math.abs((mtmp.my | 0) - (u.uy | 0)) <= 1;
-}
+import { DEADMONSTER } from './wizard.js';
+import { monster_census, msummon } from './minion.js'; // relocate-fns
+import { set_mimic_blocking } from './display.js'; // relocate-fns
+import { do_genocide } from './read.js'; // relocate-fns
+import { COIN_CLASS_C, Is_box, _Cold_resistance, _Deaf, _Fire_resistance, _Flying, _Levitation, _There, _Underwater, _dryup, _eprop, _hero_youmonst, _hliquid, _hprop, _is_hider_mndx, _is_lava, _is_pool, _levlAt, _likes_lava, _oc_material, _plineVFmt, _split_mon, _sticks, _the_str, _uprop_active } from './cmd.js';
+import { useupf } from './invent.js'; // relocate-fns
+import { ALTAR, A_STR, A_WIS, DRAWBRIDGE_DOWN, ECMD_OK, ECMD_TIME, FOOT, FOUNTAIN, GRAVE, IS_ALTAR, Is_waterlevel, LADDER, SINK, SPIKED_PIT, STAIRS, THRONE, TT_BEARTRAP, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, TT_WEB, Upolyd, VIASITTING } from './const.js'; // relocate-fns
+import { is_ice as _is_ice } from './dbridge.js'; // relocate-fns
+import { DEFSYM_EXPLANATION } from './defsym_data.js'; // relocate-fns
+import { dropy } from './do.js'; // relocate-fns
+import { xname } from './do_wear.js'; // relocate-fns
+import { surface } from './dungeon.js'; // relocate-fns
+import { morehungry } from './eat.js'; // relocate-fns
+import { can_reach_floor } from './engrave.js'; // relocate-fns
+import { oc_nutrition } from './food_props.js'; // relocate-fns
+import { money_cnt } from './hack.js'; // relocate-fns
+import { stackobj } from './invent.js'; // relocate-fns
+import { mhis_mon } from './mhitu.js'; // relocate-fns
+import { mksobj, set_corpsenm } from './mkobj.js'; // relocate-fns
+import { egg_type_from_parent } from './mon.js'; // relocate-fns
+import { observe_object } from './o_init.js'; // relocate-fns
+import { You_cant } from './pline.js'; // relocate-fns
+import { PM_ELECTRIC_EEL, PM_GIANT_EEL, PM_GREMLIN, PM_TRAPPER } from './pm.generated.js'; // relocate-fns
+import { make_slimed } from './potion.js'; // relocate-fns
+import { altar_wrath } from './pray.js'; // relocate-fns
+import { d } from './rnd.js'; // relocate-fns
+import { dotrap, t_at, uescaped_shaft, uteetering_at_seen_pit, water_damage } from './trap.js'; // relocate-fns
+import { mon_nam } from './uhitm.js'; // relocate-fns
+import { weight } from './weight.js'; // relocate-fns
+export { Upolyd_sit, _hero_resists }; // relocate-fns
+export { amulet } from './wizard.js'; // relocate-fns
+export { lminion, monster_census, ndemon, newemin } from './minion.js'; // relocate-fns
+export { M2_DEMON, M2_PRINCE, _ENV_T }; // relocate-fns
 
-/* ---------------------------------------------------------------------------
- * amulet — If you've found the Amulet, make the Wizard appear after some time.
- * Also, give hints about portal locations, if amulet is worn/wielded.
- * C ref: nethack-c/src/wizard.c:60
- * ---------------------------------------------------------------------------
- */
-export async function amulet() {
-    const u = game.u || {};
-    const gf = game;
 
-    /* Check if the amulet is worn or wielded */
-    let amu = u.uamul;
-    if (!amu || (amu.otyp | 0) !== AMULET_OF_YENDOR) {
-        amu = u.uwep;
-        if (!amu || (amu.otyp | 0) !== AMULET_OF_YENDOR)
-            amu = null;
-    }
-    if (amu && !rn2(15)) {
-        for (let ttmp = gf.ftrap; ttmp; ttmp = ttmp.ntrap) {
-            if (ttmp.ttyp === MAGIC_PORTAL) {
-                let du = distu(ttmp.tx, ttmp.ty);
-                if (du <= 9)
-                    pline("%s hot!", Tobjnam(amu, "feel"));
-                else if (du <= 64)
-                    pline("%s very warm.", Tobjnam(amu, "feel"));
-                else if (du <= 144)
-                    pline("%s warm.", Tobjnam(amu, "feel"));
-                /* else, the amulet feels normal */
-                break;
-            }
-        }
-    }
 
-    /* C wizard.c:89 — `if (!svc.context.no_of_wizards) return;`.  In js/ the
-     * C svc.context.no_of_wizards counter lives on game.context (makemon +1,
-     * wizdeadorgone -1); game.svc.context is a different mirror object
-     * (current_fruit, made_amulet, ...) that never carries it, so reading it
-     * here returned early every turn and the wizard-wake rn2(40) (wizard.c:95)
-     * was never drawn once a sleeping Wizard reached the hero's level. */
-    if (!gf.context || !gf.context.no_of_wizards)
-        return;
-    /* find Wizard, and wake him if necessary */
-    for (let mtmp = gf.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (DEADMONSTER(mtmp))
-            continue;
-        if (mtmp.iswiz && mtmp.msleeping && !rn2(40)) {
-            mtmp.msleeping = 0;
-            if (!m_next2u(mtmp))
-                await You(
-      "get the creepy feeling that somebody noticed your taking the Amulet.");
-            return;
-        }
-    }
-}
-
-/* ---------------------------------------------------------------------------
- * newemin — allocate and init emin (minion extended data)
- * C ref: nethack-c-v5/upstream/src/minion.c:17-26
- * ---------------------------------------------------------------------------
- */
-export function newemin(mtmp) {
-    if (!mtmp.mextra)
-        mtmp.mextra = newmextra();
-    if (!EMIN(mtmp)) {
-        mtmp.mextra.emin = { min_align: 0, renegade: 0, parentmid: mtmp.m_id };
-    }
-}
-
-export function monster_census(spotted) {
-    let count = 0;
-
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (DEADMONSTER(mtmp))
-            continue;
-        if (mtmp.isgd && mtmp.mx === 0)
-            continue;
-        if (spotted && !canspotmon(mtmp))
-            continue;
-        ++count;
-    }
-    return count;
-}
 
 
 /* youprop.h property indices, read the one spelling js/ actually writes
@@ -1476,4 +955,365 @@ export async function rndcurse() {
             otmp.bknown = 0;                              /* bypass set_bknown() */
         }
     }
+}
+
+/* was `return false`, ignoring its argument entirely — C: mondata.h:65
+ * humanoid(ptr) = ((ptr->mflags1 & M1_HUMANOID) != 0).  Two call shapes in
+ * this file: humanoid(u.ustuck->data) (another monster's permonst) and
+ * humanoid(gy.youmonst.data) (the hero's own, at the no-arg call site) —
+ * `_hero_youmonst()` (this file, ~line 15475) is the established helper for
+ * the latter. */
+function _humanoid(data) {
+    const M1_HUMANOID_SIT = 0x00020000; /* monflag.h M1_HUMANOID */
+    const ym = data || _hero_youmonst().data;
+    return !!ym && ((ym.mflags1 | 0) & M1_HUMANOID_SIT) !== 0;
+}
+
+function _mhis(mtmp) { return mhis_mon(mtmp); }
+
+/* was `return 0` — a file-local stub shadowing the real port, so the dosit
+ * dragon-hoard line (sit.c) always read "meager ". */
+function _money_cnt(invent) { return money_cnt(invent); }
+
+/* was `return false` — C: mondata.h:67 slithy(ptr) = ((ptr->mflags1 &
+ * M1_SLITHY) != 0), called here with no arg == slithy(gy.youmonst.data). */
+function _slithy() {
+    const M1_SLITHY_SIT = 0x00080000; /* monflag.h M1_SLITHY */
+    const ym = _hero_youmonst().data;
+    return !!ym && ((ym.mflags1 | 0) & M1_SLITHY_SIT) !== 0;
+}
+
+/* C sndprocs.h:272 Soundeffect(seid, vol) — compiled empty without
+ * SND_LIB_INTEGRATED; seffects.h enum (se_zero_invalid = 0 first). */
+const se_squelch = 182;
+
+function _Soundeffect(se, vol) { }
+
+function _Is_box(o) { return Is_box(o); }
+
+/* was `return false` — C: youprop.h:341 Half_physical_damage =
+ * (HHalf_physical_damage || EHalf_physical_damage), u.uprops[HALF_PHDAM].
+ * This file already reads the identical macro this way elsewhere
+ * (`_uprop_active('HALF_PHDAM')`, the dmgval halving helper) — same prop id,
+ * exported by const.js; this just wires the dosit-local copy the same way. */
+function _Half_physical_damage() { return _uprop_active('HALF_PHDAM'); }
+
+function _Slimed() { return _uprop_active('SLIMED'); }
+
+/* C timeout.c:448-452 burn_away_slime().  Fire and lava effects call this
+ * before applying their other side effects; when the hero is becoming slime,
+ * clear that timeout immediately and preserve C's feedback text.  The local
+ * command helper used to be a silent no-op, which left Slimed set after #sit
+ * on lava and after sitting on a lava surface. */
+async function _burn_away_slime() {
+    if (_Slimed())
+        await make_slimed(0, "The slime that covers you is burned away!");
+}
+
+/* was `return false` — C: mondata.h:78 eggs_in_water(ptr) = (lays_eggs(ptr)
+ * && ptr->mlet == S_EEL && is_swimmer(ptr)), is_swimmer(ptr) = ((ptr->mflags1
+ * & M1_SWIM) != 0). Called here with no arg == eggs_in_water(gy.youmonst.data). */
+function _eggs_in_water() {
+    const M1_OVIPAROUS_SIT = 0x00400000; /* monflag.h M1_OVIPAROUS */
+    const M1_SWIM_SIT = 0x00000002;      /* monflag.h M1_SWIM */
+    const S_EEL_SIT = 57;                /* defsym.h MONSYM(57,...,S_EEL) */
+    const ym = _hero_youmonst().data;
+    if (!ym) return false;
+    const mf1 = ym.mflags1 | 0;
+    return (mf1 & M1_OVIPAROUS_SIT) !== 0
+        && (ym.mlet | 0) === S_EEL_SIT
+        && (mf1 & M1_SWIM_SIT) !== 0;
+}
+
+/* C: defsyms[S_x].explanation (defsym.h) — S_altar=33, S_grave=34, S_throne=35,
+ * S_sink=36, S_ice=39.  The throne reads "opulent throne" (sit.c:557). */
+const _DEFSYM_EXPL_IDX = { altar: 33, grave: 34, throne: 35, sink: 36, ice: 39 };
+
+function _defsym_expl(name) { return DEFSYM_EXPLANATION[_DEFSYM_EXPL_IDX[name]] ?? name; }
+
+/* was an empty body — a file-local stub shadowing the real port, same class
+ * as the money_cnt/hliquid re-points above.  Real body: js/sit.js:420
+ * throne_sit_effect() (172 lines: attribute swings, level drain, wishes,
+ * teleport, polymorph, monster summons, curses, throne removal).  It is
+ * `async` (awaits pline/makewish/tele/polyself/etc via its own leaves), so
+ * this wrapper is too and the dosit call site below now awaits it. */
+async function _throne_sit_effect() { return throne_sit_effect(); }
+
+/* was `return false` — C: mondata.h:77 lays_eggs(ptr) = ((ptr->mflags1 &
+ * M1_OVIPAROUS) != 0), called here with no arg == lays_eggs(gy.youmonst.data). */
+function _lays_eggs() {
+    const M1_OVIPAROUS_SIT = 0x00400000; /* monflag.h M1_OVIPAROUS */
+    const ym = _hero_youmonst().data;
+    return !!ym && ((ym.mflags1 | 0) & M1_OVIPAROUS_SIT) !== 0;
+}
+
+/* C sit.c:358-393 — lay_an_egg().  The old ECMD_TIME placeholder skipped the
+ * female/energy/water guards and all object creation, including the hatch
+ * timer setup performed by set_corpsenm(). */
+async function _lay_an_egg() {
+    const g = game;
+    const u = g.u || {};
+    const EGG = 266;
+    const nutrition = oc_nutrition(EGG);
+    if (!g.flags?.female) {
+        const male = _hprop(HALLUC) && !(_hprop(HALLUC_RES) || _eprop(HALLUC_RES))
+            ? 'You may think you are a platypus, but a male still'
+            : 'Males';
+        await pline("%s can't lay eggs!", male);
+        return ECMD_OK;
+    }
+    if ((u.uhunger | 0) < nutrition) {
+        await You("don't have enough energy to lay an egg.");
+        return ECMD_OK;
+    }
+    const waterEgg = _eggs_in_water();
+    if (waterEgg) {
+        if (!_Underwater() && !Is_waterlevel(u.uz)) {
+            await pline('A splash tetra you are not.');
+            return ECMD_OK;
+        }
+        if (Upolyd(u) && ((u.umonnum | 0) === PM_GIANT_EEL
+                       || (u.umonnum | 0) === PM_ELECTRIC_EEL)) {
+            await You('yearn for the Sargasso Sea.');
+            return ECMD_OK;
+        }
+    }
+    const egg = await mksobj(EGG, false, false);
+    egg.spe = 1;
+    egg.quan = 1;
+    egg.owt = weight(egg);
+    set_corpsenm(egg, egg_type_from_parent(u.umonnum | 0, false));
+    egg.known = 1;
+    observe_object(egg);
+    await You('%s an egg.', waterEgg ? 'spawn' : 'lay');
+    await dropy(egg);
+    await stackobj(egg);
+    await morehungry(nutrition);
+    return ECMD_TIME;
+}
+
+/* C ref: sit.c:396 dosit() — the #sit command. */
+export async function dosit() {
+    const g = game;
+    const u = g.u || (g.u = {});
+    const CREAM_PIE_SIT = 287, WATER_WALKING_BOOTS_SIT = 167;
+    /* C monsym.h S_DRAGON (js/polyself.js:167); objects.h TOOL() TOWEL
+     * (js/engrave.js:73, js/potion.js:2248). */
+    const S_DRAGON_SIT = 30, TOWEL_SIT = 234;
+    const sit_message = "sit on the %s.";
+
+    const trap = t_at(u.ux | 0, u.uy | 0);
+    const loc = _levlAt(u.ux | 0, u.uy | 0);
+    const typ = loc ? (loc.typ | 0) : 0;
+
+    if (u.usteed) {
+        await You("are already sitting on %s.", mon_nam(u.usteed));
+        g.context.move = 0;
+        return ECMD_OK;
+    }
+
+    /* C sit.c:410-412: only ceiling hiders descend; hiding under objects persists. */
+    if (u.uundetected && _is_hider_mndx(u.umonnum | 0)
+        && (u.umonnum | 0) !== PM_TRAPPER) {
+        u.uundetected = 0;
+    }
+
+    if (!can_reach_floor(false)) {
+        if (u.uswallow) {
+            await _There("are no seats in here!");
+        } else if (_Levitation()) {
+            await You("tumble in place.");
+        } else {
+            await You("are sitting on air.");
+        }
+        g.context.move = 0;
+        return ECMD_OK;
+    } else if (u.ustuck && !_sticks()) {
+        if (_humanoid(u.ustuck?.data)) {
+            await pline("%s won't offer %s lap.", Monnam(u.ustuck), _mhis(u.ustuck));
+        } else {
+            await pline("%s has no lap.", Monnam(u.ustuck));
+        }
+        g.context.move = 0;
+        return ECMD_OK;
+    } else if (_is_pool(u.ux | 0, u.uy | 0) && !_Underwater()) {
+        await You("sit in the %s.", _hliquid("water"));
+        if (Upolyd(u) && (u.umonnum | 0) === PM_GREMLIN) {
+            if (await _split_mon()) {
+                if ((loc && (loc.typ | 0) === FOUNTAIN)) {
+                    await _dryup(u.ux | 0, u.uy | 0, true);
+                }
+            }
+        } else {
+            if (!rn2(10) && u.uarm) {
+                await water_damage(u.uarm, "armor", true);
+            }
+            if (!rn2(10) && u.uarmf && (u.uarmf.otyp | 0) !== WATER_WALKING_BOOTS_SIT) {
+                await water_damage(u.uarm, "armor", true);
+            }
+        }
+        g.context.move = 1;
+        return ECMD_TIME;
+    } else if (Upolyd(u) && (u.umonnum | 0) === PM_GREMLIN
+               && ((loc && (loc.typ | 0) === FOUNTAIN) || _is_pool(u.ux | 0, u.uy | 0))) {
+        await You("sit in the %s.", _hliquid("water"));
+        if (await _split_mon()) {
+            if ((loc && (loc.typ | 0) === FOUNTAIN)) {
+                await _dryup(u.ux | 0, u.uy | 0, true);
+            }
+        }
+        g.context.move = 1;
+        return ECMD_TIME;
+    }
+
+    const objAt = g.level?.levelObjects?.[u.ux | 0]?.[u.uy | 0];
+    if (objAt && !(uteetering_at_seen_pit(trap) || uescaped_shaft(trap))) {
+        const obj = objAt;
+        if ((_hero_youmonst().data?.mlet | 0) === S_DRAGON_SIT && (obj.oclass | 0) === COIN_CLASS_C) {
+            await You("coil up around your %shoard.",
+                ((obj.quan | 0) + _money_cnt(g.invent || null) < (u.ulevel | 0) * 1000)
+                ? "meager " : "");
+        } else if ((obj.otyp | 0) === TOWEL_SIT) {
+            await pline("It's probably not a good time for a picnic...");
+        } else {
+            /* C sit.c:450-452 — `the(xname(obj))`, and xname() deliberately
+             * does NOT include the monster type for a corpse ("xname doesn't
+             * include monster type for 'corpse'; cxname does", objnam.c:1925),
+             * so C reads "You sit on the corpse."  This called cmd.js's local
+             * partial namer _cxname_base(), whose hand-maintained otyp tables
+             * have no CORPSE row, so it rendered the `object#<otyp>` fallback:
+             * "You sit on the object#265."  js/objnam.js's xname() is the real
+             * body — use it. */
+            if (_slithy()) {
+                await You("coil up around %s.", _the_str(xname(obj)));
+            } else {
+                await You("sit on %s.", _the_str(xname(obj)));
+            }
+            const M1_AMORPHOUS_SIT = 0x00000004; /* C monflag.h M1_AMORPHOUS */
+            const _sitCorpsePm = (obj.corpsenm != null) ? (obj.corpsenm | 0) : -1;
+            const _sitCorpseData = ((obj.otyp | 0) === 265 && _sitCorpsePm >= 0)
+                ? permonstTemplate(_sitCorpsePm) : null;
+            if ((obj.otyp | 0) === 265 && _sitCorpseData
+                && ((_sitCorpseData.mflags1 >>> 0) & M1_AMORPHOUS_SIT) !== 0) {
+                await pline("It's squishy...");
+            } else if ((obj.otyp | 0) === CREAM_PIE_SIT) {
+                if (!_Deaf()) {
+                    _Soundeffect(se_squelch, 30);
+                    await pline("Squelch!");
+                }
+                await useupf(obj, obj.quan | 0);
+            } else if (!(_Is_box(obj)
+                         /* C sit.c:462 — objects[otyp].oc_material == CLOTH (6) */
+                         || _oc_material(obj.otyp | 0) === 6)) {
+                await pline("It's not very comfortable...");
+            }
+        }
+    } else if (trap || (u.utrap && (u.utraptype | 0) >= TT_LAVA)) {
+        if (u.utrap) {
+            exercise(A_WIS, false);
+            const traptype = u.utraptype | 0;
+            if (traptype === TT_BEARTRAP) {
+                /* C ref: sit.c:465-466 — the bear-trap message uses
+                 * body_part(FOOT), not LEG (the old enum's now-fixed value
+                 * for `1` was an accidental match for this literal, not a
+                 * deliberate reference — see body_part enum notes above). */
+                await You_cant("sit down with your %s in the bear trap.",
+                    body_part(FOOT));
+                u.utrap = (u.utrap | 0) + 1;
+            } else if (traptype === TT_PIT) {
+                if (trap && (trap.ttyp | 0) === SPIKED_PIT) {
+                    await You("sit down on a spike.  Ouch!");
+                    await losehp(_Half_physical_damage() ? rn2(2) : 1,
+                           "sitting on an iron spike", KILLED_BY);
+                    exercise(A_STR, false);
+                } else {
+                    await You("sit down in the pit.");
+                }
+                u.utrap = (u.utrap | 0) + rn2(5);
+            } else if (traptype === TT_WEB) {
+                await You("sit in the spider web and get entangled further!");
+                u.utrap = (u.utrap | 0) + rn1(10, 5);
+            } else if (traptype === TT_LAVA) {
+                await You("sit in the %s!", _hliquid("lava"));
+                if (_Slimed()) {
+                    await _burn_away_slime();
+                }
+                u.utrap = (u.utrap | 0) + rnd(4);
+                await losehp(d(2, 10), "sitting in lava", KILLED_BY);
+            } else if (traptype === TT_INFLOOR || traptype === TT_BURIEDBALL) {
+                await You_cant("maneuver to sit!");
+                u.utrap = (u.utrap | 0) + 1;
+            }
+        } else {
+            await You("%s.", _Flying() ? "land" : "sit down");
+            // C sit.c:503: sitting activates the trap with VIASITTING.
+            await dotrap(trap, VIASITTING);
+        }
+    } else if ((_Underwater() || Is_waterlevel(u.uz))
+                && !_eggs_in_water()) {
+        if (Is_waterlevel(u.uz)) {
+            await _There("are no cushions floating nearby.");
+        } else {
+            await You("sit down on the muddy bottom.");
+        }
+    } else if (_is_pool(u.ux | 0, u.uy | 0) && !_eggs_in_water()) {
+        await You("sit in the %s.", _hliquid("water"));
+        if (Upolyd(u) && (u.umonnum | 0) === PM_GREMLIN) {
+            if (await _split_mon()) {
+                if ((loc && (loc.typ | 0) === FOUNTAIN)) {
+                    await _dryup(u.ux | 0, u.uy | 0, true);
+                }
+            }
+        } else {
+            if (!rn2(10) && u.uarm) {
+                await water_damage(u.uarm, "armor", true);
+            }
+            if (!rn2(10) && u.uarmf && (u.uarmf.otyp | 0) !== WATER_WALKING_BOOTS_SIT) {
+                await water_damage(u.uarm, "armor", true);
+            }
+        }
+    } else if (typ === SINK) {
+        await You(sit_message, _defsym_expl("sink"));
+        await Your("%s gets wet.",
+            _humanoid() ? "rump" : "underside");
+    } else if (typ === ALTAR || IS_ALTAR(typ)) {
+        await You(sit_message, _defsym_expl("altar"));
+        await altar_wrath(u.ux | 0, u.uy | 0);
+    } else if (typ === GRAVE) {
+        await You(sit_message, _defsym_expl("grave"));
+    } else if (typ === STAIRS) {
+        await You(sit_message, "stairs");
+    } else if (typ === LADDER) {
+        await You(sit_message, "ladder");
+    } else if (_is_lava(u.ux | 0, u.uy | 0)) {
+        await You(sit_message, _hliquid("lava"));
+        await _burn_away_slime();
+        if (_likes_lava()) {
+            await pline(_plineVFmt("The %s feels warm.", [_hliquid("lava")]));
+            g.context.move = 1;
+            return ECMD_TIME;
+        }
+        await pline(_plineVFmt("The %s burns you!", [_hliquid("lava")]));
+        await losehp(d(_Fire_resistance() ? 2 : 10, 10),
+               "sitting on lava", KILLED_BY);
+    } else if (_is_ice(u.ux | 0, u.uy | 0)) {
+        await You(sit_message, _defsym_expl("ice"));
+        if (!_Cold_resistance()) {
+            await pline("The ice feels cold.");
+        }
+    } else if (typ === DRAWBRIDGE_DOWN) {
+        await You(sit_message, "drawbridge");
+    } else if (typ === THRONE) {
+        await You(sit_message, _defsym_expl("throne"));
+        await _throne_sit_effect();
+    } else if (_lays_eggs()) {
+        const eggResult = await _lay_an_egg();
+        g.context.move = (eggResult & ECMD_TIME) ? 1 : 0;
+        return eggResult;
+    } else {
+        await pline(_plineVFmt("Having fun sitting on the %s?", [surface(u.ux | 0, u.uy | 0)]));
+    }
+
+    g.context.move = 1;
+    return ECMD_TIME;
 }

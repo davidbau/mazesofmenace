@@ -1,0 +1,444 @@
+{
+  "fields": [
+    [
+      "mon_m_id",
+      "struct monst",
+      "m_id",
+      4
+    ],
+    [
+      "mon_m_lev",
+      "struct monst",
+      "m_lev",
+      1
+    ],
+    [
+      "mon_mappearance",
+      "struct monst",
+      "mappearance",
+      4
+    ],
+    [
+      "mon_misc_worn_check",
+      "struct monst",
+      "misc_worn_check",
+      8
+    ],
+    [
+      "mon_mtame",
+      "struct monst",
+      "mtame",
+      1
+    ],
+    [
+      "mon_cham",
+      "struct monst",
+      "cham",
+      2
+    ],
+    [
+      "mon_mx",
+      "struct monst",
+      "mx",
+      2
+    ],
+    [
+      "mon_my",
+      "struct monst",
+      "my",
+      2
+    ],
+    [
+      "mon_mhp",
+      "struct monst",
+      "mhp",
+      4
+    ],
+    [
+      "mon_m_ap_type",
+      "struct monst",
+      "m_ap_type",
+      1
+    ],
+    [
+      "mon_data",
+      "struct monst",
+      "data",
+      8
+    ],
+    [
+      "mon_mextra",
+      "struct monst",
+      "mextra",
+      8
+    ],
+    [
+      "obj_otyp",
+      "struct obj",
+      "otyp",
+      2
+    ],
+    [
+      "obj_oclass",
+      "struct obj",
+      "oclass",
+      1
+    ],
+    [
+      "obj_oartifact",
+      "struct obj",
+      "oartifact",
+      1
+    ],
+    [
+      "obj_corpsenm",
+      "struct obj",
+      "corpsenm",
+      4
+    ],
+    [
+      "obj_quan",
+      "struct obj",
+      "quan",
+      8
+    ],
+    [
+      "obj_spe",
+      "struct obj",
+      "spe",
+      1
+    ],
+    [
+      "obj_where",
+      "struct obj",
+      "where",
+      1
+    ],
+    [
+      "obj_owt",
+      "struct obj",
+      "owt",
+      4
+    ],
+    [
+      "obj_nobj",
+      "struct obj",
+      "nobj",
+      8
+    ],
+    [
+      "obj_oextra",
+      "struct obj",
+      "oextra",
+      8
+    ],
+    [
+      "pm_mflags1",
+      "struct permonst",
+      "mflags1",
+      8
+    ],
+    [
+      "pm_mflags2",
+      "struct permonst",
+      "mflags2",
+      8
+    ],
+    [
+      "pm_geno",
+      "struct permonst",
+      "geno",
+      2
+    ],
+    [
+      "pm_msound",
+      "struct permonst",
+      "msound",
+      1
+    ],
+    [
+      "pm_mlet",
+      "struct permonst",
+      "mlet",
+      1
+    ],
+    [
+      "pm_pmidx",
+      "struct permonst",
+      "pmidx",
+      4
+    ],
+    [
+      "pm_pmnames",
+      "struct permonst",
+      "pmnames",
+      null
+    ],
+    [
+      "cls_oc_class",
+      "struct objclass",
+      "oc_class",
+      1
+    ],
+    [
+      "cls_oc_descr_idx",
+      "struct objclass",
+      "oc_descr_idx",
+      2
+    ],
+    [
+      "cls_oc_weight",
+      "struct objclass",
+      "oc_weight",
+      4
+    ],
+    [
+      "cls_oc_uname",
+      "struct objclass",
+      "oc_uname",
+      8
+    ],
+    [
+      "mextra_mgivenname",
+      "struct mextra",
+      "mgivenname",
+      8
+    ],
+    [
+      "mextra_ebones",
+      "struct mextra",
+      "ebones",
+      8
+    ],
+    [
+      "oextra_oname",
+      "struct oextra",
+      "oname",
+      8
+    ],
+    [
+      "descr_oc_name",
+      "struct objdescr",
+      "oc_name",
+      8
+    ],
+    [
+      "descr_oc_descr",
+      "struct objdescr",
+      "oc_descr",
+      8
+    ],
+    [
+      "coord_x",
+      "struct nhcoord",
+      "x",
+      2
+    ],
+    [
+      "coord_y",
+      "struct nhcoord",
+      "y",
+      2
+    ],
+    [
+      "gender_he",
+      "struct Gender",
+      "he",
+      8
+    ],
+    [
+      "gender_him",
+      "struct Gender",
+      "him",
+      8
+    ],
+    [
+      "gender_his",
+      "struct Gender",
+      "his",
+      8
+    ],
+    [
+      "command_typ",
+      "struct _cmd_queue",
+      "typ",
+      4
+    ],
+    [
+      "command_key",
+      "struct _cmd_queue",
+      "key",
+      1
+    ],
+    [
+      "dlevel_dnum",
+      "struct d_level",
+      "dnum",
+      2
+    ],
+    [
+      "dlevel_dlevel",
+      "struct d_level",
+      "dlevel",
+      2
+    ],
+    [
+      "u_ux",
+      "struct you",
+      "ux",
+      null
+    ],
+    [
+      "u_uy",
+      "struct you",
+      "uy",
+      null
+    ],
+    [
+      "u_umonnum",
+      "struct you",
+      "umonnum",
+      null
+    ],
+    [
+      "u_umonster",
+      "struct you",
+      "umonster",
+      null
+    ],
+    [
+      "u_ustuck",
+      "struct you",
+      "ustuck",
+      null
+    ],
+    [
+      "u_usteed",
+      "struct you",
+      "usteed",
+      null
+    ],
+    [
+      "u_uz",
+      "struct you",
+      "uz",
+      null
+    ],
+    [
+      "u_uprops",
+      "struct you",
+      "uprops",
+      null
+    ],
+    [
+      "literate",
+      "struct you",
+      "uconduct.literate",
+      null
+    ],
+    [
+      "youmonst",
+      "struct instance_globals_y",
+      "youmonst",
+      null
+    ],
+    [
+      "invent",
+      "struct instance_globals_i",
+      "invent",
+      null
+    ],
+    [
+      "roleNameM",
+      "struct instance_globals_u",
+      "urole.name.m",
+      null
+    ],
+    [
+      "roleNameF",
+      "struct instance_globals_u",
+      "urole.name.f",
+      null
+    ],
+    [
+      "roleMnum",
+      "struct instance_globals_u",
+      "urole.mnum",
+      null
+    ],
+    [
+      "plname",
+      "struct instance_globals_saved_p",
+      "plname",
+      null
+    ],
+    [
+      "female",
+      "struct flag",
+      "female",
+      null
+    ],
+    [
+      "lootabc",
+      "struct flag",
+      "lootabc",
+      null
+    ],
+    [
+      "gameover",
+      "struct sinfo",
+      "gameover",
+      null
+    ],
+    [
+      "zeroany",
+      "struct const_globals",
+      "zeroany",
+      null
+    ],
+    [
+      "monsters",
+      "struct instance_globals_saved_l",
+      "level.monsters",
+      null
+    ]
+  ],
+  "sizes": [
+    [
+      "objectSize",
+      "struct obj"
+    ],
+    [
+      "commandSize",
+      "struct _cmd_queue"
+    ],
+    [
+      "coordSize",
+      "struct nhcoord"
+    ],
+    [
+      "anythingSize",
+      "union any"
+    ],
+    [
+      "objectClassSize",
+      "struct objclass"
+    ],
+    [
+      "objdescrSize",
+      "struct objdescr"
+    ],
+    [
+      "permonstSize",
+      "struct permonst"
+    ],
+    [
+      "genderSize",
+      "struct Gender"
+    ],
+    [
+      "propSize",
+      "struct prop"
+    ]
+  ]
+}

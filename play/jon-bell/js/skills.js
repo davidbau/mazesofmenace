@@ -34,7 +34,7 @@ import { build_window_screen, menu_search_case, menu_search_docorner } from './c
 import { menu_heading_text } from './tty_menu.js';
 import { PM_PONY } from './pm.generated.js';
 import { ROLE_PM_MNUM } from './roles.js';
-import { weapon_type, can_advance, slots_required, skill_name, skill_level_name } from './uhitm.js';
+import { weapon_type, can_advance, slots_required, skill_name, skill_level_name } from './weapon.js';
 import {
     P_NONE, P_DAGGER, P_KNIFE, P_AXE, P_PICK_AXE, P_SHORT_SWORD, P_BROAD_SWORD,
     P_LONG_SWORD, P_TWO_HANDED_SWORD, P_SABER, P_CLUB, P_MACE, P_MORNING_STAR,

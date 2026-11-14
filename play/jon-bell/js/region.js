@@ -2,14 +2,16 @@
 
 import { NHF_BONESFILE, DOOR, MAGICAL_BREATHING, TELEDS_NO_FLAGS, PLNMSG_ENVELOPED_IN_GAS, HALF_PHDAM, COLNO, ROWNO } from './const.js';
 import { game } from './gstate.js';
-import { rn2, rnd, d } from './rng.js';
+import { rn2, rnd, d } from './rnd.js';
 const TOWEL = 234; /* C objects.h TOWEL; youprop.h Half_gas_damage */
 import { Monnam, monstseesu, monstunseesu } from './mcastu.js';
 import { You, Your } from './do_wear.js';
 import { makeplural } from './objnam.js';
 import { body_part, region_danger } from './cmd.js';
 import { losehp } from './hack.js';
-import { killed, m_monnam, haseyes } from './mhitm.js';
+import { haseyes } from './mhitm.js';
+import { m_monnam } from './do_name.js';
+import { killed } from './mon.js';
 import { PM_LONG_WORM } from './pm.generated.js';
 import { monkilled_trap } from './trap.js';
 import { make_blinded, BlindedTimeout } from './zap.js';
@@ -18,15 +20,17 @@ import { safe_teleds } from './teleport.js';
 import { EYE, LUNG, POISON_RES, KILLED_BY_AN, M_SEEN_POISON, M_POISONGAS_OK } from './const.js';
 import { resists_poison } from './mklev.js';
 import { wake_nearto, setmangry } from './mon.js';
-import { isok } from './hacklib.js';
+import { isok } from './const.js';
 import { selection_getbounds, selection_getpoint } from './selvar.js';
 import { m_at } from './uhitm.js';
 import { cansee, Blind, block_point, unblock_point, does_block, vision_recalc } from './vision.js';
 import { newsym, _m_at, mon_overrides_region, Unaware, impossible_sync, impossible_sync as impossible, nh_sprintf, pline_flush_point, _pline_flush_frame_record, _topl_record_join, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { You_feel, pline } from './pline.js';
 import { m_poisongas_ok } from './mon.js';
-import { is_pool_or_lava } from './look.js';
+import { is_pool_or_lava } from './dbridge.js';
 import { region_glyph, show_glyph_cell } from './display.js'; // relocate-fns
+import { lookup_id_mapping } from './restore.js'; // relocate-fns
+import { valid_cloud_pos } from './read.js'; // relocate-fns
 
 // C ref: decl.h — svn.n_regions (int), gr.regions (NhRegion **), gm.max_regions (int).
 let svn = { n_regions: 0 };
@@ -529,17 +533,6 @@ function Blind_reg() {
     return Blind();
 }
 
-// C ref: restore.c:1484-1507 lookup_id_mapping(unsigned int gid, unsigned int *nidp)
-function lookup_id_mapping(gid, nidp) {
-    const idmap = game && game._id_map;
-    if (idmap && typeof idmap.has === 'function' && idmap.has(gid)) {
-        const nid = idmap.get(gid) >>> 0;
-        if (nidp && typeof nidp === 'object')
-            nidp.value = nid;
-        return true;
-    }
-    return false;
-}
 
 // C ref: region.c:927-943 reset_region_mids(NhRegion *reg) — bones-file
 // m_id remapping.
@@ -625,7 +618,7 @@ export function regions_rest_snapshot(saved, elapsed = 0) {
 // stub. Used here for both single-struct allocs and pointer-array allocs:
 // this function only ever indexes the result by integer key (never .length
 // or array methods), so a plain object serves both shapes identically.
-function alloc(_size) { return {}; }
+function alloc_region(_size) { return {}; }
 
 // Sfi_long/Sfi_int/Sfi_short/Sfi_boolean/Sfi_unsigned/Sfi_char/Sfi_nhrect/
 // Sfi_any (savefile.h) — libc-level save-file field readers; no JS save-file
@@ -658,13 +651,13 @@ export function rest_regions(nhfp) {
     svn.n_regions = Sfi_int(nhfp, svn.n_regions, "region-region_count");
     gm.max_regions = svn.n_regions;
     if (svn.n_regions > 0)
-        gr.regions = alloc(/* svn.n_regions * sizeof(NhRegion *) */);
+        gr.regions = alloc_region(/* svn.n_regions * sizeof(NhRegion *) */);
     for (i = 0; i < svn.n_regions; i++) {
-        r = gr.regions[i] = alloc(/* sizeof(NhRegion) */);
+        r = gr.regions[i] = alloc_region(/* sizeof(NhRegion) */);
         r.bounding_box = Sfi_nhrect(nhfp, r.bounding_box, "region-bounding box");
         r.nrects = Sfi_short(nhfp, r.nrects, "region-nrects");
         if (r.nrects > 0)
-            r.rects = alloc(/* r.nrects * sizeof(NhRect) */);
+            r.rects = alloc_region(/* r.nrects * sizeof(NhRect) */);
         else
             r.rects = null;
         for (j = 0; j < r.nrects; j++) {
@@ -675,7 +668,7 @@ export function rest_regions(nhfp) {
         r.attach_2_m = Sfi_unsigned(nhfp, r.attach_2_m, "region-attach_2_m");
         n = Sfi_unsigned(nhfp, n, "region-enter_msg_length");
         if (n > 0) {
-            msg_buf = alloc(/* n + 1 */);
+            msg_buf = alloc_region(/* n + 1 */);
             msg_buf = Sfi_char(nhfp, msg_buf, "region-enter_msg", n);
             /* msg_buf[n] = '\0'; -- null terminator write; no JS byte buffer
                to terminate under the no-op Sfi_char model above */
@@ -686,7 +679,7 @@ export function rest_regions(nhfp) {
 
         n = Sfi_unsigned(nhfp, n, "region-leave_msg_length");
         if (n > 0) {
-            msg_buf = alloc(/* n + 1 */);
+            msg_buf = alloc_region(/* n + 1 */);
             msg_buf = Sfi_char(nhfp, msg_buf, "region-leave_msg", n);
             r.leave_msg = msg_buf;
         } else {
@@ -711,7 +704,7 @@ export function rest_regions(nhfp) {
         }
         r.n_monst = Sfi_short(nhfp, r.n_monst, "region-monster_count");
         if (r.n_monst > 0)
-            r.monsters = alloc(/* r.n_monst * sizeof(unsigned) */);
+            r.monsters = alloc_region(/* r.n_monst * sizeof(unsigned) */);
         else
             r.monsters = null;
         r.max_monst = r.n_monst;
@@ -1291,30 +1284,6 @@ export function create_gas_cloud(x, y, cloudsize, damage) {
 // :2180 carries the same enum).
 const M_POISONGAS_OK_REG = 2;
 
-// C ref: read.c:1065-1074 valid_cloud_pos(coordxy x, coordxy y) — "can a
-// stinking cloud physically exist at this position?"  (Declared in
-// extern.h:2630; the body lives in read.c, not region.c, even though the only
-// caller is create_gas_cloud's BFS at region.c:1267.)
-//   if (!isok(x,y)) return FALSE;
-//   return ACCESSIBLE(levl[x][y].typ) || is_pool(x, y) || is_lava(x, y);
-// ACCESSIBLE(typ) is rm.h:112 — (typ) >= DOOR.  is_pool/is_lava are the
-// dbridge.c terrain predicates that js/look.js:401 is_pool_or_lava already
-// carries (POOL/MOAT/WATER for pool, LAVAPOOL/LAVAWALL for lava), so this
-// reuses that rather than adding a fourth copy.  No RNG.
-//
-// Only reached from the BFS loop, which is entered only for cloudsize > 1.
-// Every wired caller (monmove.c:683, :702, :704) passes cloudsize 1, and no
-// size, so today this runs zero times — but it is a real port, not a stub,
-// so a future cloudsize > 1 caller gets C's spread shape and C's draw count
-// rather than an exception or a fabricated answer.
-function valid_cloud_pos(x, y) {
-    if (!isok(x, y))
-        return false;
-    const lev = game.level && game.level.at(x, y);
-    if (!lev)
-        return false;
-    return ((lev.typ | 0) >= DOOR) || is_pool_or_lava(x, y);
-}
 
 // C ref: region.c:1367-1407 region_safety() — cure gas-cloud prayer trouble.
 export async function region_safety() {

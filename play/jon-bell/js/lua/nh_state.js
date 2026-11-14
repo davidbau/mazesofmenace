@@ -15,16 +15,16 @@ import { makeInterp, LuaTable } from './interp.js';
 import { rn2, random } from './nh_bindings.js';
 import * as SPLEV from '../sp_lev.js';
 import { W_ANY, W_RANDOM, W_NORTH, W_WEST, W_EAST, W_SOUTH } from '../const.js';
-import { cmd_from_ecname } from '../cmd_binds.js';
+import { cmd_from_ecname } from '../cmd.js';
 /* nh.parse_config (nhlua.c:666) routes its argument through the config-line
  * parser and assigns into the live flags — see the binding below. */
 import { parseNethackrc } from '../options.js';
 import { l_get_config_errors, parse_lua_config } from '../cfgfiles.js';
 import { game } from '../gstate.js';
 import { spot_stop_timers, start_timer } from '../timeout.js';
-import { long_to_any } from '../cmd.js';
+import { long_to_any } from '../hack.js';
 import { TIMER_LEVEL, MELT_ICE_AWAY, COLNO, ROWNO } from '../const.js';
-import { nhl_gamestate } from '../cmd.js';
+import { nhl_gamestate } from '../nhlua.js';
 import { nhl_callback, nhl_variable, nhl_text, nhl_loadlua, lua_checkstring, lua_toboolean } from '../nhlua.js';
 import { l_obj_register } from '../nhlobj.js';
 /* C ref: dungeon.c depth(&u.uz) — the absolute cross-branch depth the

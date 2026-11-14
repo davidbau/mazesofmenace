@@ -1,9 +1,20 @@
+import { Soundeffect } from './mon.js';
+import { on_level } from './dungeon.js';
 // do.js — C ref: do.c.
-import { monster_nearby } from './allmain.js'; // C hack.c:4106
-import { ART_NONARTIFACT, C_ATTR_TO_DISP, arti_inv_prop, exercise, get_artifact } from './attrib.js';
+import { monster_nearby } from './hack.js'; // C hack.c:4106
+import { ART_NONARTIFACT, C_ATTR_TO_DISP, arti_inv_prop, exercise } from './attrib.js';
+import { get_artifact } from './artifact.js';
 import { ballfall, ballrelease, drop_ball, placebc, unplacebc } from './ball.js';
 import { bones_include_name } from './bones.js';
-import { BOTH_SIDES, BOULDER_OTYP, BUCT_BLESSED, BUCT_CURSED, BUCT_UNCURSED, BUCT_UNKNOWN, COIN_CLASS_C, DEADMONSTER, FACE, HAND, INV_ORDER, LEFT_SIDE, LEG, LL_ACHIEVE, LOADSTONE, MAGIC_PORTAL, NH_AMBER, NH_BLACK, OCLASS_NAME, RIGHT_SIDE, Role_if, STOMACH, S_GOLEM, S_VORTEX, S_dnladder, S_dnstair, UTOTYPE_NONE, UTOTYPE_PORTAL, Your, _Blind_cmd, _FE_M2_UNDEAD, _Flying, _LD_FIRE_HORN, _LD_SCROLL_CLASS, _LD_SPBOOK_CLASS, _LD_SPE_BOOK_OF_THE_DEAD, _LD_WAN_FIRE, _Levitation, _Luck, _MH_MZ_HUGE, _RING_CLASS, _delobj_useupf, _digests, _doaltarobj_Doname2, _eprop, _fl_pmidx, _goto_level_You, _hero_Blind, _hero_Deaf, _hprop, _invlet_constant, _ld_carried, _levlAt, _mh_touch_petrifies, _norep, _on_W_tower_level, _plineVFmt, _spoteffects_pickup, _st_Punished, _uprop_active, _wt_sameObj, any_obj_ok, bhp_Fire_resistance, bhp_Maybe_Half_Phys, bhp_Soundeffect, bhp_You_hear, bhp_burn_away_slime, bhp_bury_objs, bhp_delfloortrap, bhp_hliquid, bhp_is_lava, bhp_losehp, bhp_m_in_air, bhp_mondied, bhp_obfree, bhp_recalc_block_point, bhp_the, bhp_upstart, bhp_useupf, bhp_wake_nearto, bhp_waterbody_name, bhp_xname, bhp_y_monnam, body_part, buried_ball_to_punishment, check_special_room, ckunpaid, cmd_from_func, cmdq_add_int, cmdq_add_key, compactify, costly_alteration, count_buc, count_unpaid, dismount_steed, flooreffects_Maybe_Half_Phys, flooreffects_You_hear, flooreffects_distu, flooreffects_fire_damage, flooreffects_is_lava, flooreffects_is_plural, flooreffects_is_pool, flooreffects_is_whirly, flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_passes_walls, flooreffects_pudding_merge_message, flooreffects_the, flooreffects_throws_rocks, freeinv, getobj_cmdq_drain, getobj_get_count, getobj_redo_menu, ggetobj, impact_disturbs_zombies, impossible, inventory_menu_legacy, is_plural_obj, is_pool, key2txt, ledger_no_cmd, lowc, makeplural, mbodypart, mime_action, notice_all_mons, ok_to_quest, on_level, onquest, park_prompt_cursor, pline_The, pooleffects, pooleffects_Flying, pooleffects_Levitation, pooleffects_ceiling_hider, recalc_mapseen_rooms, record_achievement, reset_occupations, reset_trapset, resurrect, set_cursor, set_move_cmd, set_occupation, set_uinwater, sortloot_invlet_chain, splittable, stolen_value, surface, u_locomotion, u_rooted, useupall, useupf, y_n_default } from './cmd.js';
+import { BOTH_SIDES, BOULDER_OTYP, BUCT_BLESSED, BUCT_CURSED, BUCT_UNCURSED, BUCT_UNKNOWN, COIN_CLASS_C, DEADMONSTER, FACE, HAND, INV_ORDER, LEFT_SIDE, LEG, LL_ACHIEVE, LOADSTONE, MAGIC_PORTAL, NH_AMBER, NH_BLACK, OCLASS_NAME, RIGHT_SIDE, Role_if, STOMACH, S_GOLEM, S_VORTEX, S_dnladder, S_dnstair, UTOTYPE_NONE, UTOTYPE_PORTAL, Your, _Blind_cmd, _FE_M2_UNDEAD, _Flying, _LD_FIRE_HORN, _LD_SCROLL_CLASS, _LD_SPBOOK_CLASS, _LD_SPE_BOOK_OF_THE_DEAD, _LD_WAN_FIRE, _Levitation, _Luck, _MH_MZ_HUGE, _RING_CLASS, _digests, _doaltarobj_Doname2, _eprop, _fl_pmidx, _goto_level_You, _hero_Blind, _hero_Deaf, _hprop, _invlet_constant, _ld_carried, _levlAt, _mh_touch_petrifies, _norep, _on_W_tower_level, _plineVFmt, _spoteffects_pickup, _st_Punished, _uprop_active, _wt_sameObj, bhp_Fire_resistance, bhp_Maybe_Half_Phys, bhp_Soundeffect, bhp_You_hear, bhp_burn_away_slime, bhp_bury_objs, bhp_delfloortrap, bhp_hliquid, bhp_is_lava, bhp_losehp, bhp_m_in_air, bhp_mondied, bhp_obfree, bhp_recalc_block_point, bhp_the, bhp_upstart, bhp_useupf, bhp_wake_nearto, bhp_waterbody_name, bhp_xname, bhp_y_monnam, body_part, buried_ball_to_punishment, cmd_from_func, cmdq_add_int, cmdq_add_key, costly_alteration, flooreffects_Maybe_Half_Phys, flooreffects_You_hear, flooreffects_distu, flooreffects_fire_damage, flooreffects_is_lava, flooreffects_is_plural, flooreffects_is_pool, flooreffects_is_whirly, flooreffects_obj_meld, flooreffects_obj_nexto_xy, flooreffects_passes_walls, flooreffects_pudding_merge_message, flooreffects_the, flooreffects_throws_rocks, getobj_cmdq_drain, getobj_get_count, getobj_redo_menu, impossible, inventory_menu_legacy, is_plural_obj, is_pool, key2txt, ledger_no_cmd, lowc, makeplural, mbodypart, park_prompt_cursor, pline_The, pooleffects_Flying, pooleffects_Levitation, pooleffects_ceiling_hider, recalc_mapseen_rooms, reset_occupations, set_cursor, set_move_cmd, set_occupation, sortloot_invlet_chain, stolen_value, y_n_default } from './cmd.js';
+import { check_special_room, impact_disturbs_zombies, notice_all_mons, pooleffects, set_uinwater, u_locomotion, u_rooted } from './hack.js';
+import { reset_trapset } from './apply.js';
+import { _delobj_useupf, any_obj_ok, ckunpaid, compactify, count_buc, count_unpaid, freeinv, ggetobj, mime_action, splittable, useupall, useupf } from './invent.js';
+import { resurrect } from './wizard.js';
+import { dismount_steed } from './steed.js';
+import { surface } from './dungeon.js';
+import { ok_to_quest, onquest } from './quest.js';
+import { record_achievement } from './insight.js';
 import { docall } from './do_name.js';
 import { setuqwep, setuswapwep, setuwep, welded, weldmsg } from './wield.js';
 import { breakobj, hitfloor } from './dothrow.js';
@@ -16,10 +27,12 @@ import { is_pick, use_pick_axe2 } from './dig.js';
 import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint } from './display.js';
 import { check_gold_symbol } from './botl.js';
 import { You_hear, You_see, livelog_printf, pline } from './pline.js';
-import { You, encumber_msg, xname, yname } from './do_wear.js';
+import { You, encumber_msg, xname } from './do_wear.js';
+import { yname } from './objnam.js';
 import { float_down } from './trap.js';
 import { In_W_tower_wz } from './dochug.js';
-import { discard_migrations, keepdogs, losedogs, m_into_limbo, sticks, update_mlstmv } from './dog.js';
+import { discard_migrations, keepdogs, losedogs, sticks, update_mlstmv } from './dog.js';
+import { m_into_limbo } from './mon.js';
 import { container_impact_dmg, impact_drop, obj_delivery, ship_object } from './dokick.js';
 import { delobj as delobj_invent } from './invent.js';
 import { losehp } from './hack.js';
@@ -30,20 +43,27 @@ import { readchar, yn_function } from './cmd.js';
 import { copy_you } from './game.js';
 import { game, wizard } from './gstate.js';
 import { depth } from './dungeon.js';
-import { can_reach_floor } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { ENV } from './hostenv.js';
 import { nhgetch } from './input.js';
-import { reassign } from './inventory_refresh.js';
+import { reassign } from './invent.js';
 import { maybe_reset_pick } from './lock.js';
-import { is_pool_or_lava } from './look.js';
-import { mongets as _fl_mongets, rndOffensiveItem as _fl_rndOffensiveItem } from './m_initweap.js';
-import { Inhell, mkmonmoney as _fl_mkmonmoney, rndDefensiveItem as _fl_rndDefensiveItem, rndMiscItem as _fl_rndMiscItem, canletgo, grow_up, mondied, olfaction, permonstTemplate, set_malign, splitobj } from './makemon.js';
+import { is_pool_or_lava } from './dbridge.js';
+import { rndOffensiveItem as _fl_rndOffensiveItem } from './m_initweap.js';
+import { mongets as _fl_mongets } from './makemon.js';
+import { Inhell, mkmonmoney as _fl_mkmonmoney, rndDefensiveItem as _fl_rndDefensiveItem, rndMiscItem as _fl_rndMiscItem, grow_up, permonstTemplate, set_malign, splitobj } from './makemon.js';
+import { olfaction } from './mondata.js';
+import { mondied } from './mon.js';
 import { create_mplayers as _fl_create_mplayers } from './mplayer.js';
 import { Monnam } from './mcastu.js';
-import { christen_monst as _fl_christen_monst, hcolor, hmon, obj_pmname, s_suffix } from './mhitm.js';
+import { christen_monst as _fl_christen_monst, hcolor, obj_pmname, s_suffix } from './mhitm.js';
+import { hmon } from './uhitm.js';
 import { gulp_blnd_check } from './mhitu.js';
 import { gain_guardian_angel as _fl_gain_guardian_angel } from './minion.js';
-import { makemon as _fl_makemon, mkobj as _fl_mkobj, mksobj as _fl_mksobj, engr_reset_text_pointers, dobjsfree, mk_artifact, mklev, place_object, polyfood, set_bknown, sp_levchn_lookup } from './mklev.js';
+import { engr_reset_text_pointers, mklev, polyfood, sp_levchn_lookup } from './mklev.js';
+import { mkobj as _fl_mkobj, mksobj as _fl_mksobj, dobjsfree, place_object, set_bknown } from './mkobj.js';
+import { makemon as _fl_makemon } from './makemon.js';
+import { mk_artifact } from './artifact.js';
 import { mpickobj } from './steal.js';
 import { Can_fall_thru, In_hell, level_difficulty, u_on_newpos, u_on_rndspot } from './dungeon.js';
 import { stairway_at, stairway_find_from, u_on_dnstairs, u_on_sstairs, u_on_upstairs } from './stairs.js';
@@ -53,39 +73,100 @@ import { MKOBJ_OC_MATERIAL, MKOBJ_OC_OPROP, MKOBJ_OC_SKILL } from './mkobj_erosi
 import { healmon, iter_mons as iter_mons_real, kill_genocided_monsters, newcham, set_ustuck } from './mon.js';
 import { NHCB_LVL_LEAVE, nh_callback_run, tutorial } from './nhlua.js';
 import { oinit } from './o_init.js';
-import { an, deliver_splev_message, doname, otense, vtense, yobjnam } from './objnam.js';
+import { an, doname, otense, vtense, yobjnam } from './objnam.js';
+import { deliver_splev_message } from './questpgr.js';
 import { PARANOID_CONFIRMATION_DEFAULT_BITS } from './options.js';
-import { paranoid_ynq } from './paranoid.js';
+import { paranoid_ynq } from './cmd.js';
 import { add_valid_menu_class, allow_category, pickup as pickup_c, st_all, u_safe_from_fatal_corpse } from './pickup.js';
 import { uescaped_shaft, uteetering_at_seen_pit } from './trap.js';
 import { impossible as real_impossible } from './pline.js';
 import { PM_GREEN_SLIME, PM_MANES, PM_NURSE, PM_ROGUE, PM_TOURIST, PM_VAMPIRE, PM_VAMPIRE_LORD, PM_VLAD_THE_IMPALER, PM_WRAITH, PM_ARCHEOLOGIST as _FL_PM_ARCHEOLOGIST, PM_WIZARD as _FL_PM_WIZARD } from './pm.generated.js';
 import { com_pager } from './questpgr.js';
-import { rank_of } from './rank_data.js';
+import { rank_of_roleidx } from './rank_data.js';
 import { in_out_region } from './region.js';
 import { getlev } from './restore.js';
-import { d, rn1, rn2, rnd, rnz } from './rng.js';
+import { rn1 } from './rng.js';
+import { d, rn2, rnd, rnz } from './rnd.js';
 import { ROLE_PM_MNUM } from './roles.js';
 import { savelev } from './save.js';
 import { fix_shop_damage, sellobj, sellobj_state, is_unpaid as shk_is_unpaid } from './shk.js';
 import { Tobjnam } from './objnam.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj } from './invent.js';
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js';
 import { stucksteed } from './steed.js';
-import { RLOC_NOMSG, enexto_out, mnexto as mnexto_arrival, next_to_u as next_to_u_real, rloc, safe_teleds } from './teleport.js';
+import { RLOC_NOMSG, enexto_out, rloc, safe_teleds } from './teleport.js';
+import { mnexto as mnexto_arrival } from './mon.js';
+import { next_to_u as next_to_u_real } from './apply.js';
 import { run_timers } from './timeout.js';
 import { initrack } from './track.js';
-import { dosinkring as _fl_dosinkring, selftouch as _gl_selftouch, clamp_hole_destination, climb_pit, delfloortrap, deltrap, dotrap, fill_pit, reset_utrap, seetrap, t_at, water_damage } from './trap.js';
+import { selftouch as _gl_selftouch, clamp_hole_destination, climb_pit, delfloortrap, deltrap, dotrap, fill_pit, reset_utrap, seetrap, t_at, water_damage } from './trap.js';
 import { m_dowear as _fl_m_dowear, bypass_objlist, nxt_unbypassed_obj } from './worn.js';
 import { menu_heading_text } from './tty_menu.js';
-import { monmightthrowwep as _fl_monmightthrowwep, dmgval, m_at, minstapetrify, mon_nam, more_experienced, newexplevel } from './uhitm.js';
+import { m_at, mon_nam, more_experienced } from './uhitm.js';
+import { monmightthrowwep as _fl_monmightthrowwep, dmgval } from './weapon.js';
+import { minstapetrify } from './trap.js';
+import { newexplevel } from './exper.js';
 import { cansee, vision_recalc, vision_reset } from './vision.js';
 import { weight } from './weight.js';
 import { near_capacity, weight_cap } from './hack.js';
 import { setnotworn } from './worn.js';
 import { BlindedTimeout, HBlinded, incr_HBlinded, make_blinded, obj_resists, set_HBlinded } from './zap.js';
+import { finesse_ahriman } from './artifact.js'; // relocate-fns
+import { ALTAR, AM_NONE, Align2amask, FOUNTAIN, GRAVE, SINK, THRONE, T_LOOTED } from './const.js'; // relocate-fns
+import { make_grave } from './engrave.js'; // relocate-fns
+import { set_levltyp } from './mkmaze.js'; // relocate-fns
+import { next_level, prev_level, print_level_annotation, recbranch_mapseen } from './dungeon.js'; // relocate-fns
+import { G_GENOD, NON_PM, OBJ_FLOOR, REVIVE_MON, ROT_CORPSE, TIMER_OBJECT } from './const.js'; // relocate-fns
+import { rot_corpse } from './dig.js'; // relocate-fns
+import { canseemon } from './display.js'; // relocate-fns
+import { dist2 } from './hacklib.js'; // relocate-fns
+import { is_rider_pm } from './mklev.js';
+import { rider_revival_time, set_corpsenm } from './mkobj.js'; // relocate-fns
+import { dealloc_mextra, zombie_form } from './mon.js'; // relocate-fns
+import { You_feel } from './pline.js'; // relocate-fns
+import { obj_has_timer, start_timer } from './timeout.js'; // relocate-fns
+import { freeinv as _sr_freeinv, useup as _sr_useup } from './invent.js'; // relocate-fns
+import { HALLUC as _SR_HALLUC, HALLUC_RES as _SR_HALLUC_RES } from './const.js'; // relocate-fns
+import { rndmonnam as _sr_rndmonnam } from './do_name.js'; // relocate-fns
+import { engr_at } from './engrave.js'; // relocate-fns
+import { delobj as _sr_delobj } from './invent.js'; // relocate-fns
+import { hcolor as _sr_hcolor } from './mhitm.js';
+import { hliquid as _sr_hliquid } from './do_name.js'; // relocate-fns
+import { add_to_buried as _sr_add_to_buried } from './mkobj.js'; // relocate-fns
+import { doname as _sr_doname, fruitname as _sr_fruitname, makeplural as _sr_makeplural, otense as _sr_otense, yname as _sr_yname } from './objnam.js'; // relocate-fns
+import { distu_ft, lev_typ, se_drain_noises, se_ring_in_drain } from './trap.js'; // relocate-fns
+import { Blind as _sr_Blind } from './vision.js'; // relocate-fns
+import { obj_resists as _sr_obj_resists } from './zap.js'; // relocate-fns
+import { W_ACCESSORY, W_ARMOR, W_SADDLE } from './const.js'; // relocate-fns
+import { bimanual } from './do_wear.js'; // relocate-fns
+import { Norep } from './pline.js'; // relocate-fns
 
-const CORPSE = 265, MEAT_RING = 270;
+const MEAT_RING = 270;
+import { CORPSE } from './const.js';
+import { BURIED_TOO, CONTAINED_TOO, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, IS_POOL, MM_FEMALE, MM_MALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOWAIT, NO_MINVENT, OBJ_BURIED, OBJ_CONTAINED, OBJ_INVENT, OBJ_MINVENT, PIT, isok } from './const.js'; // relocate-fns
+import { Adjmonnam as Adjmonnam_rc, Amonnam } from './do_name.js'; // relocate-fns
+import { wary_dog } from './dog.js'; // relocate-fns
+import { obfree } from './dokick.js'; // relocate-fns
+import { cant_finish_meal, eaten_stat } from './eat.js'; // relocate-fns
+import { delobj as delobj_real, useup as useup_inv } from './invent.js'; // relocate-fns
+import { makemon } from './makemon.js'; // relocate-fns
+import { Monnam as Monnam_rc } from './mcastu.js'; // relocate-fns
+import { christen_monst } from './mhitm.js'; // relocate-fns
+import { BAG_OF_HOLDING, PM_DEATH_R, PM_DOPPELGANGER_NC, PM_FAMINE, STATUE, S_TROLL, S_ZOMBIE } from './mklev.js'; // relocate-fns
+import { dealloc_obj, free_omid, obj_extract_self } from './mkobj.js'; // relocate-fns
+import { se_scratching } from './mon.js'; // relocate-fns
+import { locomotion } from './mondata.js'; // relocate-fns
+import { m_useup as lifesave_m_useup } from './mthrowu.js'; // relocate-fns
+import { The as The_rc, an as an_mk, corpse_xname as corpse_xname_rc } from './objnam.js'; // relocate-fns
+import { impossible as lifecycle_impossible } from './pline.js'; // relocate-fns
+import { PM_PESTILENCE } from './pm.generated.js'; // relocate-fns
+import { cant_revive } from './read.js'; // relocate-fns
+import { obj_stop_timers } from './timeout.js'; // relocate-fns
+import { maketrap } from './trap.js'; // relocate-fns
+import { mon_nam as mon_nam_wm } from './uhitm.js'; // relocate-fns
+import { mon_adjust_speed } from './worn.js'; // relocate-fns
+import { get_container_location, get_obj_location, montraits, zombie_can_dig } from './zap.js'; // relocate-fns
+export { CORPSE };
 
 /* C ref: pline.c:435-452 You_hear — this WAS the tree's only faithful copy of
  * the guard, and it is now the shared body in js/display.js, which is where
@@ -95,20 +176,6 @@ async function _goto_level_You_hear(fmt, ...args) {
     return You_hear(fmt, ...args);
 }
 
-/* C ref: dungeon.c:2500 query_annotation(lev) — prompt for and store the
- * current level's annotation, or a remote one selected by the overview menu.
- *
- * STORAGE: C keeps the string on the level's `mapseen` record (mptr->custom).
- * JS stores that text on game._level_custom, keyed by "<dnum>:<dlevel>".
- * RNG-free. */
-async function print_level_annotation() {
-    const g = game;
-    const uz = (g.u && g.u.uz) || { dnum: 0, dlevel: 1 };
-    const key = `${uz.dnum | 0}:${uz.dlevel | 0}`;
-    const annotation = g._level_custom && g._level_custom[key];
-    if (annotation)
-        await pline(`You remember this level as ${annotation}.`);
-}
 
 // C ref: do.c:395 trycall — if obj is neither formally identified nor informally
 // called something already, prompt the player to call its object type.
@@ -603,7 +670,7 @@ async function drop(obj) {
     if (!u.uswallow && ((obj.oclass | 0) === _RING_CLASS || (obj.otyp | 0) === MEAT_RING)) {
         const _sl = _levlAt(u.ux | 0, u.uy | 0);
         if (_sl && IS_SINK(_sl.typ)) {
-            await _fl_dosinkring(obj);
+            await dosinkring(obj);
             return true;         /* ECMD_TIME */
         }
     }
@@ -1612,7 +1679,7 @@ function _fl_get_mplname(mtmp) {
     mtmp.female = (fmlkind || nam === 'Janet') ? 1 : 0;
     /* C botl.c:330 rank_of scans roles[] for monnum == role->mnum.
      * Ranger and Rogue occur in opposite orders in mons[] and roles[]. */
-    return nam + ' the ' + rank_of(ROLE_PM_MNUM.indexOf(_fl_pmidx(mtmp)),
+    return nam + ' the ' + rank_of_roleidx(ROLE_PM_MNUM.indexOf(_fl_pmidx(mtmp)),
                                   mtmp.m_lev | 0, !!mtmp.female);
 }
 
@@ -2986,56 +3053,7 @@ async function temperature_change_msg(prev_temperature) {
     }
 }
 
-// C ref: dungeon.c:1497 next_level(at_stairs) — compute the destination level
-// and call goto_level.  For an in-dungeon downstair (at_stairs && stway) the
-// destination is stway->tolev; otherwise (trap door / hole) it's dlevel+1.
-async function next_level(at_stairs) {
-    const g = game;
-    const u = g.u || {};
-    const stway = stairway_at(u.ux, u.uy);
-    if (at_stairs && stway) {
-        stway.u_traversed = true;
-        const newlevel = { dnum: stway.tolev.dnum | 0, dlevel: stway.tolev.dlevel | 0 };
-        await goto_level(newlevel, at_stairs, false, false);
-    }
-    else {
-        const newlevel = { dnum: u.uz?.dnum | 0, dlevel: (u.uz?.dlevel | 0) + 1 };
-        await goto_level(newlevel, at_stairs, !at_stairs, false);
-    }
-}
 
-// C ref: dungeon.c:1518 prev_level(at_stairs) — the mirror of next_level for an
-// UPWARD transition.  Was `function prev_level(at_ladder) { }` — an EMPTY body
-// in this file's "stubs for unported helpers used by doup" block — so doup()
-// walked the whole C ladder (u_rooted, climb_pit, stairway_at, stucksteed,
-// near_capacity, the no-return prompt, next_to_u) and then, at the one call
-// that does the work, did nothing at all: the hero pressed '<' on an up-staircase
-// and stayed exactly where she was, on the same level, with no message.
-// "You climb up the stairs."
-async function prev_level(at_stairs) {
-    const g = game;
-    const u = g.u || {};
-    const stway = stairway_at(u.ux, u.uy);
-    if (at_stairs && stway)
-        stway.u_traversed = true;
-    if (at_stairs && stway && (stway.tolev.dnum | 0) !== (u.uz?.dnum | 0)) {
-        /* C:1524-1531 — taking an up dungeon branch.  KMH: upwards branches are
-           okay if not level 1; just make sure it doesn't go above depth 1. */
-        if (!(u.uz?.dnum | 0) && (u.uz?.dlevel | 0) === 1 && !u.uhave?.amulet) {
-            /* C:1528 done(ESCAPED) — leaving the dungeon.  done() performs
-               the end-game disclosure and score transition; it does not
-               return on a real escape. */
-            await done(ESCAPED);
-        } else {
-            const newlevel = { dnum: stway.tolev.dnum | 0, dlevel: stway.tolev.dlevel | 0 };
-            await goto_level(newlevel, at_stairs, false, false);
-        }
-    } else {
-        /* C:1536-1539 — going up a stairs or rising through the ceiling. */
-        const newlevel = { dnum: u.uz?.dnum | 0, dlevel: (u.uz?.dlevel | 0) - 1 };
-        await goto_level(newlevel, at_stairs, false, false);
-    }
-}
 
 const UTOTYPE_ATSTAIRS = 0x01;
 
@@ -3583,24 +3601,6 @@ export async function boulder_hits_pool(otmp, rx, ry, pushing) {
     return false;
 }
 
-/* C artifact.c:2243 finesse_ahriman(obj): will freeing this object from
- * inventory cause levitation to end?  Probes ahead on a copy of the
- * LEVITATION prop, restoring it before returning. */
-function finesse_ahriman(obj) {
-    const u = game.u;
-    const oart = get_artifact(obj);
-    const p = u.uprops?.[LEVITATION];
-    if (!_Levitation() || oart === ART_NONARTIFACT
-        || arti_inv_prop(oart) !== LEVITATION || !((p.extrinsic | 0) & W_ARTI_FW))
-        return false;
-    const save = { intrinsic: p.intrinsic, extrinsic: p.extrinsic, blocked: p.blocked };
-    /* arti_invoke(off) -> float_down() clears I_SPECIAL|TIMEOUT & W_ARTI */
-    p.intrinsic = (p.intrinsic | 0) & ~(I_SPECIAL | TIMEOUT);
-    p.extrinsic = (p.extrinsic | 0) & ~W_ARTI_FW;
-    const result = !_Levitation();
-    Object.assign(p, save);
-    return result;
-}
 
 export async function wipeoff() {
     const u = game.u = game.u || {};
@@ -3955,26 +3955,6 @@ export function heal_legs(how) {
     }
 }
 
-function recbranch_mapseen(source, dest) {
-    if ((source.dnum | 0) === (dest.dnum | 0))
-        return;                                  /* not a branch */
-    let br = null;
-    for (const b of (game._dungeon_branches || [])) {
-        if (!b.end1_floating && on_level(source, b.end1) && on_level(dest, b.end2)) { br = b; break; }
-        if (!b.end1_floating && on_level(source, b.end2) && on_level(dest, b.end1)) return;
-    }
-    if (!br)
-        return;                                  /* not a real branch */
-    const mptr = (game._mapseen_entries || []).find(entry => !entry.duplicate && on_level(entry, source));
-    if (mptr) {                                  /* C dungeon.c:2467-2470 */
-        if (mptr.br && br !== mptr.br)
-            impossible_sync('Two branches on the same level?');
-        mptr.br = br;
-    } else {
-        impossible_sync("Can't note branch for unseen level (%d, %d)",
-                        source.dnum | 0, source.dlevel | 0);
-    }
-}
 
 /* C ref: dungeon.h:132 Is_qstart(x) = Lcheck(x, &qstart_level) — the same
  * on_level() comparison the quest block below spells out by hand three times.
@@ -3999,4 +3979,603 @@ async function u_stuck_cannot_go(updn) {
         await You(`release ${mon_nam(mtmp)}.`);
     }
     return false;
+}
+
+/* C ref: potion.c:2269 dodip() — the #dip command. */
+/* C do.c:404-456 polymorph_sink(void): sink -> fountain/throne/altar/grave. */
+export async function polymorph_sink() {
+    const u = game.u;
+    const loc = game.level?.at(u.ux, u.uy);
+    if (!loc || loc.typ !== SINK) return;
+    const sinklooted = (loc.looted | 0) !== 0;
+    loc.flags = loc.looted = 0;
+    let sym;
+    switch (rn2(4)) {
+    case 0: default:
+        sym = 'fountain'; set_levltyp(u.ux, u.uy, FOUNTAIN); loc.blessedftn = 0;
+        if (sinklooted) loc.flags = 1; /* SET_FOUNTAIN_LOOTED */
+        break;
+    case 1:
+        sym = 'opulent throne'; set_levltyp(u.ux, u.uy, THRONE);
+        if (sinklooted) loc.looted = T_LOOTED;
+        break;
+    case 2: {
+        sym = 'altar'; set_levltyp(u.ux, u.uy, ALTAR);
+        const algn = rn2(3) - 1; /* drawn before the Inhell test, as C does */
+        loc.altarmask = (In_hell(u.uz) && rn2(3)) ? AM_NONE : Align2amask(algn);
+        break;
+    }
+    case 3:
+        sym = 'room'; set_levltyp(u.ux, u.uy, ROOM); make_grave(u.ux, u.uy, null);
+        if (loc.typ === GRAVE) sym = 'grave'; /* C do.c:444-445 */
+        break;
+    }
+    if (loc.typ !== ROOM) await pline(`The sink transforms into ${an(sym)}!`);
+    else await pline('The sink vanishes.');
+    newsym(u.ux, u.uy);
+}
+
+/* C ref: timeout.c:1965-1978 timeout_funcs[NUM_TIME_FUNCS] — the
+ * per-timeout-type dispatch table { timeout proc, cleanup proc, name }, indexed
+ * by the ROT_ORGANIC..MELT_ICE_AWAY enum in include/timeout.h.
+ *
+ * The handlers are read through arrow wrappers rather than referenced directly
+ * so the table can be built at module-evaluation time without forcing the
+ * imported bindings out of TDZ — js/dig.js imports start_timer from here, so
+ * the two modules form a cycle and whichever loads second would otherwise see
+ * an uninitialised binding.
+ * The expiration time must reach callbacks such as burn_object: it determines
+ * whether to show a warning or silently catch up after time spent away. */
+/* C ref: do.c:2248-2295 revive_mon(). */
+export async function revive_mon(arg) {
+    const body = arg?.a_obj;
+    if (!body) return;
+    /* C do.c:2258-2274: a displacer's corpse bumps the monster on its square
+     * away with rloc() before reviving. */
+    const mptr = permonstTemplate(body.corpsenm | 0);
+    const M3_DISPLACES = 0x0400;
+    if (mptr && ((mptr.mflags3 | 0) & M3_DISPLACES) && (body.where | 0) === OBJ_FLOOR) {
+        const x = body.ox | 0, y = body.oy | 0;
+        const mtmp = m_at(x, y);
+        if (mtmp && (game.level?.flags?.stasis_until | 0) < (game.moves | 0)) {
+            const notice_it = canseemon(mtmp);
+            const monname = Monnam(mtmp);
+            if (await rloc(mtmp, RLOC_NOMSG)) {
+                if (notice_it && !canseemon(mtmp))
+                    await pline(`${monname} vanishes.`);
+                else if (!notice_it && canseemon(mtmp))
+                    await pline(`${Monnam(mtmp)} appears.`);
+                else if (notice_it && dist2(mtmp.mx, mtmp.my, x, y) > 2)
+                    await pline(`${monname} teleports.`);
+            }
+        }
+    }
+    if (!(await revive_corpse(body))) {
+        let when, action;
+        const rider = is_rider_pm(body.corpsenm | 0);
+        if (rider && rn2(99)) { /* Rider usually tries again */
+            action = REVIVE_MON;
+            when = rider_revival_time(body, true);
+        } else { /* rot this corpse away */
+            if (!obj_has_timer(body, ROT_CORPSE))
+                await You_feel(`${rider ? 'much ' : ''}less hassled.`); // C do.c:2286
+            action = ROT_CORPSE;
+            when = d(5, 50) - ((game.moves | 0) - (body.age | 0));
+            if (when < 1) when = 1;
+        }
+        if (!obj_has_timer(body, action))
+            start_timer(when, TIMER_OBJECT, action, arg);
+    }
+}
+
+/* C ref: do.c:2297-2316 zombify_mon(). */
+export async function zombify_mon(arg, timeout) {
+    const body = arg?.a_obj;
+    if (!body) return;
+    const zmon = zombie_form(permonstTemplate(body.corpsenm | 0));
+    if (zmon !== NON_PM && !(((game.mvitals?.[zmon]?.mvflags) | 0) & G_GENOD)) {
+        if (body.oextra) {
+            body.oextra.omid = 0;
+            if ('oextra_omid' in body) body.oextra_omid = 0;
+            // C do.c:2307 -> mkobj.c:134-135 frees the saved monster's mextra.
+            if (body.oextra.omonst) dealloc_mextra(body.oextra.omonst);
+            body.oextra.omonst = null;
+        }
+        set_corpsenm(body, zmon);
+        await revive_mon(arg, timeout);
+    } else {
+        await rot_corpse(arg, timeout);
+    }
+}
+
+function _sr_Hallucination() {
+    const p = game.u?.uprops;
+    const on = (i) => !!(p?.[i] && (p[i].intrinsic | 0 || p[i].extrinsic | 0) && !(p[i].blocked | 0));
+    return (on(_SR_HALLUC) && !on(_SR_HALLUC_RES)) || !!(p?.[_SR_HALLUC]?.extrinsic | 0);
+}
+
+/* C do.c:438-464 teleport_sink(void): moves the sink under the hero to a
+ * random plain ROOM square out of sight; returns TRUE if the sink moved. */
+function teleport_sink() {
+    const u = game.u;
+    let trycnt = 0;
+    do {
+        const cx = 1 + rnd((COLNO - 1) - 2); /* 2..COLNO-2 */
+        const cy = 1 + rn2(ROWNO - 2);       /* 1..ROWNO-2 */
+        if (lev_typ(cx, cy) === ROOM
+            && !t_at(cx, cy) && !engr_at(cx, cy)
+            && (!cansee(cx, cy) || distu_ft(cx, cy) > 3 * 3)) {
+            const alreadylooted = game.level.at(u.ux, u.uy).looted;
+            /* remove old sink */
+            set_levltyp(u.ux, u.uy, ROOM);
+            game.level.at(u.ux, u.uy).looted = 0;
+            newsym(u.ux, u.uy);
+            /* create sink at new position */
+            set_levltyp(cx, cy, SINK);
+            game.level.at(cx, cy).looted = alreadylooted ? 1 : 0;
+            newsym(cx, cy);
+            return true;
+        }
+    } while (++trycnt < 200);
+    return false;
+}
+
+export async function dosinkring(obj) {
+    const u = game.u;
+    let ideed = true;
+    let nosink = false;
+    const W = () => _sr_hliquid('water');
+
+    await pline(`You drop ${await _sr_doname(obj)} down the drain.`);
+    obj.in_use = true; /* block free identification via interrupt */
+    let finished = false; /* the giveback early return */
+    switch (obj.otyp | 0) { /* effects that can be noticed without eyes */
+    case 180: /* RIN_SEARCHING */
+        await pline(`You thought ${await _sr_yname(obj)} got lost in the sink, but there it is!`);
+        finished = true;
+        break;
+    case 193: /* RIN_SLOW_DIGESTION */
+        await pline_The('ring is regurgitated!');
+        finished = true;
+        break;
+    case 183: /* RIN_LEVITATION */
+        await pline('The sink quivers upward for a moment.');
+        break;
+    case 188: /* RIN_POISON_RESISTANCE */
+        await pline(`You smell rotten ${_sr_makeplural(_sr_fruitname(false))}.`);
+        break;
+    case 185: /* RIN_AGGRAVATE_MONSTER */
+        await pline(`Several ${_sr_Hallucination() ? _sr_makeplural(_sr_rndmonnam(null)) : 'flies'} buzz angrily around the sink.`);
+        break;
+    case 191: /* RIN_SHOCK_RESISTANCE */
+        await pline('Static electricity surrounds the sink.');
+        break;
+    case 186: /* RIN_CONFLICT */
+        Soundeffect(se_drain_noises, 50);
+        await You_hear('loud noises coming from the drain.');
+        break;
+    case 182: /* RIN_SUSTAIN_ABILITY */
+        await pline(`The ${W()} flow seems fixed.`);
+        break;
+    case 174: /* RIN_GAIN_STRENGTH */
+        await pline(`The ${W()} flow seems ${(obj.spe | 0) < 0 ? 'weak' : 'strong'}er now.`);
+        break;
+    case 175: /* RIN_GAIN_CONSTITUTION */
+        await pline(`The ${W()} flow seems ${(obj.spe | 0) < 0 ? 'less' : 'great'}er now.`);
+        break;
+    case 176: /* RIN_INCREASE_ACCURACY */
+        await pline(`The ${W()} flow ${(obj.spe | 0) < 0 ? 'misses' : 'hits'} the drain.`);
+        break;
+    case 177: /* RIN_INCREASE_DAMAGE */
+        await pline(`The water's force seems ${(obj.spe | 0) < 0 ? 'small' : 'great'}er now.`);
+        break;
+    case 184: { /* RIN_HUNGER */
+        ideed = false;
+        const here = game.level?.levelObjects?.[u.ux]?.[u.uy] ?? null;
+        for (let otmp = here, otmp2; otmp; otmp = otmp2) {
+            otmp2 = otmp.nexthere;
+            if (otmp !== u.uball && otmp !== u.uchain && !_sr_obj_resists(otmp, 1, 99)) {
+                if (!_sr_Blind()) {
+                    await pline(`Suddenly, ${await _sr_doname(otmp)} ${_sr_otense(otmp, 'vanish')} from the sink!`);
+                    ideed = true;
+                }
+                await _sr_delobj(otmp);
+            }
+        }
+        break;
+    }
+    case 270: /* MEAT_RING */
+        await pline('Several flies buzz around the sink.');
+        break;
+    case 194: /* RIN_TELEPORTATION */
+        nosink = teleport_sink();
+        /* give message even if blind; we know we're not levitating,
+           so can feel the outcome even if we can't directly see it */
+        await pline(`The sink ${nosink ? '' : 'momentarily '}vanishes.`);
+        ideed = false;
+        break;
+    case 196: /* RIN_POLYMORPH */
+        await polymorph_sink();
+        nosink = true;
+        /* for S_room case, same message as for teleportation is given */
+        ideed = (game.level.at(u.ux, u.uy).typ !== ROOM);
+        break;
+    default:
+        ideed = false;
+        break;
+    }
+    if (finished) {
+        obj.in_use = false;
+        await dropx(obj);
+        await trycall(obj);
+        return;
+    }
+    if (!_sr_Blind() && !ideed) {
+        ideed = true;
+        switch (obj.otyp | 0) { /* effects that need eyes */
+        case 173: /* RIN_ADORNMENT */
+            await pline('The faucets flash brightly for a moment.');
+            break;
+        case 179: /* RIN_REGENERATION */
+            await pline('The sink looks as good as new.');
+            break;
+        case 198: /* RIN_INVISIBILITY */
+            await pline("You don't see anything happen to the sink.");
+            break;
+        case 192: /* RIN_FREE_ACTION */
+            await You_see('the ring slide right down the drain!');
+            break;
+        case 199: /* RIN_SEE_INVISIBLE */
+            await You_see(`some ${_sr_Hallucination() ? 'oxygen molecules' : 'air'} in the sink.`);
+            break;
+        case 181: /* RIN_STEALTH */
+            await pline('The sink seems to blend into the floor for a moment.');
+            break;
+        case 189: /* RIN_FIRE_RESISTANCE */
+            await pline(`The hot ${W()} faucet flashes brightly for a moment.`);
+            break;
+        case 190: /* RIN_COLD_RESISTANCE */
+            await pline(`The cold ${W()} faucet flashes brightly for a moment.`);
+            break;
+        case 200: /* RIN_PROTECTION_FROM_SHAPE_CHAN */
+            await pline('The sink looks nothing like a fountain.');
+            break;
+        case 178: /* RIN_PROTECTION */
+            await pline(`The sink glows ${_sr_hcolor((obj.spe | 0) < 0 ? 'black' : 'silver')} for a moment.`);
+            break;
+        case 187: /* RIN_WARNING */
+            await pline(`The sink glows ${_sr_hcolor('white')} for a moment.`);
+            break;
+        case 195: /* RIN_TELEPORT_CONTROL */
+            await pline('The sink looks like it is being beamed aboard somewhere.');
+            break;
+        case 197: /* RIN_POLYMORPH_CONTROL */
+            await pline('The sink momentarily looks like a regularly erupting geyser.');
+            break;
+        default:
+            break;
+        }
+    }
+    if (ideed) {
+        await trycall(obj);
+    } else if (!nosink) {
+        Soundeffect(se_ring_in_drain, 50);
+        await You_hear('the ring bouncing down the drainpipe.');
+    }
+    if (!rn2(20) && !nosink) {
+        await pline(`The sink backs up, leaving ${await _sr_doname(obj)}.`);
+        obj.in_use = false;
+        await dropx(obj);
+    } else if (!rn2(5)) {
+        _sr_freeinv(obj);
+        obj.in_use = false;
+        obj.ox = u.ux;
+        obj.oy = u.uy;
+        _sr_add_to_buried(obj);
+    } else
+        await _sr_useup(obj);
+}
+
+export function canletgo(obj, word) {
+    const u = game.u || {};
+    const w = String(word ?? '');
+    if (!obj)
+        return true;
+    if ((obj.owornmask | 0) & (W_ARMOR | W_ACCESSORY)) {
+        if (w)
+            void Norep(`You cannot ${w} something you are wearing.`);
+        return false;
+    }
+    if (obj === u.uwep && welded(u.uwep)) {
+        /* no weldmsg(), so uwep->bknown might become set silently if word is "" */
+        if (w) {
+            let hand = body_part(HAND);
+            if (bimanual(u.uwep))
+                hand = makeplural(hand);
+            void Norep(`You cannot ${w} something welded to your ${hand}.`);
+        }
+        return false;
+    }
+    if ((obj.otyp | 0) === LOADSTONE_OTYP && (obj.cursed | 0)) {
+        /* getobj() kludge sets corpsenm to the user's specified count when it
+           refuses to split a stack of cursed loadstones */
+        if (w) {
+            if (w === 'throw' && (obj.quan | 0) > 1)
+                obj.corpsenm = 1;
+            void pline(`For some reason, you cannot ${w}`
+                       + `${obj.corpsenm ? ' any of' : ''} the stone`
+                       + `${(obj.quan | 0) > 1 ? 's' : ''}!`);
+        }
+        obj.corpsenm = 0; /* reset */
+        set_bknown(obj, 1);
+        return false;
+    }
+    if ((obj.otyp | 0) === LEASH_OTYP && (obj.leashmon | 0) !== 0) {
+        if (w)
+            void pline(`The leash is tied around your ${body_part(HAND)}.`);
+        return false;
+    }
+    if ((obj.owornmask | 0) & W_SADDLE) {
+        if (w)
+            void pline(`You cannot ${w} something you are sitting on.`);
+        return false;
+    }
+    return true;
+}
+
+/* objects.h otyps: LOADSTONE and LEASH (js/oc_name_data.js rows 471 and 236). */
+const LOADSTONE_OTYP = 471, LEASH_OTYP = 236;
+
+export async function revive_corpse(otmp, do_msgs = true) {
+    if (!otmp || (otmp.otyp | 0) !== CORPSE)
+        return false;
+    const mnum = otmp.corpsenm | 0;
+    const wasBuried = (otmp.where | 0) === OBJ_BURIED;
+    const mdat = permonstTemplate(mnum);
+    if (!mdat || mnum < 0)
+        return false;
+    // C do.c:2124-2128: buried trolls and Riders dig out like zombies.
+    const is_zomb = mdat.mlet === S_ZOMBIE
+        || (wasBuried && (mdat.mlet === S_TROLL || is_rider_pm(mnum)));
+    /* C do.c:2121-2133: name, location and wield state are read BEFORE
+     * revive() consumes the corpse. */
+    const where0 = otmp.where | 0;
+    const chewed = (otmp.oeaten | 0) !== 0;
+    const is_uwep = otmp === game.u?.uwep;
+    const cname = corpse_xname_rc(otmp, chewed ? 'bite-covered' : null, 1 /* CXN_SINGULAR */);
+    const cx = { value: 0 }, cy = { value: 0 };
+    get_obj_location(otmp, cx, cy, CONTAINED_TOO | BURIED_TOO);
+    const corpsex = cx.value, corpsey = cy.value;
+    /* C do.c:2134 mcarry = (where == OBJ_MINVENT) ? corpse->ocarry : 0 */
+    let mcarry = where0 === OBJ_MINVENT ? otmp.ocarry : null;
+    const container = where0 === OBJ_CONTAINED ? otmp.ocontainer : null;
+    const containerWhere = { value: 0 };
+    const containerNesting = { value: 0 };
+    if (container) {
+        const carrier = get_container_location(container, containerWhere, containerNesting);
+        if (containerWhere.value === OBJ_MINVENT) mcarry = carrier;
+    }
+    /* C zap.c:909: stop eating before checking location or creating a monster. */
+    await cant_finish_meal(otmp);
+    /* C zap.c:953-957: a buried zombie needs terrain it can dig through. */
+    if (is_zomb && wasBuried
+        && !zombie_can_dig(otmp.ox | 0, otmp.oy | 0))
+        return false;
+    let x = otmp.ox | 0, y = otmp.oy | 0;
+    if (where0 === OBJ_CONTAINED) {
+        // C zap.c:914-945: use the outer container's current location,
+        // including its monster carrier, before checking revival eligibility.
+        x = y = 0;
+        if (containerWhere.value === OBJ_MINVENT) {
+            x = mcarry.mx; y = mcarry.my;
+        } else if (containerWhere.value === OBJ_INVENT) {
+            x = game.u.ux; y = game.u.uy;
+        } else if (containerWhere.value === OBJ_FLOOR) {
+            x = corpsex; y = corpsey;
+        }
+        if (!x)
+            return false;
+        otmp.ox = x; otmp.oy = y;
+    }
+    /* C zap.c:938-948: revival from a container needs an unlocked, shallowly
+     * nested, non-statue container; a bag of holding usually blocks it
+     * (rn2(40) is drawn only when the earlier tests pass). */
+    if (container
+        && (container.olocked || containerNesting.value > 2
+            || (container.otyp | 0) === STATUE
+            || ((container.otyp | 0) === BAG_OF_HOLDING && rn2(40))))
+        return false;
+    /* C zap.c:910-912 get_obj_location(): a corpse carried by a monster or the
+     * hero is revived at the carrier's square, not at its stale ox/oy. */
+    if (where0 === OBJ_MINVENT || where0 === OBJ_INVENT) {
+        const lx = { value: 0 }, ly = { value: 0 };
+        if (get_obj_location(otmp, lx, ly, 0)) {
+            x = lx.value;
+            y = ly.value;
+        }
+    }
+    if (otmp.where === OBJ_FLOOR && !isok(x, y))
+        return false;
+    if (!isok(x, y)) {
+        x = (game.u?.ux ?? 1) | 0;
+        y = (game.u?.uy ?? 1) | 0;
+    }
+    /* C zap.c:947-950 resolves an occupied corpse square before makemon().
+     * revive() doesn't pass MM_ADJACENTOK, so leaving this to makemon would
+     * reject the revival instead of running enexto's randomized search. */
+    if (m_at(x, y)) {
+        const spot = enexto_out(x, y, mdat);
+        if (spot) {
+            x = spot.x | 0;
+            y = spot.y | 0;
+        }
+    }
+    /* C zap.c:967-973: a norevive corpse (or an eel out of water) twitches. */
+    if (otmp.norevive
+        || (mdat.mlet === 57 /* S_EEL */
+            && !IS_POOL(game.level.locations[x][y].typ))) {
+        if (cansee(x, y)) {
+            const nm = corpse_xname_rc(otmp, null, 4 /* CXN_PFX_THE */);
+            await pline(`${nm.charAt(0).toUpperCase()}${nm.slice(1)} twitches feebly.`);
+        }
+        return false;
+    }
+    /* C zap.c:895/1003: revive() suppresses inventory and waiting strategy;
+     * only the plain makemon() arm skips counting the revived monster as a
+     * new birth — the cant_revive() arm passes mmflags unchanged. */
+    let mmflags = NO_MINVENT | MM_NOWAIT | MM_NOMSG;
+    /* C zap.c:974-979: applicable when montraits isn't used */
+    const cgend = (otmp.spe | 0) & CORPSTAT_GENDER;
+    if (cgend === CORPSTAT_MALE)
+        mmflags |= MM_MALE;
+    else if (cgend === CORPSTAT_FEMALE)
+        mmflags |= MM_FEMALE;
+    /* C zap.c:982-999: guards/angels revive as human zombies and unique
+     * corpses without saved traits revive as a doppelganger (which then
+     * shapechanges to the corpse's own form); montype changes, mdat keeps
+     * the corpse's permonst for newcham().  This arm was missing here: a
+     * unique corpse (e.g. a Rider) revived as itself instead, drawing
+     * newmonhp's rider d(10,8) instead of the substitute's d(m_lev,8). */
+    const mtype = { value: mnum };
+    let mon;
+    if (cant_revive(mtype, true, otmp)) {
+        mon = await makemon(permonstTemplate(mtype.value), x, y, mmflags);
+        if (mon) {
+            /* skip ghost handling */
+            if (otmp.oextra?.omid)
+                free_omid(otmp);
+            if (otmp.oextra?.omonst) {
+                dealloc_mextra(otmp.oextra.omonst);
+                otmp.oextra.omonst = null;
+            }
+            if (mon.cham === PM_DOPPELGANGER_NC) {
+                /* change shape to match the corpse */
+                await newcham(mon, mnum, 0 /* NO_NC_FLAGS */);
+            } else if (mon.data.mlet === S_ZOMBIE) {
+                mon.mhp = mon.mhpmax = 100;
+                mon_adjust_speed(mon, 2, null); /* MFAST */
+            }
+        }
+    } else if (otmp.oextra?.omonst) {
+        // C zap.c:1000-1007: a corpse with saved traits restores that monster.
+        mon = await montraits(otmp, { x, y }, false);
+    } else {
+        mon = await makemon(mdat, x, y, mmflags | MM_NOCOUNTBIRTH);
+    }
+    if (otmp.oextra?.omonst && mon?.mtame && !mon.isminion)
+        await wary_dog(mon, true);
+    if (!mon)
+        return false;
+    /* C zap.c:1099-1102: a partially eaten corpse yields a wounded monster;
+     * track that it was revived at least once. */
+    if (otmp.oeaten)
+        mon.mhp = eaten_stat(mon.mhp, otmp);
+    /* C zap.c:1096-1098: monster retains its name */
+    if (otmp.oextra?.oname && !((mon.data.geno | 0) & 0x1000 /* G_UNIQ */))
+        mon = christen_monst(mon, otmp.oextra.oname);
+    mon.mrevived = 1;
+    /* C zap.c:1022-1023: reviving one corpse of a stack splits it off first
+     * (splitobj -> next_ident). */
+    if ((otmp.quan | 0) > 1)
+        otmp = await splitobj(otmp, 1);
+    /* A timed corpse may be firing from the timeout queue right now; C's
+     * object disposal removes every timer before the corpse leaves storage. */
+    if (otmp.timed)
+        obj_stop_timers(otmp);
+    if (wasBuried || (otmp.where | 0) === OBJ_FLOOR) {
+        const wasFloor = (otmp.where | 0) === OBJ_FLOOR;
+        obj_extract_self(otmp);
+        await dealloc_obj(otmp);
+        if (wasFloor)
+            newsym(otmp.ox | 0, otmp.oy | 0);
+    } else if (where0 === OBJ_INVENT) {
+        /* C zap.c:1108-1110: useup(corpse) -- no delobj obj_resists roll */
+        await useup_inv(otmp);
+    } else if (where0 === OBJ_MINVENT) {
+        /* C zap.c:1112-1114: m_useup(corpse->ocarry, corpse) -- no obj_resists roll */
+        await lifesave_m_useup(otmp.ocarry, otmp);
+    } else if (where0 === OBJ_CONTAINED) {
+        /* C zap.c:1117-1121 */
+        obj_extract_self(otmp);
+        await obfree(otmp, null);
+    } else {
+        await delobj_real(otmp);
+    }
+    /* C do.c:2220-2238: a buried zombie digs out by creating a pit.  maketrap
+     * unearths and stacks every other buried object on that square. */
+    let _zombie_pit = false;
+    if (wasBuried && is_zomb) {
+        await maketrap(mon.mx | 0, mon.my | 0, PIT);
+        _zombie_pit = true;
+    }
+    /* C do.c:2151-2183: revival messages (revive_corpse() only; a direct
+     * revive() caller such as unturn_dead prints none of them). */
+    if (!do_msgs) {
+        /* silent */
+    } else if (where0 === OBJ_INVENT) {
+        if (is_uwep)
+            await pline(`The ${cname} writhes out of your grasp!`);
+        else
+            await You_feel('squirming in your backpack!');
+    } else if (where0 === OBJ_BURIED && _zombie_pit) {
+        /* C do.c:2220-2238 -- OBJ_BURIED, is_zomb */
+        if (cansee(mon.mx | 0, mon.my | 0)) {
+            const ttmp = t_at(mon.mx | 0, mon.my | 0);
+            if (ttmp)
+                ttmp.tseen = true;
+            await pline('%s claws itself out of the ground!',
+                        canspotmon(mon) ? Amonnam(mon) : 'Something');
+            newsym(mon.mx | 0, mon.my | 0);
+        } else {
+            const dx = (mon.mx | 0) - (game.u.ux | 0), dy = (mon.my | 0) - (game.u.uy | 0);
+            if (dx * dx + dy * dy < 5 * 5) {
+                Soundeffect(se_scratching, 50); // C do.c:2230
+                await You_hear('scratching noises.');
+            }
+        }
+        await fill_pit(mon.mx | 0, mon.my | 0);
+    } else if (where0 === OBJ_MINVENT) {
+        /* C do.c:2178-2189 -- probably a nymph's */
+        if (cansee(mon.mx | 0, mon.my | 0)) {
+            if (mcarry && canseemon(mcarry))
+                await pline('Startled, %s drops %s as it %s!',
+                            mon_nam_wm(mcarry), an_mk(cname),
+                            canspotmon(mon) ? 'revives' : 'disappears');
+            else if (canspotmon(mon))
+                await pline('%s suddenly appears!',
+                            chewed ? Adjmonnam_rc(mon, 'bite-covered') : Monnam_rc(mon));
+        }
+    } else if (where0 === OBJ_CONTAINED) {
+        // C do.c:2196-2218: preserve the container before revive consumes its corpse.
+        const mnam = canspotmon(mon) ? Amonnam(mon) : 'Something';
+        if (!container)
+            await lifecycle_impossible('reviving corpse from non-existent container');
+        else if (mcarry && canseemon(mcarry))
+            await pline('%s writhes out of %s!', mnam, yname(container));
+        else if (containerWhere.value === OBJ_INVENT)
+            await pline('%s %s out of %s in your pack!', mnam,
+                        locomotion(mon.data, 'writhes'), an_mk(xname(container)));
+        else if (containerWhere.value === OBJ_FLOOR && cansee(corpsex, corpsey))
+            await pline('%s escapes from %s!', mnam, an_mk(xname(container)));
+    } else if (where0 === OBJ_FLOOR) {
+        if (cansee(corpsex, corpsey) || canseemon(mon)) {
+            const pmi = mon.mnum ?? mon.pmidx;
+            let effect = '';
+            if (pmi === PM_DEATH_R)
+                effect = ' in a whirl of spectral skulls';
+            else if (pmi === PM_PESTILENCE)
+                effect = ' in a churning pillar of flies';
+            else if (pmi === PM_FAMINE)
+                effect = ' in a ring of withered crops';
+            if (canseemon(mon))
+                await pline(`${chewed ? Adjmonnam_rc(mon, 'bite-covered') : Monnam_rc(mon)} rises from the dead${effect}!`);
+            else
+                await pline(`${The_rc(cname)} disappears${effect}!`);
+        }
+    } else {
+        /* C do.c:2235-2239: OBJ_BURIED without is_zomb falls through to the
+         * default arm, as does any other location. */
+        await lifecycle_impossible('revive_corpse: lost corpse @ %d', where0);
+    }
+    return mon;
 }

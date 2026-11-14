@@ -56,7 +56,7 @@ export function settrack() {
 }
 
 // distmin — C ref: hack.h distmin(x0,y0,x1,y1) = max(|dx|,|dy|)
-function distmin(x0, y0, x1, y1) {
+function distmin_track(x0, y0, x1, y1) {
     return Math.max(Math.abs((x0 | 0) - (x1 | 0)), Math.abs((y0 | 0) - (y1 | 0)));
 }
 
@@ -77,7 +77,7 @@ export function gettrack(x, y) {
         else
             idx--;
         const tc = t.utrack[idx];
-        const ndist = distmin(x, y, tc.x, tc.y);
+        const ndist = distmin_track(x, y, tc.x, tc.y);
         if (ndist <= 1)
             return ndist ? { x: tc.x, y: tc.y } : null;
     }

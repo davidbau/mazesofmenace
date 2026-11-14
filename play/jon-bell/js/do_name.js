@@ -2,7 +2,8 @@
 //
 
 import { monPmname, permonstTemplate } from './makemon.js';
-import { rn2, rn2_on_display_rng, pushRngLogEntry } from './rng.js';
+import { pushRngLogEntry } from './rng.js';
+import { rn2, rn2_on_display_rng } from './rnd.js';
 import { get_rnd_line_from_section } from './mklev.js';
 import { BOGUSMON_LINES, BOGUSMON_OFFSETS, BOGUSMON_SIZE, MD_PAD_BOGONS } from './bogusmon_data.js';
 import { ENV } from './hostenv.js';
@@ -12,7 +13,11 @@ import { Upolyd } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { ismnum, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM } from './const.js';
 import { impossible } from './steed.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, carrying, cmdq_clear, cmdq_pop, donamelevel, flooreffects_is_plural, getObjFromGetobj, getpos, look_at_object, set_cursor, type_is_pname, verbalize } from './cmd.js'; // relocate-fns
+import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, cmdq_clear, cmdq_pop, flooreffects_is_plural, getObjFromGetobj, set_cursor, type_is_pname, verbalize } from './cmd.js';
+import { getpos } from './getpos.js';
+import { carrying } from './invent.js';
+import { donamelevel } from './dungeon.js';
+import { look_at_object } from './pager.js'; // relocate-fns
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
 import { ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, OBJ_FREE, OBJ_INVENT, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, PL_PSIZ, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, await_menu_key, canspotmon, docorner_blank_utf8_captures, docrt, flush_screen, force_more_pages, see_with_infrared, sensemon } from './display.js'; // relocate-fns
@@ -20,23 +25,25 @@ import { You, xname } from './do_wear.js'; // relocate-fns
 import { shkname as dokick_shkname } from './dokick.js'; // relocate-fns
 import { newobj } from './game.js'; // relocate-fns
 import { mungspaces, upstart } from './hacklib.js'; // relocate-fns
-import { update_inventory } from './inventory_refresh.js'; // relocate-fns
+import { update_inventory } from './invent.js'; // relocate-fns
 import { mhe } from './makemon.js'; // relocate-fns
-import { new_mgivenname, free_mgivenname, distant_monnam, helpless, objtyp_is_callable, roguename } from './mhitm.js'; // relocate-fns
-export { free_mgivenname };
-import { OC_USES_KNOWN, dealloc_obj, wipeout_text } from './mklev.js'; // relocate-fns
+import { helpless } from './mhitm.js'; // relocate-fns
+import { OC_USES_KNOWN } from './mklev.js';
+import { dealloc_obj } from './mkobj.js';
+import { wipeout_text } from './engrave.js'; // relocate-fns
 import { OC_NAME } from './oc_name_data.js';
 import { discover_object, undiscover_object } from './o_init.js'; // relocate-fns
-import { CXN_NORMAL, Ysimple_name2, simpleonames as _ia_simpleonames, an, getObjDescr, oname, xname_flags } from './objnam.js';
+import { CXN_NORMAL, Ysimple_name2, simpleonames as _ia_simpleonames, an, getObjDescr, xname_flags } from './objnam.js';
 import { artifact_name as artifact_name_exported, exist_artifact } from './artifact.js'; // relocate-fns
 import { pline, There } from './pline.js'; // relocate-fns
 import { NUMMONS, PM_DEATH, PM_FAMINE, PM_GHOST, PM_JUIBLEX, PM_PESTILENCE } from './pm.generated.js'; // relocate-fns
-import { COIN_CLASS, safe_qbuf as inventory_safe_qbuf } from './shk.js'; // relocate-fns
+import { COIN_CLASS } from './shk.js';
+import { safe_qbuf as inventory_safe_qbuf } from './objnam.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 import { m_at } from './uhitm.js'; // relocate-fns
 import { cansee } from './vision.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
-import { x_monnam, xm_has_mgivenname } from './mhitm.js';
+import { xm_has_mgivenname } from './mhitm.js';
 import { SUPPRESS_SADDLE } from './const.js';
 import { NH_BLACK, NH_BLUE, NH_GOLDEN, NH_PURPLE, NH_RED, NH_SILVER } from './read.js'; // relocate-fns
 import { NON_PM } from './const.js'; // relocate-fns
@@ -55,7 +62,30 @@ export function nextmbuf() {
 export function currentmbuf() { return game._mbufs.cells[game._mbufs.index]; }
 
 /* C monflag.h enum mgender { MALE, FEMALE, NEUTRAL, NUM_MGENDERS } */
-const MALE = 0, FEMALE = 1;
+import { MALE, FEMALE } from './const.js';
+import { rename_disco } from './o_init.js'; // relocate-fns
+import './mhitm.js'; // relocate-fns
+import { artifact_exists, set_artifact_intrinsic } from './artifact.js'; // relocate-fns
+import { LL_ARTIFACT, LL_CONDUCT, ONAME_SKIP_INVUPD, W_WEP as W_WEP_D } from './const.js'; // relocate-fns
+import { ansimpleoname, bare_artifactname } from './objnam.js'; // relocate-fns
+import { livelog_printf } from './pline.js'; // relocate-fns
+import { alter_cost } from './shk.js'; // relocate-fns
+import { untwoweapon } from './wield.js'; // relocate-fns
+import { rank_of } from './botl.js'; // relocate-fns
+import { ARTICLE_A, ARTICLE_NONE, ARTICLE_YOUR, AUGMENT_IT, FALSE, In_endgame, Is_astralevel, PRONOUN_HALLU, SUPPRESS_HALLUCINATION, SUPPRESS_INVISIBLE, SUPPRESS_IT, SUPPRESS_MAPPEARANCE, SUPPRESS_NAME, TRUE, W_SADDLE } from './const.js'; // relocate-fns
+import { shkname } from './dokick.js'; // relocate-fns
+import { lcase, s_suffix } from './hacklib.js'; // relocate-fns
+import { newmextra } from './makemon.js'; // relocate-fns
+import { M1_ANIMAL, M1_MINDLESS, M_AP_TYPMASK, PM_HIGH_CLERIC, SPBOOK_CLASS, TOOL_CLASS, m_next2u, xm_Blind, xm_Hallucination, xm_same_monst } from './mhitm.js'; // relocate-fns
+import { newoextra } from './mkobj.js'; // relocate-fns
+import { MKOBJ_OC_CLASS } from './mkobj_data.js'; // relocate-fns
+import { pronoun_gender } from './mondata.js'; // relocate-fns
+import { just_an } from './objnam.js'; // relocate-fns
+import { nh_getenv } from './options.js'; // relocate-fns
+import { PM_ARCHEOLOGIST, PM_SHOPKEEPER, PM_WIZARD, PM_WIZARD_OF_YENDOR } from './pm.generated.js'; // relocate-fns
+import { priestname } from './priest.js'; // relocate-fns
+import { rn1 } from './rng.js'; // relocate-fns
+import { ARMOR_CLASS, GEM_CLASS } from './uhitm.js'; // relocate-fns
 
 function ONAME(o) {
     return o.oextra.oname;
@@ -415,118 +445,6 @@ async function namefloorobj() {
     if (fakeobj) { obj.where = OBJ_FREE; await dealloc_obj(obj); }
 }
 
-/* C ref: o_init.c:1128-1213 rename_disco() — the nameable subset of the
- * discoveries list as a PICK_ONE menu, then docall() on a dummy object of the
- * picked type.  disco[] is walked per class in flags.inv_order, filtered by
- * interesting_to_discover() and objtyp_is_callable(); each class with a
- * surviving row gets a heading.  Selector letters run a-z then A-Z across the
- * headings (tty add_menu auto-assignment, wintty.c).  Single-page only. */
-async function rename_disco() {
-    const g = game;
-    const lines = [menu_heading_text('Pick an object type to name'), ''];
-    const picks = {};
-    const pickItems = [];
-    let ct = 0, mn = 0;
-    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
-    const disco = g._disco || {};
-    for (const oclass of (g.flags?.inv_order || INV_ORDER)) { /* C:1143 flags.inv_order */
-        const list = disco[oclass];
-        if (!list) continue;
-        let prev_class = oclass + 1; /* C:1149 forced different from oclass */
-        for (const dis of list) {
-            if (!dis || !_interesting_to_discover(dis))
-                continue;                           /* C:1154 */
-            ct++;
-            if (!objtyp_is_callable(dis))
-                continue;                           /* C:1157 */
-            mn++;
-            if (oclass !== prev_class) {
-                lines.push(menu_heading_text(OCLASS_NAME[oclass])); /* C:1162 */
-                prev_class = oclass;
-            }
-            /* letter assigned after paging (tty_end_menu restarts at 'a' per page) */
-            pickItems.push({ row: lines.length, otyp: dis, oclass });
-            lines.push(`\0 - ${_disco_append_price_quote(_disco_typename(dis), dis)}`);
-        }
-    }
-    if (ct === 0) {
-        await You("haven't discovered anything yet...");   /* C:1177 */
-        return;
-    }
-    if (mn === 0) {
-        await pline('None of your discoveries can be assigned names...'); /* C:1179 */
-        return;
-    }
-    const maxLen = lines.reduce((mx, ln) =>
-        Math.max(mx, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
-    /* wintty.c:1908 H2344_BROKEN: offx = min(min(82, cols/2), cols - maxcol - 1);
-     * a menu whose content rows + 1 reach 24 (lines.length >= 23, wintty.c
-     * cw->maxrow >= rows - 1; C rename_disco itself makes no paging
-     * decision, o_init.c:1185 end_menu) or one too wide
-     * for an overlay drops to offx 0 and is paged at 23 content rows with
-     * process_menu_window's "(%d of %d)" footer (wintty.c:1537-1539). */
-    const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
-    const fullScreen = lines.length + 1 >= SCREEN_ROWS || 78 - maxLen <= 1;
-    const pageCount = fullScreen ? Math.ceil(lines.length / PAGE_CONTENT) : 1;
-    /* wintty.c tty_end_menu: auto selectors a-z,A-Z restart on every page */
-    const perPage = {};
-    for (const it of pickItems) {
-        const pg = fullScreen ? Math.floor(it.row / PAGE_CONTENT) : 0;
-        const letter = letters[perPage[pg] = (perPage[pg] || 0) + 1, perPage[pg] - 1];
-        picks[pg + ':' + letter] = { otyp: it.otyp, oclass: it.oclass };
-        lines[it.row] = letter + lines[it.row].slice(1);
-    }
-    let pageIdx = 0;
-    const WIN_COL = fullScreen ? 0 : Math.min(41, 80 - maxLen - 2);
-    const pageSel = () => Object.keys(picks)
-        .filter((key) => Number(key.split(':')[0]) === (fullScreen ? pageIdx : 0))
-        .map((key) => key.split(':')[1]).join('');
-    const show = async () => {
-        if (fullScreen) {
-            const pageLines = lines.slice(pageIdx * PAGE_CONTENT, (pageIdx + 1) * PAGE_CONTENT);
-            const morestr = pageCount > 1 ? `(${pageIdx + 1} of ${pageCount})` : '(end) ';
-            const rows = new Array(SCREEN_ROWS).fill('');
-            for (let i = 0; i < pageLines.length; i++) rows[i] = ` ${pageLines[i]}`;
-            rows[pageLines.length] = ` ${morestr}`;
-            g._screen_output = rows.join('\n');
-            g._pending_message = '';
-            set_cursor(1 + morestr.length, pageLines.length);
-            return;
-        }
-        const screen = build_window_screen([...lines, '(end)'], WIN_COL, g.u?.uac ?? 0);
-        g._screen_output = screen;
-        g._pending_message = '';
-        set_cursor(WIN_COL + '(end)'.length + 1, lines.length);
-    };
-    await show();
-    let k;
-    for (;;) {
-        k = await await_menu_key(show, pageSel(), '', PICK_ONE);
-        /* wintty.c process_menu_window: space / '>' next page, '<' previous;
-         * space on the last page finishes the menu. */
-        if (fullScreen && (k === 32 || k === 62) && pageIdx < pageCount - 1) { pageIdx++; await show(); continue; }
-        if (fullScreen && k === 60 && pageIdx > 0) { pageIdx--; await show(); continue; }
-        break;
-    }
-    g._pending_message = '';
-    if (fullScreen) {
-        /* wintty.c:971-978 erase_menu_or_text: an offx 0 window is dismissed by
-         * docrt(), which re-rolls every hallucinated cell (display RNG) and
-         * leaves both status rows blank until the next bot(). */
-        await docrt();
-        g._statusBlankAfterDocrt = true;
-        if (g.disp) g.disp.botlx = 1;
-        g._status1WholeNext = true;
-    }
-    const pick = picks[(fullScreen ? pageIdx : 0) + ':' + String.fromCharCode(k)];
-    if (!pick) return;                              /* C:1188 STRANGE_OBJECT */
-    const odummy = {                                /* C:1192-1200 */
-        otyp: pick.otyp, oclass: pick.oclass, quan: 1,
-        known: OC_USES_KNOWN[pick.otyp] ? 0 : 1,
-        dknown: 1,
-    };
-    await docall(odummy);
-}
 
 /* C ref: do_name.c:463 name_ok(obj) — getobj's classifier for `#name i'. */
 export function name_ok(obj) {
@@ -895,7 +813,6 @@ function minimal_monnam_body(mon, ckloc) {
     return name;
 }
 
-export { y_monnam } from './mhitm.js'; // C do_name.c:1117-1129
 
 /* C do_name.c:1320-1360 obj_pmname(obj) — mons[].pmname for a corpse/statue/
  * figurine, keyed off obj->corpsenm + the CORPSTAT_GENDER bits in obj->spe.
@@ -944,4 +861,727 @@ export function free_oname(otmp) {
         otmp.oextra_oname_present = 0;
     if (Object.prototype.hasOwnProperty.call(otmp, 'oname'))
         otmp.oname = null;
+}
+
+export function christen_orc(mtmp, gang, other) {
+    const BUFSZ = 256;
+    /* C do_name.c:1560 `orcname = rndorcname(buf2)` — a `char buf2[BUFSZ]`,
+     * i.e. non-NULL, so the name-building loop always runs.  js/mhitm.js's port
+     * tests `s !== null && s !== undefined` (an empty C buffer is ""), so the
+     * argument is load-bearing: calling it bare skips the loop and drops
+     * 2*iend-1 draws. */
+    let orcname = rndorcname("");
+    let sz = orcname.length;
+    if (gang)
+        sz += gang.length + 4; /* sizeof " of " - sizeof "" = 4 */
+    else if (other)
+        sz += other.length;
+
+    if (sz < BUFSZ) {
+        let nameit = false;
+        let buf;
+        if (gang) {
+            buf = upstart(orcname) + " of " + upstart(gang);
+            nameit = true;
+        } else if (other) {
+            buf = upstart(orcname) + other;
+            nameit = true;
+        }
+        if (nameit)
+            mtmp = christen_monst(mtmp, buf);
+    }
+    return mtmp;
+}
+
+/* C do_name.c:79-133 oname(obj, name, oflgs) — assign a custom name to an
+ * object, promoting it to an artifact when the name matches artilist[].
+ * RNG-free.
+ *
+ * C's `lth` is the C string length INCLUDING the NUL, and it is used only as a
+ * truthiness test plus the new_oname() allocation size, so JS keeps it as a
+ * count and never allocates. */
+export async function oname(obj, name, oflgs) {
+    const via_naming = (oflgs & ONAME_VIA_NAMING) !== 0;
+    const skip_inv_update = (oflgs & ONAME_SKIP_INVUPD) !== 0;
+    let nm = (name == null) ? '' : String(name);
+    let lth = nm.length ? nm.length + 1 : 0;
+
+    if (lth > PL_PSIZ) {
+        lth = PL_PSIZ;
+        nm = nm.slice(0, PL_PSIZ - 1); /* strncpy(buf, name, PL_PSIZ-1) + NUL */
+    }
+    /* If named artifact exists in the game, do not create another.
+       Also trying to create an artifact shouldn't de-artifact
+       it (e.g. Excalibur from prayer). In this case the object
+       will retain its current name. */
+    if ((obj.oartifact | 0) || (lth && exist_artifact(obj.otyp, nm)))
+        return obj;
+
+    if (!obj.oextra)
+        obj.oextra = {};
+    obj.oextra.oname = lth ? nm : undefined;
+
+    if (lth)
+        artifact_exists(obj, nm, true, oflgs);
+    if (obj.oartifact | 0) {
+        /* C do_name.c:402-404: can't dual-wield with an artifact secondary. */
+        if (obj === game.u.uswapwep)
+            await untwoweapon();
+        /* activate warning if you've just named your weapon "Sting" */
+        if (obj === game.u.uwep)
+            set_artifact_intrinsic(obj, true, W_WEP_D); // C do_name.c:406-407
+        /* if obj is owned by a shop, increase your bill */
+        if (obj.unpaid)
+            await alter_cost(obj, 0);
+        if (via_naming) {
+            /* violate illiteracy conduct since successfully wrote arti-name */
+            const uc = (game.u.uconduct = game.u.uconduct || {});
+            const wasLiterate = (uc.literate | 0);
+            uc.literate = wasLiterate + 1;
+            if (!wasLiterate)
+                livelog_printf(LL_CONDUCT | LL_ARTIFACT,
+                               'became literate by naming %s',
+                               bare_artifactname(obj));
+            else
+                livelog_printf(LL_ARTIFACT,
+                               'chose %s to be named "%s"',
+                               ansimpleoname(obj), bare_artifactname(obj));
+        }
+    }
+    /* C: carried(o) == (o->where == OBJ_INVENT) */
+    if (obj.where === OBJ_INVENT && !skip_inv_update)
+        update_inventory();
+    return obj;
+}
+
+const _hliquids = [
+    "yoghurt", "oobleck", "clotted blood", "diluted water", "purified water",
+    "instant coffee", "tea", "herbal infusion", "liquid rainbow",
+    "creamy foam", "mulled wine", "bouillon", "nectar", "grog", "flubber",
+    "ketchup", "slow light", "oil", "vinaigrette", "liquid crystal", "honey",
+    "caramel sauce", "ink", "aqueous humour", "milk substitute",
+    "fruit juice", "glowing lava", "gastric acid", "mineral water",
+    "cough syrup", "quicksilver", "sweet vitriol", "grey goo", "pink slime",
+    "cosmic latte", "bone oil", "custard", "lard", "vinegar", "creosote",
+    /* "new coke (tm)", --better not */
+];
+
+export function hliquid(liquidpref) {
+    const hallucinate = xm_Hallucination() && !xm_gameover();
+    if (hallucinate || !liquidpref) {
+        let count = _hliquids.length;
+        if (liquidpref) ++count;
+        const indx = rn2_on_display_rng(count);
+        if (indx >= 0 && indx < _hliquids.length)
+            return _hliquids[indx];
+    }
+    return liquidpref;
+}
+
+const XM_EXACT_NAME = 0x1F;
+
+/* C ref: nethack-c/include/monst.h:52-72 — M_AP_TYPE(m) is m_ap_type masked. */
+const M_AP_MONSTER = 3;
+
+const M1_HUMANOID = 0x00020000;
+
+const M2_PNAME = 0x00080000;
+
+const G_UNIQ = 0x1000;
+
+/* C ref: nethack-c/include/hacklib.h highc(c) — uppercase only a-z. */
+function xm_highc_first(bp) {
+    if (!bp) return bp;
+    let first = bp.charCodeAt(0);
+    if (0x61 <= first && first <= 0x7a) first &= ~0x20;
+    return (currentmbuf().text = String.fromCharCode(first) + bp.slice(1));
+}
+
+/* C ref: nethack-c/src/allmain.c program_state.gameover */
+function xm_gameover() {
+    return !!(game && game.program_state && game.program_state.gameover);
+}
+
+/* C ref: nethack-c/include/monst.h:248 engulfing_u(mon) */
+function xm_engulfing_u(mon) {
+    const u = game.u || {};
+    return !!(u.uswallow && xm_same_monst(u.ustuck, mon));
+}
+
+/* mondata.h:64-66,135 predicates over mtmp->data. */
+function xm_mindless(mdat) { return (mdat.mflags1 & M1_MINDLESS) !== 0; }
+
+function xm_humanoid(mdat) { return (mdat.mflags1 & M1_HUMANOID) !== 0; }
+
+function xm_is_animal(mdat) { return (mdat.mflags1 & M1_ANIMAL) !== 0; }
+
+function xm_type_is_pname(mdat) { return (mdat.mflags2 & M2_PNAME) !== 0; }
+
+/* C ref: mondata.h:157 is_mplayer(ptr) — &mons[PM_ARCHEOLOGIST]..&mons[PM_WIZARD] */
+function xm_is_mplayer(mdat) {
+    const i = mdat.pmidx | 0;
+    return i >= PM_ARCHEOLOGIST && i <= PM_WIZARD;
+}
+
+/* C ref: nethack-c/src/do_name.c:1289-1300 Mgender(mtmp).  The
+ * `mtmp == &gy.youmonst` arm is unreachable from x_monnam (which returns "you"
+ * before ever asking for a gender), so this is the plain monster arm. */
+function xm_Mgender(mtmp) {
+    return mtmp.female ? FEMALE : MALE;
+}
+
+function xm_MGIVENNAME(mtmp) {
+    if ('mextra' in mtmp && mtmp.mextra && mtmp.mextra.mgivenname != null)
+        return mtmp.mextra.mgivenname;
+    return ('mgivenname' in mtmp) ? mtmp.mgivenname : null;
+}
+
+/* C ref: nethack-c/src/hacklib.c:804 strstri() — case-insensitive strstr.
+ * Returns the index of the match, or -1 (C returns a pointer or NULL). */
+function xm_strstri(str, sub) {
+    if (!sub) return 0;
+    return String(str).toLowerCase().indexOf(String(sub).toLowerCase());
+}
+
+/*
+ * x_monnam — C ref: nethack-c/src/do_name.c:826-1032.
+ * The generic monster-naming function; every wrapper below routes through it.
+ * RNG: rn2(2) in the AUGMENT_IT-while-hallucinating arm, plus whatever
+ * rndmonnam() consumes in the hallucination arm.
+ */
+export function x_monnam(mtmp, article, adjective, suppress, called) {
+    const buf = nextmbuf(); // C do_name.c:834, including the hero early return.
+    buf.text = x_monnam_body(mtmp, article, adjective, suppress, called);
+    return buf.text;
+}
+
+function x_monnam_body(mtmp, article, adjective, suppress, called) {
+    const mdat = mtmp.data;
+    const mappear_as_mon = ((mtmp.m_ap_type | 0) & M_AP_TYPMASK) === M_AP_MONSTER;
+    let pm_name, name_at_start = false, bp;
+
+    /* C do_name.c:843-844 */
+    if (is_youmonst(mtmp))
+        return "you"; /* ignore article, "invisible", &c */
+
+    /* C do_name.c:846-849 */
+    if (xm_gameover())
+        suppress |= SUPPRESS_HALLUCINATION;
+    if (article === ARTICLE_YOUR && !mtmp.mtame)
+        article = ARTICLE_THE;
+
+    /* C do_name.c:851-860 — the hero's consumer is worthy of ARTICLE_THE, and
+       its invisibility stops mattering once you are inside it. */
+    const u = game.u || {};
+    if (u.uswallow && xm_same_monst(mtmp, u.ustuck)) {
+        article = ARTICLE_THE;
+        suppress |= SUPPRESS_INVISIBLE;
+    }
+    /* C do_name.c:861-870 */
+    const do_hallu = xm_Hallucination() && !(suppress & SUPPRESS_HALLUCINATION);
+    const do_invis = !!mtmp.minvis && !(suppress & SUPPRESS_INVISIBLE);
+    const do_it = !canspotmon(mtmp) && article !== ARTICLE_YOUR
+                  && !xm_gameover() && !xm_same_monst(mtmp, u.usteed)
+                  && !xm_engulfing_u(mtmp) && !(suppress & SUPPRESS_IT);
+    const do_saddle = !(suppress & SUPPRESS_SADDLE);
+    const do_mappear = mappear_as_mon && !(suppress & SUPPRESS_MAPPEARANCE);
+    const do_exact = (suppress & XM_EXACT_NAME) === XM_EXACT_NAME;
+    const do_name = !(suppress & SUPPRESS_NAME) || xm_type_is_pname(mdat);
+    const augment_it = (suppress & AUGMENT_IT) !== 0;
+
+    /* FF_NAME_TRACE is a RNG-neutral witness for the display-name branch.
+     * It pairs with FF_HIDE_TRACE and the display-rng hook: when a render
+     * diverges, this tells us which visible monster naming call actually
+     * consumed the hallucinatory name draw, including its visibility and
+     * suppression inputs. */
+    if (do_hallu && typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
+        pushRngLogEntry(`^name_trace[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0}`
+            + ` mndx=${mdat.pmidx | 0} article=${article | 0} suppress=${suppress | 0}`
+            + ` mappear=${do_mappear ? 1 : 0} cansee=${canspotmon(mtmp) ? 1 : 0}]`);
+
+    let buf = "";
+
+    /* C do_name.c:874-884 — unseen monsters; usually "it" but sometimes more
+       specific, and when hallucinating the specific values might be inverted.
+       !is_animal excludes all Y; !mindless excludes Z, M, '. */
+    if (do_it) {
+        const s_one = xm_humanoid(mdat) && !xm_is_animal(mdat) && !xm_mindless(mdat);
+        return !augment_it ? "it"
+               : ((!do_hallu ? s_one : !rn2(2)) ? "someone" : "something");
+    }
+
+    /* C do_name.c:886-904 — priests and minions: don't even use this function. */
+    if ((mtmp.ispriest || mtmp.isminion) && !do_mappear) {
+        const hres = (game.u && game.u.uprops) ? game.u.uprops[HALLUC_RES] : null;
+        const save_prop = hres ? hres.extrinsic : 0;
+        const save_invis = mtmp.minvis;
+
+        /* when true name is wanted, explicitly block Hallucination */
+        if (!do_hallu && hres)
+            hres.extrinsic = 1;
+        if (!do_invis)
+            mtmp.minvis = 0;
+        /* EXACT_NAME will force "of <deity>" on the Astral Plane */
+        let name = priestname(mtmp, article, do_exact, "");
+        if (hres)
+            hres.extrinsic = save_prop;
+        mtmp.minvis = save_invis;
+        if (article === ARTICLE_NONE && String(name).slice(0, 4) === "the ")
+            name = String(name).slice(4);
+        return name;
+    }
+
+    /* C do_name.c:906-912 — 'pm_name' is the base part of most names. */
+    if (do_mappear) {
+        pm_name = monPmname(mtmp.mappearance | 0, xm_Mgender(mtmp));
+    } else {
+        pm_name = monPmname(mdat.pmidx | 0, xm_Mgender(mtmp));
+    }
+
+    /* C do_name.c:914-936 — shopkeepers use the shopkeeper name. */
+    if (mtmp.isshk && !do_hallu && !do_mappear) {
+        if (adjective && article === ARTICLE_THE) {
+            /* pathological case: "the angry Asidonhopo the blue dragon"
+               sounds silly */
+            buf = "the ";
+            buf += adjective + " ";
+            buf += shkname(mtmp);
+        } else {
+            buf += shkname(mtmp);
+            if ((mdat.pmidx | 0) !== PM_SHOPKEEPER || do_invis) {
+                buf += " the ";
+                if (do_invis)
+                    buf += "invisible ";
+                buf += pm_name;
+            }
+        }
+        return buf;
+    }
+
+    /* C do_name.c:938-946 — put the adjectives in the buffer. */
+    if (adjective)
+        buf += adjective + " ";
+    if (do_invis)
+        buf += "invisible ";
+    if (do_saddle && ((mtmp.misc_worn_check | 0) & W_SADDLE) && !xm_Blind()
+        && !xm_Hallucination())
+        buf += "saddled ";
+    const has_adjectives = (buf !== "");
+
+    /* C do_name.c:948-998 — the actual monster name or type; remember whether
+       the buffer starts with a personal name. */
+    if (do_hallu) {
+        const rnamecode = {};
+        const rname = rndmonnam(rnamecode);
+
+        buf += rname;
+        name_at_start = bogon_is_pname(rnamecode.code);
+    } else if (do_name && xm_has_mgivenname(mtmp)) {
+        const name = xm_MGIVENNAME(mtmp);
+
+        if ((mdat.pmidx | 0) === PM_GHOST) {
+            buf += s_suffix(name) + " ghost";
+            name_at_start = true;
+        } else if (called) {
+            buf += pm_name + " called " + name;
+            name_at_start = xm_type_is_pname(mdat);
+        } else if (xm_is_mplayer(mdat) && (bp = xm_strstri(name, " the ")) >= 0) {
+            /* <name> the <adjective> <invisible> <saddled> <rank> */
+            let pbuf = name.slice(0, bp + 5); /* adjectives right after " the " */
+            if (has_adjectives)
+                pbuf += buf;
+            pbuf += name.slice(bp + 5); /* append the rest of the name */
+            buf = pbuf;
+            article = ARTICLE_NONE;
+            name_at_start = true;
+        } else {
+            buf += name;
+            name_at_start = true;
+        }
+    } else if (xm_is_mplayer(mdat) && !In_endgame(u.uz)) {
+        /* C: rank_of((int) mtmp->m_lev, monsndx(mdat), (boolean) mtmp->female).
+         * monsndx(mdat) is the mons[] index, i.e. mdat->pmidx.  (js/display.js's
+         * rank_of currently expects a 0..12 role ordinal rather than a mndx —
+         * that is a display.js defect, not a reason to pass it the wrong
+         * argument here.) */
+        buf += lcase(rank_of(mtmp.m_lev | 0, mdat.pmidx | 0, !!mtmp.female));
+        name_at_start = false;
+    } else {
+        buf += pm_name;
+        name_at_start = xm_type_is_pname(mdat);
+    }
+
+    /* C do_name.c:1000-1007 */
+    if (name_at_start && (article === ARTICLE_YOUR || !has_adjectives)) {
+        if ((mdat.pmidx | 0) === PM_WIZARD_OF_YENDOR)
+            article = ARTICLE_THE;
+        else
+            article = ARTICLE_NONE;
+    } else if ((mdat.geno & G_UNIQ) !== 0 && article === ARTICLE_A) {
+        article = ARTICLE_THE;
+    }
+
+    /* C do_name.c:1009-1031 */
+    let insertbuf2 = true;
+    let buf2 = "";
+    switch (article) {
+    case ARTICLE_YOUR:
+        buf2 = "your ";
+        break;
+    case ARTICLE_THE:
+        buf2 = "the ";
+        break;
+    case ARTICLE_A:
+        /* avoid an() here */
+        buf2 = just_an({}, buf); /* "a " or "an " */
+        break;
+    case ARTICLE_NONE:
+    default:
+        insertbuf2 = false;
+        break;
+    }
+    if (insertbuf2)
+        buf = buf2 + buf;
+    return buf;
+}
+
+/* l_monnam — C ref: nethack-c/src/do_name.c:1034-1039 */
+export function l_monnam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_NONE, null,
+                    xm_has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, true);
+}
+
+/* noit_Monnam — C ref: nethack-c/src/do_name.c:1082-1089 */
+export function noit_Monnam(mtmp) {
+    return xm_highc_first(noit_mon_nam(mtmp));
+}
+
+/* Some_Monnam — C ref: nethack-c/src/do_name.c:1091-1098 */
+export function Some_Monnam(mtmp) {
+    return xm_highc_first(some_mon_nam(mtmp));
+}
+
+/* noname_monnam — C ref: nethack-c/src/do_name.c:1100-1105 */
+export function noname_monnam(mtmp, article) {
+    return x_monnam(mtmp, article, null, SUPPRESS_NAME, false);
+}
+
+/* m_monnam — C ref: nethack-c/src/do_name.c:1107-1113 */
+export function m_monnam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_NONE, null, XM_EXACT_NAME, false);
+}
+
+/* YMonnam — C ref: nethack-c/src/do_name.c:1131-1139 */
+export function YMonnam(mtmp) {
+    return xm_highc_first(y_monnam(mtmp));
+}
+
+/* Adjmonnam — C ref: nethack-c/src/do_name.c:1141-1149 */
+export function Adjmonnam(mtmp, adj) {
+    return xm_highc_first(
+        x_monnam(mtmp, ARTICLE_THE, adj,
+                 xm_has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false));
+}
+
+/* a_monnam — C ref: nethack-c/src/do_name.c:1151-1156 */
+export function a_monnam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_A, null,
+                    xm_has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
+}
+
+/* Amonnam — C ref: nethack-c/src/do_name.c:1158-1165 */
+export function Amonnam(mtmp) {
+    return xm_highc_first(a_monnam(mtmp));
+}
+
+/* C ref: do_name.c:1512-1534 — road-runner nemesis aliases for coyotes. */
+const coynames = [
+    "Carnivorous Vulgaris", "Road-Runnerus Digestus", "Eatibus Anythingus",
+    "Famishus-Famishus", "Eatibus Almost Anythingus", "Eatius Birdius",
+    "Famishius Fantasticus", "Eternalii Famishiis", "Famishus Vulgarus",
+    "Famishius Vulgaris Ingeniusi", "Eatius-Slobbius", "Hardheadipus Oedipus",
+    "Carnivorous Slobbius", "Hard-Headipus Ravenus", "Evereadii Eatibus",
+    "Apetitius Giganticus", "Hungrii Flea-Bagius", "Overconfidentii Vulgaris",
+    "Caninus Nervous Rex", "Grotesques Appetitus", "Nemesis Ridiculii",
+    "Canis latrans"
+];
+
+export function coyotename(mtmp) {
+    if (!mtmp) return "";
+    return `${x_monnam(mtmp, ARTICLE_NONE, null, 0, true)} - ${
+        mtmp.mcan ? coynames[coynames.length - 1]
+                  : coynames[(mtmp.m_id >>> 0) % (coynames.length - 1)]}`;
+}
+
+export function distant_monnam(mon, article) {
+    /* compute Hallucination: HHallucination && !Halluc_resistance */
+    const HHallucination = game.u?.uprops?.[HALLUC]?.intrinsic || 0;
+    const HHalluc_resistance = game.u?.uprops?.[HALLUC_RES]?.intrinsic || 0;
+    const EHalluc_resistance = game.u?.uprops?.[HALLUC_RES]?.extrinsic || 0;
+    const Halluc_resistance = HHalluc_resistance || EHalluc_resistance;
+    const Hallucination = HHallucination && !Halluc_resistance;
+
+    if (mon.data && mon.data.pmidx === PM_HIGH_CLERIC && !Hallucination
+        && Is_astralevel(game.u.uz) && !m_next2u(mon)) {
+        let buf = article === ARTICLE_THE ? "the " : "";
+        buf += mon.female ? "high priestess" : "high priest";
+        return buf;
+    } else {
+        return x_monnam(mon, article, null, 0, true);
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * rndghostname — C ref: nethack-c/src/do_name.c:772-776
+ * Returns a random ghost name, or the player's own name (1/7 chance).
+ * RNG: rn2(7), and rn2(34) when the ghost-name branch is taken.
+ * --------------------------------------------------------------------------- */
+const ghostnames = [
+    "Adri", "Andries", "Andreas", "Bert", "David", "Dirk",
+    "Emile", "Frans", "Fred", "Greg", "Hether", "Jay",
+    "John", "Jon", "Karnov", "Kay", "Kenny", "Kevin",
+    "Maud", "Michiel", "Mike", "Peter", "Robert", "Ron",
+    "Tom", "Wilmar", "Nick Danger", "Phoenix", "Jiro", "Mizue",
+    "Stephan", "Lance Braccus", "Shadowhawk", "Murphy"
+];
+
+export function rndghostname() {
+    return rn2(7) ? ghostnames[rn2(ghostnames.length)] : String(game.plname);
+}
+
+export function roguename() {
+    const opts = nh_getenv("ROGUEOPTS");
+    if (opts) {
+        for (let i = 0; i < opts.length; i++) {
+            if (opts.substr(i, 5) === "name=") {
+                const nameStart = i + 5;
+                const commaIdx = opts.indexOf(',', nameStart);
+                if (commaIdx !== -1) {
+                    return opts.substring(nameStart, commaIdx);
+                }
+                return opts.substring(nameStart);
+            }
+        }
+    }
+    return rn2(3) ? (rn2(2) ? "Michael Toy" : "Kenneth Arnold")
+                  : "Glenn Wichman";
+}
+
+/* C ref: do_name.c mon_nam_too(struct monst *mon, struct monst *other_mon)
+ * PRONOUN_HALLU = 2 (random if hallucinating) */
+export function mon_nam_too(mon, other_mon) {
+    /* C compares the two struct monst pointers; see xm_same_monst() for why
+       the replay-side identity has to go through m_id. */
+    if (!xm_same_monst(mon, other_mon)) {
+        return mon_nam(mon);
+    } else {
+        const namebuf = nextmbuf(); // C do_name.c:1198
+        let buf = "";
+        switch (pronoun_gender(mon, PRONOUN_HALLU)) {
+        case 0:
+            buf = "himself";
+            break;
+        case 1:
+            buf = "herself";
+            break;
+        case 2:
+        default:
+            buf = "itself";
+            break;
+        case 3: /* could happen when hallucinating */
+            buf = "themselves";
+            break;
+        }
+        return (namebuf.text = buf);
+    }
+}
+
+/* ---------------------------------------------------------------------------
+ * new_oname — C ref: nethack-c/src/do_name.c:60-76
+ * Allocates space for an object's custom name, freeing any prior oextra/name
+ * first; a zero-length request just releases the existing name.
+ * No RNG.
+ * ---------------------------------------------------------------------------
+ */
+export function new_oname(obj, lth) {
+    if (lth) {
+        if (!obj.oextra_present && !obj.oextra) {
+            const oe = newoextra();
+            obj.oextra_present = 1;
+            obj.oextra_oname_present = oe.oname ? 1 : 0;
+            obj.oextra_omonst_present = oe.omonst ? 1 : 0;
+            obj.oextra_omailcmd_present = oe.omailcmd ? 1 : 0;
+            obj.oextra_omid = oe.omid | 0;
+        } else {
+            free_oname(obj); /* already has oextra, might also have name */
+        }
+        obj.oextra_oname_present = 1; /* ONAME(obj) = alloc_mhitm(lth) */
+        if (!obj.oextra) obj.oextra = {};
+        obj.oextra.oname = alloc_mhitm(lth);
+        obj.oname = obj.oextra.oname;
+    } else {
+        /* zero length: the new name is empty; get rid of the old name */
+        if ((obj.oextra_present && obj.oextra_oname_present) || obj.oextra?.oname != null)
+            free_oname(obj);
+    }
+}
+
+function alloc_mhitm(size) {
+    /* C: char *alloc(unsigned n) — raw buffer allocation; the (unported)
+     * do_oname() caller copies the actual name text in afterward. */
+    return '';
+}
+
+/* ---------------------------------------------------------------------------
+ * rndorcname — C ref: nethack-c/src/do_name.c:1538-1555
+ * Generate a random orc name by concatenating random vowels and consonants.
+ * RNG: rn1(2,3) loop count, rn2(2) initial vstart, conditional rn2(30) per
+ *      iteration (i>0), and rn2(4)/rn2(11) for the vowel/consonant rolls.
+ * --------------------------------------------------------------------------- */
+export function rndorcname(s) {
+    /* C do_name.c:1540 */
+    const v = ["a", "ai", "og", "u"];
+    /* C do_name.c:1541-1542 */
+    const snd = ["gor", "gris", "un", "bane", "ruk", "oth", "ul", "z", "thos", "akh", "hai"];
+
+    /* C do_name.c:1543 `int i, iend = rn1(2, 3), vstart = rn2(2);` — BOTH draws
+     * happen before the `if (s)` guard, so rndorcname(NULL) still burns two
+     * rn2(2)s.  Declarator initialisers are evaluated left to right: iend first. */
+    let iend = rn1(2, 3);
+    let vstart = rn2(2);
+
+    /* C do_name.c:1545 `if (s)` is a NULL-POINTER test on a `char buf[BUFSZ]`.
+     * Both C call sites (do_name.c:1562 christen_orc, mkmaze.c:819 stolen_booty)
+     * pass the address of a stack buffer, so the branch is always taken.  JS's
+     * `if (s)` would additionally reject "" — the natural JS spelling of an
+     * empty C buffer — and silently skip the whole loop, dropping 2*iend-1
+     * draws.  Test for null/undefined only, which is what C tests. */
+    if (s !== null && s !== undefined) {
+        s = "";                                 /* C do_name.c:1546 `*s = '\0'` */
+        for (let i = 0; i < iend; ++i) {
+            vstart = 1 - vstart;                /* 0 -> 1, 1 -> 0 */
+            let dash = "";
+            if (i > 0 && !rn2(30)) {
+                dash = "-";
+            }
+            let rolled = vstart ? v[rn2(v.length)] : snd[rn2(snd.length)];
+            s = s + dash + rolled;
+        }
+    }
+    return s;                                   /* C do_name.c:1553 */
+}
+
+/* Amulet constants (object type indices; C ref: objects.h) */
+const AMULET_OF_YENDOR = 213;
+
+const FAKE_AMULET_OF_YENDOR = 212; /* objects.h AMULET() FAKE_AMULET_OF_YENDOR — cheap plastic imitation, the slot before AMULET_OF_YENDOR(213); was 420 = WAN_SPEED_MONSTER */
+
+/* Object class enum values (C ref: objclass.h defsym.h) */
+const AMULET_CLASS = 5;
+
+const POTION_CLASS = 8;
+
+const WAND_CLASS = 11;
+
+const RING_CLASS = 4;
+
+const VENOM_CLASS = 17;
+
+const SCROLL_CLASS = 9;
+
+// C v5 do_name.c:429-465: an existing user name always allows renaming;
+// otherwise only the listed classes with an appearance can be called.
+export function objtyp_is_callable(i) {
+    const ityp = i | 0;
+    if (game._oc_uname?.[ityp] != null)
+        return TRUE;
+    const oc_class = (MKOBJ_OC_CLASS[ityp] | 0);
+
+    switch (oc_class) {
+    case AMULET_CLASS:
+        /* Special amulets (AMULET_OF_YENDOR and FAKE_AMULET_OF_YENDOR)
+         * cannot be called to prevent players from identifying them
+         * via the discovery mechanism. */
+        if (ityp === AMULET_OF_YENDOR || ityp === FAKE_AMULET_OF_YENDOR)
+            return FALSE;
+        /* FALLTHROUGH */
+    case SCROLL_CLASS:
+    case POTION_CLASS:
+    case WAND_CLASS:
+    case RING_CLASS:
+    case GEM_CLASS:
+    case SPBOOK_CLASS:
+    case ARMOR_CLASS:
+    case TOOL_CLASS:
+    case VENOM_CLASS:
+        return getObjDescr(ityp) != null ? TRUE : FALSE;
+    default:
+        break;
+    }
+    return FALSE;
+}
+
+/* some_mon_nam — C ref: nethack-c/src/do_name.c:1062-1071.
+ * In between noit_mon_nam() and mon_nam(): where the latter would pick "it",
+ * use "someone" (humanoids) or "something" (everything else) instead. */
+export function some_mon_nam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_THE, null,
+                    xm_has_mgivenname(mtmp) ? (SUPPRESS_SADDLE | AUGMENT_IT)
+                                            : AUGMENT_IT,
+                    false);
+}
+
+/* y_monnam — C ref: nethack-c/src/do_name.c:1115-1129.  Pet name: "your little
+ * dog".  ARTICLE_YOUR is handled by x_monnam itself (do_name.c:1012-1014); the
+ * old local "your " prefix double-applied it for pets and mis-applied it for
+ * the hostile ARTICLE_THE case. */
+export function y_monnam(mtmp) {
+    const prefix = mtmp.mtame ? ARTICLE_YOUR : ARTICLE_THE;
+    /* "saddled" is redundant when mounted */
+    const suppression_flag = (xm_has_mgivenname(mtmp)
+                              || xm_same_monst(mtmp, (game.u || {}).usteed))
+                                 ? SUPPRESS_SADDLE
+                                 : 0;
+
+    return x_monnam(mtmp, prefix, null, suppression_flag, false);
+}
+
+/* noit_mon_nam — C ref: nethack-c/src/do_name.c:1048-1060.
+ * mon_nam() (y_monnam() if tame) but assume the player can always see the
+ * monster — used for probing, for cursed-potion-of-invisibility aggravation,
+ * and for a pet moving "reluctantly" onto a cursed object. */
+export function noit_mon_nam(mtmp) {
+    return x_monnam(mtmp, ARTICLE_YOUR, null,
+                    xm_has_mgivenname(mtmp) ? (SUPPRESS_SADDLE | SUPPRESS_IT)
+                                            : SUPPRESS_IT,
+                    false);
+}
+
+/* new_mgivenname — C ref: nethack-c/src/do_name.c:30-46
+ * Allocate space for a monster's name; removes old name if one is present.
+ * The new buffer is alloc()'s empty string; the caller Strcpy's the name in.
+ */
+export function new_mgivenname(mtmp, lth) {
+    if (lth) {
+        /* C: if (!mtmp->mextra) mtmp->mextra = newmextra();
+         *    else free_mgivenname(mtmp);
+         *    MGIVENNAME(mtmp) = (char *) alloc((unsigned) lth);
+         * The name lives ONLY in mextra (mextra.h MGIVENNAME); the flat
+         * mtmp.mgivenname this used to write was invisible to C's
+         * has_mgivenname() macro and to every reader that mirrors it. */
+        if (!mtmp.mextra)
+            mtmp.mextra = newmextra();
+        else
+            free_mgivenname(mtmp);
+        mtmp.mextra.mgivenname = alloc_mhitm(lth); /* C do_name.c:41 */
+    } else {
+        /* zero length: the new name is empty; get rid of the old name */
+        if (mtmp.mextra && mtmp.mextra.mgivenname != null) /* has_mgivenname */
+            free_mgivenname(mtmp);
+    }
+}
+
+export function free_mgivenname(mon) {
+    if (mon.mextra && mon.mextra.mgivenname != null)
+        mon.mextra.mgivenname = null;
 }

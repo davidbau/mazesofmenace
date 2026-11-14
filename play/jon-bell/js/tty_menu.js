@@ -18,6 +18,7 @@
 // it with the status clipping left by the dismissed full options window.
 // General multi-page overlay dismissal remains separate work.
 import { game } from './gstate.js';
+import { PICK_ONE } from './const.js';
 import { nhgetch } from './input.js';
 /* C ref: wintty.c:1704 MENU_SEARCH → tty_getlin("Search for:", tmpbuf), and
  * :1714 pmatchi(searchbuf, curr->str) (strutil.c:151). */
@@ -65,7 +66,7 @@ export function menu_heading_text(str) {
 
 /* C ref: include/wintty.h / include/winprocs.h */
 export const PICK_NONE = 0;
-export const PICK_ONE = 1;
+export { PICK_ONE };
 export const PICK_ANY = 2;
 
 const ESC_RESET = '\x1b[0m';
@@ -319,7 +320,9 @@ export class TtyMenu {
              * so the while loop never turns over and a live count survives it
              * ("n90s" then ESC only stops the count; the second ESC cancels).
              * Group accelerators are not modelled (no menu here builds any). */
+            /* getline.c:243 `c == x`: ESC leaves dismiss_more at 1, so ^A also ends the wait. */
             if (key !== 10 && key !== 13 && key !== 27 && key !== 0
+                && key !== (game._ttyDismissMore | 0)
                 && morc !== ' ' && !(morc >= '0' && morc <= '9')
                 && '<>^|,\\~.-@:'.indexOf(morc) < 0
                 && (game.mapped_menu_cmds || '').indexOf(morc) < 0

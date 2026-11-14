@@ -2,7 +2,8 @@
 // dungeon_rng.js — RNG parity for dungeon.c prototype init (excluding init_castle_tune).
 // init_dungeon_dungeons / init_level / place_level / parent_dlevel / add_branch
 import { game } from './gstate.js';
-import { rn2, rn1 } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2 } from './rnd.js';
 import { MAXLEVEL, MAXDUNGEON } from './const.js';
 import { DUNGEON_LUA_TABLE } from './dungeon_data.js';
 export { insertBranch }; // relocate-fns

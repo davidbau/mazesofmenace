@@ -1,59 +1,60 @@
 // @ts-nocheck
 // lock.js — Door and lock operations.
-// C ref: nethack-c/src/lock.c — doopen(), doopen_indir(), doclose().
-// Ported scope: simple closed-door open path (lock.c:781-935) and doclose
-// (lock.c:957-1052). The drawbridge predicates used by the shared branches
-// are implemented locally below to keep lock.js independent of dokick.js.
+// C ref: nethack-c-v5/upstream/src/lock.c.
+// Direction input helpers below also port cmd.c. Drawbridge predicates are
+// local to avoid the dokick.js import cycle.
 import { game } from './gstate.js';
 import { stop_occupation } from './allmain.js';
 import { PROT_FROM_SHAPE_CHANGERS } from './const.js';
 import { costly_alteration } from './cmd.js';
 import { costly_spot, shop_keeper, stolen_value, obfree, currency } from './shk.js';
-import { obj_extract_self, start_corpse_timeout } from './mklev.js';
+import { obj_extract_self, start_corpse_timeout } from './mkobj.js';
 import { acurrstr as effective_strength } from './dokick.js';
 import { delobj } from './invent.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj } from './invent.js';
 import { COST_BRKLCK, TIMEOUT } from './const.js';
 import { bhp_is_lava as is_lava, verbalize } from './cmd.js';
 import { is_pool } from './look.js';
-import { hliquid } from './mhitm.js';
-import { touch_artifact } from './mklev.js';
-import { could_untrap, untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name, set_msg_xy } from './cmd.js';
-import { yname } from './do_wear.js';
+import { hliquid } from './do_name.js';
+import { touch_artifact } from './artifact.js';
+import { untrap_at, cmdq_add_ec, cmdq_add_dir, ysimple_name } from './cmd.js';
+import { set_msg_xy } from './pline.js';
+import { could_untrap } from './trap.js';
+import { yname } from './objnam.js';
 import { t_at } from './trap.js';
-import { can_reach_floor } from './hold_another_object.js';
+import { can_reach_floor } from './engrave.js';
 import { cant_reach_floor } from './engrave.js';
 const WAND_CLASS = 11; /* objclass.h WAND_CLASS */
 import { Is_rogue_level, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, AUTOUNLOCK_KICK } from './const.js';
 import { canspotmon, map_invisible } from './display.js';
 import { update_mapseen_for } from './dungeon.js';
 import { s_suffix } from './hacklib.js';
-import { Some_Monnam } from './mhitm.js';
-import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar,
-    show_direction_keys, dowhatdoes_core, useup, getpos } from './cmd.js';
-import { visctrl } from './cmd_binds.js';
+import { Some_Monnam } from './do_name.js';
+import { set_occupation, confdir, movecmd, cmdq_pop, cmdq_clear, cmdq_add_key, redraw_cmd, dxdy_moveok, xytodir, readchar, show_direction_keys } from './cmd.js';
+import { getpos } from './getpos.js';
+import { useup } from './invent.js';
+import { dowhatdoes_core } from './pager.js';
+import { visctrl } from './hacklib.js';
 import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, CMDQ_USER_INPUT, NHKF_GETDIR_HELP, NHKF_GETDIR_SELF, NHKF_GETDIR_SELF2,
          NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
          NHKF_ESC, N_DIRS,
          CLICK_1, CLICK_2 } from './const.js';
 import { impossible } from './pline.js';
-import { force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, Unaware } from './display.js';
+import { force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, Unaware, Deaf } from './display.js';
 import { pline, You_hear } from './pline.js';
-import { mb_trapped } from './dig.js';
+import { mb_trapped } from './monmove.js';
 import { capture_pre_movemon_botl, _topl_joins_snapshot, commit_force_messages } from './display.js';
 import { topl_park_cursor, pline_flush_point, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
 import { block_point, recalc_block_point, vision_recalc, unblock_point } from './vision.js';
 import { nhgetch } from './input.js';
 import { yn_function } from './cmd.js';
 import { display_text_window } from './com_pager.js';
-import { pushRngLogEntry } from './rng.js';
-import { isaac64_next_uint64 } from './isaac64.js';
 import { acurr, exercise } from './attrib.js';
-import { rn2, rnl, rnd } from './rng.js';
+import { rn2, rnl, rnd } from './rnd.js';
 import { losehp } from './hack.js';
 import { level_difficulty } from './dungeon.js';
 import { wake_nearby } from './mon.js';
-import { isok } from './hacklib.js';
+import { isok } from './const.js';
 import { wake_nearto } from './mon.js';
 import { add_damage } from './shk.js';
 import { in_rooms } from './hack.js';
@@ -71,8 +72,8 @@ const WAN_STRIKING_OTYP = 417;
 const SPE_FORCE_BOLT_OTYP_LK = 376;
 const SPE_FORCE_BOLT = SPE_FORCE_BOLT_OTYP_LK;
 function _lock_Deaf() {
-    const p = game.u?.uprops?.[DEAF];
-    return !!((p?.intrinsic | 0) || (p?.extrinsic | 0));
+    // C lock.c:1224,1242; youprop.h:125 also includes roleplay deafness.
+    return Deaf();
 }
 
 /* C ref: objects.h otyp ids used by boxlock() (lock.c:1056).  Same numbering
@@ -90,10 +91,12 @@ const SPE_POLYMORPH_OTYP_LK = 399;
  * the mons[] index 343 (js/pm.generated.js:345), the same reader js/dokick.js
  * maybe_wail() and js/cmd.js msnoise use: `game.urole.mnum === PM_WIZARD`. */
 const PM_WIZARD_LK = 343;
-import { simple_typename, xname_flags, xname, the, singular, cxname, doname, ansimpleoname, The, An, is_quest_artifact } from './objnam.js';
-import { safe_qbuf } from './shk.js';
-import { weapon_type, WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
-import { place_object } from './mklev.js';
+import { simple_typename, xname_flags, xname, the, singular, cxname, doname, ansimpleoname, The, An } from './objnam.js';
+import { is_quest_artifact } from './questpgr.js';
+import { safe_qbuf } from './objnam.js';
+import { WEAPON_WLDAM, m_at, mon_nam } from './uhitm.js';
+import { weapon_type } from './weapon.js';
+import { place_object } from './mkobj.js';
 import { potionbreathe, make_stunned } from './potion.js';
 import { chest_trap } from './trap.js';
 import { FINGER } from './const.js';
@@ -108,6 +111,11 @@ import monsPackLk from './makemon_mons.json' with { type: 'json' };
 import monMsizePackLk from './makemon_msize.json' with { type: 'json' };
 import { acurrstr } from './attrib.js'; // relocate-fns
 import { bottlename } from './potion.js'; // relocate-fns
+import { b_trapped } from './trap.js'; // relocate-fns
+import { getdir, help_dir } from './cmd.js'; // relocate-fns
+export { getdir, help_dir } from './cmd.js'; // relocate-fns
+export { ESC_KEY, cmdassist_on }; // relocate-fns
+export { b_trapped } from './trap.js'; // relocate-fns
 export { bottlename } from './potion.js'; // relocate-fns
 const _MONS_LK = /** @type {number[][]} */ (monsPackLk.mons);
 const _MONS_MSIZE_LK = /** @type {number[]} */ (monMsizePackLk.msize);
@@ -133,27 +141,6 @@ function oc_material(otyp) {
 /* C ref: objnam.c the(str) — definite article. */
 function _the(str) { return 'the ' + str; }
 
-/* C ref: trap.c:6694 b_trapped(item, bodypart) — a booby-trapped container or
- * door explodes in the hero's face. */
-export async function b_trapped(item, bodypart) {
-    const lvl = level_difficulty() | 0;
-    const dmg = rnd(5 + (lvl < 5 ? lvl : 2 + Math.trunc(lvl / 2)));
-    const hp = game.u?.uprops?.[HALF_PHDAM];
-    const half = !!hp && !!((hp.intrinsic | 0) || (hp.extrinsic | 0));
-    await pline(`KABOOM!!  ${The(item)} was booby-trapped!`);
-    wake_nearby(false);
-    await losehp(half ? Math.trunc((dmg + 1) / 2) : dmg, 'explosion', KILLED_BY_AN);
-    exercise(A_STR, false);
-    if (bodypart !== NO_PART)
-        exercise(A_CON, false);
-    const st = game.u?.uprops?.[STUNNED];
-    await make_stunned(((st?.intrinsic | 0) & TIMEOUT) + dmg, true);
-}
-
-function _rawRnd(x) {
-    const val = isaac64_next_uint64(game.coreCtx);
-    return Number(val % BigInt(x));
-}
 
 
 
@@ -179,8 +166,6 @@ export async function doopen_indir(x, y) {
     const g = game;
     if (_nohands_lk()) {
         await pline("You can't open anything -- you have no hands!");
-        g.context = g.context || {};
-        g.context.move = 0; /* ECMD_OK */
         return ECMD_OK;
     }
     /* C lock.c:786 — int res = ECMD_OK; upgraded to ECMD_TIME on confusion/stun
@@ -390,204 +375,6 @@ export async function doopen_indir(x, y) {
     return ECMD_TIME;
 }
 
-/* C cmd.c:getdir — interactive direction input, help/redraw retry, repeat
- * recording, orientation and impairment. Returns 1 for a valid direction,
- * 0 for cancellation or an invalid direction. Queue/read-buffer consumption,
- * full yn_function/input-state ownership, mouse/getpos, fuzzer and alternate
- * binding initialization remain open; the typed queue primitives alone do
- * not implement those consumer paths. */
-/* C ref: src/decl.c:96 — `const char quitchars[] = " \r\n\033";`.  SPACE, CR,
- * LF and ESC, and nothing else.  This constant read '\x1b\x07\x03' (ESC, BEL,
- * ^C), which is not any C character class: it omitted the three characters
- * that actually cancel a direction prompt and added two that do not.  A SPACE
- * at "In what direction?" therefore fell through to the cmd.c:4098
- * `!strchr(quitchars, dirsym)` branch that C skips, drew the cmdassist
- * help_dir window, and ate an extra keystroke. */
-const QUITCHARS = ' \r\n\x1b';
-/* `opts.noPrompt` suppresses ONLY the prompt paint (the message, the flush and
- * the parked cursor), never the read or any of C's key handling below it.
- *
- * It exists for one caller: dofire()'s cmdq-drain tail (js/cmd.js
- * _fire_throw_obj), where the topline is deliberately left holding the
- * fireassist swap's committed --More-- frame across the getdir call instead of
- * being repainted.  C gets that for free — tty_yn_function writes over a
- * topline that the tty is still showing, and the recorded frame at that
- * nhgetch is the swap's — while this port paints each frame explicitly, so the
- * retention has to be asked for.  DISPLAY-channel only; no caller may use it
- * to skip a prompt C would have written. */
-export async function getdir(_s, opts = {}) {
-    const g = game;
-    const u = g.u = g.u || {};
-    let noPrompt = !!opts.noPrompt;
-    let cmdq = cmdq_pop();
-    // C's retry label. A retained fireassist frame applies to the first read
-    // only; explicit help/redraw returns here and paints a fresh prompt.
-    for (;;) {
-        const result = await _getdir_read(g, u, _s, noPrompt, cmdq);
-        // A help retry does not pop a second queued command.
-        cmdq = null;
-        noPrompt = false;
-        if (result !== null)
-            return result;
-    }
-}
-/* null is the internal equivalent of C's `goto retry`; 0 and 1 are getdir's
- * caller-visible results. No nested getdir call or extra command dispatch. */
-async function _getdir_read(g, u, s, noPrompt, cmdq) {
-    let keyCode;
-    if (cmdq) {
-        if (cmdq.typ === CMDQ_DIR) {
-            // v5 movementdirs puts DOWN at 8 and UP at 9. The frozen JS
-            // constants have those names reversed; use the C enum here.
-            const dir = !cmdq.dirz ? xytodir(cmdq.dirx, cmdq.diry)
-                : cmdq.dirz > 0 ? 8 : 9;
-            keyCode = (g.Cmd?.dirchars || 'hykulnjb><').charCodeAt(dir);
-        } else if (cmdq.typ === CMDQ_KEY) {
-            keyCode = cmdq.key;
-        } else {
-            cmdq_clear(CQ_CANNED);
-            keyCode = 0;
-            await impossible('getdir: command queue had no dir?');
-        }
-        // C frees the detached node and jumps to got_dirsym, bypassing
-        // prompt/input-state changes, redraw handling and repeat recording.
-    } else {
-        g.program_state.input_state = 3; // getdirInp
-        if (g.gi?.in_doagain || g.readchar_queue?.charCodeAt(0)) {
-            keyCode = await readchar();
-        } else {
-            // The shared reader owns acknowledgment, answered-prompt history,
-            // last_msg and the transition from getdirInp back to otherInp.
-            const dirPrompt = (s != null && s.charAt(0) !== '^')
-                ? s : 'In what direction?';
-            const reply = await yn_function(dirPrompt, null, '\0', false,
-                { retainFrame: noPrompt });
-            keyCode = typeof reply === 'number' ? reply : reply.charCodeAt(0);
-            /* C cmd.c:3995-4013 — for the fuzzer, usually force the result to
-             * be a valid direction, but sometimes let it exercise the invalid
-             * direction code; no-diagonal grid-bug forms are deliberately not
-             * enforced here either. */
-            if (g.iflags?.debug_fuzzer && rn2(20)) {
-                const dirchars = g.Cmd?.dirchars || 'hykulnjb><';
-                switch (rn2(20)) {
-                case 0: {
-                    const selfDir = rn2(2);
-                    keyCode = g.Cmd?.spkeys?.[selfDir ? NHKF_GETDIR_SELF : NHKF_ESC]
-                        ?? (selfDir ? 46 : 27); /* reset_commands defaults */
-                    break;
-                }
-                case 1:
-                    /* movementdirs: DIR_DOWN=8, DIR_UP=9 (C enum order) */
-                    keyCode = dirchars.charCodeAt(rn2(2) ? 8 : 9);
-                    break;
-                default:
-                    keyCode = dirchars.charCodeAt(rn2(N_DIRS));
-                    break;
-                }
-            }
-        }
-        /* C clear_nhwindow(WIN_MESSAGE), including buffered reads. */
-        g._pending_message = '';
-        // C retries redraw before recording the reply in CQ_REPEAT.
-        if (redraw_cmd(keyCode)) {
-            await docrt_flags(0x04); // docrtRefresh
-            return null;
-        }
-        if (!g.gi?.in_doagain)
-            cmdq_add_key(CQ_REPEAT, keyCode);
-    }
-    /* movecmd() keys off the raw keycode (C's `uchar sym`), so keep both. */
-    const dircode = typeof keyCode === 'number'
-        ? (keyCode & 0xff)
-        : (String(keyCode ?? '').charCodeAt(0) | 0);
-    const dirsym = typeof keyCode === 'number' ? String.fromCharCode(keyCode) : '';
-    /* C cmd.c:4696 — self-direction keys '.' or 's' → u.dx=u.dy=u.dz=0 */
-    if (dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_SELF] ?? 46)
-        || dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_SELF2] ?? 115)) {
-        u.dx = 0; u.dy = 0; u.dz = 0;
-        confdir(false);
-        return 1;
-    }
-    if (dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_MOUSE] ?? 95 /* '_' */)) {
-        const qbuf = `desired location, then type '${
-            visctrl(g.Cmd?.spkeys?.[NHKF_GETPOS_PICK_Q] ?? 44 /* ',' */)}' for left click, '${
-            visctrl(g.Cmd?.spkeys?.[NHKF_GETPOS_PICK] ?? 46 /* '.' */)}' for right`;
-        /* cc.x = u.ux, cc.y = u.uy — starting cursor location for getpos(). */
-        const cc = { x: u.ux | 0, y: u.uy | 0 };
-        let pos = await getpos(cc, true, qbuf);
-        let mod;
-        if (pos < 0) {
-            /* ESC or other rejection */
-            u.dx = u.dy = u.dz = 0;
-            mod = 0; /* neither CLICK_1 nor CLICK_2 */
-        } else {
-            /* caller expects simulated click to be relative to hero's spot */
-            u.dx = (cc.x | 0) - (u.ux | 0);
-            u.dy = (cc.y | 0) - (u.uy | 0);
-            /* non-zero getdir_click actually means ok to click farther than
-             * one spot away from hero; adjacent click is always allowed */
-            if (!g.iflags?.getdir_click) {
-                u.dx = u.dx < 0 ? -1 : (u.dx > 0 ? 1 : 0);
-                u.dy = u.dy < 0 ? -1 : (u.dy > 0 ? 1 : 0);
-            }
-            u.dz = 0;
-            switch (pos + NHKF_GETPOS_PICK) {
-            case NHKF_GETPOS_PICK_Q: /* 1: quick:   ',' */
-            case NHKF_GETPOS_PICK_O: /* 2: once:    ';' */
-                mod = CLICK_1;
-                break;
-            case NHKF_GETPOS_PICK:   /* 0: normal:  '.' */
-            case NHKF_GETPOS_PICK_V: /* 3: verbose: ':' */
-                mod = CLICK_2;
-                break;
-            default:
-                /* C: "something which should never happen" */
-                await impossible(`getpos successful but not one of [.,;:] (${pos})`);
-                mod = 0; /* neither CLICK_1 nor CLICK_2 */
-                pos = -1; /* return failure */
-                break;
-            }
-        }
-        if (g.iflags?.getdir_click)
-            g.iflags.getdir_click = mod;
-        return pos >= 0;
-    }
-    /* C cmd.c:4095 — `else if (!(is_mov = movecmd(dirsym, MV_ANY)) && !u.dz)`.
-     * movecmd writes u.dx/u.dy/u.dz for every bound direction key (walk, run
-     * and rush spellings alike, plus '<'/'>' which set u.dz and make movecmd
-     * return 0), so this one call replaces the lowercase table, the '<'/'>'
-     * arms and the quitchars pre-test that used to sit in front of them. */
-    const is_mov = movecmd(dircode, MV_ANY);
-    if (is_mov || u.dz) {
-        if (is_mov && !dxdy_moveok()) {
-            await pline("You can't orient yourself that direction.");
-            return 0;
-        }
-        /* C cmd.c:4116-4117 — the tail every successful getdir falls through
-         * to: `if (!u.dz) confdir(FALSE); return 1;`.  confdir is not
-         * RNG-neutral (u_maybe_impaired draws when the hero is confused). */
-        if (!u.dz)
-            confdir(false);
-        return 1;
-    }
-    /* C cmd.c:4098 — `if (!strchr(quitchars, dirsym))`, INSIDE the
-     * invalid-direction arm: a quitchar cancels silently. */
-    // strchr(quitchars, NUL) finds the string terminator in C.
-    if (dircode === 0 || QUITCHARS.indexOf(dirsym) >= 0) {
-        return 0;
-    }
-    const help_requested = dircode === (g.Cmd?.spkeys?.[NHKF_GETDIR_HELP] ?? 63);
-    let did_help = false;
-    if (help_requested || cmdassist_on()) {
-        did_help = await help_dir(s && s.charAt(0) === '^' ? dirsym : '\0',
-            ESC_KEY, help_requested ? null : 'Invalid direction key!');
-        if (help_requested)
-            return null;
-    }
-    if (!did_help)
-        await pline('What a strange direction!');
-    return 0;
-}
 export async function getdir_bad_dir_feedback() {
     let did_help = false;
     if (cmdassist_on()) {
@@ -602,66 +389,6 @@ function cmdassist_on() {
     return v === undefined ? true : !!v;
 }
 const ESC_KEY = '\x1b';
-/* C ref: cmd.c:4846 help_dir(sym, spkey, msg) — the cmdassist invalid-direction
- * window.  Builds an NHW_TEXT window and display_nhwindow(win, FALSE)s it, which
- * on tty clears the screen, paints the lines from row 0 and pins a "--More--" to
- * row 23 that consumes one page-ack keystroke.  Always returns TRUE once the
- * window is shown (the !viawindow early-return is #if 0'd out in 3.7).
- *
- * The caller's special key selects ordinary getdir or prefix help. Direction
- * and self keys come from the shared live bindings; NODIAG(u.umonnum) selects
- * the grid-bug diagram rather than assuming the ordinary hero shape.
- * DISPLAY-CHANNEL ONLY: no RNG. */
-export async function help_dir(sym, spkey, msg) {
-    const byte = c => typeof c === 'number' ? c & 0xff : c.charCodeAt(0) & 0xff;
-    const prefixhandling = byte(spkey) !== (game.Cmd?.spkeys?.[0] ?? 27);
-    const lines = [];
-    /* C cmd.c:4911-4915 — buf is empty (the bad-prefix arms are #if 0'd), so the
-     * general invalid-direction message is shown. */
-    if (msg) {
-        lines.push(`cmdassist: ${msg}`);
-        lines.push('');
-    }
-    let symcode = byte(sym);
-    if (!prefixhandling && ((symcode >= 64 && symcode <= 90)
-        || (symcode >= 97 && symcode <= 122) || symcode === 91)) {
-        if (symcode >= 97 && symcode <= 122) symcode -= 32;
-        const ctrl = symcode - 65 + 1, letter = String.fromCharCode(symcode);
-        const explain = dowhatdoes_core(ctrl), wiz_only = 'EFGIVW'.includes(letter);
-        if (explain !== null && (!wiz_only || game.flags?.debug)) {
-            lines.push(`Are you trying to use ^${letter}${wiz_only ? '' : ' as specified in the Guidebook'}?`);
-            lines.push('');
-            lines.push(explain);
-            lines.push('');
-            lines.push('To use that command, hold down the <Ctrl> key as a shift');
-            lines.push(`and press the <${letter}> key.`);
-            lines.push('');
-        }
-    }
-    const nodiag = (game.u?.umonnum | 0) === 116; // NODIAG: PM_GRID_BUG
-    lines.push(`Valid direction keys${prefixhandling ? ' to do that' : ''}`
-               + `${nodiag ? ' in your current form' : ''} are:`);
-    lines.push(...show_direction_keys(!prefixhandling ? '.' : ' ', nodiag));
-    if (!prefixhandling) {
-        lines.push('');
-        lines.push('          <  up');
-        lines.push('          >  down');
-        /* C: Sprintf(buf, "       %4s  direct at yourself",
-         *            visctrl(spkeys[NHKF_GETDIR_SELF]))  — "." right-justified
-         * in 4 columns after 7 spaces. */
-        const selfi = game.Cmd?.num_pad ? NHKF_GETDIR_SELF2 : NHKF_GETDIR_SELF;
-        lines.push('       ' + visctrl(game.Cmd?.spkeys?.[selfi] ?? (selfi === NHKF_GETDIR_SELF ? 46 : 115)).padStart(4)
-            + '  direct at yourself');
-    }
-    if (msg) {
-        /* C cmd.c:4957-4960 — non-null msg means this wasn't an explicit user
-         * request, so append the suppression hint. */
-        lines.push('');
-        lines.push('(Suppress this message with !cmdassist in config file.)');
-    }
-    await display_text_window(lines);
-    return true;
-}
 
 /* C ref: rm.h IS_DOOR(typ) — only the DOOR typ */
 function _IS_DOOR(typ) { return typ === DOOR; }
@@ -672,22 +399,16 @@ export async function doclose() {
     /* C lock.c:965 — if (nohands(gy.youmonst.data)) */
     if (_nohands_lk()) {
         await pline("You can't close anything -- you have no hands!");
-        g.context = g.context || {};
-        g.context.move = 0; /* ECMD_OK */
         return ECMD_OK;
     }
     /* C lock.c:970 — u.utrap && u.utraptype == TT_PIT */
     if (u.utrap && u.utraptype === TT_PIT) {
         await pline("You can't reach over the edge of the pit.");
-        g.context = g.context || {};
-        g.context.move = 0; /* ECMD_OK */
         return ECMD_OK;
     }
     /* C lock.c:975 — getdir(NULL); 0 → ECMD_CANCEL.  No turn consumed. */
     const got = await getdir(null);
     if (!got) {
-        g.context = g.context || {};
-        g.context.move = 0; /* ECMD_CANCEL */
         return ECMD_CANCEL;
     }
     const x = ((u.ux | 0) + (u.dx | 0)) | 0;
@@ -696,8 +417,6 @@ export async function doclose() {
     const passesWalls = _Passes_walls_lk();
     if (x === (u.ux | 0) && y === (u.uy | 0) && !passesWalls) {
         await pline('You are in the way!');
-        g.context = g.context || {};
-        g.context.move = 1; /* ECMD_TIME */
         return ECMD_TIME;
     }
     /* C lock.c:985 — !isok(x,y) → goto nodoor.  Use a noDoor flag to avoid
@@ -712,8 +431,6 @@ export async function doclose() {
         noDoor = true;
     } else {
         if (await _stumble_on_door_mimic_stub(x, y)) {
-            g.context = g.context || {};
-            g.context.move = 1; /* ECMD_TIME */
             return ECMD_TIME;
         }
         /* C lock.c:993 — Confusion || Stunned forces a turn regardless */
@@ -751,30 +468,20 @@ export async function doclose() {
             const verb = _blind_stub() ? 'feel' : 'see';
             await pline(`You ${verb} no door there.`);
         }
-        g.context = g.context || {};
-        g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return res;
     }
     /* C lock.c:1021-1031 — door doormask state machine */
     const mask = door.doormask | 0;
     if (mask === D_NODOOR) {
         await pline('This doorway has no door.');
-        g.context = g.context || {};
-        g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return res;
     } else if (await _obstructed_stub(x, y, false)) {
-        g.context = g.context || {};
-        g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return res;
     } else if (mask === D_BROKEN) {
         await pline('This door is broken.');
-        g.context = g.context || {};
-        g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return res;
     } else if (mask & (D_CLOSED | D_LOCKED)) {
         await pline('This door is already closed.');
-        g.context = g.context || {};
-        g.context.move = (res === ECMD_TIME) ? 1 : 0;
         return res;
     }
     /* C lock.c:1034 — D_ISOPEN: attempt to close. */
@@ -782,8 +489,6 @@ export async function doclose() {
         /* C lock.c:1035 — verysmall(youmonst.data) && !u.usteed: too small */
         if (_verysmall_lk() && !u.usteed) {
             await pline("You're too small to push the door closed.");
-            g.context = g.context || {};
-            g.context.move = (res === ECMD_TIME) ? 1 : 0;
             return res;
         }
         /* C lock.c:1039 — usteed || rn2(25) < (ACURRSTR + ACURR(A_DEX) + ACURR(A_CON))/3 */
@@ -798,8 +503,6 @@ export async function doclose() {
             await pline('The door resists!');
         }
     }
-    g.context = g.context || {};
-    g.context.move = 1; /* C lock.c:1051 — return ECMD_TIME */
     return ECMD_TIME;
 }
 
@@ -842,15 +545,6 @@ const PICKLOCK_LEARNED_SOMETHING = -1; /* time passes */
 const PICKLOCK_DID_NOTHING = 0;        /* no time passes */
 const PICKLOCK_DID_SOMETHING = 1;
 
-function box_xname(obj) {
-    switch (obj ? (obj.otyp | 0) : 0) {
-        case LARGE_BOX_OTYP: return 'large box';
-        case CHEST_OTYP: return 'chest';
-        case ICE_BOX_OTYP: return 'ice box';
-        default: return 'box';
-    }
-}
-
 /* C ref: objnam.c an(str) — prepend "a "/"an " article. */
 function _an(str) {
     if (!str) return 'an';
@@ -859,14 +553,6 @@ function _an(str) {
     return (vowel ? 'an ' : 'a ') + str;
 }
 
-function _toolname(pick) {
-    switch (pick ? (pick.otyp | 0) : 0) {
-        case CREDIT_CARD_OTYP: return 'credit card';
-        case SKELETON_KEY_OTYP: return 'key';
-        case LOCK_PICK_OTYP: return 'lock pick';
-        default: return simple_typename(pick ? (pick.otyp | 0) : 0);
-    }
-}
 function _yname(pick) { return yname(pick); }
 
 /* C ref: query.c ynq(query) := yn_function(query, ynqchars, 'q', TRUE).
@@ -1131,15 +817,6 @@ export function u_have_forceable_weapon() {
     return oclass === ROCK_CLASS_OC;
 }
 
-function _wepname(uwep) {
-    if (!uwep) return 'your ' + simple_typename(0);
-    let owned = false;
-    for (let o = game.invent; o; o = o.nobj) {
-        if (o === uwep) { owned = true; break; }
-    }
-    return (owned ? 'your ' : 'the ') + cxname(uwep);
-}
-
 /* C ref: lock.c:215 forcelock() — the occupation callback, fired once per turn
  * by the moveloop occupation driver.  Returns 1 while still busy, 0 when done. */
 export async function forcelock() {
@@ -1356,8 +1033,8 @@ export async function doforce() {
          * turn-by-turn.  Init _forceMsgs here so forcelock()'s success path stages
          * (rather than plines) its messages. */
         await pline(picktyp
-            ? `You force ${_wepname(uwep)} into a crack and pry.`
-            : `You start bashing it with ${_wepname(uwep)}.`);
+            ? `You force ${yname(uwep)} into a crack and pry.`
+            : `You start bashing it with ${yname(uwep)}.`);
         _topl_stash_result();
         g._forceMsgs = [];
         g._forceMsgBotls = [];
@@ -1730,6 +1407,7 @@ function _Passes_walls_lk() {
     return !!((p.intrinsic | 0) || (p.extrinsic | 0));
 }
 
+/* Shared door predicates (the exported mimic helper retains its legacy name). */
 export async function _stumble_on_door_mimic_stub(x, y) {
     const mtmp = m_at(x, y);
     if (!mtmp || !is_door_mappear(mtmp) || _hero_prop_on_lk(PROT_FROM_SHAPE_CHANGERS)) return false;

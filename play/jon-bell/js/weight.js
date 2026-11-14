@@ -14,7 +14,7 @@ import monMsizePack from './makemon_msize.json' with { type: 'json' };
 import { impossible_sync } from './display.js';
 import { pline } from './pline.js';
 import { simpleonames } from './objnam.js';
-import { float_vs_flight } from './mhitm.js';
+import { float_vs_flight } from './polyself.js';
 import { stagger } from './mondata.js';
 /* eaten_stat (C eat.c:3788) is js/eat.js's faithful port; eat.js imports
  * near_capacity from this file, so this is a late-bound ES-module cycle. */
@@ -54,6 +54,7 @@ const CORPSE = 265;
 
 export { weight } from './mkobj.js';
 import { weight } from './mkobj.js';
+export { encumber_msg } from './pickup.js'; // relocate-fns
 
 /* C hack.c:4315 inv_weight() — total carried object weight (no wc subtraction).
  * For COIN_CLASS uses (quan+50)/100; else otmp->owt (the cached object weight).
@@ -87,9 +88,6 @@ export function inv_weight_raw() {
 
 
 
-export async function encumber_msg() {
-    return encumber_msg_sync();
-}
 
 /* The SYNCHRONOUS entry point onto the same body.
  *

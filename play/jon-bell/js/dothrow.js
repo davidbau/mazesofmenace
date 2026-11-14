@@ -1,8 +1,16 @@
 // dothrow.js — C ref: dothrow.c.
-import { nomul, stop_occupation } from './allmain.js';
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js';
 import { acurr, change_luck, exercise } from './attrib.js';
 import { drag_ball, drop_ball, move_bc } from './ball.js';
-import { ARM, BOULDER, BOULDER_OTYP, DB_MOAT_WB, DEADMONSTER, EYE, FOOT, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, HEAD, LOADSTONE, MAGIC_PORTAL, OCLASS_COIN, OCLASS_FOOD, OCLASS_GEM, OCLASS_TOOL, OCLASS_WEAPON, OTYP_AKLYS, OTYP_BOW, OTYP_ELVEN_ARROW, OTYP_ELVEN_BOW, OTYP_FLINT, OTYP_ORCISH_ARROW, OTYP_ORCISH_BOW, OTYP_WAR_HAMMER, OTYP_YA, OTYP_YUMI, Race_if, Role_if, THIT_BANANA, THIT_CORPSE, THIT_CREAM_PIE, THIT_EGG, THIT_M2_ELF, THIT_OBJ_MINVENT, THIT_POTION_CLASS, THIT_S_UNICORN, Underwater, W_QUIVER_C, W_SWAPWEP_C, W_WEP_C, Yname2, Your, _BULLWHIP_OTYP, _Blind_cmd, _FW_BOULDER, _Flying, _GEM_CLASS, _Levitation, _MAT_MINERAL, _MH_MZ_HUGE, _TOWEL_OTYP, _Underwater, _bldr_Sokoban, _cmd_Hallucination, _delobj_useupf, _digests, _doaltarobj_Doname2, _doswapweapon, _ensure_ranger_weapons, _eyecount, _glyph_at, _grapple_range, _hero_Deaf, _hero_notake, _hero_verysmall_or_nohands_nohands_only, _hero_youmonst, _hliquid, _invlet_constant, _is_animal_local, _is_whirly_ustuck, _ismnum_local, _levlAt, _mh_a_monnam, _mh_touch_petrifies, _oc_material, _oc_skill, _st_Punished, _st_throws_rocks, _topline_more, _u_on_newpos_nearby, _up_find_poleable_mon, _uprop_active, ammo_and_launcher, bad_rock, bigmonst_cmd, body_part, ceiling, check_capacity, check_special_room, cmdq_add_ec, cmdq_add_int, cmdq_add_key, compactify, costly_spot, drown, flooreffects_Maybe_Half_Phys, flooreffects_is_lava, flooreffects_is_pool, freeinv, fully_identify_obj, getobj_cmdq_drain, getobj_get_count, getobj_redo_menu, hit_bars_hero, impact_disturbs_zombies, instapetrify, is_ammo, is_blade, is_lava, is_missile, is_pole, is_pool, is_quest_artifact, is_sword, is_weptool, is_wet_towel, key2txt, matching_launcher, may_passwall, mime_action, nh_delay_output, pooleffects_Wwalking, prinv, set_cursor, snuff_candle, splittable, sr_touch_petrifies_ptr, surface, switch_terrain, test_move, thit_is_orc, thit_is_unicorn, u_on_newpos_cmd, use_pole, use_whip, verbalize, readchar } from './cmd.js';
+import { ARM, BOULDER, BOULDER_OTYP, DB_MOAT_WB, DEADMONSTER, EYE, FOOT, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, LOADSTONE, MAGIC_PORTAL, OCLASS_COIN, OCLASS_FOOD, OCLASS_GEM, OCLASS_TOOL, OCLASS_WEAPON, OTYP_AKLYS, OTYP_BOW, OTYP_ELVEN_ARROW, OTYP_ELVEN_BOW, OTYP_FLINT, OTYP_ORCISH_ARROW, OTYP_ORCISH_BOW, OTYP_WAR_HAMMER, OTYP_YA, OTYP_YUMI, Race_if, Role_if, THIT_BANANA, THIT_CORPSE, THIT_CREAM_PIE, THIT_EGG, THIT_M2_ELF, THIT_OBJ_MINVENT, THIT_POTION_CLASS, THIT_S_UNICORN, Underwater, W_QUIVER_C, W_SWAPWEP_C, W_WEP_C, Your, _BULLWHIP_OTYP, _Blind_cmd, _FW_BOULDER, _Flying, _GEM_CLASS, _Levitation, _MAT_MINERAL, _MH_MZ_HUGE, _TOWEL_OTYP, _Underwater, _bldr_Sokoban, _cmd_Hallucination, _digests, _doaltarobj_Doname2, _doswapweapon, _eyecount, _glyph_at, _grapple_range, _hero_Deaf, _hero_notake, _hero_verysmall_or_nohands_nohands_only, _hero_youmonst, _hliquid, _invlet_constant, _is_animal_local, _is_whirly_ustuck, _ismnum_local, _levlAt, _mh_a_monnam, _mh_touch_petrifies, _oc_material, _oc_skill, _st_Punished, _st_throws_rocks, _topline_more, _u_on_newpos_nearby, _up_find_poleable_mon, _uprop_active, ammo_and_launcher, bigmonst_cmd, body_part, check_capacity_sync as check_capacity, cmdq_add_ec, cmdq_add_int, cmdq_add_key, costly_spot, flooreffects_Maybe_Half_Phys, flooreffects_is_lava, flooreffects_is_pool, getobj_cmdq_drain, getobj_get_count, getobj_redo_menu, hit_bars_hero, instapetrify, is_ammo, is_blade, is_lava, is_missile, is_pole, is_pool, is_quest_artifact, is_sword, is_weptool, is_wet_towel, key2txt, matching_launcher, nh_delay_output, pooleffects_Wwalking, set_cursor, sr_touch_petrifies_ptr, thit_is_orc, thit_is_unicorn, u_on_newpos_cmd, verbalize, readchar } from './cmd.js';
+import { bad_rock, check_special_room, impact_disturbs_zombies, may_passwall, switch_terrain, test_move } from './hack.js';
+import { snuff_candle, use_pole, use_whip } from './apply.js';
+import { _delobj_useupf, compactify, freeinv, fully_identify_obj, mime_action, prinv, splittable } from './invent.js';
+import { drown } from './trap.js';
+import { ceiling, surface } from './dungeon.js';
+import { HEAD } from './const.js';
+import { Yname2 } from './objnam.js';
 import { dry_a_towel } from './weapon.js';
 import { align_gname } from './pray.js';
 import { doquiver_core, set_twoweap, setuqwep, setuswapwep, setuwep, welded, weldmsg } from './wield.js';
@@ -14,9 +22,10 @@ import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, 
 import { You_hear, Norep as _Norep, pline } from './pline.js';
 import { doaltarobj, dropy, dropz, flooreffects, obj_no_longer_held } from './do.js';
 import { rndmonnam as look_rndmonnam } from './do_name.js';
-import { You, encumber_msg, xname, yname } from './do_wear.js';
+import { You, encumber_msg, xname } from './do_wear.js';
+import { yname } from './objnam.js';
 import { tamedog } from './dog.js';
-import { dogfood } from './dogmove.js';
+import { dogfood } from './dog.js';
 import { acurrstr, container_impact_dmg, ghitm as dokick_ghitm, stolen_value as dokick_stolen_value, ship_object } from './dokick.js';
 import { losehp } from './hack.js';
 import { is_waterwall } from './dbridge.js';
@@ -24,19 +33,27 @@ import { FF_FAITHFUL } from './fastforward.js';
 import { newobj } from './game.js';
 import { game } from './gstate.js';
 import { dist2, distmin, ordin } from './hacklib.js';
-import { can_reach_floor } from './hold_another_object.js';
 import { addinv, addinv_before } from './invent.js';
 import { nhgetch } from './input.js';
-import { reassign } from './inventory_refresh.js';
+import { reassign } from './invent.js';
 import { transient_light_cleanup as _transient_light_cleanup, obj_is_burning, show_transient_light } from './light.js';
-import { getdir } from './lock.js';
+import { getdir } from './cmd.js';
 import { closed_door } from './monmove.js';
-import { canletgo, monPmname, permonstTemplate, set_malign, splitobj, trapname, unsplitobj } from './makemon.js';
+import { monPmname, permonstTemplate, set_malign, splitobj } from './makemon.js';
+import { trapname } from './trap.js';
+import { canletgo } from './do.js';
+import { unsplitobj } from './mkobj.js';
 import { which_armor } from './worn.js';
 import { Monnam } from './mcastu.js';
-import { Some_Monnam, hmon, passive_obj, s_suffix, seemimic, shade_miss, wakeup_attack, x_monnam } from './mhitm.js';
+import { s_suffix, wakeup_attack } from './mhitm.js';
+import { Some_Monnam, x_monnam } from './do_name.js';
+import { seemimic } from './mon.js';
+import { hmon, passive_obj, shade_miss } from './uhitm.js';
 import { hits_bars_mu } from './mhitu.js';
-import { add_to_minv, is_crackable as is_crackable_bo, is_flammable, makemon as mklev_makemon, place_object, wipe_engr_at } from './mklev.js';
+import { is_crackable as is_crackable_bo } from './mklev.js';
+import { add_to_minv, is_flammable, place_object } from './mkobj.js';
+import { makemon as mklev_makemon } from './makemon.js';
+import { u_wipe_engr } from './engrave.js';
 import { mpickobj } from './steal.js';
 import { inside_shop } from './shk.js';
 import { sobj_at } from './invent.js';
@@ -52,21 +69,25 @@ import { PM_CAVEMAN as PM_CAVE_DWELLER, PM_MONK, PM_NINJA, PM_RANGER, PM_ROGUE, 
 import { potionbreathe, potionhit } from './potion.js';
 import { finish_quest } from './quest.js';
 import { in_out_region, m_in_out_region } from './region.js';
-import { d, rn2, rnd, rnl } from './rng.js';
+import { d, rn2, rnd, rnl } from './rnd.js';
 import { hot_pursuit, make_angry_shk, obfree, sellobj, contained_gold as shk_contained_gold, costly_spot as shk_costly_spot, donate_gold as shk_donate_gold, is_unpaid as shk_is_unpaid, shop_keeper as shk_shop_keeper, subfrombill as shk_subfrombill, shkcatch } from './shk.js';
 import { in_rooms as shk_in_rooms } from './hack.js';
 import { Tobjnam } from './objnam.js';
 import { skill_name } from './skills.js';
-import { stackobj } from './sp_lev.js';
+import { stackobj } from './invent.js';
 import { isqrt } from './hacklib.js';
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js';
 import { place_monster } from './steed.js';
 import { rloc, tele_restrict } from './teleport.js';
-import { toss_up } from './throw_vertical.js';
+import './throw_vertical.js';
 import { end_burn } from './timeout.js';
-import { dotrap, erode_obj as erode_obj_bo, goodpos, mintrap, t_at } from './trap.js';
+import { dotrap, erode_obj as erode_obj_bo, mintrap, t_at } from './trap.js';
+import { goodpos } from './teleport.js';
 import { find_mac } from './worn.js';
-import { artifact_hit, autoreturn_weapon, hitval, m_at, minstapetrify, mon_nam, spec_abon, weapon_descr, weapon_hit_bonus, weapon_type } from './uhitm.js';
+import { m_at, mon_nam } from './uhitm.js';
+import { autoreturn_weapon, hitval, weapon_descr, weapon_hit_bonus, weapon_type } from './weapon.js';
+import { artifact_hit, spec_abon } from './artifact.js';
+import { minstapetrify } from './trap.js';
 import { Blind as _vision_Blind, cansee, vision_recalc } from './vision.js';
 import { weight } from './weight.js';
 import { calc_capacity, inv_weight, near_capacity, weight_cap } from './hack.js';
@@ -74,6 +95,21 @@ import { cutworm as cutworm_real } from './worm.js';
 import { boomhit, miss, obj_resists } from './zap.js';
 import { explode, explode_oil } from './explode.js';
 import { _Blind_dk } from './dokick.js'; // relocate-fns
+import { FACE, KILLED_BY_AN, POTHIT_HERO_THROW, STONE_RES, STONING, WT_TO_DMG, ismnum } from './const.js'; // relocate-fns
+import { hard_helmet } from './do_wear.js'; // relocate-fns
+import { has_ceiling } from './dungeon.js'; // relocate-fns
+import { done } from './end.js'; // relocate-fns
+import { hates_silver } from './mondata.js'; // relocate-fns
+import { can_blnd, mon_hates_blessings, poly_when_stoned } from './mondata.js'; // relocate-fns
+import { doname, thesimpleoname } from './objnam.js'; // relocate-fns
+import { PM_SHADE, PM_STONE_GOLEM } from './pm.generated.js'; // relocate-fns
+import { polymon } from './polyself.js'; // relocate-fns
+import { POTION_CLASS } from './potion.js'; // relocate-fns
+import { rn1 } from './rng.js'; // relocate-fns
+import { touch_petrifies } from './uhitm.js';
+import { dmgval } from './weapon.js'; // relocate-fns
+import { Blind } from './vision.js'; // relocate-fns
+import { BlindedTimeout, hit, make_blinded } from './zap.js'; // relocate-fns
 
 export async function dothrow() {
     const g = game;
@@ -97,8 +133,6 @@ export async function dothrow() {
         g.context.move = 0;
         return ECMD_OK;
     }
-    /* Ensure weapon slots initialized (Ranger lazy-init) */
-    _ensure_ranger_weapons(u);
     /* ── Build throw getobj prompt (C ref: invent.c:1752 getobj, throw_ok filter) ──
      * throw_ok(null) = GETOBJ_EXCLUDE → no '-' (can't throw nothing).
      * Collect GETOBJ_SUGGEST invlets from inventory. */
@@ -1167,9 +1201,7 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
      * under the hero before multishot setup or splitobj's next_ident draw. */
     /* A whole-stack coin throw returned through throw_gold() at dothrow.c:112,
      * before this u_wipe_engr(2), so it never scuffs the engraving. */
-    if (!((thrownObj.oclass | 0) === 12 /* COIN_CLASS */ && thrownObj !== u.uquiver)
-        && can_reach_floor(true))
-        wipe_engr_at(u.ux | 0, u.uy | 0, 2, false);
+    u_wipe_engr(2);
     /* C dothrow.c:139-157: bare-handed petrification, then towel drying. */
     if (!u.uarmg && thrownObj.otyp === THIT_CORPSE
         && sr_touch_petrifies_ptr(permonstTemplate(thrownObj.corpsenm))
@@ -1426,8 +1458,8 @@ const OTYP_SLING_THIT = 87; /* objects.h SLING — js/cmd.js WEAPON_NAME[87]. */
 
 /* C dothrow.c:2310-2370 gem_accept(mon, obj).  This is reached before the
  * ordinary thrown-object hit roll when a real gem is offered to a unicorn.
- * The shop-check hook has no JS body, but the inventory transfer, luck draws,
- * peacefulness, message, and relocation are all available here. */
+ * Shop billing (check_shop_obj), inventory transfer, luck draws,
+ * peacefulness, message, and relocation follow C's order. */
 async function thit_gem_accept(mon, obj) {
     const u = game.u || {};
     const known = !!(obj.dknown && game._oc_name_known?.[obj.otyp | 0]);
@@ -1460,8 +1492,13 @@ async function thit_gem_accept(mon, obj) {
     mon.mpeaceful = 1;
     mon.mavenge = 0;
     const accepted = is_gem || (!known && !guessed);
-    if (accepted)
+    if (accepted) {
+        /* C dothrow.c:2371-2372 — bill an unpaid gem (or any gem offered from
+         * inside a shop) before the unicorn takes it. */
+        if ((u.ushops && u.ushops[0]) || obj.unpaid)
+            await check_shop_obj_throw(obj, mon.mx | 0, mon.my | 0, true);
         await mpickobj(mon, obj);
+    }
     const msg = `${Monnam(mon)}${suffix}${accepted ? ' accepts your gift.' : ''}`;
     if (!_Blind_cmd())
         await pline(msg);
@@ -1526,11 +1563,12 @@ async function tmiss(obj, mon, maybe_wakeup) {
 
     /* C:1955-1961 — if the target can't be seen, or doesn't look like a valid
      * target, avoid "the arrow misses it" / "the arrow misses the mimic". */
-    const apType = (mon.m_ap_type ?? 0) | 0;
+    /* C M_AP_TYPE(mon) masks m_ap_type with M_AP_TYPMASK (monst.h:73). */
+    const apType = ((mon.m_ap_type ?? 0) | 0) & 0x7;
     if (!canseemon(mon) || (apType && apType !== M_AP_MONSTER))
-        pline(`${The(missile)} ${otense(obj, 'miss')}.`);
+        await pline(`${The(missile)} ${otense(obj, 'miss')}.`);
     else
-        miss(missile, mon);
+        await miss(missile, mon);
     if (maybe_wakeup && !rn2(3))
         await wakeup_attack(mon, true);
 }
@@ -1558,12 +1596,13 @@ async function check_shop_obj_throw(obj, x, y, broken) {
 
     const rooms = shk_in_rooms(x | 0, y | 0, SHOPBASE) || [];
     const landingShop = rooms.length ? (rooms[0] | 0) : 0;
-    const previous = typeof u.ushops0 === 'string'
-        ? (u.ushops0.length ? u.ushops0.charCodeAt(0) : 0)
-        : Array.isArray(u.ushops0) ? (u.ushops0[0] | 0) : (u.ushops0 | 0);
     const costly = shk_costly_spot(x | 0, y | 0);
 
-    if (broken || !costly || (landingShop !== currentShop && landingShop !== previous)) {
+    /* C dothrow.c:1190 — landing in any shop other than *u.ushops is "thrown
+     * into a different shop".  The u.ushops0 alternative at dothrow.c:1202 sits
+     * INSIDE the else arm, where *oshops == *u.ushops already holds, so it can
+     * never widen this test. */
+    if (broken || !costly || landingShop !== currentShop) {
         if (shk_is_unpaid(obj))
             await dokick_stolen_value(obj, u.ux | 0, u.uy | 0, !!shkp.mpeaceful, false);
         if (broken) obj.no_charge = 1;
@@ -1593,11 +1632,12 @@ export async function thitmonst(mon, obj) {
                 : HMON_THROWN;
 
     /* C:2036-2037 — dex still gives a bonus, strength does not; there is a base
-     * -1 to hit.  `Luck` here is the raw u.uluck, NOT uhitm.c:378's melee
+     * -1 to hit.  `Luck` is you.h's `(u.uluck + u.moreluck)` — a carried
+     * luckstone's moreluck counts — NOT uhitm.c:378's melee
      * sgn(Luck)*((abs(Luck)+2)/3). */
     const polyLevel = Upolyd(u)
         ? ((game.youmonst?.data?.mlevel ?? 0) | 0) : (u.ulevel | 0);
-    tmp = -1 + (u.uluck | 0) + find_mac(mon) + (u.uhitinc | 0) + polyLevel;
+    tmp = -1 + ((u.uluck | 0) + (u.moreluck | 0)) + find_mac(mon) + (u.uhitinc | 0) + polyLevel;
 
     /* C:2038-2046 */
     const dex = acurr(u, A_DEX);
@@ -2181,7 +2221,7 @@ export async function hurtle(dx, dy, range, verbose) {
     g.nomovemsg = "";
     if (verbose)
         await You(`${(range > 1) ? "hurtle" : "float"} in the opposite direction.`);
-    endmultishot(true);
+    await endmultishot(true);
     /* dothrow.c:1103-1108 — walk the path; hurtle_step moves the hero. */
     const uc = { x: u.ux | 0, y: u.uy | 0 };
     const cc = { x: (u.ux | 0) + dx * range, y: (u.uy | 0) + dy * range };
@@ -2415,9 +2455,6 @@ export async function dofire() {
     const g = game;
     const u = g.u || {};
     g.multi = 0;
-    /* Lazy-init Ranger weapon state when not yet set by u_init.
-     * C ref: ini_inv_use_obj wield order: dagger→uwep, bow→uswapwep, arrows→uquiver. */
-    _ensure_ranger_weapons(u);
     /* `uq` is C's local `obj`, which dothrow.c:552 REASSIGNS from uquiver after
      * doquiver_core() has refilled the slot — so it cannot be a const here. */
     let uq = u.uquiver;
@@ -3400,13 +3437,14 @@ export async function breakobj(obj, x, y, hero_caused, from_invent) {
 }
 
 /* C ref: dothrow.c:589-602 */
-export function endmultishot(verbose) {
+export async function endmultishot(verbose) {
     const g = game;
     g.gm = g.gm || {};
     g.gm.m_shot = g.gm.m_shot || { i: 0, n: 0, s: 0 };
     if (g.gm.m_shot.i < g.gm.m_shot.n) {
         if (verbose && !g.context.mon_moving) {
-            You("stop " + (g.gm.m_shot.s ? "firing" : "throwing") +
+            /* C dothrow.c:594 — the pline completes before m_shot.n is cut. */
+            await You("stop " + (g.gm.m_shot.s ? "firing" : "throwing") +
                 " after the " + g.gm.m_shot.i + ordin(g.gm.m_shot.i) + " " +
                 (g.gm.m_shot.s ? "shot" : "toss") + ".");
         }
@@ -3425,4 +3463,152 @@ export async function breaks(otmp, nx, ny) {
     if (!breaktest(otmp)) return 0;
     await breakmsg(otmp, inView);
     return await breakobj(otmp, nx, ny, false, false) ? 1 : 0;
+}
+
+const CLOTH = 6, SILVER = 14, AT_WEAP = 254;
+
+const EGG = 266, CORPSE = 265, CREAM_PIE = 287, BLINDING_VENOM = 479;
+
+const HALF_PHDAM = 56;
+
+const doname2 = async obj => { const s = await doname(obj); return s[0].toUpperCase() + s.slice(1); };
+
+const stoneResistance = () => !!(game.u.uprops?.[STONE_RES]?.intrinsic
+    || game.u.uprops?.[STONE_RES]?.extrinsic);
+
+const hateSilver = () => ismnum(game.u.ulycn ?? -1) || hates_silver(game.youmonst.data);
+
+const maybeHalfPhysical = dmg => {
+    const p = game.u?.uprops?.[HALF_PHDAM];
+    return p && (p.intrinsic || p.extrinsic) ? Math.trunc((dmg + 1) / 2) : dmg;
+};
+
+const passesRocks = ptr => !!ptr && !!((ptr.mflags1 | 0) & 0x00000008)
+    && !((ptr.mflags1 | 0) & 0x00100000);
+
+const stoneMissile = obj => {
+    const material = MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0;
+    return (material === 20 || material === 21) && (obj.oclass | 0) !== 4;
+};
+
+/* objects.h otyps (values per js/oc_name_data.js); objclass.h SCROLL_CLASS. */
+const SLING = 87, RUBBER_HOSE = 78, SACK = 217, OILSKIN_SACK = 218, BAG_OF_HOLDING = 219,
+    BAG_OF_TRICKS = 220, KELP_FROND = 275, EUCALYPTUS_LEAF = 276, SPRIG_OF_WOLFSBANE = 283,
+    FORTUNE_COOKIE = 289, PANCAKE = 290, SCROLL_CLASS = 9;
+
+/* C dothrow.c:1220-1250 harmless_missile() */
+export function harmless_missile(obj) {
+    const t = obj.otyp | 0;
+    if ([SLING, EUCALYPTUS_LEAF, KELP_FROND, SPRIG_OF_WOLFSBANE,
+         FORTUNE_COOKIE, PANCAKE].includes(t)) return true;
+    if (t === RUBBER_HOSE || t === BAG_OF_TRICKS) return (obj.spe | 0) < 1;
+    if (t === SACK || t === OILSKIN_SACK || t === BAG_OF_HOLDING) return !Has_contents(obj);
+    return (obj.oclass | 0) === SCROLL_CLASS || (MKOBJ_OC_MATERIAL[t] | 0) === CLOTH;
+}
+
+async function petrify(obj) {
+    game.svk ||= {};
+    game.svk.killer ||= {};
+    game.svk.killer.format = KILLED_BY;
+    game.svk.killer.name = 'elementary physics';
+    await pline('You turn to stone.');
+    if (obj) await dropy(obj);
+    game.thrownobj = null;
+    await done(STONING);
+    return !!obj;
+}
+
+/* Returns false when the thrown object has been destroyed. */
+export async function toss_up(obj, hitsroof) {
+    const u = game.u, you = game.youmonst, otyp = obj.otyp | 0;
+    const petrifier = (otyp === EGG || otyp === CORPSE) && ismnum(obj.corpsenm)
+        && touch_petrifies(permonstTemplate(obj.corpsenm));
+    let action;
+    if (!has_ceiling(u.uz)) action = 'flies up into';
+    else if (hitsroof) {
+        if (breaktest(obj)) {
+            await pline(`${(await doname2(obj))} hits the ${ceiling(u.ux, u.uy)}.`);
+            await breakmsg(obj, !Blind());
+            if (!await breakobj(obj, u.ux, u.uy, true, true)) {
+                await hitfloor(obj, false);
+                game.thrownobj = null;
+                return true;
+            }
+            return false;
+        }
+        action = 'hits';
+    } else action = 'almost hits';
+    await pline(`${(await doname2(obj))} ${action} the ${ceiling(u.ux, u.uy)}, then falls back on top of your ${body_part(HEAD)}.`);
+
+    if ((obj.oclass | 0) === POTION_CLASS) {
+        await potionhit(you, obj, POTHIT_HERO_THROW);
+    } else if (breaktest(obj)) {
+        const blindinc = ((otyp === CREAM_PIE || otyp === BLINDING_VENOM)
+            && can_blnd(you, you, AT_WEAP, obj)) ? rnd(25) : 0;
+        await breakmsg(obj, !Blind());
+        if (await breakobj(obj, u.ux, u.uy, true, true)) obj = null;
+        if (otyp === EGG && petrifier && !stoneResistance()
+            && !(poly_when_stoned(you.data) && await polymon(PM_STONE_GOLEM))) {
+            if (u.uarmh)
+                await pline(`Your ${helm_simple_name(u.uarmh)} fails to protect you.`);
+            return await petrify(obj);
+        }
+        if (otyp === EGG || otyp === CREAM_PIE || otyp === BLINDING_VENOM) {
+            await pline(`You've got it all over your ${body_part(FACE)}!`);
+            if (blindinc) {
+                if (otyp === BLINDING_VENOM && !Blind()) await pline('It blinds you!');
+                u.ucreamed = (u.ucreamed | 0) + blindinc;
+                await make_blinded(BlindedTimeout() + blindinc, false);
+                if (!Blind()) await pline('Your vision quickly clears.');
+            }
+        }
+        if (!obj) return false;
+        await hitfloor(obj, false);
+        game.thrownobj = null;
+    } else if (harmless_missile(obj)) {
+        await pline("It doesn't hurt.");
+        await hitfloor(obj, false);
+        game.thrownobj = null;
+    } else {
+        const silver = (MKOBJ_OC_MATERIAL[otyp] | 0) === SILVER;
+        const less = hard_helmet(u.uarmh) && (!silver || !hateSilver());
+        let harmless = stoneMissile(obj) && passesRocks(you.data);
+        let dmg = dmgval(obj, you), artimsg = false;
+        if (obj.oartifact && !harmless) {
+            const result = await artifact_hit(null, null, obj, dmg, rn1(18, 2), u.umonnum);
+            dmg = result.dmg;
+            artimsg = result.special;
+        }
+        if (!dmg) {
+            dmg = Math.trunc(((obj.owt | 0) + WT_TO_DMG - 1) / WT_TO_DMG);
+            dmg = dmg <= 1 ? 1 : rnd(dmg);
+            if (dmg > 6) dmg = 6;
+            if ((you.data?.pmidx | 0) === PM_SHADE && !silver) dmg = 0;
+            if (obj.blessed && mon_hates_blessings(you)) dmg += rnd(4);
+            if (silver && hateSilver()) dmg += rnd(20);
+        }
+        if (dmg > 1 && less) dmg = 1;
+        if (dmg > 0) dmg += u.udaminc | 0;
+        if (dmg < 0) dmg = 0;
+        dmg = maybeHalfPhysical(dmg);
+        if (u.uarmh) {
+            if ((less && dmg < (Upolyd(u) ? u.mh : u.uhp)) || harmless) {
+                if (!artimsg) await pline(harmless
+                    ? `Unfortunately, you are wearing ${an(helm_simple_name(u.uarmh))}.`
+                    : 'Fortunately, you are wearing a hard helmet.');
+            } else if (!petrifier && game.flags.verbose) {
+                await pline(`Your ${helm_simple_name(u.uarmh)} does not protect you.`);
+            }
+            harmless = false;
+        } else if (petrifier && !stoneResistance()
+            && !(poly_when_stoned(you.data) && await polymon(PM_STONE_GOLEM))) {
+            return await petrify(obj);
+        }
+        if (silver && hateSilver()) await pline('The silver sears you!');
+        if (harmless) await hit(thesimpleoname(obj), you, " but doesn't hurt.");
+        await hitfloor(obj, true);
+        game.thrownobj = null;
+        if (!harmless) await losehp(dmg, 'falling object', KILLED_BY_AN);
+    }
+    return true;
 }

@@ -11,9 +11,9 @@ import {
     CLR_BRIGHT_CYAN, CLR_WHITE, NO_COLOR
 } from './terminal.js';
 import {
-    ATR_DIM, ATR_ITALIC, ATR_ULINE, ATR_BLINK, SIZE
-} from './const.js';
+    ATR_DIM, ATR_ITALIC, ATR_ULINE, ATR_BLINK, SIZE, PICK_ONE } from './const.js';
 import { add_menu, select_menu } from './windows.js'; // relocate-fns
+import { TtyMenu } from './tty_menu.js'; // relocate-fns
 
 // Data structures from coloratt.c
 // static const struct color_names colornames[] = { ... } (lines 12-40)
@@ -123,13 +123,12 @@ function start_menu(win, behave) {}
 function end_menu(win, prompt) {}
 function destroy_nhwindow(win) {}
 function free(ptr) {}
-function strncmpi(s1, s2, n) { return 0; }
+function strncmpi_coloratt(s1, s2, n) { return 0; }
 const NHW_MENU = 4;
 const MENU_BEHAVE_STANDARD = 0;
 const MENU_ITEMFLAGS_SELECTED = 1;
 const MENU_ITEMFLAGS_NONE = 0;
 const PICK_ANY = 2;
-const PICK_ONE = 1;
 const HL_NONE = 0x01;
 const HL_BOLD = 0x02;
 const HL_DIM = 0x04;
@@ -286,7 +285,7 @@ export function rgbstr_to_int32(rgbstr) {
 }
 
 // Simplified fuzzymatch: case-insensitive comparison ignoring chars in ignore.
-function fuzzymatch(s1, s2, ignore, casesensitive) {
+function fuzzymatch_coloratt(s1, s2, ignore, casesensitive) {
     let i = 0, j = 0;
     while (i < s1.length && j < s2.length) {
         while (i < s1.length && ignore.indexOf(s1[i]) !== -1) i++;
@@ -311,7 +310,7 @@ export function match_str2clr(str, suppress_msg) {
     let i, c = CLR_MAX;
     for (i = 0; i < colornames.length; i++) {
         if (colornames[i].name
-            && fuzzymatch(str, colornames[i].name, " -_", false)) {
+            && fuzzymatch_coloratt(str, colornames[i].name, " -_", false)) {
             c = colornames[i].color;
             break;
         }
@@ -395,4 +394,52 @@ export function menucolor_row(text) {
     if (m) return `${m[1]} ${m[2][0] === '\x01' ? menucolor_text(m[2].slice(1), m[3]) : m[2]} ${menucolor_text(m[3])}`;
     const pad = (/^ +/.exec(t) || [''])[0];
     return pad + menucolor_text(t.slice(pad.length));
+}
+
+/* C coloratt.c:530 basic_menu_colors(TRUE): temporary menucolor patterns that
+ * match the colour names (built last-in/first-out; black, white and no color
+ * are skipped), with 'menucolors' forced on.  Returns the restorer. */
+function basic_menu_colors() {
+    const save_use = game.iflags.use_menu_color;
+    const save_colorings = game.menu_colorings;
+    const cols = [];
+    for (const { name, color } of colornames) {
+        if (!name) break;
+        if (color === 0 || color === 15 || color === 8) continue;
+        cols.unshift({ match: regcomp(name), color, attr: 0 });
+    }
+    game.iflags.use_menu_color = true;
+    game.menu_colorings = cols;
+    return () => {
+        game.iflags.use_menu_color = save_use;
+        game.menu_colorings = save_colorings;
+    };
+}
+
+/* C coloratt.c:475 query_color; returns -1 on ESC. */
+export async function query_color(prompt, dflt_color, preserveStatus) {
+    const restore = basic_menu_colors();
+    const m = new TtyMenu({ overlay: true, statusClipCol: preserveStatus ? undefined : 0 });
+    for (let i = 0; i < colornames.length; i++) {
+        if (!colornames[i].name) break;
+        m.add_menu(i + 1, 0, ATR_NONE, colornames[i].name, false,
+                   colornames[i].color === dflt_color);
+    }
+    m.end_menu(prompt || 'Pick a color');
+    const { count, picks } = await m.select_menu(PICK_ONE);
+    restore();
+    if (count > 0) {
+        let i = colornames[picks[0] - 1].color;
+        if (count === 2 && i === 8) i = colornames[picks[1] - 1].color;
+        return i;
+    } else if (count === 0) {
+        return dflt_color;
+    }
+    return -1;
+}
+
+/* C coloratt.c: set_map_customcolor — install the glyph's custom nhcolor. */
+export function set_map_customcolor(gm, nhcolor) {
+    if (!gm) return;
+    gm.customcolor = nhcolor | 0;
 }

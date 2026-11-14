@@ -1,7 +1,8 @@
 // mkmap.ts — C ref: mkmap.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js.
 import { game } from './gstate.js';
-import { rnd, rn2, rn1 } from './rng.js';
+import { rn1 } from './rng.js';
+import { rnd, rn2 } from './rnd.js';
 import { depth as depth_of_level } from './dungeon.js';
 import { IS_WALL, IS_DOOR, IS_ROOM, IS_OBSTRUCTED, isok, SDOOR, NO_ROOM, SHARED,
          COLNO, ROWNO, TREE, LAVAPOOL, ICE, ICED_POOL, ICED_MOAT,
@@ -12,7 +13,8 @@ import { impossible } from './pline.js';
  * litstate_rnd from this file, so this is a module cycle — it resolves
  * because every binding below is a hoisted `function` declaration used only
  * at call time, never at module-evaluation time. */
-import { add_room, dig_corridor } from './mklev.js';
+import { add_room } from './mklev.js';
+import { dig_corridor } from './sp_lev.js';
 import { somexy } from './mkroom.js';
 import { wallify_map } from './sp_lev.js';
 /* C ref: mkmap.c:443-447 boolean litstate_rnd(int litstate)

@@ -2,7 +2,7 @@
 import { game } from './gstate.js';
 import { LuaTable, LuaUserdata } from './lua/interp.js';
 import { readobjnam, hands_obj } from './objnam.js';
-import { mksobj, mkobj, obj_extract_self, place_object, dealloc_obj } from './mklev.js';
+import { mksobj, mkobj, obj_extract_self, place_object, dealloc_obj } from './mkobj.js';
 import { newsym } from './display.js';
 import { get_table_objtype, get_table_objclass, cvt_to_abscoord } from './sp_lev.js';
 import { def_char_to_objclass } from './drawing.js';

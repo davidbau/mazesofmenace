@@ -18,7 +18,9 @@ const MAXPCHARS = 105; // from symbols.js
 // from this DAG. Do NOT add imports from objects.js, monsters.js, or
 // symbols.js into const.js — that would create a cycle.
 
-import { COMMIT_NUMBER, TELEPORT_BUILD_DATE } from './version.js';
+// Build metadata stays here so version.c functions can load independently.
+export const COMMIT_NUMBER = '0';
+export const TELEPORT_BUILD_DATE = '2026-04-18';
 // No imports from non-constant files — const.js is a leaf in the DAG
 import { game } from './gstate.js';
 import { registerStaticReset } from './statics.js';
@@ -2863,6 +2865,52 @@ export const HEADER_MACRO_NON_EMITTABLE = Object.freeze([
 // permonst.h constants (blacklisted header, manually maintained)
 export const NON_PM = -1;
 export const LOW_PM = 0;
+export const COIN_CLASS = 12; // objclass.h COIN_CLASS
+export const AT_BUTT = 4; // shared constant
+export const AT_NONE = 0; // monattk.h shared
+export const AT_CLAW = 1; // monattk.h shared
+export const AT_BITE = 2; // monattk.h shared
+export const AT_KICK = 3; // monattk.h shared
+export const AT_TUCH = 5; // monattk.h shared
+export const AT_STNG = 6; // monattk.h shared
+export const AT_SPIT = 10; // monattk.h shared
+export const AT_BREA = 12; // monattk.h shared
+export const AT_EXPL = 13; // monattk.h shared
+export const AT_BOOM = 14; // monattk.h shared
+export const AT_GAZE = 15; // monattk.h shared
+export const AT_TENT = 16; // monattk.h shared
+export const AT_WEAP = 254; // monattk.h shared
+export const AT_MAGC = 255; // monattk.h shared
+export const AT_HUGS = 7; // monattk.h shared
+export const AT_ENGL = 11; // monattk.h shared
+export const BOULDER = 475; // shared constant
+export const WAND_CLASS = 11; // shared constant
+export const TOOL_CLASS = 6; // shared constant
+export const AMULET_CLASS = 5; // shared constant
+export const CORPSE = 265; // shared constant
+export const CANDELABRUM_OF_INVOCATION = 262;
+export const SCR_SCARE_MONSTER = 326;
+export const SPBOOK_FIRST_OTYP = 366;
+export const POT_OIL = 321; // shared constant
+export const ARMOR_CLASS = 3; // shared by mkobj.js/mklev.js
+export const FOOD_CLASS = 7; // shared by mkobj.js/mklev.js
+export const GEM_CLASS = 13; // shared by mkobj.js/mklev.js
+export const HEAVY_IRON_BALL = 477; // shared by mkobj.js/mklev.js
+export const POTION_CLASS = 8; // shared by mkobj.js/mklev.js
+export const POT_EXTRA_HEALING = 308; // shared by mkobj.js/mklev.js
+export const POT_GAIN_ENERGY = 313; // shared by mkobj.js/mklev.js
+export const POT_HEALING = 307; // shared by mkobj.js/mklev.js
+export const POT_SPEED = 302; // shared by mkobj.js/mklev.js
+export const RING_CLASS = 4; // shared by mkobj.js/mklev.js
+export const SCROLL_CLASS = 9; // shared by mkobj.js/mklev.js
+export const SCR_CONFUSE_MONSTER = 325; // shared by mkobj.js/mklev.js
+export const SCR_ENCHANT_ARMOR = 323; // shared by mkobj.js/mklev.js
+export const SCR_ENCHANT_WEAPON = 328; // shared by mkobj.js/mklev.js
+export const SPBOOK_CLASS = 10; // shared by mkobj.js/mklev.js
+export const SPE_HEALING = 374; // shared by mkobj.js/mklev.js
+export const TALLOW_CANDLE = 224; // shared by mkobj.js/mklev.js
+export const WAN_DIGGING = 428; // shared by mkobj.js/mklev.js
+export const WEAPON_CLASS = 2; // shared by mkobj.js/mklev.js
 export const LEAVESTATUE = NON_PM - 1;
 export const NATTK = 6;
 export const NORMAL_SPEED = 12;
@@ -2949,3 +2997,19 @@ export function Is_juiblex_level(uz) {
     const lev = uz ?? g?.u?.uz;
     return !!jl && !!lev && lev.dnum === jl.dnum && lev.dlevel === jl.dlevel;
 }
+
+// objects.h: expensive camera object type, shared with item actions.
+export const _IA_EXPENSIVE_CAMERA_OTYP = 229;
+
+// objects.h object types shared by monster item use.
+export const _UNICORN_HORN = 261; /* u_init.js */
+export const WAN_DIGGING_OTYP = 428;
+export const SCR_TELEPORTATION_OTYP = 333;
+export const WAN_CREATE_MONSTER_OTYP = 413;
+export const SCR_CREATE_MONSTER_OTYP = 329;
+export const POT_FULL_HEALING_OTYP = 315;
+export const POT_EXTRA_HEALING_OTYP = 308;
+export const POT_HEALING_OTYP = 307;
+export const POT_SICKNESS_OTYP = 318;
+
+export const S_HUMAN_MLET = 53;   /* defsym.h MONSYM(53, '@', HUMAN, ...) */

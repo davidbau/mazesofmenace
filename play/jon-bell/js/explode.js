@@ -9,22 +9,25 @@ import { game } from './gstate.js';
 import { dist2, lowc } from './hacklib.js';
 import { is_demon, monPmname, nonliving, nonlivingMon } from './makemon.js';
 import { Monnam, cvt_adtyp_to_mseenres, monstseesu, monstunseesu } from './mcastu.js';
-import { is_youmonst, s_suffix, seemimic, ugolemeffects } from './mhitm.js';
-import { ignite_items } from './mhitu.js';
+import { is_youmonst, s_suffix, ugolemeffects } from './mhitm.js';
+import { seemimic } from './mon.js';
+import { ignite_items } from './trap.js';
 import { Soundeffect, mondead as mondead_zap, setmangry, wake_nearto } from './mon.js';
 import { Resists_Elem, resists_magm } from './mondata.js';
 import { You_hear, impossible, pline, pline_The } from './pline.js';
 import { PM_HEALER, PM_KNIGHT, PM_MONK } from './pm.generated.js';
 import { rehumanize as rehumanize_real } from './polyself.js';
 import { rndmonnam } from './do_name.js';
-import { d } from './rng.js';
+import { d } from './rnd.js';
 import { pay_for_damage } from './shk.js';
 import { end_burn } from './timeout.js';
 import { burnarmor, monkilled_trap } from './trap.js';
-import { XKILL_GIVEMSG, XKILL_NOCONDUCT, XKILL_NOCORPSE, XKILL_NOMSG, golemeffects, m_at, xkilled } from './uhitm.js';
+import { XKILL_GIVEMSG, XKILL_NOCONDUCT, XKILL_NOCORPSE, XKILL_NOMSG, m_at } from './uhitm.js';
+import { golemeffects, xkilled } from './mon.js';
 import { cansee } from './vision.js';
 import { AD_ACID, AD_COLD, AD_DISN, AD_DRST, AD_ELEC, AD_FIRE, AD_MAGM, AD_RBRE, DEADMONSTER, NO_KILLER_PREFIX_ZAP, PHYS_EXPL_TYPE, PM_WIZARD, POT_OIL, RAY, SCROLL_CLASS, SCR_FIRE, WAND_CLASS, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP, _Halluc, _ZAP_HALF_PHDAM, _cm_Antimagic, _completely_burns, _expl_deaf, _expl_digests, _expl_is_vampshifter, _expl_mon_moving, _expl_uhim, _expl_uhis, _wand_Role_if, _zp_burn_away_slime, destroy_items, destroy_items_mon, oc_dir_of, resist, zap_over_floor } from './zap.js';
-import { nomul, stop_occupation } from './allmain.js'; // relocate-fns
+import { stop_occupation } from './allmain.js';
+import { nomul } from './hack.js'; // relocate-fns
 import { obj_extract_self_general } from './cmd.js'; // relocate-fns
 import { IS_SINK, LARGEST_INT, MAY_DESTROY, MAY_FRACTURE, MAY_HITMON, MAY_HITYOU, N_DIRS, SHOPBASE, STATUE_TRAP, STONE, ZAP_POS, xdir, ydir } from './const.js'; // relocate-fns
 import { newsym } from './display.js'; // relocate-fns
@@ -33,21 +36,22 @@ import { _KO_BOULDER_OTYP, _KO_COIN_CLASS, _KO_EGG_OTYP, _KO_GLASS_MATERIAL, _dk
 import { breaks } from './dothrow.js'; // relocate-fns
 import { sobj_at } from './invent.js'; // relocate-fns
 import { splitobj } from './makemon.js'; // relocate-fns
-import { ohitmon } from './mhitu.js'; // relocate-fns
-import { STATUE, place_object } from './mklev.js'; // relocate-fns
+import { ohitmon } from './mthrowu.js'; // relocate-fns
+import { STATUE } from './mklev.js';
+import { place_object } from './mkobj.js'; // relocate-fns
 import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js'; // relocate-fns
 import { hideunder, maybe_unhide_at } from './mon.js'; // relocate-fns
 import { closed_door } from './monmove.js'; // relocate-fns
 import { thitu } from './mthrowu.js'; // relocate-fns
 import { Tobjnam } from './objnam.js'; // relocate-fns
 import { unpunish } from './read.js'; // relocate-fns
-import { rn2, rnd } from './rng.js'; // relocate-fns
+import { rn2, rnd } from './rnd.js'; // relocate-fns
 import { addtobill as shk_addtobill, costly_spot as shk_costly_spot, shop_keeper } from './shk.js';
 import { in_rooms } from './hack.js'; // relocate-fns
-import { credit_report } from './shk_credit.js'; // relocate-fns
-import { stackobj } from './sp_lev.js'; // relocate-fns
+import { credit_report } from './shk.js'; // relocate-fns
+import { stackobj } from './invent.js'; // relocate-fns
 import { deltrap, t_at } from './trap.js'; // relocate-fns
-import { dmgval } from './uhitm.js'; // relocate-fns
+import { dmgval } from './weapon.js'; // relocate-fns
 import { break_statue, fracture_rock } from './zap.js'; // relocate-fns
 
 /* pm.generated.js's generator dropped this one as a "duplicate" of PM_PRIEST

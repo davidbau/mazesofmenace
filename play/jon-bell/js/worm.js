@@ -15,7 +15,8 @@ import { game } from './gstate.js';
 import { impossible } from './steed.js';
 import { impossible as cutworm_impossible } from './pline.js';
 import { cansee } from './vision.js';
-import { rn2, rnd, rn1, d, rn2_on_display_rng } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd, d, rn2_on_display_rng } from './rnd.js';
 import { mcalcmove } from './mon.js';
 
 // C ref: worm.c:77-79 — static struct wseg *wheads[MAX_NUM_WORMS],

@@ -1,11 +1,15 @@
 // extralev.js — C ref: extralev.c.
 import { CORR, NO_MM_FLAGS, D_NODOOR, IS_WALL, OROOM, SCORR, XL_DOWN, XL_LEFT, XL_RIGHT, XL_UP } from './const.js';
 import { game } from './gstate.js';
-import { christen_monst, roguename } from './mhitm.js';
-import { PM_GHOST, add_room, curse, dodoor, makemon, mksobj_at, weight } from './mklev.js';
+import { christen_monst } from './mhitm.js';
+import { roguename } from './do_name.js';
+import { PM_GHOST, add_room, curse, dodoor, weight } from './mklev.js';
+import { mksobj_at } from './mkobj.js';
+import { makemon } from './makemon.js';
 import { somex, somey } from './mkroom.js';
 import { impossible as lifecycle_impossible } from './pline.js';
-import { rn1, rn2, rnd } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 
 /* C decl.h:819 `struct rogueroom r[3][3];` inside `struct grid gr` — a GLOBAL,
  * read by roguecorr()/miniwalk() after makeroguerooms() has filled it.  Same

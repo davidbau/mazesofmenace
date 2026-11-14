@@ -1,6 +1,7 @@
 // js/topten.js — nethack-c/src/topten.c ported functions
 
-import { rn2, rn1, rnd } from './rng.js';
+import { rn1 } from './rng.js';
+import { rn2, rnd } from './rnd.js';
 import { clong, LONG_MIN, LONG_MAX } from './integer.js';
 import { CORPSTAT_FEMALE, CORPSTAT_MALE } from './const.js';
 import { canseemon } from './display.js';
@@ -9,10 +10,11 @@ import { depth, deepest_lev_reached } from './dungeon.js';
 import { genders as _tt_genders, aligns as _tt_aligns } from './roles.js';
 import { yyyymmdd } from './calendar.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
-import { set_corpsenm } from './mklev.js';
+import { set_corpsenm } from './mkobj.js';
 import { christen_monst } from './mhitm.js';
 export { oname } from './objnam.js';
-import { oname, an } from "./objnam.js";
+import { an } from "./objnam.js";
+import { oname } from './do_name.js';
 import { display_text_window } from './com_pager.js';
 
 /**
@@ -58,7 +60,7 @@ function get_rnd_toptenentry() {
     const rfile = fopen_datafile("record", "r", "scoreprefix");
     /* topten.c:1388-1391 */
     if (!rfile) {
-        impossible("Cannot open record file!");
+        impossible_topten("Cannot open record file!");
         return null;
     }
 
@@ -131,7 +133,7 @@ function classmon(plrole) {
     if (code === 'E')
         return _TT_ROLE_MNUM.Ran; /* C's PM_RANGER; see the table's note on why
                                    * js/pm.generated.js is not the source here */
-    impossible('What weird role is this? (%s)', plrole);
+    impossible_topten('What weird role is this? (%s)', plrole);
     return _TT_PM_HUMAN_MUMMY;
 }
 
@@ -139,6 +141,8 @@ import { KILLED_BY_AN, KILLED_BY, NO_KILLER_PREFIX } from './const.js';
 import { game, wizard, discover } from './gstate.js';
 import { raw_print } from './rawterm.js';
 import { fopen_datafile, unlock_file } from './files.js'; // relocate-fns
+import { copynchars } from './hacklib.js'; // relocate-fns
+export { copynchars } from './hacklib.js'; // relocate-fns
 /**
  * void formatkiller(char *buf, unsigned siz, int how, boolean incl_helpless)
  * nethack-c/src/topten.c:89
@@ -172,7 +176,7 @@ export function formatkiller(buf, siz, how, incl_helpless) {
 
     switch (svk.killer.format) {
     default:
-        impossible("bad killer format? (%d)", svk.killer.format);
+        impossible_topten("bad killer format? (%d)", svk.killer.format);
         /* FALLTHRU */
     case NO_KILLER_PREFIX:
         break;
@@ -251,7 +255,7 @@ export function formatkiller(buf, siz, how, incl_helpless) {
  * impossible() — Log an error (C no-op for now in replay).
  * In C this is a logging macro; in JS replay mode it's a no-op.
  */
-function impossible(fmt, arg) {
+function impossible_topten(fmt, arg) {
     // no-op in replay — the C side already logged it
 }
 
@@ -289,18 +293,6 @@ export function tt_oname(otmp) {
  * (before any module body evaluates), and nothing here calls them at load. */
 
 
-export function copynchars(dst, src, n) {
-    const s = (src == null) ? "" : String(src);
-    let i = 0;
-    let out = "";
-    n = n | 0;
-    /* end-of-JS-string is the '\0' terminator; an embedded '\0' terminates too */
-    while (n > 0 && i < s.length && s[i] !== "\0" && s[i] !== "\n") {
-        out += s[i++];
-        --n;
-    }
-    return out;
-}
 export function free_ttlist(tt_head) { /* stub */ }
 /* C topten.c:182 observable_depth(lev).  The whole endgame remap in that
  * function sits inside `#if 0`, so it reduces to depth(lev). */
@@ -543,12 +535,12 @@ export function writeentry(rfile, tt) {
         + ` ${tt.maxlvl | 0} ${tt.hp | 0} ${tt.maxhp | 0} ${tt.deaths | 0}`
         + ` ${tt.deathdate | 0} ${tt.birthdate | 0} ${tt.uid | 0} `;
     out += `${tt.plrole} ${tt.plrace} ${tt.plgend} ${tt.plalign} `;
-    out += `${onlyspace(tt.name) ? '_' : tt.name},${tt.death}\n`;
+    out += `${onlyspace_topten(tt.name) ? '_' : tt.name},${tt.death}\n`;
     rfile.out += out;
 }
 
 /* C hacklib.c:419 onlyspace(s) — TRUE for the empty string too. */
-function onlyspace(s) {
+function onlyspace_topten(s) {
     const str = String(s ?? '');
     for (let i = 0; i < str.length; i++)
         if (str[i] !== ' ' && str[i] !== '\t')
@@ -620,7 +612,7 @@ function fclose(file) {
     if (file && file.write)
         vfsWriteFile(file.name, file.out);
 }
-function ordin(n) {
+function ordin_topten(n) {
     let nn = Math.abs(n) % 100;
     if (Math.trunc(nn / 10) === 1) return "th";
     switch (nn % 10) { case 1: return "st"; case 2: return "nd"; case 3: return "rd"; default: return "th"; }
@@ -815,7 +807,7 @@ export async function topten(how, when) {
                     topten_print("You made the top ten list!");
                 } else {
                     let pbuf;
-                    pbuf = "You reached the " + rank0 + ordin(rank0) +
+                    pbuf = "You reached the " + rank0 + ordin_topten(rank0) +
                            " place on the top " +
                            (gs.sysopt ? gs.sysopt.entrymax : 100) + " list.";
                     topten_print(pbuf);
