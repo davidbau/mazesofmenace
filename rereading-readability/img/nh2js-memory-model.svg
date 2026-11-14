@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 760 330" font-family="Georgia, serif">
+<style>
+.t { font-size: 13px; fill: #3a2c1a }
+.s { font-size: 11.5px; fill: #6b5a43 }
+.m { font-family: Menlo, Consolas, monospace; font-size: 12px; fill: #3a2c1a }
+.h { font-size: 13px; font-weight: 600; fill: #3a2c1a }
+.box { fill: #f6efdc; stroke: #6b5a43; stroke-width: 1.3 }
+.acc { fill: #b0452a; fill-opacity: 0.10; stroke: #b0452a; stroke-width: 1.5 }
+.heap { fill: #e9ddc0; stroke: #3a2c1a; stroke-width: 1.5 }
+.ar { stroke: #3a2c1a; stroke-width: 1.3; fill: none; marker-end: url(#a) }
+.cell { fill: #fbf7ea; stroke: #6b5a43; stroke-width: 1 }
+.hot { fill: #b0452a; fill-opacity: 0.30; stroke: #b0452a; stroke-width: 1.2 }
+</style>
+<defs><marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#3a2c1a"/></marker></defs>
+
+<text x="14" y="20" class="h">Generated game code</text>
+<rect x="14" y="28" width="300" height="46" class="box"/>
+<text x="26" y="56" class="m">mtmp.data.mlet == S_HUMAN</text>
+
+<text x="14" y="112" class="h">A view: one JS object per struct</text>
+<rect x="14" y="120" width="300" height="92" class="box"/>
+<text x="26" y="142" class="t">a monst view: { _a: its address in the heap }</text>
+<text x="26" y="162" class="m">get data() { return view(permonst,</text>
+<text x="26" y="178" class="m">    u32[(this._a + o) &gt;&gt; 2]); }</text>
+<text x="26" y="200" class="s">simplified; o is the field's offset in the struct</text>
+
+<rect x="14" y="238" width="300" height="76" class="acc"/>
+<text x="26" y="258" class="h">view(cls, address)</text>
+<text x="26" y="277" class="s">one canonical object per (struct, address),</text>
+<text x="26" y="293" class="s">so C pointer equality is JS ==, and</text>
+<text x="26" y="309" class="s">the null pointer is null</text>
+
+<text x="400" y="20" class="h">One heap, laid out like the C build</text>
+<rect x="400" y="28" width="346" height="196" class="heap"/>
+<text x="412" y="48" class="s">one ArrayBuffer (wasm32 layout)</text>
+<rect x="412" y="58" width="322" height="26" class="cell"/>
+<rect x="412" y="58" width="52" height="26" class="cell"/>
+<rect x="464" y="58" width="78" height="26" class="hot"/>
+<text x="470" y="75" class="s">monst</text>
+<rect x="542" y="58" width="104" height="26" class="cell"/>
+<rect x="646" y="58" width="88" height="26" class="cell"/>
+<text x="418" y="75" class="s">objs</text>
+<text x="552" y="75" class="s">permonst</text>
+<text x="652" y="75" class="s">levl[][]</text>
+<text x="412" y="112" class="t">typed-array windows onto the same bytes:</text>
+<text x="424" y="134" class="m">chars  Int8Array     uchars Uint8Array</text>
+<text x="424" y="152" class="m">i16 u16  i32 u32     f32 f64</text>
+<text x="412" y="180" class="s">the C library (printf, Lua) lives in the</text>
+<text x="412" y="196" class="s">same memory, so there is no copying at the</text>
+<text x="412" y="212" class="s">boundary between game code and library</text>
+
+<path d="M300,74 V116" class="ar"/>
+<path d="M300,212 V234" class="ar"/>
+<path d="M314,166 H394" class="ar"/>
+<text x="324" y="156" class="s">reads u32[...]</text>
+</svg>
