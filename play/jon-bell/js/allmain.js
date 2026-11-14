@@ -1975,10 +1975,12 @@ async function eat_occupation_turn() {
                     : _ownFrame?.cells ? (_ownFrame.moves | 0) : thisTurnMoves;
                 const morc = await occupation_force_more(
                     _committed, _pageFrame, _pageMoves,
-                    /* A pre-eat pline (encumber_msg, allmain.c:208) pages over the status its own
-                     * flush_screen() painted, taken mid-meal (u.uhs not yet Satiated), not the
-                     * live post-meal u.uhs. */
-                    (_fromPreEat && g._occCurBotl && g._occCurBotl.uhs != null)
+                    /* C pline.c:273-276: the incoming pline's flush owns the
+                     * hunger status too. Post-meal effects can change u.uhs
+                     * again before these deferred pages are assembled:
+                     * eat.c:563 -> polyself.c:414-436 resets a satiated hero's
+                     * hunger, after an earlier encumbrance pline flushed it. */
+                    ((_fromPreEat || _ownFrame) && g._occCurBotl && g._occCurBotl.uhs != null)
                         ? (g._occCurBotl.uhs | 0) : _displayedUhs(part),
                     !_fromPreEat && !g.occupation, undefined, _interrupt);
                 /* more() runs inside this incoming pline's update_topl.

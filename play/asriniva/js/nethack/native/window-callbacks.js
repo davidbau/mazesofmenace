@@ -1,3 +1,4 @@
+import {isNativeValueReference} from './value-records.js';
 // Per-game window function identities. Byte tokens remain the interchange
 // format; only table mutations resolve a token. Foreign callbacks retain the
 // generic checked boundary, including its instrumentation and error behavior.
@@ -22,7 +23,7 @@ export function createNativeWindowCallbacks(environment, owner) {
     const fn=functions.typedCallback(token,signature);slot.fn=fn;slot.token=token;
    }
    const fn=slot.fn,native=fn.prepareNativeEntry?.()??fn.nativeEntry??fn;
-   return native.nativeState===owner&&native.nativeDirect?native(...args):functions.indirect(token,signature,...args);
+   return native.nativeState===owner&&native.nativeDirect?native(...args):functions.indirect(token,signature,...args.map((value,i)=>signature[i+1]==='p'&&isNativeValueReference(value)?value.address:value));
  }
  return Object.freeze({
   invoke(name,signature,...args){const slot=slots.get(name);if(!slot)throw new TypeError('Unknown native window callback '+name);return invokeCaptured(name,signature,owner.nativeArena.pointer(slot.at),...args);},

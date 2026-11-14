@@ -47,7 +47,7 @@ import {
 } from './dbridge.js';
 import { isok } from './cmd_isok.js';
 import {
-    ACID_RES, ARTICLE_THE, A_INT, A_STR, A_DEX, A_CHA, A_CON, AC_VALUE, ARM, A_WIS, BUFSZ, LARGEST_INT, MAX_SPELL_STUDY, COLD_RES, COLNO, CORR, D_BROKEN, D_NODOOR, DB_FLOOR, DB_ICE, DB_UNDER, DISINT_RES, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_TETHER, FLASHED_LIGHT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, ENL_GAMEINPROGRESS, FIRE_RES, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS, GETOBJ_SUGGEST, HEADSTONE, IS_FURNITURE, HWALL, ICE, INTRINSIC, INVIS_BEAM, ICED_MOAT, ICED_POOL, IRONBARS, LEFT_HANDED, IS_FOUNTAIN, IS_ROOM, IS_SINK, IS_WALL, IS_WATERWALL, IS_DOOR, In_mines, TEST_MOVE, is_hole, is_pit, DIED, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, EXPL_FIERY, KILLED_BY_AN, LL_ARTIFACT, LL_CONDUCT, LL_WISH, MAGICENLIGHTENMENT, NO_KILLER_PREFIX, NO_TRAP_FLAGS, TIMEOUT, TIMER_LEVEL, TIMER_OBJECT, REVIVE_MON, ROT_CORPSE, COST_CANCEL, COST_DRAIN, COST_UNCURS, COST_UNBLSS, thats_enough_tries, st_all, PHYS_EXPL_TYPE, PICK_NONE, PICK_ONE, MENU_BEHAVE_STANDARD, POLY_NOFLAGS, PLNMSG_ENVELOPED_IN_GAS, POOL, MOAT, PIT, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SKILLED, P_UNSKILLED, Is_airlevel, Is_rogue_level, Is_waterlevel, LAVAWALL, M_AP_MONSTER, M_AP_FURNITURE, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_ACID, M_SEEN_REFL, M_SEEN_SLEEP, M_SEEN_DISINT, OBJ_AT, OBJ_FLOOR, OBJ_INVENT, OBJ_CONTAINED, OBJ_MINVENT, OBJ_BURIED, OBJ_FREE, OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, BURIED_TOO, CONTAINED_TOO, FM_FMON, GRAVE, MINV_ALL, MINV_NOLET, PLNMSG_OBJ_GLOWS, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_HISTORIC, STATUE_TRAP, CXN_PFX_THE, CXN_NORMAL, CXN_NO_PFX, MM_FEMALE, MM_ADJACENTOK, MM_MALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, NO_MINVENT, NON_PM, NOTELL, TELL, G_GENOD, has_mcorpsenm, ROOM, ROWNO, SDOOR, SCORR, VIBRATING_SQUARE, SHOCK_RES, POISON_RES, SHOPBASE, SHOP_BARS_COST, SHOP_DOOR_COST, STONE, STRAT_WAITMASK, TT_INFLOOR, TT_LAVA, MELT_ICE_AWAY, VWALL, nothing_happens, ONAME_KNOW_ARTI, ONAME_WISH, INVIS, KICKED_WEAPON, THROWN_TETHERED_WEAPON, THROWN_WEAPON, ZAPPED_WAND, WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, WEB, W_ACCESSORY, W_ART, W_ARTI, W_AMUL, W_ARMC, W_ARM, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_RING, W_RINGL, W_QUIVER, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEAPONS, W_WEP, W_NONDIGGABLE, XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, ZAP_POS, xdir, ydir, engulfing_u, u_at, uhim, Upolyd, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, ANIMATE_SPELL, ERODE_CORRODE, vision_clears, } from './const.js';
+    ACID_RES, ARTICLE_THE, A_INT, A_STR, A_DEX, A_CHA, A_CON, AC_VALUE, ARM, A_WIS, BUFSZ, LARGEST_INT, MAX_SPELL_STUDY, COLD_RES, COLNO, CORR, D_BROKEN, D_NODOOR, DB_FLOOR, DB_ICE, DB_UNDER, DISINT_RES, DISP_BEAM, DISP_CHANGE, DISP_END, DISP_FLASH, DISP_TETHER, FLASHED_LIGHT, ECMD_CANCEL, ECMD_OK, ECMD_TIME, ENL_GAMEINPROGRESS, FIRE_RES, GETOBJ_EXCLUDE, GETOBJ_NOFLAGS, GETOBJ_SUGGEST, HEADSTONE, IS_FURNITURE, HWALL, ICE, INTRINSIC, INVIS_BEAM, ICED_MOAT, ICED_POOL, IRONBARS, LEFT_HANDED, IS_FOUNTAIN, IS_ROOM, IS_SINK, IS_WALL, IS_WATERWALL, IS_DOOR, In_mines, TEST_MOVE, is_hole, is_pit, DIED, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, EXPL_FIERY, KILLED_BY_AN, LL_ARTIFACT, LL_CONDUCT, LL_WISH, MAGICENLIGHTENMENT, NO_KILLER_PREFIX, NO_TRAP_FLAGS, TIMEOUT, TIMER_LEVEL, TIMER_OBJECT, REVIVE_MON, ROT_CORPSE, COST_CANCEL, COST_DRAIN, COST_UNCURS, COST_UNBLSS, thats_enough_tries, st_all, PHYS_EXPL_TYPE, PICK_NONE, PICK_ONE, MENU_BEHAVE_STANDARD, POLY_NOFLAGS, PLNMSG_ENVELOPED_IN_GAS, POOL, MOAT, PIT, P_BASIC, P_EXPERT, P_ISRESTRICTED, P_SKILLED, P_UNSKILLED, Is_airlevel, Is_rogue_level, Is_waterlevel, LAVAWALL, M_AP_FURNITURE, M_AP_NOTHING, M_AP_OBJECT, M_AP_TYPE, M_SEEN_FIRE, M_SEEN_MAGR, M_SEEN_ELEC, M_SEEN_COLD, M_SEEN_ACID, M_SEEN_REFL, M_SEEN_SLEEP, M_SEEN_DISINT, OBJ_AT, OBJ_FLOOR, OBJ_INVENT, OBJ_CONTAINED, OBJ_MINVENT, OBJ_BURIED, OBJ_FREE, OBJ_MIGRATING, OBJ_ONBILL, OBJ_LUAFREE, BURIED_TOO, CONTAINED_TOO, FM_FMON, GRAVE, MINV_ALL, MINV_NOLET, PLNMSG_OBJ_GLOWS, CORPSTAT_FEMALE, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_HISTORIC, STATUE_TRAP, CXN_PFX_THE, CXN_NORMAL, CXN_NO_PFX, MM_FEMALE, MM_ADJACENTOK, MM_MALE, MM_NOCOUNTBIRTH, MM_NOMSG, MM_NOTAIL, MM_NOWAIT, NO_MINVENT, NON_PM, NOTELL, TELL, G_GENOD, has_mcorpsenm, ROOM, ROWNO, SDOOR, SCORR, VIBRATING_SQUARE, SHOCK_RES, POISON_RES, SHOPBASE, SHOP_BARS_COST, SHOP_DOOR_COST, STONE, STRAT_WAITMASK, TT_INFLOOR, TT_LAVA, MELT_ICE_AWAY, VWALL, nothing_happens, ONAME_KNOW_ARTI, ONAME_WISH, INVIS, KICKED_WEAPON, THROWN_TETHERED_WEAPON, THROWN_WEAPON, ZAPPED_WAND, WAND_BACKFIRE_CHANCE, WAND_WREST_CHANCE, WEB, W_ACCESSORY, W_ART, W_ARTI, W_AMUL, W_ARMC, W_ARM, W_ARMF, W_ARMG, W_ARMH, W_ARMOR, W_ARMS, W_ARMU, W_RING, W_RINGL, W_QUIVER, W_SADDLE, W_SWAPWEP, W_TOOL, W_WEAPONS, W_WEP, W_NONDIGGABLE, XKILL_GIVEMSG, XKILL_NOMSG, XKILL_NOCORPSE, ZAP_POS, xdir, ydir, engulfing_u, u_at, uhim, Upolyd, NC_SHOW_MSG, NC_VIA_WAND_OR_SPELL, ANIMATE_SPELL, ERODE_CORRODE, vision_clears, } from './const.js';
 import { stop_occupation } from './allmain.js';
 import { acurr, adjalign, exercise, poisoned } from './attrib.js';
 import { dirtocoord, getdir, xytodir, y_n } from './cmd.js';
@@ -207,8 +207,8 @@ import { deltrap } from './trap.js';
 import { delfloortrap, fill_pit, maketrap, openholdingtrap, closeholdingtrap, openfallingtrap, animate_statue, activate_statue_trap, reset_utrap, set_utrap, sokoban_guilt, t_at, trapname, trap_ice_effects } from './trap.js';
 import { dotrap, mintrap } from './trap_effects.js';
 import {
-    erode_armor, flash_hits_mon, m_is_steadfast, shade_miss,
-    that_is_a_mimic,
+    disguised_as_mon, disguised_as_non_mon, erode_armor, flash_hits_mon,
+    m_is_steadfast, shade_miss, that_is_a_mimic,
 } from './uhitm.js';
 import { enexto, rloco, tele, u_teleport_mon } from './teleport.js';
 import {
@@ -573,7 +573,12 @@ export async function revive(corpse, byHero = false, rawEnv = {}) {
     const env = revivalEnv(rawEnv);
     const { state } = env;
     const message = env.message ?? ttyPline;
-    if (corpse?.otyp !== CORPSE) return null;
+    if (!corpse) return null;
+    if (corpse.otyp !== CORPSE) {
+        await impossible(`Attempting to revive ${xname(corpse, state)}?`,
+            state, env);
+        return null;
+    }
 
     const originalType = corpse.corpsenm;
     const originalSpecies = state.mons?.[originalType];
@@ -1009,7 +1014,7 @@ async function boxlock_invent(obj, state = game) {
 export async function release_hold(state = game) {
     const holder = state.u?.ustuck;
     if (!holder) {
-        note_unported('zap.c impossible release_hold');
+        note_unported('pline.c impossible'); // release_hold
         return;
     }
     const swallowed = Boolean(state.u?.uswallow);
@@ -1495,7 +1500,7 @@ export async function zapyourself(obj, ordinary, state = game) {
     }
 
     default:
-        note_unported('zap.c impossible');
+        note_unported('pline.c impossible');
         break;
     }
     // Several arms above can end the game (a death ray, system shock from
@@ -3091,7 +3096,7 @@ export async function bhito(obj, wand, state = game,
         obj.bypass = false;
     }
     if (obj?.where !== OBJ_FLOOR && wand.otyp !== SPE_STONE_TO_FLESH)
-        note_unported('zap.c bhito impossible object location');
+        note_unported('pline.c impossible'); // object location
 
     if (obj === state.uball) {
         res = 0;
@@ -3305,7 +3310,7 @@ export async function bhito(obj, wand, state = game,
             res = await stone_to_flesh_obj(obj, state, random, rawEnv);
             break;
         default:
-            note_unported('zap.c bhito impossible effect');
+            note_unported('pline.c impossible'); // bhito effect
             break;
         }
     }
@@ -3617,7 +3622,7 @@ export async function bhitm(monster, wand, state = game,
         reveal_invis = true;
         learn_it = cansee(hitpos.x, hitpos.y, state);
         if (resists_magm(monster, state)) {
-            if (disguised_mimic && M_AP_TYPE(monster) !== M_AP_MONSTER)
+            if (disguised_mimic && !disguised_as_mon(monster))
                 seemimic(monster, state);
             await shieldeff(monster.mx, monster.my, state);
             await ttyPline('Boing!', state, rawEnv);
@@ -3817,7 +3822,7 @@ export async function bhitm(monster, wand, state = game,
         }
     } else {
         // C's default is impossible() for an invalid effect/type pairing.
-        note_unported('zap.c bhitm impossible effect');
+        note_unported('pline.c impossible'); // bhitm effect
     }
     if (wake && monster.mhp >= 1) {
         await wakeup(monster, !helpful_gesture, {
@@ -5539,7 +5544,7 @@ export async function mon_spell_hits_spot(
             x, y, zapDamageType, shopDamage, true, 0, state, random, env,
         );
     } else {
-        note_unported('zap.c impossible');
+        note_unported('pline.c impossible');
     }
 }
 
@@ -5632,9 +5637,7 @@ async function buzzmonst(
     if (forcemiss
         || !zap_hit(find_mac(mon, state), spellType, random, state)) {
         if (saymiss
-            || (canseemon(mon, state)
-                // monst.h disguised_as_non_mon()
-                && !(M_AP_TYPE(mon) && M_AP_TYPE(mon) !== M_AP_MONSTER)))
+            || (canseemon(mon, state) && !disguised_as_non_mon(mon, state)))
             await miss(flash_str(fltyp, false, state, random), mon, state, env);
         return { hit: false, reflected: false, clearGas: false, stop: false };
     }

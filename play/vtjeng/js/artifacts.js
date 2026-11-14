@@ -100,6 +100,7 @@ import {
     NOTELL,
     engulfing_u,
     NECK,
+    DISMOUNT_THROWN,
 } from './const.js';
 import { isok } from './cmd_isok.js';
 import { game } from './gstate.js';
@@ -113,7 +114,7 @@ import {
 import { use_crystal_ball } from './detect.js';
 import { inside_shop } from './shk.js';
 import { getrumor } from './random_text.js';
-import { verbalize, youFeel } from './pline.js';
+import { impossible, verbalize, youFeel } from './pline.js';
 import { bcsign } from './obj.js';
 import { HCOLORS } from './random_text_data.js';
 import {
@@ -216,6 +217,7 @@ import { coreRandom, d, rn2, rnd, rn2_on_display_rng, rnz } from './rng.js';
 import { CLR_BRIGHT_BLUE, CLR_RED, NO_COLOR } from './terminal.js';
 import { ttyPline } from './tty_message.js';
 import { note_unported } from './unported.js';
+import { dismount_steed } from './steed.js';
 import { livelog_printf } from './pline.js';
 import { freeinv, getobj, hold_another_object, nxtobj, obj_extract_self, obfree, update_inventory } from './invent.js';
 import {
@@ -1986,7 +1988,7 @@ export async function artifact_hit(
     dmgptr.value += spec_dbon(otmp, mdef, dmgptr.value, state, effectEnv);
 
     if (youattack && youdefend) {
-        // C: impossible("attacking yourself with weapon?");
+        await impossible('attacking yourself with weapon?', state, env);
         return false;
     }
 
@@ -2658,7 +2660,7 @@ async function arti_invoke(obj, state = game) {
     let res = ECMD_OK;
 
     if (!obj) {
-        // impossible("arti_invoke without obj")
+        await impossible('arti_invoke without obj', state);
         return ECMD_OK;
     }
     const oart = get_artifact(obj, state);
@@ -2702,7 +2704,7 @@ async function arti_invoke(obj, state = game) {
         case FIRESTORM: res = await invoke_storm_spell(obj, state); break;
         case BLINDING_RAY: res = await invoke_blinding_ray(obj, state); break;
         default:
-            // impossible("Unknown invoke power %d.", oart.inv_prop)
+            await impossible(`Unknown invoke power ${oart.inv_prop}.`, state);
             break;
         }
         return res;
@@ -3192,8 +3194,7 @@ export async function retouch_equipment(dropflag, state = game, rawEnv = {}) {
         /* untouchable() expects inventory, but removal is harmless for a
            saddle and dropping is suppressed as in the C source. */
         if (await untouchable(obj, false, state, retouchEnv))
-            // artifact.c discards dismount_steed()'s void result here.
-            note_unported('steed.c dismount_steed DISMOUNT_THROWN');
+            await dismount_steed(DISMOUNT_THROWN, state, retouchEnv);
     }
 
     /* TODO? Force off gloves before rings and cloak [suit] before suit [shirt].

@@ -75,7 +75,7 @@ import { restore_light_sources } from './light.js';
 import { add_worn_property, setworn } from './worn.js';
 import { coreRandom, rnd } from './rng.js';
 import {
-    parseSnapshot, SAVE_FILE_PATH, savemonchn, saveobjchn,
+    parseSnapshot, savemonchn, saveobjchn,
     shift_level_edog_times,
 } from './save.js';
 import { restore_oracles } from './rumors.js';
@@ -85,11 +85,13 @@ import { set_residency, restshk } from './shk.js';
 import { rest_rooms } from './mkroom.js';
 import { stairway_add, stairway_at, stairway_free_all } from './stairs.js';
 import { vfsReadFile, vfsDeleteFile, vfsListFiles } from './storage.js';
+import { set_savefile_name } from './files.js';
+import { RECORDER_UID } from './unixunix.js';
 import { initrack } from './track.js';
 import { _uInitInternals } from './u_init.js';
 import { set_uasmon } from './polyself.js';
 import { select_menu } from './windows.js';
-import { TTY_STARTUP_BANNER } from './tty_startup.js';
+import { copyright_banner_line } from './version.js';
 import { tty_putmsghistory } from './topl.js';
 
 // C ref: restore.c restore_msghistory(). The callback buffers messages in
@@ -100,19 +102,25 @@ export function restore_msghistory(messages, state = game) {
     if (saved.length) tty_putmsghistory(null, true, state);
 }
 
-// C ref: files.c get_saved_games(). The browser save layer has one stable
-// `nhsave` path rather than C's uid-and-name-derived files, so the one JSON
-// snapshot is the complete saved-game list for this game instance.
+// C ref: files.c get_saved_games() (1397-1540), the UNIX arm. Each file in
+// save/ whose name sscanf("%d%63s") splits into this process's uid and a rest
+// contributes the name plname_from_file() reads from it, here the snapshot's
+// plname; the names are then sorted with strcmp().
 export function get_saved_games(_state = game) {
-    if (!vfsListFiles('').includes(SAVE_FILE_PATH)) return [];
-    const raw = vfsReadFile(SAVE_FILE_PATH);
-    if (raw == null) return [];
-    try {
-        const snapshot = JSON.parse(raw);
-        return snapshot.plname ? [String(snapshot.plname)] : [];
-    } catch {
-        return [];
+    const result = [];
+    for (const path of vfsListFiles('save/')) {
+        const match = /^([-+]?\d+)(\S{1,63})/u.exec(path.slice('save/'.length));
+        if (!match || Number(match[1]) !== RECORDER_UID) continue;
+        const raw = vfsReadFile(path);
+        if (raw == null) continue;
+        try {
+            const snapshot = JSON.parse(raw);
+            if (snapshot.plname) result.push(String(snapshot.plname));
+        } catch {
+            // plname_from_file() returns null for a file it cannot read.
+        }
     }
+    return result.sort((a, b) => (a < b ? -1 : a > b ? 1 : 0));
 }
 
 // C ref: restore.c restore_menu() (1536-1619). The menu is asynchronous in
@@ -135,7 +143,8 @@ export async function restore_menu(_bannerwin = null, state = game) {
     items.push({ selector: 'q', label: 'Never mind (quit)', value: -1 });
     const choice = await select_menu(state, {
         title: 'Select one of your saved games',
-        lines: [...TTY_STARTUP_BANNER, ''],
+        // COPYRIGHT_BANNER_[ABCD], then an empty line (restore.c:1557-1560).
+        lines: [1, 2, 3, 4].map(copyright_banner_line).concat(''),
         items,
         cancelValue: null,
     });
@@ -261,7 +270,10 @@ function restoreLevelAt(level) {
 // VFS storage, applies it to the game object, and reconstructs computed
 // state. Returns true on success; false if no save file exists.
 export async function dorestore(state = game) {
-    const raw = vfsReadFile(SAVE_FILE_PATH);
+    // C ref: files.c restore_saved_game() names the file from the current
+    // svp.plname; dorecover() then reads the saved name over it.
+    const savefile = set_savefile_name(state);
+    const raw = vfsReadFile(savefile);
     if (raw == null) return false;
 
     const snapshot = parseSnapshot(raw);
@@ -644,7 +656,7 @@ export async function dorestore(state = game) {
     // C ref: dorecover():904 delete_savefile(). The JS port deletes the
     // save from VFS so a subsequent segment does not restore it again.
     if (!state.wizard && !state.discover) {
-        vfsDeleteFile(SAVE_FILE_PATH);
+        vfsDeleteFile(savefile);
     }
 
     restore_msghistory(snapshot.msghistory, state);
@@ -834,9 +846,13 @@ export function restmonchn(first, state) {
             for (obj = mtmp.minvent; obj; obj = obj.nobj)
                 if (obj.owornmask & W_WEP)
                     break;
-            // The miss arm is C's MON_NOWEP(mtmp) plus an impossible()
-            // report; the pointer reset is the state change.
-            mtmp.mw = obj ?? null;
+            if (obj)
+                mtmp.mw = obj;
+            else {
+                mtmp.mw = null; // C's MON_NOWEP(mtmp)
+                // C: impossible("bad monster weapon restore");
+                note_unported('pline.c impossible');
+            }
         }
         if (mtmp.isshk)
             restshk(mtmp, false, state);

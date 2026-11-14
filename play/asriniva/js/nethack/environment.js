@@ -381,13 +381,15 @@ export function createStandaloneEnvironment(options={}) {
         status:linker.status,startModule:linker.start,
         record:transport.record,array:transport.array,address};
     register('runtime-string-helpers',{__isspace:c=>services.isspace(c),Strlen_:(value,caller,line)=>base.strutil('Strlen_',typeof value==='string'?services.literal(value):address(value),typeof caller==='string'?services.literal(caller):address(caller),transport.int(line))});
-    register('runtime-public-allocation',{
+    const nativeAllocations={
         alloc:n=>base.alloc('alloc',transport.uint(n)),
         re_alloc:(p,n)=>base.alloc('re_alloc',address(p),transport.uint(n)),
         fmt_ptr:p=>base.alloc('fmt_ptr',p?.address??p??0),
         FITSint_:(n,file,line)=>base.alloc('FITSint_',transport.long(n),typeof file==='string'?services.literal(file):address(file),transport.int(line)),
         FITSuint_:(n,file,line)=>base.alloc('FITSuint_',transport.ulong(n),typeof file==='string'?services.literal(file):address(file),transport.int(line)),
-    });
+    };
+    for(const [name,fn]of Object.entries(nativeAllocations)){fn.nativeDirect=true;fn.nativeState=nativeStateFor(environment);fn.nativeState.functions.set(name,fn);}
+    register('runtime-public-allocation',nativeAllocations);
     register('runtime-public-string-buffers',{
         strbuf_init:p=>base.strutil('strbuf_init',base.strbuf(address(p))),
         strbuf_append:(p,text)=>base.strutil('strbuf_append',base.strbuf(address(p)),typeof text==='string'?services.literal(text):address(text)),

@@ -137,6 +137,7 @@ import {
     wearmask_to_obj,
 } from './worn.js';
 import { select_menu } from './windows.js';
+import { note_unported } from './unported.js';
 
 // C ref: iactions.c enum item_action_actions (13-42).
 const IA_NONE            = 0;
@@ -252,7 +253,8 @@ function ia_addmenu(items, act, letter, txt) {
 function itemactions_pushkeys(otmp, act, state) {
     switch (act) {
     default:
-        // C calls impossible() here.
+        // C: impossible("Unknown item action %d", act);
+        note_unported('pline.c impossible');
         break;
     case IA_NONE:
         break;
@@ -562,7 +564,8 @@ export async function itemactions(otmp, state = game, hooks = {}) {
     }
 
     // i: adjust inventory letter (C:462-466)
-    if (otmp.oclass !== COIN_CLASS || check_invent_gold('item-action', state))
+    if (otmp.oclass !== COIN_CLASS
+        || await check_invent_gold('item-action', state))
         ia_addmenu(items, IA_ADJUST_OBJ, 'i',
             'Adjust inventory by assigning new letter');
     // I: adjust by splitting stack (C:467-469)

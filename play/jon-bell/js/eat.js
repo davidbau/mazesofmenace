@@ -18,6 +18,7 @@ import { mon_set_minvis } from './worn.js';
 import { same_race, defended } from './mondata.js';
 import { monstone } from './mon.js';
 import { game, wizard, discover } from './gstate.js';
+import { registerStaticReset } from './statics.js';
 import { paranoid_query } from './cmd.js';
 import { BUFSZ, PARANOID_EATING, PARANOID_DIE, LL_LIFESAVE } from './const.js';
 import { formatkiller } from './topten.js';
@@ -548,6 +549,8 @@ async function eatspecial() {
  * static weight; rings, magical objects and stones have explicit values. */
 function nonfood_nutrition(otmp) {
     const typ = otmp.otyp | 0;
+    // C objects.h: the generic class placeholders have zero nutrition.
+    if (typ < 18) return 0;
     switch (otmp.oclass) {
     case 4: return 15; // RING
     case 5: return typ === FAKE_AMULET_OF_YENDOR ? 1 : 20;
@@ -647,7 +650,7 @@ export async function doeat() {
         const res = await _edibility_prompts(otmp);
         if (res) {
             /* C eat.c:2838-2840 names the current form's body part. */
-            _emit_eat_pline(`Your ${body_part(NOSE)} stops tingling and your sense of smell returns to normal.`);
+            await _emit_eat_pline(`Your ${body_part(NOSE)} stops tingling and your sense of smell returns to normal.`);
             u.uedibility = 0;
             if (res === 1) return ECMD_OK;
         }
@@ -832,7 +835,9 @@ async function newuhs_body(incr) {
                  * the --More-- raised over the meal's committed line.  Publish it
                  * for the eat occupation's pager, as the hunger switch below does. */
                 g._newuhsMsgUhs = { uhs: (u.uhs | 0), msg: 'You faint from lack of food.' };
-                u.HDeaf = Math.max(0, (u.HDeaf | 0) + duration);
+                const deaf = { value: u.HDeaf | 0 };
+                incr_itimeout(deaf, duration); // C eat.c:3421: clamp TIMEOUT, retain flags.
+                u.HDeaf = deaf.value;
                 if (g.disp)
                     g.disp.botl = 1;
                 nomul(-duration);
@@ -1484,6 +1489,7 @@ export function Popeye(threat) {
     }
 }
 let _ate_brains = 0;
+registerStaticReset('eat.c:maybe_cannibal:ate_brains', () => { _ate_brains = 0; });
 /* C eat.c CANNIBAL_ALLOWED(): Caveman role or Orc race. */
 function _cannibal_allowed() {
     const g = game;
@@ -1507,7 +1513,7 @@ async function maybe_cannibal(pm, allowmsg) {
           || (_ismnum(u.ulycn) && were_beastie(pm) === u.ulycn))) return false;
     if (allowmsg) {
         if (upolyd && yourRace)
-            _emit_eat_pline('You have a bad feeling deep inside.');
+            await _emit_eat_pline('You have a bad feeling deep inside.');
         const _cmsg = 'You cannibal!  You will regret this!';
         /* topl.c:257-268 — update_topl() joins only when n0 + strlen + 3 <
          * CO - 8, else more() pages the earlier line first (a poisonous
@@ -1538,7 +1544,7 @@ async function maybe_cannibal(pm, allowmsg) {
         if (game._topl_win_stop || game._topl_win_stop_armed)
             await pline(_cmsg);
         else
-            _emit_eat_pline(_cmsg);
+            await _emit_eat_pline(_cmsg);
     }
     _give_fromoutside(AGGRAVATE_MONSTER);
     change_luck(-rn1(4, 2));
@@ -2028,7 +2034,9 @@ async function _violated_vegetarian() {
 /* Append an eatcorpse pline to the command-message channel that survives to the
  * next nhgetch (the moveloop merges _resultMessage with next-turn movemon plines;
  * matches the throw/dotalk message handling). */
-function _emit_eat_pline(msg) {
+async function _emit_eat_pline(msg) {
+    // C pline.c:283-284: stop rules block before the caller changes state.
+    if (msgtype_is_stop(msg)) return await pline(msg);
     /* C pline.c:246-262 vpline(): a MSGTYPE=hide match is dropped before
      * gp.prevmsg or the topline is touched. */
     if (msgtype_suppressed(msg)) return;
@@ -2317,7 +2325,7 @@ async function eatcorpse(otmp) {
         await losehp(rnd(15), !glob ? 'acidic corpse' : 'acidic glob', KILLED_BY_AN);
     } else if (_poisonousE(mnum) && rn2(5)) { /* eat.c:1936 */
         tp++;
-        _emit_eat_pline('Ecch - that must have been poisonous!');
+        await _emit_eat_pline('Ecch - that must have been poisonous!');
         /* C eat.c:1931 `if (!Poison_resistance)` (youprop.h:48) */
         const _pr = game.u && game.u.uprops && game.u.uprops[POISON_RES];
         if (!(_pr && (_pr.intrinsic || _pr.extrinsic))) {
@@ -2326,7 +2334,7 @@ async function eatcorpse(otmp) {
             await losestr(_strloss, !glob ? 'poisonous corpse' : 'poisonous glob', KILLED_BY_AN);
             await losehp(_pdmg, !glob ? 'poisonous corpse' : 'poisonous glob', KILLED_BY_AN);
         } else {
-            _emit_eat_pline('You seem unaffected by the poison.'); /* eat.c:1935 */
+            await _emit_eat_pline('You seem unaffected by the poison.'); /* eat.c:1935 */
             /* topl.c:257-268 — update_topl() joins only when
              * n0 + strlen(gt.toplines) + 3 < CO - 8.  37 + 2 + 34 overflows,
              * so C's second pline raises more() on "Ecch - ...!" right here
@@ -2367,7 +2375,7 @@ async function eatcorpse(otmp) {
         /* pline.c:283-284: a MSGTYPE=stop match blocks in --More-- before losehp's rnd(8). */
         const _sickMsg = `You feel ${_uprop_on(SICK) ? 'very ' : ''}sick.`;
         if (msgtype_is_stop(_sickMsg)) await pline(_sickMsg);
-        else _emit_eat_pline(_sickMsg);
+        else await _emit_eat_pline(_sickMsg);
         await losehp(rnd(8), !glob ? 'cadaver' : 'rotted glob', KILLED_BY_AN); /* eat.c:1942 */
     }
 
@@ -2385,7 +2393,7 @@ async function eatcorpse(otmp) {
         if (_cnutritE(mnum) === 0) {
             /* C eat.c:1958-1965: no nutrition; message only if conscious. */
             if (!retcode)
-                _emit_eat_pline('The corpse rots away completely.');
+                await _emit_eat_pline('The corpse rots away completely.');
             if (_eat_carried(otmp)) await useup(otmp);
             else await useupf(otmp, 1);
             retcode = 2;
@@ -2394,10 +2402,10 @@ async function eatcorpse(otmp) {
     } else if ((mnum === PM_COCKATRICE || mnum === PM_CHICKATRICE)
                && (_Stone_resistance() || _eat_Hallucination())) {
         /* C eat.c:1969 */
-        _emit_eat_pline('This tastes just like chicken!');
+        await _emit_eat_pline('This tastes just like chicken!');
     } else if (mnum === PM_FLOATING_EYE && (game.u?.umonnum | 0) === 128 /* PM_RAVEN */) {
         /* C eat.c:1971 */
-        _emit_eat_pline('You peck the eyeball with delight.');
+        await _emit_eat_pline('You peck the eyeball with delight.');
     } else if (tp) {
         /* already messaged */
     } else {
@@ -2440,7 +2448,7 @@ async function eatcorpse(otmp) {
             : yummy ? 'delicious'
             : palatable ? palat_msg.slice(1) : 'terrible';
         const punct = (yummy || !palatable) ? '!' : '.';
-        _emit_eat_pline(`${prefix}${pmxnam} ${verb} ${adj}${punct}`);
+        await _emit_eat_pline(`${prefix}${pmxnam} ${verb} ${adj}${punct}`);
     }
     return retcode;
 }
@@ -2468,7 +2476,7 @@ async function _fprefx(otmp) {
             await explode(u.ux | 0, u.uy | 0, -11, d(3, 6), 0, EXPL_FIERY);
             return false;
         } else if (stale_egg(otmp)) {
-            _emit_eat_pline('Ugh.  Rotten egg.');
+            await _emit_eat_pline('Ugh.  Rotten egg.');
             /* make_vomiting((Vomiting & TIMEOUT) + d(10, 4), TRUE) */
             const vom = (game.u?.uprops?.[VOMITING]?.intrinsic | 0) & TIMEOUT;
             await make_vomiting(vom + d(10, 4), true);
@@ -2478,18 +2486,18 @@ async function _fprefx(otmp) {
     }
     if (otyp === FOOD_RATION_OTYP_E) {
         const h = u ? (u.uhunger | 0) : 0;
-        if (h <= 200) _emit_eat_pline(_eat_Hallucination()
+        if (h <= 200) await _emit_eat_pline(_eat_Hallucination()
             ? 'Oh wow, like, superior, man!' : 'This food really hits the spot!');
-        else if (h < 700) _emit_eat_pline(`This satiates your ${body_part(STOMACH)}!`);
+        else if (h < 700) await _emit_eat_pline(`This satiates your ${body_part(STOMACH)}!`);
         return true;
     }
     if (otyp === TRIPE_RATION_OTYP) {
         if (heroCarn && !_hero_humanoid()) {
-            _emit_eat_pline('This tripe ration is surprisingly good!');
+            await _emit_eat_pline('This tripe ration is surprisingly good!');
         } else if (isOrc) {
-            _emit_eat_pline(_eat_Hallucination() ? 'Tastes great!  Less filling!' : 'Mmm, tripe... not bad!');
+            await _emit_eat_pline(_eat_Hallucination() ? 'Tastes great!  Less filling!' : 'Mmm, tripe... not bad!');
         } else {
-            _emit_eat_pline('Yak - dog food!');
+            await _emit_eat_pline('Yak - dog food!');
             /* C eat.c:2138-2139 — tripe grants experience unless the hero is a
              * carnivorous non-humanoid or an orc, before the possible sickness roll. */
             more_experienced(1, 0);
@@ -2503,8 +2511,8 @@ async function _fprefx(otmp) {
         return true;
     }
     if (otyp === LEMBAS_WAFER_OTYP) {
-        if (isOrc) { _emit_eat_pline('!#?&* elf kibble!'); return true; }
-        if (isElf) { _emit_eat_pline('A little goes a long way.'); return true; }
+        if (isOrc) { await _emit_eat_pline('!#?&* elf kibble!'); return true; }
+        if (isElf) { await _emit_eat_pline('A little goes a long way.'); return true; }
         /* fallthrough to give_feedback */
     }
     if (otyp === CLOVE_OF_GARLIC_OTYP) {
@@ -2525,12 +2533,12 @@ async function _fprefx(otmp) {
     // C eat.c:2171-2175: only the current favorite fruit gets this feedback.
     if (otyp === SLIME_MOLD_OTYP && !cursed
         && (otmp.spe | 0) === (game.svc.context.current_fruit | 0)) {
-        _emit_eat_pline(`My, this is a ${_eat_Hallucination() ? 'primo' : 'yummy'} ${await singular(otmp, xname_eat)}!`);
+        await _emit_eat_pline(`My, this is a ${_eat_Hallucination() ? 'primo' : 'yummy'} ${await singular(otmp, xname_eat)}!`);
     } else if (otyp === APPLE_OTYP && cursed && !_eat_sleep_resistance()) {
         /* C eat.c:2176-2177 — cursed apple skips the core joke here; the
          * fall-asleep feedback is deferred to fpostfx().  No message, no RNG. */
     } else if (ORGANISER_IS_MACOS && otyp === APPLE_OTYP) {
-        _emit_eat_pline('Delicious!  Must be a Macintosh!');
+        await _emit_eat_pline('Delicious!  Must be a Macintosh!');
     } else if (otyp === APPLE_OTYP || otyp === PEAR_OTYP) {
         /* C eat.c:2188-2202 — the '#ifdef UNIX' arm, present on BOTH builds.
          * With ORGANISER_IS_MACOS true, APPLE is already consumed above, so
@@ -2539,13 +2547,13 @@ async function _fprefx(otmp) {
          * Hallucination uses the same one-draw distribution as C. */
         if (_eat_Hallucination()) {
             const x = rnd(100);
-            _emit_eat_pline(`${x <= 75 ? 'Segmentation fault' : x <= 99 ? 'Bus error' : "Yo' mama"} -- core dumped.`);
+            await _emit_eat_pline(`${x <= 75 ? 'Segmentation fault' : x <= 99 ? 'Bus error' : "Yo' mama"} -- core dumped.`);
         } else {
-            _emit_eat_pline('Core dumped.');
+            await _emit_eat_pline('Core dumped.');
         }
     } else {
         const bland = (otyp === CRAM_RATION_OTYP || otyp === K_RATION_OTYP_E || otyp === C_RATION_OTYP_E);
-        _emit_eat_pline(`This ${await singular(otmp, xname_eat)} is ${cursed ? (_eat_Hallucination() ? 'grody!' : 'terrible!') : bland ? 'bland.' : (_eat_Hallucination() ? 'gnarly!' : 'delicious!')}`);
+        await _emit_eat_pline(`This ${await singular(otmp, xname_eat)} is ${cursed ? (_eat_Hallucination() ? 'grody!' : 'terrible!') : bland ? 'bland.' : (_eat_Hallucination() ? 'gnarly!' : 'delicious!')}`);
     }
     return true;
 }
@@ -2637,14 +2645,14 @@ async function done_eating(message) {
      * finished."), print THAT instead of the default "You finish eating X." */
     if (game.nomovemsg) {
         if (message)
-            _emit_eat_pline(game.nomovemsg);
+            await _emit_eat_pline(game.nomovemsg);
         game.nomovemsg = null;
     } else if (message && piece) {
         /* C eat.c:556-560 — fire elementals finish "consuming" their food.
          * food_xname(.,TRUE) prefixes "the" for a known singleton corpse. */
         const verb = game.youmonst?.data?.pmidx === PM_FIRE_ELEMENTAL
             ? 'consuming' : 'eating';
-        _emit_eat_pline(`You finish ${verb} ${await _food_xname(piece, true)}.`);
+        await _emit_eat_pline(`You finish ${verb} ${await _food_xname(piece, true)}.`);
     }
     if (piece && (piece.corpsenm | 0) >= 0 && ((piece.otyp | 0) === CORPSE_OTYP || piece.globby))
         await cpostfx(piece.corpsenm | 0);
@@ -2949,7 +2957,7 @@ async function _cprefx_domestic(pm) {
     case PM_HOUSECAT:
     case PM_LARGE_CAT:
         if (!_cannibal_allowed()) {
-            _emit_eat_pline(`You feel that eating the ${monPmname(pm, NEUTRAL)} was a bad idea.`);
+            await _emit_eat_pline(`You feel that eating the ${monPmname(pm, NEUTRAL)} was a bad idea.`);
             _give_fromoutside(AGGRAVATE_MONSTER);
         }
         break;
@@ -3046,8 +3054,6 @@ export async function doeat_food(otmp) {
     otmp = await touchfood(otmp);
     if (!otmp) {
         await do_reset_eat();
-        game.context = game.context || {};
-        game.context.move = 1;
         return true;
     }
     v.piece = otmp;
@@ -3056,7 +3062,7 @@ export async function doeat_food(otmp) {
 
     if ((otmp.otyp | 0) === CORPSE_OTYP || otmp.globby) {
         const tmp = await eatcorpse(otmp);
-        if (tmp === 2) { _zero_victual(); game.context.move = 1; return true; }
+        if (tmp === 2) { _zero_victual(); return true; }
         else if (tmp) dont_start = true;
     } else {
         const mat = _oc_material(otmp.otyp | 0);
@@ -3107,8 +3113,6 @@ export async function doeat_food(otmp) {
         } else if (!already_partly_eaten) {
             if (!(await _fprefx(otmp))) {
                 await do_reset_eat();
-                game.context = game.context || {};
-                game.context.move = 1;
                 return true;
             }
         } else {
@@ -3117,7 +3121,7 @@ export async function doeat_food(otmp) {
             /* C eat.c:3041-3046 — doname(otmp), not food_xname: the full
              * name carries "partly eaten " and the article ("a partly eaten
              * food ration"), which the topline must show. */
-            _emit_eat_pline(`You ${v.reqtime === 1 ? 'eat' : 'begin eating'} ${await doname(otmp)}.`);
+            await _emit_eat_pline(`You ${v.reqtime === 1 ? 'eat' : 'begin eating'} ${await doname(otmp)}.`);
         }
     }
 
@@ -3132,8 +3136,7 @@ export async function doeat_food(otmp) {
 
     if (!dont_start) await start_eating(otmp, already_partly_eaten);
     else otmp.owt = weight(otmp); // C eat.c:3082: rotten meal not started yet.
-    game.context = game.context || {};
-    game.context.move = 1;
+    // C eat.c:3083: rhack() applies ECMD_TIME returned by doeat().
     return true;
 }
 
@@ -3517,7 +3520,7 @@ async function consume_tin(mesg) {
 
     /* C eat.c:1544 pline1(mesg).  The metallivorous hero goes straight to the "You consume" line,
      * which is queued on the result-message channel, so mesg must join that channel to share its topline. */
-    if (always_eat) _emit_eat_pline(mesg);
+    if (always_eat) await _emit_eat_pline(mesg);
     else await pline(mesg);
 
     if ((r | 0) !== SPINACH_TIN) {
@@ -3585,7 +3588,7 @@ async function consume_tin(mesg) {
             _pline_flush_frame_record(-2, _consumeMsg);
             game._plineFlushFrames.at(-1).mapOnly = true;
         }
-        _emit_eat_pline(_consumeMsg);
+        await _emit_eat_pline(_consumeMsg);
 
         await eating_conducts(ptr);
 
@@ -4189,35 +4192,35 @@ async function givit(type, ptr) {
     case FIRE_RES:
         await debugpline('eat.c', 'Trying to give fire resistance');
         if (!_has_fromoutside(FIRE_RES)) {
-            _emit_eat_pline(hallu ? 'You be chillin\'.' : 'You feel a momentary chill.');
+            await _emit_eat_pline(hallu ? 'You be chillin\'.' : 'You feel a momentary chill.');
             _give_fromoutside(FIRE_RES);
         }
         break;
     case SLEEP_RES:
         await debugpline('eat.c', 'Trying to give sleep resistance');
         if (!_has_fromoutside(SLEEP_RES)) {
-            _emit_eat_pline(_givit_feel('wide awake.'));
+            await _emit_eat_pline(_givit_feel('wide awake.'));
             _give_fromoutside(SLEEP_RES);
         }
         break;
     case COLD_RES:
         await debugpline('eat.c', 'Trying to give cold resistance');
         if (!_has_fromoutside(COLD_RES)) {
-            _emit_eat_pline(_givit_feel('full of hot air.'));
+            await _emit_eat_pline(_givit_feel('full of hot air.'));
             _give_fromoutside(COLD_RES);
         }
         break;
     case DISINT_RES:
         await debugpline('eat.c', 'Trying to give disintegration resistance');
         if (!_has_fromoutside(DISINT_RES)) {
-            _emit_eat_pline(hallu ? _givit_feel('totally together, man.') : _givit_feel('very firm.'));
+            await _emit_eat_pline(hallu ? _givit_feel('totally together, man.') : _givit_feel('very firm.'));
             _give_fromoutside(DISINT_RES);
         }
         break;
     case SHOCK_RES:
         await debugpline('eat.c', 'Trying to give shock resistance');
         if (!_has_fromoutside(SHOCK_RES)) {
-            _emit_eat_pline(hallu ? _givit_feel('grounded in reality.')
+            await _emit_eat_pline(hallu ? _givit_feel('grounded in reality.')
                 : 'Your health currently feels amplified!');
             _give_fromoutside(SHOCK_RES);
         }
@@ -4225,7 +4228,7 @@ async function givit(type, ptr) {
     case POISON_RES:
         await debugpline('eat.c', 'Trying to give poison resistance');
         if (!_has_fromoutside(POISON_RES)) {
-            _emit_eat_pline(_uprop_on(POISON_RES) ? _givit_feel('especially healthy.')
+            await _emit_eat_pline(_uprop_on(POISON_RES) ? _givit_feel('especially healthy.')
                 : _givit_feel('healthy.'));
             _give_fromoutside(POISON_RES);
         }
@@ -4233,14 +4236,14 @@ async function givit(type, ptr) {
     case TELEPORT:
         await debugpline('eat.c', 'Trying to give teleport');
         if (!_has_fromoutside(TELEPORT)) {
-            _emit_eat_pline(hallu ? _givit_feel('diffuse.') : _givit_feel('very jumpy.'));
+            await _emit_eat_pline(hallu ? _givit_feel('diffuse.') : _givit_feel('very jumpy.'));
             _give_fromoutside(TELEPORT);
         }
         break;
     case TELEPORT_CONTROL:
         await debugpline('eat.c', 'Trying to give teleport control');
         if (!_has_fromoutside(TELEPORT_CONTROL)) {
-            _emit_eat_pline(hallu ? _givit_feel('centered in your personal space.')
+            await _emit_eat_pline(hallu ? _givit_feel('centered in your personal space.')
                 : _givit_feel('in control of yourself.'));
             _give_fromoutside(TELEPORT_CONTROL);
         }
@@ -4248,7 +4251,7 @@ async function givit(type, ptr) {
     case TELEPAT:
         await debugpline('eat.c', 'Trying to give telepathy');
         if (!_has_fromoutside(TELEPAT)) {
-            _emit_eat_pline(hallu ? _givit_feel('in touch with the cosmos.')
+            await _emit_eat_pline(hallu ? _givit_feel('in touch with the cosmos.')
                 : _givit_feel('a strange mental acuity.'));
             _give_fromoutside(TELEPAT);
             /* If blind, make sure monsters show up. */
@@ -4258,14 +4261,14 @@ async function givit(type, ptr) {
     case ACID_RES:
         await debugpline('eat.c', 'Giving timed acid resistance');
         if (!_uprop_on(ACID_RES))
-            _emit_eat_pline(hallu ? _givit_feel('secure from flashbacks.')
+            await _emit_eat_pline(hallu ? _givit_feel('secure from flashbacks.')
                 : _givit_feel('less concerned about being harmed by acid.'));
         _incr_uprop_itimeout(ACID_RES, d(3, 6));
         break;
     case STONE_RES:
         await debugpline('eat.c', 'Giving timed stoning resistance');
         if (!_uprop_on(STONE_RES))
-            _emit_eat_pline(hallu ? _givit_feel('unusually limber.')
+            await _emit_eat_pline(hallu ? _givit_feel('unusually limber.')
                 : _givit_feel('less concerned about becoming petrified.'));
         _incr_uprop_itimeout(STONE_RES, d(3, 6));
         break;
@@ -4275,7 +4278,7 @@ async function givit(type, ptr) {
     }
 }
 
-function eye_of_newt_buzz() {
+async function eye_of_newt_buzz() {
     const u = game.u;
     if (!u) return;
     if (rn2(3) || 3 * (u.uen | 0) <= 2 * (u.uenmax | 0)) {
@@ -4293,7 +4296,7 @@ function eye_of_newt_buzz() {
             u.uen = u.uenmax;
         }
         if (old_uen !== (u.uen | 0)) {
-            _emit_eat_pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a mild buzz.'); /* You_feel, pline.c:387 */
+            await _emit_eat_pline((Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a mild buzz.'); /* You_feel, pline.c:387 */
             if (game.disp) game.disp.botl = true; /* C eat.c:1120 */
         }
     }
@@ -4576,12 +4579,12 @@ export async function cpostfx(pm) {
         /* C eat.c:1303-1308 — AD_STUN/AD_HALU/violet fungus hallucination. */
         if (dmgtype(ptr, AD_STUN_AT) || dmgtype(ptr, AD_HALU_AT)
             || pm === PM_VIOLET_FUNGUS) {
-            _emit_eat_pline('Oh wow!  Great stuff!');
+            await _emit_eat_pline('Oh wow!  Great stuff!');
             await make_hallucinated(((game.u.uprops?.[HALLUC]?.intrinsic | 0) & TIMEOUT) + 200, false, 0);
         }
         /* C eat.c:1311-1312 — eating magical monsters gives magical energy. */
         if (attacktype(ptr, AT_MAGC_AT) || pm === PM_NEWT)
-            eye_of_newt_buzz();
+            await eye_of_newt_buzz();
 
         const tmp = await corpse_intrinsic(ptr); /* C eat.c:1314 */
         if (tmp === -1) {
@@ -4914,7 +4917,10 @@ export function obj_nutrition(otmp) {
     if ((otmp.otyp | 0) === CORPSE_OTYP_FP)
         return mons_cnutrit(otmp.corpsenm | 0);
     if (otmp.globby) return otmp.owt | 0;
-    return oc_nutrition(otmp.otyp | 0);
+    // C eat.c:329 reads objects[otyp].oc_nutrition for non-foods too.
+    // In particular, monmove.c:441 calls eaten_stat() for cube meals.
+    return FOOD_PROPS[otmp.otyp | 0] ? oc_nutrition(otmp.otyp | 0)
+        : nonfood_nutrition(otmp);
 }
 
 const AT_BREA = 12;          /* monattk.h — breath, ranged */

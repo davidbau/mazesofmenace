@@ -1,4 +1,5 @@
 // Original QUESTPGR policies on shared globals, Lua states and window callbacks.
+import {nativeObjectAppraisalFor} from './native/object-appraisal-graph.js';
 import abi from './quest-pager-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as questpgr from '../ported/questpgr.js';
@@ -58,6 +59,7 @@ export function enableQuestPager(environment,layouts){
   putmsghistory:(value,restoring)=>window('win_putmsghistory','vpi',text(value),transport.char(restoring)),
  });
  const names=Object.keys(questpgr).filter(name=>typeof questpgr[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
- environment.register('quest-pager',Object.fromEntries(names.map(name=>[name,(...args)=>callQuestpgr(local,L,name,...args)])));
+ const nativeQueries=nativeObjectAppraisalFor(environment,layouts).functions;
+ environment.register('quest-pager',Object.fromEntries(names.map(name=>[name,nativeQueries[name]??((...args)=>callQuestpgr(local,L,name,...args))])));
  return {services:local,call:(name,...args)=>transport.scoped(()=>callQuestpgr(local,L,name,...args)),limitation:'Quest pager transport connected; legacy intro, quest messages and failure/window-input paths require original-C verification.'};
 }

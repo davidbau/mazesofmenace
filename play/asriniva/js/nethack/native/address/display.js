@@ -1586,7 +1586,7 @@ function redraw_map(cursor_on_u)
     try {
     let x; let y;
     let glyph;
-    let bkglyphinfo=C.stackAlloc(C.sizes["struct glyphinfo"]); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
+    let bkglyphinfo=C.nativeLocalRecord("struct glyphinfo"); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
     /*
      * Not sure whether this is actually necessary; save and restore did
      * used to get much too involved with each dungeon level as it was
@@ -1663,7 +1663,7 @@ function show_glyph(x,y,glyph)
     glyph=C.i32(glyph);
     const stackFrame=C.stackSave();
     try {
-    let glyphinfo=C.stackAlloc(C.sizes["struct glyphinfo"]);
+    let glyphinfo=C.nativeLocalRecord("struct glyphinfo");
     let show_glyph_change=(C.i8(0));
     let oldglyph;
     /* don't process map glyphs when saving, restoring, or in_mklev */
@@ -1857,7 +1857,7 @@ function row_refresh(start,stop,y)
     let glyph;
     let force;
     let gptr=((C.display_address_instance_globals_g_gbuf(C.gg)+Number(0)*(C.sizes["gbuf_entry"]*80))+Number(0)*C.sizes["gbuf_entry"]);
-    let bkglyphinfo=C.stackAlloc(C.sizes["struct glyphinfo"]); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
+    let bkglyphinfo=C.nativeLocalRecord("struct glyphinfo"); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
     let giptr=C.display_address_gbuf_entry_glyphinfo(gptr);
     (force=C.i8(((Number(!!(Number(!!(Number(!!(Number(!!(Number(C.display_read_glyphinfo_ttychar(giptr)!=C.display_read_glyphinfo_ttychar(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf"))))||Number(C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(giptr)))!=C.display_read_classic_representation_color(C.display_address_glyph_map_entry_sym(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf"))))))))||Number(C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(giptr))!=C.display_read_glyph_map_entry_glyphflags(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf")))))))||Number(C.display_read_glyph_map_entry_customcolor(C.display_address_glyphinfo_gm(giptr))!=C.display_read_glyph_map_entry_customcolor(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf")))))))||Number(C.i32(C.display_read_glyph_map_entry_tileidx(C.display_address_glyphinfo_gm(giptr)))!=C.i32(C.display_read_glyph_map_entry_tileidx(C.display_address_glyphinfo_gm(C.display_address_gbuf_entry_glyphinfo(C.staticAddress("nul_gbuf")))))))))?1:0)));
     for((x=start);Number(C.i32(x)<=C.i32(stop));((x=C.i16((x+1)))-1)) {
@@ -1901,7 +1901,7 @@ function flush_screen(cursor_on_u)
     
     
     let x; let y;
-    let bkglyphinfo=C.stackAlloc(C.sizes["struct glyphinfo"]); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
+    let bkglyphinfo=C.nativeLocalRecord("struct glyphinfo"); C.copy(bkglyphinfo,C.staticAddress("nul_glyphinfo"),C.sizes["struct glyphinfo"]);
     let bkglyph=C.local("int",0);
     /* 5.0: don't update map, status, or perm_invent during save/restore */
     if((Number(!!(Number(!!(Number(!!(C.i32(C.display_read_instance_globals_i_in_mklev(C.gi))||C.display_read_sinfo_saving(C.program_state)))||C.display_read_sinfo_restoring(C.program_state)))||C.display_read_sinfo_done_hup(C.program_state))))) return;

@@ -1,3 +1,4 @@
+import {isNativeValueReference} from '../native/value-records.js';
 import {createNativeWintty} from '../native/wintty.js';
 import {createNativeScalarLocal} from '../native/scalar-local.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -41,6 +42,7 @@ export function createWinttyEnvironment(services,L,state){
         value=n===8?BigInt(value):typeof value==='bigint'?Number(s?BigInt.asIntN(n*8,value):BigInt.asUintN(n*8,value)):Number(value);dv()['set'+method](address(p),value,true);return scalar(p,t);
     }
     function ptr(p,t){
+        if(isNativeValueReference(p)){if(canonical(t)!==p.type)throw Error('Native WINTTY record type mismatch');return p.object();}
         if(isTable(p))return p;
         const a=arrayType(t);t=canonical(t);
         if(!raw(p))return 0;

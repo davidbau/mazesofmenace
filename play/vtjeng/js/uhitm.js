@@ -189,6 +189,7 @@ import {
 } from './do_name.js';
 import {
     consume_msg_xy,
+    impossible,
     impossible_printer,
     livelog_printf,
     verbalize,
@@ -1119,6 +1120,19 @@ export async function stumble_onto_mimic(mtmp, state = game, env = {}) {
             state.level?.at(mtmp.mx, mtmp.my)?.glyph)) {
         map_invisible(mtmp.mx, mtmp.my, state);
     }
+}
+
+// C ref: uhitm.c disguised_as_non_mon() (6299-6304).
+export function disguised_as_non_mon(mtmp, state = game) {
+    return (!sensemon(mtmp, state)
+            && Boolean(M_AP_TYPE(mtmp))
+            && M_AP_TYPE(mtmp) !== M_AP_MONSTER);
+}
+
+// C ref: uhitm.c disguised_as_mon() (6306-6311).
+export function disguised_as_mon(mtmp) {
+    return (Boolean(M_AP_TYPE(mtmp))
+            && M_AP_TYPE(mtmp) === M_AP_MONSTER);
 }
 
 // C ref: uhitm.c attack_checks() (188-327). FALSE means it is fine to attack.
@@ -2451,7 +2465,12 @@ export async function hitum_cleave(target, uattk, state = game, env = {}) {
     const clockwise = Boolean(state.cleaverClockwise);
     const { u } = state;
     let direction = xytodir(u.dx, u.dy);
-    if (direction < 0 || direction >= 8) return true;
+    if (direction < 0 || direction >= 8) {
+        await impossible(
+            `hitum_cleave: unknown target direction [${u.dx},${u.dy},${u.dz}]?`,
+            state, env);
+        return true; /* target hasn't been killed */
+    }
     direction = (direction + (clockwise ? 6 : 2)) % 8;
 
     const oldMortality = u.umortality;

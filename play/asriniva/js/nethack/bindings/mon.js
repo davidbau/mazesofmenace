@@ -1,3 +1,5 @@
+import {createNativeByteValues} from '../native/byte-values.js';
+import {createNativeLocalReference,isNativeLocalReference} from '../native/local-reference.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // MON compiler-layout/header expansion and native ABI transport. Source policy remains mon.js.
 import * as mon from '../../ported/mon.js';
@@ -50,11 +52,16 @@ export function createMonEnvironment(services,layout,state={itermonarr:0,itermon
  function copyStruct(out,src,n){nativeState.flush();const heap=services.heap();heap.copyWithin(address(out),address(src),address(src)+Number(n));nativeState.invalidate();return out;}
 
  const ushort=v=>int(v)&65535;
- const cell=(v,kind,wrap)=>{const p=address(v);return p?{address:p,get value(){nativeState.flush();const v=view()["get"+kind](p,true);return wrap?wrap(v):v;},set value(v){nativeState.flush();nativeState.invalidate();view()["set"+kind](p,kind.startsWith("Big")?BigInt(v?.address??v??0):Number(v),true);}}:0;};
- const local=(v,kind,wrap)=>{const p=services.stackAlloc(widths[kind]),out=cell(p,kind,wrap);if(v!==undefined)out.value=v;return out;};
+ const cell=(v,kind,wrap,nativeKind)=>{if(isNativeLocalReference(v,nativeState,nativeKind??({Int8:'i8',Int32:'i32'}[kind]??kind)))return v;const p=address(v);return p?{address:p,get value(){nativeState.flush();const v=view()["get"+kind](p,true);return wrap?wrap(v):v;},set value(v){nativeState.flush();nativeState.invalidate();view()["set"+kind](p,kind.startsWith("Big")?BigInt(v?.address??v??0):Number(v),true);}}:0;};
+ const local=(v,kind,wrap)=>{
+  if(nativeState.nativeArena&&services.nativeEnvironment&&(wrap||kind==='Int8'||kind==='Int32')){const nativeKind=wrap?'pointer:obj':({Int8:'i8',Int32:'i32'}[kind]??kind),normalize=v=>wrap?wrap(BigInt.asUintN(64,BigInt(v?.address??v??0))):kind==='Int8'?Number(v)<<24>>24:Number(v)|0;
+   return createNativeLocalReference({owner:nativeState,kind:nativeKind,width:widths[kind],allocate:services.stackAlloc,get:()=>v,set:()=>{},normalize,read:p=>{const value=view()['get'+kind](p,true);return wrap?wrap(value):value;},write:(p,value)=>view()['set'+kind](p,kind.startsWith('Big')?BigInt(value?.address??value??0):Number(value),true),uninitialized:v===undefined});
+  }const p=services.stackAlloc(widths[kind]),out=cell(p,kind,wrap);if(v!==undefined)out.value=v;return out;
+ };
  const staticCell=(name,kind)=>{if(!state.statics.has(name)){let value=kind==="BigInt64"?0n:0;state.statics.set(name,{get value(){return value;},set value(v){value=kind==="BigInt64"?long(v):uint(v);}});}return state.statics.get(name);};
- const env=Object.assign(Object.create(services),layout,{state,nativeState,int,uint,char,uchar,ushort,boolean,coordxy,long,ulong,samePtr,rawPointer:raw,ptrOffset:(p,n)=>address(p)+Number(n),copyStruct,staticCell,record,object:v=>record(v,"obj"),monster:v=>record(v,"mon"),permonst:v=>record(v,"pm"),attack:v=>record(v,"attack"),loadChar:p=>view().getInt8(address(p)),storeChar:(p,v)=>{const n=char(v);nativeState.flush();nativeState.invalidate();view().setInt8(address(p),n);return n;},
- objectPointerLocal:v=>local(v,"BigUint64",v=>record(v,"obj")),booleanLocal:v=>local(v,"Int8"),intLocal:v=>local(v,"Int32"),monLink:v=>cell(v,"BigUint64",v=>record(v,"mon")),
+ const nativeByteBuffer=nativeState.nativeArena&&services.nativeEnvironment?createNativeByteValues(services.nativeEnvironment):services.stackAlloc;
+ const env=Object.assign(Object.create(services),layout,{state,nativeState,nativeByteBuffer,storeCharAt:(p,n,v)=>env.storeChar(env.ptrOffset(p,n),v),int,uint,char,uchar,ushort,boolean,coordxy,long,ulong,samePtr,rawPointer:raw,ptrOffset:(p,n)=>p?.nativeBytes?p.at(Number(n)):address(p)+Number(n),copyStruct,staticCell,record,object:v=>record(v,"obj"),monster:v=>record(v,"mon"),permonst:v=>record(v,"pm"),attack:v=>record(v,"attack"),loadChar:p=>p?.nativeBytes?p.load():view().getInt8(address(p)),storeChar:(p,v)=>{const n=char(v);if(p?.nativeBytes)return p.store(0,n);nativeState.flush();nativeState.invalidate();view().setInt8(address(p),n);return n;},
+ objectPointerLocal:v=>local(v,"BigUint64",v=>record(v,"obj")),booleanLocal:v=>local(v,"Int8"),intLocal:v=>local(v,"Int32"),monLink:v=>cell(v,"BigUint64",v=>record(v,"mon"),"pointer:mon"),
  coordLocal:v=>{const o=record(services.stackAlloc(layout.coordSize),"coord");if(v)copyStruct(o,v,layout.coordSize);return o;},levelLocal:v=>{const o=record(services.stackAlloc(layout.levelSize),"level");if(v)copyStruct(o,v,layout.levelSize);return o;},monLocal:v=>{const o=record(services.stackAlloc(layout.monSize),"mon");if(v)copyStruct(o,v,layout.monSize);return o;},shortArrayLocal:n=>array(services.stackAlloc(n*2),"Int16",[n]),
  callLocal:(fn,...args)=>fn(...args),
  invokeMonBool:(fn,m)=>typeof fn==="function"?char(env.callLocal(fn,m)):services.invokeMonBool(fn,m),invokeMonVoid:(fn,m)=>typeof fn==="function"?env.callLocal(fn,m):services.invokeMonVoid(fn,m),invokeMonBoolXY:(fn,m,x,y)=>typeof fn==="function"?char(env.callLocal(fn,m,coordxy(x),coordxy(y))):services.invokeMonBoolXY(fn,m,x,y),

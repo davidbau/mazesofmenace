@@ -2,20 +2,21 @@
 import abi from './terminal-messages-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as topl from '../ported/topl.js';
-import {callTopl} from './bindings/topl.js';
+import {createNativeTopl} from './native/topl.js';
+import {createNativeToplState} from './native/topl-state.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
+import {createNativeAbiCaster} from './native/execution.js';
 
 export function enableTerminalMessages(environment,layouts){
  const {services,memory,ctypes,functions,transport}=environment,L=layouts.topl;
  const address=environment.address,text=value=>typeof value==='string'?services.literal(value):address(value);
- const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
+ const owner=nativeStateFor(environment);createNativeRecordViews(environment);
+ const resolve=name=>owner.functions.get(name)??services[name]?.nativeEntry??(typeof services[name]==='function'?services[name]:environment.resolve(name));
  const local=new Proxy(Object.create(services),{get:(o,key,receiver)=>Reflect.has(o,key)?Reflect.get(o,key,receiver):typeof key==='string'?(...args)=>environment.resolve(key)(...args.map(value=>value?.address??value)):undefined});
  for(const name of Object.keys(abi.globals))Object.defineProperty(local,name,{value:undefined,writable:true,configurable:true});
- const globals=Object.keys(abi.globals),persistent=abi.persistent.map(row=>environment.allocateGlobal('topl.'+row.name,ctypes.size(row.type)));
  Object.assign(local,{
   moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,
-  global:index=>{if(!globals[index])throw new Error('Unknown TOPL global '+index);return environment.requireGlobal(globals[index]);},
-  persistent:index=>{if(persistent[index]===undefined)throw new Error('Unknown TOPL persistent cell '+index);return persistent[index];},
-  bit:kind=>{throw new Error('Unknown TOPL packed field '+kind);},setBit:kind=>{throw new Error('Unknown TOPL packed field '+kind);},callback:name=>{throw new Error('Unknown TOPL callback '+name);},
   alloc:size=>environment.alloc('alloc',transport.uint(size)),free:p=>services.free(address(p)),
   Strcpy:(destination,source)=>address(services.strcpy(text(destination),text(source))),
   Strcat:(destination,source)=>address(services.strcat(text(destination),text(source))),
@@ -52,7 +53,11 @@ export function enableTerminalMessages(environment,layouts){
   destroy_nhwindow:win=>window('win_destroy_nhwindow','vi',transport.int(win)),
  });
  const names=Object.keys(topl).filter(name=>typeof topl[name]==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name));
- const call=(name,...args)=>callTopl(local,L,name,...args.map(value=>typeof value==='string'?text(value):value?.address??value));
- environment.register('terminal-messages',Object.fromEntries(names.map(name=>[name,(...args)=>call(name,...args)])));
- return {services:local,persistent,call:(name,...args)=>transport.scoped(()=>call(name,...args)),limitation:'TOPL shared history/window transport connected; history restoration, prompts and original-C output/input equivalence require verification.'};
+ const context=createNativeToplState(environment,layouts,local,owner),policies=createNativeTopl(context),cast=createNativeAbiCaster(ctypes,transport,text),entries={};
+ for(const name of names){const prototype=publicFunctions.functions[name].match(/^(.*?)\s*\((.*)\)$/);if(!prototype)throw Error('Unknown TOPL public prototype '+name);const args=prototype[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void').map(cast),result=cast(prototype[1]);
+  const call=(...values)=>{const saved=owner.depth?undefined:transport.stackSave();owner.enter();try{return result(policies[name](...values.map((v,i)=>args[i](v))));}finally{owner.leave();if(saved!==undefined)transport.stackRestore(saved);}};
+  call.nativeState=owner;call.nativeDirect=true;call.nativePrepared=true;entries[name]=call;owner.functions.set(name,call);
+ }
+ environment.register('terminal-messages',entries,context);
+ return {services:local,context,policies,call:(name,...args)=>entries[name](...args),limitation:'Native TOPL window projections, private history snapshots and direct policies; mutable message bytes remain a terminal/save boundary. Exact C/input/recording acceptance is reported separately.'};
 }

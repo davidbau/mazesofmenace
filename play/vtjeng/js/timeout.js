@@ -29,6 +29,10 @@ import {
     DEAF,
     DETECT_MONSTERS,
     DISMOUNT_FELL,
+    DB_ICE,
+    DB_UNDER,
+    DRAWBRIDGE_DOWN,
+    MELT_ICE_AWAY,
     DIED,
     ECMD_OK,
     DISPLACED,
@@ -203,8 +207,9 @@ import {
 import { m_at } from './monst.js';
 import { cansee } from './vision.js';
 import {
-    verbalize, youFeel, youHear, youSee,
+    impossible, verbalize, youFeel, youHear, youSee,
 } from './pline.js';
+import { isok } from './cmd_isok.js';
 import { AD_ELEC } from './monsters.js';
 import { buzz } from './zap.js';
 import { cry_sound, set_voice } from './sounds.js';
@@ -244,14 +249,6 @@ function timerGlobals(state) {
     return state;
 }
 
-
-export class UnsupportedBurnObjectError extends Error {
-    constructor(obj) {
-        super(`begin_burn is not available for otyp ${obj?.otyp}`);
-        this.name = 'UnsupportedBurnObjectError';
-        this.otyp = obj?.otyp;
-    }
-}
 
 function timerCleanupEnv(state, env = {}) {
     return {
@@ -1728,6 +1725,8 @@ export function start_timer(
         if (timer.kind === kind
             && timer.func_index === funcIndex
             && timer.arg === arg) {
+            // C: impossible("Attempted to start duplicate %s, aborted.", idbuf);
+            note_unported('pline.c impossible');
             return false;
         }
     }
@@ -2374,10 +2373,6 @@ export function begin_burn(obj, alreadyLit = false, env = {}) {
     const isMagicLamp = obj?.otyp === MAGIC_LAMP;
     const isOilPotion = obj?.otyp === POT_OIL;
     const isArtifactLight = artifact_light(obj);
-    if (!isCandle && !isLamp && !isCandelabrum
-        && !isMagicLamp && !isOilPotion && !isArtifactLight) {
-        throw new UnsupportedBurnObjectError(obj);
-    }
 
     const age = Math.trunc(obj.age ?? 0);
     if (age === 0 && !isMagicLamp && !isArtifactLight) return;
@@ -2414,6 +2409,10 @@ export function begin_burn(obj, alreadyLit = false, env = {}) {
         else if (age > 15) turns = age - 15;
         else turns = age;
         radius = candle_light_range(obj);
+    } else {
+        // C: impossible("begin burn: unexpected %s", xname(obj));
+        note_unported('pline.c impossible');
+        turns = age;
     }
     // The JS port can have its light owner missing, so check it before
     // start_timer() claims ownership and adjusts the candle's remaining fuel.
@@ -2554,7 +2553,11 @@ export function attach_fig_transform_timeout(figurine, env = {}) {
 // or queue mutation, matching the source's impossible()+return path.
 export function start_glob_timeout(obj, when = 0, env = {}) {
     const { random, state } = timeoutEnv(env);
-    if (!obj.globby) return false;
+    if (!obj.globby) {
+        // C: impossible("start_glob_timeout for non-glob [%d: %s]?", obj->otyp, simpleonames(obj));
+        note_unported('pline.c impossible');
+        return false; /* skip timer creation */
+    }
     if (obj.timed) stop_timer(SHRINK_GLOB, obj, state);
     let delay = Math.trunc(when);
     if (delay < 1) delay = 25 + random.rn2(5) - 2;
@@ -2660,5 +2663,89 @@ export async function do_storms(state = game) {
     } else {
         const heard = youHear('a rumbling noise.', state);
         if (heard) await ttyPline(heard, state);
+    }
+}
+
+// C ref: timeout.c timer_sanity_check() (2129-2216). Object timers must name
+// a timed object that get_obj_location() places on the map, unless it is
+// migrating or carried by a migrating monster; spot timers must sit on the
+// map, and an ice-melting one on ice. Monster and global timers are never
+// expected.
+export async function timer_sanity_check(state = game) {
+    timerGlobals(state);
+    for (let curr = state.gt.timer_base; curr; curr = curr.next) {
+        const t_id = curr.tid;
+        switch (curr.kind) {
+        case TIMER_OBJECT: {
+            const obj = curr.arg;
+            const obj_adr = fmt_ptr(obj);
+            let owhere = obj.where;
+            let top;
+
+            if (!obj.timed) {
+                await impossible(
+                    `timer sanity: untimed obj ${obj_adr}, timer ${t_id}`,
+                    state,
+                );
+            }
+            /* if obj is in a container, possibly a nested one, figure out
+               where the outermost container is */
+            for (top = obj; top; top = top.ocontainer)
+                if ((owhere = top.where) !== OBJ_CONTAINED)
+                    break;
+            const location = (owhere === OBJ_MIGRATING
+                || (owhere === OBJ_MINVENT && !mon_is_local(top.ocarry, state)))
+                ? undefined
+                : get_obj_location(obj, CONTAINED_TOO | BURIED_TOO, state);
+            if (location === undefined) {
+                /* migrating directly or carried by migrating monster;
+                   not able to validate location so skip checks */
+            } else if (!location) {
+                /* free? or on a shop's used-up bill? */
+                await impossible('timer sanity: can\'t locate obj '
+                    + `${obj_adr} [where=${obj.where}], timer ${t_id}`, state);
+            } else if (!isok(location.x, location.y)) {
+                await impossible(`timer sanity: obj ${obj_adr}`
+                    + ` [where=${obj.where}] located at`
+                    + ` <${location.x},${location.y}>, timer ${t_id}`, state);
+            }
+            break;
+        }
+        case TIMER_MONSTER:
+            await impossible(
+                `timer sanity: unexpected monster timer ${t_id}`, state,
+            );
+            break;
+        case TIMER_LEVEL: {
+            const lwhere = curr.arg;
+            /* coordxy is a signed 16-bit type */
+            const x = (((lwhere >> 16) & 0xFFFF) << 16) >> 16;
+            const y = ((lwhere & 0xFFFF) << 16) >> 16;
+            if (isok(x, y)) {
+                const loc = state.level.at(x, y);
+                if (curr.func_index === MELT_ICE_AWAY && !is_ice(x, y, state)
+                    /* the terrain under the span of an open drawbridge might
+                       be frozen moat */
+                    && !(loc.typ === DRAWBRIDGE_DOWN
+                         && ((loc.flags ?? 0) & DB_UNDER) === DB_ICE))
+                    await impossible(`timer sanity: melt timer ${t_id}`
+                        + ` on non-ice ${loc.typ} <${x},${y}>`, state);
+            } else {
+                await impossible(
+                    `timer sanity: spot timer ${t_id} at <${x},${y}>`, state,
+                );
+            }
+            break;
+        }
+        case TIMER_GLOBAL:
+            await impossible(
+                `timer sanity: unexpected global timer ${t_id}`, state,
+            );
+            break;
+        default:
+            await impossible(`timer sanity: unknown timer ${t_id},`
+                + ` type: ${curr.kind}`, state);
+            break;
+        }
     }
 }

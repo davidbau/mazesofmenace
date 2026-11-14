@@ -1,3 +1,4 @@
+import {createNativeLocalReference,isNativeLocalReference} from '../native/local-reference.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
 import {applyRecordAliases,createFieldAliases,applyPrototypeAliases} from '../header-aliases.js';
 import * as Crt from '../../c-runtime/adapter-memory.js';
@@ -117,14 +118,19 @@ export function createHackEnvironment(services,layout,namespace,servicePrototype
     for(const name of functions)env[name]=(...args)=>env.callLocal(namespace[name],...args);
     const functionPointer=fn=>{if(typeof fn!=='function')return fn;const i=functions.findIndex(n=>namespace[n]===fn||core[n]===fn||env[n]===fn);if(i<0){const foreign=["Boots_on", "do_reqmenu", "dokick"].findIndex(n=>env[n]===fn);if(foreign>=0)return services.foreignFunctionPointer(foreign);throw Error('Unrecognized HACK native callback');}return services.functionPointer(i);};
     env.functionPointer=functionPointer;
-    const invoke=(fn,args)=>{const refs=args.filter(a=>a&&Object.prototype.hasOwnProperty.call(a,'localRef')&&a.localRef);try{return fn(...args.map(a=>typeof a==='function'?functionPointer(a):a));}finally{for(const ref of refs)ref.set(read(ref.descriptor,ref.address));}};
+    const invoke=(fn,args)=>{const refs=args.filter(a=>a&&Object.prototype.hasOwnProperty.call(a,'localRef')&&a.localRef);try{return fn(...args.map(a=>typeof a==='function'?functionPointer(a):a));}finally{for(const ref of refs){if(isNativeLocalReference(ref,nativeState))ref.commit();else ref.set(read(ref.descriptor,ref.address));}}};
     Object.defineProperty(env,'HEAP8',{get:()=>{nativeState.flush();nativeState.invalidate();return new Int8Array(heapSource().buffer);}});
     Object.defineProperty(env,'HEAPU8',{get:()=>{nativeState.flush();nativeState.invalidate();return heapSource();}});
     env.sizes=Object.assign(Object.fromEntries(names.map(n=>[n,Number(layout[n+'Size'])])),{ptr:8,int:4,short:2,boolean:1,'monst *':8});
     const aliases={anything:'any',menu_item:'mi',coord:'nhcoord',d_level:'d_level',boolean:'signed char',coordxy:'short'};
     const descriptor=type=>{type=type.replace(/^(?:const )?(?:struct |union )/,'');type=aliases[type]??type;if(type.endsWith('*')){const n=type.slice(0,-1).trim();return{p:aliases[n]??(schemas[n]?n:'')};}if(schemas[type])return{s:type};const scalar={char:'i8','signed char':'i8','unsigned char':'u8',uchar:'u8',boolean:'i8',short:'i16','unsigned short':'u16',int:'i32','unsigned int':'u32',unsigned:'u32',long:'i64','unsigned long':'u64'};if(scalar[type])return{t:scalar[type]};throw Error('Review HACK local type '+type);};
     env.longPointer=at=>Object.defineProperty({address:addr(at)},'value',{get:()=>memory().getBigInt64(addr(at),true),set:v=>memory().setBigInt64(addr(at),BigInt(v),true)});
-    env.localPointer=(type,get,set)=>{const d=descriptor(type),at=addr(services.stackAlloc(width(d)));write(d,at,get());return{address:at,descriptor:d,localRef:true,set,get value(){return read(d,at);},set value(v){write(d,at,v);set(read(d,at));}};};
+    const localKind=d=>d.p!==undefined?'pointer:'+d.p:d.t;
+    const normalizeLocal=(d,v)=>d.p!==undefined?decode(d,raw(v)):d.t.slice(1)==='64'?decode(d,raw(v)):decode(d,Number(v)>>>0);
+    env.localPointer=(type,get,set)=>{const d=descriptor(type);
+        if(nativeState.nativeArena&&services.nativeEnvironment&&(d.t||d.p!==undefined))return createNativeLocalReference({owner:nativeState,kind:localKind(d),descriptor:d,width:width(d),allocate:services.stackAlloc,get,set,normalize:v=>normalizeLocal(d,v),read:at=>read(d,at),write:(at,v)=>write(d,at,v)});
+        const at=addr(services.stackAlloc(width(d)));write(d,at,get());return{address:at,descriptor:d,localRef:true,set,get value(){return read(d,at);},set value(v){write(d,at,v);set(read(d,at));}};
+    };
     env.fieldPointer=(obj,name)=>{const field=schemas[obj.kind].fields.find(f=>f.name===name);if(!field)throw Error('Unknown HACK field reference '+name);return Object.defineProperty({address:env.addressOf(obj,name)},'value',{get:()=>obj[name],set:v=>obj[name]=v});};
     env.recordLocal=(name,initial)=>{nativeState.flush();nativeState.invalidate();name=aliases[name]??name;const at=addr(services.stackAlloc(Number(layout[name+'Size']))),out=view(name,at);if(Array.isArray(initial)){schemas[name].fields.forEach((f,i)=>{out[f.name]=initial[i]??0;});}else if(initial!==undefined)services.heap().copyWithin(at,addr(initial),addr(initial)+Number(layout[name+'Size']));return out;};
     env.copyRecord=(out,input,bytes)=>{nativeState.flush();services.heap().copyWithin(addr(out),addr(input),addr(input)+Number(bytes));nativeState.invalidate();};
@@ -142,7 +148,7 @@ export function createHackEnvironment(services,layout,namespace,servicePrototype
     env.FEATURE_NOTICE_VER=(major,minor,patch)=>(BigInt(major)<<24n)|(BigInt(minor)<<16n)|(BigInt(patch)<<8n);
     env.pointerEqual=(a,b)=>Number(raw(functionPointer(a))===raw(functionPointer(b)));
     env.pointerDifference=(a,b,kind)=>(raw(a)-raw(b))/BigInt(layout[(aliases[kind]??kind)+'Size']);
-    env.scalarPointer=(type,at)=>{if(!pointerValue(at))return 0;const d=descriptor(type);return Object.defineProperty({address:pointerValue(at),descriptor:d},'value',{get:()=>read(d,addr(at)),set:v=>write(d,addr(at),v)});};
+    env.scalarPointer=(type,at)=>{const d=descriptor(type);if(isNativeLocalReference(at,nativeState,localKind(d)))return at;if(!pointerValue(at))return 0;return Object.defineProperty({address:pointerValue(at),descriptor:d},'value',{get:()=>read(d,addr(at)),set:v=>write(d,addr(at),v)});};
     env.shortArray=(at,count=0)=>array({a:[Number(count)],e:{t:'i16'}},addr(at));
     env.byteArray=(at,count=0)=>array({a:[Number(count)],e:{t:'u8'}},addr(at));
     env.in_rooms_buf=services.inRoomsBuffer();

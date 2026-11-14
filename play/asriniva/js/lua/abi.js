@@ -18,7 +18,7 @@ import { luaSortEntropy } from './table-sort.js';
 import { openLuaOS } from './os-library.js';
 import { createLuaOSServices } from './os-abi.js';
 
-const i32 = value => Number(BigInt.asIntN(32, BigInt(value)));
+const i32 = value => typeof value==='number'?value|0:Number(BigInt.asIntN(32, BigInt(value)));
 const i64 = value => BigInt.asIntN(64, BigInt(value));
 const address = value => {
   const n = Number(value);
@@ -275,14 +275,14 @@ export function createLuaAbi(options = {}) {
     }
     return 1;
   }
-  function operate(handle, operation, a, b, c, d, e) {
+  function operate(handle, operation, a, b, c, d, e, nativeValues = false) {
     if (operation === 'lua_newstate') return create(address(a), address(b));
     if (operation === 'luaL_newstate') return create(0, 0);
     const record = get(handle), state = record.state, index = i32(a);
     switch (operation) {
       case 'luaL_error_text':return luaAuxError(record.state.vm,'%s',cstring(a));
       case 'lua_pushinteger': state.lua_pushinteger(i64(a)); return 0;
-      case 'lua_pushnumber': state.lua_pushnumber(decodeNumber(a)); return 0;
+      case 'lua_pushnumber': state.lua_pushnumber(nativeValues?Number(a):decodeNumber(a)); return 0;
       case 'lua_pushboolean': state.lua_pushboolean(index !== 0); return 0;
       case 'lua_pushstring': return stringPointer(record, state.lua_pushstring(cstring(a)));
       case 'lua_pushlstring': {
@@ -303,7 +303,7 @@ export function createLuaAbi(options = {}) {
       case 'lua_typename': return stringPointer(constants, state.lua_typename(index));
       case 'lua_tointegerx': case 'lua_tonumberx': {
         const valid = {}, value = state[operation](index, valid); writeInt(address(b), valid.value);
-        return operation === 'lua_tointegerx' ? value : encodeNumber(value);
+        return operation === 'lua_tointegerx' || nativeValues ? value : encodeNumber(value);
       }
       case 'lua_getglobal': case 'lua_setglobal': return state[operation](cstring(a));
       case 'lua_getfield': case 'lua_setfield': return state[operation](index, cstring(b));
@@ -318,7 +318,7 @@ export function createLuaAbi(options = {}) {
       case 'luaL_newmetatable': return state.luaL_newmetatable(cstring(a));
       case 'luaL_testudata': {const value=state.value(index),metatable=state.registry.rawget(cstring(b));return value instanceof LuaUserdata&&metatable!==null&&value.metatable===metatable?userdataPointer(value.value):0;}
       case 'luaL_checkudata': return userdataPointer(state.luaL_checkudata(index, cstring(b)));
-      case 'lua_pushlightuserdata': state.lua_pushlightuserdata(BigInt.asUintN(64,a)); return 0;
+      case 'lua_pushlightuserdata': state.lua_pushlightuserdata(BigInt.asUintN(64,BigInt(a))); return 0;
       case 'lua_touserdata': return state.value(index) instanceof LuaLightUserdata ? valuePointer(record,state.value(index)) : userdataPointer(state.lua_touserdata(index));
       case 'lua_topointer': {
         return valuePointer(record, state.value(index));
@@ -342,10 +342,10 @@ export function createLuaAbi(options = {}) {
       }
       case 'luaL_requiref': state.luaL_requiref(cstring(a), native(record, b), i32(c)); return 0;
       case 'lua_callk':
-        if (d !== 0n) throw new LuaError('Lua C continuation is not implemented');
+        if (d !== 0n && d !== 0) throw new LuaError('Lua C continuation is not implemented');
         return state.lua_call(index, i32(b));
       case 'lua_pcallk':
-        if (e !== 0n) throw new LuaError('Lua C continuation is not implemented');
+        if (e !== 0n && e !== 0) throw new LuaError('Lua C continuation is not implemented');
         return state.lua_pcall(index, i32(b), i32(c));
       case 'luaL_loadbufferx': {
         const pointer = range(a, address(b));
@@ -353,7 +353,7 @@ export function createLuaAbi(options = {}) {
       }
       case 'luaL_loadstring': return state.luaL_loadstring(cstring(a));
       case 'luaL_checkversion_':
-        if (decodeNumber(a) !== 504 || address(b) !== 136) throw new LuaError('Lua version/number size mismatch');
+        if ((nativeValues?Number(a):decodeNumber(a)) !== 504 || address(b) !== 136) throw new LuaError('Lua version/number size mismatch');
         return 0;
       case 'lua_tocfunction': {const value=state.value(index);if(!state.lua_iscfunction(index))return 0;const pointer=value?.luaAbiCFunctionPointer??value?.luaNativeCallback?.luaCFunctionPointer;if(!pointer)throw new LuaError('Lua C function has no registered ABI address');return pointer;}
       case 'lua_setallocf': record.allocator=address(a);record.allocatorData=address(b);record.state.vm.heap.memoryTracker.setallocf(record.memoryAllocator,record.allocatorData);return 0;
@@ -363,7 +363,7 @@ export function createLuaAbi(options = {}) {
       }
       case 'lua_setwarnf': record.warn = address(a); record.warnData = address(b); return 0;
       case 'lua_warning':
-        if (record.warn) services.callback(record.warn)(BigInt(record.warnData), a, i32(b));
+        if (record.warn) services.callback(record.warn)(BigInt(record.warnData), BigInt(a), i32(b));
         return 0;
       case 'lua_gc': return state.lua_gc(index, i32(b), i32(c), i32(d));
       case 'lua_sethook': case 'lua_getstack': case 'lua_getinfo': case 'luaL_traceback':
@@ -397,6 +397,13 @@ export function createLuaAbi(options = {}) {
         if (!(error instanceof LuaError)) throw error;
         pending.set(handle, error); return 0n;
       }
+    },
+    invoke(hostServices, handle, operation, a = 0, b = 0, c = 0, d = 0, e = 0) {
+      if (services && services !== hostServices) throw new Error('Lua ABI runtime cannot be shared by Wasm instances');
+      services = hostServices;handle=address(handle);
+      if(typeof operation!=='string')throw new TypeError('Native Lua operation must be named');
+      try{counters[operation]=(counters[operation]??0)+1;return operate(handle,operation,a,b,c,d,e,true);}
+      catch(error){if(!(error instanceof LuaError))throw error;pending.set(handle,error);return 0;}
     },
     failed(handle) { return Number(pending.has(address(handle))); },
     unprotected(hostServices, handle) {

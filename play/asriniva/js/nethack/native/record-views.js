@@ -6,7 +6,8 @@ import {fieldAliases} from '../declarations.js';
 import {nativeStateFor} from './state-bridge.js';
 
 const scalars={char:'Int8','signed char':'Int8','unsigned char':'Uint8',short:'Int16','unsigned short':'Uint16',int:'Int32','unsigned int':'Uint32',unsigned:'Uint32',long:'BigInt64','unsigned long':'BigUint64','long long':'BigInt64','unsigned long long':'BigUint64'};
-const owners=new WeakMap(),storageAddress=Symbol('native record storage');
+const owners=new WeakMap(),storageAddress=Symbol('native record storage'),projectionCache=Symbol('native record projections');
+function nativeStorageAddress(){return this[storageAddress];}
 const smallWidths={Int8:1,Uint8:1,Int16:2,Uint16:2,Int32:4,Uint32:4};
 const littleHost=new Uint8Array(new Uint16Array([1]).buffer)[0]===1;
 const normalizers=Object.fromEntries([...new Set(Object.values(scalars))].map(kind=>{const bits=Number(kind.match(/\d+/)[0]);return [kind,kind.startsWith('Big')?value=>BigInt.asUintN(64,BigInt(value)):value=>typeof value==='number'&&Number.isInteger(value)?value:Number(BigInt[kind.startsWith('Uint')?'asUintN':'asIntN'](bits,BigInt(value)))];}));
@@ -14,7 +15,7 @@ export function createNativeRecordViews(environment){
  if(owners.has(environment))return owners.get(environment);
  const {ctypes,memory}=environment,owner=nativeStateFor(environment),arena=owner.nativeArena;
  if(!arena)throw new Error('Native record views require typed state');
- const records=new Map(),arrays=new Map(),definitions=new Map(),viewDefinitions=new WeakMap(),sharedDescriptors=new Map();
+ const records=new Map(),arrays=new Map(),definitions=new Map(),viewDefinitions=new WeakMap(),sharedDescriptors=new Map(),shapes=new Map();
  const address=environment.address;
  const isRecord=type=>ctypes.isRecord(type);
  function definition(type){let row=definitions.get(type);if(!row){row=ctypes.record(type);definitions.set(type,row);}return row;}
@@ -37,7 +38,7 @@ export function createNativeRecordViews(environment){
   if(isRecord(type))return record(type,p);
   const kind=scalars[ctypes.abiType(type)];memory.bounds(p,ctypes.size(type));return kind?arena.scalar(kind,p).get():ctypes.load(type,p);
  }
- function sharedDescriptor(type,name,field){
+ function sharedDescriptor(type,name,field,slot){
   const key=definition(type).type+':'+name;if(sharedDescriptors.has(key))return sharedDescriptors.get(key);
   const scalar=ctypes.abiType(field.ctype.replace(new RegExp('\\s+'+name+'$'),'')),offset=field.offset;
   let result;
@@ -47,6 +48,24 @@ export function createNativeRecordViews(environment){
   }else if(field.bits===undefined&&!field.record&&smallWidths[scalars[scalar]]){
    const kind=scalars[scalar],bytes=smallWidths[kind],normalize=normalizers[kind];
    result={enumerable:true,get(){const at=this[storageAddress]+offset,value=littleHost?arena[kind][at/bytes]:undefined;return value===undefined?memory.view['get'+kind](at,true):value;},set(v){const at=this[storageAddress]+offset;v=normalize(v);if(!littleHost||arena[kind][at/bytes]===undefined)memory.view['set'+kind](at,v,true);else arena[kind][at/bytes]=v;}};
+  }
+  if(!result&&field.bits===undefined){
+   const declared=field.ctype.replace(new RegExp('\\s+'+name+'$'),'');
+   if(field.record||scalar.includes('[')||isRecord(scalar)){
+    const nested=field.record??scalar,size=field.record?definition(field.record).size:undefined;
+    result={enumerable:true,get(){const cache=this[projectionCache];if(!(slot in cache))cache[slot]=value(nested,this[storageAddress]+offset);return cache[slot];},set(v){const at=this[storageAddress]+offset;if(field.record)memory.memmove(at,address(v),size);else ctypes.store(scalar,at,v);}};
+   }else if(scalar.endsWith('*')){
+    const target=scalar.slice(0,-1).trim(),pointee=isRecord(target);
+    result={enumerable:true,get(){const raw=arena.pointer(this[storageAddress]+offset);if(!pointee)return raw;const cache=this[projectionCache],old=cache[slot];if(!old||old.raw!==raw||old.version!==owner.schemaVersion){const decoded=record(target,raw);if(old){old.raw=raw;old.version=owner.schemaVersion;old.value=decoded;}else cache[slot]={raw,version:owner.schemaVersion,value:decoded};return decoded;}return old.value;},set(v){arena.storePointer(this[storageAddress]+offset,typeof v==='string'&&declared.includes('*')?environment.services.literal(v):v);}};
+   }else{
+    const kind=scalar.includes('*')?'BigUint64':scalars[scalar];
+    if(kind==='BigInt64'||kind==='BigUint64'){
+     const normalize=scalar.includes('*')?v=>BigInt.asUintN(64,BigInt(typeof v==='string'&&declared.includes('*')?environment.services.literal(v):v?.address??v??0)):normalizers[kind];
+     result={enumerable:true,get(){const at=this[storageAddress]+offset;if(!littleHost||at%8)return memory.view['get'+kind](at,true);const word=at/4,lo=arena.Uint32[word],hi=arena.Uint32[word+1];if(lo===undefined||hi===undefined)return memory.view['get'+kind](at,true);const cache=this[projectionCache],old=cache[slot];if(!old||old.lo!==lo||old.hi!==hi){const v=arena[kind][at/8];if(old){old.lo=lo;old.hi=hi;old.value=v;}else cache[slot]={lo,hi,value:v};return v;}return old.value;},set(v){const at=this[storageAddress]+offset;v=normalize(v);if(!littleHost||at%8||arena[kind][at/8]===undefined)memory.view['set'+kind](at,v,true);else arena[kind][at/8]=v;}};
+    }else if(scalar==='float'||scalar==='double'){
+     const kind=scalar==='float'?'Float32':'Float64';result={enumerable:true,get(){return memory.view['get'+kind](this[storageAddress]+offset,true);},set(v){memory.view['set'+kind](this[storageAddress]+offset,Number(v),true);}};
+    }
+   }
   }
   sharedDescriptors.set(key,result);return result;
  }
@@ -72,6 +91,12 @@ export function createNativeRecordViews(environment){
   if(kind)return owner.scalar(at,kind,scalar.includes('*')?v=>BigInt.asUintN(64,BigInt(typeof v==='string'&&declared.includes('*')?environment.services.literal(v):v?.address??v??0)):normalizers[kind]);
   return {enumerable:true,get:()=>ctypes.load(scalar,at),set:v=>ctypes.store(scalar,at,v)};
  }
+ function shape(type,row){
+  if(shapes.has(row.type))return shapes.get(row.type);
+  const fields=Object.entries(row.fields).map(([name,field],slot)=>{const scalar=ctypes.abiType(field.ctype.replace(new RegExp('\\s+'+name+'$'),''));return {name,field,shared:sharedDescriptor(type,name,field,slot),counted:field.bits===undefined&&!field.record&&!scalar.includes('[')&&!isRecord(scalar)&&scalar!=='float'&&scalar!=='double'};});
+  const aliases=Object.entries(fieldAliases[row.type]??{}).map(([alias,name])=>({alias,name,descriptor:{get(){return this[name];},set(v){this[name]=v;}}}));
+  const result={fields,aliases};shapes.set(row.type,result);return result;
+ }
  function record(type,pointer){
   const at=address(pointer);if(!at)return 0;
   const row=definition(type),sharedType=owner.sharedTypes.has('struct '+row.type)?'struct '+row.type:undefined;
@@ -83,9 +108,11 @@ export function createNativeRecordViews(environment){
   if(sharedType)owner.records.set(sharedType+':'+at,out);
   viewDefinitions.set(out,row);
   if(!Object.hasOwn(out,storageAddress))Object.defineProperty(out,storageAddress,{value:at});
-  if(!Object.hasOwn(out,Symbol.toPrimitive)&&!Object.hasOwn(out,'valueOf'))Object.defineProperty(out,Symbol.toPrimitive,{value:()=>at});
-  for(const[name,field]of Object.entries(row.fields))if(!Object.hasOwn(out,name)){const shared=sharedDescriptor(type,name,field);if(shared&&field.bits===undefined)owner.fields++;Object.defineProperty(out,name,shared??descriptor(type,at,name,field));}
-  for(const[alias,name]of Object.entries(fieldAliases[row.type]??{}))if(!Object.hasOwn(out,alias)&&Object.hasOwn(out,name))Object.defineProperty(out,alias,{get:()=>out[name],set:v=>{out[name]=v;}});
+  if(!Object.hasOwn(out,projectionCache))Object.defineProperty(out,projectionCache,{value:[]});
+  if(!Object.hasOwn(out,Symbol.toPrimitive)&&!Object.hasOwn(out,'valueOf'))Object.defineProperty(out,Symbol.toPrimitive,{value:nativeStorageAddress});
+  const plan=shape(type,row);
+  for(const {name,field,shared,counted}of plan.fields)if(!Object.hasOwn(out,name)){if(shared&&counted)owner.fields++;Object.defineProperty(out,name,shared??descriptor(type,at,name,field));}
+  for(const {alias,name,descriptor}of plan.aliases)if(!Object.hasOwn(out,alias)&&Object.hasOwn(out,name))Object.defineProperty(out,alias,descriptor);
   if(sharedType)owner.enrich(out,sharedType,at);
   return out;
  }

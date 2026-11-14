@@ -251,7 +251,7 @@ async function _consume_offering(otmp) {
             await pline('Your sacrifice collapses into a cloud of dancing particles and fades away!');
             break;
         }
-    else if (_blind_sac() && t === A_LAWFUL)
+    else if (_hero_Blind() && t === A_LAWFUL)
         await pline('Your sacrifice disappears!');
     else
         await pline(`Your sacrifice is consumed in a ${t === A_LAWFUL ? 'flash of light'
@@ -262,10 +262,6 @@ async function _consume_offering(otmp) {
     else await useupf(otmp, 1);
     exercise(A_WIS, true);
 }
-
-function _blind_sac() { return !!((game.u?.uprops?.[BLINDED_SAC]?.intrinsic | 0) || (game.u?.uprops?.[BLINDED_SAC]?.extrinsic | 0)); }
-
-const BLINDED_SAC = 15; /* prop.h BLINDED */
 
 /* C ref: pray.c:1839 sacrifice_value(otmp) */
 function _sacrifice_value(otmp) {
@@ -381,7 +377,7 @@ async function _offer_different_alignment_altar(otmp, altaralign) {
         const c = _levlAt(u.ux | 0, u.uy | 0);
         if (c) c.altarmask = Align2amask(u.ualign.type | 0) | (shrine ? AM_SHRINE : 0);
         newsym(u.ux, u.uy);
-        if (!_blind_sac())
+        if (!_hero_Blind())
             await pline(`The altar glows ${hcolor((u.ualign.type | 0) === A_LAWFUL ? 'white'
                         : (u.ualign.type | 0) ? NH_BLACK : 'gray')}.`);
         if (rnl(u.ulevel | 0) > 6 && (u.ualign.record | 0) > 0
@@ -1202,7 +1198,7 @@ async function _fix_worst_trouble(trouble) {
         make_stunned(0n, true);
         break;
     case TROUBLE_CONFUSED:
-        make_confused(0n, true);
+        await make_confused(0n, true);
         break;
     case TROUBLE_HALLUCINATION:
         await pline('Looks like you are back in Kansas.');
@@ -1303,7 +1299,6 @@ export async function dopray() {
         const ok = await paranoid_query(!!(bits & PARANOID_CONFIRM),
                                         'Are you sure you want to pray?');
         if (!ok) {                           /* declined → ECMD_OK, no turn */
-            g.context.move = 0;
             return ECMD_OK; // C ref: pray.c:2218 `if (!ok) return ECMD_OK;`
         }
     }
@@ -1318,7 +1313,6 @@ export async function dopray() {
 
     /* C ref: pray.c:2230 — `if (!can_pray(TRUE)) return ECMD_OK;`. */
     if (!(await can_pray(true))) {           /* prints "You begin praying…" */
-        g.context.move = 0;                  /* ECMD_OK — no turn */
         return ECMD_OK; // C ref: pray.c:2231 `if (!can_pray(TRUE)) return ECMD_OK;`
     }
 
@@ -1366,10 +1360,6 @@ export async function dopray() {
             await pline('You are surrounded by a shimmering light.');
         u.uinvulnerable = true;
     }
-    /* ECMD_TIME — doextcmd() zeroed context.move before dispatch; restore it to
-     * 1 so the faithful moveloop runs the praying turns and then fires
-     * unmul→prayer_done. */
-    g.context.move = 1;
     return ECMD_TIME; // C ref: pray.c:2272 `return ECMD_TIME;`
 }
 
@@ -1469,7 +1459,6 @@ export async function doturn() {
     if (!can_chant(youmonst)) {
         await You("are %s upon %s to turn aside evilness.",
             _uprop_active('STRANGLED') ? "not able to call" : "incapable of calling", Gname);
-        g.context.move = (u.uconduct.gnostic === 1) ? 1 : 0;
         return (u.uconduct.gnostic === 1) ? ECMD_TIME : ECMD_OK;
     }
 
@@ -1479,7 +1468,6 @@ export async function doturn() {
         await pline("For some reason, %s seems to ignore you.", Gname);
         aggravate();
         exercise(A_WIS, false);
-        g.context.move = 1;
         return ECMD_TIME;
     }
 
@@ -1490,7 +1478,6 @@ export async function doturn() {
         await pline(_plineVFmt("Since you are in Gehennom, %s %s help you.",
             [Gname, Gname === 'Moloch' ? "won't" : "can't"]));
         aggravate();
-        g.context.move = 1;
         return ECMD_TIME;
     }
 
@@ -1512,7 +1499,6 @@ export async function doturn() {
     nomul(-(5 - Math.trunc(((u.ulevel | 0) - 1) / 6))); /* -5 .. -1 */
     g.multi_reason = "trying to turn the monsters";
     g.nomovemsg = "You can move again.";
-    g.context.move = 1;
     return ECMD_TIME;
 }
 
@@ -2158,6 +2144,16 @@ async function _pleased(gAlign) {
     let kick_on_butt = (u.uevent && u.uevent.udemigod) ? 1 : 0;
     if (u.uevent && u.uevent.uhand_of_elbereth) kick_on_butt++;
     if (kick_on_butt) u.ublesscnt = (u.ublesscnt | 0) + kick_on_butt * rnz(1000); /* pray.c:1361 */
+
+    /* C pray.c:1371-1378: long games gradually increase the prayer timeout,
+     * capped so the resulting timer remains representable by a 16-bit int. */
+    if (g.moves > 100000) {
+        let incr = Math.trunc((g.moves - 100000) / 100);
+        const largest_ublesscnt_incr = 32767 - u.ublesscnt; /* LARGEST_INT */
+        if (incr > largest_ublesscnt_incr)
+            incr = largest_ublesscnt_incr;
+        u.ublesscnt += incr;
+    }
 }
 
 export async function prayer_done() {

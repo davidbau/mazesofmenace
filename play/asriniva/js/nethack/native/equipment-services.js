@@ -13,7 +13,7 @@ export function createEquipmentServices(environment){
   if(existing!==undefined&&typeof existing!=='function')return existing;
   if(typeof key!=='string')return existing;
   const owner=Object.getOwnPropertyDescriptor(o,'nativeOwner')?.value,native=owner?.functions.get(key);
-  if(directReturns.get(key)&&native?.nativeState===owner&&native?.nativeDirect)return native;
+  if(native?.nativeState===owner&&native?.nativeDirect){if(native.nativeValuesEntry)return native.nativeValuesEntry;if(directReturns.get(key))return native;}
   if(!forwards.has(key))forwards.set(key,(...args)=>{
    const selected=Reflect.has(services,key)?Reflect.get(services,key,services):environment.resolve(key);
    return selected(...args.map(value=>value?.address??value));

@@ -325,7 +325,7 @@ import { align_gname, can_pray, u_gname } from './pray.js';
 import { spellid } from './spell.js';
 import { is_ammo, isMetallic, is_wet_towel, objectType } from './obj.js';
 import { body_part, mbodypart, udeadinside, ugenocided } from './polyself.js';
-import { visible_region_at } from './region.js';
+import { reg_damg, visible_region_at } from './region.js';
 import { mhidden_description, waterbody_name } from './pager.js';
 import {
     displayTtyMenuTextWindow,
@@ -341,7 +341,7 @@ import {
 import { costly_spot } from './shk.js';
 import { ttyPline } from './tty_message.js';
 import { find_ac } from './u_init_inventory_attrs.js';
-import { livelog_printf } from './pline.js';
+import { impossible, livelog_printf } from './pline.js';
 import { note_unported } from './unported.js';
 import { ATR_INVERSE, ATR_NONE } from './terminal.js';
 import { hidden_gold } from './vault.js';
@@ -1922,6 +1922,8 @@ export async function attributes_enlightenment(final, state, lines) {
         }
     } else {
         mortalityVerb = 'are dead';
+        if (mortality === 0)
+            await impossible('dead without dying?', state);
         if (mortality > 1)
             mortalitySuffix = ` (${mortality}${ordin(mortality)} time!)`;
     }
@@ -3204,8 +3206,7 @@ export async function ustatusline(state = game) {
     if (!u.uswallow) {
         const region = visible_region_at(u.ux, u.uy, state);
         if (region) {
-            const damage = Math.trunc(region.arg ?? 0);
-            info += `, in a cloud of ${damage ? 'poison gas' : 'vapor'}`;
+            info += `, in a cloud of ${reg_damg(region) ? 'poison gas' : 'vapor'}`;
         }
     }
 

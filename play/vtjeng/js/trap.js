@@ -364,9 +364,7 @@ export function sokoban_guilt(state = game) {
     change_luck(-1, state);
 }
 
-// C ref: trap.c instapetrify() (3844-3855). Supporting wielding_corpse's
-// protection-loss callers; other source callers retain their named gaps, so
-// this helper is not established complete across its wider entry points.
+// C ref: trap.c instapetrify() (3844-3855).
 export async function instapetrify(str, state = game, env = {}) {
     if (Stone_resistance(state.u)) return;
     if (poly_when_stoned(state.youmonst.data, state)
@@ -2238,7 +2236,11 @@ export function trapname(ttyp, override, state, random = coreRandom,
 // hidden immunity still asks the hero for confirmation, while clearly visible
 // immunity suppresses the prompt.
 export function immune_to_trap(mon, ttype, state = game) {
-    if (!mon) return TRAP_NOT_IMMUNE;
+    if (!mon) {
+        // C: impossible("immune_to_trap: null monster");
+        note_unported('pline.c impossible');
+        return TRAP_NOT_IMMUNE;
+    }
     const pm = mon.data;
     const isYou = mon === state.youmonst;
     switch (ttype) {
@@ -2339,6 +2341,8 @@ export function immune_to_trap(mon, ttype, state = game) {
     case VIBRATING_SQUARE:
         return TRAP_CLEARLY_IMMUNE;
     default:
+        // C: impossible("immune_to_trap: bad ttype %u", ttype);
+        note_unported('pline.c impossible');
         return TRAP_NOT_IMMUNE;
     }
 }
@@ -3607,7 +3611,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
         case 3: case 2: case 1: case 0:
             msg = 'gas cloud blows away'; break;
         default:
-            // impossible("chest disarm bug")
+            await impossible('chest disarm bug', state);
             msg = null;
             break;
         }
@@ -3782,7 +3786,7 @@ export async function chest_trap(obj, bodypart, disarm, state = game) {
             break;
         }
         default:
-            // impossible("bad chest trap")
+            await impossible('bad chest trap', state);
             break;
         }
         await bot();
@@ -3806,5 +3810,20 @@ export async function trap_ice_effects(x, y, ice_is_melting, state = game, env =
         } else if (!undestroyable_trap(trap.ttyp)) {
             deltrap(trap, state);
         }
+    }
+}
+
+// C ref: trap.c trap_sanity_check() (7197-7210). Walk gf.ftrap, whose ntrap
+// order this port keeps as level.traps' array order, and report each trap
+// with an off-map location or an out-of-range type. `env` passes
+// impossible()'s message operations through, which a test can replace.
+export async function trap_sanity_check(state = game, env = {}) {
+    for (const ttmp of state.level?.traps ?? []) {
+        if (!isok(ttmp.tx, ttmp.ty))
+            await impossible(
+                `trap sanity: location (${ttmp.tx},${ttmp.ty})`, state, env,
+            );
+        if (ttmp.ttyp <= NO_TRAP || ttmp.ttyp >= TRAPNUM)
+            await impossible(`trap sanity: type (${ttmp.ttyp})`, state, env);
     }
 }

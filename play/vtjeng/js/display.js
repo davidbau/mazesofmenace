@@ -37,7 +37,7 @@ import { ttyPline } from './tty_message.js';
 import { displayTtyTextWindow } from './tty_menu.js';
 import { isok } from './cmd_isok.js';
 import { impossible, impossible_printer } from './pline.js';
-import { ImpossibleCall, finish_steps } from './source_steps.js';
+import { ImpossibleCall, finish_steps, sync_impossible } from './source_steps.js';
 import { is_pool, is_pool_or_lava, is_ice } from './dbridge.js';
 import { known_branch_stairs, stairway_at } from './stairs.js';
 import { acurr } from './attrib.js';
@@ -1524,7 +1524,10 @@ function display_monster(x, y, monster, sightflags, wormTail, state = game) {
             );
             break;
         default:
-            // C's impossible() arm falls through to mon_to_glyph().
+            // C: impossible("display_monster:  bad m_ap_type value [ = %d ]",
+            //               (int) mon->m_ap_type);
+            // The arm then falls through to mon_to_glyph().
+            note_unported('pline.c impossible');
             show_glyph_cell(
                 x, y, presentedMonsterGlyphInfo(monster, state, false),
             );
@@ -1624,12 +1627,19 @@ function show_mon_or_warn(x, y, glyph, state = game) {
 // a warning-bearing monster; the same source helper handles its memory and
 // screen update for both in-sight and out-of-sight warning glyphs.
 function display_warning(monster, state = game) {
-    show_mon_or_warn(
-        monster.mx,
-        monster.my,
-        warningGlyphInfo(monster, state),
-        state,
-    );
+    let glyph;
+    if (monsterWarnsHero(monster, state)) {
+        glyph = warningGlyphInfo(monster, state);
+    } else if (warningMatches(monster, state)) {
+        // C: mon_to_glyph(mon, rn2_on_display_rng), as display_monster()'s
+        // M_AP_NOTHING arm draws it.
+        glyph = presentedMonsterGlyphInfo(monster, state, false);
+    } else {
+        // C: impossible("display_warning did not match warning type?");
+        note_unported('pline.c impossible');
+        return;
+    }
+    show_mon_or_warn(monster.mx, monster.my, glyph, state);
 }
 
 // C ref: display.h vobj_at() (22), the head of the floor pile at <x,y>. The
@@ -2945,7 +2955,10 @@ function terrain_to_glyph(ptr, x, y, state) {
         default:
             // C diagnoses the invalid underlay with impossible() and still
             // uses room floor, so callers always receive a drawable glyph.
-            idx = S_room;
+            sync_impossible(
+                `Strange db-under: ${drawbridgeMask(ptr) & DB_UNDER}`, state,
+            );
+            idx = S_room; /* something is better than nothing */
             break;
         }
         break;
@@ -2954,6 +2967,9 @@ function terrain_to_glyph(ptr, x, y, state) {
         break;
     default:
         // C's impossible() arm, which also settles on room floor.
+        sync_impossible(
+            `back_to_glyph:  unknown level type [ = ${typ} ]`, state,
+        );
         idx = S_room;
         break;
     }
@@ -3180,7 +3196,12 @@ export function swallow_to_glyph(
 ) {
     const displayedMnum = Hallucination(state.u)
         ? displayDraw(displayRandom, NUMMONS) : mnum;
-    const clampedLoc = loc < S_sw_tl || loc > S_sw_br ? S_sw_br : loc;
+    let clampedLoc = loc;
+    if (loc < S_sw_tl || S_sw_br < loc) {
+        // C: impossible("swallow_to_glyph: bad swallow location");
+        note_unported('pline.c impossible');
+        clampedLoc = S_sw_br;
+    }
     return ((displayedMnum << 3) | (clampedLoc - S_sw_tl))
         + GLYPH_SWALLOW_OFF;
 }
@@ -5113,16 +5134,21 @@ function _statusHitpointBarTitle() {
         .padEnd(STATUS_HP_BAR_WIDTH);
     // C ref: wintty.c:4539 asks critically_low_hp(TRUE) before dashing the
     // unfilled half of the bar.
-    if (critically_low_hp(true)) {
-        const chars = [...bar];
-        for (let index = chars.length - 1; index >= 1; index -= 2) {
-            if (chars[index] === ' ' && chars[index - 1] === ' ') {
-                chars[index] = '-';
-            }
-        }
-        bar = chars.join('');
-    }
+    if (critically_low_hp(true)) bar = repad_with_dashes(bar);
     return bar;
+}
+
+// C ref: botl.c repad_with_dashes() (2167-2178). Working back from the end
+// of the space-padded bar, replace the second space of each pair with a
+// dash, and stop at the first pair that is not two spaces.
+export function repad_with_dashes(inoutbuf) {
+    const chars = [...inoutbuf];
+    let p = chars.length;
+    while (p >= 2 && chars[p - 1] === ' ' && chars[p - 2] === ' ') {
+        chars[p - 1] = '-';
+        p -= 2;
+    }
+    return chars.join('');
 }
 
 function _statusAlignment(u = game.u) {
@@ -6404,7 +6430,13 @@ function _statusHiliteChangeBanks(gb, size) {
 // list belongs to iflags and is deliberately left intact here.
 export function init_blstats(state = game) {
     const gb = state.gb ??= {};
-    if (gb.blinit) return false;
+    // C keeps a static initalready flag; gb.blinit is set by the one full
+    // status_initialize() that reaches here, so it marks the same state.
+    if (gb.blinit) {
+        // C: impossible("init_blstats called more than once.");
+        note_unported('pline.c impossible');
+        return false;
+    }
     const size = Math.max(...STATUS_FIELDS.map(row => row.fld)) + 1;
     for (const name of ['status_hilite_rule', 'status_hilite_value',
         'status_hilite_compare_value', 'status_hilite_percent',
@@ -6447,7 +6479,11 @@ export function status_initialize(state = game, reassessOnly = true) {
     state.gu ??= {};
     state.gb ??= {};
     if (!reassessOnly) {
-        if (!state.gb.blinit) init_blstats(state);
+        if (state.gb.blinit) {
+            // C: impossible("2nd status_initialize with full init.");
+            note_unported('pline.c impossible');
+        }
+        init_blstats(state);
         state.gb.blinit = true;
     } else if (!state.gb.blinit) {
         throw new Error('status_initialize reassessment before init_blstats');
@@ -6768,11 +6804,21 @@ function _collectStatusHilites(layouts, onlyField = null) {
             gb.status_hilite_times[1][fld] = 0;
         }
         const notification = updateAll || changed || expired;
+        // C ref: botl.c compare_blstats(prev, curr). A number gives 1 when
+        // it rose. A string field gives sgn(strcmp(prev, curr)), 1 when the
+        // old text sorts after the new; status text is a byte string, so
+        // code-unit order is strcmp()'s unsigned byte order. The sign of a
+        // string change is not visible: parse_status_hl2() makes 'up' and
+        // 'down' on a string field 'changed' rules, and tty_status_update()
+        // ignores chg. C compares BL_TERRAIN as the terrain_typ number, but
+        // the recorder shows no change between wall types, which share the
+        // text "Wall" (recordings/botl.c/terrain-wall-change); the text
+        // comparison here matches that.
         let change = previousCompareValue == null || compareValue == null
             ? 0 : Math.sign(compareValue - previousCompareValue);
         if (data.value == null && text != null && previousText != null
             && text !== previousText)
-            change = text < previousText ? -1 : 1;
+            change = previousText > text ? 1 : -1;
         if (data.percentChange) change = data.percentChange;
         // BL_XP uses a percentage to decide whether to notify, then resets
         // chg to compare_blstats() on its level value.
@@ -8159,17 +8205,26 @@ export function status_hilite2str(rule) {
         // C reads value.a_int here even for an ANY_LONG threshold.
         const value = Number(BigInt.asIntN(32, BigInt(rule.value ?? 0)));
         if (['<', '<=', '=', '>=', '>'].includes(rel)) behavior = `${rel}${value}${rule.behavior === 'percentage' ? '%' : ''}`;
-        else note_unported('pline.c impossible');
+        else if (rule.behavior === 'percentage') {
+            // C: impossible("hl->behavior=percentage, rel error");
+            note_unported('pline.c impossible');
+        } else {
+            // C: impossible("hl->behavior=absolute, rel error");
+            note_unported('pline.c impossible');
+        }
     } else if (rule.behavior === 'changed') {
         if (rel === '<') behavior = 'down';
         else if (rel === '>') behavior = 'up';
         else if (rel === '=') behavior = 'changed';
+        // C: impossible("hl->behavior=updown, rel error");
         else note_unported('pline.c impossible');
     } else if (rule.behavior === 'text') {
         if (rel === '=' && rule.text) behavior = rule.text;
+        // C: impossible("hl->behavior=textmatch, rel or textmatch error");
         else note_unported('pline.c impossible');
     } else if (rule.behavior === 'condition') {
         if (rel === '=') behavior = conditionbitmask2str(rule.value);
+        // C: impossible("hl->behavior=condition, rel error");
         else note_unported('pline.c impossible');
     } else if (rule.behavior === 'always') behavior = 'always';
     else if (rule.behavior === 'critical') behavior = 'criticalhp';

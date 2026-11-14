@@ -32,7 +32,7 @@ export function nativeSpatialFor(environment,layouts){
  // Preserve ordered region/rectangle traversal. Arrays are refreshed only when
  // their pointer or count changes; ordinary region queries reuse them.
  const regionViews=new Map();
- function region(raw){if(!raw)return 0;if(regionViews.has(raw))return regionViews.get(raw);const base=views.record('NhRegion',raw),out=Object.create(base);let rects,oldAt,oldCount;
+ function region(raw){if(!raw)return 0;if(owner.regionRecord)return owner.regionRecord(raw);if(regionViews.has(raw))return regionViews.get(raw);const base=views.record('NhRegion',raw),out=Object.create(base);let rects,oldAt,oldCount;
   Object.defineProperty(out,'rects',{get(){const p=arena.pointer(field('NhRegion',raw,'rects')),n=base.nrects;if(p!==oldAt||n!==oldCount){rects=Array.from({length:n},(_,i)=>views.record('NhRect',p+i*ctypes.size('NhRect')));oldAt=p;oldCount=n;}return rects;}});regionViews.set(raw,out);return out;}
  let regionList=[],regionAt,regionCount;const gr={};Object.defineProperty(gr,'regions',{get(){const p=arena.pointer(heads.regions),n=svn.n_regions;if(p!==regionAt||n!==regionCount){regionList=Array.from({length:n},(_,i)=>region(arena.pointer(p+i*8)));regionAt=p;regionCount=n;}else for(let i=0;i<n;i++)regionList[i]=region(arena.pointer(p+i*8));return regionList;}});
  const regionPolicy=createNativeRegionsPolicy({svn,gr});

@@ -225,7 +225,7 @@ import { hideunder, maybe_unhide_at } from './mon.js';
 import { mon_to_glyph, newsym, obj_to_glyph, suppress_map_output } from './display.js';
 import { impossible, livelog_printf } from './pline.js';
 import { fingers_or_gloves, setwornEnv } from './do_wear.js';
-import { visible_region_at } from './region.js';
+import { reg_damg, visible_region_at } from './region.js';
 import { stairs_description, stairway_at } from './stairs.js';
 import {
     is_drawbridge_wall,
@@ -371,6 +371,8 @@ import {
 import { is_quest_artifact } from './questpgr.js';
 import { artitouch } from './quest.js';
 import { note_unported } from './unported.js';
+import { sync_impossible } from './source_steps.js';
+import { panic } from './end.js';
 import { unpunish } from './read.js';
 import { record_achievement } from './insight.js';
 import { bypass_objlist, nxt_unbypassed_loot, setnotworn, setuqwep, setworn } from './worn.js';
@@ -1122,6 +1124,15 @@ export async function getobj(word, obj_ok, ctrlflags, state = game) {
     /* force invent to be in invlet order before collecting candidate
        inventory letters */
     for (const item of sortlootByInvlet(state)) {
+        // C's bp starts prefix.length characters into buf[BUFSZ], and
+        // altlets is a char[BUFSZ] too.
+        if (prefix.length + letters.length === BUFSZ - 1
+            || altlets.length === BUFSZ - 1) {
+            /* we must have a huge number of noinvsym items somehow */
+            await impossible('getobj: inventory overflow', state);
+            break;
+        }
+
         letters.push(item.invlet);
         switch (await obj_ok(item, state)) {
         case GETOBJ_EXCLUDE_INACCESS:
@@ -2518,7 +2529,7 @@ export async function look_here(
     // feature and tactile-surface output, and is omitted by the count arm.
     if (region || seenTrap) {
         const regionText = region
-            ? `a ${Math.trunc(region.arg ?? 0) ? 'poison gas' : 'vapor'} cloud`
+            ? `a ${reg_damg(region) ? 'poison gas' : 'vapor'} cloud`
             : '';
         const trapText = seenTrap ? an(trapname(seenTrap.ttyp, false, state)) : '';
         await message(
@@ -3040,8 +3051,10 @@ export function carrying(type, state = game) {
 // C ref: invent.c check_invent_gold() (4889-4913). Returns true when the
 // inventory contains gold in an unexpected arrangement (multiple stacks or
 // a stack in a slot other than '$'), which means gold should be allowed as
-// a target for the #adjust command. In normal play this returns false.
-export function check_invent_gold(why, state = game) {
+// a target for the #adjust command; it reports that through impossible().
+// In normal play this returns false. doorganize(), itemactions() and
+// wizcmds.c you_sanity_check() call it.
+export async function check_invent_gold(why, state = game) {
     let goldstacks = 0;
     let wrongslot = 0;
     for (let otmp = inventoryHead(state); otmp; otmp = otmp.nobj) {
@@ -3051,13 +3064,13 @@ export function check_invent_gold(why, state = game) {
         }
     }
     if (goldstacks > 1 || wrongslot > 0) {
-        // C prints this through impossible(), which this build shows in every
-        // mode. check_invent_gold() is synchronous and cannot wait for it,
-        // so the port records the gap and keeps C's return.
-        note_unported('pline.c impossible');
-        return true;
+        await impossible(`${why}: ${wrongslot > 1 ? 'gold in wrong slots'
+            : wrongslot > 0 ? 'gold in wrong slot' : ''}`
+            + `${wrongslot > 0 && goldstacks > 1 ? ' and ' : ''}`
+            + `${goldstacks > 1 ? 'multiple gold stacks' : ''}`, state);
+        return true; /* gold can be #adjusted */
     }
-    return false;
+    return false; /* gold can't be #adjusted */
 }
 
 export function initializeInventory(state = game) {
@@ -3691,6 +3704,8 @@ export function obfree(obj, merge = null, rawEnv = {}) {
         // C prints this through impossible(), which this build shows in every
         // mode. obfree() is synchronous and cannot wait for it, so the port
         // records the gap.
+        // C: impossible("obfree: deleting worn obj (%d: %ld)", obj->otyp,
+        //               obj->owornmask);
         note_unported('pline.c impossible');
         setnotworn(obj, setwornEnv(env.state, env));
     }
@@ -3758,8 +3773,11 @@ function beginMerged(otmp, obj, env = {}, globMode = 'sync') {
         } else if (wmask & W_QUIVER) {
             wmask = W_QUIVER;
         } else {
-            // C's impossible("merging strangely worn items (%lx)").
-            note_unported('pline.c impossible');
+            // C: impossible("merging strangely worn items (%lx)", wmask);
+            sync_impossible(
+                `merging strangely worn items (${wmask.toString(16)})`,
+                normalized.state,
+            );
             wmask = otmp.owornmask;
         }
         const wornEnv = setwornEnv(normalized.state, normalized);
@@ -4584,6 +4602,11 @@ function finishAddinvCore0(context, initialObj, updatePermInvent, otherObj) {
         context.insertedBefore = true;
     } else if (state.uquiver && merged(state.uquiver, obj, normalized)) {
         obj = state.uquiver;
+        if (!obj) {
+            throw new Error(
+                `addinv: null obj after quiver merge otyp=${initialObj.otyp}`,
+            );
+        }
     } else {
         let previous = null;
         let current = inventoryHead(state);
@@ -4593,6 +4616,11 @@ function finishAddinvCore0(context, initialObj, updatePermInvent, otherObj) {
         }
         if (current) {
             obj = current;
+            if (!obj) {
+                throw new Error(
+                    `addinv: null obj after merge otyp=${initialObj.otyp}`,
+                );
+            }
         } else {
             insertInventoryObject(obj, previous, state);
             inserted = true;
@@ -4629,6 +4657,8 @@ async function addinvCore0Runtime(
         ? await pendingContext : pendingContext;
     if (!context) return null;
     const { normalized, state } = context;
+    // C's saved_otyp, for the panics below.
+    const savedOtyp = obj.otyp;
     let inserted;
     let mergedObject;
 
@@ -4639,7 +4669,15 @@ async function addinvCore0Runtime(
         mergedObject = mergedRuntime(state.uquiver, obj, normalized);
         if (isThenable(mergedObject))
             mergedObject = await mergedObject;
-        if (mergedObject) obj = state.uquiver;
+        if (mergedObject) {
+            obj = state.uquiver;
+            if (!obj) {
+                await panic(
+                    `addinv: null obj after quiver merge otyp=${savedOtyp}`,
+                    state,
+                );
+            }
+        }
     }
     if (!mergedObject) {
         let previous = null;
@@ -4654,6 +4692,10 @@ async function addinvCore0Runtime(
         }
         if (current) {
             obj = current;
+            if (!obj) {
+                await panic(`addinv: null obj after merge otyp=${savedOtyp}`,
+                    state);
+            }
         } else {
             insertInventoryObject(obj, previous, state);
             inserted = true;
@@ -5666,7 +5708,8 @@ export async function doorganize(state = game, hooks = {}) {
         return ECMD_OK;
     }
     if (!state.flags?.invlet_constant) reassign(state);
-    const filter = check_invent_gold('adjust', state) ? adjust_gold_ok : adjust_ok;
+    const filter = await check_invent_gold('adjust', state)
+        ? adjust_gold_ok : adjust_ok;
     const obj = await getobj(
         'adjust', filter, GETOBJ_PROMPT | GETOBJ_ALLOWCNT, state,
     );

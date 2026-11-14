@@ -2,27 +2,33 @@
 import abi from './timeout-abi.json' with {type:'json'};
 import * as source from '../ported/timeout.js';
 import {createTimeoutEnvironment} from './bindings/timeout.js';
+import {nativeStateFor} from './native/state-bridge.js';
 
-export function extendTimeoutTransport(environment,layouts,env,views){
+export function extendTimeoutTransport(environment,layouts,env){
  const {services,memory,ctypes,transport,functions}=environment,L=layouts.timeout,address=environment.address;
  for(const [key,value]of Object.entries(abi.layout))if(L[key]!==value)throw new Error('Review TIMEOUT ABI '+key);
+ const owner=nativeStateFor(environment);
  const text=v=>typeof v==='string'?services.literal(v):address(v),boundary=args=>args.map(v=>typeof v==='string'?services.literal(v):v?.address??v);
  const resolve=name=>environment.hasFunction(name)?environment.resolve(name):typeof services[name]==='function'?services[name]:environment.resolve(name),cache=new Map();
- const local=new Proxy(Object.create(services),{get:(o,key,r)=>{if(Object.hasOwn(o,key))return Reflect.get(o,key,r);const value=Reflect.has(o,key)?Reflect.get(o,key,r):undefined;if(value!==undefined&&typeof value!=='function')return value;if(typeof key!=='string')return value;if(!cache.has(key))cache.set(key,(...args)=>resolve(key)(...boundary(args)));return cache.get(key);}});
- const record=(type,p)=>views.record(type,p),path=(type,p,parts)=>{for(const part of parts){const f=ctypes.locate(type,p,part);p=f.at;type=f.field.record??f.field.ctype.replace(new RegExp('\\s+'+part+'$'),'');}return{type,p};};
- const bit=(type,p,parts,value)=>{const last=parts.at(-1),owner=path(type,address(p),parts.slice(0,-1));return value===undefined?ctypes.getField(owner.type,owner.p,last,'unsigned int'):ctypes.setField(owner.type,owner.p,last,'unsigned int',value);};
+ const local=new Proxy(Object.create(services),{get:(o,key,r)=>{if(Object.hasOwn(o,key))return Reflect.get(o,key,r);const value=Reflect.has(o,key)?Reflect.get(o,key,r):undefined;if(value!==undefined&&typeof value!=='function')return value;if(typeof key!=='string')return value;const direct=owner.functions.get(key);if(direct?.nativeState===owner)return direct;if(!cache.has(key))cache.set(key,(...args)=>owner.boundary(resolve(key),...boundary(args)));return cache.get(key);}});
+ const bit=(type,p,parts,value)=>{
+  const last=parts.at(-1);let record=owner.nativeRecords.record(type,p);
+  for(const part of parts.slice(0,-1))record=record[part];
+  if(value===undefined)return record[last];record[last]=value;return record[last];
+ };
+ const equipmentAddresses=abi.equipment.map(name=>environment.requireGlobal(name));
  const hero=[['uhave','amulet'],['uinvulnerable'],['uburied'],['usick_type'],['uroleplay','deaf']];
- const windowCall=(name,...args)=>{const field=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),name),prototype=field.field.ctype.replace(new RegExp('\\s+'+name+'$'),''),match=prototype.match(/^(.+?)\s*\(\*\)\s*\((.*)\)$/);if(!match)throw new Error('Unknown TIMEOUT window prototype '+name);const signature=[match[1],...match[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')].map(t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':ctypes.size(t)===8?'j':'i';}).join('');return functions.indirect(memory.view.getBigUint64(field.at,true),signature,...args);};
- Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,
+ const windowCall=(name,...args)=>{const field=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),name),prototype=field.field.ctype.replace(new RegExp('\\s+'+name+'$'),''),match=prototype.match(/^(.+?)\s*\(\*\)\s*\((.*)\)$/);if(!match)throw new Error('Unknown TIMEOUT window prototype '+name);const signature=[match[1],...match[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')].map(t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':ctypes.size(t)===8?'j':'i';}).join('');return environment.nativeWindowCallbacks?environment.nativeWindowCallbacks.invoke(name,signature,...args):functions.indirect(memory.view.getBigUint64(field.at,true),signature,...args);};
+ Object.assign(local,{nativeOwner:owner,nativeSpeciesCount:layouts.monst.NUMMONS+1,moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,
   global:i=>{const name=abi.globals[i];if(!name)throw new Error('Unknown TIMEOUT global '+i);return environment.requireGlobal(name);},
-  equipment:i=>ctypes.load('struct obj *',environment.requireGlobal(abi.equipment[i])),
+  equipment:i=>owner.nativeArena.pointer(equipmentAddresses[i]),
   monsterBit:(p,i)=>{if(i!==0)throw new Error('Unknown TIMEOUT monster bit');return bit('struct monst',p,['wormno']);},setMonsterBit:(p,i,v)=>{if(i!==0)throw new Error('Unknown TIMEOUT monster bit');return bit('struct monst',p,['wormno'],v);},
   objectBit:(p,i)=>bit('struct obj',p,[['dknown','lamplit','cursed','odiluted'][i]]),setObjectBit:(p,i,v)=>bit('struct obj',p,[['dknown','lamplit','cursed','odiluted'][i]],v),
   terrainBit:(p,i)=>{if(i!==0)throw new Error('Unknown TIMEOUT terrain bit');return bit('struct rm',p,['drawbridgemask']);},
   heroBit:i=>bit('struct you',environment.requireGlobal('u'),hero[i]),setHeroBit:(i,v)=>bit('struct you',environment.requireGlobal('u'),hero[i],v),
   flagBit:i=>{if(i===0)return bit('struct instance_globals_saved_q',environment.requireGlobal('svq'),['quest_status','killed_leader']);if(i===1)return bit('struct instance_globals_saved_l',environment.requireGlobal('svl'),['level','flags','stormy']);throw new Error('Unknown TIMEOUT flag bit');},
   timerBit:p=>bit('struct fe',p,['needs_fixup']),setTimerBit:(p,v)=>bit('struct fe',p,['needs_fixup'],v),
-  commonString:i=>{const row=abi.common[i];if(!row)throw new Error('Unknown TIMEOUT common string');return services[row[0]][row[1]];},
+  commonString:i=>{const row=abi.common[i];if(!row)throw new Error('Unknown TIMEOUT common string');return owner.nativeRecords.record('struct '+row[0],environment.requireGlobal(row[0]))[row[1]];},
   callbackPointer:i=>{const name=abi.foreign[i],index=source.timeout_funcs.findIndex(row=>row.f===name);if(index<0)throw new Error('Unknown TIMEOUT callback '+i);return env.timeout_funcs[index].f;},
   invoke:(fn,arg,time)=>functions.indirect(fn,'vpj',address(arg),transport.long(time)),
   rngCaller:env.rngCaller,

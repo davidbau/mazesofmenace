@@ -10,11 +10,13 @@ const schema = nhlua.nhluaSchema;
 const dataNames = Object.keys(schema.data);
 const globalNames = Object.keys(schema.foreignGlobals);
 const functionNames = schema.functions.map(f => f.name);
-const address = v => Number(v ?? 0);
+const address = v => Number(v?.address ?? v ?? 0);
 const integer = v => typeof v === 'bigint' ? v : BigInt(Math.trunc(v));
 
 export function createNhluaEnvironment(services, state) {
-    const view = () => CAdapter.currentDataView(services);
+    const arena=services.nativeOwner?.nativeArena;
+    const view = () => arena?.view ?? CAdapter.currentDataView(services);
+    const globalCache=new Map(),dataCache=new Map(),fieldCache=new Map();
     function cast(type, value) {
         if (typeof type === 'object') return address(value);
         if (type === 'void') return undefined;
@@ -39,7 +41,7 @@ export function createNhluaEnvironment(services, state) {
     function read(at, type) {
         at = address(at);
         if (typeof type === 'object') {
-            if (type.pointer) return Number(view().getBigUint64(at, true));
+            if (type.pointer) return arena ? arena.pointer(at) : Number(view().getBigUint64(at, true));
             return at;
         }
         const method = ({i8:'getInt8',u8:'getUint8',i16:'getInt16',u16:'getUint16',i32:'getInt32',u32:'getUint32',i64:'getBigInt64',u64:'getBigUint64',f32:'getFloat32',f64:'getFloat64'})[type];
@@ -50,7 +52,7 @@ export function createNhluaEnvironment(services, state) {
         at = address(at); value = cast(type, value);
         if (typeof type === 'object') {
             if (!type.pointer) throw new Error('NHLUA aggregate needs copy');
-            view().setBigUint64(at, BigInt(value), true);
+            if(arena)arena.storePointer(at,value);else view().setBigUint64(at, BigInt(value), true);
         } else {
             const method = ({i8:'setInt8',u8:'setUint8',i16:'setInt16',u16:'setUint16',i32:'setInt32',u32:'setUint32',i64:'setBigInt64',u64:'setBigUint64',f32:'setFloat32',f64:'setFloat64'})[type];
             if (!method) throw new Error('Unreviewed NHLUA write ' + type);
@@ -83,12 +85,13 @@ export function createNhluaEnvironment(services, state) {
         return cast(type, value);
     }
     const fieldInfo = (record, name) => {
+        const key=record+':'+name;if(fieldCache.has(key))return fieldCache.get(key);
         const f = schema.records[record].fields.find(f => f.name === name);
         if (!f) throw new Error('Unknown NHLUA field ' + record + '.' + name);
-        return f;
+        fieldCache.set(key,f);return f;
     };
-    const global = name => address(services.global(globalNames.indexOf(name)));
-    const data = name => address(services.storage(dataNames.indexOf(name)));
+    const global = name => {if(!globalCache.has(name)){const i=globalNames.indexOf(name);if(i<0)throw Error('Unknown NHLUA global '+name);globalCache.set(name,address(services.global(i)));}return globalCache.get(name);};
+    const data = name => {if(!dataCache.has(name)){const i=dataNames.indexOf(name);if(i<0)throw Error('Unknown NHLUA data '+name);dataCache.set(name,address(services.storage(i)));}return dataCache.get(name);};
     function functionPointer(name) { return address(services.functionPointer(name)); }
     function initialValue(value) {
         if (!value || typeof value !== 'object') return value;
@@ -127,8 +130,8 @@ export function createNhluaEnvironment(services, state) {
             for(let i=0;i<count;i++) services.heap()[address(at)+i]=Number(previous>>BigInt(i*8)&255n);
             return Number(integer(value)&((1n<<BigInt(bits))-1n));
         },
-        api:(site,...args) => services.api(site,...args),
-        indirect:(site,pointer,...args) => services.indirect(site,pointer,...args),
+        api:services.api,
+        indirect:services.indirect,
         longjmp:(buffer,status) => services.longjmp(buffer,status),
         setjmpBooleanScope:(buffer,continuation) => buffer ? services.setjmpBooleanScope(buffer,continuation) : continuation(0),
         callLocal(fn,...args) {return CAdapter.callWithStack(services,fn,...args);},

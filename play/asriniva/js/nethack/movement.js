@@ -25,7 +25,7 @@ export function enableMovement(environment,layouts){
  const code=t=>{t=ctypes.canonical(t);return t.includes('*')?'p':t==='void'?'v':ctypes.size(t)===8?'j':'i';};
  function pointer(name){let row=abi.callbacks[name];if(!row){const m=publicFunctions.functions[name]?.match(/^(.+?)\s*\((.*)\)$/);if(!m)throw new Error('Unknown movement callback '+name);row={result:m[1],parameters:m[2].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void')};}return environment.functionPointer(Object.hasOwn(publicFunctions.functions,name)?name:'hack::'+name,[row.result,...row.parameters].map(code).join(''),abi.callbacks[name]?((...args)=>callHack(local,L,name,...args)):undefined);}
  let buffer;try{buffer=environment.requireGlobal('hack.in_rooms.buf');}catch(error){if(!error.message.startsWith('Unresolved standalone global '))throw error;buffer=environment.allocateGlobal('hack.in_rooms.buf',5);}
- Object.assign(local,{moduleKey:environment,nativeGlobalBindings:true,heap:()=>memory.HEAPU8,
+ Object.assign(local,{nativeEnvironment:environment,stackAlloc:environment.transport.stackAlloc,moduleKey:environment,nativeGlobalBindings:true,heap:()=>memory.HEAPU8,
   global:i=>environment.requireGlobal(abi.globals[i].name),
   read:(kind,p,index)=>{const e=field(kind,index);return e.f.d.a||e.f.d.s?BigInt(ctypes.locate(e.type,environment.address(p),e.f.name).at):ctypes.getField(e.type,environment.address(p),e.f.name,scalar(e.f.d));},
   write:(kind,p,index,v)=>{const e=field(kind,index);return ctypes.setField(e.type,environment.address(p),e.f.name,e.f.ctype,v);},

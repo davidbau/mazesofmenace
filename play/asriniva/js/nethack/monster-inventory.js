@@ -1,7 +1,6 @@
+import {nativeWornFor} from './native/worn-graph.js';
 // Shared monster pickup/equipment/name owners; source policies are unchanged.
 import {mpickobj,findgold,mdrop_special_objs,relobj} from '../ported/steal.js';
-import * as worn from '../ported/worn.js';
-import wornTextAbi from './worn-text-abi.json' with {type:'json'};
 import {breakarm,sliparm,num_horns} from '../ported/mondata.js';
 import {can_saddle,put_saddle_on_mon,steeds,stucksteed} from '../ported/steed.js';
 import {mon_nam,Monnam,minimal_monnam,Mgender,pmname,new_oname,a_monnam,Amonnam,y_monnam,YMonnam,noit_Monnam,noit_mon_nam,obj_pmname,mon_nam_too,Adjmonnam,some_mon_nam,noname_monnam,x_monnam,hcolor,hcolors,mon_pmname,Some_Monnam,free_oname} from '../ported/do_name.js';
@@ -12,35 +11,12 @@ import {hard_helmet} from '../ported/do_wear.js';
 export function enableMonsterInventory(environment,layouts,creation){
  const {services,ctypes,memory,transport}=environment,{environment:env,views,context}=creation;
  const record=(type,p)=>views.record(type,p),object=p=>record('struct obj',p),monster=p=>record('struct monst',p);
- const m1=(p,k)=>Boolean(p.mflags1&BigInt(layouts.worn[k]));
  const copyString=(out,src)=>services.strcpy(environment.address(out),typeof src==='string'?services.literal(src):environment.address(src));
  const health=context(layouts.pager);health.nhUse=v=>void v;health.storeCharAt=(p,v)=>memory.view.setInt8(environment.address(p),environment.transport.char(v));environment.register('monster-health-description',{monhealthdescr},health,{prepareArgs:(_fn,args)=>[monster(args[0]),environment.transport.char(args[1]),environment.address(args[2])]});
  const wizard=context(layouts.wizard);environment.register('monster-amulet-check',{mon_has_amulet},wizard,{prepareArgs:(_fn,args)=>[monster(args[0])]});
- const equip=context(layouts.worn);
- // Original global.h strcmpi and WORN native string argument carriers.
- const wornText=value=>typeof value==='string'?services.literal(value):environment.address(value);
- for(const [name,row]of Object.entries(wornTextAbi.commonStrings))Object.defineProperty(equip,name,{get:()=>environment.address(ctypes.getField(row.type,environment.requireGlobal(row.global),row.field,'const char *'))});
- equip.strncmpi=(left,right,n)=>transport.int(environment.resolve('strncmpi')(wornText(left),wornText(right),transport.int(n)));
- equip.strcmpi=(left,right)=>equip.strncmpi(left,right,-1);
- equip.strsubst=(out,from,to)=>environment.address(environment.resolve('strsubst')(environment.address(out),wornText(from),wornText(to)));
- Object.assign(equip,{
-  bool:v=>Number(Boolean(v)),charPointer:p=>typeof p==='string'?services.literal(p):environment.address(p),
-  Role_if:n=>env.gu.urole.mnum===n,MON_WEP:m=>m.mw,
-  verysmall:p=>p.msize<layouts.worn.MZ_SMALL,nohands:p=>m1(p,'M1_NOHANDS'),is_animal:p=>m1(p,'M1_ANIMAL'),
-  slithy:p=>m1(p,'M1_SLITHY'),has_horns:p=>services.num_horns(p)>0,cantweararm:p=>services.breakarm(p)||services.sliparm(p),
-  WrappingAllowed:p=>m1(p,'M1_HUMANOID')&&p.msize>=layouts.worn.MZ_SMALL&&p.msize<=layouts.worn.MZ_HUGE&&p.mlet!==layouts.worn.S_GHOST&&p.mlet!==layouts.worn.S_CENTAUR&&p.pmidx!==layouts.worn.PM_WINGED_GARGOYLE&&p.pmidx!==layouts.worn.PM_MARILITH,
-  bimanual:o=>(o.oclass===layouts.worn.WEAPON_CLASS||o.oclass===layouts.worn.TOOL_CLASS)&&env.objects[o.otyp].oc_bimanual,
-  is_flimsy:o=>env.objects[o.otyp].oc_material<=layouts.worn.LEATHER||o.otyp===layouts.worn.RUBBER_HOSE,
-  is_elven_armor:o=>['ELVEN_LEATHER_HELM','ELVEN_MITHRIL_COAT','ELVEN_CLOAK','ELVEN_SHIELD','ELVEN_BOOTS'].some(k=>o.otyp===layouts.worn[k]),
-  res_to_mr:n=>layouts.worn.FIRE_RES<=n&&n<=layouts.worn.STONE_RES?(1<<(n-1))&255:0,
-  monstunseesu_prop:p=>environment.resolve('monstunseesu')(environment.resolve('cvt_prop_to_mseenres')(p&255)),
-  Strcpy:copyString,
- });
- for(const[k,v]of Object.entries(layouts.worn))if(/^W_|^M1_/.test(k)||k==='I_SPECIAL')equip[k]=BigInt(v);
- for(const[name,cat]of [['is_shirt','ARM_SHIRT'],['is_cloak','ARM_CLOAK'],['is_helmet','ARM_HELM'],['is_shield','ARM_SHIELD'],['is_gloves','ARM_GLOVES'],['is_boots','ARM_BOOTS'],['is_suit','ARM_SUIT']])equip[name]=o=>o.oclass===layouts.worn.ARMOR_CLASS&&env.objects[o.otyp].oc_armcat===layouts.worn[cat];
- Object.defineProperty(equip,'See_invisible',{get:()=>Boolean(env.u.uprops[layouts.worn.SEE_INVIS].intrinsic||env.u.uprops[layouts.worn.SEE_INVIS].extrinsic)});
  const names=['m_dowear','m_dowear_type','which_armor','update_mon_extrinsics','mon_adjust_speed','extract_from_minvent'];
- environment.register('monster-equipment',Object.fromEntries(names.map(n=>[n,worn[n]])),equip,{prepareArgs:(fn,args)=>{args[0]=monster(args[0]);if(['update_mon_extrinsics','extract_from_minvent'].includes(fn))args[1]=object(args[1]);if(fn==='mon_adjust_speed')args[2]=object(args[2]);return args;}});
+ const nativeWorn=nativeWornFor(environment,layouts),equip=nativeWorn.context;
+ environment.register('monster-equipment',Object.fromEntries(names.map(n=>[n,nativeWorn.functions[n]])),equip);
  const bio=context(layouts.mondata);Object.assign(bio,{bigmonst:p=>p.msize>=layouts.mondata.MZ_LARGE});
  environment.register('monster-armor-shape',{breakarm,sliparm,num_horns},bio,{prepareArgs:(_fn,args)=>[record('struct permonst',args[0])]});
  const pickup=context(layouts.steal);Object.assign(pickup,{Has_contents:o=>Boolean(o.cobj),engulfing_u:m=>Number(env.u.uswallow&&env.samePtr(env.u.ustuck,m))});

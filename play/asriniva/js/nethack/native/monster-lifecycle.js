@@ -2313,9 +2313,9 @@ function dmonsfree()
 {
     let mtmp, freetmp;
     let count = C.int(0);
-    const buf=C.stackAlloc(C.QBUFSZ);
+    const buf=C.nativeByteBuffer(C.QBUFSZ);
 
-    C.storeChar(C.ptrOffset(buf, 0), 0);
+    C.storeCharAt(buf, 0, 0);
     for ((mtmp = C.monLink(C.fmonAddress)); mtmp.value; ) {
         (freetmp = mtmp.value);
         if (((C.DEADMONSTER(freetmp) && !freetmp.isgd) ? 1 : 0)) {

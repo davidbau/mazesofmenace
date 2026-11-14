@@ -5109,7 +5109,18 @@ export async function level_transition_arrival_more(msg, oldPaint) {
                 for (let j = i + 1; j < _next; j++)
                     _arrConsumed += (_pages[j] ? _pages[j].length : 0) + 2;
                 _arrConsumed += _cut;
-                _pages[_next] = _pages[_next].slice(_cut);
+                /* wintty.c:2277-2281 wipes the stopped message window before
+                 * the urgent pline. update_topl (topl.c:262-269) then measures
+                 * every later join from that fresh line. The old page cuts
+                 * included the suppressed prefix: merely trimming its text
+                 * stranded two fitting urgent armor messages on separate
+                 * pages (pray.c:662-669, shield followed by cloak). */
+                const tail = msg.slice(_arrConsumed);
+                const tailJoins = (_joins || [])
+                    .filter(j => j >= _arrConsumed)
+                    .map(j => j - _arrConsumed);
+                _pages.splice(_next, _pages.length - _next,
+                    ..._topl_more_pages(tail, tailJoins));
                 i = _next - 1;
                 continue;
             }
@@ -5684,7 +5695,9 @@ export function hitpointbar_status1(title, stats, align, ulevel, Upolyd) {
     if (maxhp > 15 * ulevel) maxhp = 15 * ulevel;
     const r = _xlev_to_rank(ulevel);
     const divisor = r <= 1 ? 5 : r <= 3 ? 6 : r <= 5 ? 7 : r <= 7 ? 8 : 9;
-    if (curhp <= 5 || curhp * divisor <= maxhp) {
+    /* wintty.c:4539 calls pray.c:critically_low_hp(TRUE): a full-health
+     * form with at most five HP is not injured, so keep space padding. */
+    if (curhp < maxhp0 && (curhp <= 5 || curhp * divisor <= maxhp)) {
         const c = bar.split('');
         let n = c.length;
         while (n >= 2 && c[n - 1] === ' ' && c[n - 2] === ' ') { c[n - 1] = '-'; n -= 2; }

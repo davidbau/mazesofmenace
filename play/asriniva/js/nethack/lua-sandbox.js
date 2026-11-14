@@ -8,7 +8,10 @@ import * as nhlobj from '../ported/nhlobj.js';
 import {createNhlobjEnvironment} from './bindings/nhlobj.js';
 import {withCEnvironment} from '../c-runtime/context.js';
 import {createNhluaEnvironment} from './bindings/nhlua.js';
+import {createNativeNhlua} from './native/nhlua.js';
+import {nativeStateFor} from './native/state-bridge.js';
 export function enableLuaSandbox(environment,layouts){
+ const native=nativeStateFor(environment);
  const {services,functions}=environment,schema=nhlua.nhluaSchema,lua=environment.enableLua();
  const layout=layouts.nhlua;
  const globals=Object.keys(schema.foreignGlobals),names=Object.keys(schema.data),local=Object.create(services),pointers=new Map(),jumps=new Map();
@@ -18,7 +21,7 @@ export function enableLuaSandbox(environment,layouts){
  const getenvContext=Object.assign(Object.create(services),{ptr:v=>typeof v==='string'?services.literal(v):environment.address(v),i32:v=>Number(BigInt.asIntN(32,BigInt(v))),u64:v=>BigInt.asUintN(64,BigInt(v))});
  environment.register('environment-options',{nh_getenv},getenvContext);
  services.nh_getenv=(...args)=>environment.call('environment-options','nh_getenv',...args);
- const resolve=name=>lua.api[name]??(name==='nh_getenv'?environment.resolve(name):name==='Strlen_'?((...args)=>environment.strutil('Strlen_',...args)):['alloc','re_alloc','FITSuint_','FITSint_'].includes(name)?((...args)=>environment.alloc(name,...args)):typeof services[name]==='function'?services[name]:environment.resolve(name));
+ const resolve=name=>lua.api[name]??native.functions.get(name)??(name==='nh_getenv'?environment.resolve(name):name==='Strlen_'?((...args)=>environment.strutil('Strlen_',...args)):['alloc','re_alloc','FITSuint_','FITSint_'].includes(name)?((...args)=>environment.alloc(name,...args)):typeof services[name]==='function'?services[name]:environment.resolve(name));
 
  function pointer(name){
   if(pointers.has(name))return pointers.get(name);
@@ -31,15 +34,32 @@ export function enableLuaSandbox(environment,layouts){
   const id=functions.functionPointer((...args)=>resolve(name)(...args),sig);pointers.set(name,id);return id;
  }
  Object.assign(local,{
-  layout,global:i=>environment.requireGlobal(globals[i]),storage:i=>{if(!storage[i])throw new Error('Unknown NHLUA storage '+i);return storage[i];},functionPointer:pointer,
+  nativeOwner:native,layout,global:i=>environment.requireGlobal(globals[i]),storage:i=>{if(!storage[i])throw new Error('Unknown NHLUA storage '+i);return storage[i];},functionPointer:pointer,
   api:(site,...args)=>{const call=schema.callSites[site];if(!call?.name)throw new Error('Unknown NHLUA call '+site);return env.cast(call.return,resolve(call.name)(...args));},
   indirect:(site,p,...args)=>{const call=schema.callSites[site];if(!call?.indirect)throw new Error('Unknown NHLUA indirect call '+site);return functions.indirect(p,signature(call.return,call.args),...args);},
   setjmpBooleanScope:(buffer,continuation)=>{const result=functions.withJumpScope(scope=>{const at=environment.address(buffer),previous=jumps.get(at);jumps.set(at,scope);try{return {value:continuation(0)};}finally{if(previous)jumps.set(at,previous);else jumps.delete(at);}});return typeof result==='object'?result.value:continuation(1);},
   longjmp:(buffer,status)=>{const scope=jumps.get(environment.address(buffer));if(!scope)throw new Error('Expired NHLUA jump target');return functions.longjmp(scope,status);},
  });
  const env=createNhluaEnvironment(local,{initialized:false});
- const parameters=new Map(schema.functions.map(f=>[f.name,f.parameters]));
- environment.register('nhlua',Object.fromEntries(schema.functions.map(f=>[f.name,nhlua[f.name]])),env,{prepareArgs:(name,args)=>args.map((value,i)=>{const type=parameters.get(name)[i]?.type;return typeof type==='object'?(typeof value==='string'&&type.pointer==='char'?services.literal(value):environment.address(value)):value;})});
+ const policies=createNativeNhlua(env);
+ const convert=(type,value)=>typeof type==='object'?(typeof value==='string'&&type.pointer==='char'?services.literal(value):environment.address(value)):value;
+ function invokePolicy(fn,parameters,a,b,c,d,extra){
+  const mark=native.depth?undefined:environment.transport.stackSave();native.enter();
+  try{switch(parameters.length){
+   case 0:return fn();
+   case 1:return fn(convert(parameters[0].type,a));
+   case 2:return fn(convert(parameters[0].type,a),convert(parameters[1].type,b));
+   case 3:return fn(convert(parameters[0].type,a),convert(parameters[1].type,b),convert(parameters[2].type,c));
+   case 4:return fn(convert(parameters[0].type,a),convert(parameters[1].type,b),convert(parameters[2].type,c),convert(parameters[3].type,d));
+   default:return fn(...extra.map((value,i)=>convert(parameters[i]?.type,value)));
+  }}finally{native.leave();if(mark!==undefined)environment.transport.stackRestore(mark);}
+ }
+ const exports=Object.fromEntries(schema.functions.map(f=>{
+  const fn=policies[f.name],parameters=f.parameters;
+  const invoke=parameters.length<=4?(a,b,c,d)=>invokePolicy(fn,parameters,a,b,c,d):(...args)=>invokePolicy(fn,parameters,undefined,undefined,undefined,undefined,args);
+  invoke.nativeState=native;invoke.nativeDirect=true;native.functions.set(f.name,invoke);return[f.name,invoke];
+ }));
+ environment.register('nhlua',exports,env);
  environment.register('lua-api',lua.api);
  enableLuaRegistrations(environment,layouts,lua);
  return {environment:env,lua,storage};

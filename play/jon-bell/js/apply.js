@@ -2936,6 +2936,13 @@ export async function doapply() {
             if (u.uquiver && _wt_sameObj(u.uquiver, selObj))
                 await setuqwep(null);
             const wasSwap = ((selObj.owornmask | 0) & W_SWAPWEP) !== 0;
+            /* C wield.c:735 wield_tool -> doswapweapon() -> ready_weapon(oldswap) runs
+             * retouch_object() (wield.c:191) before the swap: an artifact tool in the
+             * alternate slot (Cleaver/Snickersnee) draws touch_artifact's rn2(4) here. */
+            if (wasSwap && selObj.oartifact && !(await retouch_object_hero(selObj, false))) {
+                g.context.move = 1;
+                return ECMD_OK;
+            }
             /* C wield.c:740-742 wield_tool: will_weld(obj) → ready_weapon(obj), whose
              * weld arm (wield.c:196-204) prints "<The> <obj> welds itself to your
              * hand!" and sets bknown BEFORE setuwep — no "You now wield" line. */
@@ -3214,6 +3221,14 @@ export async function doapply() {
              * see_traps, display-rng draws) runs BEFORE the canned doapply reaches
              * getdir; the --More-- frame below then already shows the new glyphs. */
             await faithful_input_redraw();
+            /* C dig.c:1102-1106 re-queues doapply for the NEXT turn and that canned doapply
+             * runs apply.c:4230 retouch_object() again on the (now wielded) tool: for an
+             * artifact axe (Cleaver) it draws touch_artifact's badalign rn2(4) a second time
+             * and may blast the hero before use_pick_axe asks for the direction. */
+            if (selObj.oartifact && !(await retouch_object_hero(selObj, false))) {
+                g.context.move = 0;
+                return ECMD_TIME;
+            }
             /* The paging loop below repaints snapshots (its own flush_screen calls
              * bump _lastFlushFrame); C's more() flushes nothing (topl.c:390-392), so
              * the physical map is the last flush from BEFORE those page repaints. */

@@ -2,12 +2,16 @@ import * as CAdapter from '../../c-runtime/adapter-factories.js';
 // Native layouts and dependency ABI only; all original region decisions live in region.js.
 import * as regionCore from '../../ported/region.js';
 import {withCEnvironment} from '../../c-runtime/context.js';
+import {createNativeRegion} from '../native/region.js';
+import {installNativeRegionState} from '../native/region-state.js';
+import {installNativeIntegerCasts} from '../native/execution.js';
 const modules=new WeakMap();
+const regionArguments=new Set(['inside_region','add_rect_to_reg','add_mon_to_reg','remove_mon_from_reg','mon_in_region','free_region','add_region','remove_region','reg_damg','show_region','reset_region_mids','make_gas_cloud','expire_gas_cloud','inside_gas_cloud']);
 export function createRegionEnvironment(services,L){
     for(const[k,n]of Object.entries({pointerSize:8,longSize:8,intSize:4,unsignedSize:4,booleanSize:1,rect_lx_size:2,rect_ly_size:2,rect_hx_size:2,rect_hy_size:2,reg_nrects_size:2,reg_ttl_size:8,reg_arg_size:8,pm_mflags1_size:8,pm_mflags2_size:8,mon_mhp_size:4,mon_m_id_size:4,u_xray_range_size:4,nhf_mode_size:4,nhf_ftype_size:4}))if(L[k]!==n)throw Error('Review changed REGION ABI: '+k);
     if(!(L.S_cloud>=L.S_grave&&L.S_cloud<=L.S_goodpos&&L.S_poisoncloud>=L.S_grave&&L.S_poisoncloud<=L.S_goodpos))throw Error('Review changed REGION cloud glyph header branch');
     const address=p=>Number(p?.address??p??0),dv=()=>CAdapter.currentDataView(services);
-    const cache=new Map();
+    const cache=new Map(),nativeRecords=services.nativeOwner?.nativeRecords,properties=new Map();
     const read=(p,k)=>dv()['get'+k](p,true),write=(p,k,v)=>dv()['set'+k](p,k.includes('Big')?BigInt(v):Number(v),true);
     const cell=(p,k)=>({address:p,get value(){return read(p,k);},set value(v){write(p,k,v);}});
     function struct(p,tag,fields){p=address(p);if(!p)return 0;const key=tag+':'+p;if(cache.has(key))return cache.get(key);const o={address:p};cache.set(key,o);for(const [name,kind]of Object.entries(fields))Object.defineProperty(o,name,{enumerable:true,get(){const at=p+L[tag+'_'+name];if(typeof kind==='function')return kind(at);return read(at,kind);},set(v){const at=p+L[tag+'_'+name];if(typeof kind==='function')throw new Error('Native struct assignment requires full memcpy: '+name);write(at,kind,v);}});return o;}
@@ -33,7 +37,10 @@ export function createRegionEnvironment(services,L){
     globals.gy={};Object.defineProperty(globals.gy,'youmonst',{get(){return monster(base('gy')+L.gy_youmonst);}});
     globals.cg={};Object.defineProperty(globals.cg,'zeroany',{get(){return any(base('cg')+L.cg_zeroany);}});Object.defineProperty(globals.cg,'zeroNhRect',{get(){return rect(base('cg')+L.cg_zeroNhRect);}});
     globals.svc={context:{}};Object.defineProperty(globals.svc.context,'mon_moving',{get(){return read(base('svc')+L.svc_context+L.context_mon_moving,'Int8');},set(v){write(base('svc')+L.svc_context+L.context_mon_moving,'Int8',v);}});
-    const prop=(n,field)=>cell(base('u')+L.u_uprops+n*L.propSize+L['prop_'+field],'BigInt64');
+    const prop=(n,field)=>{
+      if(!nativeRecords)return cell(base('u')+L.u_uprops+n*L.propSize+L['prop_'+field],'BigInt64');
+      const key=n+':'+field;if(!properties.has(key)){const p=nativeRecords.record('struct prop',base('u')+L.u_uprops+n*L.propSize);properties.set(key,{address:p.address+L['prop_'+field],get value(){return p[field];},set value(v){p[field]=v;}});}return properties.get(key);
+    };
     const env=Object.assign(Object.create(services),L,globals,{region,rect,rectArray,uintArray,regionArray,monster,permonst,any,address,
       mons:array(base('mons'),L.permonstSize,permonst,()=>{throw Error('readonly catalogue');}),
       long:v=>BigInt.asIntN(64,BigInt(v)),int:v=>Number(BigInt.asIntN(32,BigInt(v))),uint:v=>Number(BigInt.asUintN(32,BigInt(v))),
@@ -62,19 +69,32 @@ export function createRegionEnvironment(services,L){
       Poison_resistance:{get(){return prop(L.POISON_RES,'intrinsic').value||prop(L.POISON_RES,'extrinsic').value;}},
       Half_physical_damage:{get(){return prop(L.HALF_PHDAM,'intrinsic').value||prop(L.HALF_PHDAM,'extrinsic').value;}},
       Breathless:{get(){return prop(L.MAGICAL_BREATHING,'intrinsic').value||prop(L.MAGICAL_BREATHING,'extrinsic').value||(globals.gy.youmonst.data.mflags1&BigInt(L.M1_BREATHLESS));}},
-      Half_gas_damage:{get(){const p=address(services.blindfold());return p&&read(p+L.obj_otyp,'Int16')===L.TOWEL&&read(p+L.obj_spe,'Int8')>0;}},
+      Half_gas_damage:{get(){const p=address(services.blindfold());if(nativeRecords){const obj=nativeRecords.record('struct obj',p);return obj&&obj.otyp===L.TOWEL&&obj.spe>0;}return p&&read(p+L.obj_otyp,'Int16')===L.TOWEL&&read(p+L.obj_spe,'Int8')>0;}},
       Something:{get(){return services.something();}},
     });
+    if(nativeRecords){installNativeRegionState(services,L,env,globals);installNativeIntegerCasts(env);Object.defineProperty(env,'nativePolicies',{value:createNativeRegion(env)});}
     return env;
 }
 export function callRegion(services,layout,name,...args){
     const key=services.moduleKey;if(!key)throw Error('REGION requires actual Module identity');let env=modules.get(key);if(!env){env=createRegionEnvironment(services,layout);modules.set(key,env);}if(name==='environment')return env;
-    const regions=new Set(['inside_region','add_rect_to_reg','add_mon_to_reg','remove_mon_from_reg','mon_in_region','free_region','add_region','remove_region','reg_damg','show_region','reset_region_mids','make_gas_cloud','expire_gas_cloud','inside_gas_cloud']);
-    if(regions.has(name))args[0]=env.region(args[0]);if(name==='inside_rect')args[0]=env.rect(args[0]);
-    if(name==='create_region')args[0]=env.rectArray(args[0]);if(name==='add_rect_to_reg')args[1]=env.rect(args[1]);
+    if(regionArguments.has(name))args[0]=env.region(args[0]);if(name==='inside_rect')args[0]=env.rect(args[0]);
+    if(name==='create_region')args[0]=env.rectArray(args[0],args[1]);if(name==='add_rect_to_reg')args[1]=env.rect(args[1]);
     if(['add_mon_to_reg','remove_mon_from_reg','mon_in_region','inside_gas_cloud'].includes(name))args[1]=env.monster(args[1]);
     if(['m_in_out_region','update_monster_region'].includes(name))args[0]=env.monster(args[0]);
     if(['save_regions','rest_regions'].includes(name))args[0]=env.nhfile(args[0]);
     if(name==='region_stats'){args[2]=env.longPointer(args[2]);args[3]=env.longPointer(args[3]);}
-    const sp=services.stackSave();try{return withCEnvironment(env,regionCore[name],...args);}finally{services.stackRestore(sp);}
+    const owner=services.nativeOwner,sp=owner?.depth?undefined:services.stackSave();if(owner)owner.enter();try{return env.nativePolicies?env.nativePolicies[name](...args):withCEnvironment(env,regionCore[name],...args);}finally{if(owner)owner.leave();if(sp!==undefined)services.stackRestore(sp);}
+}
+
+export function createRegionEntry(services,layout,name){
+ const owner=services.nativeOwner;
+ let entry;
+ if(owner){
+  const env=callRegion(services,layout,'environment'),fn=env.nativePolicies[name];
+  if(typeof fn!=='function')throw Error('Missing native REGION policy '+name);
+  // Common turn routines have no pointer preparation or argument lists.
+  if(fn.length===0)entry=()=>{const sp=owner.depth?undefined:services.stackSave();owner.enter();try{return fn();}finally{owner.leave();if(sp!==undefined)services.stackRestore(sp);}};
+ }
+ entry??=(...args)=>{const value=callRegion(services,layout,name,...args);return name==='visible_region_at'?value:value?.address??value;};
+ if(owner){entry.nativeState=owner;entry.nativeDirect=true;owner.functions.set(name,entry);}return entry;
 }

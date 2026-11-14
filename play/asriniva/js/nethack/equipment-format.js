@@ -26,6 +26,7 @@ export function attachEquipmentFormatting(environment,{weapon,worn,wield,armor},
  // Strings and shared views cross the boundary as actual C addresses; long
  // values already emitted by the original policy retain their BigInt width.
  for(const [owner,local]of Object.entries({weapon,worn,wield})){
+  if(!local)continue;
   local.Sprintf=(out,format,...args)=>invoke('sprintf',[text(out),text(format),...args.map(value)]);
   for(const name of abi.messages[owner])local[name]=(...args)=>invoke(name,args.map(value));
  }
@@ -34,7 +35,7 @@ export function attachEquipmentFormatting(environment,{weapon,worn,wield,armor},
   if(!Number.isInteger(site)||!row||row.id!==site)throw new Error('Unknown WEAPON Snprintf source site');
   return checkedPrint(row,[out,size,format,...args]);
  };
- worn.Snprintf=(out,size,format,argument)=>checkedPrint(abi.worn.snprintf,[out,size,format,argument]);
+ if(worn)worn.Snprintf=(out,size,format,argument)=>checkedPrint(abi.worn.snprintf,[out,size,format,argument]);
  const strlenSite=abi.weapon.strlen;
  weapon.Strlen=(str)=>environment.strutil('Strlen_',text(str),text(strlenSite.fn),strlenSite.line);
  weapon.Strlen_=(str,fn=strlenSite.fn,line=strlenSite.line)=>environment.strutil('Strlen_',text(str),text(fn),transport.int(line));

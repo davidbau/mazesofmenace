@@ -50,30 +50,39 @@ export function createStandaloneLua(environment,options={}) {
         }
         return result;
     }
+    function invoke(L,operation,a=0,b=0,c=0,d=0,e=0){
+        const result=runtime.invoke(host,L,operation,a,b,c,d,e);
+        if(runtime.failed(L)){
+            const frame=frames.findLast(frame=>frame.L===Number(L));
+            if(frame)throw new LuaCallbackJump(frame);
+            runtime.unprotected(host,L);
+        }
+        return result;
+    }
     const api={};
     for(const [name,recipe]of Object.entries(recipes.functions))api[name]=(...args)=>{
         const values=recipe.arguments.map(item=>{
-            if(item.index===null)return 0n;
+            if(item.index===null)return 0;
             const value=args[item.index];
-            if(item.number){bits.setFloat64(0,Number(value),true);return bits.getBigUint64(0,true);}
-            if(typeof value==='string')return BigInt(services.literal(value));
-            return BigInt(value?.address??value??0);
+            if(item.number)return Number(value);
+            if(typeof value==='string')return services.literal(value);
+            return value?.address??value??0;
         });
-        const result=dispatch(values[0],name,...values.slice(1));
+        const result=invoke(values[0],name,values[1],values[2],values[3],values[4],values[5]);
         if(recipe.return==='void')return;
-        if(recipe.return==='lua_Integer')return BigInt.asIntN(64,result);
-        if(recipe.return==='lua_Unsigned')return result;
-        if(recipe.return==='lua_Number'){bits.setBigUint64(0,result,true);return bits.getFloat64(0,true);}
-        return recipe.return.includes('*')||['lua_Alloc','lua_CFunction'].includes(recipe.return)?Number(result):Number(BigInt.asIntN(32,result));
+        if(recipe.return==='lua_Integer')return BigInt.asIntN(64,BigInt(result));
+        if(recipe.return==='lua_Unsigned')return BigInt.asUintN(64,BigInt(result));
+        if(recipe.return==='lua_Number')return Number(result);
+        return recipe.return.includes('*')||['lua_Alloc','lua_CFunction'].includes(recipe.return)?Number(result):Number(result)|0;
     };
     // Original lua.h: lua_CFunction lua_tocfunction(lua_State*,int);
-    api.luaL_testudata=(L,index,name)=>Number(dispatch(L,'luaL_testudata',index,typeof name==='string'?services.literal(name):name));
-    api.luaL_error_text=(L,message)=>dispatch(L,'luaL_error_text',typeof message==='string'?services.literal(message):message);
-    api.luaopen_io=L=>Number(dispatch(L,'luaopen_io'));
-    api.lua_tocfunction=(L,index)=>Number(dispatch(L,'lua_tocfunction',index));
+    api.luaL_testudata=(L,index,name)=>Number(invoke(L,'luaL_testudata',index,typeof name==='string'?services.literal(name):name));
+    api.luaL_error_text=(L,message)=>invoke(L,'luaL_error_text',typeof message==='string'?services.literal(message):message);
+    api.luaopen_io=L=>Number(invoke(L,'luaopen_io'));
+    api.lua_tocfunction=(L,index)=>Number(invoke(L,'lua_tocfunction',index));
     // Original lua.h: void lua_setallocf(lua_State*,lua_Alloc,void*).
-    api.lua_setallocf=(L,allocator,userdata)=>{dispatch(L,'lua_setallocf',allocator,userdata);};
+    api.lua_setallocf=(L,allocator,userdata)=>{invoke(L,'lua_setallocf',allocator,userdata);};
     api.lua_isuserdata=(L,i)=>[2,7].includes(api.lua_type(L,i))?1:0;
-    api.lua_gc=(L,what,...args)=>Number(BigInt.asIntN(32,dispatch(L,'lua_gc',what,args[0]??0,args[1]??0,args[2]??0)));
+    api.lua_gc=(L,what,...args)=>Number(invoke(L,'lua_gc',what,args[0]??0,args[1]??0,args[2]??0))|0;
     return {api,dispatch,counters:runtime.counters};
 }

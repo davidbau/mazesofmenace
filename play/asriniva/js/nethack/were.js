@@ -1,26 +1,29 @@
-// Original WERE policies on one live shared game context.
+// Per-game WERE policies on canonical shared native actors and properties.
 import abi from './were-abi.json' with {type:'json'};
-import * as source from '../ported/were.js';
+import {createNativeWere} from './native/were.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeAbiCaster} from './native/execution.js';
 import {createWereEnvironment} from './bindings/were.js';
 import publicFunctions from './public-functions.json' with {type:'json'};
 
 export function enableWere(environment,layouts){
  const {services,memory,ctypes,transport}=environment,L=layouts.were,address=environment.address;
  for(const [key,value]of Object.entries(abi.layout))if(L[key]!==value)throw new Error('Review WERE ABI '+key);
+ const native=nativeStateFor(environment);
  const text=v=>typeof v==='string'?services.literal(v):address(v);
  const resolve=name=>environment.hasFunction(name)?environment.resolve(name):typeof services[name]==='function'?services[name]:environment.resolve(name);
  const local=Object.create(services);
- const scalar=(type,v)=>{type=ctypes.abiType(type);if(type.includes('*'))return text(v);if(type==='char'||type==='signed char')return transport.char(v);if(type==='unsigned char')return transport.uchar(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
+ const cast=createNativeAbiCaster(ctypes,transport,text),scalar=(type,value)=>cast(type)(value);
  const prototype=name=>{const p=publicFunctions.functions[name];if(!p)throw new Error('Missing WERE foreign public prototype '+name);const m=p.match(/^(.+?)\s*\((.*)\)$/);return{result:m[1],args:m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')};};
  for(const[name,target]of Object.entries(abi.calls)){
   const p=prototype(target);
-  local[name]=(...args)=>{const result=resolve(target)(...args.map((v,i)=>scalar(p.args[i],v)));return ctypes.canonical(p.result)==='void'?undefined:scalar(p.result,result);};
+  local[name]=(...args)=>{const direct=native.functions.get(target);if(direct?.nativeState===native)return direct(...args);const result=native.boundary(resolve(target),...args.map((v,i)=>scalar(p.args[i],v)));return ctypes.canonical(p.result)==='void'?undefined:scalar(p.result,result);};
  }
  const bit=(p,i,value)=>{const name=abi.bits[i];if(!name)throw new Error('Unknown WERE packed field '+i);return value===undefined?ctypes.getField('struct monst',address(p),name,'unsigned int'):ctypes.setField('struct monst',address(p),name,'unsigned int',value);};
- Object.assign(local,{heap:()=>memory.HEAPU8,stackAlloc:transport.stackAlloc,
+ Object.assign(local,{nativeOwner:native,heap:()=>memory.HEAPU8,stackAlloc:transport.stackAlloc,
   global:i=>{if(!abi.globals[i])throw new Error('Unknown WERE global '+i);return environment.requireGlobal(abi.globals[i]);},
   monsterBit:(p,i)=>bit(p,i),setMonsterBit:(p,i,v)=>bit(p,i,transport.int(v)),
-  roleplayDeaf:()=>ctypes.getField('struct u_roleplay',ctypes.locate('struct you',environment.requireGlobal('u'),'uroleplay').at,'deaf','boolean'),
+  roleplayDeaf:()=>native.nativeRecords.record('struct you',environment.requireGlobal('u')).uroleplay.deaf,
   night:()=>environment.calendar('night'),
   Strcpy:(out,value)=>address(resolve('strcpy')(address(out),text(value))),
   Sprintf:(out,format,name)=>resolve('sprintf')(address(out),text(format),text(name)),
@@ -35,6 +38,15 @@ export function enableWere(environment,layouts){
  for(const name of abi.globals)Object.defineProperty(local,name,{value:undefined,writable:true,configurable:true});
  const context=createWereEnvironment(local,L);
  const views={were_change:[context.monster],new_were:[context.monster],were_summon:[context.permonst,null,context.intPointer]};
- environment.register('were',source,context,{prepareArgs:(name,args)=>{const p=prototype(name);return args.map((v,i)=>views[name]?.[i]?views[name][i](address(v)):scalar(p.args[i],v));}});
- return{context,services:local,exports:Object.keys(abi.public),limitation:'Original WERE entries connected; transformed-hero, combat/equipment and summon branches require their real foreign owners and focused acceptance.'};
+ const policies=createNativeWere(context);
+ const exports=Object.fromEntries(Object.keys(abi.public).map(name=>{
+  const p=prototype(name),invoke=(...args)=>{
+   const saved=native.depth?undefined:transport.stackSave();native.enter();
+   try{return policies[name](...args.map((v,i)=>views[name]?.[i]?views[name][i](v):scalar(p.args[i],v)));}
+   finally{native.leave();if(saved!==undefined)transport.stackRestore(saved);}
+  };
+  invoke.nativeState=native;invoke.nativeDirect=true;native.functions.set(name,invoke);return[name,invoke];
+ }));
+ environment.register('were',exports);
+ return{context,services:local,exports:Object.keys(abi.public),limitation:'Per-game native WERE policies use canonical monster/hero state and direct native dependencies; strings, output pointers and remaining foreign owners retain byte boundaries.'};
 }

@@ -6,6 +6,7 @@ export function createWereEnvironment(services, layout) {
         || layout.permonstIndexSize !== 4 || layout.permonstFlags2Size !== 8
         || layout.wereChangesSize !== 8)
         throw new Error('Review changed were ABI');
+    const nativeRecords = services.nativeOwner?.nativeRecords;
     const address = value => Number(value?.address ?? value ?? 0);
     const view = () => CAdapter.currentDataView(services);
     const global = index => address(services.global(index));
@@ -26,6 +27,7 @@ export function createWereEnvironment(services, layout) {
         },
     });
     function permonst(value) {
+        if (nativeRecords) return nativeRecords.record('struct permonst', value);
         const at = address(value);
         if (!at) return 0;
         return {
@@ -37,6 +39,7 @@ export function createWereEnvironment(services, layout) {
         };
     }
     function monster(value) {
+        if (nativeRecords) return nativeRecords.record('struct monst', value);
         const at = address(value);
         if (!at) return 0;
         const result = {
@@ -65,13 +68,14 @@ export function createWereEnvironment(services, layout) {
             set value(field) { view().setInt32(at, field, true); },
         };
     }
-    const u = {};
-    for (const name of ['ux', 'uy', 'umonnum', 'ulycn', 'mtimedone'])
+    const u = nativeRecords ? nativeRecords.record('struct you', global(1)) : {};
+    for (const name of nativeRecords ? [] : ['ux', 'uy', 'umonnum', 'ulycn', 'mtimedone'])
         Object.defineProperty(u, name, {
             get() { return signed(global(1) + layout['hero_' + name], layout['hero_' + name + '_size']); },
             set(value) { setSigned(global(1) + layout['hero_' + name], layout['hero_' + name + '_size'], value); },
         });
-    const property = (id, extrinsic = false) => signed(global(1) + layout.heroProps
+    const property = (id, extrinsic = false) => nativeRecords
+        ? u.uprops[id][extrinsic ? 'extrinsic' : 'intrinsic'] : signed(global(1) + layout.heroProps
         + id * layout.propSize + (extrinsic ? layout.propExtrinsic : layout.propIntrinsic), layout.propValueSize);
     const hasProperty = id => property(id) !== 0n || property(id, true) !== 0n;
     return {
@@ -86,30 +90,30 @@ export function createWereEnvironment(services, layout) {
         makemon(...args) { return monster(services.makemon(...args)); },
         mons: indexed(layout.NUMMONS + 1, index => permonst(global(0) + index * layout.permonstSize)),
         u,
-        flags: {
+        flags: nativeRecords ? nativeRecords.record('struct flag', global(2)) : {
             get moonphase() { return unsigned(global(2) + layout.flagsMoonphase, layout.flagsMoonphaseSize); },
             get paranoia_bits() { return unsigned(global(2) + layout.flagsParanoia, layout.flagsParanoiaSize); },
         },
-        gw: {
+        gw: nativeRecords ? nativeRecords.record('struct instance_globals_w', global(3)) : {
             get were_changes() { return signed(global(3) + layout.wereChanges, layout.wereChangesSize); },
             set were_changes(value) { setSigned(global(3) + layout.wereChanges, layout.wereChangesSize, value); },
         },
-        svc: { context: {
+        svc: nativeRecords ? nativeRecords.record('struct instance_globals_saved_c', global(4)) : { context: {
             get mon_moving() { return signed(global(4) + layout.contextMonMoving, layout.contextMonMovingSize); },
         } },
-        gy: { get youmonst() { return monster(global(5) + layout.youmonst); } },
+        gy: nativeRecords ? nativeRecords.record('struct instance_globals_y', global(5)) : { get youmonst() { return monster(global(5) + layout.youmonst); } },
         get Protection_from_shape_changers() { return hasProperty(layout.PROT_FROM_SHAPE_CHANGERS); },
         get Deaf() { return hasProperty(layout.DEAF) || !!services.roleplayDeaf(); },
         get Hallucination() { return property(layout.HALLUC) !== 0n && !hasProperty(layout.HALLUC_RES); },
         get Polymorph_control() { return hasProperty(layout.POLYMORPH_CONTROL); },
         get Stunned() { return property(layout.STUNNED) !== 0n; },
         get Unaware() {
-            return signed(global(6) + layout.multi, layout.multiSize) < 0
+            return (nativeRecords ? nativeRecords.record('struct instance_globals_m', global(6)).multi : signed(global(6) + layout.multi, layout.multiSize)) < 0
                 && (!!services.unconscious() || !!services.is_fainted());
         },
         get Unchanging() { return hasProperty(layout.UNCHANGING); },
         get ParanoidWerechange() {
-            return (unsigned(global(2) + layout.flagsParanoia, layout.flagsParanoiaSize)
+            return ((nativeRecords ? this.flags.paranoia_bits : unsigned(global(2) + layout.flagsParanoia, layout.flagsParanoiaSize))
                 & layout.PARANOID_WERECHANGE) !== 0;
         },
         is_were(ptr) { return (ptr.mflags2 & BigInt(layout.M2_WERE)) !== 0n; },

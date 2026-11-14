@@ -7646,6 +7646,10 @@ async function _doswapweapon() {
             g._touch_artifact_blast_msg = null;
             await force_more(_blastMsg);
         }
+        /* retouch_object_hero already plined the blast ("You are blasted by ...") and
+         * cleared _touch_artifact_blast_msg, so _blastMsg is always empty here; the
+         * static touch_blasted (artifact.c:952) is what says this swap was blasted. */
+        const _blasted = !!_blastMsg || (!!g._touch_blasted && !!oldswap.oartifact);
         // C wield.c:196-211: ready_weapon reports welding instead of prinv.
         const welds = will_weld(oldswap);
         let primaryLine;
@@ -7684,7 +7688,7 @@ async function _doswapweapon() {
         /* C update_topl joins the ready_weapon prinv and the "no secondary
          * weapon" pline when they fit the 71-column reserve (wield.c:488-491);
          * only the overflowing case raises more() between them. */
-        if (!g._wieldToolSwap && _blastMsg
+        if (!g._wieldToolSwap && _blasted
             && (g._topl_win_stop || g._topl_win_stop_armed)) {
             g._resultMessage = primaryLine;
             g._pending_message = '';
@@ -7714,12 +7718,16 @@ async function _doswapweapon() {
         /* An extra pline that JOINED the primary (topl.c:262-265 fit test, e.g.
          * Sting_effects' "Sting stops flickering." from setworn's see_monsters)
          * shares the topline, so the secondary prinv's more() pages both. */
-        const _swapExtra = g._pending_message.startsWith(primaryLine + '  ')
+        /* wield.c:224-225 prints "You secure the tether." on the same topline just
+         * before an aklys's prinv, so the shared line starts with that sentence. */
+        const _swapLead = (!welds && oldswap.otyp === OTYP_AKLYS) ? 'You secure the tether.  ' : '';
+        const _swapFirst = _swapLead + primaryLine;
+        const _swapExtra = g._pending_message.startsWith(_swapFirst + '  ')
             && g._pending_message.length >= TOPL_LIMIT
-            ? g._pending_message.slice(primaryLine.length + 2) : '';
+            ? g._pending_message.slice(_swapFirst.length + 2) : '';
         if (_swapExtra) {
-            g._pending_message = primaryLine;
-            const _extraMorc = await force_more(primaryLine);
+            g._pending_message = _swapFirst;
+            const _extraMorc = await force_more(_swapFirst);
             if (_extraMorc === 27) {
                 g._swapMoreFrame = null;
                 g._pending_message = '';
@@ -7836,7 +7844,12 @@ async function _doswapweapon() {
          * make_hallucinated from setuwep, so its "Oh wow!" follows the line. */
         const _halresWep = oldwep && oldwep.oartifact
             && (arti_spfx(get_artifact(oldwep)) & SPFX_HALRES_ART) !== 0;
-        if (oldwep && ((artifact_light(oldwep) && oldwep.lamplit) || _halresWep)) {
+        /* wield.c:172-176 prints "You are bare handed." BEFORE setuwep(NULL); setuwep's
+         * set_artifact_intrinsic(.., 0, ..) can itself print (Sting/Orcrist "stops
+         * quivering/flickering", Sunsword "stops shining", Grayswandir's "Oh wow!"), and
+         * that text must FOLLOW the empty-handed line, so every artifact takes this
+         * in-order path (it used to be only the lit/HALRES ones). */
+        if (oldwep && ((artifact_light(oldwep) && oldwep.lamplit) || _halresWep || oldwep.oartifact)) {
             await pline(emptyMsg + '.');
             await setuwep(null);
             await setuswapwep(oldwep);
@@ -13905,11 +13918,10 @@ async function dispatch_command(command, outcome = {}, queued = false) {
     }
         return true;
     case "dopray": {
-        g.context.move = 0; // legacy body still owns its successful time result
-        /* C ref: cmd.c extcmdlist — '#pray' → dopray().  dopray sets
-         * context.move per its own ECMD_TIME/ECMD_OK result, so don't keep the
-         * move=0 set above. */
-        outcome.value = await dopray(); // pray.c:2199 result drives rhack reset_cmd_vars (cmd.c:3815)
+        /* C cmd.c:3810-3822: rhack derives time usage from the handler's
+         * ECMD return, including declined and refused prayers. */
+        const res = outcome.value = await dopray();
+        g.context.move = (res & ECMD_TIME) ? 1 : 0;
     }
         return true;
     case "doturn": {

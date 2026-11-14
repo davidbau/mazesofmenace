@@ -1,5 +1,5 @@
 import { in_rooms } from './hack.js';
-import { cmd_from_dir, revive_nasty } from './cmd.js';
+import { cmd_from_dir, movecmd, dxdy_moveok, revive_nasty } from './cmd.js';
 import { obj_to_any } from './hack.js';
 import { delallobj } from './invent.js';
 import { flooreffects } from './do.js';
@@ -276,38 +276,7 @@ function diggingCtx() {
 
 
 
-// C ref: dig.c:640 digactualhole(x, y, BY_YOU, PIT) — forward to canonical digactualhole_
-async function digactualhole_pit(x, y) {
-    return await digactualhole_(x, y, BY_YOU_, PIT);
-}
-
-// C ref: dig.c:885 dighole(pit_only=TRUE, by_magic=FALSE, cc=NULL) — for the
-// so this reduces to digactualhole(PIT) at the hero's square.  (The boulder /
-async function dighole_pit() {
-    const u = game.u || {};
-    await digactualhole_pit(u.ux | 0, u.uy | 0);
-    return true;
-}
-
-// ─────────────────────────────────────────────────────────────────────────
-// General-purpose dighole()/digactualhole() — the zap_dig() u.dz!=0 branch
-// (dig.c:1584-1610).  Unlike dighole_pit()/digactualhole_pit() above (the
-// narrow pick-axe-occupation PIT path), this is a faithful port of the FULL
-// C functions, reached whenever a wand-of-digging/spell-of-digging is zapped
-//     digactualhole(BY_YOU,HOLE)->maketrap(HOLE)->hole_destination()'s single
-//     rn2(4) (trap.c:442-454).  1 draw, traps.count +1.
-//     draws rn2(lava_cnt+1)/rn2(moat_cnt+1)=2 (truthy) -> typ!=ROOM -> NO trap
-//     is ever created (digactualhole is not called on this sub-path); instead
-//     liquid_flow() converts the tile and runs water_damage_chain() on the
-//     object sitting there (a Bell of Opening, otyp 263, oclass TOOL_CLASS,
-//     material SILVER) — water_damage()'s luck-protection roll
-//     `(Luck+5) > rn2(20)` draws 17 (0+5=5 > 17 is false, unprotected), then
-//     falls through to erode_obj(ERODE_RUST) whose `!erosion_matters(otmp)`
-//     (TOOL_CLASS, not a weptool — objnam.c:1195-1201) returns immediately
-//     with ZERO further draws.  2 draws total, 0 net state change anywhere
-//     (no trap, no object destroyed) — exactly rec#56's residual.
-// ─────────────────────────────────────────────────────────────────────────
-
+// General-purpose digging entry points.
 const BY_YOU_ = 'BY_YOU';
 const BY_OBJECT_ = null;
 
@@ -734,7 +703,7 @@ function floorObjsAt_(x, y) {
 //
 // EXPORTED (was file-local): apply.c's do_break_wand WAN_DIGGING arm
 // Exporting adds no new caller in THIS file, so this file's own behaviour
-export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) {
+export async function digactualhole_(x, y, madeby, ttyp) {
     const g = game;
     const u = g.u || {};
     const madeby_u = madeby === BY_YOU_;
@@ -759,7 +728,7 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
         }
     }
 
-    if (!skipFurniture && await furniture_handled_(x, y, madeby_u))
+    if (await furniture_handled_(x, y, madeby_u))
         return;
 
     const lev = g.level?.at(x, y);
@@ -926,29 +895,6 @@ export async function digactualhole_(x, y, madeby, ttyp, skipFurniture = false) 
 }
 
 
-// C ref: hack.c:4522-4542 spot_checks(x,y,old_typ) — always called at the end
-// of dighole().  Only fires for old_typ DRAWBRIDGE_UP/ICE (ice-melt timer
-// no-op for them, ported fully anyway since the pieces already exist.
-function spot_checks_(x, y, old_typ) {
-    const lev = game.level?.at(x, y);
-    const new_typ = lev ? (lev.typ | 0) : 0;
-    let db_ice_now = false;
-    if (old_typ === DRAWBRIDGE_UP) {
-        db_ice_now = ((lev.drawbridgemask | 0) & DB_UNDER) === DB_ICE;
-        if (new_typ !== old_typ || !db_ice_now) {
-            if (spot_time_left(x, y, MELT_ICE_AWAY))
-                spot_stop_timers(x, y, MELT_ICE_AWAY);
-            obj_ice_effects(x, y, false);
-        }
-    } else if (old_typ === ICE) {
-        if (new_typ !== old_typ) {
-            if (spot_time_left(x, y, MELT_ICE_AWAY))
-                spot_stop_timers(x, y, MELT_ICE_AWAY);
-            obj_ice_effects(x, y, false);
-        }
-    }
-}
-
 // C ref: dig.c:884-1023 dighole(pit_only, by_magic, cc) — the general-purpose
 // dig-a-hole entry point.  Called from zap_dig() as dighole(FALSE,TRUE,NULL).
 async function dighole(pit_only, by_magic, cc) {
@@ -986,7 +932,10 @@ async function dighole(pit_only, by_magic, cc) {
         if (pit_only) {
             await pline('The drawbridge seems too hard to dig through.');
         } else {
-            await destroy_drawbridge(dig_x, dig_y);
+            // C dig.c:937-940: the portcullis is adjacent to the bridge.
+            const bx = { value: dig_x }, by = { value: dig_y };
+            find_drawbridge(bx, by);
+            await destroy_drawbridge(bx.value, by.value);
             retval = true;
         }
     } else if (sobj_at(BOULDER, dig_x, dig_y)) {
@@ -1642,54 +1591,13 @@ export async function use_pick_axe2(obj) {
     return 1;
 }
 
-// C ref: dig.c:1092 use_pick_axe(obj) — apply entry.  Wields the tool if it is
-// not the current weapon (deferred re-apply via cmdq in C), then builds the
-// direction list and reads getdir for the dig direction.  The getdir key (the
-// before this is called, so here we resolve u.dx/u.dy/u.dz from that key and
-// dispatch to use_pick_axe2.  Returns ECMD_TIME (1) / ECMD_CANCEL (0).
-//
-// dirCh is the already-read direction character (doapply reads it via getdir).
-export async function use_pick_axe(obj, dirCh) {
-    const g = game;
-    const u = g.u || {};
-
-    /* C dig.c:1152 — getdir(qbuf); doapply already read the direction key.
-     * Resolve the direction key into u.dx/u.dy/u.dz (movecmd / getdir). */
-    /* C cmd.c:4095 getdir -> movecmd(dirsym, MV_ANY): the run (shifted) and
-     * rush (control) spellings of a direction key give the same u.dx/u.dy. */
-    if (dirCh === null) {
-        /* direction already resolved by getdir() in the caller (u.dx/dy/dz set,
-         * confdir applied) */
-    } else if (typeof dirCh === 'string' && dirCh.length === 1) {
-        const cc = dirCh.charCodeAt(0);
-        if ('HJKLYUBN'.includes(dirCh)) dirCh = dirCh.toLowerCase();
-        else if (cc >= 1 && cc <= 26 && 'hjklyubn'.includes(String.fromCharCode(cc + 96)))
-            dirCh = String.fromCharCode(cc + 96);
-    }
-    if (dirCh === null) { /* resolved by getdir */ }
-    else if (dirCh === '>') { u.dx = 0; u.dy = 0; u.dz = 1; }
-    else if (dirCh === '<') { u.dx = 0; u.dy = 0; u.dz = -1; }
-    else if (dirCh === '.' || dirCh === 's') { u.dx = 0; u.dy = 0; u.dz = 0; }
-    else {
-        const DX = { h: -1, l: 1, j: 0, k: 0, y: -1, u: 1, b: -1, n: 1 };
-        const DY = { h: 0, l: 0, j: 1, k: -1, y: -1, u: -1, b: 1, n: 1 };
-        if (DX[dirCh] === undefined) {
-            /* C dig.c:1153: getdir returned 0 (ESC / unknown) -> return (res|ECMD_CANCEL). */
-            g.context = g.context || {};
-            g.context.move = 0;
-            return ECMD_CANCEL;
-        }
-        u.dx = DX[dirCh]; u.dy = DY[dirCh]; u.dz = 0;
-    }
-    /* C cmd.c:4117 getdir() tail — `if (!u.dz) confdir(FALSE);` (rn2(8) when
-     * Stunned / Confused-and-!rn2(5)); dig.c:1193 draws it again below. */
-    if (dirCh !== null && !u.dz) confdir(false);
-    /* Marks an APPLY-started dig (command returned ECMD_TIME, context.move=1):
-     * allmain's occupation driver runs movemon BEFORE dig() for these, unlike
-     * domove's autodig (allmain.c moveloop_core order). */
-    g._digFromApply = true;
+// C dig.c:1092-1158: apply.js handles wielding, the web guard, and getdir.
+// It passes the resulting u.dx/u.dy/u.dz to this final dispatch step.
+export async function use_pick_axe(obj) {
+    // Preserve the apply occupation ordering in allmain's movement loop.
+    game._digFromApply = true;
     const res = await use_pick_axe2(obj);
-    if (!g.occupation) g._digFromApply = false;
+    if (!game.occupation) game._digFromApply = false;
     return res;
 }
 
@@ -1772,35 +1680,25 @@ function pick_can_reach(pick, x, y) {
 
 export function dig_dirsyms(obj) {
     const u = game.u || {};
-    const DIRCH = ['h', 'y', 'k', 'u', 'l', 'n', 'j', 'b', '>', '<'];
-    const XD = [-1, -1, 0, 1, 1, 1, 0, -1, 0, 0];
-    const YD = [0, -1, -1, -1, 0, 1, 1, 1, 0, 0];
     const downok = !!can_reach_floor_dg(false);
-    const PM_GRID_BUG = 116;
     let out = '';
     for (let dir = 0; dir < 10; dir++) {
-        /* C dig.c:1124 cmd_from_dir(dir, MV_WALK): the key bound to the move,
-         * so number_pad shows digits; fall back to the letter if unbound. */
-        const bound = cmd_from_dir(dir, 0);
-        const dirch = bound ? (typeof bound === 'number' ? String.fromCharCode(bound) : bound) : DIRCH[dir];
+        const dirch = cmd_from_dir(dir, 0 /* MV_WALK */);
         if (u.uswallow) {
             /* all directions are viable when swallowed */
-        } else if (dir < 8) {
-            const dx = XD[dir], dy = YD[dir];
-            /* dxdy_moveok(): grid bugs can't move diagonally */
-            if (dx && dy && (u.umonnum | 0) === PM_GRID_BUG) continue;
-            const rx = (u.ux | 0) + dx, ry = (u.uy | 0) + dy;
+        } else if (movecmd(dirch, 0 /* MV_WALK */)) {
+            if (!dxdy_moveok()) continue;
+            const rx = u.ux + u.dx, ry = u.uy + u.dy;
             if (!isok(rx, ry) || dig_typ(obj, rx, ry) === DIGTYP_UNDIGGABLE)
                 continue;
         } else {
-            /* up or down: include only the likely one */
-            const dz = dir === 8 ? 1 : -1;   /* DIRCH[8] is '>' (down), DIRCH[9] '<' (up) */
-            if ((dz > 0) !== downok)
+            if ((u.dz > 0) !== downok)
                 continue;
         }
-        out += dirch;
+        out += String.fromCharCode(dirch & 0xff);
     }
-    return out;
+    // C dig.c:1150-1151: a missing binding may insert a NUL into dirsyms.
+    return out.split('\0', 1)[0];
 }
 
 // C ref: dig.c:168-192 dig_typ(struct obj *otmp, coordxy x, coordxy y)
@@ -1868,63 +1766,6 @@ function is_organic(otmp) {
     return (MKOBJ_OC_MATERIAL[otmp.otyp | 0] | 0) <= WOOD;
 }
 
-
-// C ref: mkobj.c:2511 remove_object(otmp) — extract_nexthere + extract_nobj
-// (js/mklev.js's exported remove_object pulls in its own obj_timer_checks
-// depending on that shared call chain — same per-file convention as
-// js/eat.js's local _useup_invent and js/ball.js's local findBallChain).
-function removeObjectFloor(otmp) {
-    const x = otmp.ox | 0, y = otmp.oy | 0;
-    if ((otmp.where | 0) !== OBJ_FLOOR)
-        throw new Error(`remove_object: obj where=${otmp.where}, not on floor`);
-    {
-        const cell = game.level?.levelObjects?.[x];
-        const head = cell ? cell[y] : null;
-        let match = null, prev = null;
-        for (let o = head; o; prev = o, o = o.nexthere) {
-            if (o === otmp || o.o_id === otmp.o_id) { match = o; break; }
-        }
-        if (!match)
-            throw new Error('extract_nexthere: object lost');
-        if (prev)
-            prev.nexthere = match.nexthere;
-        else if (cell)
-            cell[y] = match.nexthere;
-        otmp.nexthere = null;
-    }
-    {
-        const head = game.fobj;
-        let match = null, prev = null;
-        for (let o = head; o; prev = o, o = o.nobj) {
-            if (o === otmp || o.o_id === otmp.o_id) { match = o; break; }
-        }
-        if (!match)
-            throw new Error('extract_nobj: object lost');
-        if (prev)
-            prev.nobj = match.nobj;
-        else
-            game.fobj = match.nobj;
-        otmp.where = OBJ_FREE;
-        otmp.nobj = null;
-    }
-    /* C mkobj.c:2521-2522 — removing a boulder changes whether the square
-     * blocks vision.  The canonical vision port performs the corresponding
-     * does_block() refresh and marks the view dirty; leaving this as a throw
-     * made dighole's reachable "boulder falls in" arm fail after its state
-     * had already been unlinked. */
-    if ((otmp.otyp | 0) === BOULDER)
-        recalc_block_point(x, y);
-    if (otmp.timed)
-        obj_timer_checks(otmp, x, y, 0);
-}
-
-
-
-// C ref: dig.c:1989 debugpline1("bury_an_obj: %s", xname(otmp)) — in C without
-// DEBUG, debugpline1 is an empty macro (lint.h:68) so xname(otmp) is never
-// evaluated. In JS, evaluating xname(otmp) here would invoke observe_object()
-// on buried items, polluting discovery state.
-function debugpline1(_fmt, _arg) { }
 
 // end_burn (timeout.c:1801) is IMPORTED from js/timeout.js now — the throw-stub
 // that stood here shadowed the real body for bury_an_obj's lamplit arm below.
@@ -2088,7 +1929,7 @@ export async function rot_corpse(arg, timeout) {
 export function draft_message(unexpected) {
     if (unexpected) {
         if (!_dig_hallucination()) {
-            You_feel("an unexpected draft.");
+            return You_feel("an unexpected draft.");
         } else {
             /* U.S. classification system uses 1-A for eligible to serve
                and 4-F for ineligible due to physical or mental defect */
@@ -2096,14 +1937,14 @@ export function draft_message(unexpected) {
              * remap itself (js/attrib.js:94-95) — pass the C constant, never a
              * display index. */
             const u = game.u;
-            You_feel(`like you are ${(acurr(u, A_STR) < 6 || acurr(u, A_DEX) < 6
+            return You_feel(`like you are ${(acurr(u, A_STR) < 6 || acurr(u, A_DEX) < 6
                                       || acurr(u, A_CON) < 6 || acurr(u, A_CHA) < 6
                                       || acurr(u, A_INT) < 6 || acurr(u, A_WIS) < 6)
                                      ? '4-F' : '1-A'}.`);
         }
     } else {
         if (!_dig_hallucination()) {
-            You_feel("a draft.");
+            return You_feel("a draft.");
         } else {
             /* "marching" is deliberately ambiguous */
             const draft_reaction = ['enlisting', 'marching', 'protesting', 'fleeing'];
@@ -2113,7 +1954,7 @@ export function draft_message(unexpected) {
             if ((game.u?.ualign?.record | 0) < STRIDENT)
                 /* L: +(0..2), N: +(-1..1), C: +(-2..0); all: 0..3 */
                 dridx += rn1(3, sgn_dig(atype) - 1);
-            You_feel(`like ${draft_reaction[dridx]}.`);
+            return You_feel(`like ${draft_reaction[dridx]}.`);
         }
     }
 }
@@ -2205,7 +2046,7 @@ export async function mdig_tunnel(mtmp) {
         } else {
             if (game.flags.verbose) {
                 if (!Unaware_real() && !rn2(3)) /* not too often.. */
-                    draft_message(true); /* "You feel an unexpected draft." */
+                    await draft_message(true); /* "You feel an unexpected draft." */
             }
         }
         return false;
@@ -2214,7 +2055,7 @@ export async function mdig_tunnel(mtmp) {
         here.flags = 0;
         unblock_point(mtmp.mx, mtmp.my);
         newsym(mtmp.mx, mtmp.my);
-        draft_message(false); /* "You feel a draft." */
+        await draft_message(false); /* "You feel a draft." */
         return false;
     } else if (!IS_OBSTRUCTED(here.typ) && !IS_TREE(here.typ)) { /* no dig */
         return false;
@@ -2233,7 +2074,7 @@ export async function mdig_tunnel(mtmp) {
         /* KMH -- Okay on arboreal levels (room walls are still stone) */
         if (game.flags.verbose && !rn2(5)) {
             Soundeffect(se_crashing_rock, 75);
-            You_hear("crashing rock.");
+            await You_hear("crashing rock.");
         }
         if (in_rooms(mtmp.mx, mtmp.my, SHOPBASE).length > 0)
             add_damage(mtmp.mx, mtmp.my, 0);

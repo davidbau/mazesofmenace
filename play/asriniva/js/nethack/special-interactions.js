@@ -1,3 +1,4 @@
+import {nativeSteedFor} from './native/steed-graph.js';
 // Optional interaction owners on the shared standalone game state.
 // Game decisions remain in the unchanged translated modules.
 import {enableUtf8map} from './utf8map.js';
@@ -9,11 +10,9 @@ import * as steed from '../ported/steed.js';
 import * as iactions from '../ported/iactions.js';
 import * as extralev from '../ported/extralev.js';
 import * as mondata from '../ported/mondata.js';
-import {callRegion} from './bindings/region.js';
+import {createRegionEntry} from './bindings/region.js';
 import {enablePagerLookup} from './pager-lookup.js';
 import {is_moat} from '../ported/dbridge.js';
-import {steed_vs_stealth} from '../ported/polyself.js';
-import {callSteed,createSteedEnvironment} from './bindings/steed.js';
 import {createIactionsEnvironment} from './bindings/iactions.js';
 import {createExtralevEnvironment} from './bindings/extralev.js';
 import * as rumors from '../ported/rumors.js';
@@ -44,7 +43,7 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
   const additions={defended:(p,type)=>withCEnvironment(ctx,mondata.defended,views.record('struct monst',p),type),locomotion:(p,def)=>{const v=withCEnvironment(ctx,mondata.locomotion,views.record('struct permonst',p),text(def));return typeof v==='string'?text(v):v;}};environment.register('special-locomotion',Object.fromEntries(Object.entries(additions).filter(([name])=>!environment.hasFunction(name))),ctx);
  }
  if(only.includes('iactions'))enablePagerLookup(environment,layouts);
- if(only.includes('steed')&&!environment.hasFunction('update_player_regions')){const regions=environment.start('region-reset').environment;environment.extend('region-reset',{update_player_regions:()=>callRegion(regions,layouts.region,'update_player_regions')});}
+ if(only.includes('steed')&&!environment.hasFunction('update_player_regions')){const regions=environment.start('region-reset').environment;environment.extend('region-reset',{update_player_regions:createRegionEntry(regions,layouts.region,'update_player_regions')});}
  // Additional leaves reuse existing contexts, with their own source RNG attribution.
  if((only.includes('iactions')||only.includes('extralev'))&&!environment.hasFunction('name_ok')){
   const {services:S,transport,ctypes}=environment,views=createRecordViews(environment),base=environment.start('item-naming').environment,naming=Object.create(base),text=v=>typeof v==='string'?S.literal(v):environment.address(v);
@@ -65,6 +64,14 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
   if(enabled.has(port))continue;
   const metadata=abi.ports[port],L=metadata.layout,source=sources[port];
   for(const [key,value]of Object.entries(L))if(JSON.stringify(layouts[port]?.[key])!==JSON.stringify(value))throw new Error('Changed special interaction layout '+port+'.'+key);
+  if(port==='steed'){
+   const native=nativeSteedFor(environment,layouts),old=environment.start('monster-saddle-check');
+   for(const name of ['can_saddle','put_saddle_on_mon','stucksteed']){if(old.namespace[name]!==steed[name])throw Error('Review existing STEED owner '+name);old.namespace[name]=native.functions[name];}
+   if(environment.hasFunction('steed_vs_stealth')){const form=environment.start('hero-form');if(typeof form.namespace.steed_vs_stealth!=='function')throw Error('Review mounted-stealth owner');form.namespace.steed_vs_stealth=native.functions.steed_vs_stealth;}
+   const namespace={};for(const[name,fn]of Object.entries(native.functions))if(!environment.hasFunction(name))namespace[name]=fn;
+   environment.register('special-steed',namespace);
+   enabled.set(port,{call:native.call,services:native.services,get context(){return native.context;},exports:Object.keys(namespace),limitation:'Native STEED policies share canonical actors, occupancy and direct calls. Other engine owners retain their explicit boundaries; validation limits are recorded separately.'});continue;
+  }
   const {services:S,memory,ctypes,transport,functions}=environment,address=environment.address;
   if(port==='rumors'){try{environment.requireGlobal('bogon_codes');}catch(error){if(error.message!=='Unresolved standalone global bogon_codes')throw error;const bytes=Uint8Array.from([...abi.bogonCodes+'\0'].map(c=>c.charCodeAt(0)));environment.allocateGlobal('bogon_codes',bytes.length,bytes);}}
   const views=createRecordViews(environment),boundary=args=>args.map(v=>v?.address??v);
@@ -115,14 +122,6 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
    sfo_unsigned:(...args)=>call('sfo_unsigned',...args),sfo_ulong:(...args)=>call('sfo_ulong',...args),sfi_unsigned:(...args)=>call('sfi_unsigned',...args),sfi_ulong:(...args)=>call('sfi_ulong',...args),
    assert:()=>{const a=abi.assertions.assert;return call('__assert_fail',text(a.expression),text(a.file),a.line,text(a.function));},nhassert:()=>{const a=abi.assertions.nhassert;return call('nhassert_failed',text(a.expression),text(a.file),a.line);},
   };
-  if(port==='steed'){
-   helpers.roleplay_deaf=()=>hero().uroleplay.deaf;
-   helpers.has_mgivenname=p=>{const m=views.record('struct monst',p);return Number(Boolean(m.mextra&&m.mextra.mgivenname));};
-   for(const name of ['pline','You','You_cant','Your'])helpers[name]=(fmt,...args)=>call(name,Number(fmt),...args.map(Number));
-   helpers.panic=fmt=>call('panic',Number(fmt));
-   helpers.impossible0=fmt=>call('impossible',Number(fmt));
-   for(const [name,pointers]of [['impossible_state',[0,2]],['impossible_position',[0,4]],['impossible_overlap',[0,1,6]]])helpers[name]=(fmt,...args)=>call('impossible',Number(fmt),...args.map((v,i)=>pointers.includes(i)?Number(v):v));
-  }
   if(port==='iactions'){
    helpers.nul_glyphinfo=()=>environment.requireGlobal('nul_glyphinfo');
    helpers.command=i=>{const name=abi.iactionsCommands[i];if(!name)throw new Error('Unknown IACTIONS command '+i);return environment.functionPointer(name,'i');};
@@ -144,9 +143,6 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
   record.services=factories['create'+port[0].toUpperCase()+port.slice(1)+'Services'](environment,native);
   // Explicit boundaries below keep source records addressable and callbacks typed.
   const local=record.services;
-  if(port==='steed'&&!environment.hasFunction('steed_vs_stealth')){
-   const ctx=createSteedEnvironment(local,L,steed);ctx.FROMOUTSIDE=BigInt(L.FROMOUTSIDE);Object.defineProperty(ctx,'BStealth',{get:()=>hero().uprops[L.STEALTH].blocked,set:v=>{hero().uprops[L.STEALTH].blocked=v;}});environment.register('special-mounted-stealth',{steed_vs_stealth},ctx);
-  }
   if(port==='rumors'){
    // The existing level-content owner already publishes random-text leaves.
    // Extend that same private cache instead of creating a second CapMons owner.
@@ -158,7 +154,6 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
   if(port==='music')record.state=createMusicState(local,L,music);
   record.call=(name,...args)=>transport.scoped(()=>{
    let env;
-   if(port==='steed')return callSteed(local,L,steed,name,...boundary(args));
    if(port==='iactions')env=createIactionsEnvironment(local,L);
    if(port==='extralev')env=createExtralevEnvironment(local,L);
    if(port==='rumors')env=createRumorsEnvironment(local,L,record.state);
@@ -195,7 +190,7 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
    }
    const result=withCEnvironment(env,source[name],...args);return typeof result==='string'?S.literal(result):result?.address??result;
   });
-  if(port==='steed'){const old=environment.start('monster-saddle-check');for(const name of ['can_saddle','put_saddle_on_mon','stucksteed']){if(old.namespace[name]!==steed[name])throw new Error('Review existing STEED owner '+name);old.namespace[name]=(...values)=>record.call(name,...boundary(values));}}
+
   record.exports=Object.keys(metadata.public).filter(name=>!environment.hasFunction(name));
   environment.register('special-'+port,Object.fromEntries(record.exports.map(name=>[name,(...args)=>record.call(name,...args)])));
   record.limitation='Original policies connected to shared memory. Accepted interactions are limited to explicit complete-C comparisons; unresolved foreign owners fail rather than being stubbed.';

@@ -4,6 +4,7 @@ import * as core from '../../ported/timeout.js';
 import {withCEnvironment} from '../../c-runtime/context.js';
 const environments=new WeakMap();
 export function createTimeoutEnvironment(services,L){
+ const nativeRecords=services.nativeOwner?.nativeRecords;
  const raw=v=>CAdapter.unsignedPointer(v),address=v=>Number(raw(v)),view=()=>CAdapter.currentDataView(services),global=i=>address(services.global(i)),literal=v=>typeof v==='string'?services.literal(v):address(v);
  const int=v=>CAdapter.signedInt(v,true),long=v=>BigInt.asIntN(64,BigInt(v));
  const basic=p=>({address:raw(p)>BigInt(Number.MAX_SAFE_INTEGER)?raw(p):address(p)});
@@ -11,7 +12,7 @@ export function createTimeoutEnvironment(services,L){
  const scalar=(o,k,at,size,signed)=>{const type=(size===8?'Big':'')+(signed?'Int':'Uint')+(size*8);Object.defineProperty(o,k,{enumerable:true,get:()=>view()['get'+type](at(),true),set:v=>view()['set'+type](at(),size===8?BigInt(v):Number(v),true)});};
  const field=(o,k,at,prefix)=>scalar(o,k,at,L[prefix+'_size'],L[prefix+'_signed']);
  const array=(at,stride,wrap)=>new Proxy({address:at},{get:(o,k)=>k==='address'?at:/^\d+$/.test(String(k))?wrap(at+Number(k)*stride,Number(k)):o[k]});
- const monster=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const monster=p=>{if(nativeRecords)return nativeRecords.record('struct monst',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   ptr(o,'nmon',()=>at+L.mon_nmon,monster);
   ptr(o,'data',()=>at+L.mon_data,permonst);
   field(o,'mx',()=>at+L.mon_mx,'mon_mx');
@@ -24,7 +25,7 @@ export function createTimeoutEnvironment(services,L){
   field(o,'cham',()=>at+L.mon_cham,'mon_cham');
   Object.defineProperty(o,'wormno',{get:()=>services.monsterBit(at,0),set:v=>services.setMonsterBit(at,0,Number(v))});
   return o;};
- const object=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const object=p=>{if(nativeRecords)return nativeRecords.record('struct obj',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   ptr(o,'nobj',()=>at+L.obj_nobj,object);
   ptr(o,'ocontainer',()=>at+L.obj_ocontainer,object);
   ptr(o,'ocarry',()=>at+L.obj_ocarry,monster);
@@ -45,7 +46,7 @@ export function createTimeoutEnvironment(services,L){
   Object.defineProperty(o,'cursed',{get:()=>services.objectBit(at,2),set:v=>services.setObjectBit(at,2,Number(v))});
   Object.defineProperty(o,'odiluted',{get:()=>services.objectBit(at,3),set:v=>services.setObjectBit(at,3,Number(v))});
   return o;};
- const permonst=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const permonst=p=>{if(nativeRecords)return nativeRecords.record('struct permonst',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'mflags1',()=>at+L.pm_mflags1,'pm_mflags1');
   field(o,'mflags2',()=>at+L.pm_mflags2,'pm_mflags2');
   field(o,'mlet',()=>at+L.pm_mlet,'pm_mlet');
@@ -55,20 +56,20 @@ export function createTimeoutEnvironment(services,L){
   o.pmnames=array(at+L.pm_pmnames,8,p=>Number(view().getBigUint64(p,true)));
   field(o,'pmidx',()=>at+L.pm_pmidx,'pm_pmidx');
   return o;};
- const coord=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const coord=p=>{if(nativeRecords)return nativeRecords.record('struct nhcoord',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'x',()=>at+L.coord_x,'coord_x');
   field(o,'y',()=>at+L.coord_y,'coord_y');
   return o;};
- const rm=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const rm=p=>{if(nativeRecords)return nativeRecords.record('struct rm',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'typ',()=>at+L.rm_typ,'rm_typ');
   Object.defineProperty(o,'drawbridgemask',{get:()=>services.terrainBit(at,0)});
   return o;};
- const property=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const property=p=>{if(nativeRecords)return nativeRecords.record('struct prop',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'intrinsic',()=>at+L.prop_intrinsic,'prop_intrinsic');
   field(o,'extrinsic',()=>at+L.prop_extrinsic,'prop_extrinsic');
   field(o,'blocked',()=>at+L.prop_blocked,'prop_blocked');
   return o;};
- const anything=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const anything=p=>{if(nativeRecords)return nativeRecords.record('union any',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   ptr(o,'a_void',()=>at+L.any_a_void,p=>raw(p));
   field(o,'a_long',()=>at+L.any_a_long,'any_a_long');
   field(o,'a_uint',()=>at+L.any_a_uint,'any_a_uint');
@@ -76,7 +77,7 @@ export function createTimeoutEnvironment(services,L){
   ptr(o,'a_monst',()=>at+L.any_a_monst,monster);
   field(o,'a_int',()=>at+L.any_a_int,'any_a_int');
   return o;};
- const timer=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const timer=p=>{if(nativeRecords)return nativeRecords.record('struct fe',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   ptr(o,'next',()=>at+L.timer_next,timer);
   field(o,'timeout',()=>at+L.timer_timeout,'timer_timeout');
   field(o,'tid',()=>at+L.timer_tid,'timer_tid');
@@ -111,26 +112,26 @@ export function createTimeoutEnvironment(services,L){
   o.uprops=array(at+L.u_uprops,L.propSize,(p,index)=>{const out=property(p);out.index=index;return out;});
   o.uz=dlevel(at+L.u_uz);
   return o;};
- const kinfo=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const kinfo=p=>{if(nativeRecords)return nativeRecords.record('struct kinfo',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   ptr(o,'next',()=>at+L.kinfo_next,kinfo);
   field(o,'id',()=>at+L.kinfo_id,'kinfo_id');
   field(o,'format',()=>at+L.kinfo_format,'kinfo_format');
   o.name=at+L.kinfo_name;
   return o;};
- const mvital=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const mvital=p=>{if(nativeRecords)return nativeRecords.record('struct mvitals',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'mvflags',()=>at+L.mvital_mvflags,'mvital_mvflags');
   return o;};
- const dlevel=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const dlevel=p=>{if(nativeRecords)return nativeRecords.record('struct d_level',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'dnum',()=>at+L.dlevel_dnum,'dlevel_dnum');
   field(o,'dlevel',()=>at+L.dlevel_dlevel,'dlevel_dlevel');
   return o;};
- const role=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const role=p=>{if(nativeRecords)return nativeRecords.record('struct Role',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'mnum',()=>at+L.role_mnum,'role_mnum');
   return o;};
- const gender=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const gender=p=>{if(nativeRecords)return nativeRecords.record('struct Gender',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   ptr(o,'he',()=>at+L.gender_he);
   return o;};
- const nhfile=p=>{if(!raw(p))return 0;const o=basic(p),at=address(p);
+ const nhfile=p=>{if(nativeRecords)return nativeRecords.record('struct nh_file',p);if(!raw(p))return 0;const o=basic(p),at=address(p);
   field(o,'mode',()=>at+L.nhfile_mode,'nhfile_mode');
   field(o,'ftype',()=>at+L.nhfile_ftype,'nhfile_ftype');
   return o;};
@@ -219,6 +220,16 @@ export function createTimeoutEnvironment(services,L){
  env.propertynames=core.propertynames.map(row=>({prop_num:typeof row.prop_num==='string'?L[row.prop_num]:row.prop_num,prop_name:row.prop_name?literal(row.prop_name):0}));
  const foreign={rot_organic:0,rot_corpse:1,revive_mon:2,zombify_mon:3,fig_transform:4,shrink_glob:5,melt_ice_away:6};env.timeout_funcs=core.timeout_funcs.map(row=>({f:core[row.f]??services.callbackPointer(foreign[row.f]),cleanup:row.cleanup?core[row.cleanup]:0,name:literal(row.name)}));
  env.callTimeout=(fn,arg,time)=>typeof fn==='function'?env.callLocal(fn,arg,time):services.invoke(fn,arg,time);
+ if(nativeRecords){
+  const roots={u:'you',gy:'instance_globals_y',gm:'instance_globals_m',gn:'instance_globals_n',svk:'instance_globals_saved_k',svm:'instance_globals_saved_m',svq:'instance_globals_saved_q',svc:'instance_globals_saved_c',svl:'instance_globals_saved_l',svt:'instance_globals_saved_t',gt:'instance_globals_t',gb:'instance_globals_b',cg:'const_globals',gi:'instance_globals_i',flags:'flag',iflags:'instance_flags',disp:'display_hints',gv:'instance_globals_v',gu:'instance_globals_u',svd:'instance_globals_saved_d'};
+  for(const [name,type]of Object.entries(roots))env[name]=nativeRecords.record('struct '+type,global(['u','gy','gm','gn','svk','svm','svq','svc','svl','svt','gt','gb','cg','gi','flags','iflags','disp','mons','gv','gu','svd','genders'].indexOf(name)));
+  env.mons=nativeRecords.array('struct permonst',global(17),services.nativeSpeciesCount);
+  env.levl=env.svl.level.locations;
+  env.m_at=(x,y)=>env.svl.level.monsters[x][y];
+  env.vobj_at=(x,y)=>env.svl.level.objects[x][y];
+  const arena=services.nativeOwner.nativeArena;
+  env.cansee=(x,y)=>Number(Boolean(arena.Uint8[arena.pointer(env.gv.viz_array+y*8)+x]&L.IN_SIGHT));
+ }
  return env;
 }
 export function callTimeout(services,L,name,...args){

@@ -48,7 +48,7 @@ import {
     setmangry,
     wake_nearto,
 } from './mon.js';
-import { AD_DRST, PM_FOG_CLOUD } from './monsters.js';
+import { AD_DRST, PM_FOG_CLOUD, PM_LONG_WORM } from './monsters.js';
 import { make_blinded, set_itimeout } from './potion.js';
 import { body_part } from './polyself.js';
 import { coreRandom, d as roll_d } from './rng.js';
@@ -57,6 +57,7 @@ import { cansee, block_point, does_block, unblock_point } from './vision.js';
 import { newsym } from './display.js';
 import { S_cloud, S_poisoncloud } from './symbols.js';
 import { TOWEL } from './objects.js';
+import { note_unported } from './unported.js';
 import {
     Blind, EMagical_breathing, HBlinded, HMagical_breathing, Maybe_Half_Phys,
     Poison_resistance,
@@ -220,11 +221,19 @@ export function add_mon_to_reg(region, monster) {
         throw new TypeError('add_mon_to_reg requires a region');
     if (!monster || typeof monster !== 'object')
         throw new TypeError('add_mon_to_reg requires a monster');
-    if (!mon_in_region(region, monster)) {
-        if ((region.max_monst ?? 0) <= region.monsters.length)
-            region.max_monst = (region.max_monst ?? 0) + 5; // C MONST_INC.
-        region.monsters.push(monster.m_id);
+    /* if this is a long worm, it might already be present in the region;
+       only include it once no matter how segments the region contains */
+    if (mon_in_region(region, monster)) {
+        if (monster.data?.pmidx !== PM_LONG_WORM) {
+            // C: impossible("add_mon_to_reg: %s [#%u] already in region.",
+            //               m_monnam(mon), mon->m_id);
+            note_unported('pline.c impossible');
+        }
+        return region;
     }
+    if ((region.max_monst ?? 0) <= region.monsters.length)
+        region.max_monst = (region.max_monst ?? 0) + 5; // C MONST_INC.
+    region.monsters.push(monster.m_id);
     return region;
 }
 
@@ -801,6 +810,12 @@ export async function m_in_out_region(monster, x, y, rawEnv = {}) {
         if (enter) await enter(region, monster, env);
     }
     return true;
+}
+
+// C ref: region.c reg_damg() (649-656). Per-turn damage of a visible
+// region; an invisible one, or one whose ttl is -2, does none.
+export function reg_damg(reg) {
+    return (!reg.visible || reg.ttl === -2) ? 0 : Math.trunc(reg.arg ?? 0);
 }
 
 // C ref: region.c any_visible_region() (660-671).

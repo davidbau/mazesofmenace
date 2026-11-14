@@ -1379,7 +1379,7 @@ export function worst_cursed_item(state = game) {
 // than silently changing the property they own.
 export async function fix_curse_trouble(otmp, what = null, state = game) {
     if (!otmp) {
-        note_unported('pray.c impossible');
+        note_unported('pline.c impossible');
         return;
     }
 
@@ -1545,7 +1545,7 @@ export async function fix_worst_trouble(trouble, state = game, env = {}) {
             }
         }
         if (nohands(state.youmonst?.data) || !freehand(state))
-            note_unported('pray.c impossible');
+            note_unported('pline.c impossible');
         break;
     case TROUBLE_CURSED_BLINDFOLD:
         await fix_curse_trouble(state.ublindf, null, state);
@@ -2643,7 +2643,7 @@ export async function pleased(g_align, state = game) {
             await give_spell(state);
             break;
         default:
-            note_unported('pray.c impossible');
+            note_unported('pline.c impossible');
             break;
         }
     }
@@ -2998,7 +2998,8 @@ export function align_gname(alignment, state = game) {
         gnam = state.urole.cgod;
         break;
     default:
-        // C reports impossible() and carries on with "someone".
+        // C: impossible("unknown alignment.");
+        note_unported('pline.c impossible');
         gnam = 'someone';
         break;
     }
@@ -3046,9 +3047,14 @@ export function halu_gname(alignment, state = game) {
         gnam = Moloch;
         break;
     default:
-        break; // C reports impossible(); retain its missing-name fallback.
+        // C: impossible("rn2 broken in halu_gname?!?");
+        note_unported('pline.c impossible');
     }
-    if (!gnam) gnam = 'your Friend the Computer';
+    if (!gnam) {
+        // C: impossible("No random god name?");
+        note_unported('pline.c impossible');
+        gnam = 'your Friend the Computer'; /* Paranoia */
+    }
     return gnam.startsWith('_') ? gnam.slice(1) : gnam;
 }
 

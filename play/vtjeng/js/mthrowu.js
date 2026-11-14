@@ -242,7 +242,7 @@ import {
     mwepgone,
     select_rwep,
 } from './weapon.js';
-import { spec_abon } from './artifacts.js';
+import { artifact_hit, spec_abon } from './artifacts.js';
 import { extract_from_minvent, find_mac, is_pole } from './worn.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { mwelded } from './wield.js';
@@ -256,7 +256,7 @@ import { makeplural } from './fruit.js';
 import { body_part, mbodypart, polymon } from './polyself.js';
 import { passive_obj, shade_miss } from './uhitm.js';
 import { ttyPline } from './tty_message.js';
-import { impossible_printer, pline_mon, youHear } from './pline.js';
+import { impossible, impossible_printer, pline_mon, youHear } from './pline.js';
 import { finish_steps } from './source_steps.js';
 import { messageAt } from './startup_a11y.js';
 
@@ -1001,7 +1001,7 @@ export async function m_throw(monster, x, y, dx, dy, range, obj, rawEnv = {}) {
                 // C prints this through impossible(), which this build shows
                 // in every mode; it neither uses up the missile nor stops
                 // the flight. The port records the gap.
-                note_unported('mthrowu.c impossible');
+                note_unported('pline.c impossible');
                 hitv = 0;
                 damage = 0;
             } else if (singleobj.otyp === EGG
@@ -1332,10 +1332,11 @@ export async function return_from_mtoss(magr, otmp, tethered_weapon, state = gam
     }
     if (otmp) {
         if (hits_thrower_flag) {
-            // artifact_hit() is an unowned side-effect hook in this caller;
-            // the ordinary weapon damage and monster death remain local.
-            if (otmp.oartifact)
-                note_unported('artifact.c artifact_hit');
+            if (otmp.oartifact) {
+                const dmgptr = { value: dmg };
+                await artifact_hit(null, magr, otmp, dmgptr, 0, state, env);
+                dmg = dmgptr.value;
+            }
             magr.mhp -= dmg;
             if (magr.mhp < 1) /* DEADMONSTER */
                 await monkilled(magr, canspotmon(magr, state) ? '' : null,
@@ -1456,7 +1457,8 @@ export async function spitmm(mtmp, mattk, mtarg, rawEnv = {}) {
             otmp = mksobj(BLINDING_VENOM, true, false, { state, random });
             break;
         default:
-            /* C: impossible("bad attack type in spitmm"); FALLTHROUGH */
+            await impossible('bad attack type in spitmm', state, env);
+            // FALLTHROUGH
         case AD_ACID:
             otmp = mksobj(ACID_VENOM, true, false, { state, random });
             break;
@@ -1581,7 +1583,9 @@ export async function breamm(mtmp, mattk, mtarg, rawEnv = {}) {
                     if (dog && dog.hungrytime >= 10)
                         dog.hungrytime -= 10;
                 }
-            } /* else impossible("Breath weapon %d used", typ-1); */
+            } else {
+                await impossible(`Breath weapon ${typ - 1} used`, state, env);
+            }
         } else {
             return M_ATTK_MISS;
         }

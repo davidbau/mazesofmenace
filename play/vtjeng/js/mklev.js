@@ -22,6 +22,7 @@ import {
     dunlevs_in_dungeon,
     find_level,
     free_exclusions,
+    init_dungeons,
     init_mapseen,
     insert_branch,
     level_difficulty,
@@ -743,6 +744,12 @@ async function makelevel(specialLevelLoader = null) {
         // mklev.c:1414-1420 fills every special room before the themed hook.
         themerooms_post_level_generate(g);
     };
+    // C tests wiz1_level.dlevel == 0; before init_dungeons() the JS
+    // state has no wiz1_level at all.
+    if (!g.wiz1_level?.dlevel) {
+        await impossible('makelevel() called when dungeon not yet initialized.', g);
+        init_dungeons(g);
+    }
     oinit();
     clear_level_structures();
 
@@ -843,6 +850,7 @@ async function makelevel(specialLevelLoader = null) {
     if (!rogue) {
         await makecorridors();
         await make_niches();
+        await mklev_sanity_check(g);
     }
 
     // C ref: mklev.c makelevel() secret-vault realization and retry. Rogue
@@ -867,7 +875,7 @@ async function makelevel(specialLevelLoader = null) {
                 vaultRoom.needfill = FILL_NORMAL;
                 await fill_special_room(vaultRoom);
             }
-            mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
+            await mk_knox_portal(vx.v + vw.v, vy.v + vh.v);
             if (!g.level.flags.noteleport && !rn2(3))
                 await makeniche(TELEP_TRAP);
         }
@@ -927,7 +935,7 @@ async function makelevel(specialLevelLoader = null) {
 
     // Place dungeon branch
     if (branchp) {
-        place_branch(branchp);
+        await place_branch(branchp);
     }
     if (g.u.uz.dnum === 0 && g.u.uz.dlevel === 1
         && g.stairs !== previousStairs) {
@@ -963,7 +971,7 @@ async function makelevel(specialLevelLoader = null) {
 // C calls insert_branch() before place_branch() so Fort Ludios becomes a
 // reachable portal from the accepted vault level. The source endpoint starts
 // as the sentinel dungeon number and remains deferred until this branch runs.
-function mk_knox_portal(x, y) {
+async function mk_knox_portal(x, y) {
     const g = game;
     const br = dungeon_branch('Fort Ludios', g);
     const sourceIsEnd2 = on_level(g.knox_level, br.end1);
@@ -987,7 +995,7 @@ function mk_knox_portal(x, y) {
     // branch ordering, and place the portal at the vault's selected corner.
     Object.assign(source, g.u.uz);
     insert_branch(br, true, g);
-    place_branch(br, x, y);
+    await place_branch(br, x, y);
 }
 
 // C ref: mklev.c makerooms()
@@ -1729,6 +1737,7 @@ function create_corridor(c, state = game) {
     if (c.src.wall === W_ANY || c.src.wall === W_RANDOM
         || c.dest.wall === W_ANY || c.dest.wall === W_RANDOM) {
         // C: impossible("create_corridor to/from a random wall");
+        note_unported('pline.c impossible');
         return;
     }
     const org = search_door(state.level.rooms[c.src.room], c.src.wall,
@@ -1958,6 +1967,7 @@ export function get_mkroom_name(rtype) {
             return name;
 
     // C: impossible("get_mkroom_name unknown rtype %d", rtype);
+    note_unported('pline.c impossible');
     return 'unknown'; /* not NULL */
 }
 
@@ -2184,7 +2194,7 @@ async function makemaz(proto, slev, state) {
         maketrap(state.inv_pos.x, state.inv_pos.y, VIBRATING_SQUARE,
             { state });
     }
-    place_branch(is_branchlev());
+    await place_branch(is_branchlev(), 0, 0, frame);
     populate_maze(frame, state);
 }
 
@@ -3778,6 +3788,7 @@ export function lspo_feature(args, env) {
 
     if (typ === STONE) {
         // C: impossible("feature has unknown type param.");
+        note_unported('pline.c impossible');
     } else {
         sel_set_feature(x, y, typ, state);
     }
@@ -4352,7 +4363,10 @@ export function lspo_region(args, env) {
     room_not_needed = (rtype === OROOM && !irregular
                        && !do_arrival_room && !state.in_mk_themerooms);
     if (room_not_needed || state.level.nroom >= MAXNROFROOMS) {
-        // C: if (!room_not_needed) impossible("Too many rooms on new level!");
+        if (!room_not_needed) {
+            // C: impossible("Too many rooms on new level!");
+            note_unported('pline.c impossible');
+        }
         light_region({
             rlit, x1: d.x1, y1: d.y1, x2: d.x2, y2: d.y2,
         }, state);
@@ -4394,6 +4408,7 @@ export function lspo_region(args, env) {
     if (!room_not_needed) {
         if (coder.n_subroom > 1) {
             // C: impossible("region as subroom");
+            note_unported('pline.c impossible');
         } else {
             coder.tmproomlist[coder.n_subroom] = troom;
             coder.failed_room[coder.n_subroom] = false;
@@ -4447,6 +4462,7 @@ export function lspo_drawbridge(args, env) {
         db_open = rn2(2) ? 0 : 1;
     if (!create_drawbridge(c.x, c.y, dir, Boolean(db_open), state)) {
         // C: impossible("Cannot create drawbridge.");
+        note_unported('pline.c impossible');
     }
     frame.splevMap[c.x][c.y] = 1;
 }
@@ -4509,7 +4525,7 @@ export async function lspo_mazewalk(args, env) {
         --x;
         break;
     default:
-        // C: impossible("mazewalk: Bad direction");
+        await impossible('mazewalk: Bad direction', state);
         break;
     }
 
@@ -5477,9 +5493,10 @@ function mkmap_join_map_cleanup(state) {
 // temporary rooms for them, then dig corridors to connect adjacent regions.
 // A step generator: it yields the impossible() C prints when a region has no
 // square somexy() can pick.
-function* mkmap_join_map_steps(bg_typ, fg_typ, state) {
-    // Find all regions via flood fill and create rooms for them.
-    for (let x = 2; x <= WIDTH; x++) {
+export function* mkmap_join_map_steps(bg_typ, fg_typ, state) {
+    // Find all regions via flood fill and create rooms for them. C's
+    // `goto joinm` leaves both loops, so the label is on the outer one.
+    joinm: for (let x = 2; x <= WIDTH; x++) {
         for (let y = 1; y < HEIGHT; y++) {
             if (state.level.at(x, y).typ === fg_typ
                 && state.level.at(x, y).roomno === NO_ROOM) {
@@ -5502,7 +5519,7 @@ function* mkmap_join_map_steps(bg_typ, fg_typ, state) {
                     state.level.rooms[state.level.nroom - 1].irregular
                         = true;
                     if (state.level.nroom >= MAXNROFROOMS * 2)
-                        break; // goto joinm
+                        break joinm;
                 } else {
                     // Tiny hole: erase it.
                     for (let sx = state._mkmap_min_rx;
@@ -6889,6 +6906,8 @@ function create_vault() {
 // C ref: mklev.c add_room()
 function add_room(lowx, lowy, hix, hiy, lit, rtype, special) {
     const g = game;
+    if (g.level.nroom >= MAXNROFROOMS)
+        throw new Error('level has too many rooms');
     const croom = {
         roomnoidx: g.level.nroom,
         needfill: 0,
@@ -7191,7 +7210,10 @@ function finddpos(cc, dir, aroom) {
     case DIR_S: x1 = aroom.lx; x2 = aroom.hx; y1 = y2 = aroom.hy + 1; break;
     case DIR_W: x1 = x2 = aroom.lx - 1; y1 = aroom.ly; y2 = aroom.hy; break;
     case DIR_E: x1 = x2 = aroom.hx + 1; y1 = aroom.ly; y2 = aroom.hy; break;
-    default: return false;
+    default:
+        // C: impossible("finddpos: illegal dir");
+        note_unported('pline.c impossible');
+        return false;
     }
     let tryct = 0;
     let x, y;
@@ -7959,6 +7981,60 @@ async function make_niches() {
     }
 }
 
+// C ref: mklev.c chk_okdoor() (1197-1219). A door is not ok when the squares
+// on its two open sides differ: one is solid terrain (typ <= TREE) and the
+// other is not. Pure: reads the map only.
+export function chk_okdoor(x, y, state = game) {
+    const typAt = (tx, ty) => state.level.at(tx, ty).typ;
+    if (!IS_DOOR(typAt(x, y))) return true;
+    if (state.level.at(x, y).horizontal) {
+        if ((isok(x, y - 1) && typAt(x, y - 1) > TREE)
+            && (isok(x, y + 1) && typAt(x, y + 1) <= TREE))
+            return false;
+        if ((isok(x, y - 1) && typAt(x, y - 1) <= TREE)
+            && (isok(x, y + 1) && typAt(x, y + 1) > TREE))
+            return false;
+    } else {
+        if ((isok(x - 1, y) && typAt(x - 1, y) > TREE)
+            && (isok(x + 1, y) && typAt(x + 1, y) <= TREE))
+            return false;
+        if ((isok(x - 1, y) && typAt(x - 1, y) <= TREE)
+            && (isok(x + 1, y) && typAt(x + 1, y) > TREE))
+            return false;
+    }
+    return true;
+}
+
+// C ref: mklev.c mklev_sanity_check() (1222-1246). makelevel() calls it
+// after make_niches() on a room-and-corridor level. It runs outside
+// sanity_check(), so each impossible() prints its full "Program in
+// disorder!" block. makecorridors() can leave a room unjoined, since join()
+// returns without merging smeq[] when finddpos() or dig_corridor() fails,
+// so "room %i not connected?" reports a level C really makes. `env` passes
+// impossible()'s message operations through, which a test can replace.
+export async function mklev_sanity_check(state = game, env = {}) {
+    let rmno = -1;
+
+    if (!(state.iflags?.sanity_check || state.iflags?.debug_fuzzer))
+        return;
+
+    for (let y = 0; y < ROWNO; y++) {
+        for (let x = 1; x < COLNO; x++) {
+            if (!chk_okdoor(x, y, state))
+                await impossible(`levl[${x}][${y}] door not ok`, state, env);
+        }
+    }
+
+    for (let i = 0; i < state.level.nroom; i++) {
+        if (!state.level.rooms[i].needjoining)
+            continue;
+        if (rmno === -1)
+            rmno = state.smeq[i];
+        if (rmno !== -1 && state.smeq[i] !== rmno)
+            await impossible(`room ${i} not connected?`, state, env);
+    }
+}
+
 // ============================================================
 // Branch placement
 // ============================================================
@@ -7973,44 +8049,54 @@ function is_branchlev() {
     return null;
 }
 
-function find_branch_room(mp) {
-    const croom = generate_stairs_find_room();
-    if (croom) somexyspace(croom, mp);
+// C ref: mklev.c find_branch_room(). C's mazexy() reads the maze bounds
+// gx.x_maze_max and gy.y_maze_max; `frame` carries them here. makemaz() is the
+// only caller that reaches the roomless arm, and it passes its frame.
+async function find_branch_room(mp, frame) {
+    const g = game;
+    let croom = null;
+
+    if (g.level.nroom === 0) {
+        mazexy(mp, frame, g); /* already verifies location */
+    } else {
+        croom = generate_stairs_find_room();
+        if (!somexyspace(croom, mp))
+            await impossible("Can't place branch!", g);
+    }
     return croom;
 }
 
 // C ref: mklev.c place_branch(). When x is nonzero the branch is placed at
-// (x, y) directly; otherwise find_branch_room picks a random location.
-function place_branch(branchp, x = 0, y = 0) {
+// (x, y) directly; otherwise find_branch_room picks a random location. C's
+// pos_to_room() call for a given location discards its result and has no
+// effect. `frame` holds the maze bounds that find_branch_room() needs.
+async function place_branch(branchp, x = 0, y = 0, frame = undefined) {
     const g = game;
     if (!branchp || g.made_branch) return;
-    if (!x) {
+    if (!x) { /* find random coordinates for branch */
         const mp = { x: 0, y: 0 };
-        const croom = find_branch_room(mp);
-        if (!croom || mp.x <= 0) { g.made_branch = true; return; }
+        await find_branch_room(mp, frame);
         x = mp.x;
         y = mp.y;
     }
-    const on_end1 = (branchp.end1?.dnum === g.u?.uz?.dnum
-        && branchp.end1?.dlevel === g.u?.uz?.dlevel);
+    const on_end1 = on_level(branchp.end1, g.u.uz);
+    /* on end1, make_stairs unless BR_NO_END1; on end2, unless BR_NO_END2 */
+    const make_stairs = on_end1
+        ? branchp.type !== BR_NO_END1
+        : branchp.type !== BR_NO_END2;
     const dest = on_end1 ? branchp.end2 : branchp.end1;
-    // C ref: mklev.c:1727-1739
+    // C ref: mklev.c:1727-1739. The iflags.debug_fuzzer arm needs the
+    // fuzzer, which a recorded session cannot enable.
     if (branchp.type === BR_PORTAL) {
         mkportal(x, y, dest.dnum, dest.dlevel, g);
-    } else {
-        const make_stairs = on_end1
-            ? branchp.type !== BR_NO_END1
-            : branchp.type !== BR_NO_END2;
-        if (make_stairs) {
-            const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
-            stairway_add(x, y, goes_up, false, dest || { dnum: 0, dlevel: 0 });
-            const loc = g.level?.at(x, y);
-            if (loc) {
-                loc.typ = STAIRS;
-                loc.flags = goes_up ? LA_UP : LA_DOWN;
-            }
-        }
+    } else if (make_stairs) {
+        const goes_up = on_end1 ? !!branchp.end1_up : !branchp.end1_up;
+        stairway_add(x, y, goes_up, false, dest);
+        set_levltyp(x, y, STAIRS, { state: g });
+        g.level.at(x, y).flags = goes_up ? LA_UP : LA_DOWN; /* ladder */
     }
+    /* C sets made_branch even when no stairwell was made: there is only
+       one branch per level, so a second attempt would fail too. */
     g.made_branch = true;
 }
 
@@ -8053,6 +8139,9 @@ function extend_spine(locale, wall_there, dx, dy) {
     return 1;
 }
 function wall_cleanup(x1, y1, x2, y2, state = game) {
+    /* sanity check on incoming variables */
+    if (x1 < 0 || x2 >= COLNO || x1 > x2 || y1 < 0 || y2 >= ROWNO || y1 > y2)
+        throw new Error(`wall_cleanup: bad bounds (${x1},${y1}) to (${x2},${y2})`);
     const map = state.level;
     if (!map) return;
     for (let x = x1; x <= x2; x++)
@@ -8078,6 +8167,9 @@ export function fix_wall_spines(x1, y1, x2, y2, state = game) {
         VWALL, TRCORNER, TLCORNER, TDWALL,
         VWALL, BRCORNER, BLCORNER, TUWALL,
         VWALL, TLWALL, TRWALL, CROSSWALL];
+    /* sanity check on incoming variables */
+    if (x1 < 0 || x2 >= COLNO || x1 > x2 || y1 < 0 || y2 >= ROWNO || y1 > y2)
+        throw new Error(`wall_extends: bad bounds (${x1},${y1}) to (${x2},${y2})`);
     const map = state.level;
     if (!map) return;
     for (let x = x1; x <= x2; x++)
@@ -8192,7 +8284,9 @@ function isMinesEntrance(branch, state) {
         && (branch.end1?.dnum === mines || branch.end2?.dnum === mines));
 }
 
-export function populateSupplyChest(position, env) {
+// C ref: mklev.c fill_ordinary_room(), the supply-chest arm above the
+// Oracle (1036-1127).
+export function fill_ordinary_room_supply_chest(position, env) {
     const { state } = env;
     const random = env.random?.rn2 ?? rn2;
     const chest = mksobj_at(
@@ -8218,7 +8312,12 @@ export function populateSupplyChest(position, env) {
         }
         cursed = obj.cursed;
         add_to_container(chest, obj, env);
-        if (++tries === 50) break;
+        if (++tries === 50) {
+            // C (mklev.c fill_ordinary_room()):
+            // impossible("couldn't generate supply chest item");
+            note_unported('pline.c impossible');
+            break;
+        }
     } while (cursed || !random(5));
 
     if (random(3)) {
@@ -8317,7 +8416,7 @@ export function fill_ordinary_room(croom, bonusItems) {
                 && state.u.uz.dnum === state.oracle_level.dnum
                 && state.u.uz.dlevel < state.oracle_level.dlevel
                 && rn2(3)) {
-                populateSupplyChest(position, env);
+                fill_ordinary_room_supply_chest(position, env);
                 skipChests = true;
             }
         }
@@ -8366,7 +8465,11 @@ export function fill_ordinary_room(croom, bonusItems) {
         );
         tryCount = 0;
         while (!rn2(5)) {
-            if (++tryCount > 100) break;
+            if (++tryCount > 100) {
+                // C: impossible("trycnt overflow4");
+                note_unported('pline.c impossible');
+                break;
+            }
             if (somexyspace(croom, position, { state })) {
                 mkobj_at(
                     RANDOM_CLASS,
@@ -8392,7 +8495,11 @@ export function fill_ordinary_room(croom, bonusItems) {
     const finishSubrooms = (index) => {
         for (let current = index; current < subroomCount; ++current) {
             const subroom = subrooms[current];
-            if (!subroom) return;
+            if (!subroom) {
+                // C: impossible("fill_ordinary_room: Null subroom");
+                note_unported('pline.c impossible');
+                return;
+            }
             const maybeChild = fill_ordinary_room(subroom, false);
             if (maybeChild && typeof maybeChild.then === 'function') {
                 return maybeChild.then(() => finishSubrooms(current + 1));

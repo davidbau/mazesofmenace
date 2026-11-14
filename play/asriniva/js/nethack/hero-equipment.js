@@ -1,16 +1,15 @@
+import {nativeWornFor} from './native/worn-graph.js';
 import {compileNativeFieldPlans} from './native/address-fields.js';
 import {createEquipmentServices} from './native/equipment-services.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 // Shared storage transport for unchanged WEAPON, WORN, WIELD and DO_WEAR.
 import abi from './equipment-abi.json' with {type:'json'};
-import wornTextAbi from './worn-text-abi.json' with {type:'json'};
 import armorAbi from './armor-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
 import * as weapon from '../ported/weapon.js';
 import {callWeapon} from './bindings/weapon.js';
 import * as worn from '../ported/worn.js';
-import {createWornEnvironment} from './bindings/worn.js';
 import * as wield from '../ported/wield.js';
 import {createWieldEnvironment} from './bindings/wield.js';
 import {withCEnvironment} from '../c-runtime/context.js';
@@ -26,7 +25,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  const bit=(type,p,key)=>ctypes.getField(type,address(p),key,'unsigned int');
  const setBit=(type,p,key,v)=>ctypes.setField(type,address(p),key,'unsigned int',v);
  const locals={};
- for(const name of ['weapon','worn','wield']){
+ for(const name of ['weapon','wield']){
   const local=forward();locals[name]=local;
   for(const key of abi[name].globals)Object.defineProperty(local,key,{value:undefined,writable:true,configurable:true});
   Object.assign(local,{moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,
@@ -58,23 +57,20 @@ export function enableHeroEquipment(environment,layouts,hero){
  });
  for(const kind of ['rn2','rnd'])ws[kind]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services[kind](n);};
  ws.d=(dice,n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services.d(dice,n);};
- const wn=locals.worn,wd=locals.wield;
- wn.commonString=index=>{const name=['NH_BLACK','Something'][transport.int(index)],row=wornTextAbi.commonStrings[name];if(!row)throw Error('Unknown WORN common string '+index);return address(ctypes.getField(row.type,environment.requireGlobal(row.global),row.field,'const char *'));};
+ const wd=locals.wield;
  // Native hack.h ynq: yn_function(query, ynqchars, 'q', TRUE).
  wd.ynq=prompt=>environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynqchars'),113,1);
  wd.strcmp=(left,right)=>services.strcmp(typeof left==='string'?services.literal(left):address(left),typeof right==='string'?services.literal(right):address(right));
  wd.commonString=index=>address(ctypes.getField('struct c_color_names',environment.requireGlobal('c_color_names'),transport.int(index)===0?'c_black':transport.int(index)===1?'c_blue':'c_amber','const char *'));
- for(const [local,fields]of [[wn,['cursed','bypass','lamplit','oeroded','oeroded2']],[wd,['cursed','bknown','lamplit','unpaid','oerodeproof','known']]])Object.assign(local,{objectBit:(p,i)=>bit('struct obj',p,fields[i]),setObjectBit:(p,i,v)=>setBit('struct obj',p,fields[i],v)});
- wn.classBit=(p,i)=>bit('struct objclass',p,['oc_merge','oc_material','oc_big'][i]);wd.classBit=p=>bit('struct objclass',p,'oc_big');
- const monBits=['perminvis','invis_blkd','minvis','wormno','permspeed','mspeed','msleeping','mcanmove','ispriest','isminion','mfrozen'];
- wn.monsterBit=(p,i)=>bit('struct monst',p,monBits[i]);wn.setMonsterBit=(p,i,v)=>setBit('struct monst',p,monBits[i],v);
+ for(const [local,fields]of [[wd,['cursed','bknown','lamplit','unpaid','oerodeproof','known']]])Object.assign(local,{objectBit:(p,i)=>bit('struct obj',p,fields[i]),setObjectBit:(p,i,v)=>setBit('struct obj',p,fields[i],v)});
+ wd.classBit=p=>bit('struct objclass',p,'oc_big');
  wd.heroBit=()=>bit('struct you',environment.requireGlobal('u'),'uhandedness');wd.hands=ws.hands;
  const logged=(file,kind)=>(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal(file),line,services.literal(caller));return services[kind](transport.int(n));};
- wn.rnl=logged('worn.c','rnl');for(const kind of ['rn2','rnd'])wd[kind]=logged('wield.c',kind);
+ for(const kind of ['rn2','rnd'])wd[kind]=logged('wield.c',kind);
  const owned=(namespace)=>Object.fromEntries(Object.entries(namespace).filter(([name,fn])=>typeof fn==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name)));
  const weaponEntries=Object.fromEntries(Object.keys(owned(weapon)).map(name=>{const fn=(...args)=>callWeapon(ws,W,name,...args);fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];}));
  environment.register('hero-weapons',weaponEntries,ws);
- const wornEnv=createWornEnvironment(wn,layouts.worn,worn),wieldEnv=createWieldEnvironment(wd,layouts.wield,wield);
+ const wornGraph=nativeWornFor(environment,layouts),wornEnv=wornGraph.context,wieldEnv=createWieldEnvironment(wd,layouts.wield,wield);
  // The unchanged wield bridge indexes its two private getobj filters in this order.
  // Re-enter this same context when INVENT calls the native-shaped selector token.
  wd.callbackPointer=index=>{
@@ -95,7 +91,7 @@ export function enableHeroEquipment(environment,layouts,hero){
    return boundaryValue(type,v);
   })});
  }
- registerTyped('hero-worn',worn,wornEnv);registerTyped('hero-wield',wield,wieldEnv);
+ environment.register('hero-worn',Object.fromEntries(Object.keys(owned(worn)).map(name=>[name,wornGraph.functions[name]])),wornEnv);registerTyped('hero-wield',wield,wieldEnv);
  const local=forward(),schemas=Object.keys(armorAbi.schemas),scalar=d=>d.t?{i8:'signed char',u8:'unsigned char',i16:'short',u16:'unsigned short',i32:'int',u32:'unsigned int',i64:'long',u64:'unsigned long'}[d.t]:'void *';
  const field=(k,i)=>{const row=armorAbi.schemas[schemas[k]],f=row?.fields[i];if(!f)throw new Error('Unknown DO_WEAR field');return{type:row.ctype,f};};
  const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.q||d.f?8:d.s?layouts.do_wear[d.s+'Size']:d.a.reduce((a,b)=>a*b,1)*width(d.e);
@@ -113,7 +109,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  const offdelaybuf=environment.allocateGlobal('do_wear.armoroff.offdelaybuf',armorAbi.bufferBytes);
  const armorEntries=Object.fromEntries(Object.keys(owned(armor)).map(name=>{const fn=(...args)=>callDoWear(local,layouts.do_wear,name,...args);fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];}));
  environment.register('hero-armor',armorEntries,local);
- attachEquipmentFormatting(environment,{weapon:ws,worn:wn,wield:wd,armor:local},layouts);
+ attachEquipmentFormatting(environment,{weapon:ws,wield:wd,armor:local},layouts);
  hero.enableSkills();
  return {weapon:ws,worn:wornEnv,wield:wieldEnv,armor:local,limitation:'Shared equipment/skills transport connected; startup and later gear lifecycle require original-C verification.'};
 }

@@ -45,7 +45,8 @@ import { hcolor } from './do_name.js'; // relocate-fns
 import { hcolor as hcolor_real } from './mhitm.js'; // relocate-fns
 import { uncurse as _uncurse } from './mkobj.js'; // relocate-fns
 import { an, makeplural, simpleonames } from './objnam.js'; // relocate-fns
-import { NH_BLACK, NH_BLUE, SCROLL_CLASS_OC, WEAPON_CLASS_OC, _Blind, _Hallucination, _is_weptool, _makeknown, _strange_feeling } from './read.js'; // relocate-fns
+import { NH_BLACK, NH_BLUE, SCROLL_CLASS_OC, WEAPON_CLASS_OC, _Blind, _Hallucination, _is_weptool, _makeknown } from './read.js'; // relocate-fns
+import { strange_feeling } from './potion.js'; /* C: potion.c strange_feeling, called by chwepon (wield.c:942) */
 import { rn2 } from './rnd.js'; // relocate-fns
 import { alter_cost as _alter_cost } from './shk.js'; // relocate-fns
 import { weight } from './weight.js';
@@ -425,203 +426,22 @@ export async function dowield() {
         g.context.move = 0; /* ECMD_FAIL: no turn, no RNG */
         return ECMD_FAIL;
     }
-    // C wield.c:372-373 / invent.c:1779-1825: queued selections precede the prompt.
+    // C wield.c:372-374: forget the last splitobj(), then getobj("wield", wield_ok,
+    // GETOBJ_PROMPT | GETOBJ_ALLOWCNT).  The prompt loop, count/'?'/'*' handling, split
+    // and queued (cmdq) selections all live in invent.c getobj(); this port's one
+    // getobj body is getObjFromGetobj (js/cmd.js) -- dowield used to carry its own
+    // hand-rolled copy of that loop.
     clear_splitobjs();
-    const queued = await getobj_cmdq_drain(wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
-    if (queued.drained && !queued.obj) { g.context.move = 0; return ECMD_CANCEL; }
-    let wep = queued.obj || null, itemCh = wep?.hands ? '-' : String.fromCharCode(wep?.invlet || 0);
-    if (!queued.drained) {
     /* Lazy-init Ranger weapon state (mirrors ini_inv_use_obj). */
     _ensure_ranger_weapons(u);
-    /* C invent.c:1856-1857: getobj closes letter gaps under !fixinv. */
-    if (!_invlet_constant()) reassign();
-    /* ── Build getobj prompt string (C ref: invent.c:1752 getobj / wield.c:369) ──
-     * wield_ok(NULL) = GETOBJ_SUGGEST → buf starts with "- " (hands/unwield option).
-     * C ref: invent.c:1833 case GETOBJ_SUGGEST: *bp++ = HANDS_SYM; *bp++ = ' '; */
-    let buf = '- ', altlets = ''; /* wield_ok(NULL)=SUGGEST: always allow unwield */
-    /* C invent.c:1856-1857 getobj: `if (!flags.invlet_constant) reassign();` */
-    if (!_invlet_constant()) reassign();
-    /* Classify each inventory item via wield_ok logic.
-     * C ref: wield.c:326-338 — WEAPON_CLASS or is_weptool → GETOBJ_SUGGEST;
-     *   COIN_CLASS → GETOBJ_EXCLUDE; other → GETOBJ_DOWNPLAY.
-     * C ref: invent.c:1856-1893 sortloot + wield_ok loop. */
-    if (g.invent) {
-        const _wInvletValue = (c) => (c >= 97 && c <= 122) ? (c - 97 + 2)
-            : (c >= 65 && c <= 90) ? (c - 65 + 2 + 26)
-            : (c === 36 /* '$' */) ? 1
-            : (c === 35 /* '#' */) ? 1 + 52 + 1
-            : 1 + 52 + 1 + 1;
-        const _wSorted = [];
-        for (let o = g.invent; o; o = o.nobj)
-            _wSorted.push({ o, key: _wInvletValue(((o.oclass | 0) === OCLASS_COIN)
-                                                  ? 36 : (o.invlet | 0)) });
-        _wSorted.sort((a, b) => a.key - b.key);
-        for (const { o } of _wSorted) {
-            const isWeptool = (o.oclass | 0) === OCLASS_TOOL
-                && (MKOBJ_OC_SKILL[o.otyp | 0] | 0) !== 0;
-            if ((o.oclass | 0) === OCLASS_WEAPON || isWeptool)
-                buf += String.fromCharCode(o.invlet);
-            else if ((o.oclass | 0) !== OCLASS_COIN) altlets += String.fromCharCode(o.invlet);
-        }
-    } else {
-        /* Synthetic path for Ranger (lazy-init): a=dagger, b=bow, c=arrows, d=arrows2.
-         * All are WEAPON_CLASS → all GETOBJ_SUGGEST. */
-        const slots = [u.uwep, u.uswapwep, u.uquiver];
-        for (const obj of slots) {
-            if (obj)
-                buf += String.fromCharCode(obj.invlet ?? 97);
-        }
-        /* Second arrow stack if present (invlet 'd') */
-        if (u.uquiver && ammoTypes_includes(u.uquiver.otyp))
-            buf += 'd';
+    let wep = await getObjFromGetobj('wield', wield_ok, GETOBJ_PROMPT | GETOBJ_ALLOWCNT);
+    if (!wep) { /* Cancelled */
+        g.context.move = 0;
+        return ECMD_CANCEL;
     }
-    /* C invent.c:1900-1903 — the '- ' that the GETOBJ_SUGGEST hands arm puts at
-     * the head of buf carries a trailing space to separate it from the letters,
-     * and when NO letters were suggested that space is destroyed:
-     *     bp[suggested] = '\0';
-     *     if (suggested == 0 && bp > buf && bp[-1] == ' ')
-     *         *--bp = '\0';
-     * A hero with nothing weapon-ish in inventory therefore gets C's
-     * "[- or ?*]" where this port rendered "[-  or ?*]" — one extra column, which
-     * also parks the tty cursor one to the right. */
-    if (buf.endsWith(' '))
-        buf = buf.slice(0, -1);
-    const lets = buf.slice(2); // invent.c:1904: preserve un-compacted candidates
-    /* C invent.c:1908-1909 — `if (suggested > 5) compactify(bp);`; bp points
-     * PAST the '- ' hands prefix, so only the letters are compacted. */
-    {
-        const _pfx = buf.startsWith('- ') ? '- ' : buf.startsWith('-') ? '-' : '';
-        const _letters = buf.slice(_pfx.length);
-        if (_letters.length > 5)
-            buf = _pfx + compactify(_letters);
-    }
-    /* Build qbuf and display prompt (C ref: invent.c:1935 + tty_yn_function). */
-    const qbuf = `What do you want to wield? [${buf} or ?*]`;
-    let itemKey;
-    let msggiven = false;
-    for (;;) {
-        let cnt = -1; // invent.c:1917-1918: no supplied count on each retry
-        let itemRaw;
-        if (g.gi?.in_doagain) {
-            // C invent.c:1920-1921: repeat input bypasses the tty prompt.
-            // Paint parse()'s message-window clear before the unprompted read.
-            const hadTopline = !!g._screen_output?.split('\n')[0];
-            rebuild_screen_output();
-            if (hadTopline) set_cursor(0, 0); // tty_clear_nhwindow: home(), cl_end()
-            itemRaw = await readchar();
-        } else if (g.iflags.force_invmenu && !g.in_doagain) {
-            // C invent.c:1922-1930: enter the menu without a yn_function read.
-            if (!msggiven) putmsghistory('What do you want to wield?', false);
-            msggiven = true;
-            itemRaw = lets || altlets ? 63 : 42;
-        } else {
-        g._pending_message = qbuf;
-        await flush_screen(1);
-        /* C topl.c:425 custompline -> pline.c:282 records the prompt even
-         * under !verbose, so a later Norep compares against this prompt. */
-        g._prevmsg = qbuf + ' ';
-        set_cursor(qbuf.length + 1, 0);
-        /* C topl.c:537-539 — tty_yn_function files prompt + key2txt(answer). */
-        const _sh = g._topl_suppress_history;
-        g._topl_suppress_history = true;
-        try { itemRaw = g.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); /* C: tty_nhgetch reads the item key */ }
-        finally { g._topl_suppress_history = _sh; }
-        putmsghistory(qbuf + ' ' + key2txt((typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0)) & 0xff), false);
-        g._pending_message = '';
-        }
-        itemKey = typeof itemRaw === 'number' ? itemRaw : (itemRaw?.charCodeAt(0) ?? 27);
-        itemCh = String.fromCharCode(itemKey);
-        /* C invent.c:1937-1949 — the DIGIT arm, which runs BEFORE the quitchar
-         * test.  wield.c:373 passes GETOBJ_PROMPT | GETOBJ_ALLOWCNT, so a digit
-         * is a COUNT, not an invlet: get_count() swallows the digit run (echoing
-         * "Count: N") and returns the first non-digit key as the ilet.  Without
-         * this arm '4' fell into the invlet walk and plined "You don't have that
-         * object.--More--", ringing the bell on the next digit and shifting the
-         * keystream.  Retain the count for getobj's split_otmp arm. */
-        if (itemKey >= 48 /* '0' */ && itemKey <= 57 /* '9' */) {
-            const gc = await getobj_get_count(itemKey);
-            itemKey = gc.key | 0;
-            itemCh = String.fromCharCode(itemKey);
-            if (gc.count) cnt = gc.count;
-            g._topl_sticky = gc.echo || qbuf;
-        }
-        /* ── Dispatch on selected key (C ref: dowield:369-453 post-getobj logic) ── */
-        if (itemCh === '\x00') {
-            g.context.move = 0;
-            return ECMD_CANCEL;
-        }
-        if (itemKey === 27 /* ESC */ || itemKey === 32 /* ' ' */
-            || itemKey === 13 /* CR */ || itemKey === 10 /* LF */) {
-            /* Cancelled — C: getobj returns NULL → ECMD_CANCEL */
-            await getobj_never_mind(g.gi?.in_doagain ? null : qbuf);
-            g.context.move = 0;
-            return ECMD_CANCEL;
-        }
-        /* invent.c:1962-1999 redo_menu — '?'/'*' open display_pickinv and adopt
-         * its returned invlet; they are NOT invlet lookups. */
-        if (itemKey === 63 /* '?' */ || itemKey === 42 /* '*' */) {
-            const menuCount = { count: -1 };
-            itemKey = await getobj_redo_menu(itemKey, lets, altlets, menuCount,
-                                             { word: 'wield', allownone: true, buf });
-            if (menuCount.count >= 0) cnt = menuCount.count;
-            itemCh = String.fromCharCode(itemKey);
-            if (itemKey === 27) { g.context.move = 0; return ECMD_CANCEL; }
-            if (itemKey === 0 && msggiven) { g.context.move = 0; return ECMD_CANCEL; } // invent.c:1983
-            if (itemKey === 0) continue;   /* no selection → re-prompt */
-        }
-        /* wield.c:401 — HANDS_SYM resolves to &hands_obj, not to an invent slot. */
-        if (itemCh === '-') break;
-        /* Find selected item from invent chain or synthetic weapon slots */
-        if (g.invent) {
-            for (let o = g.invent; o; o = o.nobj) {
-                if (o.invlet === itemKey) { wep = o; break; }
-            }
-        } else {
-            /* Synthetic lookup: match among known weapon/quiver slots */
-            if (u.uwep    && (u.uwep.invlet ?? 97) === itemKey)    wep = u.uwep;
-            else if (u.uswapwep && (u.uswapwep.invlet ?? 98) === itemKey) wep = u.uswapwep;
-            else if (u.uquiver  && (u.uquiver.invlet  ?? 99) === itemKey) wep = u.uquiver;
-        }
-        if (wep?.oclass === OCLASS_COIN) { await You('cannot wield gold.'); g.context.move = 0; return ECMD_CANCEL; }
-        // C invent.c:2049-2053: save the choice before validating its count.
-        g.disp.botl = 1;
-        if (wep && !g.gi?.in_doagain) {
-            if (cnt > 0) cmdq_add_int(CQ_REPEAT, cnt);
-            cmdq_add_key(CQ_REPEAT, itemKey);
-        }
-        if (wep && cnt > wep.quan) {
-            await force_more(`You don't have that many!  You have only ${wep.quan}.`);
-            wep = null;
-            continue;
-        }
-        if (wep && cnt === 0) { g.context.move = 0; return ECMD_CANCEL; }
-        if (wep) {
-            if (cnt > 0 && cnt !== wep.quan) { // invent.c:2078-2089
-                if (splittable(wep)) wep = await splitobj(wep, cnt);
-                else if (wep.otyp === LOADSTONE && wep.cursed) wep.corpsenm = cnt;
-            }
-            break;
-        }
-        /* The `if (!g.invent) { cancel }` bail that stood here is gone for the
-         * same reason it is gone from getObjFromGetobj and from the drop loop
-         * (js/cmd.js:12185): a null g.invent means the pack is EMPTY, not
-         * unmodelled, and C's getobj loops on that state like any other. The
-         * synthetic uwep/uswapwep/uquiver lookup above still runs first, so a
-         * slot-modelled weapon is still resolved; only a letter that matches
-         * NOTHING now reaches C's "You don't have that object." arm, which is
-         * exactly what C does. It cannot hang: js/input.js nhgetch throws on an
-         * exhausted queue. */
-        /* C pline.c:274 — You() flushes first, and flush_screen() runs bot()
-         * for the disp.botl set at invent.c:2049, so the --More-- frame shows
-         * the status as of now (the turn counter ticked since the last paint). */
-        if (g.disp.botl) await bot();
-        if (g.gi?.in_doagain) { /* invent.c:2060-2061: no re-prompt on repeat */
-            await You("don't have that object.");
-            return ECMD_CANCEL;
-        }
-        await force_more("You don't have that object.");
-    }
-    }
+    /* getobj's &hands_obj is the {hands:true} sentinel: '-' wields nothing. */
+    let itemCh = wep.hands ? '-' : String.fromCharCode(wep.invlet | 0);
+    if (wep.hands) wep = null;
     const split = wep?.o_id && wep.o_id === g.context.objsplit.child_oid;
     if (wep !== u.uwep && welded(u.uwep)) {
         await weldmsg(u.uwep);
@@ -873,7 +693,7 @@ export async function dowield() {
         await pline(wepLine);
         wepLine = '';
         begin_burn(wep, false);
-        if (!_uprop_active('BLINDED'))
+        if (!_Blind_cmd())
             await pline(`${_objnam_Tobjnam(wep, 'begin')} to shine ${arti_light_description(wep)}!`);
     }
     /* C ref: ready_weapon line 221 — prinv prints the weapon line.
@@ -921,17 +741,6 @@ export async function dowield() {
         if (shkp)
             await pline('%s says "You be careful with my %s!"',
                         dokick_shkname(shkp), xname(wep));
-    }
-    /* C wield.c:245-249 ready_weapon — an always-lit artifact starts burning
-     * once wielded; arti_light_description() is light.c:915-931. */
-    if (artifact_light(wep) && !wep.lamplit) {
-        await begin_burn(wep, false);
-        if (!_Blind_cmd()) {
-            const _r = arti_light_radius(wep);
-            const _adesc = _r === 4 ? 'radiantly' : _r === 3 ? 'brilliantly'
-                : _r === 2 ? 'brightly' : _r === 1 ? 'dimly' : 'strangely';
-            await pline(`${_objnam_Tobjnam(wep, 'begin')} to shine ${_adesc}!`);
-        }
     }
     await _dowield_pushweapon_tail(_oldwep);
     g.context.move = 1; /* ready_weapon returns ECMD_TIME */
@@ -1274,8 +1083,6 @@ export async function uqwepgone() {
     }
 }
 
-const TIN_OPENER = 239;
-
 const WORM_TOOTH = 42;
 
 const CRYSKNIFE = 43;
@@ -1283,20 +1090,6 @@ const CRYSKNIFE = 43;
 const STRANGE_OBJECT = 0;
 
 const ART_MAGICBANE = 8; /* artilist.h artifact ordinal */
-
-/* C obj.h — `#define erodeable_wep(o) (is_weptool(o) || (o)->oclass == WEAPON_CLASS
- *                                      || is_wep_artifact...)`; the shape C
- * actually ships is erosion_matters() restricted to the weapon side, which
- * js/mklev.js already exports.  will_weld(optr) is
- *     ((optr)->cursed && (erodeable_wep(optr) || (optr)->otyp == TIN_OPENER)) */
-function _will_weld(obj) {
-    return !!obj.cursed
-        && (((obj.oclass | 0) === WEAPON_CLASS_OC || _is_weptool(obj))
-            /* wield.c:61-63 erodeable_wep also covers the punishment ball/chain */
-            || (obj.otyp | 0) === 477 /* HEAVY_IRON_BALL */
-            || (obj.otyp | 0) === 478 /* IRON_CHAIN */
-            || (obj.otyp | 0) === TIN_OPENER);
-}
 
 export async function chwepon(otmp, amount) {
     const g = game;
@@ -1308,7 +1101,7 @@ export async function chwepon(otmp, amount) {
     /* C wield.c:925-946 — nothing enchantable wielded. */
     if (!uwep || ((uwep.oclass | 0) !== WEAPON_CLASS_OC && !_is_weptool(uwep))) {
         let buf;
-        if (amount >= 0 && uwep && _will_weld(uwep)) { /* cursed tin opener */
+        if (amount >= 0 && uwep && will_weld(uwep)) { /* cursed tin opener */
             if (!Blind) {
                 buf = `${Yobjnam2(uwep, 'glow')} with ${an(hcolor_amber())} aura.`;
                 uwep.bknown = _Hallucination() ? 0 : 1; /* ok to bypass set_bknown() */
@@ -1322,7 +1115,7 @@ export async function chwepon(otmp, amount) {
             buf = `Your ${makeplural(body_part_fr(HAND_FR))} `
                 + `${(amount >= 0) ? 'twitch' : 'itch'}.`;
         }
-        await _strange_feeling(otmp, buf); /* pline()+docall()+useup() */
+        await strange_feeling(otmp, buf); /* pline()+docall()+useup() */
         exercise(A_DEX, amount >= 0);
         return 0;
     }

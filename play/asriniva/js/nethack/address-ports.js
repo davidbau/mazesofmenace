@@ -54,6 +54,7 @@ export function enableAddressPort(environment,name,{only,definition:providedDefi
         bind:key=>bind(key),
     });
     const local=binding.services,keys=binding.layout,resolve=binding.resolve;
+    if(nativeMode&&name==='display')local.nativeEnvironment=environment;
     if(nativeMode&&name==='display')connectNativeDisplayWindows(environment,local,schema);
     if(nativeMode&&name==='dungeon')connectNativeDungeonWindows(environment,local,schema);
     local.nativeFieldPlans=compileNativeFieldPlans(environment,schema,ctypes);

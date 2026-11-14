@@ -12,7 +12,7 @@ import { CVFS } from '../c-runtime/vfs.js';
 import { compilePosixRegex, execPosixRegex, freePosixRegex, posixRegexError,
     REG_EXTENDED, REG_NOSUB, REG_NOMATCH, nativeRegexError } from '../libraries/regex/posix.js';
 import { withCEnvironment } from '../c-runtime/context.js';
-import * as allocation from '../ported/alloc.js';
+import {createNativeAllocation} from './native/alloc.js';
 import * as strings from '../ported/strutil.js';
 import * as isaac from '../isaac64.js';
 import * as md4 from '../ported/nhmd4.js';
@@ -55,9 +55,8 @@ export function createJsRuntime(options = {}) {
     });
     services.ptrbuf = Array.from({ length: 4 }, () => memory.malloc(32));
     if (!dateBuffer || services.ptrbuf.some(pointer => !pointer)) throw new RangeError('Insufficient runtime memory');
-    // Native callers do not install a C context. This retained translated
-    // allocator owns its context instead of borrowing whichever game called it.
-    services.alloc = n => withCEnvironment(services, allocation.alloc, n);
+    const allocation=createNativeAllocation(services);
+    services.alloc=allocation.alloc;
     Object.assign(services, {
         NhregexSize: JS_RUNTIME_LAYOUTS.posixregex.size,
         BUFSZ: JS_RUNTIME_LAYOUTS.posixregex.bufferSize,
@@ -156,7 +155,7 @@ export function createJsRuntime(options = {}) {
     }
     return {
         memory, libc, services, clock, filesystem, FS: filesystem.FS, setEnvironment,
-        alloc: (name, ...args) => call(allocation, name, args),
+        alloc: (name, ...args) => allocation[name](...args),
         strutil: (name, ...args) => call(strings, name, args),
         posixregex: (name, ...args) => call(regex, name, args),
         regexContext,

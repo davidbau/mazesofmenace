@@ -10,6 +10,7 @@ import {
     COULD_SEE,
     CONTAINED_TOO,
     ECMD_OK,
+    LS_NONE,
     LS_OBJECT,
     LS_MONSTER,
     MAX_RADIUS,
@@ -23,6 +24,7 @@ import {
     FM_MIGRATE,
     FM_MYDOGS,
     FM_YOU,
+    FM_EVERYWHERE,
     RANGE_LEVEL,
     ROWNO,
     TEMP_LIT,
@@ -32,6 +34,7 @@ import { ignitable } from './apply_catch_lit.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { note_unported } from './unported.js';
+import { sync_impossible } from './source_steps.js';
 import { fmt_ptr } from './alloc.js';
 import { displayTtyMenuTextWindow } from './tty_menu.js';
 import {
@@ -45,6 +48,8 @@ import {
 // inside function bodies, so the cycle resolves.
 import { end_burn, obj_is_local } from './timeout.js';
 import { rest_push_each } from './restore.js';
+import { panic } from './end.js';
+import { find_oid } from './shk.js';
 
 // decl.c initializes gl.light_base for each game. Keep the source owner (`gl`)
 // separate from the flattened vision_full_recalc flag used by the current JS
@@ -150,13 +155,24 @@ export function new_light_source(x, y, range, type, id, state = game) {
     return source;
 }
 
-// C ref: light.c del_light_source(). Object and monster sources use their
-// owner identity directly; save/restore fixup ids remain outside this subset.
+// C ref: light.c del_light_source() (98-138). A source restore has not yet
+// relinked (LSF_NEEDS_FIXUP) still holds the saved o_id or m_id, which C
+// compares with the owner's current id. On a bones level that is the dead
+// hero's id, not the new one restmon() gave the monster, so C misses it.
 export function del_light_source(type, id, state = game) {
     const globals = lightGlobals(state);
+    if (type === LS_NONE) {
+        // C: impossible("del_light_source:type=none");
+        // C then searches with a zero id.
+        note_unported('pline.c impossible');
+    }
+    const currentId = type === LS_OBJECT ? (id?.o_id ?? 0)
+        : type === LS_MONSTER ? id.m_id : 0;
     let previous = null;
     let current = globals.light_base;
-    while (current && (current.type !== type || current.id !== id)) {
+    while (current && (current.type !== type
+        || current.id !== ((current.flags & LSF_NEEDS_FIXUP)
+            ? currentId : id))) {
         previous = current;
         current = current.next;
     }
@@ -299,7 +315,11 @@ export function save_light_sources(range, state = game) {
     while (current) {
         const next = current.next;
         let isGlobal;
-        if (current.type === LS_OBJECT)
+        if (ls_has_no_id(current)) {
+            // C: impossible("save_light_sources: no id! [range=%d]", range);
+            note_unported('pline.c impossible');
+            isGlobal = false;
+        } else if (current.type === LS_OBJECT)
             isGlobal = !obj_is_local(current.id, state);
         else if (current.type === LS_MONSTER)
             isGlobal = !(current.id.mx > 0);
@@ -324,13 +344,22 @@ export function save_light_sources(range, state = game) {
 // C ref: light.c:41-43.
 const LSF_SHOW = 0x1;
 const LSF_NEEDS_FIXUP = 0x2;
+const LSF_IS_PROBLEMATIC = 0x4;
+
+// C's `!ls->id.a_monst` test, true when the id union holds a null pointer.
+// A camera flash (show_transient_light()) is the one source with a null
+// object, which this port holds as { a_obj: null }.
+function ls_has_no_id(ls) {
+    return !ls.id || ls.id.a_obj === null;
+}
 
 // C ref: light.c maybe_write_ls() (570-601) with write_it TRUE, for the one
 // file the port writes: a bones level. It returns, in chain order, the record
 // write_ls() would write for each source of the given range. Camera flashes,
 // which have no object, never exist in the port (see save_light_sources()).
 export function maybe_write_ls(range, state = game) {
-    return light_sources_in_range(range, state).map(write_ls);
+    return light_sources_in_range(range, state)
+        .flatMap((ls) => write_ls(ls, state));
 }
 
 // The sources maybe_write_ls() (570-601) writes for `range`, in chain order,
@@ -340,16 +369,22 @@ export function maybe_write_ls(range, state = game) {
 export function light_sources_in_range(range, state = game) {
     const sources = [];
     for (let ls = lightGlobals(state).light_base; ls; ls = ls.next) {
+        if (ls_has_no_id(ls)) {
+            sync_impossible(`maybe_write_ls: no id! [range=${range}]`, state);
+            continue;
+        }
         let isGlobal;
         if (ls.type === LS_OBJECT)
             isGlobal = !obj_is_local(ls.id, state);
         else if (ls.type === LS_MONSTER)
             isGlobal = !(ls.id.mx > 0);
         else {
-            // impossible("maybe_write_ls: bad type (%d) [range=%d]", ...);
-            // this synchronous function cannot wait on the print.
+            // This synchronous function cannot wait on the print.
             isGlobal = false;
-            note_unported('pline.c impossible');
+            sync_impossible(
+                `maybe_write_ls: bad type (${ls.type}) [range=${range}]`,
+                state,
+            );
         }
         if (isGlobal !== (range === RANGE_LEVEL)) sources.push(ls);
     }
@@ -360,16 +395,46 @@ export function light_sources_in_range(range, state = game) {
 // replaced by its id and the record is marked for relink_light_sources().
 // C's checks that the id still finds the same object or monster report an
 // impossible() and write the record anyway; a port source always names a
-// live object or monster.
-function write_ls(ls) {
-    return {
-        x: ls.x,
-        y: ls.y,
-        range: ls.range,
-        type: ls.type,
-        flags: ls.flags | LSF_NEEDS_FIXUP,
+// live object or monster. Returns the records written: none for a bad type.
+// C sets LSF_IS_PROBLEMATIC on the source before the write and clears it
+// after, so only the record keeps it.
+function write_ls(ls, state = game) {
+    if (ls.type !== LS_OBJECT && ls.type !== LS_MONSTER) {
+        // C: impossible("write_ls: bad type (%d)", ls->type);
+        note_unported('pline.c impossible');
+        return [];
+    }
+    const record = { x: ls.x, y: ls.y, range: ls.range, type: ls.type };
+    // A source still awaiting relink already holds its saved id.
+    if (ls.flags & LSF_NEEDS_FIXUP) return [{ ...record, flags: ls.flags, id: ls.id }];
+    let problematic = 0;
+    if (ls.type === LS_OBJECT) {
+        if (find_oid(ls.id.o_id, state) !== ls.id) {
+            // C: impossible("write_ls: can't find obj #%u!", ls->id.a_uint);
+            note_unported('pline.c impossible');
+            problematic = LSF_IS_PROBLEMATIC;
+        }
+    } else {
+        const monloc = whereis_mon(ls.id, FM_EVERYWHERE, state);
+        if (monloc !== 0) {
+            if (find_mid(ls.id.m_id, monloc, state) !== ls.id) {
+                // C: impossible("write_ls: can't find mon%s #%u!",
+                //               DEADMONSTER(mtmp) ? " because it's dead" : "",
+                //               ls->id.a_uint);
+                note_unported('pline.c impossible');
+                problematic = LSF_IS_PROBLEMATIC;
+            }
+        } else {
+            // C: impossible("write_ls: stashed monst ptr not in any chain");
+            note_unported('pline.c impossible');
+            problematic = LSF_IS_PROBLEMATIC;
+        }
+    }
+    return [{
+        ...record,
+        flags: ls.flags | LSF_NEEDS_FIXUP | problematic,
         id: ls.type === LS_OBJECT ? ls.id.o_id : ls.id.m_id,
-    };
+    }];
 }
 
 // C ref: light.c restore_light_sources() (478-495). Each source read is
@@ -441,6 +506,27 @@ export function find_mid(nid, fmflags, state = game) {
     return null;
 }
 
+// C ref: light.c whereis_mon(). Which of the lists selected by fmflags holds
+// `mon`, as its FM_* flag, or 0. Unlike find_mid() it counts a dead monster
+// still on fmon.
+export function whereis_mon(mon, fmflags, state = game) {
+    if ((fmflags & FM_YOU) && mon === state.youmonst)
+        return FM_YOU;
+    if (fmflags & FM_FMON) {
+        for (let mtmp = state.level?.monlist ?? null; mtmp; mtmp = mtmp.nmon)
+            if (mtmp === mon) return FM_FMON;
+    }
+    if (fmflags & FM_MIGRATE) {
+        for (let mtmp = state.gm?.migrating_mons ?? null; mtmp; mtmp = mtmp.nmon)
+            if (mtmp === mon) return FM_MIGRATE;
+    }
+    if (fmflags & FM_MYDOGS) {
+        for (let mtmp = state.gm?.mydogs ?? null; mtmp; mtmp = mtmp.nmon)
+            if (mtmp === mon) return FM_MYDOGS;
+    }
+    return 0;
+}
+
 // zap.c:get_obj_location(). Return null for the source's FALSE result.
 export function get_obj_location(obj, locflags = 0, state = game) {
     switch (obj?.where) {
@@ -494,7 +580,7 @@ export function obj_adjust_light_radius(obj, new_radius, state = game) {
     }
     // C reports an impossible() and continues when a lit object has no
     // corresponding source. Keep that diagnostic without fabricating one.
-    note_unported('light.c obj_adjust_light_radius missing source');
+    note_unported('pline.c impossible');
 }
 
 // C ref: light.c candle_light_range() (843–877). Preserve all source arms,
@@ -658,4 +744,29 @@ export async function wiz_light_sources(state = game) {
     // TTY dismissal corresponding to display_nhwindow(win, FALSE).
     await displayTtyMenuTextWindow(state, lines);
     return ECMD_OK;
+}
+
+// C ref: light.c light_sources_sanity_check() (605-628). Every light source
+// must name an object or monster that the id lookups still find. Each failure
+// is a panic(), which ends the game.
+export async function light_sources_sanity_check(state = game) {
+    for (let ls = lightGlobals(state).light_base; ls; ls = ls.next) {
+        if (!ls.id)
+            await panic('insane light source: no id!', state);
+        if (ls.type === LS_OBJECT) {
+            const otmp = ls.id;
+            const auint = otmp.o_id;
+            if (find_oid(auint, state) !== otmp)
+                await panic(`insane light source: can't find obj #${auint}!`,
+                    state);
+        } else if (ls.type === LS_MONSTER) {
+            const mtmp = ls.id;
+            const auint = mtmp.m_id;
+            if (find_mid(auint, FM_EVERYWHERE, state) !== mtmp)
+                await panic(`insane light source: can't find mon #${auint}!`,
+                    state);
+        } else {
+            await panic(`insane light source: bad ls type ${ls.type}`, state);
+        }
+    }
 }

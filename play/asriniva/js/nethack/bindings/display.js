@@ -1,3 +1,4 @@
+import {installNativeDisplayValues} from '../native/display-values.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/display.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -32,6 +33,7 @@ export function createDisplayEnvironment(services){
  for(const row of display.displayStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
  env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
+ installNativeDisplayValues(env,services,schema,decode);
  env.nativeNamespace=createNativeAddressNamespace(env);
  return env;
 }

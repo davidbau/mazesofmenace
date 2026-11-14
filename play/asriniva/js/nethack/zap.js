@@ -1,4 +1,5 @@
 // Shared original ZAP factory, initially exposing actual location queries.
+import {nativeObjectAppraisalFor} from './native/object-appraisal-graph.js';
 import abi from './zap-abi.json' with {type:'json'};
 import {callZap,initializeZap,zapState} from './bindings/zap.js';
 const owners=new WeakMap();
@@ -26,7 +27,7 @@ export function enableZap(environment,layouts,{only=['get_obj_location','get_mon
   initializeZap(local,L);
   owner={services:local,storage,statics,state:zapState(local),call:(name,...args)=>callZap(local,L,name,...boundary(args)),exports:[],limitation:'Original ZAP location queries on one shared factory/private state. Other ZAP/wish/polymorph/callback/format branches are not accepted and require their actual complete transport/dependency owners.'};owners.set(environment,owner);
  }
- const names=only.filter(name=>{if(!Object.hasOwn(abi.public,name))throw new Error('Unknown public ZAP function '+name);return!environment.hasFunction(name);}),namespace=Object.fromEntries(names.map(name=>[name,(...args)=>owner.call(name,...args)]));
+ const names=only.filter(name=>{if(!Object.hasOwn(abi.public,name))throw new Error('Unknown public ZAP function '+name);return!environment.hasFunction(name);}),nativeQueries=nativeObjectAppraisalFor(environment,layouts).functions,namespace=Object.fromEntries(names.map(name=>[name,nativeQueries[name]??((...args)=>owner.call(name,...args))]));
  if(owner.exports.length)environment.extend('zap',namespace);else environment.register('zap',namespace);
  owner.exports.push(...names);return owner;
 }

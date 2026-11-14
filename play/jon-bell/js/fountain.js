@@ -62,53 +62,6 @@ const RING_CLASS = 4;
  * against js/oc_name_data.js OC_NAME[475] === 'boulder', not grepped. */
 const BOULDER = 475;
 
-function _getAbon(u) {
-    if (!u.abon)
-        u.abon = { a: [0, 0, 0, 0, 0, 0] };
-    if (!u.abon.a)
-        u.abon.a = [0, 0, 0, 0, 0, 0];
-    return u.abon.a;
-}
-
-function _getAtemp(u) {
-    if (!u.atemp)
-        u.atemp = { a: [0, 0, 0, 0, 0, 0] };
-    if (!u.atemp.a)
-        u.atemp.a = [0, 0, 0, 0, 0, 0];
-    return u.atemp.a;
-}
-
-const _RACE_ATTRMAX = [
-    /* hum */ [118, 18, 18, 18, 18, 18],
-    /* elf */ [18, 20, 20, 18, 16, 18],
-    /* dwa */ [118, 16, 16, 20, 20, 16],
-    /* gno */ [68, 19, 18, 18, 18, 18],
-    /* orc */ [68, 16, 16, 18, 18, 16],
-];
-
-const _RACE_ATTRMIN = 3;
-
-function _attrmax(u, i) {
-    /* i is a C constant; RACE_ATTRMAX rows are in C constant order — correct */
-    const ir = (game.flags?.initrace ?? -1) | 0;
-    const row = (ir >= 0 && ir < _RACE_ATTRMAX.length) ? _RACE_ATTRMAX[ir] : _RACE_ATTRMAX[0];
-    return row[i];
-}
-
-function _acurr(u, i) {
-    /* i is a C constant; translate to display index for array access */
-    const di = _C_ATTR_TO_DISP[i] ?? i;
-    const abase = _getAbase(u);
-    const abon = _getAbon(u);
-    const atemp = _getAtemp(u);
-    const tmp = (abon[di] | 0) + (atemp[di] | 0) + (abase[di] | 0);
-    if (tmp >= 25)
-        return 25;
-    if (tmp <= 3)
-        return 3;
-    return tmp;
-}
-
 export async function floating_above(what) {
     const u = game.u || {};
     let umsg = `are floating high above the ${what}.`;

@@ -3,10 +3,13 @@
 
 import {
     COLNO,
+    CORPSTAT_FEMALE,
+    CORPSTAT_MALE,
     ENTRYMAX,
     KILLED_BY,
     KILLED_BY_AN,
     NO_KILLER_PREFIX,
+    ONAME_NO_FLAGS,
     PANICKED,
     PERSMAX,
     POINTSMIN,
@@ -28,7 +31,8 @@ import {
     PM_RANGER,
     PM_WIZARD,
 } from './monsters.js';
-import { christen_monst } from './do_name.js';
+import { christen_monst, oname } from './do_name.js';
+import { set_corpsenm } from './obj.js';
 import { vfsReadFile, vfsWriteFile } from './storage.js';
 import { tty_raw_print, tty_raw_print_bold } from './tty_rawprint.js';
 import { displayTtyTextWindow } from './tty_menu.js';
@@ -36,6 +40,7 @@ import { ATR_BOLD } from './terminal.js';
 import { coreRandom, rnd } from './rng.js';
 
 import { note_unported } from './unported.js';
+import { RECORDER_UID } from './unixunix.js';
 import { canseemon } from './display.js';
 import { dungeon_at } from './dungeon_table.js';
 
@@ -62,7 +67,8 @@ export function formatkiller(how, incl_helpless, state = game) {
     const parts = [];
     switch (killer.format) {
     default:
-        // C: impossible("bad killer format? (%d)", killer.format);
+        // C: impossible("bad killer format? (%d)", svk.killer.format);
+        note_unported('pline.c impossible');
         // fall through
     case NO_KILLER_PREFIX:
         break;
@@ -106,7 +112,6 @@ const ROLESZ = 3;
 // pers_is_uid: the C build uses uid-based per-player limits; all JS games
 // share a single constant uid so the behavior matches.
 const PERS_IS_UID = true;
-const JS_UID = 501;
 
 // C ref: topten.c:38-55 struct toptenentry, 61 zerott.
 function newttentry() {
@@ -238,6 +243,23 @@ export function get_rnd_toptenentry(rawEnv = {}) {
         entry = readentry(lines[0] ?? '');
     }
     return entry.points ? entry : null;
+}
+
+// C ref: topten.c tt_oname() (1420-1442).  Gives a statue or corpse the
+// role, gender and name of a random score entry, or returns null, leaving
+// the object alone, when get_rnd_toptenentry() finds none.
+export function tt_oname(otmp, rawEnv = {}) {
+    const state = rawEnv.state ?? game;
+    const random = rawEnv.random ?? coreRandom;
+    if (!otmp) return null;
+
+    const tt = get_rnd_toptenentry({ ...rawEnv, state, random });
+    if (!tt) return null;
+
+    set_corpsenm(otmp, classmon(tt.plrole), { ...rawEnv, state, random });
+    if (tt.plgend[0] === 'F') otmp.spe = CORPSTAT_FEMALE;
+    else if (tt.plgend[0] === 'M') otmp.spe = CORPSTAT_MALE;
+    return oname(otmp, tt.name, ONAME_NO_FLAGS, { ...rawEnv, state });
 }
 
 // C ref: topten.c tt_doppel() (1445-1463).  Its return value selects the
@@ -500,7 +522,7 @@ function toptenEntries(how, when, state) {
     t0.hp = state.u.uhp;
     t0.maxhp = state.u.uhpmax;
     t0.deaths = state.u.umortality;
-    t0.uid = JS_UID;
+    t0.uid = RECORDER_UID;
     t0.plrole = (state.urole?.filecode ?? '???').substring(0, ROLESZ);
     t0.plrace = (state.urace?.filecode ?? '???').substring(0, ROLESZ);
     t0.plgend = (genders[state.flags.female ? 1 : 0]?.filecode ?? 'Mal')

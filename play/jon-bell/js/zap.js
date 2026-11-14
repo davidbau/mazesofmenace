@@ -2932,7 +2932,7 @@ export async function zap_over_floor(x, y, type, shopdamage, ignoremon, explodin
         if (see_it)
             await pline(`${yourzap ? 'Your' : 'The'} ${zapverb} reveals a secret door.`);
         else if (Is_rogue_level(game.u?.uz))
-            draft_message(false); /* "You feel a draft." (open doorway) */
+            await draft_message(false); /* "You feel a draft." (open doorway) */
     }
 
     /* C zap.c:5409-5487 — regular door absorbs remaining zap range, possibly
@@ -5145,7 +5145,7 @@ async function _zap_map_probing(x, y, obj) {
             await pline('Probing reveals a secret door.');
             learn_it = true;
         } else if (Is_rogue_level(game.u?.uz))
-            draft_message(false);
+            await draft_message(false);
     } else if (ltyp === SCORR) {
         lev.typ = CORR;
         unblock_point(x, y);

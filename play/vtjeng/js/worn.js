@@ -47,6 +47,8 @@ import {
     W_ARMS,
     W_ARMU,
     W_ART,
+    W_ARTI,
+    I_SPECIAL,
     W_BALL,
     W_CHAIN,
     W_QUIVER,
@@ -66,10 +68,12 @@ import {
     set_artifact_intrinsic,
 } from './artifacts.js';
 import { cancel_doff } from './do_wear.js';
+import { impossible } from './pline.js';
+import { fmt_ptr } from './alloc.js';
 import { game } from './gstate.js';
 import { see_wsegs } from './worm.js';
 import { newsym, canspotmon } from './display.js';
-import { Monnam, mon_nam, hcolor } from './do_name.js';
+import { Mgender, Monnam, mon_nam, hcolor, pmname } from './do_name.js';
 import { obj_extract_self, update_inventory } from './invent.js';
 import { check_gear_next_turn } from './mon.js';
 import { can_saddle } from './dog.js';
@@ -165,6 +169,7 @@ import { arti_light_description } from './light.js';
 import { objectGenerationEnv } from './object_generation.js';
 import { begin_burn, end_burn } from './timeout.js';
 import { can_ride } from './steed.js';
+import { instapetrify } from './trap.js';
 import { m_useup } from './mthrowu.js';
 import { surface } from './dungeon.js';
 import { youHear } from './monmove.js';
@@ -179,28 +184,33 @@ import {
     cloak_simple_name,
     simpleonames,
     otense,
+    an,
     Yname2,
 } from './objnam.js';
 import { canseemon } from './display.js';
 import { ETelepat, See_invisible, Stone_resistance } from './youprop.js';
 
+// C ref: worn.c worn[] (14-35): w_mask, the hero slot pointer it names, and
+// w_what, the slot's name in check_wornmask_slots() feedback.
 const WORN_SLOTS = Object.freeze([
-    Object.freeze({ mask: W_ARM, field: 'uarm' }),
-    Object.freeze({ mask: W_ARMC, field: 'uarmc' }),
-    Object.freeze({ mask: W_ARMH, field: 'uarmh' }),
-    Object.freeze({ mask: W_ARMS, field: 'uarms' }),
-    Object.freeze({ mask: W_ARMG, field: 'uarmg' }),
-    Object.freeze({ mask: W_ARMF, field: 'uarmf' }),
-    Object.freeze({ mask: W_ARMU, field: 'uarmu' }),
-    Object.freeze({ mask: W_RINGL, field: 'uleft' }),
-    Object.freeze({ mask: W_RINGR, field: 'uright' }),
-    Object.freeze({ mask: W_WEP, field: 'uwep' }),
-    Object.freeze({ mask: W_SWAPWEP, field: 'uswapwep' }),
-    Object.freeze({ mask: W_QUIVER, field: 'uquiver' }),
-    Object.freeze({ mask: W_AMUL, field: 'uamul' }),
-    Object.freeze({ mask: W_TOOL, field: 'ublindf' }),
-    Object.freeze({ mask: W_BALL, field: 'uball' }),
-    Object.freeze({ mask: W_CHAIN, field: 'uchain' }),
+    Object.freeze({ mask: W_ARM, field: 'uarm', what: 'suit' }),
+    Object.freeze({ mask: W_ARMC, field: 'uarmc', what: 'cloak' }),
+    Object.freeze({ mask: W_ARMH, field: 'uarmh', what: 'helmet' }),
+    Object.freeze({ mask: W_ARMS, field: 'uarms', what: 'shield' }),
+    Object.freeze({ mask: W_ARMG, field: 'uarmg', what: 'gloves' }),
+    Object.freeze({ mask: W_ARMF, field: 'uarmf', what: 'boots' }),
+    Object.freeze({ mask: W_ARMU, field: 'uarmu', what: 'shirt' }),
+    Object.freeze({ mask: W_RINGL, field: 'uleft', what: 'left ring' }),
+    Object.freeze({ mask: W_RINGR, field: 'uright', what: 'right ring' }),
+    Object.freeze({ mask: W_WEP, field: 'uwep', what: 'weapon' }),
+    Object.freeze({ mask: W_SWAPWEP, field: 'uswapwep',
+        what: 'alternate weapon' }),
+    Object.freeze({ mask: W_QUIVER, field: 'uquiver', what: 'quiver' }),
+    Object.freeze({ mask: W_AMUL, field: 'uamul', what: 'amulet' }),
+    /* blindfold|towel|lenses */
+    Object.freeze({ mask: W_TOOL, field: 'ublindf', what: 'facewear' }),
+    Object.freeze({ mask: W_BALL, field: 'uball', what: 'chained ball' }),
+    Object.freeze({ mask: W_CHAIN, field: 'uchain', what: 'attached chain' }),
 ]);
 
 function wornEnv(env = {}) {
@@ -388,6 +398,10 @@ function* setworn_steps(obj, mask, env) {
     for (const slot of WORN_SLOTS) {
         if (!(slot.mask & mask)) continue;
         const old = state[slot.field] ?? null;
+        if (old && !(old.owornmask & slot.mask)) {
+            // C: impossible("Setworn: mask=0x%08lx.", wp->w_mask);
+            note_unported('pline.c impossible');
+        }
         if (old) {
             if (state.u.twoweap && (old.owornmask & (W_WEP | W_SWAPWEP)))
                 set_twoweap(false, state);
@@ -1256,8 +1270,6 @@ export function nxt_unbypassed_loot(lootarray, listhead, state = game) {
 // cannot wear is destroyed or dropped in source order. Keep its no-effect
 // paths synchronous: mon.c newcham() is called synchronously during level
 // construction, and the C helper does not suspend when no equipment changes.
-// The fall-specific steed and petrification calls remain named gaps because
-// their source owners are not complete in this port.
 export function mon_break_armor(monster, polyspot, rawEnv = {}) {
     const env = wornEnv(rawEnv);
     // C evaluates both pronouns even when no armor changes. Hallucination
@@ -1501,7 +1513,11 @@ async function mon_break_armor_effects(monster, polyspot, env, pronoun, possessi
         if (touch_petrifies(steed.data) && !Stone_resistance(state.u)
             && random.rnl(3)) {
             await message(`You touch ${mon_nam(steed, state)}.`, state, env);
-            note_unported('trap.c instapetrify');
+            await instapetrify(
+                `falling off ${an(pmname(steed.data, Mgender(steed, state)))}`,
+                state,
+                env,
+            );
         }
         // worn.c:1332 calls dismount_steed() after the polymorph gear checks.
         await dismount_steed(DISMOUNT_FELL, state);
@@ -1572,3 +1588,56 @@ export const _wornInternals = Object.freeze({
     is_pole,
     removeSlotEffects,
 });
+
+// C ref: worn.c check_wornmask_slots() (354-472), for the sanity_check
+// option through wizcmds.c you_sanity_check(). Each filled slot pointer must
+// name an inventory object with that slot's owornmask bit and no other slot
+// bit, and no other inventory object may claim the slot. The embedded-scales
+// and two-weapon checks are under #ifdef EXTRA_SANITY_CHECKS, which the
+// released recorder build leaves undefined (config.h:634-638). `env` passes
+// impossible()'s message operations through, which a test can replace.
+export async function check_wornmask_slots(state = game, env = {}) {
+    /* we'll skip ball and chain here--they warrant separate sanity check */
+    const IGNORE_SLOTS = W_ART | W_ARTI | W_SADDLE | W_BALL | W_CHAIN;
+    const hex08 = (mask) => (mask >>> 0).toString(16).padStart(8, '0');
+
+    for (const wp of WORN_SLOTS) {
+        const m = wp.mask;
+        if ((m & IGNORE_SLOTS) !== 0 && (m & ~IGNORE_SLOTS) === 0)
+            continue;
+        const o = state[wp.field] ?? null;
+        if (o) {
+            let whybuf = '';
+            /* slot pointer (uarm, uwep, &c) is populated; check that object
+               is in inventory and has the relevant owornmask bit set */
+            let otmp;
+            for (otmp = state.invent ?? null; otmp; otmp = otmp.nobj)
+                if (otmp === o)
+                    break;
+            if (!otmp)
+                whybuf = `${wp.what} (${fmt_ptr(o)}) not found in invent`;
+            else if ((o.owornmask & m) === 0)
+                whybuf = `${wp.what} bit not set in owornmask`
+                    + ` [0x${hex08(o.owornmask)}]`;
+            else if ((o.owornmask & ~(m | IGNORE_SLOTS)) !== 0)
+                whybuf = `${wp.what} wrong bit set in owornmask`
+                    + ` [0x${hex08(o.owornmask)}]`;
+            if (whybuf)
+                await impossible(`Worn-slot insanity: ${whybuf}.`, state, env);
+        }
+
+        /* check whether any item other than the one in the slot pointer
+           claims to be worn/wielded in this slot */
+        for (let otmp = state.invent ?? null; otmp; otmp = otmp.nobj) {
+            if (otmp !== o && (otmp.owornmask & m) !== 0
+                /* embedded scales owornmask is W_ARM|I_SPECIAL */
+                && (m !== W_ARM || otmp !== state.uskin
+                    || (otmp.owornmask & I_SPECIAL) === 0)) {
+                const whybuf = `${simpleonames(otmp, state)}`
+                    + ` [0x${hex08(otmp.owornmask)}] has ${wp.what} mask`
+                    + ` 0x${hex08(m)} bit set`;
+                await impossible(`Worn-slot insanity: ${whybuf}.`, state, env);
+            }
+        }
+    }
+}
