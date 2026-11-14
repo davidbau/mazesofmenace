@@ -12,6 +12,17 @@
 
 const NEWS_ITEMS = [
     {
+        date: '2026-11-14',
+        dateText: 'November 14, 2026',
+        href: '/rereading-readability/',
+        html: `<strong>Rereading Readability:</strong>
+        serteal is our first 100% contestant, and has also jumped from
+        last place to the top in readability, from 18% to 82%, with a
+        new transpiler that emits JavaScript line for line with the C.
+        A look at how it works, the latest numbers, and a note on the
+        key-encoding fix in the recorder.`,
+    },
+    {
         date: '2026-10-31',
         dateText: 'October 31, 2026',
         href: '/reading-readability/',
