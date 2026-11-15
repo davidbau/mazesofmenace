@@ -232,7 +232,7 @@ import {
 } from './hack.js';
 import { goodpos } from './teleport.js';
 import { ordin, push_front, sgn, upstart, lcase } from './hacklib.js';
-import { impossible, livelog_printf, youFeel } from './pline.js';
+import { impossible, livelog_printf, youFeel, norep_printer } from './pline.js';
 import { messageAt } from './startup_a11y.js';
 import {
     stackobj,
@@ -1008,8 +1008,14 @@ export function maketrap(x, y, typ, rawEnv = {}) {
     case HOLE:
     case TRAPDOOR:
         hole_destination(trap.dst, env);
+        // trap.c maketrap() 523-527: every hole in a shop schedules a
+        // repair, and one dug into a door or wall by the hero costs
+        // SHOP_HOLE_COST.
         if (in_rooms(x, y, SHOPBASE, state).length)
-            add_damage(x, y, 0, state);
+            add_damage(x, y,
+                (IS_DOOR(location.typ) || IS_WALL(location.typ))
+                    && !state.context?.mon_moving ? SHOP_HOLE_COST : 0,
+                state);
         {
             const exposed = pitTerrain(x, y, env);
             if (exposed && typeof exposed.then === 'function')
@@ -3313,7 +3319,7 @@ export async function animate_statue(
     const state = rawEnv.state ?? game;
     const random = rawEnv.random ?? coreRandom;
     const message = rawEnv.message ?? ttyPline;
-    const norepMessage = rawEnv.norepMessage ?? message;
+    const norepMessage = norep_printer(rawEnv);
     const objectEnv = objectGenerationEnv({
         ...rawEnv,
         state,

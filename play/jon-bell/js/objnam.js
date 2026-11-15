@@ -983,7 +983,7 @@ export function doname_potion(obj) {
     const known = !!obj.known;
     const bknown = !!obj.bknown;
     /* prefix: quantity (quan != 1) or the "a "/"an " article (objnam.c:1282-1299). */
-    let prefix = ((obj.quan | 0) !== 1) ? (String(obj.quan | 0) + ' ') : 'a ';
+    let prefix = (obj.quan !== 1) ? (String(obj.quan) + ' ') : 'a ';
     /* BUC prefix (objnam.c:1318-1349).  For potions oc_charged is false, so the
      * "uncursed" clause's guard is always satisfied when bknown and not b/c;
      * the hero (Healer) is not a Cleric, and POT_WATER handling is inert here. */
@@ -3458,7 +3458,7 @@ export function otense(otmp, verb) {
      */
     /* C obj.h:421 is_plural(): quan != 1, or the discovered Eyes of the
      * Overworld (artilist ordinal 26; undiscovered_artifact is artifact.c:1131) */
-    const plural = (otmp.quan | 0) !== 1
+    const plural = otmp.quan !== 1
         || ((otmp.oartifact | 0) === 26
             && (game.artidisco || []).includes(26));
     if (!plural)
@@ -3834,11 +3834,11 @@ export function killer_xname(obj) {
         if (otyp === CORPSE)
             buf = corpse_xname(obj, null, CXN_NORMAL);
         else if (otyp === SLIME_MOLD)
-            buf = `deadly slime mold${(obj.quan | 0) === 1 ? '' : 's'}`;
+            buf = `deadly slime mold${obj.quan === 1 ? '' : 's'}`;
         else
             buf = xname(obj);
 
-        if ((obj.quan | 0) === 1
+        if (obj.quan === 1
             && _strstri(buf, "'s ") < 0 && _strstri(buf, "s' ") < 0) {
             const definite = obj_is_pname(obj) || the_unique_obj(obj);
             if (definite) {
@@ -4742,7 +4742,7 @@ async function doname_base(obj, doname_flags) {
     const omndx = (obj.corpsenm != null) ? (obj.corpsenm | 0) : NON_PM;
     const oclass = obj.oclass | 0;
     const otyp = obj.otyp | 0;
-    const quan = (obj.quan ?? 1) | 0;
+    const quan = obj.quan ?? 1;
     let ispoisoned = false;
 
     let bp = xname(obj);
@@ -5344,7 +5344,7 @@ export function simpleonames(obj) {
     let simpleoname = minimal_xname(obj);
 
     const ptr = obufPool().results.get(simpleoname);
-    if ((obj.quan | 0) !== 1) {
+    if (obj.quan !== 1) {
         simpleoname = makeplural(simpleoname);
         releaseobuf(simpleoname);
     }
@@ -5406,7 +5406,7 @@ export function ansimpleoname(obj) {
         /* C:2456-2462 */
         simpleoname = the(simpleoname);
         releaseobuf(simpleoname);
-    } else if ((obj.quan | 0) === 1) {
+    } else if (obj.quan === 1) {
         /* C:2462-2468 — simpleoname[] is singular if quan==1 */
         simpleoname = an(simpleoname);
         releaseobuf(simpleoname);

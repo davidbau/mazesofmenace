@@ -157,7 +157,9 @@ import { stuck_in_wall } from './pray.js';
 import { region_danger } from './region.js';
 import { an, donameFresh, the, vtense, xname, Yname2 } from './objnam.js';
 import {
-    candle_light_range, arti_light_radius, del_light_source, get_obj_location, new_light_source, } from './light.js';
+    candle_light_range, arti_light_radius, del_light_source,
+    del_light_source_async, get_obj_location, new_light_source,
+} from './light.js';
 import {
     big_to_little, cantvomit, emits_light, is_rider, is_silent,
     is_were, locomotion, name_to_mon, mhe, nolimbs, touch_petrifies,
@@ -209,6 +211,7 @@ import { m_at } from './monst.js';
 import { cansee } from './vision.js';
 import {
     impossible, verbalize, youFeel, youHear, youSee,
+    norep_printer,
 } from './pline.js';
 import { isok } from './cmd_isok.js';
 import { AD_ELEC } from './monsters.js';
@@ -217,7 +220,7 @@ import { cry_sound, set_voice } from './sounds.js';
 import { coreRandom,
     createCoreRandom, rn1, rn2, rn2_on_display_rng, rnd,
 } from './rng.js';
-import { ttyNorep, ttyPline, ttyUrgentPline } from './tty_message.js';
+import { ttyPline, ttyUrgentPline } from './tty_message.js';
 import {
     Acid_resistance, BInvis, Blind, Breathless, Confusion, Deaf, Displaced,
     EFumbling, ELevitation, EPasses_walls, Fast, Fire_resistance, Flying,
@@ -1150,7 +1153,7 @@ export async function slimed_to_death(killer, state = game, env = {}) {
     dealloc_killer(killer, state);
 
     if (emits_light(state.youmonst.data))
-        del_light_source(LS_MONSTER, state.youmonst, state);
+        await del_light_source_async(LS_MONSTER, state.youmonst, state);
     const vital = state.svm.mvitals[PM_GREEN_SLIME];
     const saveMvflags = vital.mvflags;
     vital.mvflags = saveMvflags & ~G_GENOD;
@@ -1561,7 +1564,7 @@ export async function nh_timeout(state = game, env = {}) {
         --u.uspellprot;
         find_ac(state);
         if (!Blind(state.u))
-            await (env.norepMessage ?? ttyNorep)(
+            await norep_printer(env)(
                 `The ${hcolor('golden', state, displayEnv)} haze around you ${u.uspellprot ? 'becomes less dense' : 'disappears'}.`,
                 state,
             );

@@ -2141,7 +2141,7 @@ export async function stealarm_mu() {
                     const shops = g.u?.ushops || '';
                     await subfrombill_real(otmp, shops.length ? shop_keeper_real(shops[0]) : null);
                 }
-                freeinv_mu(otmp);
+                await freeinv_mu(otmp);
                 await pline(`${Monnam(mtmp)} steals ${await doname(otmp)}!`);
                 await mpickobj(mtmp, otmp);
                 await monflee(mtmp, 0, false, false);
@@ -2211,7 +2211,7 @@ async function stealamulet_mu(mtmp) {
         const shops = u.ushops || '';
         await subfrombill_real(otmp, shops.length ? shop_keeper_real(shops[0]) : null);
     }
-    freeinv_mu(otmp);
+    await freeinv_mu(otmp);
     const buf = await doname_mu(otmp);
     await mpickobj(mtmp, otmp);
     await pline(`${Some_Monnam_mu(mtmp)} steals ${buf}!`);

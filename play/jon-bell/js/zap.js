@@ -7282,7 +7282,7 @@ const COIN_CLASS_WZ = 12;
 async function _wish_doname(otmp, quanOverride) {
     const savequan = otmp.quan;
     if (quanOverride != null)
-        otmp.quan = quanOverride | 0;
+        otmp.quan = quanOverride;
     try {
         return await doname_real(otmp);
     } finally {
@@ -7472,7 +7472,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     const _oldcap = near_capacity();
     const _pickupBurden = _pickup_burden_level(g.flags?.pickup_burden);
     const _dropCap = Math.max(_oldcap, _pickupBurden);
-    const _oquan = (otmp.quan ?? 1) | 0;
+    const _oquan = (otmp.quan ?? 1);
 
     /* observe_object itself carries C's o_init.c:447 `!Hallucination` and
      * FIRST_OBJECT guards: a hallucinating hero's wish leaves dknown unset, so a
@@ -7521,7 +7521,7 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
              * (invent.c:934-942, otmp->where==OBJ_INVENT and neither
              * how_lost==LOST_THROWN — both true for a wished stack already held). */
             let discovered = false;
-            const oquan = ((otmp.quan ?? 1) | 0); /* prinv's quan arg = wished obj's quan */
+            const oquan = ((otmp.quan ?? 1)); /* prinv's quan arg = wished obj's quan */
             if (otmp.globby) {
                 /* invent.c:928-931 — globs absorb (pudding_merge_message +
                  * obj_absorb) instead of adding quantity. */
@@ -7532,10 +7532,10 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
              * took the branch above).  Without it a wished food stack kept
              * the old age and doeat skipped/ran the rn2(7) rot roll
              * (eat.c:3028-3031) differently from C. */
-            if (!otmp.lamplit && ((o.quan ?? 1) | 0) + oquan)
-                o.age = Math.trunc((((o.age | 0) * ((o.quan ?? 1) | 0))
-                    + ((otmp.age | 0) * oquan)) / (((o.quan ?? 1) | 0) + oquan));
-            o.quan = ((o.quan ?? 1) | 0) + oquan;
+            if (!otmp.lamplit && ((o.quan ?? 1)) + oquan)
+                o.age = Math.trunc((((o.age | 0) * ((o.quan ?? 1)))
+                    + ((otmp.age | 0) * oquan)) / (((o.quan ?? 1)) + oquan));
+            o.quan = ((o.quan ?? 1)) + oquan;
             /* C invent.c:838-842 merged(): recompute the combined stack's
              * weight before knowledge reconciliation and encumbrance checks. */
             o.owt = weight(o);
@@ -7595,11 +7595,11 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
             let prinvLine = null;
             if (o.invlet) {
                 _wish_obj_to_let(o);
-                const total_of = (oquan > 0 && oquan < (o.quan | 0));
+                const total_of = (oquan > 0 && oquan < (o.quan));
                 const dot = total_of ? '' : '.';
                 /* prinv prints the merged stack with quan=oquan (xprname's quan
                  * arg), not the merged total. */
-                const totalbuf = (total_of && g.flags?.verbose) ? ` (${o.quan | 0} in total).` : '';
+                const totalbuf = (total_of && g.flags?.verbose) ? ` (${o.quan} in total).` : '';
                 prinvLine = `${String.fromCharCode(o.invlet | 0)} - ${(await _wish_doname(o, oquan))}${dot}${totalbuf}`;
                 if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
                     await force_more(_c2last);

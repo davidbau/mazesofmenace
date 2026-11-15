@@ -1658,7 +1658,7 @@ async function select_off(otmp) {
     if (otmp !== u.uquiver && !(otmp === u.uswapwep && !u.twoweap))
         if (await cursed_dw(otmp)) return 0;
 
-    const doff = game.context.takeoff;
+    const doff = ((game.context ||= {}).takeoff ||= { what: 0, mask: 0, delay: 0, disrobing: '' });
     if (otmp === u.uarm) doff.mask |= W_ARM;
     else if (otmp === u.uarmc) doff.mask |= W_ARMC;
     else if (otmp === u.uarmf) doff.mask |= W_ARMF;
@@ -1751,74 +1751,17 @@ import { makeplural as makeplural_objnam } from './objnam.js'; // relocate-fns
 import { add_valid_menu_class, allow_category, menu_class_present } from './pickup.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
 const W_ARMOR_C = W_ARM_C | W_ARMC_C | W_ARMH_C | W_ARMS_C | W_ARMG_C | W_ARMF_C | W_ARMU_C;
-/* C ref: do_wear.c count_worn_stuff() — collect the worn ARMOR pieces from the
- * real gi.invent chain (each carries an armor worn-mask bit).  Returns the list
- * of worn-armor invent records, in invent order.  RNG-free. */
-export function wornArmorPieces() {
-    const g = game;
-    const out = [];
-    for (let o = g.invent; o; o = o.nobj) {
-        if ((o.oclass | 0) === ARMOR_CLASS && ((o.owornmask | 0) & W_ARMOR_C))
-            out.push(o);
-    }
-    return out;
-}
-/* C ref: do_wear.c count_worn_stuff() — collect the worn ACCESSORY pieces
- * (rings/amulet/blindfold-tool) from the real gi.invent chain, in invent order.
- * These are exactly the items getobj("remove", remove_ok) suggests for the 'R'
- * command: equip_ok(obj, removing=TRUE, accessory=TRUE) returns GETOBJ_SUGGEST
- * only for worn non-armor equippables (worn armor is GETOBJ_DOWNPLAY, selectable
- * via ?* but not listed in the suggested-letter set).  RNG-free. */
 const W_ACCESSORY_MASK = 0x000F0000; /* W_AMUL|W_RINGL|W_RINGR|W_TOOL */
 const W_AMUL_C = 0x00010000;         /* C obj.h W_AMUL */
-export function wornAccessoryPieces() {
-    const g = game;
-    const out = [];
-    for (let o = g.invent; o; o = o.nobj) {
-        if ((o.owornmask | 0) & W_ACCESSORY_MASK)
-            out.push(o);
-    }
-    return out;
-}
-/* C ref: do_wear.c:1874 doremring() → armor_or_accessory_off(otmp) for a
- * caller-resolved accessory.  Used by the FF_FAITHFUL 'R' path in cmd.js after
- * getobj reads the object letter.  `otmp` is a live gi.invent record (the worn
- * accessory selected by its invlet). */
-export async function doremove_obj(otmp) {
-    const g = game;
-    g.context = g.context || {};
-    if (!otmp) {
-        /* getobj returned NULL → ECMD_CANCEL, no turn (do_wear.c:1886). */
-        return ECMD_CANCEL;
-    }
-    const res = await armor_or_accessory_off(otmp);
-    return res;
-}
-/* C ref: do_wear.c:1834 dotakeoff() → armor_or_accessory_off(otmp) for a
- * caller-resolved object.  Used by the FF_FAITHFUL 'T' path in cmd.js after
- * getobj reads the object letter.  `otmp` is a live gi.invent record (the worn
- * piece selected by its invlet); take it off (schedules the disrobe nomul) and
- * clear its worn state so count_worn_stuff no longer sees it. */
-export async function dotakeoff_obj(otmp) {
-    const g = game;
-    g.context = g.context || {};
-    if (!otmp) {
-        /* getobj returned NULL → ECMD_CANCEL, no turn (do_wear.c:1852). */
-        return ECMD_CANCEL;
-    }
-    const res = await armor_or_accessory_off(otmp);
-    return res;
-}
+/* Role_if(PM_CLERIC): the role is carried as flags.initrole (cleric = index 6). */
+const _PM_CLERIC_ROLE = 6;
 /* C ref: do_wear.c:1727 count_worn_stuff(which, accessorizing) — assigns the
  * static Narmorpieces/Naccessories counts and, via the `which` out-param,
  * the SOLE candidate to auto-select when its count is exactly 1.
  *
  * Narmorpieces collapses uarmc/uarm/uarmu to their OUTERMOST layer (a cloak
  * over a suit counts as ONE piece, and it is the CLOAK that auto-selects,
- * never the suit beneath it) — `wornArmorPieces()` elsewhere in this file
- * does NOT do this collapse (it lists every worn armor slot separately,
- * which is what cmd.js's 'T' getobj MENU wants), so this is a distinct,
- * C-exact count kept local to dotakeoff/doremring. RNG-free; matches
+ * never the suit beneath it).  RNG-free; matches
  * do_wear.c:1727-1763 exactly. */
 function _count_worn_stuff_dw(accessorizing) {
     const u = game.u || {};
@@ -2671,12 +2614,8 @@ export async function accessory_or_armor_on(obj, amuletEffectsOnly = false) {
             await pline(`You have no head to wear ${ansimpleoname(obj)} on.`);
             return ECMD_OK;
         }
-        let ub = g.u.ublindf;
-        if (!ub) {
-            for (let o = g.invent; o; o = o.nobj) {
-                if ((o.owornmask | 0) & W_TOOL_C) { ub = o; break; }
-            }
-        }
+        /* C do_wear.c:2329 `if (ublindf)`. */
+        const ub = g.u.ublindf;
         if (ub) {
             const ubOtyp = ub.otyp | 0;
             const objOtyp = obj.otyp | 0;
@@ -2787,30 +2726,6 @@ export async function doputon(otmp) {
 export async function off_msg(otmp) {
     if (game.flags.verbose) await You('were wearing %s.', (await doname(otmp)));
 }
-function ringDonameBody(otmp) {
-    const g = game;
-    const otyp = otmp.otyp | 0;
-    const LEFT_RING_VAL = 0x00020000;
-    const oc_name_known = !!(g._oc_name_known && g._oc_name_known[otyp]);
-    const dknown = !!otmp.dknown;
-    let name;
-    if (oc_name_known && dknown) {
-        /* xname name-known: "ring of <actualn>". */
-        name = `ring of ${getObjName(otyp) || 'unknown'}`;
-    } else {
-        /* xname appearance: "<descr> ring". */
-        const descr = getObjDescr(otyp);
-        name = descr ? `${descr} ring` : 'ring';
-    }
-    const hand = ((otmp.owornmask | 0) & LEFT_RING_VAL) ? 'left' : 'right';
-    const RIN_BASE = 173, RIN_LAST_CHARGED = 178;
-    let prefix = '';
-    if (otmp.known && otyp >= RIN_BASE && otyp <= RIN_LAST_CHARGED) {
-        const spe = otmp.spe | 0;
-        prefix = `${spe >= 0 ? '+' : ''}${spe} `;
-    }
-    return `${prefix}${name} (on ${hand} ${body_part(HAND)})`;
-}
 async function on_msg(otmp) {
     const g = game;
     if ((otmp.owornmask | 0) & W_RING) {
@@ -2868,36 +2783,6 @@ async function on_msg(otmp) {
         _how = ` around your ${body_part(HEAD_DW)}`;
     await pline(`You are now wearing ${obj_is_pname(otmp)
         ? the(_otmp_name) : an(_otmp_name)}${_how}.`);
-}
-/* C ref: decl.h Role_if(pm) — urole.mnum == pm - LOW_PM.  LOW_PM is 0 in this
- * port and the role is carried as flags.initrole (PM_CLERIC = role index 6,
- * the same encoding js/cmd.js:9250 _Role_if uses for doturn). */
-const _PM_CLERIC_ROLE = 6;
-function _Role_if_cleric() {
-    return ((game.flags?.initrole ?? -1) | 0) === _PM_CLERIC_ROLE;
-}
-function armorDonameBody(otmp) {
-    let prefix = '';
-    if (otmp.bknown) {
-        if (otmp.cursed) prefix += 'cursed ';
-        else if (otmp.blessed) prefix += 'blessed ';
-        else if (!_Role_if_cleric()) prefix += 'uncursed ';
-    }
-    /* "%+d " enchantment when the charge is known (objnam.c:1422-1424). */
-    if (otmp.known) {
-        const spe = otmp.spe | 0;
-        prefix += `${spe >= 0 ? '+' : ''}${spe} `;
-    }
-    /* Type name — objnam.c:1387 doname_base calls xname(obj), i.e. the
-     * ARMOR_CLASS branch of xname_flags (objnam.c:763-778).  The local
-     * re-derivation this used to do went through getObjName(), the PARTIAL
-     * (shuffled-appearance + weapon) OBJ_NAME table, which returns null for
-     * every fixed-name armor otyp — including ROBE (143) — so a name-known
-     * robe fell all the way through to the 'armor' fallback.  xname_armor()
-     * resolves the name through _objName() (full-coverage OBJ_NAME) and also
-     * carries the pair-of / dragon-scale / unseen-shield branches this copy
-     * lacked. */
-    return `${prefix}${xname_armor(otmp)}`;
 }
 /* C off_msg runs after the armor's removal callback and before armoroff
  * returns. Its message can block while u.uac still has the pre-removal value. */
@@ -4171,96 +4056,6 @@ export function fingers_or_gloves(check_gloves) {
     return makeplural(body_part(FINGER));
 }
 
-/* C ref: do_wear.c:2696 select_off(otmp) — guards, then mark takeoff.mask. */
-async function select_off_cmd(otmp) {
-    const g = game;
-    const u = g.u || {};
-    if (!otmp) return 0;
-    g.context.takeoff = g.context.takeoff || { what: 0, mask: 0, delay: 0, disrobing: '' };
-    const doff = g.context.takeoff;
-    let why = null;
-    let buf = '';
-    if (otmp === u.uright || otmp === u.uleft) {
-        if (_kick_nolimbs(_hero_youmonst().data)) {
-            await pline('The ring is stuck.');
-            return 0;
-        }
-        if (welded(u.uwep) && (bimanual(u.uwep)
-            || otmp === (u.uhandedness === RIGHT_HANDED ? u.uright : u.uleft))) {
-            buf = `free a weapon ${body_part(HAND)}`;
-            why = u.uwep;
-        } else if (u.uarmg && (u.uarmg.cursed || _hprop(GLIB))) {
-            buf = `take off your ${_hprop(GLIB) ? 'slippery ' : ''}${gloves_simple_name(u.uarmg)}`;
-            why = !_hprop(GLIB) ? u.uarmg : {};
-        }
-        if (why) {
-            await You(`cannot ${buf} to remove the ring.`);
-            set_bknown(why, 1);
-            return 0;
-        }
-    }
-    if (otmp === u.uarmg && welded(u.uwep)) {
-        await You(`are unable to take off your gloves while wielding that ${is_sword(u.uwep) ? 'sword' : 'weapon'}.`);
-        set_bknown(u.uwep, 1);
-        return 0;
-    }
-    if (otmp === u.uarmg) { // C do_wear.c:2733-2740
-        if (_hprop(GLIB)) {
-            await pline(`${otmp.unpaid ? 'The' : 'Your'} ${gloves_simple_name(otmp)} are too slippery to take off.`);
-            return 0;
-        }
-        const corpse = carrying_stoning_corpse();
-        if (corpse && !u_safe_from_fatal_corpse(corpse, 0x02 | 0x04)
-            && !(await paranoid_query(true, `Take off your ${gloves_simple_name(otmp)} despite carrying a dead ${obj_pmname(corpse)}?`)))
-            return 0;
-    }
-    if (otmp === u.uarmf && u.utrap) { // C do_wear.c:2743-2753
-        if (u.utraptype === TT_BEARTRAP)
-            await pline(`The bear trap prevents you from pulling your ${body_part(FOOT)} out.`);
-        else if (u.utraptype === TT_INFLOOR)
-            await You(`are stuck in the ${surface(u.ux, u.uy)}, and cannot pull your ${makeplural_objnam(body_part(FOOT))} out.`);
-        if (u.utraptype === TT_BEARTRAP || u.utraptype === TT_INFLOOR)
-            return 0;
-    }
-    if (otmp === u.uarm || otmp === u.uarmu) {
-        why = null;
-        if (u.uarmc && u.uarmc.cursed) {
-            buf = `remove your ${cloak_simple_name(u.uarmc)}`;
-            why = u.uarmc;
-        } else if (otmp === u.uarmu && u.uarm && u.uarm.cursed) {
-            buf = 'remove your suit';
-            why = u.uarm;
-        } else if (welded(u.uwep) && bimanual(u.uwep)) {
-            buf = `release your ${is_sword(u.uwep) ? 'sword' : u.uwep.otyp === 45 /* BATTLE_AXE */ ? 'axe' : 'weapon'}`;
-            why = u.uwep;
-        }
-        if (why) {
-            await You(`cannot ${buf} to take off ${the(xname(otmp))}.`);
-            set_bknown(why, 1);
-            return 0;
-        }
-    }
-    if (!(otmp === u.uquiver || (otmp === u.uswapwep && !u.twoweap))) {
-        if (await cursed_dw(otmp)) return 0;
-    }
-    if (otmp === u.uarm) doff.mask |= W_ARM_TO;
-    else if (otmp === u.uarmc) doff.mask |= W_ARMC_TO;
-    else if (otmp === u.uarmf) doff.mask |= W_ARMF_TO;
-    else if (otmp === u.uarmg) doff.mask |= W_ARMG_TO;
-    else if (otmp === u.uarmh) doff.mask |= W_ARMH_TO;
-    else if (otmp === u.uarms) doff.mask |= W_ARMS_TO;
-    else if (otmp === u.uarmu) doff.mask |= W_ARMU_TO;
-    else if (otmp === u.uleft) doff.mask |= W_RINGL_TO;
-    else if (otmp === u.uright) doff.mask |= W_RINGR_TO;
-    else if (otmp === u.uamul) doff.mask |= W_AMUL_TO;
-    else if (otmp === u.ublindf) doff.mask |= W_TOOL_TO;
-    else if (otmp === u.uwep) doff.mask |= W_WEP_TO;
-    else if (otmp === u.uswapwep) doff.mask |= W_SWAPWEP_TO;
-    else if (otmp === u.uquiver) doff.mask |= W_QUIVER_TO;
-    else impossible_cmd('select_off: %s???', await doname(otmp));
-    return 0;
-}
-
 export async function doddoremarm() {
     const g = game;
     const u = g.u || {};
@@ -4281,7 +4076,7 @@ export async function doddoremarm() {
     /* C do_wear.c:3036-3039: traditional selection can request a menu. */
     let result = 0;
     if (g.flags.menu_style !== MENU_TRADITIONAL
-        || (result = await ggetobj('take off', select_off_cmd, 0, false)) < -1)
+        || (result = await ggetobj('take off', select_off, 0, false)) < -1)
         await menu_remarm(result);
     /* C do_wear.c:3041-3052 */
     if (g.context.takeoff && g.context.takeoff.mask) {
@@ -4317,7 +4112,7 @@ async function menu_remarm(retry) {
         let all = retry ? retry === -2 : true;
         if (!retry && g.flags.menu_style === MENU_COMBINATION) {
             const feedback = { value: 0 };
-            const i = await ggetobj('take off', select_off_cmd, 0, true, feedback);
+            const i = await ggetobj('take off', select_off, 0, true, feedback);
             if (feedback.value & ALL_FINISHED) return 0;
             all = i === -2;
         }
@@ -4333,7 +4128,7 @@ async function menu_remarm(retry) {
         const { selectedEntries = [] } = await inventory_menu_legacy({
             title: 'What do you want to take off?', queryObjlist: true, pickAny: true, filter,
         });
-        for (const entry of selectedEntries) await select_off_cmd(entry.obj);
+        for (const entry of selectedEntries) await select_off(entry.obj);
         return 0;
     }
 
@@ -4566,7 +4361,7 @@ async function menu_remarm_objlist(selected, rows, show_a, menuEnd) {
     });
     /* C do_wear.c:3140-3142 */
     for (const entry of takeoffPicks)
-        await select_off_cmd(entry.obj);
+        await select_off(entry.obj);
     return 0;
 }
 

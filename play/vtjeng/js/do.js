@@ -354,7 +354,7 @@ import { delete_levelfile } from './files.js';
 import { coreRandom, cloneIsaacContext, createCoreRandom, d, rn1, rn2, rnd, rnz } from './rng.js';
 import { check_special_room, move_update } from './rooms.js';
 import { save_msghistory, savelev, savemonchn } from './save.js';
-import { fix_shop_damage, sellobj, sellobj_state } from './shk.js';
+import { fix_shop_damage, is_unpaid, sellobj, sellobj_state } from './shk.js';
 import {
     container_impact_dmg, impact_drop, obj_delivery, ship_object,
 } from './dokick.js';
@@ -1682,7 +1682,8 @@ async function drop(obj, state = game) {
                 holderName = `${s_suffix(holderName)} `
                     + `${mbodypart(holder, STOMACH)}`;
             }
-            const objectName = obj.unpaid
+            // do.c:748 is_unpaid(): a container with unpaid contents counts.
+            const objectName = is_unpaid(obj)
                 ? yobjnam(obj, null, state) : donameFresh(obj, state);
             await ttyPline(`You drop ${objectName} into ${holderName}.`, state);
         }
@@ -2101,7 +2102,8 @@ export async function dropz(obj, with_impact, env = {}) {
     await clearDropSlots(obj, normalized);
     if (state.u?.uswallow) {
         if (obj !== state.uball) {
-            if (obj.unpaid) {
+            // do.c:820 is_unpaid(): unpaid contents make the drop a theft.
+            if (is_unpaid(obj)) {
                 const { stolen_value } = await import('./shk.js');
                 await stolen_value(
                     obj, state.u.ux, state.u.uy, true, false, state,
@@ -2500,7 +2502,7 @@ function* updateDunlevReachedSteps(level, state) {
 // as unreachable. The file and overview operations stay with their C owners:
 // files.c delete_levelfile() and dungeon.c remdun_mapseen(). Then dog.c's
 // discard_migrations() removes migrants bound to unreachable levels.
-function discard_unreachable_levels(state, leavingTutorial) {
+async function discard_unreachable_levels(state, leavingTutorial) {
     const tutorialDnum = state.tutorial_dnum;
 
     // do.c:1656-1659, files.c delete_levelfile(). C counts down from the
@@ -2521,7 +2523,7 @@ function discard_unreachable_levels(state, leavingTutorial) {
             remdun_mapseen(dnum, state);
     }
 
-    discard_migrations(state);
+    await discard_migrations(state);
 }
 
 // C ref: do.c goto_level() (1478-1998), for first-time arrival on an ordinary
@@ -2727,7 +2729,7 @@ export async function goto_level(
     }
     savelev(ledger_no(u.uz, state), state,
         { mode: cant_go_back ? 'FREEING' : 'WRITING|FREEING' });
-    if (cant_go_back) discard_unreachable_levels(state, leaving_tutorial);
+    if (cant_go_back) await discard_unreachable_levels(state, leaving_tutorial);
 
     // do.c:1666-1668. Graphics are selected before u.uz changes, so the
     // destination test and the departing-level test use the source values.

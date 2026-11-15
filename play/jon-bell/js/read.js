@@ -798,14 +798,12 @@ import { level_tele } from './teleport.js';
 import { scrolltele } from './teleport.js';
 import { explode as explode_fr } from './explode.js';
 import { EXPL_FIERY as EXPL_FIERY_FR, PLNMSG_TOWER_OF_FLAME as PLNMSG_TOWER_OF_FLAME_FR,
-         HAND as HAND_FR, HEAD as HEAD_FR, M_SEEN_FIRE as M_SEEN_FIRE_FR, FIRE_RES as FIRE_RES_FR,
-         ACCESSIBLE as ACCESSIBLE_FR } from './const.js';
+         HAND as HAND_FR, HEAD as HEAD_FR, M_SEEN_FIRE as M_SEEN_FIRE_FR, FIRE_RES as FIRE_RES_FR } from './const.js';
 import { monstseesu as monstseesu_fr, monstunseesu as monstunseesu_fr } from './mcastu.js';
 import { burn_away_slime as burn_away_slime_fr } from './timeout.js';
 import { delobj as delobj_rd } from './invent.js';
 import { losehp as losehp_fr } from './hack.js';
 import { shieldeff as shieldeff_fr } from './display.js';
-import { is_pool_or_lava as is_pool_or_lava_fr } from './dbridge.js';
 import { hliquid as hliquid_fr } from './do_name.js';
 import { body_part as body_part_fr } from './cmd.js';
 
@@ -2384,9 +2382,7 @@ async function seffect_charging(holder) {
 
 /* C ref: read.c:1080-1085 can_center_cloud (valid_cloud_pos: read.c:1069-1074) */
 function can_center_cloud(x, y) {
-    if (!isok(x, y)) return false;
-    const typ = game.level?.at(x, y)?.typ;
-    if (!(ACCESSIBLE_FR(typ) || is_pool_or_lava_fr(x, y))) return false;
+    if (!valid_cloud_pos(x, y)) return false;
     const u = game.u;
     const dx = u.ux - x, dy = u.uy - y;
     return !!cansee(x, y) && (dx * dx + dy * dy) < 32;
