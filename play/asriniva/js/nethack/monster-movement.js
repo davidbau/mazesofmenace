@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {createNativeMonmoveEntries} from './native/monmove-entries.js';
 import {nativeMonmoveMembers} from './native/monmove-state.js';
 // Shared field/dependency transport for unchanged MONMOVE policies.
@@ -23,8 +24,8 @@ export function enableMonsterMovement(environment,layouts){
  let storage;const legacyStorage=()=>storage??=environment.allocateGlobal('monmove.class_lists',monmove.practical.length+monmove.magical.length);
  function field(kind,p,i,value){const key=abi.bits[kind]?.[i],type=abi.schema[kind]?.[0];if(!key||!type)throw new Error('Unknown MONMOVE packed field');const f=ctypes.record(type).fields[key];const scalar=f.ctype.replace(new RegExp(' '+key+'$'),'');return value===undefined?ctypes.getField(type,environment.address(p),key,scalar):ctypes.setField(type,environment.address(p),key,scalar,value);}
  Object.assign(local,{nativeEnvironment:environment,nativeLayouts:layouts,stackAlloc:environment.transport.stackAlloc,nativeOwner:nativeState,moduleKey:environment,heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,global:i=>environment.requireGlobal(abi.globals[i]),storage:legacyStorage,bit:(kind,p,i)=>field(kind,p,i),setBit:(kind,p,i,v)=>field(kind,p,i,v),equipment:i=>ctypes.load('void *',environment.requireGlobal(['uwep','uarm','uball','uchain'][i]))});
- for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('monmove.c'),line,services.literal(caller));return services[name](n);};
- for(const name of ['d','rn1'])local[name]=(n,x,line,caller)=>{if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MONMOVE RNG site '+name);if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('monmove.c'),line,services.literal(caller));return services[name](n,x);};
+ for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'monmove.c',line,caller);return services[name](n);};
+ for(const name of ['d','rn1'])local[name]=(n,x,line,caller)=>{if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MONMOVE RNG site '+name);if(services.rng_log_enabled())recordNativeRngCaller(services,'monmove.c',line,caller);return services[name](n,x);};
  local.assert=condition=>{if(!condition){const a=abi.assertion;return environment.resolve('__assert_fail')(services.literal(a.condition),services.literal(a.file),a.line,services.literal(a.function));}};
  const text=v=>typeof v==='string'?services.literal(v):environment.address(v);
  // Original MONMOVE header helpers share the active strings and window owner.

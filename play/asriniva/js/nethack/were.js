@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Per-game WERE policies on canonical shared native actors and properties.
 import abi from './were-abi.json' with {type:'json'};
 import {createNativeWere} from './native/were.js';
@@ -32,7 +33,7 @@ export function enableWere(environment,layouts){
   You_hear:(format,name)=>resolve('You_hear')(text(format),text(name)),
   You_feel:format=>resolve('You_feel')(text('%s'),text(format)),
  });
- for(const name of ['rn2','rnd'])local[name]=(bound,line,caller)=>{if(!['were_change','new_were','were_summon','you_unwere'].includes(caller))throw new Error('Unknown WERE RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('were.c'),transport.int(line),text(caller));return resolve(name)(transport.int(bound));};
+ for(const name of ['rn2','rnd'])local[name]=(bound,line,caller)=>{if(!['were_change','new_were','were_summon','you_unwere'].includes(caller))throw new Error('Unknown WERE RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'were.c',transport.int(line),caller);return resolve(name)(transport.int(bound));};
  local.rn1=(x,y,line,caller)=>local.rn2(x,line,caller)+transport.int(y);
  // Shadow DECL projections; the factory views retain the original shared bytes.
  for(const name of abi.globals)Object.defineProperty(local,name,{value:undefined,writable:true,configurable:true});

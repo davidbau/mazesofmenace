@@ -244,7 +244,7 @@ function set_levltyp_lit(x,y,typ,lit)
         if(Number(C.i32(lit)!=C.i32((-2)))) {
             /*EXTRA_SANITY_CHECKS*/
             if((Number(!!(Number(C.i32((typ))==C.LAVAPOOL)||Number(C.i32((typ))==C.LAVAWALL))))) (lit=C.i8(1));
- else if(Number(C.i32(lit)==C.i32((-1)))) (lit=C.i8(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),139,(C.literal("set_levltyp_lit"))),C.rn2(2))):C.rn2(2)))));
+ else if(Number(C.i32(lit)==C.i32((-1)))) (lit=C.i8(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",139,"set_levltyp_lit"),C.rn2(2))):C.rn2(2)))));
             (W135((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(lit)));
         }
     }
@@ -436,8 +436,8 @@ function okay(x,y,dir)
 function maze0xy(cc)
 {
     cc=C.ptr(cc);
-    (W111(cc,C.i16(C.i32((3+C.i32((2*((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),311,(C.literal("maze0xy"))),C.rn2(C.i32(((C.i32((R86(C.gx)>>1)))-1))))):C.rn2(C.i32(((C.i32((R86(C.gx)>>1)))-1))))))))))));
-    (W112(cc,C.i16(C.i32((3+C.i32((2*((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),312,(C.literal("maze0xy"))),C.rn2(C.i32(((C.i32((R87(C.gy)>>1)))-1))))):C.rn2(C.i32(((C.i32((R87(C.gy)>>1)))-1))))))))))));
+    (W111(cc,C.i16(C.i32((3+C.i32((2*((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",311,"maze0xy"),C.rn2(C.i32(((C.i32((R86(C.gx)>>1)))-1))))):C.rn2(C.i32(((C.i32((R86(C.gx)>>1)))-1))))))))))));
+    (W112(cc,C.i16(C.i32((3+C.i32((2*((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",312,"maze0xy"),C.rn2(C.i32(((C.i32((R87(C.gy)>>1)))-1))))):C.rn2(C.i32(((C.i32((R87(C.gy)>>1)))-1))))))))))));
     return;
 }
 
@@ -513,8 +513,8 @@ function place_lregion(lx,ly,hx,hy,nlx,nly,nhx,nhy,rtype,lev)
     /* first a probabilistic approach */
     (oneshot=C.i8((Number(!!(Number(C.i32(lx)==C.i32(hx))&&Number(C.i32(ly)==C.i32(hy)))))));
     for((trycnt=0);Number(trycnt<200);((trycnt=C.i32((trycnt+1)))-1)) {
-        (x=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),396,(C.literal("place_lregion"))),C.rn2(C.i32(((C.i32((C.i32(hx)-C.i32(lx))))+1))))):C.rn2(C.i32(((C.i32((C.i32(hx)-C.i32(lx))))+1)))))+C.i32((lx)))))));
-        (y=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),397,(C.literal("place_lregion"))),C.rn2(C.i32(((C.i32((C.i32(hy)-C.i32(ly))))+1))))):C.rn2(C.i32(((C.i32((C.i32(hy)-C.i32(ly))))+1)))))+C.i32((ly)))))));
+        (x=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",396,"place_lregion"),C.rn2(C.i32(((C.i32((C.i32(hx)-C.i32(lx))))+1))))):C.rn2(C.i32(((C.i32((C.i32(hx)-C.i32(lx))))+1)))))+C.i32((lx)))))));
+        (y=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",397,"place_lregion"),C.rn2(C.i32(((C.i32((C.i32(hy)-C.i32(ly))))+1))))):C.rn2(C.i32(((C.i32((C.i32(hy)-C.i32(ly))))+1)))))+C.i32((ly)))))));
         if(put_lregion_here(x,y,nlx,nly,nhx,nhy,rtype,oneshot,lev)) return;
     }
     /* then a deterministic one */
@@ -733,7 +733,7 @@ function fixup_special()
         let tryct;
         (croom=(A76(C.svr)+Number(0)*C.sizes["struct mkroom"]));
         /* the first room defined on the medusa level */
-        for((tryct=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),654,(C.literal("fixup_special"))),C.rnd(4))):C.rnd(4))));tryct;((tryct=C.i32((tryct-1)))+1)) {
+        for((tryct=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",654,"fixup_special"),C.rnd(4))):C.rnd(4))));tryct;((tryct=C.i32((tryct-1)))+1)) {
             (x=C.somex(croom));
             (y=C.somey(croom));
             if(C.goodpos(C.i16(x),C.i16(y),0,C.u32(0))) {
@@ -745,7 +745,7 @@ function fixup_special()
                 }
             }
         }
-        if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),671,(C.literal("fixup_special"))),C.rn2(2))):C.rn2(2)))) (otmp=C.mk_tt_object(C.STATUE,C.i16(C.somex(croom)),C.i16(C.somey(croom))));
+        if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",671,"fixup_special"),C.rn2(2))):C.rn2(2)))) (otmp=C.mk_tt_object(C.STATUE,C.i16(C.somex(croom)),C.i16(C.somey(croom))));
  else (otmp=C.mkcorpstat(C.STATUE,0,0,C.i16(C.somex(croom)),C.i16(C.somey(croom)),C.u32(0)));
         /* Medusa statues don't contain books */
         if(otmp) {
@@ -797,10 +797,10 @@ function migrate_orc(mtmp,mflags)
          */
         (nlev=max_depth);
         /* once in a blue moon, he won't be at the very bottom */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),732,(C.literal("migrate_orc"))),C.rn2(40))):C.rn2(40)))))) ((nlev=C.i32((nlev-1)))+1);
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",732,"migrate_orc"),C.rn2(40))):C.rn2(40)))))) ((nlev=C.i32((nlev-1)))+1);
         (W108(mtmp,C.i64(R108(mtmp)|C.i64(8192))));
     } else {
-        (nlev=C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),736,(C.literal("migrate_orc"))),C.rn2(C.i32(((C.i32((max_depth-cur_depth)))+1))))):C.rn2(C.i32(((C.i32((max_depth-cur_depth)))+1)))))+cur_depth)));
+        (nlev=C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",736,"migrate_orc"),C.rn2(C.i32(((C.i32((max_depth-cur_depth)))+1))))):C.rn2(C.i32(((C.i32((max_depth-cur_depth)))+1)))))+cur_depth)));
         if(Number(nlev==cur_depth)) ((nlev=C.i32((nlev+1)))-1);
         if(Number(nlev>max_depth)) (nlev=max_depth);
         (W108(mtmp,C.i64((R108(mtmp)&C.i64(C.i32((~8192)))))));
@@ -819,20 +819,20 @@ function shiny_orc_stuff(mtmp)
     /* probabilities */
     (goldprob=(C.i32(is_captain)?600:300));
     (gemprob=C.i32(Math.trunc((goldprob/4))));
-    if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),757,(C.literal("shiny_orc_stuff"))),C.rn2(1000))):C.rn2(1000)))<goldprob)) {
+    if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",757,"shiny_orc_stuff"),C.rn2(1000))):C.rn2(1000)))<goldprob)) {
         if(Number(((otmp=C.mksobj(C.GOLD_PIECE,(C.i8(1)),(C.i8(0)))))!=0)) {
-            (W118(otmp,C.i64((1n+C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),759,(C.literal("shiny_orc_stuff"))),C.rnd(goldprob))):C.rnd(goldprob))))))));
+            (W118(otmp,C.i64((1n+C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",759,"shiny_orc_stuff"),C.rnd(goldprob))):C.rnd(goldprob))))))));
             (W117(otmp,C.u32(C.weight(otmp))));
             C.add_to_minv(mtmp,otmp);
         }
     }
-    if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),764,(C.literal("shiny_orc_stuff"))),C.rn2(1000))):C.rn2(1000)))<gemprob)) {
+    if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",764,"shiny_orc_stuff"),C.rn2(1000))):C.rn2(1000)))<gemprob)) {
         if(Number(((otmp=C.mkobj(C.GEM_CLASS,(C.i8(0)))))!=0)) {
             if(Number(C.i32(R116(otmp))==C.ROCK)) C.dealloc_obj(otmp);
  else C.add_to_minv(mtmp,otmp);
         }
     }
-    if(Number(!!(C.i32(is_captain)||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),772,(C.literal("shiny_orc_stuff"))),C.rn2(8))):C.rn2(8)))))))) {
+    if(Number(!!(C.i32(is_captain)||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",772,"shiny_orc_stuff"),C.rn2(8))):C.rn2(8)))))))) {
         (otyp=C.shiny_obj(C.i8(C.RING_CLASS)));
         if(Number(!!(Number(otyp!=C.STRANGE_OBJECT)&&Number(((otmp=C.mksobj(otyp,(C.i8(1)),(C.i8(0)))))!=0)))) C.add_to_minv(mtmp,otmp);
     }
@@ -849,8 +849,8 @@ function migr_booty_item(otyp,gang)
         /* removes old name if present */
         C.strcpy((R124(R121(otmp))),gang);
         if(Number(C.i32(R122(C.objects+Number(otyp)*C.sizes["struct objclass"]))==C.FOOD_CLASS)) {
-            if(Number(otyp==C.SLIME_MOLD)) (W119(otmp,C.i8(C.fruitadd(C.cell((C.staticAddress("orcfruit")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),790,(C.literal("migr_booty_item"))),C.rn2(C.i32((C.u64((BigInt((8*2))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*2))/BigInt(8)))))))))*8),"char *").value,0))));
-            (W118(otmp,C.i64(R118(otmp)+C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),792,(C.literal("migr_booty_item"))),C.rn2(3))):C.rn2(3)))))));
+            if(Number(otyp==C.SLIME_MOLD)) (W119(otmp,C.i8(C.fruitadd(C.cell((C.staticAddress("orcfruit")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",790,"migr_booty_item"),C.rn2(C.i32((C.u64((BigInt((8*2))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*2))/BigInt(8)))))))))*8),"char *").value,0))));
+            (W118(otmp,C.i64(R118(otmp)+C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",792,"migr_booty_item"),C.rn2(3))):C.rn2(3)))))));
             (W117(otmp,C.u32(C.weight(otmp))));
         }
     }
@@ -877,18 +877,18 @@ function stolen_booty()
      */
     (gang=C.rndorcname(gang_name));
     /* create the stuff that the gang took */
-    (cnt=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),820,(C.literal("stolen_booty"))),C.rnd(4))):C.rnd(4))));
-    for((i=0);Number(i<cnt);(i=C.i32((i+1)))) migr_booty_item((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),822,(C.literal("stolen_booty"))),C.rn2(4))):C.rn2(4)))?C.TALLOW_CANDLE:C.WAX_CANDLE),gang);
+    (cnt=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",820,"stolen_booty"),C.rnd(4))):C.rnd(4))));
+    for((i=0);Number(i<cnt);(i=C.i32((i+1)))) migr_booty_item((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",822,"stolen_booty"),C.rn2(4))):C.rn2(4)))?C.TALLOW_CANDLE:C.WAX_CANDLE),gang);
 
-    (cnt=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),823,(C.literal("stolen_booty"))),C.rnd(3))):C.rnd(3))));
+    (cnt=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",823,"stolen_booty"),C.rnd(3))):C.rnd(3))));
     for((i=0);Number(i<cnt);(i=C.i32((i+1)))) migr_booty_item(C.SKELETON_KEY,gang);
 
-    (otyp=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),826,(C.literal("stolen_booty"))),C.rn2(C.i32(((C.i32((C.GAUNTLETS_OF_DEXTERITY-C.LEATHER_GLOVES)))+1))))):C.rn2(C.i32(((C.i32((C.GAUNTLETS_OF_DEXTERITY-C.LEATHER_GLOVES)))+1)))))+(C.LEATHER_GLOVES)))));
+    (otyp=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",826,"stolen_booty"),C.rn2(C.i32(((C.i32((C.GAUNTLETS_OF_DEXTERITY-C.LEATHER_GLOVES)))+1))))):C.rn2(C.i32(((C.i32((C.GAUNTLETS_OF_DEXTERITY-C.LEATHER_GLOVES)))+1)))))+(C.LEATHER_GLOVES)))));
     migr_booty_item(otyp,gang);
-    (cnt=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),828,(C.literal("stolen_booty"))),C.rnd(10))):C.rnd(10))));
+    (cnt=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",828,"stolen_booty"),C.rnd(10))):C.rnd(10))));
     for((i=0);Number(i<cnt);(i=C.i32((i+1)))) {
         /* Food items - but no lembas! (or some other weird things) */
-        (otyp=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),831,(C.literal("stolen_booty"))),C.rn2(C.i32((C.i32((C.TIN-C.TRIPE_RATION))+1))))):C.rn2(C.i32((C.i32((C.TIN-C.TRIPE_RATION))+1)))))+(C.TRIPE_RATION)))));
+        (otyp=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",831,"stolen_booty"),C.rn2(C.i32((C.i32((C.TIN-C.TRIPE_RATION))+1))))):C.rn2(C.i32((C.i32((C.TIN-C.TRIPE_RATION))+1)))))+(C.TRIPE_RATION)))));
         if(Number(!!(Number(!!(Number(!!(Number(!!(Number(otyp!=C.LEMBAS_WAFER)&&(Number(!!(Number(!!(Number(C.i32(R123(C.objects+Number(otyp)*C.sizes["struct objclass"]))!=0)||Number(otyp==C.C_RATION)))||Number(otyp==C.K_RATION))))))&&Number(otyp!=C.CORPSE)))&&Number(otyp!=C.EGG)))&&Number(otyp!=C.TIN)))) migr_booty_item(otyp,gang);
         /* exclude meat <anything>, globs of <anything>, kelp
                which all have random generation probability of 0
@@ -896,7 +896,7 @@ function stolen_booty()
         /* exclude food items which utilize obj->corpsenm because
                that field is going to be overloaded for delivery purposes */
     }
-    migr_booty_item((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),843,(C.literal("stolen_booty"))),C.rn2(2))):C.rn2(2)))?C.LONG_SWORD:C.SILVER_SABER),gang);
+    migr_booty_item((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",843,"stolen_booty"),C.rn2(2))):C.rn2(2)))?C.LONG_SWORD:C.SILVER_SABER),gang);
     /* create the leader of the orc gang */
     (mtmp=C.makemon((C.mons+Number(C.PM_ORC_CAPTAIN)*C.sizes["struct permonst"]),C.i16(0),C.i16(0),C.u32(64n)));
     if(mtmp) {
@@ -909,7 +909,7 @@ function stolen_booty()
     /* Make most of the orcs on the level be part of the invading gang */
     for((mtmp=R47(A74(C.svl)));mtmp;(mtmp=R99(mtmp))) {
         if((Number(R103(mtmp)<1))) continue;
-        if(Number(!!(Number(!!((Number((C.u64((R127(R100(mtmp))&C.u64(128n))))!=C.u64(0n)))&&Number(!((Number(!!(R109(mtmp)&&(R98(R109(mtmp))))))))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),858,(C.literal("stolen_booty"))),C.rn2(10))):C.rn2(10)))))) {
+        if(Number(!!(Number(!!((Number((C.u64((R127(R100(mtmp))&C.u64(128n))))!=C.u64(0n)))&&Number(!((Number(!!(R109(mtmp)&&(R98(R109(mtmp))))))))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",858,"stolen_booty"),C.rn2(10))):C.rn2(10)))))) {
             /*
              * We'll consider the orc captain from the level
              * description to be the captain of a rival orc horde
@@ -927,10 +927,10 @@ function stolen_booty()
      * members of the invading gang until they get their spoils assigned
      * to the inventory; handled during that assignment.
      */
-    (cnt=C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),877,(C.literal("stolen_booty"))),C.rn2(10))):C.rn2(10)))+5)));
+    (cnt=C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",877,"stolen_booty"),C.rn2(10))):C.rn2(10)))+5)));
     for((i=0);Number(i<cnt);(i=C.i32((i+1)))) {
         let mtyp;
-        (mtyp=C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),881,(C.literal("stolen_booty"))),C.rn2(C.i32(((C.i32((C.PM_ORC_SHAMAN-C.PM_ORC)))+1))))):C.rn2(C.i32(((C.i32((C.PM_ORC_SHAMAN-C.PM_ORC)))+1)))))+C.PM_ORC)));
+        (mtyp=C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",881,"stolen_booty"),C.rn2(C.i32(((C.i32((C.PM_ORC_SHAMAN-C.PM_ORC)))+1))))):C.rn2(C.i32(((C.i32((C.PM_ORC_SHAMAN-C.PM_ORC)))+1)))))+C.PM_ORC)));
         (mtmp=C.makemon((C.mons+Number(mtyp)*C.sizes["struct permonst"]),C.i16(0),C.i16(0),C.u32(64n)));
         if(mtmp) {
             shiny_orc_stuff(mtmp);
@@ -1036,7 +1036,7 @@ function maze_remove_deadends(typ)
         if(Number(!!(Number(C.i32(idx2)>=3)&&Number(C.i32(idx)>0)))) {
             (dx=x);
             (dy=y);
-            (dir=C.i16(C.cell((dirok+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),939,(C.literal("maze_remove_deadends"))),C.rn2(C.i32(idx)))):C.rn2(C.i32(idx)))))*1),"char").value));
+            (dir=C.i16(C.cell((dirok+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",939,"maze_remove_deadends"),C.rn2(C.i32(idx)))):C.rn2(C.i32(idx)))))*1),"char").value));
             do {
                 switch(C.i32(dir)) {
                     case (0):
@@ -1080,8 +1080,8 @@ function create_maze(corrwid,wallthick,rmdeadends)
     let rdx=0;
     let rdy=0;
     let scale;
-    if(Number(corrwid==C.i32((-1)))) (corrwid=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),961,(C.literal("create_maze"))),C.rnd(4))):C.rnd(4))));
-    if(Number(wallthick==C.i32((-1)))) (wallthick=C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),964,(C.literal("create_maze"))),C.rnd(4))):C.rnd(4)))-corrwid)));
+    if(Number(corrwid==C.i32((-1)))) (corrwid=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",961,"create_maze"),C.rnd(4))):C.rnd(4))));
+    if(Number(wallthick==C.i32((-1)))) (wallthick=C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",964,"create_maze"),C.rnd(4))):C.rnd(4)))-corrwid)));
     if(Number(wallthick<1)) (wallthick=1);
  else if(Number(wallthick>5)) (wallthick=5);
     if(Number(corrwid<1)) (corrwid=1);
@@ -1166,8 +1166,8 @@ function pick_vibrasquare_location()
     (W111(A73(C.svi),W112(A73(C.svi),C.i16(0))));
     /*{occupied() => invocation_pos()}*/
     do {
-        (x=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1075,(C.literal("pick_vibrasquare_location"))),C.rn2(x_range))):C.rn2(x_range)))+(C.i32((C.i32((2+(C.i32((6-2)))))+1))))))));
-        (y=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1076,(C.literal("pick_vibrasquare_location"))),C.rn2(y_range))):C.rn2(y_range)))+(C.i32((C.i32((2+(C.i32((5-2)))))+1))))))));
+        (x=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1075,"pick_vibrasquare_location"),C.rn2(x_range))):C.rn2(x_range)))+(C.i32((C.i32((2+(C.i32((6-2)))))+1))))))));
+        (y=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1076,"pick_vibrasquare_location"),C.rn2(y_range))):C.rn2(y_range)))+(C.i32((C.i32((2+(C.i32((5-2)))))+1))))))));
         /* we don't want it to be too near the stairs, nor
            to be on a spot that's already in use (wall|trap) */
         if(Number((trycnt=C.i32((trycnt+1)))>1000)) break;
@@ -1184,27 +1184,27 @@ function populate_maze()
     try {
     let i;
     let mm=C.stackAlloc(C.sizes["struct nhcoord"]);
-    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1102,(C.literal("populate_maze"))),C.rn2(8))):C.rn2(8)))+(11)))));i;((i=C.i32((i-1)))+1)) {
+    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1102,"populate_maze"),C.rn2(8))):C.rn2(8)))+(11)))));i;((i=C.i32((i-1)))+1)) {
         mazexy(mm);
-        C.mkobj_at(C.i8((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1104,(C.literal("populate_maze"))),C.rn2(2))):C.rn2(2)))?C.GEM_CLASS:C.RANDOM_CLASS)),R111(mm),R112(mm),(C.i8(1)));
+        C.mkobj_at(C.i8((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1104,"populate_maze"),C.rn2(2))):C.rn2(2)))?C.GEM_CLASS:C.RANDOM_CLASS)),R111(mm),R112(mm),(C.i8(1)));
     }
-    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1106,(C.literal("populate_maze"))),C.rn2(10))):C.rn2(10)))+(2)))));i;((i=C.i32((i-1)))+1)) {
+    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1106,"populate_maze"),C.rn2(10))):C.rn2(10)))+(2)))));i;((i=C.i32((i-1)))+1)) {
         mazexy(mm);
         C.mksobj_at(C.BOULDER,R111(mm),R112(mm),(C.i8(1)),(C.i8(0)));
     }
-    for((i=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1110,(C.literal("populate_maze"))),C.rn2(3))):C.rn2(3))));i;((i=C.i32((i-1)))+1)) {
+    for((i=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1110,"populate_maze"),C.rn2(3))):C.rn2(3))));i;((i=C.i32((i-1)))+1)) {
         mazexy(mm);
         C.makemon((C.mons+Number(C.PM_MINOTAUR)*C.sizes["struct permonst"]),R111(mm),R112(mm),C.u32(0n));
     }
-    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1114,(C.literal("populate_maze"))),C.rn2(5))):C.rn2(5)))+(7)))));i;((i=C.i32((i-1)))+1)) {
+    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1114,"populate_maze"),C.rn2(5))):C.rn2(5)))+(7)))));i;((i=C.i32((i-1)))+1)) {
         mazexy(mm);
         C.makemon(0,R111(mm),R112(mm),C.u32(0n));
     }
-    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1118,(C.literal("populate_maze"))),C.rn2(6))):C.rn2(6)))+(7)))));i;((i=C.i32((i-1)))+1)) {
+    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1118,"populate_maze"),C.rn2(6))):C.rn2(6)))+(7)))));i;((i=C.i32((i-1)))+1)) {
         mazexy(mm);
         C.mkgold(0n,R111(mm),R112(mm));
     }
-    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1122,(C.literal("populate_maze"))),C.rn2(6))):C.rn2(6)))+(7)))));i;((i=C.i32((i-1)))+1)) C.mktrap(0,2,0,0);
+    for((i=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1122,"populate_maze"),C.rn2(6))):C.rn2(6)))+(7)))));i;((i=C.i32((i-1)))+1)) C.mktrap(0,2,0,0);
 
     } finally {C.stackRestore(stackFrame); }
 }
@@ -1218,14 +1218,14 @@ function makemaz(s)
     let sp=C.Is_special(A158(C.u));
     let mm=C.stackAlloc(C.sizes["struct nhcoord"]);
     if(C.cell(s,"char").value) {
-        if(Number(!!(sp&&C.i32(R141(sp))))) C.variadic(10,(C.literal("makemaz")),1136,protofile,BigInt((1*20)),C.literal("%s-%d"),s,((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1136,(C.literal("makemaz"))),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
+        if(Number(!!(sp&&C.i32(R141(sp))))) C.variadic(10,(C.literal("makemaz")),1136,protofile,BigInt((1*20)),C.literal("%s-%d"),s,((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1136,"makemaz"),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
  else C.strcpy(protofile,s);
     } else if(C.cell((A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"])),"char").value) {
         if(Number(C.i32(C.dunlevs_in_dungeon(A158(C.u)))>1)) {
-            if(Number(!!(sp&&C.i32(R141(sp))))) C.variadic(11,(C.literal("makemaz")),1144,protofile,BigInt((1*20)),C.literal("%s%d-%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),C.i32(C.dunlev(A158(C.u))),((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1144,(C.literal("makemaz"))),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
+            if(Number(!!(sp&&C.i32(R141(sp))))) C.variadic(11,(C.literal("makemaz")),1144,protofile,BigInt((1*20)),C.literal("%s%d-%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),C.i32(C.dunlev(A158(C.u))),((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1144,"makemaz"),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
  else C.variadic(12,(C.literal("makemaz")),1148,protofile,BigInt((1*20)),C.literal("%s%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),C.i32(C.dunlev(A158(C.u))));
         } else if(Number(!!(sp&&C.i32(R141(sp))))) {
-            C.variadic(13,(C.literal("makemaz")),1152,protofile,BigInt((1*20)),C.literal("%s-%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1152,(C.literal("makemaz"))),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
+            C.variadic(13,(C.literal("makemaz")),1152,protofile,BigInt((1*20)),C.literal("%s-%d"),A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]),((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1152,"makemaz"),C.rnd(C.i32(R141(sp))))):C.rnd(C.i32(R141(sp))))));
         } else C.strcpy(protofile,A50(A69(C.svd)+Number(R24(A158(C.u)))*C.sizes["struct dungeon"]));
     } else C.strcpy(protofile,C.literal(""));
     /* SPLEVTYPE format is "level-choice,level-choice"... */
@@ -1262,9 +1262,9 @@ function makemaz(s)
         C.variadic(15,C.literal("Couldn't load \"%s\" - making a maze."),protofile);
     }
     (W94(A48(A74(C.svl)),C.u32(1)));
-    (W96(A48(A74(C.svl)),C.u32(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1198,(C.literal("makemaz"))),C.rn2(3))):C.rn2(3))))))));
-    if(Number(!!(Number(!(C.Invocation_lev(A158(C.u))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1200,(C.literal("makemaz"))),C.rn2(2))):C.rn2(2)))))) {
-        create_maze(C.i32((-1)),C.i32((-1)),C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1201,(C.literal("makemaz"))),C.rn2(5))):C.rn2(5)))))));
+    (W96(A48(A74(C.svl)),C.u32(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1198,"makemaz"),C.rn2(3))):C.rn2(3))))))));
+    if(Number(!!(Number(!(C.Invocation_lev(A158(C.u))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1200,"makemaz"),C.rn2(2))):C.rn2(2)))))) {
+        create_maze(C.i32((-1)),C.i32((-1)),C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1201,"makemaz"),C.rn2(5))):C.rn2(5)))))));
     } else {
         create_maze(1,1,(C.i8(0)));
     }
@@ -1319,7 +1319,7 @@ function walkfrom(x,y,typ)
         for((a=0);Number(a<4);((a=C.i32((a+1)))-1)) if(okay(x,y,C.i16(a))) (C.cell((dirs+Number(((q=C.i32((q+1)))-1))*4),"int").value=a);
 
         if(Number(!(q))) return;
-        (dir=C.cell((dirs+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1304,(C.literal("walkfrom"))),C.rn2(q))):C.rn2(q))))*4),"int").value);
+        (dir=C.cell((dirs+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1304,"walkfrom"),C.rn2(q))):C.rn2(q))))*4),"int").value);
         do {
             switch(dir) {
                 case (0):
@@ -1379,8 +1379,8 @@ function mazexy(cc)
            obscure way to get rnd(N); probably ought to be using 2+rn2(N-1)
            to exclude the maze's outer boundary walls; trying and rejecting
            those walls will waste some of the 100 random attempts... */
-        (x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1330,(C.literal("mazexy"))),C.rnd(R86(C.gx)))):C.rnd(R86(C.gx))))));
-        (y=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1331,(C.literal("mazexy"))),C.rnd(R87(C.gy)))):C.rnd(R87(C.gy))))));
+        (x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1330,"mazexy"),C.rnd(R86(C.gx)))):C.rnd(R86(C.gx))))));
+        (y=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1331,"mazexy"),C.rnd(R87(C.gy)))):C.rnd(R87(C.gy))))));
         if(Number(C.i32(R131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==allowedtyp)) {
             (W111(cc,x));
             (W112(cc,y));
@@ -1528,7 +1528,7 @@ function mkportal(x,y,todnum,todlevel)
    moveloop_core() when on the level */
 function fumaroles()
 {
-    let n; let nmax=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1486,(C.literal("fumaroles"))),C.rn2(3))):C.rn2(3))));
+    let n; let nmax=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1486,"fumaroles"),C.rn2(3))):C.rn2(3))));
     let sizemin=5;
     let snd=(C.i8(0)); let loud=(C.i8(0));
     if(((Number(!!((Number(!!(C.i32(R25(A39(A70(C.svd))))||C.i32(R24(A39(A70(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A39(A70(C.svd))))))))) {
@@ -1540,10 +1540,10 @@ function fumaroles()
         (sizemin=C.i32(sizemin+5));
     }
     for((n=nmax);n;((n=C.i16((n-1)))+1)) {
-        let x=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1500,(C.literal("fumaroles"))),C.rn2(C.i32((80-4))))):C.rn2(C.i32((80-4)))))+(3)))));
-        let y=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1501,(C.literal("fumaroles"))),C.rn2(C.i32((21-4))))):C.rn2(C.i32((21-4)))))+(3)))));
+        let x=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1500,"fumaroles"),C.rn2(C.i32((80-4))))):C.rn2(C.i32((80-4)))))+(3)))));
+        let y=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1501,"fumaroles"),C.rn2(C.i32((21-4))))):C.rn2(C.i32((21-4)))))+(3)))));
         if(Number(C.i32(R131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.LAVAPOOL)) {
-            let r=C.create_gas_cloud(x,y,(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1504,(C.literal("fumaroles"))),C.rn2(10))):C.rn2(10)))+(sizemin)))),(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1504,(C.literal("fumaroles"))),C.rn2(10))):C.rn2(10)))+(5)))));
+            let r=C.create_gas_cloud(x,y,(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1504,"fumaroles"),C.rn2(10))):C.rn2(10)))+(sizemin)))),(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1504,"fumaroles"),C.rn2(10))):C.rn2(10)))+(5)))));
             ((W0(r,C.u32(R0(r)|C.u32(2)))));
             (snd=(C.i8(1)));
             if(Number(C.dist2((x),(y),R154(C.u),R155(C.u))<15)) (loud=(C.i8(1)));
@@ -1658,7 +1658,7 @@ function movebubbles()
             (xedge=C.i8((Number(!!(Number(C.i32(x)<(C.i32((R78(C.svx)+1))))||Number(C.i32(x)>(C.i32((R79(C.svx)-1)))))))));
             (yedge=C.i8((Number(!!(Number(C.i32(y)<(C.i32((R80(C.svy)+1))))||Number(C.i32(y)>(C.i32((R81(C.svy)-1)))))))));
             if(Number(!!(C.i32(xedge)||C.i32(yedge)))) {
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1660,(C.literal("movebubbles"))),C.rn2((C.i32(xedge)?3:5)))):C.rn2((C.i32(xedge)?3:5))))))) {
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1660,"movebubbles"),C.rn2((C.i32(xedge)?3:5)))):C.rn2((C.i32(xedge)?3:5))))))) {
                     (W131((A44(A74(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(C.CLOUD)));
                     C.block_point(C.i32(x),C.i32(y));
                 }
@@ -1673,7 +1673,7 @@ function movebubbles()
      */
     (C.cell(C.staticAddress("up"),"signed char").value=C.i8(Number(!(C.cell(C.staticAddress("up"),"signed char").value))));
     for((b=(C.i32(C.cell(C.staticAddress("up"),"signed char").value)?R68(C.svb):R62(C.ge)));b;(b=(C.i32(C.cell(C.staticAddress("up"),"signed char").value)?R16(b):R15(b)))) {
-        let rx=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1675,(C.literal("movebubbles"))),C.rn2(3))):C.rn2(3))); let ry=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1675,(C.literal("movebubbles"))),C.rn2(3))):C.rn2(3)));
+        let rx=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1675,"movebubbles"),C.rn2(3))):C.rn2(3))); let ry=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1675,"movebubbles"),C.rn2(3))):C.rn2(3)));
         mv_bubble(b,C.i16(C.i32((C.i32((C.i32(R12(b))+1))-((Number(!(R12(b)))?rx:((rx?1:0))))))),C.i16(C.i32((C.i32((C.i32(R13(b))+1))-((Number(!(R13(b)))?ry:((ry?1:0))))))),(C.i8(0)));
     }
     /* put attached ball&chain back */
@@ -1686,26 +1686,26 @@ function water_friction()
 {
     let x; let y; let dx; let dy;
     let eff=(C.i8(0));
-    if(Number(!!((Number(!!(Number(!!(R129(A159(C.u)+Number(C.SWIMMING)*C.sizes["struct prop"])||R128(A159(C.u)+Number(C.SWIMMING)*C.sizes["struct prop"])))||(Number(!!(R162(C.u)&&(Number((C.u64((R126(R100(R162(C.u)))&C.u64(2n))))!=C.u64(0n)))))))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1694,(C.literal("water_friction"))),C.rn2(4))):C.rn2(4)))))) return;
+    if(Number(!!((Number(!!(Number(!!(R129(A159(C.u)+Number(C.SWIMMING)*C.sizes["struct prop"])||R128(A159(C.u)+Number(C.SWIMMING)*C.sizes["struct prop"])))||(Number(!!(R162(C.u)&&(Number((C.u64((R126(R100(R162(C.u)))&C.u64(2n))))!=C.u64(0n)))))))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1694,"water_friction"),C.rn2(4))):C.rn2(4)))))) return;
     /* natural swimmers have advantage */
-    if(Number(!!(R156(C.u)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1697,(C.literal("water_friction"))),C.rn2((Number(!(R157(C.u)))?3:6)))):C.rn2((Number(!(R157(C.u)))?3:6))))))))) {
+    if(Number(!!(R156(C.u)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1697,"water_friction"),C.rn2((Number(!(R157(C.u)))?3:6)))):C.rn2((Number(!(R157(C.u)))?3:6))))))))) {
         /* 1/3 chance or half that */
         /* cancel delta x and choose an arbitrary delta y value */
         (x=R154(C.u));
         do {
-            (dy=C.i16(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1701,(C.literal("water_friction"))),C.rn2(3))):C.rn2(3)))-1))));
+            (dy=C.i16(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1701,"water_friction"),C.rn2(3))):C.rn2(3)))-1))));
             /* -1, 0, 1 */
             (y=C.i16(C.i32((C.i32(R155(C.u))+C.i32(dy)))));
         } while(Number(!!(C.i32(dy)&&(Number(!!(Number(!(C.isok(x,y)))||Number(!(C.is_pool(x,y)))))))));
         (W156(C.u,0));
         (W157(C.u,C.i32(dy)));
         (eff=(C.i8(1)));
-    } else if(Number(!!(R157(C.u)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1707,(C.literal("water_friction"))),C.rn2((Number(!(R156(C.u)))?3:5)))):C.rn2((Number(!(R156(C.u)))?3:5))))))))) {
+    } else if(Number(!!(R157(C.u)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1707,"water_friction"),C.rn2((Number(!(R156(C.u)))?3:5)))):C.rn2((Number(!(R156(C.u)))?3:5))))))))) {
         /* 1/3 or 1/5*(5/6) */
         /* cancel delta y and choose an arbitrary delta x value */
         (y=R155(C.u));
         do {
-            (dx=C.i16(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1711,(C.literal("water_friction"))),C.rn2(3))):C.rn2(3)))-1))));
+            (dx=C.i16(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1711,"water_friction"),C.rn2(3))):C.rn2(3)))-1))));
             /* -1 .. 1 */
             (x=C.i16(C.i32((C.i32(R154(C.u))+C.i32(dx)))));
         } while(Number(!!(C.i32(dx)&&(Number(!!(Number(!(C.isok(x,y)))||Number(!(C.is_pool(x,y)))))))));
@@ -1822,13 +1822,13 @@ function setup_waterlevel()
 
     /* make bubbles */
     if(((Number(!!((Number(!!(C.i32(R25(A38(A70(C.svd))))||C.i32(R24(A38(A70(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A38(A70(C.svd))))))))) {
-        (xskip=C.i16(C.i32((10+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1847,(C.literal("setup_waterlevel"))),C.rn2(10))):C.rn2(10)))))));
-        (yskip=C.i16(C.i32((4+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1848,(C.literal("setup_waterlevel"))),C.rn2(4))):C.rn2(4)))))));
+        (xskip=C.i16(C.i32((10+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1847,"setup_waterlevel"),C.rn2(10))):C.rn2(10)))))));
+        (yskip=C.i16(C.i32((4+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1848,"setup_waterlevel"),C.rn2(4))):C.rn2(4)))))));
     } else {
-        (xskip=C.i16(C.i32((6+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1850,(C.literal("setup_waterlevel"))),C.rn2(4))):C.rn2(4)))))));
-        (yskip=C.i16(C.i32((3+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1851,(C.literal("setup_waterlevel"))),C.rn2(3))):C.rn2(3)))))));
+        (xskip=C.i16(C.i32((6+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1850,"setup_waterlevel"),C.rn2(4))):C.rn2(4)))))));
+        (yskip=C.i16(C.i32((3+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1851,"setup_waterlevel"),C.rn2(3))):C.rn2(3)))))));
     }
-    for((x=C.i16((C.i32((R78(C.svx)+1)))));Number(C.i32(x)<=(C.i32((R79(C.svx)-1))));(x=C.i16(x+C.i32(xskip)))) for((y=C.i16((C.i32((R80(C.svy)+1)))));Number(C.i32(y)<=(C.i32((R81(C.svy)-1))));(y=C.i16(y+C.i32(yskip)))) mk_bubble(x,y,((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1856,(C.literal("setup_waterlevel"))),C.rn2(7))):C.rn2(7))));
+    for((x=C.i16((C.i32((R78(C.svx)+1)))));Number(C.i32(x)<=(C.i32((R79(C.svx)-1))));(x=C.i16(x+C.i32(xskip)))) for((y=C.i16((C.i32((R80(C.svy)+1)))));Number(C.i32(y)<=(C.i32((R81(C.svy)-1))));(y=C.i16(y+C.i32(yskip)))) mk_bubble(x,y,((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1856,"setup_waterlevel"),C.rn2(7))):C.rn2(7))));
 
 
 }
@@ -1871,8 +1871,8 @@ function mk_bubble(x,y,n)
     if(Number((C.i32((C.i32((C.i32(y)+C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)))-1)))>(C.i32((R81(C.svy)-1))))) (y=C.i16(C.i32((C.i32(((C.i32((R81(C.svy)-1)))-C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)))+1))));
     (W10(b,x));
     (W11(b,y));
-    (W12(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1909,(C.literal("mk_bubble"))),C.rn2(3))):C.rn2(3))))))));
-    (W13(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1910,(C.literal("mk_bubble"))),C.rn2(3))):C.rn2(3))))))));
+    (W12(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1909,"mk_bubble"),C.rn2(3))):C.rn2(3))))))));
+    (W13(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1910,"mk_bubble"),C.rn2(3))):C.rn2(3))))))));
     /* y dimension is the length of bitmap data - see bmask above */
     C.memcpy(A14(b),C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value,C.u64((C.u64((C.i32((C.i32(C.cell((C.cell((C.staticAddress("bmask")+Number(n)*8),"unsigned char *").value+Number(1)*1),"unsigned char").value)+2))))*BigInt(1))));
     (W17(b,0));
@@ -1891,7 +1891,7 @@ function maybe_adjust_hero_bubble()
 {
     if(Number(!(((Number(!!((Number(!!(C.i32(R25(A38(A70(C.svd))))||C.i32(R24(A38(A70(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A38(A70(C.svd))))))))))) return;
     if(Number(!!(Number(!(R156(C.u)))&&Number(!(R157(C.u)))))) return;
-    if(Number(!!(C.cell(C.staticAddress("hero_bubble"),"struct bubble *").value&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1937,(C.literal("maybe_adjust_hero_bubble"))),C.rn2(2))):C.rn2(2)))))))) {
+    if(Number(!!(C.cell(C.staticAddress("hero_bubble"),"struct bubble *").value&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1937,"maybe_adjust_hero_bubble"),C.rn2(2))):C.rn2(2)))))))) {
         (W12(C.cell(C.staticAddress("hero_bubble"),"struct bubble *").value,C.i8(R156(C.u))));
         (W13(C.cell(C.staticAddress("hero_bubble"),"struct bubble *").value,C.i8(R157(C.u))));
     }
@@ -1915,7 +1915,7 @@ function mv_bubble(b,dx,dy,ini)
     let x; let y;
     let cons; let ctemp;
     /* clouds move slowly */
-    if(Number(!!(Number(!(((Number(!!((Number(!!(C.i32(R25(A40(A70(C.svd))))||C.i32(R24(A40(A70(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A40(A70(C.svd))))))))))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),1959,(C.literal("mv_bubble"))),C.rn2(6))):C.rn2(6)))))))) {
+    if(Number(!!(Number(!(((Number(!!((Number(!!(C.i32(R25(A40(A70(C.svd))))||C.i32(R24(A40(A70(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A40(A70(C.svd))))))))))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",1959,"mv_bubble"),C.rn2(6))):C.rn2(6)))))))) {
         /* move bubble */
         if(Number(!!(Number(!!(Number(!!(Number(C.i32(dx)<C.i32((-1)))||Number(C.i32(dx)>1)))||Number(C.i32(dy)<C.i32((-1)))))||Number(C.i32(dy)>1)))) {
             /* pline("mv_bubble: dx = %d, dy = %d", dx, dy); */
@@ -2031,9 +2031,9 @@ function mv_bubble(b,dx,dy,ini)
         default:
             /* sometimes alter direction for fun anyway
            (higher probability for stationary bubbles) */
-            if(Number(!!(Number(!(ini))&&(((Number(!!(C.i32(R12(b))||C.i32(R13(b)))))?Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),2102,(C.literal("mv_bubble"))),C.rn2(20))):C.rn2(20))))):Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),2102,(C.literal("mv_bubble"))),C.rn2(5))):C.rn2(5)))))))))) {
-                (W12(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),2103,(C.literal("mv_bubble"))),C.rn2(3))):C.rn2(3))))))));
-                (W13(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkmaze.c"),2104,(C.literal("mv_bubble"))),C.rn2(3))):C.rn2(3))))))));
+            if(Number(!!(Number(!(ini))&&(((Number(!!(C.i32(R12(b))||C.i32(R13(b)))))?Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",2102,"mv_bubble"),C.rn2(20))):C.rn2(20))))):Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",2102,"mv_bubble"),C.rn2(5))):C.rn2(5)))))))))) {
+                (W12(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",2103,"mv_bubble"),C.rn2(3))):C.rn2(3))))))));
+                (W13(b,C.i8(C.i32((1-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkmaze.c",2104,"mv_bubble"),C.rn2(3))):C.rn2(3))))))));
             }
     }
 }
@@ -2057,5 +2057,5 @@ const mkmazeStaticInitializers = C => [
     {name:"bmask",type:"unsigned char *[7]",size:(8*7),values:[C.staticAddress("bm2"),C.staticAddress("bm3"),C.staticAddress("bm4"),C.staticAddress("bm5"),C.staticAddress("bm6"),C.staticAddress("bm7"),C.staticAddress("bm8")]},
 ];
 
-return Object.freeze({iswall,iswall_or_stone,is_solid,set_levltyp,set_levltyp_lit,extend_spine,wall_cleanup,fix_wall_spines,wallification,okay,maze0xy,is_exclusion_zone,bad_location,place_lregion,put_lregion_here,baalz_fixup,fixup_special,check_ransacked,migrate_orc,shiny_orc_stuff,migr_booty_item,stolen_booty,maze_inbounds,maze_remove_deadends,create_maze,pick_vibrasquare_location,populate_maze,makemaz,walkfrom,mazexy,get_level_extends,bound_digging,mkportal,fumaroles,movebubbles,water_friction,save_waterlevel,restore_waterlevel,set_wportal,setup_waterlevel,unsetup_waterlevel,mk_bubble,maybe_adjust_hero_bubble,mv_bubble,mkmazeStaticInitializers});
+return C.nativeAddressNamespaceReady(Object.freeze({iswall,iswall_or_stone,is_solid,set_levltyp,set_levltyp_lit,extend_spine,wall_cleanup,fix_wall_spines,wallification,okay,maze0xy,is_exclusion_zone,bad_location,place_lregion,put_lregion_here,baalz_fixup,fixup_special,check_ransacked,migrate_orc,shiny_orc_stuff,migr_booty_item,stolen_booty,maze_inbounds,maze_remove_deadends,create_maze,pick_vibrasquare_location,populate_maze,makemaz,walkfrom,mazexy,get_level_extends,bound_digging,mkportal,fumaroles,movebubbles,water_friction,save_waterlevel,restore_waterlevel,set_wportal,setup_waterlevel,unsetup_waterlevel,mk_bubble,maybe_adjust_hero_bubble,mv_bubble,mkmazeStaticInitializers}),C);
 }

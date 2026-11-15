@@ -1,3 +1,4 @@
+import {createServiceForwarder} from '../../c-runtime/service-scope.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/cmd.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -20,7 +21,8 @@ export function createCmdEnvironment(services,layout,namespace) {
     schema.backings.forEach((row,i)=>{if(!row.name.includes('.')){const at=ptr(services.global(schema.globals.length+i));Object.defineProperty(env,row.name,{value:at});if(!(services.referenceData&&schema.publicData.includes(row.name)))fill(at,row.type,namespace.initializers[row.name](env));}});
     env.staticData=(owner,name,initializer)=>{const key=owner+'.'+name,index=schema.backings.findIndex(row=>row.name===key),row=schema.backings[index];if(index<0)throw Error('Review CMD local static '+key);const at=ptr(services.global(schema.globals.length+index));if(!initialized.has(key)){fill(at,row.type,initializer());initialized.add(key);}return at;};
     env.variadic=(site,...args)=>{const entry=schema.variadics[site];if(!entry||entry.site!==site)throw Error('Review CMD varargs site');return services['var'+site](...args);};
-    env.callProc=(fn,prototype,...args)=>{const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error("Review CMD callback prototype "+prototype);if(prototype==='int (void)'&&fn?.nativeCommandFunction&&fn.nativeState===services.nativeOwner)return fn(...args);return services["call"+i](fn,...args);};
+    env.callProc=(fn,prototype,...args)=>{const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error("Review CMD callback prototype "+prototype);if(prototype==='int (void)'&&fn?.nativeCommandFunction&&fn.nativeState===services.nativeOwner)return fn(...args);return services.nativeOwner?services.nativeOwner.boundary(services["call"+i],fn,...args):services["call"+i](fn,...args);};
+    env.callProc.nativeAddress=true;
     env.nativeWindowCall=(field,prototype)=>{
         const i=schema.callbackTypes.indexOf(prototype);if(i<0)throw Error('Review CMD native window prototype '+prototype);
         const dispatch=services.nativeCommandWindowDispatch;
@@ -45,7 +47,7 @@ export function initializeCmd(services,layout,namespace){
  let state=cmdStates.get(services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});
+  const forwarding=createServiceForwarder(state);
   state.env=createCmdEnvironment(forwarding,layout,namespace);
   cmdStates.set(services.moduleKey,state);
  }

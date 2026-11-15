@@ -123,7 +123,11 @@ export async function displayLookWindow(putstrLines) {
             g.nhDisplay.cursorRow = windowLines.length - 1;
         }
         const key = await nhgetch();
-        if (key === 32 || key === 10 || key === 13 || key === 27) break;
+        /* getline.c:238-247 xwaitforspace: ESC leaves dismiss_more at 1, and the
+         * dismiss_more key (^A) ends a later wait too (`c == x`). */
+        if (key === 27) g._ttyDismissMore = 1;
+        if (key === 32 || key === 10 || key === 13 || key === 27
+            || (key !== 0 && key === (g._ttyDismissMore | 0))) break;
     }
     /* C wintty.c:982,3684-3687: dismissing the corner window clears
      * offx..79 through maxrow before row_refresh redraws the glyph buffer.

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './rng-output.js';
 import formatAbi from '../equipment-format-abi.json' with {type:'json'};
 // Shared native wearing/extrinsic graph for hero and monster owners.
 import publicFunctions from '../public-functions.json' with {type:'json'};
@@ -23,7 +24,7 @@ export function nativeWornFor(environment,layouts){
  for(const name of ['pline','You','Your','You_feel','You_hear','You_see','pline_The','impossible','panic'])local[name]=(fmt,...args)=>resolve(name)(text(fmt),...args.map(v=>typeof v==='string'?text(v):v?.address??v));
  const snprintf=formatAbi.worn.snprintf,snprintfTypes=snprintf.types.map(cast);local.Snprintf=(...values)=>resolve(snprintf.actual)(text(snprintf.fn),t.int(snprintf.line),...values.map((v,i)=>snprintfTypes[i](v)));
  local.pline_mon=(mon,fmt,...values)=>resolve('pline_mon')(address(mon),text(fmt),...values.map(v=>typeof v==='string'?text(v):v?.address??v));
- local.rnl=(n,line,caller)=>{if(S.rng_log_enabled())S.rng_log_set_caller(S.literal('worn.c'),t.int(line),S.literal(caller));return resolve('rnl')(t.int(n));};
+ local.rnl=(n,line,caller)=>{if(S.rng_log_enabled())recordNativeRngCaller(S,'worn.c',t.int(line),caller);return resolve('rnl')(t.int(n));};
  let context,policies;const getContext=()=>{if(!context){context=createNativeWornState(environment,layouts,local,source,owner);policies=createNativeWorn(context);}return context;};
  const names=Object.entries(source).filter(([name,fn])=>typeof fn==='function'&&(Object.hasOwn(publicFunctions.functions,name)||name==='m_dowear_type')).map(([name])=>name),functions={};
  for(const name of names){const p=publicFunctions.functions[name]??({m_dowear_type:'void (struct monst *, long, boolean, boolean)'}[name]);if(!p)throw Error('Missing WORN native signature '+name);const plan=prototype(p),args=plan.parameters.map(type=>{const target=ctypes.canonical(type).replace(/\s*\*$/,'');return type.includes('*')&&ctypes.isRecord(target)?v=>owner.nativeRecords.record(target,v):cast(type);}),result=cast(plan.result);

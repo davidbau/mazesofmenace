@@ -582,7 +582,7 @@ function lvlfill_swamp(fg,bg,lit)
         if(Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(C.i32((y+1)))*C.sizes["struct rm"]))==C.i32(bg))) (()=>{const old=c;const next=C.i32((old+1));c=next;return next;})();
         if(Number(C.i32(R317((A39(A102(C.svl))+Number(C.i32((x+1)))*(C.sizes["struct rm"]*21))+Number(C.i32((y+1)))*C.sizes["struct rm"]))==C.i32(bg))) (()=>{const old=c;const next=C.i32((old+1));c=next;return next;})();
         if(Number(c==3)) {
-            switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),410,(C.literal("lvlfill_swamp"))),C.rn2(3))):C.rn2(3)))) {
+            switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",410,"lvlfill_swamp"),C.rn2(3))):C.rn2(3)))) {
                 case (0):
                     C.set_levltyp_lit(C.i16(C.i32((x+1))),C.i16(y),fg,lit);
                 break;
@@ -1114,8 +1114,8 @@ function flip_level_rnd(flp,extras)
      *  Might change rn2(2) to !rn2(3) or (rn2(5) < 2) in order to bias
      *  the outcome towards the traditional orientation.
      */
-    if(Number(!!((C.i32((flp&1)))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),975,(C.literal("flip_level_rnd"))),C.rn2(2))):C.rn2(2)))))) (()=>{const old=c;const next=C.i32(C.i32(C.i32(old)|1));c=next;return next;})();
-    if(Number(!!((C.i32((flp&2)))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),977,(C.literal("flip_level_rnd"))),C.rn2(2))):C.rn2(2)))))) (()=>{const old=c;const next=C.i32(C.i32(C.i32(old)|2));c=next;return next;})();
+    if(Number(!!((C.i32((flp&1)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",975,"flip_level_rnd"),C.rn2(2))):C.rn2(2)))))) (()=>{const old=c;const next=C.i32(C.i32(C.i32(old)|1));c=next;return next;})();
+    if(Number(!!((C.i32((flp&2)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",977,"flip_level_rnd"),C.rn2(2))):C.rn2(2)))))) (()=>{const old=c;const next=C.i32(C.i32(C.i32(old)|2));c=next;return next;})();
     if(c) flip_level(c,extras);
 }
 
@@ -1267,7 +1267,7 @@ function link_doors_rooms()
 function rnddoor()
 {
     const state=C.staticData("rnddoor","state",()=>[0,1,2,4,8]);
-    return C.cell((state+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1152,(C.literal("rnddoor"))),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),"int").value;
+    return C.cell((state+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1152,"rnddoor"),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),"int").value;
 }
 
 /*
@@ -1277,7 +1277,7 @@ function rndtrap()
 {
     let rtrap;
     do {
-        (rtrap=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1164,(C.literal("rndtrap"))),C.rnd(C.i32((C.TRAPNUM-1))))):C.rnd(C.i32((C.TRAPNUM-1))))));
+        (rtrap=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1164,"rndtrap"),C.rnd(C.i32((C.TRAPNUM-1))))):C.rnd(C.i32((C.TRAPNUM-1))))));
         switch(rtrap) {
             case (C.HOLE):
                 /* no random holes on special levels */
@@ -1345,8 +1345,8 @@ function get_location(x,y,humidity,croom)
                     (C.cell(x,"short").value=R241(tmpc));
                     (C.cell(y,"short").value=R242(tmpc));
                 } else {
-                    (C.cell(x,"short").value=C.i16(C.i32((mx+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1233,(C.literal("get_location"))),C.rn2(sx))):C.rn2(sx)))))));
-                    (C.cell(y,"short").value=C.i16(C.i32((my+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1234,(C.literal("get_location"))),C.rn2(sy))):C.rn2(sy)))))));
+                    (C.cell(x,"short").value=C.i16(C.i32((mx+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1233,"get_location"),C.rn2(sx))):C.rn2(sx)))))));
+                    (C.cell(y,"short").value=C.i16(C.i32((my+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1234,"get_location"),C.rn2(sy))):C.rn2(sy)))))));
                 }
                 if(is_ok_location(C.cell(x,"short").value,C.cell(y,"short").value,humidity)) break;
             } while(Number((()=>{const old=cpt;const next=C.i32((old+1));cpt=next;return next;})()<100));
@@ -1463,8 +1463,8 @@ function get_room_loc(x,y,croom)
             (C.cell(y,"short").value=R242(c));
         } else C.variadic(2,C.literal("get_room_loc : can't find a place!"));
     } else {
-        if(Number(C.i32(C.cell(x,"short").value)<0)) (C.cell(x,"short").value=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1372,(C.literal("get_room_loc"))),C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1)))))));
-        if(Number(C.i32(C.cell(y,"short").value)<0)) (C.cell(y,"short").value=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1374,(C.literal("get_room_loc"))),C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1)))))));
+        if(Number(C.i32(C.cell(x,"short").value)<0)) (C.cell(x,"short").value=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1372,"get_room_loc"),C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R171(croom))-C.i32(R170(croom))))+1)))))));
+        if(Number(C.i32(C.cell(y,"short").value)<0)) (C.cell(y,"short").value=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1374,"get_room_loc"),C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1))))):C.rn2(C.i32((C.i32((C.i32(R173(croom))-C.i32(R172(croom))))+1)))))));
         (()=>{const slot=C.cell(x,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+C.i32(R170(croom))));slot.value=next;return next;})();
         (()=>{const slot=C.cell(y,"short");const old=slot.value;const next=C.i16(C.i32(C.i32(old)+C.i32(R172(croom))));slot.value=next;return next;})();
     }
@@ -1533,7 +1533,7 @@ function check_room(lowx,ddx,lowy,ddy,vault)
                             }
                         } while(0);
                     }
-                    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1455,(C.literal("check_room"))),C.rn2(3))):C.rn2(3)))))) return (C.i8(0));
+                    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1455,"check_room"),C.rn2(3))):C.rn2(3)))))) return (C.i8(0));
                     if(R82(C.gi)) return (C.i8(0));
                     if(Number(x<C.i32(C.cell(lowx,"short").value))) (C.cell(lowx,"short").value=C.i16(C.i32((C.i32((x+xlim))+1))));
  else (hix=C.i32((C.i32((x-xlim))-1)));
@@ -1619,8 +1619,8 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
             if(vault) {
                 (C.cell(dxAddress,"short").value=(C.cell(dyAddress,"short").value=C.i16(1)));
             } else {
-                (C.cell(dxAddress,"short").value=C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1548,(C.literal("create_room"))),C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8)))):C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8))))))));
-                (C.cell(dyAddress,"short").value=C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1549,(C.literal("create_room"))),C.rn2(4))):C.rn2(4)))))));
+                (C.cell(dxAddress,"short").value=C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1548,"create_room"),C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8)))):C.rn2(((Number(C.i32((C.i32(hx)-C.i32(lx)))>28))?12:8))))))));
+                (C.cell(dyAddress,"short").value=C.i16(C.i32((2+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1549,"create_room"),C.rn2(4))):C.rn2(4)))))));
                 if(Number(C.i32((C.i32(C.cell(dxAddress,"short").value)*C.i32(C.cell(dyAddress,"short").value)))>50)) (C.cell(dyAddress,"short").value=C.i16(C.i32(Math.trunc((50/C.i32(C.cell(dxAddress,"short").value))))));
             }
             (xborder=C.i16(((Number(!!(Number(C.i32(lx)>0)&&Number(C.i32(hx)<C.i32((80-1))))))?C.i32((2*xlim)):C.i32((xlim+1)))));
@@ -1629,10 +1629,10 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
                 (r1=0);
                 continue;
             }
-            (C.cell(xabsAddress,"short").value=C.i16(C.i32((C.i32((C.i32(lx)+((Number(C.i32(lx)>0)?xlim:3))))+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1560,(C.literal("create_room"))),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(C.cell(dxAddress,"short").value)))-C.i32(xborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(C.cell(dxAddress,"short").value)))-C.i32(xborder)))+1)))))))));
-            (C.cell(yabsAddress,"short").value=C.i16(C.i32((C.i32((C.i32(ly)+((Number(C.i32(ly)>0)?ylim:2))))+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1562,(C.literal("create_room"))),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(C.cell(dyAddress,"short").value)))-C.i32(yborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(C.cell(dyAddress,"short").value)))-C.i32(yborder)))+1)))))))));
-            if(Number(!!(Number(!!(Number(!!(Number(C.i32(ly)==0)&&Number(C.i32(hy)>=C.i32((21-1)))))&&(Number(!!(Number(!(R104(C.svn)))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1564,(C.literal("create_room"))),C.rn2(R104(C.svn)))):C.rn2(R104(C.svn)))))))))))&&(Number(C.i32((C.i32(C.cell(yabsAddress,"short").value)+C.i32(C.cell(dyAddress,"short").value)))>C.i32(Math.trunc((21/2)))))))) {
-                (C.cell(yabsAddress,"short").value=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1566,(C.literal("create_room"))),C.rn2(3))):C.rn2(3)))+(2))))));
+            (C.cell(xabsAddress,"short").value=C.i16(C.i32((C.i32((C.i32(lx)+((Number(C.i32(lx)>0)?xlim:3))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1560,"create_room"),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(C.cell(dxAddress,"short").value)))-C.i32(xborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hx)-((Number(C.i32(lx)>0)?C.i32(lx):3))))-C.i32(C.cell(dxAddress,"short").value)))-C.i32(xborder)))+1)))))))));
+            (C.cell(yabsAddress,"short").value=C.i16(C.i32((C.i32((C.i32(ly)+((Number(C.i32(ly)>0)?ylim:2))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1562,"create_room"),C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(C.cell(dyAddress,"short").value)))-C.i32(yborder)))+1))))):C.rn2(C.i32((C.i32((C.i32((C.i32((C.i32(hy)-((Number(C.i32(ly)>0)?C.i32(ly):2))))-C.i32(C.cell(dyAddress,"short").value)))-C.i32(yborder)))+1)))))))));
+            if(Number(!!(Number(!!(Number(!!(Number(C.i32(ly)==0)&&Number(C.i32(hy)>=C.i32((21-1)))))&&(Number(!!(Number(!(R104(C.svn)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1564,"create_room"),C.rn2(R104(C.svn)))):C.rn2(R104(C.svn)))))))))))&&(Number(C.i32((C.i32(C.cell(yabsAddress,"short").value)+C.i32(C.cell(dyAddress,"short").value)))>C.i32(Math.trunc((21/2)))))))) {
+                (C.cell(yabsAddress,"short").value=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1566,"create_room"),C.rn2(3))):C.rn2(3)))+(2))))));
                 if(Number(!!(Number(R104(C.svn)<4)&&Number(C.i32(C.cell(dyAddress,"short").value)>1)))) (()=>{const slot=C.cell(dyAddress,"short");const old=slot.value;const next=C.i16((old-1));slot.value=next;return old;})();
             }
             if(Number(!(check_room(xabsAddress,dxAddress,yabsAddress,dyAddress,vault)))) {
@@ -1651,18 +1651,18 @@ function create_room(x,y,w,h,xal,yal,rtype,rlit)
             let dxAddress=C.stackAlloc(2); let dyAddress=C.stackAlloc(2);
             if(Number(!!(Number(xtmp<0)&&Number(ytmp<0)))) {
                 /* Position is RANDOM */
-                (xtmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1585,(C.literal("create_room"))),C.rnd(5))):C.rnd(5))));
-                (ytmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1586,(C.literal("create_room"))),C.rnd(5))):C.rnd(5))));
+                (xtmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1585,"create_room"),C.rnd(5))):C.rnd(5))));
+                (ytmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1586,"create_room"),C.rnd(5))):C.rnd(5))));
                 (rndpos=1);
             }
             if(Number(!!(Number(wtmp<0)||Number(htmp<0)))) {
                 /* Size is RANDOM */
-                (wtmp=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1590,(C.literal("create_room"))),C.rn2(15))):C.rn2(15)))+(3)))));
-                (htmp=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1591,(C.literal("create_room"))),C.rn2(8))):C.rn2(8)))+(2)))));
+                (wtmp=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1590,"create_room"),C.rn2(15))):C.rn2(15)))+(3)))));
+                (htmp=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1591,"create_room"),C.rn2(8))):C.rn2(8)))+(2)))));
             }
-            if(Number(xaltmp==C.i32((-1)))) (xaltmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1594,(C.literal("create_room"))),C.rnd(3))):C.rnd(3))));
+            if(Number(xaltmp==C.i32((-1)))) (xaltmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1594,"create_room"),C.rnd(3))):C.rnd(3))));
             /* Horizontal alignment is RANDOM */
-            if(Number(yaltmp==C.i32((-1)))) (yaltmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1596,(C.literal("create_room"))),C.rnd(3))):C.rnd(3))));
+            if(Number(yaltmp==C.i32((-1)))) (yaltmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1596,"create_room"),C.rnd(3))):C.rnd(3))));
             /* Vertical alignment is RANDOM */
             /* Try to generate real (absolute) coordinates here! */
             (C.cell(xabsAddress,"short").value=C.i16(C.i32(((C.i32(Math.trunc(((C.i32(((C.i32((xtmp-1)))*80)))/5))))+1))));
@@ -1738,10 +1738,10 @@ function create_subroom(proom,x,y,w,h,rtype,rlit)
     /* There is a minimum size for the parent room */
     if(Number(!!(Number(C.i32(width)<4)||Number(C.i32(height)<4)))) return (C.i8(0));
     /* Check for random position, size, etc... */
-    if(Number(C.i32(w)==C.i32((-1)))) (w=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1686,(C.literal("create_subroom"))),C.rnd(C.i32((C.i32(width)-3))))):C.rnd(C.i32((C.i32(width)-3)))))));
-    if(Number(C.i32(h)==C.i32((-1)))) (h=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1688,(C.literal("create_subroom"))),C.rnd(C.i32((C.i32(height)-3))))):C.rnd(C.i32((C.i32(height)-3)))))));
-    if(Number(C.i32(x)==C.i32((-1)))) (x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1690,(C.literal("create_subroom"))),C.rnd(C.i32((C.i32(width)-C.i32(w)))))):C.rnd(C.i32((C.i32(width)-C.i32(w))))))));
-    if(Number(C.i32(y)==C.i32((-1)))) (y=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1692,(C.literal("create_subroom"))),C.rnd(C.i32((C.i32(height)-C.i32(h)))))):C.rnd(C.i32((C.i32(height)-C.i32(h))))))));
+    if(Number(C.i32(w)==C.i32((-1)))) (w=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1686,"create_subroom"),C.rnd(C.i32((C.i32(width)-3))))):C.rnd(C.i32((C.i32(width)-3)))))));
+    if(Number(C.i32(h)==C.i32((-1)))) (h=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1688,"create_subroom"),C.rnd(C.i32((C.i32(height)-3))))):C.rnd(C.i32((C.i32(height)-3)))))));
+    if(Number(C.i32(x)==C.i32((-1)))) (x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1690,"create_subroom"),C.rnd(C.i32((C.i32(width)-C.i32(w)))))):C.rnd(C.i32((C.i32(width)-C.i32(w))))))));
+    if(Number(C.i32(y)==C.i32((-1)))) (y=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1692,"create_subroom"),C.rnd(C.i32((C.i32(height)-C.i32(h)))))):C.rnd(C.i32((C.i32(height)-C.i32(h))))))));
     if(Number(C.i32(x)==1)) (x=C.i16(0));
     if(Number(C.i32(y)==1)) (y=C.i16(0));
     if(Number((C.i32((C.i32((C.i32(x)+C.i32(w)))+1)))==C.i32(width))) (()=>{const old=x;const next=C.i16((old+1));x=next;return old;})();
@@ -1760,50 +1760,50 @@ function create_door(dd,broom)
 {
     let x=0; let y=0;
     let trycnt;
-    if(Number(C.i32(R326(dd))==C.i32((-1)))) (W326(dd,C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1720,(C.literal("create_door"))),C.rn2(2))):C.rn2(2))))));
+    if(Number(C.i32(R326(dd))==C.i32((-1)))) (W326(dd,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1720,"create_door"),C.rn2(2))):C.rn2(2))))));
     if(Number(C.i32(R324(dd))==C.i32((-1)))) (W324(dd,C.i16((C.i32((C.i32((C.i32((1|2))|4))|8))))));
     /* speeds things up in the below loop */
     if(Number(C.i32(R327(dd))==C.i32((-1)))) {
         /* is it a locked door, closed, or a doorway? */
         if(Number(!(R326(dd)))) {
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1728,(C.literal("create_door"))),C.rn2(3))):C.rn2(3)))))) {
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1729,(C.literal("create_door"))),C.rn2(5))):C.rn2(5)))))) (W327(dd,C.i16(2)));
- else if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1731,(C.literal("create_door"))),C.rn2(6))):C.rn2(6)))))) (W327(dd,C.i16(8)));
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1728,"create_door"),C.rn2(3))):C.rn2(3)))))) {
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1729,"create_door"),C.rn2(5))):C.rn2(5)))))) (W327(dd,C.i16(2)));
+ else if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1731,"create_door"),C.rn2(6))):C.rn2(6)))))) (W327(dd,C.i16(8)));
  else (W327(dd,C.i16(4)));
-                if(Number(!!(Number(C.i32(R327(dd))!=2)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1735,(C.literal("create_door"))),C.rn2(25))):C.rn2(25)))))))) (()=>{const slot=C.field(dd,"room_door","mask");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|16));slot.value=next;return next;})();
+                if(Number(!!(Number(C.i32(R327(dd))!=2)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1735,"create_door"),C.rn2(25))):C.rn2(25)))))))) (()=>{const slot=C.field(dd,"room_door","mask");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|16));slot.value=next;return next;})();
             } else (W327(dd,C.i16(0)));
         } else {
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1740,(C.literal("create_door"))),C.rn2(5))):C.rn2(5)))))) (W327(dd,C.i16(8)));
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1740,"create_door"),C.rn2(5))):C.rn2(5)))))) (W327(dd,C.i16(8)));
  else (W327(dd,C.i16(4)));
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1745,(C.literal("create_door"))),C.rn2(20))):C.rn2(20)))))) (()=>{const slot=C.field(dd,"room_door","mask");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|16));slot.value=next;return next;})();
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1745,"create_door"),C.rn2(20))):C.rn2(20)))))) (()=>{const slot=C.field(dd,"room_door","mask");const old=slot.value;const next=C.i16(C.i32(C.i32(old)|16));slot.value=next;return next;})();
         }
     }
     for((trycnt=0);Number(trycnt<100);(()=>{const old=trycnt;const next=C.i32((old+1));trycnt=next;return next;})()) {
         let dwall=C.i32(R324(dd)); let dpos=C.i32(R325(dd));
         /* Convert wall and pos into an absolute coordinate! */
-        switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1754,(C.literal("create_door"))),C.rn2(4))):C.rn2(4)))) {
+        switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1754,"create_door"),C.rn2(4))):C.rn2(4)))) {
             case (0):
                 if(Number(!((C.i32((dwall&1)))))) continue;
             (y=C.i32((C.i32(R172(broom))-1)));
-            (x=C.i32((C.i32(R170(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1759,(C.literal("create_door"))),C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):dpos)))));
+            (x=C.i32((C.i32(R170(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1759,"create_door"),C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):dpos)))));
             if(Number(!!(Number(!(C.isok(C.i16(x),C.i16(C.i32((y-1))))))||(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(C.i32((y-1)))*C.sizes["struct rm"])))<C.POOL))))) continue;
             break;
             case (1):
                 if(Number(!((C.i32((dwall&2)))))) continue;
             (y=C.i32((C.i32(R173(broom))+1)));
-            (x=C.i32((C.i32(R170(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1768,(C.literal("create_door"))),C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):dpos)))));
+            (x=C.i32((C.i32(R170(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1768,"create_door"),C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R171(broom))))-C.i32(R170(broom))))))):dpos)))));
             if(Number(!!(Number(!(C.isok(C.i16(x),C.i16(C.i32((y+1))))))||(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(C.i32((y+1)))*C.sizes["struct rm"])))<C.POOL))))) continue;
             break;
             case (2):
                 if(Number(!((C.i32((dwall&8)))))) continue;
             (x=C.i32((C.i32(R170(broom))-1)));
-            (y=C.i32((C.i32(R172(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1777,(C.literal("create_door"))),C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):dpos)))));
+            (y=C.i32((C.i32(R172(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1777,"create_door"),C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):dpos)))));
             if(Number(!!(Number(!(C.isok(C.i16(C.i32((x-1))),C.i16(y))))||(Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((x-1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<C.POOL))))) continue;
             break;
             case (3):
                 if(Number(!((C.i32((dwall&4)))))) continue;
             (x=C.i32((C.i32(R171(broom))+1)));
-            (y=C.i32((C.i32(R172(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1786,(C.literal("create_door"))),C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):dpos)))));
+            (y=C.i32((C.i32(R172(broom))+(((Number(dpos==C.i32((-1))))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1786,"create_door"),C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):C.rn2(C.i32((C.i32((1+C.i32(R173(broom))))-C.i32(R172(broom))))))):dpos)))));
             if(Number(!!(Number(!(C.isok(C.i16(C.i32((x+1))),C.i16(y))))||(Number(C.i32((R317((A39(A102(C.svl))+Number(C.i32((x+1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<C.POOL))))) continue;
             break;
             default:
@@ -1859,7 +1859,7 @@ function noncoalignment(alignment)
 {
     alignment=C.i8(alignment);
     let k;
-    (k=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1856,(C.literal("noncoalignment"))),C.rn2(2))):C.rn2(2))));
+    (k=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1856,"noncoalignment"),C.rn2(2))):C.rn2(2))));
     if(Number(!(alignment))) return ((k?C.i32((-1)):1));
     return ((k?C.i32((-C.i32(alignment))):0));
 }
@@ -1939,7 +1939,7 @@ function create_monster(m,croom)
         /* if we can't get a specific monster type (pm == 0) then the
            class has been genocided, so settle for a random monster */
     }
-    if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.In_mines(A383(C.u)))&&pm))&&(Number((C.u64((R308(pm)&C.u64(R5(A109(C.gu))))))!=C.u64(0n)))))&&(Number(!!((Number(C.i32(R4(A109(C.gu)))==(C.PM_DWARF)))||(Number(C.i32(R4(A109(C.gu)))==(C.PM_GNOME))))))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),1960,(C.literal("create_monster"))),C.rn2(3))):C.rn2(3)))))) (pm=0);
+    if(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.In_mines(A383(C.u)))&&pm))&&(Number((C.u64((R308(pm)&C.u64(R5(A109(C.gu))))))!=C.u64(0n)))))&&(Number(!!((Number(C.i32(R4(A109(C.gu)))==(C.PM_DWARF)))||(Number(C.i32(R4(A109(C.gu)))==(C.PM_GNOME))))))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",1960,"create_monster"),C.rn2(3))):C.rn2(3)))))) (pm=0);
     if(pm) {
         let loc=pm_to_humidity(pm);
         /* If water-liking monster, first try is without DRY */
@@ -2354,7 +2354,7 @@ function create_altar(a,croom)
     if(Number(!(C.set_levltyp(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,C.i8(C.ALTAR))))) return;
     (amask=sp_amask_to_amask(R22(a)));
     (W319((A39(A102(C.svl))+Number(C.cell(xAddress,"short").value)*(C.sizes["struct rm"]*21))+Number(C.cell(yAddress,"short").value)*C.sizes["struct rm"],amask));
-    if(Number(C.i32(R23(a))<0)) (W23(a,C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2474,(C.literal("create_altar"))),C.rn2(2))):C.rn2(2))))));
+    if(Number(C.i32(R23(a))<0)) (W23(a,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2474,"create_altar"),C.rn2(2))):C.rn2(2))))));
     /* handle random case */
     if(Number(!!(Number(!(croom_is_temple))||Number(!(R23(a)))))) return;
     if(R23(a)) {
@@ -2456,7 +2456,7 @@ function dig_corridor(org,dest,npoints,nxcor,ftyp,btyp)
     (cct=0);
     while(Number(!!(Number(xx!=tx)||Number(yy!=ty)))) {
         /* loop: dig corridor at [xx,yy] and find new [xx,yy] */
-        if(Number(!!(Number((()=>{const old=cct;const next=C.i32((old+1));cct=next;return old;})()>500)||(Number(!!(C.i32(nxcor)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2585,(C.literal("dig_corridor"))),C.rn2(35))):C.rn2(35))))))))))) return (C.i8(0));
+        if(Number(!!(Number((()=>{const old=cct;const next=C.i32((old+1));cct=next;return old;})()>500)||(Number(!!(C.i32(nxcor)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2585,"dig_corridor"),C.rn2(35))):C.rn2(35))))))))))) return (C.i8(0));
         (()=>{const old=xx;const next=C.i32(C.i32(C.i32(old)+dx));xx=next;return next;})();
         (()=>{const old=yy;const next=C.i32(C.i32(C.i32(old)+dy));yy=next;return next;})();
         if(Number(!!(Number(!!(Number(!!(Number(xx>=C.i32((80-1)))||Number(xx<=0)))||Number(yy<=0)))||Number(yy>=C.i32((21-1)))))) return (C.i8(0));
@@ -2469,7 +2469,7 @@ function dig_corridor(org,dest,npoints,nxcor,ftyp,btyp)
             } else {
                 if(npoints) (()=>{const slot=C.cell(npoints,"int");const old=slot.value;const next=C.i32((old+1));slot.value=next;return old;})();
                 (W317(crm,ftyp));
-                if(Number(!!(C.i32(nxcor)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2604,(C.literal("dig_corridor"))),C.rn2(50))):C.rn2(50)))))))) C.mksobj_at(C.BOULDER,C.i16(xx),C.i16(yy),(C.i8(1)),(C.i8(0)));
+                if(Number(!!(C.i32(nxcor)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2604,"dig_corridor"),C.rn2(50))):C.rn2(50)))))))) C.mksobj_at(C.BOULDER,C.i16(xx),C.i16(yy),(C.i8(1)),(C.i8(0)));
             }
         } else if(Number(!!(Number(C.i32(R317(crm))!=C.i32(ftyp))&&Number(C.i32(R317(crm))!=C.SCORR)))) {
             /* strange ... */
@@ -2478,9 +2478,9 @@ function dig_corridor(org,dest,npoints,nxcor,ftyp,btyp)
         /* find next corridor position */
         (dix=C.abs(C.i32((xx-tx))));
         (diy=C.abs(C.i32((yy-ty))));
-        if(Number(!!(Number(!!((Number(dix>diy))&&diy))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2616,(C.literal("dig_corridor"))),C.rn2(C.i32((C.i32((dix-diy))+1))))):C.rn2(C.i32((C.i32((dix-diy))+1)))))))))) {
+        if(Number(!!(Number(!!((Number(dix>diy))&&diy))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2616,"dig_corridor"),C.rn2(C.i32((C.i32((dix-diy))+1))))):C.rn2(C.i32((C.i32((dix-diy))+1)))))))))) {
             (dix=0);
-        } else if(Number(!!(Number(!!((Number(diy>dix))&&dix))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2618,(C.literal("dig_corridor"))),C.rn2(C.i32((C.i32((diy-dix))+1))))):C.rn2(C.i32((C.i32((diy-dix))+1)))))))))) {
+        } else if(Number(!!(Number(!!((Number(diy>dix))&&dix))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2618,"dig_corridor"),C.rn2(C.i32((C.i32((diy-dix))+1))))):C.rn2(C.i32((C.i32((diy-dix))+1)))))))))) {
             (diy=0);
         }
         /* do we have to change direction ? */
@@ -2602,7 +2602,7 @@ function fill_special_room(croom)
         }
         switch(C.i32(R174(croom))) {
             case (C.VAULT):
-                for((x=C.i32(R170(croom)));Number(x<=C.i32(R171(croom)));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(R172(croom)));Number(y<=C.i32(R173(croom)));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) C.mkgold(C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2763,(C.literal("fill_special_room"))),C.rn2(C.i32((C.abs(C.i32(C.depth(A383(C.u))))*100))))):C.rn2(C.i32((C.abs(C.i32(C.depth(A383(C.u))))*100)))))+(51))))),C.i16(x),C.i16(y));
+                for((x=C.i32(R170(croom)));Number(x<=C.i32(R171(croom)));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(R172(croom)));Number(y<=C.i32(R173(croom)));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) C.mkgold(C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2763,"fill_special_room"),C.rn2(C.i32((C.abs(C.i32(C.depth(A383(C.u))))*100))))):C.rn2(C.i32((C.abs(C.i32(C.depth(A383(C.u))))*100)))))+(51))))),C.i16(x),C.i16(y));
 
 
             break;
@@ -2650,7 +2650,7 @@ function build_room(r,mkr)
 {
     let okroom;
     let aroom;
-    let rtype=C.i16(((Number(!!(Number(!(R13(r)))||Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2811,(C.literal("build_room"))),C.rn2(100))):C.rn2(100)))<C.i32(R13(r))))))?C.i32(R12(r)):C.OROOM));
+    let rtype=C.i16(((Number(!!(Number(!(R13(r)))||Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2811,"build_room"),C.rn2(100))):C.rn2(100)))<C.i32(R13(r))))))?C.i32(R12(r)):C.OROOM));
     if(mkr) {
         (aroom=(R96(C.gs)+Number(R91(C.gn))*C.sizes["struct mkroom"]));
         (okroom=create_subroom(mkr,R6(r),R7(r),R8(r),R9(r),rtype,R14(r)));
@@ -2741,8 +2741,8 @@ function maze1xy(m,humidity)
        to the circumstances under which we'll be called, but the
        `humidity' screening might drastically change the chances */
     do {
-        (x=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2908,(C.literal("maze1xy"))),C.rn2(C.i32((R110(C.gx)-3))))):C.rn2(C.i32((R110(C.gx)-3)))))+(3)))));
-        (y=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2909,(C.literal("maze1xy"))),C.rn2(C.i32((R113(C.gy)-3))))):C.rn2(C.i32((R113(C.gy)-3)))))+(3)))));
+        (x=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2908,"maze1xy"),C.rn2(C.i32((R110(C.gx)-3))))):C.rn2(C.i32((R110(C.gx)-3)))))+(3)))));
+        (y=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2909,"maze1xy"),C.rn2(C.i32((R113(C.gy)-3))))):C.rn2(C.i32((R113(C.gy)-3)))))+(3)))));
         if(Number((()=>{const old=tryct;const next=C.i32((old-1));tryct=next;return next;})()<0)) break;
         /* give up */
     } while(Number(!!(Number(!!(Number(!!(Number(!((C.i32((x%2)))))||Number(!((C.i32((y%2)))))))||C.i32(C.cell(((C.SpLev_Map+Number(x)*(1*21))+Number(y)*1),"char").value)))||Number(!(is_ok_location(C.i16(x),C.i16(y),C.u32(humidity)))))));
@@ -2770,29 +2770,29 @@ function fill_empty_maze()
 
     if((Number(mapcount>(C.i32(Math.trunc((mapcountmax/10))))))) {
         (mapfact=C.i32((C.i64(((C.i64((C.i64(mapcount)*100n)))/C.i64(mapcountmax))))));
-        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2942,(C.literal("fill_empty_maze"))),C.rnd(C.i32(Math.trunc(((C.i32((20*mapfact)))/100)))))):C.rnd(C.i32(Math.trunc(((C.i32((20*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
+        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2942,"fill_empty_maze"),C.rnd(C.i32(Math.trunc(((C.i32((20*mapfact)))/100)))))):C.rnd(C.i32(Math.trunc(((C.i32((20*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
             maze1xy(mm,1);
-            C.mkobj_at(C.i8((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2944,(C.literal("fill_empty_maze"))),C.rn2(2))):C.rn2(2)))?C.GEM_CLASS:C.RANDOM_CLASS)),R241(mm),R242(mm),(C.i8(1)));
+            C.mkobj_at(C.i8((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2944,"fill_empty_maze"),C.rn2(2))):C.rn2(2)))?C.GEM_CLASS:C.RANDOM_CLASS)),R241(mm),R242(mm),(C.i8(1)));
         }
-        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2947,(C.literal("fill_empty_maze"))),C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100)))))):C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
+        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2947,"fill_empty_maze"),C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100)))))):C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
             let ttmp;
             maze1xy(mm,1);
             if(Number(!!(Number(((ttmp=C.t_at(R241(mm),R242(mm))))!=0)&&(Number(!!((Number(!!(Number(C.i32((R371(ttmp)))==C.PIT)||Number(C.i32((R371(ttmp)))==C.SPIKED_PIT))))||(Number(!!(Number(C.i32((R371(ttmp)))==C.HOLE)||Number(C.i32((R371(ttmp)))==C.TRAPDOOR)))))))))) continue;
             C.mksobj_at(C.BOULDER,R241(mm),R242(mm),(C.i8(1)),(C.i8(0)));
         }
-        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2956,(C.literal("fill_empty_maze"))),C.rn2(2))):C.rn2(2)))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
+        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2956,"fill_empty_maze"),C.rn2(2))):C.rn2(2)))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
             maze1xy(mm,1);
             C.makemon((C.mons+Number(C.PM_MINOTAUR)*C.sizes["struct permonst"]),R241(mm),R242(mm),C.u32(0n));
         }
-        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2960,(C.literal("fill_empty_maze"))),C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100)))))):C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
+        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2960,"fill_empty_maze"),C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100)))))):C.rnd(C.i32(Math.trunc(((C.i32((12*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
             maze1xy(mm,1);
             C.makemon(0,R241(mm),R242(mm),C.u32(0n));
         }
-        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2964,(C.literal("fill_empty_maze"))),C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100)))))):C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
+        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2964,"fill_empty_maze"),C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100)))))):C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
             maze1xy(mm,1);
             C.mkgold(0n,R241(mm),R242(mm));
         }
-        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2968,(C.literal("fill_empty_maze"))),C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100)))))):C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
+        for((x=C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2968,"fill_empty_maze"),C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100)))))):C.rn2(C.i32(Math.trunc(((C.i32((15*mapfact)))/100))))))));x;(()=>{const old=x;const next=C.i16((old-1));x=next;return old;})()) {
             let trytrap;
             maze1xy(mm,1);
             (trytrap=rndtrap());
@@ -2813,7 +2813,7 @@ function splev_initlev(linit)
         case (C.LVLINIT_NONE):
             break;
         case (C.LVLINIT_SOLIDFILL):
-            if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),2992,(C.literal("splev_initlev"))),C.rn2(2))):C.rn2(2))))));
+            if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",2992,"splev_initlev"),C.rn2(2))):C.rn2(2))))));
         lvlfill_solid(R119(linit),C.i8(R124(linit)));
         break;
         case (C.LVLINIT_MAZEGRID):
@@ -2826,13 +2826,13 @@ function splev_initlev(linit)
             C.makeroguerooms();
         break;
         case (C.LVLINIT_MINES):
-            if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),3006,(C.literal("splev_initlev"))),C.rn2(2))):C.rn2(2))))));
+            if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3006,"splev_initlev"),C.rn2(2))):C.rn2(2))))));
         if(Number(C.i32(R119(linit))>C.i32((-1)))) lvlfill_solid(R119(linit),C.i8(0));
         (W126(linit,C.cell(C.icedpools,"signed char").value));
         C.mkmap(linit);
         break;
         case (C.LVLINIT_SWAMP):
-            if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),3014,(C.literal("splev_initlev"))),C.rn2(2))):C.rn2(2))))));
+            if(Number(C.i32(R124(linit))==(C.i32((-1))))) (W124(linit,C.i16(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3014,"splev_initlev"),C.rn2(2))):C.rn2(2))))));
         lvlfill_swamp(C.i8(R120(linit)),C.i8(R121(linit)),C.i8(R124(linit)));
         break;
     }
@@ -2933,7 +2933,7 @@ function find_montype(L,s,mgender)
     (i=C.name_to_monplus(s,0,mgendAddress));
     if(Number(!!(Number(i>=C.LOW_PM)&&Number(i<C.NUMMONS)))) {
         if(Number(!!((Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(65536n))))!=C.u64(0n)))||(Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))))) (C.cell(mgendAddress,"int").value=((Number((C.u64((R308(C.mons+Number(i)*C.sizes["struct permonst"])&C.u64(131072n))))!=C.u64(0n)))?C.FEMALE:C.MALE));
- else (C.cell(mgendAddress,"int").value=((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),3156,(C.literal("find_montype"))),C.rn2(2))):C.rn2(2))))));
+ else (C.cell(mgendAddress,"int").value=((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3156,"find_montype"),C.rn2(2))):C.rn2(2))))));
         if(mgender) (C.cell(mgender,"int").value=C.cell(mgendAddress,"int").value);
         return i;
     }
@@ -3024,7 +3024,7 @@ function lspo_monster(L)
         } else {
             (W221(tmpmons,C.i16(C.i32((-1)))));
             (W216(tmpmons,C.i16(find_montype(L,paramstr,mgendAddress))));
-            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),3256,(C.literal("lspo_monster"))),C.rn2(2))):C.rn2(2))))))));
+            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3256,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
         }
     } else if(Number(!!(Number(!!(Number(argc==2)&&Number(C.lua_type(L,1)==4)))&&Number(C.lua_type(L,2)==5)))) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
@@ -3035,7 +3035,7 @@ function lspo_monster(L)
         } else {
             (W221(tmpmons,C.i16(C.i32((-1)))));
             (W216(tmpmons,C.i16(find_montype(L,paramstr,mgendAddress))));
-            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),3271,(C.literal("lspo_monster"))),C.rn2(2))):C.rn2(2))))))));
+            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3271,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
         }
     } else if(Number(argc==3)) {
         let paramstr=(C.luaL_checklstring(L,(1),0));
@@ -3047,7 +3047,7 @@ function lspo_monster(L)
         } else {
             (W221(tmpmons,C.i16(C.i32((-1)))));
             (W216(tmpmons,C.i16(find_montype(L,paramstr,mgendAddress))));
-            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),3287,(C.literal("lspo_monster"))),C.rn2(2))):C.rn2(2))))))));
+            (W225(tmpmons,C.i16(((Number(C.cell(mgendAddress,"int").value==C.FEMALE))?C.FEMALE:((Number(C.cell(mgendAddress,"int").value==C.MALE))?C.MALE:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",3287,"lspo_monster"),C.rn2(2))):C.rn2(2))))))));
         }
     } else {
         let keep_default_invent=C.i32((-1));
@@ -3972,7 +3972,7 @@ function lspo_gold(L)
     if(Number(!!(Number(C.i32(C.cell(xAddress,"short").value)==C.i32((-1)))&&Number(C.i32(C.cell(yAddress,"short").value)==C.i32((-1)))))) (gcoord=(C.i64((16777216n|C.i64((0))))));
  else (gcoord=C.i64((C.i64(((C.i64(((C.cell(gldxAddress,"long long").value)&C.i64(255))))+(C.i64(((C.i64(((C.cell(gldyAddress,"long long").value)&C.i64(255))))<<BigInt(16)))))))));
     get_location_coord(xAddress,yAddress,1,R330(R78(C.gc)),gcoord);
-    if(Number(amount<C.i64(0))) (amount=C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),4518,(C.literal("lspo_gold"))),C.rnd(200))):C.rnd(200)))));
+    if(Number(amount<C.i64(0))) (amount=C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",4518,"lspo_gold"),C.rnd(200))):C.rnd(200)))));
     C.mkgold(amount,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value);
     return 0;
     } finally {C.stackRestore(stackFrame); }
@@ -4022,7 +4022,7 @@ function lspo_random_corridors(L)
 function random_wdir()
 {
     const wdirs=C.staticData("random_wdir","wdirs",()=>[C.i16(1),C.i16(2),C.i16(4),C.i16(8)]);
-    return C.cell((wdirs+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),4581,(C.literal("random_wdir"))),C.rn2(4))):C.rn2(4))))*2),"short").value;
+    return C.cell((wdirs+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",4581,"random_wdir"),C.rn2(4))):C.rn2(4))))*2),"short").value;
 }
 
 const floodfillchk_match_under_typ=C=>0;
@@ -4161,7 +4161,7 @@ function l_table_getset_feature_flag(L,x,y,name,flag)
     flag=C.i32(flag);
     let val=C.get_table_boolean_opt(L,name,C.i32((-2)));
     if(Number(val!=C.i32((-2)))) {
-        if(Number(val==C.i32((-1)))) (val=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),4749,(C.literal("l_table_getset_feature_flag"))),C.rn2(2))):C.rn2(2))));
+        if(Number(val==C.i32((-1)))) (val=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",4749,"l_table_getset_feature_flag"),C.rn2(2))):C.rn2(2))));
         if(val) (()=>{const slot=C.field(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)|flag));slot.value=next;return next;})();
  else (()=>{const slot=C.field(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),"rm","flags");const old=slot.value;const next=C.u32(C.i32(C.i32(old)&C.i32((~flag))));slot.value=next;return next;})();
     }
@@ -4493,9 +4493,9 @@ function lspo_replace_terrain(L)
     C.selection_getbounds(sel,rect);
     for((x=C.i16(((Number((1)>C.i32((R247(rect))))?(1):C.i32((R247(rect)))))));Number(C.i32(x)<=C.i32(R249(rect)));(()=>{const old=x;const next=C.i16((old+1));x=next;return old;})()) for((y=R248(rect));Number(C.i32(y)<=C.i32(R250(rect)));(()=>{const old=y;const next=C.i16((old+1));y=next;return old;})()) if(C.selection_getpoint(x,y,sel)) {
         if(C.cell(mfAddress,"struct mapfragment *").value) {
-            if(Number(!!(C.i32(mapfrag_match(C.cell(mfAddress,"struct mapfragment *").value,C.i32(x),C.i32(y)))&&Number((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),5127,(C.literal("lspo_replace_terrain"))),C.rn2(100))):C.rn2(100))))<chance)))) C.set_levltyp_lit(x,y,C.i8(totyp),C.i8(tolit));
+            if(Number(!!(C.i32(mapfrag_match(C.cell(mfAddress,"struct mapfragment *").value,C.i32(x),C.i32(y)))&&Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5127,"lspo_replace_terrain"),C.rn2(100))):C.rn2(100))))<chance)))) C.set_levltyp_lit(x,y,C.i8(totyp),C.i8(tolit));
         } else {
-            if(Number(!!((Number(!!((Number(!!(Number(C.i32(fromtyp)==C.MATCH_WALL)&&(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL)))))||Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.i32(fromtyp)))))&&Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),5132,(C.literal("lspo_replace_terrain"))),C.rn2(100))):C.rn2(100)))<chance)))) C.set_levltyp_lit(x,y,C.i8(totyp),C.i8(tolit));
+            if(Number(!!((Number(!!((Number(!!(Number(C.i32(fromtyp)==C.MATCH_WALL)&&(Number(C.i32((R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])))<=C.DBWALL)))))||Number(C.i32(R317((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.i32(fromtyp)))))&&Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5132,"lspo_replace_terrain"),C.rn2(100))):C.rn2(100)))<chance)))) C.set_levltyp_lit(x,y,C.i8(totyp),C.i8(tolit));
         }
     }
 
@@ -4543,12 +4543,12 @@ function generate_way_out_method(nx,ny,ov)
             C.selection_free(ov3,(C.i8(1)));
             (ov3=C.selection_clone(ov2));
             while(C.selection_rndcoord(ov3,xAddress,yAddress,(C.i8(1)))) {
-                if(C.maketrap(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),5198,(C.literal("generate_way_out_method"))),C.rn2(2))):C.rn2(2)))?C.HOLE:C.TRAPDOOR))) break gotitdone;
+                if(C.maketrap(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5198,"generate_way_out_method"),C.rn2(2))):C.rn2(2)))?C.HOLE:C.TRAPDOOR))) break gotitdone;
             }
         }
         /* generate one of the escape items */
         if(C.selection_rndcoord(ov2,xAddress,yAddress,(C.i8(0)))) {
-            C.mksobj_at(C.cell((escapeitems+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),5205,(C.literal("generate_way_out_method"))),C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))))*4),"int").value,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(1)),(C.i8(0)));
+            C.mksobj_at(C.cell((escapeitems+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5205,"generate_way_out_method"),C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*6))/BigInt(4)))))))))*4),"int").value,C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,(C.i8(1)),(C.i8(0)));
             break gotitdone;
         }
         (res=(C.i8(0)));
@@ -5000,7 +5000,7 @@ function lspo_drawbridge(L)
         /*NOTREACHED*/
         return 0;
     }
-    if(Number(db_open==C.i32((-1)))) (db_open=Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),5757,(C.literal("lspo_drawbridge"))),C.rn2(2))):C.rn2(2))))));
+    if(Number(db_open==C.i32((-1)))) (db_open=Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",5757,"lspo_drawbridge"),C.rn2(2))):C.rn2(2))))));
     if(Number(!(C.create_drawbridge(C.cell(xAddress,"short").value,C.cell(yAddress,"short").value,dir,C.i8((db_open?C.i32((C.i8(1))):C.i32((C.i8(0))))))))) C.variadic(32,C.literal("Cannot create drawbridge."));
     (C.cell(((C.SpLev_Map+Number(C.cell(xAddress,"short").value)*(1*21))+Number(C.cell(yAddress,"short").value)*1),"char").value=C.i8(1));
     return 0;
@@ -5305,7 +5305,7 @@ TODO: gc.coder->croom needs to be updated
                             (C.cell(xAddress,"long long").value=C.i64(C.i32((C.somex(R330(R78(C.gc)))-R164(C.cell(mfAddress,"struct mapfragment *").value)))));
                             if(Number(C.cell(xAddress,"long long").value<C.i64(1))) (C.cell(xAddress,"long long").value=C.i64(1));
                         } else {
-                            (C.cell(xAddress,"long long").value=C.i64(C.i32((1+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),6154,(C.literal("lspo_map"))),C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value))))))))));
+                            (C.cell(xAddress,"long long").value=C.i64(C.i32((1+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",6154,"lspo_map"),C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((C.i32((80-1))-R164(C.cell(mfAddress,"struct mapfragment *").value))))))))));
                         }
                     }
                     if(Number(oy==C.i32((-1)))) {
@@ -5313,7 +5313,7 @@ TODO: gc.coder->croom needs to be updated
                             (C.cell(yAddress,"long long").value=C.i64(C.i32((C.somey(R330(R78(C.gc)))-R165(C.cell(mfAddress,"struct mapfragment *").value)))));
                             if(Number(C.cell(yAddress,"long long").value<C.i64(1))) (C.cell(yAddress,"long long").value=C.i64(1));
                         } else {
-                            (C.cell(yAddress,"long long").value=C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("sp_lev.c"),6164,(C.literal("lspo_map"))),C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value))))))));
+                            (C.cell(yAddress,"long long").value=C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("sp_lev.c",6164,"lspo_map"),C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value)))))):C.rn2(C.i32((21-R165(C.cell(mfAddress,"struct mapfragment *").value))))))));
                         }
                     }
                 }
@@ -5561,5 +5561,5 @@ function load_special(name)
 /*sp_lev.c*/
 const initializers={splev_init_present,icedpools,SpLev_Map,container_idx,container_obj,invent_carrying_monster,is_ok_location_func,room_types,trap_types,floodfillchk_match_under_typ,nhl_functions};
 
-return Object.freeze({splev_init_present,icedpools,SpLev_Map,container_idx,container_obj,invent_carrying_monster,reset_xystart_size,match_maptyps,mapfrag_fromstr,mapfrag_free,mapfrag_get,mapfrag_canmatch,mapfrag_error,mapfrag_match,solidify_map,map_cleanup,lvlfill_maze_grid,lvlfill_solid,lvlfill_swamp,flip_dbridge_horizontal,flip_dbridge_vertical,flip_visuals,flip_encoded_dir_bits,flip_level,flip_vault_guard,flip_level_rnd,sel_set_wall_property,set_wall_property,remove_boundary_syms,set_door_orientation,shared_with_room,maybe_add_door,link_doors_rooms,rnddoor,rndtrap,get_location,is_ok_location_func,set_ok_location_func,is_ok_location,pm_good_location,get_unpacked_coord,get_location_coord,get_room_loc,get_free_room_loc,check_room,create_room,create_subroom,create_door,create_trap,noncoalignment,m_bad_boulder_spot,pm_to_humidity,sp_amask_to_amask,create_monster,create_object,create_altar,search_door,dig_corridor,create_corridor,fill_special_room,build_room,light_region,wallify_map,maze1xy,fill_empty_maze,splev_initlev,spo_end_moninvent,spo_pop_container,l_push_wid_hei_table,l_push_mkroom_table,lspo_message,get_table_align,get_table_monclass,find_montype,get_table_montype,get_table_xy_or_coord,lspo_monster,get_table_int_or_random,get_table_buc,get_table_objclass,find_objtype,get_table_objtype,lspo_object,lspo_level_flags,lspo_level_init,lspo_engraving,lspo_mineralize,room_types,get_mkroom_name,get_table_roomtype_opt,lspo_room,spo_endroom,good_stair_loc,l_create_stairway,lspo_stair,lspo_ladder,lspo_grave,lspo_altar,trap_types,get_table_traptype_opt,get_trapname_bytype,get_traptype_byname,lspo_trap,lspo_gold,lspo_corridor,lspo_random_corridors,random_wdir,floodfillchk_match_under_typ,floodfillchk_match_under,set_floodfillchk_match_under,floodfillchk_match_accessible,sel_set_ter,sel_set_feature,sel_set_door,lspo_door,l_table_getset_feature_flag,cvt_to_abscoord,cvt_to_relcoord,nhl_abs_coord,lspo_feature,lspo_gas_cloud,lspo_terrain,lspo_replace_terrain,generate_way_out_method,ensure_way_out,get_table_intarray_entry,get_table_region,get_coord,levregion_add,l_get_lregion,lspo_teleport_region,lspo_levregion,lspo_exclusion,sel_set_lit,add_doors_to_room,get_table_coords_or_region,lspo_region,lspo_drawbridge,lspo_mazewalk,lspo_wall_property,set_wallprop_in_selection,lspo_non_diggable,lspo_non_passwall,lspo_wallify,lspo_reset_level,lspo_finalize_level,lspo_map,update_croom,sp_level_coder_init,nhl_functions,l_register_des,create_des_coder,load_special,initializers});
+return C.nativeAddressNamespaceReady(Object.freeze({splev_init_present,icedpools,SpLev_Map,container_idx,container_obj,invent_carrying_monster,reset_xystart_size,match_maptyps,mapfrag_fromstr,mapfrag_free,mapfrag_get,mapfrag_canmatch,mapfrag_error,mapfrag_match,solidify_map,map_cleanup,lvlfill_maze_grid,lvlfill_solid,lvlfill_swamp,flip_dbridge_horizontal,flip_dbridge_vertical,flip_visuals,flip_encoded_dir_bits,flip_level,flip_vault_guard,flip_level_rnd,sel_set_wall_property,set_wall_property,remove_boundary_syms,set_door_orientation,shared_with_room,maybe_add_door,link_doors_rooms,rnddoor,rndtrap,get_location,is_ok_location_func,set_ok_location_func,is_ok_location,pm_good_location,get_unpacked_coord,get_location_coord,get_room_loc,get_free_room_loc,check_room,create_room,create_subroom,create_door,create_trap,noncoalignment,m_bad_boulder_spot,pm_to_humidity,sp_amask_to_amask,create_monster,create_object,create_altar,search_door,dig_corridor,create_corridor,fill_special_room,build_room,light_region,wallify_map,maze1xy,fill_empty_maze,splev_initlev,spo_end_moninvent,spo_pop_container,l_push_wid_hei_table,l_push_mkroom_table,lspo_message,get_table_align,get_table_monclass,find_montype,get_table_montype,get_table_xy_or_coord,lspo_monster,get_table_int_or_random,get_table_buc,get_table_objclass,find_objtype,get_table_objtype,lspo_object,lspo_level_flags,lspo_level_init,lspo_engraving,lspo_mineralize,room_types,get_mkroom_name,get_table_roomtype_opt,lspo_room,spo_endroom,good_stair_loc,l_create_stairway,lspo_stair,lspo_ladder,lspo_grave,lspo_altar,trap_types,get_table_traptype_opt,get_trapname_bytype,get_traptype_byname,lspo_trap,lspo_gold,lspo_corridor,lspo_random_corridors,random_wdir,floodfillchk_match_under_typ,floodfillchk_match_under,set_floodfillchk_match_under,floodfillchk_match_accessible,sel_set_ter,sel_set_feature,sel_set_door,lspo_door,l_table_getset_feature_flag,cvt_to_abscoord,cvt_to_relcoord,nhl_abs_coord,lspo_feature,lspo_gas_cloud,lspo_terrain,lspo_replace_terrain,generate_way_out_method,ensure_way_out,get_table_intarray_entry,get_table_region,get_coord,levregion_add,l_get_lregion,lspo_teleport_region,lspo_levregion,lspo_exclusion,sel_set_lit,add_doors_to_room,get_table_coords_or_region,lspo_region,lspo_drawbridge,lspo_mazewalk,lspo_wall_property,set_wallprop_in_selection,lspo_non_diggable,lspo_non_passwall,lspo_wallify,lspo_reset_level,lspo_finalize_level,lspo_map,update_croom,sp_level_coder_init,nhl_functions,l_register_des,create_des_coder,load_special,initializers}),C);
 }

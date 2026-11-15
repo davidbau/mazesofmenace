@@ -466,13 +466,13 @@ function fix_worst_trouble(trouble)
            boosted to be more than that */
             C.variadic(7,C.literal("much better."));
         if((Number(R131(C.u)!=R130(C.u)))) {
-            (maxhp=C.i32((R133(C.u)+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),427,(C.literal("fix_worst_trouble"))),C.rnd(5))):C.rnd(5))))));
+            (maxhp=C.i32((R133(C.u)+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",427,"fix_worst_trouble"),C.rnd(5))):C.rnd(5))))));
             C.setuhpmax(((Number((maxhp)>(C.i32((5+1))))?(maxhp):(C.i32((5+1))))),(C.i8(0)));
             /* acts as setmhmax() */
             (W132(C.u,R133(C.u)));
         }
         (maxhp=R148(C.u));
-        if(Number(maxhp<C.i32((C.i32((R122(C.u)*5))+11)))) (maxhp=C.i32(maxhp+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),433,(C.literal("fix_worst_trouble"))),C.rnd(5))):C.rnd(5)))));
+        if(Number(maxhp<C.i32((C.i32((R122(C.u)*5))+11)))) (maxhp=C.i32(maxhp+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",433,"fix_worst_trouble"),C.rnd(5))):C.rnd(5)))));
         /* True: update u.uhpmax even if currently poly'd */
         C.setuhpmax(((Number((maxhp)>(C.i32((5+1))))?(maxhp):(C.i32((5+1))))),(C.i8(1)));
         (W147(C.u,R148(C.u)));
@@ -509,7 +509,7 @@ function fix_worst_trouble(trouble)
                Without something like this, fix_all_troubles can get
                stuck in an infinite loop trying to fix STUCK_IN_WALL
                and repeatedly failing. */
-                C.set_itimeout(A104(A129(C.u)+Number(C.PASSES_WALLS)*C.sizes["struct prop"]),C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),473,(C.literal("fix_worst_trouble"))),C.d((4),(4)))):C.d((4),(4))))+4)))));
+                C.set_itimeout(A104(A129(C.u)+Number(C.PASSES_WALLS)*C.sizes["struct prop"]),C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",473,"fix_worst_trouble"),C.d((4),(4)))):C.d((4),(4))))+4)))));
                 /* 8..20 */
                 /* how else could you move between packed rocks or among
                lattice forming "solid" rock? */
@@ -727,7 +727,7 @@ function angrygods(resp_god)
  else if(Number(maxanger>15)) (maxanger=15);
     /* possible if bad align & good luck */
     /* be reasonable */
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),725,(C.literal("angrygods"))),C.rn2(maxanger))):C.rn2(maxanger)))) {
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",725,"angrygods"),C.rn2(maxanger))):C.rn2(maxanger)))) {
         case (0):
             case (1):
                 C.variadic(38,C.literal("that %s is %s."),align_gname(resp_god),((Number(!!(R104(A129(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R104(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))?C.literal("bummed"):C.literal("displeased")));
@@ -753,7 +753,7 @@ function angrygods(resp_god)
             case (5):
                 gods_angry(resp_god);
         if(Number(!!(Number(!((Number(!!((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&Number(!((Number(!!(R104(A129(C.u)+Number(C.ANTIMAGIC)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.ANTIMAGIC)*C.sizes["struct prop"]))))))))) C.variadic(41,C.literal("%s glow surrounds you."),C.An(C.hcolor(R11(C.c_color_names))));
-        if(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),757,(C.literal("angrygods"))),C.rn2(2))):C.rn2(2)))||Number(!(C.attrcurse()))))) C.rndcurse();
+        if(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",757,"angrygods"),C.rn2(2))):C.rn2(2)))||Number(!(C.attrcurse()))))) C.rndcurse();
         break;
         case (7):
             case (8):
@@ -770,7 +770,7 @@ function angrygods(resp_god)
         break;
     }
     /* even though this might not be in response to prayer, set pray timer */
-    (new_ublesscnt=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),780,(C.literal("angrygods"))),C.rnz(300))):C.rnz(300))));
+    (new_ublesscnt=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",780,"angrygods"),C.rnz(300))):C.rnz(300))));
     if(Number(new_ublesscnt>R153(C.u))) (W153(C.u,new_ublesscnt));
     return;
 }
@@ -980,7 +980,7 @@ function give_spell()
      * receiving the book for it, unless it's already well known.
      * The chance is not influenced by whether hero is illiterate.
      */
-    if(Number(!!(Number(!!(Number(C.i32(R73(otmp))!=C.SPE_BLANK_PAPER)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1030,(C.literal("give_spell"))),C.rn2(4))):C.rn2(4)))))))&&Number(((spe_knowledge=C.known_spell(R73(otmp))))!=C.spe_Fresh)))) {
+    if(Number(!!(Number(!!(Number(C.i32(R73(otmp))!=C.SPE_BLANK_PAPER)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1030,"give_spell"),C.rn2(4))):C.rn2(4)))))))&&Number(((spe_knowledge=C.known_spell(R73(otmp))))!=C.spe_Fresh)))) {
         /* force_learn_spell() should only return '\0' if the book
            is blank paper or the spell is known and has retention
            of spe_Fresh, so no 'else' case is needed here */
@@ -1004,7 +1004,7 @@ function give_spell()
         /* discovering blank paper will make it less likely to
            be given again; small chance to arbitrarily discover
            some other book type without having to read it first */
-        if(Number(!!(Number(C.i32(R73(otmp))==C.SPE_BLANK_PAPER)||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1060,(C.literal("give_spell"))),C.rn2(100))):C.rn2(100)))))))) C.discover_object(C.i32((R73(otmp))),(C.i8(1)),(C.i8(1)),(C.i8(1)));
+        if(Number(!!(Number(C.i32(R73(otmp))==C.SPE_BLANK_PAPER)||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1060,"give_spell"),C.rn2(100))):C.rn2(100)))))))) C.discover_object(C.i32((R73(otmp))),(C.i8(1)),(C.i8(1)),(C.i8(1)));
         C.bless(otmp);
         at_your_feet(C.upstart(C.ansimpleoname(otmp)));
         C.place_object(otmp,R119(C.u),R120(C.u));
@@ -1062,9 +1062,9 @@ function pleased(g_align)
            a divide by zero crash when generating a random number.  */
         (prayer_luck=((Number(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u))))))>(C.i32((-1))))?((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))):(C.i32((-1))))));
         /* => (prayer_luck + 2 > 0) */
-        (action=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1126,(C.literal("pleased"))),C.rn2(C.i32((prayer_luck+(((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))?C.i32((3+(Number((C.i32((C.i32(R106((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"]))&8)))!=0)))):2))))))):C.rn2(C.i32((prayer_luck+(((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))?C.i32((3+(Number((C.i32((C.i32(R106((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"]))&8)))!=0)))):2)))))))+(1)))));
+        (action=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1126,"pleased"),C.rn2(C.i32((prayer_luck+(((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))?C.i32((3+(Number((C.i32((C.i32(R106((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"]))&8)))!=0)))):2))))))):C.rn2(C.i32((prayer_luck+(((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))?C.i32((3+(Number((C.i32((C.i32(R106((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"]))&8)))!=0)))):2)))))))+(1)))));
         if(Number(!((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))))) (action=((Number((action)<(3))?(action):(3))));
-        if(Number(R9(A143(C.u))<4)) (action=((Number(!!(Number(R9(A143(C.u))>0)||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1130,(C.literal("pleased"))),C.rnl(2))):C.rnl(2))))))))?1:0));
+        if(Number(R9(A143(C.u))<4)) (action=((Number(!!(Number(R9(A143(C.u))>0)||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1130,"pleased"),C.rnl(2))):C.rnl(2))))))))?1:0));
         switch(((Number((action)<(5))?(action):(5)))) {
             case (5):
                 (pat_on_head=1);
@@ -1095,7 +1095,7 @@ function pleased(g_align)
     /* note: can't get pat_on_head unless all troubles have just been
        fixed or there were no troubles to begin with; hallucination
        won't be in effect so special handling for it is superfluous */
-    if(pat_on_head) switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1167,(C.literal("pleased"))),C.rn2(C.i32(((C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6)))>>1))))):C.rn2(C.i32(((C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6)))>>1)))))) {
+    if(pat_on_head) switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1167,"pleased"),C.rn2(C.i32(((C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6)))>>1))))):C.rn2(C.i32(((C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6)))>>1)))))) {
         case (0):
             break;
         case (1):
@@ -1230,7 +1230,7 @@ function pleased(g_align)
                 } else {
                     if(Number(!((C.i64((R104(A129(C.u)+Number(C.PROTECTION)*C.sizes["struct prop"])&(C.i64((C.i64((67108864n|33554432n))|16777216n))))))))) {
                         (W104(A129(C.u)+Number(C.PROTECTION)*C.sizes["struct prop"],C.i64(R104(A129(C.u)+Number(C.PROTECTION)*C.sizes["struct prop"])|67108864n)));
-                        if(Number(!(R152(C.u)))) (W152(C.u,C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1331,(C.literal("pleased"))),C.rn2(3))):C.rn2(3)))+(2)))));
+                        if(Number(!(R152(C.u)))) (W152(C.u,C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1331,"pleased"),C.rn2(3))):C.rn2(3)))+(2)))));
                     } else ((W152(C.u,C.i32((R152(C.u)+1))))-1);
                     C.variadic(81,msg,C.literal("my protection"));
                 }
@@ -1252,10 +1252,10 @@ function pleased(g_align)
             C.variadic(83,C.literal("Confused deity!"));
         break;
     }
-    (W153(C.u,C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1356,(C.literal("pleased"))),C.rnz(350))):C.rnz(350)));
+    (W153(C.u,C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1356,"pleased"),C.rnz(350))):C.rnz(350)));
     (kick_on_butt=(C.i32(R114(A138(C.u)))?1:0));
     if(R113(A138(C.u))) ((kick_on_butt=C.i32((kick_on_butt+1)))-1);
-    if(kick_on_butt) (W153(C.u,C.i32(R153(C.u)+C.i32((kick_on_butt*((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1361,(C.literal("pleased"))),C.rnz(1000))):C.rnz(1000))))))));
+    if(kick_on_butt) (W153(C.u,C.i32(R153(C.u)+C.i32((kick_on_butt*((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1361,"pleased"),C.rnz(1000))):C.rnz(1000))))))));
     /* Avoid games that go into infinite loops of copy-pasted commands
        with no human interaction; this is a DoS vector against the
        computer running NetHack.  Once the turn counter is over 100000,
@@ -1304,7 +1304,7 @@ function godvoice(g_align,words)
     let quot=C.literal("");
     if(words) (quot=C.literal("\""));
  else (words=C.literal(""));
-    C.variadic(85,C.literal("voice of %s %s: %s%s%s"),align_gname(g_align),C.godvoices[Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1425,(C.literal("godvoice"))),C.rn2(C.i32((C.u64((BigInt((8*4))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*4))/BigInt(8)))))))))],quot,words,quot);
+    C.variadic(85,C.literal("voice of %s %s: %s%s%s"),align_gname(g_align),C.godvoices[Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1425,"godvoice"),C.rn2(C.i32((C.u64((BigInt((8*4))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*4))/BigInt(8)))))))))],quot,words,quot);
 }
 
 function gods_angry(g_align)
@@ -1324,7 +1324,7 @@ function gods_upset(g_align)
 
 function consume_offering(otmp)
 {
-    if((Number(!!(R104(A129(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R104(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))) switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1449,(C.literal("consume_offering"))),C.rn2(3))):C.rn2(3)))) {
+    if((Number(!!(R104(A129(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R104(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))) switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1449,"consume_offering"),C.rn2(3))):C.rn2(3)))) {
         case (0):
             C.variadic(86,C.literal("sacrifice sprouts wings and a propeller and roars away!"));
         break;
@@ -1508,7 +1508,7 @@ function offer_different_alignment_altar(otmp,altaralign)
     } else {
         consume_offering(otmp);
         C.variadic(115,C.literal("sense a conflict between %s and %s."),u_gname(),a_gname());
-        if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1661,(C.literal("offer_different_alignment_altar"))),C.rn2(C.i32((8+R122(C.u)))))):C.rn2(C.i32((8+R122(C.u))))))>5)) {
+        if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1661,"offer_different_alignment_altar"),C.rn2(C.i32((8+R122(C.u)))))):C.rn2(C.i32((8+R122(C.u))))))>5)) {
             let pri;
             let shrine;
             C.variadic(116,C.literal("the power of %s increase."),u_gname());
@@ -1520,14 +1520,14 @@ function offer_different_alignment_altar(otmp,altaralign)
             C.newsym(R119(C.u),R120(C.u));
             /* in case Invisible to self */
             if(Number(!((Number(!!((Number(!!(R104(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R102(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R103(A129(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))) C.variadic(117,C.literal("altar glows %s."),C.hcolor(((Number(C.i32(R8(A143(C.u)))==1))?R15(C.c_color_names):(C.i32(R8(A143(C.u)))?R11(C.c_color_names):C.literal("gray")))));
-            if(Number(!!(Number(!!(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1679,(C.literal("offer_different_alignment_altar"))),C.rnl(R122(C.u)))):C.rnl(R122(C.u))))>6)&&Number(R9(A143(C.u))>0)))&&Number(C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1680,(C.literal("offer_different_alignment_altar"))),C.rnd(R9(A143(C.u))))):C.rnd(R9(A143(C.u))))))>C.i64(((C.i64((C.i64(3)*(C.i64((10n+(C.i64((R46(C.svm)/200n)))))))))/C.i64(4))))))) C.summon_minion(altaralign,(C.i8(1)));
+            if(Number(!!(Number(!!(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1679,"offer_different_alignment_altar"),C.rnl(R122(C.u)))):C.rnl(R122(C.u))))>6)&&Number(R9(A143(C.u))>0)))&&Number(C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1680,"offer_different_alignment_altar"),C.rnd(R9(A143(C.u))))):C.rnd(R9(A143(C.u))))))>C.i64(((C.i64((C.i64(3)*(C.i64((10n+(C.i64((R46(C.svm)/200n)))))))))/C.i64(4))))))) C.summon_minion(altaralign,(C.i8(1)));
             /* anger priest; test handles bones files */
             if(Number(!!(((pri=C.findpriest(C.temple_occupied(A126(C.u)))))&&Number(!(C.p_coaligned(pri)))))) C.angry_priest();
         } else {
             C.variadic(118,C.literal("Unluckily, you feel the power of %s decrease."),u_gname());
             C.change_luck(C.i8(C.i32((-1))));
             C.exercise(C.A_WIS,(C.i8(0)));
-            if(Number(!!(Number(!!(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1690,(C.literal("offer_different_alignment_altar"))),C.rnl(R122(C.u)))):C.rnl(R122(C.u))))>6)&&Number(R9(A143(C.u))>0)))&&Number(C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1691,(C.literal("offer_different_alignment_altar"))),C.rnd(R9(A143(C.u))))):C.rnd(R9(A143(C.u))))))>C.i64(((C.i64((C.i64(7)*(C.i64((10n+(C.i64((R46(C.svm)/200n)))))))))/C.i64(8))))))) C.summon_minion(altaralign,(C.i8(1)));
+            if(Number(!!(Number(!!(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1690,"offer_different_alignment_altar"),C.rnl(R122(C.u)))):C.rnl(R122(C.u))))>6)&&Number(R9(A143(C.u))>0)))&&Number(C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1691,"offer_different_alignment_altar"),C.rnd(R9(A143(C.u))))):C.rnd(R9(A143(C.u))))))>C.i64(((C.i64((C.i64(7)*(C.i64((10n+(C.i64((R46(C.svm)/200n)))))))))/C.i64(8))))))) C.summon_minion(altaralign,(C.i8(1)));
         }
     }
 }
@@ -1611,7 +1611,7 @@ function bestow_artifact(max_giftvalue)
         /* The player can gain an artifact */
         /* The chance goes down as the number of artifacts goes up */
         if(R30(C.flags)) (do_bestow=C.i8(Number(C.i32(C.yn_function(C.literal("Gift an artifact?"),C.ynchars,C.i8(110),(C.i8(1))))==121)));
- else (do_bestow=C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1792,(C.literal("bestow_artifact"))),C.rn2(C.i32((6+(C.i32((C.i32((2*R151(C.u)))*nartifacts)))))))):C.rn2(C.i32((6+(C.i32((C.i32((2*R151(C.u)))*nartifacts))))))))))));
+ else (do_bestow=C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1792,"bestow_artifact"),C.rn2(C.i32((6+(C.i32((C.i32((2*R151(C.u)))*nartifacts)))))))):C.rn2(C.i32((6+(C.i32((C.i32((2*R151(C.u)))*nartifacts))))))))))));
     }
     if(do_bestow) {
         let otmp;
@@ -1629,7 +1629,7 @@ function bestow_artifact(max_giftvalue)
             C.dropy(otmp);
             godvoice(R8(A143(C.u)),C.literal("Use my gift wisely!"));
             ((W151(C.u,C.i32((R151(C.u)+1))))-1);
-            (W153(C.u,C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),1819,(C.literal("bestow_artifact"))),C.rnz(C.i32((300+(C.i32((50*nartifacts)))))))):C.rnz(C.i32((300+(C.i32((50*nartifacts))))))));
+            (W153(C.u,C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",1819,"bestow_artifact"),C.rnz(C.i32((300+(C.i32((50*nartifacts)))))))):C.rnz(C.i32((300+(C.i32((50*nartifacts))))))));
             C.exercise(C.A_WIS,(C.i8(1)));
             C.variadic(128,C.i64((8n|64n)),C.literal("was bestowed with %s by %s"),C.artiname(C.i32(R77(otmp))),align_gname(R8(A143(C.u))));
             /* make sure we can use this weapon */
@@ -1894,7 +1894,7 @@ function can_pray(praying)
         if(Number(!!((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))&&Number(C.i32(R8(A143(C.u)))!=C.i32(R39(C.gp)))))) (W41(C.gp,2));
  else (W41(C.gp,3));
     }
-    if(Number(!!(Number(!!((Number((C.u64((R100(R56(A51(C.gy)))&C.u64(2n))))!=C.u64(0n)))&&Number(!(C.In_hell(A121(C.u))))))&&(Number(!!(Number(C.i32(R39(C.gp))==1)||(Number(!!(Number(C.i32(R39(C.gp))==0)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2166,(C.literal("can_pray"))),C.rn2(10))):C.rn2(10)))))))))))))) (W41(C.gp,C.i32((-1))));
+    if(Number(!!(Number(!!((Number((C.u64((R100(R56(A51(C.gy)))&C.u64(2n))))!=C.u64(0n)))&&Number(!(C.In_hell(A121(C.u))))))&&(Number(!!(Number(C.i32(R39(C.gp))==1)||(Number(!!(Number(C.i32(R39(C.gp))==0)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2166,"can_pray"),C.rn2(10))):C.rn2(10)))))))))))))) (W41(C.gp,C.i32((-1))));
     /* Note:  when !praying, the random factor for neutrals makes the
        return value a non-deterministic approximation for enlightenment.
        This case should be uncommon enough to live with... */
@@ -1997,19 +1997,19 @@ function prayer_done()
         /* KMH -- Gods have mastery over unchanging */
         C.rehumanize();
         /* no Half_physical_damage adjustment here */
-        C.losehp(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2303,(C.literal("prayer_done"))),C.rnd(20))):C.rnd(20))),C.literal("residual undead turning effect"),C.i8(0));
+        C.losehp(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2303,"prayer_done"),C.rnd(20))):C.rnd(20))),C.literal("residual undead turning effect"),C.i8(0));
         C.exercise(C.A_CON,(C.i8(0)));
         return 1;
     }
     if(C.In_hell(A121(C.u))) {
         C.variadic(156,C.literal("Since you are in Gehennom, %s can't help you."),align_gname(alignment));
         /* haltingly aligned is least likely to anger */
-        if(Number(!!(Number(R9(A143(C.u))<=0)||((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2311,(C.literal("prayer_done"))),C.rnl(R9(A143(C.u))))):C.rnl(R9(A143(C.u)))))))) angrygods(R8(A143(C.u)));
+        if(Number(!!(Number(R9(A143(C.u))<=0)||((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2311,"prayer_done"),C.rnl(R9(A143(C.u))))):C.rnl(R9(A143(C.u)))))))) angrygods(R8(A143(C.u)));
         return 0;
     }
     if(Number(R41(C.gp)==0)) {
         if(Number(!!((Number(C.i32((R105((A26(A45(C.svl))+Number(R119(C.u))*(C.sizes["struct rm"]*21))+Number(R120(C.u))*C.sizes["struct rm"])))==C.ALTAR))&&Number(C.i32(R8(A143(C.u)))!=C.i32(alignment))))) water_prayer((C.i8(0)));
-        (W153(C.u,C.i32(R153(C.u)+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2319,(C.literal("prayer_done"))),C.rnz(250))):C.rnz(250))))));
+        (W153(C.u,C.i32(R153(C.u)+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2319,"prayer_done"),C.rnz(250))):C.rnz(250))))));
         C.change_luck(C.i8(C.i32((-3))));
         gods_upset(R8(A143(C.u)));
     } else if(Number(R41(C.gp)==1)) {
@@ -2019,7 +2019,7 @@ function prayer_done()
     } else if(Number(R41(C.gp)==2)) {
         if(water_prayer((C.i8(0)))) {
             /* attempted water prayer on a non-coaligned altar */
-            (W153(C.u,C.i32(R153(C.u)+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2329,(C.literal("prayer_done"))),C.rnz(250))):C.rnz(250))))));
+            (W153(C.u,C.i32(R153(C.u)+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2329,"prayer_done"),C.rnz(250))):C.rnz(250))))));
             C.change_luck(C.i8(C.i32((-3))));
             gods_upset(R8(A143(C.u)));
         } else pleased(alignment);
@@ -2311,7 +2311,7 @@ function altar_wrath(x,y)
     x=C.i16(x);
     y=C.i16(y);
     let altaralign=((C.i8((((Number((C.i32(((C.i32((C.i32(R106((A26(A45(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))&7)))&7)))==0))?(C.i32((-128))):((Number((C.i32(((C.i32((C.i32(R106((A26(A45(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))&7)))&7)))==4))?1:C.i32((((C.i32(((C.i32((C.i32(R106((A26(A45(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))&7)))&7))))-2))))))));
-    if(Number(!!(Number(C.i32(R8(A143(C.u)))==C.i32(altaralign))&&Number(R9(A143(C.u))>C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2656,(C.literal("altar_wrath"))),C.rn2(4))):C.rn2(4))))))))) {
+    if(Number(!!(Number(C.i32(R8(A143(C.u)))==C.i32(altaralign))&&Number(R9(A143(C.u))>C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2656,"altar_wrath"),C.rn2(4))):C.rn2(4))))))))) {
         godvoice(altaralign,C.literal("How darest thou desecrate my altar!"));
         C.adjattrib(C.A_WIS,C.i32((-1)),C.i32((C.i8(0))));
         ((W9(A143(C.u),C.i32((R9(A143(C.u))-1))))+1);
@@ -2321,7 +2321,7 @@ function altar_wrath(x,y)
         C.variadic(168,C.literal("Thou shalt pay, infidel!"));
         /* higher luck is more likely to be reduced; as it approaches -5
            the chance to lose another point drops down, eventually to 0 */
-        if(Number(!!(Number((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))>C.i32((-5)))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2670,(C.literal("altar_wrath"))),C.rn2(C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6))))):C.rn2(C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6)))))))) C.change_luck(C.i8((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pray.c"),2671,(C.literal("altar_wrath"))),C.rn2(20))):C.rn2(20)))?C.i32((-1)):C.i32((-2)))));
+        if(Number(!!(Number((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))>C.i32((-5)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2670,"altar_wrath"),C.rn2(C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6))))):C.rn2(C.i32(((C.i32((C.i32(R145(C.u))+C.i32(R146(C.u)))))+6)))))))) C.change_luck(C.i8((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pray.c",2671,"altar_wrath"),C.rn2(20))):C.rn2(20)))?C.i32((-1)):C.i32((-2)))));
     }
 }
 
@@ -2368,5 +2368,5 @@ function blocked_boulder(dx,dy)
 /*pray.c*/
 const initialState=C=>({Moloch:Moloch(C),godvoices:godvoices(C),turn_undead_range:0,turn_undead_msg_cnt:0,hallu_gods:hallu_gods(C)});
 
-return Object.freeze({Moloch,godvoices,critically_low_hp,stuck_in_wall,in_trouble,worst_cursed_item,fix_curse_trouble,fix_worst_trouble,god_zaps_you,fry_by_god,angrygods,at_your_feet,gcrownu,give_spell,pleased,water_prayer,godvoice,gods_angry,gods_upset,consume_offering,offer_too_soon,desecrate_altar,offer_real_amulet,offer_negative_valued,offer_fake_amulet,offer_different_alignment_altar,sacrifice_your_race,bestow_artifact,sacrifice_value,dosacrifice,eval_offering,offer_corpse,can_pray,pray_revive,dopray,prayer_done,maybe_turn_mon_iter,doturn,altarmask_at,a_gname,a_gname_at,u_gname,align_gname,hallu_gods,halu_gname,align_gtitle,altar_wrath,blocked_boulder,initialState});
+return C.nativeAddressNamespaceReady(Object.freeze({Moloch,godvoices,critically_low_hp,stuck_in_wall,in_trouble,worst_cursed_item,fix_curse_trouble,fix_worst_trouble,god_zaps_you,fry_by_god,angrygods,at_your_feet,gcrownu,give_spell,pleased,water_prayer,godvoice,gods_angry,gods_upset,consume_offering,offer_too_soon,desecrate_altar,offer_real_amulet,offer_negative_valued,offer_fake_amulet,offer_different_alignment_altar,sacrifice_your_race,bestow_artifact,sacrifice_value,dosacrifice,eval_offering,offer_corpse,can_pray,pray_revive,dopray,prayer_done,maybe_turn_mon_iter,doturn,altarmask_at,a_gname,a_gname_at,u_gname,align_gname,hallu_gods,halu_gname,align_gtitle,altar_wrath,blocked_boulder,initialState}),C);
 }

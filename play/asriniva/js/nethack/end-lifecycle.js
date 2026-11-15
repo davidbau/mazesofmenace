@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original END lifecycle on the existing killer owner and shared native state.
 import abi from './end-lifecycle-abi.json' with {type:'json'};
 import * as source from '../ported/end.js';
@@ -40,8 +41,8 @@ export function enableEndLifecycle(environment,layouts){
  for(const[name,target]of Object.entries(callbacks))local[name]=(...args)=>windowCall(target,...args);
  for(const name of ['You','Your','You_feel','pline','pline_The','raw_printf','impossible','livelog_printf'])local[name]=(...args)=>resolve(name)(...boundary(args));
  for(const name of ['Sfo_kinfo','Sfi_kinfo'])local[name]=(...args)=>resolve(name==='Sfo_kinfo'?'sfo_kinfo':'sfi_kinfo')(...boundary(args));
- local.rn2=(n,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('end.c'),transport.int(line),text('fuzzer_savelife'));return resolve('rn2')(transport.int(n));};
- local.d=(n,count,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('end.c'),transport.int(line),text('really_done'));return resolve('d')(transport.int(n),transport.int(count));};
+ local.rn2=(n,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'end.c',transport.int(line),'fuzzer_savelife');return resolve('rn2')(transport.int(n));};
+ local.d=(n,count,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'end.c',transport.int(line),'really_done');return resolve('d')(transport.int(n),transport.int(count));};
  context=createEndEnvironment(local,L);
  const names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name));
  const parameters=name=>abi.public[name].match(/\(([^)]*)\)/)[1].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');

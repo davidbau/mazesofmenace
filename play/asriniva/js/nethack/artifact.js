@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 import {compileNativeFieldPlans} from './native/address-fields.js';
@@ -46,7 +47,7 @@ export function upgradeArtifact(environment,layouts,legacy){
   address:(kind,p,index)=>locate(kind,p,index).at,
   functionPointer:i=>{const name=abi.callbacks[i];if(!name)throw new Error('Unknown ARTIFACT callback '+i);return pointer(name,'ip');},
   foreignFunctionPointer:i=>{const name=abi.foreignCallbacks[i];if(!name)throw new Error('Unknown ARTIFACT foreign callback '+i);return environment.functionPointer(name,name==='xname'?'pp':'ip');},
-  rngCaller:(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('artifact.c'),transport.int(line),text(caller));},
+  rngCaller:(line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'artifact.c',transport.int(line),caller);},
   create_nhwindow:type=>window('win_create_nhwindow','ii',transport.int(type)),start_menu:(win,flags)=>window('win_start_menu','vij',transport.int(win),transport.ulong(flags)),
   end_menu:(win,message)=>window('win_end_menu','vip',transport.int(win),text(message)),destroy_nhwindow:win=>window('win_destroy_nhwindow','vi',transport.int(win)),
   display_nhwindow:(win,block)=>window('win_display_nhwindow','vii',transport.int(win),transport.char(block)),putstr:(win,attr,message)=>window('win_putstr','viip',transport.int(win),transport.int(attr),text(message)),

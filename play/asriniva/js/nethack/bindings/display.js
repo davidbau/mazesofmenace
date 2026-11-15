@@ -1,3 +1,4 @@
+import {createServiceForwarder} from '../../c-runtime/service-scope.js';
 import {installNativeDisplayValues} from '../native/display-values.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/display.js';
@@ -41,7 +42,7 @@ function displayState(services){
  let state=states.get(services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});
+  const forwarding=createServiceForwarder(state);
   state.env=createDisplayEnvironment(forwarding);
   states.set(services.moduleKey,state);
  }

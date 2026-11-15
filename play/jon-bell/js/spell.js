@@ -13,7 +13,7 @@ import { P_NONE, P_MASTER, P_GRAND_MASTER, MAX_SPELL_STUDY } from './const.js';
 import { P_SKILL } from './skills.js';
 import { roles } from './roles.js';
 import { nhgetch } from './input.js';
-import { shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
+import { flush_pending_messages, shieldeff, flush_screen, newsym, show_glyph_cell, topl_force_break_now, docrt } from './display.js';
 import { pline } from './pline.js';
 import { rn1 } from './rng.js';
 import { rn2, rnd } from './rnd.js';
@@ -1279,7 +1279,7 @@ export async function study_book_learn(spellbook) {
 
 // ── spelltypemnemonic ────────────────────────────────────────────────────────
 // C ref: spell.c:832-853 spelltypemnemonic(int skill)
-function spelltypemnemonic(skill_type) {
+async function spelltypemnemonic(skill_type) {
     switch (skill_type) {
         case P_ATTACK_SPELL:      return 'attack';
         case P_HEALING_SPELL:     return 'healing';
@@ -1288,7 +1288,10 @@ function spelltypemnemonic(skill_type) {
         case P_CLERIC_SPELL:      return 'clerical';
         case P_ESCAPE_SPELL:      return 'escape';
         case P_MATTER_SPELL:      return 'matter';
-        default:                  return '';
+        default:
+            /* C spell.c:850 */
+            await impossible('Unknown spell skill, %d;', skill_type);
+            return '';
     }
 }
 
@@ -1393,7 +1396,7 @@ function _wizard() { return !!(game.flags && game.flags.debug); }
 // Returns the RAW row: no SGR attributes and no blank-run collapsing, so the
 // caller can measure the true printed width before rendering (C's tty computes
 // the menu's offx from the printed width — see dospellmenu_render below).
-function format_spell_row_raw(i, splnum) {
+async function format_spell_row_raw(i, splnum) {
     const sb = (game.spl_book || [])[splnum];
     if (!sb) return '';
     const otyp = sb.sp_id;
@@ -1406,7 +1409,7 @@ function format_spell_row_raw(i, splnum) {
     if (initrole === ROLE_CLERIC && otyp === SPE_LIGHT) {
         skill_type = P_CLERIC_SPELL;
     }
-    const category = spelltypemnemonic(skill_type);
+    const category = await spelltypemnemonic(skill_type);
     const fail = 100 - percent_success(splnum);
     const retention = spellretention(splnum);
     /* C ref: spell.c:2107 fmt — the "<letter> - " prefix is NOT part of fmt;
@@ -1457,7 +1460,7 @@ async function dospellmenu(prompt, splaction) {
         const splnum = !spl_orderindx ? i : spl_orderindx[i];
         items.push({
             accel: spellet(splnum),
-            raw: format_spell_row_raw(i, splnum),
+            raw: await format_spell_row_raw(i, splnum),
             a_int: splnum + 1, /* C ref: spell.c:2127 "must be non-zero" */
             /* C ref: spell.c:2129-2131 MENU_ITEMFLAGS_SELECTED; tty draws '*' */
             sel: splnum === splaction,
@@ -1477,6 +1480,11 @@ async function dospellmenu(prompt, splaction) {
         }
     }
 
+    /* C wintty.c:1921 tty_display_nhwindow(NHW_MENU): a topline still waiting
+     * on its --More-- (impossible()'s lines raised while the rows above were
+     * formatted) is acknowledged before the menu opens. */
+    if (g._pending_message)
+        await flush_pending_messages();
     const n = await dospellmenu_render_and_read(prompt, headingRaw, items, how);
 
     /* C ref: spell.c:2154-2168 — select_menu's return is turned into the

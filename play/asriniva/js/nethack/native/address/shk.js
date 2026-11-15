@@ -829,7 +829,7 @@ function u_entered_shop(enterstring)
             ;
             C.variadic(26,C.literal("So, %s, you dare return to %s %s?!"),A68(C.svp),C.s_suffix(C.shkname(shkp)),R165(C.shtypes+Number(C.i32((rt-C.SHOPBASE)))*C.sizes["struct shclass"]));
         } else {
-            C.variadic(27,C.literal("%s seems %s over your return to %s %s!"),C.Shknam(shkp),C.cell((C.staticAddress("angrytexts")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),820,(C.literal("u_entered_shop"))),C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))))*8),"char *").value,(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),R165(C.shtypes+Number(C.i32((rt-C.SHOPBASE)))*C.sizes["struct shclass"]));
+            C.variadic(27,C.literal("%s seems %s over your return to %s %s!"),C.Shknam(shkp),C.cell((C.staticAddress("angrytexts")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",820,"u_entered_shop"),C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))))*8),"char *").value,(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),R165(C.shtypes+Number(C.i32((rt-C.SHOPBASE)))*C.sizes["struct shclass"]));
         }
     } else if(R36(eshkp)) {
         if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
@@ -1747,7 +1747,7 @@ function dopay()
     if(Number(!!(Number(!!(ltmp||R41(eshkp)))||R31(eshkp)))) rouse_shk(shkp,(C.i8(1)));
     if((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))) {
         /* still asleep/paralyzed */
-        C.variadic(74,C.literal("%s %s."),C.Shknam(shkp),(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),1865,(C.literal("dopay"))),C.rn2(2))):C.rn2(2)))?C.literal("seems to be napping"):C.literal("doesn't respond")));
+        C.variadic(74,C.literal("%s %s."),C.Shknam(shkp),(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",1865,"dopay"),C.rn2(2))):C.rn2(2)))?C.literal("seems to be napping"):C.literal("doesn't respond")));
         return 0;
     }
     if(Number(!!(Number(shkp!=resident)&&C.i32((R100(shkp)))))) {
@@ -1799,7 +1799,7 @@ function dopay()
             }
             C.variadic(92,C.literal("try to appease %s by giving %s 1000 gold pieces."),((Number(!!(C.canseemon(shkp)||C.sensemon(shkp))))?C.x_monnam(shkp,1,C.literal("angry"),0,(C.i8(0))):C.shkname(shkp)),(R1(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])));
             pay(1000n,shkp);
-            if(Number(!!(C.strncmp(A45(eshkp),A68(C.svp),C.u64(32))||((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),1938,(C.literal("dopay"))),C.rn2(3))):C.rn2(3)))))) make_happy_shk(shkp,(C.i8(0)));
+            if(Number(!!(C.strncmp(A45(eshkp),A68(C.svp),C.u64(32))||((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",1938,"dopay"),C.rn2(3))):C.rn2(3)))))) make_happy_shk(shkp,(C.i8(0)));
  else C.variadic(93,C.literal("But %s is as angry as ever."),C.shkname(shkp));
         }
         return 1;
@@ -2380,7 +2380,7 @@ function inherits(shkp,numsk,croaked,silently)
     if(Number(numsk>1)) {
         if(Number(!!(Number(!!((Number((C.i32((C.i32(C.cell((C.cell((R73(C.gv)+Number(R90(shkp))*8),"unsigned char *").value+Number(R89(shkp))*1),"unsigned char").value)&2)))!=0))&&croaked))&&Number(!(silently))))) {
             (C.cell((takes+Number(0)*1),"char").value=C.i8(0));
-            if(Number(!!((Number((C.u64((R153(R86(shkp))&C.u64(32768n))))==C.u64(0n)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),2600,(C.literal("inherits"))),C.rn2(2))):C.rn2(2)))))))) C.variadic(119,takes,C.literal(", shakes %s %s,"),(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),C.mbodypart(shkp,C.HEAD));
+            if(Number(!!((Number((C.u64((R153(R86(shkp))&C.u64(32768n))))==C.u64(0n)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",2600,"inherits"),C.rn2(2))):C.rn2(2)))))))) C.variadic(119,takes,C.literal(", shakes %s %s,"),(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),C.mbodypart(shkp,C.HEAD));
             C.variadic(120,C.literal("%s %slooks at your corpse%s and %s."),C.Shknam(shkp),((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))?C.literal("wakes up, "):C.literal("")),takes,(Number(!(inhishop(shkp)))?C.literal("disappears"):C.literal("sighs")));
         }
         (taken=uinshop);
@@ -3218,7 +3218,7 @@ function append_honorific(buf)
     /* (chooses among [0]..[3] normally; [1]..[4] after the
        Wizard has been killed or invocation ritual performed) */
     
-    C.strcat(buf,C.cell((C.staticAddress("append_honorific.honored")+Number(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),3611,(C.literal("append_honorific"))),C.rn2(C.i32((C.i32((C.u64((BigInt((8*5))/BigInt(8)))))-1))))):C.rn2(C.i32((C.i32((C.u64((BigInt((8*5))/BigInt(8)))))-1)))))+C.i32(R180(A209(C.u))))))*8),"char *").value);
+    C.strcat(buf,C.cell((C.staticAddress("append_honorific.honored")+Number(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",3611,"append_honorific"),C.rn2(C.i32((C.i32((C.u64((BigInt((8*5))/BigInt(8)))))-1))))):C.rn2(C.i32((C.i32((C.u64((BigInt((8*5))/BigInt(8)))))-1)))))+C.i32(R180(A209(C.u))))))*8),"char *").value);
     if((Number(C.i32(R148(R86(A74(C.gy))))==C.S_VAMPIRE))) C.strcat(buf,(C.i32((R46(C.flags)))?C.literal(" dark lady"):C.literal(" dark lord")));
  else if((((Number(R206(C.u)!=R205(C.u)))?((Number((C.u64((R154(R86(A74(C.gy)))&C.u64(16n))))!=C.u64(0n)))):((Number(C.i32(R3(A72(C.gu)))==(C.PM_ELF))))))) C.strcat(buf,(C.i32((R46(C.flags)))?C.literal(" hiril"):C.literal(" hir")));
  else C.strcat(buf,(Number(!((Number((C.u64((R154(R86(A74(C.gy)))&C.u64(8n))))!=C.u64(0n)))))?C.literal(" creature"):(C.i32((R46(C.flags)))?C.literal(" lady"):C.literal(" sir"))));
@@ -4052,7 +4052,7 @@ function litter_scatter(litter,x,y,shkp)
                 obfree(otmp,0);
             } else {
                 let trylimit=10;
-                let i=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),4661,(C.literal("litter_scatter"))),C.rn2(9))):C.rn2(9))); let ix; let iy;
+                let i=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",4661,"litter_scatter"),C.rn2(9))):C.rn2(9))); let ix; let iy;
                 /* otmp must be moved otherwise svl.level.objects[x][y] will
                    never become Null and while-loop won't terminate */
                 do {
@@ -4187,7 +4187,7 @@ function repair_damage(shkp,tmp_dam,catchup)
         C.newsym(x,y);
     } else if((Number(!!(C.i32((R18(tmp_dam)))&&Number(C.i32((R18(tmp_dam)))<=C.DBWALL))))) {
         if(Number(C.i32(inside_shop(R194(C.u),R195(C.u)))==C.i32(R34(R77(R104(shkp)))))) C.variadic(183,C.literal("more claustrophobic than before."));
- else if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),4833,(C.literal("repair_damage"))),C.rn2(10))):C.rn2(10)))))))) C.variadic(184,C.literal("The dungeon acoustics noticeably change."));
+ else if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",4833,"repair_damage"),C.rn2(10))):C.rn2(10)))))))) C.variadic(184,C.literal("The dungeon acoustics noticeably change."));
     }
     if(stop_picking) C.stop_occupation();
     litter_newsyms(litter,x,y);
@@ -4256,7 +4256,7 @@ function shk_move(shkp)
                     C.variadic(188,C.literal("%s holds out %s upturned %s."),C.Shknam(shkp),(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),C.mbodypart(shkp,C.HAND));
                 }
                 (W55(C.gf,R66(C.svm)));
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),4924,(C.literal("shk_move"))),C.rn2(9))):C.rn2(9)))))) {
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",4924,"shk_move"),C.rn2(9))):C.rn2(9)))))) {
                     C.variadic(189,C.literal("%s doesn't like customers who don't pay."),C.Shknam(shkp));
                     rile_shk(shkp);
                 }
@@ -4406,7 +4406,7 @@ function makekops(mm)
     try {
     
     let k_cnt=C.automatic("makekops.k_cnt@174324",(4*4)); let cnt; let mndx; let k;
-    (C.cell((k_cnt+Number(0)*4),"int").value=(cnt=C.i32((C.abs(C.i32(C.depth(A198(C.u))))+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5119,(C.literal("makekops"))),C.rnd(5))):C.rnd(5)))))));
+    (C.cell((k_cnt+Number(0)*4),"int").value=(cnt=C.i32((C.abs(C.i32(C.depth(A198(C.u))))+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5119,"makekops"),C.rnd(5))):C.rnd(5)))))));
     (C.cell((k_cnt+Number(1)*4),"int").value=C.i32(((C.i32(Math.trunc((cnt/3))))+1)));
     /* at least one sarge */
     (C.cell((k_cnt+Number(2)*4),"int").value=(C.i32(Math.trunc((cnt/6)))));
@@ -4442,7 +4442,7 @@ function getcad(shkp,dmgstr,x,y,uinshp,animal,pursue)
             ;
             C.variadic(197,C.literal("How dare you %s my %s?"),dmgstr,(C.i32(dugwall)?C.literal("shop"):C.literal("door")));
         } else {
-            C.variadic(198,C.literal("%s is %s that you decided to %s %s %s!"),C.Shknam(shkp),C.cell((C.staticAddress("angrytexts")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5155,(C.literal("getcad"))),C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))))*8),"char *").value,dmgstr,(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),(C.i32(dugwall)?C.literal("shop"):C.literal("door")));
+            C.variadic(198,C.literal("%s is %s that you decided to %s %s %s!"),C.Shknam(shkp),C.cell((C.staticAddress("angrytexts")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5155,"getcad"),C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))))*8),"char *").value,dmgstr,(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),(C.i32(dugwall)?C.literal("shop"):C.literal("door")));
         }
     } else {
         if(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))) {
@@ -4450,7 +4450,7 @@ function getcad(shkp,dmgstr,x,y,uinshp,animal,pursue)
             ;
             C.variadic(200,C.literal("Who dared %s my %s?"),dmgstr,(C.i32(dugwall)?C.literal("shop"):C.literal("door")));
         } else {
-            C.variadic(201,C.literal("%s is %s that someone decided to %s %s %s!"),C.Shknam(shkp),C.cell((C.staticAddress("angrytexts")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5166,(C.literal("getcad"))),C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))))*8),"char *").value,dmgstr,(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),(C.i32(dugwall)?C.literal("shop"):C.literal("door")));
+            C.variadic(201,C.literal("%s is %s that someone decided to %s %s %s!"),C.Shknam(shkp),C.cell((C.staticAddress("angrytexts")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5166,"getcad"),C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*3))/BigInt(8)))))))))*8),"char *").value,dmgstr,(R2(C.genders+Number(C.pronoun_gender(shkp,C.u32((C.i32((1|2))))))*C.sizes["struct Gender"])),(C.i32(dugwall)?C.literal("shop"):C.literal("door")));
         }
     }
     hot_pursuit(shkp);
@@ -4494,7 +4494,7 @@ function pay_for_damage(dmgstr,cant_mollify)
             (shk_distance=C.u32(C.dist2((R89(tmp_shk)),(R90(tmp_shk)),R194(C.u),R195(C.u))));
             if(Number(shk_distance>nearest_shk)) continue;
             if(Number(!!((Number(shk_distance==nearest_shk))&&picks))) {
-                if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5218,(C.literal("pay_for_damage"))),C.rn2((()=>{const old=picks;picks=C.i32((old+1));return picks;})()))):C.rn2((()=>{const old=picks;picks=C.i32((old+1));return picks;})())))) continue;
+                if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5218,"pay_for_damage"),C.rn2((()=>{const old=picks;picks=C.i32((old+1));return picks;})()))):C.rn2((()=>{const old=picks;picks=C.i32((old+1));return picks;})())))) continue;
             } else (picks=1);
             (shkp=tmp_shk);
             (nearest_shk=shk_distance);
@@ -4554,7 +4554,7 @@ function pay_for_damage(dmgstr,cant_mollify)
         }
         C.mnearto(shkp,x,y,(C.i8(1)),C.u32(2));
     }
-    if(Number(!!(Number(!!(Number(!!((Number(!!(C.i32(C.um_dist(x,y,C.i16(1)))&&Number(!(uinshp)))))||C.i32(cant_mollify)))||Number((C.i64((C.money_cnt(R56(C.gi))+R30(R77(R104(shkp))))))<cost_of_damage)))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5297,(C.literal("pay_for_damage"))),C.rn2(50))):C.rn2(50)))))))) {
+    if(Number(!!(Number(!!(Number(!!((Number(!!(C.i32(C.um_dist(x,y,C.i16(1)))&&Number(!(uinshp)))))||C.i32(cant_mollify)))||Number((C.i64((C.money_cnt(R56(C.gi))+R30(R77(R104(shkp))))))<cost_of_damage)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5297,"pay_for_damage"),C.rn2(50))):C.rn2(50)))))))) {
         getcad(shkp,dmgstr,x,y,uinshp,animal,pursue);
         return;
     }
@@ -4699,8 +4699,8 @@ function shk_embellish(itm,cost)
 {
     itm=C.ptr(itm);
     cost=C.i64(cost);
-    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5470,(C.literal("shk_embellish"))),C.rn2(3))):C.rn2(3)))))) {
-        let o; let choice=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5471,(C.literal("shk_embellish"))),C.rn2(5))):C.rn2(5)));
+    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5470,"shk_embellish"),C.rn2(3))):C.rn2(3)))))) {
+        let o; let choice=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5471,"shk_embellish"),C.rn2(5))):C.rn2(5)));
         if(Number(choice==0)) (choice=((Number(cost<100n)?1:(Number(cost<500n)?2:3))));
         switch(choice) {
             case (4):
@@ -4775,7 +4775,7 @@ function shk_chat(shkp)
     } else if(Number(shkmoney>C.i64(4000))) {
         C.variadic(228,C.literal("%s %s that business is good."),C.Shknam(shkp),((Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL)))))))))?C.literal("says"):C.literal("indicates")));
     } else if(C.is_izchak(shkp,(C.i8(0)))) {
-        if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) C.variadic(229,C.cell((C.staticAddress("Izchak_speaks")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5596,(C.literal("shk_chat"))),C.rn2(C.i32((C.u64((BigInt((8*9))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*9))/BigInt(8)))))))))*8),"char *").value,C.shkname(shkp));
+        if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) C.variadic(229,C.cell((C.staticAddress("Izchak_speaks")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5596,"shk_chat"),C.rn2(C.i32((C.u64((BigInt((8*9))/BigInt(8)))))))):C.rn2(C.i32((C.u64((BigInt((8*9))/BigInt(8)))))))))*8),"char *").value,C.shkname(shkp));
     } else {
         if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) C.variadic(230,C.literal("%s talks about the problem of shoplifters."),C.Shknam(shkp));
     }
@@ -4870,18 +4870,18 @@ function check_unpaid_usage(otmp,altusage)
     if(Number(C.i32(R118(otmp))==C.SPBOOK_CLASS)) {
         (fmt=C.literal("%sYou owe%s %ld %s."));
         C.variadic(232,buf,C.literal("This is no free library, %s!  "),cad((C.i8(0))));
-        (arg1=(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5708,(C.literal("check_unpaid_usage"))),C.rn2(2))):C.rn2(2)))?buf:C.literal("")));
+        (arg1=(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5708,"check_unpaid_usage"),C.rn2(2))):C.rn2(2)))?buf:C.literal("")));
         (arg2=(Number(R31(R77(R104(shkp)))>0n)?C.literal(" an additional"):C.literal("")));
     } else if(Number(C.i32(R114(otmp))==C.POT_OIL)) {
         (fmt=C.literal("%s%sThat will cost you %ld %s (Yendorian Fuel Tax)."));
     } else if(Number(!!(C.i32(altusage)&&(Number(!!(Number(C.i32(R114(otmp))==C.BAG_OF_TRICKS)||Number(C.i32(R114(otmp))==C.HORN_OF_PLENTY))))))) {
         (fmt=C.literal("%s%sEmptying that will cost you %ld %s."));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5715,(C.literal("check_unpaid_usage"))),C.rn2(3))):C.rn2(3)))))) (arg1=C.literal("Whoa!  "));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5717,(C.literal("check_unpaid_usage"))),C.rn2(3))):C.rn2(3)))))) (arg1=C.literal("Watch it!  "));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5715,"check_unpaid_usage"),C.rn2(3))):C.rn2(3)))))) (arg1=C.literal("Whoa!  "));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5717,"check_unpaid_usage"),C.rn2(3))):C.rn2(3)))))) (arg1=C.literal("Watch it!  "));
     } else {
         (fmt=C.literal("%s%sUsage fee, %ld %s."));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5721,(C.literal("check_unpaid_usage"))),C.rn2(3))):C.rn2(3)))))) (arg1=C.literal("Hey!  "));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("shk.c"),5723,(C.literal("check_unpaid_usage"))),C.rn2(3))):C.rn2(3)))))) (arg2=C.literal("Ahem.  "));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5721,"check_unpaid_usage"),C.rn2(3))):C.rn2(3)))))) (arg1=C.literal("Hey!  "));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("shk.c",5723,"check_unpaid_usage"),C.rn2(3))):C.rn2(3)))))) (arg2=C.literal("Ahem.  "));
     }
     if(Number(!!(Number(!((Number(!!(Number(!!(R157(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])||R155(A204(C.u)+Number(C.DEAF)*C.sizes["struct prop"])))||C.i32(R181(A210(C.u))))))))&&Number(!((Number(!!((Number(!!(C.i32(R97(shkp))||Number(!(R99(shkp))))))||Number(C.i32(R152(R86(shkp)))<=C.MS_ANIMAL))))))))) {
         ;
@@ -5227,5 +5227,5 @@ const shkStaticInitializers = C => [
     {name:"Izchak_speaks",type:"char *[9]",size:(8*9),values:[C.literal("%s says: 'These shopping malls give me a headache.'"),C.literal("%s says: 'Slow down.  Think clearly.'"),C.literal("%s says: 'You need to take things one at a time.'"),C.literal("%s says: 'I don't like poofy coffee... give me Colombian Supremo.'"),C.literal("%s says that getting the devteam's agreement on anything is difficult."),C.literal("%s says that he has noticed those who serve their deity will prosper."),C.literal("%s says: 'Don't try to steal from me - I have friends in high places!'"),C.literal("%s says: 'You may well need something from this shop in the future.'"),C.literal("%s comments about the Valley of the Dead as being a gateway.")]},
 ];
 
-return Object.freeze({money2mon,money2u,next_shkp,shkgone,set_residency,replshk,restshk,clear_unpaid_obj,clear_unpaid,clear_no_charge_obj,clear_no_charge,clear_no_charge_pets,setpaid,record_price_quote,append_price_quote,addupbill,call_kops,inside_shop,u_left_shop,credit_report,remote_burglary,rob_shop,deserted_shop,u_entered_shop,pick_pick,same_price,shop_debt,shopper_financial_report,inhishop,shop_keeper,find_objowner,tended_shop,noisy_shop,onbill,onshopbill,is_unpaid,delete_contents,obfree,check_credit,pay,home_shk,angry_shk_exists,pacify_shk,rile_shk,rouse_shk,make_happy_shk,make_happy_shoppers,hot_pursuit,make_angry_shk,sortbill_cmp,cheapest_item,make_itemized_bill,menu_pick_pay_items,dopay,pay_billed_items,update_bill,dopayobj,buy_container,reject_purchase,insufficient_funds,paybill,inherits,set_repo_loc,finish_paybill,bp_to_obj,find_oid,get_cost_of_shop_item,get_pricing_units,oid_price_adjustment,get_cost,contained_cost,contained_gold,dropped_container,picked_container,special_stock,set_cost,gem_learned,alter_cost,unpaid_cost,add_one_tobill,add_to_billobjs,bill_box_content,shk_names_obj,billable,addtobill,append_honorific,splitbill,sub_one_frombill,subfrombill,stolen_container,stolen_value,donate_gold,sellobj_state,sellobj,doinvbill,corpsenm_price_adj,getprice,shkcatch,add_damage,shk_impaired,repairable_damage,find_damage,discard_damage_struct,discard_damage_owned_by,shk_fixes_damage,litter_getpos,litter_scatter,litter_newsyms,repair_damage,fix_shop_damage,shk_move,after_shk_move,is_fshk,shopdig,makekops,getcad,pay_for_damage,costly_spot,costly_adjacent,shop_object,price_quote,shk_embellish,shk_chat,kops_gone,cost_per_charge,check_unpaid_usage,check_unpaid,costly_gold,block_door,block_entry,shk_your,Shk_Your,shk_owns,mon_owns,cad,globby_bill_fixup,use_unpaid_trapobj,shkStaticInitializers});
+return C.nativeAddressNamespaceReady(Object.freeze({money2mon,money2u,next_shkp,shkgone,set_residency,replshk,restshk,clear_unpaid_obj,clear_unpaid,clear_no_charge_obj,clear_no_charge,clear_no_charge_pets,setpaid,record_price_quote,append_price_quote,addupbill,call_kops,inside_shop,u_left_shop,credit_report,remote_burglary,rob_shop,deserted_shop,u_entered_shop,pick_pick,same_price,shop_debt,shopper_financial_report,inhishop,shop_keeper,find_objowner,tended_shop,noisy_shop,onbill,onshopbill,is_unpaid,delete_contents,obfree,check_credit,pay,home_shk,angry_shk_exists,pacify_shk,rile_shk,rouse_shk,make_happy_shk,make_happy_shoppers,hot_pursuit,make_angry_shk,sortbill_cmp,cheapest_item,make_itemized_bill,menu_pick_pay_items,dopay,pay_billed_items,update_bill,dopayobj,buy_container,reject_purchase,insufficient_funds,paybill,inherits,set_repo_loc,finish_paybill,bp_to_obj,find_oid,get_cost_of_shop_item,get_pricing_units,oid_price_adjustment,get_cost,contained_cost,contained_gold,dropped_container,picked_container,special_stock,set_cost,gem_learned,alter_cost,unpaid_cost,add_one_tobill,add_to_billobjs,bill_box_content,shk_names_obj,billable,addtobill,append_honorific,splitbill,sub_one_frombill,subfrombill,stolen_container,stolen_value,donate_gold,sellobj_state,sellobj,doinvbill,corpsenm_price_adj,getprice,shkcatch,add_damage,shk_impaired,repairable_damage,find_damage,discard_damage_struct,discard_damage_owned_by,shk_fixes_damage,litter_getpos,litter_scatter,litter_newsyms,repair_damage,fix_shop_damage,shk_move,after_shk_move,is_fshk,shopdig,makekops,getcad,pay_for_damage,costly_spot,costly_adjacent,shop_object,price_quote,shk_embellish,shk_chat,kops_gone,cost_per_charge,check_unpaid_usage,check_unpaid,costly_gold,block_door,block_entry,shk_your,Shk_Your,shk_owns,mon_owns,cad,globby_bill_fixup,use_unpaid_trapobj,shkStaticInitializers}),C);
 }

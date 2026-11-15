@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original SHKNAM policy with one shared, initialized shop/name catalogue.
 import abi from './shknam-abi.json' with {type:'json'};
 import * as source from '../ported/shknam.js';
@@ -34,7 +35,7 @@ export function enableShknam(environment,layouts){
  for(const name of ['panic','impossible','pline'])local[name]=(format,...args)=>resolve(name)(text(format),...args.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.display_nhwindow=(win,blocking)=>environment.functions.indirect(ctypes.getField('struct window_procs',environment.requireGlobal('windowprocs'),'win_display_nhwindow','void *'),'vii',transport.int(win),transport.char(blocking));
  local.assert=(ok,i)=>{if(!ok){const row=abi.assertions[i];if(!row)throw new Error('Unknown SHKNAM assertion '+i);return resolve('__assert_fail')(text(row.expression),text('shknam.c'),row.line,text('nameshk'));}};
- for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{const fn=abi.rngCallers[caller];if(!fn)throw new Error('Unknown SHKNAM RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('shknam.c'),transport.int(line),text(fn));return resolve(name)(transport.int(n));};
+ for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{const fn=abi.rngCallers[caller];if(!fn)throw new Error('Unknown SHKNAM RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'shknam.c',transport.int(line),fn);return resolve(name)(transport.int(n));};
  const context=createShknamEnvironment(local,L,state),names=Object.keys(abi.public).filter(n=>!environment.hasFunction(n));
  const parse=n=>{const m=abi.public[n].match(/^(.+?)\s*\((.*)\)$/);return{result:m[1],args:m[2].split(',').map(t=>t.trim()).filter(t=>t&&t!=='void')};};
  environment.register('shknam',Object.fromEntries(names.map(n=>[n,(...args)=>value(parse(n).result,source[n](...args))])),context,{prepareArgs:(n,args)=>args.map((v,i)=>{const t=parse(n).args[i],p=value(t,v);return t==='struct monst *'?context.monster(p):t==='struct obj *'?context.object(p):t==='struct mkroom *'?context.room(p):p;})});

@@ -1,3 +1,5 @@
+import {recordNativeRngCaller} from './rng-output.js';
+import {serviceScopeFor} from '../../c-runtime/service-scope.js';
 import {nativeStateFor} from './state-bridge.js';
 const littleHost=new Uint8Array(new Uint16Array([1]).buffer)[0]===1;
 // Native field operations used by the generated address-engine kernels.
@@ -49,6 +51,8 @@ export function createNativeAddressFields(env,services,schema,decode,convert=env
   const before=get(at),one=typeof before==='bigint'?1n:1;
   const after=op==='++'?before+one:before-one;set(at,after);return prefix?after:before;
  };
+ env.nativeRngCaller=(file,line,caller)=>{const provider=serviceScopeFor(services)?.services??services;return typeof provider.nativeAddressRngCaller==='function'?provider.nativeAddressRngCaller(provider,file,line,caller):recordNativeRngCaller(provider,file,line,caller);};
+ env.nativeAddressNamespaceReady=(namespace,context)=>{if(owner&&typeof services.nativeAddressNamespaceReady==='function')services.nativeAddressNamespaceReady(namespace,context,serviceScopeFor(services));return namespace;};
  return {readers,writers,addresses,compound,update};
 }
 

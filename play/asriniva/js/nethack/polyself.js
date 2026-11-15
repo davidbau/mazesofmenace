@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original POLYSELF source context for initial helpers and full form policy.
 import abi from './polyself-abi.json' with {type:'json'};
 import * as source from '../ported/polyself.js';
@@ -15,7 +16,7 @@ export function enablePolyself(environment,layouts){
  const local={moduleKey:environment,heap:()=>memory.HEAPU8,literal:S.literal,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,
   global:i=>{if(!abi.globals[i])throw Error('Unknown POLYSELF global '+i);return environment.requireGlobal(abi.globals[i].name);},
   read:(k,p,i)=>{const e=field(k,p,i);return ctypes.getField(e.type,e.p,e.f.name,e.f.ctype);},write:(k,p,i,v)=>{const e=field(k,p,i);return ctypes.setField(e.type,e.p,e.f.name,e.f.ctype,v);},address:(k,p,i)=>{const e=field(k,p,i);return ctypes.locate(e.type,e.p,e.f.name).at;},
-  rngCaller:i=>{const row=abi.rngSites[i];if(!row)throw Error('Unknown POLYSELF RNG site '+i);if(S.rng_log_enabled())S.rng_log_set_caller(text('polyself.c'),row.line,text(row.function));},
+  rngCaller:i=>{const row=abi.rngSites[i];if(!row)throw Error('Unknown POLYSELF RNG site '+i);if(S.rng_log_enabled())recordNativeRngCaller(S,'polyself.c',row.line,row.function);},
  };
  for(const n of ['rn2','rnd','rnl','d'])local[n+'Value']=(...args)=>resolve(n)(...args.map(transport.int));
  for(const[n,p]of Object.entries(abi.dependencies)){const row=prototype(p);local[n]=(...args)=>scalar(row.ret,resolve(n)(...args.map((v,i)=>scalar(row.args[i],v))));}

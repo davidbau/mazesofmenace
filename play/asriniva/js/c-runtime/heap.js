@@ -25,11 +25,13 @@ function insertFreeRange(previous,released){
 }
 
 export class CMemory {
-    constructor({ initialBytes = 65536, maximumBytes = 64 * 1024 * 1024 } = {}) {
+    constructor({ initialBytes = 65536, maximumBytes = 64 * 1024 * 1024, resizable = false } = {}) {
         if (!Number.isSafeInteger(initialBytes) || !Number.isSafeInteger(maximumBytes)
             || initialBytes < 64 || maximumBytes < initialBytes)
             throw new RangeError('Invalid C memory capacity');
-        this.buffer = new ArrayBuffer(initialBytes);
+        try { this.buffer = resizable ? new ArrayBuffer(initialBytes,{maxByteLength:maximumBytes}) : new ArrayBuffer(initialBytes); }
+        catch { this.buffer = new ArrayBuffer(initialBytes); }
+        this.stableBuffer = Boolean(resizable && this.buffer.resizable && typeof this.buffer.resize==='function');
         this.maximumBytes = maximumBytes;
         this.end = ALIGN; // Reserve address zero, including a small null guard.
         this.live = new Map();
@@ -52,9 +54,12 @@ export class CMemory {
         if (required > this.maximumBytes) return false;
         const size = Math.max(required, Math.min(this.maximumBytes, this.buffer.byteLength * 2));
         try {
-            const replacement = new ArrayBuffer(size);
-            new Uint8Array(replacement).set(this.HEAPU8);
-            this.buffer = replacement;
+            if(this.stableBuffer)this.buffer.resize(size);
+            else {
+                const replacement = new ArrayBuffer(size);
+                new Uint8Array(replacement).set(this.HEAPU8);
+                this.buffer = replacement;
+            }
             this._heapU8=this._heap8=this._dataView=undefined;
             this.generation++;
         } catch (error) {

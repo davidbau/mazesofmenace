@@ -1,3 +1,4 @@
+import {createServiceForwarder} from '../../c-runtime/service-scope.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/sp_lev.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -33,7 +34,7 @@ export function initializeSpLev(services,layout,namespace){
  let state=spLevStates.get(services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});
+  const forwarding=createServiceForwarder(state);
   state.env=createSpLevEnvironment(forwarding,layout,namespace);
   spLevStates.set(services.moduleKey,state);
  }

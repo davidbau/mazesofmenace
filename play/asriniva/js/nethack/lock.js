@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original LOCK policies on one native context and live GX occupation state.
 import abi from './lock-abi.json' with{type:'json'};
 import * as source from '../ported/lock.js';
@@ -29,7 +30,7 @@ export function enableLock(environment,layouts){
   singular:(obj,fn)=>{if(fn!==local.xname)throw new Error('Unexpected LOCK singular callback');return address(resolve('singular')(address(obj),environment.functionPointer('xname','pp')));},
   safe_qbuf:(out,prefix,suffix,obj,name,alternate,last)=>{let pair;if(name===local.yname&&alternate===local.ysimple_name)pair=['yname','ysimple_name'];else if(name===local.doname&&alternate===local.ansimpleoname)pair=['doname','ansimpleoname'];else throw new Error('Unexpected LOCK prompt callbacks');return address(resolve('safe_qbuf')(address(out),text(prefix),text(suffix),address(obj),environment.functionPointer(pair[0],'pp'),environment.functionPointer(pair[1],'pp'),text(last)));},
  });
- for(const n of['rn2','rnl'])local[n]=(bound,line,caller)=>{if(!['picklock','breakchestlock','forcelock','doopen_indir','doclose'].includes(caller))throw new Error('Unknown LOCK RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('lock.c'),transport.int(line),text(caller));return resolve(n)(transport.int(bound));};
+ for(const n of['rn2','rnl'])local[n]=(bound,line,caller)=>{if(!['picklock','breakchestlock','forcelock','doopen_indir','doclose'].includes(caller))throw new Error('Unknown LOCK RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'lock.c',transport.int(line),caller);return resolve(n)(transport.int(bound));};
  for(const n of['pline','You','You_cant','You_hear','There','pline_The','verbalize'])local[n]=(fmt,...args)=>{if(args.length>3)throw new Error('Review LOCK '+n+' arity');return resolve(n)(text(fmt),...args.map(v=>typeof v==='bigint'?transport.long(v):text(v)));};
  for(const n of abi.globals)Object.defineProperty(local,n,{value:undefined,writable:true,configurable:true});
  function call(name,...args){if(typeof source[name]!=='function')throw new Error('Unknown LOCK source function '+name);return transport.scoped(()=>withLockEnvironment(local,L,source,context=>{

@@ -229,6 +229,16 @@ export const COND_NAMES = ['Bare', 'Blind', 'Busy', 'Conf', 'Deaf', 'Iron', 'Fly
 export function hilite_status_config_error(op) {
     const hsbuf = [''];
     let fldnum = 0;
+    /* parse_status_hl1() hands each space-delimited rule to parse_status_hl2()
+     * as it completes (botl.c:2609-2620), so rules before a failing one stay
+     * installed (botl.c:3099). */
+    const done = [];
+    let raw = '';
+    const withDone = (e) => {
+        if (e && done.length)
+            e.accepted = done.join(' ') + (e.accepted ? ' ' + e.accepted : '');
+        return e;
+    };
     const check = () => {
         const name = hsbuf[0];
         const f = status_fieldname(name);
@@ -322,18 +332,19 @@ export function hilite_status_config_error(op) {
         const c = ch.toLowerCase();
         if (c === ' ') {
             if (fldnum >= 1) {
-                if (fldnum === 1 && hsbuf[0] === 'title') { hsbuf[fldnum] += c; continue; }
+                if (fldnum === 1 && hsbuf[0] === 'title') { hsbuf[fldnum] += c; raw += c; continue; }
                 const e = check();
-                if (e) return e;
+                if (e) return withDone(e);
+                done.push(raw);
             }
-            hsbuf.length = 1; hsbuf[0] = ''; fldnum = 0;
+            hsbuf.length = 1; hsbuf[0] = ''; fldnum = 0; raw = '';
         } else if (c === '/') {
-            hsbuf[++fldnum] = '';
+            hsbuf[++fldnum] = ''; raw += c;
         } else {
-            hsbuf[fldnum] += c;
+            hsbuf[fldnum] += c; raw += c;
         }
     }
-    return fldnum >= 1 ? check() : null;
+    return fldnum >= 1 ? withDone(check()) : null;
 }
 
 export function parse_paranoid_confirmation(existing, val, negated) {
@@ -920,6 +931,15 @@ export function parseNethackrc(rc) {
                 /* bufp is printed after parsesymbols() NULed its separators */
                 const bufp = parsesymbols_cut < 0 ? rogueMatch[2] : rogueMatch[2].slice(0, parsesymbols_cut);
                 config_error_add("Error in ROGUESYMBOLS definition '%s'", bufp);
+            } else {
+                /* symbols.c:830-837 parsesymbols(): a U+ value goes through
+                 * glyphrep_to_custom_map_entries(); with no symset name yet,
+                 * glyphs.c:80-89 nags once ("Unimplemented customization"). */
+                for (const entry of parsesymbols_entries(rogueMatch[2])) {
+                    const pm = entry.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
+                    if (pm && /^u\+/i.test(pm[2]))
+                        glyphrep_to_custom_map_entries(`${pm[1]}:${pm[2]}`, { value: 0 });
+                }
             }
             continue;
         }
@@ -953,8 +973,14 @@ export function parseNethackrc(rc) {
                     (result.symbolPairs ||= []).push([pairMatch[1], pairMatch[2]]);
                 /* symbols.c:830-837: a U+ value goes to
                  * glyphrep_to_custom_map_entries, not ov_primary_syms. */
-                if (pairMatch && /^u\+/i.test(pairMatch[2]))
+                if (pairMatch && /^u\+/i.test(pairMatch[2])) {
+                    /* glyphs.c:80-89: with no symset named yet the customization
+                     * is refused with a (once-only) config error, raised here
+                     * so it carries this line's context. */
+                    if (!result.symset)
+                        glyphrep_to_custom_map_entries(`${pairMatch[1]}:${pairMatch[2]}`, { value: 0 });
                     continue;
+                }
                 const symMatch = entry.match(/^\s*(S_(?:pool|boulder|vodoor|hodoor|room|corr|litcorr|stone|vwall|hwall|tlcorn|trcorn|blcorn|brcorn|crwall|tuwall|tdwall|tlwall|trwall))\s*:\s*(.)/i);
                 if (symMatch)
                     (result.symbolOverrides ||= {})['S_' + symMatch[1].slice(2).toLowerCase()] = symMatch[2];
@@ -1016,12 +1042,8 @@ export function parseNethackrc(rc) {
             if (hlerr?.accepted?.includes('/')) store_status_hilite(hlerr.accepted);
             if (hlerr)
                 { config_error_add(hlerr[0], hlerr[1]); if (hlerr[2]) config_error_add(hlerr[2], hlerr[3]); }
-            else if (hlop.includes('/') && status_fieldname(hlop.split('/')[0]) === 'condition')
-                (game.status_condition_hilites ||= []).push(hlop);
-            else if (hlop.includes('/'))
-                push_status_field_hilite(hlop);
             else
-                store_status_hilite(hlop);
+                store_status_hilite(hlop); /* botl.c:2593 parse_status_hl1 lowercases (2606) */
             // C botl.c:2643-2645: accepting a rule enables highlighting.
             if (!hlerr && !result.iflags.hilite_delta) result.iflags.hilite_delta = 3;
             continue;
@@ -1834,6 +1856,17 @@ export function parseNethackrc(rc) {
                             config_error_add(`Unknown whatis_coord parameter '${val}'`);
                     }
                 }
+                else if (key === 'whatis_filter') {
+                    if (negated)
+                        result.iflags.getloc_filter = 0;
+                    else if (val) {
+                        const c = val.charAt(0).toLowerCase();
+                        if (c === 'n') result.iflags.getloc_filter = 0;
+                        else if (c === 'v') result.iflags.getloc_filter = 1;
+                        else if (c === 'a') result.iflags.getloc_filter = 2;
+                        else config_error_add(`Unknown whatis_filter parameter '${val}'`);
+                    }
+                }
                 else if (key === 'msg_window')
                 {
                     /* C options.c:2475-2493: bare => 'f'; else lowc(*op), s/c/f/r only */
@@ -2006,7 +2039,8 @@ export function parseNethackrc(rc) {
                      * debug_overwrite_stairs cannot come from the config file. */
                     if (row?.wizNoFuz) { /* config error, value not stored */ }
                     else if (row?.box === 'flags' || row?.box === 'iflags')
-                        result[row.box][row.fld || lname] = value;
+                        /* options.c:5314-5317: opt_idlecheckpoint forces it back off */
+                        result[row.box][row.fld || lname] = lname === 'idlecheckpoint' ? false : value;
                     else if (row?.box === 'a11y')
                         (result.a11y ||= {})[row.fld || lname] = value;
                     else if (row?.box === 'u.uroleplay') {
@@ -3598,7 +3632,11 @@ export async function doset_simple() {
                      * docrt()s the map before the menu is re-offered. */
                     if (g.iflags.wc_hilite_pet && !g.iflags.wc2_petattr)
                         g.iflags.wc2_petattr = 7; /* ATR_INVERSE (wintype.h) */
-                    await docrt();
+                    /* reset_needed_visuals() (options.c:8980-9005) -> docrt(), whose
+                     * cls() first more()s a standing topline (display.c:2196). */
+                    g.go ||= {};
+                    g.go.opt_need_redraw = true;
+                    await reset_needed_visuals();
                 }
                 if (['wizmgender', 'showrace', 'use_inverse', 'hilite_pile',
                      'perm_invent', 'ascii_map', 'tiled_map'].includes(entry.name)) {
@@ -4846,9 +4884,6 @@ export async function doset() {
                     } else if (abuf !== '\x1b' && ent.row.name === 'statuslines') {
                         /* C options.c:4067-4098 optfn_statuslines(do_set) */
                         const message = optfn_statuslines_set(abuf);
-                        /* options.c:8685-8688 preference_update -> wintty.c:603 */
-                        new_status_window();
-                        newclipping();
                         if (!message) {
                             /* options.c:4091-4092: go.opt_need_redraw = TRUE */
                             g.go.opt_need_redraw = true;
@@ -4862,6 +4897,10 @@ export async function doset() {
                              * topline (the "Missing parameter" + "invalid" pair). */
                             for (const m of message) await pline('%s', m);
                         }
+                        /* options.c:8685-8688 preference_update -> wintty.c:603,
+                         * after parseoptions (and so after the error plines) */
+                        new_status_window();
+                        newclipping();
                     } else if (abuf !== '\x1b' && ent.row.name === 'boulder') {
                         needVisuals = (await optfn_boulder_set(mungspaces(abuf))) || needVisuals;
                     } else if (abuf !== '\x1b' && ent.row.name === 'suppress_alert') {

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 import {createNativeAbiCaster,installNativeDependency} from './native/execution.js';
@@ -24,7 +25,7 @@ export function enableMondata(environment,layouts){
   terrainBit:(x,y)=>{const level=ctypes.locate('struct instance_globals_saved_l',environment.requireGlobal('svl'),'level').at,grid=ctypes.locate('dlevel_t',level,'locations').at,p=grid+(transport.short(x)*mapDimensions[1]+transport.short(y))*ctypes.size('struct rm');return field('struct rm',p,'lit');},trapBit:p=>field('struct trap',p,'ttyp'),
   Strcpy:(out,s)=>resolve('strcpy')(text(out),text(s)),strcmpi:(a,b)=>resolve('strncmpi')(text(a),text(b),-1),impossible:(fmt,value=0)=>resolve('impossible')(text(fmt),transport.int(value)),
  });
- for(const name of ['rn2','rnd'])base[name]=(bound,line,caller)=>{if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MONDATA RNG site');if(services.rng_log_enabled())services.rng_log_set_caller(text('mondata.c'),transport.int(line),text(caller));return resolve(name)(transport.int(bound));};
+ for(const name of ['rn2','rnd'])base[name]=(bound,line,caller)=>{if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MONDATA RNG site');if(services.rng_log_enabled())recordNativeRngCaller(services,'mondata.c',transport.int(line),caller);return resolve(name)(transport.int(bound));};
  const local=new Proxy(base,{get:(o,k)=>{if(Object.hasOwn(o,k))return o[k];if(typeof k==='symbol')return undefined;throw new Error('Missing MONDATA native transport '+k);}}),context=createMondataEnvironment(local,layouts.mondata,source);
  const caster=createNativeAbiCaster(ctypes,transport,text),calls=new Map();
  for(const [name,prototype]of Object.entries(abi.public)){

@@ -123,9 +123,9 @@ function vision_init()
 
     /* Set up the pointers. */
     for (i = 0; i < C.ROWNO; i++) {
-        C.cs_rows0[i] = C.could_see[0][i];
-        C.cs_rows1[i] = C.could_see[1][i];
-        C.viz_clear_rows[i] = C.viz_clear[i];
+        C.nativeVisionRow(C.cs_rows0, i, C.could_see[0][i]);
+        C.nativeVisionRow(C.cs_rows1, i, C.could_see[1][i]);
+        C.nativeVisionRow(C.viz_clear_rows, i, C.viz_clear[i]);
     }
 
     /* Start out with cs0 as our current array */

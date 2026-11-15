@@ -96,6 +96,7 @@ export function createMemoryServices(memory,{nativeStack=false}={}) {
         short:v=>typeof v==='number'&&Number.isInteger(v)?v<<16>>16:Number(BigInt.asIntN(16,BigInt(v))),ushort:v=>typeof v==='number'&&Number.isInteger(v)?v&65535:Number(BigInt.asUintN(16,BigInt(v))),
         char:v=>typeof v==='number'&&Number.isInteger(v)?v<<24>>24:Number(BigInt.asIntN(8,BigInt(v))),uchar:v=>typeof v==='number'&&Number.isInteger(v)?v&255:Number(BigInt.asUintN(8,BigInt(v))),
         long:v=>BigInt.asIntN(64,BigInt(v)),ulong:v=>BigInt.asUintN(64,BigInt(v)),
+        stackPosition:()=>stack.length,
         stackSave(){const mark={index:stack.length,sequence:markSequence++};marks.add(mark);return mark;},
         stackAlloc(n){const at=memory.malloc(Number(n));if(!at)throw new RangeError('C stack allocation failed');stack.push({at,allocation:memory.live.get(at)});return at;},
         stackRestore(mark) {

@@ -519,7 +519,10 @@ export class TtyMenu {
             }
             const prev = game._gm_corner;
             game._gm_corner = { col: Math.min(this.contentCol, prev?.col ?? Infinity),
-                                rows: Math.max(this._lines.length, prev?.rows ?? 0) };
+                                rows: Math.max(this._lines.length, prev?.rows ?? 0),
+                                /* union of dismissed rectangles (docorner repaints each separately) */
+                                rects: [...(prev?.rects ?? (prev ? [prev] : [])),
+                                        { col: this.contentCol, rows: this._lines.length }] };
             const { docorner_blank_utf8_captures, docorner_status_rows } = await import('./display.js');
             docorner_blank_utf8_captures(this.contentCol - 1, this.maxrow + 1);
             docorner_status_rows(this.contentCol - 1, this.maxrow + 1);

@@ -203,7 +203,7 @@ function render_map_row_clipped(y, clipX) {
     for (let x = firstCol; x <= lastCol; x++) {
         const loc = cellAt(x);
         const ch = loc?.disp_ch ?? ' ';
-        const color = ((rogueMap && !rogueColor) || (((game._gm_corner && x >= game._gm_corner.col - 1 && y + 1 < game._gm_corner.rows)
+        const color = ((rogueMap && !rogueColor) || (((game._gm_corner && (game._gm_corner.rects ?? [game._gm_corner]).some(r => x >= r.col - 1 && y + 1 < r.rows))
                 ? game.iflags?.use_color : (game._gm_use_color ?? game.iflags?.use_color)) === false))
             ? ((rogueMap && !rogueColor && rogue_hero_showrace_cell(x, y)) ? CLR_WHITE : NO_COLOR)
             : (loc?.disp_color ?? NO_COLOR);

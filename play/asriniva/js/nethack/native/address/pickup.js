@@ -1988,7 +1988,7 @@ function do_loot_cont(cobjp,cindex,ccount)
         let tmp;
         C.variadic(46,C.literal("carefully open %s..."),C.the(C.xname(cobj)));
         C.variadic(47,C.literal("It develops a huge set of teeth and bites you!"));
-        (tmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2155,(C.literal("do_loot_cont"))),C.rnd(10))):C.rnd(10))));
+        (tmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2155,"do_loot_cont"),C.rnd(10))):C.rnd(10))));
         C.losehp(((((Number(!!(R186(A212(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])||R184(A212(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])))))?(C.i32(Math.trunc(((C.i32(((tmp)+1)))/2)))):(tmp))),C.literal("carnivorous bag"),C.i8(0));
         C.discover_object((C.BAG_OF_TRICKS),(C.i8(1)),(C.i8(1)),(C.i8(1)));
         (W85(C.ga,C.i8(1)));
@@ -2034,8 +2034,8 @@ function doloot_core()
         return 0;
     }
     if(R186(A212(C.u)+Number(C.CONFUSION)*C.sizes["struct prop"])) {
-        if(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2203,(C.literal("doloot_core"))),C.rn2(6))):C.rn2(6)))&&C.i32(reverse_loot())))) return 1;
-        if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2205,(C.literal("doloot_core"))),C.rn2(2))):C.rn2(2)))) {
+        if(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2203,"doloot_core"),C.rn2(6))):C.rn2(6)))&&C.i32(reverse_loot())))) return 1;
+        if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2205,"doloot_core"),C.rn2(2))):C.rn2(2)))) {
             C.variadic(49,C.literal("Being confused, you find nothing to loot."));
             return 1;
             /* costs a turn */
@@ -2167,9 +2167,9 @@ function reverse_loot()
     let mon;
     let contribution;
     let n; let x=C.i32(R208(C.u)); let y=C.i32(R209(C.u));
-    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2357,(C.literal("reverse_loot"))),C.rn2(3))):C.rn2(3)))))) {
+    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2357,"reverse_loot"),C.rn2(3))):C.rn2(3)))))) {
         /* n objects: 1/(n+1) chance per object, 1/(n+1) to fall off end */
-        for(((n=C.inv_cnt((C.i8(1)))),(otmp=R91(C.gi)));otmp;((()=>{const __old=n;n=C.i32((__old-1));return n;})(),(otmp=R124(otmp)))) if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2361,(C.literal("reverse_loot"))),C.rn2(C.i32((n+1))))):C.rn2(C.i32((n+1)))))))) {
+        for(((n=C.inv_cnt((C.i8(1)))),(otmp=R91(C.gi)));otmp;((()=>{const __old=n;n=C.i32((__old-1));return n;})(),(otmp=R124(otmp)))) if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2361,"reverse_loot"),C.rn2(C.i32((n+1))))):C.rn2(C.i32((n+1)))))))) {
             C.prinv(C.literal("You find old loot:"),otmp,0n);
             return (C.i8(1));
         }
@@ -2178,7 +2178,7 @@ function reverse_loot()
     }
     /* find a money object to mess with */
     for((goldob=R91(C.gi));goldob;(goldob=R124(goldob))) if(Number(C.i32(R134(goldob))==C.COIN_CLASS)) {
-        (contribution=C.i64(((C.i64((C.i64((C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2371,(C.literal("reverse_loot"))),C.rnd(5))):C.rnd(5))))*R132(goldob)))+4n)))/5n)));
+        (contribution=C.i64(((C.i64((C.i64((C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2371,"reverse_loot"),C.rnd(5))):C.rnd(5))))*R132(goldob)))+4n)))/5n)));
         if(Number(contribution<R132(goldob))) (goldob=C.splitobj(goldob,contribution));
         break;
     }
@@ -2217,7 +2217,7 @@ function reverse_loot()
             C.freeinv(goldob);
             C.add_to_minv(mon,goldob);
             C.variadic(58,C.literal("The exchequer accepts your contribution."));
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2418,(C.literal("reverse_loot"))),C.rn2(10))):C.rn2(10)))))) (W188((A42(A106(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(1)));
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2418,"reverse_loot"),C.rn2(10))):C.rn2(10)))))) (W188((A42(A106(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(1)));
         } else {
             C.variadic(59,C.literal("drop %s."),C.doname(goldob));
             C.dropx(goldob);
@@ -2262,7 +2262,7 @@ function loot_mon(mtmp,passed_info,prev_loot)
             if(R56(C.flags)) C.variadic(63,C.literal("take %s off of %s."),C.thesimpleoname(otmp),C.mon_nam(mtmp));
             (otmp=C.hold_another_object(otmp,C.literal("You drop %s!"),C.doname(otmp),0));
             ((otmp));
-            (timepassed=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2467,(C.literal("loot_mon"))),C.rnd(3))):C.rnd(3))));
+            (timepassed=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2467,"loot_mon"),C.rnd(3))):C.rnd(3))));
             if(prev_loot) (C.cell(prev_loot,"signed char").value=(C.i8(1)));
         } else if(Number(c==113)) {
             return 0;
@@ -2288,7 +2288,7 @@ function mbag_explodes(obj,depthin)
     /* these won't cause an explosion when they're empty */
     if(Number(!!((Number(!!(Number(C.i32(R130(obj))==C.WAN_CANCELLATION)||Number(C.i32(R130(obj))==C.BAG_OF_TRICKS))))&&Number(C.i32(R133(obj))<=0)))) return (C.i8(0));
     /* odds: 1/1, 2/2, 3/4, 4/8, 5/16, 6/32, 7/64, 8/128, 9/128, 10/128,... */
-    if(Number(!!((Number(!!((Number(!!(Number(C.i32(R130(obj))==C.BAG_OF_HOLDING)||Number(C.i32(R130(obj))==C.BAG_OF_TRICKS))))||Number(C.i32(R130(obj))==C.WAN_CANCELLATION))))&&(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2497,(C.literal("mbag_explodes"))),C.rn2(C.i32((1<<((Number(depthin>7)?7:depthin))))))):C.rn2(C.i32((1<<((Number(depthin>7)?7:depthin)))))))<=depthin))))) return (C.i8(1));
+    if(Number(!!((Number(!!((Number(!!(Number(C.i32(R130(obj))==C.BAG_OF_HOLDING)||Number(C.i32(R130(obj))==C.BAG_OF_TRICKS))))||Number(C.i32(R130(obj))==C.WAN_CANCELLATION))))&&(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2497,"mbag_explodes"),C.rn2(C.i32((1<<((Number(depthin>7)?7:depthin))))))):C.rn2(C.i32((1<<((Number(depthin>7)?7:depthin)))))))<=depthin))))) return (C.i8(1));
  else if((Number(R126(obj)!=0))) {
         let otmp;
         for((otmp=R126(obj));otmp;(otmp=R124(otmp))) if(mbag_explodes(otmp,C.i32((depthin+1)))) return (C.i8(1));
@@ -2299,7 +2299,7 @@ function mbag_explodes(obj,depthin)
 
 function is_boh_item_gone()
 {
-    return C.i8((Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2512,(C.literal("is_boh_item_gone"))),C.rn2(13))):C.rn2(13)))))));
+    return C.i8((Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2512,"is_boh_item_gone"),C.rn2(13))):C.rn2(13)))))));
 }
 
 /* Scatter most of Bag of holding contents around.  Some items will be
@@ -2459,7 +2459,7 @@ function in_container(obj)
         if(Number(!(floor_container))) C.useup(R87(C.gc));
  else if(C.obj_here(R87(C.gc),R208(C.u),R209(C.u))) C.useupf(R87(C.gc),R132(R87(C.gc)));
  else C.variadic(74,C.literal("in_container:  bag not found."));
-        C.losehp(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2692,(C.literal("in_container"))),C.d((6),(6)))):C.d((6),(6)))),C.literal("magical explosion"),C.i8(0));
+        C.losehp(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2692,"in_container"),C.d((6),(6)))):C.d((6),(6)))),C.literal("magical explosion"),C.i8(0));
         (W87(C.gc,0));
         /* baggone = TRUE; */
     }
@@ -2585,7 +2585,7 @@ function observe_quantum_cat(box,makecat,givemsg)
     let deadcat;
     let livecat=0;
     let ox=C.local("short",0); let oy=C.local("short",0);
-    let itsalive=C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),2832,(C.literal("observe_quantum_cat"))),C.rn2(2))):C.rn2(2))))));
+    let itsalive=C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",2832,"observe_quantum_cat"),C.rn2(2))):C.rn2(2))))));
     if(C.get_obj_location(box,ox.address,oy.address,0)) ((W128(box,ox.value)),(W129(box,oy.value)));
     /* in case it's being carried */
     /* this isn't really right, since any form of observation
@@ -3426,7 +3426,7 @@ function tipcontainer(box)
                     /* it's gone */
                     (nobj=0);
                     /* stop tipping; want loop to exit 'normally' */
-                    C.losehp(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("pickup.c"),3803,(C.literal("tipcontainer"))),C.d((6),(6)))):C.d((6),(6)))),C.literal("magical explosion"),C.i8(0));
+                    C.losehp(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("pickup.c",3803,"tipcontainer"),C.d((6),(6)))):C.d((6),(6)))),C.literal("magical explosion"),C.i8(0));
                 } else {
                     C.add_to_container(targetbox,otmp);
                 }
@@ -3634,5 +3634,5 @@ const pickupStaticInitializers = C => [
     {name:"in_or_out_menu.abc_chars",type:"char[10]",size:(1*10),values:C.literal("_:abcdenq")},
 ];
 
-return Object.freeze({simple_look,collect_obj_classes,query_classes,u_safe_from_fatal_corpse,fatal_corpse_mistake,rider_corpse_revival,force_decor,deferred_decor,describe_decor,check_here,n_or_more,menu_class_present,add_valid_menu_class,all_but_uchain,allow_all,allow_category,is_worn_by_type,reset_justpicked,count_justpicked,find_justpicked,pickup,check_autopickup_exceptions,autopick_testobj,autopick,query_objlist,query_category,count_categories,delta_cwt,carry_count,lift_object,pickup_object,pick_obj,pickup_prinv,encumber_msg,container_at,able_to_loot,mon_beside,do_loot_cont,doloot,doloot_core,reverse_loot,loot_mon,mbag_explodes,is_boh_item_gone,do_boh_explosion,boh_loss,in_container,ck_bag,out_container,removed_from_icebox,mbag_item_gone,observe_quantum_cat,container_gone,explain_container_prompt,u_handsy,stash_ok,use_container,traditional_loot,menu_loot,in_or_out_menu,tip_ok,choose_tip_container_menu,dotip,TIPCHECK_OK,TIPCHECK_LOCKED,TIPCHECK_TRAPPED,TIPCHECK_CANNOT,TIPCHECK_EMPTY,tipcontainer,tipcontainer_gettarget,tipcontainer_checks,pickupStaticInitializers});
+return C.nativeAddressNamespaceReady(Object.freeze({simple_look,collect_obj_classes,query_classes,u_safe_from_fatal_corpse,fatal_corpse_mistake,rider_corpse_revival,force_decor,deferred_decor,describe_decor,check_here,n_or_more,menu_class_present,add_valid_menu_class,all_but_uchain,allow_all,allow_category,is_worn_by_type,reset_justpicked,count_justpicked,find_justpicked,pickup,check_autopickup_exceptions,autopick_testobj,autopick,query_objlist,query_category,count_categories,delta_cwt,carry_count,lift_object,pickup_object,pick_obj,pickup_prinv,encumber_msg,container_at,able_to_loot,mon_beside,do_loot_cont,doloot,doloot_core,reverse_loot,loot_mon,mbag_explodes,is_boh_item_gone,do_boh_explosion,boh_loss,in_container,ck_bag,out_container,removed_from_icebox,mbag_item_gone,observe_quantum_cat,container_gone,explain_container_prompt,u_handsy,stash_ok,use_container,traditional_loot,menu_loot,in_or_out_menu,tip_ok,choose_tip_container_menu,dotip,TIPCHECK_OK,TIPCHECK_LOCKED,TIPCHECK_TRAPPED,TIPCHECK_CANNOT,TIPCHECK_EMPTY,tipcontainer,tipcontainer_gettarget,tipcontainer_checks,pickupStaticInitializers}),C);
 }

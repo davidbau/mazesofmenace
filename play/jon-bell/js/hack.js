@@ -2024,8 +2024,8 @@ async function _pickup_menu(atTile, count = 0) {
      * entry '*', while set_item_state's in-place rewrite (wintty.c:1175)
      * marks it '+'; '#' is a typed count, '-' unselected.  This renderer
      * repaints per key, so each entry carries its last-painted indicator. */
-    const _indInPlace = (e) => e.selected ? ((e.count | 0) > 0 ? '#' : '+') : '-';
-    const _indFresh = (e) => e.selected ? ((e.count | 0) > 0 ? '#' : '*') : '-';
+    const _indInPlace = (e) => (e.indStyled = true, e.selected ? ((e.count | 0) > 0 ? '#' : '+') : '-');
+    const _indFresh = (e) => (e.indStyled = false, e.selected ? ((e.count | 0) > 0 ? '#' : '*') : '-');
     /* Render helper: the menu window lines with current selection state. */
     async function renderLines() {
         const out = [];
@@ -2037,7 +2037,11 @@ async function _pickup_menu(atTile, count = 0) {
                 if (!flatMenu && (it.obj.oclass | 0) !== oc) continue; /* already in menu order */
                 // C windows.c:1803-1805 applies MENUCOLOR to the description;
                 // wintty.c:1442-1447 leaves the selector and indicator unstyled.
-                out.push(`${String.fromCharCode(it.letter)} ${it.ind ?? _indInPlace(it)} ${menucolor_text(await _pickup_nameOf(it))}`);
+                const nm = await _pickup_nameOf(it);
+                const ind = it.ind ?? _indInPlace(it);
+                /* wintty.c:1186-1193 set_item_state paints the in-place marker with the item's
+                 * own attr/color; a page redraw (1442-1447) leaves it unstyled. */
+                out.push(`${String.fromCharCode(it.letter)} ${it.indStyled ? menucolor_text(ind, nm) : ind} ${menucolor_text(nm)}`);
             }
         }
         out.push('(end)');
@@ -2103,6 +2107,9 @@ async function _pickup_menu(atTile, count = 0) {
         if (!lettered.some(e => e.letter === k && (!tall || e.page === page)))
             k = map_menu_cmd(k);
         /* C wintty.c:1604-1613: ESC while counting only stops the count. */
+        /* getline.c:245-247: xwaitforspace leaves dismiss_more = 1 on ESC even
+         * when the ESC only stops a count. */
+        if (k === 27 /* ESC */) g._ttyDismissMore = 1;
         if (k === 27 /* ESC */ && _pickCount > 0) { _pickCount = 0; continue; }
         if (k === 27 /* ESC */) { cancelled = true; break; }
         /* RETURN / ENTER confirms from any page; SPACE pages forward and
@@ -2163,8 +2170,11 @@ async function _pickup_menu(atTile, count = 0) {
         /* C ref: wintty.c:1519-1535 xwaitforspace(resp) — a key outside resp
          * rings the bell and is re-read inside the wait, so a live count
          * survives it. */
-        if (!(k >= 0x30 && k <= 0x39) && '<>^|,\\~.-@:'.indexOf(String.fromCharCode(k)) < 0)
+        if (!(k >= 0x30 && k <= 0x39) && '<>^|,\\~.-@:'.indexOf(String.fromCharCode(k)) < 0
+            && !(k !== 0 && k === (g._ttyDismissMore | 0)))
             continue;
+        /* getline.c:238 `c == x`: the dismiss_more key ends the wait; the menu
+         * bells (default arm) and its next pass resets the count (wintty.c:1395). */
         _pickCount = 0;
         if (k === 0x3a /* ':' MENU_SEARCH */) {
             /* C ref: wintty.c:1700-1730.  query_objlist opens this menu

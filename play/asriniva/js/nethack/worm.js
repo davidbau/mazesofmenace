@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Boundary transport only; original WORM owns algorithms and private chains.
 import * as worm from '../ported/worm.js';
 import {createWormState,withWormEnvironment} from './bindings/worm.js';
@@ -22,7 +23,7 @@ export function enableWorms(environment,layouts){
   bridge[(direction==='sfo'?'Sfo_':'Sfi_')+alias]=(file,value,tag)=>actual(direction+'_'+type,ptr(file),ptr(value),text(tag));
  const caller=(line,name)=>{
   if(!abi.rngCallers.includes(name))throw new Error('Unexpected original WORM RNG caller');
-  if(services.rng_log_enabled())services.rng_log_set_caller(text('worm.c'),transport.int(line),text(name));
+  if(services.rng_log_enabled())recordNativeRngCaller(services,'worm.c',transport.int(line),name);
  };
  for(const kind of ['rn2','rnd'])bridge[kind]=(bound,line,name)=>{caller(line,name);return services[kind](transport.int(bound));};
  bridge.d=(dice,sides,line,name)=>{caller(line,name);return services.d(transport.int(dice),transport.int(sides));};

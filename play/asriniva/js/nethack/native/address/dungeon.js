@@ -512,7 +512,7 @@ function parent_dlevel(s,pd)
     (i=find_branch(s,pd));
     (num=level_range(C.i16(dnum),C.i32(R17(A204(A183(pd)+Number(i)*C.sizes["struct tmpbranch"]))),C.i32(R18(A204(A183(pd)+Number(i)*C.sizes["struct tmpbranch"]))),R205(A183(pd)+Number(i)*C.sizes["struct tmpbranch"]),pd,base.address));
     /* KMH -- Try our best to find a level without an existing branch */
-    (i=(j=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),426,(C.literal("parent_dlevel"))),C.rn2(num))):C.rn2(num)))));
+    (i=(j=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",426,"parent_dlevel"),C.rn2(num))):C.rn2(num)))));
     do {
         if(Number((i=C.i32((i+1)))>=num)) (i=0);
         for((curr=R94(C.svb));curr;(curr=R4(curr))) if(Number(!!((Number(!!(Number(C.i32(R25(A7(curr)))==dnum)&&Number(C.i32(R26(A7(curr)))==C.i32((base.value+i))))))||(Number(!!(Number(C.i32(R25(A8(curr)))==dnum)&&Number(C.i32(R26(A8(curr)))==C.i32((base.value+i))))))))) break;
@@ -637,7 +637,7 @@ function init_level(dgn,proto_index,pd)
     let tlevel=(A181(pd)+Number(proto_index)*C.sizes["struct tmplevel"]);
     (C.cell((A182(pd)+Number(proto_index)*8),"struct s_level *").value=0);
     /* no "real" level */
-    if(Number(!!(Number(!(R88(C.flags)))&&Number(R221(tlevel)<=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),572,(C.literal("init_level"))),C.rn2(100))):C.rn2(100))))))) return;
+    if(Number(!!(Number(!(R88(C.flags)))&&Number(R221(tlevel)<=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",572,"init_level"),C.rn2(100))):C.rn2(100))))))) return;
     (C.cell((A182(pd)+Number(proto_index)*8),"struct s_level *").value=(new_level=C.alloc(C.u32(BigInt(C.sizes["struct s_level"])))));
     C.memset(new_level,0,BigInt(C.sizes["struct s_level"]));
     /* load new level with data */
@@ -723,7 +723,7 @@ function place_level(proto_index,pd)
     if(Number(!(lev))) return place_level(C.i32((proto_index+1)),pd);
     (npossible=possible_places(proto_index,map,pd));
     for(;npossible;(npossible=C.i32((npossible-1)))) {
-        (W26(A193(lev),pick_level(map,((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),687,(C.literal("place_level"))),C.rn2(npossible))):C.rn2(npossible))))));
+        (W26(A193(lev),pick_level(map,((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",687,"place_level"),C.rn2(npossible))):C.rn2(npossible))))));
         if(place_level(C.i32((proto_index+1)),pd)) return (C.i8(1));
         (C.cell((map+Number(R26(A193(lev)))*1),"signed char").value=(C.i8(0)));
         /* this choice didn't work */
@@ -997,7 +997,7 @@ function init_dungeon_dungeons(L,pd,dngidx)
             (W89(C.iflags,save_plnmsg));
         }
     } while(0);
-    if(Number(!!(Number(!!(Number(!(R88(C.flags)))&&dgn_chance))&&(Number(dgn_chance<=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),1022,(C.literal("init_dungeon_dungeons"))),C.rn2(100))):C.rn2(100)))))))) {
+    if(Number(!!(Number(!!(Number(!(R88(C.flags)))&&dgn_chance))&&(Number(dgn_chance<=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1022,"init_dungeon_dungeons"),C.rn2(100))):C.rn2(100)))))))) {
         do {
             if(C.debugcore(C.literal("dungeon.c"),(C.i8(1)))) {
                 let save_plnmsg=R89(C.iflags);
@@ -1047,7 +1047,7 @@ function init_dungeon_dungeons(L,pd,dngidx)
     /* free((genericptr) dgn_protoname); -- stored in pd.tmpdungeon[] */
     C.free(dgn_bonetag);
     C.free(dgn_themerms);
-    if(dgn_range) (W78(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"],C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),1074,(C.literal("init_dungeon_dungeons"))),C.rn2(dgn_range))):C.rn2(dgn_range)))+(dgn_base)))))));
+    if(dgn_range) (W78(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"],C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1074,"init_dungeon_dungeons"),C.rn2(dgn_range))):C.rn2(dgn_range)))+(dgn_base)))))));
  else (W78(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"],C.i16(dgn_base)));
     if(Number(!(dngidx))) {
         (W80(A95(C.svd)+Number(dngidx)*C.sizes["struct dungeon"],0));
@@ -1077,7 +1077,7 @@ function init_dungeon_dungeons(L,pd,dngidx)
 function init_castle_tune()
 {
     let i;
-    for((i=0);Number(i<5);((i=C.i32((i+1)))-1)) (C.cell((A108(C.svt)+Number(i)*1),"char").value=C.i8(C.i32((65+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),1116,(C.literal("init_castle_tune"))),C.rn2(7))):C.rn2(7)))))));
+    for((i=0);Number(i<5);((i=C.i32((i+1)))-1)) (C.cell((A108(C.svt)+Number(i)*1),"char").value=C.i8(C.i32((65+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1116,"init_castle_tune"),C.rn2(7))):C.rn2(7)))))));
 
     (C.cell((A108(C.svt)+Number(5)*1),"char").value=C.i8(0));
 }
@@ -1813,7 +1813,7 @@ function assign_rnd_level(dest,src,range)
     src=C.ptr(src);
     range=C.i32(range);
     (W25(dest,R25(src)));
-    (W26(dest,C.i16(C.i32((C.i32(R26(src))+(((Number(range>0))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),1989,(C.literal("assign_rnd_level"))),C.rnd(range))):C.rnd(range))):C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),1989,(C.literal("assign_rnd_level"))),C.rnd(C.i32((-range))))):C.rnd(C.i32((-range))))))))))))));
+    (W26(dest,C.i16(C.i32((C.i32(R26(src))+(((Number(range>0))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1989,"assign_rnd_level"),C.rnd(range))):C.rnd(range))):C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",1989,"assign_rnd_level"),C.rnd(C.i32((-range))))):C.rnd(C.i32((-range))))))))))))));
     if(Number(C.i32(R26(dest))>C.i32(dunlevs_in_dungeon(dest)))) (W26(dest,dunlevs_in_dungeon(dest)));
  else if(Number(C.i32(R26(dest))<1)) (W26(dest,C.i16(1)));
 }
@@ -1824,9 +1824,9 @@ function induced_align(pct)
     pct=C.i32(pct);
     let lev=Is_special(A248(C.u));
     let al;
-    if(Number(!!(lev&&C.i32(R23(A197(lev)))))) if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),2005,(C.literal("induced_align"))),C.rn2(100))):C.rn2(100)))<pct)) return R23(A197(lev));
-    if(R23(A76(A95(C.svd)+Number(R25(A248(C.u)))*C.sizes["struct dungeon"]))) if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),2009,(C.literal("induced_align"))),C.rn2(100))):C.rn2(100)))<pct)) return R23(A76(A95(C.svd)+Number(R25(A248(C.u)))*C.sizes["struct dungeon"]));
-    (al=C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dungeon.c"),2012,(C.literal("induced_align"))),C.rn2(3))):C.rn2(3)))-1))));
+    if(Number(!!(lev&&C.i32(R23(A197(lev)))))) if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",2005,"induced_align"),C.rn2(100))):C.rn2(100)))<pct)) return R23(A197(lev));
+    if(R23(A76(A95(C.svd)+Number(R25(A248(C.u)))*C.sizes["struct dungeon"]))) if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",2009,"induced_align"),C.rn2(100))):C.rn2(100)))<pct)) return R23(A76(A95(C.svd)+Number(R25(A248(C.u)))*C.sizes["struct dungeon"]));
+    (al=C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dungeon.c",2012,"induced_align"),C.rn2(3))):C.rn2(3)))-1))));
     return (C.u32((((Number(C.i32((al))==(C.i32((-128)))))?0:((Number(C.i32((al))==1))?4:(C.i32((C.i32((al))+2))))))));
 }
 
@@ -3268,5 +3268,5 @@ const dungeonStaticInitializers = C => [
     {name:"brtypes2i",type:"int[5]",size:(4*5),values:[0,3,2,1,0]},
 ];
 
-return Object.freeze({dumpit,save_dungeon,restore_dungeon,dname_to_dnum,find_level,find_branch,parent_dnum,level_range,parent_dlevel,correct_branch_type,insert_branch,add_branch,add_level,init_level,possible_places,pick_level,place_level,get_dgn_flags,get_dgn_align,init_dungeon_levels,init_dungeon_branches,init_dungeon_set_entry,init_dungeon_set_depth,init_dungeon_dungeons,init_castle_tune,fixup_level_locations,free_proto_dungeon,init_dungeons,dunlev,dunlevs_in_dungeon,deepest_lev_reached,ledger_no,maxledgerno,ledger_to_dnum,ledger_to_dlev,depth,on_level,Is_special,Is_branchlev,builds_up,next_level,prev_level,earth_sense,u_on_newpos,u_on_rndspot,Is_botlevel,Can_dig_down,Can_fall_thru,Can_rise_up,has_ceiling,avoid_ceiling,ceiling,surface,get_level,In_quest,In_mines,dungeon_branch,at_dgn_entrance,In_V_tower,On_W_tower_level,In_W_tower,In_hell,find_hell,goto_hell,single_level_branch,assign_level,assign_rnd_level,induced_align,Invocation_lev,level_difficulty,lev_by_name,unplaced_floater,unreachable_level,tport_menu,br_string,chr_u_on_lvl,print_branch,print_dungeon,recbranch_mapseen,get_annotation,print_level_annotation,query_annotation,donamelevel,free_exclusions,save_exclusions,load_exclusions,find_mapseen,find_mapseen_by_str,rm_mapseen,save_mapseen,load_mapseen,overview_stats,remdun_mapseen,init_mapseen,interest_mapseen,update_lastseentyp,update_mapseen_for,count_feat_lastseentyp,recalc_mapseen,mapseen_temple,room_discovered,dooverview,show_overview,traverse_mapseenchn,seen_string,br_string2,endgamelevelname,shop_string,tunesuffix,print_mapseen,dungeonStaticInitializers});
+return C.nativeAddressNamespaceReady(Object.freeze({dumpit,save_dungeon,restore_dungeon,dname_to_dnum,find_level,find_branch,parent_dnum,level_range,parent_dlevel,correct_branch_type,insert_branch,add_branch,add_level,init_level,possible_places,pick_level,place_level,get_dgn_flags,get_dgn_align,init_dungeon_levels,init_dungeon_branches,init_dungeon_set_entry,init_dungeon_set_depth,init_dungeon_dungeons,init_castle_tune,fixup_level_locations,free_proto_dungeon,init_dungeons,dunlev,dunlevs_in_dungeon,deepest_lev_reached,ledger_no,maxledgerno,ledger_to_dnum,ledger_to_dlev,depth,on_level,Is_special,Is_branchlev,builds_up,next_level,prev_level,earth_sense,u_on_newpos,u_on_rndspot,Is_botlevel,Can_dig_down,Can_fall_thru,Can_rise_up,has_ceiling,avoid_ceiling,ceiling,surface,get_level,In_quest,In_mines,dungeon_branch,at_dgn_entrance,In_V_tower,On_W_tower_level,In_W_tower,In_hell,find_hell,goto_hell,single_level_branch,assign_level,assign_rnd_level,induced_align,Invocation_lev,level_difficulty,lev_by_name,unplaced_floater,unreachable_level,tport_menu,br_string,chr_u_on_lvl,print_branch,print_dungeon,recbranch_mapseen,get_annotation,print_level_annotation,query_annotation,donamelevel,free_exclusions,save_exclusions,load_exclusions,find_mapseen,find_mapseen_by_str,rm_mapseen,save_mapseen,load_mapseen,overview_stats,remdun_mapseen,init_mapseen,interest_mapseen,update_lastseentyp,update_mapseen_for,count_feat_lastseentyp,recalc_mapseen,mapseen_temple,room_discovered,dooverview,show_overview,traverse_mapseenchn,seen_string,br_string2,endgamelevelname,shop_string,tunesuffix,print_mapseen,dungeonStaticInitializers}),C);
 }

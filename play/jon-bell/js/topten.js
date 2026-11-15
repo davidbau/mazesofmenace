@@ -638,6 +638,7 @@ export async function topten(how, when) {
         return;
 
     if (gs.iflags && gs.iflags.toptenwin) {
+        gs.gt ||= {}; /* C gt.toptenwin lives in the gt struct (decl.c) */
         gs.gt.toptenwin = create_nhwindow(4);
     }
 

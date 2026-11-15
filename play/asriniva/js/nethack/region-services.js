@@ -1,3 +1,6 @@
+import {validateServiceCoercions} from './service-coercions.js';
+import publicFunctions from './public-functions.json' with {type:'json'};
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original native REGION transport, installed on its existing services/context.
 import abi from './region-services-abi.json' with {type:'json'};
 import * as region from '../ported/region.js';
@@ -21,6 +24,7 @@ export function bindRegionServices(environment,local,layout,speciesCount){
  if(!Number.isSafeInteger(speciesCount)||speciesCount<1)throw Error('REGION requires the measured species count');
  const native=nativeStateFor(environment);
  const resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n),coerce={pointer:address,text,long:v=>BigInt(v),char:transport.char,short:transport.short,int:transport.int,uint:transport.uint};
+ validateServiceCoercions('REGION',abi.calls,publicFunctions.functions,coerce);
  for(const[name,row]of Object.entries(abi.calls))local[name]=(...args)=>{const direct=native.functions.get(row.target);if(direct?.nativeState===native)return direct(...args);const value=native.boundary(resolve(row.target),...row.coercions.map(([kind,i])=>coerce[kind](args[i])));return row.number?typeof value==='string'?text(value):Number(value?.address??value):value;};
  const field=(type,p,key,value)=>{const record=native.nativeRecords.record(type,p);if(!(key in record))throw Error('Unknown REGION measured field '+key);if(value===undefined)return record[key];record[key]=value;return record[key];};
  Object.assign(local,{nativeOwner:native,nativeSpeciesCount:speciesCount,nativeGlobal:name=>environment.requireGlobal(name),nativeAllocationSize:p=>{const block=memory.live.get(address(p));if(!block)throw Error('REGION array is not a complete live allocation');return block.size;},moduleKey:local.moduleKey??environment,heap:()=>memory.HEAPU8,stackSave:transport.stackSave,stackRestore:transport.stackRestore,stackAlloc:transport.stackAlloc,literal:services.literal,
@@ -35,7 +39,7 @@ export function bindRegionServices(environment,local,layout,speciesCount){
  for(const name of Object.values(abi.messages))local[name]=(fmt,a=0,b=0)=>resolve(name)(text(fmt),text(a),text(b));
  local.impossible=(fmt,...a)=>a.length===1?resolve('impossible')(text(fmt),transport.int(a[0])):resolve('impossible')(text(fmt),text(a[0]),transport.uint(a[1]??0));
  local.Sprintf=(out,fmt,...a)=>{let values;if(fmt==='%5ld')values=[transport.long(a[0])];else if(fmt==='poison gas (%d)')values=[transport.int(a[0])];else if(a.length===2&&typeof a[0]==='bigint')values=a.map(transport.long);else if(a.length===2)values=a.map(text);else if(a.length===5)values=[text(a[0]),...a.slice(1).map(transport.int)];else throw new Error('Review REGION native format '+fmt);return resolve('sprintf')(address(out),text(fmt),...values);};
- const rng=(name,caller,line,args)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('region.c'),transport.int(line),text(abi.rngCallers[caller]));return resolve(name)(...args.map(transport.int));};
+ const rng=(name,caller,line,args)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'region.c',transport.int(line),abi.rngCallers[caller]);return resolve(name)(...args.map(transport.int));};
  local.rnd=(n,line)=>rng('rnd',0,line,[n]);local.rn2=(n,line)=>rng('rn2',1,line,[n]);local.rn1=(n,b,line)=>transport.int(local.rn2(n,line)+transport.int(b));local.d=(n,s,line)=>rng('d',2,line,[n,s]);
  for(const[method,target]of Object.entries(abi.sf)){const name=method[0].toUpperCase()+method.slice(1);local[name]=(f,p,s,n)=>resolve(target)(address(f),address(p),text(s),...(method.endsWith('_char')?[transport.int(n)]:[]));}
  return local;

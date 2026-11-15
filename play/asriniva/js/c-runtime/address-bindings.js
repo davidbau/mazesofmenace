@@ -9,7 +9,7 @@ export function createAddressBindings({environment,name,schema,layout,namespace,
         if(typeof services[fn]==='function')return services[fn].nativeEntry??services[fn];
         const selected=environment.resolve(fn);return services[fn]?.nativeEntry??selected;
     };
-    const invoke=(fn,args)=>{const selected=resolve(fn);return nativeOwner&&selected.nativeState!==nativeOwner&&!selected.nativeStateIndependent?nativeOwner.boundary(selected,...args):selected(...args);};
+    const invoke=(fn,args)=>{const resolved=resolve(fn),selected=nativeOwner&&resolved.nativeState===nativeOwner?(resolved.nativeValuesEntry??resolved):resolved;return nativeOwner&&selected.nativeState!==nativeOwner&&!selected.nativeStateIndependent?nativeOwner.boundary(selected,...args):selected(...args);};
     const fieldDeclarations=new WeakMap();
     function field(kind,at,index) {
         const key=records[kind],record=schema.schema[key],f=record?.fields[index];
@@ -59,7 +59,7 @@ export function createAddressBindings({environment,name,schema,layout,namespace,
     for(const [fn,info]of Object.entries(schema.dependencies??{})){
         const nativeRet=nativeOwner?ctypes.canonical(info.ret):undefined;
         const call=(...args)=>{const value=invoke(fn,args),ret=nativeRet??ctypes.canonical(info.ret);if(ret.includes('*'))return typeof value==='string'?services.literal(value):environment.address(value);if(['long','unsigned long','long long','unsigned long long'].includes(ret))return BigInt[ret.startsWith('unsigned')?'asUintN':'asIntN'](64,BigInt(value));return value;};
-        if(nativeOwner){call.nativeState=nativeOwner;const direct=!nativeRet.includes('*')&&!['long','unsigned long','long long','unsigned long long'].includes(nativeRet);Object.defineProperty(local,fn,{configurable:true,enumerable:true,get(){const selected=direct?(resolveFunction?.(fn)??(typeof services[fn]==='function'?services[fn].nativeEntry??services[fn]:undefined)):undefined;return selected?.nativeState===nativeOwner?selected:call;},set(value){Object.defineProperty(local,fn,{value,writable:true,configurable:true,enumerable:true});}});}else local[fn]=call;
+        if(nativeOwner){call.nativeState=nativeOwner;const direct=!nativeRet.includes('*')&&!['long','unsigned long','long long','unsigned long long'].includes(nativeRet);Object.defineProperty(local,fn,{configurable:true,enumerable:true,get(){const selected=direct?(resolveFunction?.(fn)??(typeof services[fn]==='function'?services[fn].nativeEntry??services[fn]:undefined)):undefined;return selected?.nativeState===nativeOwner?(selected.nativeValuesEntry??selected):call;},set(value){Object.defineProperty(local,fn,{value,writable:true,configurable:true,enumerable:true});}});}else local[fn]=call;
     }
     return {services:local,layout:keys,resolve};
 }

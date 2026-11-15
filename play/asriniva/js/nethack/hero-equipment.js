@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeWornFor} from './native/worn-graph.js';
 import {compileNativeFieldPlans} from './native/address-fields.js';
 import {createEquipmentServices} from './native/equipment-services.js';
@@ -55,8 +56,8 @@ export function enableHeroEquipment(environment,layouts,hero){
   end_menu:(win,prompt)=>weaponWindow('end_menu',transport.int(win),typeof prompt==='string'?services.literal(prompt):address(prompt)),
   destroy_nhwindow:win=>weaponWindow('destroy_nhwindow',transport.int(win)),
  });
- for(const kind of ['rn2','rnd'])ws[kind]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services[kind](n);};
- ws.d=(dice,n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('weapon.c'),line,services.literal(caller));return services.d(dice,n);};
+ for(const kind of ['rn2','rnd'])ws[kind]=(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'weapon.c',line,caller);return services[kind](n);};
+ ws.d=(dice,n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'weapon.c',line,caller);return services.d(dice,n);};
  const wd=locals.wield;
  // Native hack.h ynq: yn_function(query, ynqchars, 'q', TRUE).
  wd.ynq=prompt=>environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynqchars'),113,1);
@@ -65,7 +66,7 @@ export function enableHeroEquipment(environment,layouts,hero){
  for(const [local,fields]of [[wd,['cursed','bknown','lamplit','unpaid','oerodeproof','known']]])Object.assign(local,{objectBit:(p,i)=>bit('struct obj',p,fields[i]),setObjectBit:(p,i,v)=>setBit('struct obj',p,fields[i],v)});
  wd.classBit=p=>bit('struct objclass',p,'oc_big');
  wd.heroBit=()=>bit('struct you',environment.requireGlobal('u'),'uhandedness');wd.hands=ws.hands;
- const logged=(file,kind)=>(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal(file),line,services.literal(caller));return services[kind](transport.int(n));};
+ const logged=(file,kind)=>(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,file,line,caller);return services[kind](transport.int(n));};
  for(const kind of ['rn2','rnd'])wd[kind]=logged('wield.c',kind);
  const owned=(namespace)=>Object.fromEntries(Object.entries(namespace).filter(([name,fn])=>typeof fn==='function'&&Object.hasOwn(publicFunctions.functions,name)&&!environment.hasFunction(name)));
  const weaponEntries=Object.fromEntries(Object.keys(owned(weapon)).map(name=>{const fn=(...args)=>callWeapon(ws,W,name,...args);fn.nativeState=nativeOwner;fn.nativeDirect=true;fn.nativePrepared=true;nativeOwner.functions.set(name,fn);return[name,fn];}));
@@ -100,7 +101,7 @@ export function enableHeroEquipment(environment,layouts,hero){
   unmul:message=>environment.resolve('unmul')(typeof message==='string'?services.literal(message):address(message)),
   buffer:()=>offdelaybuf,
   callbackPointer:i=>{const name=armorAbi.callbacks[i],prototype=armorAbi.callbackTypes[name];if(!prototype)throw new Error('Unknown DO_WEAR callback '+i);const match=prototype.match(/^(.*?)\((.*)\)$/),types=[match[1],...match[2].split(',').filter(t=>t.trim()&&t.trim()!=='void')],signature=types.map(t=>{t=ctypes.canonical(t.trim());return t==='void'?'v':t.includes('*')?'p':t.includes('long')?'j':'i';}).join(''),privateName=typeof armor[name]==='function'&&!Object.hasOwn(publicFunctions.functions,name);return environment.functionPointer(privateName?'do_wear::'+name:name,signature,privateName?(...args)=>callDoWear(local,layouts.do_wear,name,...args):undefined);},
-  rng:(kind,n,fn,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('do_wear.c'),line,typeof fn==='string'?services.literal(fn):address(fn));return services[kind?'rnd':'rn2'](transport.int(n));},
+  rng:(kind,n,fn,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'do_wear.c',line,typeof fn==='string'?services.literal(fn):address(fn));return services[kind?'rnd':'rn2'](transport.int(n));},
   global:i=>environment.requireGlobal(armorAbi.globals[i].name),
   read:(k,p,i)=>{const {type,f}=field(k,i);return f.d.a||f.d.s?BigInt(ctypes.locate(type,address(p),f.name).at):ctypes.getField(type,address(p),f.name,scalar(f.d));},
   write:(k,p,i,v)=>{const {type,f}=field(k,i);if(f.d.a||f.d.s)return memory.memmove(ctypes.locate(type,address(p),f.name).at,address(v),width(f.d));return ctypes.setField(type,address(p),f.name,scalar(f.d),v);},

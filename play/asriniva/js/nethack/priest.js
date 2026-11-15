@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original PRIEST sanctuary/turn/cleanup policies on shared native records.
 import abi from './priest-abi.json' with {type:'json'};
 import * as source from '../ported/priest.js';
@@ -20,7 +21,7 @@ export function enablePriest(environment,layouts){
   assert:ok=>{if(!ok){const row=abi.assertion;return resolve('__assert_fail')(text(row.expression),text('priest.c'),row.line,text(row.function));}},
  });
  for(const name of ['pline','You','Your','You_feel','verbalize','impossible','livelog_printf'])local[name]=(...args)=>resolve(name)(...boundary(args));
- const origin=(line,caller)=>{const name=typeof caller==='number'?abi.rngCallers[caller]:caller;if(!abi.rngCallers.includes(name))throw new Error('Unknown PRIEST RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('priest.c'),transport.int(line),text(name));};
+ const origin=(line,caller)=>{const name=typeof caller==='number'?abi.rngCallers[caller]:caller;if(!abi.rngCallers.includes(name))throw new Error('Unknown PRIEST RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'priest.c',transport.int(line),name);};
  local.rn2=(n,line,caller)=>{origin(line,caller);return resolve('rn2')(transport.int(n));};local.d=(n,x,line,caller)=>{origin(line,caller);return resolve('d')(transport.int(n),transport.int(x));};
  const context=createPriestEnvironment(local,L),monsterArgs=['newepri','free_epri','move_special','histemple_at','inhistemple','pri_move','mon_aligntyp','priestname','p_coaligned','has_shrine','forget_temple_entry','priest_talk','reset_hostility','in_your_sanctuary','ghod_hitsu','restpriest'];
  const names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name)),parameters=name=>abi.public[name].match(/\(([^)]*)\)/)[1].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original MAIL extension on the already-created UNIX mail context and state.
 import abi from './mail-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
@@ -29,7 +30,7 @@ export function extendMail(environment,layouts,{context,services:local}){
  };
  const window=(name,signature,...args)=>{const at=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),name).at;return functions.indirect(memory.view.getBigUint64(at,true),signature,...args);};
  Object.assign(local,{
-  rn2:(bound,line,caller)=>{const site=abi.rngSites.find(row=>row.line===line&&row.function===caller);if(!site)throw new Error('Unknown MAIL RNG site '+caller+':'+line);if(services.rng_log_enabled())services.rng_log_set_caller(text('mail.c'),line,text(caller));return services.rn2(transport.int(bound));},
+  rn2:(bound,line,caller)=>{const site=abi.rngSites.find(row=>row.line===line&&row.function===caller);if(!site)throw new Error('Unknown MAIL RNG site '+caller+':'+line);if(services.rng_log_enabled())recordNativeRngCaller(services,'mail.c',line,caller);return services.rn2(transport.int(bound));},
   display_nhwindow:(win,blocking)=>window('win_display_nhwindow','vii',transport.int(win),transport.char(blocking)),
   nh_delay_output:()=>window('win_delay_output','v'),
   pline:(format,...args)=>{if(![0,1,3].includes(args.length))throw new Error('Unknown MAIL message shape');return resolve('pline')(text(format),...args.map((v,i)=>args.length===3&&i!==1?transport.int(v):text(v)));},

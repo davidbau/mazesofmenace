@@ -869,8 +869,8 @@ export async function wiz_show_stats() {
     const engravings = engravings_list();
     const engrSize = engravings.reduce((n, e) =>
         n + STATS_ENGR_SIZE
-            + 3 * (Math.max(String(e.text || '').length,
-                             String(e.pristine || e.text || '').length) + 1), 0);
+            + (e.engr_alloc ?? (3 * (Math.max(String(e.text || '').length,
+                             String(e.pristine || e.text || '').length) + 1))), 0);
     const lightSources = light_sources_list();
     const lightSize = lightSources.length * STATS_LIGHT_SOURCE_SIZE;
     const regionStats = region_stats_snapshot();

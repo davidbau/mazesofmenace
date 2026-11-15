@@ -783,7 +783,8 @@ async function menu_pick_pay_items(ibillct, ibill) {
         }
         const prev = g._gm_corner;
         g._gm_corner = { col: Math.min(WIN_COL, prev?.col ?? Infinity),
-                         rows: Math.max(maxrow, prev?.rows ?? 0) };
+                         rows: Math.max(maxrow, prev?.rows ?? 0),
+                         rects: [...(prev?.rects ?? (prev ? [prev] : [])), { col: WIN_COL, rows: maxrow }] };
         const { docorner_blank_utf8_captures, docorner_status_rows,
                 _threeStatusLines } = await import('./display.js');
         const { _overlay_status_line } = await import('./com_pager.js');

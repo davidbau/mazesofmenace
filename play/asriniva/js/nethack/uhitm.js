@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 import {createNativeAbiCaster,installNativeDependency} from './native/execution.js';
@@ -25,7 +26,7 @@ export function enableUhitm(environment,layouts){
  Object.assign(local,{nativeOwner:native,nativeRecordLayouts:Object.fromEntries(Object.keys(abi.records).map(type=>[type,ctypes.record(type)])),moduleKey:environment,heap:()=>memory.HEAPU8,literal,stackSave:transport.stackSave,stackRestore:transport.stackRestore,stackAlloc:transport.stackAlloc,
   global:i=>{if(!names[i])throw new Error('Unknown UHITM global '+i);return environment.requireGlobal(names[i]);},persistent:i=>{if(abi.persistentOffsets[i]===undefined)throw new Error('Unknown UHITM backing '+i);return persistent+abi.persistentOffsets[i];},
   bit:(i,p)=>bit(i,p),setBit:(i,p,v)=>bit(i,p,v),callback,
-  rngSource:(line,name)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('uhitm.c'),transport.int(line),text(name));},
+  rngSource:(line,name)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'uhitm.c',transport.int(line),name);},
   rn2:n=>resolve('rn2')(transport.int(n)),rn1:(n,b)=>resolve('rn2')(transport.int(n))+transport.int(b),rnd:n=>resolve('rnd')(transport.int(n)),rnl:n=>resolve('rnl')(transport.int(n)),d:(n,s)=>resolve('d')(transport.int(n),transport.int(s)),
   display_nhwindow:(w,b)=>window('win_display_nhwindow','vii',transport.int(w),transport.char(b)),nh_delay_output:()=>window('win_delay_output','v'),
  });

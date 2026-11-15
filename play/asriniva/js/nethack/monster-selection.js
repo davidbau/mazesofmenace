@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {connectNativeMakemon} from './native/makemon-state.js';
 // Existing random species selection and biological helpers. Header expansions
 // and static storage follow the original adapter; all selection policy stays
@@ -21,7 +22,7 @@ export function enableMonsterSelection(environment,layouts) {
             samePtr:(a,b)=>pointer(a)===pointer(b),monsndx:pm=>pm.pmidx,
             showdebug:file=>environment.resolve('debugcore')(typeof file==='string'?services.literal(file):pointer(file),1),
             impossible:(format,...args)=>environment.diagnostics.push(environment.libc.format(format,...args)),
-            rngSource:(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal(file),line,services.literal(caller));},
+            rngSource:(line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,file,line,caller);},
         });
         env.rn2=(n,line,caller)=>{if(line!==undefined)env.rngSource(line,caller);return services.rn2(n);};
         for(const [name,type]of Object.entries({u:'you',svm:'instance_globals_saved_m',svd:'instance_globals_saved_d',svl:'instance_globals_saved_l',iflags:'instance_flags'}))Object.defineProperty(env,name,{value:record('struct '+type,environment.requireGlobal(name))});

@@ -1,4 +1,5 @@
 import { encumber_msg } from './pickup.js';
+import { msgtype_type } from './options.js';
 import { object_runtime_rest_snapshot } from './o_init.js';
 import { bubbles_rest_snapshot, bubbles_copy_snapshot, mazexy } from './mkmaze.js';
 import { lights_rest_snapshot } from './light.js';
@@ -880,14 +881,19 @@ export async function restore_preamble() {
     const phase = phase_of_the_moon();
     g.flags.moonphase = phase;
     if (phase === FULL_MOON_PHASE) {
-        msgs.push('You are lucky!  Full moon tonight.');
+        // C allmain.c:57-68 uses pline; suppress before the tty join/page
+        // calculation, while retaining the independent luck change.
+        const msg = 'You are lucky!  Full moon tonight.';
+        if (msgtype_type(msg) !== 'hide') msgs.push(msg);
         change_luck(1);
     } else if (phase === NEW_MOON_PHASE) {
-        msgs.push('Be careful!  New moon tonight.');
+        const msg = 'Be careful!  New moon tonight.';
+        if (msgtype_type(msg) !== 'hide') msgs.push(msg);
     }
     g.flags.friday13 = friday_13th();
     if (g.flags.friday13) {
-        msgs.push('Watch out!  Bad things can happen on Friday the 13th.');
+        const msg = 'Watch out!  Bad things can happen on Friday the 13th.';
+        if (msgtype_type(msg) !== 'hide') msgs.push(msg);
         change_luck(-1);
     }
     /* C topl.c:260-275 update_topl(): a pline that fits the standing line

@@ -194,7 +194,7 @@ function precheck(mon,obj)
         const empty=C.literal("The potion turns out to be empty.");
         let mtmp;
         if(C.objdescr_is(obj,C.literal("milky"))) {
-            if(Number(!!(Number(!((C.i32((C.i32(R96(A36(C.svm)+Number(C.PM_GHOST)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),74,(C.literal("precheck"))),C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_GHOST)*C.sizes["struct mvitals"]))))))))))):C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_GHOST)*C.sizes["struct mvitals"])))))))))))))))) {
+            if(Number(!!(Number(!((C.i32((C.i32(R96(A36(C.svm)+Number(C.PM_GHOST)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",74,"precheck"),C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_GHOST)*C.sizes["struct mvitals"]))))))))))):C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_GHOST)*C.sizes["struct mvitals"])))))))))))))))) {
                 if(Number(!(C.enexto(cc,R48(mon),R49(mon),(C.mons+Number(C.PM_GHOST)*C.sizes["struct permonst"]))))) return 0;
                 mquaffmsg(mon,obj);
                 C.m_useup(mon,obj);
@@ -211,7 +211,7 @@ function precheck(mon,obj)
                 return 2;
             }
         }
-        if(Number(!!(Number(!!(C.i32(C.objdescr_is(obj,C.literal("smoky")))&&Number(!((C.i32((C.i32(R96(A36(C.svm)+Number(C.PM_DJINNI)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),101,(C.literal("precheck"))),C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_DJINNI)*C.sizes["struct mvitals"]))))))))))):C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_DJINNI)*C.sizes["struct mvitals"])))))))))))))))) {
+        if(Number(!!(Number(!!(C.i32(C.objdescr_is(obj,C.literal("smoky")))&&Number(!((C.i32((C.i32(R96(A36(C.svm)+Number(C.PM_DJINNI)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",101,"precheck"),C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_DJINNI)*C.sizes["struct mvitals"]))))))))))):C.rn2((C.i32((13+C.i32((2*C.i32((R95(A36(C.svm)+Number(C.PM_DJINNI)*C.sizes["struct mvitals"])))))))))))))))) {
             if(Number(!(C.enexto(cc,R48(mon),R49(mon),(C.mons+Number(C.PM_DJINNI)*C.sizes["struct permonst"]))))) return 0;
             mquaffmsg(mon,obj);
             C.m_useup(mon,obj);
@@ -224,7 +224,7 @@ function precheck(mon,obj)
                 /* I suspect few players will be upset that monsters */
                 /* can't wish for wands of death here.... */
                 ;
-                if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),117,(C.literal("precheck"))),C.rn2(2))):C.rn2(2)))) {
+                if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",117,"precheck"),C.rn2(2))):C.rn2(2)))) {
                     C.variadic(6,C.literal("You freed me!"));
                     (W71(mtmp,C.u32(1)));
                     C.set_malign(mtmp);
@@ -237,8 +237,8 @@ function precheck(mon,obj)
             return 2;
         }
     }
-    if(Number(!!(Number(!!(Number(C.i32(R108(obj))==C.WAND_CLASS)&&C.i32(R111(obj))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),132,(C.literal("precheck"))),C.rn2(100))):C.rn2(100)))))))) {
-        let dam=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),133,(C.literal("precheck"))),C.d((C.i32((C.i32(R107(obj))+2))),(6)))):C.d((C.i32((C.i32(R107(obj))+2))),(6))));
+    if(Number(!!(Number(!!(Number(C.i32(R108(obj))==C.WAND_CLASS)&&C.i32(R111(obj))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",132,"precheck"),C.rn2(100))):C.rn2(100)))))))) {
+        let dam=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",133,"precheck"),C.d((C.i32((C.i32(R107(obj))+2))),(6)))):C.d((C.i32((C.i32(R107(obj))+2))),(6))));
         /* 3.6.1: no Deaf filter; 'if' message doesn't warrant it, 'else'
            message doesn't need it since You_hear() has one of its own */
         if(vis) {
@@ -448,7 +448,7 @@ function m_tele(mtmp,vismon,oseen,how)
         /* mentions 'teleport' */
         /* monster learns that teleportation isn't useful here */
         if(C.noteleport_level(mtmp)) C.mon_learns_traps(mtmp,C.TELEP_TRAP);
-    } else if(Number(!!((Number(!!(C.mon_has_amulet(mtmp)||C.i32(C.On_W_tower_level(A152(C.u))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),396,(C.literal("m_tele"))),C.rn2(3))):C.rn2(3)))))))) {
+    } else if(Number(!!((Number(!!(C.mon_has_amulet(mtmp)||C.i32(C.On_W_tower_level(A152(C.u))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",396,"m_tele"),C.rn2(3))):C.rn2(3)))))))) {
         if(vismon) C.variadic(25,mtmp,C.literal("%s seems disoriented for a moment."),C.Monnam(mtmp));
     } else {
         /* teleport monster 'mtmp' */
@@ -537,7 +537,7 @@ function find_defensive(mtmp,tryescape)
             }
         }
         /* confused or stunned monster might not be able to open tin */
-        if(Number(!!(Number(!!(liztin&&C.i32(mcould_eat_tin(mtmp))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),502,(C.literal("find_defensive"))),C.rn2(3))):C.rn2(3)))))) {
+        if(Number(!!(Number(!!(liztin&&C.i32(mcould_eat_tin(mtmp))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",502,"find_defensive"),C.rn2(3))):C.rn2(3)))))) {
             (W90(A30(C.gm),liztin));
             /* tin and corpse ultimately end up being handled the same */
             (W93(A30(C.gm),19));
@@ -659,7 +659,7 @@ function find_defensive(mtmp,tryescape)
        into an array and then picking one at random */
     for((obj=R84(mtmp));obj;(obj=R99(obj))) {
         /* don't always use the same selection pattern */
-        if(Number(!!(R93(A30(C.gm))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),659,(C.literal("find_defensive"))),C.rn2(3))):C.rn2(3)))))))) break;
+        if(Number(!!(R93(A30(C.gm))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",659,"find_defensive"),C.rn2(3))):C.rn2(3)))))))) break;
         /* nomore(MUSE_WAN_DIGGING); */
         if(Number(R93(A30(C.gm))==5)) break;
         if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.WAN_DIGGING)&&Number(C.i32(R107(obj))>0)))&&Number(!(stuck))))&&Number(!(t))))&&Number(!(R73(mtmp)))))&&Number(!(R75(mtmp)))))&&Number(!(R76(mtmp)))))&&Number(!((Number(!!(Number(C.i32(R126(R45(mtmp)))==C.S_EYE)||Number(C.i32(R126(R45(mtmp)))==C.S_LIGHT))))))))&&Number(!(R43(A20(A34(C.svl)))))))&&Number(!((C.i32((C.i32(R138((A17(A34(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))&8)))))))&&Number(!((Number(!!(C.i32(C.Is_botlevel(A152(C.u)))||(Number(C.i32(R10(A152(C.u)))==C.i32(R10(A14(A33(C.svd)))))))))))))&&Number(!((Number(!!(Number(!!(C.i32(C.is_ice(x,y))||C.i32(C.is_pool(x,y))))||C.i32(C.is_lava(x,y)))))))))&&Number(!((Number(!!((Number(!!(Number(R45(mtmp)==(C.mons+Number(C.PM_VLAD_THE_IMPALER)*C.sizes["struct permonst"]))||Number(C.i32(R46(mtmp))==C.PM_VLAD_THE_IMPALER))))&&C.i32(C.In_V_tower(A152(C.u))))))))))) {
@@ -842,7 +842,7 @@ function use_defensive(mtmp)
         (W42(C.gz,oseen));
         mzapwand(mtmp,otmp,(C.i8(0)));
         (W29(C.gm,C.i8(1)));
-        mbhit(mtmp,(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),864,(C.literal("use_defensive"))),C.rn2(8))):C.rn2(8)))+(6)))),C.functionPointer("mbhitm"),C.functionPointer("bhito"),otmp);
+        mbhit(mtmp,(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",864,"use_defensive"),C.rn2(8))):C.rn2(8)))+(6)))),C.functionPointer("mbhitm"),C.functionPointer("bhito"),otmp);
         /* monster learns that teleportation isn't useful here */
         if(C.noteleport_level(mtmp)) C.mon_learns_traps(mtmp,C.TELEP_TRAP);
         (W29(C.gm,C.i8(0)));
@@ -938,7 +938,7 @@ function use_defensive(mtmp)
         (W42(C.gz,oseen));
         mzapwand(mtmp,otmp,(C.i8(0)));
         (W29(C.gm,C.i8(1)));
-        mbhit(mtmp,(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),978,(C.literal("use_defensive"))),C.rn2(8))):C.rn2(8)))+(6)))),C.functionPointer("mbhitm"),C.functionPointer("bhito"),otmp);
+        mbhit(mtmp,(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",978,"use_defensive"),C.rn2(8))):C.rn2(8)))+(6)))),C.functionPointer("mbhitm"),C.functionPointer("bhito"),otmp);
         (W29(C.gm,C.i8(0)));
         return 2;
         case (10):
@@ -961,7 +961,7 @@ function use_defensive(mtmp)
                 let mon;
                 let known=(C.i8(0));
                 if(Number(!(otmp))) C.variadic(48,MissingDefensiveItem,C.literal("scroll of create monster"));
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1007,(C.literal("use_defensive"))),C.rn2(73))):C.rn2(73)))))) (cnt=C.i32(cnt+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1008,(C.literal("use_defensive"))),C.rnd(4))):C.rnd(4)))));
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1007,"use_defensive"),C.rn2(73))):C.rn2(73)))))) (cnt=C.i32(cnt+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1008,"use_defensive"),C.rnd(4))):C.rnd(4)))));
                 if(Number(!!(C.i32(R70(mtmp))||C.i32(R111(otmp))))) (cnt=C.i32(cnt+12));
                 if(R70(mtmp)) (pm=(fish=(C.mons+Number(C.PM_ACID_BLOB)*C.sizes["struct permonst"])));
  else if(C.is_pool(R48(mtmp),R49(mtmp))) (fish=(C.mons+Number((C.i32(R158(C.u))?C.PM_GIANT_EEL:C.PM_CROCODILE))*C.sizes["struct permonst"]));
@@ -1016,7 +1016,7 @@ function use_defensive(mtmp)
         if(Number(!(stway))) return 0;
         if(Number(C.i32(C.ledger_no(A152(C.u)))==1)) return mon_escape(mtmp,vismon);
         /* impossible; level 1 upstairs are SSTAIRS */
-        if(Number(!!(Number(!!(Number(!!(C.i32(C.In_hell(A152(C.u)))&&C.mon_has_amulet(mtmp)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1073,(C.literal("use_defensive"))),C.rn2(4))):C.rn2(4)))))))&&(Number(C.i32(C.dunlev(A152(C.u)))<C.i32((C.i32(C.dunlevs_in_dungeon(A152(C.u)))-3))))))) {
+        if(Number(!!(Number(!!(Number(!!(C.i32(C.In_hell(A152(C.u)))&&C.mon_has_amulet(mtmp)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1073,"use_defensive"),C.rn2(4))):C.rn2(4)))))))&&(Number(C.i32(C.dunlev(A152(C.u)))<C.i32((C.i32(C.dunlevs_in_dungeon(A152(C.u)))-3))))))) {
             if(vismon) C.variadic(50,C.literal("As %s climbs the stairs, a mysterious force momentarily surrounds %s..."),C.mon_nam(mtmp),(R1(C.genders+Number(C.pronoun_gender(mtmp,C.u32(2)))*C.sizes["struct Gender"])));
             /* simpler than for the player; this will usually be
                the Wizard and he'll immediately go right to the
@@ -1100,7 +1100,7 @@ function use_defensive(mtmp)
         case (3):
             if(Number(!(otmp))) C.variadic(57,MissingDefensiveItem,C.literal("potioh of healing"));
         mquaffmsg(mtmp,otmp);
-        (i=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1165,(C.literal("use_defensive"))),C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(4)))):C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(4)))));
+        (i=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1165,"use_defensive"),C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(4)))):C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(4)))));
         C.healmon(mtmp,i,1);
         if(Number(!!(Number(!(R111(otmp)))&&Number(!(R63(mtmp)))))) mcureblindness(mtmp,vismon);
         if(vismon) C.variadic(58,mtmp,C.literal("%s looks better."),C.Monnam(mtmp));
@@ -1110,7 +1110,7 @@ function use_defensive(mtmp)
         case (4):
             if(Number(!(otmp))) C.variadic(59,MissingDefensiveItem,C.literal("potioh of extra healing"));
         mquaffmsg(mtmp,otmp);
-        (i=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1179,(C.literal("use_defensive"))),C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(8)))):C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(8)))));
+        (i=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1179,"use_defensive"),C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(8)))):C.d((C.i32((6+C.i32((2*C.bcsign(otmp)))))),(8)))));
         C.healmon(mtmp,i,(C.i32(R112(otmp))?5:2));
         if(Number(!(R63(mtmp)))) mcureblindness(mtmp,vismon);
         if(vismon) C.variadic(60,mtmp,C.literal("%s looks much better."),C.Monnam(mtmp));
@@ -1151,11 +1151,11 @@ function rnd_defensive_item(mtmp)
     let trycnt=0;
     if(Number(!!(Number(!!(Number(!!(Number(!!((Number((C.u64((R130(pm)&C.u64(262144n))))!=C.u64(0n)))||C.i32(C.attacktype(pm,13))))||(Number((C.u64((R130(R45(mtmp))&C.u64(65536n))))!=C.u64(0n)))))||Number(C.i32(R126(pm))==C.S_GHOST)))||Number(C.i32(R126(pm))==C.S_KOP)))) return 0;
     try_again: for(;;) {
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1232,(C.literal("rnd_defensive_item"))),C.rn2(C.i32((C.i32((C.i32((8+(Number(difficulty>3))))+(Number(difficulty>6))))+(Number(difficulty>8))))))):C.rn2(C.i32((C.i32((C.i32((8+(Number(difficulty>3))))+(Number(difficulty>6))))+(Number(difficulty>8)))))))) {
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1232,"rnd_defensive_item"),C.rn2(C.i32((C.i32((C.i32((8+(Number(difficulty>3))))+(Number(difficulty>6))))+(Number(difficulty>8))))))):C.rn2(C.i32((C.i32((C.i32((8+(Number(difficulty>3))))+(Number(difficulty>6))))+(Number(difficulty>8)))))))) {
         case (6):
             case (9):
                 if(Number(!!(C.i32(C.noteleport_level(mtmp))&&Number((trycnt=C.i32((trycnt+1)))<2)))) continue try_again;
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1237,(C.literal("rnd_defensive_item"))),C.rn2(3))):C.rn2(3)))))) return C.WAN_TELEPORTATION;
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1237,"rnd_defensive_item"),C.rn2(3))):C.rn2(3)))))) return C.WAN_TELEPORTATION;
         ;
         /*FALLTHRU*/
         case (0):
@@ -1163,7 +1163,7 @@ function rnd_defensive_item(mtmp)
                 return C.SCR_TELEPORTATION;
         case (8):
             case (10):
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1246,(C.literal("rnd_defensive_item"))),C.rn2(3))):C.rn2(3)))))) return C.WAN_CREATE_MONSTER;
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1246,"rnd_defensive_item"),C.rn2(3))):C.rn2(3)))))) return C.WAN_CREATE_MONSTER;
         ;
         /*FALLTHRU*/
         case (2):
@@ -1177,7 +1177,7 @@ function rnd_defensive_item(mtmp)
         case (7):
             /* wand of digging */
             /* usually avoid digging in Sokoban */
-            if(Number(!!(C.i32(R43(A20(A34(C.svl))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1261,(C.literal("rnd_defensive_item"))),C.rn2(4))):C.rn2(4)))))) continue try_again;
+            if(Number(!!(C.i32(R43(A20(A34(C.svl))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1261,"rnd_defensive_item"),C.rn2(4))):C.rn2(4)))))) continue try_again;
         /* some creatures shouldn't dig down to another level when hurt */
         if(Number(!!(Number(!!(Number(!!((Number(!!(Number(C.i32(R126(pm))==C.S_EYE)||Number(C.i32(R126(pm))==C.S_LIGHT))))||C.i32(R73(mtmp))))||C.i32(R75(mtmp))))||C.i32(R76(mtmp))))) return 0;
         return C.WAN_DIGGING;
@@ -1412,13 +1412,13 @@ function find_offensive(mtmp)
          */
         if(Number(R92(A30(C.gm))==17)) continue;
         ;
-        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.SCR_EARTH)&&(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.hard_helmet(mtmp_helmet))||C.i32(R70(mtmp))))||(Number((C.u64((R130(R45(mtmp))&C.u64(4n))))!=C.u64(0n)))))||(Number((C.u64((R130(R45(mtmp))&C.u64(8n))))!=C.u64(0n)))))||(Number(C.i32(R126(R45(mtmp)))==C.S_GHOST))))||(Number((C.u64((R130(R45(mtmp))&C.u64(1048576n))))!=C.u64(0n)))))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1558,(C.literal("find_offensive"))),C.rn2(10))):C.rn2(10))))))))))&&Number(C.dist2(R48(mtmp),R49(mtmp),R50(mtmp),R51(mtmp))<=2)))&&C.i32(R63(mtmp))))&&(Number((C.u64((R130(R45(mtmp))&C.u64(4096n))))==C.u64(0n)))))&&Number(!(((Number(!!((Number(!!(C.i32(R11(A12(A33(C.svd))))||C.i32(R10(A12(A33(C.svd)))))))&&C.i32(C.on_level(A152(C.u),A12(A33(C.svd))))))))))))&&(Number(!!(Number(!((Number(C.i32(R10(A152(C.u)))==C.i32(R10(A14(A33(C.svd))))))))||((Number(!!((Number(!!(C.i32(R11(A13(A33(C.svd))))||C.i32(R10(A13(A33(C.svd)))))))&&C.i32(C.on_level(A152(C.u),A13(A33(C.svd)))))))))))))) {
+        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.SCR_EARTH)&&(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(C.hard_helmet(mtmp_helmet))||C.i32(R70(mtmp))))||(Number((C.u64((R130(R45(mtmp))&C.u64(4n))))!=C.u64(0n)))))||(Number((C.u64((R130(R45(mtmp))&C.u64(8n))))!=C.u64(0n)))))||(Number(C.i32(R126(R45(mtmp)))==C.S_GHOST))))||(Number((C.u64((R130(R45(mtmp))&C.u64(1048576n))))!=C.u64(0n)))))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1558,"find_offensive"),C.rn2(10))):C.rn2(10))))))))))&&Number(C.dist2(R48(mtmp),R49(mtmp),R50(mtmp),R51(mtmp))<=2)))&&C.i32(R63(mtmp))))&&(Number((C.u64((R130(R45(mtmp))&C.u64(4096n))))==C.u64(0n)))))&&Number(!(((Number(!!((Number(!!(C.i32(R11(A12(A33(C.svd))))||C.i32(R10(A12(A33(C.svd)))))))&&C.i32(C.on_level(A152(C.u),A12(A33(C.svd))))))))))))&&(Number(!!(Number(!((Number(C.i32(R10(A152(C.u)))==C.i32(R10(A14(A33(C.svd))))))))||((Number(!!((Number(!!(C.i32(R11(A13(A33(C.svd))))||C.i32(R10(A13(A33(C.svd)))))))&&C.i32(C.on_level(A152(C.u),A13(A33(C.svd)))))))))))))) {
             (W89(A30(C.gm),obj));
             (W92(A30(C.gm),17));
         }
         if(Number(R92(A30(C.gm))==18)) continue;
         ;
-        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.EXPENSIVE_CAMERA)&&(Number(!!((Number(!!(Number(!((Number(!!((Number(!!(R136(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R134(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R135(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&Number(!(C.resists_blnd(A41(C.gy)))))))||(Number((R45(A41(C.gy)))==(C.mons+Number(C.PM_GREMLIN)*C.sizes["struct permonst"]))))))))&&Number(C.dist2(R48(mtmp),R49(mtmp),R50(mtmp),R51(mtmp))<=2)))&&Number(C.i32(R107(obj))>0)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1571,(C.literal("find_offensive"))),C.rn2(6))):C.rn2(6)))))))) {
+        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.EXPENSIVE_CAMERA)&&(Number(!!((Number(!!(Number(!((Number(!!((Number(!!(R136(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R134(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R135(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&Number(!(C.resists_blnd(A41(C.gy)))))))||(Number((R45(A41(C.gy)))==(C.mons+Number(C.PM_GREMLIN)*C.sizes["struct permonst"]))))))))&&Number(C.dist2(R48(mtmp),R49(mtmp),R50(mtmp),R51(mtmp))<=2)))&&Number(C.i32(R107(obj))>0)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1571,"find_offensive"),C.rn2(6))):C.rn2(6)))))))) {
             (W89(A30(C.gm),obj));
             (W92(A30(C.gm),18));
         }
@@ -1452,11 +1452,11 @@ function mbhitm(mtmp,otmp)
                 ;
                 C.variadic(65,C.literal("Boing!"));
                 (learnit=(C.i8(1)));
-            } else if(Number(!!(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1618,(C.literal("mbhitm"))),C.rnd(20))):C.rnd(20)))<C.i32((10+C.i32(R161(C.u)))))&&Number(!((Number(!!(R26(C.gb)&&Number(!(R80(R26(C.gb)))))))))))) {
+            } else if(Number(!!(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1618,"mbhitm"),C.rnd(20))):C.rnd(20)))<C.i32((10+C.i32(R161(C.u)))))&&Number(!((Number(!!(R26(C.gb)&&Number(!(R80(R26(C.gb)))))))))))) {
                 C.monstunseesu(C.u64(C.M_SEEN_MAGR));
                 /* mons see hero not resisting */
                 C.variadic(66,C.literal("wand hits you!"));
-                (tmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1622,(C.literal("mbhitm"))),C.d((2),(12)))):C.d((2),(12)))));
+                (tmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1622,"mbhitm"),C.d((2),(12)))):C.d((2),(12)))));
                 if((Number(!!(R136(A154(C.u)+Number(C.HALF_SPDAM)*C.sizes["struct prop"])||R134(A154(C.u)+Number(C.HALF_SPDAM)*C.sizes["struct prop"]))))) (tmp=C.i32(Math.trunc(((C.i32((tmp+1)))/2))));
                 C.losehp(tmp,C.literal("wand"),C.i8(0));
                 (learnit=(C.i8(1)));
@@ -1470,8 +1470,8 @@ function mbhitm(mtmp,otmp)
             ;
             C.variadic(68,C.literal("Boing!"));
             (learnit=(C.i8(1)));
-        } else if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1637,(C.literal("mbhitm"))),C.rnd(20))):C.rnd(20)))<C.i32((10+C.find_mac(mtmp))))) {
-            (tmp=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1638,(C.literal("mbhitm"))),C.d((2),(12)))):C.d((2),(12)))));
+        } else if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1637,"mbhitm"),C.rnd(20))):C.rnd(20)))<C.i32((10+C.find_mac(mtmp))))) {
+            (tmp=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1638,"mbhitm"),C.d((2),(12)))):C.d((2),(12)))));
             C.hit(C.literal("wand"),mtmp,C.exclam(tmp));
             C.resist(mtmp,R108(otmp),tmp,1);
             (learnit=(C.i8(1)));
@@ -1512,7 +1512,7 @@ function mbhitm(mtmp,otmp)
                    so that mbhito() will skip it instead of reviving it */
                     (W9(A32(C.svc),C.i8(1)));
                     /* for make_corpse() */
-                    C.resist(mtmp,C.i8(C.WAND_CLASS),((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1684,(C.literal("mbhitm"))),C.rnd(8))):C.rnd(8))),0);
+                    C.resist(mtmp,C.i8(C.WAND_CLASS),((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1684,"mbhitm"),C.rnd(8))):C.rnd(8))),0);
                 }
                 if(wake) {
                     if(Number(!((Number(R52(mtmp)<1))))) C.wakeup(mtmp,(C.i8(0)));
@@ -1672,7 +1672,7 @@ function use_offensive(mtmp)
         (W26(C.gb,mtmp));
         (W27(C.gc,otmp));
         /* needed by zhitu() */
-        C.callProc(buzzfn,"void (*)(int, int, coordxy, coordxy, int, int)",(C.i32((C.i32((-30))-((C.i32((C.abs(C.i32(((((Number(C.i32(R104(otmp))==C.FROST_HORN))?3:2))-1)))%10))))))),(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1870,(C.literal("use_offensive"))),C.rn2(6))):C.rn2(6)))+(6)))),R48(mtmp),R49(mtmp),C.sgn(C.i32((C.i32(R50(mtmp))-C.i32(R48(mtmp))))),C.sgn(C.i32((C.i32(R51(mtmp))-C.i32(R49(mtmp))))));
+        C.callProc(buzzfn,"void (*)(int, int, coordxy, coordxy, int, int)",(C.i32((C.i32((-30))-((C.i32((C.abs(C.i32(((((Number(C.i32(R104(otmp))==C.FROST_HORN))?3:2))-1)))%10))))))),(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1870,"use_offensive"),C.rn2(6))):C.rn2(6)))+(6)))),R48(mtmp),R49(mtmp),C.sgn(C.i32((C.i32(R50(mtmp))-C.i32(R48(mtmp))))),C.sgn(C.i32((C.i32(R51(mtmp))-C.i32(R49(mtmp))))));
         (W26(C.gb,0));
         (W27(C.gc,0));
         (W29(C.gm,C.i8(0)));
@@ -1685,7 +1685,7 @@ function use_offensive(mtmp)
         mzapwand(mtmp,otmp,(C.i8(0)));
         (W29(C.gm,C.i8(1)));
         (W26(C.gb,mtmp));
-        mbhit(mtmp,(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1884,(C.literal("use_offensive"))),C.rn2(8))):C.rn2(8)))+(6)))),C.functionPointer("mbhitm"),C.functionPointer("bhito"),otmp);
+        mbhit(mtmp,(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1884,"use_offensive"),C.rn2(8))):C.rn2(8)))+(6)))),C.functionPointer("mbhitm"),C.functionPointer("bhito"),otmp);
         (W26(C.gb,0));
         /* note: 'otmp' might have been destroyed (drawbridge destruction) */
         (W29(C.gm,C.i8(0)));
@@ -1738,7 +1738,7 @@ function use_offensive(mtmp)
                 (W29(C.gm,C.i8(1)));
                 if(Number(!!(Number(!((Number(!!((Number(!!(R136(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R134(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R135(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))&&Number(!(C.resists_blnd(A41(C.gy))))))) {
                     C.variadic(74,C.literal("are blinded by the flash of light!"));
-                    C.make_blinded(C.i64(((C.i64((R136(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])&16777215n)))+C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),1949,(C.literal("use_offensive"))),C.rnd(C.i32((1+50))))):C.rnd(C.i32((1+50)))))))),(C.i8(0)));
+                    C.make_blinded(C.i64(((C.i64((R136(A154(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])&16777215n)))+C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",1949,"use_offensive"),C.rnd(C.i32((1+50))))):C.rnd(C.i32((1+50)))))))),(C.i8(0)));
                 }
                 C.lightdamage(otmp,(C.i8(1)),5);
                 (W29(C.gm,C.i8(0)));
@@ -1777,8 +1777,8 @@ function rnd_offensive_item(mtmp)
     let pm=R45(mtmp);
     let difficulty=C.i32(R132(C.mons+Number(((R125(pm))))*C.sizes["struct permonst"]));
     if(Number(!!(Number(!!(Number(!!(Number(!!((Number((C.u64((R130(pm)&C.u64(262144n))))!=C.u64(0n)))||C.i32(C.attacktype(pm,13))))||(Number((C.u64((R130(R45(mtmp))&C.u64(65536n))))!=C.u64(0n)))))||Number(C.i32(R126(pm))==C.S_GHOST)))||Number(C.i32(R126(pm))==C.S_KOP)))) return 0;
-    if(Number(!!(Number(difficulty>7)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2043,(C.literal("rnd_offensive_item"))),C.rn2(35))):C.rn2(35)))))))) return C.WAN_DEATH;
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2045,(C.literal("rnd_offensive_item"))),C.rn2(C.i32((C.i32((9-(Number(difficulty<4))))+C.i32((4*(Number(difficulty>6))))))))):C.rn2(C.i32((C.i32((9-(Number(difficulty<4))))+C.i32((4*(Number(difficulty>6)))))))))) {
+    if(Number(!!(Number(difficulty>7)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2043,"rnd_offensive_item"),C.rn2(35))):C.rn2(35)))))))) return C.WAN_DEATH;
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2045,"rnd_offensive_item"),C.rn2(C.i32((C.i32((9-(Number(difficulty<4))))+C.i32((4*(Number(difficulty>6))))))))):C.rn2(C.i32((C.i32((9-(Number(difficulty<4))))+C.i32((4*(Number(difficulty>6)))))))))) {
         case (0):
 {
                 let mtmp_helmet=C.which_armor(mtmp,4n);
@@ -1876,7 +1876,7 @@ function find_misc(mtmp)
             (W94(A30(C.gm),1));
         }
         if(Number(R94(A30(C.gm))==(8))) continue;
-        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.BULLWHIP)&&Number(!(R71(mtmp)))))&&C.global("uwep").value))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2182,(C.literal("find_misc"))),C.rn2(5))):C.rn2(5)))))))&&Number(obj==(R85(mtmp)))))&&(Number(!!(Number(C.i32((R50(mtmp)))==C.i32(R150(C.u)))&&Number(C.i32((R51(mtmp)))==C.i32(R151(C.u))))))))&&(Number(C.dist2((R48(mtmp)),(R49(mtmp)),R150(C.u),R151(C.u))<=2))))&&Number(!(R157(C.u)))))&&(Number(!!(C.i32(C.canletgo(C.global("uwep").value,C.literal("")))||(Number(!!(C.i32(R164(C.u))&&C.i32(C.canletgo(C.global("uswapwep").value,C.literal("")))))))))))) {
+        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R104(obj))==C.BULLWHIP)&&Number(!(R71(mtmp)))))&&C.global("uwep").value))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2182,"find_misc"),C.rn2(5))):C.rn2(5)))))))&&Number(obj==(R85(mtmp)))))&&(Number(!!(Number(C.i32((R50(mtmp)))==C.i32(R150(C.u)))&&Number(C.i32((R51(mtmp)))==C.i32(R151(C.u))))))))&&(Number(C.dist2((R48(mtmp)),(R49(mtmp)),R150(C.u),R151(C.u))<=2))))&&Number(!(R157(C.u)))))&&(Number(!!(C.i32(C.canletgo(C.global("uwep").value,C.literal("")))||(Number(!!(C.i32(R164(C.u))&&C.i32(C.canletgo(C.global("uswapwep").value,C.literal("")))))))))))) {
             /* the random test prevents whip-wielding
                monster from attempting disarm every turn */
             /* hero's location must be known and adjacent */
@@ -1919,7 +1919,7 @@ function find_misc(mtmp)
             (W94(A30(C.gm),9));
         }
         if(Number(R94(A30(C.gm))==(10))) continue;
-        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!((Number(!!(Number(C.i32(R104(obj))>=C.LARGE_BOX)&&Number(C.i32(R104(obj))<=C.BAG_OF_TRICKS))))&&Number(C.i32(R104(obj))!=C.BAG_OF_TRICKS)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2235,(C.literal("find_misc"))),C.rn2(5))):C.rn2(5)))))))&&Number(!((Number(!!(Number(C.i32(R104(obj))==C.LARGE_BOX)&&Number(C.i32(R107(obj))==1))))))))&&Number(!(R94(A30(C.gm))))))&&(Number(R101(obj)!=0))))&&Number(!(R118(obj)))))&&Number(!(R119(obj)))))) {
+        if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!((Number(!!(Number(C.i32(R104(obj))>=C.LARGE_BOX)&&Number(C.i32(R104(obj))<=C.BAG_OF_TRICKS))))&&Number(C.i32(R104(obj))!=C.BAG_OF_TRICKS)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2235,"find_misc"),C.rn2(5))):C.rn2(5)))))))&&Number(!((Number(!!(Number(C.i32(R104(obj))==C.LARGE_BOX)&&Number(C.i32(R107(obj))==1))))))))&&Number(!(R94(A30(C.gm))))))&&(Number(R101(obj)!=0))))&&Number(!(R118(obj)))))&&Number(!(R119(obj)))))) {
             (W91(A30(C.gm),obj));
             (W94(A30(C.gm),10));
         }
@@ -1953,7 +1953,7 @@ function mloot_container(mon,container,vismon)
     if(Number(!!((Number(!!(Number(C.i32(R104(container))==C.BAG_OF_HOLDING)||Number(C.i32(R104(container))==C.BAG_OF_TRICKS))))&&C.i32(R111(container))))) return res;
     /* 0 */
     if((Number(!!(Number(C.i32(R104(container))==C.LARGE_BOX)&&Number(C.i32(R107(container))==1))))) return res;
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2281,(C.literal("mloot_container"))),C.rn2(10))):C.rn2(10)))) {
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2281,"mloot_container"),C.rn2(10))):C.rn2(10)))) {
         default:
             /* case 0, 1, 2, 3: */
             (takeout_count=1);
@@ -1992,8 +1992,8 @@ function mloot_container(mon,container,vismon)
 
         /* nitems is always greater than 0 due to Has_contents() check;
            throttle item removal as the container becomes less filled */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2318,(C.literal("mloot_container"))),C.rn2(C.i32((nitems+1))))):C.rn2(C.i32((nitems+1)))))))) break;
-        (nitems=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2320,(C.literal("mloot_container"))),C.rn2(nitems))):C.rn2(nitems))));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2318,"mloot_container"),C.rn2(C.i32((nitems+1))))):C.rn2(C.i32((nitems+1)))))))) break;
+        (nitems=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2320,"mloot_container"),C.rn2(nitems))):C.rn2(nitems))));
         for((xobj=R101(container));Number(xobj!=0);(xobj=R99(xobj))) if(Number((nitems=C.i32((nitems-1)))<0)) break;
 
         ((Number(!!((Number(xobj!=(0)))||((C.__assert_fail(C.literal("xobj != NULL"),C.literal("muse.c"),2324,(C.literal("mloot_container"))),0))))));
@@ -2191,11 +2191,11 @@ function use_misc(mtmp)
             /* attempt to disarm hero */
 {
                 let The_whip=(C.i32(vismon)?C.literal("The bullwhip"):C.literal("A whip"));
-                let where_to=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2553,(C.literal("use_misc"))),C.rn2(4))):C.rn2(4)));
+                let where_to=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2553,"use_misc"),C.rn2(4))):C.rn2(4)));
                 let obj=C.global("uwep").value;
                 let hand;
                 let the_weapon=C.stackAlloc((1*256)); let hand_buf=C.stackAlloc((1*256));
-                if(Number(!!(Number(!!(Number(!(obj))||Number(!(C.canletgo(obj,C.literal(""))))))||(Number(!!(Number(!!(C.i32(R164(C.u))&&C.i32(C.canletgo(C.global("uswapwep").value,C.literal("")))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2559,(C.literal("use_misc"))),C.rn2(2))):C.rn2(2))))))))) (obj=C.global("uswapwep").value);
+                if(Number(!!(Number(!!(Number(!(obj))||Number(!(C.canletgo(obj,C.literal(""))))))||(Number(!!(Number(!!(C.i32(R164(C.u))&&C.i32(C.canletgo(C.global("uswapwep").value,C.literal("")))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2559,"use_misc"),C.rn2(2))):C.rn2(2))))))))) (obj=C.global("uswapwep").value);
                 if(Number(!(obj))) break;
                 /* shouldn't happen after find_misc() */
                 C.strcpy(the_weapon,C.the(C.xname(obj)));
@@ -2284,15 +2284,15 @@ function rnd_misc_item(mtmp)
      * to have this item; after all, the item will be used to strengthen
      * the monster and strong monsters won't use it at all...
      */
-    if(Number(!!(Number(difficulty<6)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2666,(C.literal("rnd_misc_item"))),C.rn2(30))):C.rn2(30)))))))) return (((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2667,(C.literal("rnd_misc_item"))),C.rn2(6))):C.rn2(6)))?C.POT_POLYMORPH:C.WAN_POLYMORPH);
-    if(Number(!!(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2669,(C.literal("rnd_misc_item"))),C.rn2(40))):C.rn2(40)))))&&Number(!((Number(!!(Number(!!((Number((C.u64((R131(pm)&C.u64(2n))))!=C.u64(0n)))||Number((pm)==(C.mons+Number(C.PM_MANES)*C.sizes["struct permonst"]))))||(Number(!!((Number(C.i32(R126(pm))==C.S_GOLEM))||Number(C.i32(R126(pm))==C.S_VORTEX)))))))))))&&Number(!((Number(!!(Number(!!(Number(C.i32(R46(mtmp))==C.PM_VAMPIRE)||Number(C.i32(R46(mtmp))==C.PM_VAMPIRE_LEADER)))||Number(C.i32(R46(mtmp))==C.PM_VLAD_THE_IMPALER))))))))) return C.AMULET_OF_LIFE_SAVING;
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2672,(C.literal("rnd_misc_item"))),C.rn2(3))):C.rn2(3)))) {
+    if(Number(!!(Number(difficulty<6)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2666,"rnd_misc_item"),C.rn2(30))):C.rn2(30)))))))) return (((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2667,"rnd_misc_item"),C.rn2(6))):C.rn2(6)))?C.POT_POLYMORPH:C.WAN_POLYMORPH);
+    if(Number(!!(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2669,"rnd_misc_item"),C.rn2(40))):C.rn2(40)))))&&Number(!((Number(!!(Number(!!((Number((C.u64((R131(pm)&C.u64(2n))))!=C.u64(0n)))||Number((pm)==(C.mons+Number(C.PM_MANES)*C.sizes["struct permonst"]))))||(Number(!!((Number(C.i32(R126(pm))==C.S_GOLEM))||Number(C.i32(R126(pm))==C.S_VORTEX)))))))))))&&Number(!((Number(!!(Number(!!(Number(C.i32(R46(mtmp))==C.PM_VAMPIRE)||Number(C.i32(R46(mtmp))==C.PM_VAMPIRE_LEADER)))||Number(C.i32(R46(mtmp))==C.PM_VLAD_THE_IMPALER))))))))) return C.AMULET_OF_LIFE_SAVING;
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2672,"rnd_misc_item"),C.rn2(3))):C.rn2(3)))) {
         case (0):
             if(R75(mtmp)) return 0;
-        return (((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2676,(C.literal("rnd_misc_item"))),C.rn2(6))):C.rn2(6)))?C.POT_SPEED:C.WAN_SPEED_MONSTER);
+        return (((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2676,"rnd_misc_item"),C.rn2(6))):C.rn2(6)))?C.POT_SPEED:C.WAN_SPEED_MONSTER);
         case (1):
             if(Number(!!(C.i32(R71(mtmp))&&Number(!((Number(!!(R136(A154(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"])||R134(A154(C.u)+Number(C.SEE_INVIS)*C.sizes["struct prop"]))))))))) return 0;
-        return (((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2680,(C.literal("rnd_misc_item"))),C.rn2(6))):C.rn2(6)))?C.POT_INVISIBILITY:C.WAN_MAKE_INVISIBLE);
+        return (((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2680,"rnd_misc_item"),C.rn2(6))):C.rn2(6)))?C.POT_INVISIBILITY:C.WAN_MAKE_INVISIBLE);
         case (2):
             return C.POT_GAIN_LEVEL;
     }
@@ -2457,7 +2457,7 @@ function mon_consume_unstone(mon,obj,by_you,stoning)
     C.m_useup(mon,obj);
     /* obj is now gone */
     if(Number(!!(Number(!!(C.i32(acid)&&Number(!(tinned))))&&Number(!(C.Resists_Elem(mon,C.ACID_RES)))))) {
-        (W52(mon,C.i32(R52(mon)-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),2942,(C.literal("mon_consume_unstone"))),C.rnd(15))):C.rnd(15))))));
+        (W52(mon,C.i32(R52(mon)-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",2942,"mon_consume_unstone"),C.rnd(15))):C.rnd(15))))));
         if(vis) C.variadic(120,mon,C.literal("%s has a very bad case of stomach acid."),C.Monnam(mon));
         if((Number(R52(mon)<1))) {
             C.variadic(121,mon,C.literal("%s dies!"),C.Monnam(mon));
@@ -2562,7 +2562,7 @@ function munslime(mon,by_you)
 
 
             for((idx=C.i16(0));Number(C.i32(idx)<C.i32(nxy));(idx=C.i16((idx+1)))) {
-                (ridx=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),3080,(C.literal("munslime"))),C.rn2(C.i32((C.i32(nxy)-C.i32(idx)))))):C.rn2(C.i32((C.i32(nxy)-C.i32(idx))))))+C.i32((idx)))))));
+                (ridx=C.i16((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",3080,"munslime"),C.rn2(C.i32((C.i32(nxy)-C.i32(idx)))))):C.rn2(C.i32((C.i32(nxy)-C.i32(idx))))))+C.i32((idx)))))));
                 if(Number(C.i32(ridx)!=C.i32(idx))) {
                     (x=C.cell(((xy+Number(0)*(2*8))+Number(idx)*2),"short").value);
                     (C.cell(((xy+Number(0)*(2*8))+Number(idx)*2),"short").value=C.cell(((xy+Number(0)*(2*8))+Number(ridx)*2),"short").value);
@@ -2612,7 +2612,7 @@ function muse_unslime(mon,obj,trap,by_you)
     } else if(Number(otyp==C.STRANGE_OBJECT)) {
         /* monster is using fire breath on self */
         if(vis) C.variadic(128,mon,C.literal("%s."),C.monverbself(mon,C.Monnam(mon),C.literal("breath"),C.literal("fire on")));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),3146,(C.literal("muse_unslime"))),C.rn2(3))):C.rn2(3)))))) (W58(mon,C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),3147,(C.literal("muse_unslime"))),C.rn2(10))):C.rn2(10)))+(5)))));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",3146,"muse_unslime"),C.rn2(3))):C.rn2(3)))))) (W58(mon,C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",3147,"muse_unslime"),C.rn2(10))):C.rn2(10)))+(5)))));
         /* -21 => monster's fire breath; 1 => # of damage dice */
         (dmg=C.zhitm(mon,(C.i32(by_you)?21:C.i32((-21))),1,odummypAddress));
     } else if(Number(otyp==C.SCR_FIRE)) {
@@ -2627,7 +2627,7 @@ function muse_unslime(mon,obj,trap,by_you)
             (res=(C.i8(0)));
             /* failed to cure sliming */
         } else {
-            (dmg=C.i32(Math.trunc(((C.i32((C.i32((2*(C.i32(((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),3161,(C.literal("muse_unslime"))),C.rn2(3))):C.rn2(3)))+(3))))+C.i32((2*C.bcsign(obj))))))))+1)))/3))));
+            (dmg=C.i32(Math.trunc(((C.i32((C.i32((2*(C.i32(((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",3161,"muse_unslime"),C.rn2(3))):C.rn2(3)))+(3))))+C.i32((2*C.bcsign(obj))))))))+1)))/3))));
             C.m_useup(mon,obj);
             /* before explode() */
             /* -11 => monster's fireball */
@@ -2663,7 +2663,7 @@ function muse_unslime(mon,obj,trap,by_you)
             C.variadic(131,C.literal("%s quaffs a burning %s"),(C.i32(saw_lit)?C.upstart(C.strcpy(Pronoun,(R0(C.genders+Number(C.pronoun_gender(mon,C.u32(2)))*C.sizes["struct Gender"])))):C.Monnam(mon)),C.simpleonames(obj));
             C.discover_object((C.POT_OIL),(C.i8(1)),(C.i8(1)),(C.i8(1)));
         }
-        (dmg=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("muse.c"),3199,(C.literal("muse_unslime"))),C.d((3),(4)))):C.d((3),(4)))));
+        (dmg=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("muse.c",3199,"muse_unslime"),C.d((3),(4)))):C.d((3),(4)))));
         /* [**TEMP** (different from hero)] */
         C.m_useup(mon,obj);
     } else {
@@ -2730,5 +2730,5 @@ function green_mon(mon)
 /*muse.c*/
 const initialState=C=>({});
 
-return Object.freeze({precheck,mzapwand,mplayhorn,mreadmsg,mquaffmsg,m_use_healing,m_sees_sleepy_soldier,m_tele,m_next2m,find_defensive,reveal_trap,mon_escape,use_defensive,rnd_defensive_item,linedup_chk_corpse,m_use_undead_turning,hero_behind_chokepoint,mon_has_friends,mon_likes_objpile_at,find_offensive,mbhitm,fhito_loc,mbhit,buzz_force_miss,use_offensive,rnd_offensive_item,find_misc,muse_newcham_mon,mloot_container,use_misc,you_aggravate,rnd_misc_item,searches_for_item,mon_reflects,ureflects,mcureblindness,munstone,mon_consume_unstone,cures_stoning,mcould_eat_tin,munslime,muse_unslime,cures_sliming,green_mon,initialState});
+return C.nativeAddressNamespaceReady(Object.freeze({precheck,mzapwand,mplayhorn,mreadmsg,mquaffmsg,m_use_healing,m_sees_sleepy_soldier,m_tele,m_next2m,find_defensive,reveal_trap,mon_escape,use_defensive,rnd_defensive_item,linedup_chk_corpse,m_use_undead_turning,hero_behind_chokepoint,mon_has_friends,mon_likes_objpile_at,find_offensive,mbhitm,fhito_loc,mbhit,buzz_force_miss,use_offensive,rnd_offensive_item,find_misc,muse_newcham_mon,mloot_container,use_misc,you_aggravate,rnd_misc_item,searches_for_item,mon_reflects,ureflects,mcureblindness,munstone,mon_consume_unstone,cures_stoning,mcould_eat_tin,munslime,muse_unslime,cures_sliming,green_mon,initialState}),C);
 }

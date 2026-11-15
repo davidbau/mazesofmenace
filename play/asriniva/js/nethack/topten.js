@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original TOPTEN record/log/ranking policies on real shared files and state.
 import abi from './topten-abi.json' with {type:'json'};
 import * as source from '../ported/topten.js';
@@ -24,7 +25,7 @@ export function enableTopten(environment,layouts){
  });
  const callbacks={create_nhwindow:'win_create_nhwindow',display_nhwindow:'win_display_nhwindow',destroy_nhwindow:'win_destroy_nhwindow',putstr:'win_putstr',raw_print:'win_raw_print',raw_print_bold:'win_raw_print_bold'};for(const[name,target]of Object.entries(callbacks))local[name]=(...args)=>windowCall(target,...args);
  for(const name of ['raw_printf','impossible'])local[name]=(...args)=>resolve(name)(...boundary(args));
- const rng=(name,n,line,caller)=>{if(!['get_rnd_toptenentry','tt_doppel'].includes(caller))throw new Error('Unknown TOPTEN RNG origin '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('topten.c'),transport.int(line),text(caller));return resolve(name)(transport.int(n));};
+ const rng=(name,n,line,caller)=>{if(!['get_rnd_toptenentry','tt_doppel'].includes(caller))throw new Error('Unknown TOPTEN RNG origin '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'topten.c',transport.int(line),caller);return resolve(name)(transport.int(n));};
  local.rnd=(n,line,caller)=>rng('rnd',n,line,caller);local.rn2=(n,line,caller)=>rng('rn2',n,line,caller);local.rn1=(n,base,line,caller)=>transport.int(rng('rn2',n,line,caller)+transport.int(base));
  const context=createToptenEnvironment(local,L),names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name)),parameters=name=>abi.public[name].match(/\(([^)]*)\)/)[1].split(',').map(v=>v.trim()).filter(v=>v&&v!=='void');
  const prepare=(name,args)=>{const types=parameters(name);args=args.map((value,i)=>{const type=types[i];if(!type)throw new Error('Extra TOPTEN argument '+name);return type.includes('*')?text(value):type==='boolean'||type==='char'?transport.char(value):type==='unsigned int'?transport.uint(value):['time_t','long'].includes(type)?transport.long(value):transport.int(value);});if(name==='observable_depth')args[0]=context.level(args[0]);if(name==='prscore')args[1]=context.stringArray(args[1]);if(name==='tt_oname')args[0]=context.object(args[0]);if(name==='tt_doppel')args[0]=context.monster(args[0]);return args;};

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original EXPER policies on the existing hero-energy owner and shared state.
 import abi from './exper-abi.json' with{type:'json'};
 import * as source from '../ported/exper.js';
@@ -14,7 +15,7 @@ export function enableExperience(environment,layouts){
   livelog_printf:(category,format,...args)=>{if(!args.length)return resolve('livelog_printf')(transport.long(category),text('%s'),text(format));if(args.length===1)return resolve('livelog_printf')(transport.long(category),text(format),transport.int(args[0]));if(args.length===2)return resolve('livelog_printf')(transport.long(category),text(format),text(args[0]),transport.int(args[1]));throw new Error('Review EXPER livelog signature');},
   assert:ok=>{if(!ok){const r=abi.assertion;return resolve('__assert_fail')(text(r.condition),text('exper.c'),r.line,text(r.function));}},
  });
- for(const n of['rn2','rnd'])local[n]=(value,line,caller)=>{if(!['newpw','rndexp'].includes(caller))throw new Error('Unknown EXPER RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('exper.c'),transport.int(line),text(caller));return resolve(n)(transport.int(value));};
+ for(const n of['rn2','rnd'])local[n]=(value,line,caller)=>{if(!['newpw','rndexp'].includes(caller))throw new Error('Unknown EXPER RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'exper.c',transport.int(line),caller);return resolve(n)(transport.int(value));};
  local.rn1=(n,b,line,caller)=>local.rn2(n,line,caller)+transport.int(b);
  for(const n of abi.globals)Object.defineProperty(local,n,{value:undefined,writable:true,configurable:true});
  const context=createExperEnvironment(local,L),names=Object.keys(abi.public);

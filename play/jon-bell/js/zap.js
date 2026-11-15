@@ -1,4 +1,5 @@
 import { dealloc_mextra } from './mon.js';
+import { msgtype_type } from './options.js';
 import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
 import { POT_OIL } from './const.js';
 import { sp_levchn_lookup, pline_mon } from './mklev.js';
@@ -7697,17 +7698,27 @@ async function _wish_addinv_prinv(otmp, dropSpec) {
     if (otmp.invlet) {
         _wish_obj_to_let(otmp);
         prinvLine = `${String.fromCharCode(otmp.invlet | 0)} - ${(await _wish_doname(otmp))}.`;
-        if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
-            await force_more(_c2last);
+        // C invent.c:2889 prinv -> pline.c:245-257: a hidden message
+        // neither paints nor pages the preceding topline. This adapter
+        // publishes directly into the result channel, so apply that guard
+        // before recording its flush or taking ownership of WIN_STOP.
+        if (msgtype_type(prinvLine) === 'hide') {
+            if (_c2last) g._resultMessage = _c2last;
             _c2last = undefined;
-        }
-        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
-            _wish_prinv_flush_record(_c2last || g._resultMessage, prinvLine);
-        if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
+            prinvLine = null;
+        } else {
+            if (_c2last && _wish_core2_pages(_c2last, prinvLine)) {
+                await force_more(_c2last);
+                _c2last = undefined;
+            }
+            if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
+                _wish_prinv_flush_record(_c2last || g._resultMessage, prinvLine);
+            if (!g._topl_win_stop) /* topl.c:257 skip: ESC at the --More-- suppresses prinv's paint */
                 g._resultMessage = _c2last ? _c2last + '  ' + prinvLine
                     : g._resultMessage ? g._resultMessage + '  ' + prinvLine : prinvLine;
-        _wish_prinv_owns_stop(prinvLine);
-        _c2last = undefined;
+            _wish_prinv_owns_stop(prinvLine);
+            _c2last = undefined;
+        }
     }
     if (_c2last) await force_more(_c2last);
     await _wish_encumber_msg(_oldcap, prinvLine);

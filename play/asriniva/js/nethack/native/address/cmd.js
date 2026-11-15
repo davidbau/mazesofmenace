@@ -2737,8 +2737,8 @@ function randomkey()
     const last_c=C.staticData("randomkey","last_c",()=>C.i8(0));
     let c;
     /* give ^A and ^P a high probability of being repeated */
-    if(Number(!!(Number(!!((Number(!!(Number(C.i32(C.cell(last_c,"char").value)==(C.i32((31&(97)))))||Number(C.i32(C.cell(last_c,"char").value)==(C.i32((31&(112))))))))&&Number(R148(C.program_state)==C.commandInp)))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3525,(C.literal("randomkey"))),C.rn2(5))):C.rn2(5)))))) return C.cell(last_c,"char").value;
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3528,(C.literal("randomkey"))),C.rn2(16))):C.rn2(16)))) {
+    if(Number(!!(Number(!!((Number(!!(Number(C.i32(C.cell(last_c,"char").value)==(C.i32((31&(97)))))||Number(C.i32(C.cell(last_c,"char").value)==(C.i32((31&(112))))))))&&Number(R148(C.program_state)==C.commandInp)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3525,"randomkey"),C.rn2(5))):C.rn2(5)))))) return C.cell(last_c,"char").value;
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3528,"randomkey"),C.rn2(16))):C.rn2(16)))) {
         default:
             (c=C.i8(27));
         break;
@@ -2749,16 +2749,16 @@ function randomkey()
             case (2):
                 case (3):
                     case (4):
-                        (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3539,(C.literal("randomkey"))),C.rn2(C.i32((C.i32((126-32))+1))))):C.rn2(C.i32((C.i32((126-32))+1)))))+(32))))));
+                        (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3539,"randomkey"),C.rn2(C.i32((C.i32((126-32))+1))))):C.rn2(C.i32((C.i32((126-32))+1)))))+(32))))));
         break;
         case (5):
-            (c=C.i8(((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3542,(C.literal("randomkey"))),C.rn2(2))):C.rn2(2)))?9:32))));
+            (c=C.i8(((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3542,"randomkey"),C.rn2(2))):C.rn2(2)))?9:32))));
         break;
         case (6):
-            (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3545,(C.literal("randomkey"))),C.rn2(C.i32((C.i32((122-97))+1))))):C.rn2(C.i32((C.i32((122-97))+1)))))+(97))))));
+            (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3545,"randomkey"),C.rn2(C.i32((C.i32((122-97))+1))))):C.rn2(C.i32((C.i32((122-97))+1)))))+(97))))));
         break;
         case (7):
-            (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3548,(C.literal("randomkey"))),C.rn2(C.i32((C.i32((90-65))+1))))):C.rn2(C.i32((C.i32((90-65))+1)))))+(65))))));
+            (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3548,"randomkey"),C.rn2(C.i32((C.i32((90-65))+1))))):C.rn2(C.i32((C.i32((90-65))+1)))))+(65))))));
         break;
         case (8):
             (c=C.i8(R59(C.extcmdlist+Number(C.u32((((C.cell(i,"unsigned int").value=C.u32((C.cell(i,"unsigned int").value+1)))-1)%C.u32(C.i32((C.u64((BigInt((C.sizes["struct ext_func_tab"]*171))/BigInt(C.sizes["struct ext_func_tab"])))))))))*C.sizes["struct ext_func_tab"])));
@@ -2770,16 +2770,16 @@ function randomkey()
             case (11):
                 case (12):
 {
-                        let d=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3560,(C.literal("randomkey"))),C.rn2((C.i32((C.N_DIRS_Z-2)))))):C.rn2((C.i32((C.N_DIRS_Z-2))))));
-                        let m=(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3561,(C.literal("randomkey"))),C.rn2(7))):C.rn2(7)))?C.MV_WALK:((Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3561,(C.literal("randomkey"))),C.rn2(3))):C.rn2(3)))))?C.MV_RUSH:C.MV_RUN)));
+                        let d=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3560,"randomkey"),C.rn2((C.i32((C.N_DIRS_Z-2)))))):C.rn2((C.i32((C.N_DIRS_Z-2))))));
+                        let m=(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3561,"randomkey"),C.rn2(7))):C.rn2(7)))?C.MV_WALK:((Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3561,"randomkey"),C.rn2(3))):C.rn2(3)))))?C.MV_RUSH:C.MV_RUN)));
                         (c=cmd_from_dir(d,m));
                     }        break;
         case (13):
-            (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3567,(C.literal("randomkey"))),C.rn2(C.i32((C.i32((57-48))+1))))):C.rn2(C.i32((C.i32((57-48))+1)))))+(48))))));
+            (c=C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3567,"randomkey"),C.rn2(C.i32((C.i32((57-48))+1))))):C.rn2(C.i32((C.i32((57-48))+1)))))+(48))))));
         break;
         case (14):
             /* any char, but avoid '\0' because it's used for mouse click */
-            (c=C.i8(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3571,(C.literal("randomkey"))),C.rnd((C.i32(R89(C.iflags))?255:127)))):C.rnd((C.i32(R89(C.iflags))?255:127))))));
+            (c=C.i8(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3571,"randomkey"),C.rnd((C.i32(R89(C.iflags))?255:127)))):C.rnd((C.i32(R89(C.iflags))?255:127))))));
         break;
     }
     if(Number(R148(C.program_state)==C.commandInp)) (C.cell(last_c,"char").value=c);
@@ -2805,7 +2805,7 @@ function random_response(buf,sz)
 
 function rnd_extcmd_idx()
 {
-    return C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3603,(C.literal("rnd_extcmd_idx"))),C.rn2(C.i32((C.cell(C.extcmdlist_length,"int").value+1))))):C.rn2(C.i32((C.cell(C.extcmdlist_length,"int").value+1)))))-1));
+    return C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3603,"rnd_extcmd_idx"),C.rn2(C.i32((C.cell(C.extcmdlist_length,"int").value+1))))):C.rn2(C.i32((C.cell(C.extcmdlist_length,"int").value+1)))))-1));
 }
 
 function reset_cmd_vars(reset_cmdq)
@@ -3148,16 +3148,16 @@ function getdir(s)
            don't try to enforce no-diagonal for hero in grid bug form since
            things like '^' to look at adjacent trap shouldn't be bound by
            that (caller is expected to handle situations where it matters) */
-                if(Number(!!(C.i32(R73(C.iflags))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3996,(C.literal("getdir"))),C.rn2(20))):C.rn2(20)))))) {
-                    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3997,(C.literal("getdir"))),C.rn2(20))):C.rn2(20)))) {
+                if(Number(!!(C.i32(R73(C.iflags))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3996,"getdir"),C.rn2(20))):C.rn2(20)))))) {
+                    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3997,"getdir"),C.rn2(20))):C.rn2(20)))) {
                         case (0):
-                            (dirsym=C.cell((A29(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),3999,(C.literal("getdir"))),C.rn2(2))):C.rn2(2)))?C.NHKF_GETDIR_SELF:C.NHKF_ESC))*1),"char").value);
+                            (dirsym=C.cell((A29(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",3999,"getdir"),C.rn2(2))):C.rn2(2)))?C.NHKF_GETDIR_SELF:C.NHKF_ESC))*1),"char").value);
                         break;
                         case (1):
-                            (dirsym=C.cell((R25(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),4002,(C.literal("getdir"))),C.rn2(2))):C.rn2(2)))?C.DIR_DOWN:C.DIR_UP))*1),"char").value);
+                            (dirsym=C.cell((R25(A91(C.gc))+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4002,"getdir"),C.rn2(2))):C.rn2(2)))?C.DIR_DOWN:C.DIR_UP))*1),"char").value);
                         break;
                         default:
-                            (dirsym=C.cell((R25(A91(C.gc))+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),4005,(C.literal("getdir"))),C.rn2((C.i32((C.N_DIRS_Z-2)))))):C.rn2((C.i32((C.N_DIRS_Z-2)))))))*1),"char").value);
+                            (dirsym=C.cell((R25(A91(C.gc))+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4005,"getdir"),C.rn2((C.i32((C.N_DIRS_Z-2)))))):C.rn2((C.i32((C.N_DIRS_Z-2)))))))*1),"char").value);
                         break;
                     }
                 }
@@ -3407,7 +3407,7 @@ function confdir(force_impairment)
 {
     force_impairment=C.i8(force_impairment);
     if(Number(!!(C.i32(force_impairment)||C.i32(C.u_maybe_impaired())))) {
-        let kmax=((Number((R188(C.u))==C.PM_GRID_BUG))?(C.i32(Math.trunc(((C.i32((C.N_DIRS_Z-2)))/2)))):(C.i32((C.N_DIRS_Z-2)))); let k=C.i32(C.cell((C.dirs_ord+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),4304,(C.literal("confdir"))),C.rn2(kmax))):C.rn2(kmax))))*1),"signed char").value);
+        let kmax=((Number((R188(C.u))==C.PM_GRID_BUG))?(C.i32(Math.trunc(((C.i32((C.N_DIRS_Z-2)))/2)))):(C.i32((C.N_DIRS_Z-2)))); let k=C.i32(C.cell((C.dirs_ord+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",4304,"confdir"),C.rn2(kmax))):C.rn2(kmax))))*1),"signed char").value);
         (W179(C.u,C.i32(C.cell((C.xdir+Number(k)*1),"signed char").value)));
         (W180(C.u,C.i32(C.cell((C.ydir+Number(k)*1),"signed char").value)));
     }
@@ -4419,8 +4419,8 @@ function yn_function(query,resp,def,addcmdq)
         (addcmdq=(C.i8(0)));
         /* for the fuzzer, usually force a valid response, but sometimes let
        it exercise windowport yn_function and invalid response handling */
-    } else if(Number(!!(Number(!!(Number(!!(C.i32(R73(C.iflags))&&resp))&&C.i32(C.cell(resp,"char").value)))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),5513,(C.literal("yn_function"))),C.rn2(20))):C.rn2(20)))))) {
-        let ln=C.i32(C.strlen(resp)); let ridx=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),5514,(C.literal("yn_function"))),C.rn2(ln))):C.rn2(ln)));
+    } else if(Number(!!(Number(!!(Number(!!(C.i32(R73(C.iflags))&&resp))&&C.i32(C.cell(resp,"char").value)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5513,"yn_function"),C.rn2(20))):C.rn2(20)))))) {
+        let ln=C.i32(C.strlen(resp)); let ridx=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5514,"yn_function"),C.rn2(ln))):C.rn2(ln)));
         (C.cell(resAddress,"char").value=C.cell((resp+Number(ridx)*1),"char").value);
         /* if valid-responses includes ESC followed by unshown candidates
            and we randomly picked the ESC, try again with only whatever is
@@ -4428,7 +4428,7 @@ function yn_function(query,resp,def,addcmdq)
         if(Number(C.i32(C.cell(resAddress,"char").value)==27)) {
             if(Number(ln>1)) {
                 /* if ESC is at start (ridx==0), pick something after it */
-                (ridx=((Number(ridx==0))?(C.i32((1+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),5523,(C.literal("yn_function"))),C.rn2(C.i32((ln-1))))):C.rn2(C.i32((ln-1)))))))):((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("cmd.c"),5523,(C.literal("yn_function"))),C.rn2(ridx))):C.rn2(ridx)))));
+                (ridx=((Number(ridx==0))?(C.i32((1+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5523,"yn_function"),C.rn2(C.i32((ln-1))))):C.rn2(C.i32((ln-1)))))))):((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("cmd.c",5523,"yn_function"),C.rn2(ridx))):C.rn2(ridx)))));
                 (C.cell(resAddress,"char").value=C.cell((resp+Number(ridx)*1),"char").value);
             } else {
                 /* ESC is the only thing (ln==1); something is strange... */
@@ -4590,5 +4590,5 @@ function dummyfunction()
 /*cmd.c*/
 const initializers={timed_occ_fn,readchar_queue,unavailcmd,cmdnotavail,levltyp,extcmdlist,move_funcs,misc_keys,extcmdlist_length,spkeys_binds};
 
-return Object.freeze({timed_occ_fn,readchar_queue,unavailcmd,cmdnotavail,doprev_message,timed_occupation,reset_occupations,set_occupation,cmdq_add_ec,cmdq_add_key,cmdq_add_dir,cmdq_add_userinput,cmdq_add_int,cmdq_shift,cmdq_reverse,cmdq_copy,cmdq_pop,cmdq_peek,cmdq_clear,pgetchar,extcmd_initiator,can_do_extcmd,doextcmd,doc_extcmd_flagstr,doextlist,extcmd_via_menu,domonability,enter_explore_mode,makemap_prepost,levltyp,levltyp_to_name,doterrain,u_have_seen_whole_selection,u_have_seen_bounds_selection,u_can_see_whole_selection,dolookaround_floodfill_findroom,lookaround_known_room,dolookaround,dotoggleoption,set_move_cmd,do_move_west,do_move_northwest,do_move_north,do_move_northeast,do_move_east,do_move_southeast,do_move_south,do_move_southwest,do_rush_west,do_rush_northwest,do_rush_north,do_rush_northeast,do_rush_east,do_rush_southeast,do_rush_south,do_rush_southwest,do_run_west,do_run_northwest,do_run_north,do_run_northeast,do_run_east,do_run_southeast,do_run_south,do_run_southwest,do_reqmenu,do_rush,do_run,do_fight,do_repeat,extcmdlist,move_funcs,misc_keys,extcmdlist_length,extcmds_getentry,cmdbind_get,cmdbind_add,cmdbind_remove,cmdbind_freeall,cmdbind_swapkeys,count_bind_keys,get_changed_key_binds,handler_rebind_keys_add,handler_rebind_keys,handler_change_autocompletions,extcmds_match,key2extcmddesc,bind_mousebtn,bind_key,bind_key_fn,commands_init,keylist_func_has_key,keylist_putcmds,dokeylist,ext_func_tab_from_func,cmd_from_dir,cmd_from_func,cmd_from_ecname,ecname_from_fn,cmdname_from_func,spkeys_binds,bind_specialkey,spkey_name,key2txt,parseautocomplete,all_options_autocomplete,count_autocompletions,lock_mouse_buttons,reset_commands,update_rest_on_space,accept_menu_prefix,randomkey,random_response,rnd_extcmd_idx,reset_cmd_vars,rhack,xytodir,dirtocoord,movecmd,dxdy_moveok,redraw_cmd,get_adjacent_loc,getdir,show_direction_keys,help_dir,confdir,directionname,isok,doherecmdmenu,dotherecmdmenu,mcmd_addmenu,there_cmd_menu_self,there_cmd_menu_next2u,there_cmd_menu_far,there_cmd_menu_common,act_on_act,there_cmd_menu,here_cmd_menu,click_to_cmd,domouseaction,get_count,parse,hangup,end_of_input,readchar_core,readchar,readchar_poskey,dotravel,dotravel_target,doclicklook,yn_menuable_resp,yn_func_menu_opt,yn_function_menu,yn_function,paranoid_ynq,paranoid_query,dosuspend_core,dosh_core,dummyfunction,initializers});
+return C.nativeAddressNamespaceReady(Object.freeze({timed_occ_fn,readchar_queue,unavailcmd,cmdnotavail,doprev_message,timed_occupation,reset_occupations,set_occupation,cmdq_add_ec,cmdq_add_key,cmdq_add_dir,cmdq_add_userinput,cmdq_add_int,cmdq_shift,cmdq_reverse,cmdq_copy,cmdq_pop,cmdq_peek,cmdq_clear,pgetchar,extcmd_initiator,can_do_extcmd,doextcmd,doc_extcmd_flagstr,doextlist,extcmd_via_menu,domonability,enter_explore_mode,makemap_prepost,levltyp,levltyp_to_name,doterrain,u_have_seen_whole_selection,u_have_seen_bounds_selection,u_can_see_whole_selection,dolookaround_floodfill_findroom,lookaround_known_room,dolookaround,dotoggleoption,set_move_cmd,do_move_west,do_move_northwest,do_move_north,do_move_northeast,do_move_east,do_move_southeast,do_move_south,do_move_southwest,do_rush_west,do_rush_northwest,do_rush_north,do_rush_northeast,do_rush_east,do_rush_southeast,do_rush_south,do_rush_southwest,do_run_west,do_run_northwest,do_run_north,do_run_northeast,do_run_east,do_run_southeast,do_run_south,do_run_southwest,do_reqmenu,do_rush,do_run,do_fight,do_repeat,extcmdlist,move_funcs,misc_keys,extcmdlist_length,extcmds_getentry,cmdbind_get,cmdbind_add,cmdbind_remove,cmdbind_freeall,cmdbind_swapkeys,count_bind_keys,get_changed_key_binds,handler_rebind_keys_add,handler_rebind_keys,handler_change_autocompletions,extcmds_match,key2extcmddesc,bind_mousebtn,bind_key,bind_key_fn,commands_init,keylist_func_has_key,keylist_putcmds,dokeylist,ext_func_tab_from_func,cmd_from_dir,cmd_from_func,cmd_from_ecname,ecname_from_fn,cmdname_from_func,spkeys_binds,bind_specialkey,spkey_name,key2txt,parseautocomplete,all_options_autocomplete,count_autocompletions,lock_mouse_buttons,reset_commands,update_rest_on_space,accept_menu_prefix,randomkey,random_response,rnd_extcmd_idx,reset_cmd_vars,rhack,xytodir,dirtocoord,movecmd,dxdy_moveok,redraw_cmd,get_adjacent_loc,getdir,show_direction_keys,help_dir,confdir,directionname,isok,doherecmdmenu,dotherecmdmenu,mcmd_addmenu,there_cmd_menu_self,there_cmd_menu_next2u,there_cmd_menu_far,there_cmd_menu_common,act_on_act,there_cmd_menu,here_cmd_menu,click_to_cmd,domouseaction,get_count,parse,hangup,end_of_input,readchar_core,readchar,readchar_poskey,dotravel,dotravel_target,doclicklook,yn_menuable_resp,yn_func_menu_opt,yn_function_menu,yn_function,paranoid_ynq,paranoid_query,dosuspend_core,dosh_core,dummyfunction,initializers}),C);
 }

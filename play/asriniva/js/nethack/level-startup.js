@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {createNativeStairBindings} from './native/stairs-state.js';
 // Level-generation entry points on the shared C environment. Policies remain
 // in the translated owners; missing dependencies retain explicit link errors.
@@ -25,7 +26,7 @@ export function enableLevelStartup(environment,layouts,creation){
  Object.assign(local,{
   global,read:(k,p,i)=>{const e=field(k,p,i);return ctypes.getField(e.type,environment.address(p),e.key,e.scalar);},write:(k,p,i,v)=>{const e=field(k,p,i);return ctypes.setField(e.type,environment.address(p),e.key,e.scalar,v);},
   copy:(to,from,n)=>memory.memmove(environment.address(to),environment.address(from),Number(n)),
-  rngCaller:site=>{const row=abi.bones.rngSites[site];if(!row)throw new Error('Unknown BONES RNG call site');if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('bones.c'),row[0],services.literal(row[1]));},rn2Value:n=>services.rn2(n),
+  rngCaller:site=>{const row=abi.bones.rngSites[site];if(!row)throw new Error('Unknown BONES RNG call site');if(services.rng_log_enabled())recordNativeRngCaller(services,'bones.c',row[0],row[1]);},rn2Value:n=>services.rn2(n),
   callbackPointer:()=>environment.functionPointer('bones::remove_mon_from_bones','vp',p=>environment.call('bones','remove_mon_from_bones',p)),
  });
  // BONES exposes typed records; address-based dungeon owners consume pointers.

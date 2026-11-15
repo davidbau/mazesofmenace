@@ -646,6 +646,7 @@ function nomux_emit_marker(kind)
     if (!nomux_markers_enabled())
         return;
 
+    if (C.captureNativeFrame) { C.captureNativeFrame(kind); return; }
     {
         let scr = C.charPointer(nomux_capture_screen());
         let cx; let cy;

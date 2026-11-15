@@ -1,3 +1,5 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
+import {createNativeRngOutput,installNativeRngCaller} from './native/rng-output.js';
 import {createNativeHacklibBindings} from './native/hacklib-state.js';
 import {nativeGeometryFor} from './native/spatial-state.js';
 import {createNativeRngBindings} from './native/rng-bindings.js';
@@ -129,7 +131,7 @@ import {enableTurnLoop} from './turn-loop.js';
 import {enableGameStartup} from './game-startup.js';
 
 export function createStandaloneEnvironment(options={}) {
-    const base=createJsRuntime(options),{memory}=base;
+    const base=createJsRuntime({...options,resizable:options.resizable??true}),{memory}=base,nativeRngFormat=base.libc.format;
     const inputs=createEnvironmentInputs(base,options.environment);
     const {transport,functions,bitfields,ctypes,services}=createNetHackRuntime(base,records,inputs.getenv);
     const variables=createEnvironmentServices(base.memory,{get:inputs.getenv,set:inputs.setEnvironment},base.libc);
@@ -155,7 +157,7 @@ export function createStandaloneEnvironment(options={}) {
         const draw=n=>{
             if(!Number.isInteger(n)||n<=0)throw new RangeError('Invalid rn2 bound');
             if(typeof services.rn2==='function'){
-                if(services.rng_log_enabled?.()){const caller=records.rngSites.rect;services.rng_log_set_caller(services.literal(caller.file),caller.line,services.literal(caller.function));}
+                if(services.rng_log_enabled?.()){const caller=records.rngSites.rect;recordNativeRngCaller(services,caller.file,caller.line,caller.function);}
                 return services.rn2(n);
             }
             generator??=base.createIsaac(options.seed??new Uint8Array());return Number(generator.next()%BigInt(n));
@@ -237,8 +239,9 @@ export function createStandaloneEnvironment(options={}) {
             impossible:(format,...args)=>{throw new Error(base.libc.format(format,...args));},
             snprintf:(buffer,n,format,...args)=>{const value=base.libc.format(format,...args),bytes=Uint8Array.from(value.slice(0,Number(n)-1),c=>c.charCodeAt(0));buffer.set(bytes);buffer[bytes.length]=0;return value.length;},
         });
-        const state=createRndState(local),env=createRndEnvironment(local,layout,state);
-        register('rnd',createNativeRngBindings(environment,env),env);
+        const output=createNativeRngOutput({memory,stdio:services,libc:base.libc,ownedOutput:stdio,ownedFormat:nativeRngFormat,snprintf:local.snprintf,fprintf:local.fprintf});Object.assign(local,output);
+        const state=createRndState(local),env=createRndEnvironment(local,layout,state),entries=createNativeRngBindings(environment,env);
+        register('rnd',entries,env);installNativeRngCaller(services,entries.rng_log_set_caller);
         // These three APIs only inspect/update the RNG logger's JS state.
         // They neither step the generator nor inspect native actor/map bytes.
         for(const name of ['rng_log_enabled','rng_log_set_caller','rng_log_get_call_count'])if(Object.getOwnPropertyDescriptor(services[name],'nativeEntry')?.get)Object.defineProperty(services[name],'nativeStateIndependent',{value:true});
@@ -271,6 +274,7 @@ export function createStandaloneEnvironment(options={}) {
     function enableDependencies() {
         const runtime=createLibraryBindings({regex:true,regexDialect:'sdk'});
         for(const name of ['tgetent','tgetflag','tgetnum','tgetstr','tparm','tgoto','tputs','regcomp','regexec','regerror','regfree','compressFile'])services[name]=(...args)=>runtime[name](services,...args);
+        services.nativeTputs=(text,lines,emit)=>runtime.tputsNative(services,text,lines,emit);
         services.tgetent=(_buffer,name)=>runtime.tgetent(services,name);
         return runtime;
     }

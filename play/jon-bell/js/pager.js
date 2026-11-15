@@ -424,6 +424,13 @@ export async function dohelp() {
          * and never reaches the switch, so a live count survives it.
          * nhgetch() cleared _pending_message; the loop head re-shows the same
          * window, which is what C's re-wait for a resp key amounts to. */
+        /* getline.c:238-247 xwaitforspace: `c == x` where x is
+         * ttyDisplay->dismiss_more (an earlier ESC left it at 1, i.e. ^A) is
+         * ACCEPTED as morc; process_menu_window's default arm (wintty.c:1730-1735)
+         * then bells and breaks WITHOUT clearing reset_count, so the pending
+         * count is dropped at the next loop top. */
+        if ((g._ttyDismissMore | 0) !== 0 && selKey === (g._ttyDismissMore | 0))
+            continue;
         reset_count = false;
     }
     /* C pager.c:2892 destroy_nhwindow(tmpwin) -> tty_dismiss_nhwindow ->
@@ -431,6 +438,15 @@ export async function dohelp() {
      * blanks the covered rows, so a control-byte cell (RogueEpyx S_human \x01)
      * stays blank after row_refresh's g_putch paints nothing. */
     if (!fullScreen) docorner_blank_utf8_captures(WIN_COL - 1, helpLines.length + 1);
+    else {
+        /* wintty.c:976-979 erase_menu_or_text with offx 0 (!menu_overlay):
+         * docrt() + flush_screen(1); vision_recalc's notice_all_mons
+         * (vision.c:856) re-announces monsters (hack.c:1710). */
+        const savedBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try { await docrt(false, g._screen_output); await flush_screen(1); }
+        finally { g._bot_disabled = savedBotDisabled; }
+    }
     // A selector of a row this menu actually added means the user picked a topic.
     // The selected function displays content and reads a dismiss key.
     const isLetter = selKey >= 0x61 && selKey <= lastSelector;
@@ -485,7 +501,9 @@ export async function dohelp() {
          * 'A'-less listing '#?' reaches; it is its own NHW_MENU, not a text
          * window, and it returns once the menu is dismissed. */
         if (picked && picked.f === 'hmenu_doextlist') {
-            g._pending_message = '';
+            /* wintty.c:1921-1923: a standing topline (docrt's monster notices)
+             * keeps its --More-- for the new menu; doextlist pages it. */
+            if (!fullScreen) g._pending_message = '';
             await doextlist(false);
             g._pending_message = '';
             await flush_screen(1);
@@ -1990,6 +2008,15 @@ async function _do_look_from_screen(quick) {
          * getpos.c:1136 "Done." exit hands back cc.x == -1, which ends
          * do_look WITHOUT the ESC arm's clear_nhwindow(WIN_MESSAGE). */
         if (doneQuit) break;
+        /* C getpos.c:1156-1157 `if (msg_given) clear_nhwindow(WIN_MESSAGE);` --
+         * tty blanks the physical topline (autodescribe text) before do_look
+         * prints its result, so the result's unpainted UTF-8 glyph bytes
+         * (pager.c:1271 encglyph, utf8map.c:102) sit on a clear row. */
+        if (msgGiven) {
+            g._pending_message = '';
+            await flush_screen(1);
+            msgGiven = false;
+        }
 
         /* C ref: pager.c:1913 — only the first "Please move..." message
          * this do_look call is verbose. */
@@ -2018,7 +2045,10 @@ async function _do_look_from_screen(quick) {
                 const detail = target.needsLook || target.classCount !== 1
                     ? ` (${target.lookedFirstmatch ?? target.firstmatch})` : '';
                 const seen = target.seenVia ? ` [seen: ${target.seenVia}]` : '';
-                const out_str = `${glyphPrefix}${target.classText}${detail}${seen}`;
+                /* pager.c:1922 putmixed(): decode_mixed (windows.c:1475-1510) swallows a backslash
+                 * ahead of an ordinary character, e.g. engraving text "Elb\\rion"; the glyph prefix
+                 * is already decoded and must not be scanned again. */
+                const out_str = `${glyphPrefix}${pager_mixed_text(`${target.classText}${detail}${seen}`)}`;
                 if (quick) {
                     g._pending_message = out_str;
                     lookDescriptionWrapped = _topline_more_pending();

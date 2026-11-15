@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './rng-output.js';
 // One native STEED graph, shared by construction, movement and riding owners.
 import abi from '../special-interactions-abi.json' with {type:'json'};
 import * as original from '../../ported/steed.js';
@@ -23,7 +24,7 @@ export function nativeSteedFor(environment,layouts){
  for(const name of ['pline','You','You_cant','Your','panic','impossible'])services[name]=(format,...args)=>resolve(name)(text(format),...args.map(v=>typeof v==='string'?text(v):v?.address??v));
  services.Sprintf=(out,format,...args)=>S.sprintf(address(out),text(format),...args.map(v=>typeof v==='string'?text(v):v?.address??v));services.Strcpy=(out,from)=>S.strcpy(address(out),text(from));
  services.y_n=query=>resolve('yn_function')(text(query),environment.requireGlobal('ynchars'),110,1);
- for(const name of ['rn2','rnd'])services[name]=(bound,line,caller)=>{if(!metadata.callers.includes(caller))throw Error('Unknown STEED RNG caller '+caller);if(S.rng_log_enabled())S.rng_log_set_caller(S.literal('steed.c'),t.int(line),S.literal(caller));return resolve(name)(t.int(bound));};
+ for(const name of ['rn2','rnd'])services[name]=(bound,line,caller)=>{if(!metadata.callers.includes(caller))throw Error('Unknown STEED RNG caller '+caller);if(S.rng_log_enabled())recordNativeRngCaller(S,'steed.c',t.int(line),caller);return resolve(name)(t.int(bound));};
  let context,policies;
  const getContext=()=>{if(!context){context=createNativeSteedState(environment,layouts,services,original);policies=createNativeSteed(context);}return context;};
  const functions={};

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original DOGMOVE factory, shared game bytes and source-private backing.
 import abi from './dogmove-abi.json' with{type:'json'};
 import * as source from '../ported/dogmove.js';
@@ -26,7 +27,7 @@ export function enableDogmove(environment,layouts){
   global:i=>{if(i<abi.globals.length)return environment.requireGlobal(abi.globals[i].name);if(storage[i-abi.globals.length]===undefined)throw new Error('Unknown DOGMOVE storage '+i);return storage[i-abi.globals.length];},
   read:(k,p,i)=>{const{row,f,at}=field(k,p,i);return f.d.s||f.d.a?BigInt(at):BigInt(ctypes.getField(row.ctype,address(p),f.name,f.ctype));},
   write:(k,p,i,v)=>{const{row,f}=field(k,p,i);if(f.const)throw new Error('Write to const DOGMOVE field '+f.name);ctypes.setField(row.ctype,address(p),f.name,f.ctype,v);},address:(k,p,i)=>field(k,p,i).at,
-  rngCaller:i=>{const r=abi.rngSites[i];if(!r)throw new Error('Unknown DOGMOVE RNG site '+i);if(services.rng_log_enabled())services.rng_log_set_caller(text('dogmove.c'),r.line,text(r.function));},rn2Value:n=>resolve('rn2')(transport.int(n)),rndValue:n=>resolve('rnd')(transport.int(n)),
+  rngCaller:i=>{const r=abi.rngSites[i];if(!r)throw new Error('Unknown DOGMOVE RNG site '+i);if(services.rng_log_enabled())recordNativeRngCaller(services,'dogmove.c',r.line,r.function);},rn2Value:n=>resolve('rn2')(transport.int(n)),rndValue:n=>resolve('rnd')(transport.int(n)),
   donamePointer:()=>environment.functionPointer('doname','pp'),callbackPointer:()=>environment.functionPointer('dogmove::wantdoor','viip',(x,y,p)=>invoke('wantdoor',[x,y,p])),
   do_clear_area:(x,y,r,cb,p)=>resolve('do_clear_area')(transport.short(x),transport.short(y),transport.int(r),address(cb),address(p)),
   display_nhwindow:(win,block)=>{const at=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),'win_display_nhwindow').at;return functions.indirect(memory.view.getBigUint64(at,true),'vii',transport.int(win),transport.char(block));},

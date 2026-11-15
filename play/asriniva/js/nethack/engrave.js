@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original ENGRAVE policies on the shared head chain and saved occupation fields.
 import {nativeStateFor} from './native/state-bridge.js';
 import abi from './engrave-abi.json' with {type:'json'};
@@ -21,7 +22,7 @@ export function nativeEngraveFor(environment,layouts){
  local.Strlen=(p,i)=>{const row=abi.strlenSites[i];if(!row)throw Error('Unknown ENGRAVE Strlen source');return transport.uint(resolve('Strlen_')(text(p),text(row.function),row.line));};
  for(const n of ['pline','You','Your','You_cant','You_see','There','pline_The','impossible'])local[n]=(fmt,...a)=>resolve(n)(text(fmt),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.Sprintf=(out,fmt,...a)=>S.sprintf(text(out),text(fmt),...a.map(v=>typeof v==='string'?text(v):v?.address??v));local.livelog_printf=(mask,fmt,...a)=>resolve('livelog_printf')(transport.long(mask),text(fmt),...a.map(text));
- for(const n of ['rn2','rn1','rnd'])local[n]=(bound,...args)=>{const caller=args.pop(),line=args.pop();if(!abi.rngSites.some(r=>r.kind===n&&r.line===line&&r.caller===caller))throw Error('Unexpected ENGRAVE RNG source '+n+':'+line);if(S.rng_log_enabled())S.rng_log_set_caller(text('engrave.c'),line,text(caller));const value=resolve(n==='rnd'?'rnd':'rn2')(transport.int(bound));return n==='rn1'?transport.int(value+transport.int(args[0])):value;};
+ for(const n of ['rn2','rn1','rnd'])local[n]=(bound,...args)=>{const caller=args.pop(),line=args.pop();if(!abi.rngSites.some(r=>r.kind===n&&r.line===line&&r.caller===caller))throw Error('Unexpected ENGRAVE RNG source '+n+':'+line);if(S.rng_log_enabled())recordNativeRngCaller(S,'engrave.c',line,caller);const value=resolve(n==='rnd'?'rnd':'rn2')(transport.int(bound));return n==='rn1'?transport.int(value+transport.int(args[0])):value;};
  let context;const callbacks=new Map();function callback(n,sig){if(environment.hasFunction(n))return environment.functionPointer(n,sig);if(!callbacks.has(n))callbacks.set(n,environment.functionPointer('engrave::'+n,sig,(...args)=>call(n,args)));return callbacks.get(n);}
  local.getobj=(prompt,flags)=>resolve('getobj')(text(prompt),callback('stylus_ok','ip'),transport.uint(flags));local.set_occupation=(label,time)=>resolve('set_occupation')(callback('engrave','i'),text(label),transport.long(time));
  local.get_rnd_text=(file,out,pad)=>resolve('get_rnd_text')(text(file),text(out),environment.functionPointer('rn2','ii'),transport.uint(pad));

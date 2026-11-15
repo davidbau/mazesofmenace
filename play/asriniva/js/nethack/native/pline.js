@@ -23,7 +23,7 @@ function dumplogmsg(line)
      *  this share it.
      */
     let indx = C.gs.saved_pline_index; /* next slot to use */
-    let oldest = C.gs.saved_plines[indx]; /* current content of that slot */
+    let oldest = C.savedMessages()[indx]; /* current content of that slot */
 
     if (!C.strncmp(line, "Unknown command", 15))
         return;
@@ -34,7 +34,7 @@ function dumplogmsg(line)
     } else {
         if (oldest)
             C.free(oldest);
-        C.gs.saved_plines[indx] = C.dupstr(line);
+        C.setSavedMessage(indx, C.copySavedMessage(indx, line));
     }
     C.gs.saved_pline_index = (indx + 1) % C.DUMPLOG_MSG_COUNT;
 }
@@ -47,8 +47,8 @@ function dumplogfreemessages()
     let i;
 
     for (i = 0; i < C.DUMPLOG_MSG_COUNT; ++i)
-        if (C.gs.saved_plines[i])
-            C.free(C.gs.saved_plines[i]), C.gs.saved_plines[i] = 0;
+        if (C.savedMessages()[i])
+            C.free(C.savedMessages()[i]), C.setSavedMessage(i, 0);
     C.gs.saved_pline_index = 0;
 }
 

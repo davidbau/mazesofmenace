@@ -1,7 +1,7 @@
 // botl.js — C ref: botl.c.
 import { money_cnt } from './hack.js';
 import { CONFUSION, Is_rogue_level, OVERLOADED, P_LANCE, P_MORNING_STAR, P_POLEARMS, P_QUARTERSTAFF, P_UNICORN_HORN, SATIATED, SICK, SLIMED, SLT_ENCUMBER, STARVED, gs } from './const.js';
-import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, suppress_map_output } from './display.js';
+import { COIN_CLASS_DISP, _ROLE_NAME_TO_IDX, _ROLE_RANKS, _capture_botl, _disp_Blind, _equipView, _hallucinating_dsp, _live_deaf, _live_flying, _live_lev, _mon_mlevel, _statusLine1, _statusLine1Raw, _statusLine2, _statusLine2Parts, _statusRows3, _status_sgr, _threeStatusLines, status_xp_bot_eval, status_hpbar_attr_eval, status_r1_hpbar_bot_note, suppress_map_output } from './display.js';
 import { bimanual } from './do_wear.js';
 import { game } from './gstate.js';
 import { humanoid } from './makemon.js';
@@ -240,6 +240,7 @@ export async function bot() {
     else if ((game.u?.uhp | 0) > 0)
         game._botlResetLost = false;
     game._status1WholeNext = false;
+    status_r1_hpbar_bot_note();
     // Status line updates happen in _buildScreenOutput
     // C ref: botl.c:188 — bot2() reads (cap = near_capacity()) HERE, at paint
     // time, and the physical bottom line then holds that value until the NEXT
@@ -845,7 +846,10 @@ async function status_hilite_menu_fld_current(fld, name) {
                 return kept.length === rules.length ? [spec] : kept.map(l => l.str);
             });
         }
-        if (gone.size) reset_status_hilites(); // botl.c:4441-4442,4555-4556
+        /* botl.c:4432-4439 status_hilite_remove() does not reset; status_hilite_menu()
+         * calls reset_status_hilites() only once status_hilite_menu_fld() returns acted
+         * (botl.c:4550-4551), so the reset waits for the end of this field's menus. */
+        if (gone.size) game._statusHiliteRemovedPending = true;
     }
     return mode.includes(-2)
         ? await status_hilite_menu_choose_behavior(fld, true) : 0;
@@ -1050,7 +1054,11 @@ export async function status_hilite_menu(preserveStatus = false) {
                 const percent = beh === 100;
                 const name = INITBLSTATS[fld][0];
                 // C botl.c:3958 trims the ends but preserves internal whitespace.
-                const inbuf = trimspaces(await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${name} threshold:`));
+                const rawbuf = await getlin(`Enter ${percent ? 'percentage ' : ''}value for ${name} threshold:`);
+                /* trimspaces() only strips trailing blanks in place; inp = numstart = its
+                 * return skips leading ones, but inbuf keeps them (botl.c:3958-3959) */
+                const lead = rawbuf.length - rawbuf.trimStart().length;
+                const inbuf = trimspaces(rawbuf);
                 if (inbuf === '' || inbuf[0] === '\x1b') {
                     beh = await status_hilite_menu_choose_behavior(fld, true);
                     continue;
@@ -1062,9 +1070,9 @@ export async function status_hilite_menu(preserveStatus = false) {
                         : 0; /* EQ_VALUE */
                     k += (lt === 2 || lt === 3) ? 2 : 1;
                 }
-                let strbuf = inbuf, numfrom = k; /* botl.c:3980 '+' is overwritten with ' ' in inbuf */
+                let strbuf = rawbuf.slice(0, lead) + ' '.repeat(k) + inbuf.slice(k), numfrom = k; /* botl.c:3970-3975 *inp++ = ' ' overwrites the operator in inbuf; botl.c:3980 '+' is overwritten with ' ' in inbuf */
                 if (inbuf[k] === '-') k++;
-                else if (inbuf[k] === '+') { strbuf = inbuf.slice(0, k) + ' ' + inbuf.slice(k + 1); numfrom = ++k; }
+                else if (inbuf[k] === '+') { strbuf = strbuf.slice(0, lead + k) + ' ' + strbuf.slice(lead + k + 1); numfrom = ++k; }
                 let gotnum = false;
                 while (/[0-9]/.test(inbuf[k] ?? '')) { k++; gotnum = true; }
                 if (inbuf[k] === '%') {
@@ -1074,7 +1082,7 @@ export async function status_hilite_menu(preserveStatus = false) {
                         beh = await status_hilite_menu_choose_behavior(fld, true);
                         continue;
                     }
-                    strbuf = strbuf.slice(0, k); /* strip '%' [this accepts trailing junk!] */
+                    strbuf = strbuf.slice(0, lead + k); /* strip '%' [this accepts trailing junk!] */
                 } else if (k < inbuf.length) {
                     await pline('"%s" is not a recognized number.', inbuf.slice(k));
                     continue;
@@ -1143,6 +1151,10 @@ export async function status_hilite_menu(preserveStatus = false) {
                   || (beh === 104 && TEXTMATCH_MENU_FLDS.includes(INITBLSTATS[fld][0])))) break;
         }
         if (beh > 0) throw new Error('not yet ported: status_hilite_menu_add value entry');
+        if (game._statusHiliteRemovedPending) { /* botl.c:4550-4551 */
+            game._statusHiliteRemovedPending = false;
+            reset_status_hilites();
+        }
         preserveStatus = true;
     }
 }

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 // Source naming and artifact bookkeeping on the existing inventory heap.
@@ -15,7 +16,7 @@ export function enableItemNaming(environment,layouts,{legacy,views}) {
         pointerDifference:(a,b,type)=>BigInt((environment.address(a)-environment.address(b))/ctypes.size(type)),
         copyRecord:(to,from,n)=>memory.memmove(environment.address(to),environment.address(from),Number(n)),
         Role_if:n=>Number(legacy.gu.urole.mnum===n),
-        rngCaller:(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('artifact.c'),line,services.literal(caller));},
+        rngCaller:(line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'artifact.c',line,caller);},
         mksobj:(...args)=>object(environment.resolve('mksobj')(...args)),
         oname:(...args)=>object(environment.resolve('oname')(...args)),
     });
@@ -28,7 +29,7 @@ export function enableItemNaming(environment,layouts,{legacy,views}) {
         strlen:p=>BigInt(services.strlen(p)),Strcpy:(...args)=>services.strcpy(...args),
         carried:o=>Number(o.where===layouts.do_name.OBJ_INVENT),
         sir_Terry_novels:sir_Terry_novels.map(s=>services.literal(s)),
-        rn2:(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('do_name.c'),line,services.literal(caller));return services.rn2(n);},
+        rn2:(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'do_name.c',line,caller);return services.rn2(n);},
     });
     for(const key of ['uwep','uswapwep'])Object.defineProperty(name,key,{get:()=>object(ctypes.load('struct obj *',environment.requireGlobal(key)))});
     environment.register('item-naming',{oname,noveltitle},name,{prepareArgs:(fn,args)=>{

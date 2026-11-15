@@ -27,8 +27,8 @@ export function createNativeHackState(services,layout){
   int:v=>Number(BigInt.asIntN(32,raw(v))),char:v=>Number(BigInt.asIntN(8,raw(v))),uchar:v=>Number(BigInt.asUintN(8,raw(v))),boolean:v=>Number(BigInt.asIntN(8,raw(v))),short:v=>Number(BigInt.asIntN(16,raw(v))),long:v=>BigInt.asIntN(64,raw(v)),ulong:raw,
   charPointer:v=>typeof v==='string'?services.literal(v):Array.isArray(v)?services.literal(String.fromCharCode(...v.slice(0,v.indexOf(0)<0?v.length:v.indexOf(0)))):addr(v),
   loadChar:v=>memory().getInt8(addr(v)),storeChar:(v,b)=>memory().setInt8(addr(v),Number(b)),intReference:(get,set)=>({get,set}),
-  readVisibility:(y,x)=>arena.Uint8[arena.pointer(addr(env.gv.viz_array)+Number(y)*8)+Number(x)],
-  writeVisibility:(y,x,v)=>{v=env.uchar(v);arena.Uint8[arena.pointer(addr(env.gv.viz_array)+Number(y)*8)+Number(x)]=v;return v;},
+  readVisibility:(y,x)=>nativeState.visibilityState?nativeState.visibilityState.read(y,x):arena.Uint8[arena.pointer(addr(env.gv.viz_array)+Number(y)*8)+Number(x)],
+  writeVisibility:(y,x,v)=>{v=env.uchar(v);if(nativeState.visibilityState)return nativeState.visibilityState.write(y,x,v);arena.Uint8[arena.pointer(addr(env.gv.viz_array)+Number(y)*8)+Number(x)]=v;return v;},
   nativeTravelGrid:(x,y)=>{const out=Array.from({length:x},()=>new Int16Array(y));Object.defineProperty(out,'address',{get(){throw Error('Native travel grid has no byte address');}});grids.add(out);return out;},clearTravelGrid:grid=>{if(!grids.has(grid))throw Error('Foreign native travel grid');for(const row of grid)row.fill(0);},
   nativePromptBuffer:size=>{const out=byteValues(size);Object.defineProperty(out,'descriptor',{value:{a:[size],e:{t:'i8'}}});return out;},
  });

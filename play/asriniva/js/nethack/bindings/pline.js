@@ -39,6 +39,9 @@ export function createPlineEnvironment(services,layout,state,{nativeExecution=fa
         },
         SoundSpeak(){},
     });
+    env.savedMessages=()=>services.nativeMessageHistory?services.nativeMessageHistory.rows():env.gs.saved_plines;
+    env.setSavedMessage=(index,value)=>services.nativeMessageHistory?services.nativeMessageHistory.set(index,value):(env.gs.saved_plines[index]=value);
+    env.copySavedMessage=(index,value)=>services.nativeMessageHistory?services.nativeMessageHistory.copy(index,value):env.dupstr(value);
     Object.defineProperty(env,'HEAPU8',{get:()=>services.heap()});
     fields.forEach(([path,kind],index)=>{const at=Number(services.global(index));
         const root=path.split('.')[0];

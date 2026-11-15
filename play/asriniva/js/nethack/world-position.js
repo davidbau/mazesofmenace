@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {connectNativeMakemon} from './native/makemon-state.js';
 // Original terrain, candidate collection and position-selection policies.
 import {nativeSpatialFor} from './native/spatial-state.js';
@@ -19,7 +20,7 @@ export function enableWorldPosition(environment,layouts,creation){
  const env=context(L);
  Object.assign(env,{
   gy:record('struct instance_globals_y',environment.requireGlobal('gy')),
-  rn2:(n,line,caller)=>{if(line!==undefined&&services.rng_log_enabled())services.rng_log_set_caller(services.literal('teleport.c'),line,services.literal(caller));return services.rn2(typeof n==='function'?n():n);},
+  rn2:(n,line,caller)=>{if(line!==undefined&&services.rng_log_enabled())recordNativeRngCaller(services,'teleport.c',line,caller);return services.rn2(typeof n==='function'?n():n);},
   coordArray:n=>views.array('coord',transport.stackAlloc(n*ctypes.size('coord')),n),
   localCoord:world.coordLocal,localMonster:world.monsterLocal,
   coordAt:(p,i=0)=>record('coord',environment.address(p)+i*ctypes.size('coord')),

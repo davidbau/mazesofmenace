@@ -1,3 +1,4 @@
+import {createServiceForwarder} from '../../c-runtime/service-scope.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/dothrow.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -32,8 +33,17 @@ export function createDothrowEnvironment(services){
  return env;
 }
 export function callDothrow(services,name,...args){
- let env=states.get(services.moduleKey);if(!env){env=createDothrowEnvironment(services);states.set(services.moduleKey,env);}
- Object.setPrototypeOf(env,services);
- const fn=env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original DOTHROW function '+name);
- const stackFrame=services.stackSave();try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
+ let state=states.get(services.moduleKey);
+ if(!state){
+  state={services};const forwarding=createServiceForwarder(state);
+  state.env=createDothrowEnvironment(forwarding);
+  // Preserve the original direct service prototype once; provider identity is
+  // thereafter scoped without mutating the environment shape on every call.
+  Object.setPrototypeOf(state.env,forwarding);states.set(services.moduleKey,state);
+ }
+ const previous=state.services;state.services=services;
+ try{
+  const fn=state.env.nativeNamespace[name];if(typeof fn!=='function')throw Error('Unknown original DOTHROW function '+name);
+  const stackFrame=services.stackSave();try{return fn(...args)??0;}finally{services.stackRestore(stackFrame);}
+ }finally{state.services=previous;}
 }

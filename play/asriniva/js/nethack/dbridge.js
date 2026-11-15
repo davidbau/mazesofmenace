@@ -1,3 +1,6 @@
+import {validateServiceCoercions} from './service-coercions.js';
+import publicFunctions from './public-functions.json' with {type:'json'};
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Full native DBRIDGE transport on the existing terrain-query context.
 import abi from './dbridge-abi.json' with {type:'json'};
 import * as source from '../ported/dbridge.js';
@@ -9,6 +12,7 @@ export function enableDbridge(environment,layouts){
  for(const[k,v]of Object.entries(abi.layout))if(L[k]!==v)throw new Error('Review DBRIDGE native ABI '+k);
  for(const[k,v]of Object.entries(abi.roomClosure.layout))if(layouts.mkroom[k]!==v)throw new Error('Review Castle MKROOM native ABI '+k);
  const resolve=n=>environment.hasFunction(n)?environment.resolve(n):typeof services[n]==='function'?services[n]:environment.resolve(n),coerce={pointer:address,text,char:transport.char,short:transport.short,int:transport.int,uint:transport.uint},local=Object.create(services);
+ validateServiceCoercions('DBRIDGE',abi.calls,publicFunctions.functions,coerce);
  for(const[name,row]of Object.entries(abi.calls))local[name]=(...args)=>{const result=resolve(row.target)(...row.coercions.map(([kind,i])=>coerce[kind](args[i])));return row.number?Number(result?.address??result):result;};
  const field=(type,p,key,value)=>{key=type==='struct rm'?(abi.terrainAliases[key]??key):key;const f=ctypes.record(type).fields[key];if(!f)throw new Error('Unknown DBRIDGE field '+key);const scalar=f.ctype.replace(new RegExp('\\s+'+key+'$'),'');return value===undefined?ctypes.getField(type,address(p),key,scalar):ctypes.setField(type,address(p),key,scalar,value);};
  const terrain=(x,y)=>environment.requireGlobal('svl')+L.locations+(transport.short(x)*L.ROWNO+transport.short(y))*L.rmSize;
@@ -20,7 +24,7 @@ export function enableDbridge(environment,layouts){
   heroBit:i=>{if(i!==0)throw new Error('Unknown DBRIDGE hero bit');return field('struct you',u,'uinwater');},roleplayDeaf:()=>field('struct u_roleplay',ctypes.locate('struct you',u,'uroleplay').at,'deaf'),
   heroEvent:i=>{if(i!==0&&i!==1)throw new Error('Unknown DBRIDGE hero event');return field('struct u_event',event,['uopened_dbridge','uheard_tune'][i]);},setHeroEvent:(i,v)=>{if(i!==0&&i!==1)throw new Error('Unknown DBRIDGE hero event');return field('struct u_event',event,['uopened_dbridge','uheard_tune'][i],transport.uint(v));},phraseBuffer:()=>phrase,
  });
- for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{const index=typeof caller==='string'?abi.callers.indexOf(caller):caller;if(!Number.isInteger(index)||index<0||index>=abi.callers.length)throw new Error('Unknown original DBRIDGE RNG caller');if(services.rng_log_enabled())services.rng_log_set_caller(text('dbridge.c'),transport.int(line),text(abi.callers[index]));return resolve(name)(transport.int(n));};
+ for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{const index=typeof caller==='string'?abi.callers.indexOf(caller):caller;if(!Number.isInteger(index)||index<0||index>=abi.callers.length)throw new Error('Unknown original DBRIDGE RNG caller');if(services.rng_log_enabled())recordNativeRngCaller(services,'dbridge.c',transport.int(line),abi.callers[index]);return resolve(name)(transport.int(n));};
  for(const name of ['pline_The','You','You_see','You_hear'])local[name]=(fmt,a,b)=>resolve(name)(text(fmt),text(a),text(b));
  local.impossible=fmt=>resolve('impossible')(text(fmt));
  local.pline=(fmt,...args)=>args.length===1&&fmt.includes('%d')?resolve('pline')(text(fmt),transport.int(args[0])):args.length===2&&fmt.includes('%d')?resolve('pline')(text(fmt),text(args[0]),transport.int(args[1])):resolve('pline')(text(fmt),text(args[0]),text(args[1]));

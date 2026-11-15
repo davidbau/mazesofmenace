@@ -24,8 +24,9 @@ import { build_window_screen, menu_search_case, tty_window_offx } from './com_pa
 import { money_cnt } from './hack.js';
 import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, COST_DEGRD, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
 import { is_pick, use_pick_axe2 } from './dig.js';
-import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint } from './display.js';
+import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint, use_last_flush_snapshot } from './display.js';
 import { check_gold_symbol } from './botl.js';
+import { assign_graphics } from './symbols.js';
 import { You_hear, You_see, livelog_printf, pline } from './pline.js';
 import { You, encumber_msg, xname } from './do_wear.js';
 import { yname } from './objnam.js';
@@ -795,8 +796,13 @@ async function dodrop_body() {
      * standing on the topline (`2d`: the first pass's "You drop ...", then the
      * repeat's prompt) is paged before the prompt overwrites it.  The shared
      * getobj reader spells the same thing at js/cmd.js:17583. */
-    if (g._pending_message && !g._topl_win_stop)
-        await force_more(g._pending_message);
+    if (g._pending_message && !g._topl_win_stop) {
+        /* A counted `2d` re-enters rhack(gc.cmd_key) (allmain.c:526-529)
+         * with no parse()/flush_screen(), so more() pages over the terminal
+         * as last flushed; monster moves since then are still in gbuf. */
+        const release = g._cmdRepeatNoKey ? use_last_flush_snapshot() : () => {};
+        try { await force_more(g._pending_message); } finally { release(); }
+    }
     g._topl_win_stop = false;
     g._topl_win_stop_armed = false;
     /* C invent.c:1922-1930 — under iflags.force_invmenu getobj never calls
@@ -2016,6 +2022,9 @@ export async function goto_level(newlevel, at_stairs, falling, portal) {
                 remdun_mapseen(dnum);
         await discard_migrations();
     }
+    /* do.c:1666-1667 */
+    if (Is_rogue_level(newlevel) || Is_rogue_level(g.u?.uz))
+        assign_graphics(Is_rogue_level(newlevel) ? 1 /* ROGUESET */ : 0 /* PRIMARYSET */);
     check_gold_symbol(newlevel); /* do.c:1666-1668: destination graphics */
     initrack();
     // C do.c:1688-1690 — assign_level(&u.uz0, &u.uz); assign_level(&u.uz,

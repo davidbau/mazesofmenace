@@ -916,6 +916,13 @@ export function engr_reset_text_pointers() {
             ep.text = ' '.repeat(ep.off | 0) + ep.text;
             ep.off = 0;
         }
+        // C engrave.c:1564-1565 resets the remembered pointer too. Its
+        // leading spaces survive in the backing buffer after rest_engravings
+        // advances the pointer (engrave.c:1612-1613).
+        if ((ep.remembered_off | 0) > 0) {
+            ep.remembered = ' '.repeat(ep.remembered_off | 0) + ep.remembered;
+            ep.remembered_off = 0;
+        }
     }
 }
 

@@ -54,16 +54,18 @@ const _STEP_EXPLORER_RNG_TRACE = !!(typeof process !== 'undefined'
 
 function _stepExplorerCallerTag() {
     // this helper + the immediate rn2/rnd/d/rne/rnz frame and report the
+    // first frame outside js/rng.js and js/rnd.js — the primitives and this
+    // helper moved into rnd.js, so skipping only rng.js reports this helper
     // call site. Cheap when the env flag is off (we return ''); when on,
     const stack = new Error().stack || '';
     const lines = stack.split('\n');
-    // Find first frame whose path does NOT mention 'rng.js'. Lines look
+    // Find the first frame outside the RNG implementation modules. Lines look
     // like "    at rn2 (/.../js/rng.js:128:13)" or
     // "    at uInitMisc (/.../js/u_init.js:42:5)".
     for (let i = 1; i < lines.length; i++) {
         const ln = lines[i];
         if (!ln) continue;
-        if (ln.includes('/js/rng.js') || ln.includes('\\js\\rng.js')) continue;
+        if (/[\\/]js[\\/](?:rng|rnd)\.js:/.test(ln)) continue;
         // Extract trailing "(<path>:<line>:<col>)" or "<path>:<line>:<col>"
         const m = ln.match(/\(?([^()\s]+):(\d+):(?:\d+)\)?\s*$/);
         if (!m) continue;

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original RESTORE on shared records/files and native reference semantics.
 import abi from './restore-lifecycle-abi.json' with {type:'json'};
 import records from './records.json' with {type:'json'};
@@ -39,7 +40,7 @@ export function enableRestoreLifecycle(environment,layouts){
   debugEnabled:()=>resolve('debugcore')(services.literal('restore.c'),1),debugMessage:(message,n)=>resolve('pline')(text(message),transport.int(n)),
   Sprintf:(out,format,a,b,c)=>{const fmt=typeof format==='string'?format:memory.readString(text(format));if(fmt==='%.*s')return services.sprintf(address(out),text(format),transport.int(a),text(b));if(fmt==='%c %.*s')return services.sprintf(address(out),text(format),transport.int(a),transport.int(b),text(c));return services.sprintf(address(out),text(format),transport.int(a??0),transport.int(b??0),text(c??0));},
   assert:(ok,index)=>{if(ok)return;const row=abi.assertions[index];if(!row)throw new Error('Unknown RESTORE assertion '+index);return resolve('__assert_fail')(text(row.expression),text(row.file),row.line,text(row.function));},
-  rnd:(n,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('restore.c'),transport.int(line),services.literal('getlev'));return services.rnd(transport.int(n));},
+  rnd:(n,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'restore.c',transport.int(line),'getlev');return services.rnd(transport.int(n));},
  });
  for(const[name,target]of Object.entries(abi.serializers))local[name]=(...args)=>resolve(target)(...boundary(args));
  const callbacks={cliparound:'win_cliparound',clear_nhwindow:'win_clear_nhwindow',display_nhwindow:'win_display_nhwindow',wait_synch:'win_wait_synch',create_nhwindow:'win_create_nhwindow',start_menu:'win_start_menu',end_menu:'win_end_menu',select_menu:'win_select_menu',destroy_nhwindow:'win_destroy_nhwindow',add_menu:'win_add_menu',putstr:'win_putstr',putmsghistory:'win_putmsghistory'};

@@ -1,3 +1,4 @@
+import {createNativeVisibilityState} from '../native/visibility-state.js';
 import {nativeStateFor} from '../native/state-bridge.js';
 import {createNativeDescriptorViews} from '../native/descriptor-state.js';
 import {createNativeVision} from '../native/vision.js';
@@ -52,7 +53,10 @@ export function createVisionEnvironment(services,layout){
         let lo=0,hi=regions.length;while(lo<hi){const mid=(lo+hi)>>>1;if(regions[mid][0]<=at)lo=mid+1;else hi=mid;}
         const row=regions[lo-1];if(row&&at>=row[0]&&at+bytes<=row[1]){lastRegion=row;return true;}return false;
     }
-    const view=createNativeDescriptorViews({owner:nativeState,schemas,stableInline:Boolean(nativeState.nativeArena&&services.nativeGlobalBindings===true),records:{...measuredRecords.records,...hackAbi.records},memory,addr,raw,read,write,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'vision',true)});
+    const workspace=services.nativeGlobalBindings===true?createNativeVisibilityState({environment:services.moduleKey,owner:nativeState,layout,storage:services.storage,privateStorage,circleLengths:{circle_data:core.circle_data.length,circle_start:core.circle_start.length},read,write}):undefined;
+    const recordView=createNativeDescriptorViews({owner:nativeState,schemas,stableInline:Boolean(nativeState.nativeArena&&services.nativeGlobalBindings===true),records:{...measuredRecords.records,...hackAbi.records},memory,addr,raw,read,write,decode,decorate:(kind,result)=>applyRecordAliases(kind,result,'vision',true)});
+    const view=(name,value)=>{const result=recordView(name,value);return workspace&&name==='instance_globals_v'?workspace.wrapGlobals(result):result;};
+    view.kindOf=value=>recordView.kindOf(workspace?workspace.original(value):value);
     const env=Object.assign(Object.create(services),layout,{sizes:Object.fromEntries(names.map(n=>[n,layout[n+'Size']])),view,nativeState,
         boolean:v=>Number(v)<<24>>24,samePointer:(a,b)=>addr(a)===addr(b),reference:(get,set)=>({get value(){return get();},set value(v){set(v);}}),
         element:(a,i)=>({address:addr(a)+i*width(a.descriptor.e),descriptor:a.descriptor.e,get value(){return a[i];},set value(v){a[i]=v;}}),
@@ -63,18 +67,19 @@ export function createVisionEnvironment(services,layout){
 
     // Arrays carry their actual descriptor, including primitive multidimensional strides.
     env.arrayAddress=(o,...ix)=>{let d=o.descriptor,at=o.address;for(const i of ix){const child=d.a.length===1?d.e:{a:d.a.slice(1),e:d.e};at+=i*width(child);d=child;}return at;};
-    CAdapter.installDescriptorGlobals(globals,env,services,read,write,addr,Boolean(nativeState.nativeArena&&services.nativeGlobalBindings===true));
+    let seenv;const globalRead=(d,p)=>workspace&&d===globals[11].d?(seenv??=workspace.seenv(p)):read(d,p);
+    CAdapter.installDescriptorGlobals(globals,env,services,globalRead,write,addr,Boolean(nativeState.nativeArena&&services.nativeGlobalBindings===true));
 
 
-    privateStorage.forEach((g,i)=>Object.defineProperty(env,g.name,{get:()=>read(g.d,addr(services.storage(i))),set:v=>write(g.d,addr(services.storage(i)),v)}));
-    for(const[name,index]of [['circle_data',20],['circle_start',21]])env[name]=array({a:[core[name].length],e:{t:'i16'}},addr(services.storage(index)));
+    privateStorage.forEach((g,i)=>Object.defineProperty(env,g.name,workspace?.descriptors[g.name]??{get:()=>read(g.d,addr(services.storage(i))),set:v=>write(g.d,addr(services.storage(i)),v)}));
+    for(const[name,index]of [['circle_data',20],['circle_start',21]])env[name]=workspace?.arrays.get(name)??array({a:[core[name].length],e:{t:'i16'}},addr(services.storage(index)));
     env.workspaceSize=name=>width(privateStorage.find(x=>x.name===name).d);
     Object.defineProperties(env,{
       wizard:{get:()=>env.flags.debug},levl:{get:()=>nativeState.spatial?.cells??env.svl.level.locations},Underwater:{get:()=>env.u.uinwater},
     });
     const prop=n=>env.u.uprops[n];for(const[key,name]of [['Blind','BLINDED'],['See_invisible','SEE_INVIS'],['Detect_monsters','DETECT_MONSTERS']])Object.defineProperty(env,key,{get(){const p=prop(layout[name]);return key==='Blind'?(p.intrinsic||p.extrinsic)&&!p.blocked:p.intrinsic||p.extrinsic;}});
     env.IS_OBSTRUCTED=t=>t<layout.POOL;env.IS_DOOR=t=>t===layout.DOOR;env.IS_WALL=t=>t&&t<=layout.DBWALL;env.IS_WATERWALL=t=>t===layout.WATER;
-    env.m_at=(x,y)=>env.svl.level.monsters[x][y];
+    env.m_at=(x,y)=>nativeState.spatial?.monsters[x][y]??env.svl.level.monsters[x][y];
     env.is_lightblocker_mappear=m=>{const type=m.m_ap_type&layout.M_AP_TYPMASK;return type===layout.M_AP_OBJECT&&m.mappearance===layout.BOULDER||type===layout.M_AP_FURNITURE&&(m.mappearance===layout.S_hcdoor||m.mappearance===layout.S_vcdoor||m.mappearance<layout.S_ndoor||m.mappearance===layout.S_tree);};
     env.MATCH_WARN_OF_MON=m=>{const p=prop(layout.WARN_OF_MON),w=env.svc.context.warntype;return (p.intrinsic||p.extrinsic)&&((w.obj&m.data.mflags2)!==0n||(w.polyd&m.data.mflags2)!==0n||w.species&&addr(w.species)===addr(m.data));};
     for(const[name,field]of [['Is_waterlevel','d_water_level'],['Is_airlevel','d_air_level'],['Is_rogue_level','d_rogue_level']])env[name]=l=>{const z=env.svd.dungeon_topology[field];return (z.dlevel||z.dnum)&&services.on_level(l,z);};
@@ -86,6 +91,19 @@ export function createVisionEnvironment(services,layout){
     env.pointerBox=(p,d)=>({address:addr(p),get value(){return read(d,addr(p));},set value(v){write(d,addr(p),v);}});
     env.rowPointers=p=>addr(p)?array({a:[0],e:{q:{t:'u8'}}},addr(p)):0;env.coordArray=p=>addr(p)?array({a:[0],e:{t:'i16'}},addr(p)):0;
     env.invoke=(cb,x,y,arg)=>services.invoke(cb,x,y,arg);
+    env.nativeVisionRow=(table,index,value)=>{if(!workspace?.setRow(table,index,value))table[index]=value;};
+    if(workspace){
+        const oldAdvance=env.advance,oldElement=env.element,oldRows=env.rowPointers,oldCoords=env.coordArray;
+        env.advance=(value,n)=>workspace.advance(value,n)??oldAdvance(value,n);
+        env.element=(value,n)=>workspace.element(value,n)??oldElement(value,n);
+        env.rowPointers=value=>workspace.rows(value)??oldRows(value);
+        env.coordArray=value=>workspace.coords(value)??oldCoords(value);
+        env.memset=(value,byte,n)=>workspace.fill(value,byte,n)??services.memset(value,byte,n);
+        env.cansee=(x,y)=>!!(workspace.read(y,x)&layout.IN_SIGHT);
+        env.couldsee=(x,y)=>!!(workspace.read(y,x)&layout.COULD_SEE);
+    }
+    if(nativeState.nativeArena&&services.nativeGlobalBindings===true)env.assert=(ok,expression,fn,line)=>{if(!ok)return services.assert(ok,expression,fn,line);};
+    env.nativeVisibilityState=workspace;
     env.nativeVision=createNativeVision(env);
     return env;
 }

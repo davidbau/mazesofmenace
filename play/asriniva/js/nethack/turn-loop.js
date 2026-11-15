@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original ALLMAIN turn policies retain the existing startup context/owner.
 import * as allmain from '../ported/allmain.js';
 import abi from './turn-loop-abi.json' with {type:'json'};
@@ -98,7 +99,7 @@ export function enableTurnLoop(environment,layouts,startup){
   const call=(...args)=>{const selected=resolve(name);if(selected.nativeState===nativeState)return selected(...args);const result=nativeState.boundary(selected,...args.map((value,i)=>boundary(row.parameters[i],value)));return boundary(row.result,result);};
   Object.defineProperty(C,name,{configurable:true,enumerable:true,get(){const selected=nativeState.functions.get(name);return selected?.nativeState===nativeState?selected:call;},set(value){Object.defineProperty(C,name,{value,writable:true,configurable:true,enumerable:true});}});
  }
- const sourceCaller=(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('allmain.c'),transport.int(line),text(caller));};
+ const sourceCaller=(line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'allmain.c',transport.int(line),caller);};
  for(const kind of ['rn2','rnd'])C[kind]=(bound,line,caller)=>{sourceCaller(line,caller);return services[kind](transport.int(typeof bound==='function'?bound():bound));};
  C.rn1=(bounds,line,caller)=>{sourceCaller(line,caller);const pair=typeof bounds==='function'?bounds():bounds;return transport.int(services.rn2(transport.int(pair[0]))+transport.int(pair[1]));};
  C.literal=services.literal;

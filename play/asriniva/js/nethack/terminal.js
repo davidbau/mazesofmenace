@@ -24,7 +24,7 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
         const record=schemas[kind]?.[1],f=record?.fields[index];if(!f)throw new Error('Unknown terminal C field');
         return{type:metadata.typeAliases[record.ctype]??record.ctype,f,p};
     }
-    Object.assign(local,{nativeOwner,nativeTypes:ctypes,moduleKey:environment,
+    Object.assign(local,{nativeTerminalOwner:local,nativeOwner,nativeTypes:ctypes,moduleKey:environment,
         global:i=>{if(!globals[i])throw new Error('Unknown terminal global');return globals[i];},
         read:(kind,p,i)=>{const e=field(kind,p,i);return e.f.d.a||e.f.d.s?BigInt(ctypes.locate(e.type,p,e.f.name).at):ctypes.getField(e.type,p,e.f.name,scalar(e.f.d));},
         write:(kind,p,i,v)=>{const e=field(kind,p,i);return ctypes.setField(e.type,p,e.f.name,scalar(e.f.d),v);},
@@ -43,10 +43,12 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
         getenv:name=>environment.services.nh_getenv(typeof name==='string'?name:memory.readString(cptr(name))),
         alloc:n=>environment.alloc('alloc',Number(n)),
         dupstr:p=>environment.libc.strdup(cptr(p)),
-        teleport_capture:(screen,x,y,animation)=>{
-            const frame={screen:encodeRecorderScreen(memory.readString(cptr(screen))),cursor:[Number(x),Number(y),1],animation:Boolean(animation)};
+        nativeMarkerKind:kind=>typeof kind==='string'?kind.split('\0',1)[0]:memory.readString(address(kind)),
+        nativeFrameCapture:(screen,x,y,animation)=>{
+            const frame={screen:encodeRecorderScreen(screen),cursor:[Number(x),Number(y),1],animation:Boolean(animation)};
             frames.push(frame);if(onCapture)onCapture(frame);
         },
+        teleport_capture:(screen,x,y,animation)=>local.nativeFrameCapture(memory.readString(cptr(screen)),x,y,animation),
         error_p:(...args)=>environment.resolve('error')(...args),error_pp:(...args)=>environment.resolve('error')(...args),
         fprintf_pppiiiij:(...args)=>services.fprintf(...args),
         sprintf_pp:(out,fmt)=>environment.libc.sprintf(cptr(out),memory.readString(cptr(fmt))),

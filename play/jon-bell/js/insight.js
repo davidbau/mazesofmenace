@@ -798,7 +798,8 @@ function rank_to_xlev_cmd(rank) {
 
 async function list_vanquished_yn_function(qbuf, choices, def, addcmdq) {
     return (await yn_function(qbuf, choices,
-                              String.fromCharCode(def | 0), addcmdq)).charCodeAt(0);
+                              String.fromCharCode(def | 0), addcmdq,
+                              { respCopied: true })).charCodeAt(0); /* allow_yn is a copy (insight.c:2835) */
 }
 
 const _VANQ_S_ZOMBIE = 52, _VANQ_S_HUMAN = 53, _VANQ_S_GHOST = 54,
@@ -1082,7 +1083,8 @@ function num_gone(mvflags, mindx) {
 /* C insight.c:3027 yn_function(qbuf, allow, defquery, TRUE). */
 async function list_genocided_yn_function(qbuf, choices, def, _sensitive) {
     return (await yn_function(qbuf, choices,
-                              String.fromCharCode(def | 0))).charCodeAt(0);
+                              String.fromCharCode(def | 0), false,
+                              { respCopied: true })).charCodeAt(0); /* literal, not ynaqchars (insight.c:3040) */
 }
 
 /* C insight.c:3066 reuses the same vanqsort_cmp comparator as the

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {genders as sourceGenders} from '../ported/role.js';
 // Canonical TELEPORT bridge, original policies and source-private state, shared native fields.
 import abi from './teleport-abi.json' with{type:'json'};
@@ -50,7 +51,7 @@ export function enableTeleport(environment,layouts,creation){
   pmname:(p,i)=>address(ctypes.load('const char *',ctypes.locate('struct permonst',address(p),'pmnames').at+i*8)),m_at:(x,y)=>address(full('struct instance_globals_saved_l',environment.requireGlobal('svl')).level.monsters[x][y]),ESHK:p=>address(full('struct monst',p).mextra.eshk),EPRI:p=>address(full('struct monst',p).mextra.epri),copy:(to,from,n)=>memory.memmove(address(to),address(from),Number(n)),
   remove_monster:(x,y)=>ctypes.store('struct monst *',globalPath('svl.level.monsters['+transport.short(x)+']['+transport.short(y)+']').at,0n),
   callFilter:(fn,x,y)=>typeof fn==='function'?fn(transport.short(x),transport.short(y)):functions.indirect(fn,'iii',transport.short(x),transport.short(y)),blocker:()=>environment.functionPointer('teleport::m_blocks_teleporting','ip',p=>call('m_blocks_teleporting',p)),
-  rngCaller:(line,fn)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('teleport.c'),transport.int(line),text(fn));},drawRn2:n=>resolve('rn2')(n),drawRnd:n=>resolve('rnd')(n),drawRnl:n=>resolve('rnl')(n),
+  rngCaller:(line,fn)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'teleport.c',transport.int(line),fn);},drawRn2:n=>resolve('rn2')(n),drawRnd:n=>resolve('rnd')(n),drawRnl:n=>resolve('rnl')(n),
   Sprintf:(out,fmt,a=0,b=0)=>resolve('sprintf')(address(out),text(fmt),text(a),text(b)),impossibleInt:(fmt,n)=>resolve('impossible')(text(fmt),transport.int(n)),You1:s=>resolve('You')(text('%s'),text(s)),pline_mon:(p,fmt,a=0,b=0)=>resolve('pline_mon')(address(p),text(fmt),text(a),text(b)),
   debugEnabled:()=>resolve('debugcore')(text('teleport.c'),1),debugpline0:s=>resolve('pline')(text('%s'),text(s)),debugInts:(fmt,...args)=>resolve('pline')(text(fmt),...args.map(transport.int)),debugFail:(fmt,a,b,c,d)=>resolve('pline')(text(fmt),text(a),transport.int(b),transport.int(c),transport.ulong(d)),
   makeknown:n=>resolve('discover_object')(transport.int(n),1,1,1),

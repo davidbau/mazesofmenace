@@ -1861,12 +1861,6 @@ function _potion_Blind() {
     return !!bp && !!((bp.intrinsic | 0) || (bp.extrinsic | 0))
         && !(bp.blocked | 0);
 }
-function _potion_Invisible() {
-    const ip = game.u?.uprops?.[INVIS];
-    const sp = game.u?.uprops?.[SEE_INVIS];
-    return !!((ip?.intrinsic | 0) || (ip?.extrinsic | 0))
-        && !((sp?.intrinsic | 0) || (sp?.extrinsic | 0));
-}
 function _potion_Fast() {
     const u = game.u || {};
     return !!(_fastrec(u).intrinsic | 0)
@@ -2296,48 +2290,6 @@ async function _poof(potion) {
     await useup(potion);
 }
 
-/* simpleoname(obj): article-less appearance name, e.g. "sky blue potion".
- * thesimpleoname prepends "the ". Mirrors _identify_doname (read.js) sans
- * article/quantity, for the dip messages. */
-function _simpleoname(obj) {
-    const oclass = obj.oclass | 0;
-    const otyp = obj.otyp | 0;
-    const nameKnown = !!(game._oc_name_known && game._oc_name_known[otyp]);
-    if (nameKnown) {
-        const actualn = getObjName(otyp);
-        return actualn ? `potion of ${actualn}` : 'potion';
-    }
-    const descr = getObjDescr(otyp);
-    return descr ? `${descr} potion` : 'potion';
-}
-function _simpleonames(obj) {
-    /* C objnam.c:2428 simpleonames: makeplural(simpleoname) when quan != 1.
-     * makeplural pluralises the head noun ("potion of blindness" ->
-     * "potions of blindness"); a trailing-'s' test on the whole string is
-     * wrong because "blindness" itself ends in 's'. */
-    const base = _simpleoname(obj);
-    if ((obj.quan | 0) !== 1) return makeplural_objnam(base);
-    return base;
-}
-function _thesimpleoname(obj) { return `the ${_simpleonames(obj)}`; } /* objnam.c:2474: the(simpleonames(obj)) */
-/* doname-with-article (for the obuf in the "dip <X> into" prompt). */
-function _doname_potion(obj) {
-    const base = _simpleoname(obj);
-    const quan = obj.quan | 0 || 1;
-    if (quan > 1) {
-        const plural = base.endsWith('s') ? base : `${base}s`;
-        return `${quan} ${plural}`;
-    }
-    const article = /^[aeiou]/i.test(base) ? 'an' : 'a';
-    return `${article} ${base}`;
-}
-
-/* otense(obj, verb): singular stack → add 's' (3rd person); plural → base. */
-function _otense(obj, verb) {
-    if ((obj.quan | 0) > 1) return verb;
-    return verb.endsWith('s') || verb.endsWith('x') ? verb + 'es' : verb + 's';
-}
-
 function _potion_oc_magic(otyp) {
     return !(otyp === POT_WATER || otyp === POT_FRUIT_JUICE
              || otyp === POT_BOOZE || otyp === POT_SICKNESS
@@ -2464,7 +2416,7 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
         if (useeit) {
             glowcolor = hcolor(glowcolor);
             if (altfmt)
-                await pline(`${objphrase} with ${_an(glowcolor)} aura.`);
+                await pline(`${objphrase} with ${an(glowcolor)} aura.`);
             else
                 await pline(`${objphrase} ${glowcolor}.`);
             game.iflags.last_msg = PLNMSG_OBJ_GLOWS;
@@ -2484,7 +2436,6 @@ async function _H2Opotion_dip(potion, targobj, useeit, objphrase) {
     }
     return res;
 }
-function _an(s) { return /^[aeiou]/i.test(s) ? `an ${s}` : `a ${s}`; }
 
 // C potion.c:1595-1620: scroll light changes artifact light through water's BUC effect.
 export async function impact_arti_light(obj, worsen, seeit) {
@@ -2611,7 +2562,7 @@ async function potion_dip(obj, potion) {
                 qbuf = `${obj.quan | 0} of the`;
             }
         }
-        await pline(`${qbuf} ${simpleonames(obj)} ${_otense(obj, 'mix')} with `
+        await pline(`${qbuf} ${simpleonames(obj)} ${otense(obj, 'mix')} with `
             + `${(potion.quan | 0) > 1 ? 'one of ' : ''}${thesimpleoname(potion)}...`);
         await _useup(potion); /* now gone */
 
@@ -3453,19 +3404,6 @@ function is_human_pot(ptr) { return !!(ptr && ((ptr.mflags2 | 0) & M2_HUMAN_POT)
  * the same body, unexported. */
 function is_vampshifter_pot(mon) {
     return mon.cham === PM_VAMPIRE || mon.cham === PM_VAMPIRE_LORD || mon.cham === PM_VLAD_THE_IMPALER;
-}
-/* Resists_Elem(mon, ACID_RES)/(mon, POISON_RES) — MR_ACID/MR_POISON bit tests
- * on the combined resistance mask.  Mirrors js/mhitu.js's local
- * resists_acid_mu/resists_poison_mu (each file carries its own copy). */
-function resists_acid_pot(mon) {
-    const MR_ACID = 0x08;
-    const bits = ((mon.data ? (mon.data.mresists | 0) : 0) | (mon.mextrinsics | 0) | (mon.mintrinsics | 0));
-    return (bits & MR_ACID) !== 0;
-}
-function resists_poison_pot(mon) {
-    const MR_POISON = 0x20;
-    const bits = ((mon.data ? (mon.data.mresists | 0) : 0) | (mon.mextrinsics | 0) | (mon.mintrinsics | 0));
-    return (bits & MR_POISON) !== 0;
 }
 /* C mhitm.c dmgtype(mon_data, ad_type) == dmgtype_fromattack(ptr, dtyp, AT_ANY).
  * js/mhitm.js's own copy is the same one-liner, unexported. */

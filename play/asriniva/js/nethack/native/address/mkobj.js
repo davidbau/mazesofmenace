@@ -275,23 +275,23 @@ function mkobj_erosions(otmp)
         /* A small fraction of non-artifact items will generate eroded or
          * possibly erodeproof. An item that generates eroded will never be
          * erodeproof, and vice versa. */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),202,(C.literal("mkobj_erosions"))),C.rn2(100))):C.rn2(100)))))) {
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",202,"mkobj_erosions"),C.rn2(100))):C.rn2(100)))))) {
             (W102(otmp,C.u32(1)));
         } else {
-            if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),205,(C.literal("mkobj_erosions"))),C.rn2(80))):C.rn2(80)))))&&(Number(!!(Number(!!(C.i32(is_flammable(otmp))||(Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.IRON))))||(Number(!!(Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.GLASS)&&Number(C.i32(R82(otmp))==C.ARMOR_CLASS)))))))))) {
+            if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",205,"mkobj_erosions"),C.rn2(80))):C.rn2(80)))))&&(Number(!!(Number(!!(C.i32(is_flammable(otmp))||(Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.IRON))))||(Number(!!(Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.GLASS)&&Number(C.i32(R82(otmp))==C.ARMOR_CLASS)))))))))) {
                 do {
                     ((W100(otmp,C.u32((R100(otmp)+1))))-1);
-                } while(Number(!!(Number(C.i32(R100(otmp))<3)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),209,(C.literal("mkobj_erosions"))),C.rn2(9))):C.rn2(9))))))));
+                } while(Number(!!(Number(C.i32(R100(otmp))<3)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",209,"mkobj_erosions"),C.rn2(9))):C.rn2(9))))))));
             }
-            if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),211,(C.literal("mkobj_erosions"))),C.rn2(80))):C.rn2(80)))))&&(Number(!!(C.i32(is_rottable(otmp))||(Number(!!(Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.COPPER)||Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.IRON)))))))))) {
+            if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",211,"mkobj_erosions"),C.rn2(80))):C.rn2(80)))))&&(Number(!!(C.i32(is_rottable(otmp))||(Number(!!(Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.COPPER)||Number(C.i32(R130(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==C.IRON)))))))))) {
                 do {
                     ((W101(otmp,C.u32((R101(otmp)+1))))-1);
-                } while(Number(!!(Number(C.i32(R101(otmp))<3)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),214,(C.literal("mkobj_erosions"))),C.rn2(9))):C.rn2(9))))))));
+                } while(Number(!!(Number(C.i32(R101(otmp))<3)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",214,"mkobj_erosions"),C.rn2(9))):C.rn2(9))))))));
             }
         }
         /* and an extremely small fraction of the time, erodable items
          * will generate greased */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),219,(C.literal("mkobj_erosions"))),C.rn2(1000))):C.rn2(1000)))))) (W106(otmp,C.u32(1)));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",219,"mkobj_erosions"),C.rn2(1000))):C.rn2(1000)))))) (W106(otmp,C.u32(1)));
     }
 }
 
@@ -347,7 +347,7 @@ function mkobj(oclass,artif)
     let tprob; let i; let prob;
     if(Number(oclass==C.RANDOM_CLASS)) {
         let iprobs=(((Number(!!((Number(!!(C.i32(R16(A17(A47(C.svd))))||C.i32(R15(A17(A47(C.svd)))))))&&C.i32(C.on_level(A162(C.u),A17(A47(C.svd))))))))?C.rogueprobs:(C.i32(C.In_hell(A162(C.u)))?C.hellprobs:C.mkobjprobs));
-        for((tprob=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),280,(C.literal("mkobj"))),C.rnd(100))):C.rnd(100))));Number(((tprob=C.i32(tprob-R26(iprobs))))>0);((iprobs=C.ptr((iprobs+Number(C.sizes["struct icp"]))))-Number(C.sizes["struct icp"]))) continue;
+        for((tprob=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",280,"mkobj"),C.rnd(100))):C.rnd(100))));Number(((tprob=C.i32(tprob-R26(iprobs))))>0);((iprobs=C.ptr((iprobs+Number(C.sizes["struct icp"]))))-Number(C.sizes["struct icp"]))) continue;
 
         (oclass=C.i32(R27(iprobs)));
     }
@@ -356,7 +356,7 @@ function mkobj(oclass,artif)
         (oclass=C.SPBOOK_CLASS);
         /* for sanity check below */
     } else {
-        (prob=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),289,(C.literal("mkobj"))),C.rnd(C.i32(C.cell((A43(C.go)+Number(oclass)*2),"short").value)))):C.rnd(C.i32(C.cell((A43(C.go)+Number(oclass)*2),"short").value)))));
+        (prob=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",289,"mkobj"),C.rnd(C.i32(C.cell((A43(C.go)+Number(oclass)*2),"short").value)))):C.rnd(C.i32(C.cell((A43(C.go)+Number(oclass)*2),"short").value)))));
         (i=C.cell((A45(C.svb)+Number(oclass)*4),"int").value);
         while(Number(((prob=C.i32(prob-C.i32(R134(C.objects+Number(i)*C.sizes["struct objclass"])))))>0)) (i=C.i32((i+1)));
 
@@ -399,7 +399,7 @@ function mkbox_cnts(box)
             (n=0);
         break;
     }
-    for((n=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),338,(C.literal("mkbox_cnts"))),C.rn2(C.i32((n+1))))):C.rn2(C.i32((n+1))))));Number(n>0);((n=C.i32((n-1)))+1)) {
+    for((n=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",338,"mkbox_cnts"),C.rn2(C.i32((n+1))))):C.rn2(C.i32((n+1))))));Number(n>0);((n=C.i32((n-1)))+1)) {
         if(Number(C.i32(R78(box))==C.ICE_BOX)) {
             (otmp=mksobj(C.CORPSE,(C.i8(1)),(C.i8(0))));
             /* Note: setting age to 0 is correct.  Age has a different
@@ -414,13 +414,13 @@ function mkbox_cnts(box)
         } else {
             let tprob;
             let iprobs=C.boxiprobs;
-            for((tprob=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),354,(C.literal("mkbox_cnts"))),C.rnd(100))):C.rnd(100))));Number(((tprob=C.i32(tprob-R26(iprobs))))>0);((iprobs=C.ptr((iprobs+Number(C.sizes["struct icp"]))))-Number(C.sizes["struct icp"]))) ;
+            for((tprob=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",354,"mkbox_cnts"),C.rnd(100))):C.rnd(100))));Number(((tprob=C.i32(tprob-R26(iprobs))))>0);((iprobs=C.ptr((iprobs+Number(C.sizes["struct icp"]))))-Number(C.sizes["struct icp"]))) ;
 
             if(Number(!(((otmp=mkobj(C.i32(R27(iprobs)),(C.i8(0)))))))) continue;
             /* handle a couple of special cases */
             if(Number(C.i32(R82(otmp))==C.COIN_CLASS)) {
                 /* 2.5 x level's usual amount; weight adjusted below */
-                (W80(otmp,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),362,(C.literal("mkbox_cnts"))),C.rnd(C.i32((C.i32(C.level_difficulty())+2))))):C.rnd(C.i32((C.i32(C.level_difficulty())+2)))))*((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),362,(C.literal("mkbox_cnts"))),C.rnd(75))):C.rnd(75)))))))));
+                (W80(otmp,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",362,"mkbox_cnts"),C.rnd(C.i32((C.i32(C.level_difficulty())+2))))):C.rnd(C.i32((C.i32(C.level_difficulty())+2)))))*((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",362,"mkbox_cnts"),C.rnd(75))):C.rnd(75)))))))));
                 (W79(otmp,C.u32(weight(otmp))));
             } else while(Number(C.i32(R78(otmp))==C.ROCK)) {
                 (W78(otmp,C.i16(C.rnd_class(C.DILITHIUM_CRYSTAL,C.LOADSTONE))));
@@ -461,7 +461,7 @@ function rndmonnum_adj(minadj,maxadj)
     /* Plan B: get any common monster */
     (excludeflags=C.u16(C.i32((C.i32((4096|512))|((C.i32(C.In_hell(A162(C.u)))?2048:1024))))));
     do {
-        (i=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),409,(C.literal("rndmonnum_adj"))),C.rn2(C.i32((C.SPECIAL_PM-C.LOW_PM))))):C.rn2(C.i32((C.SPECIAL_PM-C.LOW_PM)))))+(C.LOW_PM)))));
+        (i=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",409,"rndmonnum_adj"),C.rn2(C.i32((C.SPECIAL_PM-C.LOW_PM))))):C.rn2(C.i32((C.SPECIAL_PM-C.LOW_PM)))))+(C.LOW_PM)))));
         (ptr=(C.mons+Number(i)*C.sizes["struct permonst"]));
     } while(Number((C.i32((C.i32(R145(ptr))&C.i32(excludeflags))))!=0));
     return i;
@@ -554,13 +554,13 @@ function next_ident()
        next object to be created was knowable and player could make a wish
        under controlled circumstances for an item that is affected by the
        low bits of its obj->o_id [particularly helm of opposite alignment] */
-    (W9(A46(C.svc),C.u32(R9(A46(C.svc))+C.u32(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),521,(C.literal("next_ident"))),C.rnd(2))):C.rnd(2)))))));
+    (W9(A46(C.svc),C.u32(R9(A46(C.svc))+C.u32(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",521,"next_ident"),C.rnd(2))):C.rnd(2)))))));
     /* ready for next new object or monster */
     /* if ident has wrapped to 0, force it to be non-zero; if/when it
        ever wraps past 0 (unlikely, but possible on a configuration which
        uses 16-bit 'int'), just live with that and hope no o_id conflicts
        between objects or m_id conflicts between monsters arise */
-    if(Number(!(R9(A46(C.svc))))) (W9(A46(C.svc),C.u32(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),528,(C.literal("next_ident"))),C.rnd(2))):C.rnd(2)))+1)))));
+    if(Number(!(R9(A46(C.svc))))) (W9(A46(C.svc),C.u32(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",528,"next_ident"),C.rnd(2))):C.rnd(2)))+1)))));
     /* id 1 is reserved */
     return res;
 }
@@ -877,16 +877,16 @@ function mksobj_init(obj,artif)
     let let_=R133(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]);
     switch(C.i32(let_)) {
         case (C.WEAPON_CLASS):
-            (W80(otmp,(Number(!!(Number(!!(Number(C.i32(R82(otmp))==C.WEAPON_CLASS)&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))>=C.i32((-C.P_SHURIKEN)))))&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))?C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),877,(C.literal("mksobj_init"))),C.rn2(6))):C.rn2(6)))+(6))))):1n));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),878,(C.literal("mksobj_init"))),C.rn2(11))):C.rn2(11)))))) {
-            (W81(otmp,C.i8(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),879,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3))))));
-            (W87(otmp,C.u32(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),880,(C.literal("mksobj_init"))),C.rn2(2))):C.rn2(2))))));
-        } else if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),881,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))))) {
+            (W80(otmp,(Number(!!(Number(!!(Number(C.i32(R82(otmp))==C.WEAPON_CLASS)&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))>=C.i32((-C.P_SHURIKEN)))))&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))?C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",877,"mksobj_init"),C.rn2(6))):C.rn2(6)))+(6))))):1n));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",878,"mksobj_init"),C.rn2(11))):C.rn2(11)))))) {
+            (W81(otmp,C.i8(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",879,"mksobj_init"),C.rne(3))):C.rne(3))))));
+            (W87(otmp,C.u32(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",880,"mksobj_init"),C.rn2(2))):C.rn2(2))))));
+        } else if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",881,"mksobj_init"),C.rn2(10))):C.rn2(10)))))) {
             curse(otmp);
-            (W81(otmp,C.i8(C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),883,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3))))))));
+            (W81(otmp,C.i8(C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",883,"mksobj_init"),C.rne(3))):C.rne(3))))))));
         } else blessorcurse(otmp,10);
-        if(Number(!!((Number(!!((Number(!!(Number(!!(Number(C.i32(R82(otmp))==C.WEAPON_CLASS)&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))>=C.i32((-C.P_SHURIKEN)))))&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))||C.i32(C.permapoisoned(otmp)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),886,(C.literal("mksobj_init"))),C.rn2(100))):C.rn2(100)))))))) (W104(otmp,C.u32(1)));
-        if(Number(!!(C.i32(artif)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),889,(C.literal("mksobj_init"))),C.rn2(C.i32((20+(C.i32((10*C.nartifact_exist())))))))):C.rn2(C.i32((20+(C.i32((10*C.nartifact_exist()))))))))))))) {
+        if(Number(!!((Number(!!((Number(!!(Number(!!(Number(C.i32(R82(otmp))==C.WEAPON_CLASS)&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))>=C.i32((-C.P_SHURIKEN)))))&&Number(C.i32(R131(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))||C.i32(C.permapoisoned(otmp)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",886,"mksobj_init"),C.rn2(100))):C.rn2(100)))))))) (W104(otmp,C.u32(1)));
+        if(Number(!!(C.i32(artif)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",889,"mksobj_init"),C.rn2(C.i32((20+(C.i32((10*C.nartifact_exist())))))))):C.rn2(C.i32((20+(C.i32((10*C.nartifact_exist()))))))))))))) {
             /* mk_artifact() with otmp and A_NONE will never return NULL */
             (otmp=C.mk_artifact(otmp,C.i8((C.i32((-128)))),C.u8(99),(C.i8(1))));
             (C.cell(obj,"struct obj *").value=otmp);
@@ -911,7 +911,7 @@ function mksobj_init(obj,artif)
             case (C.EGG):
                 (W111(otmp,C.NON_PM));
             /* generic egg */
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),915,(C.literal("mksobj_init"))),C.rn2(3))):C.rn2(3)))))) for((tryct=200);Number(tryct>0);(tryct=C.i32((tryct-1)))) {
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",915,"mksobj_init"),C.rn2(3))):C.rn2(3)))))) for((tryct=200);Number(tryct>0);(tryct=C.i32((tryct-1)))) {
                 (mndx=C.can_be_hatched(rndmonnum()));
                 if(Number(!!(Number(mndx!=C.NON_PM)&&Number(!(C.dead_species(mndx,(C.i8(1)))))))) {
                     (W111(otmp,mndx));
@@ -924,7 +924,7 @@ function mksobj_init(obj,artif)
             case (C.TIN):
                 (W111(otmp,C.NON_PM));
             /* empty (so far) */
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),927,(C.literal("mksobj_init"))),C.rn2(6))):C.rn2(6)))))) C.set_tin_variety(otmp,(C.i32((-1))));
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",927,"mksobj_init"),C.rn2(6))):C.rn2(6)))))) C.set_tin_variety(otmp,(C.i32((-1))));
  else for((tryct=200);Number(tryct>0);(tryct=C.i32((tryct-1)))) {
                 (mndx=C.undead_to_corpse(rndmonnum()));
                 if(Number(!!(C.i32(R147(C.mons+Number(mndx)*C.sizes["struct permonst"]))&&Number(!((C.i32((C.i32(R71(A50(C.svm)+Number(mndx)*C.sizes["struct mvitals"]))&16)))))))) {
@@ -940,7 +940,7 @@ function mksobj_init(obj,artif)
             (W25(C.flags,C.i8(1)));
             break;
             case (C.KELP_FROND):
-                (W80(otmp,C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),946,(C.literal("mksobj_init"))),C.rnd(2))):C.rnd(2))))));
+                (W80(otmp,C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",946,"mksobj_init"),C.rnd(2))):C.rnd(2))))));
             break;
             case (C.CANDY_BAR):
                 /* set otmp->spe */
@@ -964,7 +964,7 @@ function mksobj_init(obj,artif)
             (W111(otmp,C.i32((C.PM_GRAY_OOZE+(C.i32((C.i32(R78(otmp))-C.GLOB_OF_GRAY_OOZE)))))));
             start_glob_timeout(otmp,0n);
         } else {
-            if(Number(!!(Number(!!(Number(!!(Number(C.i32(R78(otmp))!=C.CORPSE)&&Number(C.i32(R78(otmp))!=C.MEAT_RING)))&&Number(C.i32(R78(otmp))!=C.KELP_FROND)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),971,(C.literal("mksobj_init"))),C.rn2(6))):C.rn2(6)))))))) {
+            if(Number(!!(Number(!!(Number(!!(Number(C.i32(R78(otmp))!=C.CORPSE)&&Number(C.i32(R78(otmp))!=C.MEAT_RING)))&&Number(C.i32(R78(otmp))!=C.KELP_FROND)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",971,"mksobj_init"),C.rn2(6))):C.rn2(6)))))))) {
                 (W80(otmp,2n));
             }
         }
@@ -973,8 +973,8 @@ function mksobj_init(obj,artif)
             (W111(otmp,0));
         /* LOADSTONE hack */
         if(Number(C.i32(R78(otmp))==C.LOADSTONE)) curse(otmp);
- else if(Number(C.i32(R78(otmp))==C.ROCK)) (W80(otmp,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),981,(C.literal("mksobj_init"))),C.rn2(6))):C.rn2(6)))+(6)))))));
- else if(Number(!!(Number(C.i32(R78(otmp))!=C.LUCKSTONE)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),982,(C.literal("mksobj_init"))),C.rn2(6))):C.rn2(6)))))))) (W80(otmp,2n));
+ else if(Number(C.i32(R78(otmp))==C.ROCK)) (W80(otmp,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",981,"mksobj_init"),C.rn2(6))):C.rn2(6)))+(6)))))));
+ else if(Number(!!(Number(C.i32(R78(otmp))!=C.LUCKSTONE)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",982,"mksobj_init"),C.rn2(6))):C.rn2(6)))))))) (W80(otmp,2n));
  else (W80(otmp,1n));
         break;
         case (C.TOOL_CLASS):
@@ -985,13 +985,13 @@ function mksobj_init(obj,artif)
                 (W114(otmp,C.i64((20n*C.i64(R136(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))))));
                 /* 400 or 200 */
                 (W91(otmp,C.u32(0)));
-                (W80(otmp,C.i64((1n+C.i64(((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),995,(C.literal("mksobj_init"))),C.rn2(2))):C.rn2(2)))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),995,(C.literal("mksobj_init"))),C.rn2(7))):C.rn2(7))):0)))))));
+                (W80(otmp,C.i64((1n+C.i64(((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",995,"mksobj_init"),C.rn2(2))):C.rn2(2)))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",995,"mksobj_init"),C.rn2(7))):C.rn2(7))):0)))))));
                 blessorcurse(otmp,5);
                 break;
                 case (C.BRASS_LANTERN):
                     case (C.OIL_LAMP):
                         (W81(otmp,C.i8(1)));
-                (W114(otmp,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1001,(C.literal("mksobj_init"))),C.rn2(500))):C.rn2(500)))+(1000)))))));
+                (W114(otmp,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1001,"mksobj_init"),C.rn2(500))):C.rn2(500)))+(1000)))))));
                 (W91(otmp,C.u32(0)));
                 blessorcurse(otmp,5);
                 break;
@@ -1002,9 +1002,9 @@ function mksobj_init(obj,artif)
                 break;
                 case (C.CHEST):
                     case (C.LARGE_BOX):
-                        (W103(otmp,C.u32(Number(!(Number(!((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1012,(C.literal("mksobj_init"))),C.rn2(5))):C.rn2(5)))))))))));
-                (W104(otmp,C.u32(Number(!((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1013,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))))))));
-                (W98(otmp,C.u32(Number(!!(C.i32(R104(otmp))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1014,(C.literal("mksobj_init"))),C.rn2(100))):C.rn2(100))))))))));
+                        (W103(otmp,C.u32(Number(!(Number(!((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1012,"mksobj_init"),C.rn2(5))):C.rn2(5)))))))))));
+                (W104(otmp,C.u32(Number(!((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1013,"mksobj_init"),C.rn2(10))):C.rn2(10)))))))));
+                (W98(otmp,C.u32(Number(!!(C.i32(R104(otmp))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1014,"mksobj_init"),C.rn2(100))):C.rn2(100))))))))));
                 /* obvious trap */
                 ;
                 /*FALLTHRU*/
@@ -1017,21 +1017,21 @@ function mksobj_init(obj,artif)
                 case (C.EXPENSIVE_CAMERA):
                     case (C.TINNING_KIT):
                         case (C.MAGIC_MARKER):
-                            (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1026,(C.literal("mksobj_init"))),C.rn2(70))):C.rn2(70)))+(30)))))));
+                            (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1026,"mksobj_init"),C.rn2(70))):C.rn2(70)))+(30)))))));
                 break;
                 case (C.CAN_OF_GREASE):
-                    (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1029,(C.literal("mksobj_init"))),C.rn2(21))):C.rn2(21)))+(5)))))));
+                    (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1029,"mksobj_init"),C.rn2(21))):C.rn2(21)))+(5)))))));
                 /* 0..20 + 5 => 5..25 */
                 blessorcurse(otmp,10);
                 break;
                 case (C.CRYSTAL_BALL):
-                    (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1033,(C.literal("mksobj_init"))),C.rn2(5))):C.rn2(5)))+(3)))))));
+                    (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1033,"mksobj_init"),C.rn2(5))):C.rn2(5)))+(3)))))));
                 /* 0..4 + 3 => 3..7 */
                 blessorcurse(otmp,2);
                 break;
                 case (C.HORN_OF_PLENTY):
                     case (C.BAG_OF_TRICKS):
-                        (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1038,(C.literal("mksobj_init"))),C.rn2(18))):C.rn2(18)))+(3)))))));
+                        (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1038,"mksobj_init"),C.rn2(18))):C.rn2(18)))+(3)))))));
                 /* 0..17 + 3 => 3..20 */
                 break;
                 case (C.FIGURINE):
@@ -1049,13 +1049,13 @@ function mksobj_init(obj,artif)
                         case (C.FROST_HORN):
                             case (C.FIRE_HORN):
                                 case (C.DRUM_OF_EARTHQUAKE):
-                                    (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1056,(C.literal("mksobj_init"))),C.rn2(5))):C.rn2(5)))+(4)))))));
+                                    (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1056,"mksobj_init"),C.rn2(5))):C.rn2(5)))+(4)))))));
                 break;
             }
         break;
         case (C.AMULET_CLASS):
             if(Number(C.i32(R78(otmp))==C.AMULET_OF_YENDOR)) (W11(A46(C.svc),C.i8(1)));
-        if(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1063,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))&&(Number(!!(Number(!!(Number(C.i32(R78(otmp))==C.AMULET_OF_STRANGULATION)||Number(C.i32(R78(otmp))==C.AMULET_OF_CHANGE)))||Number(C.i32(R78(otmp))==C.AMULET_OF_RESTFUL_SLEEP))))))) {
+        if(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1063,"mksobj_init"),C.rn2(10))):C.rn2(10)))&&(Number(!!(Number(!!(Number(C.i32(R78(otmp))==C.AMULET_OF_STRANGULATION)||Number(C.i32(R78(otmp))==C.AMULET_OF_CHANGE)))||Number(C.i32(R78(otmp))==C.AMULET_OF_RESTFUL_SLEEP))))))) {
             curse(otmp);
         } else blessorcurse(otmp,10);
         break;
@@ -1073,14 +1073,14 @@ function mksobj_init(obj,artif)
         blessorcurse(otmp,17);
         break;
         case (C.ARMOR_CLASS):
-            if(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1086,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))&&(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R78(otmp))==C.FUMBLE_BOOTS)||Number(C.i32(R78(otmp))==C.LEVITATION_BOOTS)))||Number(C.i32(R78(otmp))==C.HELM_OF_OPPOSITE_ALIGNMENT)))||Number(C.i32(R78(otmp))==C.GAUNTLETS_OF_FUMBLING)))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1090,(C.literal("mksobj_init"))),C.rn2(11))):C.rn2(11))))))))))) {
+            if(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1086,"mksobj_init"),C.rn2(10))):C.rn2(10)))&&(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R78(otmp))==C.FUMBLE_BOOTS)||Number(C.i32(R78(otmp))==C.LEVITATION_BOOTS)))||Number(C.i32(R78(otmp))==C.HELM_OF_OPPOSITE_ALIGNMENT)))||Number(C.i32(R78(otmp))==C.GAUNTLETS_OF_FUMBLING)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1090,"mksobj_init"),C.rn2(11))):C.rn2(11))))))))))) {
                 curse(otmp);
-                (W81(otmp,C.i8(C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1092,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3))))))));
-            } else if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1093,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))))) {
-                (W87(otmp,C.u32(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1094,(C.literal("mksobj_init"))),C.rn2(2))):C.rn2(2))))));
-                (W81(otmp,C.i8(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1095,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3))))));
+                (W81(otmp,C.i8(C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1092,"mksobj_init"),C.rne(3))):C.rne(3))))))));
+            } else if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1093,"mksobj_init"),C.rn2(10))):C.rn2(10)))))) {
+                (W87(otmp,C.u32(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1094,"mksobj_init"),C.rn2(2))):C.rn2(2))))));
+                (W81(otmp,C.i8(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1095,"mksobj_init"),C.rne(3))):C.rne(3))))));
             } else blessorcurse(otmp,10);
-        if(Number(!!(C.i32(artif)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1098,(C.literal("mksobj_init"))),C.rn2(C.i32((40+(C.i32((10*C.nartifact_exist())))))))):C.rn2(C.i32((40+(C.i32((10*C.nartifact_exist()))))))))))))) {
+        if(Number(!!(C.i32(artif)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1098,"mksobj_init"),C.rn2(C.i32((40+(C.i32((10*C.nartifact_exist())))))))):C.rn2(C.i32((40+(C.i32((10*C.nartifact_exist()))))))))))))) {
             /* mk_artifact() with otmp and A_NONE will never return NULL */
             (otmp=C.mk_artifact(otmp,C.i8((C.i32((-128)))),C.u8(99),(C.i8(1))));
             (C.cell(obj,"struct obj *").value=otmp);
@@ -1093,8 +1093,8 @@ function mksobj_init(obj,artif)
         break;
         case (C.WAND_CLASS):
             if(Number(C.i32(R78(otmp))==C.WAN_WISHING)) (W81(otmp,C.i8(1)));
- else if(Number(C.i32(R78(otmp))==C.WAN_STASIS)) (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1121,(C.literal("mksobj_init"))),C.rn2(4))):C.rn2(4)))+(3)))))));
- else (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1124,(C.literal("mksobj_init"))),C.rn2(5))):C.rn2(5)))+(((Number(C.i32(R129(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==1))?11:4))))))));
+ else if(Number(C.i32(R78(otmp))==C.WAN_STASIS)) (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1121,"mksobj_init"),C.rn2(4))):C.rn2(4)))+(3)))))));
+ else (W81(otmp,C.i8((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1124,"mksobj_init"),C.rn2(5))):C.rn2(5)))+(((Number(C.i32(R129(C.objects+Number(R78(otmp))*C.sizes["struct objclass"]))==1))?11:4))))))));
         /* just as easy to recharge as other NODIR wands, but starts with
                fewer charges */
         blessorcurse(otmp,17);
@@ -1104,15 +1104,15 @@ function mksobj_init(obj,artif)
         case (C.RING_CLASS):
             if(R126(C.objects+Number(R78(otmp))*C.sizes["struct objclass"])) {
                 blessorcurse(otmp,3);
-                if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1131,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))) {
-                    if(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1132,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))&&bcsign(otmp)))) (W81(otmp,C.i8(C.i32((bcsign(otmp)*((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1133,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3))))))));
- else (W81(otmp,C.i8((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1135,(C.literal("mksobj_init"))),C.rn2(2))):C.rn2(2)))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1135,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3))):C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1135,(C.literal("mksobj_init"))),C.rne(3))):C.rne(3)))))))));
+                if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1131,"mksobj_init"),C.rn2(10))):C.rn2(10)))) {
+                    if(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1132,"mksobj_init"),C.rn2(10))):C.rn2(10)))&&bcsign(otmp)))) (W81(otmp,C.i8(C.i32((bcsign(otmp)*((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1133,"mksobj_init"),C.rne(3))):C.rne(3))))))));
+ else (W81(otmp,C.i8((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1135,"mksobj_init"),C.rn2(2))):C.rn2(2)))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1135,"mksobj_init"),C.rne(3))):C.rne(3))):C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1135,"mksobj_init"),C.rne(3))):C.rne(3)))))))));
                 }
                 /* make useless +0 rings much less common */
-                if(Number(C.i32(R81(otmp))==0)) (W81(otmp,C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1139,(C.literal("mksobj_init"))),C.rn2(4))):C.rn2(4)))-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1139,(C.literal("mksobj_init"))),C.rn2(3))):C.rn2(3))))))));
+                if(Number(C.i32(R81(otmp))==0)) (W81(otmp,C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1139,"mksobj_init"),C.rn2(4))):C.rn2(4)))-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1139,"mksobj_init"),C.rn2(3))):C.rn2(3))))))));
                 /* negative rings are usually cursed */
-                if(Number(!!(Number(C.i32(R81(otmp))<0)&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1141,(C.literal("mksobj_init"))),C.rn2(5))):C.rn2(5)))))) curse(otmp);
-            } else if(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1143,(C.literal("mksobj_init"))),C.rn2(10))):C.rn2(10)))&&(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R78(otmp))==C.RIN_TELEPORTATION)||Number(C.i32(R78(otmp))==C.RIN_POLYMORPH)))||Number(C.i32(R78(otmp))==C.RIN_AGGRAVATE_MONSTER)))||Number(C.i32(R78(otmp))==C.RIN_HUNGER)))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1146,(C.literal("mksobj_init"))),C.rn2(9))):C.rn2(9))))))))))) {
+                if(Number(!!(Number(C.i32(R81(otmp))<0)&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1141,"mksobj_init"),C.rn2(5))):C.rn2(5)))))) curse(otmp);
+            } else if(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1143,"mksobj_init"),C.rn2(10))):C.rn2(10)))&&(Number(!!(Number(!!(Number(!!(Number(!!(Number(C.i32(R78(otmp))==C.RIN_TELEPORTATION)||Number(C.i32(R78(otmp))==C.RIN_POLYMORPH)))||Number(C.i32(R78(otmp))==C.RIN_AGGRAVATE_MONSTER)))||Number(C.i32(R78(otmp))==C.RIN_HUNGER)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1146,"mksobj_init"),C.rn2(9))):C.rn2(9))))))))))) {
                 curse(otmp);
             }
         break;
@@ -1120,7 +1120,7 @@ function mksobj_init(obj,artif)
             if(Number(C.i32(R78(otmp))==C.STATUE)) {
                 /* possibly overridden by mkcorpstat() */
                 (W111(otmp,rndmonnum()));
-                if(Number(!!(Number(!((Number(C.i32(R148(C.mons+Number(R111(otmp))*C.sizes["struct permonst"]))<1))))&&Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1155,(C.literal("mksobj_init"))),C.rn2(C.i32((C.i32(Math.trunc((C.i32(C.level_difficulty())/2)))+10))))):C.rn2(C.i32((C.i32(Math.trunc((C.i32(C.level_difficulty())/2)))+10)))))>10)))) add_to_container(otmp,mkobj((C.i32((0-C.SPBOOK_CLASS))),(C.i8(0))));
+                if(Number(!!(Number(!((Number(C.i32(R148(C.mons+Number(R111(otmp))*C.sizes["struct permonst"]))<1))))&&Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1155,"mksobj_init"),C.rn2(C.i32((C.i32(Math.trunc((C.i32(C.level_difficulty())/2)))+10))))):C.rn2(C.i32((C.i32(Math.trunc((C.i32(C.level_difficulty())/2)))+10)))))>10)))) add_to_container(otmp,mkobj((C.i32((0-C.SPBOOK_CLASS))),(C.i8(0))));
                 /* caller will update owt */
             }
         /* boulder init'd below in the 'regardless of !init' code */
@@ -1177,7 +1177,7 @@ function mksobj(otyp,init,artif)
                 if(Number(R111(C.cell(otmpAddress,"struct obj *").value)==C.NON_PM)) (W111(C.cell(otmpAddress,"struct obj *").value,rndmonnum()));
         if(Number(R111(C.cell(otmpAddress,"struct obj *").value)!=C.NON_PM)) {
             let ptr=(C.mons+Number(R111(C.cell(otmpAddress,"struct obj *").value))*C.sizes["struct permonst"]);
-            (W81(C.cell(otmpAddress,"struct obj *").value,C.i8((((Number((C.u64((R149(ptr)&C.u64(262144n))))!=C.u64(0n)))?3:((Number((C.u64((R149(ptr)&C.u64(131072n))))!=C.u64(0n)))?1:((Number((C.u64((R149(ptr)&C.u64(65536n))))!=C.u64(0n)))?2:(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1222,(C.literal("mksobj"))),C.rn2(2))):C.rn2(2)))?1:2))))))));
+            (W81(C.cell(otmpAddress,"struct obj *").value,C.i8((((Number((C.u64((R149(ptr)&C.u64(262144n))))!=C.u64(0n)))?3:((Number((C.u64((R149(ptr)&C.u64(131072n))))!=C.u64(0n)))?1:((Number((C.u64((R149(ptr)&C.u64(65536n))))!=C.u64(0n)))?2:(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1222,"mksobj"),C.rn2(2))):C.rn2(2)))?1:2))))))));
         }
         ;
         /*FALLTHRU*/
@@ -1329,7 +1329,7 @@ function rider_revival_time(body,retry)
     let minturn=(C.i32(retry)?3n:((Number(R111(body)==C.PM_DEATH))?6n:12n));
     /* Riders have a 1/3 chance per turn of reviving after 12, 6, or 3 turns.
        Always revive by 67. */
-    for((when=minturn);Number(when<67n);((when=C.i64((when+1n)))-1n)) if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1379,(C.literal("rider_revival_time"))),C.rn2(3))):C.rn2(3)))))) break;
+    for((when=minturn);Number(when<67n);((when=C.i64((when+1n)))-1n)) if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1379,"rider_revival_time"),C.rn2(3))):C.rn2(3)))))) break;
 
     return when;
 }
@@ -1360,12 +1360,12 @@ function start_corpse_timeout(body)
     (age=C.i64((((Number((R49(C.svm))>C.i64((1)))?(R49(C.svm)):C.i64((1))))-R114(body))));
     if(Number(age>(250n))) (when=C.i64(rot_adjust));
  else (when=C.i64(((250n)-age)));
-    (when=C.i64(when+C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1413,(C.literal("start_corpse_timeout"))),C.rnz(rot_adjust))):C.rnz(rot_adjust)))-rot_adjust))))));
+    (when=C.i64(when+C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1413,"start_corpse_timeout"),C.rnz(rot_adjust))):C.rnz(rot_adjust)))-rot_adjust))))));
     if((Number(!!(Number(!!(Number(((C.mons+Number(R111(body))*C.sizes["struct permonst"]))==(C.mons+Number(C.PM_DEATH)*C.sizes["struct permonst"]))||Number(((C.mons+Number(R111(body))*C.sizes["struct permonst"]))==(C.mons+Number(C.PM_FAMINE)*C.sizes["struct permonst"]))))||Number(((C.mons+Number(R111(body))*C.sizes["struct permonst"]))==(C.mons+Number(C.PM_PESTILENCE)*C.sizes["struct permonst"])))))) {
         (action=C.i16(C.REVIVE_MON));
         (when=rider_revival_time(body,(C.i8(0))));
     } else if(Number(C.i32(R143(C.mons+Number(R111(body))*C.sizes["struct permonst"]))==C.S_TROLL)) {
-        for((age=C.i64(2));Number(age<=(50n));((age=C.i64((age+1n)))-1n)) if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1420,(C.literal("start_corpse_timeout"))),C.rn2(37))):C.rn2(37)))))) {
+        for((age=C.i64(2));Number(age<=(50n));((age=C.i64((age+1n)))-1n)) if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1420,"start_corpse_timeout"),C.rn2(37))):C.rn2(37)))))) {
             /* troll revives */
             (action=C.i16(C.REVIVE_MON));
             (when=age);
@@ -1374,7 +1374,7 @@ function start_corpse_timeout(body)
 
     } else if(Number(!!(Number(!!(C.i32(R54(C.gz))&&Number(C.zombie_form((C.mons+Number(R111(body))*C.sizes["struct permonst"]))!=C.NON_PM)))&&Number(!(R101(body)))))) {
         (action=C.i16(C.ZOMBIFY_MON));
-        (when=C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1428,(C.literal("start_corpse_timeout"))),C.rn2(15))):C.rn2(15)))+(5))))));
+        (when=C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1428,"start_corpse_timeout"),C.rn2(15))):C.rn2(15)))+(5))))));
         /* 5..19 */
     }
     C.start_timer(when,C.i16(C.TIMER_OBJECT),action,C.obj_to_any(body));
@@ -1422,7 +1422,7 @@ function start_glob_timeout(obj,when)
     }
     /* sanity precaution */
     if(R85(obj)) C.stop_timer(C.i16(C.SHRINK_GLOB),C.obj_to_any(obj));
-    if(Number(when<1n)) (when=C.i64((C.i64((25n+C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1487,(C.literal("start_glob_timeout"))),C.rn2(5))):C.rn2(5))))))-2n)));
+    if(Number(when<1n)) (when=C.i64((C.i64((25n+C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1487,"start_glob_timeout"),C.rn2(5))):C.rn2(5))))))-2n)));
     /* caller usually passes 0L; should never be negative */
     /* 25+[0..4]-2 => 23..27, avg 25 */
     /* 1 new glob weighs 20 units and loses 1 unit every 25 turns,
@@ -1721,8 +1721,8 @@ function blessorcurse(otmp,chance)
 {
     chance=C.i32(chance);
     if(Number(!!(C.i32(R87(otmp))||C.i32(R86(otmp))))) return;
-    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1846,(C.literal("blessorcurse"))),C.rn2(chance))):C.rn2(chance)))))) {
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1847,(C.literal("blessorcurse"))),C.rn2(2))):C.rn2(2)))))) {
+    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1846,"blessorcurse"),C.rn2(chance))):C.rn2(chance)))))) {
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1847,"blessorcurse"),C.rn2(2))):C.rn2(2)))))) {
             curse(otmp);
         } else {
             bless(otmp);
@@ -1847,7 +1847,7 @@ function rnd_treefruit_at(x,y)
 {
     x=C.i16(x);
     y=C.i16(y);
-    return mksobj_at(C.cell((C.treefruits+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),1986,(C.literal("rnd_treefruit_at"))),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),"int").value,x,y,(C.i8(1)),(C.i8(0)));
+    return mksobj_at(C.cell((C.treefruits+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",1986,"rnd_treefruit_at"),C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*5))/BigInt(4)))))))))*4),"int").value,x,y,(C.i8(1)),(C.i8(0)));
 }
 
 /* for describing objects embedded in trees */
@@ -1867,8 +1867,8 @@ function mkgold(amount,x,y)
     y=C.i16(y);
     let gold=C.g_at(x,y);
     if(Number(amount<=0n)) {
-        let mul=C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),2008,(C.literal("mkgold"))),C.rnd(C.i32(Math.trunc((30/((Number((C.i32((12-C.i32(C.depth(A162(C.u))))))>(2))?(C.i32((12-C.i32(C.depth(A162(C.u)))))):(2))))))))):C.rnd(C.i32(Math.trunc((30/((Number((C.i32((12-C.i32(C.depth(A162(C.u))))))>(2))?(C.i32((12-C.i32(C.depth(A162(C.u)))))):(2))))))))));
-        (amount=(C.i64((C.i64(1)+C.i64((C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),2010,(C.literal("mkgold"))),C.rnd(C.i32((C.i32(C.level_difficulty())+2))))):C.rnd(C.i32((C.i32(C.level_difficulty())+2))))))*mul))))));
+        let mul=C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",2008,"mkgold"),C.rnd(C.i32(Math.trunc((30/((Number((C.i32((12-C.i32(C.depth(A162(C.u))))))>(2))?(C.i32((12-C.i32(C.depth(A162(C.u)))))):(2))))))))):C.rnd(C.i32(Math.trunc((30/((Number((C.i32((12-C.i32(C.depth(A162(C.u))))))>(2))?(C.i32((12-C.i32(C.depth(A162(C.u)))))):(2))))))))));
+        (amount=(C.i64((C.i64(1)+C.i64((C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",2010,"mkgold"),C.rnd(C.i32((C.i32(C.level_difficulty())+2))))):C.rnd(C.i32((C.i32(C.level_difficulty())+2))))))*mul))))));
     }
     if(gold) {
         (W80(gold,C.i64(R80(gold)+amount)));
@@ -2073,7 +2073,7 @@ function mk_tt_object(objtype,x,y)
     /* tt_oname() will return null if the scoreboard is empty, which in
        turn leaves the random corpsenm value; force it to match a player */
     if(Number(!(C.tt_oname(otmp)))) {
-        let pm=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),2241,(C.literal("mk_tt_object"))),C.rn2(C.i32((C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST))+1))))):C.rn2(C.i32((C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST))+1)))))+(C.PM_ARCHEOLOGIST))));
+        let pm=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",2241,"mk_tt_object"),C.rn2(C.i32((C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST))+1))))):C.rn2(C.i32((C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST))+1)))))+(C.PM_ARCHEOLOGIST))));
         /* update weight for either, force timer sanity for corpses */
         set_corpsenm(otmp,pm);
     }
@@ -2626,7 +2626,7 @@ function hornoplenty(horn,tipping,targetbox)
         let obj;
         let what;
         C.consume_obj_charge(horn,C.i8(Number(!(tipping))));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),2867,(C.literal("hornoplenty"))),C.rn2(13))):C.rn2(13)))))) {
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",2867,"hornoplenty"),C.rn2(13))):C.rn2(13)))))) {
             (obj=mkobj(C.POTION_CLASS,(C.i8(0))));
             if(R125(C.objects+Number(R78(obj))*C.sizes["struct objclass"])) {
                 do {
@@ -2638,7 +2638,7 @@ function hornoplenty(horn,tipping,targetbox)
             (what=((Number(R80(obj)>1n))?C.literal("Some potions"):C.literal("A potion")));
         } else {
             (obj=mkobj(C.FOOD_CLASS,(C.i8(0))));
-            if(Number(!!(Number(C.i32(R78(obj))==C.FOOD_RATION)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),2880,(C.literal("hornoplenty"))),C.rn2(7))):C.rn2(7)))))))) (W78(obj,C.i16(C.LUMP_OF_ROYAL_JELLY)));
+            if(Number(!!(Number(C.i32(R78(obj))==C.FOOD_RATION)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",2880,"hornoplenty"),C.rn2(7))):C.rn2(7)))))))) (W78(obj,C.i16(C.LUMP_OF_ROYAL_JELLY)));
             (what=C.literal("Some food"));
         }
         (objcount=C.i32((objcount+1)));
@@ -3268,8 +3268,8 @@ function obj_nexto_xy(obj,x,y,recurs)
     }
     if(Number(!(recurs))) return 0;
     /* search in a random order */
-    (dx=C.i16(((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),3680,(C.literal("obj_nexto_xy"))),C.rn2(2))):C.rn2(2)))?C.i32((-1)):1))));
-    (dy=C.i16(((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),3681,(C.literal("obj_nexto_xy"))),C.rn2(2))):C.rn2(2)))?C.i32((-1)):1))));
+    (dx=C.i16(((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",3680,"obj_nexto_xy"),C.rn2(2))):C.rn2(2)))?C.i32((-1)):1))));
+    (dy=C.i16(((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",3681,"obj_nexto_xy"),C.rn2(2))):C.rn2(2)))?C.i32((-1)):1))));
     (ex=C.i32((C.i32(x)-C.i32(dx))));
     (ey=C.i32((C.i32(y)-C.i32(dy))));
     for((fx=ex);Number(C.abs(C.i32((fx-ex)))<3);(fx=C.i32(fx+C.i32(dx)))) {
@@ -3361,7 +3361,7 @@ function obj_meld(obj1,obj2)
              *  [Also, what about when one of the globs is on the shore
              *  and we drop the other into adjacent pool or vice versa?]
              */
-            if(Number(!!(Number(!((Number(!!(Number(C.i32(R84(otmp2))==1)&&Number(C.i32(R84(otmp1))==0))))))&&(Number(!!(Number(R79(otmp1)>R79(otmp2))||(Number(!!(Number(R79(otmp1)==R79(otmp2))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mkobj.c"),3790,(C.literal("obj_meld"))),C.rn2(2))):C.rn2(2)))))))))))) {
+            if(Number(!!(Number(!((Number(!!(Number(C.i32(R84(otmp2))==1)&&Number(C.i32(R84(otmp1))==0))))))&&(Number(!!(Number(R79(otmp1)>R79(otmp2))||(Number(!!(Number(R79(otmp1)==R79(otmp2))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mkobj.c",3790,"obj_meld"),C.rn2(2))):C.rn2(2)))))))))))) {
                 if(Number(C.i32(R84(otmp2))==1)) ((ox=C.i32(R76(otmp2))),(oy=C.i32(R77(otmp2))));
                 (result=obj_absorb(obj1,obj2));
             } else {
@@ -3412,5 +3412,5 @@ function pudding_merge_message(otmp,otmp2)
 /*mkobj.c*/
 const initializers={mkobjprobs,boxiprobs,rogueprobs,hellprobs,zerooextra,alteration_verbs,dknowns,treefruits,ofmt0,ofmt3,mfmt1,mfmt2,obj_state_names};
 
-return Object.freeze({mkobjprobs,boxiprobs,rogueprobs,hellprobs,zerooextra,init_oextra,newoextra,dealloc_oextra,newomonst,free_omonst,newomid,free_omid,new_omailcmd,free_omailcmd,may_generate_eroded,mkobj_erosions,mkobj_at,mksobj_at,mksobj_migr_to_species,mkobj,mkbox_cnts,rndmonnum,rndmonnum_adj,copy_oextra,splitobj,next_ident,nextoid,unsplitobj,clear_splitobjs,replace_object,unknwn_contnr_contents,bill_dummy_object,alteration_verbs,costly_alteration,dknowns,clear_dknown,unknow_object,mksobj_init,mksobj,stone_object_type,stone_furniture_type,set_corpsenm,rider_revival_time,start_corpse_timeout,item_on_ice,start_glob_timeout,shrink_glob,shrinking_glob_gone,maybe_adjust_light,bless,unbless,curse,uncurse,blessorcurse,bcsign,set_bknown,weight,treefruits,rnd_treefruit_at,is_treefruit,mkgold,fixup_oil,mkcorpstat,corpse_revive_type,obj_attach_mid,save_mtraits,get_mtraits,mk_tt_object,mk_named_object,is_flammable,is_rottable,place_object,recreate_pile_at,obj_ice_effects,peek_at_iced_corpse_age,obj_timer_checks,remove_object,discard_minvent,obj_extract_self,extract_nobj,extract_nexthere,add_to_minv,add_to_container,add_to_migration,add_to_buried,container_weight,dealloc_obj,dealloc_obj_real,dobjsfree,hornoplenty,ofmt0,ofmt3,mfmt1,mfmt2,obj_sanity_check,objlist_sanity,shop_obj_sanity,mon_obj_sanity,insane_obj_bits,nomerge_exception,obj_state_names,where_name,insane_object,init_dummyobj,check_contained,check_glob,sanity_check_worn,obj_nexto,obj_nexto_xy,obj_absorb,obj_meld,pudding_merge_message,initializers});
+return C.nativeAddressNamespaceReady(Object.freeze({mkobjprobs,boxiprobs,rogueprobs,hellprobs,zerooextra,init_oextra,newoextra,dealloc_oextra,newomonst,free_omonst,newomid,free_omid,new_omailcmd,free_omailcmd,may_generate_eroded,mkobj_erosions,mkobj_at,mksobj_at,mksobj_migr_to_species,mkobj,mkbox_cnts,rndmonnum,rndmonnum_adj,copy_oextra,splitobj,next_ident,nextoid,unsplitobj,clear_splitobjs,replace_object,unknwn_contnr_contents,bill_dummy_object,alteration_verbs,costly_alteration,dknowns,clear_dknown,unknow_object,mksobj_init,mksobj,stone_object_type,stone_furniture_type,set_corpsenm,rider_revival_time,start_corpse_timeout,item_on_ice,start_glob_timeout,shrink_glob,shrinking_glob_gone,maybe_adjust_light,bless,unbless,curse,uncurse,blessorcurse,bcsign,set_bknown,weight,treefruits,rnd_treefruit_at,is_treefruit,mkgold,fixup_oil,mkcorpstat,corpse_revive_type,obj_attach_mid,save_mtraits,get_mtraits,mk_tt_object,mk_named_object,is_flammable,is_rottable,place_object,recreate_pile_at,obj_ice_effects,peek_at_iced_corpse_age,obj_timer_checks,remove_object,discard_minvent,obj_extract_self,extract_nobj,extract_nexthere,add_to_minv,add_to_container,add_to_migration,add_to_buried,container_weight,dealloc_obj,dealloc_obj_real,dobjsfree,hornoplenty,ofmt0,ofmt3,mfmt1,mfmt2,obj_sanity_check,objlist_sanity,shop_obj_sanity,mon_obj_sanity,insane_obj_bits,nomerge_exception,obj_state_names,where_name,insane_object,init_dummyobj,check_contained,check_glob,sanity_check_worn,obj_nexto,obj_nexto_xy,obj_absorb,obj_meld,pudding_merge_message,initializers}),C);
 }

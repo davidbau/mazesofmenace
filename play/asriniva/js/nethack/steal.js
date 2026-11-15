@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original STEAL context, live equipment cells and delayed callback identities.
 import abi from './steal-abi.json' with {type:'json'};
 import * as source from '../ported/steal.js';
@@ -23,7 +24,7 @@ export function enableSteal(environment,layouts){
   assert:condition=>{if(!condition){if(!abi.assertion.enabled)throw new Error('Review STEAL assert profile');const a=abi.assertion;return resolve('__assert_fail')(text(a.condition),text(a.file),transport.int(a.line),text(a.function));}},
  });
  for(const name of ['pline','urgent_pline','You','Your','impossible'])base[name]=(fmt,a=0,b=0,c=0,d=0)=>name==='impossible'&&fmt==='Tried to steal a strange worn thing. [%d]'?resolve(name)(text(fmt),transport.int(a)):resolve(name)(text(fmt),text(a),text(b),text(c),text(d));
- for(const name of ['rn2','rnd'])base[name]=(bound,line,index)=>{const caller=abi.rngCallers[transport.int(index)];if(!caller||!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected STEAL RNG site');if(services.rng_log_enabled())services.rng_log_set_caller(text('steal.c'),transport.int(line),text(caller));return resolve(name)(transport.int(bound));};
+ for(const name of ['rn2','rnd'])base[name]=(bound,line,index)=>{const caller=abi.rngCallers[transport.int(index)];if(!caller||!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected STEAL RNG site');if(services.rng_log_enabled())recordNativeRngCaller(services,'steal.c',transport.int(line),caller);return resolve(name)(transport.int(bound));};
  const local=new Proxy(base,{get:(o,k)=>{if(Object.hasOwn(o,k))return o[k];if(typeof k==='symbol')return undefined;throw new Error('Missing STEAL native transport '+k);}}),context=createStealEnvironment(local,layouts.steal,source);Object.setPrototypeOf(context,local);
  function call(name,...args){return transport.scoped(()=>{const prototype=abi.public[name]??abi.private[name];if(!prototype)throw new Error('Unbound STEAL function '+name);const m=prototype.match(/^(.*?)\((.*)\)$/),types=m[2]&&m[2]!=='void'?m[2].split(',').map(s=>s.trim()):[];args=args.map((v,i)=>scalar(types[i],v?.address??v));for(const row of abi.viewArgs)if(row.names.includes(name))args[row.index]=context[row.kind](args[row.index]);const result=withCEnvironment(context,source[name],...args);return scalar(m[1],result?.address??result??0)??0;});}
  // Forward prior public owners without allocating a second policy/state context.

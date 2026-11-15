@@ -78,7 +78,7 @@ import { pushRngLogEntry } from './rng.js'; // relocate-fns
 import { getrumor } from './rumors.js'; // relocate-fns
 import { nomul } from './hack.js'; // relocate-fns
 import { _result_append_join } from './cmd.js'; // relocate-fns
-import { _topl_stash_result, flush_pending_messages, force_more, Unaware as wizard_Unaware } from './display.js'; // relocate-fns
+import { _topl_stash_result, force_more, Unaware as wizard_Unaware } from './display.js'; // relocate-fns
 import { impossible as real_impossible } from './pline.js'; // relocate-fns
 import { routeTag } from './route_telemetry.js'; // relocate-fns
 
@@ -742,7 +742,6 @@ export async function doengrave() {
             de.ret = ECMD_TIME;
             return doengr_exit(de);
         }
-        de.adding = !!(de.oep && !de.eow);
     }
 
     /* C engrave.c:1172-1186 — message: "You write in the dust with your fingertip." */
@@ -1081,41 +1080,6 @@ function blengr() {
     return blind_writing[rn2(blind_writing.length)];
 }
 
-/* enum engraving_texts (nethack-c/include/engrave.h:9). */
-const ENGR_ACTUAL_TEXT = 0;
-const ENGR_REMEMBERED_TEXT = 1;
-const ENGR_PRISTINE_TEXT = 2;
-
-let head_engr = null;
-
-/* C ref: engrave.h newengr(lth) macro — allocate a struct engr sized for a
- * `lth`-byte packed text buffer. */
-function newengr(lth) {
-    return {
-        nxt_engr: null,
-        engr_txt: [null, null, null],
-        engr_x: 0, engr_y: 0,
-        engr_szeach: 0,
-        engr_alloc: lth,
-        engr_time: 0,
-        engr_type: 0,
-        guardobjects: 0, nowipeout: 0, eread: 0, erevealed: 0,
-    };
-}
-
-function sfiUnsigned(_nhfp, _tag) {
-    return 0;
-}
-function sfiChar(_nhfp, _tag, _lth) {
-    return '';
-}
-function sfiEngr(_nhfp, _ep, _tag) {
-    /* populates ep's scalar fields (engr_x/y/engr_szeach/engr_alloc/
-     * engr_time/engr_type/bitfields) from the byte stream; no-op until that
-     * stream exists. */
-}
-
-
 /* include/skills.h:64,95 — P_RIDING = 37, P_BASIC = 2. */
 const P_RIDING = 37, P_BASIC = 2;
 
@@ -1213,9 +1177,14 @@ export function make_engr_at(x, y, text, pristine, epoch, engr_type) {
          * falsy engr_type to DUST and drew no RNG at all — draws that zap.js's own
          * (still-unported) polymorph arm will need the day it lands. */
         const et = engr_type | 0;
+        // C engrave.c:419-435 allocates all three buffers once. Erosion
+        // advances/trims text without changing the allocation reported by
+        // engr_stats (engrave.c:1632).
+        const smem = Math.max(text.length, pristine?.length ?? 0) + 1;
         const ep = {
-            text, remembered: text,
+            text, remembered: text, remembered_off: 0,
             pristine: pristine ?? text, off: 0,
+            engr_szeach: smem, engr_alloc: smem * 3,
             guardobjects: 0,
             engr_time: epoch | 0,
             engr_type: 0,
@@ -1449,18 +1418,11 @@ export function engr_at(x, y) {
     return _engr_map.get(`${x},${y}`) ?? null;
 }
 
-// C engrave.c:1550-1582 save_engravings(nhfp)
-function Sfo_unsigned(nhfp, val, name) { /* savefile libc stub */ }
-
-function update_file(nhfp) { return !!(nhfp && (nhfp.mode & 3)); }
-
-export function save_engravings(nhfp) {
+/* C engrave.c:1550-1614 — level snapshots encode the engraving records
+ * directly. save.js owns release of the old level; restore reconstructs it
+ * from this map instead of reading C's NHFILE byte stream. */
+export function save_engravings() {
     engr_reset_text_pointers();
-    if (nhfp && update_file(nhfp)) {
-        // C engrave.c:1575-1577 — write end-of-list terminator
-        const no_more_engr = 0;
-        Sfo_unsigned(nhfp, no_more_engr, "engraving-engr_alloc");
-    }
     return new Map(_engr_map);
 }
 
@@ -1471,10 +1433,14 @@ export function rest_engravings(saved) {
             /* C engrave.c:1610-1613 rest_engravings(): re-advance the actual and
              * remembered text pointers past leading spaces; `off` is how far. */
             const text = ep.text.replace(/^ +/, '');
+            const remembered = ep.remembered ?? ep.text;
+            const rememberedText = remembered.replace(/^ +/, '');
             _engr_map.set(k, { ...ep, text,
                                engr_time: game.moves | 0,
                                off: (ep.off | 0) + (ep.text.length - text.length),
-                               remembered: (ep.remembered ?? ep.text).replace(/^ +/, '') });
+                               remembered: rememberedText,
+                               remembered_off: (ep.remembered_off | 0)
+                                   + remembered.length - rememberedText.length });
         }
 }
 
@@ -1508,11 +1474,8 @@ async function _pline_paged(msg, last, redrawPending) {
          * Let pline consume the armed bit before paging that painted line. */
         await pline(msg);
         if (game._pending_message === msg) await force_more(msg, undefined, true);
-        /* topl.c:257,274,300: this message sampled skip before the previous
-         * line's more().  Publish it through pline's armed-STOP handling;
-         * redotoplin:139-140 then pages its own wrapped text even after ESC. */
-        await pline(msg);
-        await flush_pending_messages();
+        // C engrave.c:397 emits this line once. Its own wrapping more()
+        // acknowledges it; replaying the pline here prints a second copy.
     } else if (!last || redrawPending || wouldWrap) {
         routeTag('_pline_paged', msg); /* telemetry only; inert when env unset */
         await force_more(msg);

@@ -1,3 +1,6 @@
+import {validateServiceCoercions} from './service-coercions.js';
+import publicFunctions from './public-functions.json' with {type:'json'};
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original DOKICK context on shared DECL; native transport only.
 import abi from './dokick-abi.json' with {type:'json'};
 import * as source from '../ported/dokick.js';
@@ -13,7 +16,8 @@ export function enableDokick(environment,layouts){
  const scalar=(type,v)=>{type=ctypes.abiType(type);if(type==='void')return undefined;if(type.includes('*'))return text(v);if(type==='char'||type==='signed char')return transport.char(v);if(type==='unsigned char')return transport.uchar(v);if(type==='short')return transport.short(v);if(type==='unsigned short')return transport.ushort(v);if(type==='unsigned int')return transport.uint(v);if(ctypes.size(type)===8)return type.startsWith('unsigned')?transport.ulong(v):transport.long(v);return transport.int(v);};
  const coerce={pointer:address,text,integer:transport.int,byte:transport.char,coord:transport.short,long:transport.long,size:transport.ulong};
  const local=Object.create(services);
- for(const[name,row]of Object.entries(abi.calls)){const ret=row.prototype.slice(0,row.prototype.indexOf('(')).trim();local[name]=(...args)=>scalar(ret,resolve(row.target)(...args.map((v,i)=>{if(!row.coercions[i])throw new Error('Unknown DOKICK argument '+name+':'+i);return coerce[row.coercions[i]](v);})));}
+ validateServiceCoercions('DOKICK',abi.calls,publicFunctions.functions,coerce);
+ for(const[name,row]of Object.entries(abi.calls)){const ret=row.prototype.slice(0,row.prototype.indexOf('(')).trim();local[name]=(...args)=>{if(args.length!==row.coercions.length)throw new Error('DOKICK service argument count '+name+': expected '+row.coercions.length+', got '+args.length);return scalar(ret,resolve(row.target)(...args.map((v,i)=>coerce[row.coercions[i]](v))));};}
  const packed=(kind,p,i,value)=>{const row=abi.bits[kind],field=row?.fields[i];if(!field)throw new Error('Unknown DOKICK packed field '+kind+':'+i);const f=ctypes.record(row.type).fields[field],type=f.ctype.replace(new RegExp('\\s+'+field+'$'),'');return value===undefined?ctypes.getField(row.type,address(p),field,type):ctypes.setField(row.type,address(p),field,type,value);};
  let context;
  const getContext=()=>context??=createDokickEnvironment(local,L);
@@ -35,7 +39,7 @@ export function enableDokick(environment,layouts){
   bhit:(dx,dy,range,type,a,b,cell)=>{if(a||b)throw new Error('Unexpected original DOKICK bhit callback');return resolve('bhit')(transport.int(dx),transport.int(dy),transport.int(range),transport.int(type),0,0,address(cell));},
   display_nhwindow:(win,blocking)=>{const f=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),'win_display_nhwindow');return functions.indirect(memory.view.getBigUint64(f.at,true),'vii',transport.int(win),transport.char(blocking));},
  });
- for(const name of ['rn2','rnd','rnl'])local[name]=(n,line,fn)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('dokick.c'),transport.int(line),text(fn));return resolve(name)(transport.int(n));};
+ for(const name of ['rn2','rnd','rnl'])local[name]=(n,line,fn)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'dokick.c',transport.int(line),fn);return resolve(name)(transport.int(n));};
  local.rn1=(n,b,line,fn)=>transport.int(local.rn2(n,line,fn)+transport.int(b));
  for(const[name,rows]of Object.entries(abi.formats))local[name]=(...args)=>{const prefix=name==='Sprintf'||name==='mon_yells'?2:1,fmt=args[prefix-1];if(typeof fmt!=='string')throw new Error('Review DOKICK native format pointer '+name);const shape=(fmt.match(/%(?:l)?[sdiuc]/g)||[]).map(v=>v.endsWith('s')?'p':v.startsWith('%l')?'l':'i').join(''),row=rows[shape];if(!row||args.length!==row.types.length)throw new Error('Review DOKICK native format '+name+':'+fmt);return resolve(row.target)(...args.map((v,i)=>scalar(row.types[i],v)));};
  // Prevent inherited DECL setters from swallowing the factory's native views.

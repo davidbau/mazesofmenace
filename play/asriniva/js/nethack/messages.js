@@ -1,3 +1,4 @@
+import {createNativeMessageHistory} from './native/message-history.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 // Original PLINE policies and source-private state on shared JavaScript storage.
@@ -8,13 +9,14 @@ import {createPlineEnvironment} from './bindings/pline.js';
 
 export function enableMessages(environment,layouts){
  const {services,memory,ctypes,functions,transport}=environment,L=layouts.pline;
- const owner=nativeStateFor(environment),views=createNativeRecordViews(environment);
+ const owner=nativeStateFor(environment),views=createNativeRecordViews(environment),history=createNativeMessageHistory(environment,owner,L);
  const address=environment.address,text=value=>typeof value==='string'?services.literal(value):address(value),chr=value=>typeof value==='string'?value.charCodeAt(0):transport.int(value);
- const resolve=name=>typeof services[name]==='function'?services[name]:environment.resolve(name);
+ const foreignCalls=new WeakMap();
+ const resolve=name=>{const fn=owner.functions.get(name)??services[name]?.nativeEntry??(typeof services[name]==='function'?services[name]:environment.resolve(name));if(fn.nativeState===owner||fn.nativeStateIndependent)return fn;let call=foreignCalls.get(fn);if(!call){call=(...args)=>owner.boundary(fn,...args);foreignCalls.set(fn,call);}return call;};
  const local=new Proxy(Object.create(services),{get:(o,key,receiver)=>Reflect.has(o,key)?Reflect.get(o,key,receiver):typeof key==='string'?(...args)=>environment.resolve(key)(...args.map(value=>value?.address??value)):undefined});
  const roots={gs:'instance_globals_s',iflags:'instance_flags',gp:'instance_globals_p',windowprocs:'window_procs',a11y:'accessibility_data',u:'you',program_state:'sinfo',gv:'instance_globals_v',gy:'instance_globals_y',gg:'instance_globals_g',svm:'instance_globals_saved_m',ge:'instance_globals_e',sysopt:'sysopt_s',flags:'flag'};
  for(const name of Object.keys(roots))Object.defineProperty(local,name,{value:undefined,writable:true,configurable:true});
- Object.assign(local,{nativeOwner:owner,nativeRoots:Object.fromEntries(Object.entries(roots).map(([name,type])=>[name,views.record(type,environment.requireGlobal(name))]))});
+ Object.assign(local,{nativeOwner:owner,nativeMessageHistory:history,nativeRoots:Object.fromEntries(Object.entries(roots).map(([name,type])=>[name,views.record(type,environment.requireGlobal(name))]))});
  const location=path=>{
   const [root,...parts]=path.split('.');let at=environment.requireGlobal(root),type=roots[root];
   for(const key of parts){const entry=ctypes.locate(type,at,key);at=entry.at;type=entry.field.record??entry.field.ctype.replace(new RegExp('\\s+'+key+'$'),'');}
@@ -33,7 +35,7 @@ export function enableMessages(environment,layouts){
    case 3:return Number(Boolean((prop('BLINDED','intrinsic')||prop('BLINDED','extrinsic'))&&!prop('BLINDED','blocked')));
    default:throw new Error('Unknown PLINE hero header flag '+kind);
   }},
-  alloc:size=>environment.alloc('alloc',transport.uint(size)),free:p=>services.free(address(p)),dupstr:value=>address(resolve('dupstr')(text(value))),
+  alloc:size=>environment.alloc('alloc',transport.uint(size)),free:p=>{if(!history.release(p))return owner.boundary(services.free,address(p));},dupstr:value=>address(resolve('dupstr')(text(value))),
   strlen:value=>Number(services.strlen(text(value))),
   strncmp:(a,b,count)=>services.strncmp(text(a),text(b),transport.ulong(count)),strcmp:(a,b)=>services.strcmp(text(a),text(b)),
   strchr:(value,c)=>address(services.strchr(text(value),chr(c))),strrchr:(value,c)=>address(services.strrchr(text(value),chr(c))),
@@ -44,7 +46,7 @@ export function enableMessages(environment,layouts){
   dirtocoord:(out,dir)=>resolve('dirtocoord')(address(out),transport.int(dir)),
   isok:(x,y)=>resolve('isok')(transport.short(x),transport.short(y)),
   coord_desc:(x,y,out,mode)=>address(resolve('coord_desc')(transport.short(x),transport.short(y),address(out),transport.char(mode))),
-  msgtype_type:(line,noRepeat)=>resolve('msgtype_type')(text(line),transport.char(noRepeat)),
+  msgtype_type:(line,noRepeat)=>{const fn=resolve('msgtype_type');return fn.nativeValuesEntry?fn.nativeValuesEntry(line,transport.char(noRepeat)):fn(text(line),transport.char(noRepeat));},
   vision_recalc:mode=>resolve('vision_recalc')(transport.int(mode)),flush_screen:cursor=>resolve('flush_screen')(transport.int(cursor)),
   strNsubst:(out,from,to,count)=>resolve('strNsubst')(address(out),text(from),text(to),transport.int(count)),
   livelog_add:(flags,line)=>resolve('livelog_add')(transport.long(flags),text(line)),paniclog:(reason,line)=>resolve('paniclog')(text(reason),text(line)),

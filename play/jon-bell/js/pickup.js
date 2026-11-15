@@ -2664,6 +2664,8 @@ export async function in_or_out_menu(promptText, box, outokay, inokay, alreadyus
         g._statusBlankAfterDocrt = true;
         await flush_screen(1);
         g._bot_disabled = savedBotDisabled;
+    } else {
+        docorner_blank_utf8_captures(WIN_COL - 1, lines.length + 1);
     }
     return chosen;
 }

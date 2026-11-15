@@ -359,8 +359,8 @@ function throw_obj(obj,shotlimit)
             /* crossbows are slow to load and probably shouldn't allow multiple
            shots at all, but that would result in players never using them;
            instead, high strength is necessary to load and shoot quickly */
-            if(Number(!!(Number(!!(Number(!!(Number(multishot>1)&&Number(C.i32(skill)==C.i32((-C.P_CROSSBOW)))))&&(Number(!!((Number(!!(Number(!!((Number(!!(Number(C.i32(R91(obj))==C.WEAPON_CLASS)||Number(C.i32(R91(obj))==C.GEM_CLASS))))&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))>=C.i32((-C.P_CROSSBOW)))))&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))&&(Number(!!((C.global("uwep").value)&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))==C.i32((-C.i32(R121(C.objects+Number(R87(C.global("uwep").value))*C.sizes["struct objclass"])))))))))))))&&Number(C.i32((C.acurrstr()))<(((Number(C.i32(R1(A45(C.gu)))==(C.PM_GNOME)))?16:18)))))) (multishot=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),231,(C.literal("throw_obj"))),C.rnd(multishot))):C.rnd(multishot))));
-            (multishot=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),233,(C.literal("throw_obj"))),C.rnd(multishot))):C.rnd(multishot))));
+            if(Number(!!(Number(!!(Number(!!(Number(multishot>1)&&Number(C.i32(skill)==C.i32((-C.P_CROSSBOW)))))&&(Number(!!((Number(!!(Number(!!((Number(!!(Number(C.i32(R91(obj))==C.WEAPON_CLASS)||Number(C.i32(R91(obj))==C.GEM_CLASS))))&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))>=C.i32((-C.P_CROSSBOW)))))&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))&&(Number(!!((C.global("uwep").value)&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))==C.i32((-C.i32(R121(C.objects+Number(R87(C.global("uwep").value))*C.sizes["struct objclass"])))))))))))))&&Number(C.i32((C.acurrstr()))<(((Number(C.i32(R1(A45(C.gu)))==(C.PM_GNOME)))?16:18)))))) (multishot=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",231,"throw_obj"),C.rnd(multishot))):C.rnd(multishot))));
+            (multishot=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",233,"throw_obj"),C.rnd(multishot))):C.rnd(multishot))));
             if(Number(C.i64(multishot)>R89(obj))) (multishot=C.i32(R89(obj)));
             if(Number(!!(Number(shotlimit>0)&&Number(multishot>shotlimit)))) (multishot=shotlimit);
         }
@@ -877,7 +877,7 @@ function hurtle_step(arg,x,y)
             }
         }
         if(why) {
-            (dmg=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),835,(C.literal("hurtle_step"))),C.rnd(C.i32((2+C.cell(range,"int").value))))):C.rnd(C.i32((2+C.cell(range,"int").value))))));
+            (dmg=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",835,"hurtle_step"),C.rnd(C.i32((2+C.cell(range,"int").value))))):C.rnd(C.i32((2+C.cell(range,"int").value))))));
             C.losehp(((((Number(!!(R133(A161(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])))))?(C.i32(Math.trunc(((C.i32(((dmg)+1)))/2)))):(dmg))),why,C.i8(1));
             C.wake_nearto(x,y,10);
             return (C.i8(0));
@@ -1284,7 +1284,7 @@ function toss_up(obj,hitsroof)
         } else if(breaktest(obj)) {
             let blindinc;
             /* need to check for blindness result prior to destroying obj */
-            (blindinc=((Number(!!((Number(!!(Number(otyp==C.CREAM_PIE)||Number(otyp==C.BLINDING_VENOM))))&&C.i32(C.can_blnd(A48(C.gy),A48(C.gy),C.u8(254),obj)))))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1298,(C.literal("toss_up"))),C.rnd(25))):C.rnd(25))):0));
+            (blindinc=((Number(!!((Number(!!(Number(otyp==C.CREAM_PIE)||Number(otyp==C.BLINDING_VENOM))))&&C.i32(C.can_blnd(A48(C.gy),A48(C.gy),C.u8(254),obj)))))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1298,"toss_up"),C.rnd(25))):C.rnd(25))):0));
             /* AT_WEAP is ok here even if attack type was AT_SPIT */
             breakmsg(obj,C.i8(Number(!((Number(!!((Number(!!(R133(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))));
             if(breakobj(obj,R148(C.u),R149(C.u),(C.i8(1)),(C.i8(1)))) (obj=0);
@@ -1325,12 +1325,12 @@ function toss_up(obj,hitsroof)
             let material=C.i32(R120(C.objects+Number(otyp)*C.sizes["struct objclass"]));
             let is_silver=C.i8((Number(material==C.SILVER))); let less_damage=C.i8((Number(!!(C.i32(C.hard_helmet(C.global("uarmh").value))&&(Number(!!(Number(!(is_silver))||Number(!((Number(!!(Number(R166(C.u)>=C.LOW_PM)||C.i32(C.hates_silver(R55(A48(C.gy)))))))))))))))); let harmless=C.i8((Number(!!((Number(!!((Number(!!(Number(C.i32(R120(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))==C.GEMSTONE)||(Number(C.i32(R120(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))==C.MINERAL)))))&&Number(C.i32(R91(obj))!=C.RING_CLASS))))&&(Number(!!((Number((C.u64((R129(R55(A48(C.gy)))&C.u64(8n))))!=C.u64(0n)))&&Number(!((Number((C.u64((R129(R55(A48(C.gy)))&C.u64(1048576n))))!=C.u64(0n)))))))))))); let artimsg=(C.i8(0));
             let dmg=C.local("int",C.dmgval(obj,A48(C.gy)));
-            if(Number(!!(C.i32(R93(obj))&&Number(!(harmless))))) (artimsg=C.artifact_hit(0,A48(C.gy),obj,dmg.address,(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1354,(C.literal("toss_up"))),C.rn2(18))):C.rn2(18)))+(2))))));
+            if(Number(!!(C.i32(R93(obj))&&Number(!(harmless))))) (artimsg=C.artifact_hit(0,A48(C.gy),obj,dmg.address,(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1354,"toss_up"),C.rn2(18))):C.rn2(18)))+(2))))));
             /* need a fake die roll here; rn1(18,2) avoids 1 and 20 */
             if(Number(!(dmg.value))) {
                 /* probably wasn't a weapon; base damage on weight */
                 (dmg.value=C.i32(Math.trunc(((C.i32((C.i32(R88(obj))+(C.i32((C.WT_TO_DMG-1))))))/C.WT_TO_DMG))));
-                (dmg.value=((Number(dmg.value<=1))?1:((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1358,(C.literal("toss_up"))),C.rnd(dmg.value))):C.rnd(dmg.value)))));
+                (dmg.value=((Number(dmg.value<=1))?1:((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1358,"toss_up"),C.rnd(dmg.value))):C.rnd(dmg.value)))));
                 if(Number(dmg.value>6)) (dmg.value=6);
                 /* since obj is a non-weapon, bonuses for silver and blessed
                haven't been applied (otherwise '!dmg' test will fail when
@@ -1339,8 +1339,8 @@ function toss_up(obj,hitsroof)
                woody creature since both involve weapons; hero-as-shade is
                hypothetical because hero can't polymorph into that form */
                 if(Number(!!(Number(R55(A48(C.gy))==(C.mons+Number(C.PM_SHADE)*C.sizes["struct permonst"]))&&Number(!(is_silver))))) (dmg.value=0);
-                if(Number(!!(C.i32(R96(obj))&&C.i32(C.mon_hates_blessings(A48(C.gy)))))) (dmg.value=C.i32(dmg.value+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1370,(C.literal("toss_up"))),C.rnd(4))):C.rnd(4)))));
-                if(Number(!!(C.i32(is_silver)&&(Number(!!(Number(R166(C.u)>=C.LOW_PM)||C.i32(C.hates_silver(R55(A48(C.gy)))))))))) (dmg.value=C.i32(dmg.value+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1372,(C.literal("toss_up"))),C.rnd(20))):C.rnd(20)))));
+                if(Number(!!(C.i32(R96(obj))&&C.i32(C.mon_hates_blessings(A48(C.gy)))))) (dmg.value=C.i32(dmg.value+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1370,"toss_up"),C.rnd(4))):C.rnd(4)))));
+                if(Number(!!(C.i32(is_silver)&&(Number(!!(Number(R166(C.u)>=C.LOW_PM)||C.i32(C.hates_silver(R55(A48(C.gy)))))))))) (dmg.value=C.i32(dmg.value+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1372,"toss_up"),C.rnd(20))):C.rnd(20)))));
             }
             if(Number(!!(Number(dmg.value>1)&&C.i32(less_damage)))) (dmg.value=1);
             if(Number(dmg.value>0)) (dmg.value=C.i32(dmg.value+C.i32(R178(C.u))));
@@ -1476,7 +1476,7 @@ function throwit(obj,wep_mask,twoweap,oldslot)
     let crossbowing; let impaired=C.i8((Number(!!(Number(!!(Number(!!(Number(!!(R133(A161(C.u)+Number(C.CONFUSION)*C.sizes["struct prop"])||R133(A161(C.u)+Number(C.STUNNED)*C.sizes["struct prop"])))||(Number(!!((Number(!!(R133(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))||(Number(!!(R133(A161(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R133(A161(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))))||(Number(!!(R133(A161(C.u)+Number(C.FUMBLING)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.FUMBLING)*C.sizes["struct prop"])))))))); let tethered_weapon=C.i8((Number(!!(Number(!!(arw&&C.i32(R139(arw))))&&Number((C.i64((wep_mask&256n)))!=C.i64(0))))));
     (W35(C.gn,C.i8(0)));
     /* reset potentially stale value */
-    if(Number(!!(Number(!!((Number(!!(C.i32(R95(obj.value))||C.i32(R106(obj.value)))))&&(Number(!!(R150(C.u)||R151(C.u))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1526,(C.literal("throwit"))),C.rn2(7))):C.rn2(7)))))))) {
+    if(Number(!!(Number(!!((Number(!!(C.i32(R95(obj.value))||C.i32(R106(obj.value)))))&&(Number(!!(R150(C.u)||R151(C.u))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1526,"throwit"),C.rn2(7))):C.rn2(7)))))))) {
         let slipok=(C.i8(1));
         if((Number(!!((Number(!!(Number(!!((Number(!!(Number(C.i32(R91(obj.value))==C.WEAPON_CLASS)||Number(C.i32(R91(obj.value))==C.GEM_CLASS))))&&Number(C.i32(R121(C.objects+Number(R87(obj.value))*C.sizes["struct objclass"]))>=C.i32((-C.P_CROSSBOW)))))&&Number(C.i32(R121(C.objects+Number(R87(obj.value))*C.sizes["struct objclass"]))<=C.i32((-C.P_BOW))))))&&(Number(!!((C.global("uwep").value)&&Number(C.i32(R121(C.objects+Number(R87(obj.value))*C.sizes["struct objclass"]))==C.i32((-C.i32(R121(C.objects+Number(R87(C.global("uwep").value))*C.sizes["struct objclass"])))))))))))) {
             C.variadic(46,C.literal("%s!"),C.Tobjnam(obj.value,C.literal("misfire")));
@@ -1488,8 +1488,8 @@ function throwit(obj,wep_mask,twoweap,oldslot)
                    a plural name; greased gloves or boots for instance. */
         }
         if(slipok) {
-            (W150(C.u,C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1541,(C.literal("throwit"))),C.rn2(3))):C.rn2(3)))-1))));
-            (W151(C.u,C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1542,(C.literal("throwit"))),C.rn2(3))):C.rn2(3)))-1))));
+            (W150(C.u,C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1541,"throwit"),C.rn2(3))):C.rn2(3)))-1))));
+            (W151(C.u,C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1542,"throwit"),C.rn2(3))):C.rn2(3)))-1))));
             if(Number(!!(Number(!(R150(C.u)))&&Number(!(R151(C.u)))))) (W152(C.u,1));
             (impaired=(C.i8(1)));
         }
@@ -1521,8 +1521,8 @@ function throwit(obj,wep_mask,twoweap,oldslot)
             C.variadic(49,C.literal("%s the %s and returns to your hand!"),C.Tobjnam(obj.value,C.literal("hit")),C.ceiling(R148(C.u),R149(C.u)));
             (obj.value=return_throw_to_inv(obj.value,wep_mask,twoweap,oldslot));
         } else if(Number(R152(C.u)<0)) {
-            toss_up(obj.value,C.i8(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1589,(C.literal("throwit"))),C.rn2(5))):C.rn2(5)))&&Number(!((R169(C.u))))))));
-        } else if(Number(!!(Number(!!(Number(!!(Number(R152(C.u)>0)&&R182(C.u)))&&Number(C.i32(R91(obj.value))==C.POTION_CLASS)))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1591,(C.literal("throwit"))),C.rn2(6))):C.rn2(6)))))) {
+            toss_up(obj.value,C.i8(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1589,"throwit"),C.rn2(5))):C.rn2(5)))&&Number(!((R169(C.u))))))));
+        } else if(Number(!!(Number(!!(Number(!!(Number(R152(C.u)>0)&&R182(C.u)))&&Number(C.i32(R91(obj.value))==C.POTION_CLASS)))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1591,"throwit"),C.rn2(6))):C.rn2(6)))))) {
             /* alternative to prayer or wand of opening/spell of knock
                for dealing with cursed saddle:  throw holy water > */
             C.potionhit(R182(C.u),obj.value,1);
@@ -1615,11 +1615,11 @@ function throwit(obj,wep_mask,twoweap,oldslot)
            aklys must be wielded as primary to return when thrown */
         if(R24(C.iflags)) {
             /* Mjollnir or aklys */
-            if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1711,(C.literal("throwit"))),C.rn2(100))):C.rn2(100)))) {
+            if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1711,"throwit"),C.rn2(100))):C.rn2(100)))) {
                 if(tethered_weapon) C.tmp_at(C.i16((C.i32((-7)))),C.i16((C.i32((-1)))));
  else sho_obj_return_to_u(obj.value);
                 /* display its flight */
-                if(Number(!!(Number(!(impaired))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1717,(C.literal("throwit"))),C.rn2(100))):C.rn2(100)))))) {
+                if(Number(!!(Number(!(impaired))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1717,"throwit"),C.rn2(100))):C.rn2(100)))))) {
                     C.variadic(51,C.literal("%s to your hand!"),C.Tobjnam(obj.value,C.literal("return")));
                     (obj.value=C.addinv_before(obj.value,oldslot));
                     C.encumber_msg();
@@ -1631,11 +1631,11 @@ function throwit(obj,wep_mask,twoweap,oldslot)
                     /* u.twoweap = twoweap */
                     if((Number((C.i32((C.i32(C.cell((C.cell((R46(C.gv)+Number(R80(A25(C.gb)))*8),"unsigned char *").value+Number(R79(A25(C.gb)))*1),"unsigned char").value)&2)))!=0))) C.newsym(R79(A25(C.gb)),R80(A25(C.gb)));
                 } else {
-                    let dmg=C.local("int",((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1730,(C.literal("throwit"))),C.rn2(2))):C.rn2(2))));
+                    let dmg=C.local("int",((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1730,"throwit"),C.rn2(2))):C.rn2(2))));
                     if(Number(!(dmg.value))) {
                         C.variadic(52,((Number(!!((Number(!!(R133(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?C.literal("%s lands %s your %s."):C.literal("%s back to you, landing %s your %s.")),((Number(!!((Number(!!(R133(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?R6(C.c_common_strings):C.Tobjnam(obj.value,C.literal("return"))),((Number(!!((Number(!!(R133(A161(C.u)+Number(C.LEVITATION)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.LEVITATION)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.LEVITATION)*C.sizes["struct prop"]))))))?C.literal("beneath"):C.literal("at")),C.makeplural(C.body_part(C.FOOT)));
                     } else {
-                        (dmg.value=C.i32(dmg.value+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1739,(C.literal("throwit"))),C.rnd(3))):C.rnd(3)))));
+                        (dmg.value=C.i32(dmg.value+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1739,"throwit"),C.rnd(3))):C.rnd(3)))));
                         C.variadic(53,((Number(!!((Number(!!(R133(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?C.literal("%s your %s!"):C.literal("%s back toward you, hitting your %s!")),C.Tobjnam(obj.value,((Number(!!((Number(!!(R133(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R132(A161(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))?C.literal("hit"):C.literal("fly"))),C.body_part(C.ARM));
                         if(R93(obj.value)) C.artifact_hit(0,A48(C.gy),obj.value,dmg.address,0);
                         C.losehp(((((Number(!!(R133(A161(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])))))?(C.i32(Math.trunc(((C.i32(((dmg.value)+1)))/2)))):(dmg.value))),C.killer_xname(obj.value),C.i8(1));
@@ -1795,7 +1795,7 @@ function omon_adj(mon,obj,mon_notices)
     /* ditto for immobilized target */
     if(Number(!!(Number(!(R68(mon)))||Number(!(R126(R55(mon))))))) {
         (tmp=C.i32(tmp+4));
-        if(Number(!!(Number(!!(C.i32(mon_notices)&&C.i32(R126(R55(mon)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1926,(C.literal("omon_adj"))),C.rn2(10))):C.rn2(10)))))))) {
+        if(Number(!!(Number(!!(C.i32(mon_notices)&&C.i32(R126(R55(mon)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1926,"omon_adj"),C.rn2(10))):C.rn2(10)))))))) {
             (W68(mon,C.u32(1)));
             (W67(mon,C.u32(0)));
         }
@@ -1829,7 +1829,7 @@ function tmiss(obj,mon,maybe_wakeup)
        so will realize that there is a valid target here anyway. */
     if(Number(!!(Number(!(C.canseemon(mon)))||(Number(!!((C.i32((C.i32(R61(mon))&7)))&&Number((C.i32((C.i32(R61(mon))&7)))!=C.M_AP_MONSTER))))))) C.variadic(57,C.literal("%s %s."),C.The(missile),C.otense(obj,C.literal("miss")));
  else C.miss(missile,mon);
-    if(Number(!!(C.i32(maybe_wakeup)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1964,(C.literal("tmiss"))),C.rn2(3))):C.rn2(3)))))))) C.wakeup(mon,(C.i8(1)));
+    if(Number(!!(C.i32(maybe_wakeup)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1964,"tmiss"),C.rn2(3))):C.rn2(3)))))))) C.wakeup(mon,(C.i8(1)));
     return;
 }
 
@@ -1845,10 +1845,10 @@ function should_mulch_missile(obj)
        want anything to survive unconditionally, but we need ammo to stay
        around longer on average. */
     (chance=C.i32((C.i32((3+((Number(C.i32(R104(obj))>C.i32(R105(obj)))?C.i32(R104(obj)):C.i32(R105(obj))))))-C.i32(R90(obj)))));
-    (broken=C.i8((Number(chance>1)?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1991,(C.literal("should_mulch_missile"))),C.rn2(chance))):C.rn2(chance))):Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1991,(C.literal("should_mulch_missile"))),C.rn2(4))):C.rn2(4))))))));
-    if(Number(!!(C.i32(R96(obj))&&((C.i32(R8(A38(C.svc)))?Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1992,(C.literal("should_mulch_missile"))),C.rn2(3))):C.rn2(3))))):Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1992,(C.literal("should_mulch_missile"))),C.rnl(4))):C.rnl(4)))))))))) (broken=(C.i8(0)));
+    (broken=C.i8((Number(chance>1)?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1991,"should_mulch_missile"),C.rn2(chance))):C.rn2(chance))):Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1991,"should_mulch_missile"),C.rn2(4))):C.rn2(4))))))));
+    if(Number(!!(C.i32(R96(obj))&&((C.i32(R8(A38(C.svc)))?Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1992,"should_mulch_missile"),C.rn2(3))):C.rn2(3))))):Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1992,"should_mulch_missile"),C.rnl(4))):C.rnl(4)))))))))) (broken=(C.i8(0)));
     /* Flint and hard gems don't break easily */
-    if(Number(!!((Number(!!((Number(!!(Number(C.i32(R91(obj))==C.GEM_CLASS)&&C.i32(R118(C.objects+Number(R87(obj))*C.sizes["struct objclass"])))))||Number(C.i32(R87(obj))==C.FLINT))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),1998,(C.literal("should_mulch_missile"))),C.rn2(2))):C.rn2(2)))))))) (broken=(C.i8(0)));
+    if(Number(!!((Number(!!((Number(!!(Number(C.i32(R91(obj))==C.GEM_CLASS)&&C.i32(R118(C.objects+Number(R87(obj))*C.sizes["struct objclass"])))))||Number(C.i32(R87(obj))==C.FLINT))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",1998,"should_mulch_missile"),C.rn2(2))):C.rn2(2)))))))) (broken=(C.i8(0)));
     return broken;
 }
 
@@ -1981,7 +1981,7 @@ function thitmonst(mon,obj)
         }
         return 0;
     }
-    (dieroll=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2152,(C.literal("thitmonst"))),C.rnd(20))):C.rnd(20))));
+    (dieroll=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2152,"thitmonst"),C.rnd(20))):C.rnd(20))));
     if(Number(!!(Number(!!(Number(C.i32(R91(obj))==C.WEAPON_CLASS)||(Number(!!(Number(C.i32(R91(obj))==C.TOOL_CLASS)&&Number(C.i32(R121(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))!=C.P_NONE))))))||Number(C.i32(R91(obj))==C.GEM_CLASS)))) {
         if(Number(hmode==C.HMON_KICKED)) {
             /* throwing adjustments and weapon skill bonus don't apply */
@@ -2070,11 +2070,11 @@ function thitmonst(mon,obj)
         } else {
             tmiss(obj,mon,(C.i8(1)));
         }
-    } else if(Number(!!((Number(!!(Number(!!(Number(!!(Number(otyp==C.EGG)||Number(otyp==C.CREAM_PIE)))||Number(otyp==C.BLINDING_VENOM)))||Number(otyp==C.ACID_VENOM))))&&(Number(!!(C.i32(guaranteed_hit)||Number(C.i32((C.acurr(C.A_DEX)))>((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2258,(C.literal("thitmonst"))),C.rnd(25))):C.rnd(25)))))))))) {
+    } else if(Number(!!((Number(!!(Number(!!(Number(!!(Number(otyp==C.EGG)||Number(otyp==C.CREAM_PIE)))||Number(otyp==C.BLINDING_VENOM)))||Number(otyp==C.ACID_VENOM))))&&(Number(!!(C.i32(guaranteed_hit)||Number(C.i32((C.acurr(C.A_DEX)))>((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2258,"thitmonst"),C.rnd(25))):C.rnd(25)))))))))) {
         C.hmon(mon,obj,hmode,dieroll);
         return 1;
         /* hmon used it up */
-    } else if(Number(!!(Number(C.i32(R91(obj))==C.POTION_CLASS)&&(Number(!!(C.i32(guaranteed_hit)||Number(C.i32((C.acurr(C.A_DEX)))>((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2263,(C.literal("thitmonst"))),C.rnd(25))):C.rnd(25)))))))))) {
+    } else if(Number(!!(Number(C.i32(R91(obj))==C.POTION_CLASS)&&(Number(!!(C.i32(guaranteed_hit)||Number(C.i32((C.acurr(C.A_DEX)))>((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2263,"thitmonst"),C.rnd(25))):C.rnd(25)))))))))) {
         C.potionhit(mon,obj,1);
         return 1;
     } else if(Number(!!((((Number(!!(Number((R55(mon))==(C.mons+Number(C.PM_MONKEY)*C.sizes["struct permonst"]))||Number((R55(mon))==(C.mons+Number(C.PM_APE)*C.sizes["struct permonst"])))))?Number(C.i32(R87(obj))==C.BANANA):(Number(!!(Number(!!((Number((C.u64((R130(R55(mon))&C.u64(4194304n))))!=C.u64(0n)))&&Number(C.i32(R91(obj))==C.FOOD_CLASS)))&&(Number(!!(Number(!!(Number(C.i32(R124(R55(mon)))!=C.S_UNICORN)||Number(C.i32(R120(C.objects+Number(R87(obj))*C.sizes["struct objclass"]))==C.VEGGY)))||(Number(!!(Number(C.i32(R87(obj))==C.CORPSE)&&Number(R109(obj)==C.PM_LICHEN))))))))))))||(Number(!!(C.i32(R62(mon))&&Number(C.dogfood(mon,obj)<=C.ACCFOOD))))))) {
@@ -2136,7 +2136,7 @@ function gem_accept(mon,obj)
                     C.change_luck(C.i8(5));
                 } else {
                     C.strcat(buf,C.staticAddress("maybeluck"));
-                    C.change_luck(C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2334,(C.literal("gem_accept"))),C.rn2(7))):C.rn2(7)))-3))));
+                    C.change_luck(C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2334,"gem_accept"),C.rn2(7))):C.rn2(7)))-3))));
                 }
             } else {
                 C.strcat(buf,C.staticAddress("nogood"));
@@ -2150,7 +2150,7 @@ function gem_accept(mon,obj)
                     C.change_luck(C.i8(2));
                 } else {
                     C.strcat(buf,C.staticAddress("maybeluck"));
-                    C.change_luck(C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2349,(C.literal("gem_accept"))),C.rn2(3))):C.rn2(3)))-1))));
+                    C.change_luck(C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2349,"gem_accept"),C.rn2(3))):C.rn2(3)))-1))));
                 }
             } else {
                 C.strcat(buf,C.staticAddress("nogood"));
@@ -2164,7 +2164,7 @@ function gem_accept(mon,obj)
                     C.change_luck(C.i8(1));
                 } else {
                     C.strcat(buf,C.staticAddress("maybeluck"));
-                    C.change_luck(C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2364,(C.literal("gem_accept"))),C.rn2(3))):C.rn2(3)))-1))));
+                    C.change_luck(C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2364,"gem_accept"),C.rn2(3))):C.rn2(3)))-1))));
                 }
             } else {
                 C.strcat(buf,C.staticAddress("noluck"));
@@ -2254,7 +2254,7 @@ function release_camera_demon(obj,x,y)
     x=C.i16(x);
     y=C.i16(y);
     let mtmp;
-    if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2460,(C.literal("release_camera_demon"))),C.rn2(3))):C.rn2(3)))))&&Number(((mtmp=C.makemon((C.mons+Number((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2461,(C.literal("release_camera_demon"))),C.rn2(3))):C.rn2(3)))?C.PM_HOMUNCULUS:C.PM_IMP))*C.sizes["struct permonst"]),x,y,C.u32(131072n))))!=0)))) {
+    if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2460,"release_camera_demon"),C.rn2(3))):C.rn2(3)))))&&Number(((mtmp=C.makemon((C.mons+Number((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2461,"release_camera_demon"),C.rn2(3))):C.rn2(3)))?C.PM_HOMUNCULUS:C.PM_IMP))*C.sizes["struct permonst"]),x,y,C.u32(131072n))))!=0)))) {
         if((Number(!!(C.canseemon(mtmp)||C.sensemon(mtmp))))) C.variadic(67,C.literal("%s is released!"),((Number(!!(R133(A161(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R133(A161(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R131(A161(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))?C.An(C.rndmonnam(0)):C.literal("The picture-painting demon")));
         (W69(mtmp,C.u32(Number(!(R95(obj))))));
         C.set_malign(mtmp);
@@ -2348,7 +2348,7 @@ function breakobj(obj,x,y,hero_caused,from_invent)
         }
     }
     if(Number(!(fracture))) C.delobj(obj);
-    if(explosion) C.explode(x,y,C.i32((-11)),((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("dothrow.c"),2572,(C.literal("breakobj"))),C.d((3),(6)))):C.d((3),(6)))),C.i8(0),C.EXPL_FIERY);
+    if(explosion) C.explode(x,y,C.i32((-11)),((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("dothrow.c",2572,"breakobj"),C.d((3),(6)))):C.d((3),(6)))),C.i8(0),C.EXPL_FIERY);
     return 1;
 }
 
@@ -2495,5 +2495,5 @@ const dothrowStaticInitializers = C => [
     {name:"addluck",type:"char[12]",size:(1*12),values:C.literal(" gratefully")},
 ];
 
-return Object.freeze({multishot_class_bonus,throw_obj,ok_to_throw,throw_ok,dothrow,autoquiver,find_launcher,dofire,endmultishot,hitfloor,walk_path,hurtle_jump,hurtle_step,will_hurtle,mhurtle_step,hurtle,mhurtle,check_shop_obj,harmless_missile,toss_up,throwing_weapon,sho_obj_return_to_u,throwit_return,swallowit,throwit_mon_hit,throwit,return_throw_to_inv,omon_adj,tmiss,should_mulch_missile,thitmonst,gem_accept,hero_breaks,breaks,release_camera_demon,breakobj,breaktest,breakmsg,throw_gold,dothrowStaticInitializers});
+return C.nativeAddressNamespaceReady(Object.freeze({multishot_class_bonus,throw_obj,ok_to_throw,throw_ok,dothrow,autoquiver,find_launcher,dofire,endmultishot,hitfloor,walk_path,hurtle_jump,hurtle_step,will_hurtle,mhurtle_step,hurtle,mhurtle,check_shop_obj,harmless_missile,toss_up,throwing_weapon,sho_obj_return_to_u,throwit_return,swallowit,throwit_mon_hit,throwit,return_throw_to_inv,omon_adj,tmiss,should_mulch_missile,thitmonst,gem_accept,hero_breaks,breaks,release_camera_demon,breakobj,breaktest,breakmsg,throw_gold,dothrowStaticInitializers}),C);
 }

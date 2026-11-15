@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Complete native timer/status policies on shared actors, items and queue.
 // Callback identities and serialization remain explicit byte boundaries.
 import * as timeout from '../ported/timeout.js';
@@ -38,7 +39,7 @@ export function enableTimers(environment,layouts) {
         copyAnything:(to,from)=>memory.memmove(environment.address(to),environment.address(from),ctypes.size('union any')),
         Sprintf:(out,format,...args)=>environment.libc.sprintf(environment.address(out),format,...args),
         impossible:(format,...args)=>environment.diagnostics.push(environment.libc.format(format,...args)),
-        rngCaller:(line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('timeout.c'),line,services.literal(caller));},
+        rngCaller:(line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'timeout.c',line,caller);},
         coordLocal:()=>record('coord',transport.stackAlloc(ctypes.size('coord'))),
         coordxyLocal:()=>Object.defineProperty({address:transport.stackAlloc(2)},'value',{
             get(){return transport.read('Int16',this.address);},set(value){transport.write('Int16',this.address,value);},

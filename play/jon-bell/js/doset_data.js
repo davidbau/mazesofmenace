@@ -31,7 +31,7 @@
 // `longest` is options.c:8507 longest_option_name(set_gameview, set_in_game),
 // the %-Ns field width of options.c:8826 fmtstr_doset.
 import { game } from './gstate.js';
-import { gs, PRIMARYSET } from './const.js';
+import { gs, PRIMARYSET, Is_rogue_level } from './const.js';
 import { aligns, genders } from './roles.js';
 /* C ref: options.c:8060 oc_to_str — see js/drawing.js for why it lives there. */
 import { def_oc_syms_chars } from './drawing.js';
@@ -250,7 +250,7 @@ export const DOSET_COMPOUNDS = [
     /* C: options.c:3573 optfn_roguesymset get_val. */
     { name: "roguesymset", sel: true, hasHandler: true, val: () => {
         const name = gs.symset[1].name;
-        return name ? name + (game.gc?.currentgraphics === 1 ? ', active' : '') : 'default';
+        return name ? name + ((game.gc?.currentgraphics ?? (Is_rogue_level(game.u?.uz) ? 1 : 0)) === 1 ? ', active' : '') : 'default';
     } },
     /* C: options.c:3658 runmodes[flags.runmode]; init RUN_LEAP -> "run" */
     { name: "runmode", sel: true, hasHandler: true, val: () => ["teleport", "run", "walk", "crawl"][F().runmode ?? 1] ?? "run" },

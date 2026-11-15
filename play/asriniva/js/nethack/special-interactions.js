@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeSteedFor} from './native/steed-graph.js';
 // Optional interaction owners on the shared standalone game state.
 // Game decisions remain in the unchanged translated modules.
@@ -47,12 +48,12 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
  // Additional leaves reuse existing contexts, with their own source RNG attribution.
  if((only.includes('iactions')||only.includes('extralev'))&&!environment.hasFunction('name_ok')){
   const {services:S,transport,ctypes}=environment,views=createRecordViews(environment),base=environment.start('item-naming').environment,naming=Object.create(base),text=v=>typeof v==='string'?S.literal(v):environment.address(v);
-  Object.assign(naming,{...layouts.do_name,ghostnames:ghostnames.map(text),OBJ_DESCR:o=>views.record('struct objdescr',environment.requireGlobal('obj_descr')+o.oc_descr_idx*ctypes.size('struct objdescr')).oc_descr,svp:views.record('struct instance_globals_saved_p',environment.requireGlobal('svp')),nh_getenv:p=>environment.resolve('nh_getenv')(text(p)),loadChar:p=>transport.read('Int8',environment.address(p)),storeChar:(p,v)=>transport.write('Int8',environment.address(p),v),strchr:(p,ch)=>S.strchr(text(p),ch),strncmp:(a,b,n)=>S.strncmp(text(a),text(b),n),rn2:(n,line,caller)=>{if(S.rng_log_enabled())S.rng_log_set_caller(S.literal('do_name.c'),line,S.literal(caller));return S.rn2(n);}});
+  Object.assign(naming,{...layouts.do_name,ghostnames:ghostnames.map(text),OBJ_DESCR:o=>views.record('struct objdescr',environment.requireGlobal('obj_descr')+o.oc_descr_idx*ctypes.size('struct objdescr')).oc_descr,svp:views.record('struct instance_globals_saved_p',environment.requireGlobal('svp')),nh_getenv:p=>environment.resolve('nh_getenv')(text(p)),loadChar:p=>transport.read('Int8',environment.address(p)),storeChar:(p,v)=>transport.write('Int8',environment.address(p),v),strchr:(p,ch)=>S.strchr(text(p),ch),strncmp:(a,b,n)=>S.strncmp(text(a),text(b),n),rn2:(n,line,caller)=>{if(S.rng_log_enabled())recordNativeRngCaller(S,'do_name.c',line,caller);return S.rn2(n);}});
   const names={name_ok,call_ok,rndghostname,roguename};environment.register('special-item-naming',Object.fromEntries(Object.entries(names).filter(([n])=>!environment.hasFunction(n)).map(([n,fn])=>[n,(...args)=>{if(n==='name_ok'||n==='call_ok')args[0]=views.record('struct obj',args[0]);const result=withCEnvironment(naming,fn,...args);return typeof result==='string'?S.literal(result):result;}])),naming);
  }
  if(only.includes('music')&&!environment.hasFunction('is_moat'))environment.extend('world-water-terrain',{is_moat});
  if(only.includes('music')&&!environment.hasFunction('fillholetyp')){
-  const digging=Object.create(environment.start('level-unearthing').environment),S=environment.services;digging.rn2=(n,line,caller)=>{if(S.rng_log_enabled())S.rng_log_set_caller(S.literal('dig.c'),line,S.literal(caller));return S.rn2(n);};digging.intdiv=(a,b)=>Math.trunc(a/b);environment.register('special-liquid-fill',{fillholetyp},digging);
+  const digging=Object.create(environment.start('level-unearthing').environment),S=environment.services;digging.rn2=(n,line,caller)=>{if(S.rng_log_enabled())recordNativeRngCaller(S,'dig.c',line,caller);return S.rn2(n);};digging.intdiv=(a,b)=>Math.trunc(a/b);environment.register('special-liquid-fill',{fillholetyp},digging);
  }
  if(only.includes('utf8map')){enableUtf8map(environment,layouts);only=only.filter(name=>name!=='utf8map');}
  if(only.includes('fountain')&&!environment.hasFunction('nexttodoor'))environment.register('special-room-queries',{nexttodoor},environment.start('room-queries').environment);
@@ -92,7 +93,7 @@ export function enableSpecialInteractions(environment,layouts,{only=['rumors','f
   const eq=i=>equipment[i]?address(ctypes.load('struct obj *',environment.requireGlobal(equipment[i]))):0;
   const record={services:null,state:null,exports:[],call:null};
   const callback=(name,sig)=>environment.functionPointer(port+'::'+name,sig,(...args)=>record.call(name,...args));
-  const log=(kind,args)=>{const values=[...args],index=kind==='d'?2:1,line=values[index],caller=values[index+1]??0,name=metadata.callers[caller];if(!name)throw new Error('Unknown '+port+' RNG caller '+caller);if(S.rng_log_enabled())S.rng_log_set_caller(S.literal(port+'.c'),line,S.literal(name));return call(kind,...values.slice(0,index));};
+  const log=(kind,args)=>{const values=[...args],index=kind==='d'?2:1,line=values[index],caller=values[index+1]??0,name=metadata.callers[caller];if(!name)throw new Error('Unknown '+port+' RNG caller '+caller);if(S.rng_log_enabled())recordNativeRngCaller(S,port+'.c',line,name);return call(kind,...values.slice(0,index));};
   const helpers={
    global:i=>{const name=metadata.globals[i];if(!name)throw new Error('Unknown '+port+' global '+i);return name==='0'?0:environment.requireGlobal(name);},
    object_bit:(p,i)=>bit('struct obj',p,objectBits[port]?.[i]),set_object_bit:(p,i,v)=>setBit('struct obj',p,objectBits[port]?.[i],v),

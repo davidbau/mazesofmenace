@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original QUEST decisions, one live native-shaped context over shared game state.
 import abi from './quest-abi.json' with {type:'json'};
 import * as source from '../ported/quest.js';
@@ -16,7 +17,7 @@ export function enableQuest(environment,layouts){
   heroBit:index=>packed('hero',environment.requireGlobal('u'),index),setHeroBit:(index,value)=>packed('hero',environment.requireGlobal('u'),index,value),
   monsterBit:(mon,index)=>packed('monster',address(mon),index),setMonsterBit:(mon,index,value)=>packed('monster',address(mon),index,value),
   trapType:trap=>ctypes.getField('struct trap',address(trap),'ttyp','unsigned int'),
-  rn2:(bound,line)=>{if(line!==undefined&&services.rng_log_enabled())services.rng_log_set_caller(services.literal(abi.rng.file),line,services.literal(abi.rng.function));return resolve('rn2')(transport.int(bound));},
+  rn2:(bound,line)=>{if(line!==undefined&&services.rng_log_enabled())recordNativeRngCaller(services,abi.rng.file,line,abi.rng.function);return resolve('rn2')(transport.int(bound));},
   yn_function:(query,choices,initial,history)=>resolve('yn_function')(...boundary([query,choices]),transport.char(typeof initial==='string'?initial.charCodeAt(0):initial),transport.char(history)),
   exercise:(attribute,positive)=>resolve('exercise')(transport.int(attribute),transport.char(positive)),
   align_str:alignment=>resolve('align_str')(transport.char(alignment)),

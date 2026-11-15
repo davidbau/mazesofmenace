@@ -275,8 +275,8 @@ function finddpos(cc,dir,aroom)
     gotit: {
         /* try random points */
         do {
-            (x.value=C.i16(((C.i32((C.i32(x2)-C.i32(x1))))?(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),185,(C.literal("finddpos"))),C.rn2(C.i32((C.i32((C.i32(x2)-C.i32(x1)))+1))))):C.rn2(C.i32((C.i32((C.i32(x2)-C.i32(x1)))+1)))))+C.i32((x1))))):C.i32(x1))));
-            (y.value=C.i16(((C.i32((C.i32(y2)-C.i32(y1))))?(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),186,(C.literal("finddpos"))),C.rn2(C.i32((C.i32((C.i32(y2)-C.i32(y1)))+1))))):C.rn2(C.i32((C.i32((C.i32(y2)-C.i32(y1)))+1)))))+C.i32((y1))))):C.i32(y1))));
+            (x.value=C.i16(((C.i32((C.i32(x2)-C.i32(x1))))?(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",185,"finddpos"),C.rn2(C.i32((C.i32((C.i32(x2)-C.i32(x1)))+1))))):C.rn2(C.i32((C.i32((C.i32(x2)-C.i32(x1)))+1)))))+C.i32((x1))))):C.i32(x1))));
+            (y.value=C.i16(((C.i32((C.i32(y2)-C.i32(y1))))?(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",186,"finddpos"),C.rn2(C.i32((C.i32((C.i32(y2)-C.i32(y1)))+1))))):C.rn2(C.i32((C.i32((C.i32(y2)-C.i32(y1)))+1)))))+C.i32((y1))))):C.i32(y1))));
             if(finddpos_shift(x.address,y.address,dir,aroom)) break gotit; /* original goto gotit */
         } while(Number((tryct=C.i32((tryct+1)))<20));
         /* try all the points */
@@ -484,7 +484,7 @@ function makerooms()
     /* make rooms until satisfied */
     /* rnd_rect() will returns 0 if no more rects are available... */
     while(Number(!!(Number(R54(C.svn)<(C.i32((40-1))))&&C.rnd_rect()))) {
-        if(Number(!!(Number(!!(Number(R54(C.svn)>=(C.i32(Math.trunc((40/6)))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),404,(C.literal("makerooms"))),C.rn2(2))):C.rn2(2)))))&&Number(!(tried_vault))))) {
+        if(Number(!!(Number(!!(Number(R54(C.svn)>=(C.i32(Math.trunc((40/6)))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",404,"makerooms"),C.rn2(2))):C.rn2(2)))))&&Number(!(tried_vault))))) {
             (tried_vault=(C.i8(1)));
             if(C.create_room(C.i16(C.i32((-1))),C.i16(C.i32((-1))),C.i16(2),C.i16(2),C.i16(C.i32((-1))),C.i16(C.i32((-1))),C.i16(C.VAULT),C.i16((C.i8(1))))) {
                 (W58(C.gv,R97(A55(C.svr)+Number(R54(C.svn))*C.sizes["struct mkroom"])));
@@ -583,7 +583,7 @@ function makecorridors()
     let any=(C.i8(1));
     for((a=0);Number(a<C.i32((R54(C.svn)-1)));((a=C.i32((a+1)))-1)) {
         join(a,C.i32((a+1)),(C.i8(0)));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),529,(C.literal("makecorridors"))),C.rn2(50))):C.rn2(50)))))) break;
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",529,"makecorridors"),C.rn2(50))):C.rn2(50)))))) break;
         /* allow some randomness */
     }
     for((a=0);Number(a<C.i32((R54(C.svn)-2)));((a=C.i32((a+1)))-1)) if(Number(C.cell((A44(C.gs)+Number(a)*4),"int").value!=C.cell((A44(C.gs)+Number(C.i32((a+2)))*4),"int").value)) join(a,C.i32((a+2)),(C.i8(0)));
@@ -597,9 +597,9 @@ function makecorridors()
 
     }
     /* add some extra corridors which may be blocked off */
-    if(Number(R54(C.svn)>2)) for((i=C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),545,(C.literal("makecorridors"))),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn))))+4)));i;((i=C.i32((i-1)))+1)) {
-        (a=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),546,(C.literal("makecorridors"))),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn)))));
-        (b=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),547,(C.literal("makecorridors"))),C.rn2(C.i32((R54(C.svn)-2))))):C.rn2(C.i32((R54(C.svn)-2))))));
+    if(Number(R54(C.svn)>2)) for((i=C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",545,"makecorridors"),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn))))+4)));i;((i=C.i32((i-1)))+1)) {
+        (a=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",546,"makecorridors"),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn)))));
+        (b=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",547,"makecorridors"),C.rn2(C.i32((R54(C.svn)-2))))):C.rn2(C.i32((R54(C.svn)-2))))));
         if(Number(b>=a)) (b=C.i32(b+2));
         join(a,b,(C.i8(1)));
     }
@@ -664,12 +664,12 @@ function dosdoor(x,y,aroom,type)
     /* avoid S.doors on already made doors */
     (W132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(type)));
     if(Number(type==C.DOOR)) {
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),623,(C.literal("dosdoor"))),C.rn2(3))):C.rn2(3)))))) {
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",623,"dosdoor"),C.rn2(3))):C.rn2(3)))))) {
             /* is it a locked door, closed, or a doorway? */
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),624,(C.literal("dosdoor"))),C.rn2(5))):C.rn2(5)))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(2)));
- else if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),626,(C.literal("dosdoor"))),C.rn2(6))):C.rn2(6)))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(8)));
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",624,"dosdoor"),C.rn2(5))):C.rn2(5)))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(2)));
+ else if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",626,"dosdoor"),C.rn2(6))):C.rn2(6)))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(8)));
  else (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(4)));
-            if(Number(!!(Number(!!(Number(!!(Number(C.i32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))!=2)&&Number(!(shdoor))))&&Number(C.i32(C.level_difficulty())>=5)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),632,(C.literal("dosdoor"))),C.rn2(25))):C.rn2(25)))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])|16)));
+            if(Number(!!(Number(!!(Number(!!(Number(C.i32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))!=2)&&Number(!(shdoor))))&&Number(C.i32(C.level_difficulty())>=5)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",632,"dosdoor"),C.rn2(25))):C.rn2(25)))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])|16)));
         } else {
             (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(((C.i32(shdoor)?2:0)))));
         }
@@ -678,7 +678,7 @@ function dosdoor(x,y,aroom,type)
         if(((Number(!!((Number(!!(C.i32(R7(A9(A47(C.svd))))||C.i32(R6(A9(A47(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A9(A47(C.svd))))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(0)));
         if(C.i32((C.i32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))&16))) {
             let mtmp;
-            if(Number(!!(Number(!!(Number(C.i32(C.level_difficulty())>=9)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),653,(C.literal("dosdoor"))),C.rn2(5))):C.rn2(5)))))))&&Number(!((Number(!!(Number(!!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_SMALL_MIMIC)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))&&(C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_LARGE_MIMIC)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))&&(C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_GIANT_MIMIC)*C.sizes["struct mvitals"]))&(C.i32((2|1)))))))))))))) {
+            if(Number(!!(Number(!!(Number(C.i32(C.level_difficulty())>=9)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",653,"dosdoor"),C.rn2(5))):C.rn2(5)))))))&&Number(!((Number(!!(Number(!!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_SMALL_MIMIC)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))&&(C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_LARGE_MIMIC)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))&&(C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_GIANT_MIMIC)*C.sizes["struct mvitals"]))&(C.i32((2|1)))))))))))))) {
                 /* make a mimic instead */
                 (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(0)));
                 (mtmp=C.makemon(C.mkclass(C.i8(C.S_MIMIC),0),x,y,C.u32(0n)));
@@ -688,9 +688,9 @@ function dosdoor(x,y,aroom,type)
         /* newsym(x,y); */
     } else {
         /* SDOOR */
-        if(Number(!!(C.i32(shdoor)||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),666,(C.literal("dosdoor"))),C.rn2(5))):C.rn2(5)))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(8)));
+        if(Number(!!(C.i32(shdoor)||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",666,"dosdoor"),C.rn2(5))):C.rn2(5)))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(8)));
  else (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(4)));
-        if(Number(!!(Number(!!(Number(!(shdoor))&&Number(C.i32(C.level_difficulty())>=4)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),671,(C.literal("dosdoor"))),C.rn2(20))):C.rn2(20)))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])|16)));
+        if(Number(!!(Number(!!(Number(!(shdoor))&&Number(C.i32(C.level_difficulty())>=4)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",671,"dosdoor"),C.rn2(20))):C.rn2(20)))))))) (W134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.u32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"])|16)));
     }
     add_door(x,y,aroom);
 }
@@ -719,7 +719,7 @@ function place_niche(aroom,dy,xx,yy)
     const stackFrame=C.stackSave();
     try {
     let dd=C.stackAlloc(C.sizes["struct nhcoord"]);
-    if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),708,(C.literal("place_niche"))),C.rn2(2))):C.rn2(2)))) {
+    if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",708,"place_niche"),C.rn2(2))):C.rn2(2)))) {
         (C.cell(dy,"int").value=1);
         if(Number(!(finddpos(dd,C.DIR_S,aroom)))) return (C.i8(0));
     } else {
@@ -746,13 +746,13 @@ function makeniche(trap_type)
     let xx=C.local("short",0); let yy=C.local("short",0);
     let ttmp;
     while(((vct=C.i32((vct-1)))+1)) {
-        (aroom=(A55(C.svr)+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),749,(C.literal("makeniche"))),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn)))))*C.sizes["struct mkroom"]));
+        (aroom=(A55(C.svr)+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",749,"makeniche"),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn)))))*C.sizes["struct mkroom"]));
         if(Number(C.i32(R101(aroom))!=C.OROOM)) continue;
         /* not an ordinary room */
-        if(Number(!!(Number(C.i32(R106(aroom))==1)&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),752,(C.literal("makeniche"))),C.rn2(5))):C.rn2(5)))))) continue;
+        if(Number(!!(Number(C.i32(R106(aroom))==1)&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",752,"makeniche"),C.rn2(5))):C.rn2(5)))))) continue;
         if(Number(!(place_niche(aroom,dy.address,xx.address,yy.address)))) continue;
         (rm=((A17(A51(C.svl))+Number(xx.value)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(yy.value)+dy.value)))*C.sizes["struct rm"]));
-        if(Number(!!(trap_type||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),758,(C.literal("makeniche"))),C.rn2(4))):C.rn2(4)))))))) {
+        if(Number(!!(trap_type||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",758,"makeniche"),C.rn2(4))):C.rn2(4)))))))) {
             (W132(rm,C.i8(C.SCORR)));
             if(trap_type) {
                 if(Number(!!((Number(!!(Number((trap_type)==C.HOLE)||Number((trap_type)==C.TRAPDOOR))))&&Number(!(C.Can_fall_thru(A158(C.u))))))) (trap_type=C.ROCKTRAP);
@@ -769,16 +769,16 @@ function makeniche(trap_type)
             dosdoor(xx.value,yy.value,aroom,C.SDOOR);
         } else {
             (W132(rm,C.i8(C.CORR)));
-            if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),779,(C.literal("makeniche"))),C.rn2(7))):C.rn2(7)))) {
-                dosdoor(xx.value,yy.value,aroom,(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),780,(C.literal("makeniche"))),C.rn2(5))):C.rn2(5)))?C.SDOOR:C.DOOR));
+            if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",779,"makeniche"),C.rn2(7))):C.rn2(7)))) {
+                dosdoor(xx.value,yy.value,aroom,(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",780,"makeniche"),C.rn2(5))):C.rn2(5)))?C.SDOOR:C.DOOR));
             } else {
                 /* inaccessible niches occasionally have iron bars */
-                if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),783,(C.literal("makeniche"))),C.rn2(5))):C.rn2(5)))))&&(Number(!!(C.i32((R132((A17(A51(C.svl))+Number(xx.value)*(C.sizes["struct rm"]*21))+Number(yy.value)*C.sizes["struct rm"])))&&Number(C.i32((R132((A17(A51(C.svl))+Number(xx.value)*(C.sizes["struct rm"]*21))+Number(yy.value)*C.sizes["struct rm"])))<=C.DBWALL))))))) {
+                if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",783,"makeniche"),C.rn2(5))):C.rn2(5)))))&&(Number(!!(C.i32((R132((A17(A51(C.svl))+Number(xx.value)*(C.sizes["struct rm"]*21))+Number(yy.value)*C.sizes["struct rm"])))&&Number(C.i32((R132((A17(A51(C.svl))+Number(xx.value)*(C.sizes["struct rm"]*21))+Number(yy.value)*C.sizes["struct rm"])))<=C.DBWALL))))))) {
                     C.set_levltyp(xx.value,yy.value,C.i8(C.IRONBARS));
-                    if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),785,(C.literal("makeniche"))),C.rn2(3))):C.rn2(3)))) C.mkcorpstat(C.CORPSE,0,C.mkclass(C.i8(C.S_HUMAN),0),xx.value,C.i16(C.i32((C.i32(yy.value)+dy.value))),C.u32((C.i8(1))));
+                    if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",785,"makeniche"),C.rn2(3))):C.rn2(3)))) C.mkcorpstat(C.CORPSE,0,C.mkclass(C.i8(C.S_HUMAN),0),xx.value,C.i16(C.i32((C.i32(yy.value)+dy.value))),C.u32((C.i8(1))));
                 }
                 if(Number(!(R77(A25(A51(C.svl)))))) C.mksobj_at(C.SCR_TELEPORTATION,xx.value,C.i16(C.i32((C.i32(yy.value)+dy.value))),(C.i8(1)),(C.i8(0)));
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),793,(C.literal("makeniche"))),C.rn2(3))):C.rn2(3)))))) C.mkobj_at(C.i8(C.RANDOM_CLASS),xx.value,C.i16(C.i32((C.i32(yy.value)+dy.value))),(C.i8(1)));
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",793,"makeniche"),C.rn2(3))):C.rn2(3)))))) C.mkobj_at(C.i8(C.RANDOM_CLASS),xx.value,C.i16(C.i32((C.i32(yy.value)+dy.value))),(C.i8(1)));
             }
         }
         return;
@@ -788,13 +788,13 @@ function makeniche(trap_type)
 
 function make_niches()
 {
-    let ct=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),804,(C.literal("make_niches"))),C.rnd(C.i32(((C.i32((R54(C.svn)>>1)))+1))))):C.rnd(C.i32(((C.i32((R54(C.svn)>>1)))+1))))); let dep=C.i32(C.depth(A158(C.u)));
+    let ct=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",804,"make_niches"),C.rnd(C.i32(((C.i32((R54(C.svn)>>1)))+1))))):C.rnd(C.i32(((C.i32((R54(C.svn)>>1)))+1))))); let dep=C.i32(C.depth(A158(C.u)));
     let ltptr=C.i8((Number(!!(Number(!(R77(A25(A51(C.svl)))))&&Number(dep>15))))); let vamp=C.i8((Number(!!(Number(dep>5)&&Number(dep<25)))));
     while(((ct=C.i32((ct-1)))+1)) {
-        if(Number(!!(C.i32(ltptr)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),809,(C.literal("make_niches"))),C.rn2(6))):C.rn2(6)))))))) {
+        if(Number(!!(C.i32(ltptr)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",809,"make_niches"),C.rn2(6))):C.rn2(6)))))))) {
             (ltptr=(C.i8(0)));
             makeniche(C.LEVEL_TELEP);
-        } else if(Number(!!(C.i32(vamp)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),812,(C.literal("make_niches"))),C.rn2(6))):C.rn2(6)))))))) {
+        } else if(Number(!!(C.i32(vamp)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",812,"make_niches"),C.rn2(6))):C.rn2(6)))))))) {
             (vamp=(C.i8(0)));
             makeniche(C.TRAPDOOR);
         } else makeniche(C.NO_TRAP);
@@ -934,26 +934,26 @@ function fill_ordinary_room(croom,bonus_items)
        avoided: maybe the player fell through a trap door
        while a monster was on the stairs. Conclusion:
        we have to check for monsters on the stairs anyway. */
-    if(Number(!!((Number(!!(C.i32(R153(A162(C.u)))||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),974,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3))))))))&&C.i32(C.somexyspace(croom,pos))))) {
+    if(Number(!!((Number(!!(C.i32(R153(A162(C.u)))||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",974,"fill_ordinary_room"),C.rn2(3))):C.rn2(3))))))))&&C.i32(C.somexyspace(croom,pos))))) {
         (tmonst=C.makemon(0,R115(pos),R116(pos),C.u32(8192n)));
         if(Number(!!(Number(!!(tmonst&&Number(R112(tmonst)==(C.mons+Number(C.PM_GIANT_SPIDER)*C.sizes["struct permonst"]))))&&Number(!(occupied(R115(pos),R116(pos))))))) C.maketrap(R115(pos),R116(pos),C.WEB);
     }
     /* put traps and mimics inside */
     (x=C.i16(C.i32((8-(C.i32(Math.trunc((C.i32(C.level_difficulty())/6))))))));
     if(Number(C.i32(x)<=1)) (x=C.i16(2));
-    while(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),984,(C.literal("fill_ordinary_room"))),C.rn2(C.i32(x)))):C.rn2(C.i32(x))))))&&(Number((trycnt=C.i32((trycnt+1)))<1000))))) mktrap(0,0,croom,0);
+    while(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",984,"fill_ordinary_room"),C.rn2(C.i32(x)))):C.rn2(C.i32(x))))))&&(Number((trycnt=C.i32((trycnt+1)))<1000))))) mktrap(0,0,croom,0);
 
-    if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),986,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3)))))&&C.i32(C.somexyspace(croom,pos))))) C.mkgold(0n,R115(pos),R116(pos));
+    if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",986,"fill_ordinary_room"),C.rn2(3))):C.rn2(3)))))&&C.i32(C.somexyspace(croom,pos))))) C.mkgold(0n,R115(pos),R116(pos));
     skip_nonrogue: {
         if(((Number(!!((Number(!!(C.i32(R7(A9(A47(C.svd))))||C.i32(R6(A9(A47(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A9(A47(C.svd))))))))) break skip_nonrogue; /* original goto skip_nonrogue */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),990,(C.literal("fill_ordinary_room"))),C.rn2(10))):C.rn2(10)))))) mkfount(croom);
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),992,(C.literal("fill_ordinary_room"))),C.rn2(60))):C.rn2(60)))))) mksink(croom);
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),994,(C.literal("fill_ordinary_room"))),C.rn2(60))):C.rn2(60)))))) mkaltar(croom);
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",990,"fill_ordinary_room"),C.rn2(10))):C.rn2(10)))))) mkfount(croom);
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",992,"fill_ordinary_room"),C.rn2(60))):C.rn2(60)))))) mksink(croom);
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",994,"fill_ordinary_room"),C.rn2(60))):C.rn2(60)))))) mkaltar(croom);
         (x=C.i16(C.i32((80-(C.i32((C.i32(C.depth(A158(C.u)))*2)))))));
         if(Number(C.i32(x)<2)) (x=C.i16(2));
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),999,(C.literal("fill_ordinary_room"))),C.rn2(C.i32(x)))):C.rn2(C.i32(x))))))) mkgrave(croom);
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",999,"fill_ordinary_room"),C.rn2(C.i32(x)))):C.rn2(C.i32(x))))))) mkgrave(croom);
         /* put statues inside */
-        if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1003,(C.literal("fill_ordinary_room"))),C.rn2(20))):C.rn2(20)))))&&C.i32(C.somexyspace(croom,pos))))) C.mkcorpstat(C.STATUE,0,0,R115(pos),R116(pos),C.u32(8));
+        if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1003,"fill_ordinary_room"),C.rn2(20))):C.rn2(20)))))&&C.i32(C.somexyspace(croom,pos))))) C.mkcorpstat(C.STATUE,0,0,R115(pos),R116(pos),C.u32(8));
         /*
      * bonus_items means that this is the room where the bonus item
      * should be placed, if there is one; but there might not be a
@@ -975,22 +975,22 @@ function fill_ordinary_room(croom,bonus_items)
         if(Number(!!(C.i32(bonus_items)&&C.i32(C.somexyspace(croom,pos))))) {
             let uz_branch=C.Is_branchlev(A158(C.u));
             if(Number(!!(Number(!!(uz_branch&&Number(C.i32(R6(A158(C.u)))!=C.i32((R14(A47(C.svd)))))))&&(Number(!!(Number(C.i32(R6(A2(uz_branch)))==C.i32((R14(A47(C.svd)))))||Number(C.i32(R6(A3(uz_branch)))==C.i32((R14(A47(C.svd))))))))))) {
-                C.mksobj_at(((Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1032,(C.literal("fill_ordinary_room"))),C.rn2(5))):C.rn2(5)))<3))?C.FOOD_RATION:(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1033,(C.literal("fill_ordinary_room"))),C.rn2(2))):C.rn2(2)))?C.CRAM_RATION:C.LEMBAS_WAFER)),R115(pos),R116(pos),(C.i8(1)),(C.i8(0)));
-            } else if(Number(!!(Number(!!(Number(C.i32(R6(A158(C.u)))==C.i32(R6(A8(A47(C.svd)))))&&Number(C.i32(R7(A158(C.u)))<C.i32(R7(A8(A47(C.svd)))))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1037,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3)))))) {
+                C.mksobj_at(((Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1032,"fill_ordinary_room"),C.rn2(5))):C.rn2(5)))<3))?C.FOOD_RATION:(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1033,"fill_ordinary_room"),C.rn2(2))):C.rn2(2)))?C.CRAM_RATION:C.LEMBAS_WAFER)),R115(pos),R116(pos),(C.i8(1)),(C.i8(0)));
+            } else if(Number(!!(Number(!!(Number(C.i32(R6(A158(C.u)))==C.i32(R6(A8(A47(C.svd)))))&&Number(C.i32(R7(A158(C.u)))<C.i32(R7(A8(A47(C.svd)))))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1037,"fill_ordinary_room"),C.rn2(3))):C.rn2(3)))))) {
                 let otmp;
                 let otyp; let tryct=0;
                 let cursed;
                 /* reverse probabilities compared to non-supply chests;
                these are twice as likely to be chests than large
                boxes, rather than vice versa */
-                let supply_chest=C.mksobj_at((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1044,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3)))?C.CHEST:C.LARGE_BOX),R115(pos),R116(pos),(C.i8(0)),(C.i8(0)));
-                (W127(supply_chest,C.u32(Number(!(Number(!((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1047,(C.literal("fill_ordinary_room"))),C.rn2(6))):C.rn2(6)))))))))));
+                let supply_chest=C.mksobj_at((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1044,"fill_ordinary_room"),C.rn2(3))):C.rn2(3)))?C.CHEST:C.LARGE_BOX),R115(pos),R116(pos),(C.i8(0)),(C.i8(0)));
+                (W127(supply_chest,C.u32(Number(!(Number(!((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1047,"fill_ordinary_room"),C.rn2(6))):C.rn2(6)))))))))));
                 do {
                     
                     /* 50% this is a potion of healing */
-                    (otyp=(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1063,(C.literal("fill_ordinary_room"))),C.rn2(2))):C.rn2(2)))?C.POT_HEALING:C.cell((C.staticAddress("supply_items")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1063,(C.literal("fill_ordinary_room"))),C.rn2(C.i32((C.u64((BigInt((4*9))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*9))/BigInt(4)))))))))*4),"int").value));
+                    (otyp=(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1063,"fill_ordinary_room"),C.rn2(2))):C.rn2(2)))?C.POT_HEALING:C.cell((C.staticAddress("supply_items")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1063,"fill_ordinary_room"),C.rn2(C.i32((C.u64((BigInt((4*9))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*9))/BigInt(4)))))))))*4),"int").value));
                     (otmp=C.mksobj(otyp,(C.i8(1)),(C.i8(0))));
-                    if(Number(!!(Number(otyp==C.POT_HEALING)&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1065,(C.literal("fill_ordinary_room"))),C.rn2(2))):C.rn2(2)))))) {
+                    if(Number(!!(Number(otyp==C.POT_HEALING)&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1065,"fill_ordinary_room"),C.rn2(2))):C.rn2(2)))))) {
                         (W125(otmp,C.i64(2)));
                         (W124(otmp,C.u32(C.weight(otmp))));
                     }
@@ -1006,13 +1006,13 @@ function fill_ordinary_room(croom,bonus_items)
                    probability of more; if we generate a cursed item, it's
                    added to the supply chest but we reroll for a noncursed
                    item and add that too */
-                } while(Number(!!(C.i32(cursed)||Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1081,(C.literal("fill_ordinary_room"))),C.rn2(5))):C.rn2(5))))))));
+                } while(Number(!!(C.i32(cursed)||Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1081,"fill_ordinary_room"),C.rn2(5))):C.rn2(5))))))));
                 /* maybe put a random item into the supply chest, biased
                slightly towards low-level spellbooks; avoid tools
                because chests don't fit into other chests */
-                if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1086,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3)))) {
+                if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1086,"fill_ordinary_room"),C.rn2(3))):C.rn2(3)))) {
                     
-                    let oclass=C.cell((C.staticAddress("extra_classes")+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1099,(C.literal("fill_ordinary_room"))),C.rn2(C.i32((C.u64((BigInt((4*10))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*10))/BigInt(4)))))))))*4),"int").value;
+                    let oclass=C.cell((C.staticAddress("extra_classes")+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1099,"fill_ordinary_room"),C.rn2(C.i32((C.u64((BigInt((4*10))/BigInt(4)))))))):C.rn2(C.i32((C.u64((BigInt((4*10))/BigInt(4)))))))))*4),"int").value;
                     (otmp=C.mkobj(oclass,(C.i8(0))));
                     if(Number(oclass==(C.i32((0-C.SPBOOK_CLASS))))) {
                         let pass; let maxpass=((Number(C.i32(C.depth(A158(C.u)))>2))?2:3);
@@ -1044,9 +1044,9 @@ function fill_ordinary_room(croom,bonus_items)
      *  when few rooms; chance for 3 or more is negligible.
      */
         /*assert(svn.nroom > 0); // must be true because we're filling a room*/
-        if(Number(!!(Number(!!(Number(!(skip_chests))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1137,(C.literal("fill_ordinary_room"))),C.rn2(C.i32(Math.trunc((C.i32((R54(C.svn)*5))/2)))))):C.rn2(C.i32(Math.trunc((C.i32((R54(C.svn)*5))/2))))))))))&&C.i32(C.somexyspace(croom,pos))))) C.mksobj_at((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1138,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3)))?C.LARGE_BOX:C.CHEST),R115(pos),R116(pos),(C.i8(1)),(C.i8(0)));
+        if(Number(!!(Number(!!(Number(!(skip_chests))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1137,"fill_ordinary_room"),C.rn2(C.i32(Math.trunc((C.i32((R54(C.svn)*5))/2)))))):C.rn2(C.i32(Math.trunc((C.i32((R54(C.svn)*5))/2))))))))))&&C.i32(C.somexyspace(croom,pos))))) C.mksobj_at((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1138,"fill_ordinary_room"),C.rn2(3))):C.rn2(3)))?C.LARGE_BOX:C.CHEST),R115(pos),R116(pos),(C.i8(1)),(C.i8(0)));
         /* maybe make some graffiti */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1142,(C.literal("fill_ordinary_room"))),C.rn2(C.i32((27+C.i32((3*C.abs(C.i32(C.depth(A158(C.u))))))))))):C.rn2(C.i32((27+C.i32((3*C.abs(C.i32(C.depth(A158(C.u)))))))))))))) {
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1142,"fill_ordinary_room"),C.rn2(C.i32((27+C.i32((3*C.abs(C.i32(C.depth(A158(C.u))))))))))):C.rn2(C.i32((27+C.i32((3*C.abs(C.i32(C.depth(A158(C.u)))))))))))))) {
             let buf=C.stackAlloc((1*256)); let pristinebuf=C.stackAlloc((1*256));
             let mesg=C.random_engraving(buf,pristinebuf);
             if(mesg) {
@@ -1054,15 +1054,15 @@ function fill_ordinary_room(croom,bonus_items)
                     C.somexyspace(croom,pos);
                     (x=R115(pos));
                     (y=R116(pos));
-                } while(Number(!!(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))!=C.ROOM)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1151,(C.literal("fill_ordinary_room"))),C.rn2(40))):C.rn2(40))))))));
+                } while(Number(!!(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))!=C.ROOM)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1151,"fill_ordinary_room"),C.rn2(40))):C.rn2(40))))))));
                 if(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.ROOM)) C.make_engr_at(x,y,mesg,pristinebuf,0n,4);
             }
         }
     }
-    if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1158,(C.literal("fill_ordinary_room"))),C.rn2(3))):C.rn2(3)))))&&C.i32(C.somexyspace(croom,pos))))) {
+    if(Number(!!(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1158,"fill_ordinary_room"),C.rn2(3))):C.rn2(3)))))&&C.i32(C.somexyspace(croom,pos))))) {
         C.mkobj_at(C.i8(C.RANDOM_CLASS),R115(pos),R116(pos),(C.i8(1)));
         (trycnt=0);
-        while(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1161,(C.literal("fill_ordinary_room"))),C.rn2(5))):C.rn2(5)))))) {
+        while(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1161,"fill_ordinary_room"),C.rn2(5))):C.rn2(5)))))) {
             if(Number((trycnt=C.i32((trycnt+1)))>100)) {
                 C.variadic(6,C.literal("trycnt overflow4"));
                 break;
@@ -1162,7 +1162,7 @@ function makelevel()
         C.variadic(12,fillname,C.literal("%s-fil"),R0(A57(C.gu)));
         C.strcat(fillname,((Number(C.i32(R7(A158(C.u)))<C.i32(R7(A141(loc_lev)))))?C.literal("a"):C.literal("b")));
         C.makemaz(fillname);
-    } else if(Number(!!(C.i32(C.In_hell(A158(C.u)))||(Number(!!(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1287,(C.literal("makelevel"))),C.rn2(5))):C.rn2(5)))&&Number(C.i32(R6(A158(C.u)))==C.i32(R6(A10(A47(C.svd)))))))&&Number(C.i32(C.depth(A158(C.u)))>C.i32(C.depth(A10(A47(C.svd))))))))))) {
+    } else if(Number(!!(C.i32(C.In_hell(A158(C.u)))||(Number(!!(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1287,"makelevel"),C.rn2(5))):C.rn2(5)))&&Number(C.i32(R6(A158(C.u)))==C.i32(R6(A10(A47(C.svd)))))))&&Number(C.i32(C.depth(A158(C.u)))>C.i32(C.depth(A10(A47(C.svd))))))))))) {
         C.makemaz(C.literal(""));
     } else {
         /* otherwise, fall through - it's a "regular" level. */
@@ -1216,24 +1216,24 @@ function makelevel()
                     (W104(A55(C.svr)+Number(C.i32((R54(C.svn)-1)))*C.sizes["struct mkroom"],C.i8(1)));
                     C.fill_special_room((A55(C.svr)+Number(C.i32((R54(C.svn)-1)))*C.sizes["struct mkroom"]));
                     mk_knox_portal(C.i16(C.i32((C.i32(R58(C.gv))+C.i32(w.value)))),C.i16(C.i32((C.i32(R59(C.gv))+C.i32(h.value)))));
-                    if(Number(!!(Number(!(R77(A25(A51(C.svl)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1332,(C.literal("makelevel"))),C.rn2(3))):C.rn2(3)))))))) makevtele();
+                    if(Number(!!(Number(!(R77(A25(A51(C.svl)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1332,"makelevel"),C.rn2(3))):C.rn2(3)))))))) makevtele();
                 }
             }
             /* make up to 1 special room, with type dependent on depth;
            note that mkroom doesn't guarantee a room gets created, and that
            this step only sets the room's rtype - it doesn't fill it yet. */
             if(Number(!!(C.i32(R29(C.flags))&&C.nh_getenv(C.literal("SHOPTYPE"))))) C.do_mkroom(C.SHOPBASE);
- else if(Number(!!(Number(!!(Number(!!(Number(u_depth>1)&&Number(u_depth<C.i32(C.depth(A10(A47(C.svd)))))))&&Number(R54(C.svn)>=room_threshold)))&&Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1350,(C.literal("makelevel"))),C.rn2(u_depth))):C.rn2(u_depth)))<3)))) C.do_mkroom(C.SHOPBASE);
- else if(Number(!!(Number(u_depth>4)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1352,(C.literal("makelevel"))),C.rn2(6))):C.rn2(6)))))))) C.do_mkroom(C.COURT);
- else if(Number(!!(Number(!!(Number(u_depth>5)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1354,(C.literal("makelevel"))),C.rn2(8))):C.rn2(8)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_LEPRECHAUN)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.LEPREHALL);
- else if(Number(!!(Number(u_depth>6)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1357,(C.literal("makelevel"))),C.rn2(7))):C.rn2(7)))))))) C.do_mkroom(C.ZOO);
- else if(Number(!!(Number(u_depth>8)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1359,(C.literal("makelevel"))),C.rn2(5))):C.rn2(5)))))))) C.do_mkroom(C.TEMPLE);
- else if(Number(!!(Number(!!(Number(u_depth>9)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1361,(C.literal("makelevel"))),C.rn2(5))):C.rn2(5)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_KILLER_BEE)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.BEEHIVE);
- else if(Number(!!(Number(u_depth>11)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1364,(C.literal("makelevel"))),C.rn2(6))):C.rn2(6)))))))) C.do_mkroom(C.MORGUE);
- else if(Number(!!(Number(!!(Number(u_depth>12)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1366,(C.literal("makelevel"))),C.rn2(8))):C.rn2(8)))))))&&C.antholemon()))) C.do_mkroom(C.ANTHOLE);
- else if(Number(!!(Number(!!(Number(u_depth>14)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1368,(C.literal("makelevel"))),C.rn2(4))):C.rn2(4)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_SOLDIER)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.BARRACKS);
- else if(Number(!!(Number(u_depth>15)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1371,(C.literal("makelevel"))),C.rn2(6))):C.rn2(6)))))))) C.do_mkroom(C.SWAMP);
- else if(Number(!!(Number(!!(Number(u_depth>16)&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1373,(C.literal("makelevel"))),C.rn2(8))):C.rn2(8)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_COCKATRICE)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.COCKNEST);
+ else if(Number(!!(Number(!!(Number(!!(Number(u_depth>1)&&Number(u_depth<C.i32(C.depth(A10(A47(C.svd)))))))&&Number(R54(C.svn)>=room_threshold)))&&Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1350,"makelevel"),C.rn2(u_depth))):C.rn2(u_depth)))<3)))) C.do_mkroom(C.SHOPBASE);
+ else if(Number(!!(Number(u_depth>4)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1352,"makelevel"),C.rn2(6))):C.rn2(6)))))))) C.do_mkroom(C.COURT);
+ else if(Number(!!(Number(!!(Number(u_depth>5)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1354,"makelevel"),C.rn2(8))):C.rn2(8)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_LEPRECHAUN)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.LEPREHALL);
+ else if(Number(!!(Number(u_depth>6)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1357,"makelevel"),C.rn2(7))):C.rn2(7)))))))) C.do_mkroom(C.ZOO);
+ else if(Number(!!(Number(u_depth>8)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1359,"makelevel"),C.rn2(5))):C.rn2(5)))))))) C.do_mkroom(C.TEMPLE);
+ else if(Number(!!(Number(!!(Number(u_depth>9)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1361,"makelevel"),C.rn2(5))):C.rn2(5)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_KILLER_BEE)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.BEEHIVE);
+ else if(Number(!!(Number(u_depth>11)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1364,"makelevel"),C.rn2(6))):C.rn2(6)))))))) C.do_mkroom(C.MORGUE);
+ else if(Number(!!(Number(!!(Number(u_depth>12)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1366,"makelevel"),C.rn2(8))):C.rn2(8)))))))&&C.antholemon()))) C.do_mkroom(C.ANTHOLE);
+ else if(Number(!!(Number(!!(Number(u_depth>14)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1368,"makelevel"),C.rn2(4))):C.rn2(4)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_SOLDIER)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.BARRACKS);
+ else if(Number(!!(Number(u_depth>15)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1371,"makelevel"),C.rn2(6))):C.rn2(6)))))))) C.do_mkroom(C.SWAMP);
+ else if(Number(!!(Number(!!(Number(u_depth>16)&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1373,"makelevel"),C.rn2(8))):C.rn2(8)))))))&&Number(!((C.i32((C.i32(R114(A52(C.svm)+Number(C.PM_COCKATRICE)*C.sizes["struct mvitals"]))&(C.i32((2|1))))))))))) C.do_mkroom(C.COCKNEST);
         }
         (prevstairs=R43(C.gs));
         /* used to test for place_branch() success */
@@ -1255,7 +1255,7 @@ function makelevel()
            bonus items, if there are any; if there aren't any we don't
            generate the bonus items (but levels with no fillable rooms
            typically don't have any bonus items to generate anyway) */
-        let bonus_item_room_countdown=(fillable_room_count?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1402,(C.literal("makelevel"))),C.rn2(fillable_room_count))):C.rn2(fillable_room_count))):C.i32((-1)));
+        let bonus_item_room_countdown=(fillable_room_count?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1402,"makelevel"),C.rn2(fillable_room_count))):C.rn2(fillable_room_count))):C.i32((-1)));
         /* for each room: put things inside */
         for((croom=A55(C.svr));Number(C.i32(R98(croom))>0);((croom=C.ptr((croom+Number(C.sizes["struct mkroom"]))))-Number(C.sizes["struct mkroom"]))) {
             let fillable=C.i8((Number(!!((Number(!!(Number(C.i32(R101(croom))==C.OROOM)||Number(C.i32(R101(croom))==C.THEMEROOM))))&&Number(C.i32(R104(croom))==1)))));
@@ -1285,7 +1285,7 @@ function water_has_kelp(x,y,kelp_pool,kelp_moat)
     y=C.i16(y);
     kelp_pool=C.i32(kelp_pool);
     kelp_moat=C.i32(kelp_moat);
-    if(Number(!!((Number(!!(Number(!!(kelp_pool&&(Number(!!(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.POOL)||(Number(!!(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.WATER)&&Number(!(((Number(!!((Number(!!(C.i32(R7(A12(A47(C.svd))))||C.i32(R6(A12(A47(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A12(A47(C.svd))))))))))))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1436,(C.literal("water_has_kelp"))),C.rn2(kelp_pool))):C.rn2(kelp_pool))))))))||(Number(!!(Number(!!(kelp_moat&&Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.MOAT)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1437,(C.literal("water_has_kelp"))),C.rn2(kelp_moat))):C.rn2(kelp_moat))))))))))) return (C.i8(1));
+    if(Number(!!((Number(!!(Number(!!(kelp_pool&&(Number(!!(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.POOL)||(Number(!!(Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.WATER)&&Number(!(((Number(!!((Number(!!(C.i32(R7(A12(A47(C.svd))))||C.i32(R6(A12(A47(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A12(A47(C.svd))))))))))))))))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1436,"water_has_kelp"),C.rn2(kelp_pool))):C.rn2(kelp_pool))))))))||(Number(!!(Number(!!(kelp_moat&&Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.MOAT)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1437,"water_has_kelp"),C.rn2(kelp_moat))):C.rn2(kelp_moat))))))))))) return (C.i8(1));
     return (C.i8(0));
 }
 
@@ -1343,23 +1343,23 @@ function mineralize(kelp_pool,kelp_moat,goldprob,gemprob,skip_lvl_checks)
         (y=C.i16(y+1));
         /* next spot isn't eligible either */
     } else if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!((C.i32((C.i32(R134((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))&8)))))&&Number(C.i32(R132((A17(A51(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(y)-1)))*C.sizes["struct rm"]))==C.STONE)))&&Number(C.i32(R132((A17(A51(C.svl))+Number(C.i32((C.i32(x)+1)))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(y)-1)))*C.sizes["struct rm"]))==C.STONE)))&&Number(C.i32(R132((A17(A51(C.svl))+Number(C.i32((C.i32(x)-1)))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(y)-1)))*C.sizes["struct rm"]))==C.STONE)))&&Number(C.i32(R132((A17(A51(C.svl))+Number(C.i32((C.i32(x)+1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.STONE)))&&Number(C.i32(R132((A17(A51(C.svl))+Number(C.i32((C.i32(x)-1)))*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.STONE)))&&Number(C.i32(R132((A17(A51(C.svl))+Number(C.i32((C.i32(x)+1)))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(y)+1)))*C.sizes["struct rm"]))==C.STONE)))&&Number(C.i32(R132((A17(A51(C.svl))+Number(C.i32((C.i32(x)-1)))*(C.sizes["struct rm"]*21))+Number(C.i32((C.i32(y)+1)))*C.sizes["struct rm"]))==C.STONE)))) {
-        if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1515,(C.literal("mineralize"))),C.rn2(1000))):C.rn2(1000)))<goldprob)) {
+        if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1515,"mineralize"),C.rn2(1000))):C.rn2(1000)))<goldprob)) {
             if(Number(((otmp=C.mksobj(C.GOLD_PIECE,(C.i8(0)),(C.i8(0)))))!=0)) {
                 ((W121(otmp,x)),(W122(otmp,y)));
-                (W125(otmp,C.i64((1n+C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1518,(C.literal("mineralize"))),C.rnd(C.i32((goldprob*3))))):C.rnd(C.i32((goldprob*3))))))))));
+                (W125(otmp,C.i64((1n+C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1518,"mineralize"),C.rnd(C.i32((goldprob*3))))):C.rnd(C.i32((goldprob*3))))))))));
                 (W124(otmp,C.u32(C.weight(otmp))));
-                if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1520,(C.literal("mineralize"))),C.rn2(3))):C.rn2(3)))))) C.add_to_buried(otmp);
+                if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1520,"mineralize"),C.rn2(3))):C.rn2(3)))))) C.add_to_buried(otmp);
  else C.place_object(otmp,x,y);
             }
         }
-        if(Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1526,(C.literal("mineralize"))),C.rn2(1000))):C.rn2(1000)))<gemprob)) {
-            for((cnt=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1527,(C.literal("mineralize"))),C.rnd(C.i32((2+C.i32(Math.trunc((C.i32(C.dunlev(A158(C.u)))/3)))))))):C.rnd(C.i32((2+C.i32(Math.trunc((C.i32(C.dunlev(A158(C.u)))/3)))))))));Number(cnt>0);((cnt=C.i32((cnt-1)))+1)) if(Number(((otmp=C.mkobj(C.GEM_CLASS,(C.i8(0)))))!=0)) {
+        if(Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1526,"mineralize"),C.rn2(1000))):C.rn2(1000)))<gemprob)) {
+            for((cnt=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1527,"mineralize"),C.rnd(C.i32((2+C.i32(Math.trunc((C.i32(C.dunlev(A158(C.u)))/3)))))))):C.rnd(C.i32((2+C.i32(Math.trunc((C.i32(C.dunlev(A158(C.u)))/3)))))))));Number(cnt>0);((cnt=C.i32((cnt-1)))+1)) if(Number(((otmp=C.mkobj(C.GEM_CLASS,(C.i8(0)))))!=0)) {
                 if(Number(C.i32(R123(otmp))==C.ROCK)) {
                     C.dealloc_obj(otmp);
                     /* discard it */
                 } else {
                     ((W121(otmp,x)),(W122(otmp,y)));
-                    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1533,(C.literal("mineralize"))),C.rn2(3))):C.rn2(3)))))) C.add_to_buried(otmp);
+                    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1533,"mineralize"),C.rn2(3))):C.rn2(3)))))) C.add_to_buried(otmp);
  else C.place_object(otmp,x,y);
                 }
             }
@@ -1570,7 +1570,7 @@ function okdoor(x,y)
 function maybe_sdoor(chance)
 {
     chance=C.i32(chance);
-    return C.i8(Number(!!((Number(C.i32(C.depth(A158(C.u)))>2))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1795,(C.literal("maybe_sdoor"))),C.rn2(((Number((2)>(chance))?(2):(chance)))))):C.rn2(((Number((2)>(chance))?(2):(chance)))))))))));
+    return C.i8(Number(!!((Number(C.i32(C.depth(A158(C.u)))>2))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1795,"maybe_sdoor"),C.rn2(((Number((2)>(chance))?(2):(chance)))))):C.rn2(((Number((2)>(chance))?(2):(chance)))))))))));
 }
 
 /* create a door at x,y in room aroom */
@@ -1631,7 +1631,7 @@ function mktrap_victim(ttmp)
     do {
         let poss_class=C.RANDOM_CLASS;
         /* init => lint suppression */
-        switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1857,(C.literal("mktrap_victim"))),C.rn2(4))):C.rn2(4)))) {
+        switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1857,"mktrap_victim"),C.rn2(4))):C.rn2(4)))) {
             case (0):
                 (poss_class=C.WEAPON_CLASS);
             break;
@@ -1660,9 +1660,9 @@ function mktrap_victim(ttmp)
             C.place_object(otmp,x,y);
         }
         /* 20% chance of placing an additional item, recursively */
-    } while(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1888,(C.literal("mktrap_victim"))),C.rn2(5))):C.rn2(5))))));
+    } while(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1888,"mktrap_victim"),C.rn2(5))):C.rn2(5))))));
     /* Place a corpse. */
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1891,(C.literal("mktrap_victim"))),C.rn2(15))):C.rn2(15)))) {
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1891,"mktrap_victim"),C.rn2(15))):C.rn2(15)))) {
         case (0):
             /* elf corpses are the rarest as they're the most useful */
             (victim_mnum=C.PM_ELF);
@@ -1670,7 +1670,7 @@ function mktrap_victim(ttmp)
            generate elf corpses on sleeping gas traps unless a)
            we're on dlvl 2 (1 is impossible) and b) we pass a coin
            flip */
-        if(Number(!!(Number(kind==C.SLP_GAS_TRAP)&&Number(!((Number(!!(Number(lvl<=C.u32(2))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1899,(C.literal("mktrap_victim"))),C.rn2(2))):C.rn2(2))))))))))) (victim_mnum=C.PM_HUMAN);
+        if(Number(!!(Number(kind==C.SLP_GAS_TRAP)&&Number(!((Number(!!(Number(lvl<=C.u32(2))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1899,"mktrap_victim"),C.rn2(2))):C.rn2(2))))))))))) (victim_mnum=C.PM_HUMAN);
         break;
         case (1):
             case (2):
@@ -1688,8 +1688,8 @@ function mktrap_victim(ttmp)
                         /* more common as they could have come from the Mines */
                         (victim_mnum=C.PM_GNOME);
         /* 10% chance of a candle too */
-        if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1912,(C.literal("mktrap_victim"))),C.rn2(10))):C.rn2(10)))))) {
-            (otmp=C.mksobj((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1913,(C.literal("mktrap_victim"))),C.rn2(4))):C.rn2(4)))?C.TALLOW_CANDLE:C.WAX_CANDLE),(C.i8(1)),(C.i8(0))));
+        if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1912,"mktrap_victim"),C.rn2(10))):C.rn2(10)))))) {
+            (otmp=C.mksobj((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1913,"mktrap_victim"),C.rn2(4))):C.rn2(4)))?C.TALLOW_CANDLE:C.WAX_CANDLE),(C.i8(1)),(C.i8(0))));
             (W125(otmp,C.i64(1)));
             (W124(otmp,C.u32(C.weight(otmp))));
             C.curse(otmp);
@@ -1705,7 +1705,7 @@ function mktrap_victim(ttmp)
     /* PM_HUMAN is a placeholder monster primarily used for zombie, mummy,
        and vampire corpses; usually change it into a fake player monster
        instead (always human); no role-specific equipment is provided */
-    if(Number(!!(Number(victim_mnum==C.PM_HUMAN)&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1930,(C.literal("mktrap_victim"))),C.rn2(25))):C.rn2(25)))))) (victim_mnum=(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1931,(C.literal("mktrap_victim"))),C.rn2(C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST))))):C.rn2(C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST)))))+(C.PM_ARCHEOLOGIST)))));
+    if(Number(!!(Number(victim_mnum==C.PM_HUMAN)&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1930,"mktrap_victim"),C.rn2(25))):C.rn2(25)))))) (victim_mnum=(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1931,"mktrap_victim"),C.rn2(C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST))))):C.rn2(C.i32((C.PM_WIZARD-C.PM_ARCHEOLOGIST)))))+(C.PM_ARCHEOLOGIST)))));
     (otmp=C.mkcorpstat(C.CORPSE,0,(C.mons+Number(victim_mnum)*C.sizes["struct permonst"]),x,y,C.u32(8)));
     (W129(otmp,C.i64(R129(otmp)-(C.i64(((50n)+C.i64(1)))))));
     /* died too long ago to safely eat */
@@ -1716,7 +1716,7 @@ function traptype_rnd(mktrapflags)
 {
     mktrapflags=C.u32(mktrapflags);
     let lvl=C.u32(C.level_difficulty());
-    let kind=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1941,(C.literal("traptype_rnd"))),C.rnd(C.i32((C.TRAPNUM-1))))):C.rnd(C.i32((C.TRAPNUM-1)))));
+    let kind=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1941,"traptype_rnd"),C.rnd(C.i32((C.TRAPNUM-1))))):C.rnd(C.i32((C.TRAPNUM-1)))));
     switch(kind) {
         /* these are controlled by the feature or object they guard,
            not by the map so mustn't be created on it */
@@ -1758,7 +1758,7 @@ function traptype_rnd(mktrapflags)
         break;
         case (C.HOLE):
             /* make these much less often than other traps */
-            if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),1993,(C.literal("traptype_rnd"))),C.rn2(7))):C.rn2(7)))) (kind=C.NO_TRAP);
+            if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",1993,"traptype_rnd"),C.rn2(7))):C.rn2(7)))) (kind=C.NO_TRAP);
         break;
     }
     return kind;
@@ -1768,7 +1768,7 @@ function traptype_rnd(mktrapflags)
 function traptype_roguelvl()
 {
     let kind;
-    switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2006,(C.literal("traptype_roguelvl"))),C.rn2(7))):C.rn2(7)))) {
+    switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2006,"traptype_roguelvl"),C.rn2(7))):C.rn2(7)))) {
         default:
             (kind=C.BEAR_TRAP);
         break;
@@ -1832,7 +1832,7 @@ function mktrap(num,mktrapflags,croom,tm)
         (kind=num);
     } else if(((Number(!!((Number(!!(C.i32(R7(A9(A47(C.svd))))||C.i32(R6(A9(A47(C.svd)))))))&&C.i32(C.on_level(A158(C.u),A9(A47(C.svd))))))))) {
         (kind=traptype_roguelvl());
-    } else if(Number(!!(C.i32(C.In_hell(A158(C.u)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2070,(C.literal("mktrap"))),C.rn2(5))):C.rn2(5)))))))) {
+    } else if(Number(!!(C.i32(C.In_hell(A158(C.u)))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2070,"mktrap"),C.rn2(5))):C.rn2(5)))))))) {
         /* bias the frequency of fire traps in Gehennom */
         (kind=C.FIRE_TRAP);
     } else {
@@ -1884,7 +1884,7 @@ function mktrap(num,mktrapflags,croom,tm)
        immediately lethal). Finally, pits are excluded because it's
        weird to see an item in a pit and yet not be able to identify
        that the pit is there. */
-    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R36(C.gi))&&Number(kind!=C.NO_TRAP)))&&Number(!((C.u32((mktrapflags&8)))))))&&Number(lvl<=C.u32(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2137,(C.literal("mktrap"))),C.rnd(4))):C.rnd(4)))))))&&Number(kind!=C.SQKY_BOARD)))&&Number(kind!=C.RUST_TRAP)))&&Number(!((Number(!!(Number(!!(Number(kind==C.ROLLING_BOULDER_TRAP)&&Number(C.i32(R115(A149(t)))==C.i32(R146(t)))))&&Number(C.i32(R116(A149(t)))==C.i32(R147(t))))))))))&&Number(!((Number(!!(Number((kind)==C.PIT)||Number((kind)==C.SPIKED_PIT))))))))&&(Number(!!(Number(kind<C.HOLE)||Number(kind==C.MAGIC_TRAP))))))) {
+    if(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(Number(!!(C.i32(R36(C.gi))&&Number(kind!=C.NO_TRAP)))&&Number(!((C.u32((mktrapflags&8)))))))&&Number(lvl<=C.u32(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2137,"mktrap"),C.rnd(4))):C.rnd(4)))))))&&Number(kind!=C.SQKY_BOARD)))&&Number(kind!=C.RUST_TRAP)))&&Number(!((Number(!!(Number(!!(Number(kind==C.ROLLING_BOULDER_TRAP)&&Number(C.i32(R115(A149(t)))==C.i32(R146(t)))))&&Number(C.i32(R116(A149(t)))==C.i32(R147(t))))))))))&&Number(!((Number(!!(Number((kind)==C.PIT)||Number((kind)==C.SPIKED_PIT))))))))&&(Number(!!(Number(kind<C.HOLE)||Number(kind==C.MAGIC_TRAP))))))) {
         /* rolling boulder trap might not have a boulder if there was no
            viable path (such as when placed in the corner of a room), in
            which case tx,ty==launch.x,y; no boulder => no dead predecessor */
@@ -1967,13 +1967,13 @@ function generate_stairs_find_room()
         for((i=0);Number(i<R54(C.svn));((i=C.i32((i+1)))-1)) if(generate_stairs_room_good((A55(C.svr)+Number(i)*C.sizes["struct mkroom"]),phase)) (C.cell((rmarr+Number(((ai=C.i32((ai+1)))-1))*4),"int").value=i);
 
         if(Number(ai>0)) {
-            (i=C.cell((rmarr+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2236,(C.literal("generate_stairs_find_room"))),C.rn2(ai))):C.rn2(ai))))*4),"int").value);
+            (i=C.cell((rmarr+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2236,"generate_stairs_find_room"),C.rn2(ai))):C.rn2(ai))))*4),"int").value);
             C.free(rmarr);
             return (A55(C.svr)+Number(i)*C.sizes["struct mkroom"]);
         }
     }
     C.free(rmarr);
-    (croom=(A55(C.svr)+Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2243,(C.literal("generate_stairs_find_room"))),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn)))))*C.sizes["struct mkroom"]));
+    (croom=(A55(C.svr)+Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2243,"generate_stairs_find_room"),C.rn2(R54(C.svn)))):C.rn2(R54(C.svn)))))*C.sizes["struct mkroom"]));
     return croom;
 }
 
@@ -2021,7 +2021,7 @@ function mkfount(croom)
     /* Put a fountain at m.x, m.y */
     if(Number(!(C.set_levltyp(R115(m),R116(m),C.i8(C.FOUNTAIN))))) return;
     /* Is it a "blessed" fountain? (affects drinking from fountain) */
-    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2296,(C.literal("mkfount"))),C.rn2(7))):C.rn2(7)))))) (W135((A17(A51(C.svl))+Number(R115(m))*(C.sizes["struct rm"]*21))+Number(R116(m))*C.sizes["struct rm"],C.u32(1)));
+    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2296,"mkfount"),C.rn2(7))):C.rn2(7)))))) (W135((A17(A51(C.svl))+Number(R115(m))*(C.sizes["struct rm"]*21))+Number(R116(m))*C.sizes["struct rm"],C.u32(1)));
     ((W66(A25(A51(C.svl)),C.u8((R66(A25(A51(C.svl)))+1))))-1);
     } finally {C.stackRestore(stackFrame); }
 }
@@ -2063,7 +2063,7 @@ function mkaltar(croom)
     /* Put an altar at m.x, m.y */
     if(Number(!(C.set_levltyp(R115(m),R116(m),C.i8(C.ALTAR))))) return;
     /* -1 - A_CHAOTIC, 0 - A_NEUTRAL, 1 - A_LAWFUL */
-    (al=C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2348,(C.literal("mkaltar"))),C.rn2(C.i32((1+2))))):C.rn2(C.i32((1+2)))))-1))));
+    (al=C.i8(C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2348,"mkaltar"),C.rn2(C.i32((1+2))))):C.rn2(C.i32((1+2)))))-1))));
     (W134((A17(A51(C.svl))+Number(R115(m))*(C.sizes["struct rm"]*21))+Number(R116(m))*C.sizes["struct rm"],C.u32((((Number(C.i32((al))==(C.i32((-128)))))?0:((Number(C.i32((al))==1))?4:(C.i32((C.i32((al))+2)))))))));
     } finally {C.stackRestore(stackFrame); }
 }
@@ -2076,25 +2076,25 @@ function mkgrave(croom)
     let m=C.stackAlloc(C.sizes["struct nhcoord"]);
     let tryct=0;
     let otmp;
-    let dobell=C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2358,(C.literal("mkgrave"))),C.rn2(10))):C.rn2(10))))));
+    let dobell=C.i8(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2358,"mkgrave"),C.rn2(10))):C.rn2(10))))));
     if(Number(C.i32(R101(croom))!=C.OROOM)) return;
     if(Number(!(find_okay_roompos(croom,m)))) return;
     /* Put a grave at <m.x,m.y> */
     C.make_grave(R115(m),R116(m),(C.i32(dobell)?C.literal("Saved by the bell!"):0));
     /* Possibly fill it with objects */
-    if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2370,(C.literal("mkgrave"))),C.rn2(3))):C.rn2(3)))))) {
+    if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2370,"mkgrave"),C.rn2(3))):C.rn2(3)))))) {
         /* this used to use mkgold(), which puts a stack of gold on
            the ground (or merges it with an existing one there if
            present), and didn't bother burying it; now we create a
            loose, easily buriable, stack but we make no attempt to
            replicate mkgold()'s level-based formula for the amount */
         let gold=C.mksobj(C.GOLD_PIECE,(C.i8(1)),(C.i8(0)));
-        (W125(gold,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2378,(C.literal("mkgrave"))),C.rnd(20))):C.rnd(20)))+C.i32((C.i32(C.level_difficulty())*((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2378,(C.literal("mkgrave"))),C.rnd(5))):C.rnd(5)))))))))));
+        (W125(gold,C.i64((C.i32((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2378,"mkgrave"),C.rnd(20))):C.rnd(20)))+C.i32((C.i32(C.level_difficulty())*((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2378,"mkgrave"),C.rnd(5))):C.rnd(5)))))))))));
         (W124(gold,C.u32(C.weight(gold))));
         ((W121(gold,R115(m))),(W122(gold,R116(m))));
         C.add_to_buried(gold);
     }
-    for((tryct=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2383,(C.literal("mkgrave"))),C.rn2(5))):C.rn2(5))));tryct;((tryct=C.i32((tryct-1)))+1)) {
+    for((tryct=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2383,"mkgrave"),C.rn2(5))):C.rn2(5))));tryct;((tryct=C.i32((tryct-1)))+1)) {
         (otmp=C.mkobj(C.RANDOM_CLASS,(C.i8(1))));
         if(Number(!(otmp))) return;
         C.curse(otmp);
@@ -2328,7 +2328,7 @@ function mk_knox_portal(x,y)
         (source=A2(br));
     }
     /* Already set or 2/3 chance of deferring until a later level. */
-    if(Number(!!(Number(C.i32(R6(source))<R53(C.svn))||(Number(!!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("mklev.c"),2644,(C.literal("mk_knox_portal"))),C.rn2(3))):C.rn2(3)))&&Number(!(R29(C.flags))))))))) return;
+    if(Number(!!(Number(C.i32(R6(source))<R53(C.svn))||(Number(!!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("mklev.c",2644,"mk_knox_portal"),C.rn2(3))):C.rn2(3)))&&Number(!(R29(C.flags))))))))) return;
     if(Number(!((Number(!!(Number(!!(Number(!!(Number(C.i32(R6(A158(C.u)))==C.i32(R6(A8(A47(C.svd)))))&&Number(!(C.at_dgn_entrance(C.literal("The Quest"))))))&&Number(C.i32(((u_depth=C.depth(A158(C.u)))))>10)))&&Number(C.i32(u_depth)<C.i32(C.depth(A10(A47(C.svd))))))))))) return;
     /* in main dungeon */
     /* but not Quest's entry */
@@ -2357,5 +2357,5 @@ const mklevStaticInitializers = C => [
     {name:"gen_stairs_panic",type:"char[45]",size:(1*45),values:C.literal("generate_stairs: failed to find a room! (%d)")},
 ];
 
-return Object.freeze({mkroom_cmp,good_rm_wall_doorpos,finddpos_shift,finddpos,sort_rooms,do_room_or_subroom,add_room,add_subroom,free_luathemes,makerooms,join,makecorridors,alloc_doors,add_door,dosdoor,cardinal_nextto_room,place_niche,makeniche,make_niches,makevtele,count_level_features,clear_level_structures,fill_ordinary_room,themerooms_post_level_generate,chk_okdoor,mklev_sanity_check,makelevel,water_has_kelp,mineralize,level_finalize_topology,mklev,topologize,find_branch_room,pos_to_room,place_branch,bydoor,okdoor,maybe_sdoor,dodoor,occupied,mktrap_victim,traptype_rnd,traptype_roguelvl,mktrap,mkstairs,generate_stairs_room_good,generate_stairs_find_room,generate_stairs,mkfount,find_okay_roompos,mksink,mkaltar,mkgrave,mkinvokearea,mkinvpos,mkinvk_check_wall,mk_knox_portal,mklevStaticInitializers});
+return C.nativeAddressNamespaceReady(Object.freeze({mkroom_cmp,good_rm_wall_doorpos,finddpos_shift,finddpos,sort_rooms,do_room_or_subroom,add_room,add_subroom,free_luathemes,makerooms,join,makecorridors,alloc_doors,add_door,dosdoor,cardinal_nextto_room,place_niche,makeniche,make_niches,makevtele,count_level_features,clear_level_structures,fill_ordinary_room,themerooms_post_level_generate,chk_okdoor,mklev_sanity_check,makelevel,water_has_kelp,mineralize,level_finalize_topology,mklev,topologize,find_branch_room,pos_to_room,place_branch,bydoor,okdoor,maybe_sdoor,dodoor,occupied,mktrap_victim,traptype_rnd,traptype_roguelvl,mktrap,mkstairs,generate_stairs_room_good,generate_stairs_find_room,generate_stairs,mkfount,find_okay_roompos,mksink,mkaltar,mkgrave,mkinvokearea,mkinvpos,mkinvk_check_wall,mk_knox_portal,mklevStaticInitializers}),C);
 }

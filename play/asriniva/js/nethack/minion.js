@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original demon/angel summons and guardian lifecycle on shared native storage.
 import abi from './minion-abi.json' with {type:'json'};
 import * as source from '../ported/minion.js';
@@ -22,7 +23,7 @@ export function enableMinion(environment,layouts){
   livelog_printf:(category,fmt,name,value,units)=>resolve('livelog_printf')(transport.long(category),text(fmt),text(name),transport.long(value),text(units)),
  });
  for(const name of ['pline','pline_The','You','You_feel','verbalize','impossible','panic'])base[name]=(fmt,a=0,b=0,c=0)=>resolve(name)(text(fmt),text(a),(name==='pline'&&fmt==='%s demands %ld %s for safe passage.'||name==='You'&&fmt==='give %s %ld %s.')?transport.long(b):text(b),text(c));
- for(const name of ['rn2','rnd','d'])base[name]=(...args)=>{const index=transport.int(args.pop()),line=transport.int(args.pop()),caller=abi.rngCallers[index];if(!caller||!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MINION RNG site');if(services.rng_log_enabled())services.rng_log_set_caller(text('minion.c'),line,text(caller));return resolve(name)(...args.map(transport.int));};
+ for(const name of ['rn2','rnd','d'])base[name]=(...args)=>{const index=transport.int(args.pop()),line=transport.int(args.pop()),caller=abi.rngCallers[index];if(!caller||!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MINION RNG site');if(services.rng_log_enabled())recordNativeRngCaller(services,'minion.c',line,caller);return resolve(name)(...args.map(transport.int));};
  const local=new Proxy(base,{get:(o,k)=>{if(Object.hasOwn(o,k))return o[k];if(typeof k==='symbol')return undefined;throw new Error('Missing MINION native transport '+k);}}),context=createMinionEnvironment(local,layouts.minion,source);Object.setPrototypeOf(context,local);
  function call(name,...args){return transport.scoped(()=>{const m=abi.public[name].match(/^(.*?)\((.*)\)$/),types=m[2]&&m[2]!=='void'?m[2].split(',').map(s=>s.trim()):[];args=args.map((v,i)=>scalar(types[i],v?.address??v));if(['newemin','free_emin','msummon','demon_talk','bribe','lose_guardian_angel'].includes(name))args[0]=context.monster(args[0]);return withCEnvironment(context,source[name],...args)??0;});}
  const inherited=Object.keys(abi.public).filter(n=>environment.hasFunction(n));for(const n of inherited){if(!['newemin','free_emin'].includes(n)||environment.start('monster-companion-extra').namespace[n]!==source[n])throw new Error('Unexpected MINION owner '+n);}

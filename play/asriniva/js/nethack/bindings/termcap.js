@@ -1,3 +1,4 @@
+import {createNativeFrameCapture} from '../native/frame-capture.js';
 import {createNativeTermcap} from '../native/termcap.js';
 import {installNativeIntegerCasts} from '../native/execution.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -10,7 +11,7 @@ const schemas={"flag":{"ctype":"struct flag","fields":[{"name":"null","d":{"t":"
 const globals=[{"name":"tbuf","d":{"a":[512],"e":{"t":"i8"}}},{"name":"flags","d":{"s":"flag"}},{"name":"PC","d":{"t":"i8"}},{"name":"BC","d":{"p":""}},{"name":"HO","d":{"p":""}},{"name":"gt","d":{"s":"instance_globals_t"}},{"name":"tc_lcl_data","d":{"s":"tc_lcl_data"}},{"name":"CE","d":{"p":""}},{"name":"UP","d":{"p":""}},{"name":"XD","d":{"p":""}},{"name":"SO","d":{"p":""}},{"name":"SE","d":{"p":""}},{"name":"ZH","d":{"p":""}},{"name":"ZR","d":{"p":""}},{"name":"SG","d":{"t":"i32"}},{"name":"nullstr","d":{"a":[1],"e":{"t":"i8"}}},{"name":"TI","d":{"p":""}},{"name":"TE","d":{"p":""}},{"name":"VS","d":{"p":""}},{"name":"VE","d":{"p":""}},{"name":"KS","d":{"p":""}},{"name":"KE","d":{"p":""}},{"name":"MR","d":{"p":""}},{"name":"MB","d":{"p":""}},{"name":"MD","d":{"p":""}},{"name":"MH","d":{"p":""}},{"name":"ME","d":{"p":""}},{"name":"nh_VI","d":{"p":""}},{"name":"nh_VE","d":{"p":""}},{"name":"nh_Ic","d":{"p":""}},{"name":"dynamic_HIHE","d":{"t":"i8"}},{"name":"CL","d":{"p":""}},{"name":"tty_standout_on","d":{"a":[16],"e":{"t":"i8"}}},{"name":"tty_standout_off","d":{"a":[16],"e":{"t":"i8"}}},{"name":"gs","d":{"s":"instance_globals_s"}},{"name":"gc","d":{"s":"instance_globals_c"}},{"name":"HE_resets_AS","d":{"t":"i8"}},{"name":"decgraphics_mode_callback","d":{"f":true}},{"name":"utf8graphics_mode_callback","d":{"f":true}},{"name":"ttyDisplay","d":{"p":"DisplayDesc"}},{"name":"BASE_WINDOW","d":{"t":"i32"}},{"name":"stdout","d":{"p":""}},{"name":"nomux_seq","d":{"t":"i32"}},{"name":"nomux_anim_id","d":{"t":"i32"}},{"name":"nomux_buf","d":{"a":[24,80],"e":{"s":"nomux_cell"}}},{"name":"nomux_fg_cur","d":{"t":"u8"}},{"name":"nomux_attr_cur","d":{"t":"u8"}},{"name":"nomux_decgfx_cur","d":{"t":"u8"}},{"name":"iflags","d":{"s":"instance_flags"}},{"name":"nomux_out","d":{"a":[6144],"e":{"t":"i8"}}},{"name":"nomux_raw_active","d":{"t":"i32"}},{"name":"nomux_raw_row","d":{"t":"i32"}},{"name":"nomux_raw_col","d":{"t":"i32"}},{"name":"ospeed","d":{"t":"i16"}},{"name":"tmspc10","d":{"a":[15],"e":{"t":"i16"}}},{"name":"hilites","d":{"a":[16],"e":{"p":""}}},{"name":"nilstring","d":{"a":[1],"e":{"t":"i8"}}},{"name":"ti_map","d":{"a":[6],"e":{"s":"ti_map_entry"}}},{"name":"nulstr","d":{"a":[1],"e":{"t":"i8"}}}];
 const moduleStates=new WeakMap();
 const environments=new WeakMap();
-export function createTermcapEnvironment(services,layout,namespace=core) {
+export function createTermcapEnvironment(services,layout,namespace=core,scope=null) {
     for(const [k,v]of Object.entries({pointerSize:8,longSize:8,intSize:4,charSigned:1,littleEndian:1}))
         if(Number(layout[k])!==v)throw Error('Review changed TERMCAP ABI: '+k);
     const pointerValue=v=>{const n=BigInt.asUintN(64,BigInt(v?.address??v??0));return n<=BigInt(Number.MAX_SAFE_INTEGER)?Number(n):n;};
@@ -69,6 +70,7 @@ applyPrototypeAliases(name,prototype,'termcap');return prototype;});
         }
         return screenViews;
     };
+    if(services.nativeOwner&&typeof services.nativeFrameCapture==='function'&&typeof services.nativeMarkerKind==='function')env.captureNativeFrame=createNativeFrameCapture(env,namespace,services);
     const expectedRecordSizes={"flag": 208, "tc_gbl_data": 24, "instance_globals_t": 456, "tc_lcl_data": 64, "symsetentry": 40, "instance_globals_s": 1408, "instance_globals_c": 584, "cmd": 80, "DisplayDesc": 60, "nomux_cell": 4, "instance_flags": 424, "ti_map_entry": 12};
     for(const[name,size]of Object.entries(expectedRecordSizes))if(Number(layout[name+'Size'])!==size)throw Error('TERMCAP native record size '+name);
     const functions=["term_startup", "term_shutdown", "tty_number_pad", "tty_decgraphics_termcap_fixup", "term_start_screen", "term_end_screen", "nocmov", "cmov", "xputc", "nomux_markers_enabled", "nomux_emit_marker", "nomux_capture_write_screen", "nomux_capture_write_input_boundary", "nomux_clear_screen", "nomux_clear_to_eol", "nomux_putch", "nomux_set_attr", "nomux_end_attr", "nomux_set_fg", "nomux_end_fg", "nomux_sgr_fg", "nomux_capture_screen", "nomux_enter_raw_mode", "nomux_raw_putch", "nomux_raw_emit", "nomux_raw_emit_eol", "nomux_get_cursor", "xputs", "cl_end", "term_clear_screen", "home", "standoutbeg", "standoutend", "backsp", "tty_nhbell", "graph_on", "graph_off", "tty_delay_output", "cl_eos", "init_hilite", "kill_hilite", "s_atr2str", "e_atr2str", "term_attr_fixup", "term_start_attr", "term_end_attr", "term_start_raw_bold", "term_end_raw_bold", "term_end_color", "term_start_color", "term_start_bgcolor", "term_curs_set", "emit24bit", "emit256", "term_start_extracolor", "term_end_extracolor"];
@@ -144,13 +146,22 @@ applyPrototypeAliases(name,prototype,'termcap');return prototype;});
     env.tparm=(...args)=>{const key="tparm_pi";if(!services[key])throw Error("Unconfigured TERMCAP varargs "+key);return invoke(services[key],args);};
     env.nh_snprintf=(...args)=>{const key="nh_snprintf_pipjp"+formatShape(args[4]);if(!services[key])throw Error("Unconfigured TERMCAP varargs "+key);return invoke(services[key],args);};
     env.Sprintf=env.sprintf;env.Strcpy=env.strcpy;env.Strcat=env.strcat;
+    if (services.nativeOwner && services.nativeTerminalOwner && scope && typeof services.nativeTputs === 'function') {
+        const primary=services.nativeTerminalOwner,nativeTputs=primary.nativeTputs,providerTputs=primary.tputs,compatTputs=env.tputs;
+        env.tputs=(text,lines,callback)=>scope.services===primary
+            && services.nativeTputs===nativeTputs && services.tputs===providerTputs && callback===namespace.xputc
+            ? nativeTputs(text,lines,callback) : compatTputs(text,lines,callback);
+        // xputc has already applied the source integer conversion. Resolve the
+        // active provider on every byte, including synchronous callback reentry.
+        env.putchar=byte=>{const putchar=services.putchar;return putchar(byte);};
+    }
     return env;
 }
 export function callTermcap(services,layout,name,...args){
     if(typeof core[name]!=='function')throw Error('Unknown TERMCAP source entry '+name);
     let layouts=environments.get(services.moduleKey);if(!layouts){layouts=new WeakMap();environments.set(services.moduleKey,layouts);}
     let entry=layouts.get(layout);const fresh=!entry;
-    if(fresh){entry={services,env:null,native:null};const scoped=new Proxy({}, {get:(_,key)=>Reflect.get(entry.services,key),has:(_,key)=>Reflect.has(entry.services,key)}),namespace={...core};entry.env=createTermcapEnvironment(scoped,layout,namespace);if(services.nativeOwner){installNativeIntegerCasts(entry.env);entry.native=createNativeTermcap(entry.env);Object.assign(namespace,entry.native);}}
+    if(fresh){entry={services,env:null,native:null};const scoped=new Proxy({}, {get:(_,key)=>Reflect.get(entry.services,key),has:(_,key)=>Reflect.has(entry.services,key)}),namespace={...core};entry.env=createTermcapEnvironment(scoped,layout,namespace,entry);if(services.nativeOwner){installNativeIntegerCasts(entry.env);entry.native=createNativeTermcap(entry.env);Object.assign(namespace,entry.native);}}
     const previous=entry.services;entry.services=services;const saved=services.stackSave();
     try{
         const env=entry.env;if(!env.state.initialized)core.initializeTermcapData(env);

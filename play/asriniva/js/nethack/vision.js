@@ -22,7 +22,10 @@ export function enableVision(environment,layouts){
   assert:(ok,expression,fn,line)=>{if(!ok)environment.resolve('__assert_fail')(services.literal(expression),services.literal('vision.c'),line,services.literal(fn));},
   panic:(format,n)=>environment.resolve('panic')(typeof format==='string'?services.literal(format):format,n),
  });
- for(const name of ['canseemon','detecting','mon_visible','see_with_infrared','tp_sensemon','worm_known'])local[name]=p=>environment.resolve(name)(environment.address(p));
+ for(const name of ['canseemon','detecting','mon_visible','see_with_infrared','tp_sensemon','worm_known','on_level']){
+  const call=(a,b)=>{const fn=nativeState.functions.get(name);if(fn?.nativeState===nativeState&&fn.nativeDirect)return name==='on_level'?(fn.nativeValuesEntry??fn)(a,b):(fn.nativeValuesEntry??fn)(a);return name==='on_level'?nativeState.boundary(environment.resolve(name),environment.address(a),environment.address(b)):nativeState.boundary(environment.resolve(name),environment.address(a));};
+  Object.assign(call,{nativeState,nativeDirect:true});local[name]=call;
+ }
  const context=initializeVision(local,L),only=['vision_init','vision_recalc','vision_reset','block_point','unblock_point','recalc_block_point','clear_path','do_clear_area','does_block','get_viz_clear','howmonseen'];
  environment.register('vision',Object.fromEntries(only.map(name=>{const call=(...args)=>callVision(local,L,name,...args);call.nativeState=nativeState;call.nativeDirect=true;nativeState.functions.set(name,call);return [name,call];})));
  return {context,storage,rows};

@@ -4795,17 +4795,16 @@ function _medusa_mongone(mdef, discard) {
 // through resolve_dat() makes that fail loudly with the vendoring instruction
 // instead.  See js/dat_source.js.
 async function loadLuaFile(name) {
-    const source = dat_content(name);
-    if (source === null)
-        throw new Error(`Failed to read dat/${name}: not carried in js/dat_bundle.js`);
+    /* C nhlua.c:2392-2411 load_lua(): nhl_init() FIRST (it loads nhlib.lua, whose
+     * shuffle() draws from the game RNG), then nhl_loadlua(), whose missing-file
+     * arm is impossible("nhl_loadlua: Error opening (%s)") and a FALSE return
+     * (nhlua.c:2200-2203) -- not an exception.  nhl_done() runs either way. */
     const interp = await nhl_init();
-    const ast = parse(tokenize(source));
     try {
-        await interp.run(ast);
+        return await nhl_loadlua(interp, name);
     } finally {
         await nhl_done(interp);
     }
-    return true;
 }
 
 

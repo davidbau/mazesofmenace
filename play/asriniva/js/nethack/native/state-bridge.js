@@ -28,12 +28,12 @@ export class NativeStateBridge {
   return {enumerable:true,get(){const raw=arena.pointer(at);if(raw!==previous||version!==owner.schemaVersion){value=decode(raw);previous=raw;version=owner.schemaVersion;}return value;},set(input){const normalized=normalize(input),raw=arena.handle(normalized);arena.storePointer(at,raw);value=decode(raw);previous=raw;version=owner.schemaVersion;}};
  }
  flush() {if(this.nativeArena)return;for(const cell of this.dirty)cell.write(cell.value);this.dirty.clear();this.pendingAliases.clear();}
- invalidate() {if(!this.nativeArena)this.epoch++;}
+ invalidate() {this.epoch++;}
  boundary(fn,...args) {
   if(!this.nativeArena)this.flush();this.boundaries++;const depth=this.depth;this.depth=0;
-  try {return fn(...args);}finally {this.depth=depth;if(this.nativeArena)this.nativeArena.sync();else this.invalidate();}
+  try {return fn(...args);}finally {this.depth=depth;if(this.nativeArena)this.nativeArena.sync();this.invalidate();}
  }
- enter() {if(!this.depth){if(this.nativeArena)this.nativeArena.sync();else{this.flush();this.invalidate();}}this.depth++;}
+ enter() {if(!this.depth){if(this.nativeArena){this.nativeArena.sync();this.invalidate();}else{this.flush();this.invalidate();}}this.depth++;}
  leave() {this.depth--;if(!this.nativeArena&&!this.depth){this.flush();this.invalidate();}}
 }
 

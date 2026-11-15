@@ -1,3 +1,4 @@
+import {createServiceForwarder} from '../../c-runtime/service-scope.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/invent.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -45,7 +46,7 @@ export function callInvent(services,name,...args){
  let state=states.get(services.moduleKey);
  if(!state){
   state={services};
-  const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});
+  const forwarding=createServiceForwarder(state);
   state.env=createInventEnvironment(forwarding);
   states.set(services.moduleKey,state);
  }

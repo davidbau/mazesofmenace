@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One native HACK owner connects movement, travel, shared state and direct calls.
 import abi from './hack-abi.json' with {type:'json'};
 import publicFunctions from './public-functions.json' with {type:'json'};
@@ -21,7 +22,7 @@ export function enableMovement(environment,layouts){
  let buffer;try{buffer=environment.requireGlobal('hack.in_rooms.buf');}catch(e){if(!e.message.startsWith('Unresolved standalone global '))throw e;buffer=environment.allocateGlobal('hack.in_rooms.buf',5);}
  Object.assign(local,{nativeEnvironment:environment,nativeLayouts:layouts,moduleKey:environment,nativeGlobalBindings:true,heap:()=>memory.HEAPU8,literal:services.literal,stackAlloc:transport.stackAlloc,stackSave:transport.stackSave,stackRestore:transport.stackRestore,
   global:i=>environment.requireGlobal(abi.globals[i].name),functionPointer:i=>pointer(abi.functions[i]),foreignFunctionPointer:i=>pointer(['Boots_on','do_reqmenu','dokick'][i]),inRoomsBuffer:()=>buffer,callIntFunction:fn=>owner.boundary(functions.indirect,fn,'i'),
-  rngCaller:(line,caller)=>{const n=transport.int(line),name=typeof caller==='string'?caller:memory.readString(environment.address(caller));if(!abi.rngCallers.some(row=>row[0]===n&&row[1]===name))throw Error('Unexpected HACK RNG caller');if(services.rng_log_enabled())services.rng_log_set_caller(text('hack.c'),n,text(caller));},
+  rngCaller:(line,caller)=>{const n=transport.int(line),name=typeof caller==='string'?caller:memory.readString(environment.address(caller));if(!abi.rngCallers.some(row=>row[0]===n&&row[1]===name))throw Error('Unexpected HACK RNG caller');if(services.rng_log_enabled())recordNativeRngCaller(services,'hack.c',n,caller);},
  });
  const families=['Norep','There','You','You_cant','You_feel','You_hear','Your','impossible','livelog_printf','nh_snprintf','panic','pline','pline_The','pline_dir','pline_xy','raw_printf','sprintf','urgent_pline','verbalize'],formatted=new Map();
  local.formatted=key=>{if(formatted.has(key))return formatted.get(key);const family=families.find(n=>key.startsWith(n+'_')&&/^[pijd]+$/.test(key.slice(n.length+1)));if(!family)throw Error('Unknown native HACK format '+key);const shape=key.slice(family.length+1),converts=[...shape].map(c=>c==='p'?text:c==='j'?BigInt:c==='i'?v=>Number(BigInt.asIntN(32,BigInt(v))):Number),fn=(...args)=>{if(args.length!==converts.length)throw Error('Native HACK format arity '+key);return owner.boundary(resolve(family),...args.map((v,i)=>converts[i](v)));};formatted.set(key,fn);return fn;};

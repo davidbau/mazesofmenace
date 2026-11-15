@@ -3,6 +3,7 @@ import { encumber_msg } from './pickup.js';
 export { _interesting_to_discover, _disco_typename, _disco_append_price_quote, _sortloot_classify, OCLASS_NAME, INV_ORDER };
 import { finish_quest, MS_NEMESIS } from './quest.js';
 import { map_menu_cmd, get_menu_cmd_key as get_menu_cmd_key_code } from './options.js';
+import { nh_delay_output } from './animframes.js';
 import { DEFAULT_MENU_CMDS, glyph_matches_monster_at, glyph_matches_hero_at, menu_entry_page } from './display.js';
 import { glow_color, glow_verb } from './artifact.js';
 import { pline_The, There as There_real, You_cant as You_cant_real, Your as Your_real, verbalize as verbalize_real, pline_The as pline_The_real, You_cant, Your, verbalize } from './pline.js';
@@ -3917,6 +3918,9 @@ async function doextlist(restoreExtPrompt = false) {
     const CMD_M_PREFIX = 0x0080;
     let menumode = 0, onelist = 0, searchbuf = '';
     const ttyBlanks = (s) => s.replace(/ {5,}/g, m => `\x1b[${m.length}C`);
+    /* wintty.c:1921-1922 tty_display_nhwindow(NHW_MENU): a standing topline
+     * (docrt's notice_all_mons announcements) gets its --More-- first. */
+    if (!restoreExtPrompt) await menu_entry_page();
 
     for (;;) {
         // C cmd.c:604-606 omits the search phrase if it won't fit QBUFSZ.
@@ -3984,16 +3988,30 @@ async function doextlist(restoreExtPrompt = false) {
             records.push({ text: ` [m] Command accepts '${visctrl(cmd_from_func('do_reqmenu'))}' prefix` });
         }
 
+        /* wintty.c:2728-2734 tty_end_menu cuts any entry whose strlen + 2 exceeds cols
+         * (str is the text after this record's one-space margin), which also fixes
+         * the window width at cols and so offx at 0 (a full-screen menu). */
+        for (const r of records) {
+            const plain = r.raw ?? r.text;
+            if (!plain.includes('\x1b') && plain.length > 79) {
+                const cut = plain.slice(0, 79);
+                if (r.raw !== undefined) { r.raw = cut; r.text = ttyBlanks(cut); } else r.text = cut;
+            }
+        }
         const pages = [];
         for (let i = 0; i < records.length; i += PAGE_LINES)
             pages.push(records.slice(i, i + PAGE_LINES));
+        /* wintty.c:1908-1921 cw->offx 0 (a window as wide as the screen) is a full-screen
+         * menu: process_menu_window clears the terminal and dismissal docrt()s. */
+        const wideMenu = pages.length === 1 && pages[0].length + 1 < 24
+            && tty_window_offx(pages[0].map(r => (r.raw ?? r.text).replace(/^ /, '')).concat('(end)'), 'end') - 1 === 0;
         // C cmd.c:693 select_menu dismisses before returning a pick, including
         // a redisplay toggle. wintty.c:978-982 restores the map at dismissal.
         const dismiss = async () => {
             const savedBotDisabled = g._bot_disabled;
             g._bot_disabled = true; // windows.c:1861-1863
             try {
-                if (pages.length > 1 || pages[0].length + 1 >= 24) {
+                if (pages.length > 1 || pages[0].length + 1 >= 24 || wideMenu) {
                     await docrt(false, g._screen_output);
                     await flush_screen(1);
                     status_r1_menu_docrt();
@@ -4017,9 +4035,10 @@ async function doextlist(restoreExtPrompt = false) {
             g._pending_message = '';
             /* offx==offy==0 makes process_menu_window clear the terminal;
              * all 24 rows belong to this menu, including both status rows. */
-            if (pages.length > 1 || rows.length >= 24) {
+            if (pages.length > 1 || rows.length >= 24 || wideMenu) {
                 g._screen_output = rows.join('\n');
-                set_cursor(footer.length, pages[page].length);
+                /* a lone (end) page keeps tty_end_menu's trailing space in the cursor column */
+                set_cursor(footer.length + (wideMenu ? 1 : 0), pages[page].length);
             } else {
                 /* wintty.c:1908 tty_end_menu: a menu shorter than the screen is
                  * a right-aligned overlay at offx = cols - maxcol - 2; the map
@@ -4385,7 +4404,7 @@ export async function doprev_message(liveTopline) {
     const screenOutput = _noOverlay
         ? [..._fitLines.map((ln) => _tabWire(tty_text_window_utf8_line(ln))),
            ' --More--'].join('\n')
-        : build_window_screen([..._fitLines.map(_tabWire), _moreLead + '--More--'],
+        : build_window_screen([..._fitLines.map((ln) => _tabWire(tty_text_window_utf8_line(ln))), _moreLead + '--More--'],
                               WIN_COL, uac, undefined, undefined, WIN_COL === 0);
     // Cursor at end of "--More--": WIN_COL + len("--More--") on the last row.
     const endRow = windowLines.length - 1;
@@ -6224,7 +6243,10 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
         // tty_yn_function leaves a one-line prompt physically painted after
         // accepting a key. A following message wins; opening a menu clears
         // this fallback in getobj_redo_menu. This also covers silent effects.
-        g._topl_sticky = prompt;
+        /* C topl.c:~545 tty_yn_function: `if (wins[WIN_MESSAGE]->cury)
+         * tty_clear_nhwindow(WIN_MESSAGE)` -- a prompt that wrapped onto a second
+         * row is erased when the answer is read; only a one-row prompt stays. */
+        g._topl_sticky = topl_park_cursor(null, prompt + ' ')[1] > 0 ? null : prompt;
         let itemKey = typeof itemRaw === 'number'
             ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);
         if (itemKey === 0)
@@ -11128,7 +11150,11 @@ async function _enlightenment_fullscreen_pager(content) {
     }
     // C erase_menu_or_text redraws the map when this full-screen menu closes.
     g._pending_message = '';
-    await docrt_flags(0);
+    /* wintty.c:972-974 erase_menu_or_text(): docrt() over the still-displayed
+     * window.  vision_recalc(2)'s notice_all_mons (vision.c:856) can pline
+     * before cls(), whose display_nhwindow(WIN_MESSAGE) pages that line over
+     * the stale window text (display.c:1740-1748); docrt() models that page. */
+    await docrt(false, g._screen_output);
     /* docrt_flags cls()+botlx: bot() then rewrites status row 1 in full, over the
      * map row 20 cells docrt printed (display.js _status_row1_map_overlay).
      * docrt's seen-blank row-20 cells (stone, air, cloud) were printed BEFORE
@@ -11644,7 +11670,11 @@ async function _look_here_pile(objCnt = null, pickedSome = false, skipDfeature =
      * re-showing the same frame on any non-dismiss key (tty more() loops). */
     for (;;) {
         const key = await nhgetch();
-        if (key === 32 || key === 10 || key === 13 || key === 27) break;
+        /* getline.c:238-247 xwaitforspace: ESC leaves dismiss_more at 1 and the
+         * dismiss_more key (^A) ends a later wait too (`c == x`). */
+        if (key === 27) g._ttyDismissMore = 1;
+        if (key === 32 || key === 10 || key === 13 || key === 27
+            || (key !== 0 && key === (g._ttyDismissMore | 0))) break;
         g._screen_output = screenOutput;
         if (disp) {
             disp.cursorCol = (_offx0 ? 1 : WIN_COL) + '--More--'.length;
@@ -18783,9 +18813,9 @@ async function hit_bars_hero(obj, objx, objy, barsx, barsy, str, breakflags = 0x
 
 
 
-function nh_delay_output() {
-    /* no-op in JS — see js/display.js:3805 */
-}
+/* C include/winprocs.h:162 nh_delay_output -> tty_delay_output(): the one
+ * shared implementation (js/animframes.js) snapshots the terminal as an
+ * animation frame; it touches no game state and draws no RNG. */
 
 
 /* C ref: hack.c:4156-4206 saving_grace(int dmg)
@@ -19779,16 +19809,20 @@ export function parseautocomplete(autocomplete, condition) {
 
 /* C cmd.c:5394-5465 — query_menu replaces the standard response sets with
  * a PICK_ONE menu. JS represents decl.c's response arrays as strings. */
-export async function yn_function_menu(query, resp, def) {
+export async function yn_function_menu(query, resp, def, opts = {}) {
     const g = game;
+    /* cmd.c:5395 yn_menuable_resp() compares the resp POINTER with ynchars/
+     * ynqchars/ynaqchars: a caller-built copy (insight.c:2835 Strcpy(allow_yn,
+     * ynaqchars)) or a string literal is never menuable. */
+    if (opts.respCopied) return null;
     if (!g.iflags?.query_menu || !g.iflags?.window_inited
         || !['yn', 'ynq', 'ynaq', 'rl', 'hsq'].includes(resp))
         return null;
-    // C wintty.c:1921-1940: drain the message before opening a menu.
-    if (g._pending_message) {
-        await flush_screen(1);
-        if (g._pending_message) await force_more(g._pending_message);
-    }
+    // C wintty.c:1921-1922: drain the message before opening a menu.  Core
+    // select_menu (windows.c:1856-1864) and tty_display_nhwindow do no
+    // flush_screen first, so more() pages over the terminal as last flushed.
+    if (g._pending_message)
+        await force_more_lone_frame(g._pending_message);
     g._pending_message = '';
     g._topl_sticky = null;
     const { TtyMenu, ATR_NONE } = await import('./tty_menu.js');
@@ -19807,6 +19841,10 @@ export async function yn_function_menu(query, resp, def) {
     if (count > 1 && res === def) res = picks[1];
     // C logs the answered query, then clears WIN_MESSAGE immediately.
     await pline('%s %s', query, key2txt(res.charCodeAt(0)));
+    /* topl.c:139-140 redotoplin(): a topline that wraps onto row 1 raises its
+     * more() right inside the pline, before clear_nhwindow(WIN_MESSAGE). */
+    if (g._pending_message && String(g._pending_message).length > 79)
+        await force_more(g._pending_message);
     if (g._pending_message) (g._msg_history ||= []).push(g._pending_message);
     g._pending_message = '';
     g._topl_unacknowledged = false;
@@ -19859,7 +19897,7 @@ export async function yn_function(query, choices, defchoice, addcmdq = false, op
             }
         }
     } else {
-        res = await yn_function_menu(query, choices, defchoice);
+        res = await yn_function_menu(query, choices, defchoice, opts);
         if (res === null) res = await _yn_prompt(query, choices, defchoice, opts);
     }
     if (addcmdq) cmdq_add_key(CQ_REPEAT, typeof res === 'number' ? res : res.charCodeAt(0));
@@ -19911,6 +19949,10 @@ export async function makemap_prepost(pre, wiztower) {
          * with no rooms seen (dungeon.c init_mapseen). */
         if (g._level_msrooms)
             delete g._level_msrooms[`${u.uz.dnum | 0}:${u.uz.dlevel | 0}`];
+        /* dungeon.c:2677-2678 rm_mapseen frees mptr->custom: the #annotate text
+         * goes with the mapseen node. */
+        if (g._level_custom)
+            delete g._level_custom[`${u.uz.dnum | 0}:${u.uz.dlevel | 0}`];
         for (const [i, entry] of entries.entries())
             entry.duplicate = entries.slice(0, i).some(e => e.dnum === entry.dnum
                 && e.dlevel === entry.dlevel);
@@ -21221,7 +21263,7 @@ function keylist_putcmds(datawin, docount, incl_flags, excl_flags, keys_used) {
              * and the parameter lives on the BIND, not the EXTCMDLIST entry.
              * C ref: cmd.c:2830-2833 — bind->param. */
             if ((cmd.flags & CMD_PARAM) !== 0)
-                datawin.push(`${_pad_l(key2txt(key), 7)} ${_pad_l(cmd.name, 13)} ${cmd.desc} "${cmdbind_get(key).param}"`);
+                datawin.push(`${_pad_l(key2txt(key), 7)} ${_pad_l(cmd.name, 13)} ${cmd.desc} "${cmdbind_get(key).param ?? '(null)'}"`);
             else
                 datawin.push(`${_pad_l(key2txt(key), 7)} ${_pad_l(cmd.name, 13)} ${cmd.desc}`);
             keys_used[i] = true;

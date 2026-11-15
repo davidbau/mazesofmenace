@@ -43,7 +43,7 @@ export function createNativeMonState(services,layout,state={itermonarr:0,itermon
  objectPointerLocal:v=>local(v,"BigUint64",v=>record(v,"obj")),booleanLocal:v=>local(v,"Int8"),intLocal:v=>local(v,"Int32"),monLink:v=>cell(v,"BigUint64",v=>record(v,"mon"),"pointer:mon"),
  nativeMonsterSnapshot:count=>services.alloc(ulong(ulong(count)*ulong(layout.pointerSize))),freeMonsterSnapshot:value=>services.free(value),
  readAnimalList:i=>{nativeState.flush();return view().getInt16(pointer(global(5)+layout.ga_animal_list)+int(i)*2,true);},
- readVisibility:(y,x)=>{nativeState.flush();return view().getUint8(pointer(pointer(global(16)+layout.gv_viz_array)+y*8)+x);},writeVisibility:(y,x,value)=>{nativeState.flush();nativeState.invalidate();view().setUint8(pointer(pointer(global(16)+layout.gv_viz_array)+y*8)+x,uchar(value));return value;},
+ readVisibility:(y,x)=>{if(nativeState.visibilityState)return nativeState.visibilityState.read(y,x);nativeState.flush();return view().getUint8(pointer(pointer(global(16)+layout.gv_viz_array)+y*8)+x);},writeVisibility:(y,x,value)=>{if(nativeState.visibilityState)return nativeState.visibilityState.write(y,x,uchar(value)),value;nativeState.flush();nativeState.invalidate();view().setUint8(pointer(pointer(global(16)+layout.gv_viz_array)+y*8)+x,uchar(value));return value;},
  coordLocal:v=>{const o=record(services.stackAlloc(layout.coordSize),"coord");if(v)copyStruct(o,v,layout.coordSize);return o;},levelLocal:v=>{const o=record(services.stackAlloc(layout.levelSize),"level");if(v)copyStruct(o,v,layout.levelSize);return o;},monLocal:v=>{const o=record(services.stackAlloc(layout.monSize),"mon");if(v)copyStruct(o,v,layout.monSize);return o;},shortArrayLocal:n=>array(services.stackAlloc(n*2),"Int16",[n]),
  callLocal:(fn,...args)=>fn(...args),
  invokeMonBool:(fn,m)=>typeof fn==="function"?char(env.callLocal(fn,m)):char(services.invokeMonBool(fn,m)),invokeMonVoid:(fn,m)=>typeof fn==="function"?env.callLocal(fn,m):services.invokeMonVoid(fn,m),invokeMonBoolXY:(fn,m,x,y)=>typeof fn==="function"?char(env.callLocal(fn,m,coordxy(x),coordxy(y))):char(services.invokeMonBoolXY(fn,m,x,y)),
@@ -153,14 +153,14 @@ export function createNativeMonState(services,layout,state={itermonarr:0,itermon
  env.bigmonst=(ptr)=>(((ptr).msize >= env.MZ_LARGE));
  env.breathless=(ptr)=>((((ptr).mflags1 & env.M1_BREATHLESS) != 0n));
  env.can_teleport=(ptr)=>((((ptr).mflags1 & env.M1_TPORT) != 0n));
- env.cansee=(x,y)=>Boolean(view().getUint8(pointer(pointer(global(16)+layout.gv_viz_array)+y*8)+x)&env.IN_SIGHT);
+ env.cansee=(x,y)=>Boolean(env.readVisibility(y,x)&env.IN_SIGHT);
  env.canspotmon=(mon)=>((env.canseemon(mon) || env.sensemon(mon)));
  env.cant_drown=(ptr)=>((env.is_swimmer(ptr) || env.amphibious(ptr) || env.breathless(ptr)));
  env.ceiling_hider=(ptr)=>((env.is_hider(ptr) && ((env.is_clinger(ptr) && (ptr).mlet != env.S_MIMIC) || env.is_flyer(ptr))));
  env.completelyburns=(ptr)=>(((ptr) == env.mons[env.PM_PAPER_GOLEM] || (ptr) == env.mons[env.PM_STRAW_GOLEM]));
  env.completelyrots=(ptr)=>(((ptr) == env.mons[env.PM_WOOD_GOLEM] || (ptr) == env.mons[env.PM_LEATHER_GOLEM]));
  env.completelyrusts=(ptr)=>(((ptr) == env.mons[env.PM_IRON_GOLEM]));
- env.couldsee=(x,y)=>Boolean(view().getUint8(pointer(pointer(global(16)+layout.gv_viz_array)+y*8)+x)&env.COULD_SEE);
+ env.couldsee=(x,y)=>Boolean(env.readVisibility(y,x)&env.COULD_SEE);
  env.digests=(ptr)=>((env.dmgtype_fromattack((ptr), env.AD_DGST, env.AT_ENGL) != 0));
  env.emits_light=(ptr)=>((((ptr).mlet == env.S_LIGHT || (ptr) == env.mons[env.PM_FLAMING_SPHERE] || (ptr) == env.mons[env.PM_SHOCKING_SPHERE] || (ptr) == env.mons[env.PM_BABY_GOLD_DRAGON] || (ptr) == env.mons[env.PM_FIRE_VORTEX]) ? 1 : ((ptr) == env.mons[env.PM_FIRE_ELEMENTAL] || (ptr) == env.mons[env.PM_GOLD_DRAGON]) ? 1 : 0));
  env.engulfing_u=(mon)=>((env.u.uswallow && (env.u.ustuck == (mon))));

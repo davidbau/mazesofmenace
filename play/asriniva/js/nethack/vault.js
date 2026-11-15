@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original whole VAULT context on measured shared DECL/record transport.
 import abi from './vault-abi.json' with {type:'json'};
 import * as source from '../ported/vault.js';
@@ -26,7 +27,7 @@ export function enableVault(environment,layouts){
   terrainBit:(x,y,i)=>bit('struct rm',terrain(x,y),abi.terrainBits,i),setTerrainBit:(x,y,i,v)=>bit('struct rm',terrain(x,y),abi.terrainBits,i,v),
   pronoun:(mon,i)=>{if(i!==0&&i!==1)throw new Error('Unknown VAULT pronoun '+i);const flags=abi.extra.PRONOUN_HALLU|(i?abi.extra.PRONOUN_NO_IT:0),gender=resolve('pronoun_gender')(address(mon),flags),p=environment.requireGlobal('genders')+transport.int(gender)*ctypes.size('struct Gender');return address(ctypes.getField('struct Gender',p,i?'his':'he','char *'));},
   m_canseeu:mon=>{const at=address(mon),m=views.record('struct monst',at),p=prop(abi.extra.INVIS),invisible=(p.intrinsic||p.extrinsic)&&!p.blocked;return Number((!invisible||Boolean(m.data.mflags1&BigInt(abi.extra.M1_SEE_INVIS)))&&!u.uinwater&&couldsee(m.mx,m.my));},
-  rn2:(n,line,caller)=>{if(!['invault','move_gold','gd_move','paygd'].includes(caller))throw new Error('Unknown VAULT RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('vault.c'),transport.int(line),text(caller));return resolve('rn2')(transport.int(n));},
+  rn2:(n,line,caller)=>{if(!['invault','move_gold','gd_move','paygd'].includes(caller))throw new Error('Unknown VAULT RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'vault.c',transport.int(line),caller);return resolve('rn2')(transport.int(n));},
   strcmpi:(a,b)=>resolve('strncmpi')(text(a),text(b),-1),Sprintf:(out,format,a=0,b=0)=>services.sprintf(address(out),text(format),text(a),text(b)),
  });
  for(const name of ['pline','pline_The','You','You_hear','You_see','verbalize','Your'])local[name]=(...args)=>resolve(name)(...boundary(args));

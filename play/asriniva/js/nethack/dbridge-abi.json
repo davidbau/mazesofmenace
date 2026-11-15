@@ -1086,16 +1086,16 @@
     "destroy_drawbridge": "void (coordxy, coordxy)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-dbridge-abi.py": "705e068e273c434f8c20377ccc1e359a0641daedf55f3ba6f3a988454d653258",
+    "scripts/export-standalone-dbridge-abi.py": "335d0a8e5324fa2eb38a04c8d46562f02aee7a6b5123f20b566aa9e5b7ee7377",
     "scripts/tu-dbridge-layout.h": "4220017de38602fb8698ed6ea02f34b0c52393975b4b9ade76c8164d305807fb",
     "nethack-c/wasm/tu-support.c": "4acc049213a8c67b069b71315406f58409100db195df2dadbc5d4bcd7184f875",
     "nethack-c/wasm/tu-libraries/dbridge.js": "cee119ab85fef59be571c17e7646613615f66b990a8442928ec730d4a0be023c",
     "js/ported/dbridge.js": "b2d78b0e774698c2c5dfac2bf7332a8546d730f94d419df5e5d0139e29db739f",
     "js/nethack/bindings/dbridge.js": "fd87d7d6fd0cecc4b8889bb8f8c5a7e6375da72ab1af3389ae14cef9174589d0",
-    "js/standalone/dbridge.js": "1e63dfd22c47b32b243389aa7c696947bb4804403dc606306359c725d5785204",
-    "js/standalone/level-contents.js": "54d5d1ed899533ffa8174f01646da74849886fb407e474b024c8fc270efd4846",
-    "js/nethack/address-ports.js": "9837eedc12d6a8a428cfc0e1eebaf262bee55967fcfba760f99d4ff53fe856bc",
-    "js/standalone/level-startup.js": "108f712ab804c15f88bc8632b00a0399bc6c1e7b1f7c89ec4405acbab304ba32",
+    "js/nethack/dbridge.js": "88370361de51800c820d271dad7586a40c81c9d46fed945106ca81b486c2871a",
+    "js/nethack/level-contents.js": "e214b50fa5b75a4b5c6cacecfc4f143eae1147ea25f32895c5cc90e7dd279b8f",
+    "js/nethack/address-ports.js": "6d40aa4b753e9b15d2ffee254a0b341028157330d4d7af5a86df95ee7dbf6313",
+    "js/nethack/level-startup.js": "3c316766c1408902b67edfa9eba9a5cef9be0933ce40fffe0c7c1f2f7903e967",
     "js/ported/mkmap.js": "a3579696a222189ccfe3274dab2f54c2607d28d1c982d57902ac92adfc3506ef",
     "js/nethack/bindings/mkmap.js": "5452fd6a68910d9e428515c32eace55be89a4029d00add6c70e7487e53fc5818",
     "nethack-c/wasm/tu-mkroom-support.inc": "c431a8ca0c20768dfc48474f2120e78ec7790cdd3e21ef8f750eccc3339fb0c9",
@@ -1103,9 +1103,11 @@
     "js/ported/mkroom.js": "f6b57cb99eb5a702bd86bda4fe0fb99039fbc596350b10d10f149663b9c5a2dd",
     "js/nethack/bindings/mkroom.js": "3359ee346222b0ab223673fd61a5b1e5165675f7e01b89262078d189bc5ea137",
     "scripts/tu-mkroom-layout.h": "b0373018e7d784e8aa6ad06353cd567c1ca896e456e957131e211f70d34b6e40",
-    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
+    "js/nethack/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12"
+    "js/nethack/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "scripts/service_abi_output.py": "0fc345f96351fb16f871fe0637037bb58102676dda646e9e329abc21f5b6a306",
+    "js/nethack/service-coercions.js": "522f960a28da495fc132eebe67b5c2ff166b9abb5073bdfe7787c7eb90d68651"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

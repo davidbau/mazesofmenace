@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Whole original MHITM owner on one live native-view context.
 import abi from './mhitm-abi.json' with{type:'json'};
 import {createNativeMonsterCombat} from './native/mhitm.js';
@@ -30,7 +31,7 @@ export function enableMhitm(environment,layouts){
   Snprintf:(out,n,fmt,...args)=>{const i=args.pop(),site=abi.formats[i];if(!site||args.length>2)throw new Error('Unknown MHITM snprintf site '+i);return resolve('nh_snprintf')(text(site.function),site.line,address(out),transport.ulong(n),text(fmt),...args.map(text));},
  });
  for(const[name,max]of[['pline',6],['pline_mon',2],['You',2],['You_hear',2],['You_feel',1],['Your',0]])local[name]=(...args)=>{const mon=name==='pline_mon'?args.shift():undefined,fmt=args.shift();if(args.length>max)throw new Error('Review MHITM '+name+' arity');return resolve(name)(...(mon===undefined?[]:[address(mon)]),text(fmt),...args.map(text));};
- for(const name of['rn2','rnd','d'])local[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(text('mhitm.c'),transport.int(line),text(caller));return resolve(name)(...args.map(transport.int));};
+ for(const name of['rn2','rnd','d'])local[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())recordNativeRngCaller(services,'mhitm.c',transport.int(line),caller);return resolve(name)(...args.map(transport.int));};
  for(const n of abi.globals)Object.defineProperty(local,n,{value:undefined,writable:true,configurable:true});
  local.nativeOwner=nativeState;
  const context=createMhitmEnvironment(local,L),native=createNativeMonsterCombat(context);

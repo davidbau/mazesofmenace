@@ -783,17 +783,19 @@
     "region_safety": "void (void)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-region-services-abi.py": "045bcc6a2fa8f6c2e906a14372a62720fc3b42f973fedfb97ae58b4cc1c32aab",
+    "scripts/export-standalone-region-services-abi.py": "38388d4228278d85a24f52f3cdc5cf9f92d2ba7cf163e18564af078cd6bae9ed",
     "scripts/tu-region-layout.h": "8af98064b5b708b8c244cb1b5db9398a19a679ec860a92658737e52c1b29f6af",
     "nethack-c/wasm/tu-region-support.inc": "b4013edea010659f1382a7fcab85a9cfb453b1b581006803e5b0c4d77d44b080",
     "nethack-c/wasm/tu-libraries/region.js": "9316950a375daabb26529e41e5ca7138a3deb1dde2dcc7ef7f5a0594de3e4ed0",
-    "js/standalone/region-services.js": "8fa637be144a92f387076847c5eb84621a25a08e34667896ca6ca535f98107dc",
-    "js/standalone/level-startup.js": "108f712ab804c15f88bc8632b00a0399bc6c1e7b1f7c89ec4405acbab304ba32",
+    "js/nethack/region-services.js": "64fe45734ac1373dbc6f34a696b25131e1510db245ad652f2d991d9479672145",
+    "js/nethack/level-startup.js": "3c316766c1408902b67edfa9eba9a5cef9be0933ce40fffe0c7c1f2f7903e967",
     "js/ported/region.js": "4a3cd642d2dc0a7ce8613e18ac2b91ccaae006e97acf69fa023c7cdd4de88666",
-    "js/nethack/bindings/region.js": "8114c61cea770d4c709e595b5f79fa79b19756022fbf1877dd49955a3ff9fcd0",
-    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
-    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
-    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34"
+    "js/nethack/bindings/region.js": "f87802e77ec9200ea68713c3cbbb30f810e62dd2a20e15ceb6fdc4835e176991",
+    "js/nethack/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
+    "js/nethack/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
+    "scripts/service_abi_output.py": "0fc345f96351fb16f871fe0637037bb58102676dda646e9e329abc21f5b6a306",
+    "js/nethack/service-coercions.js": "522f960a28da495fc132eebe67b5c2ff166b9abb5073bdfe7787c7eb90d68651"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

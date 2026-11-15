@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {genders as sourceGenders} from '../ported/role.js';
 // Original EXPLODE policies, one native-shaped context on the shared game heap.
 import abi from './explode-abi.json' with {type:'json'};
@@ -36,7 +37,7 @@ export function enableExplode(environment,layouts){
   impossible:(fmt,...args)=>resolve('impossible')(text(fmt),...[0,1,2,3].map(i=>transport.int(args[i]??0))),You_hear:fmt=>resolve('You_hear')(text(fmt),0),
  });
  for(const name of ['pline','pline_The','You'])base[name]=(fmt,...args)=>resolve(name)(text(fmt),...args.map(text));
- for(const name of ['rn2','rnd','d'])base[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(!['scatter','splatter_burning_oil','mon_explodes'].includes(caller))throw new Error('Unknown EXPLODE RNG caller');if(services.rng_log_enabled())services.rng_log_set_caller(text('explode.c'),transport.int(line),text(caller));return resolve(name)(...args.map(transport.int));};
+ for(const name of ['rn2','rnd','d'])base[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(!['scatter','splatter_burning_oil','mon_explodes'].includes(caller))throw new Error('Unknown EXPLODE RNG caller');if(services.rng_log_enabled())recordNativeRngCaller(services,'explode.c',transport.int(line),caller);return resolve(name)(...args.map(transport.int));};
  const local=new Proxy(base,{get:(o,k)=>{if(Object.hasOwn(o,k))return o[k];if(typeof k==='symbol')return undefined;throw new Error('Missing EXPLODE native transport '+k);}}),context=createExplodeEnvironment(local,layouts.explode);
  function call(name,...args){return transport.scoped(()=>{const m=abi.public[name].match(/^(.*?)\((.*)\)$/),types=m[2]?m[2].split(',').map(s=>s.trim()):[];args=args.map((v,i)=>scalar(types[i],v?.address??v));if(name==='scatter')args[4]=context.object(args[4]);if(name==='explode_oil')args[0]=context.object(args[0]);if(name==='mon_explodes'){args[0]=context.monster(args[0]);args[1]=context.attack(args[1]);}return withCEnvironment(context,source[name],...args)??0;});}
  const exports=Object.keys(abi.public).filter(n=>!environment.hasFunction(n));environment.register('explosions',Object.fromEntries(exports.map(n=>[n,(...args)=>call(n,...args)])));const result={call,context,services:local,exports};cache.set(environment,result);return result;

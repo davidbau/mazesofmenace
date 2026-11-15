@@ -13,7 +13,7 @@ import { parseNethackrc, init_fruit_chain } from './options.js';
 import { reset_commands, update_rest_on_space } from './cmd.js';
 import { set_configfile_for_session } from './cfgfiles.js';
 import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY } from './const.js';
-import { apply_customizations, purge_all_custom_entries, clear_all_glyphmap_colors } from './glyphs.js';
+import { apply_customizations, glyphrep_to_custom_map_entries, purge_all_custom_entries, clear_all_glyphmap_colors } from './glyphs.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
 import { roleOptionToIndex, raceOptionToIndex, genderOptionToIndex, alignOptionToIndex, genlPlayerSetupRandomPicksForY, sessionNeedsRandomPlayerPicks, extractChargenPreInitRng, replayChargenPreInitRng, detectInteractiveChargenFromSession, } from './roles.js';
 import { GameDisplay } from './game_display.js';
@@ -38,6 +38,7 @@ import { routeTag, routeFrameTick } from './route_telemetry.js';
 import { dorecover, restore_preamble } from './restore.js';
 import { restore_saved_game } from './files.js';
 import { ENV } from './hostenv.js';
+import { anim_frames_reset, anim_frames_take } from './animframes.js';
 function extractRoleInitRng(sessionData) {
     const calls = [];
     let capturing = false;
@@ -88,11 +89,13 @@ export class NethackGame {
         this._screens = [];
         this._cursors = [];
         this._rngSlices = [];
+        this._animByStep = [];
         this._lastRngIdx = 0;
         this._nhgetchCount = 0;
     }
     async start() {
         const g = resetGame();
+        anim_frames_reset();   /* a fresh C process has no pending frames */
         /* Each segment starts as a fresh C process.  These roots are module
          * state rather than `game` fields, so reset them before the restore
          * probe; dorecover reinstalls their saved snapshots when applicable. */
@@ -247,6 +250,12 @@ export class NethackGame {
             g.go = g.go || {};
             g.go.opt_need_redraw = true; // options.c:5024 pfxfn_cond_ (rc cond_*)
         }
+        /* C symbols.c:829-837 parsesymbols(): a S_<sym>:U+xxxx value (or any
+         * value under a UTF8 symset) is a glyph customization via
+         * glyphrep_to_custom_map_entries(), applied below. */
+        for (const [k, v] of opts.symbolPairs || [])
+            if (/^u\+/i.test(String(v).trim()))
+                glyphrep_to_custom_map_entries(`${k}:${String(v).trim()}`, { value: 0 });
         // C options.c:7347 initoptions_finish fixes the active S_darkroom
         // alias after reading the RC, before a bound toggle can change flags.
         reglyph_darkroom();
@@ -558,11 +567,18 @@ export class NethackGame {
                     || String(game._screen_output || '').startsWith('\nSince you were in wizard mode,'));
             let blankFrame = false;
             if (wizardScoreNotice) {
-                nhGame._screens.push('\nSince you were in wizard mode, the score list will not be checked.');
+                /* patch 006 nomux_raw_emit: once an early raw_print entered raw
+                 * mode (_rawCursorFrozen), its row counter is never reset, and
+                 * tty_suspend_nhwindows' raw_print("") is no longer skipped
+                 * (ttyDisplay alive): the notice lands that many rows lower. */
+                const rawLead = wizardScoreNoticePending && game._rawCursorFrozen
+                    ? (nhGame._cursors[nhGame._cursors.length - 1]?.[1] | 0) + 1 : 0;
+                nhGame._screens.push('\n'.repeat(1 + rawLead)
+                    + 'Since you were in wizard mode, the score list will not be checked.');
                 /* A death teardown leaves C's cursor on row 2; an escaped
                  * wizard teardown leaves it on row 4 after the quit prompts. */
                 nhGame._cursors.push([0, wizardScoreNoticePending
-                    ? (game._wizardScoreNoticePending | 0)
+                    ? (game._wizardScoreNoticePending | 0) + rawLead
                     : (game._endHow === 0 ? 2 : 4), 1]);
                 game._wizardScoreNoticePending = false;
             } else if (!/[^\n]/.test(game._screen_output || '')) {
@@ -576,6 +592,9 @@ export class NethackGame {
             const spillCursor = blankFrame ? null : nomuxOverflowCursor(nhGame._nomuxSpill);
             if (spillCursor) nhGame._cursors[nhGame._cursors.length - 1] = spillCursor;
             nhGame._rngSlices.push(slice);
+            /* Supplemental animation frames (patch 006 KIND=anim markers)
+             * fired while this step's key was processed. */
+            nhGame._animByStep.push(anim_frames_take());
             // Keep the marker through stale brown-mold frames; clear it only
             if (/^(?:[^\n]*?\s)?You return to \w+ form/.test(String(game._screen_output || '').split('\n', 1)[0]))
             if (/You return to \w+ form/.test(String(game._screen_output || ''))) /* polyself.c:1395 "You return to %s form!" with urace.adj */
@@ -601,6 +620,9 @@ export class NethackGame {
     getScreens() { const n = this._trailingEmptyCaptures(); return n === this._screens.length ? this._screens : this._screens.slice(0, n); }
     getCursors() { const n = this._trailingEmptyCaptures(); return n === this._cursors.length ? this._cursors : this._cursors.slice(0, n); }
     getRngLog() { return getRngLog(); }
+    /* Supplemental channel (API "Animation frames"): one inner list per
+     * recorded step, aligned with the input boundaries. */
+    getAnimationFramesByStep() { return this._animByStep; }
 }
 export async function gameFromSession(sessionData) {
     // C ref: calendar.c getnow(), as 001-deterministic-runtime.patch rewrites it —
@@ -907,6 +929,14 @@ export async function gameFromSession(sessionData) {
 // replay (extractChargenPreInitRng), the role pin read out of the welcome-screen
 // therefore unavailable here BY CONSTRUCTION.  This adapter takes none of it.
 //
+if (typeof process !== 'undefined' && typeof process.on === 'function'
+    && !globalThis.__nhInputDryGuard) {
+    globalThis.__nhInputDryGuard = true;
+    process.on('unhandledRejection', (e) => {
+        if (String(e?.message || '').includes('Input queue empty')) return;
+        throw e;
+    });
+}
 export async function runSegment(input, prevGame = null) {
     const seedRaw = input.seed;
     const nhGame = new NethackGame({

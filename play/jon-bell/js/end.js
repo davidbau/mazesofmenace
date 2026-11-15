@@ -850,8 +850,13 @@ export async function do_death_sequence(opts) {
          * above is pinned to the pre-paint terminal, so the "Die?" prompt that
          * follows must hold the new paint, not that page's rows. */
         if (_earlyBot) rebuild_screen_output();
+        /* ...but only when "You die..." did NOT fit beside the page it paged:
+         * if n0 + strlen(toplines) + 3 < CO - 8 then strncmp ran, notdied == 0
+         * and :298-299 clears WIN_STOP again (choke() on a tin of spinach,
+         * "This makes you feel like Popeye!  You choke over it."). */
         if (_remainderMorc === 27
-            && (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder))) {
+            && (pd.alreadySaidYouDie && /You die\.\.\.$/.test(remainder))
+            && remainder.length + 3 >= TOPL_LIMIT_END) {
             _winStopHere = true;
             _suppressDeathPage = true;
         } else if (_remainderMorc === 27 && !pd.alreadySaidYouDie && !pd.noDeathLine

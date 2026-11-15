@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original projectile/line-check context and private state on shared bytes.
 import abi from './mthrowu-abi.json' with {type:'json'};
 import {callMthrowu} from './bindings/mthrowu.js';
@@ -32,7 +33,7 @@ export function enableMthrowu(environment,layouts){
   Snprintf:(out,n,fmt,s)=>resolve('nh_snprintf')(text('u_catch_thrown_obj'),544,address(out),transport.ulong(n),text(fmt),text(s)),Strcpy:(out,s)=>resolve('strcpy')(address(out),text(s)),
   impossible:(fmt,n=0)=>resolve('impossible')(text(fmt),transport.int(n)),panic:s=>resolve('panic')(text('%s'),text(s)),Your1:s=>resolve('Your')(text('%s'),text(s)),
  });
- for(const name of ['rn2','rnd'])local[name]=(n,caller,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('mthrowu.c'),transport.int(line),text(caller));return resolve(name)(transport.int(n));};
+ for(const name of ['rn2','rnd'])local[name]=(n,caller,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'mthrowu.c',transport.int(line),caller);return resolve(name)(transport.int(n));};
  for(const name of ['pline','pline_The','You','Your','You_hear'])local[name]=(fmt,...args)=>resolve(name)(text(fmt),...args.map(text));
  local.pline_mon=(m,fmt,...args)=>resolve('pline_mon')(address(m),text(fmt),...args.map(text));
  for(const name of abi.globals)Object.defineProperty(local,name,{value:undefined,writable:true,configurable:true});

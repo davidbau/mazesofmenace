@@ -221,7 +221,7 @@ function trapped_chest_at(ttyp,x,y)
     let mtmp;
     let otmp;
     if(Number(!((Number(!!(Number((C.glyph_at(x,y))>=((C.i32((C.GLYPH_CMAP_B_OFF+(C.i32((C.S_arrow_trap-C.S_grave))))))))&&Number((C.glyph_at(x,y))<(C.i32((((C.i32((C.GLYPH_CMAP_B_OFF+(C.i32((C.S_arrow_trap-C.S_grave)))))))+(C.i32((C.TRAPNUM-1))))))))))))) return (C.i8(0));
-    if(Number(!!(Number(ttyp!=C.TRAPPED_CHEST)||(Number(!!((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),146,(C.literal("trapped_chest_at"))),C.rn2(20))):C.rn2(20))))))))) return (C.i8(0));
+    if(Number(!!(Number(ttyp!=C.TRAPPED_CHEST)||(Number(!!((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",146,"trapped_chest_at"),C.rn2(20))):C.rn2(20))))))))) return (C.i8(0));
     /*
      * TODO?  We should check containers recursively like the trap
      * detecting routine does.  Chests and large boxes do not nest in
@@ -256,7 +256,7 @@ function trapped_door_at(ttyp,x,y)
     y=C.i16(y);
     let lev;
     if(Number(!((Number(!!(Number((C.glyph_at(x,y))>=((C.i32((C.GLYPH_CMAP_B_OFF+(C.i32((C.S_arrow_trap-C.S_grave))))))))&&Number((C.glyph_at(x,y))<(C.i32((((C.i32((C.GLYPH_CMAP_B_OFF+(C.i32((C.S_arrow_trap-C.S_grave)))))))+(C.i32((C.TRAPNUM-1))))))))))))) return (C.i8(0));
-    if(Number(!!(Number(ttyp!=C.TRAPPED_DOOR)||(Number(!!((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),188,(C.literal("trapped_door_at"))),C.rn2(20))):C.rn2(20))))))))) return (C.i8(0));
+    if(Number(!!(Number(ttyp!=C.TRAPPED_DOOR)||(Number(!!((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",188,"trapped_door_at"),C.rn2(20))):C.rn2(20))))))))) return (C.i8(0));
     (lev=((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
     if(Number(!((Number(C.i32((R104(lev)))==C.DOOR))))) return (C.i8(0));
     if(Number(!!(Number((C.i32((C.i32(R106(lev))&(C.i32((C.i32((0|1))|2))))))!=0)&&C.i32(trapped_chest_at(ttyp,x,y))))) return (C.i8(0));
@@ -467,7 +467,7 @@ function gold_detect(sobj)
             C.copyRecord(gold,A7(C.cg),C.sizes["struct obj"]);
             /* ensure oextra is cleared too */
             (W83(gold,C.i16(C.GOLD_PIECE)));
-            (W84(gold,C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),442,(C.literal("gold_detect"))),C.rnd(10))):C.rnd(10))))));
+            (W84(gold,C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",442,"gold_detect"),C.rnd(10))):C.rnd(10))))));
             /* usually more than 1 */
             (W81(gold,R62(mtmp)));
             (W82(gold,R63(mtmp)));
@@ -741,7 +741,7 @@ function object_detect(detector,class_)
             C.copyRecord(gold,A7(C.cg),C.sizes["struct obj"]);
             /* ensure oextra is cleared too */
             (W83(gold,C.i16(C.GOLD_PIECE)));
-            (W84(gold,C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),770,(C.literal("object_detect"))),C.rnd(10))):C.rnd(10))))));
+            (W84(gold,C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",770,"object_detect"),C.rnd(10))):C.rnd(10))))));
             /* usually more than 1 */
             (W81(gold,R62(mtmp)));
             (W82(gold,R63(mtmp)));
@@ -839,7 +839,7 @@ function sense_trap(trap,x,y,src_cursed)
             (W82(obj,y));
         }
         (W83(obj,C.i16((Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))))?C.GOLD_PIECE:(C.i32((C.callProc((C.functionPointer("rn2")),"int (int)",C.i32((C.NUM_OBJECTS-C.FIRST_OBJECT)))+C.FIRST_OBJECT)))))));
-        (W84(obj,C.i64((((Number(C.i32(R83(obj))==C.GOLD_PIECE))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),879,(C.literal("sense_trap"))),C.rnd(10))):C.rnd(10))):(C.i32(R94(C.objects+Number(R83(obj))*C.sizes["struct objclass"]))?((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),880,(C.literal("sense_trap"))),C.rnd(2))):C.rnd(2))):1))))));
+        (W84(obj,C.i64((((Number(C.i32(R83(obj))==C.GOLD_PIECE))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",879,"sense_trap"),C.rnd(10))):C.rnd(10))):(C.i32(R94(C.objects+Number(R83(obj))*C.sizes["struct objclass"]))?((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",880,"sense_trap"),C.rnd(2))):C.rnd(2))):1))))));
         (W93(obj,C.callProc((C.functionPointer("rn2")),"int (int)",C.NUMMONS)));
         /* if otyp == CORPSE */
         C.map_object(obj,1);
@@ -1081,14 +1081,14 @@ function level_distance(where)
     let res=C.literal("");
     /* always replaced by some other non-Null value */
     if(Number(C.i32(ll)<0)) {
-        if(Number(C.i32(ll)<(C.i32((C.i32((-8))-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1149,(C.literal("level_distance"))),C.rn2(3))):C.rn2(3)))))))) if(Number(!(indun))) (res=C.literal("far away"));
+        if(Number(C.i32(ll)<(C.i32((C.i32((-8))-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1149,"level_distance"),C.rn2(3))):C.rn2(3)))))))) if(Number(!(indun))) (res=C.literal("far away"));
  else (res=C.literal("far below"));
  else if(Number(C.i32(ll)<C.i32((-1)))) if(Number(!(indun))) (res=C.literal("away below you"));
  else (res=C.literal("below you"));
  else if(Number(!(indun))) (res=C.literal("in the distance"));
  else (res=C.literal("just below"));
     } else if(Number(C.i32(ll)>0)) {
-        if(Number(C.i32(ll)>(C.i32((8+((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1164,(C.literal("level_distance"))),C.rn2(3))):C.rn2(3)))))))) if(Number(!(indun))) (res=C.literal("far away"));
+        if(Number(C.i32(ll)>(C.i32((8+((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1164,"level_distance"),C.rn2(3))):C.rn2(3)))))))) if(Number(!(indun))) (res=C.literal("far away"));
  else (res=C.literal("far above"));
  else if(Number(C.i32(ll)>1)) if(Number(!(indun))) (res=C.literal("away above you"));
  else (res=C.literal("above you"));
@@ -1128,9 +1128,9 @@ function use_crystal_ball(optr)
         return;
     }
     (oops=(C.i32(C.is_quest_artifact(obj))?8:(C.i32(R89(obj))?16:20)));
-    if(Number(!!(C.i32(charged)&&(Number(!!(C.i32(R88(obj))||Number(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1218,(C.literal("use_crystal_ball"))),C.rnd(oops))):C.rnd(oops)))>C.i32((C.acurr(C.A_INT)))))))))) {
-        let impair=C.i64(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1219,(C.literal("use_crystal_ball"))),C.rnd(C.i32((100-C.i32((3*C.i32((C.acurr(C.A_INT)))))))))):C.rnd(C.i32((100-C.i32((3*C.i32((C.acurr(C.A_INT)))))))))));
-        switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1221,(C.literal("use_crystal_ball"))),C.rnd(((Number(!!(C.i32(R87(obj))||C.i32(R89(obj)))))?4:5)))):C.rnd(((Number(!!(C.i32(R87(obj))||C.i32(R89(obj)))))?4:5))))) {
+    if(Number(!!(C.i32(charged)&&(Number(!!(C.i32(R88(obj))||Number(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1218,"use_crystal_ball"),C.rnd(oops))):C.rnd(oops)))>C.i32((C.acurr(C.A_INT)))))))))) {
+        let impair=C.i64(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1219,"use_crystal_ball"),C.rnd(C.i32((100-C.i32((3*C.i32((C.acurr(C.A_INT)))))))))):C.rnd(C.i32((100-C.i32((3*C.i32((C.acurr(C.A_INT)))))))))));
+        switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1221,"use_crystal_ball"),C.rnd(((Number(!!(C.i32(R87(obj))||C.i32(R89(obj)))))?4:5)))):C.rnd(((Number(!!(C.i32(R87(obj))||C.i32(R89(obj)))))?4:5))))) {
             case (1):
                 C.variadic(23,C.literal("%s too much to comprehend!"),C.Tobjnam(obj,C.literal("are")));
             break;
@@ -1158,14 +1158,14 @@ function use_crystal_ball(optr)
             (C.cell(optr,"struct obj *").value=(obj=0));
             /* it's gone */
             /* physical damage cause by the shards and force */
-            C.losehp(((((Number(!!(R102(A122(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])))))?(C.i32(Math.trunc(((C.i32(((((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1250,(C.literal("use_crystal_ball"))),C.rnd(30))):C.rnd(30))))+1)))/2)))):(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1250,(C.literal("use_crystal_ball"))),C.rnd(30))):C.rnd(30)))))),C.literal("exploding crystal ball"),C.i8(0));
+            C.losehp(((((Number(!!(R102(A122(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALF_PHDAM)*C.sizes["struct prop"])))))?(C.i32(Math.trunc(((C.i32(((((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1250,"use_crystal_ball"),C.rnd(30))):C.rnd(30))))+1)))/2)))):(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1250,"use_crystal_ball"),C.rnd(30))):C.rnd(30)))))),C.literal("exploding crystal ball"),C.i8(0));
             break;
         }
         if(obj) C.consume_obj_charge(obj,(C.i8(1)));
         return;
     }
     if((Number(!!(R102(A122(C.u)+Number(C.HALLUC)*C.sizes["struct prop"])&&Number(!((Number(!!(R102(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.HALLUC_RES)*C.sizes["struct prop"])))))))))) {
-        C.nomul(C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1260,(C.literal("use_crystal_ball"))),C.rnd((C.i32(charged)?4:2)))):C.rnd((C.i32(charged)?4:2)))))));
+        C.nomul(C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1260,"use_crystal_ball"),C.rnd((C.i32(charged)?4:2)))):C.rnd((C.i32(charged)?4:2)))))));
         (W47(C.gm,C.literal("gazing into a Magic 8-Ball (tm)")));
         (W48(C.gn,C.literal("")));
         if(Number(!(charged))) {
@@ -1173,7 +1173,7 @@ function use_crystal_ball(optr)
             if(Number(C.i32(R85(obj))<0)) break implode;
             /* destroy it when it has been cancelled */
         } else {
-            switch(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1269,(C.literal("use_crystal_ball"))),C.rnd(6))):C.rnd(6)))) {
+            switch(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1269,"use_crystal_ball"),C.rnd(6))):C.rnd(6)))) {
                 case (1):
                     C.variadic(32,C.literal("grok some groovy globs of incandescent lava."));
                 break;
@@ -1210,7 +1210,7 @@ function use_crystal_ball(optr)
      *  for help in using the crystal ball.
      */
     C.variadic(40,C.literal("peer into %s..."),C.the(C.xname(obj)));
-    C.nomul(C.i32((-((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1313,(C.literal("use_crystal_ball"))),C.rnd((C.i32(charged)?10:2)))):C.rnd((C.i32(charged)?10:2)))))));
+    C.nomul(C.i32((-((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1313,"use_crystal_ball"),C.rnd((C.i32(charged)?10:2)))):C.rnd((C.i32(charged)?10:2)))))));
     (W47(C.gm,C.literal("gazing into a crystal ball")));
     (W48(C.gn,C.literal("")));
     if(Number(!(charged))) {
@@ -1241,12 +1241,12 @@ function use_crystal_ball(optr)
         } else if(Number(C.i32(ch)==94)) {
             (ret=trap_detect(0));
         } else {
-            (i=((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1354,(C.literal("use_crystal_ball"))),C.rn2(C.i32((C.u64((BigInt((C.sizes["struct crystalballlevels"]*4))/BigInt(C.sizes["struct crystalballlevels"])))))))):C.rn2(C.i32((C.u64((BigInt((C.sizes["struct crystalballlevels"]*4))/BigInt(C.sizes["struct crystalballlevels"])))))))));
+            (i=((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1354,"use_crystal_ball"),C.rn2(C.i32((C.u64((BigInt((C.sizes["struct crystalballlevels"]*4))/BigInt(C.sizes["struct crystalballlevels"])))))))):C.rn2(C.i32((C.u64((BigInt((C.sizes["struct crystalballlevels"]*4))/BigInt(C.sizes["struct crystalballlevels"])))))))));
             C.variadic(42,C.literal("%s, %s."),C.level_detects[Number(i)].what,level_distance(C.level_detects[Number(i)].where));
             (ret=0);
         }
         if(ret) {
-            if(Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1361,(C.literal("use_crystal_ball"))),C.rn2(100))):C.rn2(100)))))) C.variadic(43,C.literal("the Wizard of Yendor gazing out at you."));
+            if(Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1361,"use_crystal_ball"),C.rn2(100))):C.rn2(100)))))) C.variadic(43,C.literal("the Wizard of Yendor gazing out at you."));
  else C.variadic(44,C.literal("vision is unclear."));
             /* make them nervous */
         }
@@ -1269,7 +1269,7 @@ function show_map_spot(x,y,cnf)
     let t;
     let ep;
     let oldglyph;
-    if(Number(!!(C.i32(cnf)&&((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),1379,(C.literal("show_map_spot"))),C.rn2(7))):C.rn2(7)))))) return;
+    if(Number(!!(C.i32(cnf)&&((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",1379,"show_map_spot"),C.rn2(7))):C.rn2(7)))))) return;
     (lev=((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
     (W105(lev,C.u8(255)));
     /* Secret corridors are found, but not secret doors. */
@@ -1812,7 +1812,7 @@ function dosearch0(aflag)
             if((Number(!!(Number(C.i32((x))==C.i32(R119(C.u)))&&Number(C.i32((y))==C.i32(R120(C.u))))))) continue;
             if(Number(!!(Number(!(aflag))&&(Number(!!((Number(!!((Number(!!(R102(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R101(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))||C.visible_region_at(x,y))))))) C.feel_location(x,y);
             if(Number(C.i32(R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.SDOOR)) {
-                if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),2043,(C.literal("dosearch0"))),C.rnl(C.i32((7-fund))))):C.rnl(C.i32((7-fund)))))) continue;
+                if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",2043,"dosearch0"),C.rnl(C.i32((7-fund))))):C.rnl(C.i32((7-fund)))))) continue;
                 cvt_sdoor_to_door(((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
                 /* .typ = DOOR */
                 C.recalc_block_point(x,y);
@@ -1823,7 +1823,7 @@ function dosearch0(aflag)
                 C.set_msg_xy(x,y);
                 C.variadic(65,C.literal("find a hidden door."));
             } else if(Number(C.i32(R104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]))==C.SCORR)) {
-                if(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),2053,(C.literal("dosearch0"))),C.rnl(C.i32((7-fund))))):C.rnl(C.i32((7-fund)))))) continue;
+                if(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",2053,"dosearch0"),C.rnl(C.i32((7-fund))))):C.rnl(C.i32((7-fund)))))) continue;
                 (W104((A17(A53(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"],C.i8(C.CORR)));
                 C.unblock_point(C.i32(x),C.i32(y));
                 /* vision */
@@ -1844,7 +1844,7 @@ function dosearch0(aflag)
                      * feel_location() already did it
                      */
                 if(Number(!!(Number(!!(Number(!(aflag))&&Number(!(mtmp))))&&Number(!((Number(!!((Number(!!(R102(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"])||R100(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))&&Number(!(R101(A122(C.u)+Number(C.BLINDED)*C.sizes["struct prop"]))))))))))) C.unmap_invisible(x,y);
-                if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&Number(!(R115(trap)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.rng_log_set_caller(C.literal("detect.c"),2079,(C.literal("dosearch0"))),C.rnl(8))):C.rnl(8)))))))) {
+                if(Number(!!(Number(!!(((trap=C.t_at(x,y)))&&Number(!(R115(trap)))))&&Number(!(((C.i32(C.rng_log_enabled())?((C.nativeRngCaller("detect.c",2079,"dosearch0"),C.rnl(8))):C.rnl(8)))))))) {
                     C.nomul(0);
                     if(Number(C.i32(R114(trap))==C.STATUE_TRAP)) {
                         if(C.activate_statue_trap(trap,x,y,(C.i8(0)))) C.exercise(C.A_WIS,(C.i8(1)));
@@ -2089,5 +2089,5 @@ function reveal_terrain(which_subset)
 /*detect.c*/
 const initialState=C=>({dummytrap:C.dummytrapBacking,level_detects:level_detects(C)});
 
-return Object.freeze({unconstrain_map,reconstrain_map,map_redisplay,browse_map,map_monst,trapped_chest_at,trapped_door_at,o_in,o_material,observe_recursively,check_map_spot,clear_stale_map,gold_detect,food_detect,object_detect,monster_detect,sense_trap,detect_obj_traps,display_trap_map,trap_detect,furniture_detect,level_distance,level_detects,use_crystal_ball,show_map_spot,do_mapping,do_vicinity_map,cvt_sdoor_to_door,foundone,findone,openone,findit,openit,detecting,find_trap,mfind0,dosearch0,dosearch,warnreveal,skip_premap_detect,premap_detect,reveal_terrain_getglyph,reveal_terrain,initialState});
+return C.nativeAddressNamespaceReady(Object.freeze({unconstrain_map,reconstrain_map,map_redisplay,browse_map,map_monst,trapped_chest_at,trapped_door_at,o_in,o_material,observe_recursively,check_map_spot,clear_stale_map,gold_detect,food_detect,object_detect,monster_detect,sense_trap,detect_obj_traps,display_trap_map,trap_detect,furniture_detect,level_distance,level_detects,use_crystal_ball,show_map_spot,do_mapping,do_vicinity_map,cvt_sdoor_to_door,foundone,findone,openone,findit,openit,detecting,find_trap,mfind0,dosearch0,dosearch,warnreveal,skip_premap_detect,premap_detect,reveal_terrain_getglyph,reveal_terrain,initialState}),C);
 }

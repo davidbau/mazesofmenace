@@ -968,7 +968,7 @@ export async function hitmsg(mtmp, mattk) {
 }
 
 /* C ref: mhitu.c hitmsg() — emit the "<Monster> bites/butts/..." message. */
-export function hitmsg_je(mtmp, mattk) {
+export async function hitmsg_je(mtmp, mattk) {
     let verb;
     switch (mattk.aatyp) {
         case AT_BITE_: verb = 'bites'; break;
@@ -993,7 +993,7 @@ export function hitmsg_je(mtmp, mattk) {
         && mattk.aatyp === g._hitmsg_prev_aatyp) ? ' again' : '';
     const Monst_name = je_Monnam(mtmp);
     /* C mhitu.c:77 pline_mon(mtmp, ...) */
-    pline_mon(mtmp, `${Monst_name} ${verb}${again}!`);
+    await pline_mon(mtmp, `${Monst_name} ${verb}${again}!`);
     /* C ref: mhitu.c:80-81 — remember this monster + attack for the next hitmsg. */
     g._hitmsg_mid = mtmp ? mtmp.m_id : 0;
     g._hitmsg_prev_ai = (mattk._ai != null ? (mattk._ai | 0) : null);
@@ -1123,7 +1123,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
             arti_special = ah.special;
         }
         if (!(otmp.oartifact | 0) || !arti_special) {
-            hitmsg_je(mtmp, mattk);
+            await hitmsg_je(mtmp, mattk);
             /* hitmsg's pline blocks in more() when it overflows (topl.c:257-268);
              * drain that page before the mhitu.c:1191 knockback draws run. */
             if (_topline_more_pending()) await flush_pending_messages();
@@ -1179,7 +1179,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
     }
     const u_pt = game.u || {};
     if (mattk.aatyp !== AT_TUCH_ || mhm.damage !== 0 || mtmp !== u_pt.ustuck) {
-        hitmsg_je(mtmp, mattk);
+        await hitmsg_je(mtmp, mattk);
         if (_topline_more_pending()) await flush_pending_messages();
         mhm.hitflags |= M_ATTK_HIT;
     }
@@ -1187,7 +1187,7 @@ async function mhitm_ad_phys_u(mtmp, mattk, mhm) {
 
 async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
-    hitmsg_je(mtmp, mattk);
+    await hitmsg_je(mtmp, mattk);
     if (!mhitm_mgc_atk_negated_u(true, mtmp)) {
         pline('You get zapped!');
         /* C: `if (Shock_resistance)`.  This used to read the raw (always
@@ -1213,7 +1213,7 @@ async function mhitm_ad_elec_u(mtmp, mattk, mhm) {
 
 async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
     const orig_dmg = mhm.damage;
-    hitmsg_je(mtmp, mattk);
+    await hitmsg_je(mtmp, mattk);
     if (!mhitm_mgc_atk_negated_u(true, mtmp)) {
         pline("You're covered in frost!");
         if (Cold_resistance_mk()) {
@@ -1233,7 +1233,7 @@ async function mhitm_ad_cold_u(mtmp, mattk, mhm) {
 }
 
 async function mhitm_ad_acid_u(mtmp, mattk, mhm) {
-    hitmsg_je(mtmp, mattk);
+    await hitmsg_je(mtmp, mattk);
     if (!(mtmp.mcan | 0) && !rn2(3)) {
         if (Acid_resistance_gu()) {
             pline(`You're covered in ${hliquid_mu('acid')}, but it seems harmless.`);
@@ -2260,7 +2260,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
         case AD_STON:
             await mhitm_ad_ston_u(mtmp, mattk, mhm); break;
         case AD_STCK_:
-            mhitm_ad_stck_u(mtmp, mattk, mhm); break;
+            await mhitm_ad_stck_u(mtmp, mattk, mhm); break;
         /* C uhitm.c:4813 `case AD_WRAP: mhitm_ad_wrap(...)` — see
          * mhitm_ad_wrap_u's header for what its absence cost. */
         case AD_WRAP_:
@@ -2389,7 +2389,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
             mhm.damage = 0;
             break;
         case AD_CURS_MU:
-            hitmsg_je(mtmp, mattk);
+            await hitmsg_je(mtmp, mattk);
             if (!night() && ((mtmp.mndx ?? mtmp.mnum ?? -1) | 0) === PM_GREMLIN_MU)
                 break;
             /* C uhitm.c:3045-3061 mhitm_ad_curs, mhitu arm. */
@@ -2559,10 +2559,10 @@ async function mhitm_ad_dcay_u(mtmp, mattk) {
 
 async function mhitm_ad_deth_u(magr, mattk, mhm) {
     const pd = game.youmonst.data;
-    pline_mon(magr, "%s reaches out with its deadly touch.", Monnam(magr));
+    await pline_mon(magr, "%s reaches out with its deadly touch.", Monnam(magr));
     if (is_undead_mu(pd)) {
         mhm.damage = Math.trunc((mhm.damage + 1) / 2);
-        pline('Was that the touch of death?');
+        await pline('Was that the touch of death?');
         return;
     }
     switch (rn2(20)) {
@@ -2574,13 +2574,13 @@ async function mhitm_ad_deth_u(magr, mattk, mhm) {
             }
             /* FALLTHROUGH */
         default: /* case 16 .. case 5 */
-            You_feel_mu('your life force draining away...');
+            await You_feel_mu('your life force draining away...');
             mhm.permdmg = 1;
             return;
         case 4: case 3: case 2: case 1: case 0:
             if (Antimagic_mu())
                 shieldeff(game.u.ux | 0, game.u.uy | 0);
-            pline("Lucky for you, it didn't work!");
+            await pline("Lucky for you, it didn't work!");
             mhm.damage = 0;
             return;
     }
@@ -2609,7 +2609,7 @@ const ANTIMAGIC_MU = 12;  /* prop.h:30 (js/const.js:2339) */
 async function mhitm_ad_slim_u(mtmp, mattk, mhm) {
     const negated = mhitm_mgc_atk_negated_u(false, mtmp);
     const pdMndx = _hero_form_mndx_mu();
-    hitmsg_je(mtmp, mattk);
+    await hitmsg_je(mtmp, mattk);
     if (negated) {
         if (!mtmp.mcan)
             pline('You escape harm.');
@@ -2721,10 +2721,10 @@ function mhitm_ad_blnd_u(mtmp, mattk, mhm) {
 }
 const AD_BLND_U = 11;   /* monattk.h:53 */
 
-function mhitm_ad_stck_u(mtmp, mattk, mhm) {
+async function mhitm_ad_stck_u(mtmp, mattk, mhm) {
     const negated = mhitm_mgc_atk_negated_u(false, mtmp);
     const barbs = ((mtmp.mndx ?? mtmp.mnum ?? -1) | 0) === PM_BARBED_DEVIL_MU;
-    hitmsg_je(mtmp, mattk);
+    await hitmsg_je(mtmp, mattk);
     const u = game.u || {};
     if (!negated && !u.ustuck && !_kb_sticks(_hero_form_mndx_mu())) {
         set_ustuck_mu(mtmp);
@@ -2834,7 +2834,7 @@ async function mhitm_ad_drst_u(mtmp, mattk, mhm) {
         case AD_DRDX_: ptmp = A_DEX_AD; break;
         case AD_DRCO_: ptmp = A_CON_AD; break;
     }
-    hitmsg_je(mtmp, mattk);
+    await hitmsg_je(mtmp, mattk);
     if (!negated && !rn2(8)) {
         const buf = `${s_suffix(je_Monnam(mtmp))} ${mpoisons_subj(mtmp, mattk)}`;
         /* C uhitm.c:3157 — poisoned(buf, ptmp, pmname(pa, Mgender(magr)), 30,

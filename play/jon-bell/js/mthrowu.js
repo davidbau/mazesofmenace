@@ -1,4 +1,5 @@
 // mthrowu.js — C ref: mthrowu.c.
+import { nh_delay_output } from './animframes.js';
 import { exercise } from './attrib.js';
 import { ACID_RES, A_CON, A_STR, IS_OBSTRUCTED, KILLED_BY_AN, LAVAWALL, OBJ_DELETED, W_WEP, isok } from './const.js';
 import { losehp } from './hack.js';
@@ -1795,8 +1796,8 @@ async function return_from_mtoss(magr, otmp, tethered_weapon) {
  * the object has a display class at all (always true for a real object). */
 function obj_sym_mu(obj) { return (obj.oclass | 0) !== 0; }
 
-/* C's nh_delay_output — a no-op in this port (js/display.js:4958 says the same). */
-function nh_delay_output_mu() { }
+/* C's nh_delay_output — the shared tty_delay_output (js/animframes.js). */
+const nh_delay_output_mu = nh_delay_output;
 
 /* JS otyps used by m_throw's flat-thitu arm — see drop_throw's copies. */
 const CREAM_PIE_M_THROW_MU = 287, EGG_M_THROW_MU = 266;

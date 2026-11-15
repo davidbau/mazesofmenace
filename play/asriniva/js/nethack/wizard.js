@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original Wizard-of-Yendor context over the shared game state.
 import abi from './wizard-abi.json' with {type:'json'};
 import * as source from '../ported/wizard.js';
@@ -20,7 +21,7 @@ export function enableWizard(environment,layouts){
   distant_name:(obj,callback)=>{if(callback!==base.doname)throw new Error('Unexpected WIZARD naming callback');return resolve('distant_name')(address(obj),environment.functionPointer('doname','pp'));},
  });
  for(const name of ['pline','You','You_feel','verbalize'])base[name]=(fmt,a=0,b=0)=>resolve(name)(text(fmt),text(a),text(b));
- for(const name of ['rn2','rnd'])base[name]=(bound,line,caller)=>{if(!abi.rngSites.some(row=>row[1]===line&&row[2]===caller&&(row[0]===name||name==='rn2'&&row[0]==='rn1')))throw new Error('Unexpected WIZARD RNG site');if(services.rng_log_enabled())services.rng_log_set_caller(text('wizard.c'),transport.int(line),text(caller));return resolve(name)(transport.int(bound));};
+ for(const name of ['rn2','rnd'])base[name]=(bound,line,caller)=>{if(!abi.rngSites.some(row=>row[1]===line&&row[2]===caller&&(row[0]===name||name==='rn2'&&row[0]==='rn1')))throw new Error('Unexpected WIZARD RNG site');if(services.rng_log_enabled())recordNativeRngCaller(services,'wizard.c',transport.int(line),caller);return resolve(name)(transport.int(bound));};
  const local=new Proxy(base,{get:(o,k)=>{if(Object.hasOwn(o,k))return o[k];if(typeof k==='symbol')return undefined;throw new Error('Missing WIZARD native transport '+k);}}),context=createWizardEnvironment(local,layouts.wizard,source);
  function call(name,...args){return transport.scoped(()=>{const m=abi.public[name].match(/^(.*?)\((.*)\)$/),types=m[2]?m[2].split(',').map(s=>s.trim()):[];args=args.map((v,i)=>scalar(types[i],v?.address??v));if(['mon_has_amulet','mon_has_special','tactics','has_aggravatables','nasty','cuss'].includes(name))args[0]=context.monster(args[0]);if(name==='choose_stairs'){args[0]=context.coordPointer(args[0]);args[1]=context.coordPointer(args[1]);}return withCEnvironment(context,source[name],...args)??0;});}
  // Preserve the earlier stateless mon_has_amulet owner; all mutable lifecycle policy lives here.

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original configured wizard commands on one strict native-shaped context.
 import abi from './wizcmds-abi.json' with {type:'json'};
 import * as source from '../ported/wizcmds.js';
@@ -21,7 +22,7 @@ export function enableWizcmds(environment,layouts){
   global:i=>{if(!abi.globals[i])throw Error('Unknown WIZCMDS global');return shared[i];},
   read:(k,p,i)=>{const{r,f}=field(k,p,i);return ctypes.getField(r.ctype,address(p),f.name,f.ctype);},write:(k,p,i,v)=>{const{r,f}=field(k,p,i);return ctypes.setField(r.ctype,address(p),f.name,f.ctype,v);},address:(k,p,i)=>{const{r,f}=field(k,p,i);if(f.bit)throw Error('WIZCMDS bitfield has no address');return ctypes.locate(r.ctype,address(p),f.name).at;},
   functionPointer:i=>{const n=abi.functions[i],p=abi.functionTypes[n];if(!n||!p||abi.callbackIndices[i]!==n)throw Error('Unknown WIZCMDS native callback index');const t=prototype(p),sig=[t.ret,...t.args].map(t=>t.includes('*')?'p':t==='void'?'v':/\blong\b/.test(t)?'j':'i').join('');return environment.functionPointer(Object.hasOwn(abi.public,n)?n:'wizcmds::'+n,sig,(...a)=>call(n,...a));},
-  rn2:(n,line,caller)=>{if(!abi.rngSites.some(([l,f])=>l===Number(line)&&f===caller))throw Error('Unexpected WIZCMDS RNG site');if(services.rng_log_enabled())services.rng_log_set_caller(text('wizcmds.c'),transport.int(line),text(caller));return resolve('rn2')(transport.int(n));},
+  rn2:(n,line,caller)=>{if(!abi.rngSites.some(([l,f])=>l===Number(line)&&f===caller))throw Error('Unexpected WIZCMDS RNG site');if(services.rng_log_enabled())recordNativeRngCaller(services,'wizcmds.c',transport.int(line),caller);return resolve('rn2')(transport.int(n));},
  });
  const win={create_nhwindow:['int',['int']],putstr:['void',['int','int','const char *']],display_nhwindow:['void',['int','boolean']],destroy_nhwindow:['void',['int']],start_menu:['void',['int','unsigned long']],end_menu:['void',['int','const char *']]};
  for(const[n,[ret,args]]of Object.entries(win))base[n]=(...a)=>{const at=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),'win_'+n).at,sig=[ret,...args].map(t=>t.includes('*')?'p':t==='void'?'v':ctypes.size(ctypes.canonical(t))===8?'j':'i').join('');return scalar(ret,functions.indirect(memory.view.getBigUint64(at,true),sig,...args.map((t,i)=>scalar(t,a[i]))));};

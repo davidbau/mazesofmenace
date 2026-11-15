@@ -1,4 +1,5 @@
 import { reroll_menu } from './invent.js';
+import { nh_delay_output } from './animframes.js';
 import { u_init_inventory_attrs } from './u_init.js';
 import { nhlib_com_pager_rng } from './nhlib.js';
 // @ts-nocheck
@@ -1488,6 +1489,14 @@ async function faithful_moveloop_turn() {
                     if (g.disp) g.disp.time_botl = g.flags?.time | 0;
                     pline_flush_point();
                     g._runFlushSeq = (g._runFlushSeq | 0) + 1;
+                    /* hack.c:3009-3015: nh_delay_output(), four more for crawl. */
+                    nh_delay_output();
+                    if (_rm === PROPS.RUN_CRAWL) {
+                        nh_delay_output();
+                        nh_delay_output();
+                        nh_delay_output();
+                        nh_delay_output();
+                    }
                 }
                 g.multi = (g.multi | 0) + 1;
                 if ((g.multi | 0) === 0) {
@@ -3642,6 +3651,11 @@ async function moveloop_core_faithful() {
          * extra hallucinatory see_monsters() draw on the DISPLAY rng). */
         if (interrupted)
             g._ff_input_tail_done = true;
+        // C allmain.c:197-198 checks sanity once per moveloop_core call.
+        // The driver already ran the incoming call's check (including the
+        // eager turn after completion); the next JS invocation resumes at
+        // that call's input, just as the engraving driver does.
+        g._ff_sanity_done = true;
         g.context = g.context || {};
         g.context.move = 0;
     }
@@ -3719,7 +3733,7 @@ async function moveloop_core_faithful() {
             // overflow page, each consuming one recorded key.  (flush_screen's
             // own bot()/timebot() at display.c:2238 is a no-op here: the tail
             // paint above already cleared the flags.)
-            await flush_screen(1);
+            await flush_screen(1, false);
         }
         // C ref: allmain.c:209 — the occupation has cleared with context.move
         // still 1, so C's next moveloop_core runs ONE more world block before

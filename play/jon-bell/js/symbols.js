@@ -625,7 +625,8 @@ function init_primary_syms_real() {
     for (let i = 0; i < 18; i++) gp.primary_syms[i + SYMF_OFF_O] = DEF_OC_SYM.charCodeAt(i);
     for (let i = 0; i < 61; i++) gp.primary_syms[i + SYMF_OFF_M] = DEF_MON_SYM.charCodeAt(i);
     for (let i = 0; i < 6; i++) gp.primary_syms[i + SYMF_OFF_W] = 48 + i;
-    for (let i = 0; i < 6; i++) gp.primary_syms[i + SYMF_OFF_X] = 0;
+    /* symbols.c:178-179: get_othersym() reads gp.primary_syms[] as it stands, so a stale
+     * slot (Blank's S_boulder) survives re-initialisation to Default Symbols. */
     for (let i = 0; i < 6; i++) gp.primary_syms[i + SYMF_OFF_X] = get_othersym(i, 0);
 }
 
@@ -804,8 +805,10 @@ export function set_primary_symbol_override(symname, strval) {
     /* symbols.c:830-837: under H_UTF8 handling, or for a U+ value, the pair
      * goes to glyphrep_to_custom_map_entries, never to ov_primary_syms. */
     if (gs_symset(0).handling === H_UTF8
-        || (lowc(String(strval)[0]) === 'u' && String(strval)[1] === '+'))
+        || (lowc(String(strval)[0]) === 'u' && String(strval)[1] === '+')) {
+        glyphrep_to_custom_map_entries_real(`${symname}:${strval}`, { value: 0 });
         return true;
+    }
     const { go } = ensure_sym_arrays();
     go.ov_primary_syms[symp.idx] = sym_val_real(strval);
     return true;

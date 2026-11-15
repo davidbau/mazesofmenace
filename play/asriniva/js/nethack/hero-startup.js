@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {createNativeAbiCaster} from './native/execution.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
@@ -53,7 +54,7 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
   equipment:i=>ctypes.load('struct obj *',environment.requireGlobal(['uarms','uwep','uarmh','uarmg','uarmu','uarmc','uarmf','uarm','uquiver','uswapwep'][i])),
   intrinsic:i=>views.record('struct you',environment.requireGlobal('u')).uprops[layouts.attrib[i?'BLINDED':'JUMPING']].intrinsic,
   setIntrinsic:(i,v)=>{views.record('struct you',environment.requireGlobal('u')).uprops[layouts.attrib[i?'BLINDED':'JUMPING']].intrinsic=v;},
-  rn2:(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('u_init.c'),line,services.literal(caller));return services.rn2(n);},
+  rn2:(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'u_init.c',line,caller);return services.rn2(n);},
  });
  // Property-style U_INIT records cross dependency boundaries as C addresses.
  for(const name of ['discover_object','Japanese_item_name','adjattrib','inv_weight','set_uasmon','newhp','newpw','adjabil','init_uhunger','getnow','max_rank_sz','spell_skilltype','mkobj','mksobj','dealloc_obj','weight','set_twoweap','setworn','setuqwep','setuwep','setuswapwep','initialspell','addinv','useupall','hidden_gold','init_attr','vary_init_attr','skill_init','num_spells','find_ac'])ui[name]=(...args)=>environment.resolve(name)(...args.map(v=>v?.address??v));
@@ -76,7 +77,7 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
   }
  };
  ui.objname=i=>descriptors[objects[i].oc_name_idx].oc_name;ui.objdescr=i=>descriptors[objects[i].oc_descr_idx].oc_descr;ui.spellPw=n=>transport.int(n*5);
- for(const kind of ['rnd','rn1','rne'])ui[kind]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('u_init.c'),line,services.literal(caller));return kind==='rn1'?services.rn2(args[0])+args[1]:services[kind](...args);};
+ for(const kind of ['rnd','rn1','rne'])ui[kind]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())recordNativeRngCaller(services,'u_init.c',line,caller);return kind==='rn1'?services.rn2(args[0])+args[1]:services[kind](...args);};
  const bridge=createUInitBridge(layouts.u_init);environment.register('hero-init',Object.fromEntries(['u_init_misc','skills_for_role','u_init_inventory_attrs'].map(name=>[name,(...args)=>bridge(ui,name,...args)])));
  const poly=enablePolyself(environment,layouts).services;
  const mon=context(layouts.mon);mon.is_vampire=p=>Number(p.mlet===mon.S_VAMPIRE);environment.register('hero-vampire-form',{valid_vampshiftform},mon);
@@ -121,7 +122,7 @@ export function enableHeroStartup(environment,layouts,creation,inventory){
   roleplayBit:i=>attributeRecord('struct you',environment.requireGlobal('u')).uroleplay[i?'deaf':'blind'],
   objectBit:(o,i)=>{const key=attributeAbi.objectBits[i];if(!key)throw new Error('Unknown ATTRIB object field '+i);return attributeRecord('struct obj',address(o))[key];},
  });
- for(const kind of ['rn2','rnd','rn1','d'])a[kind]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('attrib.c'),line,services.literal(caller));return kind==='rn1'?services.rn2(args[0])+args[1]:services[kind](...args);};
+ for(const kind of ['rn2','rnd','rn1','d'])a[kind]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())recordNativeRngCaller(services,'attrib.c',line,caller);return kind==='rn1'?services.rn2(args[0])+args[1]:services[kind](...args);};
  a.u_wield_art=id=>services.is_art(attributePointer('uwep'),id);
  a.haseyes=pm=>Number(!(attributeRecord('struct permonst',address(pm)).mflags1&BigInt(layouts.attrib.M1_NOEYES)));
  a.type_is_pname=pm=>Number(Boolean(attributeRecord('struct permonst',address(pm)).mflags2&BigInt(layouts.attrib.M2_PNAME)));

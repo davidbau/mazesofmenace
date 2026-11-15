@@ -36,7 +36,7 @@ import { faithful_input_redraw, nh_timeout_wield_turn, seer_turn_check } from '.
 import { nomul, unmul } from './hack.js'; // relocate-fns
 import { arti_speak, is_art } from './artifact.js'; // relocate-fns
 import { acurr } from './attrib.js'; // relocate-fns
-import { bot } from './botl.js'; // relocate-fns
+import { bot, status_eval_next_unhilite } from './botl.js'; // relocate-fns
 import { ART_OGRESMASHER, ART_SNICKERSNEE, CRYSTAL_BALL_OTYP, FACE, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE_INACCESS, HEAD, HOMEMADE_TIN, LEFT_SIDE, MS_ANIMAL, MS_SILENT, OCLASS_COIN, OCLASS_FOOD, OCLASS_SPBOOK, OCLASS_TOOL, OCLASS_WAND, OCLASS_WEAPON, OTYP_TOWEL, RIGHT_SIDE, Race_if, Role_if, STETH_ECMD_CANCEL, STETH_ECMD_OK, STOMACH, SetVoice, Shk_Your, THIT_BANANA, THIT_CORPSE, Underwater, _AD_BLND, _AT_ENGL, _BOOTS_OTYP_MAX, _BOOTS_OTYP_MIN, _BOT_BAG_OF_TRICKS_OTYP, _BULLWHIP_OTYP, _Blind_cmd, _Breathless, _Flying, _GEM_CLASS, _GLOVES_OTYP_MAX, _GLOVES_OTYP_MIN, _HOP_HORN_OF_PLENTY, _IA_BEARTRAP_OTYP, _IA_BELL_OF_OPENING_OTYP, _IA_BELL_OTYP, _IA_FIGURINE_OTYP, _IA_LAND_MINE_OTYP, _IA_MIRROR_OTYP, _IA_TIN_OPENER_OTYP, _Is_candle, _LENSES_OTYP, _MAT_GEMSTONE, _MAT_GLASS, _MAT_LIQUID, _MAT_MINERAL, _MAT_WOOD, _MG_FOOD_CLASS, _OTYP_SLIME_MOLD, _RING_CLASS, _Role_if_PM_HEALER, _SUPPRESS_INVISIBLE, _SUPPRESS_IT, _TOUCHSTONE, _UP_STATUE_OTYP, _Underwater, _You_feel, _c_obj_colors, _cmd_Hallucination, _digests, _glyph_at, _glyph_cmap_sym, _grapple_range, _haseyes, _hero_Blind, _hero_Deaf, _hero_nohands, _hero_verysmall_or_nohands_nohands_only, _hero_youmonst, _hprop, _invlet_constant, _is_demon, _is_vampshifter, _is_whirly_ustuck, _kick_nolimbs, _levlAt, _mh_a_monnam, _nohands, _oc_skill, _plineVFmt, _prayer_uhim, _sprintf, _st_is_floater, _st_is_flyer, _st_slithy, _steth_cvt_sdoor_to_door, _steth_pmname, _steth_seemimic, _the_str, _um_beautiful, _um_mhis, _up_find_poleable_mon, _up_get_valid_polearm_position, _uprop_active, _weapon_prinv_line, _wep_worn_phrase, _wt_bimanual, _wt_cantwield, _wt_ready_weapon, _wt_sameObj, bigmonst_cmd, check_capacity_sync as check_capacity, cmdq_add_ec, cmdq_add_key, cmdq_clear, cmdq_peek, cmdq_pop, confdir, flooreffects_Maybe_Half_Phys, flooreffects_is_lava, flooreffects_passes_walls, flooreffects_throws_rocks, getObjFromGetobj, getdir, getobj_redo_menu, humanoid_cmd, impossible_cmd, is_flimsy, is_graystone, is_pole, is_wet_towel, key2txt, kick_steed_cmd, nh_delay_output, nothing_happens, paranoid_query, pline1, plur, pooleffects_Flying, pooleffects_Levitation, pooleffects_Wwalking, readchar, set_occupation, sortloot_invlet_chain, sr_touch_petrifies_ptr, thit_is_unicorn, tty_menu_pick_one_ext, type_is_pname, u_wield_art, verysmall_cmd, will_weld, yn_function } from './cmd.js';
 import { invocation_pos, may_passwall, obj_to_any, pooleffects } from './hack.js';
 import { check_unpaid } from './shk.js';
@@ -3203,6 +3203,10 @@ export async function doapply() {
              * are now unencumbered." missing between the squirm pages and
              * the "In what direction do you want to dig?" prompt). */
             encumber_msg_sync();
+            /* C allmain.c:405-407 — STATUS_HILITES: a field changed by an earlier
+             * paint (chg) forces disp.botl, so allmain.c:473-475's bot();
+             * curs_on_u() flushes the post-turn map before the canned doapply. */
+            if (g.iflags?.hilite_delta) status_eval_next_unhilite();
             /* C allmain.c:390-415: once per hero action, after the movement
              * loop has restored NORMAL_SPEED even when burdened. */
             await seer_turn_check();

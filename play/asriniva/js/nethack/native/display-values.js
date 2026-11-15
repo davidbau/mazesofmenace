@@ -1,7 +1,9 @@
 import {createNativeValueRecords,isNativeValueReference} from './value-records.js';
 export function installNativeDisplayValues(env,services,schema,decode){
- const owner=services.nativeOwner;if(!owner?.nativeRecords)return;
- const environment=services.nativeEnvironment;
+ // Native source also runs in byte-only adapters: retain the original stack
+ // allocation there instead of leaving the lowered operation unconnected.
+ env.nativeLocalRecord=type=>{const size=env.sizes[type];if(!Number.isSafeInteger(size)||size<=0)throw Error('Unknown display local record '+type);return services.stackAlloc(size);};
+ const owner=services.nativeOwner,environment=services.nativeEnvironment;if(!owner?.nativeRecords||!environment)return;
  const values=createNativeValueRecords({...environment,nativeRecords:owner.nativeRecords},environment.transport.stackAlloc);
  const rawPtr=env.ptr,rawCopy=env.copy,rawCell=env.cell;
  env.ptr=value=>isNativeValueReference(value)?value:rawPtr(value);

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Object startup and name persistence, using unchanged O_INIT policy and its
 // existing measured adapter. Discovery/menu functions are deliberately absent.
 import * as policy from '../ported/o_init.js';
@@ -25,7 +26,7 @@ export function enableObjectState(environment,layouts) {
         setObjectBit:(p,i,v)=>bitfields.set('obj',key(objectBits,i),p,v),
         rn2:(n,line,caller)=>{
             if(!['randomize_gem_colors','shuffle','init_objects'].includes(caller))throw new Error('Unknown O_INIT RNG caller');
-            if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('o_init.c'),line,services.literal(caller));
+            if(services.rng_log_enabled())recordNativeRngCaller(services,'o_init.c',line,caller);
             return services.rn2(n);
         },
         ledger_no:lev=>environment.resolve('ledger_no')(environment.address(lev)),

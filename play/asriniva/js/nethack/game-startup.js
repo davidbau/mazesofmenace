@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Source game-startup policies and role tables on the standalone shared heap.
 import * as role from '../ported/role.js';
 import {createRoleEnvironment} from './bindings/role.js';
@@ -23,7 +24,7 @@ export function enableGameStartup(environment,layouts,creation){
   global:i=>{if(!globals[i])throw new Error('Unknown ROLE global '+i);return globals[i];},storage:i=>{if(!tables[i])throw new Error('Unknown ROLE table '+i);return tables[i];},
   questBit:i=>ctypes.getField('struct q_score',quest,genderFields[i],'unsigned int'),
   setQuestBit:(i,v)=>ctypes.setField('struct q_score',quest,genderFields[i],'unsigned int',v),
-  rn2:(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('role.c'),line,services.literal(caller));return services.rn2(n);},
+  rn2:(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'role.c',line,caller);return services.rn2(n);},
   Strcpy:(d,s)=>services.strcpy(environment.address(d),ptr(s)),
   strlen:p=>BigInt(memory.strlen(ptr(p))),
   Strlen:(p,index)=>{const site=roleTransport.strlenSites[index];if(!site)throw new Error('Unknown ROLE Strlen site '+index);return environment.strutil('Strlen_',ptr(p),services.literal(site.function),site.line);},

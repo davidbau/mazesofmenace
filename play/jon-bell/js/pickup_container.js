@@ -816,8 +816,11 @@ async function _query_category(contents, action, withJustPicked) {
                 itemByLine.push(null);
                 clusterOpened = true;
             }
-            out.push(menucolor_row(
-                `${e.key} ${e.item.selected ? (e.item.count > 0 ? '#' : '+') : '-'} ${e.txt}`));
+            /* wintty.c:1182-1193 set_item_state paints the marker with the item's
+             * own menucolor; unselected '-' stays unstyled (\x01 = styled marker) */
+            out.push(menucolor_row(e.item.selected
+                ? `${e.key} \x01${e.item.count > 0 ? '#' : '+'} ${e.txt}`
+                : `${e.key} - ${e.txt}`));
             itemByLine.push(e.item);
             if (e.kind === 'A') {
                 if (hintLine) { out.push(menucolor_row(hintLine)); itemByLine.push(null); }

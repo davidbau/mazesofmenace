@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One original POTION context/private state, projected onto the shared heap.
 import abi from './potion-abi.json' with {type:'json'};
 import * as source from '../ported/potion.js';
@@ -27,8 +28,8 @@ export function enablePotion(environment,layouts){
   Sprintf:(out,format,...args)=>services.sprintf(address(out),text(format),...boundary(args)),
   Snprintf:(out,n,format,...args)=>{const index=args.pop(),site=abi.formats[index];if(!site)throw new Error('Unknown POTION bounded-format site '+index);return resolve('nh_snprintf')(text(site.function),site.line,address(out),transport.ulong(n),text(format),...boundary(args));},
  });
- for(const name of ['rn2','rnd','rnl'])local[name]=(n,line,caller)=>{if(line!==undefined&&services.rng_log_enabled())services.rng_log_set_caller(text('potion.c'),line,text(caller));return resolve(name)(transport.int(n));};
- local.d=(n,x,line,caller)=>{if(line!==undefined&&services.rng_log_enabled())services.rng_log_set_caller(text('potion.c'),line,text(caller));return resolve('d')(transport.int(n),transport.int(x));};
+ for(const name of ['rn2','rnd','rnl'])local[name]=(n,line,caller)=>{if(line!==undefined&&services.rng_log_enabled())recordNativeRngCaller(services,'potion.c',line,caller);return resolve(name)(transport.int(n));};
+ local.d=(n,x,line,caller)=>{if(line!==undefined&&services.rng_log_enabled())recordNativeRngCaller(services,'potion.c',line,caller);return resolve('d')(transport.int(n),transport.int(x));};
  for(const name of ['pline','pline_The','You','You_feel','Your','verbalize','impossible','livelog_printf'])local[name]=(...args)=>resolve(name)(...boundary(args));
  context=createPotionEnvironment(local,L);
  const names=Object.keys(abi.public).filter(name=>!environment.hasFunction(name));

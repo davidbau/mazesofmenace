@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {createNativeMonEntries} from './native/mon-entries.js';
 import {nativeMonMembers} from './native/mon-state.js';
 // Shared field/dependency transport for unchanged MON policies.
@@ -32,12 +33,12 @@ export function enableMonsterLifecycle(environment,layouts){
  const catalogue=getShknamCatalogue(environment,layouts);
  function field(kind,p,i,value){const key=abi.bits[kind]?.[i],type=abi.schema[kind]?.[0];if(!key||!type)throw new Error('Unknown MON packed field');const f=ctypes.record(type).fields[key];const scalar=f.ctype.replace(new RegExp(' '+key+'$'),'');return value===undefined?ctypes.getField(type,environment.address(p),key,scalar):ctypes.setField(type,environment.address(p),key,scalar,value);}
  Object.assign(local,{nativeEnvironment:environment,nativeLayouts:layouts,projectAlignmentLimit:projectMonAlignmentLimit,stackAlloc:transport.stackAlloc,alloc:n=>environment.alloc('alloc',transport.uint(n)),moduleKey:environment,heap:()=>memory.HEAPU8,signedHeap:()=>memory.HEAP8,global:i=>environment.requireGlobal(abi.globals[i]),displayRngPointer:()=>environment.functionPointer('rn2_on_display_rng','ii'),winMessage:()=>nativeState.nativeArena.view.getInt32(environment.requireGlobal('WIN_MESSAGE'),true),bit:(kind,p,i)=>field(kind,p,i),setBit:(kind,p,i,v)=>field(kind,p,i,v),equipment:i=>nativeState.nativeRecords.record('struct obj',nativeState.nativeArena.pointer(environment.requireGlobal(['uwep','uball','uchain'][i])))});
- for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('mon.c'),line,services.literal(caller));return services[name](n);};
+ for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'mon.c',line,caller);return services[name](n);};
  const text=v=>typeof v==='string'?services.literal(v):environment.address(v);
  // Native MON assert macro preserves its measured source site and SDK abort owner.
  local.assert=(condition,index)=>{condition=transport.int(condition);index=transport.int(index);if(condition)return;const site=abi.assertions[index];if(!site)throw new Error('Unknown MON assertion '+index);return environment.resolve('__assert_fail')(text(site.expression),text(site.file),site.line,text(site.function));};
  for(const name of ['strlen','strcpy','strcat','strcmp','strchr','strncmpi'])local[name]=(...args)=>services[name](text(args[0]),...args.slice(1).map(v=>typeof v==='string'?text(v):v?.address??v));
- Object.assign(local,{invokeMonBool:(fn,m)=>nativeState.boundary(environment.functions.indirect,fn,'ip',environment.address(m)),invokeMonVoid:(fn,m)=>nativeState.boundary(environment.functions.indirect,fn,'vp',environment.address(m)),invokeMonBoolXY:(fn,m,x,y)=>nativeState.boundary(environment.functions.indirect,fn,'ipii',environment.address(m),x,y)});
+ Object.assign(local,{invokeMonBool:(fn,m)=>typeof fn==='function'&&fn.nativeState===nativeState&&fn.nativeSignature==='ip'?transport.int(fn(m)):nativeState.boundary(environment.functions.indirect,fn,'ip',environment.address(m)),invokeMonVoid:(fn,m)=>nativeState.boundary(environment.functions.indirect,fn,'vp',environment.address(m)),invokeMonBoolXY:(fn,m,x,y)=>nativeState.boundary(environment.functions.indirect,fn,'ipii',environment.address(m),x,y)});
  local.commonString=i=>{const key=['c_Something','c_thats_enough_tries','c_black','c_green','c_red'][i],type=i<2?'struct c_common_strings':'struct c_color_names';return nativeState.nativeRecords.record(type,environment.requireGlobal(i<2?'c_common_strings':'c_color_names'))[key];};
  let context;const getContext=()=>context??=createMonEnvironment(local,L);
  const entries=createNativeMonEntries(getContext,nativeState,transport,services.literal),call=(name,...args)=>{const fn=entries[name];if(!fn)throw Error('Unknown native MON entry '+name);return fn(...args);};

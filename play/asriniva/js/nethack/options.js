@@ -1,3 +1,6 @@
+import {createNativeMessageFilter} from './native/message-filter.js';
+import {nativeStateFor} from './native/state-bridge.js';
+import {createNativeRecordViews} from './native/record-views.js';
 // Unchanged OPTIONS adapter owns its initializer tables and option policies.
 import abi from './options-abi.json' with {type:'json'};
 import records from './records.json' with {type:'json'};
@@ -29,6 +32,14 @@ export function enableOptions(environment,layouts){
  for(const row of S.callbacks)local['cb'+row.site]=(fn,...args)=>environment.functions.indirect(fn,[row.ret,...row.types].map(code).join(''),...args);
  const context=callOptions(local,L,'environment');
  const names=S.names.filter(name=>!S.private.includes(name)&&typeof options[name]==='function'&&!environment.hasFunction(name));
- environment.register('options',Object.fromEntries(names.map(name=>[name,(...args)=>callOptions(local,L,name,...args)])));
- return {context,services:local,storage,ctypes,pointer,limitation:'OPTIONS source data and adapter connected; callback and full option/config lifecycle verification pending.'};
+ const nativeOwner=nativeStateFor(environment),nativeViews=createNativeRecordViews(environment),gp=nativeViews.record('struct instance_globals_p',environment.requireGlobal('gp'));
+ const filterContext={ptr:value=>typeof value==='string'?value:context.ptr(value),i8:context.i8,i32:context.i32,messageTypes:()=>gp.plinemsg_types,
+  regex_match:(msg,regex)=>{const fn=services.regex_match??environment.resolve('regex_match');return nativeOwner.boundary(fn,typeof msg==='string'?services.literal(msg):environment.address(msg),environment.address(regex));}};
+ const filterPolicy=createNativeMessageFilter(filterContext);
+ const nativeFilter=(msg,norepeat)=>{nativeOwner.enter();try{return filterPolicy(msg,norepeat);}finally{nativeOwner.leave();}};
+ const filter=(msg,norepeat)=>nativeFilter(context.ptr(msg),norepeat);
+ for(const fn of [filter,nativeFilter])Object.assign(fn,{nativeState:nativeOwner,nativeDirect:true,nativePrepared:true});filter.nativeValuesEntry=nativeFilter;if(names.includes('msgtype_type'))nativeOwner.functions.set('msgtype_type',filter);
+ const exports=Object.fromEntries(names.map(name=>[name,name==='msgtype_type'?filter:(...args)=>callOptions(local,L,name,...args)]));
+ environment.register('options',exports);
+ return {context,services:local,storage,ctypes,pointer,nativeMessageFilter:filter,limitation:'OPTIONS source data and adapter connected; callback and full option/config lifecycle verification pending.'};
 }

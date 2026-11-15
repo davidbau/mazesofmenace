@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 import {installNativeDependency,createNativeAbiCaster} from './native/execution.js';
@@ -65,7 +66,7 @@ export function enableEating(environment,layouts,hungerTable){
   discover_object:(t,a,b,c)=>resolve('discover_object')(transport.int(t),transport.char(a),transport.char(b),transport.char(c)),
   free:p=>services.free(address(p)),
  });
- for(const name of ['rn2','rnd','rnl','d'])local[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())services.rng_log_set_caller(text('eat.c'),transport.int(line),text(caller));return resolve(name)(...args.map(transport.int));};
+ for(const name of ['rn2','rnd','rnl','d'])local[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(services.rng_log_enabled())recordNativeRngCaller(services,'eat.c',transport.int(line),caller);return resolve(name)(...args.map(transport.int));};
  for(const name of ['pline','pline_The','You','You_feel','Your','You_hear','You_cant','verbalize','impossible'])local[name]=(format,...args)=>resolve(name)(text(format),...formatArgs(format,args));
  local.livelog_printf=(category,format,...args)=>resolve('livelog_printf')(transport.long(category),text(format),...formatArgs(format,args));
  // One original factory/cache per runtime; initialization fills the same shared table.

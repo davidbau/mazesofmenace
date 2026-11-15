@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Native entry conversion and shared storage only. Algorithms remain in SELVAR.
 import * as source from '../ported/selvar.js';
 import {createSelvarState,withSelvarEnvironment} from './bindings/selvar.js';
@@ -11,7 +12,7 @@ export function enableSelections(environment,layouts,creation){
   alloc:n=>environment.alloc('alloc',n),free:p=>services.free(pointer(p)),dupstr:p=>environment.libc.strdup(text(p)),
   terrainBit:(x,y,i)=>{const name=['lit','edge','roomno'][i];if(!name)throw new Error('Unknown SELVAR terrain bit '+i);return creation.environment.levl[x][y][name];},
   floodCheck:(cb,x,y)=>functions.indirect(cb,'iii',x,y),iterate:(cb,x,y,arg)=>functions.indirect(cb,'viip',x,y,pointer(arg)),
-  rn2:(n,line,caller)=>{if(!callers[caller])throw new Error('Unknown SELVAR RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('selvar.c'),line,services.literal(callers[caller]));return services.rn2(n);},
+  rn2:(n,line,caller)=>{if(!callers[caller])throw new Error('Unknown SELVAR RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'selvar.c',line,callers[caller]);return services.rn2(n);},
   panic:message=>environment.resolve('panic')(services.literal('%s'),text(message)),impossible:message=>environment.resolve('impossible')(services.literal('%s'),text(message)),
   Sprintf:(out,format,shape,dx,dy)=>services.sprintf(pointer(out),text(format),text(shape),dx,dy),
  });

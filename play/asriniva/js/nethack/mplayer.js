@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original player-monster creation/naming/gear policy on one native-shaped context.
 import abi from './mplayer-abi.json' with {type:'json'};
 import * as source from '../ported/mplayer.js';
@@ -20,7 +21,7 @@ export function enableMplayer(environment,layouts){
   objectClassBit:p=>field('struct objclass',p,'oc_merge'),Strcpy:(a,b)=>resolve('strcpy')(text(a),text(b)),Strcat:(a,b)=>resolve('strcat')(text(a),text(b)),
   strlen:s=>Number(resolve('strlen')(text(s))),impossible:s=>resolve('impossible')(text('%s'),text(s)),verbalize:(fmt,s)=>resolve('verbalize')(text(fmt),text(s)),
  });
- for(const name of ['rn2','rnd','d','rn1'])base[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MPLAYER RNG site');if(services.rng_log_enabled())services.rng_log_set_caller(text('mplayer.c'),transport.int(line),text(caller));return name==='rn1'?transport.int(resolve('rn2')(transport.int(args[0]))+transport.int(args[1])):resolve(name)(...args.map(transport.int));};
+ for(const name of ['rn2','rnd','d','rn1'])base[name]=(...args)=>{const caller=args.pop(),line=args.pop();if(!abi.rngSites.some(row=>row[0]===name&&row[1]===line&&row[2]===caller))throw new Error('Unexpected MPLAYER RNG site');if(services.rng_log_enabled())recordNativeRngCaller(services,'mplayer.c',transport.int(line),caller);return name==='rn1'?transport.int(resolve('rn2')(transport.int(args[0]))+transport.int(args[1])):resolve(name)(...args.map(transport.int));};
  const local=new Proxy(base,{get:(o,k)=>{if(Object.hasOwn(o,k))return o[k];if(typeof k==='symbol')return undefined;throw new Error('Missing MPLAYER native transport '+k);}}),context=createMplayerEnvironment(local,layouts.mplayer);Object.setPrototypeOf(context,local);
  function call(name,...args){return transport.scoped(()=>{const m=abi.public[name].match(/^(.*?)\((.*)\)$/),types=m[2]?m[2].split(',').map(s=>s.trim()):[];args=args.map((v,i)=>scalar(types[i],v?.address??v));if(name==='mk_mplayer')args[0]=context.permonst(args[0]);if(name==='mplayer_talk')args[0]=context.monster(args[0]);return withCEnvironment(context,source[name],...args)?.address??0;});}
  const exports=Object.keys(abi.public);for(const name of exports)if(environment.hasFunction(name))throw new Error('Unexpected existing MPLAYER owner '+name);environment.register('player-monsters',Object.fromEntries(exports.map(n=>[n,(...args)=>call(n,...args)])));const result={call,context,services:local,exports};cache.set(environment,result);return result;

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 import {compileNativeFieldPlans} from './native/address-fields.js';
@@ -42,7 +43,7 @@ export function enableDoLifecycle(environment,layouts){
   address:(k,p,i)=>{const {type,f}=field(k,i);return ctypes.locate(type,address(p),f.name).at;},
   buffer:()=>buffer,
   callbackPointer:i=>{const row=abi.callbackMap[i];if(!row)throw new Error('Unknown DO callback '+i);const own=['drop','wipeoff'].includes(row.name),privateName=own&&!Object.hasOwn(publicFunctions.functions,row.name);return environment.functionPointer(privateName?'do::'+row.name:row.name,signature(row.prototype),privateName?((...args)=>callDo(local,L,row.name,...args)):undefined);},
-  rng:(kind,a,b,fn,line)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('do.c'),line,text(fn));const name=['rn2','rnd','d','rnz'][kind];if(!name)throw new Error('Unknown DO RNG operation '+kind);return kind===2?services.d(a,b):services[name](a);},
+  rng:(kind,a,b,fn,line)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'do.c',line,fn);const name=['rn2','rnd','d','rnz'][kind];if(!name)throw new Error('Unknown DO RNG operation '+kind);return kind===2?services.d(a,b):services[name](a);},
   impossiblePlain:message=>resolve('impossible')(text(message)),
   pline1:message=>resolve('pline')(services.literal('%s'),text(message)),
   mark_synch:()=>{const f=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),'win_mark_synch');return environment.functions.indirect(memory.view.getBigUint64(f.at,true),'v');},

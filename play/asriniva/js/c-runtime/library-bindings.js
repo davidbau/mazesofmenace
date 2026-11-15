@@ -87,6 +87,16 @@ export function createLibraryBindings({ regex = false, regexDialect = 'native' }
             return terminfo.tputs(string(services, value), lines, services.callback
                 ? services.callback(callback) : byte => services.emit(callback, byte));
         },
+        // Native engine callback: same capability state and padding parser, no
+        // function-table callback or temporary C string for native byte strings.
+        tputsNative(services, value, lines, emit) {
+            ++calls.tputs;
+            if (typeof value === 'string') {
+                for (let i = 0; i < value.length; i++)
+                    if (value.charCodeAt(i) > 255) throw new TypeError('C byte strings require explicit UTF-8 encoding');
+            } else value = string(services, value?.address ?? value);
+            return terminfo.tputs(value, lines, emit);
+        },
         tputsPrepare(services, pointer, lines) {
             ++calls.tputs;
             const value = string(services, pointer);

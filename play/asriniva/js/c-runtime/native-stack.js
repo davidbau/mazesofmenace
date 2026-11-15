@@ -45,5 +45,5 @@ export function createNativeStack(memory,{chunkBytes=65536}={}){
   while(tokens.length>index)positions.delete(tokens.pop());
   chunkMarks.length=offsetMarks.length=reservationMarks.length=index;
  }
- return{stackSave,stackRestore,stackAlloc:alloc};
+ return{stackSave,stackRestore,stackAlloc:alloc,stackPosition:()=>cursor+':'+offset+':'+reservations.length};
 }

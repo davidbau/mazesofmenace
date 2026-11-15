@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original BALL policies/private restriction state over the shared live gear.
 import abi from './ball-abi.json' with {type:'json'};
 import * as source from '../ported/ball.js';
@@ -20,7 +21,7 @@ export function enableBall(environment,layouts){
   setTrapBit:(p,i,v)=>{const n=abi.trapBits[i];if(!n)throw Error('Unknown BALL trap bit '+i);return ctypes.setField('struct trap',address(p),n,'unsigned int',transport.uint(v));},
  };
  for(const[n,p]of Object.entries(abi.dependencies)){const row=prototype(p);local[n]=(...args)=>scalar(row.ret,resolve(n)(...args.map((v,i)=>scalar(row.args[i],v))));}
- for(const n of ['rn2','rnd'])local[n]=(bound,line,caller)=>{caller=typeof caller==='number'?abi.rngCallers[caller]:caller;if(!abi.rngCallers.includes(caller))throw Error('Unknown BALL RNG source '+caller);if(S.rng_log_enabled())S.rng_log_set_caller(text('ball.c'),transport.int(line),text(caller));return resolve(n)(transport.int(bound));};
+ for(const n of ['rn2','rnd'])local[n]=(bound,line,caller)=>{caller=typeof caller==='number'?abi.rngCallers[caller]:caller;if(!abi.rngCallers.includes(caller))throw Error('Unknown BALL RNG source '+caller);if(S.rng_log_enabled())recordNativeRngCaller(S,'ball.c',transport.int(line),caller);return resolve(n)(transport.int(bound));};
  for(const n of ['pline','pline_The','You','You_feel','Your','impossible'])local[n]=(f,...a)=>resolve(n)(text(f),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.Sprintf=(p,f,...a)=>S.sprintf(address(p),text(f),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  const state=createBallState(local,L),context=createBallEnvironment(local,L,state);

@@ -528,7 +528,10 @@
     "Strcpy": {
       "target": "strcpy",
       "prototype": "char *(char *, const char *)",
-      "coercions": []
+      "coercions": [
+        "text",
+        "text"
+      ]
     },
     "An": {
       "target": "An",
@@ -2191,18 +2194,20 @@
     "down_gate": "schar (coordxy, coordxy)"
   },
   "sourceSha256": {
-    "scripts/export-standalone-dokick-abi.py": "f25820e2b444b97bb22add3cdaebc3c1d6fde778007d7530c35bdbe5f36168d1",
-    "js/standalone/dokick.js": "cba8da0d898b5ca4b8cbc8ccf2f426bc305aa822ce21fbfe553b96550ab33fef",
+    "scripts/export-standalone-dokick-abi.py": "c2a3c5d586f5e03c68a5f4eb48b8a61d5088201c5182f99605ecc57a18ac7d45",
+    "js/nethack/dokick.js": "40db3c9abb6ee9fa8f8be64bf1daac29e3cc3e66088742d50276343f183a8e69",
     "scripts/tu-dokick-layout.h": "44b32c609f32e96b5204198bd0169b803d3f5d73c9ac937453c7818cca30e334",
     "nethack-c/wasm/tu-dokick-support.inc": "ea69659ed918a7ed3656e406178f4733f216aaa133c3d958ff125f73a11b8642",
     "nethack-c/wasm/tu-libraries/dokick.js": "b15a5e9f09a803e590d236906304be5e84da370b1cd5f560f0487d5bca1e2cfe",
     "js/nethack/bindings/dokick.js": "24ddc9d3d2d44eb19110756746ea8bfcac9aa5e8909c1c1806612983733efec8",
     "js/ported/dokick.js": "ada16f4234293d4e5205ed04d798ef1db54d9705e677ea0033d6ade0a6b4d186",
-    "js/backends/emscripten/runtime.js": "5322fc2cb40783ef7c475861cecb9eaa68ddf26eb12f8618f1bd3e480d3e4371",
-    "js/standalone/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
-    "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
+    "js/backends/emscripten/runtime.js": "66a3c6370720e333670704fede30f162c3b2215a13783da9819eb4b4e314a4a9",
+    "js/nethack/records.json": "7b7ddc59f45ea73a8077a3ad96f5bc89cdc70920d136b1e64c706f94efaa3c9d",
+    "js/nethack/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",
     "js/wasm/tu-layouts.json": "05e7ac27a1b3f20ad003121357cabb273f6a375f2c8f55838eea81155ececf34",
-    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2"
+    "nethack-c/wasm/compile-defines.json": "da6efbc3c955b8f4a019ae063eda7222293d7b076725a5029edccd68a3af77c2",
+    "scripts/service_abi_output.py": "0fc345f96351fb16f871fe0637037bb58102676dda646e9e329abc21f5b6a306",
+    "js/nethack/service-coercions.js": "522f960a28da495fc132eebe67b5c2ff166b9abb5073bdfe7787c7eb90d68651"
   },
   "referenceHeaderSha256": {
     ".cache/emsdk/upstream/emscripten/cache/sysroot/include/alloca.h": "8768404d7cf4af5fb135b1a2ca91765bd2be311ac072e0ec8b68f5cb3e6e0f3e",

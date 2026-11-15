@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original MHITU policy on its one cached native-view environment.
 import abi from './mhitu-abi.json' with {type:'json'};
 import {getMhituState,createMhituEnvironment,prepareMhituArguments} from './bindings/mhitu.js';
@@ -27,7 +28,7 @@ export function enableMhitu(environment,layouts){
   write:(k,p,i,v)=>{const{row,f}=field(k,p,i);if(f.const)throw new Error('Write to MHITU const '+f.name);return ctypes.setField(row.ctype,address(p),f.name,f.ctype,v);},address:(k,p,i)=>field(k,p,i).at,
   callbackPointer:i=>{const n=abi.callbacks[i];if(!n)throw new Error('Unknown MHITU callback '+i);return environment.functionPointer(n,'pp');},
   displayWindow:(w,b)=>{const at=ctypes.locate('struct window_procs',environment.requireGlobal('windowprocs'),'win_display_nhwindow').at;return functions.indirect(memory.view.getBigUint64(at,true),'vii',transport.int(w),transport.char(b));},
-  rngCaller:i=>{const row=abi.rngSites[i];if(!row)throw new Error('Unknown MHITU RNG site '+i);if(services.rng_log_enabled())services.rng_log_set_caller(text('mhitu.c'),row.line,text(row.function));},
+  rngCaller:i=>{const row=abi.rngSites[i];if(!row)throw new Error('Unknown MHITU RNG site '+i);if(services.rng_log_enabled())recordNativeRngCaller(services,'mhitu.c',row.line,row.function);},
   rn2Value:n=>resolve('rn2')(transport.int(n)),rndValue:n=>resolve('rnd')(transport.int(n)),rnlValue:n=>resolve('rnl')(transport.int(n)),dValue:(n,s)=>resolve('d')(transport.int(n),transport.int(s)),
  });
  for(const row of abi.globals)Object.defineProperty(local,row.name,{value:undefined,writable:true,configurable:true});

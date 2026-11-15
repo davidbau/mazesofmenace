@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Complete native APPLY graph shares hero, items, leashes and occupations.
 import abi from './apply-abi.json' with{type:'json'};
 import {nativeStateFor} from './native/state-bridge.js';
@@ -26,7 +27,7 @@ export function enableApply(environment,layouts){
  const bit=(i,p,v)=>{const row=abi.bits[i];if(!row)throw new Error('Unknown APPLY packed field '+i);const f=ctypes.record(row.type).fields[row.field],type=f.bits!==undefined?'unsigned int':f.ctype.replace(new RegExp('\\b'+row.field+'$'),'').trim();return v===undefined?ctypes.getField(row.type,address(p),row.field,type):ctypes.setField(row.type,address(p),row.field,type,v);};
  Object.assign(local,{nativeEnvironment:environment,nativeLayouts:layouts,nativeApplyAbi:abi,moduleKey:environment,rectState:undefined,trackState:undefined,heap:()=>memory.HEAPU8,literal:services.literal,stackSave:transport.stackSave,stackRestore:transport.stackRestore,stackAlloc:transport.stackAlloc,
   global:i=>{const n=abi.globals[i];if(!n)throw new Error('Unknown APPLY global '+i);return environment.requireGlobal(n);},bit:(i,p)=>bit(i,p),setBit:(i,p,v)=>bit(i,p,v),callback,
-  rngSource:(line,caller)=>{if(!abi.callers.includes(caller))throw new Error('Unknown APPLY RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('apply.c'),transport.int(line),text(caller));},
+  rngSource:(line,caller)=>{if(!abi.callers.includes(caller))throw new Error('Unknown APPLY RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'apply.c',transport.int(line),caller);},
   rn2:n=>resolve('rn2')(transport.int(n)),rnd:n=>resolve('rnd')(transport.int(n)),rnl:n=>resolve('rnl')(transport.int(n)),d:(n,s)=>resolve('d')(transport.int(n),transport.int(s)),rn1:(n,b)=>transport.int(resolve('rn2')(transport.int(n))+transport.int(b)),
  });
  const shape=fmt=>{const value=typeof fmt==='string'?fmt:memory.readString(address(fmt)),re=/%([-+ #0]*)(\d+|\*)?(?:\.(\d+|\*))?([lhz]*)([diouxXcsfFeEgGaAp%])/g;let out='',m;while((m=re.exec(value))){if(m[5]==='%')continue;if(m[2]==='*')out+='i';if(m[3]==='*')out+='i';out+=/[fFeEgGaA]/.test(m[5])?'d':/[sp]/.test(m[5])?'p':m[4].includes('l')?'j':'i';}return out;};

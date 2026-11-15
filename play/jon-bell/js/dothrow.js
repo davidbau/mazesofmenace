@@ -59,7 +59,7 @@ import { inside_shop } from './shk.js';
 import { sobj_at } from './invent.js';
 import { u_on_newpos } from './dungeon.js';
 import { MKOBJ_OC_MAGIC, MKOBJ_OC_MATERIAL, MKOBJ_OC_SKILL } from './mkobj_erosion_meta.js';
-import { minliquid, setmangry, wake_nearto } from './mon.js';
+import { minliquid, monnear, setmangry, wake_nearto } from './mon.js';
 import { pronoun_gender } from './mondata.js';
 import { set_apparxy } from './monmove.js';
 import { An, The, distant_name as _fw_distant_name, xname as _fw_xname, Tobjnam as _objnam_Tobjnam, an, armor_simple_name, corpse_xname, helm_simple_name, killer_xname, makeplural as makeplural_objnam, mshot_xname, otense, singular, the, vtense } from './objnam.js';
@@ -118,19 +118,13 @@ export async function dothrow() {
     const shotlimit = Math.max(0, Math.min(LARGEST_INT, Number(g.command_count) || 0)); /* LIMIT_TO_RANGE_INT(0, LARGEST_INT, gc.command_count) dothrow.c:298 */
     if (_hero_notake()) {
         await pline('You are physically incapable of throwing or shooting anything.');
-        g.context = g.context || {};
-        g.context.move = 0;   /* C ECMD_OK */
         return ECMD_OK;
     }
     if (_hero_verysmall_or_nohands_nohands_only()) {
         await pline("You can't throw or shoot without hands.");
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_OK;
     }
     if (check_capacity(null)) {
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_OK;
     }
     /* ── Build throw getobj prompt (C ref: invent.c:1752 getobj, throw_ok filter) ──
@@ -317,16 +311,12 @@ export async function dothrow() {
          * no turn, no throw RNG. */
         if (_isThrowQuit(itemKey)) {
             await getobj_never_mind(throwQbuf);
-            g.context = g.context || {};
-            g.context.move = 0;
             return ECMD_CANCEL;
         }
         /* C invent.c:1955-1959: throw_ok(NULL) excludes hands, so '-' mimes
          * the action and returns NULL; dothrow.c:374 cancels without a turn. */
         if (itemKey === 45 /* HANDS_SYM '-' */) {
             await mime_action('throw');
-            g.context = g.context || {};
-            g.context.move = 0;
             return ECMD_CANCEL;
         }
         /* C invent.c:1960-1999 `redo_menu` — '?' and '*' are NOT invlets.  C pops
@@ -348,8 +338,6 @@ export async function dothrow() {
              * dothrow's `obj ? throw_obj(...) : ECMD_CANCEL` (dothrow.c:374).
              * invent.c:1982-1984 — under oneloop an empty pick is NULL too. */
             if (itemKey === 27 || (itemKey === 0 && throwOneloop)) {
-                g.context = g.context || {};
-                g.context.move = 0;
                 return ECMD_CANCEL;
             }
             itemCh = String.fromCharCode(itemKey);
@@ -364,8 +352,6 @@ export async function dothrow() {
         thrownObj = _resolveThrownObj(itemKey);
         if (throwCntGiven) {
             if (throwCnt === 0 || !thrownObj) {
-                g.context = g.context || {};
-                g.context.move = 0;
                 return ECMD_CANCEL;
             }
             /* invent.c:2036-2045 — counts are permitted for throwing gold but
@@ -1125,8 +1111,6 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
     if (!(await getdir(null, { noPrompt: !!opts.noPrompt }))) {
         /* C dothrow.c:98-100 — ECMD_CANCEL, no time passes.  The key is
          * CONSUMED here; it must not be re-dispatched to rhack. */
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_CANCEL;
     }
     /* getdir() has written u.dx/u.dy/u.dz (the GLOBAL hero struct C's throwit()
@@ -1141,8 +1125,6 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
     if ((thrownObj.oclass | 0) === OCLASS_COIN && thrownObj !== u.uquiver
         && !u.dx && !u.dy && !u.dz) {
         await You('cannot throw gold at yourself.');
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_CANCEL;
     }
     /* C dothrow.c:112-116: throw_gold returns before all weapon/volley
@@ -1170,16 +1152,12 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
      * Without it, throwing a worn ring or a welded weapon threw it, spent a
      * turn, and drew the next_ident/breaktest leaves below. */
     if (!canletgo(thrownObj, 'throw')) {
-        g.context = g.context || {};
-        g.context.move = 0;   /* C ECMD_OK — no time passes */
         return ECMD_OK;
     }
     /* C dothrow.c:122-126 — Mjollnir must be wielded to be thrown (ART_MJOLLNIR
      * is artilist index 3); ECMD_OK, no time. */
     if ((thrownObj.oartifact | 0) === 3 && thrownObj !== u.uwep) {
         await pline(`${The(_fw_xname(thrownObj))} must be wielded before it can be thrown.`);
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_OK;
     }
     /* C dothrow.c:127-131 — Mjollnir without STR 18/** (STR19(25)), or any
@@ -1193,8 +1171,6 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
     }
     if (!u.dx && !u.dy && !u.dz) {
         await pline('You cannot throw an object at yourself.');
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_OK;
     }
     /* C dothrow.c:138 — a successful throw attempt scuffs the engraving
@@ -1338,7 +1314,7 @@ async function throw_obj(thrownObj, shotlimit, opts = {}) {
         g._resultMessageJoins = { src: g._resultMessage, joins: _thrJoins.slice() };
         g._pending_message = '';
     }
-    g.context.move = 1; /* throw consumes a turn */
+    // C dothrow.c:291: rhack maps the handler's ECMD result to context.move.
     return ECMD_TIME;
     } finally {
         /* C dothrow.c:277-291 unsplit_stack, including cancelled directions. */
@@ -1710,7 +1686,7 @@ export async function thitmonst(mon, obj) {
                     await check_shop_obj_throw(obj, mon.mx | 0, mon.my | 0, false);
                 await mpickobj(mon, obj);
             } else {
-                const nearby = dist2(mon.mx | 0, mon.my | 0, u.ux | 0, u.uy | 0) < 3;
+                const nearby = monnear(mon, u.ux, u.uy); // C dothrow.c:2136, including NODIAG.
                 await finish_quest(obj);
                 await pline('%s %s %s back to you.', Some_Monnam(mon),
                             nearby ? 'hands' : 'tosses', the(xname(obj)));
@@ -2474,19 +2450,13 @@ export async function dofire() {
     const shotlimit = Math.max(0, Math.min(LARGEST_INT, Number(g.command_count) || 0)); /* LIMIT_TO_RANGE_INT(0, LARGEST_INT, gc.command_count) dothrow.c:298 */
     if (_hero_notake()) {
         await pline('You are physically incapable of throwing or shooting anything.');
-        g.context = g.context || {};
-        g.context.move = 0;   /* C ECMD_OK */
         return ECMD_OK;
     }
     if (_hero_verysmall_or_nohands_nohands_only()) {
         await pline("You can't throw or shoot without hands.");
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_OK;
     }
     if (check_capacity(null)) {
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_OK;
     }
     /* C ref: dothrow.c:475-478,506-509 — a wielded throw-and-return weapon
@@ -2503,15 +2473,11 @@ export async function dofire() {
         const _fireassist = g.iflags?.fireassist !== false; /* iflags.fireassist = On (optlist.h default) */
         if (!g.flags?.autoquiver && uw && is_pole(uw)) {
             const _upRes = await use_pole(uw, true);
-            g.context = g.context || {};
-            g.context.move = (_upRes & ECMD_TIME) ? 1 : 0;
             return _upRes;
         }
         if (!g.flags?.autoquiver && uw && (uw.otyp | 0) === _BULLWHIP_OTYP) {
             /* C rung 2: `return use_whip(uwep)` (dothrow.c:515-517). */
             const _uwRes = await use_whip(uw);
-            g.context = g.context || {};
-            g.context.move = (_uwRes & ECMD_TIME) ? 1 : 0;
             return _uwRes;
         }
         if (!g.flags?.autoquiver
@@ -2521,8 +2487,6 @@ export async function dofire() {
             cmdq_add_ec(CQ_CANNED, 'doswapweapon');
             cmdq_add_ec(CQ_CANNED, 'dofire');
             /* C: return ECMD_OK — "haven't taken any time yet". */
-            g.context = g.context || {};
-            g.context.move = 0;
             return ECMD_OK;
         }
         /* C ref: dothrow.c:525-538 — the else rung, or the autoquiver arm. */
@@ -2544,7 +2508,6 @@ export async function dofire() {
         if (!uq) quiverRes = await doquiver_core('fire');
         if (quiverRes !== ECMD_OK && quiverRes !== ECMD_TIME) {
             /* C: `return res` — ECMD_CANCEL takes no time. */
-            g.context.move = 0;
             return quiverRes;
         }
         uq = u.uquiver;
@@ -2557,7 +2520,6 @@ export async function dofire() {
              * doquiver_core can return ECMD_OK without filling the slot (the
              * "You cannot fire that!" / "already have no ammunition readied!"
              * arms), and then nothing is thrown. */
-            g.context.move = (quiverRes === ECMD_TIME) ? 1 : 0;
             return quiverRes === ECMD_TIME ? quiverRes : ECMD_CANCEL;
         }
         /* fall through to the fireassist ladder and throw_obj with the object
@@ -2594,7 +2556,6 @@ export async function dofire() {
                 /* C ref: dothrow.c:570 return res (ECMD_OK) — no time taken yet.
                  * rhack's reset_cmd_vars leaves context.move=0; the moveloop runs
                  * NO world block for this keystroke and drains the queue next. */
-                g.context.move = 0;
                 return quiverRes;
             }
             await _doswapweapon(); /* nhgetch[11] fires here (More dismiss) */
@@ -2626,8 +2587,6 @@ export async function dofire() {
                 cmdq_add_ec(CQ_CANNED, 'dofire');
                 /* `return res` — no time taken by this pass itself unless
                  * doquiver_core spent it. */
-                g.context = g.context || {};
-                g.context.move = (quiverRes === ECMD_TIME) ? 1 : 0;
                 return quiverRes; /* C dothrow.c:579 `return res`: rhack must see it to reset_cmd_vars */
             }
             throwRes = await _fire_throw_obj(uq, shotlimit, true /* showPrompt */);
@@ -2639,10 +2598,6 @@ export async function dofire() {
     /* C ref: dothrow.c:583 `return (res == ECMD_TIME) ? res : altres;` — a
      * quiver refill that unwielded the primary/secondary weapon spends the turn
      * whatever the throw did. */
-    if (quiverRes === ECMD_TIME) {
-        g.context = g.context || {};
-        g.context.move = 1;
-    }
     return quiverRes === ECMD_TIME ? quiverRes : throwRes;
 }
 

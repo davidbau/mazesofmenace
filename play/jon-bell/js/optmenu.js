@@ -18,7 +18,7 @@ import { regcomp } from './posixregex.js';
 import { dlb_file_lines, OPTMENUHELP } from './dispfile.js';
 import { ECMD_OK, gs, PARANOID_BONES, Is_rogue_level, PICK_ANY, PICK_ONE } from './const.js';
 import { nhgetch } from './input.js';
-import { flush_screen, force_more, docrt, dec_mode, status_reassess, new_status_window, newclipping, gather_condition_hilite_lines } from './display.js';
+import { flush_screen, force_more, force_more_lone_frame, docrt, dec_mode, status_reassess, new_status_window, newclipping, gather_condition_hilite_lines } from './display.js';
 import { reset_status_hilites } from './botl.js';
 import { pline } from './pline.js';
 import { update_inventory } from './invent.js';
@@ -115,10 +115,12 @@ async function drainTopline() {
     /* C wintty.c:1921-1922 only drains a standing topline when opening a
      * menu. With no message, no flush_screen()/bot() repaints the status
      * rows cleared by the preceding menu's docrt(). */
-    if (game._pending_message) {
-        if (!game._statusBlankAfterDocrt) await flush_screen(1); // windows.c:1861: bot disabled during menu opening.
-        if (game._pending_message) await force_more(game._pending_message);
-    }
+    /* No flush_screen() precedes that more(): core select_menu
+     * (windows.c:1856-1864) and tty_display_nhwindow page over the terminal
+     * as last flushed, so silent toggles (give_opt_msg FALSE after
+     * 'idlecheckpoint', options.c:5313-5319) are not yet painted. */
+    if (game._pending_message)
+        await force_more_lone_frame(game._pending_message);
     game._pending_message = '';
 }
 

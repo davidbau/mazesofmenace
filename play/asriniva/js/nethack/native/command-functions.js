@@ -9,7 +9,7 @@ export function createNativeCommandFunctions(environment,owner){
   cell=(...args)=>{
    callback??=functions.typedCallback(id,'i');
    const native=callback.prepareNativeEntry?.()??callback.nativeEntry??callback;
-   return native.nativeState===owner&&native.nativeDirect?native(...args):functions.indirect(id,'i',...args);
+   return native.nativeState===owner&&native.nativeDirect?(native.nativeValuesEntry??native)(...args):owner.boundary(functions.indirect,id,'i',...args);
   };
   Object.defineProperties(cell,{address:{value:id},[Symbol.toPrimitive]:{value:()=>id},nativeState:{value:owner},nativeDirect:{value:true},nativeCommandFunction:{value:true}});
   cells.set(id,cell);return cell;

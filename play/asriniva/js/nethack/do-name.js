@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 import {nativeStateFor} from './native/state-bridge.js';
 import {createNativeRecordViews} from './native/record-views.js';
 // Canonical original DO_NAME over the existing naming buffers and counter.
@@ -29,7 +30,7 @@ export function enableDoName(environment,layouts){
  local.Sprintf=(out,fmt,...a)=>S.sprintf(text(out),text(fmt),...a.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.livelog_printf=(mask,fmt,...a)=>resolve('livelog_printf')(transport.long(mask),text(fmt),...a.map(text));
  local.assert=value=>{if(!value){const a=abi.assertion;resolve('__assert_fail')(text(a.condition),text(a.file),a.line,text(a.function));}};
- for(const n of ['rn2','rn1'])local[n]=(bound,...args)=>{const caller=args.pop(),line=args.pop();if(!abi.rngSites.some(r=>r.kind===n&&r.line===line&&r.caller===caller))throw Error('Unexpected DO_NAME RNG source '+n+':'+line);if(S.rng_log_enabled())S.rng_log_set_caller(text('do_name.c'),line,text(caller));const value=resolve('rn2')(transport.int(bound));return n==='rn1'?transport.int(value+transport.int(args[0])):value;};
+ for(const n of ['rn2','rn1'])local[n]=(bound,...args)=>{const caller=args.pop(),line=args.pop();if(!abi.rngSites.some(r=>r.kind===n&&r.line===line&&r.caller===caller))throw Error('Unexpected DO_NAME RNG source '+n+':'+line);if(S.rng_log_enabled())recordNativeRngCaller(S,'do_name.c',line,caller);const value=resolve('rn2')(transport.int(bound));return n==='rn1'?transport.int(value+transport.int(args[0])):value;};
  let context;const callbacks=new Map();function callback(n,sig){if(environment.hasFunction(n))return environment.functionPointer(n,sig);if(!callbacks.has(n))callbacks.set(n,environment.functions.functionPointer((...a)=>call(n,...a),sig));return callbacks.get(n);}
  local.getobj=(prompt,which,flags)=>{const n=['name_ok','call_ok'][which];if(!n)throw Error('Unknown DO_NAME getobj callback');return resolve('getobj')(text(prompt),callback(n,'ip'),transport.uint(flags));};
  local.safe_qbuf=(out,prefix,suffix,obj,which,last)=>{if(which!==0&&which!==1)throw Error('Unknown DO_NAME safe_qbuf callback');const first=which?callback('docall_xname','pp'):environment.functionPointer('xname','pp');return resolve('safe_qbuf')(text(out),text(prefix),text(suffix),address(obj),first,environment.functionPointer('simpleonames','pp'),text(last));};

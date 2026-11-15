@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original QUESTPGR policies on shared globals, Lua states and window callbacks.
 import {nativeObjectAppraisalFor} from './native/object-appraisal-graph.js';
 import abi from './quest-pager-abi.json' with {type:'json'};
@@ -17,7 +18,7 @@ export function enableQuestPager(environment,layouts){
   moduleKey:environment,heap:()=>memory.HEAPU8,literal:services.literal,rectState:undefined,trackState:undefined,
   global:i=>{if(!abi.globals[i])throw new Error('Unknown QUESTPGR global '+i);return environment.requireGlobal(abi.globals[i]);},
   questBit:i=>{if(!abi.questBits[i])throw new Error('Unknown QUESTPGR packed field '+i);return ctypes.getField('struct q_score',quest,abi.questBits[i],'unsigned int');},
-  rn2:(n,line,caller)=>{if(services.rng_log_enabled())services.rng_log_set_caller(services.literal('questpgr.c'),line,text(caller));return services.rn2(transport.int(n));},
+  rn2:(n,line,caller)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'questpgr.c',line,caller);return services.rn2(transport.int(n));},
   Sprintf:(out,format,...args)=>services.sprintf(address(out),text(format),...args.map(v=>typeof v==='string'?text(v):v?.address??v)),
   impossible:(format,...args)=>resolve('impossible')(text(format),...args.map(v=>typeof v==='string'?text(v):v?.address??v)),
   pline:(format,message)=>resolve('pline')(text(format),text(message)),panic:format=>resolve('panic')(text(format)),

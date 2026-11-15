@@ -1,3 +1,4 @@
+import {createServiceForwarder} from '../../c-runtime/service-scope.js';
 import {createNativeAddressFields} from '../native/address-fields.js';
 import {createNativeAddressNamespace} from '../native/address/dungeon.js';
 import * as CAdapter from '../../c-runtime/adapter-factories.js';
@@ -36,7 +37,7 @@ export function callDungeon(services,name,...args){
  if(!state){
   state={services};
   // Keep the prototype stable while native callbacks supply per-call services.
-  const forwarding=new Proxy(Object.create(null),{get:(_,key)=>Reflect.get(state.services,key,state.services)});
+  const forwarding=createServiceForwarder(state);
   state.env=createDungeonEnvironment(forwarding);
   states.set(services.moduleKey,state);
  }

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // One unchanged cached SPELL context, including source startup spellbook initialization.
 import abi from './spell-abi.json' with{type:'json'};
 import * as source from '../ported/spell.js';
@@ -26,7 +27,7 @@ export function enableSpell(environment,layouts){
   walk_path:(a,b,arg)=>resolve('walk_path')(address(a),address(b),environment.functionPointer('spell::native_aim','ipii',(p,x,y)=>call('spell_aim_step',BigInt(p),x,y)),address(arg)),
   Strcpy:(a,b)=>services.strcpy(text(a),text(b)),strcmpi:(a,b)=>resolve('strncmpi')(text(a),text(b),-1),
  });
- const origin=(line,fn)=>{if(services.rng_log_enabled())services.rng_log_set_caller(text('spell.c'),transport.int(line),text(fn));};for(const n of ['rn2','rnd','rnl'])local[n]=(v,line,fn)=>{origin(line,fn);return resolve(n)(transport.int(v));};local.rn1=(n,b,line,fn)=>{origin(line,fn);return transport.int(resolve('rn2')(transport.int(n))+transport.int(b));};local.d=(n,x,line,fn)=>{origin(line,fn);return resolve('d')(transport.int(n),transport.int(x));};
+ const origin=(line,fn)=>{if(services.rng_log_enabled())recordNativeRngCaller(services,'spell.c',transport.int(line),fn);};for(const n of ['rn2','rnd','rnl'])local[n]=(v,line,fn)=>{origin(line,fn);return resolve(n)(transport.int(v));};local.rn1=(n,b,line,fn)=>{origin(line,fn);return transport.int(resolve('rn2')(transport.int(n))+transport.int(b));};local.d=(n,x,line,fn)=>{origin(line,fn);return resolve('d')(transport.int(n),transport.int(x));};
  const shape=fmt=>(memory.readString(text(fmt)).match(/%[-+ 0#]*\d*(?:\.\d+)?(?:l)?[sdiuc]/g)||[]).map(x=>x.endsWith('s')?'p':x.startsWith('%l')?'l':'i').join('');for(const[n,rows]of Object.entries(abi.formats))local[n]=(...args)=>{const index=n==='Sprintf'||n==='livelog_printf'?1:0,row=rows[shape(args[index])];if(!row)throw new Error('Unknown SPELL format '+n);return invoke(row,args);};
  local.Snprintf=(out,n,fmt,arg,line,fn)=>{if(line!==abi.snprintfSite.line||fn!==abi.snprintfSite.function)throw new Error('Unknown SPELL snprintf source site');return resolve('nh_snprintf')(text(fn),transport.int(line),text(out),transport.ulong(n),text(fmt),text(arg));};
  const window=(name,sig,...args)=>functions.indirect(memory.view.getBigUint64(environment.requireGlobal('windowprocs')+ctypes.record('struct window_procs').fields[name].offset,true),sig,...args);

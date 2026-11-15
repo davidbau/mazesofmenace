@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './native/rng-output.js';
 // Original DIG policies, occupation identity and timer callbacks on one cached owner.
 import abi from './dig-abi.json' with{type:'json'};
 import * as source from '../ported/dig.js';
@@ -24,7 +25,7 @@ export function enableDig(environment,layouts){
   roleplayDeaf:()=>memory.view.getInt8(environment.requireGlobal('u')+abi.roleplayDeafOffset),winMessage:()=>ctypes.load('int',environment.requireGlobal('WIN_MESSAGE')),
   callbackPointer:callback,commandPointer:()=>environment.functionPointer('doapply','i'),
  });
- const origin=(line,caller)=>{if(!abi.callers.includes(caller))throw new Error('Unknown DIG RNG caller '+caller);if(services.rng_log_enabled())services.rng_log_set_caller(text('dig.c'),transport.int(line),text(caller));};for(const n of ['rn2','rnd','rnl'])local[n]=(bound,line,caller)=>{origin(line,caller);return resolve(n)(transport.int(bound));};local.d=(n,z,line,caller)=>{origin(line,caller);return resolve('d')(transport.int(n),transport.int(z));};
+ const origin=(line,caller)=>{if(!abi.callers.includes(caller))throw new Error('Unknown DIG RNG caller '+caller);if(services.rng_log_enabled())recordNativeRngCaller(services,'dig.c',transport.int(line),caller);};for(const n of ['rn2','rnd','rnl'])local[n]=(bound,line,caller)=>{origin(line,caller);return resolve(n)(transport.int(bound));};local.d=(n,z,line,caller)=>{origin(line,caller);return resolve('d')(transport.int(n),transport.int(z));};
  function message(name,out,fmt,args){const f=memory.readString(text(fmt)),shape=[...f.matchAll(/%(?:[-+ #0]*\d*(?:\.\d+)?)?(l?[sdiuc%])/g)].filter(m=>m[1]!=='%').map(m=>m[1]==='s'?'p':m[1]==='ld'||m[1]==='lu'?'l':m[1]==='c'?'c':'i').join('');if(!abi.shapes.includes(shape)||args.length!==shape.length)throw new Error('Unknown DIG format '+shape);const values=args.map((v,i)=>shape[i]==='p'?text(v):shape[i]==='l'?transport.long(v):transport.int(shape[i]==='c'&&typeof v==='string'?v.charCodeAt(0):v));return name==='Sprintf'?services.sprintf(address(out),text(fmt),...values):resolve(name)(text(fmt),...values);}
  for(const n of ['pline','pline_The','You','Your','You_hear','You_feel','You_cant','There','verbalize','impossible'])local[n]=(fmt,...args)=>message(n,0,fmt,args);local.Sprintf=(out,fmt,...args)=>message('Sprintf',out,fmt,args);
  const window=(name,sig,...args)=>functions.indirect(memory.view.getBigUint64(environment.requireGlobal('windowprocs')+ctypes.record('struct window_procs').fields[name].offset,true),sig,...args);local.display_nhwindow=(w,b)=>window('win_display_nhwindow','vii',transport.int(w),transport.char(b));local.nh_delay_output=()=>window('win_delay_output','v');

@@ -1,3 +1,4 @@
+import {recordNativeRngCaller} from './rng-output.js';
 // Shared native pet creation, appraisal, taming and migration graph.
 import publicFunctions from '../public-functions.json' with {type:'json'};
 import * as source from '../../ported/dog.js';
@@ -22,7 +23,7 @@ export function nativeDogFor(environment,layouts){
  for(const name of ['pline','You','Your','There','You_feel','You_hear','You_see','pline_The','impossible','panic'])local[name]=(fmt,...args)=>resolve(name)(text(fmt),...args.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.livelog_printf=(flags,fmt,...values)=>resolve('livelog_printf')(t.long(flags),text(fmt),...values.map(v=>typeof v==='string'?text(v):v?.address??v));
  local.pline_mon=(mon,fmt,...values)=>resolve('pline_mon')(address(mon),text(fmt),...values.map(v=>typeof v==='string'?text(v):v?.address??v));
- for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{if(S.rng_log_enabled())S.rng_log_set_caller(S.literal('dog.c'),t.int(line),S.literal(caller));return resolve(name)(t.int(n));};
+ for(const name of ['rn2','rnd'])local[name]=(n,line,caller)=>{if(S.rng_log_enabled())recordNativeRngCaller(S,'dog.c',t.int(line),caller);return resolve(name)(t.int(n));};
  local.alloc=n=>environment.alloc('alloc',t.uint(n));local.memset=(p,v,n)=>S.memset(address(p),t.int(v),Number(n));
  local.assert=ok=>{if(!ok)return resolve('__assert_fail')(text('ismnum(mndx)'),text('dog.c'),111,text('pick_familiar_pm'));};
  local.relmon=(mon,ref)=>{const fn=resolve('relmon');return fn.nativeState===owner&&fn.nativeDirect?fn(mon,ref):fn(address(mon),ref?address(ref):0);};
