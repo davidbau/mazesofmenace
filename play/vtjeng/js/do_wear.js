@@ -156,6 +156,7 @@ import { makeplural, makesingular } from './fruit.js';
 import { acurr, uchangealign } from './attrib.js';
 import {
     cmdq_clear,
+    cmdq_key_char,
     cmdq_peek,
     cmdq_pop,
     paranoid_query,
@@ -409,7 +410,7 @@ import {
     ETelepat, Fast, Flying, Glib, HDetect_monsters, HDisplaced, HFast,
     HFumbling, HInvis, HLevitation, HMagical_breathing, HSee_invisible,
     HSleepy, HStealth, HSwimming, HTelepat, Hallucination, Invis, Levitation,
-    See_invisible, Slimed, Stone_resistance, Strangled, Unchanging, Very_fast,
+    Protection_from_shape_changers, See_invisible, Slimed, Stone_resistance, Strangled, Unchanging, Very_fast,
 } from './youprop.js';
 
 // Keep the armor callbacks' live defaults in one place while allowing a
@@ -656,7 +657,7 @@ export async function menu_remarm(retry, state = game) {
 // deliberately removes a cursed alternate weapon without calling cursed().
 export async function remarm_swapwep(state = game) {
     const queued = cmdq_pop(state);
-    if (queued?.typ !== CMDQ_KEY || queued.key !== '-' || !state.uswapwep)
+    if (queued?.typ !== CMDQ_KEY || cmdq_key_char(queued) !== '-' || !state.uswapwep)
         return ECMD_FAIL;
 
     const oldbknown = state.uswapwep.bknown;
@@ -1111,7 +1112,11 @@ async function Ring_off_or_gone(obj, gone, state = game, rawEnv = {}) {
         break;
     }
     case RIN_PROTECTION_FROM_SHAPE_CHAN:
-        restartcham(state);
+        /* if you're no longer protected, let the chameleons change
+           shape again; however, might still be protected if wearing
+           2nd ring of this type (or via #wizintrinsic) */
+        if (!Protection_from_shape_changers(state.u))
+            restartcham(state);
         break;
     }
 }

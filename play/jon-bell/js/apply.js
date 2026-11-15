@@ -33,7 +33,7 @@ import { impossible as rloc_impossible } from './pline.js'; // relocate-fns
 import { RLOC_NOMSG } from './teleport.js'; // relocate-fns
 import { mon_has_amulet } from './wizard.js'; // relocate-fns
 import { faithful_input_redraw, nh_timeout_wield_turn, seer_turn_check } from './allmain.js';
-import { nomul, unmul } from './hack.js'; // relocate-fns
+import { nomul, unmul, immobile_runmode_delay_output } from './hack.js'; // relocate-fns
 import { arti_speak, is_art } from './artifact.js'; // relocate-fns
 import { acurr } from './attrib.js'; // relocate-fns
 import { bot, status_eval_next_unhilite } from './botl.js'; // relocate-fns
@@ -3145,8 +3145,10 @@ export async function doapply() {
             if (!_ntDone) await nh_timeout_wield_turn();
             /* C allmain.c:433-441 — the same moveloop_core call's multi<0 countdown:
              * savelife() left gm.multi = -1, so this turn's tail ticks it to 0 and
-             * unmul() plines nomovemsg ("You survived that attempt on your life."). */
+             * unmul() plines nomovemsg ("You survived that attempt on your life.").
+             * allmain.c:381 runmode_delay_output() comes first. */
             if ((g.multi | 0) < 0) {
+                immobile_runmode_delay_output();
                 g.multi = (g.multi | 0) + 1;
                 if ((g.multi | 0) === 0) await unmul(null);
             }
@@ -3184,8 +3186,10 @@ export async function doapply() {
                 settrack(); /* C allmain.c:242 */
                 if (!_repeatTimeoutDone) await nh_timeout_wield_turn();
                 /* C allmain.c:378-385: every new turn advances immobility,
-                 * including life saving during a repeated movement pass. */
+                 * including life saving during a repeated movement pass;
+                 * allmain.c:381 runmode_delay_output() comes first. */
                 if ((g.multi | 0) < 0) {
+                    immobile_runmode_delay_output();
                     g.multi = (g.multi | 0) + 1;
                     if ((g.multi | 0) === 0) await unmul(null);
                 }

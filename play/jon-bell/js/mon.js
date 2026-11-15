@@ -5677,8 +5677,8 @@ export async function mon_leaving_level(mon) {
         newsym(mx, my);
     }
     /* C mon.c:2728 — forget a remembered polearm target. */
-    if (game.context?.polearm && game.context.polearm.hitmon === mon)
-        game.context.polearm.hitmon = null;
+    if (game.svc?.context?.polearm && game.svc.context.polearm.hitmon === mon)
+        game.svc.context.polearm.hitmon = null;
 }
 
 /* C ref: mon.c:2561-2592 relmon(mon, monst_list).

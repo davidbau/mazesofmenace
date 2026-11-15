@@ -8576,14 +8576,40 @@ export function anim_frame_info() {
     /* topl.c update_topl -> redotoplin writes a pline to the tty as soon as
      * it is issued; this port repaints row 0 only at the next flush. */
     /* A held command result is newer than any sticky residue it overwrote. */
+    /* An eating occupation keeps the line its fprefx/eatcorpse pline already
+     * drew (C's physical topline, e.g. "This yeti corpse is stringy.") in
+     * _occ_committed_topl rather than in the pending/result channels; with
+     * nothing newer pending it is what the terminal shows at a delay. */
     let text = String(game._pending_message
         || (typeof game._resultMessage === 'string' ? game._resultMessage : '')
+        || (game.occupation && game._occ_committed_topl?.text)
         || game._topl_sticky || '');
     if (!text || text.endsWith('--More--'))
         return { screen, owed: 0 };
     const rows = screen.split('\n');
     if (rows.length < 2)
         return { screen, owed: 0 };
+    /* The terminal string can still be a HELD --More-- page: this port builds
+     * the page frame (map frozen at the overflowing pline's flush) and keeps
+     * it until the boundary claims it, while the plines after the page keep
+     * accumulating.  In C that more() already blocked and returned before
+     * this delay, and each later vpline flushed the map (pline.c:273-274), so
+     * the map rows are those of the latest flush, not the page's. */
+    if (/--More--(?:\x1b\[[0-9;]*m)*$/.test(rows[0]) && !_threeStatusLines()) {
+        /* ...and each such flush_screen() also ran bot() (display.c:2236-2237),
+         * so the status rows are those last painted, not the page's. */
+        const statusLive = rows.length === ROWNO + 3 && !game._status_blanked
+            && !_status_blank_after_docrt() && !!game._lastPaintedBotl;
+        const release = use_last_flush_snapshot();
+        try {
+            for (let y = 0; y < ROWNO && y + 1 < rows.length; y++)
+                rows[y + 1] = render_map_row(y);
+            if (statusLive) {
+                rows[ROWNO + 1] = _status_sgr(_statusLine1());
+                rows[ROWNO + 2] = _status_sgr(_statusLine2());
+            }
+        } finally { release(); }
+    }
     const withTopl = (t) => {
         if (_topl_visualLen(t) > TOPL_CO - 1) return screen;
         rows[0] = _toplStr(t);
@@ -8593,14 +8619,62 @@ export function anim_frame_info() {
      * topl.c more():232-235 sets WIN_STOP; only the message that raised that
      * page is then drawn (topl.c:300) and later ones are neither drawn nor
      * paged until the next input request. */
+    /* What ESC at page j leaves on the topline.  The page's owner is the first
+     * message after the split.
+     *  - An urgent owner (urgent_pline, e.g. polyman's "You return to %s
+     *    form!") has WIN_NOSTOP set while more() blocks (wintty.c:2277-2283),
+     *    so ESC does NOT set WIN_STOP (topl.c:232-235) and the messages after
+     *    it keep drawing; likewise a "You die" owner clears WIN_STOP
+     *    (topl.c:298-299).  escScreens[j] is null: ESC pages like any key.
+     *  - A page raised by display_nhwindow(WIN_MESSAGE) (a registered forced
+     *    break, e.g. gulpmu's after "swallows you whole!", mhitu.c:1374) has
+     *    no owner: more()'s ESC arm homes and clears the line (topl.c:242-245)
+     *    and every later update_topl is a skip (topl.c:257), so the topline
+     *    stays blank.
+     *  - Otherwise the owner's update_topl raised the page; it computed skip
+     *    before more() and so still draws itself, and only later messages
+     *    are suppressed.
+     *  - In either stopping case a LATER urgent message clears WIN_STOP and
+     *    wipes the line (wintty.c:2277-2283) and paging resumes from it: the
+     *    frame is then due only after the pages of the text from that
+     *    message on (e.g. "The steam vortex engulfs you!" after an ESC).
+     * Each entry is null or { screen, more }: the topline at the delay, and
+     * how many further --More-- dismissals precede it. */
+    const urgent = game._topl_urgent_marks || [];
+    const pagesFrom = (t, tj) => {
+        let n = 0;
+        for (let sp; n < 32 && (sp = _topl_split_for_more(t, tj));) {
+            n++;
+            t = sp[1] || '';
+            tj = sp[2] || [];
+            if (!t) break;
+        }
+        return { screen: withTopl(t), more: n };
+    };
     const escScreens = [];
     let owed = 0;
     let joins;
     for (let sp; owed < 32 && (sp = _topl_split_for_more(text, joins));) {
         owed++;
+        const curJoins = joins === undefined ? (_topl_joins_for(text) || []) : joins;
+        const committed = sp[0] || '';
+        let lastStart = 0;
+        for (const j of curJoins) if (j < committed.length) lastStart = j + 2;
         text = sp[1] || '';
         joins = sp[2] || [];
-        escScreens.push(withTopl(joins.length ? text.slice(0, joins[0]) : text));
+        const segs = _topl_remainder_segments(text, joins);
+        const owner = segs[0] || '';
+        const forced = _topl_force_break_here(committed.slice(lastStart), segs);
+        let laterUrgent = -1;
+        for (let m = 1; m < segs.length && laterUrgent < 0; m++)
+            if (urgent.includes(segs[m])) laterUrgent = joins[m - 1] + 2;
+        if (urgent.includes(owner) || owner.startsWith('You die'))
+            escScreens.push(null);
+        else if (laterUrgent >= 0)
+            escScreens.push(pagesFrom(text.slice(laterUrgent),
+                joins.filter(j => j >= laterUrgent).map(j => j - laterUrgent)));
+        else
+            escScreens.push({ screen: withTopl(forced ? '' : owner), more: 0 });
         if (!text) break;
     }
     return { screen: withTopl(text), owed, escScreens };

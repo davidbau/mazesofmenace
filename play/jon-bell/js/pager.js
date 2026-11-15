@@ -2003,6 +2003,15 @@ async function _do_look_from_screen(quick) {
         /* C ref: getpos.c:1165 (exitgetpos) — restore the hero's direction
          * clobbered by movecmd() above, before returning to do_look(). */
         u.dx = udx; u.dy = udy; u.dz = udz;
+        /* getpos.c:1151-1168 exitgetpos ends the getpos() call, so the
+         * auto_describe() bookkeeping this loop shares with js/getpos.js ends
+         * with it, exactly as _getpos's own exit clears it.  Left set, the
+         * SUPPRESS_HISTORY marker (_topl_show_only) outlived the farlook and
+         * made every later frame treat the topline as getpos's show_topl text:
+         * a run's runmode_delay_output frame (hack.c:3008) dropped the
+         * standing "You swap places with ..." pline C still shows. */
+        g._topl_show_only = null;
+        g._getpos_last_autodescribe = null;
         if (esc) break;
         /* C ref: pager.c:1911 `if (ans < 0 || cc.x < 0) break;` — the
          * getpos.c:1136 "Done." exit hands back cc.x == -1, which ends

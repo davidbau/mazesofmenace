@@ -19979,7 +19979,7 @@ export async function makemap_prepost(pre, wiztower) {
             g.context.digging = {};
         g.iflags = g.iflags || {};
         g.iflags.travelcc = { x: 0, y: 0 };
-        if (g.context?.polearm) g.context.polearm.hitmon = null;
+        if (g.svc?.context?.polearm) g.svc.context.polearm.hitmon = null; /* C cmd.c:1022 */
         await (await import('./trap.js')).reset_utrap(false);
         await (await import('./cmd.js')).check_special_room(true);
         g.dndest = { lx: 0, ly: 0, hx: 0, hy: 0, nlx: 0, nly: 0, nhx: 0, nhy: 0 };

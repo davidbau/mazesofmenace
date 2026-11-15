@@ -22,7 +22,7 @@ import { visctrl as _binds_visctrl } from './cmd_binds.js';
 import { menucolor_row } from './coloratt.js';
 import { build_window_screen, menu_search_case, tty_window_offx } from './com_pager.js';
 import { money_cnt } from './hack.js';
-import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, COST_DEGRD, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
+import { ACH_BGRM, ACH_ENDG, ACH_HELL, ACH_MINE, ACH_SOKO, A_DEX, A_STR, COLNO, CORR, COST_DEGRD, CQ_REPEAT, DB_FLOOR, DB_UNDER, DIR_DOWN, DIR_UP, DISMOUNT_FELL, DRAWBRIDGE_UP, ECMD_FAIL, ECMD_OK, ECMD_TIME, ER_DESTROYED, ESCAPED, GETOBJ_ALLOWCNT, HMON_THROWN, HOLE, Has_contents, IS_ALTAR, IS_SINK, IS_WATERWALL, I_SPECIAL, In_endgame, In_mines, In_quest, In_sokoban, Is_airlevel, Is_knox_level, Is_rogue_level, Is_stronghold, Is_waterlevel, KILLED_BY, LADDER, LEVITATION, LFILE_EXISTS, LL_CONDUCT, LL_DEBUG, LOST_DROPPED, MENU_COMBINATION, MENU_PARTIAL, NC_SHOW_MSG, NO_KILLER_PREFIX, OBJ_FREE, PARANOID_AUTOALL, PARANOID_CONFIRM, PICK_ANY, ROOM, ROWNO, UTOTYPE_RMPORTAL, SELL_DELIBERATE, SELL_NORMAL, SICK, SLIMED, SLT_ENCUMBER, STAIRS, STONED, STRANGLED, TIMEOUT, TRAPDOOR, TT_BURIEDBALL, TT_PIT, Upolyd, VIBRATING_SQUARE, VISITED, WOUNDED_LEGS, WT_SPLASH_THRESHOLD, W_ART, W_ARTI as W_ARTI_FW, EMIN as _fl_EMIN, has_mgivenname, is_hole, is_pit, u_at } from './const.js';
 import { is_pick, use_pick_axe2 } from './dig.js';
 import { GLYPHCLS_CMAP, _pline_flush_frame_record, _threeStatusLines, _topl_joins_snapshot, _topl_merge_result, _topl_stash_result, await_menu_key, canspotmon, capture_flushed_cells, capture_painted_frame, cls as display_cls, docorner_blank_utf8_captures, docorner_status_rows, docrt, flush_screen, force_more, getobj_never_mind, impossible_sync, level_transition_arrival_more, level_transition_capture_old_paint, map_background, map_object, newsym, nh_sprintf, pline_flush_point, putmsghistory, reglyph_darkroom, reset_glyphmap, status_r1_menu_docrt, tty_repaint, use_last_flush_snapshot } from './display.js';
 import { check_gold_symbol } from './botl.js';
@@ -32,6 +32,7 @@ import { You, encumber_msg, xname } from './do_wear.js';
 import { yname } from './objnam.js';
 import { float_down } from './trap.js';
 import { In_W_tower_wz } from './dochug.js';
+import { floating_above } from './fountain.js';
 import { discard_migrations, keepdogs, losedogs, sticks, update_mlstmv } from './dog.js';
 import { m_into_limbo } from './mon.js';
 import { container_impact_dmg, impact_drop, obj_delivery, ship_object } from './dokick.js';
@@ -3221,18 +3222,9 @@ export async function dodown() {
             await You(`are floating in the ${surface(u.ux, u.uy)}.`);
         else if (Is_waterlevel(u.uz))
             await You(`are floating in ${is_pool(u.ux, u.uy) ? 'the water' : 'a bubble of air'}.`);
-        else {
-            // C fountain.c:21 floating_above(what)
-            let umsg = 'are floating high above the';
-            let what = stairs_down ? 'stairs' : ladder_down ? 'ladder'
-                : surface(u.ux, u.uy);
-            if (u.utrap && ((u.utraptype | 0) === TT_INFLOOR
-                            || (u.utraptype | 0) === TT_LAVA)) {
-                umsg = 'are trapped in the';
-                what = surface(u.ux, u.uy);
-            }
-            await You(`${umsg} ${what}.`);
-        }
+        else
+            await floating_above(stairs_down ? 'stairs' : ladder_down ? 'ladder'
+                : surface(u.ux, u.uy));
         g.context.move = 0; // ECMD_OK — didn't move
         return ECMD_OK;
     }

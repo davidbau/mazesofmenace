@@ -35,9 +35,12 @@ export function anim_frames_take() {
     for (const e of _pending) {
         let at = e.base + e.owed, screen = e.frame.screen;
         for (let i = e.base; i < at; i++) {
-            if (_dismissKeys[i] === 27) {
-                at = i + 1;
-                screen = e.escScreens[i - e.base];
+            /* escScreens[] is null where the page's owner was urgent or
+             * "You die": ESC there leaves WIN_STOP clear (topl.c:232-235). */
+            const esc = e.escScreens[i - e.base];
+            if (_dismissKeys[i] === 27 && esc) {
+                at = i + 1 + (esc.more | 0);
+                screen = esc.screen;
                 break;
             }
         }

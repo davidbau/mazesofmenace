@@ -1215,7 +1215,8 @@ export async function montraits(obj, cc, adjacentok) {
     // C mon.c:2515 replmon: transfer references before freeing the dummy.
     for (let o = saved.minvent; o; o = o.nobj) o.ocarry = saved;
     fresh.minvent = null;
-    if (game.context?.polearm?.hitmon === fresh) game.context.polearm.hitmon = saved;
+    /* C mon.c:2527-2528: the polearm target lives in svc.context (apply.js). */
+    if (game.svc?.context?.polearm?.hitmon === fresh) game.svc.context.polearm.hitmon = saved;
     await relmon(fresh, null);
     if (fresh !== game.u.usteed) place_monster(saved, saved.mx, saved.my);
     if (saved.wormno) place_wsegs(saved, fresh);

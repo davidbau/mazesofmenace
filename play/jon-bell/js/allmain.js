@@ -1,5 +1,4 @@
 import { reroll_menu } from './invent.js';
-import { nh_delay_output } from './animframes.js';
 import { u_init_inventory_attrs } from './u_init.js';
 import { nhlib_com_pager_rng } from './nhlib.js';
 // @ts-nocheck
@@ -42,7 +41,7 @@ import { hurtle } from './dothrow.js';
 import { deferred_goto, schedule_goto, heal_legs, wipeoff } from './do.js';
 import { is_pool } from './look.js';
 import { is_pool_or_lava } from './dbridge.js';
-import { lookaround, end_running } from './hack.js';
+import { lookaround, end_running, immobile_runmode_delay_output } from './hack.js';
 import { reset_glyphmap, docrt, time_botl_moves_incremented, time_botl_run_ended, flush_screen, tty_repaint, _topl_joins_committed, _topl_record_join, occupation_painted_tick, occupation_freeze_snapshot, occupation_painted_reset, occupation_force_more, _movemon_page_frames_reset, run_page_frame_tick, run_page_frame_reset, capture_painted_frame, capture_pre_movemon_botl, force_more, _topl_merge_result, _topl_joins_snapshot } from './display.js';
 import { bot, timebot, status_eval_next_unhilite } from './botl.js';
 import { pline, urgent_pline, Norep } from './pline.js';
@@ -1483,21 +1482,7 @@ async function faithful_moveloop_turn() {
             // et al., RNG-free; do_wear.c:909) and clears the immobilisation.  This
             // is the faithful placement that the prior outer-loop unconditional
             if ((g.multi | 0) < 0) {
-                const _rm = g.flags?.runmode | 0;
-                if (_rm !== PROPS.RUN_TPORT
-                    && (_rm !== PROPS.RUN_LEAP || !((g.moves | 0) % 7))) {
-                    if (g.disp) g.disp.time_botl = g.flags?.time | 0;
-                    pline_flush_point();
-                    g._runFlushSeq = (g._runFlushSeq | 0) + 1;
-                    /* hack.c:3009-3015: nh_delay_output(), four more for crawl. */
-                    nh_delay_output();
-                    if (_rm === PROPS.RUN_CRAWL) {
-                        nh_delay_output();
-                        nh_delay_output();
-                        nh_delay_output();
-                        nh_delay_output();
-                    }
-                }
+                immobile_runmode_delay_output();
                 g.multi = (g.multi | 0) + 1;
                 if ((g.multi | 0) === 0) {
                     await unmul(null);
@@ -4940,9 +4925,14 @@ async function moveloop_core_faithful() {
         /* C allmain.c:515 `if (gm.multi > 0) { lookaround();`: a deferred savelife
          * (end.js) zeroes multi mid-iteration where C has multi = -1, so C never
          * reaches lookaround and context.run/travel survive the life-saving. */
-        if ((g.multi | 0) > 0) await lookaround();
-        // C allmain.c:515-526: repaint/pacing precedes the stopped-run test.
-        await runmode_delay_output();
+        /* C allmain.c:515-517: runmode_delay_output() is inside that same
+         * `if (gm.multi > 0)` block, so the case above (C multi -1) takes no
+         * run-pacing frame either, even with context.run still set. */
+        if ((g.multi | 0) > 0) {
+            await lookaround();
+            // C allmain.c:515-526: repaint/pacing precedes the stopped-run test.
+            await runmode_delay_output();
+        }
         // C ref: allmain.c:584-588 — if lookaround cleared multi the repeat is over;
         // C sets context.move=0 and returns BEFORE the line-594/599 body.  No domove
         // happened this iteration, so the trailing world block already ran at the TOP

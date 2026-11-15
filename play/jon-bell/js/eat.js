@@ -406,7 +406,12 @@ async function eataccessory(otmp) {
     case RIN_GAIN_STRENGTH:
     case RIN_GAIN_CONSTITUTION:
         await accessory_has_effect(otmp);
-        if (await adjattrib(typ === RIN_ADORNMENT ? A_CHA : typ === RIN_GAIN_STRENGTH ? A_STR : A_CON, otmp.spe | 0, -1))
+        // C eat.c:2329-2345: adjattrib's pline finishes before makeknown
+        // and before eatspecial consumes the ring. adjattrib returns a Boolean
+        // here; its MSGTYPE=stop continuation lives in _blockingPline.
+        const changed = adjattrib(typ === RIN_ADORNMENT ? A_CHA : typ === RIN_GAIN_STRENGTH ? A_STR : A_CON, otmp.spe | 0, -1);
+        if (game._blockingPline) await game._blockingPline;
+        if (changed)
             makeknown();
         break;
     case RIN_INCREASE_ACCURACY: // C stores a signed char
@@ -3652,9 +3657,9 @@ async function consume_tin(mesg) {
         if (!tin.cursed)
             await pline(`This makes you feel like ${_eat_Hallucination()
                 ? "Swee'pea"
-                /* C youprop.h Fixed_abil = (HFixed_abil || EFixed_abil) */
-                : !((u.uprops?.[FIXED_ABIL]?.intrinsic | 0)
-                    || (u.uprops?.[FIXED_ABIL]?.extrinsic | 0)) ? 'Popeye'
+                /* C youprop.h:385 Fixed_abil = u.uprops[FIXED_ABIL].extrinsic
+                 * only; a timed/intrinsic one still gives "Popeye". */
+                : !(u.uprops?.[FIXED_ABIL]?.extrinsic | 0) ? 'Popeye'
                 : (g.flags.female ? 'Olive Oyl' : 'Bluto')}!`);
 
         /* C eat.c:1684 gainstr(tin, 0, FALSE) */

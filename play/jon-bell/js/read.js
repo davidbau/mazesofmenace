@@ -651,7 +651,7 @@ import { simpleonames, suit_simple_name, actualoname as _actualoname } from './o
  * (js/dokick.js).  s_suffix and y_monnam come from the js/mhitm.js import this
  * file already carries. */
 import { shop_keeper, costly_spot, alter_cost as _alter_cost } from './shk.js';
-import { inside_shop } from './shk.js';
+import { inside_shop, shk_your } from './shk.js';
 import { KILLED_BY_AN } from './const.js';
 import { shkname } from './dokick.js';
 import { losehp } from './hack.js';
@@ -823,18 +823,6 @@ const NH_GOLDEN = 18;
 const NH_BLUE = 6;
 const SCROLL_CLASS = 9, SCROLL_CLASS_OC = 9;
 
-/* C ref: spell.c:107-114 spellet — letter for spell slot i. */
-function spellet(i) {
-    if (i < 26) return String.fromCharCode(97 + i);
-    if (i < 52) return String.fromCharCode(65 + i - 26);
-    return ' ';
-}
-
-function _compact_letter_ranges(letters) {
-    if (!letters || letters.length <= 5) return letters;
-    return compactify(letters);
-}
-
 /* C ref: tty set_cursor — write cursor position via game.nhDisplay. */
 function set_cursor(col, row) {
     const disp = game.nhDisplay;
@@ -875,21 +863,14 @@ async function topline_more_loop(msg) {
 
 
 
-// C read.c:330 doread — select an actual inventory object to read.
-/* C ref: pline.c:266-274 — vpline() calls `flush_screen()` before EVERY
- * pline (whenever u.ux is set), and flush_screen() (display.c:2236-2237)
- * does `if (disp.botl || disp.botlx) bot();`.  So the getobj SET_BOTL at
- * invent.c:2049 is cleared by whatever pline doread's own body prints next —
- * every arm below prints at least one before it returns.  This mirrors the
- * already-landed fix for the identical class of bug in js/mhitu.js's
- * mattacku (`if (game.disp && game.disp.botl) await bot_mu();`, "40 of its
- * 44 RED records were a lone extra botl write"); bot() is DISPLAY-ONLY and
- * RNG-free, and it does not touch _pending_message, so calling it here does
- * not disturb the deferred-topline / --More-- machinery. */
-async function _clear_botl() {
-    if (game.disp && game.disp.botl)
-        await bot_read();
+// C read.c:315-325: callback used by getobj, including its null query.
+function read_ok(obj) {
+    if (!obj) return GETOBJ_EXCLUDE;
+    if (obj.oclass === SCROLL_CLASS || obj.oclass === 10 /* SPBOOK_CLASS */)
+        return GETOBJ_SUGGEST;
+    return GETOBJ_DOWNPLAY;
 }
+
 export async function doread() {
     /* C read.c:330-646 returns ECMD_*; cmd.c:3810-3822 alone sets
      * context.move. js/cmd.js maps both the read key and extended commands. */
@@ -905,205 +886,12 @@ export async function doread() {
         return ECMD_OK;
     }
 
-    /* C read.c:315 read_ok(): SCROLL_CLASS || SPBOOK_CLASS → GETOBJ_SUGGEST
-     * (the items shown inside the [ ] bracket); everything else is DOWNPLAY /
-     * EXCLUDE and not listed.  Build the suggested-letter string by walking the
-     * real gi.invent (game.invent), in invent order, collecting the invlet of
-     * each readable item.  C ref: invent.c getobj letter-bucket build. */
+    // C read.c:358-362: use the shared invent.c getobj implementation.
     const SPBOOK_CLASS_OC = 10;
-    /* objects.h ordinals, resolved by NAME against js/oc_name_data.js
-     * (OC_NAME.indexOf('blank paper') === 365 is the SCROLL, lastIndexOf === 407
-     * the SPELLBOOK); the two spellbook neighbours agree with js/spell.js:77
-     * SPE_NOVEL = 408 and js/objnam.js:99's SPE_BLANK_PAPER (407) /
-     * SPE_BOOK_OF_THE_DEAD (409). */
     const SCR_BLANK_PAPER_RD = 365, SPE_BLANK_PAPER_RD = 407,
           SPE_NOVEL_RD = 408, SPE_BOOK_OF_THE_DEAD_RD = 409;
-    const _read_ok = (o) =>
-        (o.oclass | 0) === SCROLL_CLASS || (o.oclass | 0) === SPBOOK_CLASS_OC;
-    /* C invent.c:1856-1857 getobj(): `if (!flags.invlet_constant) reassign();`
-     * runs before the prompt letters are collected (fixinv off relabels the pack). */
-    if (!(g.flags?.invlet_constant ?? true)) reassign();
-    let letters = '';
-    /* C invent.c:1861 walks sortloot(&invent, SORTLOOT_INVLET) -- invlet
-     * order with the '#' overflow slot last -- not the raw invent chain. */
-    const _sortedInv = sortloot_invlet_chain(g.invent);
-    for (const o of _sortedInv) {
-        if (_read_ok(o) && o.invlet)
-            letters += String.fromCharCode(o.invlet | 0);
-    }
-    /* The UNCOMPACTED list is what getobj hands display_pickinv as `lets`
-     * (invent.c:1964 `allowed_choices = bp`) — bp is the raw buffer, built
-     * BEFORE the range collapse that only shapes the prompt bracket. */
-    const rawLetters = letters;
-    /* C invent.c:1884-1889 — read_ok DOWNPLAYs every other item into `altlets`;
-     * force_invmenu's first key is '?' when lets OR altlets is non-empty
-     * (invent.c:1925) and '?' with empty lets lists altlets (invent.c:1969). */
-    let altlets = '';
-    for (const o of _sortedInv) {
-        if (!_read_ok(o) && o.invlet)
-            altlets += String.fromCharCode(o.invlet | 0);
-    }
-    /* C ref: invent.c getobj — collapse a run of >=3 consecutive letters to
-     * "<first>-<last>" (e.g. "ijklm" → "i-m").  This is the compact bracket
-     * form the recorded prompt uses ("[i-mp or ?*]"). */
-    letters = _compact_letter_ranges(letters);
-
-    const prompt = letters
-        ? `What do you want to read? [${letters} or ?*]`
-        : 'What do you want to read? [*]';
-    /* C invent.c:1779-1825 — getobj FIRST drains the command queue
-     * (cmdq_pop CQ_CANNED); a queued invlet answers the prompt and no prompt
-     * is shown.  Queue empty -> fall through to the prompt below. */
-    const _q = await getobj_cmdq_drain(
-        (o) => !o ? GETOBJ_EXCLUDE
-            : (_read_ok(o) ? GETOBJ_SUGGEST : GETOBJ_DOWNPLAY));
-    /* C invent.c:1922-1930 — iflags.force_invmenu skips the yn_function prompt
-     * and enters the menu directly ('?' if anything is suggested, else '*'),
-     * recording the bare question in message history. */
-    const _forceMenu = !!g.iflags?.force_invmenu && !g.in_doagain;
-    let _oneloop = false;
-    if (!_q.drained && !_forceMenu) {
-        /* C tty_yn_function (wintty.c): a topline still TOPLINE_NEED_MORE is
-         * more()'d before the prompt is drawn.  A counted `2r` re-enters rhack
-         * (allmain.c:595-599) with no parse(), so the first read's result line
-         * is still unacknowledged when the second getobj prompt appears. */
-        if (g._cmdRepeatNoKey) {
-            g._cmdRepeatNoKey = false;
-            const standing = g._pending_message || g._resultMessage;
-            if (standing && !g._topl_win_stop) {
-                const release = use_last_flush_snapshot();
-                try { await force_more(standing); } finally { release(); }
-            }
-        }
-        /* C topl.c:418-421 tty_yn_function -> custompline() -> pline.c:282
-         * files "prompt " (trailing space included) in gp.prevmsg, so a
-         * Norep() of the message that stood BEFORE the prompt — do.c:2354
-         * "Are you waiting to get hit?..." after a cancelled read — is not
-         * read as a repeat.  Same filing at every re-prompt below. */
-        g._prevmsg = prompt + ' ';
-        g._pending_message = prompt;
-        await flush_screen(1);
-        set_cursor(prompt.length + 1, 0); /* TTY: cursor past prompt + trailing space */
-    }
-
-    const _isQuit = (k) => k === 27 /* ESC */ || k === 32 /* space */
-        || k === 13 /* CR */ || k === 10 /* LF */;
-    let keyCode = -1;
-    let scroll = null;
-    let cancelled = false;
-    if (_q.drained) {
-        if (_q.obj) { scroll = _q.obj; keyCode = scroll.invlet | 0; }
-        else cancelled = true;
-    }
-    while (!_q.drained) {
-        let raw;
-        if (_forceMenu && !_oneloop) {
-            putmsghistory('What do you want to read?', false);
-            raw = (rawLetters || altlets) ? 63 : 42;
-            _oneloop = true;
-        } else {
-            /* C topl.c:425-427,534-539: the history stores the answered
-             * prompt, while the physical topline keeps the unanswered one. */
-            const savedSuppress = g._topl_suppress_history;
-            g._topl_suppress_history = true;
-            try { raw = game.iflags?.debug_fuzzer ? await readchar() : await nhgetch(); }
-            finally { g._topl_suppress_history = savedSuppress; }
-            g._toplEmptyAfterSuppress = false; /* topl.c:537-539 gt.toplines is now prompt + answer */
-            putmsghistory(prompt + ' ' + key2txt((typeof raw === 'number'
-                ? raw : (raw?.charCodeAt(0) ?? 0)) & 0xff), false);
-        }
-        keyCode = typeof raw === 'number' ? raw : (raw?.charCodeAt(0) ?? 0);
-        /* C invent.c:1937-1948 tests digits before quitchars.  doread's
-         * getobj call does not pass GETOBJ_ALLOWCNT, so a digit reports this
-         * error, pages it, then returns to the same object prompt. */
-        if (keyCode >= 48 /* '0' */ && keyCode <= 57 /* '9' */) {
-            await occupation_force_more('No count allowed with this command.',
-                null, (g.moves | 0), null);
-            g._prevmsg = prompt + ' '; /* invent.c:1935 re-asks via yn_function */
-            g._pending_message = prompt;
-            await flush_screen(1);
-            set_cursor(prompt.length + 1, 0);
-            continue;
-        }
-        if (_isQuit(keyCode)) {
-            await getobj_never_mind(prompt);
-            cancelled = true;
-            break;
-        }
-        /* C invent.c:1955-1959 — HANDS_SYM '-' with !allownone (doread's getobj
-         * has no hands choice): mime_action("read"), return NULL. */
-        if (keyCode === 45 /* '-' */) {
-            await mime_action('read');
-            cancelled = true;
-            break;
-        }
-        if (keyCode === 63 /* '?' */ || keyCode === 42 /* '*' */) {
-            const pick = await getobj_redo_menu(keyCode, rawLetters, altlets, null, { word: 'read', allownone: false, buf: letters });
-            /* invent.c:1989-1993 — ESC out of the menu: "Never mind." (already
-             * plined by getobj_redo_menu) and getobj returns NULL. */
-            if (pick === 27) { cancelled = true; break; }
-            /* invent.c:1982-1986 — no selection → re-prompt and re-read
-             * (oneloop, set only by force_invmenu, returns NULL instead). */
-            if (!pick && _oneloop) { cancelled = true; break; }
-            if (!pick) {
-                g._prevmsg = prompt + ' '; /* invent.c:1935 re-asks via yn_function */
-                g._pending_message = prompt;
-                await flush_screen(1);
-                set_cursor(prompt.length + 1, 0);
-                continue;
-            }
-            keyCode = pick;
-        }
-        /* find the picked item in invent (invent.c:2003). */
-        scroll = null;
-        for (let o = g.invent; o; o = o.nobj) {
-            if (o.invlet && (o.invlet | 0) === keyCode) { scroll = o; break; }
-        }
-        if (scroll) break; /* found → proceed to read/study dispatch below */
-        /* C invent.c:2058 — !otmp → "You don't have that object." → more().
-         * occupation_force_more drives win/tty/topl.c more(): it consumes any
-         * non-dismiss keys (re-showing --More--) until a dismiss key (space/CR/
-         * LF/ESC), exactly like C.  After dismissal we re-prompt and re-read. */
-        /* C invent.c:2049 — `disp.botl = TRUE` precedes the verify at 2058, so the
-         * pline's flush_screen (pline.c:273-274) runs bot() with the current clock
-         * before more() pages. */
-        /* C invent.c:2049 — `disp.botl = TRUE` precedes the !otmp check at
-         * 2058, so You("don't have that object.")'s flush_screen (pline.c:274)
-         * runs bot(): a run-suppressed T: is repainted under the --More--. */
-        g.disp = g.disp || {};
-        g.disp.botl = 1;
-        await _clear_botl();
-        /* C invent.c:2059 You("don't have that object.") is a real pline, so
-         * pline.c:282 files it in gp.prevmsg before the more() pages it (same
-         * idiom as js/do.js's drop loop).  The re-prompt below overwrites it. */
-        g._prevmsg = "You don't have that object.";
-        await occupation_force_more("You don't have that object.", null, (g.moves | 0), null);
-        g._prevmsg = prompt + ' '; /* invent.c:1935 re-asks via yn_function */
-        g._pending_message = prompt;
-        await flush_screen(1);
-        set_cursor(prompt.length + 1, 0);
-    }
-    const ch = String.fromCharCode(keyCode);
-    if (cancelled) {
-        /* C invent.c:1950-1953 — the quitchar arm returns BEFORE line 2049's
-         * `disp.botl = TRUE`, so getobj's SET_BOTL is never reached on this
-         * path.  This block used to run unconditionally above the cancel
-         * check, so a cancelled read wrongly raised botl for a command C
-         * never touched it on.
-         * getobj → NULL → doread(NULL) = ECMD_CANCEL: no turn consumed. */
-        return ECMD_CANCEL;
-    }
-    /* C invent.c:2049 — `disp.botl = TRUE;` right before getobj returns the
-     * selected object ("May have changed the amount of money").  A queued
-     * selection returned earlier, at invent.c:1825, without it. */
-    if (!_q.drained) {
-        g.disp = g.disp || {};
-        g.disp.botl = 1;
-    }
-    /* C invent.c:2050-2053: remember an interactive selection for do_repeat;
-     * queued selections return earlier, at invent.c:1824. */
-    if (!_q.drained && scroll && !g.gi?.in_doagain)
-        cmdq_add_key(CQ_REPEAT, keyCode);
+    const scroll = await getobj('read', read_ok, GETOBJ_PROMPT);
+    if (!scroll) return ECMD_CANCEL;
 
 
     /* C read.c:364-375 — outrumor has its own blindness check.
@@ -1131,7 +919,6 @@ export async function doread() {
         if (!_Blind())
             _bump_literate('a fortune cookie');
         await useup_cmd(scroll); /* C read.c:373: includes worn cleanup and stack weight. */
-        await _clear_botl();
         return ECMD_TIME;
     }
 
@@ -1139,17 +926,15 @@ export async function doread() {
                    || (scroll.otyp | 0) === ALCHEMY_SMOCK_RD)) {
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            await _clear_botl();
             return ECMD_OK;
         }
         const _uarm_rd = game.u?.uarm;
         if ((scroll.otyp | 0) === T_SHIRT_RD
-            && _uarm_rd && _worn_as_shirt_rd(scroll)) {
+            && _uarm_rd && scroll === game.u.uarmu) {
             await pline('%s shirt is obscured by %s%s.',
                         scroll.unpaid ? 'That' : 'Your',
-                        _shk_your_rd(_uarm_rd),
+                        shk_your(_uarm_rd),
                         suit_simple_name(_uarm_rd));
-            await _clear_botl();
             return ECMD_OK;
         }
         _bump_literate((scroll.otyp | 0) === T_SHIRT_RD ? 'a T-shirt' : 'an apron');
@@ -1164,14 +949,12 @@ export async function doread() {
             await pline('It reads:');
         }
         await pline('"%s"%s', mesg, endpunct);
-        await _clear_botl();
         return ECMD_TIME;
     }
 
     if (scroll && (scroll.otyp | 0) === HAWAIIAN_SHIRT_RD) {
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            await _clear_botl();
             return ECMD_OK;
         }
         /* C read.c:383-390, under C's own comment "can't read shirt worn
@@ -1185,18 +968,16 @@ export async function doread() {
          *     }
          * This PRECEDES the design print and returns ECMD_OK — no turn. */
         const _uarm_rd = game.u?.uarm;
-        if (_uarm_rd && _worn_as_shirt_rd(scroll)) {
+        if (_uarm_rd && scroll === game.u.uarmu) {
             await pline('%s shirt is obscured by %s%s.',
                         scroll.unpaid ? 'That' : 'Your',
-                        _shk_your_rd(_uarm_rd),
+                        shk_your(_uarm_rd),
                         suit_simple_name(_uarm_rd));
-            await _clear_botl();
             return ECMD_OK;
         }
         await pline('%s features %s.',
                     game.flags?.verbose ? 'The design' : 'It',
                     hawaiian_design(scroll));
-        await _clear_botl();
         return ECMD_TIME;
     }
 
@@ -1223,7 +1004,6 @@ export async function doread() {
         if ((scroll.o_id | 0) % 3) {
             /* no need to vary this when blind; "on this ___" is important */
             await You_cant('find anything to read on this %s.', simpleonames(scroll));
-            await _clear_botl();
             return ECMD_OK;
         }
         await pline('%s on the %s.  It reads:  %s.',
@@ -1233,7 +1013,6 @@ export async function doread() {
         /* C: despite the fact that player will recognize the object type, don't
          * make it become a discovery for hero. */
         await trycall(scroll);
-        await _clear_botl();
         return ECMD_TIME;
     }
 
@@ -1278,7 +1057,6 @@ export async function doread() {
                     ((oid * 7) % 10),
                     (game.flags?.verbose || _Blind()) ? '.' : '');
         _bump_literate('a credit card');
-        await _clear_botl();
         return ECMD_TIME;
     }
 
@@ -1286,7 +1064,6 @@ export async function doread() {
      * singular(scroll, xname)); return ECMD_OK;`  No turn, no conduct bump. */
     if (scroll && (scroll.otyp | 0) === CAN_OF_GREASE) {
         await pline('This %s has no label.', (await singular(scroll, xname)));
-        await _clear_botl();
         return ECMD_OK;
     }
 
@@ -1300,7 +1077,6 @@ export async function doread() {
         const mndx = red_mons[(scroll.o_id | 0) % red_mons.length];
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            await _clear_botl();
             return ECMD_OK;
         }
         if (game.flags?.verbose)
@@ -1309,7 +1085,6 @@ export async function doread() {
         await pline('"Magic Marker(TM) %s Red Ink Marker Pen.  Water Soluble."',
                     upwords(buf));
         _bump_literate('a magic marker');
-        await _clear_botl();
         return ECMD_TIME;
     }
 
@@ -1324,7 +1099,6 @@ export async function doread() {
             await pline('You read:');
         await pline('"1 Zorkmid.  857 GUE.  In Frobs We Trust."');
         _bump_literate("a coin's engravings");
-        await _clear_botl();
         return ECMD_TIME;
     }
 
@@ -1332,7 +1106,6 @@ export async function doread() {
         await pline(_Blind() ? 'You feel the engraved signature:' : 'It is signed:');
         await pline('"Odin."');
         _bump_literate('the divine signature of Odin');
-        await _clear_botl();
         return ECMD_TIME;
     }
     /* C read.c:548-556 — CANDY_BAR.  candy_wrapper_text(obj) is
@@ -1344,24 +1117,20 @@ export async function doread() {
         const wrapper = candy_wrappers[(scroll.spe | 0) % candy_wrappers.length];
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            await _clear_botl();
             return ECMD_OK;
         }
         if (!wrapper) {
             await pline("The candy bar's wrapper is blank.");
-            await _clear_botl();
             return ECMD_OK;
         }
         await pline('The wrapper reads: "%s".', wrapper);
         _bump_literate('a candy bar wrapper');
-        await _clear_botl();
         return ECMD_TIME;
     }
 
     if (scroll && (scroll.oclass | 0) !== SCROLL_CLASS
         && (scroll.oclass | 0) !== SPBOOK_CLASS_OC) {
         await pline('That is a silly thing to read.');
-        await _clear_botl();
         return ECMD_OK;
     }
     if (scroll && _Blind() && (scroll.otyp | 0) !== SPE_BOOK_OF_THE_DEAD_RD) {
@@ -1374,7 +1143,6 @@ export async function doread() {
             what = 'formula on the scroll';
         if (what) {
             await pline('Being blind, you cannot read the ' + what + '.');
-            await _clear_botl();
             return ECMD_OK;
         }
     }
@@ -1385,7 +1153,6 @@ export async function doread() {
             /* C read.c:589-592: y_n(); anything but 'y' returns ECMD_OK.  A spe-0
              * mail scroll is dropped by a killed mail daemon (mon.c:3577-3580). */
             if (await yn_function('Reading mail will violate "illiterate" conduct.  Read anyway?', 'yn', 'n', true) !== 'y') {
-                await _clear_botl();
                 /* C topl.c:544-548 leaves the answered one-row prompt painted;
                  * nothing else is printed before the next command. */
                 g._topl_sticky = 'Reading mail will violate "illiterate" conduct.  Read anyway? [yn] (n)';
@@ -1412,7 +1179,6 @@ export async function doread() {
         const moved = await study_book(scroll);
 
         /* C read.c:609: rhack maps this ECMD result to context.move. */
-        await _clear_botl();
         return moved ? ECMD_TIME : ECMD_OK;
     }
 
@@ -1431,7 +1197,6 @@ export async function doread() {
          * update pending for the next real flush_screen(). */
         return ECMD_TIME;
     }
-    await _clear_botl();
     return ECMD_OK;
 }
 
@@ -1794,53 +1559,6 @@ function _can_chant() {
 }
 
 
-async function _docall_scroll(obj) {
-    const g = game;
-    if (!obj.dknown)
-        return; /* C do_name.c:642 — probably blind */
-    await flush_screen(1); /* C do_name.c:644 */
-    /* C do_name.c:651: safe_qbuf(qbuf, "Call ", ":", obj, docall_xname, ...).
-     * docall_xname (do_name.c:605) copies the object, forces quan=1 and clears
-     * blessed/cursed, then returns an(xname(&otemp)); for a scroll xname() is
-     * xname_scroll(). */
-    let qname;
-    if (obj.oclass === undefined || obj.oclass === SCROLL_CLASS_OC) {
-        qname = xname_scroll({
-            otyp: obj.otyp | 0, oclass: SCROLL_CLASS_OC, quan: 1,
-            blessed: false, cursed: false,
-            dknown: !!obj.dknown, bknown: !!obj.bknown,
-            oname: undefined,
-        });
-    } else {
-        /* docall_xname's otemp copy: no oextra, quan 1, not blessed/cursed;
-         * the class-specific fixups (do_name.c:613-627) are irrelevant to
-         * the callable classes that reach here. */
-        qname = xname({ ...obj, oextra: undefined, oname: undefined,
-                        quan: 1, blessed: false, cursed: false });
-    }
-    const qbuf = 'Call ' + an(qname) + ':';
-    /* win/tty/topl.c update_topl(): the prompt lands on a topline that still
-     * holds the unacked scroll feedback, so the tty more()s it first. */
-    if (g._pending_message)
-        await force_more(g._pending_message);
-    const buf = await getlin(qbuf);
-    if (buf === '\x1b')
-        return; /* C: name_from_player returned 0 */
-    /* C do_name.c:666 mungspaces — strip leading/trailing, collapse runs. */
-    const name = buf.trim().replace(/\s+/g, ' ');
-    if (!g._oc_uname) g._oc_uname = {};
-    const had_name = !!g._oc_uname[obj.otyp | 0];
-    if (!name) {
-        /* C do_name.c:667-669 — all spaces uncalls the type. */
-        if (had_name) delete g._oc_uname[obj.otyp | 0];
-    } else {
-        g._oc_uname[obj.otyp | 0] = name;
-        /* C do_name.c:672 discover_object(otyp, FALSE, TRUE, TRUE) —
-         * mark_as_known=FALSE, so NO exercise(A_WIS) and NO RNG. */
-        discover_object(obj.otyp | 0, false, true, true);
-    }
-}
-
 /* C ref: o_init.c — is this object type's identity known? */
 function _oc_name_known(otyp) {
     return !!(game._oc_name_known && game._oc_name_known[otyp]);
@@ -1862,80 +1580,6 @@ function _Yname2(obj) {
     return Yobjnam2(obj, null);
 }
 
-/* C read.c:385 `scroll == uarmu` — pointer identity against the worn-shirt
- * slot.  This port keeps that fact in TWO places and neither alone is
- * sufficient: js/do_wear.js's setworn() points u.uarmu at the real g.invent
- * object, but js/u_init.js:1568-1578 leaves u.uarm* pointing at a SEPARATE
- * synthetic AC-bearing record and stamps owornmask on the g.invent clone
- * instead — so a Tourist's STARTING Hawaiian shirt (the exact hero C's guard
- * is written for) fails the identity test and passes the mask test, while a
- * shirt donned during play does the reverse.  Both are this port's spelling of
- * C's single `obj == uarmu`; read both. */
-function _worn_as_shirt_rd(obj) {
-    if (!obj)
-        return false;
-    if (obj === game.u?.uarmu)
-        return true;
-    return ((obj.owornmask | 0) & W_ARMU) !== 0;
-}
-/* C ref: obj.h carried(obj) == (obj->where == OBJ_INVENT).  In C a WORN armor
- * piece is always on the invent chain, so carried(uarm) is unconditionally
- * true there; in this port u.uarm* may hold the synthetic u_init record that is
- * on no chain and carries no `where` (js/u_init.js:1568-1578), which _carried()
- * alone would read as "the" where C says "your".  Occupying a worn slot IS
- * C's OBJ_INVENT for these objects; that is a read of this port's own
- * representation, not an extra state bit. */
-function _carried_or_worn_rd(obj) {
-    if (!obj)
-        return false;
-    if (_carried(obj))
-        return true;
-    const u = game.u || {};
-    return obj === u.uarm || obj === u.uarmc || obj === u.uarmh || obj === u.uarms
-        || obj === u.uarmg || obj === u.uarmf || obj === u.uarmu;
-}
-function _get_obj_location_rd(obj) {
-    if ((obj.where | 0) === 1)
-        return { x: obj.ox | 0, y: obj.oy | 0 };
-    if (_carried_or_worn_rd(obj))
-        return { x: game.u?.ux | 0, y: game.u?.uy | 0 };
-    return null;
-}
-function _shk_owns_rd(obj) {
-    const loc = _get_obj_location_rd(obj);
-    if (loc && (obj.unpaid
-                || ((obj.where | 0) === 1 && !obj.no_charge
-                    && costly_spot(loc.x, loc.y)))) {
-        const shkp = shop_keeper(inside_shop(loc.x, loc.y));
-        return shkp ? s_suffix(shkname(shkp)) : THE_YOUR_RD[0];
-    }
-    return null;
-}
-/* C ref: shk.c:5898-5904 staticfn mon_owns(buf, obj). */
-function _mon_owns_rd(obj) {
-    if ((obj.where | 0) === 4 /* OBJ_MINVENT */)
-        return s_suffix(y_monnam(obj.ocarry));
-    return null;
-}
-/* C ref: decl.c c_common_strings.c_the_your — shk.c's the_your[]. */
-const THE_YOUR_RD = ['the', 'your'];
-/* C ref: shk.c:5861-5874 shk_your(buf, obj) — "your "/"the "/"Foobar's ",
- * trailing space included.  C writes through an out-parameter; JS strings are
- * immutable, so this returns the value (C clears buf[0] first, so no caller
- * ever reads the incoming buffer).  RNG-free on every arm.
- *
- * The two CORPSE arms (type_is_pname / the_unique_pm) are guarded on
- * `obj->otyp == CORPSE`; read.c:388's only caller passes `uarm`, an
- * ARMOR_CLASS object, so they are structurally unreachable from here and are
- * not duplicated into this file. */
-function _shk_your_rd(obj) {
-    let prefix = _shk_owns_rd(obj);
-    if (prefix == null)
-        prefix = _mon_owns_rd(obj);
-    if (prefix == null)
-        prefix = THE_YOUR_RD[_carried_or_worn_rd(obj) ? 1 : 0];
-    return prefix + ' ';
-}
 /* C ref: obj.h:280-282 is_shield(otmp) — ARMOR_CLASS with oc_armcat ARM_SHIELD,
  * i.e. the contiguous SMALL_SHIELD..SHIELD_OF_REFLECTION block. */
 function _is_shield(otmp) {
@@ -1956,15 +1600,6 @@ function _Is_dragon_scales(obj) {
 /* C ref: obj.h — objects[otyp].oc_magic, from the generated table. */
 function _oc_magic(otyp) {
     return !!MKOBJ_OC_MAGIC[otyp | 0];
-}
-/* C ref: mkobj.c:1857-1861 bcsign / carried(obj) (obj.h) — OBJ_INVENT is 3. */
-function _carried(obj) {
-    return (obj.where | 0) === 3 || _in_invent(obj);
-}
-function _in_invent(obj) {
-    for (let o = game.invent; o; o = o.nobj)
-        if (o === obj) return true;
-    return false;
 }
 /* Shop billing uses the shared mkobj.c costly_alteration implementation. */
 /* C ref: potion.c:1462-1478 strange_feeling(obj, txt). */
@@ -3881,7 +3516,7 @@ export async function drop_boulder_on_monster(x, y, confused, byu) {
             if (hard_helmet_er(helmet)) {
                 if (canspotmon(mtmp))
                     await pline(`Fortunately, ${mon_nam_er(mtmp)} is wearing a hard helmet.`);
-                else if (!_uprop_on(DEAF_ER))
+                else if (!(_uprop_on(DEAF_ER) || u.uroleplay?.deaf))
                     await You_hear('a clanging sound.');
                 if (mdmg > 2) mdmg = 2;
             } else if (canspotmon(mtmp)) {

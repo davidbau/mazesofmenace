@@ -99,13 +99,13 @@ import { stagger, Resists_Elem, mon_hates_blessings, defended } from './mondata.
 import { float_vs_flight } from './polyself.js';
 import { monkilled_trap } from './trap.js';
 import { ERODE_CORRODE, ER_NOTHING, ER_GREASED, EF_GREASE, P_NONE, P_BOW, P_CROSSBOW, P_SHURIKEN,
-         ROOM, ALTAR, IS_FOUNTAIN, FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES } from './const.js';
+         ROOM, ALTAR, IS_FOUNTAIN, FOUNTAIN, IS_SINK, A_WIS, A_DEX, A_CON, A_MAX, POISON_RES, FIXED_ABIL, HALLUC, HALLUC_RES, SEE_INVIS, FAST, ICE, ECMD_OK, ECMD_TIME, ECMD_CANCEL, Is_airlevel, Is_waterlevel, Is_earthlevel, FROMOUTSIDE, INTRINSIC, STUNNED, CONFUSION, BLINDED, FIRE_RES, UNCHANGING, KILLED_BY, G_GONE, MM_NOMSG, S_LRING, M_SEEN_FIRE, POLY_NOFLAGS, POLY_CONTROLLED, POLY_LOW_CTRL, ARTICLE_A, DETECT_MONSTERS, I_SPECIAL, LEVITATION, HALF_PHDAM, HEAD, FAINTING, SICK_VOMITABLE, FREE_ACTION, SLEEP_RES, PROT_FROM_SHAPE_CHANGERS } from './const.js';
 /* prop.h indices + you.h/end.h flags the make_*() setters below need. */
 import { DEAF, SICK, SICK_RES, STONED, VOMITING, GLIB, SLIMED, KILLED_BY_AN,
          M_AP_MONSTER, M_AP_NOTHING, M_AP_TYPMASK } from './const.js';
-import { getObjDescr, fruitname, docall_xname_potion, cxname, the, The, xname, otense, vtense } from './objnam.js';
+import { getObjDescr, fruitname, cxname, the, The, xname, otense, vtense } from './objnam.js';
 import { short_oname, simpleonames, thesimpleoname } from './objnam.js';
-import { oname } from './do_name.js';
+import { oname, docall } from './do_name.js';
 import { exist_artifact, artiname } from './artifact.js';
 import { ONAME_VIA_DIP, ONAME_KNOW_ARTI } from './const.js';
 import { gloves_simple_name } from './objnam.js';
@@ -469,7 +469,7 @@ async function peffect_water(otmp) {
         } else if (otmp.cursed) {
             /* C potion.c:743-748: cursed, hates blessings → proud */
             await You_feel('quite proud of yourself.');
-            healup(d(2, 6), 0, 0, 0);
+            await healup(d(2, 6), 0, 0, 0);
             if (ismnum(u.ulycn) && !Upolyd(u))
                 await you_were_real();
             exercise(A_CON, true);
@@ -522,8 +522,10 @@ async function peffect_oil(otmp) {
     /* C potion.c:1293 — the per-quaff exercise/abuse draw. */
     exercise(A_WIS, good_for_you);
 }
-/* Sink-delivered potions use the shared effect dispatcher. */
-export async function dopotion_unported(otmp) {
+/* C potion.c:618-641 dopotion(); also exported under its historical name
+ * dopotion_unported for fountain.js/eat.js. */
+export { dopotion as dopotion_unported };
+export async function dopotion(otmp) {
     /* C potion.c:618-641 dopotion(): peffects, then (when it returns -1) the
      * identify tail and useup.  The tail's makeknown() is discover_object(...,
      * credit_hero=TRUE), whose exercise(A_WIS, TRUE) is one rn2(19) draw. */
@@ -574,6 +576,13 @@ function _hallucination() {
     return !!hh && !res;
 }
 function _unchanging() { return _prop_active(UNCHANGING); }
+/* C youprop.h:355-360 Protection_from_shape_changers =
+ * HProtection_from_shape_changers || EProtection_from_shape_changers (no
+ * blocker). */
+function _protection_from_shape_changers() {
+    const p = game.u?.uprops?.[PROT_FROM_SHAPE_CHANGERS];
+    return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0));
+}
 /* C ref: invent.c useup() — consume one potion from gi.invent.  A stack
  * (quan>1) is decremented; a singleton is unlinked from game.invent.  RNG-free.
  * Mirrors read.js:useup for scrolls. */
@@ -713,41 +722,6 @@ function _surface(x, y) {
     return surface_cmd(x, y); /* dungeon.c:1750 surface(), ported in js/cmd.js */
 }
 
-/* C do_name.c:636-676 docall() — after quaffing an unidentified potion whose
- * effect did not identify it, offer to #call (name) the type.  Scoped to potions.
- * The "Call a <potion>:" getlin prompt replaces the just-shown taste message, so
- * tty pages that message with a --More-- first (force_more) — the observed
- * step-56 "This tastes like slime mold juice.--More--" frame.  RNG-free. */
-async function _docall_potion(obj) {
-    const g = game;
-    /* C do.c:395-399 trycall(): skip when the type is known or already called */
-    if (g._oc_uname && g._oc_uname[obj.otyp]) return;
-    if (!obj.dknown) return; /* C: probably blind */
-    await flush_screen(1); /* C do_name.c:644 flush buffered updates */
-    /* qbuf = safe_qbuf("Call ", ":", obj, docall_xname, ...) → "Call a ruby potion:" */
-    const qbuf = 'Call ' + docall_xname_potion(obj) + ':';
-    /* Page the pending taste message before getlin overwrites the topline (tty
-     * more() on the unacked message; consumes the dismiss keystroke). */
-    if (g._pending_message)
-        await force_more(g._pending_message);
-    /* getlin() reads the name string (echoing input, honoring backspace/ESC). */
-    const buf = await getlin(qbuf);
-    if (buf === '\x1b') /* ESC → name_from_player returns 0, docall returns */
-        return;
-    /* mungspaces: trim + collapse internal whitespace (do_name.c:666). */
-    const name = buf.trim().replace(/\s+/g, ' ');
-    if (!g._oc_uname) g._oc_uname = {};
-    if (!name) {
-        /* all-spaces → uncall; only relevant if it previously had a name. */
-        if (g._oc_uname[obj.otyp]) {
-            delete g._oc_uname[obj.otyp];
-        }
-    } else {
-        g._oc_uname[obj.otyp] = name;
-        /* C do_name.c:672 discover_object(otyp, FALSE, TRUE, TRUE). */
-        discover_object(obj.otyp, false, true, true);
-    }
-}
 
 export async function dodrink() {
     const g = game;
@@ -1048,671 +1022,16 @@ export async function dodrink() {
                 _topl_stash_result();
             return ECMD_TIME;
         }
-        if (otmp.otyp === POT_WATER) {
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_water(otmp);
-            /* C dopotion (potion.c:622-641): peffects(POT_WATER) returns -1
-             * (the case breaks out of the switch), so dopotion falls through
-             * to useup(otmp).  Consume the potion node from gi.invent.
-             * dopotion tail: identify if dknown && !name_known. */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
+        const res = await dopotion(otmp);
+        if (g._pending_message) {
+            _topl_stash_result();
         }
-        else if (otmp.otyp === POT_OIL) {
-            await peffect_oil(otmp);
-            /* C dopotion: peffects(POT_OIL) returns -1 (break), so dopotion
-             * useup(otmp)s the potion.  Consume it. */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_PARALYSIS) {
-            const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-            const u2 = g.u;
-            if (_free_action()) {
-                await pline('You stiffen momentarily.');
-            } else {
-                if (_prop_active(LEVITATION) || Is_airlevel(u2.uz) || Is_waterlevel(u2.uz))
-                    await pline('You are motionlessly suspended.');
-                else if (u2.usteed)
-                    await pline('You are frozen in place!');
-                else {
-                    /* Your("%s are frozen to the %s!", makeplural(body_part(FOOT)), surface()) */
-                    const feet = makeplural_objnam(body_part(FOOT));
-                    const sfc = _surface(u2.ux, u2.uy);
-                    await pline(`Your ${feet} are frozen to the ${sfc}!`);
-                }
-                /* nomul(-(rn1(10, 25 - 12*bcsign(otmp)))); rn1(x,y)=rn2(x)+y. */
-                nomul(-(rn2(10) + (25 - 12 * bcsign)));
-                g.multi_reason = 'frozen by a potion';
-                g.nomovemsg = 'You can move again.';
-                exercise(A_DEX, false);
-            }
-            /* peffects returns -1 → dopotion tail (potion.c:626-641).  C:
-             * gp.potion_nothing/gp.potion_unkn are never touched by
-             * peffect_paralysis, so they stay 0 — the identify branch always
-             * takes makeknown()+more_experienced(0,10), never trycall().
-             * makeknown(otmp->otyp) == discover_object(otyp, TRUE, TRUE, TRUE);
-             * credit_hero=TRUE fires exercise(A_WIS, TRUE) (rn2(19)) the FIRST
-             * time this potion type is identified (o_init.c:481-483). */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_CONFUSION) {
-            /* C potion.c:1015-1029 peffect_confusion */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-            const u2 = g.u;
-            /* C potion.c:1016 `if (!Confusion)` — Confusion is
-             * u.uprops[CONFUSION].intrinsic (youprop.h:83-84).  `u2.Confusion`
-             * is a spelling nothing in js/ assigns, so this test was
-             * unconditionally true: a second potion of confusion re-announced
-             * "Huh, What?  Where am I?" where C takes the potion_nothing arm. */
-            if (!(u2.uprops?.[CONFUSION]?.intrinsic | 0)) {
-                const HHallucination = u2.uprops?.[HALLUC]?.intrinsic || 0;
-                const HHalluc_resistance = u2.uprops?.[HALLUC_RES]?.intrinsic || 0;
-                const EHalluc_resistance = u2.uprops?.[HALLUC_RES]?.extrinsic || 0;
-                const Halluc_resistance = HHalluc_resistance || EHalluc_resistance;
-                const Hallucination = HHallucination && !Halluc_resistance;
-                if (Hallucination) {
-                    await pline('What a trippy feeling!');
-                    g._potion_unkn++;
-                } else {
-                    await pline('Huh, What?  Where am I?');
-                }
-            } else {
-                g._potion_nothing++;
-            }
-            /* C potion.c:1026-1028
-             *   make_confused(itimeout_incr(HConfusion, rn1(7, 16-8*bcsign(otmp))), FALSE)
-             * HConfusion is u.uprops[CONFUSION].intrinsic (youprop.h:83), read BY
-             * VALUE — itimeout_incr() does not store.  (This used to synthesise a
-             * `u2.HConfusion = {value:0}` ref for the old mutating itimeout_incr,
-             * which both invented a store C never makes and zeroed any real
-             * timeout it found.) */
-            const incr = rn1(7, 16 - 8 * bcsign);
-            make_confused(itimeout_incr(u2.uprops?.[CONFUSION]?.intrinsic | 0, incr), false);
-            /* dopotion tail: if potion_nothing, bump potion_unkn + message */
-            if (g._potion_nothing) {
-                g._potion_unkn++;
-                const HHallucination2 = u2.uprops?.[HALLUC]?.intrinsic || 0;
-                const HHalluc_resistance2 = u2.uprops?.[HALLUC_RES]?.intrinsic || 0;
-                const EHalluc_resistance2 = u2.uprops?.[HALLUC_RES]?.extrinsic || 0;
-                const Halluc_resistance2 = HHalluc_resistance2 || EHalluc_resistance2;
-                const Hallucination2 = HHallucination2 && !Halluc_resistance2;
-                await pline(`You have a ${Hallucination2 ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_GAIN_ABILITY) {
-            /* C potion.c:1030-1049 peffect_gain_ability, then dopotion's tail
-             * (potion.c:627-640).  This otyp fell out of the ladder into the
-             * trailing "Nothing happens." fallback. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_gain_ability(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn++;
-                const u2 = g.u;
-                const Halluc = (u2.uprops?.[HALLUC]?.intrinsic || 0)
-                    && !((u2.uprops?.[HALLUC_RES]?.intrinsic || 0) || (u2.uprops?.[HALLUC_RES]?.extrinsic || 0));
-                await pline(`You have a ${Halluc ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_BOOZE) {
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            const u2 = g.u;
-            /* C potion.c:772 gp.potion_unkn++ — booze is never auto-identified
-             * by quaffing it, so dopotion's tail takes the trycall() arm. */
-            g._potion_unkn++;
-            /* C potion.c:773-775
-             *   pline("Ooph!  This tastes like %s%s!",
-             *         otmp->odiluted ? "watered down " : "",
-             *         Hallucination ? "dandelion wine" : "liquid fire"); */
-            await pline('Ooph!  This tastes like '
-                        + (otmp.odiluted ? 'watered down ' : '')
-                        + (_potion_Hallucination() ? 'dandelion wine' : 'liquid fire')
-                        + '!');
-            if (!otmp.blessed) {
-                /* C potion.c:776-778 — "booze hits harder if drinking on an
-                 * empty stomach": the die COUNT is 2 + u.uhs, so the hunger
-                 * state is load-bearing on the RNG stream, not just on the
-                 * status line.  HConfusion is u.uprops[CONFUSION].intrinsic,
-                 * read BY VALUE (itimeout_incr does not store). */
-                make_confused(itimeout_incr(u2.uprops?.[CONFUSION]?.intrinsic | 0,
-                                            d(2 + (u2.uhs | 0), 8)), false);
-            }
-            /* C potion.c:780-782 — "the whiskey makes us feel better" */
-            if (!otmp.odiluted)
-                healup(1, 0, false, false);
-            /* C potion.c:783-784 */
-            u2.uhunger += 10 * (2 + bcsign(otmp));
-            await newuhs(false);
-            /* C potion.c:785 exercise(A_WIS, FALSE) — the dec arm draws rn2(2)
-             * (attrib.c:509), so this is an RNG call site, not bookkeeping. */
-            exercise(A_WIS, false);
-            if (otmp.cursed) {
-                /* C potion.c:786-790.  C assigns gm.multi DIRECTLY here — it
-                 * does NOT call nomul(), so the monotonic guard and the
-                 * uinvulnerable/usleep clears in hack.c:4071 do not run. */
-                await pline('You pass out.');
-                g.multi = -rnd(15);
-                g.nomovemsg = 'You awake with a headache.';
-            }
-            /* dopotion tail (potion.c:626-641): peffects returns -1 for
-             * POT_BOOZE, potion_nothing stayed 0, potion_unkn is 1 → trycall. */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_SLEEPING) {
-            /* fall_asleep (timeout.c:966-973) also sets u.usleep, which
-             * Unaware/unconscious() (gethungry's rn2(10)) reads. */
-            await peffect_sleeping(otmp);
-            /* dopotion tail: peffects returned -1 → useup + identify */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_FRUIT_JUICE) {
-            /* C potion.c:1358-1361 peffects → peffect_see_invisible (also serves
-             * fruit juice), then the dopotion tail (potion.c:626-642). */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_see_invisible(otmp);
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_SICKNESS) {
-            /* C potion.c:963 peffect_sickness, reached through peffects'
-             * `case POT_SICKNESS:` (potion.c:1290).  peffects returns -1 for it,
-             * so dopotion runs its full tail (potion.c:627-641).  peffect_sickness
-             * touches NEITHER gp.potion_nothing NOR gp.potion_unkn, so both keep
-             * the 0 dopotion set at potion.c:623 — the identify arm is the
-             * !potion_unkn one (makeknown + more_experienced), not trycall. */
-            await peffect_sickness(otmp);
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_HEALING) {
-            /* C potion.c:1120-1128 peffect_healing. Records are UNCURSED:
-             * bcsign=0, d(4,4) draws 1 rng call. */
-            const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-            await pline('You feel better.');
-            await healup(8 + d(4 + 2 * bcsign, 4), !otmp.cursed ? 1 : 0,
-                   !!otmp.blessed, !otmp.cursed);
-            exercise(A_CON, true);
-            /* dopotion tail: peffects returns -1 → useup + identify */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_FULL_HEALING) {
-            /* C potion.c:1145-1165 peffect_full_healing */
-            const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
-            await pline('You feel completely healed.');
-            await healup(400, 4 + 4 * bcsign, !otmp.cursed ? 1 : 0, true);
-            /* Restore one lost level if blessed */
-            if (otmp.blessed && u.ulevel < u.ulevelmax) {
-                u.ulevelmax -= 1;
-                await pluslvl(false);
-            }
-            await make_hallucinated(0, true, 0);
-            exercise(0 /* A_STR */, true);
-            exercise(A_CON, true);
-            /* blessed potion heals wounded legs even when riding */
-            if (_wounded_legs() && (otmp.blessed || (!otmp.cursed && !u.usteed)))
-                heal_legs(0);
-            /* dopotion tail: peffects returns -1 → useup + identify */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_EXTRA_HEALING) {
-            /* C potion.c:1127-1141 peffect_extra_healing, reached through
-             * peffects' `case POT_EXTRA_HEALING:` (potion.c:1310).  The case
-             * breaks, so peffects returns -1 and dopotion runs its full tail
-             * (potion.c:626-641) — useup + identify.  Calls the single shared
-             * body below rather than re-inlining it here. */
-            await peffect_extra_healing(otmp);
-            /* dopotion tail: peffects returned -1, potion_nothing/unkn == 0. */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_SPEED) {
-            /* C potion.c:1054-1073 peffect_speed */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            const bcsign_val = bcsign(otmp);
-            /* skip when mounted; heal_legs() would heal steed's legs */
-            if (_wounded_legs() && !otmp.cursed && !u.usteed) {
-                heal_legs(0);
-                g._potion_unkn++;
-            } else {
-                await speed_up(rn1(10, 100 + 60 * bcsign_val));
-                /* non-cursed potion grants intrinsic speed */
-                if (!otmp.cursed && !(_fastrec(u).intrinsic & INTRINSIC)) {
-                    await Your("quickness feels very natural.");
-                    _fastrec(u).intrinsic |= FROMOUTSIDE;
-                }
-            }
-            /* dopotion tail: peffects returns -1 → useup + identify */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    // C potion.c:635 — dopotion credits the newly identified type.
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_BLINDNESS) {
-            /* C potion.c:1075-1080 via peffects(), then dopotion's ordinary
-             * identification/useup tail at potion.c:623-641. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_blindness(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await You(`have a ${_potion_Hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_LEVITATION) {
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_levitation(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn++;
-                await pline(`You have a ${_potion_Hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_INVISIBILITY) {
-            /* C potion.c:1352-1355:
-             *     case SPE_INVISIBILITY:
-             *     case POT_INVISIBILITY:
-             *         peffect_invisibility(otmp);
-             *         break;
-             * The case breaks, so peffects() returns -1 and dopotion runs its
-             * full tail (potion.c:624-641): the potion_nothing message, the
-             * identify screen, then useup.  ONE body, called here — see the
-             * block comment above the peffect_* stubs. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_invisibility(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-            /* C potion.c:639-640: useup then return, without SET_BOTL.
-             * encumber_msg's next pline flushes the previously painted load
-             * before requesting its own status update (pickup.c:2000-2016). */
-        }
-        else if (otmp.otyp === POT_MONSTER_DETECTION) {
-            /* C potion.c:1366-1370:
-             *     case POT_MONSTER_DETECTION:
-             *     case SPE_DETECT_MONSTERS:
-             *         if (peffect_monster_detection(otmp))
-             *             return 1;
-             *         break;
-             * A 1 makes peffects() return 1, and dopotion (potion.c:625) then
-             * returns ECMD_TIME WITHOUT useup and WITHOUT the identify screen —
-             * the potion stays in the pack.  A 0 falls out of the switch and
-             * runs the ordinary tail. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            const md_ret = await peffect_monster_detection(otmp);
-            if (!md_ret) {
-                if (g._potion_nothing) {
-                    g._potion_unkn = (g._potion_unkn | 0) + 1;
-                    await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-                }
-                if (otmp.dknown
-                    && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                    if (!g._potion_unkn) {
-                        discover_object(otmp.otyp, true, true, true);
-                        more_experienced(0, 10);
-                    } else {
-                        await _docall_potion(otmp);
-                    }
-                }
-                await useup(otmp);
-                /* C potion.c:639-640: useup then return; no status repaint. */
-            }
-        }
-        else if (otmp.otyp === POT_OBJECT_DETECTION) {
-            /* C potion.c:1371-1375:
-             *     case POT_OBJECT_DETECTION:
-             *     case SPE_DETECT_TREASURE:
-             *         if (peffect_object_detection(otmp))
-             *             return 1;
-             *         break;
-             * Same 1/0 convention as POT_MONSTER_DETECTION just above: a 1
-             * ("nothing detected") makes peffects() return 1 and dopotion
-             * (potion.c:625) returns ECMD_TIME WITHOUT useup/identify; a 0
-             * falls out of the switch and dopotion runs its ordinary tail.
-             * This arm did not exist at all: dodrink's otyp ladder had no
-             * POT_OBJECT_DETECTION case, so quaffing one fell into the
-             * trailing "Nothing happens." fallback and drew nothing. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            const od_ret = await peffect_object_detection(otmp);
-            if (!od_ret) {
-                if (g._potion_nothing) {
-                    g._potion_unkn = (g._potion_unkn | 0) + 1;
-                    await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-                }
-                if (otmp.dknown
-                    && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                    if (!g._potion_unkn) {
-                        discover_object(otmp.otyp, true, true, true);
-                        more_experienced(0, 10);
-                    } else {
-                        await _docall_potion(otmp);
-                    }
-                }
-                await useup(otmp);
-                /* C potion.c:639-640: useup then return; no status repaint. */
-            }
-        }
-        else if (otmp.otyp === POT_GAIN_LEVEL) {
-            /* C potion.c:1392-1394:
-             *     case POT_GAIN_LEVEL:
-             *         peffect_gain_level(otmp);
-             *         break;
-             * The case breaks, so peffects() returns -1 and dopotion runs its
-             * full tail (potion.c:624-641). */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_gain_level(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_ENLIGHTENMENT) {
-            /* C potion.c:1348-1350:
-             *     case POT_ENLIGHTENMENT:
-             *         peffect_enlightenment(otmp);
-             *         break;
-             * peffects returns -1, so dopotion runs its full tail. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_enlightenment(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_SEE_INVISIBLE) {
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_see_invisible(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_GAIN_ENERGY) {
-            if (otmp.cursed) {
-                await You_feel('lackluster.');
-            } else {
-                await pline('Magical energies course through your body.');
-            }
-            let num = d(otmp.blessed ? 3 : !otmp.cursed ? 2 : 1, 6);
-            if (otmp.cursed) num = -num;
-            u.uenmax += num;
-            if (u.uenmax > u.uenpeak) u.uenpeak = u.uenmax;
-            else if (u.uenmax <= 0) u.uenmax = 0;
-            u.uen += 3 * num;
-            if (u.uen > u.uenmax) u.uen = u.uenmax;
-            else if (u.uen <= 0) u.uen = 0;
-            g.disp.botl = 1;
-            exercise(A_WIS, true);
-            /* dopotion tail: peffects returns -1 → useup + identify. */
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                discover_object(otmp.otyp, true, true, true);
-                more_experienced(0, 10);
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_RESTORE_ABILITY) {
-            /* C potion.c:2020-2023 (peffects):
-             *     case POT_RESTORE_ABILITY:
-             *     case SPE_RESTORE_ABILITY:
-             *         peffect_restore_ability(otmp);
-             *         break;
-             * peffects returns -1, so dopotion runs its full tail — same
-             * shape as the POT_ENLIGHTENMENT/POT_SEE_INVISIBLE arms above.
-             * (SPE_RESTORE_ABILITY is the spell entry point, reached through
-             * a temporary spellbook object elsewhere, not through dodrink.) */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_restore_ability(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_HALLUCINATION) {
-            /* C potion.c:2024-2026 (peffects):
-             *     case POT_HALLUCINATION:
-             *         peffect_hallucination(otmp);
-             *         break;
-             * peffects returns -1, so dopotion runs its full tail — same
-             * shape as the POT_ENLIGHTENMENT/POT_SEE_INVISIBLE arms above. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_hallucination(otmp);
-            if (g._potion_nothing) {
-                g._potion_unkn = (g._potion_unkn | 0) + 1;
-                await pline(`You have a ${_hallucination() ? 'normal' : 'peculiar'} feeling for a moment, then it passes.`);
-            }
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_POLYMORPH) {
-            /* C potion.c:1417-1419 (peffects): case POT_POLYMORPH:
-             *     peffect_polymorph(otmp); break;  — returns -1, so dopotion
-             * runs its full tail like the arms above (unkn stays 0, so the
-             * potion is makeknown'd even when polyself ran). */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_polymorph(otmp);
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else if (otmp.otyp === POT_ACID) {
-            /* C potion.c:1417 (peffects): case POT_ACID: peffect_acid(otmp);
-             * break; — returns -1, so dopotion runs its full tail; the
-             * gp.potion_unkn++ at the end of peffect_acid keeps it unnamed. */
-            g._potion_nothing = 0;
-            g._potion_unkn = 0;
-            await peffect_acid(otmp);
-            if (otmp.dknown
-                && !(g._oc_name_known && g._oc_name_known[otmp.otyp])) {
-                if (!g._potion_unkn) {
-                    discover_object(otmp.otyp, true, true, true);
-                    more_experienced(0, 10);
-                } else {
-                    await _docall_potion(otmp);
-                }
-            }
-            await useup(otmp);
-        }
-        else {
-            /* TODO: other potion types — when ported, mirror C dopotion's
-             * useup-vs-early-return per the case's peffects() return value. */
-            await pline('Nothing happens.');
-        }
+        g.context.move = (res & ECMD_TIME) ? 1 : 0;
+        return res;
     }
-    else {
-        const syntheticOtmp = { blessed: false, cursed: false, otyp: POT_WATER };
-        await peffect_water(syntheticOtmp);
-    }
-    if (g._pending_message) {
-        _topl_stash_result();
-    }
-    g.context.move = 1;
-    return ECMD_TIME;
+    /* C potion.c:574-575: getobj returned NULL. */
+    g.context.move = 0;
+    return ECMD_CANCEL;
 }
 
 /* potionbreathe(obj) — C ref: nethack-c/src/potion.c:1933-2120 potionbreathe().
@@ -2065,14 +1384,9 @@ export async function make_hallucinated(xtime, talk, mask) {
             changed = true;
         _set_prop_itimeout(ph, xtime);
 
-        /* clearing temporary hallucination without toggling vision.
-         * UNREACHABLE from #wizintrinsic: this arm needs !changed && !HHalluc
-         * && old, i.e. hallucination going 1 -> 0 while EHalluc_resistance is
-         * already set, and every #wizintrinsic amt is > 0 (wizcmds.c:1011).
-         * body_part() is now js/cmd.js's export (the local throwing shadow
-         * is gone); eyecount() at the top of this file is still a throwing
-         * stub, so this arm still surfaces rather than guessing — see
-         * strange_feeling/Your there. */
+        /* clearing temporary hallucination without toggling vision
+         * (potion.c:368-381): hallucination timing out while
+         * EHalluc_resistance (Grayswandir) is already set. */
         if (!changed && !(ph.intrinsic | 0) && old && talk) {
             if (!haseyes(game.youmonst?.data)) {
                 await strange_feeling(null, null);
@@ -2081,9 +1395,9 @@ export async function make_hallucinated(xtime, talk, mask) {
 
                 if (eyecount(game.youmonst?.data) !== 1)
                     eyes = makeplural(eyes);
-                Your(eyemsg.replace('%s', eyes).replace('%s', vtense(eyes, "itch")));
+                await Your(eyemsg.replace('%s', eyes).replace('%s', vtense(eyes, "itch")));
             } else { /* Grayswandir */
-                Your(vismsg.replace('%s', "flatten").replace('%s', "normal"));
+                await Your(vismsg.replace('%s', "flatten").replace('%s', "normal"));
             }
         }
     }
@@ -2595,6 +1909,7 @@ async function potion_dip(obj, potion) {
                             obj.odiluted = true;
                     }
                 }
+                await obfree(otmp, null); /* C potion.c:2567 */
                 _bumpObjsDeleted();
                 break;
             }
@@ -2824,8 +2139,13 @@ async function potion_dip(obj, potion) {
             const g2 = game;
             const ocNameKnown = !!(g2._oc_name_known && g2._oc_name_known[old_otyp]);
             const ocUname = !!(g2._oc_uname && g2._oc_uname[old_otyp]);
-            if (old_dknown && !ocNameKnown && !ocUname)
-                await _docall_potion({ dknown: true, otyp: old_otyp });
+            if (old_dknown && !ocNameKnown && !ocUname) {
+                /* C potion.c:2774-2780: a cg.zeroobj copy carrying only
+                 * dknown, otyp and oclass, handed to the real docall(). */
+                const fakeobj = { otyp: old_otyp, oclass: POTION_CLASS,
+                                  dknown: 1, quan: 0, corpsenm: 0 };
+                await docall(fakeobj);
+            }
         }
         // C potion.c:2784-2786: the transformed potion is still carried here.
         await _hold_potion(singlepotion, 'You juggle and drop %s!',
@@ -3298,8 +2618,9 @@ export async function potionhit(mon, obj, how) {
                     if (canseemon(mon))
                         await pline(`${Monnam(mon)} looks healthier.`);
                     healmon(mon, d(2, 6), 0);
-                    if (is_were_pot(pdata) && is_human_pot(pdata))
-                        await new_were(mon);
+                    if (is_were_pot(pdata) && is_human_pot(pdata)
+                        && !_protection_from_shape_changers())
+                        await new_were(mon); /* C potion.c:1849-1851 */
                 }
             } else if ((pdata ? (pdata.pmidx | 0) : -1) === PM_GREMLIN) {
                 /* C potion.c:1854-1856 — split the gremlin using the existing
@@ -3745,10 +3066,10 @@ async function peffect_booze(otmp) {
                 + (_potion_Hallucination() ? 'dandelion wine' : 'liquid fire')
                 + '!');
     if (!otmp.blessed)
-        make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0,
+        await make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0,
                                     d(2 + (u.uhs | 0), 8)), false);
     if (!otmp.odiluted)
-        healup(1, 0, false, false);
+        await healup(1, 0, false, false);
     u.uhunger += 10 * (2 + bcsign(otmp));
     await newuhs(false);
     await exercise(A_WIS, false);
@@ -3864,19 +3185,21 @@ async function peffect_see_invisible(otmp) {
         g._potion_unkn = (g._potion_unkn | 0) - 1;
     }
 }
-function peffect_paralysis(otmp) {
+/* C potion.c:882-899 peffect_paralysis.  rn1(10, 25 - 12*bcsign) is
+ * rn2(10) + (25 - 12*bcsign). */
+async function peffect_paralysis(otmp) {
     const g = game;
     const u = g.u;
     if (_free_action()) {
-        pline("You stiffen momentarily.");
+        await pline("You stiffen momentarily.");
     } else {
         if (_prop_active(LEVITATION) || Is_airlevel(u.uz) || Is_waterlevel(u.uz))
-            pline("You are motionlessly suspended.");
+            await pline("You are motionlessly suspended.");
         else if (u.usteed)
-            pline("You are frozen in place!");
+            await pline("You are frozen in place!");
         else {
             const sfc = _surface(u.ux, u.uy);
-            pline(`Your ${makeplural_objnam(body_part(FOOT))} are frozen to the ${sfc}!`);
+            await pline(`Your ${makeplural_objnam(body_part(FOOT))} are frozen to the ${sfc}!`);
         }
         const bcsign = (otmp.blessed ? 1 : 0) - (otmp.cursed ? 1 : 0);
         nomul(-(rn2(10) + (25 - 12 * bcsign)));
@@ -4048,7 +3371,7 @@ async function peffect_confusion(otmp) {
     } else {
         game._potion_nothing = (game._potion_nothing | 0) + 1;
     }
-    make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0,
+    await make_confused(itimeout_incr(u.uprops?.[CONFUSION]?.intrinsic | 0,
                                 rn1(7, 16 - 8 * bcsign(otmp))), false);
 }
 

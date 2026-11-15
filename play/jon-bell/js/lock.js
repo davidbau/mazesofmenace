@@ -39,9 +39,8 @@ import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, CMDQ_USER_INPUT, NHKF_GETDIR_
          NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
          NHKF_ESC, N_DIRS,
          CLICK_1, CLICK_2 } from './const.js';
-import { impossible } from './pline.js';
+import { impossible, pline, You_hear, You_cant, There } from './pline.js';
 import { force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, Unaware, Deaf } from './display.js';
-import { pline, You_hear } from './pline.js';
 import { mb_trapped } from './monmove.js';
 import { capture_pre_movemon_botl, _topl_joins_snapshot, commit_force_messages } from './display.js';
 import { topl_park_cursor, pline_flush_point, putmsghistory, feel_location, flush_pending_messages, _topl_stash_result } from './display.js';
@@ -872,6 +871,20 @@ function _forceEmit(msg, botl = capture_pre_movemon_botl()) {
     } else g._pending_message = msg;
 }
 
+async function _captureForcePline(fn) {
+    const g = game;
+    const before = g._pending_message || '', result = g._resultMessage;
+    const joins = _topl_joins_snapshot(before);
+    const ret = await fn();
+    const prefix = [result, before].filter(Boolean).join('  ');
+    if (g._forceMsgs && (g._pending_message || '').startsWith(prefix) && g._pending_message.length > prefix.length) {
+        const after = g._pending_message; g._pending_message = before; g._resultMessage = result;
+        if (joins) { g._topl_joins = joins; g._topl_joins_src = before; }
+        _forceEmit(after.slice(prefix.length).trim());
+    }
+    return ret;
+}
+
 export async function breakchestlock(box, destroyit) {
     const g = game;
     const u = g.u || {};
@@ -879,16 +892,7 @@ export async function breakchestlock(box, destroyit) {
         /* C lock.c:164 — bill for the box (shop), then break the lock in place. */
         const hide_contents = box.cobj;
         box.cobj = null;
-        // Queue billing feedback after the staged force-success message, like potion feedback below.
-        const before = g._pending_message || '', result = g._resultMessage;
-        const joins = _topl_joins_snapshot(before);
-        await costly_alteration(box, COST_BRKLCK);
-        const prefix = [result, before].filter(Boolean).join('  ');
-        if (g._forceMsgs && (g._pending_message || '').startsWith(prefix) && g._pending_message.length > prefix.length) {
-            const after = g._pending_message; g._pending_message = before; g._resultMessage = result;
-            if (joins) { g._topl_joins = joins; g._topl_joins_src = before; }
-            _forceEmit(after.slice(prefix.length).trim());
-        }
+        await _captureForcePline(() => costly_alteration(box, COST_BRKLCK));
         box.cobj = hide_contents;
         box.olocked = 0;
         box.obroken = 1;
@@ -907,7 +911,9 @@ export async function breakchestlock(box, destroyit) {
         /* C lock.c:186 — if (!rn2(3) || POTION) chest_shatter_msg(otmp). */
         if (!rn2(3) || (otmp.oclass | 0) === POTION_CLASS_OC) {
             await chest_shatter_msg(otmp);
-            if (costly) loss += await stolen_value(otmp, u.ux, u.uy, peaceful_shk, true);
+            if (costly) {
+                loss += await _captureForcePline(() => stolen_value(otmp, u.ux, u.uy, peaceful_shk, true));
+            }
             /* C lock.c:191 — quan==1 → obfree (gone); else useup (decrement). */
             if ((otmp.quan | 0) === 1) {
                 await obfree(otmp, null);
@@ -922,7 +928,9 @@ export async function breakchestlock(box, destroyit) {
         place_object(otmp, u.ux | 0, u.uy | 0);
         await stackobj(otmp);
     }
-    if (costly) loss += await stolen_value(box, u.ux, u.uy, peaceful_shk, true);
+    if (costly) {
+        loss += await _captureForcePline(() => stolen_value(box, u.ux, u.uy, peaceful_shk, true));
+    }
     if (loss) _forceEmit(`You owe ${loss} ${currency(loss)} for objects destroyed.`);
     await delobj(box);
 }
@@ -975,7 +983,7 @@ export async function doforce() {
     const u = g.u || {};
     /* C lock.c:687-690 — uswallow guard. */
     if (u.uswallow) {
-        await pline("You can't force anything from inside here.");
+        await You_cant('force anything from inside here.');
         return ECMD_OK;
     }
     /* C lock.c:692 — must wield a forceable weapon. */
@@ -985,7 +993,7 @@ export async function doforce() {
         const phrase = !uwep ? 'when not wielding a'
             : ((uwep.oclass | 0) !== WEAPON_CLASS_OC && !_is_weptool_lk(uwep)) ? (usePlural ? 'without proper' : 'without a proper')
             : (usePlural ? 'with those' : 'with that');
-        await pline(`You can't force anything ${phrase} weapon${usePlural ? 's' : ''}.`);
+        await You_cant(`force anything ${phrase} weapon${usePlural ? 's' : ''}.`);
         return ECMD_OK;
     }
     /* C lock.c:703-706 */
@@ -1015,7 +1023,7 @@ export async function doforce() {
         if (otmp.obroken || !otmp.olocked) {
             /* C lock.c:719 — already broken/unlocked. */
             otmp.lknown = 0;
-            await pline(`There is ${await doname(otmp)} here, but its lock is already ${otmp.obroken ? 'broken' : 'unlocked'}.`);
+            await There(`is ${await doname(otmp)} here, but its lock is already ${otmp.obroken ? 'broken' : 'unlocked'}.`);
             otmp.lknown = 1;
             continue;
         }

@@ -3,7 +3,7 @@ import './allmain.js';
 import { pooleffects_is_flyer } from './cmd.js';
 import { set_msg_xy } from './pline.js';
 import { BLINDED, CORR, FIRE_RES, FLYING, ICE, IS_AIR, IS_OBSTRUCTED, IS_STWALL, IS_TREE, IS_WATERWALL, LAVAWALL, LEVITATION, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, ROOM, STONE, VIBRATING_SQUARE, W_NONDIGGABLE, isok, u_at } from './const.js';
-import { mon_visible, time_botl_run_ended } from './display.js';
+import { mon_visible, time_botl_run_ended, pline_flush_point } from './display.js';
 import { game } from './gstate.js';
 import { dist2 } from './hacklib.js';
 import { ENV } from './hostenv.js';
@@ -4989,6 +4989,31 @@ async function domove_fight_ironbars(x, y) {
         return true;
     }
     return false;
+}
+
+/* C hack.c:2996-3016 runmode_delay_output() as called from the multi<0
+ * countdown in the new-turn block (allmain.c:379-381), before ++gm.multi.
+ * RUN_LEAP paints only when svm.moves % 7 == 0; walk/crawl paint every turn.
+ * Paint only (curs_on_u -> flush_screen(1) of the map/status); the pending
+ * topline is paged by update_topl, not here.  Shared by every port of that
+ * countdown (the faithful moveloop and the folded use_pick_axe wield turn),
+ * so none of them can drop the frame C's tty_delay_output() takes. */
+export function immobile_runmode_delay_output() {
+    const g = game;
+    const _rm = g.flags?.runmode | 0;
+    if (_rm !== RUN_TPORT && (_rm !== RUN_LEAP || !((g.moves | 0) % 7))) {
+        if (g.disp) g.disp.time_botl = g.flags?.time | 0;
+        pline_flush_point();
+        g._runFlushSeq = (g._runFlushSeq | 0) + 1;
+        /* hack.c:3009-3015: nh_delay_output(), four more for crawl. */
+        nh_delay_output();
+        if (_rm === RUN_CRAWL) {
+            nh_delay_output();
+            nh_delay_output();
+            nh_delay_output();
+            nh_delay_output();
+        }
+    }
 }
 
 export async function runmode_delay_output() {

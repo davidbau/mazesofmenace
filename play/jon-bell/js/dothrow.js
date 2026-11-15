@@ -19,7 +19,7 @@ import { EXACT_NAME, FIRE_TRAP, FORCEBUNGLE, HURTLING, OBJ_FREE, OBJ_INVENT, P_D
 import { ARTICLE_A, ARTICLE_YOUR, AUGMENT_IT, A_CON, A_DEX, A_ORIGINAL, A_STR, BACKTRACK, BOLT_LIM, BRK_FROM_INV, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, BRK_KNOWN_OUTCOME, BURNING_OIL, CONFUSION, CQ_CANNED, CQ_REPEAT, DB_UNDER, DRAWBRIDGE_UP, D_ISOPEN, ECMD_CANCEL, ECMD_OK, ECMD_TIME, EF_DESTROY, EF_VERBOSE, ERODE_CRACK, ER_DESTROYED, ESHK, EXPL_FIERY, GETOBJ_ALLOWCNT, GETOBJ_PROMPT, HMON_APPLIED, HMON_KICKED, HMON_THROWN, HOLE, Has_contents, IRONBARS, IS_ALTAR, IS_DOOR, IS_OBSTRUCTED, IS_SINK, IS_SOFT, IS_TREE, IS_WATERWALL, Is_airlevel, Is_juiblex_level, Is_waterlevel, KILLED_BY, LARGEST_INT, LAVAWALL, LOST_EXPLODING, LOST_THROWN, MM_IGNORELAVA, MM_IGNOREWATER, MM_NOMSG, MOAT, M_AP_MONSTER, M_AP_OBJECT, M_AP_TYPE, NEUTRAL, PIT, RLOC_MSG, SHOPBASE, SLT_ENCUMBER, SPIKED_PIT, STONE, STUNNED, SUPPRESS_SADDLE, TEST_MOVE, TRAPDOOR, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, TT_WEB, Upolyd, VIBRATING_SQUARE, WEB, WT_SPLASH_THRESHOLD, WT_TOOMUCH_DIAGONAL, W_QUIVER as W_QUIVER_TO, engulfing_u, has_mgivenname, has_oname, is_hole, is_pit, isok, u_at } from './const.js';
 import { is_pick } from './dig.js';
 import { DISP_END, DISP_FLASH, DISP_TETHER, GLYPHCLS_MON, _topl_joins_snapshot, _topl_more_pages, await_topl_more_dismiss, canseemon, canspotmon, flush_screen, force_more, getobj_never_mind, glyph_is_invisible_at, glyph_is_warning_at, map_invisible, newsym, obj_to_glyph, pline_flush_point, putmsghistory, sensemon, tmp_at, unmap_object, Unaware as wizard_Unaware } from './display.js';
-import { You_hear, Norep as _Norep, pline } from './pline.js';
+import { You_feel, You_hear, Norep as _Norep, pline } from './pline.js';
 import { doaltarobj, dropy, dropz, flooreffects, obj_no_longer_held } from './do.js';
 import { rndmonnam as look_rndmonnam } from './do_name.js';
 import { You, encumber_msg, xname } from './do_wear.js';
@@ -45,7 +45,7 @@ import { canletgo } from './do.js';
 import { unsplitobj } from './mkobj.js';
 import { which_armor } from './worn.js';
 import { Monnam } from './mcastu.js';
-import { s_suffix, wakeup_attack } from './mhitm.js';
+import { helpless, s_suffix, wakeup_attack } from './mhitm.js';
 import { Some_Monnam, x_monnam } from './do_name.js';
 import { seemimic } from './mon.js';
 import { hmon, passive_obj, shade_miss } from './uhitm.js';
@@ -1024,8 +1024,10 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
         tmp_at(_lx, _ly);
         nh_delay_output();
         tmp_at(DISP_END, 0);
-        await _throwit_breakmsg(_landedObj, cansee(_lx, _ly));
-        _broke = await _throwit_breakobj(_landedObj, _lx, _ly);
+        /* C dothrow.c:1788-1789 — the shared breakmsg()/breakobj(), with
+         * hero_caused and from_invent both TRUE. */
+        await breakmsg(_landedObj, cansee(_lx, _ly));
+        _broke = await breakobj(_landedObj, _lx, _ly, true, true);
     }
     /* throw_gold (dothrow.c:2656-2729) has no Splash!/Plop! sound effect. */
     if (_landedObj && !_objGone && !_broke && !_hero_Deaf() && !Underwater()) {
@@ -1444,6 +1446,9 @@ async function thit_gem_accept(mon, obj) {
         || !!(game._oc_uname && game._oc_uname[obj.otyp | 0]);
     const is_gem = (MKOBJ_OC_MATERIAL[obj.otyp | 0] | 0) === 20 /* GEMSTONE */;
     const buddy = Math.sign(mon.data?.maligntyp | 0) === Math.sign(u.ualign?.type | 0);
+    /* C dothrow.c:2322 Strcpy(buf, Monnam(mon)) — the name is taken before the
+     * luck rolls and mpickobj (a hallucinated name draws the display RNG). */
+    const name = Monnam(mon);
     let suffix;
     if (known || guessed) {
         if (!is_gem) {
@@ -1476,7 +1481,7 @@ async function thit_gem_accept(mon, obj) {
             await check_shop_obj_throw(obj, mon.mx | 0, mon.my | 0, true);
         await mpickobj(mon, obj);
     }
-    const msg = `${Monnam(mon)}${suffix}${accepted ? ' accepts your gift.' : ''}`;
+    const msg = `${name}${suffix}${accepted ? ' accepts your gift.' : ''}`;
     if (!_Blind_cmd())
         await pline(msg);
     if (!tele_restrict(mon))
@@ -1515,8 +1520,9 @@ function thit_befriend_with_obj(ptr, obj) {
                 && (obj.corpsenm | 0) === THIT_PM_LICHEN));
 }
 
+/* C monst.h:251 helpless(mon) = msleeping || !mcanmove; mfrozen is not a term. */
 function thit_helpless(mon) {
-    return !!(mon.msleeping || !mon.mcanmove || (mon.mfrozen | 0));
+    return helpless(mon);
 }
 
 /* C ref: objects.h oc_skill == P_BOW.  The P_BOW rows are exactly BOW,
@@ -1991,7 +1997,7 @@ async function hurtle_step(arg, x, y, via_jumping) {
     let dmg = 0;
 
     if (!isok(x, y)) {                                  /* dothrow.c:784-786 */
-        await pline('You feel the spirits holding you back.');
+        await You_feel('the spirits holding you back.'); // dothrow.c:785
         return false;
     } else if (!in_out_region(x, y)) {                   /* dothrow.c:787-788 */
         return false;
@@ -2154,20 +2160,12 @@ export async function hurtle(dx, dy, range, verbose) {
     const g = game;
     const u = g.u || {};
 
-    // Find uball for Punished check (C: Punished = uball != null)
-    let uball = u.uball || null;
-    for (let o = uball ? null : g.invent; o; o = o.nobj) {
-        if ((o.owornmask | 0) & 0x00200000) uball = o; // W_BALL
-    }
-    for (let o = uball ? null : g.fobj; o; o = o.nobj) {
-        if ((o.owornmask | 0) & 0x00200000) uball = o;
-    }
-
     // carried(o) — C ref: invent.c: return o.where == OBJ_INVENT
     const carried = (o) => o != null && (o.where | 0) === OBJ_INVENT;
 
-    if (uball != null && !carried(uball)) {
-        await pline((wizard_Unaware() ? 'You dream that you feel ' : 'You feel ') + 'a tug from the iron ball.');  // dothrow.c:1091
+    /* C dothrow.c:1090: Punished is exactly `uball != NULL`. */
+    if (u.uball && !carried(u.uball)) {
+        await You_feel('a tug from the iron ball.');  // dothrow.c:1091
         nomul(0);
         return;
     } else if (u.utrap) {
@@ -2187,7 +2185,7 @@ export async function hurtle(dx, dy, range, verbose) {
     dx = dx > 0 ? 1 : dx < 0 ? -1 : 0;
     dy = dy > 0 ? 1 : dy < 0 ? -1 : 0;
 
-    if (!range || (!dx && !dy) || u.uswallow || u.ustuck)
+    if (!range || (!dx && !dy) || u.ustuck) // C dothrow.c:1108
         return; // paranoia
 
     // C dothrow.c:1112 nomul(-range): the real nomul, whose hack.c:4163
@@ -3109,57 +3107,6 @@ function _throwit_haseyes(mondata) {
     return (((mondata && mondata.mflags1) | 0) & 0x00001000) === 0;
 }
 
-async function _throwit_breakmsg(obj, in_view) {
-    if ((obj.oclass | 0) === 3 && (MKOBJ_OC_MATERIAL[obj.otyp] | 0) === 19) return; // C dothrow.c:2618: erode_obj prints cracks
-    const POTION_CLASS = 8, POT_WATER = 322;
-    const EGG_OTYP = 266, MELON_OTYP = 280, CREAM_PIE_OTYP = 287;
-    const ACID_VENOM_OTYP = 480, BLINDING_VENOM_OTYP = 479;
-    const key = (obj.oclass | 0) === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
-    switch (key) {
-    case POT_WATER: {
-        if (!in_view) {
-            await You_hear('%s shatter!', 'something');
-        } else {
-            const nm = await _doaltarobj_Doname2(obj);
-            await pline(`${nm} shatter${(obj.quan | 0) === 1 ? 's' : ''}!`);
-        }
-        break;
-    }
-    case EGG_OTYP:
-    case MELON_OTYP:
-        await pline('Splat!');
-        break;
-    case CREAM_PIE_OTYP:
-        if (in_view) await pline('What a mess!');
-        break;
-    case ACID_VENOM_OTYP:
-    case BLINDING_VENOM_OTYP:
-        await pline('Splash!');
-        break;
-    default: {
-        /* C dothrow.c:2611-2632: wands, lenses, mirrors, crystal balls,
-         * cameras, and other breakable glass objects use the same shatter
-         * announcement.  Keep this throw-specific async copy aligned with
-         * breakmsg(), whose awaited shared form serves hero_breaks(). */
-        const WAND_CLASS = 11;
-        const LENSES = 232, MIRROR = 230, CRYSTAL_BALL = 231,
-            EXPENSIVE_CAMERA = 229;
-        const t = obj.otyp | 0;
-        if ((obj.oclass | 0) !== WAND_CLASS && t !== LENSES && t !== MIRROR
-            && t !== CRYSTAL_BALL && t !== EXPENSIVE_CAMERA)
-            await real_impossible('breaking odd object (%d)?', t);
-        const pieces = ' into a thousand pieces';
-        if (!in_view) {
-            await You_hear('something shatter!');
-        } else {
-            const nm = await _doaltarobj_Doname2(obj);
-            await pline(`${nm} shatter${(obj.quan | 0) === 1 ? 's' : ''}${pieces}!`);
-        }
-        break;
-    }
-    }
-}
-
 /* C dothrow.c:2457 release_camera_demon.  The monster constructor is
  * synchronous in this port; only the visibility message can suspend. */
 export async function release_camera_demon(obj, x, y) {
@@ -3173,75 +3120,6 @@ export async function release_camera_demon(obj, x, y) {
                                     : 'The picture-painting demon');
     mtmp.mpeaceful = !obj.cursed;
     set_malign(mtmp);
-}
-
-async function _throwit_breakobj(obj, x, y) {
-    const ARMOR_CLASS = 3, _MAT_GLASS = 19;
-    if ((obj.oclass | 0) === ARMOR_CLASS
-        && (MKOBJ_OC_MATERIAL[obj.otyp] | 0) === _MAT_GLASS) {
-        /* C breakobj() starts with is_crackable/erode_obj.  Keep the
-         * throw-specific path on the same erosion implementation used by
-         * hero_breaks(), including its protection and destruction result. */
-        return await erode_obj_bo(obj, armor_simple_name(obj), ERODE_CRACK,
-                            EF_DESTROY | EF_VERBOSE) === ER_DESTROYED;
-    }
-    const POTION_CLASS = 8, POT_WATER = 322, POT_OIL = 321;
-    const MIRROR_OTYP = 230, EGG_OTYP = 266, EXPENSIVE_CAMERA_OTYP = 229;
-    const BOULDER_OTYP = 475, STATUE_OTYP = 476, PM_PYROLISK = 11;
-    let fracture = false;
-    let explosion = false;
-    const key = (obj.oclass | 0) === POTION_CLASS ? POT_WATER : (obj.otyp | 0);
-    switch (key) {
-    case MIRROR_OTYP:
-        change_luck(-2); /* hero_caused is always TRUE at this call site */
-        break;
-    case POT_WATER: {
-        obj.in_use = 1;
-        if ((obj.otyp | 0) === POT_OIL && obj.lamplit) {
-            await explode_oil(obj, x, y);
-        } else if (_throwit_next2u(x, y)) {
-            const mdata = game.youmonst && game.youmonst.data;
-            if (!_throwit_breathless(mdata) || _throwit_haseyes(mdata)) {
-                if ((obj.otyp | 0) !== POT_WATER && !(game.u.ublindf?.otyp === _TOWEL_OTYP && game.u.ublindf.spe > 0)) {
-                    if (!_throwit_breathless(mdata)) {
-                        await pline('You smell a peculiar odor...');
-                    } else {
-                        let eyes = body_part(EYE);
-                        // C dothrow.c:2512-2513: plural unless the form has one eye.
-                        if (_eyecount(mdata) !== 1)
-                            eyes = makeplural_objnam(eyes);
-                        await Your('%s %s.', eyes, vtense(eyes, 'water'));
-                    }
-                }
-                await potionbreathe(obj);
-            }
-        }
-        break;
-    }
-    case EXPENSIVE_CAMERA_OTYP:
-        await release_camera_demon(obj, x, y);
-        break;
-    case EGG_OTYP:
-        if (obj.spe && _ismnum_local(obj.corpsenm))
-            change_luck(-Math.min(obj.quan | 0, 5));
-        if ((obj.corpsenm | 0) === PM_PYROLISK)
-            explosion = true;
-        break;
-    case BOULDER_OTYP:
-    case STATUE_OTYP:
-        fracture = true;
-        break;
-    default:
-        break;
-    }
-    if ((game.u.ushops && game.u.ushops[0]) || obj.unpaid) {
-        await check_shop_obj_throw(obj, x, y, true);
-    }
-    if (!fracture) await _delobj_useupf(obj);
-    if (explosion) {
-        await explode(x, y, -11, d(3, 6), 0, EXPL_FIERY);
-    }
-    return true;
 }
 
 /* C ref: dothrow.c:2417-2437 — hero_breaks(struct obj *, coordxy, coordxy, unsigned) */
@@ -3291,6 +3169,11 @@ export async function breakmsg(obj, in_view) {
     }
 }
 
+/* C ref: dothrow.c:2480-2559 breakobj(struct obj *, x, y, hero_caused,
+ * from_invent) — the ONE body behind hero_breaks(), breaks(), toss_up() and
+ * throwit()'s landing-break tail (dothrow.c:1789, hero_caused=from_invent=
+ * TRUE).  The throw tail used to carry a private copy with both flags folded
+ * in; it is gone. */
 export async function breakobj(obj, x, y, hero_caused, from_invent) {
     if (is_crackable_bo(obj)) {
         return await erode_obj_bo(obj, armor_simple_name(obj), ERODE_CRACK,

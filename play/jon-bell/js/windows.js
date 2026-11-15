@@ -21,6 +21,21 @@ export function select_menu(win, how, picksRef) {
 
 export function add_menu_str(win, buf) { putstr(win, 0, buf); }
 
+/* C win/tty/getline.c:210-212 — hooked_tty_getlin ends with
+ *     clear_nhwindow(WIN_MESSAGE);   -- "clean up after ourselves"
+ * which homes and cl_end()s the physical topline (wintty.c:1048-1056).  The
+ * next flush rebuilds row 0 from the (now empty) message channels anyway, but
+ * the terminal is blank from this instant: a delay_output frame taken before
+ * that flush (a monster's m_throw right after a docall prompt was cancelled)
+ * must not still show the prompt. */
+function _getlin_clear_message_window(g) {
+    const s = g._screen_output;
+    if (typeof s !== 'string' || !s) return;
+    const rows = s.split('\n');
+    rows[0] = '';
+    g._screen_output = rows.join('\n');
+}
+
 export async function getlin(prompt) {
     const g = game;
     let buf = '';
@@ -206,6 +221,7 @@ export async function getlin(prompt) {
                 continue;
             }
             g._pending_message = '';
+            _getlin_clear_message_window(g);
             /* getline.c:80 rebuilt gt.toplines as "query " before this ESC read and
              * the cancel break leaves it there, so the ring gets the bare prompt. */
             if (!_saved_suppress) {
@@ -239,6 +255,7 @@ export async function getlin(prompt) {
         placeCursor();
     }
     g._pending_message = '';
+    _getlin_clear_message_window(g);
     /* C getline.c:97 leaves "query answer" in gt.toplines; the history ring
      * receives that single line (tty_getlin is not suppress_history here). */
     if (!_saved_suppress) {
