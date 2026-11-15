@@ -1,4 +1,5 @@
 import { Your, pline_The, verbalize, pline_mon, You } from './pline.js';
+import { nh_delay_output } from './animframes.js';
 import { SR_DART, SR_BOW, SR_ELVEN_BOW, SR_ORCISH_BOW, SR_YUMI, SR_SLING, SR_CROSSBOW, SR_LUCKSTONE, SR_LOADSTONE, SR_FLINT, SR_BOULDER, SR_CORPSE, SR_EGG, SR_CREAM_PIE, SR_GEM_CLASS, SR_S_KOP, SR_NON_PM, SR_NO_WEAPON_WANTED, SR_W_ARMS, SR_W_WEP, SR_SILVER, SR_ART_SNICKERSNEE, SR_P_BOW, SR_P_SLING, SR_P_CROSSBOW, SR_M1_MINDLESS, SR_M1_ANIMAL, SR_M2_STRONG, SR_M2_ROCKTHROW, SR_M2_JEWELS, SR_rwep, SR_pwep, SR_arwep, SR_BIMANUAL, SH_DWARVISH_MATTOCK, SH_BATTLE_AXE, SH_AXE, SH_BULLWHIP, SH_CLUB, SH_PICK_AXE, SH_W_ARMG, SH_M2_GIANT, SH_NO_WEAPON_WANTED, SH_NEED_WEAPON, SH_NEED_HTH_WEAPON, SH_NEED_RANGED_WEAPON, SH_NEED_PICK_AXE, SH_NEED_AXE, SH_NEED_PICK_OR_AXE, SH_hwep, SH_BIMANUAL } from './weapon.js'; // weapon.c object-type tables
 import { Mgender, hcolor } from './do_name.js';
 import { quest_monster_died } from './quest.js';
@@ -2309,6 +2310,8 @@ export async function do_attack(mtmpOrX, y, kickOnly = false) {
                          * flash the hero glyph on the engulfer, then print. */
                         start_engulf(mtmp);
                         await You(`${_udig ? 'swallow' : _uenf ? 'enclose' : 'engulf'} ${mon_nam(mtmp)}${_udig ? ' whole' : ''}!`); /* start_engulf, uhitm.c:4941 */
+                        nh_delay_output(); /* C uhitm.c:4944-4945 */
+                        nh_delay_output();
                     }
                     if (adtyp === 26 && rider) { /* C uhitm.c:5037-5044 */
                         await pline('Unfortunately, digesting any of it is fatal.');
@@ -6515,7 +6518,7 @@ export async function passive(mon, weapon, mhitb, maliveb, aatyp, wep_was_destro
                 {
                     const stunned = (u?.uprops?.[STUNNED]?.intrinsic | 0); /* youprop.h:81 */
                     if (!stunned)
-                        make_stunned(tmp, true);
+                        await make_stunned(tmp, true);
                 }
                 break;
             case AD_FIRE:

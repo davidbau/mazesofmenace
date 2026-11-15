@@ -7,6 +7,7 @@
 import { CORPSE, CANDELABRUM_OF_INVOCATION, SCR_SCARE_MONSTER, SPBOOK_FIRST_OTYP } from './const.js';
 import { ARMOR_CLASS, FOOD_CLASS, GEM_CLASS, HEAVY_IRON_BALL, POTION_CLASS, POT_EXTRA_HEALING, POT_GAIN_ENERGY, POT_HEALING, POT_SPEED, RING_CLASS, SCROLL_CLASS, SCR_CONFUSE_MONSTER, SCR_ENCHANT_ARMOR, SCR_ENCHANT_WEAPON, SPBOOK_CLASS, SPE_HEALING, TALLOW_CANDLE, WAN_DIGGING, WEAPON_CLASS } from "./const.js"; // shared class/otyp constants
 import { rn2 } from './rnd.js';
+import { assign_candy_wrapper } from './read.js';
 import { costly_spot, billable, stolen_value } from './shk.js';
 import { SHOPBASE } from './const.js';
 import { in_rooms } from './hack.js';
@@ -1798,8 +1799,8 @@ async function mksobj_init(otmp, otyp, artif) {
             otmp.quan = rnd(2);
         }
         else if (otyp === CANDY_BAR) {
-            /* C read.c:307-308 assign_candy_wrapper — rn2(SIZE(candy_wrappers)-1); 13 entries so SIZE-1=12 */
-            otmp.spe = 1 + rn2(12);
+            /* C mkobj.c:950: use the read.c helper rather than a second copy. */
+            assign_candy_wrapper(otmp);
         }
         /* C mkobj.c:956-975 Is_pudding check */
         if (otyp === GLOB_OF_GRAY_OOZE || otyp === GLOB_OF_BROWN_PUDDING

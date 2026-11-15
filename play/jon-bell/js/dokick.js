@@ -1,4 +1,5 @@
 import { free_oname } from './do_name.js';
+import { nh_delay_output } from './animframes.js';
 import { disturb_grave, u_wipe_engr } from './engrave.js';
 import { is_ice as is_ice_real } from './engrave.js';
 // @ts-nocheck
@@ -1682,6 +1683,7 @@ async function really_kick_object(x, y, kickedobj) {
         }
         /* C zap.c:4087 tmp_at(x, y) follows the stop tests above. */
         tmp_at(bx, by);
+        nh_delay_output(); /* C zap.c:4088 */
         /* C zap.c:4090-4094: kicked objects fall in pools; physical objects
          * fall onto a sink. */
         if (is_pool(bx, by) || (bloc.typ | 0) === LAVAPOOL || (bloc.typ | 0) === LAVAWALL

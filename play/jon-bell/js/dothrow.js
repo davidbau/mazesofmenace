@@ -822,6 +822,7 @@ export async function throwit(obj, wep_mask, twoweap, oldslot, st = null) {
                 newsym(_lx, _ly);
             }
             tmp_at(_lx, _ly);
+            nh_delay_output(); /* C zap.c:4088 */
             /* C zap.c:4092-4093 — `if (IS_SINK(typ) && weapon != FLASHED_LIGHT)
              * break;`: physical objects fall onto a sink and stop there. */
             if (IS_SINK(_typ))

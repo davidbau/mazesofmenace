@@ -533,7 +533,8 @@ export async function zap_dig_pit(trap_with_u, digdepth) {
     tmp_at(DISP_BEAM, 4083 /* cmap_to_glyph(S_digbeam) */); /* C dig.c:1623 */
     while (--digdepth >= 0) {
         if (!isok(zx, zy)) break;
-        tmp_at(zx, zy); /* C dig.c:1629 (nh_delay_output is pacing only) */
+        tmp_at(zx, zy); /* C dig.c:1628 */
+        nh_delay_output(); /* C dig.c:1629 */
         let adjpit = t_at(zx, zy);
         if (diridx !== DIR_ERR && !conjoined_pits_dg(adjpit, trap_with_u, false)) {
             if (!(adjpit && is_pit(adjpit.ttyp))) {
@@ -2456,7 +2457,8 @@ export async function zap_dig() {
         const room = g.level?.at(zx, zy);
         if (!room)
             break;
-        tmp_at(zx, zy); /* C dig.c:1628 (nh_delay_output is a no-op here) */
+        tmp_at(zx, zy); /* C dig.c:1628 */
+        nh_delay_output(); /* C dig.c:1629 */
 
         if (closed_door(zx, zy) || room.typ === SDOOR) {
             /* C dig.c:1669-1683 — raze a (secret) door into a doorless doorway. */

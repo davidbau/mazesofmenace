@@ -3,7 +3,7 @@ import { game } from './gstate.js';
 import { nhgetch } from './input.js';
 import { build_window_screen, tty_window_offx, build_text_window_screen, tty_text_window_utf8_line } from './com_pager.js';
 import { keyhelp_compress_str } from './cmd.js';
-import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_screen, docorner_blank_utf8_captures } from './display.js';
+import { force_more, _topl_more_pages, _topl_joins_snapshot, docrt_flags, flush_screen, docorner_blank_utf8_captures, await_more_dismiss } from './display.js';
 
 export async function displayLookWindow(putstrLines) {
     const g = game;
@@ -86,15 +86,17 @@ export async function displayLookWindow(putstrLines) {
             const screenRows = build_text_window_screen(page).split('\n');
             screenRows[23] = '';
             screenRows[page.length] = ' --More--'; /* tty_curs(window, 1, n) -> offx+1 */
-            let key;
-            do {
+            /* getline.c:230-250 xwaitforspace: the key in ttyDisplay->dismiss_more
+             * (left at 1 by an earlier ESC) dismisses as well as space/CR/ESC. */
+            const paint = () => {
                 g._screen_output = screenRows.join('\n');
                 if (g.nhDisplay) {
                     g.nhDisplay.cursorCol = 9;
                     g.nhDisplay.cursorRow = page.length;
                 }
-                key = await nhgetch();
-            } while (![32, 10, 13, 27].includes(key));
+            };
+            paint();
+            const key = await await_more_dismiss(paint);
             if (key === 27) break;
         }
         await docrt_flags(0);
@@ -116,19 +118,15 @@ export async function displayLookWindow(putstrLines) {
         (i === windowLines.length - 1 ? ln
                                       : tty_text_window_utf8_line(ln).replace(/\t/g, '\x1b[1C')));
     const screen = build_window_screen(paintLines, col, g.u.uac);
-    for (;;) {
+    const paintMore = () => {
         g._screen_output = screen;
         if (g.nhDisplay) {
             g.nhDisplay.cursorCol = (offx0 ? 1 : col) + '--More--'.length;
             g.nhDisplay.cursorRow = windowLines.length - 1;
         }
-        const key = await nhgetch();
-        /* getline.c:238-247 xwaitforspace: ESC leaves dismiss_more at 1, and the
-         * dismiss_more key (^A) ends a later wait too (`c == x`). */
-        if (key === 27) g._ttyDismissMore = 1;
-        if (key === 32 || key === 10 || key === 13 || key === 27
-            || (key !== 0 && key === (g._ttyDismissMore | 0))) break;
-    }
+    };
+    paintMore();
+    await await_more_dismiss(paintMore); /* getline.c:230-250 incl. dismiss_more */
     /* C wintty.c:982,3684-3687: dismissing the corner window clears
      * offx..79 through maxrow before row_refresh redraws the glyph buffer.
      * maxrow counts the putstr'd lines (wintty.c:2408-2409), and dmore's

@@ -1,4 +1,5 @@
 import { M1_ANIMAL, M1_MINDLESS } from './mhitm.js';
+import { nh_delay_output } from './animframes.js';
 import { noit_Monnam } from './do_name.js';
 import { BOULDER } from './const.js';
 import { y_monnam as y_monnam_real } from './do_name.js';
@@ -1828,9 +1829,10 @@ export async function launch_obj(otyp, x1, y1, x2, y2, style) {
         let t;
 
         tmp_at(x, y);
-        /* C trap.c:3378-3381 — nh_delay_output() × delaycnt when the hero can
-         * see the square.  Pure pacing, no state; omitted (this port has no
-         * frame-delay model), and delaycnt is otherwise unread. */
+        /* C trap.c:3369-3373 — delay only if hero sees it */
+        if (cansee(x, y))
+            for (let tmp = delaycnt; tmp-- > 0;)
+                nh_delay_output();
 
         /* C trap.c:3392-3395 — github #1490 guard */
         if (!isok(bhitpos.x + dx, bhitpos.y + dy)) {

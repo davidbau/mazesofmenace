@@ -2209,7 +2209,7 @@ export async function use_unicorn_horn(obj) {
             break;
         }
         case 3:
-            make_stunned((_hprop(STUNNED) & TIMEOUT) + lcount, true);
+            await make_stunned((_hprop(STUNNED) & TIMEOUT) + lcount, true);
             break;
         case 4:
             if (_hprop(VOMITING)) await potion_vomit();
@@ -2282,7 +2282,7 @@ export async function use_unicorn_horn(obj) {
             didProp++;
             break;
         case STUNNED:
-            make_stunned(0, true);
+            await make_stunned(0, true);
             didProp++;
             break;
         case DEAF:

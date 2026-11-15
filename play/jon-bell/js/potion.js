@@ -4449,7 +4449,7 @@ function SET_BOTL() {
  *
  * `u.Unaware` was likewise a field nothing in this port assigns — the real
  * youprop.h:399 macro is the _Unaware() helper this file already defines. */
-export function make_stunned(xtime, talk) {
+export async function make_stunned(xtime, talk) {
     const g = game;
     const u = g.u;
     const ps = _uprop(STUNNED);
@@ -4460,16 +4460,16 @@ export function make_stunned(xtime, talk) {
 
     if (!xtime && old) {
         if (talk)
-            You_feel("%s now.",
+            await You_feel("%s now.",
                      _potion_Hallucination() ? "less wobbly" : "a bit steadier");
     }
     if (xtime && !old) {
         if (talk) {
             if (u.usteed)
-                You("wobble in the saddle.");
+                await You("wobble in the saddle.");
             else
                 /* C: stagger(gy.youmonst.data, "stagger") */
-                You("%s...", stagger(g.youmonst?.data ?? g.youmonst, "stagger"));
+                await You("%s...", stagger(g.youmonst?.data ?? g.youmonst, "stagger"));
         }
     }
     if ((!xtime && old) || (xtime && !old))

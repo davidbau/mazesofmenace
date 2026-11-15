@@ -654,7 +654,7 @@ export async function gazemu(mtmp, mattk) {
                     const stun = d(2, 6);
                     mtmp.mspec_used = (mtmp.mspec_used | 0) + (stun + rn2(6));
                     pline_mon(mtmp, "%s stares piercingly at you!", Monnam(mtmp));
-                    make_stunned((HStun(gs) & TIMEOUT) + stun, true);
+                    await make_stunned((HStun(gs) & TIMEOUT) + stun, true);
                     await stop_occupation();
                 }
             }
@@ -687,7 +687,7 @@ export async function gazemu(mtmp, mattk) {
                     else {
                         const oldstun = (HStun(gs) & TIMEOUT);
                         const newstun = rnd(3);
-                        make_stunned(Math.max(oldstun, newstun), true);
+                        await make_stunned(Math.max(oldstun, newstun), true);
                     }
                 }
             }
@@ -1646,7 +1646,7 @@ async function mhitm_knockback_u(mtmp, mattk, hitflags) {
              * latch must not repaint it — same shape as mhitm_ad_drli_u.
              * Unaware suppresses the pline, so nothing flushed then. */
             const _talked = !Unaware();
-            make_stunned(knockdistance + 1, true);
+            await make_stunned(knockdistance + 1, true);
             if (_talked) game._botlRaisedAfterFlush = true;
         }
     }
@@ -2368,7 +2368,7 @@ export async function mhitm_adtyping_u(mtmp, mattk, mhm) {
                  * raises the botl flag, so mdamageu's pre-damage latch must not
                  * repaint it (same shape as the knockback stun above). */
                 const _talked = !Unaware();
-                make_stunned((HStun(game) & TIMEOUT) + (mhm.damage | 0), true);
+                await make_stunned((HStun(game) & TIMEOUT) + (mhm.damage | 0), true);
                 if (_talked) game._botlRaisedAfterFlush = true;
                 mhm.damage = Math.trunc(mhm.damage / 2);
             }

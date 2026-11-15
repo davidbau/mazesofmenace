@@ -1,4 +1,5 @@
 // explode.js — C ref: explode.c.
+import { nh_delay_output } from './animframes.js';
 import { exercise } from './attrib.js';
 import { ACID_RES, A_STR, BURNING_OIL, COLD_RES, DISINT_RES, EXPL_DARK, EXPL_FIERY, EXPL_FROSTY, EXPL_MAGICAL, EXPL_NOXIOUS, FEMALE, FIRE_RES, INVULNERABLE, KILLED_BY, KILLED_BY_AN, LOST_EXPLODING, MALE, MAXEXPCHARS, MON_EXPLODE, M_AP_TYPE, PLNMSG_CAUGHT_IN_EXPLOSION, PLNMSG_TOWER_OF_FLAME, POISON_RES, SHOCK_RES, TRAP_EXPLODE, Upolyd, engulfing_u, isok, u_at } from './const.js';
 import { DISP_BEAM, DISP_CHANGE, DISP_END, _more_never_dismissed, _topline_more_pending, canspotmon, explode_shield_effect, flush_pending_messages, flush_screen, map_invisible, tmp_at, unmap_invisible } from './display.js';
@@ -464,6 +465,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 starting = false;
             }
 
+        let shielded = false;
         if (any_shield) {
             /* C explode.c:396-425 — the SHIELD_COUNT shield-flash loop, entered
                only when some target RESISTED (and flags.sparkle).  The AD_PHYS
@@ -475,9 +477,12 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     if ((explmask[i][j] & (EXPL_MON | EXPL_HERO)) !== 0)
                         shieldCells.push({ x: x + i - 1, y: y + j - 1,
                             glyph: explosion_to_glyph(expltype, _explosion_cmap[i][j]) });
-            explode_shield_effect(shieldCells);
+            shielded = explode_shield_effect(shieldCells);
         }
-        /* C explode.c:427-430 else: two nh_delay_output() calls — pure pacing. */
+        if (!shielded) { /* C explode.c:433-436: delay a little bit. */
+            nh_delay_output();
+            nh_delay_output();
+        }
 
         tmp_at(DISP_END, 0); /* clear the explosion */
     } else {

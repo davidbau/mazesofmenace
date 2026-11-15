@@ -19,6 +19,7 @@
 // around them.  Without do_light_sources() this port had no TEMP_LIT at all,
 // so those nine cells fell through to the hero's Warning glyphs and blank
 
+import { nh_delay_output } from './animframes.js';
 import { freed_obj_chunks } from './game.js';
 import { game } from './gstate.js';
 import {
@@ -584,7 +585,7 @@ export async function show_transient_light(obj, x, y) {
             mon.mtemplit = 1;
     }
     if (obj) {
-        /* nh_delay_output() is a no-op in this port. */
+        nh_delay_output(); /* C light.c:321 */
         remove_object(obj);
     }
 }

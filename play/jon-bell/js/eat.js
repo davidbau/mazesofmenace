@@ -694,7 +694,7 @@ export async function doeat() {
         await pline(`Ulch - that ${xname_eat(otmp)} was rustproofed!`);
         /* The regurgitated object's rustproofing is gone now */
         otmp.oerodeproof = 0;
-        make_stunned(((game.u?.uprops?.[STUNNED]?.intrinsic | 0) & TIMEOUT)
+        await make_stunned(((game.u?.uprops?.[STUNNED]?.intrinsic | 0) & TIMEOUT)
                      + rn2(10), true);
         /*
          * We don't expect rust monsters to be wielding welded weapons

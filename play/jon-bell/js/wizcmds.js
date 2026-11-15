@@ -2203,7 +2203,7 @@ export async function wiz_intrinsic() {
             break;
         case STUNNED:
             /* C wizcmds.c:1053 make_stunned(newtimeout, TRUE) */
-            make_stunned(newtimeout, true);
+            await make_stunned(newtimeout, true);
             break;
         case VOMITING: {
             /* C wizcmds.c:1055-1059 — note talk is FALSE and the message is

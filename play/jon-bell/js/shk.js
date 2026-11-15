@@ -2,6 +2,7 @@
 // shk.js — Shopkeeper AI and commerce.
 // C ref: nethack-c/src/shk.c
 
+import { nh_delay_output } from './animframes.js';
 import { verbalize } from './pline.js';
 import { menucolor_text } from './coloratt.js';
 import { y_monnam as y_monnam_shk, a_monnam } from './do_name.js';
@@ -2609,7 +2610,7 @@ export async function shkcatch(obj, x, y) {
         await pline('%s nimbly%s catches %s.', Shknam(shkp),
                     x === shkp.mx && y === shkp.my ? '' : ' reaches over and', the_shk(xname_shk(obj)));
         if (!canspotmon(shkp)) map_invisible(x, y);
-        // tty nh_delay_output/mark_synch only delay and flush stdout.
+        nh_delay_output(); /* C shk.c:4388; mark_synch only flushes stdout */
     }
     await subfrombill(obj, shkp);
     await mpickobj(shkp, obj);

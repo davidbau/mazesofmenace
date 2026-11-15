@@ -17,7 +17,7 @@ import { reassign, update_inventory } from './invent.js';
 import { impossible } from './pline.js';
 import { snuff_light_source, arti_light_radius } from './light.js';
 import { artifact_light } from './artifact.js';
-import { maybe_adjust_light, uncurse as _uncurse } from './mkobj.js';
+import { maybe_adjust_light, bless as _bless, curse as _curse, uncurse as _uncurse } from './mkobj.js';
 import { end_burn } from './timeout.js';
 import { putmsghistory, getobj_never_mind, obj_to_glyph, msgtype_suppressed } from './display.js';
 import { bot as bot_read } from './botl.js';
@@ -519,7 +519,7 @@ export async function recharge(obj, curse_bless) {
                     obj.spe = 7;
                     await p_glow2(obj, obj.blessed ? 'blue' : 'light blue');
                     if (!obj.blessed)
-                        _bless(obj); /* C read.c:937; mkobj.c:1753 clears cursed. */
+                        await _bless(obj); /* C read.c:937; mkobj.c:1753 clears cursed. */
                 }
                 else {
                     /* C read.c:939-954: uncursed increments */
@@ -657,9 +657,7 @@ import { shkname } from './dokick.js';
 import { losehp } from './hack.js';
 import { useup as useup_cmd } from './invent.js';
 import { Yname2 } from './objnam.js';
-import { drop_uswapwep } from './wield.js';
 import { useupall as useupall_cmd } from './invent.js';
-import { bimanual, reset_remarm } from './do_wear.js';
 import { erosion_matters } from './objnam.js';
 import { mkobj, place_object } from './mkobj.js';
 import { makemon } from './makemon.js';
@@ -893,6 +891,8 @@ async function _clear_botl() {
         await bot_read();
 }
 export async function doread() {
+    /* C read.c:330-646 returns ECMD_*; cmd.c:3810-3822 alone sets
+     * context.move. js/cmd.js maps both the read key and extended commands. */
     /* C read.c:330 doread() never touches context.run: a run left at 8 by
      * findtravelpath's arrival (hack.c:1409) survives an ECMD_TIME read
      * (rhack resets only on ECMD_OK/CANCEL/FAIL), so the read's turn passes
@@ -902,8 +902,6 @@ export async function doread() {
     g._gk_known = false;
 
     if (await check_capacity(null)) {
-        g.context = g.context || {};
-        g.context.move = 0;   /* C ECMD_OK — no time passes */
         return ECMD_OK;
     }
 
@@ -1093,8 +1091,6 @@ export async function doread() {
          * check, so a cancelled read wrongly raised botl for a command C
          * never touched it on.
          * getobj → NULL → doread(NULL) = ECMD_CANCEL: no turn consumed. */
-        g.context = g.context || {};
-        g.context.move = 0;
         return ECMD_CANCEL;
     }
     /* C invent.c:2049 — `disp.botl = TRUE;` right before getobj returns the
@@ -1135,8 +1131,6 @@ export async function doread() {
         if (!_Blind())
             _bump_literate('a fortune cookie');
         await useup_cmd(scroll); /* C read.c:373: includes worn cleanup and stack weight. */
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1145,8 +1139,6 @@ export async function doread() {
                    || (scroll.otyp | 0) === ALCHEMY_SMOCK_RD)) {
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
             await _clear_botl();
             return ECMD_OK;
         }
@@ -1156,9 +1148,7 @@ export async function doread() {
             await pline('%s shirt is obscured by %s%s.',
                         scroll.unpaid ? 'That' : 'Your',
                         _shk_your_rd(_uarm_rd),
-                        suit_simple_name(_name_obj(_uarm_rd)));
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
+                        suit_simple_name(_uarm_rd));
             await _clear_botl();
             return ECMD_OK;
         }
@@ -1174,8 +1164,6 @@ export async function doread() {
             await pline('It reads:');
         }
         await pline('"%s"%s', mesg, endpunct);
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1183,8 +1171,6 @@ export async function doread() {
     if (scroll && (scroll.otyp | 0) === HAWAIIAN_SHIRT_RD) {
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
             await _clear_botl();
             return ECMD_OK;
         }
@@ -1203,17 +1189,13 @@ export async function doread() {
             await pline('%s shirt is obscured by %s%s.',
                         scroll.unpaid ? 'That' : 'Your',
                         _shk_your_rd(_uarm_rd),
-                        suit_simple_name(_name_obj(_uarm_rd)));
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
+                        suit_simple_name(_uarm_rd));
             await _clear_botl();
             return ECMD_OK;
         }
         await pline('%s features %s.',
                     game.flags?.verbose ? 'The design' : 'It',
                     hawaiian_design(scroll));
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1241,8 +1223,6 @@ export async function doread() {
         if ((scroll.o_id | 0) % 3) {
             /* no need to vary this when blind; "on this ___" is important */
             await You_cant('find anything to read on this %s.', simpleonames(scroll));
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
             await _clear_botl();
             return ECMD_OK;
         }
@@ -1253,8 +1233,6 @@ export async function doread() {
         /* C: despite the fact that player will recognize the object type, don't
          * make it become a discovery for hero. */
         await trycall(scroll);
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1300,8 +1278,6 @@ export async function doread() {
                     ((oid * 7) % 10),
                     (game.flags?.verbose || _Blind()) ? '.' : '');
         _bump_literate('a credit card');
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1310,8 +1286,6 @@ export async function doread() {
      * singular(scroll, xname)); return ECMD_OK;`  No turn, no conduct bump. */
     if (scroll && (scroll.otyp | 0) === CAN_OF_GREASE) {
         await pline('This %s has no label.', (await singular(scroll, xname)));
-        game.context = game.context || {};
-        game.context.move = 0;                     /* C ECMD_OK */
         await _clear_botl();
         return ECMD_OK;
     }
@@ -1326,8 +1300,6 @@ export async function doread() {
         const mndx = red_mons[(scroll.o_id | 0) % red_mons.length];
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
             await _clear_botl();
             return ECMD_OK;
         }
@@ -1337,8 +1309,6 @@ export async function doread() {
         await pline('"Magic Marker(TM) %s Red Ink Marker Pen.  Water Soluble."',
                     upwords(buf));
         _bump_literate('a magic marker');
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1354,8 +1324,6 @@ export async function doread() {
             await pline('You read:');
         await pline('"1 Zorkmid.  857 GUE.  In Frobs We Trust."');
         _bump_literate("a coin's engravings");
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1364,7 +1332,6 @@ export async function doread() {
         await pline(_Blind() ? 'You feel the engraved signature:' : 'It is signed:');
         await pline('"Odin."');
         _bump_literate('the divine signature of Odin');
-        g.context.move = 1;
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1377,22 +1344,16 @@ export async function doread() {
         const wrapper = candy_wrappers[(scroll.spe | 0) % candy_wrappers.length];
         if (_Blind()) {
             await You_cant(FIND_ANY_BRAILLE);
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
             await _clear_botl();
             return ECMD_OK;
         }
         if (!wrapper) {
             await pline("The candy bar's wrapper is blank.");
-            game.context = game.context || {};
-            game.context.move = 0;                 /* C ECMD_OK */
             await _clear_botl();
             return ECMD_OK;
         }
         await pline('The wrapper reads: "%s".', wrapper);
         _bump_literate('a candy bar wrapper');
-        game.context = game.context || {};
-        game.context.move = 1;                     /* C ECMD_TIME */
         await _clear_botl();
         return ECMD_TIME;
     }
@@ -1400,8 +1361,6 @@ export async function doread() {
     if (scroll && (scroll.oclass | 0) !== SCROLL_CLASS
         && (scroll.oclass | 0) !== SPBOOK_CLASS_OC) {
         await pline('That is a silly thing to read.');
-        g.context = g.context || {};
-        g.context.move = 0;
         await _clear_botl();
         return ECMD_OK;
     }
@@ -1415,8 +1374,6 @@ export async function doread() {
             what = 'formula on the scroll';
         if (what) {
             await pline('Being blind, you cannot read the ' + what + '.');
-            g.context = g.context || {};
-            g.context.move = 0;
             await _clear_botl();
             return ECMD_OK;
         }
@@ -1428,7 +1385,6 @@ export async function doread() {
             /* C read.c:589-592: y_n(); anything but 'y' returns ECMD_OK.  A spe-0
              * mail scroll is dropped by a killed mail daemon (mon.c:3577-3580). */
             if (await yn_function('Reading mail will violate "illiterate" conduct.  Read anyway?', 'yn', 'n', true) !== 'y') {
-                g.context.move = 0;
                 await _clear_botl();
                 /* C topl.c:544-548 leaves the answered one-row prompt painted;
                  * nothing else is printed before the next command. */
@@ -1454,10 +1410,8 @@ export async function doread() {
     }
     if (scroll && (scroll.oclass | 0) === SPBOOK_CLASS_OC) {
         const moved = await study_book(scroll);
-        g.context = g.context || {};
-        /* C read.c:609: study_book TRUE → ECMD_TIME (context.move stays 1 so the
-         * occupation driver runs); FALSE → ECMD_OK (no turn). */
-        g.context.move = moved ? 1 : 0;
+
+        /* C read.c:609: rhack maps this ECMD result to context.move. */
         await _clear_botl();
         return moved ? ECMD_TIME : ECMD_OK;
     }
@@ -1468,8 +1422,7 @@ export async function doread() {
      * (not cookie/shirt/cap/credit-card) scroll path; magic mapping reaches here. */
     if (scroll && (scroll.oclass | 0) === SCROLL_CLASS) {
         await read_scroll(scroll);
-        g.context = g.context || {};
-        g.context.move = 1; /* C read.c:646: doread returns ECMD_TIME */
+
         if (g._pending_message) {
             _topl_stash_result();
         }
@@ -1478,9 +1431,6 @@ export async function doread() {
          * update pending for the next real flush_screen(). */
         return ECMD_TIME;
     }
-
-    g.context = g.context || {};
-    g.context.move = 0;
     await _clear_botl();
     return ECMD_OK;
 }
@@ -1731,9 +1681,6 @@ const SPE_REMOVE_CURSE = 395;
 const POT_WATER = 322;
 const LOADSTONE = 471;
 const LEASH_OTYP = 236;
-const LUCKSTONE = 470;
-const BAG_OF_HOLDING = 219;
-const FIGURINE = 241;
 /* Armor otyps referenced by seffect_enchant_armor (same enum dump). */
 const ELVEN_LEATHER_HELM = 89, CORNUTHAUM = 93;
 const GRAY_DRAGON_SCALE_MAIL = 101;
@@ -1915,57 +1862,6 @@ function _Yname2(obj) {
     return Yobjnam2(obj, null);
 }
 
-const _STARTER_ARMOR_OTYP = {
-    /* keys: js/u_init.js ROLE_STARTER_ARMOR / js/cmd.js ARMOR_STR_NAME.
-     * values: objects.h otyps, read out of the C enum itself. */
-    SMALL_SHIELD: 150, LEATHER_JACKET: 135, LEATHER_ARMOR: 134,
-    RING_MAIL: 132, SPLINT_MAIL: 124, FEDORA: 92, HELMET: 97, ROBE: 143,
-    CLOAK_OF_DISPLACEMENT: 149, CLOAK_OF_MAGIC_RESISTANCE: 148,
-    LEATHER_GLOVES: 159, HAWAIIAN_SHIRT: 136,
-};
-/* C read.c:1280 reads otmp->known ("is the enchantment known?").  For ARMOR the
- * objects.h ARMOR() macro passes a literal 1 in the BITS uskn slot, i.e.
- * objects[<any armor>].oc_uses_known == 1, so u_init.c:1212-1213 sets known=1 on
- * every piece of a role's STARTING armor.  js/u_init.js's ROLE_STARTER_ARMOR
- * records omit the field, and reading `undefined` as 0 would send doread down
- * trycall() instead of learnscroll() — a whole "Call a <scroll>:" getlin's worth
- * of keystrokes C never reads (and, via that getlin's forced more(), a --More--
- * C never raises).  A record with a real numeric otyp is a real object and is
- * read as-is; only the symbolic ini_inv records get the C-derived default. */
-function _armor_known(otmp) {
-    if (typeof otmp.otyp === 'number')
-        return !!otmp.known;
-    return true;
-}
-/* Numeric objects.h otyp for an armor record, symbolic or not.  Returns -1 when
- * the record carries a symbolic otyp this table does not cover — the caller
- * then behaves as C does for an object of no special type, and the gap is
- * visible rather than silently mis-typed. */
-function _armor_otyp(otmp) {
-    if (typeof otmp.otyp === 'number')
-        return otmp.otyp | 0;
-    const n = _STARTER_ARMOR_OTYP[otmp.otyp];
-    return (n === undefined) ? -1 : n;
-}
-/* A naming-only view of an armor record: the record itself when it is already a
- * proper object, otherwise a numeric-otyp copy carrying the fields
- * xname_armor/aobjnam/otense read.  NEVER mutate the returned object expecting
- * the game to see it. */
-function _name_obj(otmp) {
-    if (typeof otmp.otyp === 'number')
-        return otmp;
-    const n = _armor_otyp(otmp);
-    if (n < 0)
-        return otmp;
-    return {
-        otyp: n, oclass: ARMOR_CLASS_OC, quan: 1, where: 3 /* OBJ_INVENT */,
-        spe: otmp.spe | 0, blessed: otmp.blessed, cursed: otmp.cursed,
-        dknown: 1, bknown: otmp.bknown, known: _armor_known(otmp) ? 1 : 0,
-        oeroded: otmp.oeroded | 0, oeroded2: otmp.oeroded2 | 0,
-        oerodeproof: otmp.oerodeproof | 0, oartifact: 0, oname: undefined,
-    };
-}
-
 /* C read.c:385 `scroll == uarmu` — pointer identity against the worn-shirt
  * slot.  This port keeps that fact in TWO places and neither alone is
  * sufficient: js/do_wear.js's setworn() points u.uarmu at the real g.invent
@@ -2043,18 +1939,18 @@ function _shk_your_rd(obj) {
 /* C ref: obj.h:280-282 is_shield(otmp) — ARMOR_CLASS with oc_armcat ARM_SHIELD,
  * i.e. the contiguous SMALL_SHIELD..SHIELD_OF_REFLECTION block. */
 function _is_shield(otmp) {
-    const otyp = _armor_otyp(otmp);
+    const otyp = otmp.otyp | 0;
     return otyp >= SMALL_SHIELD && otyp <= SHIELD_OF_REFLECTION;
 }
 /* C ref: obj.h:299-302 is_elven_armor(otmp). */
 function _is_elven_armor(otmp) {
-    const otyp = _armor_otyp(otmp);
+    const otyp = otmp.otyp | 0;
     return otyp === ELVEN_LEATHER_HELM || otyp === ELVEN_MITHRIL_COAT
         || otyp === ELVEN_CLOAK || otyp === ELVEN_SHIELD || otyp === ELVEN_BOOTS;
 }
 /* C ref: obj.h:347-348 Is_dragon_scales(obj). */
 function _Is_dragon_scales(obj) {
-    const otyp = _armor_otyp(obj);
+    const otyp = obj.otyp | 0;
     return otyp >= GRAY_DRAGON_SCALES && otyp <= YELLOW_DRAGON_SCALES;
 }
 /* C ref: obj.h — objects[otyp].oc_magic, from the generated table. */
@@ -2069,38 +1965,6 @@ function _in_invent(obj) {
     for (let o = game.invent; o; o = o.nobj)
         if (o === obj) return true;
     return false;
-}
-function _bless(otmp) {
-    if ((otmp.oclass | 0) === COIN_CLASS_OC)
-        return;                                  /* C mkobj.c:1750 */
-    otmp.cursed = 0;
-    otmp.blessed = 1;
-    _bc_side_effects(otmp);
-}
-async function _curse(otmp) {
-    if ((otmp.oclass | 0) === COIN_CLASS_OC)
-        return;                                  /* C mkobj.c:1789 */
-    const old_light = otmp.lamplit ? arti_light_radius(otmp) : 0; /* C mkobj.c:1790-1791 */
-    otmp.blessed = 0;
-    otmp.cursed = 1;
-    /* C mkobj.c:1796-1801: update wielded weapons before other curse effects. */
-    if (otmp === game.u.uwep && bimanual(otmp))
-        reset_remarm();
-    if (otmp === game.u.uswapwep && game.u.twoweap)
-        await drop_uswapwep();
-    _bc_side_effects(otmp);
-    if (otmp.lamplit)
-        await maybe_adjust_light(otmp, old_light); /* C mkobj.c:1816-1817 */
-}
-function _bc_side_effects(otmp) {
-    const otyp = otmp.otyp | 0;
-    if (_carried(otmp) && (otyp === LUCKSTONE || otmp.oartifact)) {
-        /* C: set_moreluck() — luck bookkeeping, not ported here.  No RNG. */
-    } else if (otyp === BAG_OF_HOLDING) {
-        /* C: otmp->owt = weight(otmp) — weight() not ported.  No RNG. */
-    } else if (otyp === FIGURINE) {
-        /* C: figurine transform timer start/stop.  No RNG. */
-    }
 }
 /* Shop billing uses the shared mkobj.c costly_alteration implementation. */
 /* C ref: potion.c:1462-1478 strange_feeling(obj, txt). */
@@ -2141,11 +2005,10 @@ async function seffect_enchant_armor(sobjp) {
     /* C read.c:1121 — a declaration initializer, so this runs BEFORE the body.
      * Getting it out of order costs up to four rn2(4) draws. */
     const otmp = some_armor(g.youmonst);
-    /* `nm` is the naming view of `otmp` (identical object when u.uarm* already
-     * holds a proper numeric-otyp object); `otyp` is its objects.h otyp.  ALL
-     * mutation below targets `otmp`, never `nm` — see _name_obj. */
-    const nm = otmp ? _name_obj(otmp) : null;
-    const otyp = otmp ? _armor_otyp(otmp) : -1;
+    /* Worn slots contain the real inventory objects (u_init.c:1212-1213;
+     * js/u_init.js ini_inv), so naming and mutation use the same object. */
+    const nm = otmp;
+    const otyp = otmp ? otmp.otyp | 0 : -1;
     const sblessed = !!sobj.blessed;
     const scursed = !!sobj.cursed;
     const confused = (_Confusion() !== 0);
@@ -2251,7 +2114,7 @@ async function seffect_enchant_armor(sobjp) {
             otmp.spe = (otmp.spe | 0) + 1;
             cap_spe(otmp);
             if (!otmp.blessed)
-                _bless(otmp);
+                await _bless(otmp);
         } else if (otmp.cursed) {
             await _uncurse(otmp);
         }
@@ -2275,7 +2138,7 @@ async function seffect_enchant_armor(sobjp) {
     if (scursed && !otmp.cursed)
         await _curse(otmp);
     else if (sblessed && !otmp.blessed)
-        _bless(otmp);
+        await _bless(otmp);
     else if (!scursed && otmp.cursed)
         await _uncurse(otmp);
     if (s) {                                            /* C read.c:1270 */
@@ -2285,7 +2148,7 @@ async function seffect_enchant_armor(sobjp) {
         s = (otmp.spe | 0) - oldspe;    /* cap_spe() might have throttled 's' */
         if (s)
             adj_abon(otmp, s);                          /* C read.c:1279 */
-        g._gk_known = _armor_known(otmp);               /* C read.c:1280 */
+        g._gk_known = !!otmp.known;               /* C read.c:1280 */
         if (s > 0 && otmp.unpaid)
             await _alter_cost(otmp, 0);
     }
@@ -2565,7 +2428,7 @@ async function seffect_destroy_armor(sobjp) {
                 otmp.spe = (otmp.spe | 0) + -1;
                 adj_abon(otmp, -1);
             }
-            make_stunned((_HStun() & TIMEOUT) + rn1(10, 10), true); /* read.c:1361 */
+            await make_stunned((_HStun() & TIMEOUT) + rn1(10, 10), true); /* read.c:1361 */
         } else if (await disintegrate_arm(otmp)) {
             g._gk_known = true;
             return;
@@ -4077,7 +3940,14 @@ function create_particular_parse(str) {
 
     /* quantity */
     const mq = /^([0-9]+) */.exec(bufp);
-    if (mq) { d.quan = parseInt(mq[1], 10); bufp = bufp.slice(mq[0].length); }
+    if (mq) {
+        /* C read.c:3156 atoi(bufp) = (int) strtol(bufp, NULL, 10):
+         * the target's 64-bit long saturates before the 32-bit int cast. */
+        const n = BigInt(mq[1]);
+        d.quan = Number(BigInt.asIntN(32,
+            n > 0x7fffffffffffffffn ? 0x7fffffffffffffffn : n));
+        bufp = bufp.slice(mq[0].length);
+    }
     /* C read.c:3161-3166 — out-of-range quantities fill the map after
      * accounting for the monsters already on the level. */
     const QUAN_LIMIT = ROWNO * (COLNO - 1);
@@ -4474,7 +4344,6 @@ export async function do_class_genocide() {
  * covers the ordinary type-selection path used by scrolls and thrones. */
 export async function do_genocide(flags = 1) {
     const really = (flags & REALLY) !== 0;
-    const onThrone = (flags & ONTHRONE) !== 0;
     // C read.c:2838-2843: confused reading selects the base hero type
     // directly, even while polymorphed, without asking for a monster name.
     let selected = (flags & PLAYER) ? game.u.umonster : null;
@@ -4542,7 +4411,7 @@ export async function do_genocide(flags = 1) {
             if (!Deaf()) {
                 if (game.flags?.verbose !== false)
                     await pline('A thunderous voice booms through the caverns:');
-                SetVoice(null, 0, 80, 0 /* voice_deity */);
+                SetVoice(null, 0, 80, 0x0004 /* sndprocs.h voice_deity */);
                 await verbalize('No, mortal!  That will not be done.');
             }
             continue;

@@ -1,5 +1,6 @@
 import { dealloc_mextra } from './mon.js';
 import { msgtype_type } from './options.js';
+import { nh_delay_output } from './animframes.js';
 import { fixup_oil, get_mtraits, free_omid } from './mkobj.js';
 import { POT_OIL } from './const.js';
 import { sp_levchn_lookup, pline_mon } from './mklev.js';
@@ -2464,6 +2465,8 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
         if (ENV.FF_BZZ_TRACE === '1')
             pushRngLogEntry(`^buzz_cell[x=${sx|0},y=${sy|0} mon=${mon ? (mon.m_id|0) : 0} pm=${mon?.data?.mndx ?? -1} range=${range|0}]`);
         if (cansee(sx, sy)) {
+            /* C zap.c:4830-4841 — reveal/unreveal invisible monsters before tmp_at(),
+             * then paint the beam cell and wait (zap.c:4847 nh_delay_output). */
             if (mon && !canspotmon(mon))
                 map_invisible(sx, sy);
             else if (!mon)
@@ -2471,6 +2474,7 @@ export async function dobuzz(type, nd, sxIn, syIn, dxIn, dyIn, sayhit, saymiss, 
             if (ZAP_POS(_buzz_typ(sx, sy))
                 || (isok(lsx, lsy) && cansee(lsx, lsy)))
                 tmp_at(sx, sy);
+            nh_delay_output(); /* C zap.c:4847 "wait a little" */
         }
         g.bhitpos = { x: sx, y: sy };
         let gas_hit = (damgtype === ZT_POISON_GAS);
@@ -3825,7 +3829,7 @@ export async function boomhit(obj, dx, dy) {
             }
         }
         tmp_at(g.bhitpos.x, g.bhitpos.y);
-        /* C's nh_delay_output() — animation pacing only; no observable state. */
+        nh_delay_output(); /* C zap.c:4218 */
         if (IS_SINK(_buzz_typ(g.bhitpos.x, g.bhitpos.y) | 0)) {
             /* C's Soundeffect(se_boomerang_klonk, 75) — audio only, no RNG. */
             if (!Deaf_zap())

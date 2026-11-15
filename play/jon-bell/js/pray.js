@@ -1195,7 +1195,7 @@ async function _fix_worst_trouble(trouble) {
         heal_legs(0);
         break;
     case TROUBLE_STUNNED:
-        make_stunned(0n, true);
+        await make_stunned(0n, true);
         break;
     case TROUBLE_CONFUSED:
         await make_confused(0n, true);

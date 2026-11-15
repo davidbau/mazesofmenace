@@ -932,7 +932,7 @@ async function _openone_b_trapped_door(x, y) {
     wake_nearby(false);
     await losehp(flooreffects_Maybe_Half_Phys(dmg), 'explosion', KILLED_BY_AN);
     exercise(A_STR, false);
-    make_stunned((_hprop(STUNNED) & TIMEOUT) + dmg, true);
+    await make_stunned((_hprop(STUNNED) & TIMEOUT) + dmg, true);
 }
 
 /* C detect.c:1729-1780 openone(zx, zy, num) — do_clear_area's per-square

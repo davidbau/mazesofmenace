@@ -13469,8 +13469,13 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
          * plines) before vision_recalc returns, so those plines precede this one.
          * Only wait when the a11y notices can actually print: an extra await would
          * reorder this message against callers that do not await their plines. */
+        const _mmBefore = game._mentionMapPending;
         const _notices = vision_recalc(0);
         if (_notices && game.a11y?.mon_notices) await _notices;
+        /* the recalc's show_glyph() plines mention_map announces (display.c:2060-2072)
+         * inside it; they are async here, and C prints them BEFORE this message. */
+        if (game._mentionMapPending && game._mentionMapPending !== _mmBefore)
+            await game._mentionMapPending;
     }
     /* C's pre-message flush (pline.c:273-274) updates the map/status without
      * erasing the physical topline. Keep it for bytes that paint no cell;

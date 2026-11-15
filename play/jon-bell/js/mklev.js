@@ -1,4 +1,5 @@
 import { xname } from './do_wear.js';
+import { nh_delay_output } from './animframes.js';
 import { WAND_CLASS } from './const.js';
 import { TOOL_CLASS } from './const.js';
 import { AMULET_CLASS } from './const.js';
@@ -5180,7 +5181,7 @@ export async function mkinvokearea() {
             await mkinvpos(xmax, i, dist);
         }
         await flush_screen(1);
-        // nh_delay_output() is a window-port delay, with no game-state effect.
+        nh_delay_output(); /* C mklev.c:2490 */
     }
     await You('are standing at the top of a stairwell leading down!');
     mkstairs(u.ux, u.uy, 0, null, false);
