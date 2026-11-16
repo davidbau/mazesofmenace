@@ -1,5 +1,5 @@
 import {recordNativeRngCaller} from './native/rng-output.js';
-import {bindNativeAddressEntry} from './native/address-entries.js';
+import {bindNativeAddressEntry,prepareNativeAddressText} from './native/address-entries.js';
 import {parseCPrototype} from '../c-runtime/prototypes.js';
 import {connectNativeDungeonWindows} from './native/dungeon-window-callbacks.js';
 import {connectNativeDisplayWindows} from './native/display-window-callbacks.js';
@@ -76,7 +76,8 @@ export function enableAddressPort(environment,name,{only,definition:providedDefi
     if(only)for(const key of only)if(typeof namespace[key]!=='function')throw new Error('Unknown address adapter export '+name+'.'+key);
     const calls=new Map();
     const bind=key=>{if(calls.has(key))return calls.get(key);const rawCall=(...args)=>{
-        for(let i=0;i<args.length;i++)if(args[i]&&args[i].address!==undefined)args[i]=args[i].address;
+        for(let i=0;i<args.length;i++)if(args[i]){const address=args[i].address;if(address!==undefined)args[i]=address;}
+        prepareNativeAddressText(name,key,args,services);
         // The native MKOBJ public entries receive addresses, not record carriers.
         if(name==='mkobj'){const prototype=schema.functionTypes?.[key];if(!prototype)throw new Error('Missing MKOBJ native prototype '+key);const match=prototype.match(/\((.*)\)$/);if(!match)throw new Error('Unknown MKOBJ native prototype '+key);const params=match[1].split(',').map(type=>ctypes.canonical(type.trim()));args=args.map((value,i)=>params[i]?.includes('*')?(typeof value==='string'&&/char\s*\*/.test(params[i])?services.literal(value):environment.address(value)):value);}
         if(pair[2]==='layout')return bridge(local,layout,key,...args);

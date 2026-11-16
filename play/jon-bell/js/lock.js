@@ -39,7 +39,7 @@ import { CQ_REPEAT, CQ_CANNED, CMDQ_DIR, CMDQ_KEY, CMDQ_USER_INPUT, NHKF_GETDIR_
          NHKF_GETDIR_MOUSE, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_V,
          NHKF_ESC, N_DIRS,
          CLICK_1, CLICK_2 } from './const.js';
-import { impossible, pline, You_hear, You_cant, There } from './pline.js';
+import { impossible, pline, pline_The, You_hear, You_cant, There } from './pline.js';
 import { force_more, newsym, feel_newsym, flush_screen, docrt_flags, _darken_room_floor, show_glyph_cell, canseemon, Unaware, Deaf } from './display.js';
 import { mb_trapped } from './monmove.js';
 import { capture_pre_movemon_botl, _topl_joins_snapshot, commit_force_messages } from './display.js';
@@ -1597,7 +1597,7 @@ export async function doorlock(otmp, x, y) {
             newsym(x, y);
             if (game.flags?.verbose) {
                 if ((sawit || seeit) && !Unaware())
-                    await pline("The door crashes open!");
+                    await pline_The("door crashes open!"); /* lock.c:1241 */
                 else if (!_lock_Deaf())
                     await You_hear('a crashing sound.');
             }

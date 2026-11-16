@@ -13,7 +13,12 @@ const sdkUtf8Decoder=new TextDecoder();
 export function readSdkUtf8(memory,p){
     if(typeof p==='string')return p;p=address(p);if(!p)return '';
     const h=memory.HEAPU8;let end=p;while(h[end])end++;
-    if(end-p>16)return sdkUtf8Decoder.decode(h.subarray(p,end));
+    if(end-p>16){
+        const bytes=h.subarray(p,end);
+        // Some browsers reject views backed by resizable ArrayBuffers at Web
+        // API boundaries. Copy only this path, retaining the SDK UTF-8 decoder.
+        return sdkUtf8Decoder.decode(bytes.buffer.resizable?bytes.slice():bytes);
+    }
     let out='';while(p<end){let a=h[p++];if(!(a&128)){out+=String.fromCharCode(a);continue;}const b=h[p++]&63;if((a&224)===192){out+=String.fromCharCode(((a&31)<<6)|b);continue;}const c=h[p++]&63;if((a&240)===224)a=((a&15)<<12)|(b<<6)|c;else a=((a&7)<<18)|(b<<12)|(c<<6)|(h[p++]&63);if(a<65536)out+=String.fromCharCode(a);else{a-=65536;out+=String.fromCharCode(55296|(a>>10),56320|(a&1023));}}return out;
 }
 export function createStdio(memory,filesystem,libc,{stdin=new Uint8Array(),readStdin,stdout,stderr}={}) {

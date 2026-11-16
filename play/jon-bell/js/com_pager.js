@@ -405,6 +405,7 @@ export function _overlay_status_line(base, col, text) {
         visCol++;
         i++;
     }
+    out = _encode_blank_runs(out);
     // The clip ended inside an open SGR run: close it (term_end_attr).
     if (sgrOpen) out += '\x1b[0m';
     // C wintty.c:1886,3724-3730 ends map glyph output before menu text.
@@ -542,6 +543,12 @@ export function prompt_spilled_onto_row1() {
 }
 export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipArg, pwOverride,
                                     fullScreen = false, mapClipExtra = 0, clipRow23 = false, clipMaxRow = 23) {
+    /* C wintty.c:1923-1936 (H2344_BROKEN): `!iflags.menu_overlay` forces
+     * cw->offx = 0 and, offy being 0, term_clear_screen() — the window owns
+     * the whole screen (map, topline and status all erased), content at
+     * column offx + 1 = 1. */
+    const noOverlay = _menu_overlay_off();
+    if (noOverlay) { fullScreen = true; WIN_COL = 1; }
     let statusClipCol = statusClipArg;
     const _prevRows = (typeof game._screen_output === 'string')
         ? game._screen_output.split('\n') : null;
@@ -631,7 +638,7 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                  * left physically on the row with toplin EMPTY (_topl_sticky)
                  * survives left of offx.  Fuzzer travel/getpos tip pages
                  * "Where do you want to travel to?" away (rm398 step 54). */
-                const topl = String(game._pending_message ? ''
+                const topl = String((game._pending_message || noOverlay) ? ''
                                     : (game._topl_sticky || '')).replace(/\s+$/, '');
                 const left = topl.slice(0, Math.max(0, col - 1));
                 output += left;
@@ -945,7 +952,14 @@ function make_window_lines(text) {
 // window, so including it in the scan cannot move the result.
 const _tty_visible_len = (s) =>
     String(s ?? '').replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').trimEnd().length;
+/* C wintty.c:1927 — iflags.menu_overlay toggled off (options menu / rc). */
+function _menu_overlay_off() {
+    return game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0;
+}
 export function tty_window_offx(windowLines, footerKind) {
+    /* wintty.c:1927-1931: !menu_overlay -> offx 0, content column 1. */
+    if (_menu_overlay_off())
+        return 1;
     let maxcol = 0;
     for (const ln of windowLines) {
         const w = _tty_visible_len(ln);

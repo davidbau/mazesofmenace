@@ -772,6 +772,19 @@ export async function newgame() {
             if (msgtype_type(welcomeMsg) !== 'hide') { /* C pline.c:254-262 */
                 pline_flush_point();                      /* C pline.c:274 */
                 g._pending_message = welcomeMsg;
+                /* topl.c:131-140 redotoplin(): a welcome of CO (80) or more
+                 * columns wraps onto row 1 (cury != 0) and raises its OWN
+                 * more() inside this pline, before moveloop_preamble's botlx
+                 * (allmain.c:85) can repaint status -- as the paged arm above
+                 * does for every wrapping startup message. */
+                if (welcomeMsg.length >= 80) {
+                    const dismissed = await topl_more_page(welcomeMsg, u?.uac ?? 0);
+                    if (dismissed === 27) {
+                        g._topl_win_stop = true; /* topl.c:232-235 */
+                        g._topl_win_stop_buf = welcomeMsg;
+                        startupEscStop = true;
+                    }
+                }
             }
         }
         /* C ref: allmain.c:841-848 newgame() — welcome(TRUE); notice_mon_on();
@@ -3359,7 +3372,13 @@ async function moveloop_core_faithful() {
                     g.vision_full_recalc = 0;
                 }
                 await moveloop_status_paint(); // C allmain.c:474 — guarded status paint
-                await flush_screen(1);
+                /* C allmain.c:473-509: an occupation tick flushes the map only
+                 * through the guarded bot()/curs_on_u() above (and
+                 * runmode_delay_output, which is a no-op with multi == 0 and
+                 * no run).  Page the deferred plines without painting this
+                 * turn's monster moves: they stay in gbuf until the next real
+                 * flush (a pline's, pline.c:273-274). */
+                await flush_screen(1, false);
             }
             // The final (non-overflowing) topline remainder stays on
             // _pending_message; hand it to _resultMessage so the next rhack(0)
@@ -4024,6 +4043,17 @@ async function moveloop_core_faithful() {
          * (hunger "You faint", allmain.c:~300), so they are on the topline
          * BEFORE that turn runs: its update_topl pages/joins against them.
          * Fold the staged lines in now when that turn will run. */
+        /* topl.c:257-301: forcelock()'s plines (lock.c:247) run inside the
+         * occupation; when an ESC at an occupation-turn --More-- left WIN_STOP
+         * live (no key has been read since), update_topl swallows them.  Route
+         * the staged lines through pline() so they take that bookkeeping
+         * instead of being joined onto the standing line. */
+        if (!forceInterrupted && g._forceMsgs?.length && g._topl_win_stop) {
+            const _staged = g._forceMsgs;
+            g._forceMsgs = null;
+            g._forceMsgBotls = null;
+            for (const m of _staged) await pline(m);
+        }
         if (!forceInterrupted && g._forceMsgs?.length) {
             let _early = (g._resultMessage && g._pending_message)
                 ? _topl_merge_result(g._resultMessage, g._pending_message,
@@ -4792,6 +4822,10 @@ async function moveloop_core_faithful() {
     while ((g.multi | 0) > 0 || occContinue) {
         if (g.occupation === eatfood && !(g.context && g.context.mv)) {
             g._eatCountRepeat = true;
+            break;
+        }
+        if (g.occupation === learn && (g.multi | 0) >= 0 && !(g.context && g.context.mv)) {
+            g._eatCountRepeat = true; /* the count resumes after learn() ends */
             break;
         }
         const isMv = !!(g.context && g.context.mv);

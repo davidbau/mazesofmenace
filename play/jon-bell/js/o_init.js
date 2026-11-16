@@ -537,7 +537,7 @@ import { ECMD_OK } from './const.js'; // relocate-fns
 import { objName as _objName_full } from './objnam.js'; // relocate-fns
 import { set_cursor } from './cmd.js'; // relocate-fns
 import { build_window_screen } from './com_pager.js'; // relocate-fns
-import { await_menu_key, docrt } from './display.js'; // relocate-fns
+import { await_menu_key, docrt, docorner_blank_utf8_captures } from './display.js'; // relocate-fns
 import { docall } from './do_name.js'; // relocate-fns
 import { You } from './do_wear.js'; // relocate-fns
 import { objtyp_is_callable } from './do_name.js'; // relocate-fns
@@ -974,6 +974,11 @@ export async function rename_disco() {
         g._statusBlankAfterDocrt = true;
         if (g.disp) g.disp.botlx = 1;
         g._status1WholeNext = true;
+    } else {
+        /* wintty.c tty_dismiss_nhwindow -> erase_menu_or_text ->
+         * docorner(cw->offx, cw->maxrow + 1): row_refresh reprints the glyph
+         * buffer under the overlay (rows 0..lines.length incl. "(end)"). */
+        docorner_blank_utf8_captures(WIN_COL - 1, lines.length + 2);
     }
     const pick = picks[(fullScreen ? pageIdx : 0) + ':' + String.fromCharCode(k)];
     if (!pick) return;                              /* C:1188 STRANGE_OBJECT */

@@ -2932,7 +2932,7 @@ async function hitmu_je(mtmp, mattk) {
     const u = game.u || (game.u = {});
     /* C mhitu.c:1147 — olduasmon is latched per hitmu() call, so an earlier
      * attack that rehumanized the hero leaves later attacks with the new form. */
-    game._olduasmon_mndx = _hero_form_mndx_mu();
+    game._olduasmon_mndx = _olduasmon_mndx_mu();
     if (!canspotmon_disp(mtmp))
         map_invisible(mtmp.mx | 0, mtmp.my | 0);
     {
@@ -3047,6 +3047,15 @@ async function hitmu_je(mtmp, mattk) {
 /* C mondata.h — the hero's CURRENT form index: u.umonnum while polymorphed,
  * otherwise the role/race monster.  Only the polymorphed value is read here
  * (passiveum's !Upolyd arm returns before the form matters). */
+/* C mhitu.c:1147 `olduasmon = gy.youmonst.data` — the form struct itself,
+ * not mons[u.umonnum].  They differ after the tutorial's gamestate restore
+ * (nhlua.c:1752 memcpy of u) leaves a polymorphed hero's youmonst.data. */
+function _olduasmon_mndx_mu() {
+    const d = game.youmonst?.data;
+    if (d && Number.isInteger(d.pmidx) && d.pmidx >= 0)
+        return d.pmidx | 0;
+    return _hero_form_mndx_mu();
+}
 function _hero_form_mndx_mu() {
     const u = game.u || {};
     if (Upolyd_fn(u))
@@ -4587,7 +4596,7 @@ export async function mattacku(mtmp) {
      * OLD form.  C keeps it as a local in hitmu(); this port's hitmu_je() is a
      * separate function, so it is latched here (the whole mattacku call is
      * synchronous with respect to the hero's form). */
-    game._olduasmon_mndx = _hero_form_mndx_mu();
+    game._olduasmon_mndx = _olduasmon_mndx_mu();
     const mndx = (mtmp.mndx ?? mtmp.mnum ?? -1) | 0;
     if (ENV.FF_MATTACK_TRACE === '1')
         pushRngLogEntry(`^mattacku_enter[id=${mtmp.m_id|0} pm=${mndx} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0} pass=${game._ffMlPass|0} swallow=${game.u?.uswallow ? 1 : 0}]`);

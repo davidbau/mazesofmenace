@@ -7390,10 +7390,15 @@ async function _wish_encumber_msg(paintedCap, prinvLine) {
                  * flush_screen (wintty.c tty_display_nhwindow -> bot()) paints
                  * the post-addinv capacity before encumber_msg runs. */
                 const _postCap = _goldPrinv || _botlOwed;
-                f.cap = (_postCap ? newcap : paintedCap) | 0;
+                /* botl.c:188: the cap the page shows is the one the LAST bot()
+                 * painted, which need not be the pre-addinv near_capacity(): a
+                 * load change no bot() has run since (a heavy iron ball handed
+                 * over by punish(), read.c) is still unpainted. */
+                const _shownCap = (game._botlPaintedCap ?? paintedCap) | 0;
+                f.cap = (_postCap ? newcap : _shownCap) | 0;
                 f.mmExit = g._movemonExitSeq | 0;
                 g._pickupEncPreFrame = f;
-                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : paintedCap) | 0, prinvText: prinvLine,
+                g._pickupEncMorePending = { oldcap: (_postCap ? newcap : _shownCap) | 0, prinvText: prinvLine,
                     /* the status row as of the last bot(): taken before SET_BOTL below */
                     botl: _postCap ? undefined : capture_pre_movemon_botl() };
             }

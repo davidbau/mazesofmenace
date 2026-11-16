@@ -5068,11 +5068,10 @@ export async function notice_mon(mtmp) {
                      : ARTICLE_NONE,
                      (mtmp.mpeaceful && !mtmp.mtame) ? 'peaceful' : 0,
                      has_mgivenname(mtmp) ? SUPPRESS_SADDLE : 0, false);
-            /* C ref: pline.c You(line, ...) == vpline(YouMessage("You ", line)).
-             * The You imported at the head of this file (js/do_wear.js:2720) is a
-             * throw-stub, and pline() takes a single string -- expand both here
-             * rather than leave a guaranteed abort on the a11y path. */
-            await pline('You ' + _plineVFmt('%s %s.', [verb, monname]));
+            /* C ref: pline.c You(line, ...) == vpline(YouMessage("You ", line));
+             * through you_buf_message so the shared gy.you_buf is rewritten as
+             * in C (an enclosing unformatted pline then prints "You %s %s."). */
+            await You('%s %s.', verb, monname);
         } else if (!spot) {
             mtmp.mspotted = false;
         }

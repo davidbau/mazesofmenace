@@ -15,7 +15,7 @@ export function enableConfiguration(environment,layouts){
  environment.register('configuration-lists',{build_english_list},lists,{prepareArgs:(_fn,args)=>[text(args[0])]});
  const schema={...abi.schema,backings:[{name:'configfileBuffer',type:'char['+abi.configfileBytes+']'}]};
  const only=Object.keys(cfgfiles).filter(n=>typeof cfgfiles[n]==='function'&&Object.hasOwn(publicFunctions.functions,n)&&!environment.hasFunction(n));
- const group=enableAddressPort(environment,'cfgfiles',{only,definition:{schema,layout:layouts.cfgfiles},adapter:[cfgfiles,createCfgfilesEnvironment,'factory'],ctypes});
+ const group=enableAddressPort(environment,'cfgfiles',{only,definition:{schema,layout:layouts.cfgfiles},adapter:[cfgfiles,(services,layout,namespace)=>createCfgfilesEnvironment(services,layout,namespace,{varargs:'values'}),'factory'],ctypes});
  group.services.callVoid=fn=>environment.functions.indirect(fn,'v');group.services.callProc=(fn,p)=>environment.functions.indirect(fn,'ip',environment.address(p));
  return {...group,limitation:'Configuration records/filesystem transport connected; parser/error/configuration lifecycle still requires original-C verification.'};
 }

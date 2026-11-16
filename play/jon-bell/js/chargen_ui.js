@@ -49,6 +49,7 @@ import { game } from './gstate.js';
 import { menu_heading_text } from './tty_menu.js'; // wintty.c:2688
 import { tty_menu_overlay, tty_base_window_prompt, tty_base_window_messages, tty_getlin_prompt, putmsghistory } from './display.js';
 import { pmatchi } from './strutil.js';
+import { visctrl } from './hacklib.js';
 import { map_menu_cmd } from './options.js';
 import { str2role, str2race, str2gend, str2align, setrolefilter as setrolefilter_shared, ok_role as ok_role_shared, ok_align as ok_align_shared, ok_race as ok_race_shared, ok_gend as ok_gend_shared, validrace, validgend, validalign, randrace, randgend, randalign } from './role.js';
 import { clearrolefilter, gotrolefilter, ok_align, ok_gend, ok_race, ok_role, plnamesuffix, rigid_role_checks, setrolefilter } from './role.js'; // relocate-fns
@@ -1778,6 +1779,14 @@ function rigid_role_checks_live(st, rn2) {
 }
 
 const K_BS = 8, K_LF = 10, K_CR = 13, K_ESC = 27, K_DEL = 127;
+/* C cmd.c:3225 key2txt (hacklib.c:532 visctrl for the rest). */
+function _yn_key2txt(c) {
+    if (c === 32) return '<space>';
+    if (c === 27) return '<esc>';
+    if (c === 10) return '<enter>';
+    if (c === 127) return '<del>';
+    return visctrl(c);
+}
 
 // A tty PICK_ONE menu treats <space>/<return> as "take the preselected
 // entry".  Every role/race/gender/align menu preselects "Random"
@@ -1917,7 +1926,9 @@ export async function playChargen(ctx) {
             let a = String.fromCharCode(key).toLowerCase();
             /* topl.c tty_yn_function: the answered question is remembered in the
              * ^P history as "<prompt> <answer>" (role.c:2257 yn_function). */
-            if (key !== K_ESC) putmsghistory(prompt + ' ' + String.fromCharCode(key), false);
+            /* topl.c:534-537 clean_up: gt.toplines = prompt + key2txt(q)
+             * (cmd.c:3225), so <enter>/<space>/^P are spelled out. */
+            if (key !== K_ESC) putmsghistory(prompt + ' ' + _yn_key2txt(key), false);
             if (key === K_ESC || a === 'q') return quit();
             if (a === ' ' || a === '\n' || a === '\r') a = 'y';
             else if (a === '@' || a === '*') a = 'a';

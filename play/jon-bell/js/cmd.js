@@ -19639,7 +19639,9 @@ export async function makemap_prepost(pre, wiztower) {
          * last physical paint. Do not flush losedogs' buffered glyphs first
          * (display.c:1740-1748,2196). */
         await disp.docrt(true);
-        flush_screen(1);
+        /* cmd.c:1060: awaited — a --More-- this flush raises must finish before
+         * deliver_splev_message() and the command loop read keys again. */
+        await flush_screen(1);
         await (await import('./objnam.js')).deliver_splev_message();
         await (await import('./cmd.js')).check_special_room(false);
         /* C cmd.c:1064 -> do.c:1383-1392 save_currentstate(): the checkpoint's
@@ -19736,6 +19738,8 @@ async function handler_rebind_keys_add(keyfirst) {
             if (!key || key === 27) return true;
         }
         const prevcmd = cmdbind_get(key);
+        const C_CMDSTR_GARBAGE = '\u0001';
+        cmdstr = C_CMDSTR_GARBAGE + cmdstr;
         if (bind_key(key, cmdstr, true)) {
             if (prevcmd && prevcmd.cmd !== ec)
                 flushed = true, await pline(`Changed key '${key2txt(key)}' from "${prevcmd.cmd.name}" to "${cmdstr}".`);

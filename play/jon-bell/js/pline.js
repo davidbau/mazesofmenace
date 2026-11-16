@@ -5,7 +5,7 @@ import { BUFSZ, DEVTEAM_EMAIL } from './const.js';
 import { nh_sprintf } from './display.js';
 import { paniclog } from './files.js';
 import './cmd.js'; // relocate-fns
-import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body } from './display.js';
+import { Unaware, _You, _disp_Blind, _live_deaf, _pline_body, you_buf_message } from './display.js';
 import { msgtype_type } from './options.js'; // relocate-fns
 import { livelog_add } from './files.js'; // relocate-fns
 import { strNsubst } from './hacklib.js'; // relocate-fns
@@ -110,10 +110,10 @@ export async function pline(msg, ...args) {
     if (game._base_topline) {
         const urgent = !!game._topl_urgent_next;
         game._topl_urgent_next = false;
-        return await game._base_topline.put(args.length ? nh_sprintf(msg, args) : msg, urgent);
+        return await game._base_topline.put(args.length ? nh_sprintf(String(msg), args) : String(msg), urgent);
     }
     const deferred = args.length === 0 && game._deferredPline;
-    if (!deferred || deferred.msg !== msg)
+    if (!deferred || deferred.msg !== String(msg))
         return await _pline_body(msg, false, null, ...args);
     game._deferredPline = null;
     const held = game._botlPaintHeld;
@@ -141,16 +141,16 @@ export function You(line, ...args) {
 }
 
 export function Your(line, ...args) {
-    return pline('Your ' + line, ...args);
+    return pline(you_buf_message('Your ', line), ...args);
 }
 
 /* C pline.c:403-412: prefix the format, then let vpline substitute once. */
 export function You_cant(line, ...args) {
-    return pline("You can't " + line, ...args);
+    return pline(you_buf_message("You can't ", line), ...args);
 }
 
 export function pline_The(line, ...args) {
-    return pline('The ' + line, ...args);
+    return pline(you_buf_message('The ', line), ...args);
 }
 
 /* C pline.c:475-492: quote the format before substituting its arguments.
@@ -162,7 +162,7 @@ export function verbalize(line, ...args) {
 
 /* C pline.c:425-434: prefix before formatting, like You() and pline_The(). */
 export function There(line, ...args) {
-    return pline('There ' + line, ...args);
+    return pline(you_buf_message('There ', line), ...args);
 }
 
 /* C pline.c:138-154: the hero has no map-origin prefix; other monsters do. */
@@ -175,7 +175,7 @@ export function pline_mon(mon, line, ...args) {
 /* C pline.c:388-400 You_feel(): sensations use dream wording while unaware. */
 export async function You_feel(line, ...args) {
     const prefix = Unaware() ? 'You dream that you feel ' : 'You feel ';
-    return pline(prefix + String(line), ...args);
+    return pline(you_buf_message(prefix, line), ...args);
 }
 
 export async function You_hear(line, ...args) {
@@ -185,7 +185,7 @@ export async function You_hear(line, ...args) {
     const prefix = game.u?.uinwater ? 'You barely hear '
                  : unaware ? 'You dream that you hear '
                  : 'You hear ';
-    return pline(prefix + String(line), ...args);
+    return pline(you_buf_message(prefix, line), ...args);
 }
 
 /* C ref: pline.c:454-468 You_see(line, ...) — the same shape with no guard:
@@ -197,7 +197,7 @@ export async function You_see(line, ...args) {
     const prefix = Unaware() ? 'You dream that you see '
                  : _disp_Blind() ? 'You sense '
                  : 'You see ';
-    return pline(prefix + String(line), ...args);
+    return pline(you_buf_message(prefix, line), ...args);
 }
 
 /* C pline.c:126-135 — the message keeps the map coordinate as its origin. */

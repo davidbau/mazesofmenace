@@ -182,23 +182,26 @@ export function initedog(mtmp, everything) {
         /* C: EDOG(mtmp)->apport = ACURR(A_CHA). A_CHA = 5 per attrib.h enum.
          * acurr(u, 5) mirrors C's acurr(A_CHA): computes abon[di]+atemp[di]+abase[di]
          * clamped to [3,25].  At game-start (attrs not yet initialised, all zero),
-         * this correctly returns 3 — matching C's behaviour because C's memset(&u,0)
+         * this correctly returns 3 - matching C's behaviour because C's memset(&u,0)
          * zeroes u.acurr.a before makedog() runs, so C's ACURR(A_CHA)=3 there too.
          * For mid-game taming, it returns the hero's current effective CHA. */
         const acha = game.u ? acurr(game.u, 5) : 3; /* A_CHA=5; acurr clamps to [3,25]; 3=ATTRMIN when u absent */
-        const moves = (game.moves ?? 0) | 0;
-        mtmp.mextra.edog = {
-            droptime: 0,
-            dropdist: 10000,
-            apport: acha, /* acurr already clamps to ≥3; C has no additional clamp here */
-            whistletime: 0,
-            hungrytime: 0, /* C: set below via minhungry */
-            ogoal: { x: -1, y: -1 }, /* C: force error if used before set */
-            abuse: 0,
-            revivals: 0,
-            mhpmax_penalty: 0,
-            killed_by_u: 0,
-        };
+        /* C dog.c:40,56-68 operates on the struct that newedog() (or makemon's
+         * MM_EDOG) already allocated and resets only the listed fields in place,
+         * so parentmid (dog.c:30) and hungrytime (dog.c:60 comment, kept for the
+         * `< minhungry` test below) survive.  Reuse that struct when it exists. */
+        const edog = mtmp.mextra.edog
+            ?? (mtmp.mextra.edog = { parentmid: mtmp.m_id, hungrytime: 0 });
+        edog.droptime = 0;
+        edog.dropdist = 10000;
+        edog.apport = acha; /* acurr already clamps to >=3; C has no additional clamp here */
+        edog.whistletime = 0;
+        /* edogp->hungrytime = 0L; // set below */
+        edog.ogoal = { x: -1, y: -1 }; /* C: force error if used before set */
+        edog.abuse = 0;
+        edog.revivals = 0;
+        edog.mhpmax_penalty = 0;
+        edog.killed_by_u = 0;
     } else if (mtmp.mextra?.edog && ((mtmp.mextra.edog.apport | 0) <= 0)) {
         /* C dog.c:69-71 — else { if (edogp->apport <= 0) edogp->apport = 1; }
          * Retain the extension when re-taming, but ensure positive training
@@ -678,18 +681,18 @@ export async function keepdogs(pets_only) {
                 await mdrop_special_objs(mtmp);
             } else if (mtmp.meating || mtmp.mtrapped) {
                 if (canseemon(mtmp))
-                    pline_mon(mtmp, "%s is still %s.", Monnam(mtmp),
+                    await pline_mon(mtmp, "%s is still %s.", Monnam(mtmp),
                              mtmp.meating ? "eating" : "trapped");
                 stay_behind = true;
             } else if (mon_has_amulet(mtmp)) {
                 if (canseemon(mtmp))
-                    pline("%s seems very disoriented for a moment.",
+                    await pline("%s seems very disoriented for a moment.",
                           Monnam(mtmp));
                 stay_behind = true;
             }
             if (stay_behind) {
                 if (mtmp.mleashed) {
-                    pline("%s leash suddenly comes loose.",
+                    await pline("%s leash suddenly comes loose.",
                           humanoid(mtmp.data)
                               ? (mtmp.female ? "Her" : "His")
                               : "Its");
@@ -711,14 +714,16 @@ export async function keepdogs(pets_only) {
         } else if (keep_mon_accessible(mtmp)) {
             await migrate_to_level(mtmp, ledger_no(game.u.uz), MIGR_EXACT_XY, null);
         } else if (mtmp.mleashed) {
-            pline("%s leash goes slack.", s_suffix(Monnam(mtmp)));
+            await pline("%s leash goes slack.", s_suffix(Monnam(mtmp)));
             m_unleash(mtmp, false);
         }
     }
 }
 
+/* C mon.h DEADMONSTER(mon) is exactly `mon->mhp < 1`; this port also tested
+ * mhpmax <= 0, which C never does. */
 function DEADMONSTER(mtmp) {
-    return (mtmp.mhp ?? 0) <= 0 || (mtmp.mhpmax ?? 0) <= 0;
+    return (mtmp.mhp ?? 0) < 1;
 }
 
 /* C monflag.h:108/114/115 — read from the 5.0 header, not inherited from a
@@ -1147,7 +1152,9 @@ export function abuse_dog(mtmp) {
  * hand-typed values here would be exactly the pm-otyp-audit defect class. */
 function _ad_prop_on(p) {
     const r = game.u?.uprops?.[p];
-    return !!r && !!((r.intrinsic | 0) || (r.extrinsic | 0)) && !(r.blocked | 0);
+    /* C youprop.h:212-218 Aggravate_monster/Conflict are (H.. || E..) with no
+     * `blocked` term. */
+    return !!r && !!((r.intrinsic | 0) || (r.extrinsic | 0));
 }
 /* mdrop_special_objs: forwarded from steal.js canonical body directly. */
 
@@ -1358,7 +1365,7 @@ export { sticks } from './mondata.js'; // C mondata.c:654; preserve existing imp
 
 export function update_mlstmv() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1) continue; /* DEADMONSTER — C iter_mons(set_mon_lastmove) skips dead */
+        if ((mtmp.mhp | 0) < 1 || (mtmp.mstate | 0) !== 0) continue;
         mtmp.mlstmv = game.moves;
     }
 }

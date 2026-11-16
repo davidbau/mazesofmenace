@@ -1501,7 +1501,7 @@ export function pager_glyph_prefix(ch, dec, x, y) {
                 ? String.fromCharCode(byte) : cells[i]?.paint || ' ').join('');
         }
     }
-    return glyph === ' ' ? '\x1b[9C' : `${glyph}\x1b[8C`;
+    return /^ +$/.test(glyph) ? `\x1b[${glyph.length + 8}C` : `${glyph}\x1b[8C`;
 }
 /* dat/symbols "start: RogueIBM" (Handling: IBM, no Color): same CP437 terrain
  * bytes as RogueEpyx (walls \xba..\xcc, S_room \xfa, S_corr \xb1, doors \xce,
@@ -2451,6 +2451,11 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
              * vpline flushes (pline.c:273-274) the buffer as it stands now,
              * mid vision pass; the describe is async here, so hand the deferred
              * pline this instant's cells (_mention_map_pline_cells). */
+            /* pline.c:266-272: vpline() first runs vision_recalc(0) when a
+             * full recalc is pending (remove_region's unblock_point() before
+             * its pass-2 newsym, region.c:368-381), so the flush below paints
+             * the recomputed view, not the pre-unblock one. */
+            if (game.vision_full_recalc) vision_recalc(0);
             const cells = _capture_painted_cells();
             // pline.c:273-274 flushes gnew synchronously before the next show_glyph.
             pline_flush_point();
@@ -2476,7 +2481,13 @@ export function show_glyph_cell(x, y, ch, color = NO_COLOR, decgfx = false, attr
                 /* Describes settle out of scan order; chaining on the previous
                  * announce plines them in show_glyph order, as C does. */
                 if (previous) await previous;
-                return _pline_body_now(msg, false, null, ...args);
+                /* alreadyFlushed: pline.c:273-274's flush_screen ran above
+                 * (pline_flush_point) at this show_glyph instant.  Flushing
+                 * again once the describe settles would paint the rest of the
+                 * vision pass, which C's terminal only shows at its next
+                 * flush; a later tty more() (vamp_shift's display_nhwindow,
+                 * monmove.c:2391) freezes the screen as THIS flush left it. */
+                return _pline_body_now(msg, true, null, ...args);
             }).finally(() => {
                 if (game._mentionMapPending === pending)
                     game._mentionMapPending = null;
@@ -8964,6 +8975,7 @@ function _buildScreenOutput() {
         && _status_blank_after_docrt() && !_map_row20_clipped();
     output += (_r1MapPrint ? render_map_row(ROWNO - 1)
                : _row1Live && _r1Physical !== undefined ? _r1Physical
+               : _row1Live && game._r1MoreFrozen !== undefined ? game._r1MoreFrozen
                : _row1Live && !_r1Whole ? _status_row1_map_overlay(_status1)
                : _row1Live ? _status_row1_whole_with_tail(_status1)
                : _tutRow1Tail ? _status_row1_whole_with_tail(_status1)
@@ -9050,6 +9062,9 @@ function _status_plain_len(status1) {
  * window also reassesses the core fields, forcing unchanged values to be
  * sent again (including gold's label after check_gold_symbol()). */
 export function new_status_window() {
+    /* wintty.c:496/503 tty_clear_nhwindow(WIN_STATUS): the status rows are
+     * physically blank (botlx raised) until the next bot() repaints them. */
+    game._statusBlankAfterDocrt = true;
     status_reassess();
 }
 /* C wintty.c:471-487 newclipping(), called from tty_preference_update()
@@ -9394,6 +9409,7 @@ function _buildScreenOutputWithMoreRows(rows) {
             && _status_blank_after_docrt() && !_map_row20_clipped() && game.level;
         output += (_r1MapPrint ? render_map_row(ROWNO - 1)
                    : _r1Live && _r1Physical !== undefined ? _r1Physical
+                   : _r1Live && game._r1MoreFrozen !== undefined ? game._r1MoreFrozen
                    : _r1Live && !_r1Whole ? _status_row1_map_overlay(_r3[0])
                    : _r1Live ? _status_row1_whole_with_tail(_r3[0])
                    : _status_sgr(_r3[0])) + '\n' + _status_sgr(_r3[1]) + '\n' + _status_sgr(_r3[2]);
@@ -10707,6 +10723,15 @@ export function topl_force_break_now(clears = false, cells = null, botl = null) 
         g._pending_message = String(g._resultMessage);
         g._resultMessage = null;
     }
+    /* An occupation's committed line (eat.c fprefx "This pancake is
+     * delicious!") is still gt.toplines, TOPLINE_NEED_MORE, during the
+     * occupation's movemon turns; a display_nhwindow(WIN_MESSAGE) there
+     * (vamp_shift, monmove.c:2391) pages it like any other standing line. */
+    if (!g?._pending_message && g?.occupation && g._occ_committed_topl
+        && !g._occ_committed_topl.postMeal && !g._topl_win_stop) {
+        g._pending_message = g._occ_committed_topl.text;
+        g._occ_committed_topl = null;
+    }
     const line = String(g?._pending_message || '');
     if (!line) return;
     if (ENV.FF_MLTRACE === '1')
@@ -10989,6 +11014,12 @@ async function _topl_more(committed, dismissMore) {
     // back as a single-element array, so this subsumes the old single-row
     // case), THEN append "--More--" (8 cols) to the last row if it fits within
     // CO-1, otherwise give it its own row.  threshold: lastRow + 8 <= 79.
+    /* A caller that pre-rendered its own page (apply.js's getdir _showP sets
+     * the topline to `<msg>--More--`) can have that text committed here when
+     * a later pline joined it during the flush: topl.c more() writes ONE
+     * defmorestr, so the marker already present is this page's, not text. */
+    if (String(committed).endsWith(TOPL_MORE))
+        committed = String(committed).slice(0, -TOPL_MORE.length);
     const _wrapped = _topl_wordwrap(committed, TOPL_CO - 1);
     const _lastFits = (_topl_visualLen(_wrapped[_wrapped.length - 1]) + TOPL_MORE.length)
         <= (TOPL_CO - 1);
@@ -10999,7 +11030,20 @@ async function _topl_more(committed, dismissMore) {
         _msgRows.push(TOPL_MORE);
     const _moreRow = _msgRows.length - 1;
     const _moreCol = _topl_visualLen(_msgRows[_moreRow]);
+    /* topl.c more() writes only the topline and waits (xwaitforspace); it
+     * never flushes.  With three status rows the physical row 1 is whatever
+     * the last flush_screen()/bot() left there -- map y=20 glyphs printed over
+     * the text (display.c:2236-2256) -- so when neither has run since, keep
+     * that row rather than re-deriving it from later state. */
+    const _lff = game._lastFlushFrame;
+    const _r1Frozen = (_lff && _lff.r1row !== undefined && _lff.epoch === _flush_epoch
+        && _lff.botlSeq === (game._botlPaintSeq | 0) && _lff.level === game.level
+        && _threeStatusLines() && !_map_row20_clipped()) ? _lff.r1row : undefined;
     const _renderMore = () => {
+        game._r1MoreFrozen = _r1Frozen;
+        try { _renderMoreRows(); } finally { game._r1MoreFrozen = undefined; }
+    };
+    const _renderMoreRows = () => {
         if (_msgRows.length === 1) {
             game._pending_message = _msgRows[0];
             _buildScreenOutput();
@@ -11462,6 +11506,16 @@ export async function force_more(committed, dismissMore, alreadyPainted = false,
         routeTag('force_more', committed); /* telemetry only; inert when env unset */
         g._topl_win_stop_armed = false;
         g._topl_win_stop = true;
+        /* The committed text is the line already PAINTED under WIN_STOP whose
+         * gt.toplines bookkeeping the suppressed plines after it have done
+         * (_topl_history_recall marks it as filed).  C's display_nhwindow /
+         * more() leaves gt.toplines and the history alone; re-plining it here
+         * would REPLACE the joined buffer and file the owner a second time
+         * (options.c:9001 docrt after a doset ESC'd page: ^P then recalled
+         * "'showrace' option toggled on." instead of the joined line). */
+        if (g._topl_win_stop_buf != null && String(committed ?? '') === g._pending_message
+            && g._topl_history_recall === g._pending_message)
+            return 0;
         g._pline_no_vision_recalc = true;
         try {
             await pline(String(committed ?? ''));
@@ -12955,6 +13009,10 @@ function _flush_screen_repaint(mode) {
                                  seq: game._toplShownSeq | 0,
                                  botlSeq: game._botlPaintSeq | 0,
                                  r1whole: !!game._status1Whole,
+                                 /* the physical status row 1 this flush left
+                                  * (map y=20 printed over it, statuslines:3) */
+                                 r1row: _threeStatusLines() && !_map_row20_clipped()
+                                     ? String(game._screen_output || '').split('\n')[21] : undefined,
                                  level: game.level };
     // Applied after _buildScreenOutput, which is this port's paint step and
     // walks the terminal cursor across every cell it writes; C's repaint loop
@@ -13349,6 +13407,12 @@ async function _pline_body(msg, alreadyFlushed, putmesg = null, ...args) {
 
 async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
     const rngAtEntry = (getRngLog() || []).length; /* C's more() blocks inside this call */
+    /* you_buf_message(): the static-buffer alias of an unformatted You()-family line. */
+    let youBufAlias = null;
+    if (msg instanceof String) {
+        youBufAlias = msg._youBuf || null;
+        msg = String(msg);
+    }
     if (args.length > 0)
         msg = nh_sprintf(msg, args);
     // The food-result adapter handles ordinary messages; exceptional messages
@@ -13362,6 +13426,8 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         const mxy = game.a11y.msg_loc;
         game.a11y.msg_loc = { x: 0, y: 0 };
         if (msg && game.a11y.accessiblemsg && isok(mxy.x, mxy.y)) {
+            /* pline.c:177-189: the prefixed copy is a fresh alloc()'d line. */
+            youBufAlias = null;
             const gp = game.iflags?.getpos_coords;
             msg = _rt_coord_desc(mxy.x, mxy.y, (!gp || gp === 'n') ? 'f' : gp) + ': ' + msg;
         }
@@ -13551,6 +13617,11 @@ async function _pline_body_now(msg, alreadyFlushed, putmesg = null, ...args) {
         if (game._mentionMapPending && game._mentionMapPending !== _mmBefore)
             await game._mentionMapPending;
     }
+    /* pline.c:266-275: putmesg(line) reads gy.you_buf AFTER the recalc; a nested
+     * You()-family call that reused (did not regrow) the buffer replaced it. */
+    if (youBufAlias && game._youBuf && game._youBuf.id === youBufAlias.id
+        && game._youBuf.gen !== youBufAlias.gen)
+        msg = game._youBuf.text;
     /* C's pre-message flush (pline.c:273-274) updates the map/status without
      * erasing the physical topline. Keep it for bytes that paint no cell;
      * our repaint reconstructs that row from the already-cleared input buffer. */
@@ -13784,8 +13855,32 @@ export function Unaware() {
 export function You_with_output(putmesg, line, ...args) {
     return _You(putmesg, line, args);
 }
+/* C pline.c:339-363 You_buf()/YouPrefix()/YouMessage(): every You()-family
+ * call composes "<prefix><raw format>" into ONE static buffer (gy.you_buf),
+ * grown only when too small (siz + 10), and vpline() is handed that buffer.
+ * A format with no '%' is used IN PLACE (pline.c:192-194), so when vpline's
+ * vision_recalc (pline.c:266-272) runs a nested You()-family pline -- e.g.
+ * hack.c:1720 notice_mon's You("%s %s.") -- that rewrites the buffer, the
+ * outer pline's putmesg() prints the nested call's RAW format ("You %s %s.")
+ * instead of its own text.  The returned String object carries the buffer
+ * identity; _pline_body_now() resolves it after its vision recalc. */
+export function you_buf_message(prefix, line) {
+    const text = prefix + String(line);
+    const siz = String(line).length + prefix.length + 1;
+    const yb = (game._youBuf ||= { id: 0, siz: 0, gen: 0, text: '' });
+    if (siz > yb.siz) {
+        yb.id++;
+        yb.siz = siz + 10;
+    }
+    yb.gen++;
+    yb.text = text;
+    const out = new String(text);
+    if (!text.includes('%'))
+        out._youBuf = { id: yb.id, gen: yb.gen };
+    return out;
+}
 function _You(putmesg, line, args) {
-    const msg = 'You ' + line;
+    const msg = you_buf_message('You ', line);
     return putmesg ? _pline_body(msg, false, putmesg, ...args)
                   : pline(msg, ...args);
 }
