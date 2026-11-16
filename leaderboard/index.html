@@ -495,6 +495,8 @@ td.pct {
 const DATA_URL = 'data.json';
 const GRANDFATHERED_URL = 'grandfathered.json';
 const CATEGORY_ORDER = ['transpiled', 'agentic', 'other', 'none'];
+// Teams at or above this combined screen match go in the top sections.
+const TOP_PCT = 90;
 // An entrant still on the unmodified contest template (it scores 15 public
 // points and nothing else) who has not declared a category is not shown.
 const TEMPLATE_PUBLIC_POINTS = 15;
@@ -656,10 +658,28 @@ async function loadLeaderboard() {
         ;
 
         const allTeams = (data.teams || []).slice().sort(SCORE_SORT);
-        const byCat = Object.fromEntries(CATEGORY_ORDER.map((c) => [c, []]));
+        // Combined (public + held-out) screen match, the headline percentage.
+        const screenPct = (t) => {
+            const max = (t.public?.maxPoints || 0) + (t.heldOut?.maxPoints || 0);
+            const got = (t.public?.points || 0) + (t.heldOut?.points || 0);
+            return max > 0 ? got / max * 100 : 0;
+        };
+        // Four ranked sections: transpiled and agentic at or above TOP_PCT,
+        // then transpiled and agentic below it.  Teams in the other
+        // categories follow, as before, so nobody disappears.
+        const sections = [];
+        for (const [top, word] of [[true, 'OVER'], [false, 'UNDER']])
+            for (const cat of ['transpiled', 'agentic'])
+                sections.push({ key: `${cat}-${top ? 'top' : 'low'}`,
+                    label: `${cat.toUpperCase()} ${word} ${TOP_PCT}%`, teams: [],
+                    match: (c, t) => c === cat && (screenPct(t) >= TOP_PCT) === top });
+        for (const cat of CATEGORY_ORDER.filter((c) => c !== 'transpiled' && c !== 'agentic'))
+            sections.push({ key: cat, label: cat === 'none' ? 'NOT REPORTED' : cat.toUpperCase(),
+                teams: [], match: (c) => c === cat });
         allTeams.forEach((t) => {
             const cat = resolveCategory(t, grandfathered);
-            if (!isUndeclaredTemplate(t, cat)) byCat[cat].push(t);
+            if (isUndeclaredTemplate(t, cat)) return;
+            sections.find((sec) => sec.match(cat, t)).teams.push(t);
         });
 
         const fmt = (n) => Number(n || 0).toLocaleString();
@@ -680,12 +700,13 @@ async function loadLeaderboard() {
         };
 
         let rendered = 0;
-        CATEGORY_ORDER.forEach((cat) => {
-            const teams = byCat[cat] || [];
+        sections.forEach((section) => {
+            const cat = section.key;
+            const teams = section.teams;
             if (teams.length === 0) return;
             rendered += teams.length;
 
-            appendCategoryRow((cat === 'none' ? 'NOT REPORTED' : cat).toUpperCase());
+            appendCategoryRow(section.label);
             teams.forEach((team, i) => {
                 const tr = document.createElement('tr');
                 const pub = team.public;
