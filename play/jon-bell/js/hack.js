@@ -19,6 +19,7 @@ import { classifyTerrain, invalidateTerrainStatus } from './terrain-status.js';
 import { t_at } from './trap.js';
 import { m_at } from './uhitm.js';
 import { is_safemon } from './display.js';
+import { menu_item_marker as _menu_item_marker } from './display.js';
 import { acurr } from './attrib.js'; // relocate-fns
 import { A_CON } from './const.js';
 import { Is_airlevel, LEFT_SIDE, OVERLOADED, RIGHT_SIDE, UNENCUMBERED, Upolyd, WOUNDED_LEGS, W_ARMF } from './const.js'; // relocate-fns
@@ -1998,7 +1999,7 @@ async function _pickup_menu(atTile, count = 0) {
         for (const o of list) {
             /* C pickup.c:1131 evaluates each menu item's glyph once, even
              * though tty does not paint it. Hallucination uses display RNG. */
-            obj_to_glyph(o);
+            const _og = obj_to_glyph(o);
             if (mrow % 23 === 0) letterCode = 97;
             let acc;
             if (first && (o.oclass | 0) === OCLASS_COIN) {
@@ -2007,7 +2008,7 @@ async function _pickup_menu(atTile, count = 0) {
                 acc = letterCode;
                 letterCode = (letterCode === 122) ? 65 : letterCode + 1;
             }
-            lettered.push({ letter: acc, obj: o, selected: false,
+            lettered.push({ letter: acc, obj: o, selected: false, glyph: _og,
                             page: Math.trunc(mrow / 23) });
             mrow++;
             first = false;
@@ -2025,14 +2026,32 @@ async function _pickup_menu(atTile, count = 0) {
      * marks it '+'; '#' is a typed count, '-' unselected.  This renderer
      * repaints per key, so each entry carries its last-painted indicator. */
     const _indInPlace = (e) => (e.indStyled = true, e.selected ? ((e.count | 0) > 0 ? '#' : '+') : '-');
-    const _indFresh = (e) => (e.indStyled = false, e.selected ? ((e.count | 0) > 0 ? '#' : '*') : '-');
+    /* C wintty.c:1335,1383-1390,1475-1483 process_menu_window: show_obj_syms =
+     * iflags.use_menu_glyphs, but with menu_objsyms bit 4 (conditional) only when
+     * the menu holds no identifier-less row; tty_end_menu's prompt line
+     * ("Pick up what?") is such a row, so a query_objlist menu never draws the
+     * symbols in conditional mode, headings or not.  An unselected entry's
+     * freshly painted marker is the object's class symbol instead of '-'; an
+     * in-place set_item_state rewrite stays '-'. */
+    const _showObjSyms = (g.iflags?.use_menu_glyphs ?? true)
+        && !(((g.iflags?.menuobjsyms ?? 4) | 0) & 4);
+    const _indFresh = (e) => (e.indStyled = false, e.selected ? ((e.count | 0) > 0 ? '#' : '*')
+        : (_showObjSyms && e.glyph) ? _menu_item_marker({ selected: false, count: -1, glyph: e.glyph }, 0, true) : '-');
     /* Render helper: the menu window lines with current selection state. */
     async function renderLines() {
         const out = [];
         out.push(menu_heading_text(count ? `Pick ${count} of what?` : 'Pick up what?'));
         out.push('');
         for (const oc of (flatMenu ? [null] : classOrder)) {
-            if (!flatMenu) out.push(menu_heading_text(CLASS_NAME[oc] ?? 'Items'));
+            if (!flatMenu) {
+                /* C pickup.c:1122 let_to_name(*pack, FALSE, how != PICK_NONE
+                 * && iflags.menu_head_objsym), invent.c:4825-4833 padding. */
+                let hdr = CLASS_NAME[oc] ?? 'Items';
+                if (g.iflags?.menu_head_objsym)
+                    hdr += ' '.repeat(Math.max(0, 7 - hdr.length))
+                        + `  ('${def_oc_syms_chars[oc]}')`;
+                out.push(menu_heading_text(hdr));
+            }
             for (const it of lettered) {
                 if (!flatMenu && (it.obj.oclass | 0) !== oc) continue; /* already in menu order */
                 // C windows.c:1803-1805 applies MENUCOLOR to the description;
@@ -2115,15 +2134,18 @@ async function _pickup_menu(atTile, count = 0) {
         /* RETURN / ENTER confirms from any page; SPACE pages forward and
          * confirms on the last page (wintty.c process_menu_window). */
         if (k === 10 || k === 13) break;
+        /* C wintty.c:1395-1398: reset_count stays TRUE after any key but a digit or a
+         * bell, so a pending count dies with a paging command. */
         if (k === 32 || (tall && k === 0x3e /* '>' */)) {
+            _pickCount = 0;
             if (page < pageCount - 1) { page++; pageFresh = true; continue; }
             if (k === 32) break;
             continue;
         }
-        if (tall && k === 0x3c /* '<' */) { if (page > 0) { page--; pageFresh = true; } continue; }
+        if (tall && k === 0x3c /* '<' */) { _pickCount = 0; if (page > 0) { page--; pageFresh = true; } continue; }
         /* C wintty.c:1637-1651: '^'/'|' also repaint only on a page change. */
-        if (tall && k === 0x5e /* '^' */) { if (page > 0) { page = 0; pageFresh = true; } continue; }
-        if (tall && k === 0x7c /* '|' */) { if (page < pageCount - 1) { page = pageCount - 1; pageFresh = true; } continue; }
+        if (tall && k === 0x5e /* '^' */) { _pickCount = 0; if (page > 0) { page = 0; pageFresh = true; } continue; }
+        if (tall && k === 0x7c /* '|' */) { _pickCount = 0; if (page < pageCount - 1) { page = pageCount - 1; pageFresh = true; } continue; }
         /* C wintty.c process_menu_window: digits build a count (a leading '0'
          * is not a count); the next item accelerator selects WITH that count,
          * shown as '#' rather than '+' (set_item_state / tty_add_menu). */
@@ -2202,18 +2224,24 @@ async function _pickup_menu(atTile, count = 0) {
         if (count) continue; // PICK_ONE has no bulk selection; nothing is selected yet.
         const _onPage = (e) => !tall || e.page === page;
         if (k === MENU_SELECT_ALL || k === MENU_SELECT_PAGE) {
+            /* C wintty.c:1198-1212: an already-selected entry is skipped (its count stays). */
             for (const e of lettered)
-                if (k === MENU_SELECT_ALL || _onPage(e)) { e.selected = true; e.ind = _indInPlace(e); }
+                if ((k === MENU_SELECT_ALL || _onPage(e)) && !e.selected) { e.selected = true; e.ind = _indInPlace(e); }
             continue;
         }
         if (k === MENU_UNSELECT_ALL || k === MENU_UNSELECT_PAGE) {
+            /* C wintty.c:1218-1236: a deselected entry's count is reset to -1. */
             for (const e of lettered)
-                if (k === MENU_UNSELECT_ALL || _onPage(e)) { e.selected = false; e.ind = _indInPlace(e); }
+                if ((k === MENU_UNSELECT_ALL || _onPage(e)) && e.selected) { e.selected = false; e.count = -1; e.ind = _indInPlace(e); }
             continue;
         }
         if (k === MENU_INVERT_ALL || k === MENU_INVERT_PAGE) {
             for (const e of lettered)
-                if (k === MENU_INVERT_ALL || _onPage(e)) { e.selected = !e.selected; e.ind = _indInPlace(e); }
+                if (k === MENU_INVERT_ALL || _onPage(e)) {
+                    e.selected = !e.selected;
+                    if (!e.selected) e.count = -1; /* wintty.c:1239-1262 */
+                    e.ind = _indInPlace(e);
+                }
             continue;
         }
         /* C tty: non-accelerator keys are ignored; the menu stays up. */

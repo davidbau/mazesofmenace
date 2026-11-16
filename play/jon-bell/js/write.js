@@ -1,6 +1,6 @@
 // write.js — C ref: write.c.
 import { exercise } from './attrib.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, OCLASS_SCROLL, OCLASS_SPBOOK, Role_if, You_cant, Your, _cmd_Hallucination, _hero_Blind, _hero_nohands, _uprop_active, getObjFromGetobj, makeknown, ysimple_name } from './cmd.js';
+import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, OCLASS_SCROLL, OCLASS_SPBOOK, Role_if, You_cant, Your, _cmd_Hallucination, _hero_Blind, _hero_nohands, _uprop_active, getObjFromGetobj, makeknown, ysimple_name, impossible_cmd as impossible } from './cmd.js';
 import { check_unpaid } from './shk.js';
 import { useup } from './invent.js';
 import { A_WIS, ECMD_CANCEL, ECMD_OK, ECMD_TIME, GETOBJ_NOFLAGS, LL_CONDUCT, MAXULEV } from './const.js';
@@ -10,7 +10,7 @@ import { game } from './gstate.js';
 import { mungspaces, upstart } from './hacklib.js';
 import { hold_another_object } from './invent.js';
 import { update_inventory } from './invent.js';
-import { bcsign, mksobj } from './mkobj.js';
+import { bcsign, mksobj, spbook_oc_level } from './mkobj.js';
 import { wipeout_text } from './engrave.js';
 import { MKOBJ_SVB_BASES } from './mkobj_data.js';
 import { observe_object } from './o_init.js';
@@ -60,7 +60,6 @@ export async function dowrite(pen) {
     /* C write.c:99-100 — `if (!paper) return ECMD_CANCEL;` */
     if (!paper)
         return ECMD_CANCEL;
-    g._pending_message = '';
 
     /* C write.c:102-105 — the noun used in every message below. */
     const typeword = ((paper.otyp | 0) === _WRITE_SPE_NOVEL) ? 'book'
@@ -201,7 +200,7 @@ export async function dowrite(pen) {
     check_unpaid(pen);
 
     /* see if there's enough ink (write.c:253) */
-    const basecost = _write_cost(new_obj);
+    const basecost = cost(new_obj);
     if ((pen.spe | 0) < Math.trunc(basecost / 2)) {
         await Your('marker is too dry to write that!');
         await obfree(new_obj, null);
@@ -281,25 +280,47 @@ export async function dowrite(pen) {
     return ECMD_TIME;
 }
 
-/* C ref: write.c:16-60 cost(otmp) — base ink cost of a scroll or spellbook. */
-const _WRITE_SPBOOK_LEVEL = [5,2,4,4,3,7,1,1,1,1,1,1,2,2,2,2,2,2,3,3,3,5,3,3,4,3,4,4,4,3,5,3,6,6,6,6,7,1,1,3,2,0,1,7];
+/* C ref: write.c:13-57 cost(otmp) — base ink cost of a scroll or spellbook.
+ * SCR_* otyp numbers: 323 enchant armor .. 343 stinking cloud, 364 mail,
+ * 365 blank paper (js/const.js:2942-2958; objects.h scroll order). */
+function cost(otmp) {
+    if ((otmp.oclass | 0) === OCLASS_SPBOOK)
+        return (10 * spbook_oc_level(otmp.otyp));
 
-const _WRITE_COST_BY_NAME = {
-    'mail': 2,
-    'light': 8, 'gold detection': 8, 'food detection': 8, 'magic mapping': 8,
-    'amnesia': 8, 'fire': 8, 'earth': 8,
-    'destroy armor': 10, 'create monster': 10, 'punishment': 10,
-    'confuse monster': 12, 'identify': 14,
-    'enchant armor': 16, 'remove curse': 16, 'enchant weapon': 16, 'charging': 16,
-    'scare monster': 20, 'stinking cloud': 20, 'taming': 20, 'teleportation': 20,
-    'genocide': 30,
-};
-
-function _write_cost(otmp) {
-    if ((otmp.oclass | 0) === OCLASS_SPBOOK) {
-        const k = (otmp.otyp | 0) - 366;
-        return 10 * ((k >= 0 && k < _WRITE_SPBOOK_LEVEL.length) ? _WRITE_SPBOOK_LEVEL[k] : 1);
+    switch (otmp.otyp | 0) {
+    case 364: /* SCR_MAIL */
+        return 2;
+    case 332: /* SCR_LIGHT */
+    case 334: /* SCR_GOLD_DETECTION */
+    case 335: /* SCR_FOOD_DETECTION */
+    case 337: /* SCR_MAGIC_MAPPING */
+    case 338: /* SCR_AMNESIA */
+    case 339: /* SCR_FIRE */
+    case 340: /* SCR_EARTH */
+        return 8;
+    case 324: /* SCR_DESTROY_ARMOR */
+    case 329: /* SCR_CREATE_MONSTER */
+    case 341: /* SCR_PUNISHMENT */
+        return 10;
+    case 325: /* SCR_CONFUSE_MONSTER */
+        return 12;
+    case 336: /* SCR_IDENTIFY */
+        return 14;
+    case 323: /* SCR_ENCHANT_ARMOR */
+    case 327: /* SCR_REMOVE_CURSE */
+    case 328: /* SCR_ENCHANT_WEAPON */
+    case 342: /* SCR_CHARGING */
+        return 16;
+    case 326: /* SCR_SCARE_MONSTER */
+    case 343: /* SCR_STINKING_CLOUD */
+    case 330: /* SCR_TAMING */
+    case 333: /* SCR_TELEPORTATION */
+        return 20;
+    case 331: /* SCR_GENOCIDE */
+        return 30;
+    case 365: /* SCR_BLANK_PAPER */
+    default:
+        impossible("You can't write such a weird scroll!");
     }
-    const c = _WRITE_COST_BY_NAME[_objName_full(otmp.otyp | 0)];
-    return c != null ? c : 1000;
+    return 1000;
 }

@@ -173,14 +173,22 @@ const _QC_CLASS_NAME = {
     1: 'Illegal objects', 2: 'Weapons', 3: 'Armor', 4: 'Rings', 5: 'Amulets',
     6: 'Tools', 7: 'Comestibles', 8: 'Potions', 9: 'Scrolls', 10: 'Spellbooks',
     11: 'Wands', 12: 'Coins', 13: 'Gems/Stones', 14: 'Boulders/Statues',
-    15: 'Iron balls', 16: 'Chains',
+    15: 'Iron balls', 16: 'Chains', 17: 'Venoms',
 };
+/* C invent.c:4825-4833 let_to_name(let, FALSE, withsym): with
+ * iflags.menu_head_objsym the class symbol follows the padded name. */
+function _qc_heading(oc) {
+    let hdr = _QC_CLASS_NAME[oc] ?? 'Items';
+    if (game.iflags?.menu_head_objsym)
+        hdr += ' '.repeat(Math.max(0, 7 - hdr.length)) + `  ('${_QC_CLASS_SYM[oc]}')`;
+    return hdr;
+}
 /* C ref: include/defsym.h OBJCLASS() column 2 — def_oc_syms[oclass].sym, the
  * class symbol add_menu() is handed as each class/object row's GROUP
  * accelerator (pickup.c:1378, :1136). */
 const _QC_CLASS_SYM = {
     1: ']', 2: ')', 3: '[', 4: '=', 5: '"', 6: '(', 7: '%', 8: '!', 9: '?',
-    10: '+', 11: '/', 12: '$', 13: '*', 14: '`', 15: '0', 16: '_',
+    10: '+', 11: '/', 12: '$', 13: '*', 14: '`', 15: '0', 16: '_', 17: '.',
 };
 
 /* ---------------------------------------------------------------------------
@@ -601,7 +609,9 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
         if (k === _MENU_SELECT_ALL || k === _MENU_SELECT_PAGE) {
             count = 0; counting = false;
             const targets = k === _MENU_SELECT_PAGE ? visibleItems : null;
-            bulk(1, (it) => { if (!targets || targets.has(it)) {
+            /* C wintty.c:1198-1212 set_all_on_page / :1655-1672 MENU_SELECT_ALL skip an
+             * entry that is already selected, so a typed count stays on it ('#'). */
+            bulk(1, (it) => { if ((!targets || targets.has(it)) && !it.selected) {
                 it.selected = true; it.count = -1;
             }});
             continue;
@@ -663,9 +673,16 @@ async function _tty_pick_any_menu_run(renderLines, items, winColFooter, prior = 
             continue;
         }
         /* C:1740-1748 group accelerator — invert every row in that group. */
-        if (!counting && ch !== '\0' && items.some((it) => it.gsel === ch)) {
+        if (ch !== '\0' && items.some((it) => it.gsel === ch)) {
+            /* C wintty.c:1722-1727,1239-1264 invert_all(.., morc, counting ? count : -1L):
+             * an entry that becomes selected takes the pending count. */
             for (const it of items)
-                if (it.gsel === ch) { it.selected = !it.selected; it.count = -1; }
+                if (it.gsel === ch) {
+                    if (it.selected) { it.selected = false; it.count = -1; }
+                    else { it.selected = true; if (counting && count > 0) it.count = count; }
+                }
+            count = 0;
+            counting = false;
             continue;
         }
         /* C tty/getline.c:230-255 xwaitforspace(resp) rejects unknown keys
@@ -733,10 +750,9 @@ async function _query_category(contents, action, withJustPicked) {
     const present = [];
     for (const oc of (game.flags?.inv_order || _QC_INV_ORDER))
         if (contents.some(o => (o.oclass | 0) === oc)) present.push(oc);
-    for (const o of contents) {
-        const oc = o.oclass | 0;
-        if (!present.includes(oc)) present.push(oc);
-    }
+    /* C pickup.c:1348-1372,1511-1540 walk only `pack = flags.inv_order` (venom is
+     * appended solely for INCLUDE_VENOM, which menu_loot's query_category lacks),
+     * so a class outside inv_order is never counted or listed. */
     const ccount = present.length;
 
     /* C pickup.c:1288 — a single category with at most one BUCX entry and no
@@ -783,7 +799,7 @@ async function _query_category(contents, action, withJustPicked) {
         invlet = 'b';
     }
     for (const oc of present) {
-        addrow(invlet, _QC_CLASS_NAME[oc] ?? 'Items', 'CLASS', oc, false,
+        addrow(invlet, _qc_heading(oc), 'CLASS', oc, false,
                _QC_CLASS_SYM[oc] || 0);
         invlet = String.fromCharCode(invlet.charCodeAt(0) + 1);
     }
@@ -976,13 +992,14 @@ async function _menu_loot_items(chainHead, contents, action, useInvlet) {
     const entries = [];  /* { text, item? } in display order */
     const items = [];
     let first = true;
-    for (const oc of (game.flags?.inv_order || _QC_INV_ORDER)) {
+    /* menu_loot's mflags carry INCLUDE_VENOM (pickup.c:3398): venom is appended to the pack. */
+    for (const oc of [...(game.flags?.inv_order || _QC_INV_ORDER), 17]) {
         let printed_type_name = false;
         for (const o of sorted) {
             if ((o.oclass | 0) !== oc) continue;
             if (!printed_type_name) {
                 /* C add_menu_heading(let_to_name(...)) — reverse video. */
-                entries.push({ heading: _QC_CLASS_NAME[oc] ?? 'Items' });
+                entries.push({ heading: _qc_heading(oc) });
                 printed_type_name = true;
             }
             /* C:1133-1135 add_menu's `ch` argument:

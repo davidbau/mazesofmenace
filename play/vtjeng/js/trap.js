@@ -308,7 +308,7 @@ import { float_vs_flight, body_part, polymon } from './polyself.js';
 import { create_gas_cloud } from './region.js';
 import { coreRandom, d, rn1, rn2, rnd, rnl, rn2_on_display_rng } from './rng.js';
 import { in_rooms } from './rooms.js';
-import { dismount_steed, Punished, rider_cant_reach } from './steed.js';
+import { dismount_steed, rider_cant_reach } from './steed.js';
 import { P_SKILL } from './startup_skills.js';
 import { CMAP_EXPLANATIONS } from './symbol_data.js';
 import { trap_to_defsym } from './symbols.js';
@@ -351,7 +351,7 @@ import {
     Halluc_resistance, Hallucination, Lev_at_will, Levitation, Lifesaved,
     Maybe_Half_Phys, Passes_walls, Shock_resistance,
     Sleep_resistance, Slimed, Stone_resistance, Stunned, Swimming,
-    Teleport_control, Teleportation, Wwalking,
+    Teleport_control, Teleportation, Wwalking, Punished,
 } from './youprop.js';
 import { dungeon_at } from './dungeon_table.js';
 
@@ -2221,7 +2221,7 @@ export function trapname(ttyp, override, state, random = coreRandom,
         const totalNames = TRAPNUM + halu_trapnames.length;
         const nameidx = displayRandom(totalNames + 1);
         if (nameidx === totalNames) {
-            const female = Upolyd(state) ? state.u.mfemale : state.flags.female;
+            const female = Upolyd(state.u) ? state.u.mfemale : state.flags.female;
             const title = random.rn2(3)
                 ? ((female && state.urole.name.f)
                     ? state.urole.name.f : state.urole.name.m)

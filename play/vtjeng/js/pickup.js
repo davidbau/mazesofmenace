@@ -2116,15 +2116,18 @@ async function in_or_out_menu(
         selected: !more_containers,
     }));
     const defaultChoice = more_containers ? 'n' : 'q';
-    const choice = await select_menu(state, {
+    // pickup.c:3476: (n == 0 && more_containers) ? 'n' : 'q'. Deselecting
+    // the preselected row (n == 0) moves on to the next container, but ESC
+    // (n == -1) quits looting even when more containers remain.
+    return select_menu(state, {
         title: prompt,
         ...menuTitleStyle(state),
         items,
         how: PICK_ONE,
         preselected: defaultChoice,
-        cancelValue: null,
+        emptyValue: defaultChoice,
+        cancelValue: 'q',
     });
-    return choice ?? defaultChoice;
 }
 
 // C ref: pickup.c:2537-2554. boh_loss(). A cursed magic bag occasionally
@@ -3964,6 +3967,10 @@ async function tipcontainer_gettarget(box, state) {
         items,
         how: PICK_ONE,
         preselected: FLOOR_TARGET,
+        // n == 0 leaves otmp 0 and *cancelled FALSE, so the contents go on
+        // the floor; only ESC (n == -1) cancels.
+        emptyValue: FLOOR_TARGET,
+        cancelValue: null,
     });
 
     // pickup.c:3936-3947. Interpret the result.

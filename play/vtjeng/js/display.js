@@ -125,7 +125,7 @@ import {
     dist2,
     textBytes,
     mungspaces,
-    sgn, lcase, ucase, upstart, strcmpi,
+    sgn, lcase, ucase, upstart, strcmpi, atol,
 } from './hacklib.js';
 import { push_front, truncateByteString } from './hacklib.js';
 import { hu_stat } from './eat.js';
@@ -8486,14 +8486,12 @@ const statusField = fld => STATUS_FIELDS.find(row => row.fld === fld);
 // four come from the row at that position: initblstats[BL_VERS] is terrain's.
 const initblstat = fld => STATUS_FIELDS[fld];
 
-// C ref: botl.c s_to_anything(). LP64 strtol saturation followed by the
-// target union member's width; pointer members write the pointed-to value.
+// C ref: botl.c s_to_anything(). Every arm reads atol() or atoi(), and
+// atoi() is atol()'s low 32 bits, so one atol() result feeds the target union
+// member's width; pointer members write the pointed-to value.
 export function s_to_anything(a, buf, type) {
     if (buf == null || a == null) return;
-    const digits = String(buf).match(/^[\t\n\v\f\r ]*([+-]?\d+)/u);
-    let wide = digits ? BigInt(digits[1].replace(/^\+/u, '')) : 0n;
-    const max = (1n << 63n) - 1n, min = -(1n << 63n);
-    wide = wide > max ? max : wide < min ? min : wide;
+    const wide = atol(buf);
     const int = Number(BigInt.asIntN(32, wide));
     switch (type) {
     case ANY_LONG: a.a_long = wide; break;
@@ -8742,6 +8740,10 @@ export async function status_hilite_menu_add(state, origfld, helpers) {
                 const percent = behavior === BL_TH_VAL_PERCENTAGE;
                 const answer = await hiliteLine(state, `Enter ${percent ? 'percentage ' : ''}value for ${row.name} threshold:`, helpers);
                 if (!answer || answer[0] === '\x1b' || !answer.replace(/^[ \t]+|[ \t]+$/gu, '')) { phase = 'behavior'; continue; }
+                // C's trimspaces() drops trailing blanks from inbuf but only
+                // skips the leading ones, so inbuf, which the relation menu
+                // below quotes, keeps them; `input` is inbuf after `lead`.
+                const lead = answer.match(/^[ \t]*/u)[0];
                 let input = answer.replace(/^[ \t]+|[ \t]+$/gu, ''), numstart = input, relation = NO_LTEQGT;
                 const comparison = input.match(/^(>=|<=|>|<|=)/u);
                 if (comparison) {
@@ -8749,11 +8751,13 @@ export async function status_hilite_menu_add(state, origfld, helpers) {
                     numstart = numstart.slice(comparison[0].length);
                     input = ' '.repeat(comparison[0].length) + numstart;
                 }
+                // C accepts a '-' or else a '+' before the digits, not both.
+                const sign = numstart[0] === '-' ? '-' : '';
                 if (numstart[0] === '+') {
                     input = input.slice(0, input.length - numstart.length) + ' ' + numstart.slice(1);
                     numstart = numstart.slice(1);
                 }
-                const digits = numstart.match(/^-?\d*/u)?.[0] ?? '';
+                const digits = sign + (numstart.slice(sign.length).match(/^\d*/u)?.[0] ?? '');
                 const tail = numstart.slice(digits.length);
                 if (tail[0] === '%') {
                     if (!percent) {
@@ -8788,7 +8792,7 @@ export async function status_hilite_menu_add(state, origfld, helpers) {
                     await hiliteMessage(state, `hilite_status threshold '${op}${value}' is out of range`, helpers); continue;
                 }
                 if (relation === NO_LTEQGT) {
-                    relation = await status_hilite_menu_choose_updownboth(state, fld, input,
+                    relation = await status_hilite_menu_choose_updownboth(state, fld, lead + input,
                         value > 0 || (dt === ANY_INT && fld === BL_AC), !percent || value < 100, helpers);
                     if (relation === NO_LTEQGT) continue;
                 }

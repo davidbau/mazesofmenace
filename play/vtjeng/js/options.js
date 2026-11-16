@@ -181,7 +181,7 @@ import {
     str_start_is,
     strstri,
     truncateByteString,
-    visctrl, lcase, strcmpi, strncmpi,
+    visctrl, lcase, strcmpi, strncmpi, atoi, atol,
 } from './hacklib.js';
 import { isDefaultSymsetName, read_sym_file } from './files.js';
 import {
@@ -807,7 +807,7 @@ function configErrorAdd(result, message) {
 // the 'O' command can run, so the message carries no "config_error_add: "
 // prefix, gains a period unless it already ends in one of the three
 // punctuation marks, and is followed by wait_synch().
-async function plineConfigErrors(state, messages) {
+export async function plineConfigErrors(state, messages) {
     if (!messages.length) return;
     const { tty_wait_synch } = await import('./tty_rawprint.js');
     for (const message of messages) {
@@ -955,13 +955,13 @@ function booleanValue(result, row, statement, value, negated) {
         || normalized === 'on'
         // options.c optfn_boolean() accepts digit-leading strings according
         // to atoi(), including spellings such as "01" and "1suffix".
-        || (/^[0-9]/u.test(normalized)
-            && Number.parseInt(normalized, 10) === 1)) return true;
+        || (/^[0-9]/u.test(normalized) && atoi(normalized) === 1))
+        return true;
     if ('false'.startsWith(normalized)
         || 'no'.startsWith(normalized)
         || normalized === 'off'
-        || (/^[0-9]/u.test(normalized)
-            && Number.parseInt(normalized, 10) === 0)) return false;
+        || (/^[0-9]/u.test(normalized) && atoi(normalized) === 0))
+        return false;
     // C's third arm (5233-5237) is `else if (!allopt[optidx].valok)`: a row
     // that admits arbitrary values keeps `negated` as it was and falls through
     // to the assignment, and only the rest report and return optn_silenterr.
@@ -1565,11 +1565,13 @@ function optfn_fruit(result, request, negated, opts, op) {
                 if (!result.flags.made_fruit)
                     original = fruit_from_name(result.svp.pl_fruit, false, result);
                 if (!original && fruitNodeCount(result) >= 100) {
-                    configErrorAdd(
-                        result,
+                    // This arm runs only while !go.opt_initial, from the 'O'
+                    // menu, where config_error_add() has no configuration
+                    // frame and prints with pline() and wait_synch()
+                    // (cfgfiles.c config_erradd() 1557-1563).
+                    return plineConfigErrors(result, [
                         'Doing that so many times isn\'t very fruitful.',
-                    );
-                    return optn_ok;
+                    ]).then(() => optn_ok);
                 }
             }
         }
@@ -2014,7 +2016,7 @@ function menuHeadingColor(token, rawToken = token) {
     // coloratt.c also accepts an in-range decimal color index when the
     // string begins with a digit; the tty color table occupies 0 through 15.
     if (/^\d/u.test(rawToken)) {
-        const color = Number.parseInt(rawToken, 10);
+        const color = atoi(rawToken);
         if (color >= CLR_BLACK && color <= CLR_WHITE) return color;
     }
     return null;
@@ -2817,8 +2819,9 @@ function setStatusHiliteDuration(result, value, negated) {
         result.iflags.hilite_delta = 0;
         return;
     }
+    // options.c 4029-4030 reads the duration with atol().
     const parsed = value == null || value === ''
-        ? 3 : Number.parseInt(value, 10) || 0;
+        ? 3 : Number(atol(value));
     result.iflags.hilite_delta = parsed < 0 ? 1 : parsed;
 }
 
@@ -3232,13 +3235,6 @@ function menuCommandOption(name) {
     return index >= 0 ? MENU_COMMAND_OPTIONS[index] : null;
 }
 
-function isMenuCommandPrefix(name) {
-    return MENU_COMMAND_OPTIONS.some(
-        ({ name: canonical }) => canonical !== name
-            && canonical.startsWith(name),
-    );
-}
-
 function byteOf(character) {
     return character.charCodeAt(0) & 0xFF;
 }
@@ -3550,34 +3546,6 @@ function applyMenuBinding(result, binding) {
     };
     result.gameplayBindings.push(operation);
     result.commandOperations.push({ type: 'bind', ...operation });
-}
-
-// C ref: the recorder's glibc atoi(), which skips leading whitespace, reads an
-// optional sign and a decimal run, answers zero when there is none, saturates
-// first to signed long and then narrows to a signed 32-bit int.  BigInt
-// preserves that phase order across JavaScript hosts, and its digit class is
-// ASCII-only, as C's is.
-function atoi(str) {
-    const digits = String(str).match(/^[\t\n\v\f\r ]*[+-]?\d+/u);
-    let wide = digits ? BigInt(digits[0].trim().replace(/^\+/u, '')) : 0n;
-    const longMax = (1n << 63n) - 1n;
-    const longMin = -(1n << 63n);
-    if (wide > longMax) wide = longMax;
-    else if (wide < longMin) wide = longMin;
-    return Number(BigInt.asIntN(32, wide));
-}
-
-// C ref: the recorder's LP64 glibc atol().  Unlike atoi(), the option handlers
-// print the long result before narrowing an accepted value to int.  Keep the
-// result as BigInt so overflow diagnostics retain LONG_MIN or LONG_MAX exactly.
-function atol(str) {
-    const digits = String(str).match(/^[\t\n\v\f\r ]*[+-]?\d+/u);
-    let value = digits ? BigInt(digits[0].trim().replace(/^\+/u, '')) : 0n;
-    const longMax = (1n << 63n) - 1n;
-    const longMin = -(1n << 63n);
-    if (value > longMax) value = longMax;
-    else if (value < longMin) value = longMin;
-    return value;
 }
 
 // C ref: options.c nmcpy() (6861-6876). This is byte-oriented, stops at a
@@ -6268,15 +6236,14 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         optfn_hilite_status(result, DO_SET, negated, statement, value);
     } else if (name === 'statushilites') {
         setStatusHiliteDuration(result, value, negated);
-    } else if (menuCommand && parsedName === name) {
+    } else if (menuCommand) {
+        // shared_menu_optfn() hands the statement to
+        // check_misc_menu_command(), which wants the complete name, so an
+        // abbreviation parseoptions() accepted is refused there with a
+        // silent optn_err (options.c 2060-2062, 706).
         MENU_OPTION_FUNCTIONS[name](
             result, allopt.indexOf(matchedRow), DO_SET, negated,
             statement, value ?? '', null,
-        );
-    } else if (menuCommand || isMenuCommandPrefix(parsedName)) {
-        optionError(
-            lineNumber,
-            `menu command option '${parsedName}' requires its full canonical name`,
         );
     } else if (name === 'packorder') {
         // optlist.h gives negateok No, so a negated spelling never arrives.
@@ -6449,7 +6416,7 @@ function applyOption(result, optionState, element, lineNumber, aliasState) {
         }
         // atoi() answers 0 for text that starts with no digits, and the guard
         // is `!val || (val & ~7) != 0`, which admits exactly 1 through 7.
-        const versinfo = Number.parseInt(op, 10);
+        const versinfo = atoi(op);
         if (!Number.isInteger(versinfo) || versinfo < 1 || versinfo > 7) {
             configErrorAdd(
                 result,
@@ -9103,21 +9070,29 @@ export async function handle_add_list_remove(state, optname, count, helpers) {
     const rows = [['a', `add new ${optname}`], ['l', `list ${makeplural(optname)}`],
         ['r', `remove existing ${optname}`], ['x', 'exit this menu']];
     const items = rows.flatMap(([accelerator, text], i) => !count && (i === 1 || i === 2) ? [] : [{ text, selector: accelerator, value: i + 1, selected: i === 3 }]);
-    const selected = await optionMenuSelect(state, { items, title: 'Do what?', how: PICK_ONE, preselected: 4 }, helpers);
+    // pick_cnt <= 0, an emptied selection or ESC, exits the menu.
+    const selected = await optionMenuSelect(state, { items, title: 'Do what?', how: PICK_ONE, preselected: 4, emptyValue: null }, helpers);
     const picks = menuSelectionValues(selected);
     if (!picks.length) return 3;
     return (picks.length > 1 && picks[0] === 4 ? picks[1] : picks[0]) - 1;
 }
 
-// C ref: options.c test_regex_pattern(). The temporary matcher is released
-// by JS lifetime before feedback; no game-state matcher is retained.
-export function test_regex_pattern(state, text, errmsg = 'NHregex error') {
+// C ref: options.c test_regex_pattern() (7870-7901). The temporary matcher is
+// released by JS lifetime before feedback; no game-state matcher is retained.
+// Its only callers, handler_menu_colors() and handler_msgtype(), run from the
+// 'O' menu, so its config_error_add() never has a configuration frame: it
+// takes cfgfiles.c config_erradd()'s pline() and wait_synch() arm (1557-1563).
+export async function test_regex_pattern(state, text, errmsg = 'NHregex error') {
     if (text == null) return false;
     errmsg ??= 'NHregex error';
     const regex = regex_init();
     const success = regex_compile(text, regex);
     const error = success ? null : regex_error_desc(regex);
-    if (!success) configErrorAdd(state, `${errmsg}: ${error}`);
+    if (!success) {
+        await plineConfigErrors(
+            state, [vconfig_error_add(`${errmsg}: ${error}`)],
+        );
+    }
     return success;
 }
 
@@ -9136,7 +9111,7 @@ export async function handler_menu_colors(state, helpers) {
                 if (state.iflags.use_menu_color && state.iflags.perm_invent) update_inventory({ state });
                 return optn_ok;
             }
-            if (pattern && test_regex_pattern(state, pattern, 'MENUCOLORS regex')) {
+            if (pattern && await test_regex_pattern(state, pattern, 'MENUCOLORS regex')) {
                 const color = await query_color(state, null, NO_COLOR, helpers);
                 if (color !== -1) {
                     const attr = await query_attr(state, null, 0, helpers);
@@ -9180,7 +9155,7 @@ export async function handler_msgtype(state, helpers) {
         if (action === 0) {
             const pattern = helpers?.getlin ? await helpers.getlin('What new message pattern?') : await getlin('What new message pattern?', state);
             if (pattern?.[0] === '\x1b') return optn_ok;
-            if (pattern && test_regex_pattern(state, pattern, 'MSGTYPE regex')) {
+            if (pattern && await test_regex_pattern(state, pattern, 'MSGTYPE regex')) {
                 const choices = MSGTYPE_NAMES.filter(({ name }) => !['noshow', 'more'].includes(name));
                 const descriptions = ['Show message normally', 'Hide message',
                     'Prompt for more after the message', 'Do not repeat the message'];

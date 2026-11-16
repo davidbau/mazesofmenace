@@ -73,7 +73,7 @@ const MAXOCLASSES = 18; /* objclass.h:141 */
  *     the symbols, comparing symbols is the same test.
  * C preserves the ORDER the value was written in — oc_to_str (options.c:8061)
  * walks the stored array — so this must not sort into def_inv_order order. */
-export function parse_pickup_types(op) {
+export function parse_pickup_types(op, errs = null) {
     let i = 0;
     while (op.charAt(i) === ' ') i++;
     const rest = op.slice(i);
@@ -81,11 +81,18 @@ export function parse_pickup_types(op) {
      * cleared it before the parse and the 'a' branch simply never refills it). */
     if (rest.charAt(0) === 'a' || rest.charAt(0) === 'A') return '';
     let out = '';
+    let badopt = false;
     for (const ch of rest) {
         const oc_sym = def_char_to_objclass(ch.charCodeAt(0));
         if (oc_sym !== MAXOCLASSES && !out.includes(ch))
             out += ch;
+        else
+            badopt = true;
     }
+    /* C options.c:3377-3381 reports `op` AFTER the scan loop advanced it to the
+     * terminating NUL, so the parameter is always printed as '' (C bug kept);
+     * the classes accepted before the bad symbol stay set. */
+    if (badopt && errs) errs("Unknown pickup_types parameter ''");
     return out;
 }
 
@@ -1930,12 +1937,18 @@ export function parseNethackrc(rc) {
                 }
                 else if (key === 'pickup_types') {
                     if (!val) {
+                        /* options.c:3326 string_for_opt(opts, compat || !go.opt_initial):
+                         * compat is strlen(opts) <= 6 (the `pickup` alias); any longer
+                         * spelling reaches string_for_opt(.., FALSE), which complains
+                         * about the missing value before the :3327-3334 arm. */
+                        if (menuopts.length > 6)
+                            config_error_add("Missing parameter for '%s'", menuopts);
                         result.flags.pickup_types = '';
                         result.flags.pickup = !negated;
                     } else if (negated) {
                         result.flags.pickup_types = '';
                     } else {
-                        result.flags.pickup_types = parse_pickup_types(val);
+                        result.flags.pickup_types = parse_pickup_types(val, config_error_add);
                     }
                 }
                 else if (key === 'statuslines') {

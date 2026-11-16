@@ -387,7 +387,7 @@ const SPBOOK_OC_LEVEL = new Uint8Array([
  * C ref: nethack-c/include/objclass.h:104  #define oc_level oc_oc2
  * Returns 0 for any otyp outside the spellbook range (safe fallback).
  */
-function spbook_oc_level(otyp) {
+export function spbook_oc_level(otyp) {
     const idx = (otyp | 0) - SPBOOK_FIRST_OTYP;
     if (idx < 0 || idx >= SPBOOK_OC_LEVEL.length)
         return 0;

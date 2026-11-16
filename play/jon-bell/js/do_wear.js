@@ -4260,6 +4260,9 @@ async function menu_remarm(retry) {
                 for (let i = 0; i < rows.length; i++) {
                     const sel = rows[i].selector, was = selected.has(sel);
                     if (rowIsSkipInvert[i] && (mode === 2 || (mode === 1 && !was))) continue;
+                    /* C wintty.c:1198-1212 set_all_on_page skips an already-selected
+                     * entry, so its typed count survives a bulk select. */
+                    if (bulk === 'select' && was) continue;
                     if (bulk === 'select' || (bulk === 'invert' && !was)) selected.add(sel);
                     else selected.delete(sel);
                     selCount.delete(sel);
@@ -4269,8 +4272,16 @@ async function menu_remarm(retry) {
             const row = rows.find((r) => r.selector === ch)
                      ?? rows.find((r) => r.gsym && r.gsym === ch);
             if (!row) return;
-            /* C wintty.c toggle_menu_curr(.., counting, count) */
             const sel = row.selector;
+            if (row.selector !== ch) {
+                /* C wintty.c:1722-1727 group accelerator: invert_all(.., morc,
+                 * counting ? count : -1L) — a selected entry is cleared whatever
+                 * the count, an unselected one takes it. */
+                if (selected.has(sel)) { selected.delete(sel); selCount.delete(sel); }
+                else { selected.add(sel); if (cnt > 0) selCount.set(sel, cnt); }
+                return;
+            }
+            /* C wintty.c toggle_menu_curr(.., counting, count) */
             if (selected.has(sel)) {
                 if (cnt > 0) selCount.set(sel, cnt);
                 else { selected.delete(sel); selCount.delete(sel); }

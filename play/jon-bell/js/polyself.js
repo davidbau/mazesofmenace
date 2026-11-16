@@ -636,7 +636,7 @@ export async function polymon(mntmp) {
     // mail/scales; armor_to_dragon() maps both bands to the same dragon rows.
     if (u.uskin) {
         if (armor_to_dragon(u.uskin.otyp) !== (mntmp | 0))
-            await skinback_poly(false);
+            await skinback(false);
     }
     await break_armor();
     await drop_weapon(1);
@@ -1128,27 +1128,6 @@ function canletgo_quiet(obj) {
     if ((obj.owornmask | 0) & W_SADDLE) return false;
     return true;
 }
-/* C polyself.c:1942 skinback().  Dragon scale mail is temporarily stored in
- * uskin while the hero is in the matching dragon form.  Leaving that form
- * must put the object back into uarm and clear the I_SPECIAL marker which
- * distinguishes embedded scales from ordinary worn armor. */
-async function skinback_poly(silently = false) {
-    const g = game;
-    const u = g.u;
-    const skin = u.uskin;
-    if (!skin) return false;
-
-    const oldRadius = arti_light_radius(skin);
-    if (!silently)
-        await pline('Your skin returns to its original form.');
-    u.uarm = skin;
-    u.uskin = null;
-    skin.owornmask = (skin.owornmask | 0) & ~I_SPECIAL;
-    if (artifact_light(skin))
-        await maybe_adjust_light(skin, oldRadius);
-    update_inventory();
-    return true;
-}
 
 
 
@@ -1211,7 +1190,7 @@ async function polyman(msg) {
     set_uasmon();
     u.mh = u.mhmax = 0;
     u.mtimedone = 0;
-    await skinback_poly(false);
+    await skinback(false);
     u.uundetected = 0;
     if (sticking) await uunstick();
     find_ac();

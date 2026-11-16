@@ -233,13 +233,15 @@ export function were_beastie(pm) {
 }
 
 /* C monst.h Mgender(mon) — (mon)->female ? FEMALE : MALE (do_name.h 1 / 0). */
-/* C youprop.h Hallucination — (HHallucination || EHallucination) && !Halluc_resistance;
- * read off the numerically-keyed uprops the rest of this port uses. */
+/* C youprop.h:120 Hallucination — (HHallucination && !Halluc_resistance), with
+ * Halluc_resistance = (HHalluc_resistance || EHalluc_resistance) (youprop.h:119).
+ * 5.0 has no EHallucination term (the 3.7 spelling had one), so only the
+ * INTRINSIC slot of HALLUC counts; HALLUC_RES counts both slots.  RNG-free. */
 function Hallucination() {
     const p = game.u?.uprops?.[HALLUC];
     const r = game.u?.uprops?.[HALLUC_RES];
     const onres = !!r && !!((r.intrinsic | 0) || (r.extrinsic | 0));
-    return !!p && !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !onres;
+    return !!p && !!(p.intrinsic | 0) && !onres;
 }
 
 /* C pline.c You_hear(line, ...) —

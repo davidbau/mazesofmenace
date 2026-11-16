@@ -5665,7 +5665,22 @@ async function getobj_pickinv_menu(allowedLets, countRef = null, xtraChoice = nu
         windowLines.push(menu_heading_text(hdr));
         lineItems.push(null);
         for (const obj of group) {
-            windowLines.push((await _pickinv_item_text(obj, hand)));
+            let txt = await _pickinv_item_text(obj, hand);
+            /* C wintty.c:1383-1390,1475-1483 show_obj_syms: with
+             * iflags.use_menu_glyphs (menu_objsyms entries/both) the entry's
+             * class glyph replaces the "-" separator.  Class headings are
+             * identifier-0 rows, so conditional (bit 4) draws none here. */
+            if ((g.iflags?.use_menu_glyphs ?? true)
+                && !(((g.iflags?.menuobjsyms ?? 4) | 0) & 4)) {
+                const og = obj_to_glyph(obj);
+                const sym = og.ch ?? def_oc_syms_chars[obj.oclass | 0];
+                const gc = g.iflags?.use_color === false ? 8 : og.color | 0;
+                const symTxt = gc === 0 ? `\x1b[${(g.iflags?.wc2_darkgray ?? true) ? 90 : 34}m${sym}\x1b[39m`
+                    : (gc >= 1 && gc <= 6) ? `\x1b[${30 + gc}m${sym}\x1b[39m`
+                    : (gc >= 9 && gc <= 15) ? `\x1b[${90 + gc - 8}m${sym}\x1b[39m` : sym;
+                txt = txt.replace(/^(.) - /, (_m, c) => `${c} ${symTxt} `);
+            }
+            windowLines.push(txt);
             lineItems.push(obj);
         }
     }
@@ -6247,6 +6262,10 @@ export async function getObjFromGetobj(word, okfn, ctrlflags) {
          * tty_clear_nhwindow(WIN_MESSAGE)` -- a prompt that wrapped onto a second
          * row is erased when the answer is read; only a one-row prompt stays. */
         g._topl_sticky = topl_park_cursor(null, prompt + ' ')[1] > 0 ? null : prompt;
+        /* tty_yn_function leaves toplin == TOPLINE_SPECIAL_PROMPT (topl.c:545-548), not
+         * EMPTY: the next NHW_MENU/NHW_TEXT display runs tty_clear_nhwindow(WIN_MESSAGE)
+         * (wintty.c:1912-1914,1928-1930), which erases this physical row. */
+        g._topl_sticky_prompt = g._topl_sticky;
         let itemKey = typeof itemRaw === 'number'
             ? itemRaw : (itemRaw?.charCodeAt(0) ?? 0);
         if (itemKey === 0)
@@ -19717,7 +19736,7 @@ async function handler_rebind_keys_add(keyfirst) {
     const { count, picks } = await m.select_menu(PICK_ONE);
     if (count > 0) {
         const i = picks[0];
-        let ec = null, cmdstr;
+        let ec = null, cmdstr, cmdstrFormatted = false;
         if (i === -1) {
             cmdstr = 'nothing';
         } else {
@@ -19725,6 +19744,7 @@ async function handler_rebind_keys_add(keyfirst) {
             if (ec.flags & 0x4000 /* CMD_PARAM */) {
                 const parambuf = mungspaces(await getlin(`Command ${ec.name} requires a parameter:`));
                 cmdstr = `${ec.name}(${parambuf})`;
+                cmdstrFormatted = true;
             } else {
                 cmdstr = ec.name;
             }
@@ -19738,8 +19758,8 @@ async function handler_rebind_keys_add(keyfirst) {
             if (!key || key === 27) return true;
         }
         const prevcmd = cmdbind_get(key);
-        const C_CMDSTR_GARBAGE = '\u0001';
-        cmdstr = C_CMDSTR_GARBAGE + cmdstr;
+        if (!cmdstrFormatted)
+            cmdstr = '\u0001' + cmdstr;
         if (bind_key(key, cmdstr, true)) {
             if (prevcmd && prevcmd.cmd !== ec)
                 flushed = true, await pline(`Changed key '${key2txt(key)}' from "${prevcmd.cmd.name}" to "${cmdstr}".`);

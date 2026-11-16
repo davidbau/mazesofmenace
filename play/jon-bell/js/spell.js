@@ -1,4 +1,4 @@
-import { unturn_dead } from './zap.js';
+import { unturn_dead, spell_damage_bonus } from './zap.js';
 // spell.js — Spell casting RNG path.
 // C ref: nethack-c/src/spell.c
 // @ts-nocheck — sibling imports from hand-maintained js/*.js (no .d.ts yet).
@@ -591,22 +591,6 @@ function is_metallic_armor(obj) {
     const otyp = _armor_otyp(obj);
     if (otyp < 0) return false;
     return armorIsMetallic(ARMOR_DATA[otyp]);
-}
-
-function get_quarterstaff_otyp() {
-    // Not tracking uwep as otyp yet; return sentinel that never matches
-    return -1;
-}
-
-function shield_weight(otyp) {
-    // C ref: objects.h weight field for shields
-    // We don't track shield weight; return 0 (no heavy shield)
-    return 0;
-}
-
-function small_shield_weight() {
-    // C ref: objects.h SMALL_SHIELD oc_weight = 30
-    return 30;
 }
 
 /* C spell.c:1181 — attempting a forgotten spell causes disorientation.
@@ -1834,49 +1818,6 @@ export async function dovspell() {
 }
 
 // ── litroom (light-spell side-effect) ───────────────────────────────────────
-function litroom_light_spell() {
-    const g = game;
-    const u = g.u;
-    if (!u || !g.level || typeof u.ux !== 'number') return;
-    const ux = u.ux | 0, uy = u.uy | 0;
-    const RADIUS = 5; /* C ref: read.c:2601 — non-blessed radius=5 */
-    const DIRS = [
-        [-1,  0], [ 1,  0], [ 0, -1], [ 0,  1],  /* W, E, N, S */
-        [-1, -1], [ 1, -1], [-1,  1], [ 1,  1],  /* NW, NE, SW, SE */
-    ];
-    for (const [dx, dy] of DIRS) {
-        for (let r = 1; r <= RADIUS; r++) {
-            const x = ux + dx * r;
-            const y = uy + dy * r;
-            if (x < 1 || x >= 80 || y < 0 || y >= 21) break;
-            const loc = g.level.at(x, y);
-            if (!loc) break;
-            const typ = loc.typ;
-            /* CORR (lit by spell): set visible with bright-white '#'. */
-            if (typ === CORR) {
-                show_glyph_cell(x, y, '#', CLR_WHITE, false);
-                if (g.level.flags?.hero_memory) {
-                    loc.remembered_glyph = { ch: '#', color: CLR_WHITE, decgfx: false };
-                }
-                continue;
-            }
-            /* DOOR is passable (open) but visible already; lit doesn't change
-             * its glyph in our renderer.  Continue scanning past it. */
-            if (typ === DOOR) {
-                continue;
-            }
-            /* ROOM tiles are already lit in their parent room; nothing extra. */
-            if (typ === ROOM) {
-                continue;
-            }
-            /* Solid wall or other non-passable terrain blocks further sight.
-             * C litroom would still mark wall tiles lit, but they're already
-             * rendered the same; stop scanning past them. */
-            break;
-        }
-    }
-}
-
 /* C spell.c:687 — rejection is checked before input selection, and again
  * by spelleffects_check for direct teleport/turn-undead casting callers. */
 async function rejectcasting() {
@@ -2047,7 +1988,7 @@ export async function spelleffects(spell_otyp, atme, force) {
                             await losehp(damage, `zapped ${uhim_spell()}self with a spell`, NO_KILLER_PREFIX);
                     } else {
                         await explode(u.dx, u.dy, otyp - SPE_MAGIC_MISSILE + 10,
-                                      spell_damage_bonus_sp(Math.trunc(u.ulevel / 2) + 1), 0,
+                                      spell_damage_bonus(Math.trunc(u.ulevel / 2) + 1), 0,
                                       (otyp === SPE_CONE_OF_COLD) ? EXPL_FROSTY : EXPL_FIERY);
                     }
                     u.dx = cc.x + rnd(3) - 2;               /* spell.c:1439-1440 */
@@ -2220,24 +2161,6 @@ function oc_dir_of_spell(otyp) {
 async function getdir_for_spell() {
     game._screen_output = null;
     return await getdir(null);
-}
-
-/* C ref: zap.c:3480 spell_damage_bonus (zap.js's copy is an identity stub). */
-function spell_damage_bonus_sp(dmg) {
-    const intell = acurr_real(game.u, A_INT);
-    const lvl = game.u.ulevel | 0;
-    if (intell <= 9) {
-        if (dmg > 1)
-            dmg = (dmg <= 3) ? 1 : dmg - 3;
-    } else if (intell <= 13 || lvl < 5) {
-        /* no bonus or penalty */
-    } else if (intell <= 18)
-        dmg += 1;
-    else if (intell <= 24 || lvl < 14)
-        dmg += 2;
-    else
-        dmg += 3;
-    return dmg;
 }
 
 /* C ref: spell.c:1604-1612 spell_aim_step */
@@ -2579,9 +2502,14 @@ export async function cast_protection() {
     return ECMD_OK;
 }
 
-async function study_book_already_known(spellName) {
+async function study_book_already_known(spellName, booktype) {
     const g = game;
     const msg = `You know "${spellName}" quite well already.`;
+    /* C spell.c:566-570 — "hero has just been told what spell this book is for;
+     * it may have been undiscovered if spell was learned via divine gift".
+     * makeknown() runs after the You() line and before the y_n prompt, so it
+     * cannot change the text; it only discovers the type (a no-op if known). */
+    _makeknown(booktype);
     /* C spell.c:566-571 -> cmd.c:5394-5465: query_menu asks with a
      * PICK_ONE menu; let the shared y_n dispatcher drain the message. */
     if (g.iflags?.query_menu && g.iflags?.window_inited) {
@@ -2726,7 +2654,7 @@ export async function study_book(spellbook) {
         const idx = booktype - _SPBOOK_FIRST_OTYP;
         const name = (idx >= 0 && idx < _SPBOOK_NAMES.length)
             ? _SPBOOK_NAMES[idx] : 'a spell';
-        if (!(await study_book_already_known(name))) {
+        if (!(await study_book_already_known(name, booktype))) {
             /* C spell.c:537-553 ran before the prompt: the 'n' return keeps
              * the new book's delay (a resumed study then uses it). */
             study_book_set_delay(booktype);

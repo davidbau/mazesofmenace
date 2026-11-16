@@ -638,7 +638,10 @@ export function build_window_screen(windowLines, WIN_COL, uacStep0, statusClipAr
                  * left physically on the row with toplin EMPTY (_topl_sticky)
                  * survives left of offx.  Fuzzer travel/getpos tip pages
                  * "Where do you want to travel to?" away (rm398 step 54). */
-                const topl = String((game._pending_message || noOverlay) ? ''
+                /* An answered getobj prompt (toplin SPECIAL_PROMPT, not EMPTY) is cleared
+                 * by tty_clear_nhwindow(WIN_MESSAGE) at wintty.c:1912-1914 / 1928-1930. */
+                const answeredPrompt = !!game._topl_sticky && game._topl_sticky === game._topl_sticky_prompt;
+                const topl = String((game._pending_message || noOverlay || answeredPrompt) ? ''
                                     : (game._topl_sticky || '')).replace(/\s+$/, '');
                 const left = topl.slice(0, Math.max(0, col - 1));
                 output += left;

@@ -1051,7 +1051,32 @@ const _QO_SELECT_ALL = 0x2e /* '.' */, _QO_UNSELECT_ALL = 0x2d /* '-' */,
  * toggles that row (PICK_ONE finishes immediately on the first toggle,
  * pickup.c:1024's `how` parameter), a group accelerator toggles its whole
  * class, anything else rings the bell and the menu stays up. */
+let _selectMenuFull = false;
 async function _select_menu(items, how, paint = null) {
+    _selectMenuFull = false;
+    const cancelled = await _select_menu_run(items, how, paint);
+    /* C wintty.c:966-979,3684-3687: destroying a full-screen (offx 0 or taller
+     * than the terminal) menu redraws the map with docrt(); windows.c:1856-1864
+     * keeps bot() disabled until select_menu returns, so the status rows stay
+     * blank until the next status paint (same arm as hack.js _pickup_menu). */
+    if (paint && _selectMenuFull) {
+        const g = game;
+        const oldBotDisabled = g._bot_disabled;
+        g._bot_disabled = true;
+        try {
+            await docrt(false, g._screen_output);
+            await flush_screen(1);
+        } finally {
+            g._bot_disabled = oldBotDisabled;
+        }
+        status_r1_menu_docrt();
+        g._r1botAfterMap = g.level;
+        g._r1textOver = true;
+        g._statusBlankAfterDocrt = true;
+    }
+    return cancelled;
+}
+async function _select_menu_run(items, how, paint = null) {
     let page = 0;
     let pendingCount = 0n;
     /* wintty.c:1704-1730 MENU_SEARCH: the getlin blanks row 0, and the page is
@@ -1097,6 +1122,8 @@ async function _select_menu(items, how, paint = null) {
             }
             const full = tall || lines.length === 24;
             const WIN_COL = full ? 1 : tty_window_offx(lines, 'end');
+            _selectMenuFull = full || WIN_COL === 1
+                || game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0;
             /* C wintty.c:1918-1919 tty_display_nhwindow(NHW_MENU): a standing
              * topline is paged out with a --More-- before the menu is drawn. */
             if (game._pending_message)

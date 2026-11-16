@@ -119,7 +119,6 @@ import { bcsign } from './obj.js';
 import { HCOLORS } from './random_text_data.js';
 import {
     AT_MAGC,
-    LOW_PM,
     M2_DEMON,
     M2_ELF,
     M2_GIANT,
@@ -226,7 +225,7 @@ import {
 } from './objnam.js';
 import { getdir } from './cmd.js';
 import {
-    amorphous, attacktype, bigmonst, defended, has_head, hates_silver,
+    amorphous, attacktype, bigmonst, defended, has_head,
     is_demon, is_dlord, is_dprince, Resists_Elem,
     noncorporeal, nonliving, resists_drli, sticks,
 } from './mondata.js';
@@ -295,7 +294,7 @@ import {
     Antimagic, BBlinded, BInvis, Blind, Cold_resistance, Drain_resistance,
     ELevitation, Fire_resistance, HBlinded, HConfusion, HLevitation,
     HStun, Hallucination, Levitation, Maybe_Half_Phys, Poison_resistance,
-    Shock_resistance, Sick, Slimed, Stone_resistance,
+    Shock_resistance, Sick, Slimed, Stone_resistance, Hate_silver,
 } from './youprop.js';
 import { dungeon_at } from './dungeon_table.js';
 
@@ -815,13 +814,6 @@ function artifactTouchRestrictions(artifact, monster, yours, state, index) {
 // file-scope static set here and read by retouch_object() to decide whether
 // to inflict its own additional damage.
 let touch_blasted = false;
-
-
-// C ref: youprop.h:401. Hate_silver: lycanthrope or silver-hating species.
-function Hate_silver(state) {
-    return (state.u.ulycn >= LOW_PM)
-        || hates_silver(state.youmonst?.data);
-}
 
 
 export async function touch_artifact(obj, monster, env = game) {
@@ -2128,7 +2120,7 @@ export async function artifact_hit(
                  * of just not getting hit.  We must add a large enough
                  * value to the damage so that this reduction in
                  * damage does not prevent death. */
-                dmgptr.value = 2 * (Upolyd(state) ? state.u.mh : state.u.uhp)
+                dmgptr.value = 2 * (Upolyd(state.u) ? state.u.mh : state.u.uhp)
                              + FATAL_DAMAGE_MODIFIER;
                 await message(`${wepdesc} cuts you in half!`, state);
                 observe_object(otmp, state);
@@ -2193,7 +2185,7 @@ export async function artifact_hit(
                         state);
                     return true;
                 }
-                dmgptr.value = 2 * (Upolyd(state) ? state.u.mh : state.u.uhp)
+                dmgptr.value = 2 * (Upolyd(state.u) ? state.u.mh : state.u.uhp)
                              + FATAL_DAMAGE_MODIFIER;
                 // C: ROLL_FROM(behead_msg) = behead_msg[random.rn2(2)]
                 const msg = behead_msg[random.rn2(2)];

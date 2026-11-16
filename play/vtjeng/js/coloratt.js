@@ -7,6 +7,7 @@
 import { BUFSZ, CLR_MAX, NH_BASIC_COLOR, PICK_ONE, PICK_ANY, HL_NONE, HL_BOLD, HL_DIM, HL_ITALIC, HL_ULINE, HL_BLINK, HL_INVERSE } from './const.js';
 import { COLOR_NAMES, COLOR_TABLE } from './color_data.js';
 import {
+    atoi,
     fuzzymatch,
     mungspaces,
     strstri,
@@ -36,23 +37,14 @@ export const MENU_COLOR_ATTRIBUTES = Object.freeze([
     Object.freeze({ name: 'reverse', attr: 7 }),
 ]);
 
-function colorAtoi(value) {
-    const digits = String(value).match(/^[+-]?\d+/u);
-    let wide = digits ? BigInt(digits[0].replace(/^\+/u, '')) : 0n;
-    const longMax = (1n << 63n) - 1n;
-    const longMin = -(1n << 63n);
-    if (wide > longMax) wide = longMax;
-    else if (wide < longMin) wide = longMin;
-    return Number(BigInt.asIntN(32, wide));
-}
-
 function basicColor(value) {
     for (const { name, color } of COLOR_NAMES) {
         if (name === null) continue;
         if (fuzzymatch(value, name, ' -_', true)) return color;
     }
+    // coloratt.c match_str2clr(): `digit(*str)` guards `c = atoi(str)`.
     if (/^\d/u.test(value)) {
-        const color = colorAtoi(value);
+        const color = atoi(value);
         if (color >= 0 && color < CLR_MAX) return color;
     }
     return null;
@@ -252,9 +244,7 @@ export function rgbstr_to_int32(rgbstr) {
         const b = components.at(-1);
         if (components.length >= 3
             && [r, g, b].every((part) => part.length > 0 && part.length < 4)) {
-            return (Number.parseInt(r, 10) << 16)
-                | (Number.parseInt(g, 10) << 8)
-                | Number.parseInt(b, 10);
+            return (atoi(r) << 16) | (atoi(g) << 8) | atoi(b);
         }
     } else if (value) {
         return check_enhanced_colors(value);
@@ -364,11 +354,15 @@ export async function query_attr(state, prompt, dflt, helpers) {
     const { ttyMenuColorAttribute } = await import('./windows.js');
     const allowMany = Boolean(prompt && lcase(prompt.slice(0, 6)) === 'choose');
     const rows = MENU_COLOR_ATTRIBUTES.slice(0, MENU_COLOR_ATTRIBUTES.findIndex(row => row.name === null));
+    const preselected = rows.findIndex(row => row.attr === dflt);
     const picks = pickedValues(await queryMenu(state, {
         items: rows.map(({ name, attr }, i) => ({ text: name, value: i + 1,
             attr: ttyMenuColorAttribute(attr), color: NO_COLOR, selected: attr === dflt })),
         title: prompt || 'Pick an attribute', how: allowMany ? PICK_ANY : PICK_ONE,
-        preselected: rows.findIndex(row => row.attr === dflt) + 1, cancelValue: null,
+        ...(preselected >= 0 ? { preselected: preselected + 1 } : {}),
+        // pick_cnt == 0, an emptied or absent preselection, is not ESC's -1:
+        // PICK_ONE answers dflt_attr below.
+        emptyValue: [], cancelValue: null,
     }, helpers));
     if (picks?.length) {
         if (!allowMany) {
@@ -396,11 +390,15 @@ export async function query_attr(state, prompt, dflt, helpers) {
 export async function query_color(state, prompt, dflt, helpers) {
     basic_menu_colors(state, true);
     const rows = COLOR_NAMES.slice(0, COLOR_NAMES.findIndex(row => row.name === null));
+    const preselected = rows.findIndex(row => row.color === dflt);
     const picks = pickedValues(await queryMenu(state, {
         items: rows.map(({ name, color }, i) => ({ text: name, value: i + 1,
             color: NO_COLOR, attr: 0, selected: color === dflt })),
         title: prompt || 'Pick a color', how: PICK_ONE,
-        preselected: rows.findIndex(row => row.color === dflt) + 1, cancelValue: null,
+        ...(preselected >= 0 ? { preselected: preselected + 1 } : {}),
+        // pick_cnt == 0, an emptied or absent preselection, is not ESC's -1:
+        // it answers dflt_color below.
+        emptyValue: [], cancelValue: null,
     }, helpers));
     basic_menu_colors(state, false);
     if (picks?.length) {

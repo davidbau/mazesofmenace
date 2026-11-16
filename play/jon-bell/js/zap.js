@@ -3720,7 +3720,7 @@ function _completely_burns(mon) {
 }
 
 /* C zap.c:3000 spell_damage_bonus — hero-cast spell damage modifier. */
-function spell_damage_bonus(dmg) {
+export function spell_damage_bonus(dmg) {
     /* C zap.c:3480-3502 */
     const intell = acurr(game.u, A_INT);
     const lvl = game.u.ulevel | 0;
