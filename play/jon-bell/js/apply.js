@@ -3257,10 +3257,24 @@ export async function doapply() {
              * runs apply.c:4230 retouch_object() again on the (now wielded) tool: for an
              * artifact axe (Cleaver) it draws touch_artifact's badalign rn2(4) a second time
              * and may blast the hero before use_pick_axe asks for the direction. */
+            const _botlPreRetouch = g._lastPaintedBotl;
+            const _hpPreRetouch = Upolyd(u) ? (u.mh | 0) : (u.uhp | 0);
             if (selObj.oartifact && !(await retouch_object_hero(selObj, false))) {
                 g.context.move = 0;
                 return ECMD_TIME;
             }
+            /* C topl.c:390-393 tty_yn_function (getdir's prompt) raises more() for the
+             * standing blast line without flush_screen(): artifact.c:951 plined BEFORE
+             * :958's losehp, whose botl flag nothing has painted yet, so that --More--
+             * frame still shows the status row the blast pline's own flush left --
+             * the PRE-damage HP. */
+            /* A lethal blast that wizard/explore mode declines to die from runs savelife(),
+             * whose curs_on_u() flush repaints the restored HP (and leaves multi = -1);
+             * only a survived blast keeps the old paint. */
+            const _blastStaleBotl = (g._touch_blasted && g._pending_message
+                && (Upolyd(u) ? (u.mh | 0) : (u.uhp | 0)) < _hpPreRetouch
+                && (g.multi | 0) >= 0)
+                ? _botlPreRetouch : null;
             /* The paging loop below repaints snapshots (its own flush_screen calls
              * bump _lastFlushFrame); C's more() flushes nothing (topl.c:390-392), so
              * the physical map is the last flush from BEFORE those page repaints. */
@@ -3308,7 +3322,16 @@ export async function doapply() {
                          * bot() must not consume them. */
                         const _replayBotl = !!(_PF && g.disp?.botl);
                         const _replayBotlx = !!(_PF && g.disp?.botlx);
+                        /* A hallucinating hero cannot replay the snapshot's glyph cells
+                         * (display-rng would be drawn twice), but the status row is
+                         * still the one the page's pline flushed BEFORE the wield
+                         * turn's moves++: pin T to that frame's clock. */
+                        const _prevMSM = g._movemonStatusMoves;
+                        if (_PF && _cmd_Hallucination() && _PF.moves != null
+                            && g.flags?.time && !(g.context?.run | 0))
+                            g._movemonStatusMoves = _PF.moves | 0;
                         try { await flush_screen(1); } finally {
+                            g._movemonStatusMoves = _prevMSM;
                             g._paintedSnapshot = _prevSnapPg;
                             g._inMovemonMore = _prevInPg;
                             if (_replayBotl) g.disp.botl = true;
@@ -3369,7 +3392,11 @@ export async function doapply() {
                      * the physical map that getdir's more() must show.
                      * faithful_input_redraw alone only updates gbuf. */
                     const _seerPaint = (g._seerMapSeq | 0) !== (g._seerMapSeq0 | 0);
-                    if (_worldPf && !_cmd_Hallucination() && !_botlPaint && !_seerPaint
+                    if (_blastStaleBotl && !_cmd_Hallucination() && g._lastFlushFrame) {
+                        g._paintedSnapshot = { cells: g._lastFlushFrame.cells,
+                            moves: g.moves | 0, botl: _blastStaleBotl };
+                        g._inMovemonMore = true;
+                    } else if (_worldPf && !_cmd_Hallucination() && !_botlPaint && !_seerPaint
                         && !(g.flags?.time && g._timeBotlFrozenMoves == null
                             && (g.moves | 0) !== (_worldPf.moves | 0))) {
                         const _fz = g._timeBotlFrozenMoves;

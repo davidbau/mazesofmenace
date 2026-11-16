@@ -68,7 +68,7 @@ import { losehp } from './hack.js';
 import { Soundeffect } from './mon.js';
 
 /* C sndprocs.h:272-273 soundlib macros / audio effects */
-const se_scream = 'se_scream', se_tumbler_click = 'se_tumbler_click', se_gear_turn = 'se_gear_turn';
+const se_scream = 'se_scream', se_thump = 'se_thump', se_tumbler_click = 'se_tumbler_click', se_gear_turn = 'se_gear_turn';
 const Hero_playnotes = (_ins, _str, _vol) => {}, BZ_U_WAND = (bz) => bz;
 
 /* objects.h tool ids, in table order (js/oc_name_data.js OC_NAME[]). */
@@ -506,8 +506,10 @@ async function do_earthquake(force) {
                 if (ceiling_hider_(mon.data)) {
                     if (cansee(x, y))
                         await pline(`${Amonnam(mon)} is shaken loose from the ceiling!`);
-                    else if (!is_flyer_(mon.data))
+                    else if (!is_flyer_(mon.data)) {
+                        Soundeffect(se_thump, 50); /* music.c:378 */
                         await You_hear('a thump.');
+                    }
                 }
             }
             const ap = M_AP_TYPE(mon);

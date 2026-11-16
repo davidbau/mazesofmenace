@@ -257,6 +257,7 @@ export async function pluslvl(incr) {
         /* C exper.c:366-367: ulevelmax */
         if ((u.ulevelmax | 0) < (u.ulevel | 0))
             u.ulevelmax = u.ulevel;
+        await adjabil((u.ulevel | 0) - 1, u.ulevel | 0);
         const old_ach_cnt = count_achievements();
         const newrank = xlev_to_rank(u.ulevel | 0);
         if (newrank > oldrank)
@@ -268,7 +269,6 @@ export async function pluslvl(incr) {
          * it feeds #chronicle without touching the topline or the draw stream. */
         if (count_achievements() === old_ach_cnt)
             livelog_printf(LL_MINORAC, `${((u.ulevel | 0) <= (u.ulevelpeak | 0)) ? 're' : ''}gained experience level ${u.ulevel | 0}`);
-        await adjabil((u.ulevel | 0) - 1, u.ulevel | 0);
         /* Per-pline update_topl: page if adjabil's intrinsic-gain plines overflowed. */
         if (!incr)
             await flush_screen(1);

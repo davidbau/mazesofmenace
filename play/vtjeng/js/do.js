@@ -1059,6 +1059,10 @@ export async function flooreffects(obj, x, y, verb, rawEnv = {}) {
             if (currentTrap) {
                 const { delfloortrap } = await import('./trap.js');
                 await delfloortrap(currentTrap, state);
+                // do.c:263-264: delfloortrap() keeps a buried-ball tether,
+                // so a hero squished in the pit is released here.
+                if (state.u.utrap && u_at(x, y, state))
+                    reset_utrap(false, state);
             }
             await useupf(obj, 1, { ...rawEnv, state });
             await bury_objs(x, y, state, rawEnv);
@@ -1789,7 +1793,8 @@ export async function menu_drop(retry, state = game) {
             if (choice.value === ALL_TYPES_SELECTED) allCategories = true;
             else if (choice.value === 'A') dropEverything = autopick = true;
             else if (choice.value === 'P') {
-                count = Math.max(0, choice.count);
+                // C max(0, count); the count can be a BigInt above 2^53.
+                count = choice.count > 0 ? choice.count : 0;
                 justpicked = true;
                 dropEverything = false;
                 add_valid_menu_class(choice.value, state);

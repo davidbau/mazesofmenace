@@ -127,7 +127,7 @@ import {
     mungspaces,
     sgn, lcase, ucase, upstart, strcmpi, atol,
 } from './hacklib.js';
-import { push_front, truncateByteString } from './hacklib.js';
+import { fuzzymatch, push_front, truncateByteString } from './hacklib.js';
 import { hu_stat } from './eat.js';
 import { observe_object } from './o_init.js';
 import { can_reach_floor, engr_at, engr_can_be_felt } from './engrave.js';
@@ -6527,15 +6527,17 @@ function _statusFieldData(field, valueSnapshot = null) {
     }
 }
 
-function _statusFuzzyText(value) {
-    return lcase(String(value ?? '')).replace(/[" _-]+/gu, '');
-}
-
-function _noneOfTheAbove(value) {
-    const compact = lcase(String(value ?? '')).replace(/[" _()-]+/gu, '');
-    return compact === 'noneoftheabove'
-        || compact === 'polymorphed'
-        || compact === 'noneoftheabovepolymorphed';
+// C ref: botl.c noneoftheabove() (2336-2344). Each spelling has its own
+// ignore set: "(polymorphed)" skips only quotes and parentheses, so
+// "poly-morphed" names no rule there, and "none of the above" does not skip
+// parentheses.
+export function noneoftheabove(hl_text) {
+    if (fuzzymatch(hl_text, 'none of the above', '" -_', true)
+        || fuzzymatch(hl_text, '(polymorphed)', '"()', true)
+        || fuzzymatch(hl_text, 'none of the above (polymorphed)',
+            '" -_()', true))
+        return true;
+    return false;
 }
 
 // options.js preserves long thresholds beyond Number.MAX_SAFE_INTEGER as
@@ -7116,13 +7118,14 @@ function _selectStatusHilite(field, data, change = 0, state = game) {
                 persistent = false;
             }
         } else if (rule.behavior === 'text') {
-            const matches = _statusFuzzyText(rule.text)
-                === _statusFuzzyText(data.text);
-            if (matches) {
+            // C ref: botl.c get_hilite() (2540), which skips '"', ' ', '-'
+            // and '_' and folds case.
+            if (fuzzymatch(String(rule.text ?? ''), String(data.text ?? ''),
+                '" -_', true)) {
                 selected = rule;
                 exact = true;
             } else if (!exact && field === 'title' && Upolyd(state.u)
-                       && _noneOfTheAbove(rule.text)) {
+                       && noneoftheabove(rule.text)) {
                 selected = rule;
             }
         } else if (rule.behavior === 'percentage'

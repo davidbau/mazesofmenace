@@ -121,7 +121,7 @@ export { l_nhcore_call } from './nhlua.js';
  * file; both sides are hoisted function declarations, so the cycle resolves. */
 import { drag_ball, move_bc, placebc, unplacebc, drop_ball, ballfall, ballrelease } from './ball.js';
 import { OC_CHARGED, OC_COST } from './oc_cost_data.js';
-import { SPBOOK_META } from './o_init_data.js';
+import { SPBOOK_META, SHUFFLED_RANGES } from './o_init_data.js';
 import { WEB, ROCKTRAP, BEAR_TRAP, LANDMINE, SQKY_BOARD, DART_TRAP, ARROW_TRAP, VIASITTING, W_NONDIGGABLE } from './const.js';
 import { P_RIDING, STONE, DOOR, D_CLOSED, D_LOCKED, D_NODOOR, D_BROKEN, D_ISOPEN, D_TRAPPED, WM_MASK, IS_WALL, A_WIS, IS_DOOR, IS_OBSTRUCTED, IS_FURNITURE, M_AP_TYPE, M_AP_FURNITURE, M_AP_OBJECT, M_AP_NOTHING, M_AP_MONSTER, M_AP_F_DKNOWN, MCORPSENM, COLNO, ROWNO, Is_rogue_level, isok, IS_STWALL, ACCESSIBLE, SDOOR, SCORR, THRONE, SINK, GRAVE, FOUNTAIN, ALTAR, IS_ALTAR, IS_FOUNTAIN, IS_THRONE, IS_SINK, IS_GRAVE, AM_MASK, AM_CHAOTIC, AM_SHRINE, AM_SANCTUM, Amask2align, A_NONE, A_LAWFUL, A_NEUTRAL, A_CHAOTIC, WEAK, HUNGRY, STAIRS, LFILE_EXISTS, VISITED, CQ_REPEAT, CQ_CANNED, CMDQ_EXTCMD, CMDQ_KEY, W_NONPASSWALL, xdir, ydir, zdir, N_DIRS, N_DIRS_Z, DIR_ERR, MV_ANY, MV_WALK, MV_RUN, MV_RUSH, N_MOVEMODES, ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8, N_ACH, ACH_BLND, ACH_NUDE, ACH_MINE, ACH_TOWN, ACH_SHOP, ACH_ORCL, ACH_NOVL, ACH_SOKO, ACH_BGRM, ACH_MEDU, ACH_TUNE, ACH_INVK, ACH_ENDG, ACH_ASTR, ACH_UWIN, SICK_VOMITABLE, SICK_NONVOMITABLE, NON_PM, BRK_FROM_INV, BRK_KNOWN_OUTCOME, BRK_KNOWN2BREAK, BRK_KNOWN2NOTBREAK, LR_DOWNTELE, LR_UPTELE, ROOMOFFSET, OROOM, SHOPBASE, ZOO, SWAMP, COURT, LEPREHALL, MORGUE, BEEHIVE, COCKNEST, ANTHOLE, BARRACKS, DELPHI, TEMPLE, VAULT, In_mines, TRAPPED_CHEST, TRAPPED_DOOR, STATUE_TRAP, HALLUC, u_at, Is_waterlevel, Is_astralevel, Is_airlevel, Is_juiblex_level, Upolyd, PLNMSG_BACK_ON_GROUND, DISMOUNT_FELL, DISMOUNT_GENERIC, DISMOUNT_BYCHOICE, DISMOUNT_THROWN, DISMOUNT_KNOCKED, DISMOUNT_POLY, DISMOUNT_ENGULFED, DISMOUNT_BONES, POOL, MOAT, WATER, DRAWBRIDGE_UP, DRAWBRIDGE_DOWN, DBWALL, TREE, IRONBARS, NHW_MENU, WIN_ERR, A_DEX, WOUNDED_LEGS, ROOM, DB_UNDER, DB_FLOOR, DB_DIR, DB_NORTH, DB_SOUTH, DB_EAST, DB_WEST, IS_WATERWALL, KILLED_BY, LAVAPOOL, LAVAWALL, DB_LAVA, HMON_THROWN, NO_KILLER_PREFIX, ER_DESTROYED, is_pit, is_hole, HOLE, TRAPDOOR, DOMOVE_WALK, DOMOVE_RUSH, LEVITATION, FLYING, FROMOUTSIDE, STUNNED, CONFUSION, DEAF, SICK, STONED, STRANGLED, VOMITING, SLIMED, HALLUC_RES, TIMEOUT, A_STR, BOLT_LIM, Has_contents, CORR, IS_TREE, JUMPING, INTRINSIC, TELEDS_NO_FLAGS, TELEDS_ALLOW_DRAG, TELEDS_TELEPORT, DO_MOVE, TEST_MOVE, TEST_TRAV, TEST_TRAP, TRAVP_TRAVEL, TRAVP_GUESS, TRAVP_VALID, PIT, DIGCHECK_FAILED, DIGCHECK_FAIL_BOULDER, IS_AIR } from './const.js';
 import { CLR_BLACK, CLR_WHITE, NO_COLOR } from './terminal.js';
@@ -1569,21 +1569,56 @@ function is_plural_obj(o) { return flooreffects_is_plural(o); }
  * does not define, so the existing name is NOT pre-filled.  RNG-free unless the
  * typed text matches an artifact name (the wipeout_text slippage draws
  * rnd_on_display_rng(2)), which is the arm surfaced below. */
-/* C ref: artifact.c:575 restrict_name(otmp, name) — NAMED GAP: C's `sametype`
- * set also admits undiscovered same-class objects sharing a description or
- * shuffle pool (artifact.c:594-605); only otmp->otyp itself is matched here. */
-export function _restrict_name(obj, name) {
+/* C ref: artifact.c:575-624 restrict_name(otmp, name) — "returns 1 if name is
+ * restricted for otmp->otyp".  `sametype` is otyp itself plus, while otyp is
+ * undiscovered and has a description, every other undiscovered object of the
+ * same class that shares that description or lies in otyp's obj_shuffle_range()
+ * (o_init.c).  So naming ANY unidentified amulet "The Eye of the Aethiopica",
+ * any gray stone "Heart of Ahriman" or any unidentified helmet of the helm of
+ * brilliance pool "The Mitre of Holiness" slips, not just the artifact's base
+ * type.  obj_shuffle_range() is SHUFFLED_RANGES' [base, base+n-1] (o_init_data.js
+ * records exactly those ranges); an otyp outside every range is its own range. */
+export function _restrict_name(otmp, name) {
     if (!name)
         return false;
-    const strip = (n) => (/^the /i.test(n) ? n.slice(4) : n);
-    const want = strip(name);
+    if (/^the /i.test(name))
+        name = name.slice(4);
+    const otyp = otmp.otyp | 0;
+    const ocls = MKOBJ_OC_CLASS[otyp] | 0;
+    const known = (t) => !!(game._oc_name_known && game._oc_name_known[t]);
+    const sametype = new Set([otyp]);
+    const odesc = !known(otyp) ? getObjDescr(otyp) : null;
+    if (odesc != null) {
+        let lo = otyp, hi = otyp;
+        for (const k in SHUFFLED_RANGES) {
+            const rg = SHUFFLED_RANGES[k];
+            if (otyp >= rg.base && otyp < rg.base + rg.names.length) {
+                lo = rg.base;
+                hi = rg.base + rg.names.length - 1;
+                break;
+            }
+        }
+        /* svb.bases[ocls]: MKOBJ_OC_CLASS[0..17] are the class-number placeholders
+         * (index == class), not objects; the first real object is ARROW at 18. */
+        let first = 18;
+        while (first < MKOBJ_OC_CLASS.length && (MKOBJ_OC_CLASS[first] | 0) !== ocls)
+            first++;
+        for (let i = first; i < MKOBJ_OC_CLASS.length && (MKOBJ_OC_CLASS[i] | 0) === ocls; i++) {
+            if (known(i))
+                continue;
+            const other = getObjDescr(i);
+            if (other != null && (odesc === other || (i >= lo && i <= hi)))
+                sametype.add(i);
+        }
+    }
     for (let m = 0; m < ARTILIST.length; m++) {
         const a = ARTILIST[m];
-        if (a.otyp !== (obj.otyp | 0))
+        if (!sametype.has(a.otyp | 0))
             continue;
-        if (strip(a.name) === want)
+        const aname = /^the /i.test(a.name) ? a.name.slice(4) : a.name;
+        if (aname === name)
             return (arti_spfx(m + 1) & 0x3) !== 0 /* SPFX_NOGEN|SPFX_RESTR */
-                   || (obj.quan | 0) > 1;
+                   || (otmp.quan | 0) > 1;
     }
     return false;
 }

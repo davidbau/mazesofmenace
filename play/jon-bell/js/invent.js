@@ -115,7 +115,7 @@ import { TtyMenu } from './tty_menu.js'; // relocate-fns
 import { hidden_gold } from './vault.js'; // relocate-fns
 import { empty_handed, welded } from './wield.js'; // relocate-fns
 import { getlin } from './windows.js'; // relocate-fns
-import { bypass_objlist, clear_bypasses as clear_bypasses_invent } from './worn.js'; // relocate-fns
+import { bypass_objlist, clear_bypasses as clear_bypasses_invent, nxt_unbypassed_loot } from './worn.js'; // relocate-fns
 import { obj_resists } from './zap.js'; // relocate-fns
 import { count_justpicked, find_justpicked } from './pickup.js'; // relocate-fns
 import { shopper_financial_report } from './shk.js'; // relocate-fns
@@ -2938,17 +2938,11 @@ export async function askchain(objchn, olets, allflag, fn, ckfn, mx, word) {
         let ilet = 96 - (objchn()?.oclass === COIN_CLASS_C ? 1 : 0);
         bypass_objlist(objchn(), false);
         for (;;) {
-            // C worn.c:nxt_unbypassed_loot rescans after every action: an
-            // action may delete items or clear bypass bits on the chain.
-            let otmp = null;
-            for (const candidate of sortedchn) {
-                for (let o = objchn(); o; o = o.nobj)
-                    if (o === candidate && !o.bypass) { otmp = o; break; }
-                if (otmp) break;
-            }
+            // C invent.c:2433 nxt_unbypassed_loot(sortedchn, *objchn): rescans
+            // after every action (an action may delete items or clear bypass
+            // bits on the chain) and bypass_obj()s what it returns.
+            let otmp = nxt_unbypassed_loot(sortedchn, objchn());
             if (!otmp) break;
-            otmp.bypass = 1;
-            game.context.bypasses = true;
             ilet = ilet === 122 ? 65 : ilet === 90 ? 35 : ilet + 1;
             if (cls != null && otmp.oclass !== cls) continue;
             if (takeoff && !is_worn(otmp)) continue;

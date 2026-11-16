@@ -1046,6 +1046,8 @@ import { getlin } from './windows.js'; // relocate-fns
 import { makemap_prepost } from './cmd.js'; // relocate-fns
 import { mstrength } from './mondata.js'; // relocate-fns
 import { impossible } from './pline.js'; // relocate-fns
+import { check_wornmask_slots } from './worn.js';
+import { check_invent_gold } from './invent.js';
 import { does_block, get_viz_clear } from './vision.js'; // relocate-fns
 import { INV_ORDER, MAGIC_PORTAL, PICKINV_CLASS_HEADER, TTY_MENU_ROWS, Warn_of_mon_prop, _Blind_cmd, _invlet_constant, _observe_in_qsort_order, _on_W_tower_level, _pd_br_string, _pd_chr_u_on_lvl, _pd_depth, _pickinv_item_text, _sortloot_within_class, create_nhwindow, destroy_nhwindow, display_nhwindow, incr_itimeout_prop, putstr, set_cursor } from './cmd.js';
 import { pooleffects } from './hack.js';
@@ -1398,6 +1400,46 @@ export async function wiz_mon_diff() {
         out.push("No monster difficulty discrepancies were detected.");
     await display_text_window(out);
     return ECMD_OK;
+}
+
+// C ref: wizcmds.c:1401-1441 you_sanity_check() — hero-state part of the
+// 'sanity_check' option's per-turn envelope (run first, wizcmds.c:1465).
+// The recovery arm's display_nhwindow(WIN_MESSAGE, TRUE) is a message-window
+// flush; this port's equivalent is force_more on the pending message.
+export async function you_sanity_check() {
+    const u = game.u;
+    let mtmp;
+    if (u.uswallow && !u.ustuck) {
+        /* this probably ought to be panic() */
+        await impossible('sanity_check: swallowed by nothing?');
+        await force_more(game._pending_message);
+        /* try to recover from whatever the problem is */
+        u.uswallow = 0;
+        u.uswldtim = 0;
+        await docrt();
+    }
+    if ((mtmp = m_at(u.ux, u.uy)) != null) {
+        /* u.usteed isn't on the map */
+        if (u.ustuck !== mtmp)
+            await impossible('sanity_check: you over monster');
+    }
+    if (u.uhp > u.uhpmax) {
+        await impossible('current hero health (%d) better than maximum? (%d)',
+                         u.uhp, u.uhpmax);
+        u.uhp = u.uhpmax;
+    }
+    if (Upolyd(u) && u.mh > u.mhmax) {
+        await impossible('current hero health as monster (%d) better than maximum? (%d)',
+                         u.mh, u.mhmax);
+        u.mh = u.mhmax;
+    }
+    if (u.uen > u.uenmax) {
+        await impossible('current hero energy (%d) better than maximum? (%d)',
+                         u.uen, u.uenmax);
+        u.uen = u.uenmax;
+    }
+    await check_wornmask_slots();
+    check_invent_gold('invent');
 }
 
 // C ref: wizcmds.c:1449-1458 levl_sanity_check()

@@ -2,13 +2,16 @@
 // C ref: src/windows.c, the interface-independent layer between the game and
 // whichever window port is linked in.
 
+import { cmdq_key_char, cmdq_pop } from './cmd.js';
 import {
+    CMDQ_KEY,
     MENU_ITEMFLAGS_SKIPMENUCOLORS,
     PICK_ANY,
 } from './const.js';
 import { map_glyphinfo } from './display.js';
 import { def_char_to_objclass } from './drawing.js';
 import { tty_getlin } from './getline.js';
+import { ttyPline } from './tty_message.js';
 import { ucase } from './hacklib.js';
 import { game } from './gstate.js';
 import { MAXOCLASSES } from './objects.js';
@@ -17,6 +20,7 @@ import {
     menuLineChoiceDescription,
     menuTitleStyle,
     selectTtyMenu,
+    tty_add_menu,
 } from './tty_menu.js';
 import { regex_match } from './posixregex.js';
 import {
@@ -26,6 +30,23 @@ import {
     ATR_UNDERLINE,
     NO_COLOR,
 } from './terminal.js';
+
+// C ref: windows.c nhwindows_hangup() (614-640): switch to the no-op
+// hup_procs interface. ALTMETA is defined, so ESC no longer waits for a
+// second key. The tty's exit routine and getmsghistory() stay reachable:
+// js/cmd.js end_of_input() still calls tty_exit_nhwindows(), and the
+// message history the save writes is the tty's, unchanged since the swap
+// because vpline() returns early once done_hup is set.
+export function nhwindows_hangup(state = game) {
+    state.iflags ??= {};
+    state.iflags.altmeta = false;
+    state.nhDisplay?.hangup();
+}
+
+// True once nhwindows_hangup() has swapped in hup_procs.
+export function windowprocs_hup(state = game) {
+    return Boolean(state.nhDisplay?.windowprocsHup);
+}
 
 // C ref: decl.c hexdd[]. Each hexadecimal digit appears in lower and upper
 // case, so decode_glyph() halves a digit's index to get its value.
@@ -249,7 +270,6 @@ export async function select_menu(state, spec) {
     state.gb ??= {};
     const old_bot_disabled = bot_disabled_is_set(state);
 
-    state.gb.bot_disabled = true;
     // Core callers model calls to add_menu() as item objects or display-only
     // strings. Apply the interface-independent adjustment once before the
     // TTY port stores or draws them.
@@ -268,6 +288,36 @@ export async function select_menu(state, spec) {
             menuLineChoiceDescription(line, spec.choices) ?? undefined,
         )),
     };
+    // Each add_menu() call reaches tty_add_menu() before the menu is shown,
+    // in item order; only its length check has a visible effect here.
+    if (adjustedSpec.items) {
+        for (let i = 0; i < adjustedSpec.items.length; ++i) {
+            const item = adjustedSpec.items[i];
+            if (typeof item !== 'object' || item === null
+                || !Object.hasOwn(item, 'value')) continue;
+            const key = item.label != null ? 'label' : 'text';
+            const str = String(item[key] ?? '');
+            const stored = await tty_add_menu(state, str);
+            if (stored !== str) adjustedSpec.items[i] = { ...item, [key]: stored };
+        }
+    }
+    if (adjustedSpec.lines) {
+        for (let i = 0; i < adjustedSpec.lines.length; ++i) {
+            const line = adjustedSpec.lines[i];
+            const str = menuLineChoiceDescription(line, spec.choices);
+            if (str === null) continue;
+            const stored = await tty_add_menu(state, str);
+            if (stored === str) continue;
+            const text = typeof line === 'string'
+                ? line : String(line?.text ?? line?.label ?? '');
+            const row = `${text.slice(0, 4)}${stored}`;
+            adjustedSpec.lines[i] = typeof line === 'string'
+                ? row : { ...line, [line?.text != null ? 'text' : 'label']: row };
+        }
+    }
+    // windows.c select_menu() raises the flag; the add_menu() calls above
+    // ran before it, so an impossible() there could still update status.
+    state.gb.bot_disabled = true;
     const reslt = await selectTtyMenu(state, adjustedSpec);
     state.gb.bot_disabled = old_bot_disabled;
     return reslt;
@@ -275,20 +325,42 @@ export async function select_menu(state, spec) {
 
 // C ref: windows.c getlin() (1868-1902), the same wrapper for a typed line.
 //
-// Covers 1897-1900, the arm that reaches the window port.  The command-queue
-// arm at 1873-1895 drains cmdq_pop() into the answer and returns before the
-// prompt is ever drawn; no ported caller of this function queues keys, and
-// js/cmd.js cmdq_pop() has no writer that could feed one, so porting it would
-// add a branch nothing can enter.  program_state.in_getlin, set and cleared
-// around the same call, has no reader in js/ either -- its C readers are the
-// save and hangup paths this port does not run.
+// The command-queue arm (1873-1895) drains cmdq_pop() before the prompt is
+// drawn. Queued keys up to a newline become the answer, which is echoed after
+// the query; the newline ends the answer and is dropped. The first entry that
+// is not a key is popped and discarded, and the loop stops there: with keys
+// already taken the answer is those keys, and with none the prompt follows.
+// The keys come from #repeat (cmd.c do_repeat()), whose CQ_REPEAT can still
+// hold a key that the first run gave an earlier prompt the repeat skips, such
+// as the yn answer doengrave() asked when the square had an engraving.
+// program_state.in_getlin, set and cleared around the window-port call, has
+// no reader in js/ -- its C readers are the save and hangup paths this port
+// does not run.
 //
-// The flag matters here for the reason getline.c:19-23 spells out: the prompt
-// goes out through custompline(), which reaches flush_screen() and therefore
-// bot().  js/getline.js hooked_tty_getlin() ports that flush_screen(1) call,
-// so a status update left pending when the prompt opens waits for the answer
-// instead of repainting underneath it.
+// gb.bot_disabled matters for the reason getline.c:19-23 spells out: the
+// prompt goes out through custompline(), which reaches flush_screen() and
+// therefore bot().  js/getline.js hooked_tty_getlin() ports that
+// flush_screen(1) call, so a status update left pending when the prompt opens
+// waits for the answer instead of repainting underneath it.
 export async function getlin(query, state = game) {
+    // C writes each key into bufp, a newline as its NUL; the answer ends at
+    // the first NUL, so a queued '\0' key cuts it short there too.
+    let buf = '';
+    let got_cmdq = false;
+    let cmdq;
+    while ((cmdq = cmdq_pop(state)) !== null) {
+        if (cmdq.typ !== CMDQ_KEY) break;
+        got_cmdq = true;
+        const key = cmdq_key_char(cmdq);
+        buf += key !== '\n' ? key : '\0';
+        if (key === '\n') break;
+    }
+    if (got_cmdq) {
+        const answer = buf.split('\0')[0];
+        await ttyPline(`${query} ${answer}`, state);
+        return answer;
+    }
+
     state.gb ??= {};
     const old_bot_disabled = bot_disabled_is_set(state);
 

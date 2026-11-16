@@ -177,7 +177,7 @@ import { depth as dungeon_depth } from './dungeon.js'; // relocate-fns
 import { makemon } from './makemon.js'; // relocate-fns
 import { msgtype_type } from './options.js';
 import { obj_sanity_check } from './mkobj.js'; // relocate-fns
-import { levl_sanity_check } from './wizcmds.js'; // relocate-fns
+import { levl_sanity_check, you_sanity_check } from './wizcmds.js'; // relocate-fns
 import { levitation_dialogue, slip_or_trip } from './timeout.js'; // relocate-fns
 import { monster_nearby, nomul, unmul } from './hack.js'; // relocate-fns
 export { monster_nearby, nomul, unmul } from './hack.js'; // relocate-fns
@@ -3047,7 +3047,9 @@ async function moveloop_core_faithful() {
             if (g.iflags.sanity_no_check) {
                 g.iflags.sanity_no_check = false;
             } else {
-                g.program_state.in_sanity_check++;                await obj_sanity_check(); // C wizcmds.c:1469
+                g.program_state.in_sanity_check++;
+                await you_sanity_check(); // C wizcmds.c:1465
+                await obj_sanity_check(); // C wizcmds.c:1469
                 await mon_sanity_check(); // C wizcmds.c:1474
                 await bc_sanity_check();
                 await engraving_sanity_check();
@@ -4483,6 +4485,7 @@ async function moveloop_core_faithful() {
                     g.iflags.sanity_no_check = false;
                 } else {
                     g.program_state.in_sanity_check++;
+                    await you_sanity_check(); // C wizcmds.c:1465
                     await obj_sanity_check(); // C wizcmds.c:1469
                     await mon_sanity_check(); // C wizcmds.c:1474
                     await bc_sanity_check();
@@ -4652,6 +4655,7 @@ async function moveloop_core_faithful() {
                 g.iflags.sanity_no_check = false;
             } else {
                 g.program_state.in_sanity_check++;
+                await you_sanity_check(); // C wizcmds.c:1465
                 await obj_sanity_check(); // C wizcmds.c:1469
                 await mon_sanity_check(); // C wizcmds.c:1474
                 await bc_sanity_check();
@@ -5218,7 +5222,9 @@ async function moveloop_sanity_check() {
         g.iflags.sanity_no_check = false;
         return;
     }
-    g.program_state.in_sanity_check++;    await obj_sanity_check(); // C wizcmds.c:1469
+    g.program_state.in_sanity_check++;
+    await you_sanity_check(); // C wizcmds.c:1465
+    await obj_sanity_check(); // C wizcmds.c:1469
     await mon_sanity_check(); // C wizcmds.c:1474
     await bc_sanity_check();
     await engraving_sanity_check();
@@ -5253,6 +5259,7 @@ async function moveloop_core_impl() {
             g.iflags.sanity_no_check = false;
         } else {
             g.program_state.in_sanity_check++;
+            await you_sanity_check(); // C wizcmds.c:1465
             await timer_sanity_check(); // C wizcmds.c:1473
             await obj_sanity_check(); // C wizcmds.c:1469
             await mon_sanity_check(); // C wizcmds.c:1474
