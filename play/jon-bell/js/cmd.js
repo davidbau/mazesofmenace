@@ -4152,6 +4152,48 @@ async function doextlist(restoreExtPrompt = false) {
         }
     }
 }
+/* C topl.c:42-75 (msg_window:combination) reached from hooked_tty_getlin's
+ * first ^P (getline.c:108-116, "need two initially") while cw->maxrow == 0,
+ * i.e. the history ring's next slot has wrapped back to 0 (a positive
+ * multiple of cw->rows lines remembered, remember_topl topl.c:186).
+ * Call 1: maxcol == maxrow, so redotoplin(gt.toplines) shows the live
+ * "query buffer" line and maxcol-- wraps to rows-1, a filled slot.
+ * Call 2: maxcol matches neither maxrow nor `maxrow - 1` (== -1; the test
+ * does not wrap), so the else arm opens the Message History window; its
+ * display_nhwindow() first runs more() over the redotoplin'd query
+ * (wintty.c:1921, toplin NEED_MORE), where ^P is not a dismiss key
+ * (dismiss_more was reset at topl.c:78).  The window arm leaves
+ * maxcol = maxrow (topl.c:65).  Returns false (nothing done) for any other
+ * ring position; the caller's single-style walk models those. */
+export async function tty_getlin_combo_wrapped_window(live) {
+    const g = game;
+    const h = g._msg_history || [];
+    const ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
+    if (!h.length || h.length % ring !== 0)
+        return false;
+    const sh = g._topl_suppress_history;
+    g._topl_suppress_history = true;
+    try {
+        const morc = await tty_getlin_recall(live);
+        /* A wrapped query whose more() was answered with ^P instead re-runs
+         * call 1's do-while (topl.c:77), which takes the window arm itself
+         * (with toplin already EMPTY, so no extra more()); call 2 then finds
+         * maxcol == maxrow and redotoplin()s the query once more. */
+        g._getlin_toplines = live;
+        g._topl_unacknowledged = morc !== 16;
+        g._prevmsg_history_length = h.length;
+        g._prevmsg_next = 0;
+        g._prevmsg_combo = 1;
+        await doprev_message(live);
+        g._prevmsg_combo = 0;
+        if (morc === 16)
+            await tty_getlin_recall(live);
+    } finally {
+        g._getlin_toplines = null;
+        g._topl_suppress_history = sh;
+    }
+    return true;
+}
 // C ref: cmd.c:829 doprev_message() → nh_doprev_message() → tty_doprev_message
 //   (win/tty/topl.c).  '^P' (C('p')) recalls the message-history ring.  With the
 //   reversed msg_window setting, the tty backend lists the whole history ring in a
@@ -10117,177 +10159,7 @@ const CRYSTAL_BALL_OTYP = 231;
 
 
 
-/* C ref: detect.c:198-223 o_in(obj, oclass) — recursive first-of-class search. */
-function _cb_o_in(obj, oclass) {
-    if ((obj.oclass | 0) === oclass)
-        return obj;
-    if (Has_contents(obj) && !SchroedingersBox(obj)) {
-        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
-            if ((otmp.oclass | 0) === oclass)
-                return otmp;
-            if (Has_contents(otmp)) {
-                const temp = _cb_o_in(otmp, oclass);
-                if (temp)
-                    return temp;
-            }
-        }
-    }
-    return null;
-}
-
-/* C ref: detect.c:262-306 check_map_spot(x, y, oclass, 0), class arm.  C
- * decodes glyph_to_obj() -> oc_class; this port's remembered_glyph carries only
- * the rendered symbol, so the class's default symbol stands in (js/read.js
- * _check_map_spot_rd documents the same equivalence and its hallucination gap). */
-function _cb_check_map_spot(x, y, oclass) {
-    const g = game;
-    const loc = g.level && g.level.at ? g.level.at(x, y) : null;
-    const rg = loc && loc.remembered_glyph;
-    if (!rg || rg.cls !== GLYPHCLS_OBJ)
-        return false;
-    /* glyph_to_obj() -> oc_class: a statue glyph (shown as a monster letter)
-     * is ROCK_CLASS even though its symbol is not '`'. */
-    if (Number.isInteger(rg.otyp) ? (MKOBJ_OC_CLASS[rg.otyp] | 0) !== oclass
-        : rg.ch !== def_oc_syms_chars[oclass])
-        return false;
-    for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
-        if (_cb_o_in(otmp, oclass))
-            return false;
-    const mtmp = m_at(x, y);
-    if (mtmp)
-        for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
-            if (_cb_o_in(otmp, oclass))
-                return false;
-    return true;
-}
-
-/* defsym.h OBJCLASS "name" column (def_oc_syms[].name), indexed by class. */
-const _CB_OC_NAMES = [null, 'illegal objects', 'weapons', 'armor', 'rings', 'amulets',
-    'tools', 'food', 'potions', 'scrolls', 'spellbooks', 'wands', 'coins', 'rocks',
-    'large stones', 'iron balls', 'chains', 'venoms'];
-const _CB_COIN_CLASS = 12;
-const _CB_TER_DETECT = 0x20;
-
-/* C ref: detect.c:603-788 object_detect(detector, class) for a NON-ZERO class
- * (detector null: the crystal ball).  Returns 1 nothing detected, 0 detected. */
-export async function _cb_object_detect_class(oclass) {
-    const g = game, u = g.u;
-    /* C detect.c:624-637: a class symbol can also denote boulders. */
-    const bouldersym = g.symbolOverrides?.S_boulder ? pager_boulder_symbol()
-        : String.fromCharCode(pager_showsyms()?.[SYM_OFFSETS.X + SYM_BOULDER] || 96);
-    const boulder = def_oc_syms_chars[oclass] === bouldersym ? ROCK_CLASS : 0;
-    /* detect.c:632 Hallucination || (Confusion && class == SCROLL_CLASS) */
-    let stuff = (_cmd_Hallucination() || (_uprop_active('CONFUSION') && oclass === 9))
-        ? 'something' : _CB_OC_NAMES[oclass];
-    if (boulder && oclass !== 14) stuff += ' and/or large stones';
-    const detected = obj => _cb_o_in(obj, oclass) || _cb_o_in(obj, boulder);
-    let ct = 0, ctu = 0;
-
-    for (let obj = g.fobj; obj; obj = obj.nobj)
-        if (detected(obj)) {
-            if (u_at(obj.ox, obj.oy)) ctu++; else ct++;
-        }
-    for (let obj = g.level?.buriedobjlist; obj; obj = obj.nobj)
-        if (_cb_o_in(obj, oclass)) {
-            if (u_at(obj.ox, obj.oy)) ctu++; else ct++;
-        }
-    if (u.usteed) {
-        u.usteed.mx = u.ux;
-        u.usteed.my = u.uy;
-    }
-    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
-            continue;
-        for (let obj = mtmp.minvent; obj; obj = obj.nobj)
-            if (detected(obj))
-                ct++;
-        if (findgold(mtmp.minvent) && oclass === _CB_COIN_CLASS) {
-            ct++;
-            break;
-        }
-    }
-
-    /* clear_stale_map(class, 0), detect.c:311-330 */
-    let stale = false;
-    for (let zx = 1; zx < COLNO; zx++)
-        for (let zy = 0; zy < ROWNO; zy++)
-            if (_cb_check_map_spot(zx, zy, oclass)) {
-                unmap_object(zx, zy);
-                stale = true;
-            }
-    if (!stale && !ct) {
-        if (!ctu)
-            return 1;       /* detector is null: no strange_feeling */
-        await You(`sense ${stuff} nearby.`);
-        return 0;
-    }
-
-    /* display.c:2196 cls() -> display_nhwindow(WIN_MESSAGE, FALSE): a fresh
-     * topline ("You peer into ...") is acknowledged with --More-- first. */
-    if (g._pending_message)
-        await force_more(g._pending_message);
-    await display_cls();
-    unconstrain_map();
-    let ter_typ = _CB_TER_DETECT | TER_OBJ;
-    /* glyph_at(u.ux, u.uy) is an object glyph only if THIS pass mapped one there
-     * (cls() reset the glyph buffer). */
-    let heroObj = false;
-    const mapObj = (o) => {
-        if ((o.ox | 0) === (u.ux | 0) && (o.oy | 0) === (u.uy | 0)) heroObj = true;
-        map_object(o, 1);
-    };
-    for (let obj = g.level?.buriedobjlist; obj; obj = obj.nobj) {
-        const otmp = _cb_o_in(obj, oclass);
-        if (otmp) {
-            if (otmp !== obj) { otmp.ox = obj.ox; otmp.oy = obj.oy; }
-            mapObj(otmp);
-        }
-    }
-    for (let x = 1; x < COLNO; x++)
-        for (let y = 0; y < ROWNO; y++)
-            for (let obj = g.level?.levelObjects?.[x]?.[y] ?? null; obj; obj = obj.nexthere) {
-                const otmp = detected(obj);
-                if (otmp) {
-                    if (otmp !== obj) { otmp.ox = obj.ox; otmp.oy = obj.oy; }
-                    mapObj(otmp);
-                    break;
-                }
-            }
-    for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon) {
-        if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
-            continue;
-        for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
-            const otmp = detected(obj);
-            if (otmp) {
-                otmp.ox = mtmp.mx;
-                otmp.oy = mtmp.my;
-                mapObj(otmp);
-                break;
-            }
-        }
-        if (findgold(mtmp.minvent) && oclass === _CB_COIN_CLASS) {
-            /* detect.c:766-772 — a fresh gold object, quan rnd(10) */
-            mapObj({ otyp: 438 /* GOLD_PIECE */, oclass: _CB_COIN_CLASS,
-                     quan: rnd(10), ox: mtmp.mx, oy: mtmp.my });
-        }
-    }
-    if (!heroObj) {
-        newsym(u.ux, u.uy);
-        ter_typ |= TER_MON;
-    }
-    await You(`detect the ${ct ? 'presence' : 'absence'} of ${stuff}.`);
-    /* C detect.c:780-783: stale glyphs alone don't start map browsing. */
-    if (ct) await browse_map(ter_typ, 'object');
-    else await force_more(g._pending_message);
-    if (g._pending_message)
-        await force_more(g._pending_message);
-    /* docrt() -> cls() (display.c:2064-2072) blanks the message window too, so
-     * the autodescribe line getpos left standing (_topl_sticky) does not
-     * survive map_redisplay() (detect.c:94-102). */
-    g._topl_sticky = null;
-    await map_redisplay();
-    return 0;
-}
+const _CB_TER_DETECT = 0x20; /* TER_DETECT, detect.c use_crystal_ball()/furniture_detect() */
 
 
 
@@ -19930,6 +19802,11 @@ async function read_getlin(prompt) {
                  * (topl.c:123-139), so a wrapped query pages "--More--" right
                  * after the echoed buffer (df-x15c4d9378c step 75). */
                 const pw = (g.iflags?.prevmsg_window || 's')[0];
+                if (pw === 'c' && !doprev
+                    && await tty_getlin_combo_wrapped_window(`${prompt} ${buf}`)) {
+                    doprev = true;
+                    continue;
+                }
                 if (pw === 's' || (pw === 'c' && !doprev)) {
                     const h = g._msg_history || [];
                     const hist = h;

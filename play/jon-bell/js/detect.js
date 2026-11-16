@@ -36,7 +36,7 @@ import { BOULDER } from './sp_lev.js'; // relocate-fns
 import { D_NODOOR, Is_rogue_level, WM_MASK } from './const.js'; // relocate-fns
 import { nomul } from './hack.js'; // relocate-fns
 import { acurr, exercise, spec_ability } from './attrib.js'; // relocate-fns
-import { CMD_CHEST, CMD_LARGE_BOX, CRYSTAL_BALL_OTYP, Is_box, SPFX_SEARCH_ART, TER_FULL, _Blind_cmd, _CB_TER_DETECT, _LENSES_OTYP, _MONS, _cb_object_detect_class, _cmd_Hallucination, _digests, _glyph_at, _hero_Deaf, _hprop, _is_cmap_furniture, _is_hider_mndx, _levlAt, _st_a_monnam, _steth_cvt_sdoor_to_door, _steth_seemimic, _uprop_active, flooreffects_Maybe_Half_Phys, flooreffects_distu, yn_function } from './cmd.js';
+import { CMD_CHEST, CMD_LARGE_BOX, CRYSTAL_BALL_OTYP, Is_box, SPFX_SEARCH_ART, TER_FULL, _Blind_cmd, _CB_TER_DETECT, _LENSES_OTYP, _MONS, _cmd_Hallucination, _digests, _glyph_at, _hero_Deaf, _hprop, _is_cmap_furniture, _is_hider_mndx, _levlAt, _st_a_monnam, _steth_seemimic, _uprop_active, flooreffects_Maybe_Half_Phys, flooreffects_distu, yn_function } from './cmd.js';
 import { getpos } from './getpos.js';
 import { consume_obj_charge, useup } from './invent.js';
 import { set_msg_xy } from './pline.js'; // relocate-fns
@@ -92,7 +92,7 @@ import { MKOBJ_OC_MATERIAL as MKOBJ_OC_MATERIAL_GD } from './mkobj_erosion_meta.
 import { makeplural } from './objnam.js'; // relocate-fns
 import { Your } from './pline.js'; // relocate-fns
 import { PM_GOLD_GOLEM as PM_GOLD_GOLEM_GD } from './pm.generated.js'; // relocate-fns
-import { COIN_CLASS_GD, GOLD_MAT_GD, GOLD_PIECE_GD, _Confusion, _sense_trap, _strange_feeling } from './read.js'; // relocate-fns
+import { COIN_CLASS_GD, GOLD_MAT_GD, GOLD_PIECE_GD, _Confusion, _strange_feeling } from './read.js'; // relocate-fns
 import { currency as currency_gd } from './shk.js'; // relocate-fns
 import { hidden_gold as hidden_gold_gd } from './vault.js'; // relocate-fns
 
@@ -113,9 +113,6 @@ const FOUND_FLASH_COUNT = 6; /* C detect.c:19 */
 const OTRAP_NONE = 0;        /* C detect.c:899 */
 const OTRAP_HERE = 1;        /* C detect.c:900 */
 const OTRAP_THERE = 2;       /* C detect.c:901 */
-const LARGE_BOX = 214;       /* onames.h */
-const CHEST = 215;           /* onames.h */
-const Is_box_detect = (o) => o && (((o.otyp | 0) === LARGE_BOX) || ((o.otyp | 0) === CHEST));
 const S_vcdoor = 15;         /* defsym.h */
 const S_hcdoor = 16;         /* defsym.h */
 const S_corr = 22;           /* defsym.h */
@@ -287,22 +284,25 @@ export function map_monst(mtmp, showtail) {
  * trapped closed doors, and hidden / not-currently-spottable monsters.  It
  * draws core RNG when sense_trap hallucinates an object. Discovery flashes
  * use FOUND_FLASH_COUNT=6; monster glyphs draw from the display RNG. */
-/* C detect.c:906-953 detect_obj_traps(), findone() call only (ft set,
- * show_them, how 0), including sense_trap's Hallucination arm.
- * Returns result bits: OTRAP_NONE, OTRAP_HERE, OTRAP_THERE. */
-function detect_obj_traps(objlist, ft, show_them = true, how = 0) {
+/* C detect.c:895-955 detect_obj_traps(objlist, show_them, how, ft): check a
+ * list of objects for chest traps; return 1 (OTRAP_HERE) if found at <ux,uy>,
+ * 2 (OTRAP_THERE) if found at some other spot, 3 if both, 0 otherwise;
+ * optionally update the map to show where such traps were found.  `ft` is
+ * non-null when called by findone(); its x/y are C's ft_cc. */
+function detect_obj_traps(objlist, show_them, how, ft) {
     let result = OTRAP_NONE;
-    const trapglyph = trap_to_glyph({ ttyp: TRAPPED_CHEST });
+    const trapglyph = ft ? trap_to_glyph({ ttyp: TRAPPED_CHEST }) : null;
     for (let otmp = objlist; otmp; otmp = otmp.nobj) {
         const xp = { value: 0 }, yp = { value: 0 };
-        const box = Is_box_detect(otmp);
-        if ((box && otmp.otrapped) || Has_contents(otmp)) {
+        const box = Is_box(otmp);
+        if ((box && otrapped_of(otmp)) || Has_contents(otmp)) {
+            /* !get_obj_location and !isok should both be impossible here */
             if (!get_obj_location(otmp, xp, yp, BURIED_TOO | CONTAINED_TOO)
                 || !isok(xp.value, yp.value)
                 || (ft && (xp.value !== ft.x || yp.value !== ft.y)))
                 continue;
         }
-        if (box && otmp.otrapped) {
+        if (box && otrapped_of(otmp)) {
             otmp.tknown = 1;
             observe_object(otmp);
             result |= u_at(xp.value, yp.value) ? OTRAP_HERE : OTRAP_THERE;
@@ -318,7 +318,7 @@ function detect_obj_traps(objlist, ft, show_them = true, how = 0) {
             }
         }
         if (Has_contents(otmp))
-            result |= detect_obj_traps(otmp.cobj, ft, show_them, how);
+            result |= detect_obj_traps(otmp.cobj, show_them, how, ft);
     }
     return result;
 }
@@ -393,10 +393,10 @@ function findone(zx, zy, found) {
     }
 
     /* C detect.c:1687-1693: trapped chests. */
-    detect_obj_traps(game.level?.buriedobjlist, found);
-    detect_obj_traps(game.fobj, found);
-    if (mtmp) detect_obj_traps(mtmp.minvent, found);
-    if (u_at(zx, zy)) detect_obj_traps(game.invent, found);
+    detect_obj_traps(game.level?.buriedobjlist, true, 0, found);
+    detect_obj_traps(game.fobj, true, 0, found);
+    if (mtmp) detect_obj_traps(mtmp.minvent, true, 0, found);
+    if (u_at(zx, zy)) detect_obj_traps(game.invent, true, 0, found);
 
     /* C detect.c:1695-1721: hidden / unspottable monster. */
     if (mtmp && (!canspotmon(mtmp) || mtmp.mundetected || mtmp.m_ap_type)) {
@@ -956,7 +956,7 @@ async function openone(zx, zy, numRef) {
     const typ = lev.typ | 0;
     if (typ === SDOOR
         || (typ === DOOR && ((lev.doormask | 0) & (D_CLOSED | D_LOCKED)) !== 0)) {
-        if (typ === SDOOR) _steth_cvt_sdoor_to_door(lev);
+        if (typ === SDOOR) cvt_sdoor_to_door(lev);
         if ((lev.doormask | 0) & D_TRAPPED) {
             if (flooreffects_distu(zx, zy) < 3)
                 await _openone_b_trapped_door(zx, zy);
@@ -1178,11 +1178,11 @@ export async function use_crystal_ball(obj) {
             if ('<>_|\\{'.includes(ch)) {
                 ret = await furniture_detect();
             } else if ((cls_ = def_char_to_objclass(cc)) !== MAXOCLASSES) {
-                ret = await _cb_object_detect_class(cls_);
+                ret = await object_detect(null, cls_);
             } else if ((cls_ = def_char_to_monclass(cc)) !== MAXMCLASSES) {
                 ret = await monster_detect(null, cls_);
             } else if (bouldersym !== '\0' && ch === bouldersym) {
-                ret = await _cb_object_detect_class(ROCK_CLASS);
+                ret = await object_detect(null, ROCK_CLASS);
             } else if (ch === '^') {
                 ret = await trap_detect(null);
             } else {
@@ -1372,26 +1372,10 @@ export async function dosearch0(aflag) {
             const loc = g.level && g.level.at ? g.level.at(x, y) : null;
             const typ = loc ? (loc.typ | 0) : 0;
 
-            /* C ref: rm.h — SDOOR=14, SCORR=15, CORR=24, DOOR=23 */
-            const SDOOR_T = 14;
-            const SCORR_T = 15;
-            const CORR_T  = 24;
-            const DOOR_T  = 23;
-
-            if (typ === SDOOR_T) {
+            if (typ === SDOOR) {
                 /* C: if (rnl(7 - fund)) continue; */
                 if (rnl_dosearch(7 - fund)) continue;
-                if (loc) {
-                    let newmask = (loc.doormask | 0) & ~WM_MASK;
-                    if (Is_rogue_level(game.u?.uz)) {
-                        newmask = D_NODOOR;
-                    } else if (!(newmask & D_LOCKED)) {
-                        newmask |= D_CLOSED;
-                    }
-                    loc.typ = DOOR_T;
-                    loc.doormask = newmask;
-                    loc.candig = false; /* C: lev->arboreal_sdoor = 0 */
-                }
+                if (loc) cvt_sdoor_to_door(loc);
                 /* C detect.c:1591 recalc_block_point(x, y); — no RNG */
                 recalc_block_point(x, y);
                 /* C detect.c:1592 exercise(A_WIS, TRUE); — no RNG */
@@ -1400,10 +1384,10 @@ export async function dosearch0(aflag) {
                 feel_location(x, y); /* make sure it shows up */
                 set_msg_xy(x, y);
                 await pline('You find a hidden door.');
-            } else if (typ === SCORR_T) {
+            } else if (typ === SCORR) {
                 /* C: if (rnl(7 - fund)) continue; */
                 if (rnl_dosearch(7 - fund)) continue;
-                if (loc) loc.typ = CORR_T;
+                if (loc) loc.typ = CORR;
                 /* C detect.c:1600 unblock_point(x, y); — vision, no RNG */
                 unblock_point(x, y);
                 /* C detect.c:1601 exercise(A_WIS, TRUE); */
@@ -1664,8 +1648,7 @@ export async function monster_detect(otmp, mclass) {
                 && mclass === S_WORM_TAIL))
             map_monst(mtmp, true);
         /* C detect.c:838-842 — a CURSED detector wakes the helpless. */
-        if (otmp && otmp.cursed && (mtmp.msleeping || mtmp.mfrozen
-                                    || !mtmp.mcanmove)) {
+        if (otmp && otmp.cursed && (mtmp.msleeping || !mtmp.mcanmove)) {
             mtmp.msleeping = 0;
             mtmp.mfrozen = 0;
             mtmp.mcanmove = 1;
@@ -1732,23 +1715,23 @@ export async function monster_detect(otmp, mclass) {
     return 0;
 }
 
-function _observe_recursively_det(obj) {
+function observe_recursively(obj) {
     observe_object(obj);
     if (Has_contents(obj)) {
         for (let o = obj.cobj; o; o = o.nobj)
-            _observe_recursively_det(o);
+            observe_recursively(o);
     }
 }
 
 /* C ref: detect.c:214-227 o_in(obj, oclass) */
-function _o_in_det(obj, oclass) {
+function o_in(obj, oclass) {
     if (!oclass) return null;
     if ((obj.oclass | 0) === oclass) return obj;
     if (Has_contents(obj) && !SchroedingersBox(obj)) {
         for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
             if ((otmp.oclass | 0) === oclass) return otmp;
             if (Has_contents(otmp)) {
-                const temp = _o_in_det(otmp, oclass);
+                const temp = o_in(otmp, oclass);
                 if (temp) return temp;
             }
         }
@@ -1756,44 +1739,66 @@ function _o_in_det(obj, oclass) {
     return null;
 }
 
-/* C ref: detect.c:260-306 check_map_spot(x, y, oclass, material) — handles
- * both ALL_CLASSES (!oclass) and class-specific detection. */
-function _check_map_spot_alldetect(x, y, oclass = 0) {
+/* C detect.c:62: wildcard class for clear_stale_map (MAXOCLASSES + 1). */
+const ALL_CLASSES = MAXOCLASSES + 1;
+
+/* C ref: detect.c:262-317 check_map_spot(x, y, oclass, material) — "Check
+ * whether the location has an outdated object displayed on it."
+ * glyph_at() is the DISPLAYED glyph (loc.disp_*); glyph_to_obj() is its otyp
+ * (loc.disp_obj_otyp) with the rendered symbol as the fallback when the cell
+ * carries no otyp. */
+function check_map_spot(x, y, oclass, material) {
     const g = game;
     const loc = g.level && g.level.at ? g.level.at(x, y) : null;
-    if (oclass) {
-        const rg = loc && loc.remembered_glyph;
-        if (!rg || rg.cls !== GLYPHCLS_OBJ)
-            return false;
-        if (Number.isInteger(rg.otyp) ? (MKOBJ_OC_CLASS[rg.otyp] | 0) !== oclass
-            : rg.ch !== def_oc_syms_chars[oclass])
-            return false;
-        for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
-            if (_o_in_det(otmp, oclass))
+    if (!loc || loc.disp_cls !== GLYPHCLS_OBJ)
+        return false;
+    const ot = loc.disp_obj_otyp;
+    const here = g.level.levelObjects?.[x]?.[y] ?? null;
+    if (oclass === ALL_CLASSES) {
+        /* stale if nothing here */
+        const mtmp = m_at(x, y);
+        return !(here || (mtmp && mtmp.minvent));
+    }
+    if (material
+        && (Number.isInteger(ot) ? (MKOBJ_OC_MATERIAL_GD[ot] | 0) === material
+            : loc.disp_ch === '$')) {
+        /* object shown here is of interest because material matches */
+        for (let otmp = here; otmp; otmp = otmp.nexthere)
+            if (o_material(otmp, GOLD_MAT_GD))
+                return false;
+        /* didn't find it; perhaps a monster is carrying it */
+        const mtmp = m_at(x, y);
+        if (mtmp)
+            for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
+                if (o_material(otmp, GOLD_MAT_GD))
+                    return false;
+        /* detection indicates removal of this object from the map */
+        return true;
+    }
+    if (oclass
+        && (Number.isInteger(ot) ? (MKOBJ_OC_CLASS[ot] | 0) === oclass
+            : loc.disp_ch === def_oc_syms_chars[oclass])) {
+        /* obj shown here is of interest because its class matches */
+        for (let otmp = here; otmp; otmp = otmp.nexthere)
+            if (o_in(otmp, oclass))
                 return false;
         const mtmp = m_at(x, y);
         if (mtmp)
             for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
-                if (_o_in_det(otmp, oclass))
+                if (o_in(otmp, oclass))
                     return false;
         return true;
     }
-    if (!loc || loc.disp_cls !== GLYPHCLS_OBJ)
-        return false;
-    const hasFloorObj = !!(g.level && g.level.levelObjects
-                            && g.level.levelObjects[x] && g.level.levelObjects[x][y]);
-    if (hasFloorObj)
-        return false;
-    const mtmp = m_at(x, y);
-    return !(mtmp && mtmp.minvent);
+    return false;
 }
 
-/* C ref: detect.c:311-330 clear_stale_map(!class ? ALL_CLASSES : class, 0). RNG-free. */
-function _clear_stale_map_alldetect(oclass = 0) {
+/* C ref: detect.c:318-334 clear_stale_map(oclass, material): remove stale
+ * object glyphs from the map; return true if a noticeable change occurred. */
+function clear_stale_map(oclass, material) {
     let change_made = false;
     for (let zx = 1; zx < COLNO; zx++) {
         for (let zy = 0; zy < ROWNO; zy++) {
-            if (_check_map_spot_alldetect(zx, zy, oclass)) {
+            if (check_map_spot(zx, zy, oclass, material)) {
                 unmap_object(zx, zy);
                 change_made = true;
             }
@@ -1849,19 +1854,19 @@ export async function object_detect(detector, oclass) {
 
     if (do_dknown) {
         for (let o = g.invent; o; o = o.nobj)
-            _observe_recursively_det(o);
+            observe_recursively(o);
     }
     for (let o = g.fobj; o; o = o.nobj) {
-        if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder)) {
+        if ((!oclass && !boulder) || o_in(o, oclass) || o_in(o, boulder)) {
             if (u_at(o.ox, o.oy)) ctu++; else ct++;
         }
-        if (do_dknown) _observe_recursively_det(o);
+        if (do_dknown) observe_recursively(o);
     }
     for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
-        if (!oclass || _o_in_det(o, oclass)) {
+        if (!oclass || o_in(o, oclass)) {
             if (u_at(o.ox, o.oy)) ctu++; else ct++;
         }
-        if (do_dknown) _observe_recursively_det(o);
+        if (do_dknown) observe_recursively(o);
     }
 
     if (u.usteed) {
@@ -1873,9 +1878,9 @@ export async function object_detect(detector, oclass) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
         for (let o = mtmp.minvent; o; o = o.nobj) {
-            if ((!oclass && !boulder) || _o_in_det(o, oclass) || _o_in_det(o, boulder))
+            if ((!oclass && !boulder) || o_in(o, oclass) || o_in(o, boulder))
                 ct++;
-            if (do_dknown) _observe_recursively_det(o);
+            if (do_dknown) observe_recursively(o);
         }
         /* C detect.c:668-676 — the `break` exits the OUTER mtmp loop the
          * instant ANY monster is a cursed-detector mimic-of-object or
@@ -1888,7 +1893,7 @@ export async function object_detect(detector, oclass) {
         }
     }
 
-    const stale = _clear_stale_map_alldetect(oclass);
+    const stale = clear_stale_map(!oclass ? ALL_CLASSES : oclass, 0);
     if (!stale && !ct) {
         if (!ctu) {
             if (detector)
@@ -1904,7 +1909,7 @@ export async function object_detect(detector, oclass) {
     await cls();
     unconstrain_map();
     for (let o = g.level && g.level.buriedobjlist; o; o = o.nobj) {
-        if (!oclass || (otmp = _o_in_det(o, oclass)) !== null) {
+        if (!oclass || (otmp = o_in(o, oclass)) !== null) {
             if (oclass) {
                 if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
                 map_object(otmp, 1);
@@ -1916,8 +1921,8 @@ export async function object_detect(detector, oclass) {
     for (let x = 1; x < COLNO; x++) {
         for (let y = 0; y < ROWNO; y++) {
             for (let o = g.level?.levelObjects?.[x]?.[y]; o; o = o.nexthere) {
-                if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
-                    || (otmp = _o_in_det(o, boulder)) !== null) {
+                if ((!oclass && !boulder) || (otmp = o_in(o, oclass)) !== null
+                    || (otmp = o_in(o, boulder)) !== null) {
                     if (oclass || boulder) {
                         if (otmp !== o) { otmp.ox = o.ox; otmp.oy = o.oy; }
                         map_object(otmp, 1);
@@ -1933,8 +1938,8 @@ export async function object_detect(detector, oclass) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
         for (let o = mtmp.minvent; o; o = o.nobj) {
-            if ((!oclass && !boulder) || (otmp = _o_in_det(o, oclass)) !== null
-                || (otmp = _o_in_det(o, boulder)) !== null) {
+            if ((!oclass && !boulder) || (otmp = o_in(o, oclass)) !== null
+                || (otmp = o_in(o, boulder)) !== null) {
                 if (!oclass && !boulder)
                     otmp = o;
                 otmp.ox = mtmp.mx;
@@ -2006,68 +2011,7 @@ export async function object_detect(detector, oclass) {
     return 0;
 }
 
-/* C ref: detect.c:201-221 o_in(obj, oclass) — recursively search obj (and, for
- * a container, its contents) for an object of class `oclass`, first found.
- * SchroedingersBox is excluded because the corpse it might contain hasn't
- * resolved live/dead yet (obj.h SchroedingersBox: LARGE_BOX && spe===1). */
-const LARGE_BOX_OTYP_RD = 214;
-
-function _SchroedingersBox_rd(o) {
-    return (o.otyp | 0) === LARGE_BOX_OTYP_RD && (o.spe | 0) === 1;
-}
-
-function o_in_rd(obj, oclass) {
-    if ((obj.oclass | 0) === oclass)
-        return obj;
-    if (Has_contents(obj) && !_SchroedingersBox_rd(obj)) {
-        for (let otmp = obj.cobj; otmp; otmp = otmp.nobj) {
-            if ((otmp.oclass | 0) === oclass)
-                return otmp;
-            if (Has_contents(otmp)) {
-                const temp = o_in_rd(otmp, oclass);
-                if (temp)
-                    return temp;
-            }
-        }
-    }
-    return null;
-}
-
 const FOOD_CLASS_RD = 7, POTION_CLASS_RD = 8;
-
-/* C detect.c:262-306 check_map_spot(x, y, oclass, 0): glyph_at reads the
- * displayed glyph; glyph_to_obj decodes its type regardless of symset. */
-function _check_map_spot_rd(x, y, oclass) {
-    const g = game;
-    const loc = g.level && g.level.at ? g.level.at(x, y) : null;
-    if (!loc || loc.disp_cls !== GLYPHCLS_OBJ)
-        return false;
-    if (!oclass || MKOBJ_OC_CLASS[loc.disp_obj_otyp] !== oclass)
-        return false;
-    for (let otmp = g.level.levelObjects?.[x]?.[y] ?? null; otmp; otmp = otmp.nexthere)
-        if (o_in_rd(otmp, oclass))
-            return false;
-    const mtmp = m_at(x, y);
-    if (mtmp)
-        for (let otmp = mtmp.minvent; otmp; otmp = otmp.nobj)
-            if (o_in_rd(otmp, oclass))
-                return false;
-    return true;
-}
-
-/* C ref: detect.c:318-330 clear_stale_map(oclass, 0). RNG-free. */
-function clear_stale_map_rd(oclass) {
-    let change_made = false;
-    for (let zx = 1; zx < COLNO; zx++) {
-        for (let zy = 0; zy < ROWNO; zy++) {
-            if (_check_map_spot_rd(zx, zy, oclass)) {
-                unmap_object(zx, zy);
-                change_made = true;
-            }
-        }
-    }
-    return change_made;
-}
 
 /* C ref: detect.c:70-82 unconstrain_map() / detect.c:85-90 reconstrain_map() --
  * bring a swallowed/buried/underwater hero out to (and back from) the normal
@@ -2145,18 +2089,18 @@ export async function food_detect(sobj) {
     const oclass = confused ? POTION_CLASS_RD : FOOD_CLASS_RD;
     const what = confused ? 'something' : 'food';
 
-    const stale = clear_stale_map_rd(oclass);
+    const stale = clear_stale_map(oclass, 0);
     if (u.usteed) { u.usteed.mx = u.ux; u.usteed.my = u.uy; }
 
     for (let obj = g.fobj; obj; obj = obj.nobj)
-        if (o_in_rd(obj, oclass)) {
+        if (o_in(obj, oclass)) {
             if (u_at(obj.ox | 0, obj.oy | 0)) ctu++; else ct++;
         }
     for (let mtmp = g.fmon; mtmp && (!ct || !ctu); mtmp = mtmp.nmon) {
         if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
             continue;
         for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
-            if (o_in_rd(obj, oclass)) {
+            if (o_in(obj, oclass)) {
                 if (u_at(mtmp.mx | 0, mtmp.my | 0)) ctu++; else ct++;
                 break;
             }
@@ -2213,7 +2157,7 @@ export async function food_detect(sobj) {
         const wasConstrained = unconstrain_map_rd();
         try {
             for (let obj = g.fobj; obj; obj = obj.nobj) {
-                const temp = o_in_rd(obj, oclass);
+                const temp = o_in(obj, oclass);
                 if (temp) {
                     if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
                     map_object(temp, 1);
@@ -2223,7 +2167,7 @@ export async function food_detect(sobj) {
                 if ((mtmp.mhp | 0) < 1 || (mtmp.isgd && !mtmp.mx))
                     continue;
                 for (let obj = mtmp.minvent; obj; obj = obj.nobj) {
-                    const temp = o_in_rd(obj, oclass);
+                    const temp = o_in(obj, oclass);
                     if (temp) {
                         temp.ox = mtmp.mx; temp.oy = mtmp.my;
                         map_object(temp, 1);
@@ -2266,8 +2210,9 @@ export async function food_detect(sobj) {
 
 function _oc_material_gd(o) { return MKOBJ_OC_MATERIAL_GD[o.otyp | 0] | 0; }
 
-/* C detect.c:229-246 o_material() */
-function o_material_gd(obj, material) {
+/* C detect.c:229-248 o_material(): recursively search obj for an object made
+ * of the specified material; return the first found. */
+function o_material(obj, material) {
     if (_oc_material_gd(obj) === material)
         return obj;
     if (Has_contents(obj)) {
@@ -2275,56 +2220,12 @@ function o_material_gd(obj, material) {
             if (_oc_material_gd(otmp) === material)
                 return otmp;
             else if (Has_contents(otmp)) {
-                const temp = o_material_gd(otmp, material);
+                const temp = o_material(otmp, material);
                 if (temp) return temp;
             }
         }
     }
     return null;
-}
-
-/* C detect.c:262-306 check_map_spot(x, y, COIN_CLASS, material) */
-function _check_map_spot_gd(x, y, material) {
-    const g = game;
-    const loc = g.level && g.level.at ? g.level.at(x, y) : null;
-    const rg = loc && loc.remembered_glyph;
-    if (!rg || rg.cls !== GLYPHCLS_OBJ)
-        return false;
-    /* C detect.c:275-291 decodes glyph_to_obj(glyph): the remembered otyp's
-     * oc_material / oc_class, not the rendered symbol (a boulder symbol may
-     * be '$').  Gold piece is the only COIN_CLASS object. */
-    if (rg.otyp != null) {
-        const ot = rg.otyp | 0;
-        if (material ? (MKOBJ_OC_MATERIAL_GD[ot] | 0) !== material : ot !== GOLD_PIECE_GD)
-            return false;
-    } else if (rg.ch !== '$')
-        return false;
-    const here = g.level.levelObjects?.[x]?.[y] ?? null;
-    if (material) {
-        for (let o = here; o; o = o.nexthere)
-            if (o_material_gd(o, GOLD_MAT_GD)) return false;
-        const mt = m_at(x, y);
-        if (mt) for (let o = mt.minvent; o; o = o.nobj)
-            if (o_material_gd(o, GOLD_MAT_GD)) return false;
-        return true;
-    }
-    for (let o = here; o; o = o.nexthere)
-        if (o_in_rd(o, COIN_CLASS_GD)) return false;
-    const mt = m_at(x, y);
-    if (mt) for (let o = mt.minvent; o; o = o.nobj)
-        if (o_in_rd(o, COIN_CLASS_GD)) return false;
-    return true;
-}
-
-function _clear_stale_map_gd(material) {
-    let change_made = false;
-    for (let zx = 1; zx < COLNO; zx++)
-        for (let zy = 0; zy < ROWNO; zy++)
-            if (_check_map_spot_gd(zx, zy, material)) {
-                unmap_object(zx, zy);
-                change_made = true;
-            }
-    return change_made;
 }
 
 /* C detect.c:341-475 gold_detect(sobj): returns 1 if nothing was detected. */
@@ -2333,7 +2234,7 @@ export async function gold_detect(sobj) {
     let temp = null, ugold = false, steedgold = false;
     let ter_typ = TER_DETECT | TER_OBJ;
     const blessed = !!sobj.blessed;
-    const stale = _clear_stale_map_gd(blessed ? GOLD_MAT_GD : 0);
+    const stale = clear_stale_map(COIN_CLASS_GD, blessed ? GOLD_MAT_GD : 0);
     g._gk_known = stale;
     let outgoldmap = false;
 
@@ -2344,8 +2245,8 @@ export async function gold_detect(sobj) {
             else { g._gk_known = true; outgoldmap = true; }
         } else {
             for (let obj = mtmp.minvent; obj && !outgoldmap; obj = obj.nobj)
-                if ((blessed && o_material_gd(obj, GOLD_MAT_GD))
-                    || o_in_rd(obj, COIN_CLASS_GD)) {
+                if ((blessed && o_material(obj, GOLD_MAT_GD))
+                    || o_in(obj, COIN_CLASS_GD)) {
                     if (mtmp === u.usteed) steedgold = true;
                     else { g._gk_known = true; outgoldmap = true; }
                 }
@@ -2353,10 +2254,10 @@ export async function gold_detect(sobj) {
     }
     if (!outgoldmap) {
         for (let obj = g.fobj; obj; obj = obj.nobj) {
-            if (blessed && o_material_gd(obj, GOLD_MAT_GD)) {
+            if (blessed && o_material(obj, GOLD_MAT_GD)) {
                 g._gk_known = true;
                 if ((obj.ox | 0) !== (u.ux | 0) || (obj.oy | 0) !== (u.uy | 0)) { outgoldmap = true; break; }
-            } else if (o_in_rd(obj, COIN_CLASS_GD)) {
+            } else if (o_in(obj, COIN_CLASS_GD)) {
                 g._gk_known = true;
                 if ((obj.ox | 0) !== (u.ux | 0) || (obj.oy | 0) !== (u.uy | 0)) { outgoldmap = true; break; }
             }
@@ -2399,10 +2300,10 @@ export async function gold_detect(sobj) {
     const wasConstrained = unconstrain_map_rd();
     try {
         for (let obj = g.fobj; obj; obj = obj.nobj) {
-            if (blessed && (temp = o_material_gd(obj, GOLD_MAT_GD)) != null) {
+            if (blessed && (temp = o_material(obj, GOLD_MAT_GD)) != null) {
                 if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
                 map_object(temp, 1);
-            } else if ((temp = o_in_rd(obj, COIN_CLASS_GD)) != null) {
+            } else if ((temp = o_in(obj, COIN_CLASS_GD)) != null) {
                 if (temp !== obj) { temp.ox = obj.ox; temp.oy = obj.oy; }
                 map_object(temp, 1);
             }
@@ -2418,11 +2319,11 @@ export async function gold_detect(sobj) {
                 temp = gold;
             } else {
                 for (let obj = mtmp.minvent; obj; obj = obj.nobj)
-                    if (blessed && (temp = o_material_gd(obj, GOLD_MAT_GD)) != null) {
+                    if (blessed && (temp = o_material(obj, GOLD_MAT_GD)) != null) {
                         temp.ox = mtmp.mx; temp.oy = mtmp.my;
                         map_object(temp, 1);
                         break;
-                    } else if ((temp = o_in_rd(obj, COIN_CLASS_GD)) != null) {
+                    } else if ((temp = o_in(obj, COIN_CLASS_GD)) != null) {
                         temp.ox = mtmp.mx; temp.oy = mtmp.my;
                         map_object(temp, 1);
                         break;
@@ -2449,42 +2350,6 @@ export async function gold_detect(sobj) {
     return 0;
 }
 
-const OTRAP_NONE_RD = 0, OTRAP_HERE_RD = 1, OTRAP_THERE_RD = 2;
-
-const CHEST_OTYP_RD = 215;
-
-function _Is_box_rd(otmp) {
-    const otyp = otmp.otyp | 0;
-    return otyp === LARGE_BOX_OTYP_RD || otyp === CHEST_OTYP_RD;
-}
-
-/* C detect.c:907-953 detect_obj_traps(list, FALSE, 0, NULL): OTRAP_NONE=0,
- * OTRAP_HERE=1, OTRAP_THERE=2.  Only the show_them == FALSE scan is ported. */
-function _detect_obj_traps_scan(objlist, show_them = false, how = 0) {
-    const u = game.u || {};
-    let result = OTRAP_NONE_RD;
-    for (let otmp = objlist; otmp; otmp = otmp.nobj) {
-        const isbox = _Is_box_rd(otmp);
-        const xp = { value: 0 }, yp = { value: 0 };
-        if ((isbox && otrapped_of(otmp)) || Has_contents(otmp)) {
-            if (!get_obj_location(otmp, xp, yp, BURIED_TOO | CONTAINED_TOO)
-                || !isok(xp.value, yp.value)) continue;
-        }
-        if (isbox && otrapped_of(otmp)) {
-            otmp.tknown = 1; /* C detect.c:934 */
-            observe_object(otmp);
-            const x = xp.value, y = yp.value;
-            result |= (x === (u.ux | 0) && y === (u.uy | 0)) ? OTRAP_HERE_RD : OTRAP_THERE_RD;
-            if (show_them) /* C detect.c:938-942: dummytrap.ttyp == TRAPPED_CHEST */
-                _sense_trap({ tx: x, ty: y, ttyp: TRAPPED_CHEST_RD }, x, y, how);
-        }
-        if (Has_contents(otmp))
-            result |= _detect_obj_traps_scan(otmp.cobj, show_them, how);
-    }
-    return result;
-}
-
-const TRAPPED_CHEST_RD = 25, TRAPPED_DOOR_RD = 24;
 
 /* C detect.c:956-1003 display_trap_map(cursed_src) */
 async function display_trap_map(cursed_src) {
@@ -2495,22 +2360,22 @@ async function display_trap_map(cursed_src) {
     const wasConstrained = unconstrain_map_rd();
     g._sensed_at_hero = false;
     try {
-        _detect_obj_traps_scan(g.level?.buriedobjlist, true, cursed_src);
-        _detect_obj_traps_scan(g.fobj, true, cursed_src);
+        detect_obj_traps(g.level?.buriedobjlist, true, cursed_src, null);
+        detect_obj_traps(g.fobj, true, cursed_src, null);
         for (let mon = g.fmon; mon; mon = mon.nmon) {
             if ((mon.mhp | 0) < 1 || (mon.isgd && !mon.mx)) continue;
-            _detect_obj_traps_scan(mon.minvent, true, cursed_src);
+            detect_obj_traps(mon.minvent, true, cursed_src, null);
         }
-        _detect_obj_traps_scan(g.invent, true, cursed_src);
+        detect_obj_traps(g.invent, true, cursed_src, null);
         for (let t = g.ftrap; t; t = t.ntrap)
-            _sense_trap(t, 0, 0, cursed_src);
+            sense_trap(t, 0, 0, cursed_src);
         const doors = g.level?.doors || [];
         for (let d = 0; d < (g.level?.doorindex | 0) && d < doors.length; d++) {
             const cc = doors[d];
             const loc = g.level.at ? g.level.at(cc.x, cc.y) : null;
             if (!loc || (loc.typ | 0) === SDOOR) continue;
             if ((loc.doormask | 0) & D_TRAPPED_RD)
-                _sense_trap({ tx: cc.x, ty: cc.y, ttyp: TRAPPED_DOOR_RD }, cc.x, cc.y, cursed_src);
+                sense_trap({ tx: cc.x, ty: cc.y, ttyp: TRAPPED_DOOR }, cc.x, cc.y, cursed_src);
         }
         if (!g._sensed_at_hero) {
             newsym(u.ux | 0, u.uy | 0);
@@ -2545,11 +2410,11 @@ export async function trap_detect(sobj) {
         lists.push(mon.minvent);
     }
     for (const l of lists) {
-        const tr = _detect_obj_traps_scan(l);
-        if (tr & OTRAP_THERE_RD) { await display_trap_map(cursed_src); return 0; }
+        const tr = detect_obj_traps(l, false, 0, null);
+        if (tr & OTRAP_THERE) { await display_trap_map(cursed_src); return 0; }
         if (tr) found = true;
     }
-    if (_detect_obj_traps_scan(g.invent)) found = true;
+    if (detect_obj_traps(g.invent, false, 0, null)) found = true;
     const doors = g.level?.doors || [];
     for (let d = 0; d < (g.level?.doorindex | 0) && d < doors.length; d++) {
         const cc = doors[d];

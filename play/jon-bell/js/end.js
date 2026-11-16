@@ -756,8 +756,21 @@ export async function do_death_sequence(opts) {
     let _earlyBot = false;
     if (remainder && pd.noDeathLine && !pd.prejoinButWait && !pd.urgentDeathLine
         && !pd.stoningDeathLine && !pd.alreadySaidYouDie) {
+        /* end.c:1043-1045's bot() writes the status rows at once even while
+         * drag_down's cls() (ball.c:1010) has the screen blank under
+         * delay_flushing (do.c:1720); botl.c:259 declines only at u.uhp == -1.
+         * The same unblank as the urgent "You die..." arm below, for a direct
+         * done() caller: rehumanize() of an Unchanging hero (polyself.c:1376)
+         * killed by drag_down's "The iron ball smacks into you!" pages that
+         * line from the Die? query over the freshly painted status rows. */
+        const _unblank = !!(g.u && (g.u.uhp | 0) !== -1 && g._status_blanked);
+        if (_unblank)
+            g._status_blanked = false;
         if (g.disp) g.disp.botlx = 1;
         await bot();
+        /* delay_flushing stays on until docrt (do.c:1841): keep this paint. */
+        if (_unblank && g._physBlankToDocrt)
+            g._botlPaintHeld = true;
         /* a status paint after the pending line's own flush: the page shows it, T: included */
         g._statusPaintSeq = (g._statusPaintSeq | 0) + 1;
         _earlyBot = true;

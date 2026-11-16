@@ -18,6 +18,7 @@
 // it with the status clipping left by the dismissed full options window.
 // General multi-page overlay dismissal remains separate work.
 import { game } from './gstate.js';
+import { overlay_flushed_cells } from './display.js';
 import { PICK_ONE } from './const.js';
 import { nhgetch } from './input.js';
 /* C ref: wintty.c:1704 MENU_SEARCH → tty_getlin("Search for:", tmpbuf), and
@@ -251,12 +252,14 @@ export class TtyMenu {
     _screenRows() {
         if (this.baseWindow) return this._lines.map(line => this.overlay
             ? ' '.repeat(this.contentCol) + line.slice(1) : line);
-        if (!this.overlay) return this._lines.slice(0, LI);
-        return build_window_screen(this._lines.map(line => line.slice(1)), this.contentCol,
-            undefined, this.statusClipCol).split('\n');
+        if (!this.overlay)
+            return overlay_flushed_cells(this._lines.slice(0, LI), this._gnewOverlay);
+        return overlay_flushed_cells(build_window_screen(this._lines.map(line => line.slice(1)),
+            this.contentCol, undefined, this.statusClipCol).split('\n'), this._gnewOverlay);
     }
 
     _renderPage(page) {
+        this._gnewOverlay = null; /* a page redraw clears the window first */
         this._lines = this._drawPage(page);
         this._pageLines = this._lines.length;
         this.morestr = this.npages > 1 ? `(${page + 1} of ${this.npages})` : this.msave;
@@ -426,6 +429,14 @@ export class TtyMenu {
                 if (how !== PICK_NONE) {
                     const answer = await menu_search_getlin(
                         () => this._screenRows());
+                    /* the getlin prompt's flush printed gnew map cells over
+                     * this page (pline.c:273-276); they stay until the page
+                     * is redrawn. */
+                    if (game._menuSearchGnew?.size) {
+                        this._gnewOverlay = new Map([...(this._gnewOverlay || []),
+                                                     ...game._menuSearchGnew]);
+                    }
+                    game._menuSearchGnew = null;
                     /* C ref: getline.c:213 clear_nhwindow(WIN_MESSAGE) — row 0
                      * goes blank and the page is NOT repainted, so it stays
                      * blank until page_start is reset (a page change). */
@@ -486,7 +497,10 @@ export class TtyMenu {
             /* docrt's cls() blanks the status rows; bot() is disabled. */
             game._statusBlankAfterDocrt = true;
             try {
-                await docrt();
+                /* wintty.c:978 docrt() runs while the menu text is still on
+                 * the terminal: vision_recalc(2)'s notice plines (vision.c:856)
+                 * flush only changed glyphs over it before cls() pages them. */
+                await docrt(false, game._screen_output);
                 /* wintty.c:978-979 flushes the map before select_menu() restores
                  * bot processing (windows.c:1861-1863). Consume its pending glyphs
                  * now, so the next bot() paints over the already printed map. */

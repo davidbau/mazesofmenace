@@ -4642,6 +4642,12 @@ async function moveloop_core_faithful() {
             vision_recalc(0);
             g.vision_full_recalc = 0;
         }
+        /* C allmain.c:473-479 — the same no-time call then repaints the status
+         * (`if (disp.botl || disp.botlx) { bot(); curs_on_u(); } else if
+         * (disp.time_botl) { timebot(); curs_on_u(); }`) before multi < 0
+         * skips rhack.  find_ac() above set botl when the burnt armor changed
+         * u.uac, so the countdown turn's unmul() --More-- pages over the new AC. */
+        await moveloop_status_paint();
         g.context.move = 1;
         // C allmain.c:513 also runs on this no-time pass before multi skips
         // rhack; the recovery turn must not retain the killing move's umoved.

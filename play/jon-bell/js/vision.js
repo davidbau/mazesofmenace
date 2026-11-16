@@ -245,6 +245,11 @@ export function vision_reset() {
     game._viz_rmax = cs_rmax0;
     // C vision.c:263 — the rebuilt vision state is ready for recalculation.
     game.iflags.vision_inited = true;
+    /* C vision.c:264 `gv.vision_full_recalc = 1;  we want to run
+     * vision_recalc()`.  #wizloaddes knox: flip_level() (sp_lev.c:921) resets
+     * vision mid-load, so the first fill_zoo "A soldier suddenly appears!"
+     * vpline recalcs vision before its flush (pline.c:266-271). */
+    game.vision_full_recalc = 1;
 }
 
 /* C vision.c:876-921 — the viz_clear / left_ptrs / right_ptrs half of

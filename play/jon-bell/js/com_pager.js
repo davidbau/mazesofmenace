@@ -23,7 +23,7 @@ import { menu_heading_text } from './tty_menu.js'; /* C strutil.c:151 — MENU_S
 import { putmsghistory, tty_getlin_prompt, _strengthStr, force_more, force_more_pages, await_more_dismiss, docorner_blank_utf8_captures, unflushed_forced_cell, levelgen_frozen_cell,
          await_topl_more_dismiss, pline_flush_point, docorner_status_row,
          botl_pmname, botl_upstart_words, botl_mon_mlevel, botl_title, botl_status1_tail, botl_frozen_status_line,
-         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail } from './display.js';
+         gold_status_char, dec_mode, generic_symset, rogue_graphics, rogue_hero_showrace_cell, rogue_ibm_color, botl_status_suffix, fit_status_line_width, status_row_finish, _statusRows3, _threeStatusLines, docrt_flags, docrt, flush_screen, use_last_flush_snapshot, hitpointbar_status1, _status_sgr, _status_row1_map_overlay, _status_row1_whole_with_tail, flush_gnew_cells_over_window, overlay_flushed_cells } from './display.js';
 import { money_cnt } from './hack.js'; // relocate-fns
 export { ask_do_tutorial } from './options.js'; // relocate-fns
 export { money_cnt } from './hack.js'; // relocate-fns
@@ -1419,6 +1419,12 @@ export async function menu_search_getlin(frameRows) {
     g._topl_sticky = null;
     g._topl_empty_sticky = null;
     g._menu_search_row0_erased = true;
+    /* C getline.c:63 custompline() -> vpline() pline.c:266-276: vision_recalc(0)
+     * when pending, then flush_screen(1) prints the gnew map cells over the
+     * menu.  They stay on the terminal under the prompt (and, for TtyMenu,
+     * until its page is redrawn: g._menuSearchGnew). */
+    const gnewCells = flush_gnew_cells_over_window();
+    g._menuSearchGnew = gnewCells;
     /* C ref: getline.c:50,106-137 — ^P recall state: `doprev` and the text the
      * recalled message left on the topline (null when the prompt is showing). */
     let doprev = false, recall = null, prevIdx = 0;
@@ -1446,7 +1452,7 @@ export async function menu_search_getlin(frameRows) {
     /* C ref: getline.c:63 custompline(..., "%s ", query) — the trailing space is
      * part of the prompt, and the cursor sits just past what has been typed. */
     const render = async () => {
-        const rows = (await frameRows()).slice();
+        const rows = overlay_flushed_cells((await frameRows()).slice(), gnewCells);
         /* C ref: getline.c:63,174 — paint the prompt once, then echo edits
          * through putsyms().  The painter retains rows erased by wrapping;
          * trailing blanks are trimmed only when encoding the screen. */

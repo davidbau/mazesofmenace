@@ -8811,6 +8811,57 @@ function _tty_row_cells(row) {
     return cells;
 }
 
+/* C pline.c:266-276 vpline(): a pline issued while a window covers the map
+ * (tty_getlin's custompline of its query, getline.c:63) still runs
+ * vision_recalc(0) when a full recalc is pending and then flush_screen(1),
+ * whose print loop (display.c:2236-2256) writes ONLY the gbuf cells marked
+ * gnew, straight onto the terminal over that window.  bot() does not run:
+ * select_menu holds bot_disabled (windows.c:1859-1863).  Returns those cells
+ * as a Map keyed row*COLNO+col of {ch, paint}, and starts a new flush epoch
+ * (flush_screen clears every gnew bit). */
+export function flush_gnew_cells_over_window() {
+    const lvl = game.level;
+    if (!lvl || !game.u?.ux) return null;
+    /* gnew since the LAST flush before this pline: vision_recalc() can
+     * pline itself (notice_all_mons, vision.c:856), and that nested pline's
+     * own flush prints the same cells onto this window. */
+    const epoch0 = _flush_epoch;
+    if (game.vision_full_recalc) vision_recalc(0);
+    const out = new Map();
+    for (let y = 0; y < ROWNO; y++) {
+        let rowCells = null;
+        for (let x = 1; x < COLNO; x++) {
+            const loc = lvl.at(x, y);
+            if (!loc || !((loc.disp_gnew_epoch | 0) >= epoch0)) continue;
+            rowCells ??= _tty_row_cells(render_map_row(y));
+            out.set((y + 1) * COLNO + (x - 1), rowCells[x - 1] || { ch: ' ', paint: ' ' });
+        }
+    }
+    _flush_epoch++;
+    return out;
+}
+/* Splice cells from flush_gnew_cells_over_window() into window frame rows
+ * (row 0 is left to the caller's topline). */
+export function overlay_flushed_cells(rows, cells) {
+    if (!cells || !cells.size) return rows;
+    const byRow = new Map();
+    for (const [key, cell] of cells) {
+        const r = Math.trunc(key / COLNO), c = key % COLNO;
+        if (r < 1) continue;
+        if (!byRow.has(r)) byRow.set(r, []);
+        byRow.get(r).push([c, cell]);
+    }
+    for (const [r, list] of byRow) {
+        const phys = _tty_row_cells(rows[r] || '');
+        for (const [c, cell] of list) {
+            while (phys.length < c) phys.push({ ch: ' ', paint: ' ' });
+            phys[c] = cell;
+        }
+        while (rows.length <= r) rows.push('');
+        rows[r] = phys.map(cell => cell.paint).join('');
+    }
+    return rows;
+}
 /* A pre-cls flush changes gbuf's dirty cells, not the text window underneath.
  * The ordinary map reconstruction is still used to spell each changed glyph. */
 function _docrt_text_frame(output, messageRows = 1) {
@@ -15352,8 +15403,12 @@ function _cmap_to_glyph_disp_base(sym) {
 const REGION_GLYPH_POISONCLOUD = 4091; /* region.js:62-71 cmap_to_glyph(S_poisoncloud) */
 export function region_glyph(reg) {
     const poison = (reg?.glyph | 0) === REGION_GLYPH_POISONCLOUD;
-    return { ch: '#', color: poison ? CLR_BRIGHT_GREEN : CLR_GRAY,
-             decgfx: false, cls: GLYPHCLS_CMAP, cmap: poison ? 86 : 47 };
+    /* show_glyph() -> map_glyphinfo() resolves the cloud's cmap through the
+     * live showsyms like any other terrain (display.c:2653), so a symset such
+     * as Blank (dat/symbols S_cloud/S_poisoncloud: \032) changes its symbol. */
+    const cell = cmap_glyph(poison ? 86 : 47);
+    return { ch: cell.ch, color: cell.color ?? (poison ? CLR_BRIGHT_GREEN : CLR_GRAY),
+             decgfx: !!cell.decgfx, cls: GLYPHCLS_CMAP, cmap: poison ? 86 : 47 };
 }
 // C detect.c:2162-2164 glyph_is_gascloud; corridors can share both color and '#'.
 export function glyph_is_gascloud(glyph) {

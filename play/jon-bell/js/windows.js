@@ -1,6 +1,6 @@
 // windows.js — C ref: windows.c.
 import { putstr } from './cmd.js'; // relocate-fns
-import { cmdq_pop, doprev_message, pgetchar } from './cmd.js'; // relocate-fns
+import { cmdq_pop, doprev_message, pgetchar, tty_getlin_combo_wrapped_window } from './cmd.js'; // relocate-fns
 import { CMDQ_KEY, COLNO, MAX_MSG_HISTORY } from './const.js'; // relocate-fns
 import { _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more, restore_command_topline, restore_occupation_topline, tty_getlin_echo, tty_getlin_history, tty_getlin_recall, use_last_flush_snapshot } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
@@ -160,6 +160,13 @@ export async function getlin(prompt) {
          * initially" call), later ones walk the history ring backwards. */
         if (keyCode === 16) {
             const pw = (g.iflags?.prevmsg_window || 's')[0];
+            /* topl.c:42-75 combination at cw->maxrow == 0: the second of the
+             * two initial calls opens the history window (cmd.js helper). */
+            if (pw === 'c' && !doprev
+                && await tty_getlin_combo_wrapped_window(prompt + ' ' + buf)) {
+                doprev = true;
+                continue;
+            }
             if (pw === 's' || (pw === 'c' && !doprev)) {
                 const hist = Array.isArray(g._msg_history) ? g._msg_history : [];
                 const _ring = Math.min(Math.max((g.iflags?.msg_history ?? 20) | 0, 20), MAX_MSG_HISTORY);
