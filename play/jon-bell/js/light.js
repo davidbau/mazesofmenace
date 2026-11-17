@@ -26,6 +26,7 @@ import {
     COLNO, ROWNO, MAX_RADIUS, LS_NONE, LS_OBJECT, LS_MONSTER, TEMP_LIT, COULD_SEE,
     RANGE_LEVEL, OBJ_FREE, OBJ_INVENT, OBJ_FLOOR, OBJ_MINVENT, OBJ_MIGRATING, OBJ_BURIED, OBJ_CONTAINED, OBJ_DELETED,
     BURIED_TOO, CONTAINED_TOO, u_at, PLNMSG_OBJ_GLOWS,
+    FM_YOU, FM_FMON, FM_MIGRATE, FM_MYDOGS, FM_EVERYWHERE,
 } from './const.js';
 import { clear_path, circle_ptr, vision_recalc, Blind, cansee } from './vision.js';
 import { place_object, remove_object } from './mkobj.js';
@@ -265,6 +266,107 @@ export function do_light_sources(cs_rows) {
             }
         }
     }
+}
+
+/* C light.c:704-715 obj_move_light_source(src, dest): change a light source's
+ * object id from src to dest.  (No C caller in 5.0, but the function exists.) */
+export function obj_move_light_source(src, dest) {
+    for (let ls = light_base; ls; ls = ls.next)
+        if (ls.type === LS_OBJECT && ls.id.a_obj === src) {
+            ls.id.a_obj = dest;
+            ls.id.a_monst = dest; /* pointer arms of the union alias */
+        }
+    src.lamplit = 0;
+    dest.lamplit = 1;
+}
+
+/* C light.c:375-395 find_mid(nid, fmflags): locate a monster by m_id on the
+ * chains selected by fmflags.  DEADMONSTER()s on fmon are disregarded. */
+export function find_mid(nid, fmflags) {
+    const g = game;
+    if ((fmflags & FM_YOU) && nid === 1)
+        return g.youmonst;
+    if (fmflags & FM_FMON)
+        for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon)
+            if (!(mtmp.mhp <= 0) && mtmp.m_id === nid)
+                return mtmp;
+    if (fmflags & FM_MIGRATE)
+        for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
+            if (mtmp.m_id === nid)
+                return mtmp;
+    if (fmflags & FM_MYDOGS)
+        for (let mtmp = g.mydogs; mtmp; mtmp = mtmp.nmon)
+            if (mtmp.m_id === nid)
+                return mtmp;
+    return null;
+}
+
+/* C light.c:397-417 whereis_mon(mon, fmflags): which chain holds mon (an FM_*
+ * flag), or 0.  Unlike find_mid() it does not skip a DEADMONSTER. */
+export function whereis_mon(mon, fmflags) {
+    const g = game;
+    if ((fmflags & FM_YOU) && mon === g.youmonst)
+        return FM_YOU;
+    if (fmflags & FM_FMON)
+        for (let mtmp = g.fmon; mtmp; mtmp = mtmp.nmon)
+            if (mtmp === mon)
+                return FM_FMON;
+    if (fmflags & FM_MIGRATE)
+        for (let mtmp = g.migrating_mons; mtmp; mtmp = mtmp.nmon)
+            if (mtmp === mon)
+                return FM_MIGRATE;
+    if (fmflags & FM_MYDOGS)
+        for (let mtmp = g.mydogs; mtmp; mtmp = mtmp.nmon)
+            if (mtmp === mon)
+                return FM_MYDOGS;
+    return 0;
+}
+
+/* C light.c:605-630 light_sources_sanity_check(), called from wizcmds.c:1475.
+ * C's find_oid()/find_mid(FM_EVERYWHERE) are chain searches (o_on() recurses
+ * into containers); a light source is sane when its object / monster is still
+ * on one of the game's chains. */
+function ls_find_obj_on(chain, otmp) {
+    for (let o = chain; o; o = o.nobj) {
+        if (o === otmp || ls_find_obj_on(o.cobj, otmp))
+            return true;
+    }
+    return false;
+}
+function ls_find_oid(otmp) {
+    const g = game;
+    if (ls_find_obj_on(g.invent, otmp) || ls_find_obj_on(g.fobj, otmp)
+        || ls_find_obj_on(g.level?.buriedobjlist, otmp)
+        || ls_find_obj_on(g.migrating_objs, otmp))
+        return true;
+    for (const chain of [g.fmon, g.migrating_mons, g.mydogs])
+        for (let mon = chain; mon; mon = mon.nmon)
+            if (ls_find_obj_on(mon.minvent, otmp))
+                return true;
+    return false;
+}
+export async function light_sources_sanity_check() {
+    const { panic } = await import('./dog.js');
+    for (let ls = light_base; ls; ls = ls.next) {
+        if (!(ls.id.a_obj ?? ls.id.a_monst))
+            await panic('insane light source: no id!');
+        if (ls.type === LS_OBJECT) {
+            const otmp = ls.id.a_obj;
+            if (!ls_find_oid(otmp))
+                await panic(`insane light source: can't find obj #${otmp.o_id >>> 0}!`);
+        } else if (ls.type === LS_MONSTER) {
+            const mtmp = ls.id.a_monst;
+            if (find_mid(mtmp.m_id >>> 0, FM_EVERYWHERE) !== mtmp)
+                await panic(`insane light source: can't find mon #${mtmp.m_id >>> 0}!`);
+        } else {
+            await panic(`insane light source: bad ls type ${ls.type}`);
+        }
+    }
+}
+
+/* C light.c:761-767 obj_sheds_light(): so far, only burning objects shed light. */
+export function obj_sheds_light(obj) {
+    return obj_is_burning(obj);
 }
 
 /* C ref: light.c:719-726 any_light_source() */
@@ -637,7 +739,7 @@ export async function wiz_light_sources() {
                         : (id.a_monst === g.youmonst) ? 'you' : '<m>')
                     : '???';
             const o = id.a_obj ?? id.a_monst;
-            const ptr = '<ptr>';
+            const ptr = '0x' + (0x55d0c0de0000 + (((o?.o_id ?? o?.m_id) | 0) << 6)).toString(16);
             lines.push(`  ${pad2(ls.x)},${pad2(ls.y)}   ${pad2(ls.range)}   0x${(ls.flags | 0).toString(16).padStart(4, '0')}  ${who}  ${ptr}`);
         }
     } else {

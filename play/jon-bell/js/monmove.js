@@ -51,7 +51,7 @@ import { mksobj_at, obj_extract_self } from './mkobj.js';
 import { mpickobj } from './steal.js';
 import { sobj_at } from './invent.js';
 import { u_on_newpos, Is_special } from './dungeon.js';
-import { stairway_at, stairway_find_dir } from './stairs.js';
+import { stairway_at, stairway_find_dir, stairway_find_type_dir } from './stairs.js';
 import { upstart } from './hacklib.js';
 import { Soundeffect, se_crunching_sound, can_touch_safely, mfndpos, hideunder, maybe_unhide_at, wake_nearto, healmon, meatobj as meatobj_real, meatcorpse as meatcorpse_real, newcham, m_consume_obj, mongone, monnear, M1_WALLWALK_MV } from './mon.js';
 import { is_pool as is_pool_mv2 } from './look.js';
@@ -4769,12 +4769,7 @@ function strategy_wz(mtmp) {
  * walk is C stairs.c:88-95 over gs.stairs = game.stairs. */
 function choose_stairs_wz(out, dir) {
     const stdir = builds_up(game.u?.uz) ? dir : !dir;
-    const findTypeDir = (isladder, up) => {
-        for (let t = game.stairs; t; t = t.next)
-            if (!!t.isladder === !!isladder && !!t.up === !!up)
-                return t;
-        return null;
-    };
+    const findTypeDir = stairway_find_type_dir;
     let stway = findTypeDir(false, stdir);
     if (!stway) {
         /* no stairs; look for ladder in that direction */

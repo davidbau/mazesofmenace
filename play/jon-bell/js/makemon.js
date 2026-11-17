@@ -2167,7 +2167,9 @@ async function _mkMplayerArmor(typ, mksobjFn, mpickobjFn, mon) {
     if (typ === _STRANGE_OBJECT)
         return;
     const obj = mksobjFn ? await mksobjFn(typ, false, false) : null;
-    /* oeroded = oeroded2 = 0 (no RNG) */
+    /* C mplayer.c:104 obj->oeroded = obj->oeroded2 = 0 (no RNG) */
+    if (obj)
+        obj.oeroded = obj.oeroded2 = 0;
     if (!rn2(3)) {
         if (obj)
             obj.oerodeproof = 1;
@@ -2212,7 +2214,7 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
      * occupied.  rloc() DOES draw RNG (it picks a random destination), so this
      * must be a real call, not a comment. */
     if (cbs.rlocInsurance)
-        cbs.rlocInsurance(x, y);
+        await cbs.rlocInsurance(x, y); /* async rloc must finish before makemon */
     /* C mplayer.c:129-130 if (!In_endgame(&u.uz)) special = FALSE; */
     const uz = game.u?.uz;
     if (!uz || !In_endgame(uz))
@@ -2382,7 +2384,7 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
         }
         /* C mplayer.c:256-275 weapon setup */
         if (weapon !== _STRANGE_OBJECT) {
-            const otmp = await cbs.mksobj(weapon, true, false);
+            let otmp = await cbs.mksobj(weapon, true, false);
             /* C mplayer.c:258 otmp->oeroded = otmp->oeroded2 = 0 */
             if (otmp)
                 otmp.oeroded = otmp.oeroded2 = 0;
@@ -2403,8 +2405,9 @@ export async function mkMplayer(ptr, x, y, special, cbs) {
             if (special && rn2(2)) {
                 const A_NONE = -128;
                 if (cbs?.mkArtifact && otmp) {
-                    const art = cbs.mkArtifact(otmp, A_NONE, 99, false);
-                    /* otmp may have changed — use art if returned */
+                    /* C: otmp = mk_artifact(otmp, A_NONE, 99, FALSE) — never NULL for A_NONE.
+                     * mk_artifact is async here, so await it and keep its result. */
+                    otmp = (await cbs.mkArtifact(otmp, A_NONE, 99, false)) ?? otmp;
                 }
             }
             /* C mplayer.c:268-270:

@@ -34,6 +34,28 @@ export function stairway_find_dir(up) {
     return null;
 }
 
+// C ref: stairs.c:50-61 stairway_find — first stairway whose destination level
+// is `fromdlev`.
+export function stairway_find(fromdlev) {
+    let tmp = game.stairs;
+    while (tmp) {
+        if (tmp.tolev.dnum === fromdlev.dnum
+            && tmp.tolev.dlevel === fromdlev.dlevel)
+            break; /* return */
+        tmp = tmp.next;
+    }
+    return tmp || null;
+}
+
+// C ref: stairs.c:88-95 stairway_find_type_dir — first stairway matching both
+// ladder-ness and direction.
+export function stairway_find_type_dir(isladder, up) {
+    let tmp = game.stairs;
+    while (tmp && !(!!tmp.isladder === !!isladder && !!tmp.up === !!up))
+        tmp = tmp.next;
+    return tmp || null;
+}
+
 export function stairway_find_special_dir(up) {
     for (let s = game.stairs; s; s = s.next)
         if (s.tolev.dnum !== (game.u?.uz?.dnum ?? 0) && s.up !== up)

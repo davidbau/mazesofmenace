@@ -152,12 +152,9 @@ export async function artitouch(obj) {
         return;
     observe_object(obj);
     qstat.touched_artifact = true;
-    /* C's qt_pager() prints before addinv's own "j - ..." line; hand the
-     * promise back so async addinv_core1 callers can await it.  C quest.c:133
-     * exercises only after the pager window is dismissed (and docrt'd). */
-    const pager = qt_pager('gotit');
-    if (pager && typeof pager.then === 'function')
-        return pager.then(() => { exercise(A_WIS, true); });
+    /* C's qt_pager() prints before addinv's own "j - ..." line; this function
+     * is async so addinv_core1 callers await it.  C quest.c:133 exercises only
+     * after the pager window is dismissed (and docrt'd). */
     await qt_pager('gotit');
     exercise(A_WIS, true);
 }

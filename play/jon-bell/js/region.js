@@ -11,9 +11,8 @@ import { body_part, region_danger } from './cmd.js';
 import { losehp } from './hack.js';
 import { haseyes } from './mhitm.js';
 import { m_monnam } from './do_name.js';
-import { killed } from './mon.js';
+import { killed, monkilled } from './mon.js';
 import { PM_LONG_WORM } from './pm.generated.js';
-import { monkilled_trap } from './trap.js';
 import { make_blinded, BlindedTimeout } from './zap.js';
 import { set_itimeout } from './potion.js';
 import { safe_teleds } from './teleport.js';
@@ -1108,7 +1107,7 @@ export async function inside_gas_cloud(p1, p2) {
             if (heros_fault(reg))
                 await killed(mtmp);
             else
-                await monkilled_trap(mtmp, "gas cloud");
+                await monkilled(mtmp, "gas cloud", AD_DRST_REG); /* region.c:1156 monkilled(mtmp, "gas cloud", AD_DRST) */
             if (DEADMONSTER(mtmp)) /* not lifesaved */
                 return true;
         }
@@ -1295,6 +1294,8 @@ export function create_gas_cloud(x, y, cloudsize, damage) {
 // C ref: mon.c:311 m_poisongas_ok's M_POISONGAS_OK return code (js/const.js
 // :2180 carries the same enum).
 const M_POISONGAS_OK_REG = 2;
+// C ref: monattk.h:49 AD_DRST (poison, Str drain) — region.c:1156's `how`.
+const AD_DRST_REG = 7;
 
 
 // C ref: region.c:1367-1407 region_safety() — cure gas-cloud prayer trouble.

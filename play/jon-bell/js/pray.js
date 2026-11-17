@@ -66,7 +66,7 @@ import { ROLE_GODS } from './roles.js';
 import { randrole } from './role.js';
 import { obfree } from './shk.js';
 import { attrcurse, rndcurse } from './sit.js';
-import { dlord, lminion, ndemon } from './minion.js';
+import { dlord, lminion, ndemon, summon_minion } from './minion.js';
 import { P_SKILL } from './skills.js';
 import { unrestrict_weapon_skill } from './weapon.js';
 import { force_learn_spell, known_spell, spell_skilltype } from './spell.js';
@@ -1787,45 +1787,9 @@ export async function desecrate_altar(highaltar, altaralign) {
     await _god_zaps_you(altaralign);
 }
 
-/* C minion.c:198-265 summon_minion(alignment, FALSE). */
+/* C minion.c:198-265 summon_minion(alignment, talk) — lives in js/minion.js. */
 async function _summon_prayer_minion(respGod, talk = false) {
-    const u = game.u;
-    let mnum;
-    switch (respGod) {
-    case A_LAWFUL: mnum = lminion(); break;
-    case A_NEUTRAL:
-        mnum = [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)];
-        break;
-    case A_CHAOTIC:
-    case A_NONE: mnum = ndemon(respGod); break;
-    default:
-        impossible('unaligned player?');
-        mnum = ndemon(A_NONE);
-        break;
-    }
-    if (mnum !== NON_PM) {
-        const emin = ![PM_SHOPKEEPER, PM_GUARD, PM_PRIEST, PM_HIGH_PRIEST].includes(mnum);
-        const mon = await mklev_makemon(permonstTemplate(mnum), u.ux, u.uy, MM_NOMSG | (emin ? MM_EMIN : 0));
-        if (mon) {
-            if (emin) {
-                mon.isminion = 1;
-                _fl_EMIN(mon).min_align = respGod;
-                _fl_EMIN(mon).renegade = false;
-            }
-            if (talk) {
-                /* C minion.c:242-253 */
-                if (!_hero_Deaf())
-                    await pline(`The voice of ${_align_gname(respGod)} booms:`);
-                else
-                    await _You_feel(`${s_suffix(_align_gname(respGod))} booming voice:`);
-                await verbalize('Thou shalt pay for thine indiscretion!');
-                if (canspotmon(mon))
-                    await pline(`${Amonnam(mon)} appears before you.`);
-                mon.mstrategy = ((mon.mstrategy | 0) & ~STRAT_APPEARMSG) >>> 0;
-            }
-            mon.mpeaceful = false; /* C deliberately does not call set_malign. */
-        }
-    }
+    await summon_minion(respGod, talk);
 }
 
 /* C ref: pray.c:704 angrygods(resp_god) — the god's displeasure response. */

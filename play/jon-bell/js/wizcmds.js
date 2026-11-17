@@ -50,7 +50,7 @@ import { hates_silver, name_to_mon, name_to_monclass } from './mondata.js';
 import { engravings_list } from './mklev.js';
 import { makemon } from './makemon.js';
 import { newcham, mongone } from './mon.js';
-import { count_wsegs } from './worm.js';
+import { size_wseg } from './worm.js';
 import { tamedog, migrate_to_level, panic } from './dog.js';
 import { monster_census } from './minion.js';
 import { MM_NOMSG, MIGR_RANDOM } from './const.js';
@@ -115,8 +115,6 @@ const STATS_ENGR_SIZE = 64;
 const STATS_LIGHT_SOURCE_SIZE = 32;
 const STATS_TIMER_SIZE = 48;
 const STATS_DAMAGE_SIZE = 32;
-const STATS_REGION_SIZE = 96;
-const STATS_RECT_SIZE = 8;
 const STATS_KINFO_SIZE = 272;
 const STATS_CEMETERY_SIZE = 184;
 const STATS_MAPSEEN_SIZE = 384;
@@ -133,7 +131,7 @@ function _stats_mon_size(mon, includeWormSegments) {
             if (mon.mextra[key]) size += bytes;
     }
     if (includeWormSegments && mon?.wormno)
-        size += count_wsegs(mon) * 16;
+        size += size_wseg(mon);
     return size;
 }
 
@@ -874,13 +872,8 @@ export async function wiz_show_stats() {
     const lightSources = light_sources_list();
     const lightSize = lightSources.length * STATS_LIGHT_SOURCE_SIZE;
     const regionStats = region_stats_snapshot();
-    let regionSize = regionStats.max_regions * STATS_REGION_SIZE;
-    for (const reg of regionStats.regions) {
-        regionSize += (reg.nrects | 0) * STATS_RECT_SIZE;
-        if (reg.enter_msg) regionSize += String(reg.enter_msg).length + 1;
-        if (reg.leave_msg) regionSize += String(reg.leave_msg).length + 1;
-        regionSize += (reg.max_monst | 0) * 4;
-    }
+    /* C wizcmds.c:1350 region_stats("regions, size %ld+%ld*rect+N", hdrbuf, &count, &size) */
+    const regionSize = regionStats.size;
     let timerCount = 0;
     for (let timer = g.gt?.timer_base; timer; timer = timer.next) timerCount++;
     let damageCount = 0;
@@ -916,9 +909,8 @@ export async function wiz_show_stats() {
     if (damageCount)
         lines.push(_stats_row(`shop damage, size ${STATS_DAMAGE_SIZE}`,
                               damageCount, damageCount * STATS_DAMAGE_SIZE));
-    if (regionStats.n_regions || regionSize)
-        lines.push(_stats_row('regions, size 96+8*rect+N',
-                              regionStats.n_regions, regionSize));
+    if (regionStats.count || regionSize)
+        lines.push(_stats_row(regionStats.hdrbuf, regionStats.count, regionSize));
     if (killerCount)
         lines.push(_stats_row(`delayed killer${killerCount === 1 ? '' : 's'}, size ${STATS_KINFO_SIZE}`,
                               killerCount, killerCount * STATS_KINFO_SIZE));

@@ -58,6 +58,7 @@ import { PM_TOURIST, PM_HUMAN_MUMMY, PM_ELF_MUMMY, PM_DWARF_MUMMY, PM_GNOME_MUMM
 import { G_GENOD } from './const.js';
 import { DOMOVE_WALK, DOMOVE_RUSH } from './const.js';
 import { shkname } from './dokick.js';
+import { shkname_is_pname } from './shknam.js'; /* C shknam.c:899 */
 import { free_oname } from './do_name.js';
 import { paybill, finish_paybill, currency, obfree } from './shk.js';
 import { m_monnam } from './do_name.js';
@@ -464,7 +465,7 @@ export function done_in_by(mtmp, how) {
          *     Sprintf(eos(buf), "%s%s, the shopkeeper", honorific, shknm);
          *     svk.killer.format = KILLED_BY; */
         const shknm = shkname(mtmp);
-        const honorific = _shkname_is_pname_end(mtmp) ? ''
+        const honorific = shkname_is_pname(mtmp) ? ''
                           : mtmp.female ? 'Ms. ' : 'Mr. ';
         buf += `${honorific}${shknm}, the shopkeeper`;
         g.svk.killer.format = KILLED_BY;
@@ -510,16 +511,6 @@ function M_AP_TYPE_END(mon) { return mon?.m_ap_type | 0; }
  * one-line body; neither exports it). */
 const M2_PNAME_END = 0x00080000;
 function _type_is_pname_end(ptr) { return ((ptr?.mflags2 | 0) & M2_PNAME_END) !== 0; }
-/* C shknam.c:899-905 shkname_is_pname(mtmp) — the RAW eshk->shknam (the one
- * shkname() strips the prefix character off) begins with one of '-', '+', '='
- * when the name is a proper name that takes no honorific. */
-function _shkname_is_pname_end(mtmp) {
-    const raw = mtmp?.mextra?.eshk?.shknam;
-    if (typeof raw !== 'string' || !raw.length)
-        return false;
-    return raw[0] === '-' || raw[0] === '+' || raw[0] === '=';
-}
-
 // C ref: end.c:706 savelife(how).  Restore the hero after a declined
 // "Die?" (wizard/explore).  givehp = 50 + 10*(ACURR(A_CON)/2), clamped to uhpmax.
 /* C hack.h:484 — the `how` code passed to done(); CHOKING = 1. */

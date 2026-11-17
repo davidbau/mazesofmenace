@@ -32,7 +32,7 @@ export { del_light_source, monst_to_any } from './light.js';
 import { del_light_source } from './light.js';
 import { monst_to_any } from './hack.js';
 import { discard_minvent as discard_minvent_real } from './mkobj.js';
-import { stairway_find_from, stairway_find_dir } from './stairs.js';
+import { stairway_find_from, stairway_find_dir, stairway_find } from './stairs.js';
 import { somexy } from './mkroom.js';
 import { set_ustuck, restore_cham, mongone, monnear } from './mon.js';
 import { enexto_core, rloc_to, rloc } from './teleport.js';
@@ -816,15 +816,8 @@ export function mon_catchup_elapsed_time(mtmp, nmv) {
 }
 
 
-/* C stairs.c:50-61 stairway_find(fromdlev). */
-function stairway_find_arrive(fromdlev) {
-    for (let st = game.stairs; st; st = st.next) {
-        if ((st.tolev?.dnum | 0) === (fromdlev.dnum | 0)
-            && (st.tolev?.dlevel | 0) === (fromdlev.dlevel | 0))
-            return st;
-    }
-    return null;
-}
+/* C stairs.c:50-61 stairway_find(fromdlev) lives in js/stairs.js. */
+const stairway_find_arrive = stairway_find;
 
 /* C dog.c:420-626 mon_arrive().  All called placement and catch-up routines
  * are synchronous; keeping this function synchronous is required by losedogs

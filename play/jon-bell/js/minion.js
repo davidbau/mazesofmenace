@@ -22,11 +22,12 @@ import { livelog_printf } from './pline.js';
 import { mon_nam } from './uhitm.js';
 import { x_monnam, Amonnam } from './do_name.js';
 import { newsym, canspotmon, Deaf } from './display.js';
-import { pline, You_feel } from './pline.js';
+import { pline, You_feel, impossible } from './pline.js';
 import { Blind } from './vision.js';
 import { Monnam } from './mcastu.js';
 import { Hear_again } from './eat.js';
-import { verbalize, SetVoice } from './cmd.js';
+import { verbalize, SetVoice, _align_gname } from './cmd.js';
+import { s_suffix } from './hacklib.js';
 import { mk_roamer } from './priest.js';
 import { enexto_out } from './teleport.js';
 import { permonstTemplate } from './makemon.js';
@@ -134,13 +135,13 @@ export async function gain_guardian_angel() {
 /* C minion.c:255 — #define Athome (Inhell && (mtmp->cham == NON_PM)) */
 export const S_DEMON = 56;
 import { NON_PM } from './const.js';
-import { A_CHAOTIC, A_NEUTRAL, A_NONE, EMIN, G_GONE, MM_EMIN, MM_NOMSG } from './const.js'; // relocate-fns
+import { A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, EMIN, G_GONE, MM_EMIN, MM_NOMSG } from './const.js'; // relocate-fns
 import { show_transient_light, transient_light_cleanup } from './light.js'; // relocate-fns
 import { is_ndemon, mkclass, mkclassAligned, newmextra } from './makemon.js'; // relocate-fns
 import monsPack from './makemon_mons.json' with { type: 'json' }; // relocate-fns
 import { is_lminion } from './mcastu.js'; // relocate-fns
 import { makemon } from './makemon.js'; // relocate-fns
-import { PM_AIR_ELEMENTAL, PM_ARCHON, PM_BONE_DEVIL, PM_DEMOGORGON, PM_EARTH_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_JUIBLEX, PM_ORCUS, PM_SKELETON, PM_WATER_ELEMENTAL, PM_WIZARD_OF_YENDOR, PM_YEENOGHU, PM_YELLOW_LIGHT } from './pm.generated.js'; // relocate-fns
+import { PM_AIR_ELEMENTAL, PM_ARCHON, PM_BONE_DEVIL, PM_DEMOGORGON, PM_EARTH_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_JUIBLEX, PM_ORCUS, PM_SKELETON, PM_WATER_ELEMENTAL, PM_SHOPKEEPER, PM_GUARD, PM_WIZARD_OF_YENDOR, PM_YEENOGHU, PM_YELLOW_LIGHT } from './pm.generated.js'; // relocate-fns
 import { G_UNIQ } from './read.js'; // relocate-fns
 import { rn2 } from './rnd.js'; // relocate-fns
 import { M2_DEMON, M2_PRINCE, _ENV_T } from './sit.js'; // relocate-fns
@@ -292,6 +293,7 @@ export function dlord(atyp) {
 }
 
 const S_ANGEL = 27;
+const PM_ALIGNED_CLERIC = 275, PM_HIGH_CLERIC = 276; /* js/do_name.js:926 (== PM_PRIEST/PM_HIGH_PRIEST in pm.generated.js) */
 
 export function lminion() {
     for (let tries = 0; tries < 20; ++tries) {
@@ -389,6 +391,65 @@ export async function msummon(mon) {
     /* C:190-192 */
     if (result) result = monster_census(false) - census;
     return result;
+}
+
+/* C ref: minion.c:198-265 — summon_minion(alignment, talk): a god (or a desecrated
+ * altar) sends a minion after the hero.  Relocated from js/pray.js, where it lived as
+ * the private _summon_prayer_minion. */
+export async function summon_minion(alignment, talk) {
+    const u = game.u;
+    let mnum, mon;
+    switch (alignment | 0) {
+    case A_LAWFUL:
+        mnum = lminion();
+        break;
+    case A_NEUTRAL:
+        mnum = [PM_AIR_ELEMENTAL, PM_FIRE_ELEMENTAL, PM_EARTH_ELEMENTAL, PM_WATER_ELEMENTAL][rn2(4)]; /* ROLL_FROM(elementals) */
+        break;
+    case A_CHAOTIC:
+    case A_NONE:
+        mnum = ndemon(alignment);
+        break;
+    default:
+        await impossible('unaligned player?');
+        mnum = ndemon(A_NONE);
+        break;
+    }
+    if (mnum === NON_PM) {
+        mon = null;
+    } else if (mnum === PM_ANGEL) {
+        mon = await makemon(mnum, u.ux, u.uy, MM_EMIN | MM_NOMSG);
+        if (mon) {
+            mon.isminion = 1;
+            EMIN(mon).min_align = alignment;
+            EMIN(mon).renegade = false;
+        }
+    } else if (mnum !== PM_SHOPKEEPER && mnum !== PM_GUARD
+               && mnum !== PM_ALIGNED_CLERIC && mnum !== PM_HIGH_CLERIC) {
+        mon = await makemon(mnum, u.ux, u.uy, MM_EMIN | MM_NOMSG);
+        if (mon) {
+            mon.isminion = 1;
+            EMIN(mon).min_align = alignment;
+            EMIN(mon).renegade = false;
+        }
+    } else {
+        mon = await makemon(mnum, u.ux, u.uy, MM_NOMSG);
+    }
+    if (mon) {
+        if (talk) {
+            if (!Deaf())
+                await pline(`The voice of ${_align_gname(alignment)} booms:`);
+            else
+                await You_feel(`${s_suffix(_align_gname(alignment))} booming voice:`);
+            SetVoice(mon, 0, 80, 0);
+            await verbalize('Thou shalt pay for thine indiscretion!');
+            if (canspotmon(mon))
+                await pline(`${Amonnam(mon)} appears before you.`);
+            mon.mstrategy = ((mon.mstrategy | 0) & ~STRAT_APPEARMSG) >>> 0;
+        }
+        mon.mpeaceful = false;
+        /* don't call set_malign(); player was naughty */
+    }
 }
 
 const M2_LORD = 0x00000400;

@@ -318,10 +318,17 @@ function join_map_cleanup() {
     game.level._nsubroom = 0;
     if (!game.level.rooms)
         game.level.rooms = [];
-    game.level.rooms[0] = { hx: -1 };
+    /* C sets only the hx sentinel; the slot's other (stale) fields remain. */
+    if (game.level.rooms[0])
+        game.level.rooms[0].hx = -1;
+    else
+        game.level.rooms[0] = { hx: -1 };
     if (!game.level._subrooms)
         game.level._subrooms = [];
-    game.level._subrooms[0] = { hx: -1 };
+    if (game.level._subrooms[0])
+        game.level._subrooms[0].hx = -1;
+    else
+        game.level._subrooms[0] = { hx: -1 };
 }
 
 /* C ref: mkmap.c:257-326 join_map(schar bg_typ, schar fg_typ) — flood-fill the
@@ -439,4 +446,48 @@ function finish_map(fg_typ, bg_typ, lit, walled, icedpools) {
             else if (loc.typ === ICE)
                 loc.icedpool = icedpools ? ICED_POOL : ICED_MOAT;
         }
+}
+
+/* C ref: mkmap.c:378-401 remove_rooms(lx, ly, hx, hy) — drop every room wholly
+ * inside the region; partial overlaps must be irregular rooms.  (No C caller
+ * exists in 5.0; ported for completeness.) */
+export async function remove_rooms(lx, ly, hx, hy) {
+    for (let i = game.level.nroom - 1; i >= 0; --i) {
+        const croom = game.level.rooms[i];
+        if (croom.hx < lx || croom.lx >= hx || croom.hy < ly
+            || croom.ly >= hy)
+            continue; /* no overlap */
+
+        if (croom.lx < lx || croom.hx >= hx || croom.ly < ly
+            || croom.hy >= hy) { /* partial overlap */
+            /* TODO: ensure remaining parts of room are still joined */
+            if (!croom.irregular)
+                await impossible("regular room in joined map");
+        } else {
+            /* total overlap, remove the room */
+            remove_room(i);
+        }
+    }
+}
+
+/* C ref: mkmap.c:411-436 remove_room(roomno) — swap the last room into the
+ * removed slot and renumber its map locations. */
+function remove_room(roomno) {
+    const rooms = game.level.rooms;
+    const croom_idx = roomno;
+    game.level.nroom--;
+    const maxroom = rooms[game.level.nroom];
+
+    if (croom_idx !== game.level.nroom) {
+        rooms[croom_idx] = Object.assign({}, maxroom); /* *croom = *maxroom */
+        const croom = rooms[croom_idx];
+        const oroomno = game.level.nroom + ROOMOFFSET;
+        roomno += ROOMOFFSET;
+        for (let x = croom.lx; x <= croom.hx; ++x)
+            for (let y = croom.ly; y <= croom.hy; ++y) {
+                if (game.level.at(x, y).roomno === oroomno)
+                    game.level.at(x, y).roomno = roomno;
+            }
+    }
+    maxroom.hx = -1; /* just like add_room */
 }

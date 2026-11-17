@@ -14,6 +14,7 @@ import { s_suffix, distmin } from './hacklib.js';
 import { game } from './gstate.js';
 import { impossible } from './steed.js';
 import { impossible as cutworm_impossible } from './pline.js';
+import { isok } from './const.js';
 import { cansee } from './vision.js';
 import { rn1 } from './rng.js';
 import { rn2, rnd, d, rn2_on_display_rng } from './rnd.js';
@@ -179,6 +180,52 @@ export function count_wsegs(mtmp) {
             i++;
     }
     return i;
+}
+
+/* C worm.c:825-830 size_wseg(worm) — for size_monst (wizcmds.c:1228) #stats:
+ * count_wsegs() * sizeof (struct wseg).  A wseg is {nseg ptr; coordxy wx, wy}
+ * which the compiler pads to 16 bytes. */
+export function size_wseg(worm) {
+    return count_wsegs(worm) * 16;
+}
+
+/* C worm.c:637-678 sanity_check_worm(worm), called from mon_sanity_check()
+ * (mon.c:283) when iflags.sanity_check is on.  Only diagnostics: every arm is an
+ * impossible() complaint about corrupt tail bookkeeping.  C's
+ * wormno_sanity_check() (worm.c:680-703, mon.c:323) is compiled out of the
+ * scored build: its body is under EXTRA_SANITY_CHECKS, which config.h:634-637
+ * defines only for NH_DEVEL_STATUS != NH_STATUS_RELEASED, and patchlevel.h:33
+ * says RELEASED. */
+export async function sanity_check_worm(worm) {
+    if (!worm) {
+        await cutworm_impossible("worm_sanity: null monster!");
+        return;
+    }
+    if (!worm.wormno) {
+        await cutworm_impossible("worm_sanity: not a worm!");
+        return;
+    }
+
+    const wnum = worm.wormno | 0;
+    if (!wtails[wnum] || !wheads[wnum]) {
+        await cutworm_impossible("wormno %d is set without proper tail", wnum);
+        return;
+    }
+    /* if worm is migrating, we can't check its segments against the map */
+    if (!worm.mx)
+        return;
+
+    let curr = wtails[wnum];
+    while (curr && curr !== wheads[wnum]) {
+        const x = curr.wx, y = curr.wy;
+        if (!isok(x, y))
+            await cutworm_impossible("worm seg not isok <%d,%d>", x, y);
+        else if (m_at(x, y) !== worm)
+            await cutworm_impossible("mon (%s) at seg location is not worm (%s)",
+                                     "(ptr)", "(ptr)");
+
+        curr = curr.nseg;
+    }
 }
 
 /* C worm.c:945-965 wseg_at(worm, x, y) — index of the segment at (x,y),
@@ -429,7 +476,9 @@ export function flip_worm_segs_horizontal(worm, minx, maxx) {
  * squares adjoining <x,y>, one rnd_nextto_goodpos() per segment, truncating
  * when there is nowhere left to put the rest.
  * The `impossible()` arms are C's own diagnostics: they log and return (or fall
- * through), so they are reproduced as the same control flow with no message. */
+ * through).  They go through impossible_sync (js/steed.js import of
+ * display.js's _wall_impossible), which prints C's "Program in disorder!"
+ * messages exactly as pline.c:impossible does. */
 export function place_worm_tail_randomly(worm, x, y) {
     const wnum = worm.wormno;
     let curr = wtails[wnum];
@@ -503,9 +552,9 @@ export function place_worm_tail_randomly(worm, x, y) {
  * while this port's stand-in tracks none of it.
  *
  * C's two impossible() calls are diagnostics, not control flow: place_worm_seg
- * runs on every iteration either way.  They are left as this port's no-op
- * impossible() convention (js/steed.js:118) rather than as a branch, so the
- * shape of the if/else-if ladder is kept and only the message is dropped.
+ * runs on every iteration either way.  They call impossible_sync (see
+ * place_worm_tail_randomly below), so the if/else-if ladder keeps C's shape
+ * and the messages are printed.
  *
  * The trailing `curr->wx = worm->mx, curr->wy = worm->my` is NOT bookkeeping:
  * the head segment is co-located with the worm itself and is deliberately not
@@ -629,41 +678,12 @@ export function wormgone(worm) {
         worm.mextra.mcorpsenm = NON_PM; /* no longer polymorph-proof */
 }
 
-// Sfi_int/Sfi_coordxy/Sfi_long (savefile.h) — libc-level save-file field
-// readers; no JS save-file byte model exists, so these are faithful no-op
-// stubs (calls_macro_or_libc), same pattern as js/dungeon.js's / js/region.js's
-// Sfi_int/Sfi_coordxy/Sfi_long.
-function Sfi_int(nhfp, val, name) { return val; }
-function Sfi_coordxy(nhfp, val, name) { return val; }
-function Sfi_long(nhfp, val, name) { return val; }
-
-// C ref: worm.c:576-609 rest_worm(NHFILE *nhfp)
-export function rest_worm(nhfp) {
-    let i, j;
-    let count = 0;
-    let curr, temp;
-
-    for (i = 1; i < MAX_NUM_WORMS; i++) {
-        count = Sfi_int(nhfp, count, "worm-segment_count");
-
-        /* Get the segments. */
-        for (curr = null, j = 0; j < count; j++) {
-            temp = newseg();
-            temp.nseg = null;
-            temp.wx = Sfi_coordxy(nhfp, temp.wx, "worm-wx");
-            temp.wy = Sfi_coordxy(nhfp, temp.wy, "worm-wy");
-            if (curr)
-                curr.nseg = temp;
-            else
-                wtails[i] = temp;
-            curr = temp;
-        }
-        wheads[i] = curr;
-    }
-    for (i = 0; i < MAX_NUM_WORMS; ++i) {
-        wgrowtime[i] = Sfi_long(nhfp, wgrowtime[i], "worm-wgrowtime");
-    }
-}
+/* C worm.c:576-603 rest_worm(nhfp) has no counterpart here on purpose: this port
+ * does not read a byte stream.  save.c's save_worm (worm.c:527-568) and
+ * restore.c's rest_worm are realised by worms_save_snapshot() /
+ * worms_rest_snapshot() above, which carry wheads[]/wtails[]/wgrowtime[]
+ * through the level snapshot.  A byte-stream rest_worm() with no-op Sfi_*
+ * stand-ins used to live here; nothing called it. */
 
 /* C ref: worm.c:895-941 worm_cross(x1, y1, x2, y2) — "would moving from
  * <x1,y1> to <x2,y2> involve passing between two consecutive segments of the

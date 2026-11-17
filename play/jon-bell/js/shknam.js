@@ -7,8 +7,8 @@ import { set_tin_variety } from './eat.js';
 import { game } from './gstate.js';
 import { distmin } from './hacklib.js';
 import { depth as depth_of_level } from './dungeon.js';
-import { mkclass, newmextra, permonstTemplate, set_malign } from './makemon.js';
-import { CORPSE, EGG, FOOD_CLASS, GOLD_PIECE, NON_PM, PM_LICHEN, SPE_NOVEL, TIN, VEGETARIAN_CLASS_SHK, _shkgeneral, _shkrings, _shktools, _shkwands, _shtypes, vegetarian, weight } from './mklev.js';
+import { mkclass, mkmonmoney, mongets, newmextra, permonstTemplate, set_malign } from './makemon.js';
+import { CORPSE, EGG, FOOD_CLASS, GOLD_PIECE, NON_PM, PM_LICHEN, SPE_NOVEL, TIN, VEGETARIAN_CLASS_SHK, _shkgeneral, _shklight, _shkrings, _shktools, _shkwands, _shtypes, vegetarian, weight } from './mklev.js';
 import { mkobj_at, mksobj, mksobj_at } from './mkobj.js';
 import { makemon } from './makemon.js';
 import { make_engr_at } from './engrave.js';
@@ -124,7 +124,7 @@ async function mkshobj_at_shk(shp, shpIndx, sx, sy, mkspecl) {
     if (mkspecl && (shp.name === "rare books" || shp.name === "second-hand bookstore")) {
         const novel = await mksobj_at(SPE_NOVEL, sx, sy, false, false);
         if (novel)
-            (game.context = game.context || {}).tributeBookstock = true;
+            ((game.context = game.context || {}).tribute = game.context.tribute || {}).bookstock = true; /* C shknam.c:466 */
         return;
     }
     const depthVal = depth_of_level(game.u?.uz) | 0;
@@ -162,8 +162,8 @@ async function mkshobj_at_shk(shp, shpIndx, sx, sy, mkspecl) {
  * C ref: nethack-c/src/shknam.c:486
  */
 function nameshk_shk(shk, nlp, shpNlpId) {
-    const IS_SHKTOOLS = (shpNlpId === 8); /* index 8 = hardware store = _shktools */
-    const IS_SHKLIGHT = (shpNlpId === 11); /* index 11 = lighting = _shklight */
+    const IS_SHKTOOLS = (nlp === _shktools); /* C: nlp == shktools */
+    const IS_SHKLIGHT = (nlp === _shklight); /* C: nlp == shklight */
     let shname = null;
     /* C: if (nlp == shklight && In_mines(&u.uz) && sptr->flags.town) → Izchak */
     if (IS_SHKLIGHT && In_mines(game.u?.uz)) {
@@ -262,6 +262,13 @@ export function neweshk(mtmp) {
     mtmp.mextra.eshk.bill_p = null;
 }
 
+/* C shknam.c:569-575 free_eshk(mtmp) — no caller in 5.0 C, ported for completeness */
+export function free_eshk(mtmp) {
+    if (mtmp.mextra && mtmp.mextra.eshk)
+        mtmp.mextra.eshk = null;
+    mtmp.isshk = 0;
+}
+
 /*
  * C shknam.c:695-714 stock_room_goodpos(sroom,rmno,sh,sx,sy)
  * Returns true if (sx,sy) is a valid cell for placing shop inventory.
@@ -358,8 +365,7 @@ async function shkinit(shp, shpIndx, sroom) {
     const shk = await makemon(PM_SHOPKEEPER, sx, sy, MM_ESHK);
     if (!shk)
         return -1;
-    /* C: attach eshk substruct (MM_ESHK causes neweshk in C makemon) */
-    neweshk(shk);
+    /* C: makemon(..., MM_ESHK) allocates the eshk (makemon.c:1242) */
     const eshkp = shk.mextra.eshk;
     /* C: shk->isshk = shk->mpeaceful = 1; shk->msleeping = 0 */
     shk.isshk = 1;
@@ -384,30 +390,15 @@ async function shkinit(shp, shpIndx, sroom) {
     eshkp.visitct = 0;
     eshkp.customer = '';
     sroom.resident = shk;
-    /* C: mkmonmoney(shk, 1000L + 30L * (long)rnd(100)) — 1 rnd call */
-    const capital = 1000 + 30 * rnd(100);
-    /* mkmonmoney: mksobj(GOLD_PIECE, FALSE, FALSE) — no init RNG; add to minvent */
-    const goldObj = await mksobj(GOLD_PIECE, false, false);
-    if (goldObj) {
-        goldObj.quan = capital;
-        goldObj.owt = weight(goldObj); /* mkobj.c:1888 weight(): COIN_CLASS is (quan + 50) / 100 */
-        await mpickobj(shk, goldObj);
-    }
-    /* C: if (shp->shknms == shkrings) mongets(shk, TOUCHSTONE) */
-    if (shp.shknms === _shkrings) {
-        const ts = await mksobj(TOUCHSTONE_SHK, true, false);
-        if (ts)
-            await mpickobj(shk, ts);
-    }
-    /* C: if (shktools || shkwands || (shkrings && rn2(2)) || (shkgeneral && rn2(5)))
-     *    mongets(shk, SCR_CHARGING) */
+    /* C shknam.c:681: mkmonmoney(shk, 1000L + 30L * (long) rnd(100)) */
+    await mkmonmoney(shk, 1000 + 30 * rnd(100));
+    /* C shknam.c:682-687 */
+    if (shp.shknms === _shkrings)
+        await mongets(shk, TOUCHSTONE_SHK, mksobj);
     if (shp.shknms === _shktools || shp.shknms === _shkwands
         || (shp.shknms === _shkrings && rn2(2))
-        || (shp.shknms === _shkgeneral && rn2(5))) {
-        const sc = await mksobj(SCR_CHARGING, true, false);
-        if (sc)
-            await mpickobj(shk, sc);
-    }
+        || (shp.shknms === _shkgeneral && rn2(5)))
+        await mongets(shk, SCR_CHARGING, mksobj);
     /* C: nameshk(shk, shp->shknms) */
     nameshk_shk(shk, shp.shknms, shpIndx);
     return sh;
@@ -466,7 +457,7 @@ export async function stock_room(shpIndx, sroom) {
     /* C: tribute block — count goodpos cells, pick specialspot */
     let stockcount = 0, specialspot = 0;
     const tributeEnabled = !!(game.context?.tribute?.enabled)
-        && !(game.context?.tributeBookstock);
+        && !(game.context?.tribute?.bookstock);
     if (tributeEnabled) {
         for (let sx = sroom.lx; sx <= sroom.hx; sx++)
             for (let sy = sroom.ly; sy <= sroom.hy; sy++)

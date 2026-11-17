@@ -8,6 +8,7 @@ import { nhlib_com_pager_rng } from './nhlib.js';
 // Real mklev.js handles level generation for screen parity.
 import { game } from './gstate.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
+import { light_sources_sanity_check } from './light.js';
 import { bc_sanity_check } from './ball.js';
 import { impossible } from './pline.js';
 import { ROWNO, COLNO } from './const.js';
@@ -3051,6 +3052,7 @@ async function moveloop_core_faithful() {
                 await you_sanity_check(); // C wizcmds.c:1465
                 await obj_sanity_check(); // C wizcmds.c:1469
                 await mon_sanity_check(); // C wizcmds.c:1474
+                await light_sources_sanity_check(); // C wizcmds.c:1475
                 await bc_sanity_check();
                 await engraving_sanity_check();
                 await levl_sanity_check(); // C wizcmds.c:1478
@@ -4488,6 +4490,7 @@ async function moveloop_core_faithful() {
                     await you_sanity_check(); // C wizcmds.c:1465
                     await obj_sanity_check(); // C wizcmds.c:1469
                     await mon_sanity_check(); // C wizcmds.c:1474
+                    await light_sources_sanity_check(); // C wizcmds.c:1475
                     await bc_sanity_check();
                     await engraving_sanity_check();
                     await levl_sanity_check(); // C wizcmds.c:1478
@@ -4664,6 +4667,7 @@ async function moveloop_core_faithful() {
                 await you_sanity_check(); // C wizcmds.c:1465
                 await obj_sanity_check(); // C wizcmds.c:1469
                 await mon_sanity_check(); // C wizcmds.c:1474
+                await light_sources_sanity_check(); // C wizcmds.c:1475
                 await bc_sanity_check();
                 await engraving_sanity_check();
                 await levl_sanity_check(); // C wizcmds.c:1478
@@ -5232,6 +5236,7 @@ async function moveloop_sanity_check() {
     await you_sanity_check(); // C wizcmds.c:1465
     await obj_sanity_check(); // C wizcmds.c:1469
     await mon_sanity_check(); // C wizcmds.c:1474
+    await light_sources_sanity_check(); // C wizcmds.c:1475
     await bc_sanity_check();
     await engraving_sanity_check();
     await levl_sanity_check(); // C wizcmds.c:1478
@@ -5269,6 +5274,7 @@ async function moveloop_core_impl() {
             await timer_sanity_check(); // C wizcmds.c:1473
             await obj_sanity_check(); // C wizcmds.c:1469
             await mon_sanity_check(); // C wizcmds.c:1474
+            await light_sources_sanity_check(); // C wizcmds.c:1475
             await bc_sanity_check();
             await engraving_sanity_check(); // C wizcmds.c:1470 (after trap_sanity_check)
             await levl_sanity_check(); // C wizcmds.c:1478

@@ -934,6 +934,7 @@ import { can_be_hatched, dead_species, dealloc_mextra, hideunder, minliquid, mon
 import { str_lines_maxlen, stripdigits, strsubst, upstart } from './hacklib.js'; // relocate-fns
 import { antholemon, do_mkroom, fill_zoo, has_dnstairs, has_upstairs, inside_room, somex, somexy, somexyspace, somey } from './mkroom.js'; // relocate-fns
 import { stairway_add, stairway_at } from './stairs.js'; // relocate-fns
+import { stairway_find_type_dir } from './stairs.js';
 import { Can_fall_thru, In_hell, Is_special, ledger_no, level_difficulty, single_level_branch, u_on_newpos } from './dungeon.js'; // relocate-fns
 import { bound_digging, wallification } from './mkmaze.js'; // relocate-fns
 import { get_shop_item, neweshk, stock_room } from './shknam.js'; // relocate-fns
@@ -972,7 +973,7 @@ export { makeroguerooms } from './extralev.js'; // relocate-fns
 export { curse }; // relocate-fns
 export { set_wall_state, xy_set_wall_state } from './display.js'; // relocate-fns
 export { neweshk, shkname_is_pname, stock_room, veggy_item } from './shknam.js'; // relocate-fns
-export { PM_LICHEN, SPE_NOVEL, TIN, VEGETARIAN_CLASS_SHK, _shkgeneral, _shkrings, _shktools, _shkwands }; // relocate-fns
+export { PM_LICHEN, SPE_NOVEL, TIN, VEGETARIAN_CLASS_SHK, _shkgeneral, _shklight, _shkrings, _shktools, _shkwands }; // relocate-fns
 export { place_lregion, wallification } from './mkmaze.js'; // relocate-fns
 export { Can_fall_thru, In_hell, Is_special, level_difficulty, single_level_branch, u_on_newpos, u_on_rndspot } from './dungeon.js'; // relocate-fns
 export { On_ladder, On_stairs, On_stairs_dn, On_stairs_up, known_branch_stairs, stairs_description, stairway_add, stairway_at, stairway_find_dir, stairway_find_from, stairway_free_all, u_on_dnstairs, u_on_sstairs, u_on_upstairs } from './stairs.js'; // relocate-fns
@@ -6055,9 +6056,7 @@ export async function mktrap(num, mktrapflags, croom, tm) {
 export async function kop_revival(mtmp) {
     if ((mtmp.data?.mlet ?? -1) !== S_KOP)
         return;
-    let stway = null;
-    for (let t = game.stairs; t; t = t.next)
-        if (!t.isladder && !t.up) { stway = t; break; }
+    const stway = stairway_find_type_dir(false, false);
     const data = mtmp.data;
     switch (rnd(5)) {
     case 1:

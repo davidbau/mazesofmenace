@@ -102,7 +102,7 @@ import { grddead } from './vault.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
 import { is_were, new_were, were_change } from './were.js';
 import { getlin as getlin_wf } from './windows.js';
-import { count_wsegs, get_wormno, initworm, place_worm_tail_randomly, remove_worm as remove_worm_mk, worm_cross, wormgone as wormgone_mk } from './worm.js';
+import { count_wsegs, get_wormno, initworm, place_worm_tail_randomly, remove_worm as remove_worm_mk, sanity_check_worm, worm_cross, wormgone as wormgone_mk } from './worm.js';
 import { bypass_obj } from './worn.js';
 import { explode } from './explode.js';
 import monMattkPackAt from './makemon_mattk.json' with { type: 'json' }; // relocate-fns
@@ -4562,8 +4562,8 @@ async function sanity_check_single_mon(mtmp, chk_geno, msg) {
 /* C ref: mon.c:257-319 mon_sanity_check(void).  PARTIAL PORT: the per-
  * monster checks over fmon and migrating_mons.  Not ported: the
  * map-grid/fmon cross-checks (this port has no grid separate from fmon —
- * js/uhitm.js m_at walks fmon) and the worm checks (sanity_check_worm,
- * wormno_sanity_check). */
+ * js/uhitm.js m_at walks fmon).  sanity_check_worm is wired (mon.c:282-283);
+ * wormno_sanity_check is compiled out of the RELEASED build. */
 export async function mon_sanity_check() {
     for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
         /* dead monsters should still have sane data */
@@ -4581,6 +4581,9 @@ export async function mon_sanity_check() {
             if (x !== game.u.ux || y !== game.u.uy)
                 await lifecycle_impossible('steed (%s) claims to be at <%d,%d>?',
                                            '(ptr)', x, y);
+        } else if (mtmp.wormno) {
+            /* C mon.c:282-283 */
+            await sanity_check_worm(mtmp);
         }
     }
 

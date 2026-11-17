@@ -22,9 +22,9 @@ import { rndmonnam } from './do_name.js';
 import { d } from './rnd.js';
 import { pay_for_damage } from './shk.js';
 import { end_burn } from './timeout.js';
-import { burnarmor, monkilled_trap } from './trap.js';
+import { burnarmor } from './trap.js';
 import { XKILL_GIVEMSG, XKILL_NOCONDUCT, XKILL_NOCORPSE, XKILL_NOMSG, m_at } from './uhitm.js';
-import { golemeffects, xkilled } from './mon.js';
+import { golemeffects, monkilled, xkilled } from './mon.js';
 import { cansee } from './vision.js';
 import { AD_ACID, AD_COLD, AD_DISN, AD_DRST, AD_ELEC, AD_FIRE, AD_MAGM, AD_RBRE, DEADMONSTER, NO_KILLER_PREFIX_ZAP, PHYS_EXPL_TYPE, PM_WIZARD, POT_OIL, RAY, SCROLL_CLASS, SCR_FIRE, WAND_CLASS, WAN_DIGGING, WAN_MAGIC_MISSILE, WAN_SLEEP, _Halluc, _ZAP_HALF_PHDAM, _cm_Antimagic, _completely_burns, _expl_deaf, _expl_digests, _expl_is_vampshifter, _expl_mon_moving, _expl_uhim, _expl_uhis, _wand_Role_if, _zp_burn_away_slime, destroy_items, destroy_items_mon, oc_dir_of, resist, zap_over_floor } from './zap.js';
 import { stop_occupation } from './allmain.js';
@@ -299,6 +299,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
     let xx, yy;
     const expl_shopdamage = { v: false }; /* C explode.c:216 `boolean shopdamage` */
     let generic = false, do_hallu = false;
+    let str_is_hallu_buf = false; /* C `str == hallu_buf` pointer identity */
     let exploding_wand_typ = 0;
     const you_exploding = (olet === MON_EXPLODE && type >= 0);
     let didmsg = false;
@@ -541,6 +542,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                         hallu_buf = `${s_suffix(rndmonnam())} explosion`;
                     } while (hallu_buf[0] !== lowc(hallu_buf[0]) && ++tryct < 20);
                     str = hallu_buf;
+                    str_is_hallu_buf = true;
                 }
                 if (engulfing_u(mtmp)) {
                     /* C explode.c:504-505 engulfer_explosion_msg */
@@ -608,13 +610,9 @@ export async function explode(x, y, type, dam, olet, expltype) {
                             await pline(`${Monnam(mtmp)} is ${xkflg ? 'burned completely' : nonlivingMon((mtmp.mndx ?? mtmp.mnum) | 0) ? 'destroyed' : 'killed'}!`);
                         await xkilled(mtmp, XKILL_NOMSG | XKILL_NOCONDUCT | xkflg);
                     } else {
-                        /* C: monkilled(mtmp, "", adtyp).  monkilled is unported;
-                           monkilled_trap is this tree's monster-death-without-
-                           hero-credit body, and is where resist() already routes
-                           C's monkilled(mtmp, "", AD_RBRE). */
                         if (xkflg)
                             adtyp = AD_RBRE; /* no corpse (explode.c:579) */
-                        await monkilled_trap(mtmp);
+                        await monkilled(mtmp, '', adtyp); /* C explode.c:580 */
                     }
                 } else if (!_expl_mon_moving()) {
                     await setmangry(mtmp, true); /* C explode.c:581-584 */
@@ -634,6 +632,7 @@ export async function explode(x, y, type, dam, olet, expltype) {
                     hallu_buf = `${s_suffix(rndmonnam())} explosion`;
                 } while (hallu_buf[0] !== lowc(hallu_buf[0]));
                 str = hallu_buf;
+                str_is_hallu_buf = true;
             }
             await pline(`You are caught in the ${str}!`);
             if (game.iflags) game.iflags.last_msg = PLNMSG_CAUGHT_IN_EXPLOSION;
@@ -689,7 +688,11 @@ export async function explode(x, y, type, dam, olet, expltype) {
                 if (olet === MON_EXPLODE) {
                     /* generic: the blast was unseen, so str=="explosion" while
                        svk.killer.name is still "<mon>'s explosion" */
-                    if (!generic && game.svk?.killer)
+                    /* C explode.c:648 `else if (str != svk.killer.name && str !=
+                       hallu_buf) Strcpy(svk.killer.name, str)`: str is the killr_buf
+                       copy, never the killer.name buffer, so only the generic and
+                       hallucinated-name cases skip the copy. */
+                    if (!generic && !str_is_hallu_buf && game.svk?.killer)
                         game.svk.killer.name = str;
                     if (game.svk?.killer)
                         game.svk.killer.format = KILLED_BY_AN;
