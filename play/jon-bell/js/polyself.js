@@ -37,6 +37,8 @@ import { mungspaces } from './hacklib.js';
 import { valid_vampshiftform, set_ustuck, setmangry, hideunder, egg_type_from_parent } from './mon.js';
 import * as cmdNS from './cmd.js';
 import { mnexto } from './mon.js';
+import { character_race } from './role.js';
+import { races } from './roles.js';
 import { rndexp } from './exper.js';
 import { newhp, newpw } from './exper.js';
 import {
@@ -218,12 +220,13 @@ function is_dwarf(ptr) { return (ptr.mflags2 & RACE_SELFMASK[2]) !== 0; }
 function is_gnome(ptr) { return (ptr.mflags2 & RACE_SELFMASK[3]) !== 0; }
 function is_orc(ptr) { return (ptr.mflags2 & RACE_SELFMASK[4]) !== 0; }
 // C role.c:2163 character_race(pmindex) — races[] entry whose mnum matches
-// pmindex, regardless of the hero's own selected race; NULL (here: -1) if
-// pmindex isn't a player race at all. Returns the attrmax[A_STR] directly
-// (the only field uasmon_maxStr needs) rather than the whole struct.
+// pmindex, regardless of the hero's own selected race; NULL if pmindex isn't a
+// player race at all.  The races[] entry itself comes from js/role.js; this
+// returns the attrmax[A_STR] of that entry (the only field uasmon_maxStr
+// needs), or null for a non-player-race form.
 function character_race_attrmax_str(pmindex) {
-    const idx = RACE_MNUM.indexOf(pmindex);
-    return idx >= 0 ? RACE_ATTRMAX_STR[idx] : null;
+    const R = character_race(pmindex);
+    return R ? RACE_ATTRMAX_STR[races.indexOf(R)] : null;
 }
 
 // ── mondata.h predicate macros over a permonst template (pmidx-keyed) ─────────

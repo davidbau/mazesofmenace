@@ -4,11 +4,12 @@ import { ALIGNS, GENDERS, RACES, ROLES, RSF_ALGNMNT, RSF_GENDER, RSF_RACE, RSF_R
 import './roles.js';
 import { game } from './gstate.js';
 import { PM_KNIGHT, PM_SAMURAI, PM_TOURIST, PM_VALKYRIE, PM_SHOPKEEPER, PM_MAIL_DAEMON } from './pm.generated.js';
-import { findword } from './hacklib.js'; // relocate-fns
-import { NON_PM, PICK_RIGID, ROLE_ALIGNS, ROLE_CHAOTIC as ROLE_ALIGN_BIT_CHAOS, ROLE_LAWFUL as ROLE_ALIGN_BIT_LAWFUL, ROLE_NEUTRAL as ROLE_ALIGN_BIT_NEUTRAL, ROLE_FEMALE, ROLE_GENDERS, ROLE_MALE, ROLE_RANDOM } from './const.js'; // relocate-fns
+import { findword, strncmpi } from './hacklib.js'; // relocate-fns
+import { NON_PM, PICK_RANDOM, PICK_RIGID, ROLE_ALIGNS, ROLE_CHAOTIC as ROLE_ALIGN_BIT_CHAOS, ROLE_LAWFUL as ROLE_ALIGN_BIT_LAWFUL, ROLE_NEUTRAL as ROLE_ALIGN_BIT_NEUTRAL, ROLE_FEMALE, ROLE_GENDERS, ROLE_MALE, ROLE_RANDOM } from './const.js'; // relocate-fns
 import { questStatusStruct } from './gstate.js'; // relocate-fns
 import { PM_ARCH_PRIEST, PM_ASHIKAGA_TAKAUJI, PM_CHROMATIC_DRAGON, PM_CYCLOPS, PM_DARK_ONE, PM_DWARF, PM_ELF, PM_GNOME, PM_GRAND_MASTER, PM_HIPPOCRATES, PM_HUMAN, PM_IXOTH, PM_KING_ARTHUR, PM_LORD_CARNARVON, PM_LORD_SATO, PM_LORD_SURTUR, PM_MASTER_ASSASSIN, PM_MASTER_KAEN, PM_MASTER_OF_THIEVES, PM_MINION_OF_HUHETOTL, PM_NALZOK, PM_NEFERET_THE_GREEN, PM_NORN, PM_ORC, PM_ORION, PM_PELIAS, PM_SCORPIUS, PM_SHAMAN_KARNOV, PM_THOTH_AMON, PM_TWOFLOWER } from './pm.generated.js'; // relocate-fns
 import { rn2, rn2_on_display_rng } from './rnd.js'; // relocate-fns
+import { impossible } from './pline.js';
 import { M2_FEMALE, M2_MALE, M2_NEUTER, MONS_ROWS, NUM_RACES, NUM_ROLES, ROLE_ALLOWS, ROLE_GODS, ROLE_PM_MNUM, aligns, gr, raceSpecs, races, randroleFiltered, roles } from './roles.js'; // relocate-fns
 
 // C ref: role.c:1358 clearrolefilter().  RSF_filter falls through to RSF_ROLE,
@@ -86,12 +87,14 @@ function pick_align_rigid(rolenum, racenum, gendnum, tracker) {
     return last;
 }
 
-// rigid_role_checks — when role is set, force missing facets that are
-// uniquely determined.  C ref: role.c:1235-1281, called from plsel_startmenu
-// (role.c:2814) before each menu open.
+// (js/chargen_ui.js generateChargenFrames) feeds the recorded rn2 values
+// through `tracker`, so it cannot call the real pick_*() (which draw from the
+// live PRNG).  It only ever needs the second half of C's rigid_role_checks()
+// (role.c:1270-1280, the PICK_RIGID block).  The played path (runSegment ->
+// playChargen) uses rigid_role_checks() below.  C ref: role.c:1235-1281.
 //
 // Order matters: race then align then gender (mirrors C lines 1271-1279).
-export function rigid_role_checks(state, tracker) {
+export function rigid_role_checks_replay(state, tracker) {
     if (state.role !== ROLE_NONE) {
         if (state.race === ROLE_NONE)
             state.race = pick_race_rigid(state.role, state.gender, state.align, tracker);
@@ -99,6 +102,40 @@ export function rigid_role_checks(state, tracker) {
             state.align = pick_align_rigid(state.role, state.race, state.gender, tracker);
         if (state.gender === ROLE_NONE)
             state.gender = pick_gend_rigid(state.role, state.race, state.align, tracker);
+    }
+}
+
+/* C role.c:1235-1281 rigid_role_checks().  `st` stands for flags.initrole /
+ * initrace / initgend / initalign (the player-selection state of
+ * playChargen()); the picks draw from the live PRNG exactly as C does. */
+export function rigid_role_checks(st) {
+    let tmp;
+
+    if (st.role === ROLE_RANDOM) {
+        /* If the role was explicitly specified as ROLE_RANDOM
+         * via -uXXXX-@ or OPTIONS=role:random then choose the role
+         * in here to narrow down later choices. */
+        st.role = pick_role(st.race, st.gender, st.align, PICK_RANDOM);
+        if (st.role < 0)
+            st.role = randroleFiltered();
+    }
+    if (st.race === ROLE_RANDOM
+        && (tmp = pick_race(st.role, st.gender, st.align, PICK_RANDOM)) !== ROLE_NONE)
+        st.race = tmp;
+    if (st.align === ROLE_RANDOM
+        && (tmp = pick_align(st.role, st.race, st.gender, PICK_RANDOM)) !== ROLE_NONE)
+        st.align = tmp;
+    if (st.gender === ROLE_RANDOM
+        && (tmp = pick_gend(st.role, st.race, st.align, PICK_RANDOM)) !== ROLE_NONE)
+        st.gender = tmp;
+
+    if (st.role !== ROLE_NONE) {
+        if (st.race === ROLE_NONE)
+            st.race = pick_race(st.role, st.gender, st.align, PICK_RIGID);
+        if (st.align === ROLE_NONE)
+            st.align = pick_align(st.role, st.race, st.gender, PICK_RIGID);
+        if (st.gender === ROLE_NONE)
+            st.gender = pick_gend(st.role, st.race, st.align, PICK_RIGID);
     }
 }
 
@@ -512,14 +549,16 @@ export function role_init() {
     // role.c:1991-1996 — str2role(svp.pl_character) before falling back to
     // str2role always returns ROLE_NONE/ROLE_RANDOM here, matching every
     if (!validrole(flags.initrole)) {
-        flags.initrole = str2role(game.plname);
+        /* svp.pl_character is the rc `role:` string (options.c:3609), NOT the player name */
+        flags.initrole = str2role(game.pl_character ?? '');
         if (flags.initrole < 0) {
             flags.initrole = randroleFiltered();
         }
     }
     const ROLE = flags.initrole;
 
-    // role.c:1999-2002 — Strcpy(svp.pl_character, ...) player-name buffer;
+    // role.c:1999-2001 — Strcpy(svp.pl_character, roles[flags.initrole].name.m)
+    game.pl_character = roles[ROLE].name.m.slice(0, 31);
 
     // role.c:2004-2005
     if (!validrace(ROLE, flags.initrace)) {
@@ -616,14 +655,17 @@ export function role_init() {
     // Role_if(PM_CLERIC) -> objects[SPE_LIGHT].oc_skill = P_CLERIC_SPELL:
 }
 
-/** C character_race(pmindex) — role.c:2162-2171
- * Given a player monster index (mnum), return the corresponding Race object
- * or null if not found.
+/** C character_race(pmindex) — role.c:2159-2171
+ * If pmindex is any player race (not necessarily the hero's), return the
+ * races[] entry for it; if pmindex is for some other kind of monster which
+ * isn't a player race, return null.  pmindex is a mons[] index (PM_*), so it
+ * is compared to the races' PM_ index (RACE_PM_MNUM), not to races[].mnum,
+ * which in this port is the table-order index 0-4.
  */
 export function character_race(pmindex) {
-    for (const r of races) {
-        if (r.mnum === pmindex) {
-            return r;
+    for (let i = 0; i < races.length; ++i) {
+        if (RACE_PM_MNUM[i] === pmindex) {
+            return races[i];
         }
     }
     return null;
@@ -649,26 +691,10 @@ export function Goodbye() {
     }
 }
 
-/** Helper: case-insensitive n-char comparison (C strncmpi). Returns 0 if match. */
-function _strncmpi(s1, s2, n) {
-    let i = 0;
-    while (i < n) {
-        if (!s2[i])
-            return (s1[i] !== undefined) ? 1 : 0; /* s1 >= s2 */
-        if (!s1[i])
-            return -1; /* s1 < s2 */
-        const t1 = s1[i].toLowerCase();
-        const t2 = s2[i].toLowerCase();
-        if (t1 !== t2)
-            return (t1 > t2) ? 1 : -1;
-        i++;
-    }
-    return 0; /* s1 == s2 */
-}
-
-/** Helper: case-insensitive full string comparison (C strcmpi). Returns 0 if match. */
-function _strcmpi(s1, s2) {
-    return _strncmpi(s1, s2, Math.max(s1.length, s2.length));
+/* C global.h:113 #define strcmpi(a, b) strncmpi((a), (b), -1): the count -1 never
+ * runs out, so the comparison ends only at a NUL. */
+function strcmpi(s1, s2) {
+    return strncmpi(s1, s2, Infinity);
 }
 
 /** C str2role(const char *str) — role.c:746-775
@@ -684,18 +710,18 @@ export function str2role(str) {
     const len = str.length;
     for (let i = 0; i < roles.length && roles[i].name.m; i++) {
         // Does it match the male name?
-        if (!_strncmpi(str, roles[i].name.m, len))
+        if (!strncmpi(str, roles[i].name.m, len))
             return i;
         // Or the female name?
-        if (roles[i].name.f && !_strncmpi(str, roles[i].name.f, len))
+        if (roles[i].name.f && !strncmpi(str, roles[i].name.f, len))
             return i;
         // Or the filecode?
-        if (!_strcmpi(str, roles[i].filecode))
+        if (!strcmpi(str, roles[i].filecode))
             return i;
     }
 
     if ((len === 1 && (str[0] === '*' || str[0] === '@'))
-        || !_strncmpi(str, 'random', len))
+        || !strncmpi(str, 'random', len))
         return ROLE_RANDOM;
 
     // Couldn't find anything appropriate
@@ -715,14 +741,14 @@ export function str2align(str) {
     const len = str.length;
     for (let i = 0; i < ROLE_ALIGNS; i++) {
         // Does it match the adjective?
-        if (!_strncmpi(str, ALIGN_TAB[i].adj, len))
+        if (!strncmpi(str, ALIGN_TAB[i].adj, len))
             return i;
         // Or the filecode?
-        if (!_strcmpi(str, aligns[i].filecode))
+        if (!strcmpi(str, aligns[i].filecode))
             return i;
     }
     if ((len === 1 && (str[0] === '*' || str[0] === '@'))
-        || !_strncmpi(str, 'random', len))
+        || !strncmpi(str, 'random', len))
         return ROLE_RANDOM;
 
     // Couldn't find anything appropriate
@@ -742,15 +768,15 @@ export function str2gend(str) {
     const len = str.length;
     for (let i = 0; i < ROLE_GENDERS; i++) {
         // Does it match the adjective?
-        if (!_strncmpi(str, GENDER_TAB[i].adj, len))
+        if (!strncmpi(str, GENDER_TAB[i].adj, len))
             return i;
         // Or the filecode?
-        if (!_strcmpi(str, GENDER_TAB[i].filecode))
+        if (!strcmpi(str, GENDER_TAB[i].filecode))
             return i;
     }
 
     if ((len === 1 && (str[0] === '*' || str[0] === '@'))
-        || !_strncmpi(str, 'random', len))
+        || !strncmpi(str, 'random', len))
         return ROLE_RANDOM;
 
     // Couldn't find anything appropriate
@@ -770,22 +796,64 @@ export function str2race(str) {
     const len = str.length;
     for (let i = 0; i < raceSpecs.length && raceSpecs[i].noun; i++) {
         // Does it match the noun?
-        if (!_strncmpi(str, raceSpecs[i].noun, len))
+        if (!strncmpi(str, raceSpecs[i].noun, len))
             return i;
         // Check adjective too
-        if (raceSpecs[i].adj && !_strncmpi(str, raceSpecs[i].adj, len))
+        if (raceSpecs[i].adj && !strncmpi(str, raceSpecs[i].adj, len))
             return i;
         // Or the filecode?
-        if (!_strcmpi(str, raceSpecs[i].filecode))
+        if (!strcmpi(str, raceSpecs[i].filecode))
             return i;
     }
 
     if ((len === 1 && (str[0] === '*' || str[0] === '@'))
-        || !_strncmpi(str, 'random', len))
+        || !strncmpi(str, 'random', len))
         return ROLE_RANDOM;
 
     // Couldn't find anything appropriate
     return ROLE_NONE;
+}
+
+/** C rolefilterstring(outbuf, which) — role.c:1315-1355
+ * Create a string like "!Bar !Kni" or "!chaotic" that can be put back into an
+ * RC file by #saveoptions.  C builds it with a leading space and returns
+ * &outbuf[1]; the string is returned directly here.
+ */
+export function rolefilterstring(which, rfilter = gr.rfilter) {
+    let outbuf = ''; /* constructed with a leading space; dropped on return */
+    let i;
+
+    switch (which) {
+    case RSF_ROLE:
+        for (i = 0; i < NUM_ROLES; ++i) {
+            if (rfilter.roles[i])
+                outbuf += ` !${roles[i].name.m.slice(0, 3)}`;
+        }
+        break;
+    case RSF_RACE:
+        for (i = 0; i < NUM_RACES; ++i) {
+            if ((rfilter.mask & raceSpecs[i].selfmask) !== 0)
+                outbuf += ` !${raceSpecs[i].noun}`;
+        }
+        break;
+    case RSF_GENDER:
+        for (i = 0; i < ROLE_GENDERS; ++i) {
+            if ((rfilter.mask & GENDER_TAB[i].allow) !== 0)
+                outbuf += ` !${GENDER_TAB[i].adj}`;
+        }
+        break;
+    case RSF_ALGNMNT:
+        for (i = 0; i < ROLE_ALIGNS; ++i) {
+            if ((rfilter.mask & ALIGN_TAB[i].allow) !== 0)
+                outbuf += ` !${ALIGN_TAB[i].adj}`;
+        }
+        break;
+    default:
+        impossible("rolefilterstring: bad role aspect (%d)", which);
+        outbuf = ' ?';
+        break;
+    }
+    return outbuf.slice(1);
 }
 
 /** C setrolefilter(const char *bufp) — role.c:1283-1301

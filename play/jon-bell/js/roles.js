@@ -20,7 +20,7 @@ import {
 } from './pm.generated.js';
 import { game, questStatusStruct } from './gstate.js';
 import monsPack from './makemon_mons.json' with { type: 'json' };
-import { ok_align, ok_gend, ok_race, ok_role, pick_align, pick_gend, pick_race, pick_role, randalign, randgend, randrace, randrole, str2role, validalign, validgend, validrace, validrole } from './role.js'; // relocate-fns
+import { ok_align, ok_gend, ok_race, ok_role, pick_align, pick_gend, pick_race, pick_role, randalign, randgend, randrace, randrole, str2align, str2gend, str2race, str2role, validalign, validgend, validrace, validrole } from './role.js'; // relocate-fns
 export { Goodbye, character_race, pick_align, pick_gend, pick_race, pick_role, randalign, randgend, randrace, randrole, role_init, setrolefilter, str2align, str2gend, str2race, str2role } from './role.js'; // relocate-fns
 export { M2_FEMALE, M2_MALE, M2_NEUTER, MONS_ROWS }; // relocate-fns
 /** C monflag MH_* masked into Role.allow */
@@ -427,31 +427,25 @@ export function findRole(name) {
         return roles.find(r => r.name.m.toLowerCase() === 'archeologist');
     return roles.find(r => r.name.m.toLowerCase() === lc || r.name.f.toLowerCase() === lc);
 }
+/* The OPTIONS role/race/gender/align strings are parsed by role.c's str2role/
+ * str2race/str2gend/str2align (options.c optfn_role etc.: prefixes, adjectives,
+ * filecodes and '*' '@' "random" are all accepted); these keep the numeric
+ * pass-through used by tools that hand over an index. */
 /** Map OPTIONS role string (or numeric index) to C roles[] index; ROLE_NONE (-1) if unknown. */
 export function roleOptionToIndex(role) {
     if (role == null || role === '' || role === -1)
         return ROLE_NONE;
     if (typeof role === 'number')
         return role >= 0 && role < NUM_ROLES ? role : ROLE_NONE;
-    const r = findRole(String(role));
-    return r ? roles.indexOf(r) : str2role(String(role));
+    return str2role(String(role));
 }
 /** Map OPTIONS race to C races[] index; ROLE_NONE if unset. */
-const RACE_CODES = ['hum', 'elf', 'dwa', 'gno', 'orc'];
 export function raceOptionToIndex(race) {
     if (race == null || race === '' || race === -1)
         return ROLE_NONE;
     if (typeof race === 'number')
         return race >= 0 && race < NUM_RACES ? race : ROLE_NONE;
-    const lc = String(race).toLowerCase();
-    for (let i = 0; i < NUM_RACES; i++) {
-        const sp = raceSpecs[i];
-        if (lc === sp.noun || lc === sp.adj || lc === RACE_CODES[i])
-            return i;
-    }
-    if (lc === '*' || lc === '@' || lc === 'random')
-        return ROLE_RANDOM;
-    return ROLE_NONE;
+    return str2race(String(race));
 }
 /** Map OPTIONS gender; ROLE_NONE / ROLE_RANDOM handled. */
 export function genderOptionToIndex(gender) {
@@ -459,14 +453,7 @@ export function genderOptionToIndex(gender) {
         return ROLE_NONE;
     if (typeof gender === 'number')
         return gender >= 0 && gender < ROLE_GENDERS ? gender : ROLE_NONE;
-    const lc = String(gender).toLowerCase();
-    if (lc.startsWith('m') || lc === 'male' || lc === 'mal')
-        return 0;
-    if (lc.startsWith('f') || lc === 'female' || lc === 'fem')
-        return 1;
-    if (lc === '*' || lc === '@' || lc === 'random')
-        return ROLE_RANDOM;
-    return ROLE_NONE;
+    return str2gend(String(gender));
 }
 /** Map OPTIONS align to C aligns[] lawful/neutral/chaotic index (0..2). */
 export function alignOptionToIndex(align) {
@@ -477,16 +464,7 @@ export function alignOptionToIndex(align) {
             return align;
         return ROLE_NONE;
     }
-    const lc = String(align).toLowerCase();
-    if (lc.startsWith('law') || lc === 'lawful' || lc === 'law')
-        return 0;
-    if (lc.startsWith('neu') || lc === 'neutral' || lc === 'balance')
-        return 1;
-    if (lc.startsWith('cha') || lc === 'chaotic' || lc === 'chaos')
-        return 2;
-    if (lc === '*' || lc === '@' || lc === 'random')
-        return ROLE_RANDOM;
-    return ROLE_NONE;
+    return str2align(String(align));
 }
 export function findRace(name) {
     if (!name)

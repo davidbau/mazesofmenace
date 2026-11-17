@@ -26,7 +26,8 @@ import { optfn_number_pad_set, set_misc_menu_command } from './cmd_config.js';
 import { parseautocomplete } from './cmd.js';
 import { config_error_add } from './cfgfiles.js';
 import { gr as roleGlobals } from './roles.js';
-import { str2role, str2race, str2gend, str2align, setrolefilter } from './role.js';
+import { str2role, str2race, str2gend, str2align, setrolefilter, rolefilterstring } from './role.js';
+import { RSF_ROLE, RSF_RACE, RSF_GENDER, RSF_ALGNMNT } from './chargen_ui.js';
 import { glyphrep_to_custom_map_entries } from './glyphs.js';
 import { sym_val_real, apply_pending_s_utf8, symset_defined_in_file, SYM_OFFSETS } from './symbols.js';
 import { config_line_error, config_statement, choose_random_part, config_error_nextline, config_error_secure, is_config_section, parse_autopickup_exception, parse_msgtype } from './cfgfiles.js';
@@ -801,11 +802,7 @@ function optfn_role_facet(result, opts, op, negated, state, facet = 'align') {
             }
             // rolefilterstring(RS_ALGNMNT) returns empty if only another
             // character facet was named (setrolefilter accepts all four).
-            state.saved = facet !== 'align'
-                ? ((facet === 'role' ? roleGlobals.rfilter.roles.some(Boolean) : roleGlobals.rfilter.mask & mask) ? '!' : '')
-                : ['lawful', 'neutral', 'chaotic']
-                .filter((_, i) => roleGlobals.rfilter.mask & (4 >> i))
-                .map(name => '!' + name).join(' ');
+            state.saved = rolefilterstring({ role: RSF_ROLE, race: RSF_RACE, gender: RSF_GENDER, align: RSF_ALGNMNT }[facet]);
             selected = '!';
         } else {
             if (duplicate && state.saved?.startsWith('!')) {
@@ -1694,9 +1691,13 @@ export function parseNethackrc(rc) {
                 result.flags.inv_order = order.concat(previous.filter(oc => !order.includes(oc)));
                 continue;
             }
-            if (menuname.length >= 5 && 'sortdiscoveries'.startsWith(menuname)
-                && optfn_sortdiscoveries_set(menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated, result.flags))
-                continue;
+            if (menuname.length >= 5 && 'sortdiscoveries'.startsWith(menuname)) {
+                /* C options.c:620-623 duplicate_opt_detection() runs before the
+                 * option function (optlist.h sortdiscoveries is not dupeok). */
+                compoundDuplicate('sortdiscoveries');
+                if (optfn_sortdiscoveries_set(menusep < 0 ? '' : menuopts.slice(menusep + 1).trim(), menunegated, result.flags, menuopts))
+                    continue;
+            }
             let negated = trimmed.startsWith('!');
             let stripped = negated ? trimmed.slice(1) : trimmed;
             // C options.c:5192-5244 optfn_boolean: parameters select the

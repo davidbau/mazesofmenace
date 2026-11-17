@@ -178,6 +178,8 @@ export class NethackGame {
             g.plname = 'wizard';
         // preamble can read NETHACK_FIXED_DATETIME for phase_of_the_moon().
         g.env = this._env;
+        /* C options.c:3609 optfn_role: nmcpy(svp.pl_character, op, PL_NSIZ) */
+        g.pl_character = opts.role ? String(opts.role).slice(0, 31) : '';
         g.flags.initrole = roleOptionToIndex(opts.role);
         g.flags.initrace = raceOptionToIndex(opts.race);
         g.flags.initgend = genderOptionToIndex(opts.gender);

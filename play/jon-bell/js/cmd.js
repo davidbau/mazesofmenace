@@ -13390,7 +13390,10 @@ async function dispatch_command(command, outcome = {}, queued = false) {
             game._pending_message = '';
             const lines = titleErased ? ['', ...promptLines.slice(1)] : promptLines;
             game._screen_output = build_window_screen(lines, 35, game.u?.uac ?? 0);
-            set_cursor(41, promptLines.length - 1);
+            /* wintty.c:1923-1936: with !menu_overlay the menu owns the screen at offx 0
+             * (content at column 1), so the "(end)" cursor sits at 1 + 5 + 1 = 7. */
+            const noOverlay = game.iflags?.menu_overlay === false || game.iflags?.menu_overlay === 0;
+            set_cursor(noOverlay ? 7 : 41, promptLines.length - 1);
         };
         const classSearch = async () => {
             const mlist = [];
@@ -14576,7 +14579,15 @@ export function _glyph_ident(x, y) {
         + ':' + (loc && loc.disp_decgfx ? 1 : 0)
         // detect.c:1535 compares glyph numbers, including the monster-class
         // offset; detection highlighting options do not change that identity.
-        + (g0.cls === GLYPHCLS_MON ? ':' + (loc?.disp_mon_kind || 'normal') : '');
+        + (g0.cls === GLYPHCLS_MON
+            ? ':' + (loc?.disp_mon_kind || 'normal')
+              /* a monster glyph number is species + gender (display.h
+               * monnum_to_glyph); two different species painting the same
+               * letter and colour (jackal / coyote) are different glyphs */
+              + ':' + (loc?.disp_mon_pm ?? '') + ':' + (loc?.disp_mon_female ? 1 : 0)
+            : '')
+        /* an object glyph number is its otyp (display.h objnum_to_glyph) */
+        + (g0.cls === GLYPHCLS_OBJ && Number.isInteger(g0.otyp) ? ':' + g0.otyp : '');
 }
 
 /* C ref: getpos.c:511-553 gather_locs(&garr[gloc], &gcount[gloc], gloc).
@@ -14867,7 +14878,7 @@ async function _getpos_menu(gloc) {
             if (ch++ === 122) ch = 65;
         }
     }
-    let curPage = 0, titleErased = false, shownFull = false;
+    let curPage = 0, titleErased = false, shownFull = false, lastWinRows = 0;
     try {
     for (;;) {
         const pg = pages[curPage];
@@ -14880,6 +14891,7 @@ async function _getpos_menu(gloc) {
         const fullScreen = pages.length > 1 || windowLines.length >= 24
             || g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0;
         shownFull = fullScreen;
+        lastWinRows = windowLines.length;
         const offx = fullScreen ? 1 : tty_window_offx(rawLines, 'end');
         g._screen_output = fullScreen
             ? windowLines.map((ln) => (ln === '' ? '' : ' ' + ln)).join('\n')
@@ -14924,6 +14936,13 @@ async function _getpos_menu(gloc) {
             g._bot_disabled = true;
             try { await docrt(); await flush_screen(1); }
             finally { g._bot_disabled = savedBotDisabled; }
+        } else if (lastWinRows && g.disp && lastWinRows + 1 >= 24 - (_threeStatusLines() ? 3 : 2)) {
+            /* wintty.c:3711-3716 docorner(): an overlay tall enough to reach the
+             * status rows "wrecked the bottom line", so botlx is set; its bot()
+             * is a no-op under select_menu()'s bot_disabled (windows.c:1861) and
+             * the next flush_screen (getpos.c:1148-1149) repaints the status and
+             * leaves the tty cursor past it.  ymax is maxrow + 1. */
+            g.disp.botlx = 1;
         }
     }
 }

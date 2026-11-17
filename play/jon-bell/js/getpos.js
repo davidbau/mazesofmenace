@@ -629,6 +629,9 @@ export async function getpos(ccp, force, goal) {
             g.iflags.getloc_usemenu = !g.iflags.getloc_usemenu;
             await pline(`${g.iflags.getloc_usemenu ? 'Using' : 'Not using'} a menu to show possible targets`
                 + (g.iflags.getloc_usemenu ? " for 'm|M', 'o|O', 'd|D', and 'x|X'" : '') + '.');
+            /* the line is physically on the topline when a following pick
+             * leaves getpos (getpos.c:889-890 drops msg_given on the next key) */
+            g._getpos_last_autodescribe = g._pending_message;
             msg_given = true;
             await flush_screen(0);
             handled = true;

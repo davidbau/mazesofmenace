@@ -21,7 +21,7 @@ import { MKOBJ_OC_MATERIAL } from './mkobj_erosion_meta.js';
  * Reset from this copy on each init so a second game in one process starts
  * from the canonical table. */
 const _PRISTINE_OC_MATERIAL = Uint8Array.from(MKOBJ_OC_MATERIAL);
-import { SHUFFLED_RANGES, WEAPON_TABLE, FIXED_DESCRS } from './o_init_data.js';
+import { SHUFFLED_RANGES, FIXED_DESCRS } from './o_init_data.js';
 import { OC_NAME } from './oc_name_data.js';
 /* C objects[].oc_descr — OBJ_DESCR(objects[i]) presence is what o_init.c's
  * oc_name_known audit and u_init.c's ini_inv_use_obj discovery both test. */
@@ -362,16 +362,6 @@ export function shuffle_all() {
      * C ref: o_init.c init_objects() leaves these at their canonical descr_idx. */
     for (const otyp in FIXED_DESCRS)
         g._objDescriptions[otyp] = FIXED_DESCRS[otyp];
-    /* Weapons are NOT shuffled, but many have a fixed OBJ_DESCR (e.g.
-     * quarterstaff "staff").  OBJ_DESCR(objects[otyp]) returns it unchanged;
-     * record the non-null ones so getObjDescr/obj_typename show "(descr)". */
-    if (WEAPON_TABLE) {
-        for (let k = 0; k < WEAPON_TABLE.descrs.length; k++) {
-            const d = WEAPON_TABLE.descrs[k];
-            if (d != null)
-                g._objDescriptions[WEAPON_TABLE.base + k] = d;
-        }
-    }
 }
 /* Object-class numbering (C include/defsym.h), used by the disco subsystem. */
 const SPBOOK_CLASS_OC = 10;
@@ -542,14 +532,6 @@ import { docall } from './do_name.js'; // relocate-fns
 import { You } from './do_wear.js'; // relocate-fns
 import { objtyp_is_callable } from './do_name.js'; // relocate-fns
 import { menu_heading_text } from './tty_menu.js'; // relocate-fns
-/* Fixed (non-shuffled) descriptions for weapons, from WEAPON_TABLE; null when
- * the type is outside the weapon range or has no description (NoDes). */
-function _fixedDescrOf(otyp) {
-    const t = WEAPON_TABLE;
-    if (t && otyp >= t.base && otyp < t.base + t.descrs.length)
-        return t.descrs[otyp - t.base];
-    return null;
-}
 /**
  * C o_init.c:150-235 — init_objects() (partial port).
  * Full C function initialises svb.bases[], shuffles gem colours, shuffles
@@ -595,17 +577,21 @@ export function get_sortdisco(cnf = false) {
 
 // C options.c:3871-3900 optfn_sortdiscoveries(do_set).  Return true after
 // handling the option so the config parser won't treat it as a boolean.
-export function optfn_sortdiscoveries_set(value, negated, flags) {
+// `opts` is the option text exactly as C's parseoptions() hands it over (negation
+// prefix stripped, any ":value" still attached) because string_for_opt() quotes
+// it in "Missing parameter for '%s'" (options.c:6676).
+export function optfn_sortdiscoveries_set(value, negated, flags, opts = 'sortdiscoveries') {
+    if (!value) config_error_add("Missing parameter for '%s'", opts);
     if (negated) {
         flags.discosort = 'o';
         return true;
     }
-    const c = String(value || '').charAt(0).toLowerCase();
+    if (!value) return true; /* options.c:3898-3899: optn_err, nothing set */
+    const c = String(value).charAt(0).toLowerCase();
     const choice = { '0': 'o', o: 'o', '1': 's', s: 's',
                      '2': 'c', c: 'c', '3': 'a', a: 'a' }[c];
     if (choice) flags.discosort = choice;
-    else if (c) config_error_add("Unknown sortdiscoveries parameter '%s'", value);
-    else config_error_add("Missing parameter for 'sortdiscoveries'");
+    else config_error_add("Unknown sortdiscoveries parameter '%s'", value);
     return true;
 }
 
@@ -746,7 +732,6 @@ export async function show_special_discoveries(key) {
         }
     } else {
         for (const art of game.artidisco || []) {
-            if (!art) break;
             const { name, otyp } = ARTILIST[art - 1];
             let al = ARTI_PROPS[art].al;
             if ((al !== A_NONE && ARTI_GIFT_ROLE[art] === game.flags.initrole)
@@ -812,7 +797,6 @@ export async function dodiscovered() {
     }
     /* C o_init.c:814; artifact.c:1147-1176, with hack_artifacts():88-105. */
     for (const [i, art] of (g.artidisco || []).entries()) {
-        if (!art) break;
         if (i === 0) lines.push(menu_heading_attr_text('Artifacts'));
         const { name, otyp } = ARTILIST[art - 1];
         let al = ARTI_PROPS[art].al;
@@ -872,120 +856,56 @@ export async function dodiscovered() {
     return ECMD_OK;
 }
 
-/* C ref: o_init.c:1128-1213 rename_disco() — the nameable subset of the
+/* C ref: o_init.c:1129-1206 rename_disco() — the nameable subset of the
  * discoveries list as a PICK_ONE menu, then docall() on a dummy object of the
  * picked type.  disco[] is walked per class in flags.inv_order, filtered by
  * interesting_to_discover() and objtyp_is_callable(); each class with a
- * surviving row gets a heading.  Selector letters run a-z then A-Z across the
- * headings (tty add_menu auto-assignment, wintty.c).  Single-page only. */
+ * surviving row gets a heading (add_menu_heading), each row is selected by the
+ * automatic a-z/A-Z accelerators (add_menu with selector 0, a_int = dis) and
+ * the window is a real tty menu, so paging, overlay placement and dismissal
+ * come from TtyMenu exactly as for the other menus. */
 export async function rename_disco() {
     const g = game;
-    const lines = [menu_heading_text('Pick an object type to name'), ''];
-    const picks = {};
-    const pickItems = [];
+    const menu = new TtyMenu({
+        overlay: !(g.iflags?.menu_overlay === false || g.iflags?.menu_overlay === 0) /* wintty.c:1927 */ });
     let ct = 0, mn = 0;
-    const letters = 'abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ';
     const disco = g._disco || {};
-    for (const oclass of (g.flags?.inv_order || INV_ORDER)) { /* C:1143 flags.inv_order */
+    for (const oclass of (g.flags?.inv_order || INV_ORDER)) { /* C:1154 flags.inv_order */
         const list = disco[oclass];
         if (!list) continue;
-        let prev_class = oclass + 1; /* C:1149 forced different from oclass */
+        let prev_class = oclass + 1; /* C:1156 forced different from oclass */
         for (const dis of list) {
             if (!dis || !_interesting_to_discover(dis))
-                continue;                           /* C:1154 */
+                continue;                           /* C:1160 */
             ct++;
             if (!objtyp_is_callable(dis))
-                continue;                           /* C:1157 */
+                continue;                           /* C:1163 */
             mn++;
             if (oclass !== prev_class) {
-                lines.push(menu_heading_text(OCLASS_NAME[oclass])); /* C:1162 */
+                menu.add_menu_heading(OCLASS_NAME[oclass]); /* C:1169 */
                 prev_class = oclass;
             }
-            /* letter assigned after paging (tty_end_menu restarts at 'a' per page) */
-            pickItems.push({ row: lines.length, otyp: dis, oclass });
-            lines.push(`\0 - ${_disco_append_price_quote(_disco_typename(dis), dis)}`);
+            /* C:1173-1177: a_int = dis, buf = disco_append_typename("", dis) */
+            menu.add_menu(dis, 0, ATR_NONE, disco_append_typename('', dis));
         }
     }
     if (ct === 0) {
-        await You("haven't discovered anything yet...");   /* C:1177 */
-        return;
-    }
-    if (mn === 0) {
-        await pline('None of your discoveries can be assigned names...'); /* C:1179 */
-        return;
-    }
-    const maxLen = lines.reduce((mx, ln) =>
-        Math.max(mx, ln.replace(/\x1b\[[0-9;]*m/g, '').length), 0);
-    /* wintty.c:1908 H2344_BROKEN: offx = min(min(82, cols/2), cols - maxcol - 1);
-     * a menu whose content rows + 1 reach 24 (lines.length >= 23, wintty.c
-     * cw->maxrow >= rows - 1; C rename_disco itself makes no paging
-     * decision, o_init.c:1185 end_menu) or one too wide
-     * for an overlay drops to offx 0 and is paged at 23 content rows with
-     * process_menu_window's "(%d of %d)" footer (wintty.c:1537-1539). */
-    const SCREEN_ROWS = 24, PAGE_CONTENT = SCREEN_ROWS - 1;
-    const fullScreen = lines.length + 1 >= SCREEN_ROWS || 78 - maxLen <= 1;
-    const pageCount = fullScreen ? Math.ceil(lines.length / PAGE_CONTENT) : 1;
-    /* wintty.c tty_end_menu: auto selectors a-z,A-Z restart on every page */
-    const perPage = {};
-    for (const it of pickItems) {
-        const pg = fullScreen ? Math.floor(it.row / PAGE_CONTENT) : 0;
-        const letter = letters[perPage[pg] = (perPage[pg] || 0) + 1, perPage[pg] - 1];
-        picks[pg + ':' + letter] = { otyp: it.otyp, oclass: it.oclass };
-        lines[it.row] = letter + lines[it.row].slice(1);
-    }
-    let pageIdx = 0;
-    const WIN_COL = fullScreen ? 0 : Math.min(41, 80 - maxLen - 2);
-    const pageSel = () => Object.keys(picks)
-        .filter((key) => Number(key.split(':')[0]) === (fullScreen ? pageIdx : 0))
-        .map((key) => key.split(':')[1]).join('');
-    const show = async () => {
-        if (fullScreen) {
-            const pageLines = lines.slice(pageIdx * PAGE_CONTENT, (pageIdx + 1) * PAGE_CONTENT);
-            const morestr = pageCount > 1 ? `(${pageIdx + 1} of ${pageCount})` : '(end) ';
-            const rows = new Array(SCREEN_ROWS).fill('');
-            for (let i = 0; i < pageLines.length; i++) rows[i] = ` ${pageLines[i]}`;
-            rows[pageLines.length] = ` ${morestr}`;
-            g._screen_output = rows.join('\n');
-            g._pending_message = '';
-            set_cursor(1 + morestr.length, pageLines.length);
-            return;
-        }
-        const screen = build_window_screen([...lines, '(end)'], WIN_COL, g.u?.uac ?? 0);
-        g._screen_output = screen;
-        g._pending_message = '';
-        set_cursor(WIN_COL + '(end)'.length + 1, lines.length);
-    };
-    await show();
-    let k;
-    for (;;) {
-        k = await await_menu_key(show, pageSel(), '', PICK_ONE);
-        /* wintty.c process_menu_window: space / '>' next page, '<' previous;
-         * space on the last page finishes the menu. */
-        if (fullScreen && (k === 32 || k === 62) && pageIdx < pageCount - 1) { pageIdx++; await show(); continue; }
-        if (fullScreen && k === 60 && pageIdx > 0) { pageIdx--; await show(); continue; }
-        break;
-    }
-    g._pending_message = '';
-    if (fullScreen) {
-        /* wintty.c:971-978 erase_menu_or_text: an offx 0 window is dismissed by
-         * docrt(), which re-rolls every hallucinated cell (display RNG) and
-         * leaves both status rows blank until the next bot(). */
-        await docrt();
-        g._statusBlankAfterDocrt = true;
-        if (g.disp) g.disp.botlx = 1;
-        g._status1WholeNext = true;
+        await You("haven't discovered anything yet...");   /* C:1181 */
+    } else if (mn === 0) {
+        await pline('None of your discoveries can be assigned names...'); /* C:1183 */
     } else {
-        /* wintty.c tty_dismiss_nhwindow -> erase_menu_or_text ->
-         * docorner(cw->offx, cw->maxrow + 1): row_refresh reprints the glyph
-         * buffer under the overlay (rows 0..lines.length incl. "(end)"). */
-        docorner_blank_utf8_captures(WIN_COL - 1, lines.length + 2);
+        menu.end_menu('Pick an object type to name');      /* C:1185 */
+        let dis = 0;                                       /* C:1186 STRANGE_OBJECT */
+        const { count, picks } = await menu.select_menu(PICK_ONE);
+        if (count > 0)
+            dis = picks[0];                                /* C:1189 */
+        if (dis !== 0) {                                   /* C:1192 */
+            const odummy = {                               /* C:1195-1200 */
+                otyp: dis, oclass: MKOBJ_OC_CLASS[dis] | 0, quan: 1,
+                known: OC_USES_KNOWN[dis] ? 0 : 1,
+                dknown: 1,
+            };
+            await docall(odummy);
+        }
     }
-    const pick = picks[(fullScreen ? pageIdx : 0) + ':' + String.fromCharCode(k)];
-    if (!pick) return;                              /* C:1188 STRANGE_OBJECT */
-    const odummy = {                                /* C:1192-1200 */
-        otyp: pick.otyp, oclass: pick.oclass, quan: 1,
-        known: OC_USES_KNOWN[pick.otyp] ? 0 : 1,
-        dknown: 1,
-    };
-    await docall(odummy);
 }

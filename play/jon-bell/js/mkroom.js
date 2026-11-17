@@ -338,7 +338,7 @@ export async function fill_zoo(sroom) {
                         somexyspace(sroom, mm);
                         tx = mm.x;
                         ty = mm.y;
-                    } while (_occupied(tx, ty) && --tries > 0);
+                    } while (occupied(tx, ty) && --tries > 0);
                 }
             }
             else {
@@ -348,7 +348,7 @@ export async function fill_zoo(sroom) {
                     somexyspace(sroom, mm);
                     tx = mm.x;
                     ty = mm.y;
-                } while (_occupied(tx, ty) && --tries > 0);
+                } while (occupied(tx, ty) && --tries > 0);
             }
             /* C: throne_placed: mk_zoo_thronemon(tx, ty) */
             await mk_zoo_thronemon(tx, ty);
@@ -545,20 +545,6 @@ export async function fill_zoo(sroom) {
         default:
             break;
     }
-}
-
-/*
- * _occupied(x, y) — check if a cell has a live monster.
- * Used by fill_zoo COURT throne-placement loop (C: occupied(tx,ty)).
- * Simplified: only check fmon chain (objects not relevant for throne spot).
- */
-function _occupied(x, y) {
-    for (let m = game.fmon; m; m = m.nmon) {
-        if ((m.mhp | 0) < 1) continue; /* DEADMONSTER — C m_at reads the grid, which m_detach cleared */
-        if (m.mx === x && m.my === y)
-            return true;
-    }
-    return false;
 }
 
 // ============================================================

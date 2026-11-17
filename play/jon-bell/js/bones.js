@@ -84,8 +84,9 @@ function unique_corpstat(ptr) { return ((ptr.geno | 0) & G_UNIQ) !== 0; }
 /* C bones.c:513-538,818-829 — identify the deceased hero's remnant. */
 function save_ebones(mtmp) {
     const { u, flags } = game;
-    mtmp.mextra ??= {};
-    const ebones = mtmp.mextra.ebones ??= { parentmid: mtmp.m_id };
+    if (!mtmp.mextra?.ebones)
+        newebones(mtmp); /* C bones.c:513-514 `if (!has_ebones(mtmp)) newebones(mtmp);` */
+    const ebones = mtmp.mextra.ebones;
     Object.assign(ebones, {
         role: roles.findIndex(r => r.name.m === game.urole?.name?.m),
         race: races.findIndex(r => r.name === game.urace?.name),
@@ -95,8 +96,6 @@ function save_ebones(mtmp) {
     });
 }
 
-
-const PUBLISH_BONES_FILE = true;
 
 const PM_GHOST = 287;          /* pm.h — same constant js/mklev.js:207 holds */
 const MM_NONAME = 0x00000040;  /* js/const.js:2147 */
@@ -539,7 +538,7 @@ export async function savebones(how, when, corpse) {
         const newbones = {
             who: `${plname}-${_fc3(g.urole?.filecode)}-${_fc3(g.urace?.filecode)}`
                  + `-${gender}-${alignFc}`,
-            how: formatkiller('', 256 /* sizeof newbones->how */, how, true), /* C bones.c:585 */
+            how: formatkiller('', 101 /* sizeof newbones->how, rm.h:423 char how[100 + 1] */, how, true), /* C bones.c:585 */
             when: yyyymmddhhmmss(when), /* C bones.c:586 */
             frpx: u.ux0 | 0,
             frpy: u.uy0 | 0,
@@ -572,14 +571,11 @@ export async function savebones(how, when, corpse) {
     update_mlstmv();
     const ledger = ledger_no(u.uz);
     await savelev(ledger);
-    const snap = game.levelStore?.get(ledger);
-    if (!snap)
-        return;
+    const snap = game.levelStore.get(ledger); /* savelev() always stores it */
     snap.fruits = []; // C save.c:951 savefruitchn: omit negative fruit IDs.
     for (let f = g.ffruit; f; f = f.nextf)
         if (f.fid >= 0) snap.fruits.push({ fid: f.fid, fname: f.fname });
-    if (PUBLISH_BONES_FILE)
-        create_bonesfile(u.uz, bonesid, snap);
+    create_bonesfile(u.uz, bonesid, snap);
 }
 
 const HOLE = 13;
@@ -896,7 +892,7 @@ export async function drop_upon_death(mtmp, cont, x, y) {
             goodfruit_fp(otmp.spe);
 
         if (rn2_shk(5))
-            curse_fp(otmp);
+            await curse_obj(otmp); /* C bones.c:290-291 curse(): mkobj.c:1783-1819 */
 
         if (mtmp)
             await add_to_minv_fp(mtmp, otmp);
@@ -909,14 +905,6 @@ export async function drop_upon_death(mtmp, cont, x, y) {
     }
     if (cont)
         cont.owt = weight(cont); // C bones.c:302: include the statue's contents.
-}
-
-// C mkobj.c curse(otmp) — clear blessed, set cursed; coins are never cursed
-// (mkobj.c:1787 `if (otmp->oclass == COIN_CLASS) return;`).
-function curse_fp(otmp) {
-    if (!otmp || (otmp.oclass | 0) === COIN_CLASS) return;
-    otmp.blessed = 0;
-    otmp.cursed = 1;
 }
 
 // C nethack-c/include/mondata.h:95

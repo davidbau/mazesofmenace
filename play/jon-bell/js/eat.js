@@ -48,7 +48,7 @@ import { BY_COOKIE, slimeproof, polyfood, pline_mon_unported as pline_mon_eat } 
 import { mksobj, obj_extract_self } from './mkobj.js';
 import { getrumor, outrumor } from './rumors.js';
 import { eos } from './hacklib.js';
-import { discover_object } from './o_init.js';
+import { discover_object, objdescr_is } from './o_init.js';
 import { SATIATED, NOT_HUNGRY, HUNGRY, WEAK, FAINTING, FAINTED, STARVED, HUNGER, CONFLICT, SLOW_DIGESTION, REGENERATION, W_ARTI, W_WEP, FROMFORM, W_RINGL, W_RINGR, W_RING, SPINACH_TIN, HEALTHY_TIN, ROTTEN_TIN, HOMEMADE_TIN, NON_PM, LOW_PM, NEUTRAL, MAX_EGG_HATCH_TIME, A_STR, A_INT, M_ATTK_HIT, M_ATTK_MISS, M_ATTK_AGR_DIED, DIED, KILLED_BY_AN, KILLED_BY, M_AP_MONSTER, NO_KILLER_PREFIX, LIFESAVED, EDOG, STRANGLED, W_ARMOR, W_TOOL, W_AMUL, W_SADDLE, ECMD_OK, ECMD_TIME, GENOCIDED, PANICKED, POISONING, STONING, Upolyd, COST_BITE, LL_CONDUCT, CHOKING, STARVING, MAGICAL_BREATHING, A_LAWFUL, ECMD_CANCEL } from './const.js';
 /* C ref: invent.c:1752 getobj() — the ONE real (keystroke-consuming) getobj
  * body in this port; js/cmd.js:14406.  eat.js<->cmd.js is already a proven
@@ -521,7 +521,9 @@ async function eatspecial() {
             await pline('This junk mail is less than satisfying.');
         else if (objName(otmp.otyp) === 'scare monster')
             await pline(`Yuck${otmp.blessed ? '!' : '.'}`);
-        else if (otmp.oclass === SCROLL_CLASS && getObjDescr(otmp.otyp) === 'YUM YUM')
+        else if (otmp.oclass === SCROLL_CLASS
+                 /* check description after checking for specific scrolls (eat.c:2443) */
+                 && objdescr_is(otmp, 'YUM YUM'))
             await pline(`Yum${otmp.blessed ? '!' : '.'}`);
         else await pline('Needs salt...');
     }
