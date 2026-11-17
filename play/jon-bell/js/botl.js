@@ -99,17 +99,20 @@ export function rank_of(lev, monnum, female) {
     return 'Player';
 }
 
-// C ref: botl.c:408-420 max_rank_sz — compute max rank string length
+// C ref: botl.c:400-415 max_rank_sz — longest rank title (either gender) of gu.urole.
+// gu.urole.rank[] is js/rank_data.js ROLE_RANKS[role].rank; the old body keyed the
+// table with the urole OBJECT (always -1), so gm.mrank_sz was never set.
 export function max_rank_sz() {
     let maxr = 0;
-    const idx = _ROLE_NAME_TO_IDX[game.urole] ?? -1;
-    const ranks = (idx >= 0) ? _ROLE_RANKS[idx] : null;
-    if (!ranks) return;
+    const nm = game.urole?.name;
+    let idx = role_index_by_name(nm?.m ?? '');
+    if (idx < 0) idx = role_index_by_name(nm?.f ?? '');
+    const rank = idx >= 0 ? ROLE_RANKS[idx].rank : null;
+    if (!rank) return;
     for (let i = 0; i < 9; i++) {
-        const rk = ranks[i];
         let r;
-        if (rk[0] && (r = rk[0].length) > maxr) maxr = r;
-        if (rk[1] && (r = rk[1].length) > maxr) maxr = r;
+        if (rank[i][0] && (r = rank[i][0].length) > maxr) maxr = r;
+        if (rank[i][1] && (r = rank[i][1].length) > maxr) maxr = r;
     }
     game.mrank_sz = maxr;
 }

@@ -22,7 +22,7 @@ import { is_waterwall } from './dbridge.js';
 import { destroy_items, flashburn } from './zap.js';
 import { ureflects } from './muse.js';
 import { lined_up } from './mthrowu.js';
-import { couldsee, cansee } from './vision.js';
+import { couldsee, cansee, Blind as Blind_mc } from './vision.js';
 import { M_ATTK_MISS, M_ATTK_HIT, u_at, A_LAWFUL, EMIN, ismnum, MALE, FEMALE, NEUTRAL, NUM_MGENDERS, STRAT_WAITFORU, STRAT_APPEARMSG, SLIMED, MM_NOWAIT, HEADSTONE } from './const.js';
 import { an } from './objnam.js';
 import { permonstTemplate } from './makemon.js';
@@ -149,7 +149,14 @@ function propOn(id) {
 function Antimagic() { return propOn(ANTIMAGIC); }
 // youprop.h:120 Hallucination = HHallucination && !Halluc_resistance
 function Hallucination() { return propOn(HALLUC) && !propOn(HALLUC_RES); }
-function Blinded() { return propOn(BLINDED); }
+/* youprop.h:92 Blinded = (HBlinded && !BBlinded): the intrinsic/timed half only.
+ * A worn blindfold sets EBlinded (youprop.h:87,98-103 Blindfolded), which makes the
+ * hero Blind but NOT Blinded, so spell_would_be_useless(MCAST_BLIND_YOU) (mcastu.c:977)
+ * is false for a blindfolded hero. */
+function Blinded() {
+    const p = game.u?.uprops?.[BLINDED];
+    return !!(p && p.intrinsic && !p.blocked);
+}
 /* youprop.h Deaf == (HDeaf || EDeaf) || u.uroleplay.deaf; this port keeps the
  * HDeaf timeout in the flat u.HDeaf slot (eat.c:3421 newuhs, js/eat.js:788). */
 function Deaf() { return propOn(DEAF) || ((game.u?.HDeaf | 0) !== 0) || !!game.u?.uroleplay?.deaf; }
@@ -301,7 +308,7 @@ export async function touch_of_death(mtmp) {
 
     /* C: "if we get here, we know that hero isn't magic resistant and isn't
        poly'd into an undead or demon" */
-    You_feel_mc('drained...');
+    await You_feel_mc('drained...');
     const kbuf = death_inflicted_by('', 'the touch of death', mtmp);
 
     if (Upolyd(u)) {
@@ -341,7 +348,7 @@ export async function mcast_death_touch(mtmp) {
     const u = game.u;
     const ydata = mon_data_mc(game.youmonst);
 
-    pline(`Oh no, ${mhe(mtmp)}'s using the touch of death!`);
+    await pline(`Oh no, ${mhe(mtmp)}'s using the touch of death!`);
     if (nonliving(ydata) || is_demon(ydata)) {
         await You('seem no deader than before.');
     } else if (!Antimagic() && rn2(mtmp.m_lev | 0) > 12) {
@@ -356,7 +363,7 @@ export async function mcast_death_touch(mtmp) {
             shieldeff(u.ux, u.uy);
             monstseesu(M_SEEN_MAGR_MC);
         }
-        pline("Lucky for you, it didn't work!");
+        await pline("Lucky for you, it didn't work!");
     }
 }
 /* C pline.c:386-399 You_feel(line) — "You feel " + line (the Unaware variant
@@ -408,11 +415,11 @@ export async function mcast_summon_mons(mtmp) {
         /* C's comment: messages not quite right if plural monsters created but
            only a single monster is seen */
         if (Invis() && !perceives(mon_data_mc(mtmp)) && mux_off)
-            pline(`${mappear} ${one ? 'at' : 'around'} a spot near you!`);
+            await pline(`${mappear} ${one ? 'at' : 'around'} a spot near you!`);
         else if (Displaced() && mux_off)
-            pline(`${mappear} ${one ? 'by' : 'around'} your displaced image!`);
+            await pline(`${mappear} ${one ? 'by' : 'around'} your displaced image!`);
         else
-            pline(`${mappear} from nowhere!`);
+            await pline(`${mappear} from nowhere!`);
     }
 }
 import { In_W_tower_wz as In_W_tower } from './dochug.js';
@@ -434,9 +441,9 @@ export async function mcast_destroy_armor() {
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
-        pline('A field of force surrounds you!');
+        await pline('A field of force surrounds you!');
     } else if (!(await destroy_arm())) {
-        pline('Your skin itches.');
+        await pline('Your skin itches.');
     } else {
         /* C's own comment: monsters only realize you aren't magic-protected
            if armor is actually destroyed */
@@ -465,13 +472,13 @@ export async function mcast_weaken_you(mtmp, dmg) {
         monstunseesu(M_SEEN_MAGR_MC);
     }
 }
-export function mcast_disappear(mtmp) {
+export async function mcast_disappear(mtmp) {
     if (!mtmp.minvis && !mtmp.invis_blkd) {
         if (canseemon(mtmp)) {
             /* youprop.h:152 See_invisible = HSee_invisible || ESee_invisible */
             const si = game.u?.uprops?.[SEE_INVIS];
             const See_invisible = !!((si?.intrinsic | 0) || (si?.extrinsic | 0));
-            pline_mon(mtmp, `${Monnam(mtmp)} suddenly `
+            await pline_mon(mtmp, `${Monnam(mtmp)} suddenly `
                 + `${!See_invisible ? 'disappears' : 'becomes transparent'}!`);
         }
         mon_set_minvis(mtmp, false);
@@ -481,16 +488,16 @@ export function mcast_disappear(mtmp) {
         impossible_mcastu('no reason for monster to cast disappear spell?');
     }
 }
-export function mcast_stun_you(dmg) {
+export async function mcast_stun_you(dmg) {
     const u = game.u;
     if (Antimagic() || FreeAction_mc()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR_MC);
         if (!Stunned_mc())
-            You_feel_mc('momentarily disoriented.');
+            await You_feel_mc('momentarily disoriented.');
         make_stunned_mc(1, false);
     } else {
-        pline(Stunned_mc() ? 'You struggle to keep your balance.' : 'You reel...');
+        await pline(Stunned_mc() ? 'You struggle to keep your balance.' : 'You reel...');
         dmg = d(acurr_mc(u, A_DEX_MC) < 12 ? 6 : 4, 4);
         if (HalfSpellDamage())
             dmg = Math.trunc((dmg + 1) / 2);
@@ -508,17 +515,17 @@ function HStun_timeout_mc() {
     const p = game.u?.uprops?.[STUNNED_MC];
     return (p?.intrinsic | 0) & 0x00FFFFFF; /* TIMEOUT */
 }
-export function m_cure_self(mtmp, dmg) {
+export async function m_cure_self(mtmp, dmg) {
     if (mtmp.mhp < mtmp.mhpmax) {
         if (canseemon(mtmp))
-            pline_mon(mtmp, `${Monnam(mtmp)} looks better.`);
+            await pline_mon(mtmp, `${Monnam(mtmp)} looks better.`);
         /* C's own comment: player healing does 6d4; this used to do 1d8 */
         healmon(mtmp, d(3, 6), 0);
         dmg = 0;
     }
     return dmg;
 }
-export function mcast_psi_bolt(dmg) {
+export async function mcast_psi_bolt(dmg) {
     /* C's own comment: prior to 3.4.0 Antimagic was setting the damage to 1 --
      * this made the spell virtually harmless to players with magic res. */
     if (Antimagic()) {
@@ -529,19 +536,19 @@ export function mcast_psi_bolt(dmg) {
         monstunseesu(M_SEEN_MAGR_MC);
     }
     if (dmg <= 5)
-        pline('You get a slight ' + body_part(HEAD_MC) + 'ache.');
+        await pline('You get a slight ' + body_part(HEAD_MC) + 'ache.');
     else if (dmg <= 10)
-        pline('Your brain is on fire!');
+        await pline('Your brain is on fire!');
     else if (dmg <= 20)
-        pline('Your ' + body_part(HEAD_MC) + ' suddenly aches painfully!');
+        await pline('Your ' + body_part(HEAD_MC) + ' suddenly aches painfully!');
     else
-        pline('Your ' + body_part(HEAD_MC) + ' suddenly aches very painfully!');
+        await pline('Your ' + body_part(HEAD_MC) + ' suddenly aches very painfully!');
     return dmg;
 }
 const HALF_PHDAM_MC = 56;             /* prop.h (js/const.js:2383) */
 function HalfPhysicalDamage_mc() { return propOn(HALF_PHDAM_MC); }
-export function mcast_geyser(dmg) {
-    pline('A sudden geyser slams into you from nowhere!');
+export async function mcast_geyser(dmg) {
+    await pline('A sudden geyser slams into you from nowhere!');
     dmg = d(8, 6);
     if (HalfPhysicalDamage_mc())
         dmg = ((dmg + 1) / 2) | 0;
@@ -549,7 +556,7 @@ export function mcast_geyser(dmg) {
 }
 export async function mcast_fire_pillar(mtmp, dmg) {
     const u = game.u || {};
-    pline('A pillar of fire strikes all around you!');
+    await pline('A pillar of fire strikes all around you!');
     const orig_dmg = dmg = d(8, 6);
     if (FireResistance()) {
         shieldeff(u.ux, u.uy);
@@ -760,7 +767,7 @@ export async function mcast_insects(mtmp) {
                 await You_hear(`someone summoning something, and ${arg} `
                                + `${vtense(arg, 'appear')}.`);
             } else {
-                pline(`${upstart(arg)} ${vtense(arg, 'appear')}.`);
+                await pline(`${upstart(arg)} ${vtense(arg, 'appear')}.`);
             }
         }
         /* C's comment: seen caster, possibly producing unseen--or just
@@ -781,25 +788,25 @@ export async function mcast_insects(mtmp) {
         fmt = '%s summons %s!';
     }
     if (fmt)
-        pline_mon(mtmp, fmt2_mc(fmt, Monnam(mtmp), what));
+        await pline_mon(mtmp, fmt2_mc(fmt, Monnam(mtmp), what));
 }
 
 /* C mcastu.c:727-744 mcast_blind_you() — MCAST_BLIND_YOU.  RNG-free.
  * make_blinded's ONE body is js/zap.js:503; js/mhitu.js:333 is a silent no-op
  * stub of the same name (see the file-local-stub note on mdamageu above). */
-export function mcast_blind_you() {
+export async function mcast_blind_you() {
     /* C's comment: note: resists_blnd() doesn't apply here */
     if (!Blinded()) {
         const num_eyes = eyecount_mc(mon_data_mc(game.youmonst));
 
-        pline('Scales cover your '
+        await pline('Scales cover your '
               + (num_eyes === 1 ? body_part(EYE_MC)
                                 : makeplural(body_part(EYE_MC)))
               + '!');
         make_blinded(HalfSpellDamage() ? 100 : 200, false);
-        if (!Blinded())
+        if (!Blind_mc()) /* youprop.h:103 Blind, not Blinded: mcastu.c:739 */
             /* C: Your1(vision_clears) — decl.c:48 "vision quickly clears." */
-            pline('Your vision quickly clears.');
+            await pline('Your vision quickly clears.');
     } else {
         impossible_mcastu('no reason for monster to cast blindness spell?');
     }
@@ -810,7 +817,7 @@ export function mcast_blind_you() {
  * "to produce nomul(-1), not actual damage", and mcast_spell's caller does
  * `dmg = mcast_paralyze(mtmp)` and then mdamageu(mtmp, dmg) — so C really does
  * apply it as damage afterwards.  Ported as C has it (Cardinal Rule 1). */
-export function mcast_paralyze(mtmp) {
+export async function mcast_paralyze(mtmp) {
     const u = game.u;
     let dmg = 0;
 
@@ -818,11 +825,11 @@ export function mcast_paralyze(mtmp) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
         if ((game.multi | 0) >= 0)
-            pline('You stiffen briefly.');
+            await pline('You stiffen briefly.');
         dmg = 1; /* C's comment: to produce nomul(-1), not actual damage */
     } else {
         if ((game.multi | 0) >= 0)
-            pline('You are frozen in place!');
+            await pline('You are frozen in place!');
         dmg = 4 + (mtmp.m_lev | 0);
         if (HalfSpellDamage())
             dmg = ((dmg + 1) / 2) | 0;
@@ -835,13 +842,13 @@ export function mcast_paralyze(mtmp) {
 }
 
 /* C mcastu.c:771-789 mcast_confuse_you(mtmp) — MCAST_CONFUSE_YOU.  RNG-free. */
-export function mcast_confuse_you(mtmp) {
+export async function mcast_confuse_you(mtmp) {
     const u = game.u;
 
     if (Antimagic()) {
         shieldeff(u.ux, u.uy);
         monstseesu(M_SEEN_MAGR);
-        You_feel_mc('momentarily dizzy.');
+        await You_feel_mc('momentarily dizzy.');
     } else {
         const oldprop = !!Confusion();
         let dmg = mtmp.m_lev | 0;
@@ -850,9 +857,9 @@ export function mcast_confuse_you(mtmp) {
             dmg = ((dmg + 1) / 2) | 0;
         make_confused(HConfusion_mc() + dmg, true);
         if (Hallucination())
-            You_feel_mc(`${oldprop ? 'trippier' : 'trippy'}!`);
+            await You_feel_mc(`${oldprop ? 'trippier' : 'trippy'}!`);
         else
-            You_feel_mc(`${oldprop ? 'more ' : ''}confused!`);
+            await You_feel_mc(`${oldprop ? 'more ' : ''}confused!`);
         monstunseesu(M_SEEN_MAGR);
     }
 }
@@ -860,7 +867,7 @@ export function mcast_confuse_you(mtmp) {
 /* C mcastu.c:623-642 mcast_open_wounds(dmg) — MCAST_OPEN_WOUNDS.  RNG-free.
  * Structurally identical to mcast_psi_bolt above, which is why they share the
  * Antimagic prologue verbatim. */
-export function mcast_open_wounds(dmg) {
+export async function mcast_open_wounds(dmg) {
     if (Antimagic()) {
         shieldeff(game.u.ux, game.u.uy);
         monstseesu(M_SEEN_MAGR);
@@ -869,13 +876,13 @@ export function mcast_open_wounds(dmg) {
         monstunseesu(M_SEEN_MAGR);
     }
     if (dmg <= 5)
-        pline('Your skin itches badly for a moment.');
+        await pline('Your skin itches badly for a moment.');
     else if (dmg <= 10)
-        pline('Wounds appear on your body!');
+        await pline('Wounds appear on your body!');
     else if (dmg <= 20)
-        pline('Severe wounds appear on your body!');
+        await pline('Severe wounds appear on your body!');
     else
-        pline('Your body is covered with painful wounds!');
+        await pline('Your body is covered with painful wounds!');
     return dmg;
 }
 
@@ -1033,13 +1040,13 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         /* C mcastu.c:aggravation arm announces the effect before waking
          * monsters.  This is observable even though aggravate() itself is
          * RNG-free. */
-        You_feel_mc('that monsters are aware of your presence.');
+        await You_feel_mc('that monsters are aware of your presence.');
         aggravate();
         dmg = 0;
         break;
     case MCAST_CURSE_ITEMS:
         /* C's rndcurse arm uses the same lead-in as the throne effect. */
-        You_feel_mc('as if you need some help.');
+        await You_feel_mc('as if you need some help.');
         await rndcurse();
         dmg = 0;
         break;
@@ -1052,11 +1059,11 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = 0;
         break;
     case MCAST_DISAPPEAR:
-        mcast_disappear(mtmp);
+        await mcast_disappear(mtmp);
         dmg = 0;
         break;
     case MCAST_STUN_YOU:
-        mcast_stun_you(dmg);
+        await mcast_stun_you(dmg);
         dmg = 0;
         break;
     case MCAST_HASTE_SELF:
@@ -1064,13 +1071,13 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = 0;
         break;
     case MCAST_CURE_SELF:
-        dmg = m_cure_self(mtmp, dmg);
+        dmg = await m_cure_self(mtmp, dmg);
         break;
     case MCAST_PSI_BOLT:
-        dmg = mcast_psi_bolt(dmg);
+        dmg = await mcast_psi_bolt(dmg);
         break;
     case MCAST_GEYSER:
-        dmg = mcast_geyser(dmg);
+        dmg = await mcast_geyser(dmg);
         break;
     case MCAST_FIRE_PILLAR:
         dmg = await mcast_fire_pillar(mtmp, dmg);
@@ -1083,18 +1090,18 @@ async function mcast_spell(mtmp, dmg, spellnum) {
         dmg = 0;
         break;
     case MCAST_BLIND_YOU:
-        mcast_blind_you();
+        await mcast_blind_you();
         dmg = 0;
         break;
     case MCAST_PARALYZE:
-        dmg = mcast_paralyze(mtmp);
+        dmg = await mcast_paralyze(mtmp);
         break;
     case MCAST_CONFUSE_YOU:
-        mcast_confuse_you(mtmp);
+        await mcast_confuse_you(mtmp);
         dmg = 0;
         break;
     case MCAST_OPEN_WOUNDS:
-        dmg = mcast_open_wounds(dmg);
+        dmg = await mcast_open_wounds(dmg);
         break;
     default:
         impossible_mcastu('mcastu: invalid magic spell (%d)', spellnum);
@@ -1177,7 +1184,7 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
         let suffix;
         if (is_undirected_spell(spellnum)) {
             suffix = '';
-        } else if (Invis() && !perceives(mtmp.data) && !u_at(mtmp.mux, mtmp.muy)) {
+        } else if (Invis() && !perceives(mon_data_mc(mtmp)) && !u_at(mtmp.mux, mtmp.muy)) {
             suffix = ' at a spot near you';
         } else if (Displaced() && !u_at(mtmp.mux, mtmp.muy)) {
             suffix = ' at your displaced image';
@@ -1263,8 +1270,9 @@ export async function castmu(mtmp, mattk, thinks_it_foundyou, foundyou) {
 function sgn_mcastu(x) { return x > 0 ? 1 : x < 0 ? -1 : 0; }
 
 // ── BZ_ macros from zap.h ──
-function BZ_VALID_ADTYP(adtyp) { return adtyp >= 1 && adtyp <= 8; }
-function BZ_OFS_AD(adtyp) { return adtyp - 1; }
+function BZ_VALID_ADTYP(adtyp) { return adtyp >= AD_MAGM && adtyp <= AD_SPC2_MC; } /* hack.h:1474 */
+const AD_SPC2_MC = 10; /* monattk.h:52 */
+function BZ_OFS_AD(adtyp) { return Math.abs(adtyp - AD_MAGM) % 10; } /* hack.h:1476 */
 /* C hack.h:1486 BZ_M_SPELL(bztyp) = (-10 - (bztyp)): monster spells are NEGATIVE. */
 export function BZ_M_SPELL(ofs) { return -10 - ofs; }
 
@@ -1285,7 +1293,7 @@ export async function buzzmu(mtmp, mattk) {
     if (lined_up(mtmp) && rn2(3)) {
         nomul(0);
         if (canseemon(mtmp))
-            pline_mon(mtmp, "%s zaps you with a %s!", Monnam(mtmp),
+            await pline_mon(mtmp, "%s zaps you with a %s!", Monnam(mtmp),
                   flash_str(BZ_OFS_AD(mattk.adtyp), false));
         game.gb.buzzer = mtmp;
         await buzz(BZ_M_SPELL(BZ_OFS_AD(mattk.adtyp)), mattk.damn | 0,
@@ -1338,7 +1346,7 @@ function Sprintf(fmt, ...args) {
 export function death_inflicted_by(outbuf, deathreason, mtmp) {
     let result = deathreason;
     if (mtmp) {
-        let mptr = mtmp.data;
+        let mptr = mon_data_mc(mtmp);
         /* C mcastu.c:366 — champtr = ismnum(mtmp->cham) ? &mons[mtmp->cham] : mptr.
          * permonstTemplate(mndx) is the JS stand-in for &mons[mndx] (js/makemon.js). */
         let champtr = (ismnum(mtmp.cham)) ? permonstTemplate(mtmp.cham) : mptr;

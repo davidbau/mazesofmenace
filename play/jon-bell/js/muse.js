@@ -26,7 +26,7 @@ import { Monnam, mon_nam } from './do_name.js';
 import { find_mac } from './worn.js';
 import { _zp_unturn_you, unturn_dead, cancel_monst, resist, hit, miss, dobuzz, bhito, lightdamage, BlindedTimeout, make_blinded } from './zap.js';
 import { Blind } from './vision.js';
-import { mon_nam_too } from './do_name.js';
+import { mon_nam_too, monverbself } from './do_name.js';
 import { wakeup } from './mon.js';
 import { resists_blnd } from './mondata.js';
 import { makeplural } from './objnam.js';
@@ -203,15 +203,7 @@ function makeknown_muse(otyp) { discover_object(otyp, true, true, true); }
 
 /* C ref: do_name.c:1220-1248 monverbself() */
 function _monverbself(mtmp, verb, othertext) {
-    let monnamtext = Monnam(mtmp);
-    const selfbuf = mon_nam_too(mtmp, mtmp);
-    const verbs = vtense(selfbuf, verb);
-    if (verbs === verb) {
-        monnamtext = makeplural(monnamtext);
-        if (monnamtext.toLowerCase() === 'they')
-            monnamtext = monnamtext[0] === 'T' ? 'Them' : 'them';
-    }
-    return `${monnamtext} ${verbs}${othertext ? ' ' + othertext : ''} ${selfbuf}`;
+    return monverbself(mtmp, Monnam(mtmp), verb, othertext);
 }
 
 /* C ref: muse.c:167-192 mzapwand(mtmp, otmp, self) — announce the zap, spend a

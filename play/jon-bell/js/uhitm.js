@@ -1067,8 +1067,8 @@ export function m_is_steadfast(mtmp) {
         return false;
     if (weapon && weapon.oartifact === 15 /* ART_GIANTSLAYER */)
         return true;
-    for (let obj = is_u ? game.invent : mtmp.minvent; obj; obj = obj.nobj)
-        if (obj.otyp === 471 /* LOADSTONE */) return true;
+    if (m_carrying(mtmp, 471 /* LOADSTONE */))
+        return true;
     if (u.usteed && mtmp === u.usteed)
         for (let obj = game.invent; obj; obj = obj.nobj)
             if (obj.otyp === 471) return true;

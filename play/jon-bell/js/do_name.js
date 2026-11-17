@@ -2,24 +2,22 @@
 //
 
 import { monPmname, permonstTemplate } from './makemon.js';
-import { pushRngLogEntry } from './rng.js';
 import { rn2, rn2_on_display_rng } from './rnd.js';
 import { get_rnd_line_from_section } from './mklev.js';
 import { BOGUSMON_LINES, BOGUSMON_OFFSETS, BOGUSMON_SIZE, MD_PAD_BOGONS } from './bogusmon_data.js';
-import { ENV } from './hostenv.js';
 import { game } from './gstate.js';
 import { The } from './objnam.js';
 import { Upolyd } from './const.js';
 import { is_youmonst } from './mhitm.js';
 import { ismnum, NEUTRAL, CORPSTAT_GENDER, CORPSTAT_MALE, CORPSTAT_FEMALE, CORPSTAT_RANDOM } from './const.js';
 import { impossible } from './steed.js';
-import { GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, cmdq_clear, cmdq_pop, flooreffects_is_plural, getObjFromGetobj, set_cursor, type_is_pname, verbalize } from './cmd.js';
+import { _c_obj_colors, GETOBJ_DOWNPLAY, GETOBJ_EXCLUDE, GETOBJ_SUGGEST, HAND, INV_ORDER, MS_ANIMAL, OCLASS_FOOD, OCLASS_NAME, OCLASS_POTION, OCLASS_WEAPON, SPE_NOVEL_OTYP as SPE_NOVEL, SetVoice, _ach_rank_of, _cmd_Hallucination, _disco_append_price_quote, _disco_typename, _fl_pmidx, _glyph_at as glyph_at, _hidesUnder_useupf, _interesting_to_discover, _plineVFmt, _restrict_name, _um_beautiful, _um_mhis, _uprop_active, body_part, cmdq_clear, cmdq_pop, flooreffects_is_plural, getObjFromGetobj, set_cursor, type_is_pname, verbalize } from './cmd.js';
 import { getpos } from './getpos.js';
 import { carrying } from './invent.js';
 import { donamelevel } from './dungeon.js';
 import { look_at_object } from './pager.js'; // relocate-fns
 import { build_window_screen, menu_search_case } from './com_pager.js'; // relocate-fns
-import { ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, OBJ_FREE, OBJ_INVENT, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, PL_PSIZ, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
+import { CLR_MAX, ARTICLE_THE, CMDQ_KEY, CQ_CANNED, ECMD_OK, GETOBJ_NOFLAGS, GETOBJ_PROMPT, HALLUC, HALLUC_RES, M_AP_FURNITURE, M_AP_OBJECT, M_AP_TYPE, OBJ_FREE, OBJ_INVENT, ONAME_KNOW_ARTI, ONAME_VIA_NAMING, PICK_ONE, PL_PSIZ, has_mgivenname, isok, u_at } from './const.js'; // relocate-fns
 import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, await_menu_key, canspotmon, docorner_blank_utf8_captures, docrt, flush_screen, force_more_pages, see_with_infrared, sensemon } from './display.js'; // relocate-fns
 import { You, xname } from './do_wear.js'; // relocate-fns
 import { shkname as dokick_shkname } from './dokick.js'; // relocate-fns
@@ -80,7 +78,7 @@ import { M1_ANIMAL, M1_MINDLESS, M_AP_TYPMASK, PM_HIGH_CLERIC, SPBOOK_CLASS, TOO
 import { newoextra } from './mkobj.js'; // relocate-fns
 import { MKOBJ_OC_CLASS } from './mkobj_data.js'; // relocate-fns
 import { pronoun_gender } from './mondata.js'; // relocate-fns
-import { just_an } from './objnam.js'; // relocate-fns
+import { just_an, makeplural, vtense } from './objnam.js'; // relocate-fns
 import { nh_getenv } from './options.js'; // relocate-fns
 import { PM_ARCHEOLOGIST, PM_SHOPKEEPER, PM_WIZARD, PM_WIZARD_OF_YENDOR } from './pm.generated.js'; // relocate-fns
 import { priestname } from './priest.js'; // relocate-fns
@@ -171,16 +169,10 @@ export function rndmonnam_ex() {
     } while (name < SPECIAL_PM_DN && _rndmonnam_rejected(name));
 
     if (name >= SPECIAL_PM_DN) {
-        const out = bogusmon();
-        if (typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
-            pushRngLogEntry(`^rndmonnam[name=${encodeURIComponent(out.name)} code=${out.code.charCodeAt(0) || 0} pick=${name}]`);
-        return out;
+        return bogusmon();
     }
     /* C mondata.h pmname(pm, mgender); rn2_on_display_rng(2) is MALE/FEMALE. */
-    const out = { name: monPmname(name, rn2_on_display_rng(2)), code: '\0' };
-    if (typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
-        pushRngLogEntry(`^rndmonnam[name=${encodeURIComponent(out.name)} code=0 pick=${name}]`);
-    return out;
+    return { name: monPmname(name, rn2_on_display_rng(2)), code: '\0' };
 }
 /* C do_name.c:1400-1402 rejection test — `type_is_pname(&mons[name])
  * || (mons[name].geno & G_NOGEN)`.  C mondata.h:135
@@ -592,7 +584,7 @@ async function do_oname(obj) {
     const candidate = artifact_name_exported(buf, true);
     if (candidate && (_restrict_name(obj, candidate.name)
                       || exist_artifact(obj.otyp, candidate.name))) {
-        const canonical = candidate.name || buf;
+        const canonical = candidate.name;   /* C:333 Strcpy(buf, aname) */
         /* for "the Foo of Bar", only scuff the "Foo of Bar" part */
         const pre = /^the /i.test(canonical) ? canonical.slice(0, 4) : '';
         const rest = canonical.slice(pre.length);
@@ -706,7 +698,7 @@ export async function docall(obj) {
     /* C:665-673 — strip leading and trailing spaces; uncalls item if all
      * spaces. mungspaces returns the empty string for all-space input. */
     const munged = mungspaces(buf);
-    if (!munged || munged === ' ') {
+    if (!munged) {
         if (had_name)
             await undiscover_object(otyp);
     } else {
@@ -917,9 +909,13 @@ export async function oname(obj, name, oflgs) {
     if ((obj.oartifact | 0) || (lth && exist_artifact(obj.otyp, nm)))
         return obj;
 
-    if (!obj.oextra)
-        obj.oextra = {};
-    obj.oextra.oname = lth ? nm : undefined;
+    if (lth) {
+        if (!obj.oextra)
+            obj.oextra = {};           /* C new_oname:67-68 newoextra() */
+        obj.oextra.oname = nm;         /* C new_oname:70-71 + oname:396-397 Strcpy */
+    } else if (has_oname(obj)) {
+        free_oname(obj);               /* C new_oname:72-75 zero length: drop the old name */
+    }
 
     if (lth)
         artifact_exists(obj, nm, true, oflgs);
@@ -952,6 +948,17 @@ export async function oname(obj, name, oflgs) {
     if (obj.where === OBJ_INVENT && !skip_inv_update)
         update_inventory();
     return obj;
+}
+
+/* C do_name.c:1469-1477 rndcolor(): "return a random real color unless
+ * hallucinating".  rn2(CLR_MAX) is drawn on the core stream either way. */
+const NO_COLOR_DN = 8; /* color.h:22 */
+export function rndcolor() {
+    const k = rn2(CLR_MAX);
+
+    return xm_Hallucination() ? hcolor(null)
+                              : (k === NO_COLOR_DN) ? "colorless"
+                                                    : _c_obj_colors[k];
 }
 
 const _hliquids = [
@@ -1088,16 +1095,6 @@ function x_monnam_body(mtmp, article, adjective, suppress, called) {
     const do_exact = (suppress & XM_EXACT_NAME) === XM_EXACT_NAME;
     const do_name = !(suppress & SUPPRESS_NAME) || xm_type_is_pname(mdat);
     const augment_it = (suppress & AUGMENT_IT) !== 0;
-
-    /* FF_NAME_TRACE is a RNG-neutral witness for the display-name branch.
-     * It pairs with FF_HIDE_TRACE and the display-rng hook: when a render
-     * diverges, this tells us which visible monster naming call actually
-     * consumed the hallucinatory name draw, including its visibility and
-     * suppression inputs. */
-    if (do_hallu && typeof process !== 'undefined' && ENV?.FF_NAME_TRACE === '1')
-        pushRngLogEntry(`^name_trace[moves=${game.moves | 0} id=${mtmp.m_id | 0} xy=${mtmp.mx | 0},${mtmp.my | 0}`
-            + ` mndx=${mdat.pmidx | 0} article=${article | 0} suppress=${suppress | 0}`
-            + ` mappear=${do_mappear ? 1 : 0} cansee=${canspotmon(mtmp) ? 1 : 0}]`);
 
     let buf = "";
 
@@ -1394,6 +1391,33 @@ export function mon_nam_too(mon, other_mon) {
         }
         return (namebuf.text = buf);
     }
+}
+
+/* C do_name.c:1218-1249 monverbself(): construct "<monnamtext> <verb>
+ * <othertext> {him|her|it}self" which might be distorted by Hallu; if that's
+ * plural, adjust monnamtext and verb.  Callers pass the already-built
+ * monnamtext (C's modifiable mbuf). */
+export function monverbself(mon, monnamtext, verb, othertext) {
+    /* "himself"/"herself"/"itself", maybe "themselves" if hallucinating */
+    const selfbuf = mon_nam_too(mon, mon);
+    /* verb starts plural; this will yield singular except for "themselves" */
+    const verbs = vtense(selfbuf, verb);
+    if (verb === verbs) { /* a match indicates that it stayed plural */
+        monnamtext = makeplural(monnamtext);
+        /* for "it", makeplural() produces "them" but we want "they" */
+        if (monnamtext.toLowerCase() === 'they') { /* genders[3].he */
+            const capitaliz = (monnamtext[0] === monnamtext[0].toUpperCase());
+
+            monnamtext = 'them'; /* genders[3].him */
+            if (capitaliz)
+                monnamtext = 'T' + monnamtext.slice(1);
+        }
+    }
+    monnamtext += ' ' + verbs;
+    if (othertext && othertext.length)
+        monnamtext += ' ' + othertext;
+    monnamtext += ' ' + selfbuf;
+    return monnamtext;
 }
 
 /* ---------------------------------------------------------------------------

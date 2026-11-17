@@ -13,9 +13,10 @@ import { getnow } from './calendar.js'; // relocate-fns
 import { BOTH_SIDES, HALF_PHDAM_ART, HALF_SPDAM_ART, _Blindfolded, _EDOG_local, _Flying, _Levitation, _N_times, _SUPPRESS_INVISIBLE, _SUPPRESS_IT, _ach_rank_of, _align_str, _digests, _enfolds_local, _enl_Very_fast, _enlght_line, _fingers_or_gloves, _from_what, _haseyes, _is_animal_local, _ismnum_local, _piousness, _sticks, _uprop_active, _usick_type, build_enlightenment_lines, create_nhwindow, destroy_nhwindow, display_nhwindow, enl_msg, enlightenment_menu, keyhelp_compress_str, list_vanquished_set_vanq_order, plur, pooleffects_Wwalking, putstr, set_cursor, yn_function } from './cmd.js';
 import { mhidden_description } from './pager.js'; // relocate-fns
 import { display_text_window, tty_text_window_utf8_line } from './com_pager.js'; // relocate-fns
-import { ACH_AMUL, ACH_ASTR, ACH_BELL, ACH_BGRM, ACH_BLND, ACH_BOOK, ACH_CNDL, ACH_ENDG, ACH_HELL, ACH_INVK, ACH_MEDU, ACH_MINE, ACH_MINE_PRIZE, ACH_NOVL, ACH_NUDE, ACH_ORCL, ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8, ACH_SHOP, ACH_SOKO, ACH_SOKO_PRIZE, ACH_TMPL, ACH_TOWN, ACH_TUNE, ACH_UWIN, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, A_STR, BASICENLIGHTENMENT, BLINDED, BUFSZ, ECMD_OK, ENL_GAMEINPROGRESS, LEG, LL_SPOILER, LOW_PM, MAGICENLIGHTENMENT, M_AP_NOTHING, M_AP_TYPE, NHW_MENU, N_ACH, SICK_NONVOMITABLE, SICK_VOMITABLE, STR18, STRAT_WAITMASK, TIMEOUT, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, VANQ_ALPHA_MIX, VANQ_ALPHA_SEP, VANQ_COUNT_H_L, VANQ_COUNT_L_H, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_MSTR_MNDX, WIN_ERR, WOUNDED_LEGS } from './const.js'; // relocate-fns
+import { ACH_AMUL, ACH_ASTR, ACH_BELL, ACH_BGRM, ACH_BLND, ACH_BOOK, ACH_CNDL, ACH_ENDG, ACH_HELL, ACH_INVK, ACH_MEDU, ACH_MINE, ACH_MINE_PRIZE, ACH_NOVL, ACH_NUDE, ACH_ORCL, ACH_RNK1, ACH_RNK2, ACH_RNK3, ACH_RNK4, ACH_RNK5, ACH_RNK6, ACH_RNK7, ACH_RNK8, ACH_SHOP, ACH_SOKO, ACH_SOKO_PRIZE, ACH_TMPL, ACH_TOWN, ACH_TUNE, ACH_UWIN, A_CHAOTIC, A_LAWFUL, A_NEUTRAL, A_NONE, A_STR, BASICENLIGHTENMENT, BLINDED, BUFSZ, ECMD_OK, ENL_GAMEINPROGRESS, LEG, LL_ACHIEVE, LL_ARTIFACT, LL_DIVINEGIFT, LL_DUMP, LL_GENOCIDE, LL_LIFESAVE, LL_SPOILER, LL_UMONST, LL_WISH, LOW_PM, MAGICENLIGHTENMENT, M_AP_NOTHING, M_AP_TYPE, NHW_MENU, N_ACH, SICK_NONVOMITABLE, SICK_VOMITABLE, STR18, STRAT_WAITMASK, TIMEOUT, TT_BURIEDBALL, TT_INFLOOR, TT_LAVA, VANQ_ALPHA_MIX, VANQ_ALPHA_SEP, VANQ_COUNT_H_L, VANQ_COUNT_L_H, VANQ_MCLS_HTOL, VANQ_MCLS_LTOH, VANQ_MSTR_MNDX, WIN_ERR, WOUNDED_LEGS } from './const.js'; // relocate-fns
 import { is_pool_or_lava } from './dbridge.js'; // relocate-fns
 import { await_more_dismiss, flush_screen } from './display.js'; // relocate-fns
+import { rank_to_xlev } from './botl.js'; /* C botl.c:315 — one definition, was duplicated here as rank_to_xlev_cmd */
 import { discover, wizard } from './gstate.js'; // relocate-fns
 import { digit, upstart } from './hacklib.js'; // relocate-fns
 import { monsym_explain } from './makemon.js';
@@ -81,10 +82,7 @@ export function youhiding_buf() {
             /* Flying forms hide on the ceiling even when they do not cling. */
             buf += ' on the ' + ceiling(u.ux, u.uy);
         } else if (u.utrap && (u.utraptype | 0) === TT_PIT) {
-            const traps = g.level?.traps;
-            const trap = Array.isArray(traps)
-                ? traps.find(t => (t.tx | 0) === (u.ux | 0)
-                              && (t.ty | 0) === (u.uy | 0)) : null;
+            const trap = t_at(u.ux, u.uy); /* insight.c:2063 t_at(u.ux, u.uy) */
             buf += ' in a ' + (trap && (trap.ttyp | 0) === SPIKED_PIT
                 ? 'spiked ' : '') + 'pit';
         } else {
@@ -409,9 +407,8 @@ export async function do_gamelog() {
  * js/const.js with the rest of the ENL_/*ENLIGHTENMENT family; it used to be
  * re-declared here as a file-local 0. */
 /* C ref: global.h LL flags — only the ones show_gamelog inspects. */
-const LL_majors = (0x4000 /*LL_WISH*/ | 0x0002 /*LL_ACHIEVE*/ | 0x0008 /*LL_UMONST*/
-                   | 0x0010 /*LL_DIVINEGIFT*/ | 0x0080 /*LL_LIFESAVE*/
-                   | 0x0100 /*LL_ARTIFACT*/ | 0x0200 /*LL_GENOCIDE*/ | 0x1000 /*LL_DUMP*/);
+const LL_majors = (LL_WISH | LL_ACHIEVE | LL_UMONST | LL_DIVINEGIFT
+                   | LL_LIFESAVE | LL_ARTIFACT | LL_GENOCIDE | LL_DUMP);
 
 // C ref: insight.c:2571 show_gamelog(int final) — the '#chronicle' detail window.
 //
@@ -663,8 +660,15 @@ function num_genocides() {
     const G_GENOD = 0x02;
     const vitals = game.mvitals || [];
     let n = 0;
-    for (let i = LOW_PM; i < NUMMONS; i++)
-        if ((vitals[i]?.mvflags | 0) & G_GENOD) n++;
+    for (let i = LOW_PM; i < NUMMONS; i++) {
+        if ((vitals[i]?.mvflags | 0) & G_GENOD) {
+            ++n;
+            /* insight.c:2958-2960: UniqCritterIndx(i) is G_UNIQ and not the high cleric */
+            if (((monsPack.mons[i][3] | 0) & 0x1000) !== 0 && i !== PM_HIGH_PRIEST)
+                real_impossible("unique creature '%d: %s' genocided?", i,
+                                monPmnamesPack.pmnames[i][2]);
+        }
+    }
     return n;
 }
 
@@ -775,7 +779,7 @@ async function show_achievements(final) {
         case ACH_RNK1: case ACH_RNK2: case ACH_RNK3: case ACH_RNK4:
         case ACH_RNK5: case ACH_RNK6: case ACH_RNK7: case ACH_RNK8:
             you_have_X(final,
-                `attained the rank of ${_ach_rank_of(rank_to_xlev_cmd(absidx - (ACH_RNK1 - 1)),
+                `attained the rank of ${_ach_rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)),
                                                     achidx < 0)}`);
             break;
         default:
@@ -787,13 +791,6 @@ async function show_achievements(final) {
         await display_nhwindow(awin, true);
         destroy_nhwindow(awin);
     }
-}
-
-/* C botl.c:315-329 rank_to_xlev_cmd(rank) — the LOW end of each rank's xlevel
- * range: 0 => 1, 1 => 3, 2..7 => rank*4 - 2, 8 => 30. */
-function rank_to_xlev_cmd(rank) {
-    return ((rank | 0) < 1) ? 1 : ((rank | 0) < 2) ? 3
-         : ((rank | 0) < 8) ? (((rank | 0) * 4) - 2) : 30;
 }
 
 async function list_vanquished_yn_function(qbuf, choices, def, addcmdq) {
@@ -1198,7 +1195,7 @@ export async function list_genocided(defquery, ask) {
             destroy_nhwindow(klwin);
         }
     } else if (!g.program_state?.gameover) {
-        pline('No creatures have been genocided' + (genoing ? ' yet' : '') + '.');
+        await pline('No creatures have been genocided' + (genoing ? ' yet' : '') + '.');
     } else if (dumping) {
         putstr(0, 0, 'No species were genocided or became extinct.');
     }
@@ -1484,7 +1481,7 @@ export function record_achievement(achidx) {
         /* C insight.c:2450-2455 — the rank's achieve_msg[] row is LL_MINORAC|LL_DUMP
          * for Xp 3/6/10 (ranks 1-3) and LL_ACHIEVE for Xp 14..30. */
         const rankFlag = (absidx <= ACH_RNK1 + 2) ? (0x1000 | 0x4000) : 0x0002;
-        livelog_printf(rankFlag, `attained the rank of ${_ach_rank_of(rank_to_xlev_cmd(absidx - (ACH_RNK1 - 1)), achidx < 0)} (level ${game.u?.ulevel | 0})`);
+        livelog_printf(rankFlag, `attained the rank of ${_ach_rank_of(rank_to_xlev(absidx - (ACH_RNK1 - 1)), achidx < 0)} (level ${game.u?.ulevel | 0})`);
         return;
     }
     if (achidx === ACH_SOKO_PRIZE || achidx === ACH_MINE_PRIZE) {

@@ -3,7 +3,7 @@ import { nh_delay_output } from './animframes.js';
 import { noit_Monnam } from './do_name.js';
 import { BOULDER } from './const.js';
 import { y_monnam as y_monnam_real } from './do_name.js';
-import { Mgender } from './do_name.js';
+import { Mgender, rndcolor } from './do_name.js';
 import { montraits, blank_novel, fracture_rock, AD_FIRE, AD_ELEC, AD_ACID, WAND_CLASS, G_UNIQ, OTYP_ARROW, OTYP_DART } from './zap.js';
 import { delete_contents, make_angry_shk, currency } from './shk.js';
 import { inside_shop } from './shk.js';
@@ -690,8 +690,6 @@ function missile_name(obj) {
         default: return 'a missile';
     }
 }
-const _chest_obj_colors = ['black', 'red', 'green', 'brown', 'blue', 'magenta', 'cyan', 'gray', 'transparent',
-    'orange', 'bright green', 'yellow', 'bright blue', 'bright magenta', 'bright cyan', 'white'];
 export async function chest_trap(obj, bodypart, disarm) {
     const u = game.u || {};
     const gm = game.gm || {};
@@ -868,10 +866,7 @@ export async function chest_trap(obj, bodypart, disarm) {
                 /* ROLL_FROM(blindgas) → rn2(6) */
                 gascolor = ['humid', 'odorless', 'pungent', 'chilling', 'acrid', 'biting'][rn2(6)];
             } else {
-                /* rndcolor() (do_name.c:1470) */
-                const k = rn2(CLR_MAX);
-                gascolor = _tr_Hallucination() ? hcolor(null)
-                    : (k === 8 /* NO_COLOR */) ? 'colorless' : _chest_obj_colors[k];
+                gascolor = rndcolor(); /* do_name.c:1470 */
             }
             await pline(`A cloud of ${gascolor} gas billows from ${the(xname(obj))}.`);
             const stunnedNow = !!(u.uprops?.[STUNNED]

@@ -6698,6 +6698,40 @@ function _status_field_hilites(row) {
         tfields.push({ field: 'title', text, start: 0, len: Math.max(30, text.length),
             txtstr: text.slice(String(game.plname || '').length + 5) });
     }
+    /* C botl.c:2534-2546 get_hilite() BL_TH_TEXTMATCH also covers BL_LEVELDESC
+     * (ANY_STR): blstats val is describe_level(buf, 1) ("Dlvl:3 "), compared
+     * with fuzzymatch() ignoring blanks, and wintty.c paints the field's text. */
+    const dlm = new RegExp(`^(\\S.*?)(?= +${gold_status_char().replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}:)`).exec(row);
+    if (dlm) tfields.push({ field: 'dungeon-level', key: 'dungeon-level text', text: dlm[1], start: 0,
+        len: dlm[1].length, txtstr: dlm[1] });
+    /* C botl.c:1251-1274,2534-2546: BL_WEAPON / BL_ARMOR / BL_TERRAIN / BL_VERS are ANY_STR
+     * fields with their own thresholds chains.  In the 3-line layout they sit on the third
+     * physical row after LEVELDESC TIME CONDITION; wintty.c:5213-5234 paints a field's text
+     * after its leading blank.  Locate each field's text in the row itself. */
+    if (_threeStatusLines()) {
+        const p3 = _statusLine2Parts();
+        const desc = p3 ? String(p3.desc || '').trimEnd() : '';
+        const plain = String(row).replace(/\x1b\[(\d+)C/g, (_, n) => ' '.repeat(+n)).replace(/\x1b\[[0-9;]*[A-Za-z]/g, '');
+        if (desc && plain.startsWith(desc) && !dlm) {
+            tfields.push({ field: 'dungeon-level', key: 'dungeon-level text', text: desc, start: 0,
+                len: desc.length, txtstr: desc });
+            let from = desc.length;
+            for (const [id, text] of _statusExtras(true)) {
+                const t = text.trim();
+                if (!t) continue;
+                const i = plain.indexOf(' ' + t, from);
+                if (i < 0) continue;
+                tfields.push({ field: id, key: id + ' text', text: t, start: i + 1, len: t.length, txtstr: t });
+                from = i + 1 + t.length;
+            }
+            if (game.flags?.showvers) {
+                const vt = status_version_text();
+                const i = plain.lastIndexOf(' ' + vt);
+                if (i >= from) tfields.push({ field: 'version', key: 'version text', text: vt, start: i + 1,
+                    len: vt.length, txtstr: vt });
+            }
+        }
+    }
     if (am) tfields.push({ field: 'alignment', text: am[1],
         start: alignStart + am.index + am[0].length - am[1].length,
         len: am[1].length, txtstr: am[1] });
@@ -6727,8 +6761,9 @@ function _status_field_hilites(row) {
                 }
             }
         }
-        let saved = delivered[tf.field];
-        if (!saved || saved.text !== tf.text) saved = delivered[tf.field] = {
+        const dkey = tf.key || tf.field;
+        let saved = delivered[dkey];
+        if (!saved || saved.text !== tf.text) saved = delivered[dkey] = {
             text: tf.text, rule };
         if (saved.rule) for (let c = tf.start; c < tf.start + tf.len; c++) result.set(c, saved.rule);
     }

@@ -32,9 +32,9 @@ import { mon_wield_item, select_rwep } from './weapon.js'; // relocate-fns
 
 /* C ref: mthrowu.c:1403 m_carrying — check if a monster is carrying an item of a particular type */
 export function m_carrying(mtmp, type) {
-    /* Determine the inventory chain: player (youmonst, m_id==0) uses g.invent,
-     * monsters use mtmp->minvent. */
-    const inv = ((mtmp.m_id | 0) === 0) ? game.invent : mtmp.minvent;
+    /* C mthrowu.c:1409 compares against &gy.youmonst.  Its reserved m_id
+     * is 1 (polyself.c:44); use the canonical object identity. */
+    const inv = (mtmp === game.youmonst) ? game.invent : mtmp.minvent;
     /* Walk the object chain looking for a matching type. */
     for (let otmp = inv; otmp; otmp = otmp.nobj) {
         if ((otmp.otyp | 0) === (type | 0)) {
@@ -452,7 +452,7 @@ import { bhp_is_lava as bhp_is_lava_mu, thit_is_unicorn as is_unicorn, mbodypart
 import { rounddiv } from './hack.js';
 import { snuff_candle as snuff_candle_mu } from './apply.js'; // relocate-fns
 import { ARM, A_DEX, BACKTRACK as BACKTRACK_MU, CONFUSION, EYE as EYE_MU, FACE as FACE_MU, FOOT as FOOT_MU, FUMBLING, HAND as HAND_MU, M_SEEN_REFL, SINK as SINK_MU, SLEEP_RES as SLEEP_RES_MU, STUNNED, W_WEP as W_WEP_MU, isok as isok_mu, u_at as u_at_mu } from './const.js'; // relocate-fns
-import { DISP_END, DISP_FLASH, DISP_FREEMEM, DISP_TETHER, _topline_more_pending, canseemon as canseemon_mu, canspotmon as canspotmon_disp, newsym, obj_to_glyph, tmp_at } from './display.js'; // relocate-fns
+import { DISP_END, DISP_FLASH, DISP_FREEMEM, DISP_TETHER, canseemon as canseemon_mu, canspotmon as canspotmon_disp, newsym, obj_to_glyph, tmp_at } from './display.js'; // relocate-fns
 import { dropy, flooreffects as flooreffects_real_mu } from './do.js'; // relocate-fns
 import { Monnam, hliquid as hliquid_mu, some_mon_nam } from './do_name.js'; // relocate-fns
 import { xname } from './do_wear.js'; // relocate-fns
@@ -463,7 +463,6 @@ import { pending_death_is_final } from './end.js'; // relocate-fns
 import { freehand } from './engrave.js'; // relocate-fns
 import { calc_capacity } from './hack.js'; // relocate-fns
 import { s_suffix } from './hacklib.js'; // relocate-fns
-import { ENV } from './hostenv.js'; // relocate-fns
 import { delobj as delobj_mu, hold_another_object, stackobj } from './invent.js'; // relocate-fns
 import { obj_is_burning } from './light.js'; // relocate-fns
 import { is_pool as is_pool_mu } from './look.js'; // relocate-fns
@@ -482,7 +481,6 @@ import { You_hear, impossible as impossible_breath, pline_mon, set_msg_xy as set
 import { PM_CYCLOPS as PM_CYCLOPS_MU, PM_FLOATING_EYE as PM_FLOATING_EYE_MU, PM_STONE_GOLEM } from './pm.generated.js'; // relocate-fns
 import { polymon } from './polyself.js'; // relocate-fns
 import { make_blinded as make_blinded_real_mu, make_stoned, potionhit } from './potion.js'; // relocate-fns
-import { pushRngLogEntry } from './rng.js';
 import { rnl } from './rnd.js'; // relocate-fns
 import { minstapetrify as minstapetrify_mu, monkilled_trap as monkilled_mu } from './trap.js'; // relocate-fns
 import { XKILL_NOMSG as XKILL_NOMSG_UH, mon_nam as mon_nam_uh, passive_obj, shade_miss as shade_miss_mu, m_at as uhitm_m_at, mon_nam as uhitm_mon_nam } from './uhitm.js';
@@ -734,8 +732,6 @@ export async function breamu(mtmp, mattk) {
 const VENOM_CLASS_MU = 17;  /* objclass.h */
 
 export async function thrwmu(mtmp) {
-    if (ENV.FF_MATTACK_TRACE === '1')
-        pushRngLogEntry(`^thrwmu_enter[id=${mtmp.m_id|0} pos=${mtmp.mx|0},${mtmp.my|0} target=${mtmp.mux|0},${mtmp.muy|0}]`);
     const u = game.u || (game.u = {});
     /* C mthrowu.c:1183-1189 — "Rearranged beginning so monsters can use
      * polearms not in a line". */
@@ -869,8 +865,6 @@ function monmulti(mtmp, otmp, mwep) {
         multishot = quan;
     if (multishot < 1)
         multishot = 1;
-    if (ENV.FF_MATTACK_TRACE === '1')
-        pushRngLogEntry(`^monmulti[id=${mtmp.m_id|0} obj=${otmp.otyp|0} quan=${quan} launcher=${mwep?.otyp ?? -1} shots=${multishot}]`);
     return multishot;
 }
 
@@ -906,7 +900,7 @@ export async function monshoot(mtmp, otmp, mwep) {
          * (thrwmm) is not wired to monshoot in this port. */
         const trgbuf = mtarg ? some_mon_nam(mtarg) : '';
         set_msg_xy_mu(mtmp.mx, mtmp.my); /* C mthrowu.c:289 */
-        pline(`${je_Monnam(mtmp)} ${gm.m_shot.s ? 'shoots' : 'throws'} ${onm}`
+        await pline(`${je_Monnam(mtmp)} ${gm.m_shot.s ? 'shoots' : 'throws'} ${onm}`
               + `${mtarg ? ' at ' : ''}${trgbuf}!`);
         gm.m_shot.o = otmp.otyp | 0;
     } else {
@@ -915,14 +909,8 @@ export async function monshoot(mtmp, otmp, mwep) {
     gm.m_shot.n = multishot;
     const gt = g.gt || (g.gt = {});
     for (gm.m_shot.i = 1; gm.m_shot.i <= gm.m_shot.n; gm.m_shot.i++) {
-        if (ENV.FF_MATTACK_TRACE === '1')
-            pushRngLogEntry(`^monshoot_shot[id=${mtmp.m_id|0} i=${gm.m_shot.i|0} n=${gm.m_shot.n|0} hp=${mtmp.mhp|0}]`);
         await m_throw(mtmp, mtmp.mx | 0, mtmp.my | 0,
                 sgn_mu(gt.tbx | 0), sgn_mu(gt.tby | 0), dm, otmp);
-        if (ENV.FF_MATTACK_TRACE === '1')
-            pushRngLogEntry(`^monshoot_done[id=${mtmp.m_id|0} i=${gm.m_shot.i|0} n=${gm.m_shot.n|0} hp=${mtmp.mhp|0} pending=${game._pendingDeath ? 1 : 0}]`);
-        if (ENV.FF_MATTACK_TRACE === '1')
-            pushRngLogEntry(`^monshoot_page_probe[id=${mtmp.m_id|0} i=${gm.m_shot.i|0} more=${_topline_more_pending() ? 1 : 0} force=${game._topl_force_breaks?.length|0} topl=${encodeURIComponent(String(game._pending_message || '').slice(-100))}]`);
         /* C:299-306 — cancel pending shots if the thrower died mid-volley. */
         if ((mtmp.mhp | 0) <= 0 && gm.m_shot.i < gm.m_shot.n)
             break;
@@ -1140,9 +1128,9 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         /* ── MISS ── C:349-360 */
         if (!ismimic) {
             if (vis)
-                miss_mu((await distant_name_mu(otmp, mshot_xname)), mtmp);
+                await miss_mu((await distant_name_mu(otmp, mshot_xname)), mtmp);
             else if (verbose && !gm.mtarget)
-                pline('It is missed.');
+                await pline('It is missed.');
         }
         if (!range) { /* C:356 last position; object drops */
             await drop_throw(otmp, 0, mtmp.mx | 0, mtmp.my | 0);
@@ -1174,7 +1162,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         if (vis) {
             if ((otmp.otyp | 0) === EGG_OHITMON_MU) {
                 /* C:385-389 */
-                pline(`Splat!  ${je_Monnam(mtmp)} is hit with `
+                await pline(`Splat!  ${je_Monnam(mtmp)} is hit with `
                       + `${otmp.known ? an(monPmname_mu(otmp.corpsenm | 0)) : 'an'} egg!`);
             } else {
                 /* C:391-398 */
@@ -1183,11 +1171,11 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
                     how = exclam_mu(damage); /* "!" or "." */
                 else
                     how = ` but passes harmlessly through ${String(mhim_mu(mtmp)).slice(0, 9)}.`;
-                hit_mu((await distant_name_mu(otmp, mshot_xname)), mtmp, how);
+                await hit_mu((await distant_name_mu(otmp, mshot_xname)), mtmp, how);
             }
         } else if (verbose && !gm.mtarget) {
             /* C:399-401 */
-            pline(`${((otmp.otyp | 0) === EGG_OHITMON_MU) ? 'Splat!  ' : ''}`
+            await pline(`${((otmp.otyp | 0) === EGG_OHITMON_MU) ? 'Splat!  ' : ''}`
                   + `${je_Monnam(mtmp)} is hit${exclam_mu(damage)}`);
         }
 
@@ -1195,13 +1183,13 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         if ((otmp.opoisoned | 0) && is_poisonable_mu(otmp)) {
             if (resists_poison_mu(mtmp)) {
                 if (vis)
-                    pline_The(`poison doesn't seem to affect ${uhitm_mon_nam(mtmp)}.`);
+                    await pline_The(`poison doesn't seem to affect ${uhitm_mon_nam(mtmp)}.`);
             } else {
                 if (rn2(30)) {
                     damage += rnd(6);
                 } else {
                     if (vis)
-                        pline_The('poison was deadly...');
+                        await pline_The('poison was deadly...');
                     damage = mtmp.mhp | 0;
                 }
             }
@@ -1215,9 +1203,9 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
                 let m_name = uhitm_mon_nam(mtmp);
                 if (flesh)
                     m_name = s_suffix_mu(m_name) + ' flesh';
-                pline_The(`silver sears ${m_name}!`);
+                await pline_The(`silver sears ${m_name}!`);
             } else if (verbose && !gm.mtarget) {
-                pline(`${flesh ? 'Its flesh' : 'It'} is seared!`);
+                await pline(`${flesh ? 'Its flesh' : 'It'} is seared!`);
             }
         }
 
@@ -1225,12 +1213,12 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
         if ((otmp.otyp | 0) === ACID_VENOM_MU && cansee_mu(mtmp.mx | 0, mtmp.my | 0)) {
             if (resists_acid_mu(mtmp)) {
                 if (vis || (verbose && !gm.mtarget))
-                    pline(`${je_Monnam(mtmp)} is unaffected.`);
+                    await pline(`${je_Monnam(mtmp)} is unaffected.`);
             } else {
                 if (vis)
-                    pline_The(`${hliquid_mu('acid')} burns ${uhitm_mon_nam(mtmp)}!`);
+                    await pline_The(`${hliquid_mu('acid')} burns ${uhitm_mon_nam(mtmp)}!`);
                 else if (verbose && !gm.mtarget)
-                    pline('It is burned!');
+                    await pline('It is burned!');
             }
         }
 
@@ -1247,7 +1235,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
             mtmp.mhp = (mtmp.mhp | 0) - damage;
             if ((mtmp.mhp | 0) < 1) {
                 if (vis || (verbose && !gm.mtarget))
-                    pline(`${je_Monnam(mtmp)} is `
+                    await pline(`${je_Monnam(mtmp)} is `
                           + `${(nonliving_mu(mtmp.data)
                               /* C mthrowu.c:457 is_vampshifter(mtmp) (monst.h) */
                               || is_vampshifter(mtmp)
@@ -1276,7 +1264,7 @@ export async function ohitmon(mtmp, otmp, range, verbose) {
                            ((otmp.otyp | 0) === BLINDING_VENOM_MU) ? AT_SPIT_MU : AT_WEAP_MU,
                            otmp)) {
             if (vis && (mtmp.mcansee | 0))
-                pline(`${je_Monnam(mtmp)} is blinded by `
+                await pline(`${je_Monnam(mtmp)} is blinded by `
                       + `${the((otmp.oclass | 0) === VENOM_CLASS_MU ? 'venom'
                                : ((otmp.otyp | 0) === CREAM_PIE_OHITMON_MU ? 'pie'
                                   : xname(otmp)))}.`);
@@ -1546,8 +1534,6 @@ export async function m_throw(mon, x, y, dx, dy, range, obj) {
                 await poisoned(onmbuf, 0 /* A_STR */, knmbuf,
                                ((game.u?.umortality | 0) > oldumort) ? 0 : 10, true);
             }
-            if (ENV.FF_MATTACK_TRACE === '1')
-                pushRngLogEntry(`^mthrow_hit[id=${mon.m_id|0} otyp=${singleobj.otyp|0} hit=${hitu ? 1 : 0} mesg=${gm.mesg_given|0} hp=${game.u?.uhp|0}]`);
             /* C mthrowu.c:754-777 — the hero-targeted BLINDING_VENOM / CREAM_PIE
              * arm spends rnd(25) after thitu succeeds.  C defers applying the
              * blindness until the flight cleanup below, after the missile's

@@ -366,11 +366,9 @@ export async function dotalk() {
 
     function is_silent_local(ptr) { return !!ptr && (ptr.msound | 0) === MS_SILENT; }
     function humanoid_local(ptr) { return !!ptr && ((ptr.mflags1 | 0) & M1_HUMANOID) !== 0; }
+    /* C display.h:22 vobj_at(x, y) = svl.level.objects[x][y] (pile head). */
     function vobj_at(x, y) {
-        for (let obj = g.fobj; obj; obj = obj.nobj) {
-            if ((obj.ox | 0) === x && (obj.oy | 0) === y) return obj;
-        }
-        return null;
+        return g.level?.levelObjects?.[x]?.[y] ?? null;
     }
     /* C do_name.c:1303 — use the canonical permonst role/form name table. */
     function pmname_local(mdat, gender) {
@@ -388,7 +386,7 @@ export async function dotalk() {
     // ── Guard: is_silent ──
     if (ymData && is_silent_local(ymData)) {
         await pline("As %s, you cannot speak.",
-            an(pmname_local(ymData, 0)));
+            an(pmname_local(ymData, g.flags?.female ? 1 : 0)));
         return ECMD_OK;
     }
     
@@ -406,7 +404,7 @@ export async function dotalk() {
     
     // ── Guard: Underwater ──
     if (_Underwater()) {
-        Your("speech is unintelligible underwater.");
+        await Your("speech is unintelligible underwater.");
         return ECMD_OK;
     }
     
@@ -1182,20 +1180,6 @@ export async function domonnoise(mtmp) {
             "My feet hurt, I've been on them all day!"];
         verbl_msg = mtmp.mpeaceful ? soldier_pax_msg[rn2(3)] : soldier_foe_msg[rn2(3)];
     }
-    /* C sounds.c:1170-1175 — MS_GUARD (vault guard). */
-    else if (msound === 28 /* MS_GUARD */) {
-        verbl_msg = money_cnt(g.invent ?? null)
-            ? 'Please drop that gold and follow me.'
-            : 'Please follow me.';
-    }
-    /* C sounds.c:1179-1189 — MS_SOLDIER (army and watchmen); one rn2(3) pick. */
-    else if (msound === 27 /* MS_SOLDIER */) {
-        const soldier_foe_msg = ['Resistance is useless!', "You're dog meat!", 'Surrender!'];
-        const soldier_pax_msg = ["What lousy pay we're getting here!",
-            "The food's not fit for Orcs!",
-            "My feet hurt, I've been on them all day!"];
-        verbl_msg = mtmp.mpeaceful ? soldier_pax_msg[rn2(3)] : soldier_foe_msg[rn2(3)];
-    }
     /* C sounds.c:1130-1142 — MS_ARREST (Keystone Kops, watchmen). */
     else if (msound === 26 /* MS_ARREST */) {
         if (mtmp.mpeaceful) {
@@ -1540,16 +1524,19 @@ async function dosounds_body() {
             "General MacArthur!",
         ];
         let count = 0;
-        if (await get_iter_mons_aw(async (mtmp) => {
+        /* C sounds.c:293-307 walks fmon directly and skips only DEADMONSTER
+         * (not mon_offmap), unlike get_iter_mons. */
+        for (let mtmp = game.fmon, next; mtmp; mtmp = next) {
+            next = mtmp.nmon;
+            if ((mtmp.mhp | 0) < 1)
+                continue;
             if ((((mtmp.data?.mflags2) | 0) & 0x00000200) !== 0 /* is_mercenary */
                 && mon_in_room(mtmp, BARRACKS)
                 && ((mtmp.msleeping | 0) || ++count > 5)) {
-                await You_hear(barracks_msg[rn2(3) + (Hallucination() ? 1 : 0)]);
-                return true;
+                await You_hear(barracks_msg[rn2(3) + hallu]);
+                return;
             }
-            return false;
-        }))
-            return;
+        }
     }
     if (lf.has_zoo && !rn2(200)) {
         if (await get_iter_mons_aw(zoo_mon_sound))

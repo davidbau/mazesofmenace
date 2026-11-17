@@ -22,6 +22,7 @@ import { pline } from './pline.js';
 import { generateChargenFrames, chargenShallAnswer, playChargen } from './chargen_ui.js';
 import { rn2 } from './rnd.js';
 import { nhgetch } from './input.js';
+import { check_gold_symbol } from './botl.js'; /* C botl.c:40 — OPTIONS=S_xxx calls it (options.c:665) */
 import { nh_terminate } from './end.js';
 import { exit_nhwindows, raw_print } from './rawterm.js';
 import { worm_seg_at } from './worm.js';
@@ -239,6 +240,8 @@ export class NethackGame {
             set_primary_symbol_override(k, v);
         for (const [k, v] of opts.symbolPairs || [])
             set_primary_symbol_override(k, v);
+        /* C options.c:663-666: an OPTIONS=S_xxx line re-evaluates the gold symbol. */
+        if (opts.symbolFromOptions) check_gold_symbol();
         if (opts.symset) {
             gs.symset[PRIMARYSET].name = opts.symset;
             /* C options.c:4198 optfn_symset sets these and nothing clears them

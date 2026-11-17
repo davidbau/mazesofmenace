@@ -23,7 +23,7 @@ import { mnexto } from './mon.js'; // relocate-fns
 import { fill_pit, mintrap } from './trap.js'; // relocate-fns
 import { canseemon } from './display.js'; // relocate-fns
 import { pline_mon } from './pline.js'; // relocate-fns
-import { Monnam } from './do_name.js'; // relocate-fns
+import { Monnam, monverbself } from './do_name.js'; // relocate-fns
 import { pronoun_gender } from './mondata.js'; // relocate-fns
 import { _cnutritE } from './eat.js'; // relocate-fns
 import { currentmbuf } from './do_name.js';
@@ -4146,19 +4146,7 @@ function _um_humanoid(mdata) {
  * pronoun in subject position. Rare (monnamtext is normally a proper monster
  * name, not a bare pronoun); left exactly as C has it per Cardinal Rule 1. */
 function _um_monverbself(mon, monnamtext, verb, othertext) {
-    const selfbuf = mon_nam_too(mon, mon);
-    const verbs = vtense(selfbuf, verb);
-    if (verb === verbs) {
-        monnamtext = makeplural_objnam(monnamtext);
-        if (monnamtext.toLowerCase() === 'they') {
-            const capitaliz = monnamtext[0] === monnamtext[0].toUpperCase();
-            monnamtext = capitaliz ? 'Them' : 'them';
-        }
-    }
-    monnamtext = monnamtext + ' ' + verbs;
-    if (othertext) monnamtext = monnamtext + ' ' + othertext;
-    monnamtext = monnamtext + ' ' + selfbuf;
-    return monnamtext;
+    return monverbself(mon, monnamtext, verb, othertext);
 }
 
 /* C ref: apply.c:1075 bhit(u.dx, u.dy, COLNO, INVIS_BEAM, ...) — see the

@@ -340,7 +340,7 @@ import { hmon, passive_obj, shade_miss } from './uhitm.js';
 import { yelp as yelp_real } from './sounds.js';
 import { Resists_Elem, can_blow as can_blow_real } from './mondata.js';
 import { helpless } from './mhitm.js';
-import { mon_nam_too } from './do_name.js';
+import { mon_nam_too, monverbself } from './do_name.js';
 import { killed } from './mon.js';
 import { pronoun_gender, same_race } from './mondata.js';
 import { objtyp_is_callable, Amonnam } from './do_name.js';
@@ -3584,13 +3584,7 @@ async function kick_steed_cmd() {
             if (helpless(steed)) await pline('%s stirs.', subject);
             else {
                 // C do_name.c:1221 monverbself, including its plural-pronoun quirk.
-                const self = mon_nam_too(steed, steed), verb = vtense(self, 'rouse');
-                if (verb === 'rouse') {
-                    subject = makeplural_objnam(subject);
-                    if (subject.toLowerCase() === 'they')
-                        subject = subject[0] === 'T' ? 'Them' : 'them';
-                }
-                await pline('%s %s %s!', subject, verb, self);
+                await pline('%s!', monverbself(steed, subject, 'rouse', null));
             }
         } else {
             await pline('%s does not respond.', subject);

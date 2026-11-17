@@ -1339,6 +1339,9 @@ export function parseNethackrc(rc) {
                 if (parsesymbols_ok(menuopts)) {
                     const pm = menuopts.match(/^\s*(S_[^:=\s]+)\s*[:=]\s*(.*?)\s*$/i);
                     if (pm) (result.symbolPairs ||= []).push([pm[1], pm[2]]);
+                    /* options.c:663-666: only this OPTIONS=S_xxx path runs check_gold_symbol();
+                     * cfgfiles.c cnf_line_SYMBOLS (SYMBOLS=) calls switch_symbols() alone. */
+                    result.symbolFromOptions = true;
                     continue;
                 }
                 /* C symbols.c:817-828 NULs the separator and mungspaces()

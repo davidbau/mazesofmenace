@@ -144,7 +144,7 @@ import { find_offensive } from './muse.js';
 import { poly_gender } from './polyself.js';
 import { monflee } from './monmove.js';
 import { pmname } from './do_name.js';
-import { lined_up } from './mthrowu.js';
+import { lined_up, m_carrying } from './mthrowu.js';
 import { Inhell } from './makemon.js';
 import { noteleport_level as noteleport_level_mu } from './teleport.js';
 /* js/mhitu.js:262 declares a local `mon_nam` stub that returns the literal
@@ -1510,9 +1510,8 @@ function _hero_is_steadfast_mu() {
         return false;
     if (u.uwep && (u.uwep.oartifact | 0) === 15 /* ART_GIANTSLAYER */)
         return true;
-    for (let o = game.invent; o; o = o.nobj)
-        if ((o.otyp | 0) === 471 /* LOADSTONE */)
-            return true;
+    if (m_carrying(_hero_monst_mu(), 471 /* LOADSTONE */))
+        return true;
     return false;
 }
 /* C artifact.c:2837 permapoisoned(obj) — only Grimtooth (artilist.h #5). */
