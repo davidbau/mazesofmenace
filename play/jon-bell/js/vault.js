@@ -488,10 +488,10 @@ export async function invault() {
         if (u.uswallow) {
             if (!Deaf()) {
                 SetVoice(guard, 0, 80, 0);
-                verbalize("What's going on here?");
+                await verbalize("What's going on here?");
             }
             if (!spotted)
-                pline("The other presence vanishes.");
+                await pline("The other presence vanishes.");
             await gd_mongone(guard);
             return;
         }
@@ -502,19 +502,19 @@ export async function invault() {
                     SetVoice(guard, 0, 80, 0);
                     /* C: verbalize("Hey!  Who left that %s in here?",
                      *              mimic_obj_name(&gy.youmonst)); */
-                    verbalize(`Hey!  Who left that ${mimic_obj_name(game.youmonst)} in here?`);
+                    await verbalize(`Hey!  Who left that ${mimic_obj_name(game.youmonst)} in here?`);
                 }
             /* C: pline("Puzzled, %s turns around and leaves.", mhe(guard)); */
-            pline(`Puzzled, ${mhe(guard)} turns around and leaves.`);
+            await pline(`Puzzled, ${mhe(guard)} turns around and leaves.`);
             await gd_mongone(guard);
             return;
         }
         if (Strangled() || is_silent(guard) || (game.multi | 0) < 0) {
             if (Deaf()) {
-                pline(noit_Monnam(guard) + " huffs and turns to leave.");
+                await pline(noit_Monnam(guard) + " huffs and turns to leave.");
             } else {
                 SetVoice(guard, 0, 80, 0);
-                verbalize("I'll be back when you're ready to speak to me!");
+                await verbalize("I'll be back when you're ready to speak to me!");
             }
             await gd_mongone(guard);
             return;
@@ -550,20 +550,20 @@ export async function invault() {
             if (!croesusDied) {
                 if (Deaf()) {
                     if (!Blind())
-                        pline(`${noit_Monnam(guard)} waves goodbye.`);
+                        await pline(`${noit_Monnam(guard)} waves goodbye.`);
                 } else {
                     SetVoice(guard, 0, 80, 0);
-                    verbalize("Oh, yes, of course.  Sorry to have disturbed you.");
+                    await verbalize("Oh, yes, of course.  Sorry to have disturbed you.");
                 }
                 await gd_mongone(guard);
             } else {
                 await setmangry(guard, false);
                 if (Deaf()) {
                     if (!Blind())
-                        pline(`${noit_Monnam(guard)} mouths something and looks very angry!`);
+                        await pline(`${noit_Monnam(guard)} mouths something and looks very angry!`);
                 } else {
                     SetVoice(guard, 0, 80, 0);
-                    verbalize("Back from the dead, are you?  I'll remedy that!");
+                    await verbalize("Back from the dead, are you?  I'll remedy that!");
                 }
                 if (!MON_WEP(guard)) {
                     guard.weapon_check = NEED_HTH_WEAPON;
@@ -573,43 +573,43 @@ export async function invault() {
             return;
         }
         if (Deaf()) {
-            pline(noit_Monnam(guard) + " doesn't "
+            await pline(noit_Monnam(guard) + " doesn't "
                   + (Blind() ? "" : "appear to ") + "recognize you.");
         } else {
             SetVoice(guard, 0, 80, 0);
-            verbalize("I don't know you.");
+            await verbalize("I don't know you.");
         }
         umoney = money_cnt(game.invent);
         if (!umoney && !hidden_gold(true)) {
             if (Deaf()) {
-                pline(noit_Monnam(guard) + " stomps"
+                await pline(noit_Monnam(guard) + " stomps"
                       + (Blind() ? "" : " and beckons") + ".");
             } else {
                 SetVoice(guard, 0, 80, 0);
-                verbalize("Please follow me.");
+                await verbalize("Please follow me.");
             }
         } else {
             if (!umoney) {
                 if (Deaf()) {
                     if (!Blind())
-                        pline(noit_Monnam(guard) + " glares at you"
+                        await pline(noit_Monnam(guard) + " glares at you"
                               + (game.invent ? "r stuff" : "") + ".");
                 } else {
                     SetVoice(guard, 0, 80, 0);
-                    verbalize("You have hidden gold.");
+                    await verbalize("You have hidden gold.");
                 }
             }
             if (Deaf()) {
                 if (!Blind()) {
                     /* C vault.c:571-576: deaf heroes receive the guard's
                      * demand visually rather than through verbalize(). */
-                    pline(`${noit_Monnam(guard)} holds out ${noit_mhis(guard)} palm and beckons with ${noit_mhis(guard)} other hand.`);
+                    await pline(`${noit_Monnam(guard)} holds out ${noit_mhis(guard)} palm and beckons with ${noit_mhis(guard)} other hand.`);
                 }
             } else {
                 SetVoice(guard, 0, 80, 0);
-                verbalize("Most likely all your gold was stolen from this vault.");
+                await verbalize("Most likely all your gold was stolen from this vault.");
                 SetVoice(guard, 0, 80, 0);
-                verbalize("Please drop that gold and follow me.");
+                await verbalize("Please drop that gold and follow me.");
             }
             EGD(guard).dropgoldcnt = (EGD(guard).dropgoldcnt | 0) + 1;
         }
@@ -950,13 +950,13 @@ async function wallify_vault(grd) {
     if (movedgold || fixed) {
         if (in_fcorridor(grd, grd.mx | 0, grd.my | 0)
             || cansee(grd.mx | 0, grd.my | 0))
-            pline(noit_Monnam(grd) + " whispers an incantation.");
+            await pline(noit_Monnam(grd) + " whispers an incantation.");
         else
-            You_hear("a distant chant.");
+            await You_hear("a distant chant.");
         if (movedgold)
-            pline("A mysterious force moves the gold into the vault.");
+            await pline("A mysterious force moves the gold into the vault.");
         if (fixed)
-            pline("The damaged vault's walls are magically restored!");
+            await pline("The damaged vault's walls are magically restored!");
     }
 }
 
@@ -993,7 +993,7 @@ async function gd_move_cleanup(grd, semi_dead, disappear_msg_seen) {
     await restfakecorr(grd);
     if (!semi_dead && (in_fcorridor(grd, u.ux | 0, u.uy | 0) || cansee(x, y))) {
         if (!disappear_msg_seen && see_guard)
-            pline("Suddenly, " + noit_mon_nam(grd) + " disappears.");
+            await pline("Suddenly, " + noit_mon_nam(grd) + " disappears.");
         return 1;
     }
     return -2;
@@ -1241,7 +1241,7 @@ export async function gd_move(grd) {
             && (game.level.at(egrd.fakecorr[0].fx | 0,
                               egrd.fakecorr[0].fy | 0).typ
                 === (egrd.fakecorr[0].ftyp | 0))) {
-            pline(noit_Monnam(grd) + ", confused, disappears.");
+            await pline(noit_Monnam(grd) + ", confused, disappears.");
             return await gd_move_cleanup(grd, semi_dead, true);
         }
         if (u_carry_gold && (in_fcorridor(grd, u.ux | 0, u.uy | 0)
@@ -1255,8 +1255,7 @@ export async function gd_move(grd) {
                 egrd.warncnt = 6;
                 if (Deaf()) {
                     if (!Blind()) {
-                        const possessive = grd.female ? 'her' : 'his';
-                        pline(`${noit_Monnam(grd)} holds out ${possessive} palm demandingly!`);
+                        await pline(`${noit_Monnam(grd)} holds out ${noit_mhis(grd)} palm demandingly!`);
                     }
                 } else {
                     SetVoice(grd, 0, 80, 0);
@@ -1266,8 +1265,7 @@ export async function gd_move(grd) {
             } else {
                 if (Deaf()) {
                     if (!Blind()) {
-                        const possessive = grd.female ? 'her' : 'his';
-                        pline(`${noit_Monnam(grd)} rubs ${possessive} hands with enraged delight!`);
+                        await pline(`${noit_Monnam(grd)} rubs ${noit_mhis(grd)} hands with enraged delight!`);
                     }
                 } else {
                     SetVoice(grd, 0, 80, 0);
@@ -1433,7 +1431,7 @@ export async function gd_move(grd) {
                     egrd.gdy = rc.y;
                 }
                 if (!ok || ((egrd.gdx | 0) === ggx && (egrd.gdy | 0) === ggy)) {
-                    pline(Monnam(grd) + ", confused, disappears.");
+                    await pline(Monnam(grd) + ", confused, disappears.");
                     return await gd_move_cleanup(grd, semi_dead, true);
                 } else {
                     label = 'nextpos';
@@ -1457,12 +1455,19 @@ export async function gd_move(grd) {
         /* C vault.c:1194-1197 — mpickgold() + "picks up some gold." */
         await mpickgold(grd);
         if (canspotmon(grd))
-            pline(`${Monnam(grd)} picks up some gold.`);
+            await pline(`${Monnam(grd)} picks up some gold.`);
     } else {
         newsym(grd.mx | 0, grd.my | 0);
     }
     await restfakecorr(grd);
     return 1;
+}
+
+/* C vault.c:34-42 free_egd(mtmp) — release the guard's egd and clear isgd. */
+export function free_egd(mtmp) {
+    if (mtmp.mextra && EGD(mtmp))
+        mtmp.mextra.egd = null;
+    mtmp.isgd = 0;
 }
 
 /* C vault.c:237 vault_summon_gd().  A cursed whistle does not create the

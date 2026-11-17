@@ -4523,7 +4523,7 @@ export async function dochug(mtmp) {
     if (pf_inrange && (mdat?.msound | 0) === 34 && !(mtmp.mpeaceful | 0)
         && couldsee(mtmp.mx | 0, mtmp.my | 0) && !(mtmp.minvis | 0)
         && !rn2(5))
-        cuss(mtmp);
+        await cuss(mtmp);
     return 0;
 }
 

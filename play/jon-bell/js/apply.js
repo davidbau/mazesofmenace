@@ -1395,7 +1395,7 @@ export async function jump(magic) {
     } else if (!magic && !_Jumping()) {                  /* apply.c:2001-2003 */
         await pline("You can't jump very far.");
         return ECMD_OK;
-    } else if (!magic && u.usteed && stucksteed(false)) { /* apply.c:2005-2009 */
+    } else if (!magic && u.usteed && await stucksteed(false)) { /* apply.c:2005-2009 */
         return ECMD_OK;
     } else if (u.uswallow) {                             /* apply.c:2010-2016 */
         if (magic) {

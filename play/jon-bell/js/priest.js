@@ -197,7 +197,7 @@ export function in_your_sanctuary(mon, x, y) {
     // Check: has_shrine(priest) && p_coaligned(priest) && priest->mpeaceful
     const hasShrine = has_shrine(priest);
     const isCoaligned = p_coaligned(priest);
-    const isPeaceful = priest.mpeaceful !== 0;
+    const isPeaceful = !!priest.mpeaceful; /* C priest.c:791 priest->mpeaceful; flag may be boolean */
 
     return !!(hasShrine && isCoaligned && isPeaceful);
 }
@@ -652,7 +652,7 @@ export async function pri_move(priest) {
         || (Conflict && !resist_conflict(priest))) {
         if (monnear(priest, u.ux, u.uy)) {
             if (Displaced)
-                Your("displaced image doesn't fool %s!", mon_nam(priest));
+                await Your("displaced image doesn't fool %s!", mon_nam(priest));
             /* C priest.c:201 — mattacku() must be awaited: it is async, and an
              * unawaited call interleaves its draws with the rest of the turn. */
             await mattacku(priest);
@@ -896,7 +896,7 @@ export async function intemple(roomno) {
 
         epri_p = EPRI(priest);
         shrined = has_shrine(priest);
-        sanctum = (((priest.mndx ?? priest.mnum) | 0) === PM_HIGH_PRIEST
+        sanctum = ((priest.data?.pmidx | 0) === PM_HIGH_PRIEST /* C: priest->data == &mons[PM_HIGH_CLERIC] */
                    && (_Is_sanctum(u.uz) || In_endgame(u.uz)));
         can_speak = !_helpless_mon(priest);
         const Deaf = _hero_Deaf();

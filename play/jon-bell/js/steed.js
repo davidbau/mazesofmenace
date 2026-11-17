@@ -45,7 +45,7 @@ import { dist2 } from './hacklib.js'; // relocate-fns
 import { sobj_at } from './invent.js'; // relocate-fns
 import { getdir } from './cmd.js'; // relocate-fns
 import { mhe, permonstTemplate } from './makemon.js'; // relocate-fns
-import { killed } from './mon.js'; // relocate-fns
+import { killed, monkilled } from './mon.js'; // relocate-fns
 import { poly_when_stoned } from './mondata.js'; // relocate-fns
 import { accessible } from './monmove.js'; // relocate-fns
 import { an } from './objnam.js'; // relocate-fns
@@ -58,7 +58,7 @@ import { rnd } from './rnd.js'; // relocate-fns
 import { P_SKILL } from './skills.js'; // relocate-fns
 import { remove_worn_item as _remove_worn_item_thrown } from './steal.js'; // relocate-fns
 import { RLOC_NOMSG, enexto_out, rloc, rloc_to, teleds } from './teleport.js'; // relocate-fns
-import { float_down, instapetrify, mintrap, monkilled_trap, sokoban_guilt, t_at, trapname } from './trap.js'; // relocate-fns
+import { float_down, instapetrify, mintrap, sokoban_guilt, t_at, trapname } from './trap.js'; // relocate-fns
 import { m_at, mon_nam } from './uhitm.js'; // relocate-fns
 
 /* C steed.c:852-875 — newcham has already handled the saddle/armor. */
@@ -103,18 +103,19 @@ export async function maybewakesteed(steed) {
 
 // C steed.c:878-895 stucksteed(checkfeeding)
 // Decide whether hero's steed is able to move
-export function stucksteed(checkfeeding) {
+export async function stucksteed(checkfeeding) {
     const steed = game.u.usteed;
 
     if (steed) {
         // C: helpless(steed) = steed->msleeping || !steed->mcanmove
         if ((steed.msleeping | 0) || !(steed.mcanmove | 0)) {
-            pline(`${YMonnam(steed)} won't move!`);
+            /* C pline() can block on --More--; the callers all await us. */
+            await pline(`${YMonnam(steed)} won't move!`);
             return true;
         }
         // C: optionally check whether steed is in the midst of a meal
         if (checkfeeding && (steed.meating | 0)) {
-            pline(`${YMonnam(steed)} is still eating.`);
+            await pline(`${YMonnam(steed)} is still eating.`);
             return true;
         }
     }
@@ -894,7 +895,7 @@ export async function dismount_steed(reason) {
                 await killed(mtmp);
                 adjalign(-1);
             } else {
-                await monkilled_trap(mtmp, '', false); /* -AD_PHYS: ordinary death */
+                await monkilled(mtmp, '', -0 /* -AD_PHYS (monattk.h: AD_PHYS == 0) */);
             }
         }
     }

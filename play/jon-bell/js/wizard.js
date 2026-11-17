@@ -84,7 +84,7 @@ export function aggravate() {
             continue;
         mtmp.mstrategy &= ~(STRAT_WAITFORU | STRAT_APPEARMSG);
         mtmp.msleeping = 0;
-        if (mtmp.mcanmove === 0 && !rn2(5)) {
+        if (!mtmp.mcanmove && !rn2(5)) {
             mtmp.mfrozen = 0;
             mtmp.mcanmove = 1;
         }
@@ -128,40 +128,40 @@ function uhaveAmulet() {
 }
 
 // C ref: wizard.c:845-883 cuss() — insult or intimidate the player.
-export function cuss(mtmp) {
+export async function cuss(mtmp) {
     if (Deaf())
         return;
     if (mtmp.iswiz) {
         if (!rn2(5)) {
-            pline(`${Monnam(mtmp)} laughs fiendishly.`);
+            await pline(`${Monnam(mtmp)} laughs fiendishly.`);
         } else if (uhaveAmulet() && !rn2(random_insult.length)) {
             SetVoice(mtmp, 0, 80, 0);
-            verbalize(`Relinquish the amulet, ${random_insult[rn2(random_insult.length)]}!`);
+            await verbalize(`Relinquish the amulet, ${random_insult[rn2(random_insult.length)]}!`);
         } else if (game.u.uhp < 5 && !rn2(2)) { /* Panic */
             SetVoice(mtmp, 0, 80, 0);
             // the format-selecting rn2(2) precedes the insult draw.
             const panicked = rn2(2);
             const insult = random_insult[rn2(random_insult.length)];
-            verbalize(panicked
+            await verbalize(panicked
                 ? `Even now thy life force ebbs, ${insult}!`
                 : `Savor thy breath, ${insult}, it be thy last!`);
         } else if (mtmp.mhp < 5 && !rn2(2)) { /* Parthian shot */
             SetVoice(mtmp, 0, 80, 0);
-            verbalize(rn2(2) ? 'I shall return.' : "I'll be back.");
+            await verbalize(rn2(2) ? 'I shall return.' : "I'll be back.");
         } else {
             SetVoice(mtmp, 0, 80, 0);
             const maledict = random_malediction[rn2(random_malediction.length)];
             const insult = random_insult[rn2(random_insult.length)];
-            verbalize(`${maledict} ${insult}!`);
+            await verbalize(`${maledict} ${insult}!`);
         }
     } else if (is_lminion(mtmp)
                && !(mtmp.isminion && EMIN(mtmp).renegade)) {
-        com_pager('angel_cuss');
+        await com_pager('angel_cuss');
     } else {
         if (!rn2(is_minion(mtmp.data) ? 100 : 5))
-            pline(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
+            await pline(`${Monnam(mtmp)} casts aspersions on your ancestry.`);
         else
-            com_pager('demon_cuss');
+            await com_pager('demon_cuss');
     }
     wake_nearto(mtmp.mx, mtmp.my, 5 * 5);
 }
@@ -427,11 +427,11 @@ export async function amulet() {
             if (ttmp.ttyp === MAGIC_PORTAL) {
                 let du = distu(ttmp.tx, ttmp.ty);
                 if (du <= 9)
-                    pline("%s hot!", Tobjnam(amu, "feel"));
+                    await pline("%s hot!", Tobjnam(amu, "feel"));
                 else if (du <= 64)
-                    pline("%s very warm.", Tobjnam(amu, "feel"));
+                    await pline("%s very warm.", Tobjnam(amu, "feel"));
                 else if (du <= 144)
-                    pline("%s warm.", Tobjnam(amu, "feel"));
+                    await pline("%s warm.", Tobjnam(amu, "feel"));
                 /* else, the amulet feels normal */
                 break;
             }

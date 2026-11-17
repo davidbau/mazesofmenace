@@ -4263,7 +4263,7 @@ async function domove_core(dx, dy) {
      *         return;
      *     } */
     unmap_invisible(newx, newy);
-    if ((dx || dy) && u.usteed && stucksteed(false)) {
+    if ((dx || dy) && u.usteed && await stucksteed(false)) {
         nomul(0);
         return;
     }

@@ -3168,7 +3168,7 @@ export async function dodown() {
     // leading guards doup() carries.
     if (u_rooted())
         return (g.context.move = 1, ECMD_TIME);
-    if (stucksteed(true)) {
+    if (await stucksteed(true)) {
         g.context.move = 0; // ECMD_OK
         return ECMD_OK;
     }
@@ -3366,7 +3366,7 @@ export async function doup() {
         g.context.move = 0; /* ECMD_OK */
         return ECMD_OK;
     }
-    if (stucksteed(true)) {
+    if (await stucksteed(true)) {
         g.context.move = 0; /* ECMD_OK */
         return ECMD_OK;
     }

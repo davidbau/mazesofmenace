@@ -1,21 +1,19 @@
 // dbridge.js — C ref: dbridge.c.
-import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, IS_DRAWBRIDGE, IS_WALL, IS_WATERWALL, Is_juiblex_level as Is_juiblex_level_real, LAVAPOOL, LAVAWALL, MOAT, POOL, STONE, WATER, W_NONDIGGABLE, isok } from './const.js';
+import { DBWALL, DB_DIR, DB_EAST, DB_ICE, DB_LAVA, DB_MOAT, DB_NORTH, DB_SOUTH, DB_UNDER, DB_WEST, DOOR, DRAWBRIDGE_DOWN, DRAWBRIDGE_UP, D_NODOOR, ICE, IS_DRAWBRIDGE, IS_WALL, IS_WATERWALL, Is_waterlevel, Is_juiblex_level as Is_juiblex_level_real, LAVAPOOL, LAVAWALL, MOAT, POOL, STONE, WATER, W_NONDIGGABLE, isok } from './const.js';
 import { game } from './gstate.js';
 import { impossible } from './pline.js';
-import { _is_lava_local, _is_pool_local } from './look.js'; // relocate-fns
 import { pooleffects_drown, pooleffects_lava_effects, revive_nasty } from './cmd.js';
 import { delallobj } from './invent.js'; // relocate-fns
 import { BURNING, CONFUSION, CRUSHING, DROWNING, FUMBLING, ICED_MOAT, Is_stronghold, KILLED_BY_AN, MAGICAL_BREATHING, MAY_HIT, NO_KILLER_PREFIX, OBJ_AT, PASSES_WALLS, ROOM, STUNNED, SWIMMING, WWALKING, XKILL_GIVEMSG, XKILL_NOCONDUCT, XKILL_NOCORPSE, XKILL_NOMSG } from './const.js'; // relocate-fns
-import { BOULDER, Deaf_dg, Flying_, Levitation_, Soundeffect, _dig_hallucination, is_floater_, is_flyer_, is_lava_, u_prop_ } from './dig.js'; // relocate-fns
+import { BOULDER, Flying_, Levitation_, Soundeffect, _dig_hallucination, is_floater_, is_flyer_, u_prop_ } from './dig.js'; // relocate-fns
 import { Deaf as Deaf_real, Unaware as Unaware_real, canseemon, canspotmon, newsym } from './display.js'; // relocate-fns
 import { flooreffects } from './do.js'; // relocate-fns
-import { mondied_dm } from './dogmove.js'; // relocate-fns
 import { done } from './end.js'; // relocate-fns
 import { del_engr_at } from './engrave.js'; // relocate-fns
 import { scatter } from './explode.js'; // relocate-fns
 import { spoteffects } from './hack.js'; // relocate-fns
 import { sobj_at } from './invent.js'; // relocate-fns
-import { mhe, nonliving } from './makemon.js'; // relocate-fns
+import { mhe, nonliving, permonstTemplate } from './makemon.js'; // relocate-fns
 import { Monnam } from './mcastu.js'; // relocate-fns
 import { helpless } from './mhitm.js';
 import { hliquid } from './do_name.js'; // relocate-fns
@@ -23,14 +21,15 @@ import { mksobj_at, obj_extract_self } from './mkobj.js'; // relocate-fns
 import { minliquid, wake_nearto } from './mon.js'; // relocate-fns
 import { vtense } from './objnam.js'; // relocate-fns
 import { You_hear, You_see, pline } from './pline.js'; // relocate-fns
-import { PM_FIRE_ELEMENTAL, PM_SALAMANDER } from './pm.generated.js'; // relocate-fns
+import { PM_FIRE_ELEMENTAL, PM_LONG_WORM_TAIL, PM_SALAMANDER } from './pm.generated.js'; // relocate-fns
 import { update_monster_region } from './region.js'; // relocate-fns
 import { rn2, rnd } from './rnd.js'; // relocate-fns
 import { place_monster } from './steed.js'; // relocate-fns
 import { enexto_out, teleds } from './teleport.js'; // relocate-fns
 import { deltrap, t_at } from './trap.js'; // relocate-fns
 import { m_at, mon_nam } from './uhitm.js';
-import { xkilled } from './mon.js'; // relocate-fns
+import { monkilled, xkilled } from './mon.js';
+import { AD_DGST, DEADMONSTER } from './uhitm.js'; // relocate-fns
 import { block_point, cansee, does_block, unblock_point, vision_recalc } from './vision.js'; // relocate-fns
 
 /* C ref: dbridge.c:84-95 is_pool(x,y) — POOL/MOAT/WATER or is_moat(). */
@@ -236,8 +235,12 @@ export function is_lava(x, y) {
     return false;
 }
 
+/* C dbridge.c:77-85 is_pool_or_lava. */
 export function is_pool_or_lava(x, y) {
-    return _is_pool_local(x, y) || _is_lava_local(x, y);
+    if (is_pool(x, y) || is_lava(x, y))
+        return true;
+    else
+        return false;
 }
 
 const IRON_CHAIN = 478, se_chains_rattling_gears_turning = 0, se_smashing_and_crushing = 0, se_loud_splash = 0, se_loud_crash = 0, se_crushing_sound = 0, se_gears_turning_chains_rattling = 0;
@@ -325,7 +328,7 @@ export async function destroy_drawbridge(x, y) {
                     await pline('%s into some heavy metal!', db_E_phrase(etmp1, 'get'));
                 else
                     await pline('%s hit by a huge chunk of metal!', db_E_phrase(etmp1, 'are'));
-            } else if (!Deaf_dg() && !db_is_u(etmp1) && !is_pool(bx.value, by.value)) {
+            } else if (!Deaf_real() && !db_is_u(etmp1) && !is_pool(bx.value, by.value)) {
                 Soundeffect(se_crushing_sound, 75);
                 await You_hear('a crushing sound.');
             }
@@ -346,8 +349,13 @@ function db_set_entity(x, y) {
     if (game.u.ux === x && game.u.uy === y)
         return { emon: game.youmonst, ex: game.u.ux, ey: game.u.uy, edata: game.youmonst?.data };
     const mtmp = m_at(x, y);
-    /* long worm tail squares (m_to_e's PM_LONG_WORM_TAIL arm) are not modeled */
-    return mtmp ? { emon: mtmp, ex: x, ey: y, edata: mtmp.data } : { emon: null, ex: 0, ey: 0, edata: null };
+    /* C dbridge.c:303-318 m_to_e: a long worm segment other than the head is
+     * a PM_LONG_WORM_TAIL entity. */
+    if (!mtmp)
+        return { emon: null, ex: 0, ey: 0, edata: null };
+    const isTail = (mtmp.wormno | 0) && (x !== mtmp.mx || y !== mtmp.my);
+    return { emon: mtmp, ex: x, ey: y,
+             edata: isTail ? permonstTemplate(PM_LONG_WORM_TAIL) : mtmp.data };
 }
 
 function db_is_u(etmp) { return etmp.emon === game.youmonst; }
@@ -422,16 +430,20 @@ async function db_e_died(etmp, xkill_flags, how) {
         return;
     }
     if (game.svk?.killer) game.svk.killer.name = '';
+    /* C dbridge.c:441-443 mk_message / mk_corpse: the fake AD_DGST damage type
+     * suppresses the corpse, AD_PHYS (0) leaves one. */
     const msg = (xkill_flags & XKILL_NOMSG) ? null : '';
-    if (game.context?.mon_moving) await db_monkilled_dgst(etmp.emon, msg);
-    else await xkilled(etmp.emon, xkill_flags);
+    const mkCorpse = (fl) => ((fl & XKILL_NOCORPSE) !== 0) ? AD_DGST : 0 /* AD_PHYS */;
+    /* if monsters are moving, one of them caused the destruction */
+    if (game.context?.mon_moving) await monkilled(etmp.emon, msg, mkCorpse(xkill_flags));
+    else await xkilled(etmp.emon, xkill_flags); /* you caused it */
     /* if etmp gets life-saved, kill it again */
-    if ((etmp.emon.mhp | 0) >= 1) {
+    if (!DEADMONSTER(etmp.emon)) {
         const seeit = canspotmon(etmp.emon);
         xkill_flags |= XKILL_NOMSG | XKILL_NOCONDUCT;
-        if (game.context?.mon_moving) await db_monkilled_dgst(etmp.emon, '');
+        if (game.context?.mon_moving) await monkilled(etmp.emon, '', mkCorpse(xkill_flags));
         else await xkilled(etmp.emon, xkill_flags);
-        if ((etmp.emon.mhp | 0) < 1 && seeit)
+        if (DEADMONSTER(etmp.emon) && seeit)
             await pline('Unfortunately for %s, %s is still crushed.', mon_nam(etmp.emon), mhe(etmp.emon));
     }
     etmp.edata = null;
@@ -457,9 +469,17 @@ function db_nokiller() {
     db_occupants[1] = { emon: null, ex: 0, ey: 0, edata: null };
 }
 
+/* youprop.h: HXxx || EXxx (no `blocked` test except where the macro has one). */
 function db_uprop(key) {
     const p = u_prop_(game.u, key);
-    return !!((p.intrinsic | 0) || (p.extrinsic | 0)) && !(p.blocked | 0);
+    return !!((p.intrinsic | 0) || (p.extrinsic | 0));
+}
+/* youprop.h:260 Wwalking ((HWwalking || EWwalking) && !Is_waterlevel(&u.uz)) */
+function db_Wwalking() { return db_uprop(WWALKING) && !Is_waterlevel(game.u.uz); }
+/* youprop.h:266 Swimming (HSwimming || ESwimming || steed is_swimmer) */
+function db_Swimming() {
+    return db_uprop(SWIMMING)
+        || !!(game.u.usteed && ((game.u.usteed.data?.mflags1 | 0) & 0x2) !== 0);
 }
 
 /* C dbridge.c:378-405 e_survives_at() */
@@ -467,11 +487,11 @@ function db_e_survives_at(etmp, x, y) {
     const ptr = etmp.edata, f1 = ptr?.mflags1 | 0, isu = db_is_u(etmp);
     if (db_noncorporeal(ptr)) return true;
     if (is_pool(x, y))
-        return (isu && (db_uprop(WWALKING) || db_uprop(MAGICAL_BREATHING) || (f1 & 0x600) !== 0
-                        || db_uprop(SWIMMING) || Flying_() || Levitation_()))
+        return (isu && (db_Wwalking() || db_uprop(MAGICAL_BREATHING) || (f1 & 0x600) !== 0
+                        || db_Swimming() || Flying_() || Levitation_()))
             || (f1 & 0x2) !== 0 /* is_swimmer */ || is_flyer_(ptr) || is_floater_(ptr);
     /* must force call to lava_effects in e_died if is_u */
-    if (is_lava_(x, y))
+    if (is_lava(x, y))
         return (isu && (Levitation_() || Flying_()))
             || ptr?.pmidx === PM_FIRE_ELEMENTAL || ptr?.pmidx === PM_SALAMANDER /* likes_lava */
             || is_flyer_(ptr);
@@ -487,8 +507,8 @@ function db_e_jumps(etmp) {
     if (isu ? (Unaware_real() || db_uprop(FUMBLING))
             : (helpless(m) || !(etmp.edata?.mmove | 0) || (m.wormno | 0)))
         return false;
-    if (isu ? db_uprop(CONFUSION) : m.mconf) tmp -= 2;
-    if (isu ? db_uprop(STUNNED) : m.mstun) tmp -= 3;
+    if (isu ? !!(u_prop_(game.u, CONFUSION).intrinsic | 0) : m.mconf) tmp -= 2; /* Confusion == HConfusion */
+    if (isu ? !!(u_prop_(game.u, STUNNED).intrinsic | 0) : m.mstun) tmp -= 3; /* Stunned == HStun */
     if (is_db_wall(etmp.ex, etmp.ey)) tmp -= 2; /* less room to maneuver */
     return tmp >= rnd(10);
 }
@@ -528,7 +548,7 @@ async function db_do_entity(etmp) {
             } else {
                 if (e_inview)
                     await pline('%s crushed by the falling portcullis!', db_E_phrase(etmp, 'are'));
-                else if (!Deaf_dg())
+                else if (!Deaf_real())
                     await You_hear('a crushing sound.');
                 await db_e_died(etmp, XKILL_NOCORPSE | (e_inview ? XKILL_GIVEMSG : XKILL_NOMSG), CRUSHING);
                 return;
@@ -585,14 +605,14 @@ async function db_do_entity(etmp) {
         }
         return;
     }
-    if (is_pool(etmp.ex, etmp.ey) && !e_inview && !Deaf_dg())
+    if (is_pool(etmp.ex, etmp.ey) && !e_inview && !Deaf_real())
         await You_hear('a splash.');
     if (db_e_survives_at(etmp, etmp.ex, etmp.ey)) {
         if (e_inview && !is_flyer_(etmp.edata) && !is_floater_(etmp.edata))
             await pline('%s from the bridge.', db_E_phrase(etmp, 'fall'));
         return;
     }
-    const pool = is_pool(etmp.ex, etmp.ey), lava = is_lava_(etmp.ex, etmp.ey);
+    const pool = is_pool(etmp.ex, etmp.ey), lava = is_lava(etmp.ex, etmp.ey);
     if ((pool || lava) && e_inview && !db_is_u(etmp)) {
         if (_dig_hallucination())
             await pline('%s the %s and disappears.', db_E_phrase(etmp, 'drink'), lava ? 'lava' : 'moat');
@@ -606,106 +626,111 @@ async function db_do_entity(etmp) {
 
 function db_e_nam(etmp) { return db_is_u(etmp) ? 'you' : mon_nam(etmp.emon); }
 
-/* C mon.c:3364-3417 monkilled(mdef, fltxt, AD_DGST): mk_corpse(XKILL_NOCORPSE)
- * is AD_DGST, so gd.disintegested is set and mondead() runs without a corpse. */
-async function db_monkilled_dgst(mdef, fltxt) {
-    if (fltxt !== null && cansee(mdef.mx | 0, mdef.my | 0))
-        await pline('%s is %s!', Monnam(mdef), nonliving(mdef.data) ? 'destroyed' : 'killed');
-    else
-        (game.iflags ||= {}).sad_feeling = !!mdef.mtame;
-    (game.gd ||= {}).disintegested = true;
-    await mondied_dm(mdef, true);
-}
-
-function _drawbridge_pair(x, y) {
-    const ox = x | 0, oy = y | 0;
-    const bx = { value: ox }, by = { value: oy };
-    if (!find_drawbridge(bx, by)) return null;
-    const bridge = game.level?.at(bx.value, by.value);
-    if (!bridge || !IS_DRAWBRIDGE(bridge.typ | 0)) return null;
-    let wx = bx.value, wy = by.value;
-    if (bx.value === ox && by.value === oy) {
-        switch ((bridge.drawbridgemask | 0) & DB_DIR) {
-        case DB_NORTH: wy--; break; case DB_SOUTH: wy++;
-            break; case DB_EAST: wx++; break; case DB_WEST: wx--; break;
-        }
-    } else { wx = ox; wy = oy; }
-    return { bx: bx.value, by: by.value, wx, wy, bridge };
-}
-
-export async function open_drawbridge(x, y) {
-    const p = _drawbridge_pair(x, y);
-    if (!p || (p.bridge.typ | 0) !== DRAWBRIDGE_UP) return false;
-    /* C dbridge.c:850-856 */
-    if (cansee(p.bx, p.by) || cansee(p.wx, p.wy)) {
-        const u = game.u, dw = (u.ux - p.wx) ** 2 + (u.uy - p.wy) ** 2,
-            db = (u.ux - p.bx) ** 2 + (u.uy - p.by) ** 2;
-        await You_see(`a drawbridge ${dw < db ? 'going' : 'coming'} down!`);
-    } else {
-        Soundeffect(se_gears_turning_chains_rattling, 100);
-        await You_hear('gears turning and chains rattling.');
+/* C dbridge.c:171-186 get_wall_for_db: find the drawbridge wall of a bridge. */
+function get_wall_for_db(x, y) {
+    switch ((game.level.at(x.value, y.value).drawbridgemask | 0) & DB_DIR) {
+    case DB_NORTH: y.value--; break;
+    case DB_SOUTH: y.value++; break;
+    case DB_EAST: x.value++; break;
+    case DB_WEST: x.value--; break;
     }
-    p.bridge.typ = DRAWBRIDGE_DOWN;
-    const wall = game.level?.at(p.wx, p.wy);
-    if (wall) { wall.typ = DOOR; wall.doormask = D_NODOOR; }
-    /* C dbridge.c:863-867: the occupants of the span and portcullis squares. */
-    db_occupants[0] = db_set_entity(p.bx, p.by);
-    db_occupants[1] = db_set_entity(p.wx, p.wy);
-    await db_do_entity(db_occupants[0]);          /* Do set_entity after first */
-    db_occupants[1] = db_set_entity(p.wx, p.wy); /* do_entity for worm tail */
-    await db_do_entity(db_occupants[1]);
-    await revive_nasty(p.bx, p.by, null); /* C dbridge.c:868 */
-    await delallobj(p.bx, p.by); // C dbridge.c:869
-    const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
-    if (bt) deltrap(bt); if (wt && wt !== bt) deltrap(wt);
-    del_engr_at(p.bx, p.by); del_engr_at(p.wx, p.wy);
-    newsym(p.bx, p.by); newsym(p.wx, p.wy);
-    unblock_point(p.wx, p.wy); /* C dbridge.c:875 vision */
-    if (Is_stronghold(game.u.uz))
-        (game.u.uevent ||= {}).uopened_dbridge = true;
-    db_nokiller(); /* C dbridge.c:876 */
-    return true;
 }
 
+/* distu(x, y) */
+function db_distu(x, y) {
+    const u = game.u;
+    return (u.ux - x) * (u.ux - x) + (u.uy - y) * (u.uy - y);
+}
+
+/* C dbridge.c:777-840 close_drawbridge(x, y) */
 export async function close_drawbridge(x, y) {
-    const p = _drawbridge_pair(x, y);
-    if (!p || (p.bridge.typ | 0) !== DRAWBRIDGE_DOWN) return false;
-    /* C dbridge.c:787-796 */
-    if (cansee(x, y) || cansee(p.wx, p.wy)) {
-        const u = game.u, dw = (u.ux - p.wx) ** 2 + (u.uy - p.wy) ** 2,
-            db = (u.ux - x) ** 2 + (u.uy - y) ** 2;
-        await You_see(`a drawbridge ${(((u.ux === x || u.uy === y) && !u.uinwater) || dw < db) ? 'coming' : 'going'} up!`);
-    } else {
+    const lev1 = game.level.at(x, y);
+    if ((lev1.typ | 0) !== DRAWBRIDGE_DOWN)
+        return;
+    const w = { value: x }, wy = { value: y };
+    get_wall_for_db(w, wy);
+    const x2 = w.value, y2 = wy.value;
+    if (cansee(x, y) || cansee(x2, y2)) {
+        const u = game.u;
+        await You_see(`a drawbridge ${(((u.ux === x || u.uy === y) && !u.uinwater)
+                                       || db_distu(x2, y2) < db_distu(x, y))
+            ? 'coming' : 'going'} up!`);
+    } else { /* "5 gears turn" for castle drawbridge tune */
         Soundeffect(se_chains_rattling_gears_turning, 75);
         await You_hear('chains rattling and gears turning.');
     }
-    p.bridge.typ = DRAWBRIDGE_UP;
-    const wall = game.level?.at(p.wx, p.wy);
-    if (wall) {
-        wall.typ = DBWALL;
-        const dir = (p.bridge.drawbridgemask | 0) & DB_DIR; /* C dbridge.c:800-809 */
-        wall.horizontal = (dir === DB_NORTH || dir === DB_SOUTH);
-        wall.wall_info = W_NONDIGGABLE;
+    lev1.typ = DRAWBRIDGE_UP;
+    const lev2 = game.level.at(x2, y2);
+    lev2.typ = DBWALL;
+    switch ((lev1.drawbridgemask | 0) & DB_DIR) {
+    case DB_NORTH:
+    case DB_SOUTH:
+        lev2.horizontal = true;
+        break;
+    case DB_WEST:
+    case DB_EAST:
+        lev2.horizontal = false;
+        break;
     }
-    /* C dbridge.c:811-815: the occupants of the span and portcullis squares. */
-    db_occupants[0] = db_set_entity(p.bx, p.by);
-    db_occupants[1] = db_set_entity(p.wx, p.wy);
+    lev2.wall_info = W_NONDIGGABLE;
+    db_occupants[0] = db_set_entity(x, y);
+    db_occupants[1] = db_set_entity(x2, y2);
     await db_do_entity(db_occupants[0]);          /* Do set_entity after first */
-    db_occupants[1] = db_set_entity(p.wx, p.wy); /* do_entity for worm tail */
+    db_occupants[1] = db_set_entity(x2, y2); /* do_entity for worm tail */
     await db_do_entity(db_occupants[1]);
-    if (OBJ_AT(p.bx, p.by) && !Deaf_real()) {
+    if (OBJ_AT(x, y) && !Deaf_real()) {
         Soundeffect(se_smashing_and_crushing, 75);
         await You_hear('smashing and crushing.');
     }
-    await revive_nasty(p.bx, p.by, null); /* C dbridge.c:820-821 */
-    await revive_nasty(p.wx, p.wy, null);
-    await delallobj(p.bx, p.by); // C dbridge.c:822-823
-    await delallobj(p.wx, p.wy);
-    const bt = t_at(p.bx, p.by), wt = t_at(p.wx, p.wy);
-    if (bt) deltrap(bt); if (wt && wt !== bt) deltrap(wt);
-    del_engr_at(p.bx, p.by); del_engr_at(p.wx, p.wy);
-    newsym(p.bx, p.by); newsym(p.wx, p.wy);
-    block_point(p.wx, p.wy); /* C dbridge.c:832 vision */
+    await revive_nasty(x, y, null);
+    await revive_nasty(x2, y2, null);
+    await delallobj(x, y);
+    await delallobj(x2, y2);
+    let t;
+    if ((t = t_at(x, y))) deltrap(t);
+    if ((t = t_at(x2, y2))) deltrap(t);
+    del_engr_at(x, y);
+    del_engr_at(x2, y2);
+    newsym(x, y);
+    newsym(x2, y2);
+    block_point(x2, y2); /* vision */
     db_nokiller();
-    return true;
+}
+
+/* C dbridge.c:845-883 open_drawbridge(x, y) */
+export async function open_drawbridge(x, y) {
+    const lev1 = game.level.at(x, y);
+    if ((lev1.typ | 0) !== DRAWBRIDGE_UP)
+        return;
+    const w = { value: x }, wy = { value: y };
+    get_wall_for_db(w, wy);
+    const x2 = w.value, y2 = wy.value;
+    if (cansee(x, y) || cansee(x2, y2)) {
+        await You_see(`a drawbridge ${db_distu(x2, y2) < db_distu(x, y) ? 'going' : 'coming'} down!`);
+    } else { /* "5 gears turn" for castle drawbridge tune */
+        Soundeffect(se_gears_turning_chains_rattling, 100);
+        await You_hear('gears turning and chains rattling.');
+    }
+    lev1.typ = DRAWBRIDGE_DOWN;
+    const lev2 = game.level.at(x2, y2);
+    lev2.typ = DOOR;
+    lev2.doormask = D_NODOOR;
+    db_occupants[0] = db_set_entity(x, y);
+    db_occupants[1] = db_set_entity(x2, y2);
+    await db_do_entity(db_occupants[0]);          /* do set_entity after first */
+    db_occupants[1] = db_set_entity(x2, y2); /* do_entity for worm tails */
+    await db_do_entity(db_occupants[1]);
+    await revive_nasty(x, y, null);
+    await delallobj(x, y);
+    let t;
+    if ((t = t_at(x, y))) deltrap(t);
+    if ((t = t_at(x2, y2))) deltrap(t);
+    del_engr_at(x, y);
+    del_engr_at(x2, y2);
+    newsym(x, y);
+    newsym(x2, y2);
+    unblock_point(x2, y2); /* vision */
+    if (Is_stronghold(game.u.uz))
+        (game.u.uevent ||= {}).uopened_dbridge = true;
+    db_nokiller();
 }
