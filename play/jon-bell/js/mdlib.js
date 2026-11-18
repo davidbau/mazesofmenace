@@ -161,10 +161,9 @@ function build_options() {
     /* build_savebones_compat_string() — already folded into
      * save_bones_compat_buf above (it is build-constant). */
     STOREOPTTEXT(optbuf);
-    /* NH_DEVEL_STATUS != NH_STATUS_RELEASED on this build ⇒ STATUS_ARG is
-     * " [work-in-progress]"; the trailing "\n" is C's, and doextversion()
-     * strips it with strip_newline(). */
-    optbuf = `${opt_indent}NetHack version 3.7.0 [work-in-progress]\n`;
+    /* NH_DEVEL_STATUS == NH_STATUS_RELEASED on 5.0.0 ⇒ STATUS_ARG is "";
+     * the trailing "\n" is C's, and doextversion() skips prolog anyway. */
+    optbuf = `${opt_indent}NetHack version 5.0.0\n`;
     STOREOPTTEXT(optbuf);
     optbuf = "Options compiled into this edition:";
     STOREOPTTEXT(optbuf);

@@ -464,10 +464,15 @@ function mapfrag_free(mf)
 
 function mapfrag_get(mf,x,y)
 {
-    x=C.i32(x);
-    y=C.i32(y);
-    if(Number(!!(Number(!!(Number(!!(Number(y<0)||Number(x<0)))||Number(y>C.i32((R165(mf)-1)))))||Number(x>C.i32((R164(mf)-1)))))) C.variadic(0,C.literal("outside mapfrag (%i,%i), wanted (%i,%i)"),R164(mf),R165(mf),x,y);
-    return C.splev_chr2typ(RC0(R166(mf)+Number(C.i32((C.i32((y*(C.i32((R164(mf)+1)))))+x)))*1));
+    x = C.i32(x);
+    y = C.i32(y);
+    const width = R164(mf);
+    const height = R165(mf);
+    if (y < 0 || x < 0 || y >= height || x >= width)
+        C.variadic(0, C.literal("outside mapfrag (%i,%i), wanted (%i,%i)"), width, height, x, y);
+    const data = R166(mf);
+    const offset = (Math.imul(y, width + 1) + x) | 0;
+    return C.splev_chr2typ(C.readInt8At(data + offset));
 }
 
 function mapfrag_canmatch(mf)
@@ -977,39 +982,45 @@ function flip_level(flp,extras)
         } while(0);
     }
     /* the map */
-    if(C.i32((flp&1))) {
-        for((x=C.i32(RC3(minxAddress)));Number(x<=C.i32(RC3(maxxAddress)));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(RC3(minyAddress)));Number(y<(C.i32((C.i32(RC3(minyAddress))+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(RC3(maxyAddress))-C.i32(RC3(minyAddress))))+1)))/2))))))));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
-            let ny=(C.i32(((C.i32((C.i32(RC3(maxyAddress))-(y))))+C.i32(RC3(minyAddress)))));
-            flip_dbridge_vertical(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
-            flip_dbridge_vertical(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]));
-            C.copyRecord(trm,((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]),trm,C.sizes["struct rm"]);
-            (otmp=C.cell(((A40(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);
-            (C.cell(((A40(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value=C.cell(((A40(A102(C.svl))+Number(x)*(8*21))+Number(ny)*8),"struct obj *").value);
-            (C.cell(((A40(A102(C.svl))+Number(x)*(8*21))+Number(ny)*8),"struct obj *").value=otmp);
-            (mtmp=C.cell(((A41(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value);
-            (C.cell(((A41(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value=C.cell(((A41(A102(C.svl))+Number(x)*(8*21))+Number(ny)*8),"struct monst *").value);
-            (C.cell(((A41(A102(C.svl))+Number(x)*(8*21))+Number(ny)*8),"struct monst *").value=mtmp);
-        }
+    const xmin = C.readInt16At(minxAddress), xmax = C.readInt16At(maxxAddress);
+    const ymin = C.readInt16At(minyAddress), ymax = C.readInt16At(maxyAddress);
+    const level = A102(C.svl);
+    const locations = A39(level);
+    const objects = A40(level);
+    const monsters = A41(level);
+    const width = C.sizes["struct rm"];
 
+    function swapCells(first, second, orientDrawbridge) {
+        const a = locations + first * width, b = locations + second * width;
+        orientDrawbridge(a);
+        orientDrawbridge(b);
+        C.copyRecord(trm, a, width);
+        C.copyRecord(a, b, width);
+        C.copyRecord(b, trm, width);
+        const oldObject = C.readPointerAt(objects + first * 8);
+        C.writePointerAt(objects + first * 8, C.readPointerAt(objects + second * 8));
+        C.writePointerAt(objects + second * 8, oldObject);
+        const oldMonster = C.readPointerAt(monsters + first * 8);
+        C.writePointerAt(monsters + first * 8, C.readPointerAt(monsters + second * 8));
+        C.writePointerAt(monsters + second * 8, oldMonster);
     }
-    if(C.i32((flp&2))) {
-        for((x=C.i32(RC3(minxAddress)));Number(x<(C.i32((C.i32(RC3(minxAddress))+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(RC3(maxxAddress))-C.i32(RC3(minxAddress))))+1)))/2))))))));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(RC3(minyAddress)));Number(y<=C.i32(RC3(maxyAddress)));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
-            let nx=(C.i32(((C.i32((C.i32(RC3(maxxAddress))-(x))))+C.i32(RC3(minxAddress)))));
-            flip_dbridge_horizontal(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
-            flip_dbridge_horizontal(((A39(A102(C.svl))+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
-            C.copyRecord(trm,((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((A39(A102(C.svl))+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),((A39(A102(C.svl))+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((A39(A102(C.svl))+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),trm,C.sizes["struct rm"]);
-            (otmp=C.cell(((A40(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);
-            (C.cell(((A40(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct obj *").value=C.cell(((A40(A102(C.svl))+Number(nx)*(8*21))+Number(y)*8),"struct obj *").value);
-            (C.cell(((A40(A102(C.svl))+Number(nx)*(8*21))+Number(y)*8),"struct obj *").value=otmp);
-            (mtmp=C.cell(((A41(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value);
-            (C.cell(((A41(A102(C.svl))+Number(x)*(8*21))+Number(y)*8),"struct monst *").value=C.cell(((A41(A102(C.svl))+Number(nx)*(8*21))+Number(y)*8),"struct monst *").value);
-            (C.cell(((A41(A102(C.svl))+Number(nx)*(8*21))+Number(y)*8),"struct monst *").value=mtmp);
-        }
 
+    if (flp & 1) {
+        const stop = ymin + Math.trunc((ymax - ymin + 1) / 2);
+        for (x = xmin; x <= xmax; x++) {
+            for (y = ymin; y < stop; y++) {
+                const opposite = ymax - y + ymin;
+                swapCells(x * 21 + y, x * 21 + opposite, flip_dbridge_vertical);
+            }
+        }
+    }
+    if (flp & 2) {
+        const stop = xmin + Math.trunc((xmax - xmin + 1) / 2);
+        for (x = xmin; x < stop; x++) {
+            const opposite = xmax - x + xmin;
+            for (y = ymin; y <= ymax; y++)
+                swapCells(x * 21 + y, opposite * 21 + y, flip_dbridge_horizontal);
+        }
     }
     /* timed effects */
     for((timer=R108(C.gt));timer;(timer=R72(timer))) {

@@ -7,7 +7,7 @@ import { gs, H_UTF8, SYM_PCHAR, SYM_OC, SYM_MON } from './const.js';
 import { glyphid_table, glyph_is_monster, glyph_to_mon, glyph_is_object, glyph_to_obj, glyph_to_explosion, NUM_OBJECTS, MON_MLET, GLYPH_OBJ_OFF, GLYPH_OBJ_PILETOP_OFF } from './display.js';
 import { LOADSYMS, customize_s_glyph_utf8, apply_pending_s_utf8 } from './symbols.js';
 import { rgbstr_to_int32 } from './coloratt.js';
-import { set_map_u } from './utf8map.js'; // relocate-fns
+import { set_map_u, unicode_val, add_custom_urep_entry } from './utf8map.js'; // relocate-fns
 import { PRIMARYSET } from './const.js'; // relocate-fns
 import { primary_showsym } from './symbols.js'; // relocate-fns
 import { NO_COLOR } from './terminal.js'; // relocate-fns
@@ -622,13 +622,11 @@ let colornag = 0, glyphnag = 0;
 function to_custom_symset_entry_callback(glyph, findwhat) {
     const idx = gs.symset_which_set | 0;
     if (findwhat.extraval) findwhat.extraval.value = glyph;
-    const match = /^[Uu]\+([0-9a-fA-F]{1,7})/.exec(findwhat.unicode_val || '');
-    const uval = match ? parseInt(match[1], 16) : 0;
+    const uval = findwhat.unicode_val ? unicode_val(findwhat.unicode_val) : 0;
     if (uval && uval < 0x110000 && !(uval >= 0xd800 && uval < 0xe000)) {
         const name = gs.symset?.[idx]?.name;
         if (name) {
-            add_custom_glyph_entry(name, glyph, idx, custom_ureps,
-                { u: { utf32ch: uval, utf8str: String.fromCodePoint(uval) } });
+            add_custom_urep_entry(name, glyph, uval, String.fromCodePoint(uval), idx);
             // The map renderer also keeps a symbol-indexed Unicode view.
             // Update it only after C's match, UTF-8 and symset checks succeed.
             if (idx === 0 && findwhat.findtype !== find_glyph)

@@ -380,8 +380,15 @@ export function callUhitm(services,layout,name,...args){
    else if(t==='int')args[i]=env.int(args[i]);
    else if(t==='long'||t==='long long')args[i]=env.long(args[i]);
   }
-  const invoke=()=>env.nativeNamespace?env.nativeNamespace[name](...args):withCEnvironment(env,()=>core[name](...args));
-  let result;if(env.nativeState){env.nativeState.enter();try{result=invoke();}finally{env.nativeState.leave();}}else result=invoke();
+  let result;
+  if (Object.hasOwn(env,'nativeState')) {
+   const state=env.nativeState;
+   state.enter();
+   try { result=env.nativeNamespace[name](...args); }
+   finally { state.leave(); }
+  } else {
+   result=withCEnvironment(env,()=>core[name](...args));
+  }
   return typeof result==='string'?services.literal(result):result?.address??result;
  }finally{services.stackRestore(saved);}
 }

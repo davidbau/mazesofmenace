@@ -96,7 +96,7 @@ import { mon_knows_traps } from './mondata.js';
 import { m_useup as lifesave_m_useup, m_carrying } from './mthrowu.js';
 import { extract_from_minvent as extract_from_minvent_md, mon_break_armor } from './worn.js';
 import { m_at, mon_nam as mon_nam_wm } from './uhitm.js';
-import { setmnotwielded } from './weapon.js';
+import { possibly_unwield, setmnotwielded } from './weapon.js';
 import { experience, newexplevel } from './exper.js';
 import { grddead } from './vault.js';
 import { cansee, couldsee, vision_recalc } from './vision.js';
@@ -2523,10 +2523,6 @@ function mgender_from_permonst(mtmp, mdat) {
 /* C monst.h:214 DEADMONSTER(mon) == mon->mhp < 1. */
 function DEADMONSTER_nc(mon) { return (mon.mhp | 0) < 1; }
 
-/* C monattk.h:28 AT_WEAP == 254 — the same literal js/dochug.js:165 and
- * js/dog.js:48 already carry (it is NOT 1; see js/monmove.js:1350). */
-const AT_WEAP_NC = 254;
-
 /* C monflag.h M2_ROCKTHROW / mondata.h throws_rocks(ptr).  Same literal this
  * file already spells at :17596 for its own mflags2 decode. */
 const M2_ROCKTHROW_NC = 0x08000000;
@@ -2545,47 +2541,6 @@ function obj_extract_from_minvent_nc(mon, obj) {
     obj.where = 0;
     obj.nobj = null;
     obj.ocarry = null;
-}
-
-async function possibly_unwield_nc(mon, polyspot) {
-    let obj;
-    const mw_tmp = MON_WEP_nc(mon);
-
-    if (!mw_tmp)
-        return;
-    for (obj = mon.minvent; obj; obj = obj.nobj)
-        if (obj === mw_tmp)
-            break;
-    if (!obj) { /* The weapon was stolen or destroyed */
-        mon.mw = null; /* C MON_NOWEP(mon) */
-        mon.weapon_check = NEED_WEAPON;
-        return;
-    }
-    if (!attacktype(mon.data, AT_WEAP_NC)) {
-        await setmnotwielded(mon, mw_tmp);
-        mon.weapon_check = NO_WEAPON_WANTED;
-        /* if we're going to call distant_name(), do so before extract_self */
-        if (cansee(mon.mx | 0, mon.my | 0)) {
-            await pline_mon(mon, "%s drops %s.", Monnam(mon),
-                      (await distant_name_nc(obj, doname_nc)));
-            newsym(mon.mx | 0, mon.my | 0);
-        }
-        obj_extract_from_minvent_nc(mon, obj); /* C obj_extract_self(obj) */
-        /* might be dropping object into water or lava */
-        if (!await flooreffects(obj, mon.mx | 0, mon.my | 0, "drop")) {
-            if (polyspot)
-                bypass_obj(obj);
-            await place_object(obj, mon.mx | 0, mon.my | 0);
-            await stackobj(obj);
-        }
-        return;
-    }
-    /* The remaining case where there is a change is where a monster is
-     * polymorphed into a stronger/weaker monster with a different choice of
-     * weapons.  ... Note that if there is no change, setting the check to
-     * NEED_WEAPON is harmless. */
-    if (!(mwelded(mw_tmp) && (mon.weapon_check | 0) === NO_WEAPON_WANTED))
-        mon.weapon_check = NEED_WEAPON;
 }
 
 /* C mon.c:5796-5919 usmellmon().  Each message is a blocking pline (vpline
@@ -2926,7 +2881,7 @@ export async function newcham(mtmp, mdat, ncflags) {
         && !Protection_from_shape_changers_nc())
         mtmp.cham = pm_to_cham(newmndx);
 
-    await possibly_unwield_nc(mtmp, polyspot); /* might lose use of weapon */
+    await possibly_unwield(mtmp, polyspot); /* might lose use of weapon */
     /* C worn.c:1177 mon_break_armor — the real port, js/trap.js:8138.  Several
      * of ITS OWN helpers are stubs in that file (breakarm/sliparm/m_lose_armor/
      * can_saddle), which is a pre-existing gap in js/trap.js and not this

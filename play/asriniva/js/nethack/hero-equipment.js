@@ -62,7 +62,6 @@ export function enableHeroEquipment(environment,layouts,hero){
  const wd=locals.wield;
  // Native hack.h ynq: yn_function(query, ynqchars, 'q', TRUE).
  wd.ynq=prompt=>environment.resolve('yn_function')(typeof prompt==='string'?services.literal(prompt):address(prompt),environment.requireGlobal('ynqchars'),113,1);
- wd.strcmp=(left,right)=>services.strcmp(typeof left==='string'?services.literal(left):address(left),typeof right==='string'?services.literal(right):address(right));
  wd.commonString=index=>address(ctypes.getField('struct c_color_names',environment.requireGlobal('c_color_names'),transport.int(index)===0?'c_black':transport.int(index)===1?'c_blue':'c_amber','const char *'));
  for(const [local,fields]of [[wd,['cursed','bknown','lamplit','unpaid','oerodeproof','known']]])Object.assign(local,{objectBit:(p,i)=>bit('struct obj',p,fields[i]),setObjectBit:(p,i,v)=>setBit('struct obj',p,fields[i],v)});
  wd.classBit=p=>bit('struct objclass',p,'oc_big');

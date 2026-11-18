@@ -7,6 +7,7 @@ import { rounddiv } from './hack.js';
 import { u_carried_gloves } from './invent.js';
 import { set_msg_xy as set_msg_xy_mu } from './pline.js';
 import { registerStaticReset } from './statics.js';
+import { c_sa_no } from './monst.js';
 import { getyear, yyyymmdd } from './calendar.js';
 import { attacktype_fordmg, noattacks } from './mondata.js';
 import { drain_item } from './zap.js';
@@ -4375,11 +4376,11 @@ export function getmattk(magr, udefend, mdef, indx, prev_result) {
     const raw_adtyp = (k) => ((raw && raw[k]) ? (raw[k][1] | 0) : 0);
     const raw_aatyp = (k) => ((raw && raw[k]) ? (raw[k][0] | 0) : 0);
 
-    /* C mhitu.c:320-334; monsters.h:2925-2927 c_sa_no, including NO_ATTKs. */
+    /* C mhitu.c:320-334; monst.c:79 / monsters.h:2925-2927 c_sa_no. */
     if (!(game.sysopt?.seduce ?? true)) {
         if (raw_adtyp(0) === AD_SSEX) {
-            const a = [[AT_CLAW_, AD_PHYS_, 1, 3], [AT_CLAW_, AD_PHYS_, 1, 3], [AT_BITE_, AD_DRLI_MU, 2, 6]][indx] || [AT_NONE_, AD_PHYS_, 0, 0];
-            Object.assign(attk, { aatyp: a[0], adtyp: a[1], damn: a[2], damd: a[3] });
+            const a = c_sa_no[indx] || c_sa_no[3];
+            Object.assign(attk, { aatyp: a.aatyp, adtyp: a.adtyp, damn: a.damn, damd: a.damd });
             substituted = true;
         } else if (attk.adtyp === AD_SSEX) {
             attk.adtyp = AD_DRLI_MU;

@@ -15,6 +15,7 @@ import { match_glyph as match_glyph_real,
          glyphmap, purge_custom_entries, clear_all_glyphmap_colors, apply_customizations, glyphid_cache_status, fill_glyphid_cache, free_glyphid_cache } from './glyphs.js';
 import { H_UNK, WC2_U_UTF8STR, Is_rogue_level } from './const.js';
 import { config_error_add } from './cfgfiles.js';
+import { free_all_glyphmap_u, unicode_val } from './utf8map.js';
 
 /* C symbols.c:85-318. All symbol tables contain SYMF_MAX (196) nhsym
  * entries, including the six miscellaneous symbols after the warnings. */
@@ -121,7 +122,7 @@ export function clear_symsetentry(which_set, name_too) {
     if (name_too) set.name = null;
     const other_set = which_set === 0 ? 1 : 0;
     if (old_handling === H_UTF8 && gs_symset(other_set).handling !== H_UTF8)
-        for (const gm of glyphmap) gm.u = null;
+        free_all_glyphmap_u();
     purge_custom_entries(which_set);
     if (which_set === 0) game._pendingSUtf8 = new Map();
     clear_all_glyphmap_colors();
@@ -487,17 +488,18 @@ export function parse_sym_line(line, which_set, st = null) {
         } else if (st.start) {
             glyphrep_to_custom_map_entries_real(buf, { value: 0 });
             // Preserve the display adapter's symbol-indexed Unicode view.
-            const u = /^U\+([0-9a-f]+)/i.exec(val);
-            if (which_set === 0 && u && parseInt(u[1], 16))
-                game.gp.primary_utf8[symp.idx] = parseInt(u[1], 16);
+            const uval = unicode_val(val);
+            if (which_set === 0 && uval && uval < 0x110000 && !(uval >= 0xd800 && uval < 0xe000))
+                game.gp.primary_utf8[symp.idx] = uval;
         }
     } else if (st.start) {
         glyphrep_to_custom_map_entries_real(buf, { value: 0 });
         if (which_set === 0 && set.handling === H_UTF8) {
             const gsym = match_sym('S_' + buf.slice(2));
-            const u = /^U\+([0-9a-f]+)/i.exec(val);
-            if (gsym && gsym.range !== SYM_CONTROL && u && parseInt(u[1], 16))
-                game.gp.primary_utf8[gsym.idx] = parseInt(u[1], 16);
+            const uval = unicode_val(val);
+            if (gsym && gsym.range !== SYM_CONTROL && uval && uval < 0x110000
+                && !(uval >= 0xd800 && uval < 0xe000))
+                game.gp.primary_utf8[gsym.idx] = uval;
         }
     }
     return 1;

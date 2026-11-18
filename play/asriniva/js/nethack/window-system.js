@@ -11,7 +11,7 @@ import * as tty from '../ported/wintty.js';
 import {initializeWintty,callWintty,winttyState} from './bindings/wintty.js';
 import * as windows from '../ported/windows.js';
 import {initializeWindows,callWindows} from './bindings/windows.js';
-export function enableWindowSystem(environment,layouts){
+export function enableWindowSystem(environment,layouts,terminalOptions){
  const {services,memory,functions}=environment,ctypes=createCTypes(memory,{...records,records:{...records.records,...abi.records},enums:{...records.enums,...abi.enums}},environment.bitfields),W=abi.windows,T=abi.wintty,schema=T.schema,L=layouts.wintty;
  const address=environment.address,text=p=>typeof p==='string'?services.literal(p):address(p);
  const canonical=t=>{t=t.replace(/\b(const|volatile)\b/g,'').replace(/\s+/g,' ').trim();const seen=new Set();while(schema.aliases[t]&&!seen.has(t)){seen.add(t);t=schema.aliases[t];}return t;};
@@ -21,7 +21,7 @@ export function enableWindowSystem(environment,layouts){
  for(const [name,type]of Object.entries({...T.zeroStorage,...T.dataTypes}))shared(name,type);
  const nullGlyph=environment.requireGlobal('display.nul_glyphinfo');try{environment.requireGlobal('nul_glyphinfo');}catch(error){if(!error.message.startsWith('Unresolved standalone global '))throw error;environment.linkGlobal('nul_glyphinfo',nullGlyph);}
  if(typeof services.tgetent!=='function')environment.enableDependencies();
- const terminal=Object.hasOwn(environment.status(),'termcap')?null:environment.enableTerminal(layouts.termcap);
+ const terminal=Object.hasOwn(environment.status(),'termcap')?null:environment.enableTerminal(layouts.termcap,terminalOptions);
  const proxy=()=>new Proxy(Object.create(services),{get:(o,k,r)=>Reflect.has(o,k)?Reflect.get(o,k,r):typeof k==='string'?(...args)=>environment.resolve(k)(...args):undefined});
  const owner=nativeStateFor(environment);createNativeRecordViews(environment);
  const windowCallbacks=createNativeWindowCallbacks(environment,owner);environment.nativeWindowCallbacks=windowCallbacks;

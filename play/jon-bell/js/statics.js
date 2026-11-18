@@ -40,38 +40,7 @@
 // module load, before any game code can run, and every write below is guarded
 // by a !== compare, so the first reset of a process writes nothing at all and
 
-import monsPack from './makemon_mons.json' with { type: 'json' };
-import monMattkPack from './makemon_mattk.json' with { type: 'json' };
-import { PM_HIPPOCRATES, PM_KING_ARTHUR } from './pm.generated.js';
-
-const MONS = monsPack.mons;
-const MATTK = monMattkPack.mattk;
-
-// C v5 include/monsters.h:3515-3526: both leaders have speed 15, not the
-// older generated rows' 12.  Correct the shared initializers before taking
-// the pristine snapshot so every consumer and segment uses the v5 values.
-MONS[PM_HIPPOCRATES][9] = 15;
-MONS[PM_KING_ARTHUR][9] = 15;
-/* C v5 include/monsters.h:3516 — Hippocrates has LVL(20, 15, 0, 90, 0).
- * Correct the older table's speed before capturing the static initialisers,
- * so every mons[] reader and each fresh game uses the same v5 value. */
-/* NetHack 5.0 include/monsters.h:3516: Hippocrates has LVL(20, 15, ...).
- * Correct the older packed speed before snapshotting C's initialisers so
- * every consumer, including mcalcmove and permonstTemplate, shares it. */
-/* C v5 include/monsters.h:3516: Hippocrates has LVL(20, 15, 0, 90, 0).
- * Correct the shared speed row before capturing the per-process initialisers. */
-MONS[PM_HIPPOCRATES][9] = 15;
-/* NetHack 5.0 monsters.h:3515-3525: both leaders have LVL speed 15.
- * Update the older packed initialisers before snapshotting them for reset. */
-MONS[PM_HIPPOCRATES][9] = 15;
-MONS[PM_KING_ARTHUR][9] = 15;
-/* NetHack 5.0 include/monsters.h:3515-3516: Hippocrates has speed 15.
- * Correct the shared packed initialiser before snapshotting it for resets. */
-MONS[PM_HIPPOCRATES][9] = 15;
-
-const MONS_PRISTINE = MONS.map((row) => row.slice());
-const MATTK_PRISTINE = MATTK.map((row) => row.map(
-    (a) => ({ aatyp: a.aatyp, adtyp: a.adtyp, damn: a.damn, damd: a.damd })));
+import { monst_globals_init } from './monst.js';
 
 /** @type {{name: string, fn: () => void}[]} */
 const derivedResets = [];
@@ -98,37 +67,16 @@ export function registerStaticReset(name, fn) {
     derivedResets.push({ name, fn });
 }
 
-/* Restore the two shared monster tables to their static initialisers.
- * Element-wise and compare-first: rule 1 above, and it makes the common case
- * (nothing was mutated) pure reads. */
-function restoreMonsterTables() {
-    for (let i = 0; i < MONS_PRISTINE.length; i++) {
-        const row = MONS[i], pristine = MONS_PRISTINE[i];
-        for (let j = 0; j < pristine.length; j++)
-            if (row[j] !== pristine[j])
-                row[j] = pristine[j];
-    }
-    for (let i = 0; i < MATTK_PRISTINE.length; i++) {
-        const row = MATTK[i], pristine = MATTK_PRISTINE[i];
-        for (let k = 0; k < pristine.length; k++) {
-            const atk = row[k], p = pristine[k];
-            if (atk.aatyp !== p.aatyp) atk.aatyp = p.aatyp;
-            if (atk.adtyp !== p.adtyp) atk.adtyp = p.adtyp;
-            if (atk.damn !== p.damn) atk.damn = p.damn;
-            if (atk.damd !== p.damd) atk.damd = p.damd;
-        }
-    }
-}
-
 /**
  * The C process boundary.  Called first thing by resetGame(), i.e. once per
  * segment, which is once per C process in the organiser's recording.
  *
- * ORDER MATTERS: tables first, then the memos derived from them, so an
- * invalidator that chooses to rebuild eagerly sees pristine inputs.
+ * ORDER MATTERS: tables first (via monst_globals_init), then the memos derived
+ * from them, so an invalidator that chooses to rebuild eagerly sees pristine
+ * inputs.
  */
 export function resetStatics() {
-    restoreMonsterTables();
+    monst_globals_init();
     for (let i = 0; i < derivedResets.length; i++)
         derivedResets[i].fn();
 }

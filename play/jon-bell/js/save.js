@@ -53,12 +53,20 @@ export async function savelev(lev, freeing = false) {
         const info = (game.level_info[lev] = game.level_info[lev] || { flags: 0 });
         info.flags |= VISITED;
     }
-    /* C save.c:894 savemonchn — every priest on the level being saved forgets
-     * its temple-entry feedback counters, so a revisit starts fresh. */
-    for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
-        if (mtmp.ispriest)
-            forget_temple_entry(mtmp);
+    /* C save.c:891-894 savemonchn under update_file(): every priest on the
+     * level being saved forgets its temple-entry feedback counters, so a
+     * revisit starts fresh. */
+    if (!freeing) {
+        for (let mtmp = game.fmon; mtmp; mtmp = mtmp.nmon) {
+            if (mtmp.ispriest)
+                forget_temple_entry(mtmp);
+        }
     }
+    /* C save.c:520-522,570-574 save_adjust_levelflags(): store stasis_until
+     * relative to svm.moves when writing a level file so elapsed turns on other
+     * levels do not tick down stasis while the level is inactive. */
+    if (!freeing && game.level?.flags)
+        game.level.flags.stasis_until = (game.level.flags.stasis_until | 0) - (game.moves | 0);
     const g = game;
     /* C save.c:494 Sfo_long(&svm.moves, "lev-timestmp") — the turn the level
      * was left, read back by getlev() as `svo.omoves` to compute elapsed. */
@@ -328,111 +336,160 @@ async function savegamestate() {
     return state;
 }
 
-/* C ref: save.c:72 dosave0() — "returns 1 if save successful".  The C body's
- * work that has no JS counterpart is called out rather than silently dropped:
- * program_state.saving/notice_mon_off() (display suppression during the write),
- * the hangup fixups (u.uinvulnerable, iflags.save_uswallow/uinwater/uburied —
- * none of which this port sets), and the per-level file writes (savelev() already keeps those in game.levelStore,
- * which travels inside the snapshot). */
+/* Remember any standing topline into _msg_history and clear _pending_message,
+ * matching C clear_nhwindow(WIN_MESSAGE) -> remember_topl(). */
+function _remember_and_clear_topl(g) {
+    if (g._pending_message
+        && !(g._topl_suppress_history || g._topl_suppress_once)
+        && g._pending_message !== g._topl_history_recall) {
+        let text = String(g._pending_message);
+        if (text.endsWith('--More--'))
+            text = text.slice(0, -8);
+        if (text.length > 0)
+            (g._msg_history ||= []).push(text);
+    }
+    g._pending_message = '';
+}
+
+/* C ref: save.c:72 dosave0() — "returns 1 if save successful". */
 export async function dosave0() {
     const g = game;
     g.program_state = g.program_state || {};
     g.program_state.saving = (g.program_state.saving | 0) + 1;
-    // C save.c:98 — settle active inventory and objects in transit before saving.
-    await done_object_cleanup();
-    if (g._pending_message
-        && _topl_more_pages(g._pending_message, _topl_joins_snapshot(g._pending_message)).length > 1)
-        await force_more_pages(g._pending_message, true, false, '');
-    /* C save.c:98 — `if (!program_state.something_worth_saving || !gs.SAVEF[0])
-     * goto done;` i.e. no game in progress, or no file name. */
-    const path = savefile_name(g.plname);
-    if (!g.plname) {
-        g.program_state.saving = 0;
-        return 0;
-    }
-    /* C save.c:113-122 — an existing save file (a wizard/explore restore
-     * that answered 'y' to "keep the save file?") asks before overwriting;
-     * 'n' is `goto done` with res 0. */
-    if (g.iflags?.window_inited && vfsReadFile(path) !== null) {
-        g._pending_message = '';    /* clear_nhwindow(WIN_MESSAGE) */
-        await There('seems to be an old save file.');
-        const { y_n_default } = await import('./cmd.js');
-        if (await y_n_default('Overwrite the old file?', 'n') === 'n') {
-            g.program_state.saving = 0;
+    try {
+        /* C save.c:87-93 — hangup fixups so restored state is consistent. */
+        if (g.u) g.u.uinvulnerable = 0;
+        if (g.iflags?.save_uswallow) {
+            if (g.u) g.u.uswallow = 1;
+            g.iflags.save_uswallow = 0;
+        }
+        if (g.iflags?.save_uinwater) {
+            if (g.u) g.u.uinwater = 1;
+            g.iflags.save_uinwater = 0;
+        }
+        if (g.iflags?.save_uburied) {
+            if (g.u) g.u.uburied = 1;
+            g.iflags.save_uburied = 0;
+        }
+        // C save.c:98 — settle active inventory and objects in transit before saving.
+        await done_object_cleanup();
+        if (g._pending_message
+            && _topl_more_pages(g._pending_message, _topl_joins_snapshot(g._pending_message)).length > 1)
+            await force_more_pages(g._pending_message, true, false, '');
+        /* C save.c:100 — `if (!program_state.something_worth_saving || !gs.SAVEF[0])
+         * goto done;` i.e. no game in progress, or no file name. */
+        const path = savefile_name(g.plname);
+        if (!g.program_state.something_worth_saving || !g.plname)
+            return 0;
+        /* C save.c:113-122 — an existing save file (a wizard/explore restore
+         * that answered 'y' to "keep the save file?") asks before overwriting;
+         * 'n' is `goto done` with res 0. */
+        if (g.iflags?.window_inited && vfsReadFile(path) !== null) {
+            _remember_and_clear_topl(g); /* C save.c:116 clear_nhwindow(WIN_MESSAGE) */
+            await There('seems to be an old save file.');
+            const { y_n_default } = await import('./cmd.js');
+            if (await y_n_default('Overwrite the old file?', 'n') === 'n')
+                return 0;
+            /* y_n_default's _answered already recorded the answered prompt. */
+            g._pending_message = '';
+        }
+        /* C save.c:141-145 — undo the date-dependent luck that moveloop_preamble
+         * applied at startup, so the FILE carries Luck without it; the restoring
+         * process's own preamble re-applies its date. */
+        if ((g.flags?.moonphase | 0) === 4 /* FULL_MOON */)
+            change_luck(-1);
+        if (g.flags?.friday13)
+            change_luck(1);
+        if (g.iflags?.window_inited)
+            _remember_and_clear_topl(g); /* C save.c:147 clear_nhwindow(WIN_MESSAGE) */
+        await dangling_light_check(); /* save_light_sources -> obj_is_local panic */
+        try {
+            // C save.c:168 -> savelev_core(:483-488): purge before writing.
+            if ((g.iflags.purge_monsters | 0) > 0)
+                await dmonsfree();
+            if (g.objs_deleted) dobjsfree(); // save.c:489-491
+            /* C save.c:168-169,307,894: saving the current level and migrating
+             * monsters runs savemonchn(), resetting each priest's entry timers
+             * before the save is written, just as savelev() does on departure. */
+            for (const head of [g.fmon, g.migrating_mons]) {
+                for (let mon = head; mon; mon = mon.nmon)
+                    if (mon.ispriest) forget_temple_entry(mon);
+            }
+            /* C save.c:168 savelev(nhfp, ledger_no(&u.uz)) -> save.c:494 marks the
+             * level being saved VISITED, so the restored game's level_info has it
+             * (lev_by_name's "branch to ..." needs both ends VISITED). */
+            if (g.u?.uz) {
+                const cur = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + (g.u.uz.dlevel | 0);
+                g.level_info = g.level_info || {};
+                if (cur >= 0 && cur <= maxledgerno())
+                    (g.level_info[cur] = g.level_info[cur] || { flags: 0 }).flags |= VISITED;
+            }
+            /* Detach before C's inactive-level copy pass: those getlev/savelev
+             * operations work on file records, not on the live current level. */
+            const state = decode_save_graph(encode_save_graph(await savegamestate()));
+            /* C save.c:959 savefruitchn — omit negative fruit IDs from the save. */
+            if (state.ffruit) {
+                let head = null, tail = null;
+                for (let f = state.ffruit; f; f = f.nextf) {
+                    if ((f.fid | 0) >= 0) {
+                        if (!head) head = f;
+                        else tail.nextf = f;
+                        tail = f;
+                    }
+                }
+                if (tail) tail.nextf = null;
+                state.ffruit = head;
+            }
+            const uz = g.u?.uz;
+            const current = uz
+                ? ((g.dungeons?.[uz.dnum]?.ledger_start | 0) + (uz.dlevel | 0))
+                : -1;
+            if (uz) {
+                try {
+                    g.u.uz = { dnum: 0, dlevel: 0 };
+                    const stored = state.levelStore instanceof Map
+                        ? [...state.levelStore.entries()] : [];
+                    stored.sort((a, b) => a[0] - b[0]);
+                    const { find_lev_obj_no_longer_held } = await import('./restore.js');
+                    for (const [lev, snap] of stored) {
+                        if ((lev | 0) === current || !snap)
+                            continue;
+                        /* C save.c:210 getlev() re-prepends the stairway, trap
+                         * and damage chains and re-inserts the level timers
+                         * (restore.c:978, 1159-1160, restdamage, restore_timers),
+                         * and find_lev_obj() -> place_object() calls
+                         * obj_no_longer_held() on fobj in reverse order
+                         * (restore.c:93-97, 1168) before save.c:213 savelev() writes
+                         * them back. */
+                        snap.stairs = reverse_chain(snap.stairs, 'next');
+                        snap.ftrap = reverse_chain(snap.ftrap, 'ntrap');
+                        if (snap.level)
+                            snap.level.damagelist = reverse_chain(snap.level.damagelist, 'next');
+                        await find_lev_obj_no_longer_held(snap.fobj);
+                        if (snap.timers) restore_timer_order(snap.timers);
+                        if (!snap.bubbles)
+                            continue;
+                        snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
+                    }
+                } finally {
+                    g.u.uz = uz;
+                }
+            }
+            const payload = encode_save_graph(state);
+            /* C save.c:129 create_savefile() plus version and player header. */
+            if (vfsWriteFile(path, `NHSAVE 2\n${g.plname}\n${payload}\n`)) {
+                g.program_state.something_worth_saving = 0; // C save.c:227
+                return 1;
+            }
+            return 0;
+        } catch (e) {
+            const msg = String(e?.message || '');
+            if (msg.includes('Input queue empty') || msg.startsWith('nh_terminate:'))
+                throw e;
             return 0;
         }
-    }
-    /* C save.c:141-145 — undo the date-dependent luck that moveloop_preamble
-     * applied at startup, so the FILE carries Luck without it; the restoring
-     * process's own preamble re-applies its date. */
-    if ((g.flags?.moonphase | 0) === 4 /* FULL_MOON */)
-        change_luck(-1);
-    if (g.flags?.friday13)
-        change_luck(1);
-    await dangling_light_check(); /* save_light_sources -> obj_is_local panic */
-    try {
-        // C save.c:168 -> savelev_core(:483-488): purge before writing.
-        if ((g.iflags.purge_monsters | 0) > 0)
-            await dmonsfree();
-        if (g.objs_deleted) dobjsfree(); // save.c:489-491
-        /* C save.c:168-169,307,894: saving the current level and migrating
-         * monsters runs savemonchn(), resetting each priest's entry timers
-         * before the save is written, just as savelev() does on departure. */
-        for (const head of [g.fmon, g.migrating_mons]) {
-            for (let mon = head; mon; mon = mon.nmon)
-                if (mon.ispriest) forget_temple_entry(mon);
-        }
-        /* C save.c:168 savelev(nhfp, ledger_no(&u.uz)) -> save.c:494 marks the
-         * level being saved VISITED, so the restored game's level_info has it
-         * (lev_by_name's "branch to ..." needs both ends VISITED). */
-        if (g.u?.uz) {
-            const cur = (g.dungeons?.[g.u.uz.dnum]?.ledger_start | 0) + (g.u.uz.dlevel | 0);
-            g.level_info = g.level_info || {};
-            if (cur >= 0 && cur <= maxledgerno())
-                (g.level_info[cur] = g.level_info[cur] || { flags: 0 }).flags |= VISITED;
-        }
-        /* Detach before C's inactive-level copy pass: those getlev/savelev
-         * operations work on file records, not on the live current level. */
-        const state = decode_save_graph(encode_save_graph(await savegamestate()));
-        const uz = g.u?.uz;
-        const current = uz
-            ? ((g.dungeons?.[uz.dnum]?.ledger_start | 0) + (uz.dlevel | 0))
-            : -1;
-        if (uz) {
-            try {
-                g.u.uz = { dnum: 0, dlevel: 0 };
-                const stored = state.levelStore instanceof Map
-                    ? [...state.levelStore.entries()] : [];
-                stored.sort((a, b) => a[0] - b[0]);
-                for (const [lev, snap] of stored) {
-                    if ((lev | 0) === current || !snap)
-                        continue;
-                    /* C save.c:210 getlev() re-prepends the stairway, trap
-                     * and damage chains and re-inserts the level timers
-                     * (restore.c:978, 1159-1160, restdamage, restore_timers)
-                     * before save.c:213 savelev() writes them back, so this
-                     * copy pass reverses each chain once, exactly as the
-                     * inactive-level pass of dorecover does again. */
-                    snap.stairs = reverse_chain(snap.stairs, 'next');
-                    snap.ftrap = reverse_chain(snap.ftrap, 'ntrap');
-                    if (snap.level)
-                        snap.level.damagelist = reverse_chain(snap.level.damagelist, 'next');
-                    if (snap.timers) restore_timer_order(snap.timers);
-                    if (!snap.bubbles)
-                        continue;
-                    snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
-                }
-            } finally {
-                g.u.uz = uz;
-            }
-        }
-        const payload = encode_save_graph(state);
-        /* C save.c:129 create_savefile() plus version and player header. */
-        return vfsWriteFile(path, `NHSAVE 2\n${g.plname}\n${payload}\n`) ? 1 : 0;
-    } catch {
-        return 0;
     } finally {
-        g.program_state.saving = 0;
+        g.program_state.saving = Math.max(0, (g.program_state.saving | 0) - 1);
     }
 }
 
@@ -471,6 +528,8 @@ export async function freedynamicdata() {
     free_menu_coloring(); // C save.c:1084
     const { free_tutorial } = await import('./nhlua.js');
     await free_tutorial(); // C save.c:1135 (only needed if quitting while in tutorial)
+    const { release_runtime_info } = await import('./mdlib.js');
+    release_runtime_info(); // C save.c:1167
     const { wish_history_flush } = await import('./zap.js');
     wish_history_flush();
 }

@@ -6,7 +6,7 @@ import * as termcap from '../ported/termcap.js';
 import {bindNativeTermcap} from './bindings/termcap.js';
 import {encodeRecorderScreen} from '../wasm-replay-support.js';
 import {address} from './memory-services.js';
-export function enableTerminal(environment,layout,{onCapture}={}) {
+export function enableTerminal(environment,layout,{onCapture,preservePublishedSaveCursor=false}={}) {
     const {services,memory,functions,ctypes,transport}=environment;
     if(!services.flags||typeof services.tgetent!=='function'||typeof services.fflush!=='function')throw new Error('Enable DECL, dependencies and stdio before terminal');
     const width=d=>d.t?Number(d.t.slice(1))/8:d.p!==undefined||d.f?8:d.s?Number(layout[d.s+'Size']):d.a.reduce((a,b)=>a*b,1)*width(d.e);
@@ -28,7 +28,7 @@ export function enableTerminal(environment,layout,{onCapture}={}) {
         const record=schemas[kind]?.[1],f=record?.fields[index];if(!f)throw new Error('Unknown terminal C field');
         return{type:metadata.typeAliases[record.ctype]??record.ctype,f,p};
     }
-    Object.assign(local,{nativeTerminalOwner:local,nativeOwner,nativeTypes:ctypes,moduleKey:environment,
+    Object.assign(local,{nativeTerminalOwner:local,nativeOwner,nativeTypes:ctypes,moduleKey:environment,preservePublishedSaveCursor,
         global:i=>{if(!globals[i])throw new Error('Unknown terminal global');return globals[i];},
         read:(kind,p,i)=>{const e=field(kind,p,i);return e.f.d.a||e.f.d.s?BigInt(ctypes.locate(e.type,p,e.f.name).at):ctypes.getField(e.type,p,e.f.name,scalar(e.f.d));},
         write:(kind,p,i,v)=>{const e=field(kind,p,i);return ctypes.setField(e.type,p,e.f.name,scalar(e.f.d),v);},

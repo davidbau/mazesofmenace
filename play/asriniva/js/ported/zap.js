@@ -839,8 +839,8 @@ export function revive(corpse, by_hero) {
     }
 /* applicable when montraits/corpse->oextra->omonst aren't used */
     (cgend = (C.int(((corpse).spe & C.CORPSTAT_GENDER))));
-    if (Number(cgend == C.CORPSTAT_MALE)) (mmflags = C.uint((mmflags | C.MM_MALE)));
-    else if (Number(cgend == C.CORPSTAT_FEMALE)) (mmflags = C.uint((mmflags | C.MM_FEMALE)));
+    if (Number(cgend == C.CORPSTAT_MALE)) (mmflags = C.uint((mmflags | C.uint(C.MM_MALE))));
+    else if (Number(cgend == C.CORPSTAT_FEMALE)) (mmflags = C.uint((mmflags | C.uint(C.MM_FEMALE))));
     if (C.cant_revive(montype, (C.char(1)), corpse)) {
 /* make a zombie or doppelganger instead */
 /* note: montype has changed; mptr keeps old value for newcham() */

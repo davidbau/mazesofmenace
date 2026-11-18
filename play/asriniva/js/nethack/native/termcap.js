@@ -862,6 +862,7 @@ function nomux_capture_screen()
 function nomux_enter_raw_mode()
 {
     
+    C.state.rawModeResetPending = false;
     C.nomux_raw_active = C.int(1);
     C.nomux_raw_row = C.int(0);
     C.nomux_raw_col = C.int(0);
@@ -869,6 +870,18 @@ function nomux_enter_raw_mode()
      * terminal returns to a blank main-screen state before the high-score
      * lines print. Mirror that by clearing the shadow. */
     nomux_clear_screen();
+}
+
+function nomux_reset_raw_mode()
+{
+    // Published recordings keep the teardown cursor if a save ends here.
+    if (C.preservePublishedSaveCursor) {
+        C.state.rawModeResetPending = true;
+        return;
+    }
+    C.nomux_raw_active = C.int(0);
+    C.nomux_raw_row = C.int(0);
+    C.nomux_raw_col = C.int(0);
 }
 
 /* Write a string emitted by tty_raw_print / tty_raw_print_bold to the
@@ -909,7 +922,7 @@ function nomux_raw_putch(ch)
 function nomux_raw_emit(s,bold)
 {
     bold=C.int(bold);
-    if (!C.nomux_raw_active) {
+    if (!C.nomux_raw_active || C.state.rawModeResetPending) {
         if (Number(Boolean(C.ttyDisplay && (!C.HEAP8[C.charPointer(s)] || !nomux_markers_enabled()))))
             return;  /* in-game flush, or no-marker mode → skip */
         nomux_enter_raw_mode();
@@ -943,7 +956,7 @@ function nomux_raw_emit(s,bold)
 function nomux_raw_emit_eol()
 {
     
-    if (C.nomux_raw_active) nomux_raw_putch(10);
+    if (C.nomux_raw_active && !C.state.rawModeResetPending) nomux_raw_putch(10);
 }
 
 /* NOMUX_CAPTURE */
@@ -1629,5 +1642,5 @@ function term_end_extracolor()
         xputs("\u001b[0m");
 }
 
-return {initializeTermcapData,term_startup,term_shutdown,tty_number_pad,tty_decgraphics_termcap_fixup,term_start_screen,term_end_screen,nocmov,cmov,xputc,nomux_markers_enabled,nomux_emit_marker,nomux_capture_write_screen,nomux_capture_write_input_boundary,nomux_clear_screen,nomux_clear_to_eol,nomux_putch,nomux_set_attr,nomux_end_attr,nomux_set_fg,nomux_end_fg,nomux_sgr_fg,nomux_capture_screen,nomux_enter_raw_mode,nomux_raw_putch,nomux_raw_emit,nomux_raw_emit_eol,nomux_get_cursor,xputs,cl_end,term_clear_screen,home,standoutbeg,standoutend,backsp,tty_nhbell,graph_on,graph_off,tty_delay_output,cl_eos,init_hilite,kill_hilite,s_atr2str,e_atr2str,term_attr_fixup,term_start_attr,term_end_attr,term_start_raw_bold,term_end_raw_bold,term_end_color,term_start_color,term_start_bgcolor,term_curs_set,emit24bit,emit256,term_start_extracolor,term_end_extracolor};
+return {initializeTermcapData,term_startup,term_shutdown,tty_number_pad,tty_decgraphics_termcap_fixup,term_start_screen,term_end_screen,nocmov,cmov,xputc,nomux_markers_enabled,nomux_emit_marker,nomux_capture_write_screen,nomux_capture_write_input_boundary,nomux_clear_screen,nomux_clear_to_eol,nomux_putch,nomux_set_attr,nomux_end_attr,nomux_set_fg,nomux_end_fg,nomux_sgr_fg,nomux_capture_screen,nomux_enter_raw_mode,nomux_reset_raw_mode,nomux_raw_putch,nomux_raw_emit,nomux_raw_emit_eol,nomux_get_cursor,xputs,cl_end,term_clear_screen,home,standoutbeg,standoutend,backsp,tty_nhbell,graph_on,graph_off,tty_delay_output,cl_eos,init_hilite,kill_hilite,s_atr2str,e_atr2str,term_attr_fixup,term_start_attr,term_end_attr,term_start_raw_bold,term_end_raw_bold,term_end_color,term_start_color,term_start_bgcolor,term_curs_set,emit24bit,emit256,term_start_extracolor,term_end_extracolor};
 }

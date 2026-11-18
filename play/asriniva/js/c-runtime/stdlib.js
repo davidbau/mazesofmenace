@@ -10,6 +10,13 @@ import { formatFloatMagnitude, floatNegative } from './float-format.js';
 export const C_ERRNO = Object.freeze({ EINVAL: 28, ERANGE: 68 });
 
 export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
+    function stringByte(value, isText, offset) {
+        if (!isText) return memory.HEAPU8[memory.bounds(value + offset)];
+        if (offset >= value.length) return 0;
+        const byte = value.charCodeAt(offset);
+        if (byte > 255) throw new TypeError('C byte strings require explicit UTF-8 encoding');
+        return byte;
+    }
     const api = {
         errno: 0,
         malloc: n => memory.malloc(n), calloc: (n, size) => memory.calloc(n, size),
@@ -56,9 +63,11 @@ export function createCStdlib(memory, {floatPolicy='darwin'} = {}) {
         },
         strcmp: (a, b) => api.strncmp(a, b, Number.MAX_SAFE_INTEGER),
         strncmp(a, b, n) {
+            const leftText = typeof a === 'string', rightText = typeof b === 'string';
+            if (typeof a === 'bigint') a = Number(a);
+            if (typeof b === 'bigint') b = Number(b);
             for (let i = 0; i < n; i++) {
-                memory.bounds(a + i); memory.bounds(b + i);
-                const x = memory.HEAPU8[a + i], y = memory.HEAPU8[b + i];
+                const x = stringByte(a, leftText, i), y = stringByte(b, rightText, i);
                 if (x !== y || !x) return x - y;
             }
             return 0;

@@ -47,7 +47,7 @@ import { GLYPHCLS_OBJ, GLYPHCLS_SWALLOW, GLYPHCLS_UNEXPLORED, GLYPHCLS_WARNING, 
 import { cmd_safety_prevention } from './do.js'; // relocate-fns
 import { Monnam } from './do_name.js'; // relocate-fns
 import { xname } from './do_wear.js'; // relocate-fns
-import { MAXMCLASSES, MAXOCLASSES, def_char_to_monclass, def_char_to_objclass } from './drawing.js'; // relocate-fns
+import { MAXMCLASSES, MAXOCLASSES, def_char_is_furniture, def_char_to_monclass, def_char_to_objclass } from './drawing.js'; // relocate-fns
 import { depth, level_difficulty } from './dungeon.js'; // relocate-fns
 import { losehp } from './hack.js'; // relocate-fns
 import { makeknown } from './makemon.js';
@@ -1172,10 +1172,8 @@ export async function use_crystal_ball(obj) {
             const cc = ch.charCodeAt(0);
             const bouldersym = g.symbolOverrides?.S_boulder ? pager_boulder_symbol()
                 : String.fromCharCode(pager_showsyms()?.[SYM_OFFSETS.X + SYM_BOULDER] || 0);
-            /* def_char_is_furniture (drawing.c:120): stairs/ladders '<' '>', altar '_', grave '|',
-             * throne '\\', sink and fountain '{' — NOT '#' (S_corr/S_bars/S_tree are before
-             * "staircase up"; the 5.0 sink symbol is '{'). */
-            if ('<>_|\\{'.includes(ch)) {
+            /* C detect.c:1342: def_char_is_furniture(ch) >= 0 */
+            if (def_char_is_furniture(cc) >= 0) {
                 ret = await furniture_detect();
             } else if ((cls_ = def_char_to_objclass(cc)) !== MAXOCLASSES) {
                 ret = await object_detect(null, cls_);

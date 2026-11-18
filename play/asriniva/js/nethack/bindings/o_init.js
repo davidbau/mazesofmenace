@@ -42,13 +42,41 @@ export function createOInitEnvironment(services, layout, namespace) {
         for(const[i,k]of['dknown','known'].entries())Object.defineProperty(obj,k,{
             get(){return services.objectBit(at,i);},set(value){services.setObjectBit(at,i,value);},
         });return obj;}
-    function objectClass(value){const at=address(value);if(!at)return 0;const obj={address:at};
-        for(const[k,kind]of[['oc_name_idx','Int16'],['oc_descr_idx','Int16'],['oc_class','Int8'],['oc_color','Uint8'],['oc_prob','Int16']])
-            scalar(obj,k,()=>at+layout['cls_'+k],kind);
+    const classScalars=[['oc_name_idx','Int16'],['oc_descr_idx','Int16'],
+        ['oc_class','Int8'],['oc_color','Uint8'],['oc_prob','Int16']];
+    const classBits=['oc_name_known','oc_encountered','oc_tough','oc_material',
+        'oc_unique','oc_magic','oc_uses_known','oc_dir'];
+    const fixedCatalogue=Object.hasOwn(services,'nativeObjectCatalogue');
+    const classPrototype={};
+    if(fixedCatalogue){
+        for(const [key,kind]of classScalars){
+            const offset=layout['cls_'+key];
+            Object.defineProperty(classPrototype,key,{
+                get(){return view()['get'+kind](this.address+offset,true);},
+                set(value){view()['set'+kind](this.address+offset,Number(value),true);},
+            });
+        }
+        Object.defineProperty(classPrototype,'oc_uname',{
+            get(){return pointer(this.address+layout.cls_oc_uname);},
+            set(value){view().setBigUint64(this.address+layout.cls_oc_uname,raw(value),true);},
+        });
+        for(const [index,key]of classBits.entries())Object.defineProperty(classPrototype,key,{
+            get(){return services.classBit(this.address,index);},
+            set(value){services.setClassBit(this.address,index,value);},
+        });
+    }
+    function objectClass(value){
+        const at=address(value);
+        if(!at)return 0;
+        if(fixedCatalogue)return Object.assign(Object.create(classPrototype),{address:at});
+        const obj={address:at};
+        for(const [key,kind]of classScalars)scalar(obj,key,()=>at+layout['cls_'+key],kind);
         ptrField(obj,'oc_uname',()=>at+layout.cls_oc_uname);
-        for(const[i,k]of['oc_name_known','oc_encountered','oc_tough','oc_material','oc_unique','oc_magic','oc_uses_known','oc_dir'].entries())
-            Object.defineProperty(obj,k,{get(){return services.classBit(at,i);},set(value){services.setClassBit(at,i,value);}});
-        return obj;}
+        for(const [index,key]of classBits.entries())Object.defineProperty(obj,key,{
+            get(){return services.classBit(at,index);},set(value){services.setClassBit(at,index,value);},
+        });
+        return obj;
+    }
     function level(value){const at=address(value);if(!at)return 0;const obj={address:at};
         for(const k of['dnum','dlevel'])scalar(obj,k,()=>at+layout['level_'+k],'Int16');return obj;}
     function nhfile(value){const at=address(value);if(!at)return 0;const obj={address:at};
@@ -66,12 +94,20 @@ export function createOInitEnvironment(services, layout, namespace) {
         ptrField(obj,'value',()=>at,menuArray);return obj;};
     const scalarArray=(at,kind,width)=>indexed(i=>view()['get'+kind](at+i*width,true),
         (i,v)=>view()['set'+kind](at+i*width,Number(v),true),at);
-    const objects=indexed(i=>objectClass(global(0)+i*layout.objectClassSize));
+    const objectBase=global(0);
+    const objects=fixedCatalogue
+        ? Array.from({length:layout.NUM_OBJECTS},(_,i)=>objectClass(objectBase+i*layout.objectClassSize))
+        : indexed(i=>objectClass(global(0)+i*layout.objectClassSize));
     const obj_descr=indexed(i=>{const at=global(1)+i*layout.descriptorSize,obj={address:at};
         for(const k of['oc_name','oc_descr'])ptrField(obj,k,()=>at+layout['descr_'+k]);return obj;});
     const svb={},svd={},go={},iflags={menu_headings:{}},flags={},program_state={},u={},cg={},svc={context:{}};
-    Object.defineProperty(svb,'bases',{get(){return scalarArray(global(2)+layout.bases,'Int32',4);}});
-    Object.defineProperty(svd,'disco',{get(){return scalarArray(global(3)+layout.disco,'Int16',2);}});
+    if(fixedCatalogue){
+        svb.bases=scalarArray(global(2)+layout.bases,'Int32',4);
+        svd.disco=scalarArray(global(3)+layout.disco,'Int16',2);
+    }else{
+        Object.defineProperty(svb,'bases',{get(){return scalarArray(global(2)+layout.bases,'Int32',4);}});
+        Object.defineProperty(svd,'disco',{get(){return scalarArray(global(3)+layout.disco,'Int16',2);}});
+    }
     Object.defineProperty(go,'oclass_prob_totals',{get(){return scalarArray(global(4)+layout.probTotals,'Int16',2);}});
     scalar(iflags,'sanity_check',()=>global(5)+layout.sanityCheck,'Int8');
     scalar(iflags,'menu_requested',()=>global(5)+layout.menuRequested,'Int8');

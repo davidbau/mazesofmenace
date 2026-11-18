@@ -673,12 +673,19 @@ export function clear_level_structures()
        (except for placing vault guard at <0,0> when removed from the map
        but not from the level); explicitly reset column #0 along with the
        rest so that we start the new level with a completely clean slate */
-    for((x=C.i16(0));Number(C.i32(x)<80);((x=C.i16((x+1)))-1)) {
-        (lev=((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(0)*C.sizes["struct rm"]));
-        for((y=C.i16(0));Number(C.i32(y)<21);((y=C.i16((y+1)))-1)) {
-            C.copy(((lev=C.ptr((lev+Number(C.sizes["struct rm"]))))-Number(C.sizes["struct rm"])),C.staticAddress("zerorm"),C.sizes["struct rm"]);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(y)*8),"struct obj *").value=0);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(y)*8),"struct monst *").value=0);
+    if (Object.hasOwn(C, "clearLevelGrid")) {
+        const level = C.field(C.svl, "instance_globals_saved_l", "level").address;
+        C.clearLevelGrid(C.field(level, "dlevel_t", "locations").address,
+            C.field(level, "dlevel_t", "objects").address,
+            C.field(level, "dlevel_t", "monsters").address, C.staticAddress("zerorm"));
+    } else {
+        for((x=C.i16(0));Number(C.i32(x)<80);((x=C.i16((x+1)))-1)) {
+            (lev=((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(0)*C.sizes["struct rm"]));
+            for((y=C.i16(0));Number(C.i32(y)<21);((y=C.i16((y+1)))-1)) {
+                C.copy(((lev=C.ptr((lev+Number(C.sizes["struct rm"]))))-Number(C.sizes["struct rm"])),C.staticAddress("zerorm"),C.sizes["struct rm"]);
+                (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(y)*8),"struct obj *").value=0);
+                (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(y)*8),"struct monst *").value=0);
+            }
         }
     }
     (C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objlist").value=0);

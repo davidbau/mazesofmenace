@@ -1,5 +1,7 @@
-// drawing.c — def_char_to_monclass (convert character to monster class).
+// drawing.c — symbol class conversions and furniture check.
 // @ts-nocheck — js sibling imports.
+
+import { DEFSYM_EXPLANATION } from './defsym_data.js';
 
 /* def_monsyms[].sym — C drawing.c def_monsyms[MAXMCLASSES], built from
  * defsym.h MONSYM(idx, ch, ...) rows 1..60.  Row 0 is C's own
@@ -30,7 +32,7 @@ export function def_char_to_monclass(ch) {
  * invent.c, o_init.c, objnam.c, options.c, pickup.c, sp_lev.c, and
  * windows.c.
  *
- * C ref: nethack-c/src/drawing.c:90
+ * C ref: nethack-c-v5/upstream/src/drawing.c:90-99.  'ch' is a char CODE.
  */
 // def_oc_syms indexed by object class enum (from defsym.h OBJCLASS_DRAWING)
 // Index: Character (from defsym.h OBJCLASS lines)
@@ -55,5 +57,37 @@ export function def_char_to_objclass(ch) {
         }
     }
     return MAXOCLASSES;
+}
+
+/* defsyms[].sym — C drawing.c defsyms[MAXPCHARS + 1], built from
+ * defsym.h PCHAR/PCHAR2 rows 0..104.  Explanations live in DEFSYM_EXPLANATION. */
+const MAXPCHARS = DEFSYM_EXPLANATION.length; /* C sym.h enum cmap_symbols MAXPCHARS = 105 */
+const defsyms_sym = ' |--------||.-|++##..`###<><><><>_|\\{{}.}}..## #}^^^^^^^^^^^^^^^^^"^^^^~^^|-\\/*!)(0#@*#$/-\\||\\-//-\\| |\\-/';
+
+/*
+ * Does 'ch' represent a furniture character?  Returns index into defsyms[].
+ *
+ * C ref: nethack-c-v5/upstream/src/drawing.c:119-142.  'ch' is a char CODE.
+ */
+export function def_char_is_furniture(ch) {
+    const first_furniture = 'stair'; /* "staircase up" */
+    const last_furniture = 'fountain';
+    let i;
+    let furniture = false;
+    const uch = ch & 0xff;
+
+    for (i = 0; i < MAXPCHARS; ++i) {
+        if (!furniture) {
+            if (DEFSYM_EXPLANATION[i].startsWith(first_furniture))
+                furniture = true;
+        }
+        if (furniture) {
+            if (defsyms_sym.charCodeAt(i) === uch)
+                return i;
+            if (DEFSYM_EXPLANATION[i] === last_furniture)
+                break; /* reached last furniture */
+        }
+    }
+    return -1;
 }
 

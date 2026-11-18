@@ -81,10 +81,15 @@ export function mapfrag_free(mf)
 
 export function mapfrag_get(mf,x,y)
 {
-    x=C.i32(x);
-    y=C.i32(y);
-    if(Number(!!(Number(!!(Number(!!(Number(y<0)||Number(x<0)))||Number(y>C.i32((C.field(mf,"mapfragment","hei").value-1)))))||Number(x>C.i32((C.field(mf,"mapfragment","wid").value-1)))))) C.variadic(0,C.literal("outside mapfrag (%i,%i), wanted (%i,%i)"),C.field(mf,"mapfragment","wid").value,C.field(mf,"mapfragment","hei").value,x,y);
-    return C.splev_chr2typ(C.cell((C.field(mf,"mapfragment","data").value+Number(C.i32((C.i32((y*(C.i32((C.field(mf,"mapfragment","wid").value+1)))))+x)))*1),"char").value);
+    x = C.i32(x);
+    y = C.i32(y);
+    const width = C.field(mf, "mapfragment", "wid").value;
+    const height = C.field(mf, "mapfragment", "hei").value;
+    if (y < 0 || x < 0 || y >= height || x >= width)
+        C.variadic(0, C.literal("outside mapfrag (%i,%i), wanted (%i,%i)"), width, height, x, y);
+    const data = C.field(mf, "mapfragment", "data").value;
+    const offset = (Math.imul(y, width + 1) + x) | 0;
+    return C.splev_chr2typ(C.readInt8At(data + offset));
 }
 
 export function mapfrag_canmatch(mf)
@@ -594,39 +599,45 @@ export function flip_level(flp,extras)
         } while(0);
     }
     /* the map */
-    if(C.i32((flp&1))) {
-        for((x=C.i32(C.cell(minxAddress,"short").value));Number(x<=C.i32(C.cell(maxxAddress,"short").value));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(C.cell(minyAddress,"short").value));Number(y<(C.i32((C.i32(C.cell(minyAddress,"short").value)+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(C.cell(maxyAddress,"short").value)-C.i32(C.cell(minyAddress,"short").value)))+1)))/2))))))));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
-            let ny=(C.i32(((C.i32((C.i32(C.cell(maxyAddress,"short").value)-(y))))+C.i32(C.cell(minyAddress,"short").value))));
-            flip_dbridge_vertical(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
-            flip_dbridge_vertical(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]));
-            C.copyRecord(trm,((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(ny)*C.sizes["struct rm"]),trm,C.sizes["struct rm"]);
-            (otmp=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(y)*8),"struct obj *").value=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(ny)*8),"struct obj *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(ny)*8),"struct obj *").value=otmp);
-            (mtmp=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(y)*8),"struct monst *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(y)*8),"struct monst *").value=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(ny)*8),"struct monst *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(ny)*8),"struct monst *").value=mtmp);
-        }
+    const xmin = C.readInt16At(minxAddress), xmax = C.readInt16At(maxxAddress);
+    const ymin = C.readInt16At(minyAddress), ymax = C.readInt16At(maxyAddress);
+    const level = C.field(C.svl, "instance_globals_saved_l", "level").address;
+    const locations = C.field(level, "dlevel_t", "locations").address;
+    const objects = C.field(level, "dlevel_t", "objects").address;
+    const monsters = C.field(level, "dlevel_t", "monsters").address;
+    const width = C.sizes["struct rm"];
 
+    function swapCells(first, second, orientDrawbridge) {
+        const a = locations + first * width, b = locations + second * width;
+        orientDrawbridge(a);
+        orientDrawbridge(b);
+        C.copyRecord(trm, a, width);
+        C.copyRecord(a, b, width);
+        C.copyRecord(b, trm, width);
+        const oldObject = C.readPointerAt(objects + first * 8);
+        C.writePointerAt(objects + first * 8, C.readPointerAt(objects + second * 8));
+        C.writePointerAt(objects + second * 8, oldObject);
+        const oldMonster = C.readPointerAt(monsters + first * 8);
+        C.writePointerAt(monsters + first * 8, C.readPointerAt(monsters + second * 8));
+        C.writePointerAt(monsters + second * 8, oldMonster);
     }
-    if(C.i32((flp&2))) {
-        for((x=C.i32(C.cell(minxAddress,"short").value));Number(x<(C.i32((C.i32(C.cell(minxAddress,"short").value)+(C.i32(Math.trunc(((C.i32((C.i32((C.i32(C.cell(maxxAddress,"short").value)-C.i32(C.cell(minxAddress,"short").value)))+1)))/2))))))));(()=>{const old=x;const next=C.i32((old+1));x=next;return old;})()) for((y=C.i32(C.cell(minyAddress,"short").value));Number(y<=C.i32(C.cell(maxyAddress,"short").value));(()=>{const old=y;const next=C.i32((old+1));y=next;return old;})()) {
-            let nx=(C.i32(((C.i32((C.i32(C.cell(maxxAddress,"short").value)-(x))))+C.i32(C.cell(minxAddress,"short").value))));
-            flip_dbridge_horizontal(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
-            flip_dbridge_horizontal(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]));
-            C.copyRecord(trm,((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(x)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),C.sizes["struct rm"]);
-            C.copyRecord(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","locations").address+Number(nx)*(C.sizes["struct rm"]*21))+Number(y)*C.sizes["struct rm"]),trm,C.sizes["struct rm"]);
-            (otmp=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(y)*8),"struct obj *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(x)*(8*21))+Number(y)*8),"struct obj *").value=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(nx)*(8*21))+Number(y)*8),"struct obj *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","objects").address+Number(nx)*(8*21))+Number(y)*8),"struct obj *").value=otmp);
-            (mtmp=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(y)*8),"struct monst *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(x)*(8*21))+Number(y)*8),"struct monst *").value=C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(nx)*(8*21))+Number(y)*8),"struct monst *").value);
-            (C.cell(((C.field(C.field(C.svl,"instance_globals_saved_l","level").address,"dlevel_t","monsters").address+Number(nx)*(8*21))+Number(y)*8),"struct monst *").value=mtmp);
-        }
 
+    if (flp & 1) {
+        const stop = ymin + Math.trunc((ymax - ymin + 1) / 2);
+        for (x = xmin; x <= xmax; x++) {
+            for (y = ymin; y < stop; y++) {
+                const opposite = ymax - y + ymin;
+                swapCells(x * 21 + y, x * 21 + opposite, flip_dbridge_vertical);
+            }
+        }
+    }
+    if (flp & 2) {
+        const stop = xmin + Math.trunc((xmax - xmin + 1) / 2);
+        for (x = xmin; x < stop; x++) {
+            const opposite = xmax - x + xmin;
+            for (y = ymin; y <= ymax; y++)
+                swapCells(x * 21 + y, opposite * 21 + y, flip_dbridge_horizontal);
+        }
     }
     /* timed effects */
     for((timer=C.field(C.gt,"instance_globals_t","timer_base").value);timer;(timer=C.field(timer,"fe","next").value)) {

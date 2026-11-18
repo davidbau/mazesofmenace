@@ -859,6 +859,7 @@ export function nomux_capture_screen()
 export function nomux_enter_raw_mode()
 {
     
+    C.state.rawModeResetPending = false;
     C.nomux_raw_active = C.int(1);
     C.nomux_raw_row = C.int(0);
     C.nomux_raw_col = C.int(0);
@@ -866,6 +867,18 @@ export function nomux_enter_raw_mode()
      * terminal returns to a blank main-screen state before the high-score
      * lines print. Mirror that by clearing the shadow. */
     C.callLocal(nomux_clear_screen,);
+}
+
+export function nomux_reset_raw_mode()
+{
+    // Published recordings keep the teardown cursor if a save ends here.
+    if (C.preservePublishedSaveCursor) {
+        C.state.rawModeResetPending = true;
+        return;
+    }
+    C.nomux_raw_active = C.int(0);
+    C.nomux_raw_row = C.int(0);
+    C.nomux_raw_col = C.int(0);
 }
 
 /* Write a string emitted by tty_raw_print / tty_raw_print_bold to the
@@ -906,7 +919,7 @@ export function nomux_raw_putch(ch)
 export function nomux_raw_emit(s,bold)
 {
     bold=C.int(bold);
-    if (!C.nomux_raw_active) {
+    if (!C.nomux_raw_active || C.state.rawModeResetPending) {
         if (Number(Boolean(C.ttyDisplay && (!C.HEAP8[C.charPointer(s)] || !C.callLocal(nomux_markers_enabled,)))))
             return;  /* in-game flush, or no-marker mode → skip */
         C.callLocal(nomux_enter_raw_mode,);
@@ -940,7 +953,7 @@ export function nomux_raw_emit(s,bold)
 export function nomux_raw_emit_eol()
 {
     
-    if (C.nomux_raw_active) C.callLocal(nomux_raw_putch,10);
+    if (C.nomux_raw_active && !C.state.rawModeResetPending) C.callLocal(nomux_raw_putch,10);
 }
 
 /* NOMUX_CAPTURE */

@@ -37,7 +37,7 @@ export function createGetposEnvironment(services,L,source) {
         charArrayLocal:n=>charArray(alloc(n)),intArrayLocal:n=>intArray(zero(n*4)),coordArrayCells,coordArrayCell:(a,i)=>coordArrayPointer(address(a)+i*8),intArrayCell:(a,i)=>intPointer(address(a)+i*4),copyAnything:(a,b)=>copy(a,b,L.anythingSize),copyCommand:(a,b)=>copy(a,b,L.commandSize),
         loadChar:v=>view().getInt8(address(v)),storeChar:(v,n)=>view().setInt8(address(v),n),IS_DOOR:t=>t===L.DOOR,u_at:(x,y)=>x===u.ux&&y===u.uy,
         monnum_to_glyph:(n,g)=>services.monnumToGlyph(n,g),objnum_to_glyph:n=>services.objnumToGlyph(n),
-        levl:index(x=>index(y=>struct(global(1)+(x*L.ROWNO+y)*L.rmSize,'rm',['typ','glyph','seenv']))),
+        levl:services.nativeMapCells??index(x=>index(y=>struct(global(1)+(x*L.ROWNO+y)*L.rmSize,'rm',['typ','glyph','seenv']))),
         qsort:(p,n,size,fn)=>{if(fn!==source.cmp_coord_distu)throw new Error('Unexpected GETPOS comparator');return services.qsortCoords(p,n,size);},
         set_selection_floodfillchk:fn=>{if(fn!==source.gloc_filter_floodfill_matcharea)throw new Error('Unexpected GETPOS floodfill callback');return services.setFloodfillCallback();},
     });

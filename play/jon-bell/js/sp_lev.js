@@ -1897,7 +1897,6 @@ export function selection_and(sela, selb) {
             const val = selection_getpoint(x, y, sela) & selection_getpoint(x, y, selb);
             selection_setpoint(x, y, selr, val);
         }
-    selr.bounds = { lx: rect.lx, ly: rect.ly, hx: rect.hx, hy: rect.hy };
     return selr;
 }
 

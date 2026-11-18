@@ -16,7 +16,7 @@ async function data(){
  }
  loadedData={assets,layouts};return loadedData;
 }
-export async function runSegment(input){
+export async function runSegment(input,{preservePublishedSaveCursor=true}={}){
  if(typeof input.moves!=='string'&&input.moves!==undefined)throw TypeError('Recorder moves must be literal text');
  const index=segmentIndex++,moves=input.moves??'',profile=recordingProfile(),epoch=Number(recordingClockEpoch()),counts={get:0,set:0,remove:0};
  const storage=input.storage?{getItem(key){counts.get++;return input.storage.getItem(key);},setItem(key,value){counts.set++;return input.storage.setItem(key,value);},removeItem(key){counts.remove++;return input.storage.removeItem(key);},get length(){return input.storage.length;},key:i=>input.storage.key(i)}:null;
@@ -29,7 +29,7 @@ export async function runSegment(input){
   if(isolatedWorker)for(const name of names)delete globalThis[name];
   for(const name of names)Object.defineProperty(globalThis,name,{configurable:true,value:name==='WebAssembly'?new Proxy({},{get:deny}):deny});
   const[{createStandaloneProgram},{CExit}]=await Promise.all([import('./nethack/program.js'),import('./nethack/functions.js')]);
-  program=createStandaloneProgram({layouts,assets:installed,directories:[profile.home,'/nethack/save'],runtime:{now:()=>epoch*1000,timeZone:profile.timeZone,initialBytes:1024,maximumBytes:128*1024*1024,environment:env},readKey(){if(keyIndex>=moves.length)throw exhausted;const key=moves.charCodeAt(keyIndex++);return key===13?10:key;}});
+  program=createStandaloneProgram({layouts,terminalOptions:{preservePublishedSaveCursor},assets:installed,directories:[profile.home,'/nethack/save'],runtime:{now:()=>epoch*1000,timeZone:profile.timeZone,initialBytes:1024,maximumBytes:128*1024*1024,environment:env},readKey(){if(keyIndex>=moves.length)throw exhausted;const key=moves.charCodeAt(keyIndex++);return key===13?10:key;}});
   program.environment.filesystem.chdir('/nethack');const baseline=program.environment.fileBaseline();if(previous)program.environment.restoreFiles(previous);
   const name=/(?:^|[=\s,])name\s*:\s*([^,\n]+)/im.exec(input.nethackrc??'')?.[1]?.trim()||'';
   try{const status=program.run(['-u',name],{programName:'nethack'});if(status)throw Error('Standalone recorder exited with status '+status);}catch(e){if(e!==exhausted&&!(e instanceof CExit&&e.status===0))throw e;}

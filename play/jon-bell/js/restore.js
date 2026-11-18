@@ -157,6 +157,10 @@ export async function getlev(lev, restoreFloor = null) {
      * rest_track.  All of it is the departing level's own containers, which
      * clear_level_structures() replaced rather than mutated. */
     g.level = snap.level;
+    /* C restore.c:1117,1314-1318 rest_adjust_levelflags(): restore stasis_until
+     * from its relative offset stored by save_adjust_levelflags(). */
+    if (g.level?.flags)
+        g.level.flags.stasis_until = (g.level.flags.stasis_until | 0) + (g.moves | 0);
     // C mkroom.c:851-918 save_room/rest_room: subrooms are written by
     // parent-room traversal, then assigned consecutive slots on restore.
     // levl[].roomno is NOT renumbered, even when that changes its room type.
@@ -663,6 +667,7 @@ export async function dorecover(save) {
         if (snap.timers) restore_timer_order(snap.timers);
         restdamage_reverse(snap.level);
         find_lev_obj_clear_no_charge(snap.level);
+        await find_lev_obj_no_longer_held(snap.fobj);
         if (!snap.bubbles) continue;
         snap.bubbles = await bubbles_copy_snapshot(snap.bubbles, snap.level);
     }

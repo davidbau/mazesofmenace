@@ -2459,7 +2459,7 @@ export function potion_dip(obj, potion)
         magic = C.int(((mixture != C.STRANGE_OBJECT)) ? C.objects[mixture].oc_magic
             : (((C.objects[obj.otyp].oc_magic || C.objects[potion.otyp].oc_magic) ? 1 : 0)));
         C.Strcpy(qbuf, "The"); /* assume full stack */
-        if ((amt > obj.odiluted ? 2 : magic ? 3 : 7)) {
+        if (amt > (obj.odiluted ? 2 : magic ? 3 : 7)) {
             /* Trying to dip multiple potions will usually affect only a
                subset; pick an amount between 3 and 8, inclusive, for magic
                potion result, between 7 and N for non-magic. If diluted

@@ -4,11 +4,12 @@ import { GPCOORDS_COMFULL, GPCOORDS_COMPASS, GPCOORDS_MAP, GPCOORDS_SCREEN, TIP_
 import { findtravelpath, handle_tip } from './hack.js'; // relocate-fns
 import { visctrl as _binds_visctrl } from './cmd_binds.js'; // relocate-fns
 import { CMDQ_DIR, CMDQ_KEY, COLNO, CQ_CANNED, CQ_REPEAT, DIR_ERR, MV_RUN, MV_RUSH, MV_WALK, NHKF_GETPOS_AUTODESC, NHKF_GETPOS_LIMITVIEW, NHKF_GETPOS_MENU, NHKF_GETPOS_MOVESKIP, NHKF_GETPOS_PICK, NHKF_GETPOS_PICK_O, NHKF_GETPOS_PICK_Q, NHKF_GETPOS_PICK_V, NHKF_GETPOS_SELF, NHKF_GETPOS_SHOWVALID, NHKF_GETPOS_VALID_NEXT, NHKF_GETPOS_VALID_PREV, NUM_GFILTER, ROWNO, TRAVP_VALID, isok } from './const.js'; // relocate-fns
-import { GLYPHCLS_CMAP, _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more_lone_frame, last_flush_forced_cursor, last_flush_status_end, newsym_force } from './display.js'; // relocate-fns
+import { GLYPHCLS_CMAP, _topl_joins_snapshot, _topl_more_pages, flush_screen, force_more_lone_frame, last_flush_forced_cursor, last_flush_status_end } from './display.js'; // relocate-fns
 import { game } from './gstate.js'; // relocate-fns
 import { visctrl } from './hacklib.js'; // relocate-fns
 import { pline } from './pline.js'; // relocate-fns
 import { set_cursor } from './read.js'; // relocate-fns
+import { selection_force_newsyms, selection_free, selection_new, selection_setpoint } from './selvar.js';
 import { NO_COLOR } from './terminal.js'; // relocate-fns
 
 // C getpos.c:30-38: HiliteNormalMap, HiliteGoodposSymbol, HiliteBackground.
@@ -94,7 +95,7 @@ export async function getpos_sethilite(gp_hilitef, gp_getvalidf) {
         getpos_hilite_state.current = getpos_hilite_state.default;
 
     /* C: sel is painted with the OLD callback BEFORE the assignment... */
-    const sel = new Set();
+    const sel = selection_new();
     await _getpos_getvalids_selection(sel, old_getvalid);
     set_getpos_hilitefunc(gp_hilitef);
     set_getpos_getvalid(gp_getvalidf);
@@ -122,7 +123,8 @@ export async function getpos_sethilite(gp_hilitef, gp_getvalidf) {
     game._getpos_frame_sel = null;
     game._getpos_frame_pending = frame_sel;
     if (getpos_getvalid !== old_getvalid || !!frame_sel !== !!old_frame)
-        _selection_force_newsyms(sel);
+        selection_force_newsyms(sel);
+    selection_free(sel, true);
 }
 
 /* C ref: getpos.c:100-113 getpos_getvalids_selection(sel, validf) —
@@ -133,21 +135,15 @@ export async function getpos_sethilite(gp_hilitef, gp_getvalidf) {
 async function _getpos_getvalids_selection(sel, validf) {
     if (!sel || !validf)
         return;
-    for (let x = 1; x < COLNO; x++)
-        for (let y = 0; y < ROWNO; y++)
-            if (await validf(x, y))
-                sel.add(y * COLNO + x);
-}
-
-/* C ref: selvar.c:801-810 selection_force_newsyms(sel) — newsym_force() on
- * every selected point.  C walks it column-major; the repaint order that
- * decides where the cursor lands is flush_screen's, which is row-major, so the
- * iteration order here is immaterial (newsym_force tracks the row-major max). */
-function _selection_force_newsyms(sel) {
-    for (let x = 1; x < COLNO; x++)
-        for (let y = 0; y < ROWNO; y++)
-            if (sel.has(y * COLNO + x))
-                newsym_force(x, y);
+    const isSet = sel instanceof Set;
+    const wid = isSet ? COLNO : sel.wid;
+    const hei = isSet ? ROWNO : sel.hei;
+    for (let x = 1; x < wid; x++)
+        for (let y = 0; y < hei; y++)
+            if (await validf(x, y)) {
+                if (isSet) sel.add(y * COLNO + x);
+                else selection_setpoint(x, y, sel, 1);
+            }
 }
 
 function _is_valid_travelpt(x, y) {

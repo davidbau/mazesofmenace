@@ -171,6 +171,23 @@ export function createNhluaEnvironment(services, state) {
         services.commitLayout?.();
         state.initialized=true;
     }
+    if (arena) {
+        const record = schema.records.anonymous_342_14;
+        const ch = fieldInfo('anonymous_342_14','ch').offset;
+        const typ = fieldInfo('anonymous_342_14','typ').offset;
+        const start = data('char2typ'), end = start + sizeof(schema.data.char2typ.type);
+        const lookup = new Int8Array(256).fill(schema.constants.INVALID_TYPE);
+        const defined = new Uint8Array(256);
+        for (let row = start; row < end; row += record.size) {
+            const key = arena.Uint8[row + ch];
+            if (key === 0) break;
+            if (!defined[key]) {
+                lookup[key] = arena.Int8[row + typ];
+                defined[key] = 1;
+            }
+        }
+        env.mapTerrainForByte = value => lookup[value & 255];
+    }
     return env;
 }
 

@@ -499,7 +499,7 @@ import { paralyze_monst } from './mhitm.js';
  * SUBSYSTEM block below. */
 import { can_ooze, can_fog, set_apparxy, m_postmove_effect, dissolve_bars } from './monmove.js';
 import { BRK_MELEE } from './const.js';
-import { selection_new, selection_getpoint, selection_setpoint, selection_floodfill, set_selection_floodfillchk } from './selvar.js';
+import { selection_new, selection_free, selection_getbounds, selection_getpoint, selection_setpoint, selection_floodfill, set_selection_floodfillchk } from './selvar.js';
 /* getpos.c's gather_locs / getloc_filter surface.  VIBRATING_SQUARE was already
  * READ at the do_look trap scan (js/cmd.js:14177) without ever being imported —
  * a latent ReferenceError on that arm — so it comes in here too. */
@@ -12498,40 +12498,18 @@ function dolookaround_floodfill_findroom(x, y) {
              || typ === SCORR || typ === SDOOR || typ === DRAWBRIDGE_UP);
 }
 
-/* C cmd.c:1280-1306 lookaround_known_room(), with the selection (selvar.c) held
- * as a Set of x*ROWNO+y; selection_floodfill is an 8-way fill whose start point
- * is always included (selvar.c:428-436). */
+/* C cmd.c:1275-1306 lookaround_known_room() */
 async function lookaround_known_room(x, y) {
     const g = game;
     const u = g.u;
     const rmno = ((u.urooms?.charCodeAt(0) | 0) - ROOMOFFSET); /* u.urooms is a string of room-number char codes */
-    const sel = new Set();
-    const key = (xx, yy) => xx * ROWNO + yy;
-    const stack = [[x, y]];
-    const seen = new Set([key(x, y)]);
-    while (stack.length) {
-        const [cx, cy] = stack.pop();
-        sel.add(key(cx, cy));
-        for (let dx = -1; dx <= 1; dx++)
-            for (let dy = -1; dy <= 1; dy++) {
-                if (!dx && !dy) continue;
-                const nx = cx + dx, ny = cy + dy;
-                if (isok(nx, ny) && !seen.has(key(nx, ny))
-                    && dolookaround_floodfill_findroom(nx, ny)) {
-                    seen.add(key(nx, ny));
-                    stack.push([nx, ny]);
-                }
-            }
-    }
-    let lx = COLNO, ly = ROWNO, hx = 0, hy = 0;
-    for (const k of sel) {
-        const sx = Math.trunc(k / ROWNO), sy = k % ROWNO;
-        if (sx < lx) lx = sx;
-        if (sx > hx) hx = sx;
-        if (sy < ly) ly = sy;
-        if (sy > hy) hy = sy;
-    }
-    const inSel = (xx, yy) => sel.has(key(xx, yy));
+    const sel = selection_new();
+    set_selection_floodfillchk(dolookaround_floodfill_findroom);
+    selection_floodfill(sel, x, y, true);
+    const rect = { lx: 0, ly: 0, hx: 0, hy: 0 };
+    selection_getbounds(sel, rect);
+    const { lx, ly, hx, hy } = rect;
+    const inSel = (xx, yy) => selection_getpoint(xx, yy, sel) !== 0;
     const unexplored = (xx, yy) => isok(xx, yy) && inSel(xx, yy) && !_glyph_at(xx, yy);
     const atu = u_at(x, y);
     const rw = hx - lx + 1, rh = hy - ly + 1;
@@ -12566,6 +12544,7 @@ async function lookaround_known_room(x, y) {
             ? `You guess ${atu ? 'this' : 'that'} to be ${desc} ${where}.`
             : `You can't guess the size of ${atu ? 'this' : 'that'} area.`;
     }
+    selection_free(sel, true);
     await pline_xy_a11y(mx, my, text);
 }
 
@@ -13262,10 +13241,11 @@ async function dispatch_command(command, outcome = {}, queued = false) {
              * with no storage handle takes C's `else docrt()` arm instead. */
             if (!await dosave0()) {
                 /* C save.c:67 — dosave0() failed; repaint and stay in play. */
-                (game._msg_history ||= []).push('Saving...'); /* docrt's next pline remember_topl()s it; on success the dosave0 snapshot files it once (save.js) */
                 await docrt();
             } else {
                 /* C save.c:57-65 — dosave0() succeeded. */
+                (game.program_state ||= {}).savefile_completed =
+                    (game.program_state.savefile_completed | 0) + 1;
                 const u = game.u || {};
                 u.uhp = -1;                  /* universal game's-over indicator */
                 game._pending_message = '';
@@ -15746,7 +15726,9 @@ function _glyph_at(x, y) {
     return { ch, symbol: loc.disp_ttychar, dec: !!loc.disp_decgfx, cls: loc.disp_cls ?? 'cmap',
              isWarning: !!loc.disp_is_warning, warningLevel: loc.disp_warning_level,
              otyp: loc.disp_obj_otyp, corpsenm: loc.disp_obj_corpsenm,
-             objpile: !!loc.disp_obj_pile, ttyp: loc.disp_trap_type, cmap: loc.disp_cmap,
+             objpile: !!loc.disp_obj_pile, objFemale: !!loc.disp_obj_female,
+             monPm: loc.disp_mon_pm, monFemale: !!loc.disp_mon_female, monKind: loc.disp_mon_kind,
+             ttyp: loc.disp_trap_type, cmap: loc.disp_cmap,
              color: loc.disp_glyph_color ?? loc.disp_color };
 }
 
@@ -19511,7 +19493,6 @@ export async function makemap_prepost(pre, wiztower) {
         const dgn = g.dungeons?.[u.uz.dnum | 0];
         const ledger = (u.uz.dlevel | 0) + (dgn?.ledger_start | 0);
         await (await import('./save.js')).savelev(ledger, true); /* cmd.c:1036-1037 get_freeing_nhfile -> FREEING */
-        (await import('./save.js')).savelev(ledger);
     } else {
         (await import('./vision.js')).vision_reset();
         g.vision_full_recalc = 1;

@@ -1400,7 +1400,7 @@
     "scripts/export-standalone-potion-abi.py": "4bd7c893ed8ee9d384bfb875c4a39f560da64e6bb5164e153f31e801d5535905",
     "scripts/tu-potion-layout.h": "5f1080b201861cd352b1ec04799c14c1590ae1c8495c94a7420dc30f7de08304",
     "nethack-c/wasm/tu-potion-support.inc": "5566b733353c355ad84ce1c324cf12bbce291b418638378f6d28d29bffa8b30d",
-    "js/ported/potion.js": "862f85adb6947ed618d90831e4e2b1fba37c7108466709267e398c5f5b9f9d6d",
+    "js/ported/potion.js": "15bcdadb60ce1e57981e3771228178d25359737183d6973a74a59ccee5c0e3f6",
     "js/nethack/bindings/potion.js": "73f183a078bf675255ad65d6da774e91dc1cf9590973b51dcf442dca2003cac7",
     "nethack-c/wasm/tu-libraries/potion.js": "c142ced8df3b6c22629cbc62b221e256fc19075884d73e548150668e15316fc9",
     "js/standalone/public-functions.json": "75774661072653bbd6c90bce1e837fac87a998b5e9139f6f5012878057779e12",

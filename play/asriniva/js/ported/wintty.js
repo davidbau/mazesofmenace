@@ -647,6 +647,8 @@ export function tty_exit_nhwindows(str) {
     str = C.argument(str, "const char *");
     let i;
     tty_suspend_nhwindows(str);
+    // The next raw print starts a fresh screen after window teardown.
+    C.nomux_reset_raw_mode();
 /*
      * Disable windows to avoid calls to window routines.
      */

@@ -679,7 +679,7 @@
       "name": "nomux_out",
       "d": {
         "a": [
-          6144
+          61825
         ],
         "e": {
           "t": "i8"
@@ -822,7 +822,8 @@
     "emit24bit",
     "emit256",
     "term_start_extracolor",
-    "term_end_extracolor"
+    "term_end_extracolor",
+    "nomux_reset_raw_mode"
   ],
   "foreignCallbacks": [
     "tty_utf8graphics_fixup"
@@ -858,6 +859,7 @@
     "nomux_end_fg": "v",
     "teleport_termcap_test_nomux_sgr_fg": "ii",
     "nomux_capture_screen": "p",
+    "nomux_reset_raw_mode": "v",
     "nomux_enter_raw_mode": "v",
     "teleport_termcap_test_nomux_raw_putch": "vi",
     "nomux_raw_emit": "vpi",
@@ -917,11 +919,11 @@
     128
   ],
   "sourceSha256": {
-    "scripts/export-standalone-terminal.py": "99f78a33907b4a625cc302fcc6e2fb46aaea8ded3bdd4c7996e592551a293cd5",
-    "js/nethack/bindings/termcap.js": "88f4d9523be6241ca538a0ff0afe51702f93955591fa3c49119851088766c764",
-    "js/standalone/terminal.js": "ad9a92f3d4f9e60908aa4bc8f22c84cf178d133f4396e7d89f4bb4ec4aeb5723",
-    "nethack-c/wasm/tu-libraries/termcap.js": "be0bb1b55051f6171b45548582d2172a1cd14ccb2227978e39ff6df5efa354c2",
-    "nethack-c/wasm/tu-fragments/termcap-support.c": "f514178bc577bcf9220dd0a6afd59a14caabdb060fda2f3322e923e158158d22",
+    "scripts/export-standalone-terminal.py": "21b283d31d5f2ff02dedbc8da4359e15243598d78016fbb606ed2086761a6dad",
+    "js/nethack/bindings/termcap.js": "c802dc60199be6cdb0a34ce8386f8fced6659f6b64a5435ed444ab25ec94b09e",
+    "js/nethack/terminal.js": "08f7f3dfebaa91e5a5d289339bb43507a7c1a7fe1c296fd6c21ec50bd1c17af5",
+    "nethack-c/wasm/tu-libraries/termcap.js": "875df42667fe7d0705b3bb744d3fb25734a9c4022730ee5f479237e25d761276",
+    "nethack-c/wasm/tu-fragments/termcap-support.c": "84d2d0a204cb75c9b1baeb9b6a18ee2316b14d933e8f48bbc64019bbc0b9b913",
     "nethack-c/wasm/tu-fragments/termcap-source-data.h": "a87bd6c0796e86769c81671b6d6a9e6e882b087fe1e7ebd731771553f92b3342"
   }
 }

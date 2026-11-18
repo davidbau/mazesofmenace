@@ -28,6 +28,20 @@ export function createMklevEnvironment(services){
  // JavaScript owns all original static values; C reserves native typed zero objects.
  for(const row of mklev.mklevStaticInitializers(env))env.initialize(env.staticAddress(row.name),row.type,row.values);
 
+ const arena=services.nativeOwner?.nativeArena;
+ if(arena){
+  const count=80*21,size=env.sizes['struct rm'];
+  env.clearLevelGrid=(locations,objects,monsters,zero)=>{
+   const bytes=arena.Uint8;
+   const row=bytes.subarray(zero,zero+size);
+   if(row.every(byte=>byte===0))bytes.fill(0,locations,locations+count*size);
+   else for(let at=locations;at<locations+count*size;at+=size)bytes.set(row,at);
+   bytes.fill(0,objects,objects+count*8);
+   bytes.fill(0,monsters,monsters+count*8);
+  };
+  env.clearLevelGrid.nativeAddress=true;
+ }
+
  env.nativeFields=createNativeAddressFields(env,services,schema,decode,ptr);
  env.nativeNamespace=createNativeAddressNamespace(env);
  return env;

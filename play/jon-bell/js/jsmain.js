@@ -10,6 +10,7 @@ import { initRng, enableRngLog, getRngLog, pushRngLogEntry } from './rng.js';
 import { newgame, report_config_errors, moveloop_core, _flushTrailingWorldBlock } from './allmain.js';
 import { FF_FAITHFUL } from './fastforward.js';
 import { parseNethackrc, init_fruit_chain } from './options.js';
+import { sf_init } from './sfbase.js';
 import { reset_commands, update_rest_on_space } from './cmd.js';
 import { set_configfile_for_session } from './cfgfiles.js';
 import { gs, H_DEC, H_IBM, H_UNK, PRIMARYSET, INFRAVISION, RUN_LEAP, MAX_MSG_HISTORY, SYM_BOULDER, def_warnsyms } from './const.js';
@@ -41,6 +42,7 @@ import { dorecover, restore_preamble } from './restore.js';
 import { restore_saved_game } from './files.js';
 import { ENV } from './hostenv.js';
 import { anim_frames_reset, anim_frames_take } from './animframes.js';
+import { runtime_info_init, release_runtime_info } from './mdlib.js';
 function extractRoleInitRng(sessionData) {
     const calls = [];
     let capturing = false;
@@ -111,12 +113,18 @@ export class NethackGame {
          * starts with no wish history even when the previous segment ended
          * without reaching freedynamicdata() (save.c:1136). */
         wish_history_flush();
+        /* C allmain.c:44 early_init() calls runtime_info_init(); reset first in
+         * case a prior segment ended at EOF without freedynamicdata(). */
+        release_runtime_info();
+        runtime_info_init();
         set_configfile_for_session(this._seed, this._datetime,
                                    this._nethackrc, this._moves);
         // Re-link the host storage handle after the globals reset.  js/storage.js
         // hook available and it must be re-established here rather than by
         // adding an export there.
         g.mockStorage = this._storage;
+        // C options.c:7129 initoptions_init initializes save format proc tables.
+        sf_init();
         // C initoptions_init resets bindings before RC parsing. Option and
         // BINDINGS handlers below mutate this same list in file order.
         g.flags = { rest_on_space: false };

@@ -384,6 +384,8 @@ function nhl_add_table_entry_region(L, name, x1, y1, x2, y2)
 function splev_chr2typ(c)
 {
     c = C.cast("i8",c);
+    if (Object.hasOwn(C, "mapTerrainForByte"))
+        return C.mapTerrainForByte(c);
     var i;
     for ((i = C.cast("i32",0)); C.truth(readAt_i8(fieldAt3(C.offset(C.data("char2typ"),i,2)))); C.post(()=>i,()=>(i = C.cast("i32",C.binary("i32","+",i,1)))))
     if (C.truth(Number(C.cast("i32",c) === C.cast("i32",readAt_i8(fieldAt3(C.offset(C.data("char2typ"),i,2)))))))

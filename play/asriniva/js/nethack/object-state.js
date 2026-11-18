@@ -20,6 +20,7 @@ export function enableObjectState(environment,layouts) {
     // globals (or trip a const global's inherited setter).
     for(const name of globals)Object.defineProperty(local,name,{value:services[name],writable:true,configurable:true});
     Object.assign(local,{
+        nativeObjectCatalogue:true,
         global:i=>{if(!pointers[i])throw new Error('Unknown O_INIT global '+i);return pointers[i];},
         classBit:(p,i)=>bitfields.get('objclass',key(classBits,i),p),
         setClassBit:(p,i,v)=>bitfields.set('objclass',key(classBits,i),p,v),
@@ -49,12 +50,20 @@ export function enableObjectState(environment,layouts) {
     observeObject.nativeDirect=true;
     observeObject.nativePrepared=true;
     namespace.observe_object=observeObject;
+    for(const name of ['savenames','restnames']){
+        const run=native[name];
+        // The public input remains an NHFILE address, including when the linker
+        // selects the native entry from another port.
+        const entry=file=>environment.transport.scoped(()=>run(adapter.nhfile(file)));
+        entry.nativeDirect=true;
+        entry.nativePrepared=true;
+        namespace[name]=entry;
+    }
     namespace.objdescr_is=(...args)=>Number(policy.objdescr_is(...args));
     environment.register('object-state',namespace,adapter,{prepareArgs:(name,args)=>{
         if(name==='setgemprobs')args[0]=adapter.level(args[0]);
         if(name==='observe_object')args[0]=adapter.object(args[0]);
         if(name==='objdescr_is')args[0]=adapter.object(args[0]);
-        if(['savenames','restnames'].includes(name))args[0]=adapter.nhfile(args[0]);
         if(name==='obj_shuffle_range'){args[1]=adapter.intPointer(args[1]);args[2]=adapter.intPointer(args[2]);}
         return args;
     }});
